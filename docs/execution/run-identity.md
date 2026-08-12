@@ -588,6 +588,16 @@ that is the level-③ name the user typed, not a location the id derives (§ 3.0
 > The rule that survives is the one carrying the information: **before writing,
 > say what is in the folder.** § 5's rows already do that, and this is the
 > moment they are for.
+>
+> *One sharpening (U14, 2026-08-12): when what is in the folder says a run
+> already **happened** — a launched attempt's `run.json`, warm files at the
+> root — `prep` says so and **asks** before re-rendering, default yes; a
+> prompt that cannot be answered proceeds and says so, because this section
+> warns, it does not refuse. The library refusal shape this section used to
+> require (`check_overwrite`) retired with the rule it implemented;
+> `warm_files_present` remains as the evidence, and the question lives at
+> the surface. The ask and its answer land in the bundle's decision
+> ledger.*
 
 **"Never rename" is the part that is not negotiable.** The warm files are what
 the next run continues from, so making a name unique to avoid a clash would

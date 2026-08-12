@@ -19,7 +19,7 @@ from molbuilder.config.siesta import SIESTA_RESTART_GROUP, SiestaConfig
 from molbuilder.issues import ValidationError
 from molbuilder.structure import Structure
 from molbuilder.task import Stage
-from molbuilder.validation.identity import check_overwrite
+from molbuilder.validation.identity import warm_files_present
 from molbuilder.validation.task import refuse_on_error
 
 
@@ -94,51 +94,40 @@ def test_the_two_stages_are_otherwise_the_same_calculation(h2o):
 
 # --------------------------------------------------------------------- #
 #  M3, second half — producing twice into one directory                 #
+#                                                                       #
+#  ``check_overwrite`` was RETIRED at U14 (2026-08-12): it implemented  #
+#  "refuse unless the user says overwrite", the rule run-identity.md    #
+#  § 6 softened away on 2026-08-08 ("Warn, do not refuse") — which is   #
+#  why it had zero callers.  What § 6 still requires is pinned below on #
+#  its survivors: ``warm_files_present`` says what is there, the        #
+#  surface asks (test_prep_bench_fold pins the ask), and NOTHING is     #
+#  ever renamed or touched to make room.                                #
 # --------------------------------------------------------------------- #
 
-def test_producing_into_a_fresh_directory_is_not_refused(tmp_path):
-    """The common path stays open. § 6 is about a SECOND produce."""
-    assert check_overwrite(tmp_path, ID, "siesta") == []
+
+def test_a_fresh_directory_reports_nothing_underway(tmp_path):
+    """The common path stays quiet. § 6 is about a SECOND produce."""
+    assert warm_files_present(tmp_path, ID, "siesta") == []
 
 
-def test_a_second_produce_over_warm_files_refuses(tmp_path):
-    """§ 6: *refuse unless the user says overwrite*."""
+def test_warm_files_are_reported_by_name(tmp_path):
+    """§ 6's surviving rule: before writing, say WHAT is in the folder."""
     (tmp_path / f"{ID}.XV").write_text("relaxed coords\n")
-    issues = check_overwrite(tmp_path, ID, "siesta")
-    assert [i.severity for i in issues] == ["error"]
-    with pytest.raises(ValidationError):
-        refuse_on_error(issues)
+    assert warm_files_present(tmp_path, ID, "siesta") == [f"{ID}.XV"]
 
 
-def test_told_to_overwrite_it_proceeds(tmp_path):
-    (tmp_path / f"{ID}.XV").write_text("relaxed coords\n")
-    assert check_overwrite(tmp_path, ID, "siesta", overwrite=True) == []
-
-
-def test_it_never_renames_and_never_touches_the_warm_files(tmp_path):
-    """*"and never renames"* -- the other half of § 6's sentence, and the
-    reason it is there: the warm files are what the next run continues from,
-    so "make the name unique" would throw them away. Asserted on disk, not
-    on the message: this function must not move anything, with or without
-    permission."""
+def test_saying_never_renames_and_never_touches_the_warm_files(tmp_path):
+    """*"and never renames"* -- the non-negotiable half of § 6's sentence:
+    the warm files are what the next run continues from, so "make the
+    name unique" would throw away the geometry the user is keeping.
+    Asserted on disk, not on a message."""
     xv = tmp_path / f"{ID}.XV"
     xv.write_text("relaxed coords\n")
     before = sorted(p.name for p in tmp_path.iterdir())
-    check_overwrite(tmp_path, ID, "siesta")
-    check_overwrite(tmp_path, ID, "siesta", overwrite=True)
+    warm_files_present(tmp_path, ID, "siesta")
     assert sorted(p.name for p in tmp_path.iterdir()) == before
     assert xv.read_text() == "relaxed coords\n"
     assert not list(tmp_path.glob("*-restart-aside-*"))
-
-
-def test_the_refusal_says_the_files_are_safe(tmp_path):
-    """A refusal that reads as "you are about to lose your geometry" would
-    make users pass overwrite in a panic. The decks are what gets replaced;
-    § 6 is explicit that rewriting them does not touch the warm files."""
-    (tmp_path / f"{ID}.DM").write_text("density\n")
-    msg = check_overwrite(tmp_path, ID, "siesta")[0].message
-    assert "NOT touched" in msg
-    assert "nothing is renamed" in msg
 
 
 # ``test_the_cli_produce_path_refuses_a_second_time`` was RETIRED 2026-08-11.

@@ -376,3 +376,59 @@ def test_the_choice_names_its_winner_and_its_mechanism(calc):
     assert mech["enable_gpu"] is True           # the deck's gpu_mode
     assert mech["diag_algorithm"] == "ELPA-1STAGE"   # the deck's own line
     assert res["generated_at"]                  # the offer reads this key
+
+
+def test_prep_over_a_launched_attempt_asks_and_no_stops_it(calc):
+    """U14/A3: a re-prep where a run already HAPPENED (a launched
+    attempt's run.json) says what is there and ASKS.  'n' stops before
+    anything is written; 'y' proceeds; § 6's floor holds either way --
+    warm files untouched, nothing renamed."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.materialize import write_run_launch
+    r = CliRunner()
+    res = r.invoke(jobset_group, ["prep", "run", "coarse",
+                                  "--bundle", str(calc), "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    attempt = calc / "01_coarse" / "run-0"
+    assert attempt.is_dir()
+    write_run_launch(attempt, mode="direct", command=["bash", "x"])
+    res = r.invoke(jobset_group, ["prep", "run", "coarse",
+                                  "--bundle", str(calc), "--no-sbatch"],
+                   input="n\n")
+    assert res.exit_code != 0
+    assert "already under way" in res.output
+    assert "run-0/ was launched" in res.output
+    assert "NOT touched" in res.output
+    assert "stopped at your request" in res.output
+    res = r.invoke(jobset_group, ["prep", "run", "coarse",
+                                  "--bundle", str(calc), "--no-sbatch"],
+                   input="y\n")
+    assert res.exit_code == 0, res.output
+
+
+def test_prep_underway_with_no_answer_proceeds_and_says_so(calc):
+    """§ 6 warns, it does not refuse: non-interactively (EOF at the
+    prompt) the re-prep PROCEEDS and says so -- the inverse of the
+    verdict offer's silence-is-no, deliberately: no one else's numbers
+    are being applied, and a scripted re-prep must not die on a question
+    it cannot hear."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.materialize import write_run_launch
+    r = CliRunner()
+    res = r.invoke(jobset_group, ["prep", "run", "coarse",
+                                  "--bundle", str(calc), "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    write_run_launch(calc / "01_coarse" / "run-0",
+                     mode="direct", command=["bash", "x"])
+    res = r.invoke(jobset_group, ["prep", "run", "coarse",
+                                  "--bundle", str(calc), "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    assert "no answer (non-interactive): proceeding" in res.output
+    # and the decision is in the ledger
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    lines = [json.loads(l) for l in
+             (calc / LEDGER_FILE).read_text().splitlines()]
+    asks = [e for e in lines if e["decision"] == "underway-ask"]
+    assert asks and asks[-1]["answer"].startswith("no answer")

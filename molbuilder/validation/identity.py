@@ -269,43 +269,16 @@ def _foreign_state(directory, run_id: str, engine: str) -> List[str]:
     return sorted(found)
 
 
-def check_overwrite(directory, run_id: str, engine: str,
-                    *, overwrite: bool = False) -> List[Issue]:
-    """§ 6 — producing twice into the same level-③ directory.
-
-    *"Refuse unless the user says overwrite, and never rename."*
-
-    **What this protects is not the files.** Rewriting decks does not touch the
-    warm files — § 6 says so, and that is the point: they are what the next run
-    continues from, and "make the name unique" would throw them away. What it
-    protects is the user from replacing the decks of a calculation that is
-    already underway without noticing.
-
-    Since 2026-08-07 the trigger is *pointing at the same directory twice*, not
-    *deriving the same id twice*: the level-③ folder is a name the user types
-    (§ 3.0), so `bdt-relax-pbe/` and `bdt-relax-blyp/` deriving one id is no
-    longer a collision, and never should have been.
-
-    ``error`` rather than a warning, and it is the one refusal in this module:
-    everything else here is § 5's *report and get out of the way*, but this is
-    about to write over inputs. :func:`refuse_on_error` turns it into the
-    exception, which is the shape `handoff-bundle.md § 5`'s writer
-    already has — *it raises unless* ``overwrite=True``.
-    """
-    if overwrite:
-        return []
-    existing = warm_files_present(directory, run_id, engine)
-    if not existing:
-        return []
-    return [Issue(
-        "error",
-        f"this directory already holds a calculation under way: "
-        f"{', '.join(existing)}. Producing again would replace its decks. "
-        f"Pass overwrite to do it anyway -- the restart files are NOT touched "
-        f"either way, so the next run still continues from them; nothing is "
-        f"renamed to make room",
-        where="identity.produce_target")]
+# ``check_overwrite`` stood here until U14 (2026-08-12) -- RETIRED, not
+# rehomed.  It implemented "§ 6 -- refuse unless the user says overwrite",
+# a rule run-identity.md softened away on 2026-08-08 ("Warn, do not
+# refuse"), which is why it had zero callers: the design had moved and the
+# function pinned the old one.  What § 6 still requires -- before writing,
+# SAY what is in the folder -- is served by :func:`warm_files_present`
+# (the evidence) and asked at the surface (`jobset/_cli._ask_if_underway`),
+# where a question belongs.
 
 
-__all__ = ["check_id_change", "check_overwrite", "check_prior_state",
-           "warm_files_present"]
+
+
+__all__ = ["check_id_change", "check_prior_state", "warm_files_present"]

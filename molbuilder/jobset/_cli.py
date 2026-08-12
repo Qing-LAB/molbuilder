@@ -306,6 +306,71 @@ def _load_bench_set(base, stage):
         raise click.ClickException(str(e))
 
 
+def _ask_if_underway(base, stage) -> None:
+    """§ 6's moment (run-identity.md, softened 2026-08-08): before writing,
+    SAY what is in the folder — and when what is there says a run already
+    HAPPENED (a launched attempt's ``run.json``, warm files at the root),
+    ask before re-rendering over it (A3/U14, 2026-08-12).
+
+    The default is YES and an unanswerable prompt PROCEEDS, saying so —
+    the inverse of the verdict offer, deliberately: applying someone
+    else's numbers silently is the thing silence must not do, while
+    re-rendering decks is § 6's "ordinary thing to do" (warm files are
+    never touched, nothing is renamed), so a scripted re-prep must not
+    hang or die on a question it cannot hear.
+    """
+    from ..task import FILENAME, read_task
+    desc = Path(base) / FILENAME
+    if not desc.is_file():
+        return
+    task = read_task(desc)
+    from .materialize import attempts, was_launched
+    from .shape import Shape
+    evidence = []
+    if task.stages and stage is not None:
+        from .prep import _token_for
+        try:
+            token = _token_for(task, stage)
+        except Exception:
+            token = None
+        if token:
+            sd = Shape.named(task.shape).stage_dir(token)
+            d = Path(base) / sd if sd != "." else Path(base)
+            for n in attempts(d):
+                a = d / f"run-{n}"
+                if was_launched(a):
+                    evidence.append(
+                        f"{a.relative_to(Path(base))}/ was launched "
+                        f"(its run.json)")
+    from ..validation.identity import warm_files_present
+    warm = warm_files_present(base, task.label, task.engine)
+    if warm:
+        evidence.append("warm files at the root: " + ", ".join(warm))
+    if not evidence:
+        return
+    click.echo("this calculation is already under way here:")
+    for e in evidence:
+        click.echo(f"    {e}")
+    click.echo("  re-rendering replaces the DECKS only: the warm files are "
+               "NOT touched and nothing is renamed (run-identity.md § 6).")
+    if (Path(base) / ".git").is_dir():
+        click.echo("  (a checkpoint repo exists -- `molbuilder checkpoint "
+                   "save` first records the current state)")
+    try:
+        ok = click.confirm("  proceed (re-render the decks)?", default=True)
+        answer = "yes" if ok else "no"
+    except click.exceptions.Abort:
+        click.echo("")
+        click.echo("  no answer (non-interactive): proceeding -- § 6 warns, "
+                   "it does not refuse.")
+        ok, answer = True, "no answer (non-interactive) -> proceed"
+    _ledger(base, "prep", "underway-ask", stage=stage,
+            evidence=evidence, answer=answer)
+    if not ok:
+        raise click.ClickException(
+            "stopped at your request -- nothing was re-rendered.")
+
+
 def _offer_bench_verdict(base, allocation, stage=None):
     """§ 2.3.2: a verdict can always be FOUND — finding is not permission.
 
@@ -621,6 +686,10 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             allocation, verdict_pins = _offer_bench_verdict(
                 base, allocation, stage=stage)
             pins = verdict_pins or None
+        if kind == "run":
+            # § 6's say-what-is-there, and the A3 ask when a run already
+            # happened here (U14).
+            _ask_if_underway(base, stage)
         from .prep import prep_calculation
         dirs = prep_calculation(base, stage, allocation=allocation,
                                 env=env, emit_sbatch=emit_sbatch,
