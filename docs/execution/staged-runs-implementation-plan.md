@@ -2932,7 +2932,7 @@ flags — and **that config carries three facts floor 2 may not name**:
 | # | finding | evidence |
 |---|---|---|
 | **A** | **Machine facts are template items.** `template.md` § 7 forbids exactly them: *"a machine fact — ranks, GPUs, queue, partition, wall time … resolved at `prep`"*. **⚠ Corrected 2026-08-11 on review — the first pass tested a *guessed list of names* and got this wrong in both directions.** Re-done against all 39 exposed items: the machine facts are **`mpi_np`** (ranks), **`omp_threads`** (cores per rank, `-c`) and **`max_memory_mb`** (`ulimit -v` — *missed the first time*). **`continue_retries` is NOT one** — it is a retry *policy*, names no machine, and legitimately stays at floor 2 | `config/siesta.py:830` (`mpi_np`), `:898` (`omp_threads`), `:920` (`max_memory_mb`) each carry a `section`, so `template.declaration_for` emits them. *(`diag_algorithm` and `enable_gpu` were checked and are **correct** — engine keywords whose wrapper dependency `template.md` § 6.1 handles with `read_by`.)* |
-| **A2** | *(surfaced by the same re-check, and each needs a call rather than an assumption)* | **`psml_lib`** is a **path into this machine's filesystem** — it offends `template.md` § 7's *data files* exclusion rather than its machine one, since pseudopotentials travel in the shared package. **`system_label`** is a template item *and* derived from `task.json` as `Task.label` — a **second home for one identity**, which `run-identity.md` § 2.0a says is derived and not stored |
+| **A2** | *(surfaced by the same re-check — and **both are settled by rules that already exist**, so neither is an open question)* | **`system_label`: NOT an item.** `run-identity.md` § 2.0a and `task.py:100` are explicit — *"the label is not a field — it is `Task.label`, derived through the one normaliser"*, because *"storing it would be a second place for the same string to be wrong."* A template carrying it is exactly that second place. It is derived from the description at `prep`. **`psml_lib`: the field CONFLATES two things and must split.** *Which* pseudopotential library (PseudoDojo vs SG15 vs …) is **science** — different pseudos are different physics — so it is a floor-2 item that travels. *Where that library sits on this disk* is a **path on a machine**, so it is a `prep` input beside the allocation. The pseudos themselves already travel as **files** in `JobSet.shared` (`siesta/stages.py:373`), which is why only the *choice* needs to be in the description at all |
 | **B** | the machine ones are read straight back out by floor 3 | `siesta/stages.py:226-228` — `Resources(mpi_np=eff.mpi_np, cpus_per_task=eff.omp_threads, continue_retries=eff.continue_retries)`. **Two of those three are the leak; the third is not** — reading `continue_retries` from the config is correct, because a retry policy is floor 2's to carry. `max_memory_mb` leaks by a different road: it reaches `ulimit -v` in the wrapper without passing through `Resources` at all |
 | **C** | **the two producers differ precisely where one is wrong.** `sweep_to_jobset` builds `Resources` from **`env.topology`** — correct under M4. `stages_to_jobset` builds it from the **config** — the leak | `bench/to_jobset.py:56-60` vs `siesta/stages.py:226` |
 | **D** | **~75 lines exist to detect the leak rather than remove it.** `launch_agreement` + `check_launch_matches_deck` compare *what the deck was rendered for* against *what it will be launched at* — a disagreement that is only constructible because a machine fact rode through floor 2. Its own docstring records the shipped crash (`-np 14`, `propor: IMAX = 0`) | `jobset/prep.py:76-149`, and the diagnosis at `:88-91` |
@@ -3029,9 +3029,15 @@ contradiction between `generator.md`, `architecture.md`, `project-layout.md` and
 `template.md`, and the nine defects were all *incompleteness or my own error*,
 not disagreement between contracts.
 
-**Two things must be settled by the user before step 1 writes a template**, both
-from pass 2 finding 8, because both change what the exposed item set contains:
-`psml_lib` and `system_label`. Everything else is decided.
+**And pass 2's two loose items turned out not to be open questions.** Both are
+settled by rules already written — `system_label` by `run-identity.md` § 2.0a
+(*the label is derived, never stored*), `psml_lib` by noticing it conflates a
+**science choice** (*which* pseudopotential library — different pseudos are
+different physics, so floor 2) with a **machine path** (*where it sits* — a `prep`
+input). Going to the rule rather than asking is the standing discipline, and it
+worked twice here.
+
+**Nothing blocks step 1.**
 
 ---
 
