@@ -1,21 +1,14 @@
-"""Scheduler adapters — turn an abstract job into concrete scripts for
-one scheduler family.
+"""The benchmark GRID and the per-scheduler sweep policy.
 
-The second half of the benchmark workflow's pluggable seam
-(docs/execution/job-system.md, § 4.5).  An adapter is the
-*only* thing that differs between a workstation and a supercomputer; the
-engine, monitor, estimator, timing, and data formats are shared.  One
-adapter serves BOTH the benchmark scripts and the production run (reuse).
-
-Adding a scheduler (PBS/LSF/cloud) = implementing one adapter and
-registering it in :data:`ADAPTERS`; nothing else changes (§ 4.7).
-
-**Stdlib-only** (ships to the target with the rest of the prep layer).
-This increment lands the stable interface, adapter selection, and
-``sweep_K`` (the topology-derived rank counts).  ``format_bench`` /
-``format_run`` are declared on the interface and left to the next
-increment (they compose the existing render layer), so callers can depend
-on the shape now.
+What lives here after the 2026-08-12 fold (step 6 u5's tombstone below
+is the authority; this header used to describe the pre-fold design --
+script emitters, "ships to the target", "the next increment" -- none of
+which survived): ``sweep_grid`` (the one G x K x C enumeration
+`_bench_inputs` consumes), ``sweep_K`` (topology-derived rank counts),
+and the two thin adapters whose remaining job is matching an
+:class:`~molbuilder.environment.Environment` to its sweep policy.
+Trials are rendered by `jobset prep bench` and launched by
+`jobset submit` -- no script is formatted here, and nothing ships.
 """
 
 from __future__ import annotations

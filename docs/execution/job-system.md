@@ -223,20 +223,22 @@ Walk through it with the *why* for each piece:
   order a *person* should follow — a ladder's stages are meant to be run in
   sequence, a sweep's points are not. It does **not** mean one job waits for
   another: neither does. The kind drives the directory convention
-  (`<seq>_<name>` versus `point-<name>`) and nothing about scheduling.
+  (`<seq>_<name>` versus `bench/bench-<point>` inside the stage it measures,
+  `job-contracts.md` § 6.3) and nothing about scheduling.
 - **`JobSet.shared`** lists files that every job needs but that never change
   between jobs — the pseudopotentials, the geometry, the monitor helper. They
   are stored **once** and symlinked into each job's folder, so a 20-point sweep
   does not carry 20 copies of a large pseudopotential.
-- **`Job.name`** does double duty: it is the job's folder (`point-<name>/`) *and*
+- **`Job.name`** does double duty: it keys the job's folder *and*
   its scheduler job name (`-J`), so a `squeue` listing reads the way the layout
   does. **`Job.script`** is the input file inside that folder.
 
-  > **`point-<name>/` is today's naming for every job, and it splits.** A sweep
-  > point keeps a settings-based name; a **stage** becomes `<seq>_<stage>`
-  > (`01_coarse`), because a stage is ordered and a sweep point is not, and one
-  > shape for both hides the difference. The full table, for every layer, is
-  > [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3.
+  > **The naming split landed** *(this note used to say "point-<name>/ is
+  > today's naming for every job, and it splits")*: a **stage** is
+  > `<seq>_<stage>` (`01_coarse`) because a stage is ordered; a **trial** is
+  > `bench-<point>` inside its stage's `bench/` container, named by its
+  > settings because a sweep has no order. The full table, for every layer,
+  > is [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3.
 - **`Job.resources`** (`Resources`) are the per-job scheduler asks — all optional,
   `None` meaning "inherit / resolve at submit". They use the **scheduler's
   vocabulary** (`mpi_np` for MPI ranks → `-n`; `cpus_per_task` for cores/rank →
@@ -297,7 +299,7 @@ actual two-stage ladder for benzene-dithiol on gold, with every field annotated:
                                       // read back off the deck, never counted
                                       // (decision 27).  A ladder job whose
                                       // script carries no token falls back to
-                                      // `point-<name>`, because inventing a
+                                      // `bench-<name>`, because inventing a
                                       // seq would be guessing at the one
                                       // number that must never be guessed.
       "resources": {                  // ALL seven fields are always written,
@@ -410,14 +412,14 @@ run coarse, looked at it, and set tight up.
 > └── bdt_au.run.sh → ../bdt_au.run.sh
 > ```
 >
-> ⚠ **The prefix is `bench-`; the shipped code still writes `point-`.**
-> [`job-contracts.md § 6.3`](?doc=execution/job-contracts.md) renamed it on
-> 2026-08-07 and is the cross-layer authority — *point* is grid vocabulary that
-> names nothing a person would recognise in a directory listing, while `bench-`
-> says which container the directory belongs to. It is a rename with a parser
-> cost (`summarize` maps a trial directory back to its point), so this page
-> spells the contract's name and you will see the old one on disk until that
-> lands. Every trial tree below reads the same way.
+> **The prefix is `bench-`, and since 2026-08-12 a described trial lives in
+> its stage's `bench/` container** — `<NN>_<stage>/bench/bench-<point>/`
+> ([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md), the
+> cross-layer authority; landed with the fold, C6 + U1). *(This note said
+> "the shipped code still writes `point-`" while that was true; it stopped
+> being true when the fold landed the rename, and `summarize` maps a trial
+> back to its point through the job-set's own data, never by parsing the
+> directory name.)*
 
 **Nothing dangles, because nothing points at a file that has not been written.**
 Every path in that tree either belongs to the job or is a link to the shared

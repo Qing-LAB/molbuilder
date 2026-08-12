@@ -3,20 +3,25 @@
 The decoupling point between the *bench* stage and the *run* stage
 (docs/execution/job-system.md): summarize reads each
 measured point's artifacts (timing log, utilization, peak memory) and
-writes ``bench-result@1`` -- the only input prep-run needs.  Its ``choice``
-block is the **portable** decision (engine + ranks-per-GPU K); the
-concrete knobs are re-resolved per machine by the adapter (§ 5.4).
+writes ``bench-result@1``.  Its ``choice`` block is the decision as DATA
+(U13, 2026-08-12): the winner's ``label``, its ``knobs`` in the job-set's
+own exchange vocabulary (mpi_np / cpus_per_task / gres), and its
+``mechanism`` read from the winning trial's deck -- consumed by
+`jobset prep run`'s verdict offer, which ASKS before applying
+(§ 2.3.2).  The adapter re-resolution this paragraph used to describe
+died with `prep-run` (step 6 u5).
 
 **Stdlib-only** (parsers + json + dataclasses): ships to the target with
 the rest of the prep layer.  The pure ``parse_*`` functions take text and
 are unit-tested; ``build_bench_result`` assembles them.
 
 NOTE (output isolation): a point is identified by its ``label``; the
-caller hands each point its own artifacts.  The sweep helper
-(``adapters.format_bench``) runs every (G, K) point in its own
-``point-G<g>K<k>/`` subdirectory, so the GPU points never clobber the
-shared ``job-gpu`` basename -- a summarize driver maps each such
-directory back to a point label/knobs.
+caller hands each point its own artifacts.  Each trial runs in its own
+``bench-<point>/`` directory inside the stage's ``bench/`` container
+(job-contracts § 6.3), so points never clobber a shared basename --
+`summarize` maps directories back to points through the job-set's own
+data, never by parsing names (the ``adapters.format_bench`` sweep this
+note used to cite died in step 6 u5).
 """
 
 from __future__ import annotations
