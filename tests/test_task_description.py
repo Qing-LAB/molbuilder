@@ -563,3 +563,40 @@ def test_stages_with_nothing_varying_is_legal(example, tmp_path):
     write_task(p, task)
     assert read_task(p) == task
     assert json.loads(p.read_text())["varies"] == []
+
+
+# ---- U15 (2026-08-12): the ladder-level refusals, at the codec -------- #
+
+def _ladder_task(stages):
+    from molbuilder.identity import run_id
+    from molbuilder.task import Run, StructureRef, Task
+    rid = run_id("x", "H2", stage_names=tuple(s.name for s in stages))
+    return Task(engine="siesta", shape="hierarchical",
+                run=Run(name="x", id=rid),
+                structure=StructureRef(source="h2.xyz", formula="H2",
+                                       atoms=2),
+                varies=("mesh_cutoff",), stages=stages)
+
+
+def test_duplicate_stage_names_are_refused_by_the_codec():
+    """Three comments claimed this check existed (validation/siesta's u5
+    retirement, describe's help, describe._check) while nothing refused
+    it: a hand-written task.json with two 'coarse' stages parsed fine
+    and one stage silently got the other's files.  The codec is the one
+    gate every route passes."""
+    import pytest
+    from molbuilder.task import Stage
+    with pytest.raises(ValueError, match="duplicate stage name"):
+        _ladder_task((Stage("a"), Stage("a")))
+
+
+def test_an_all_disabled_ladder_is_refused_by_the_codec():
+    """An all-disabled ladder is an empty one spelled longer, and § 6.5
+    already rules the empty spelling out."""
+    import pytest
+    from molbuilder.task import Stage
+    with pytest.raises(ValueError, match="every stage is disabled"):
+        _ladder_task((Stage("a", enabled=False), Stage("b", enabled=False)))
+    # one enabled stage among disabled ones is an ordinary ladder
+    t = _ladder_task((Stage("a", enabled=False), Stage("b")))
+    assert [s.name for s in t.stages] == ["a", "b"]

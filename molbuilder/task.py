@@ -184,6 +184,30 @@ class Task:
             raise ValueError(
                 "task: 'stages' is present but empty. Omit it entirely for a "
                 "single parameter set (engines/stages.md 6.5)")
+        # The two LADDER-level refusals live here, in the codec, because
+        # every route to a Task -- describe on a laptop, read_task on the
+        # cluster, a hand-edited file -- passes through this constructor.
+        # Three comments claimed these checks existed here (the u5
+        # retirement in validation/siesta.py, describe_cmd's help,
+        # describe._check's "codec's own checks") while NOTHING refused
+        # either: the claims are made true at the claimed home (U15,
+        # 2026-08-12).
+        if self.stages is not None:
+            names = [s.name for s in self.stages]
+            dups = sorted({n for n in names if names.count(n) > 1})
+            if dups:
+                raise ValueError(
+                    f"task: duplicate stage name(s) "
+                    f"{', '.join(map(repr, dups))}. A stage's name keys its "
+                    f"directory, its deck and its status row -- two stages "
+                    f"sharing one silently hand one the other's files "
+                    f"(engines/stages.md 6.6)")
+            if not any(s.enabled for s in self.stages):
+                raise ValueError(
+                    "task: every stage is disabled -- an all-disabled ladder "
+                    "is an empty one spelled longer, and 6.5 already rules "
+                    "the empty spelling out. Enable a stage, or omit "
+                    "'stages' for a single parameter set")
         self._check_id()
 
     # ----- identity (run-identity.md 2, 2.0a, 3) ---------------------- #
