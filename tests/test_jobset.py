@@ -2431,3 +2431,25 @@ def test_prep_resolves_the_machine_before_it_writes_anything(tmp_path,
     assert "4 wrapper" in order, "no wrapper was written at all"
     # ...and the machine is resolved ONCE per bundle, not once per stage.
     assert order.count("1 machine") == 1, order
+
+
+def test_the_library_itself_refuses_a_whole_ladder(tmp_path):
+    """U5: the no-chain rule lives at the SEAM, not only in the CLI's
+    stage resolution -- a library caller handing submit_jobset a two-stage
+    ladder with no `only` is refused in EVERY mode, because direct-running
+    stages in order would be local chaining (project-layout.md § 1.6)."""
+    import pytest as _pytest
+    from molbuilder.jobset.model import Job, JobSet, Resources
+    from molbuilder.jobset.submit import SubmitError, submit_jobset
+    js = JobSet(name="JOB", engine="siesta", kind="ladder",
+                jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
+                          resources=Resources()),
+                      Job(name="tight", script="JOB_02_tight.fdf",
+                          resources=Resources())])
+    for mode in ("direct", "submit"):
+        with _pytest.raises(SubmitError, match="ONE stage at a time"):
+            submit_jobset(js, tmp_path, mode=mode, dry_run=True)
+    # named, it proceeds to a single planned launch
+    res = submit_jobset(js, tmp_path, mode="direct", dry_run=True,
+                        only="coarse")
+    assert [r.name for r in res] == ["coarse"]

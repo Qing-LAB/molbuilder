@@ -513,6 +513,22 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
         lone = next(j for j in jobset.jobs if j.name == only)
         jobset = _dc.replace(jobset, jobs=[lone])
 
+    # The no-chain rule, AT THE SEAM (U5, 2026-08-12): a ladder is launched
+    # one stage at a time, in EVERY mode -- direct running stages in order
+    # would be local chaining, and a run that continues on its own can
+    # spend a week refining a geometry you would have rejected in a minute
+    # (project-layout.md § 1.6).  This was enforced only by the CLI's
+    # `_resolve_stage`, so the loops below merely ASSUMED "a ladder never
+    # reaches this with more than one job"; a library caller could hand
+    # one straight in.  A guard only a surface applies is one the next
+    # surface forgets.
+    if jobset.kind == "ladder" and len(jobset.jobs) > 1:
+        raise SubmitError(
+            "a ladder is launched ONE stage at a time; pass `only=<stage>`. "
+            "Stages do not chain (project-layout.md § 1.6), in direct mode "
+            "as much as submit: each stage is launched after you have "
+            "looked at the one before it.")
+
     # AFTER the narrowing, so `only` is what makes a launch single -- and
     # BEFORE either path, so a refusal costs nothing and a dry run previews
     # the real thing rather than a launch that would be refused.
