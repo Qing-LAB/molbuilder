@@ -1275,6 +1275,12 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         # crammed onto fewer cores lose to MPI overhead.
         # Without MPS: ranks serialise on the GPU, so 2 is the
         # practical ceiling (the prior 2026-06-15 policy).
+        # A FUNCTION, not inline (R9/F6, 2026-08-12): the policy branches
+        # on the MPS state, and --mps/--no-mps are parsed LATER in the
+        # args block -- computed inline, --no-mps without -np kept the
+        # 4-rank MPS-regime default the no-MPS policy caps at 2.  The
+        # args block re-invokes this after parsing (idempotent).
+        '_mb_gpu_rank_policy() {\n'
         'if [ "$_use_mps_default" = "1" ]; then\n'
         '    _gpu_mpi_np_default=$(( _phys_cores / 4 ))\n'
         '    [ "$_gpu_mpi_np_default" -gt 4 ] && _gpu_mpi_np_default=4\n'
@@ -1297,7 +1303,10 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
             f'    _gpu_mpi_np_default={n_atoms_lit}\n'
             f'fi\n'
             if n_atoms_lit else ""
-        ) +
+        )
+        + '}\n'
+        '_mb_gpu_rank_policy\n'
+        +
         # ---- GPU NUMA proximity (probed at generation time) ----
         # Resolved by the Python generator via ``_probe_gpu0_numa()``
         # using NVML (the official NVIDIA library, already imported
@@ -1879,9 +1888,25 @@ def render_run_wrapper(script_path: Path, *,
             # only one process touches the GPU).
             + (
                 f"        --mps)\n"
-                f'            _use_mps_default=1; shift ;;\n'
+                f'            _use_mps_default=1\n'
+                f'            type _mb_gpu_rank_policy >/dev/null 2>&1 '
+                f'&& _mb_gpu_rank_policy || true\n'
+                f'            _mpi_np="${{MB_NP:-${{SLURM_NTASKS:-'
+                f'${{PBS_NP:-${{_gpu_mpi_np_default:-$_mpi_np}}}}}}}}"\n'
+                f'            shift ;;\n'
                 f"        --no-mps)\n"
-                f'            _use_mps_default=0; shift ;;\n'
+                # The flag flips the REGIME, and the rank policy branches
+                # on the regime -- but the policy ran back in the GPU
+                # block, pre-parse, so --no-mps without -np kept the
+                # 4-rank MPS default the no-MPS policy caps at 2 (R9/F6).
+                # Re-derive here and re-resolve through the SAME
+                # precedence chain, so -np/MB_NP/SLURM_NTASKS still win.
+                f'            _use_mps_default=0\n'
+                f'            type _mb_gpu_rank_policy >/dev/null 2>&1 '
+                f'&& _mb_gpu_rank_policy || true\n'
+                f'            _mpi_np="${{MB_NP:-${{SLURM_NTASKS:-'
+                f'${{PBS_NP:-${{_gpu_mpi_np_default:-$_mpi_np}}}}}}}}"\n'
+                f'            shift ;;\n'
                 if gpu_mode else ""
             ) +
             f"        -h|--help)\n"
