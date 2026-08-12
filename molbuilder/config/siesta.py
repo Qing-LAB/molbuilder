@@ -745,33 +745,16 @@ class SiestaConfig:
         "help": "emit inline tuning hints and a Troubleshooting block in the FDF",
     })
 
-    # A stage's ARTIFACT TOKEN -- ``<NN>_<name>``, e.g. ``01_coarse``.  Every
-    # file molbuilder names for this stage carries it: the deck, the stdout and
-    # the trajectory log (``<label>_01_coarse.fdf`` and friends), so a stage's
-    # deck and its own log match by name.  ``None`` (default) keeps the
-    # unsuffixed names for a single-run workflow.
-    #
-    # It held an INT (1/2/3) until 2026-08-10 and produced ``-stage<N>``.  Two
-    # things were wrong with that and both are decisions:
-    #   * ``-`` announces *a counter follows* (``job-contracts.md`` § 6.3), and
-    #     a stage is not a counter -- it is part of one name, which is ``_``;
-    #   * a bare position is what R5 forbids in a filename.  The token carries
-    #     an ordinal that is ASSIGNED ONCE and never reassigned, which is a
-    #     different thing (decision 27; ``identity.stage_token``).
-    #
-    # SystemLabel stays identical across stages either way, so SIESTA's
-    # .XV / .DM / .CG still transfer between them untouched (decision 26).
-    stage: Optional[str] = field(default=None, metadata={
-        "label": "Relaxation stage",
-        "engine_key":  '(molbuilder: filename token + log naming)',
-        "help":  "stage token <NN>_<name> (e.g. 01_coarse) carried by this "
-                 "stage's deck, stdout and log; None keeps the unsuffixed name",
-        # skip_cli: nothing bridges SiestaConfig to click since
-        # ``molbuilder fdf`` went (2026-08-11); `prep` sets cfg.stage
-        # from the StageRef it holds.  The field itself leaves at C7,
-        # when the token becomes a render ARGUMENT.
-        "skip_cli":   True,
-    })
+    # The ``stage`` FIELD left this schema 2026-08-12 (C7): a stage's
+    # artifact token ``<NN>_<name>`` is a RENDER ARGUMENT
+    # (``render_fdf(..., stage_token=)``), carried by `prep` -- which holds
+    # the StageRef -- to the emitter, never stored on the config.  "The
+    # emitter that reads it never learns the word" (engines/stages.md
+    # § 1.1): a config states WHAT to compute; which rung of a ladder it is
+    # belongs to the description and the call.  SystemLabel stays identical
+    # across stages, so SIESTA's .XV / .DM / .CG transfer untouched
+    # (decision 26); the token's own rules live at decision 27 /
+    # ``identity.stage_token``.
 
     # Output flags
     write_forces: bool = field(default=True, metadata={
@@ -881,7 +864,9 @@ class SiestaConfig:
         "help": "ScaLAPACK BlockSize for the diagonaliser's orbital "
                 "distribution; affects cache efficiency at moderate "
                 "rank counts.  None = auto: largest power of 2 that "
-                "leaves >= 2 blocks per rank.  NOTE: BlockSize does "
+                "leaves >= 2 blocks per rank.  0 = OMIT the keyword "
+                "entirely -- SIESTA's own built-in default, the third "
+                "state (tuning.md 2.11, decision 35).  NOTE: BlockSize does "
                 "NOT fix the ``propor: ERROR: IMAX = 0`` crash -- that "
                 "was the previous (incorrect) claim and is contradicted "
                 "by direct empirical sweep (BS = 1, 2, 4 all crash at "
@@ -1272,20 +1257,12 @@ def apply_siesta_stage(cfg: SiestaConfig, stage: int) -> SiestaConfig:
 
     The overlay is applied AFTER the user's explicit CLI / form values,
     NOT before.  An explicit ``--relax-force-tol 0.003`` followed by
-    ``--stage 3`` would still get the stage-3 value (0.01); if the
-    user wants their override to win they should pass ``--stage 3``
-    first then their per-knob override last.  The CLI handler at
-    ``cli.py::cmd_siesta`` enforces this ordering by applying the
-    stage overlay AFTER constructing the cfg from ``--relax-*`` flags.
-
-    Note: this function overlays the FOUR fields above only.  The CLI
-    handler at ``cli.py::cmd_siesta`` ALSO sets ``cfg.stage`` (the
-    molwatch-log filename suffix marker) when the user passes
-    ``--stage N`` -- so the user-facing semantics of the flag are
-    "overlay tier knobs AND mark the stage in the filename".  Calling
-    this helper directly from Python gives only the four-field
-    overlay; set ``cfg.stage`` separately if you want the filename
-    behavior too.
+    This function overlays the FOUR fields above only.  (The ``--stage``
+    CLI flag that used to drive it went with ``molbuilder fdf``,
+    2026-08-11; the filename suffix it also set is a RENDER argument now —
+    ``render_fdf(..., stage_token=)``, C7, 2026-08-12.)  The tier values
+    remain the shipped ladder's defaults: ``default_siesta_stages`` reads
+    the same presets table into ``Stage.overrides``.
 
     Raises ``ValueError`` for stages outside {1, 2, 3}.
     """

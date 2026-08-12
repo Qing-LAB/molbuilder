@@ -526,12 +526,16 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             # not the filename, is what keys SIESTA's warm files away from
             # the real run's (project-layout.md § 2.3.2).
             cfg = seam.relabel(cfg, element.label)
-        if token and hasattr(cfg, "stage"):
-            cfg = dataclasses.replace(cfg, stage=token)
-        (base / script).write_text(seam.render_deck(struct, cfg),
-                                   encoding="utf-8")
+        # The stage's artifact token is a RENDER ARGUMENT (C7, 2026-08-12):
+        # `prep` holds the StageRef, so `prep` says it, per call -- the
+        # config field that used to carry it is gone, and the emitter never
+        # learns the word (engines/stages.md § 1.1).
+        (base / script).write_text(
+            seam.render_deck(struct, cfg, stage_token=(token or None)),
+            encoding="utf-8")
         _seed_trajectory_log(struct, cfg, base, engine=task.engine,
-                             label=seam.label_of(cfg))
+                             label=seam.label_of(cfg),
+                             token=(token or None))
         jobs.append(_job_for(element, script, task, pset.stage, seam))
 
     # ---- 4 + 5, and the record floor 3 leaves behind -------------------- #
@@ -544,7 +548,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 
 
 def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
-                         label: str) -> None:
+                         label: str, token=None) -> None:
     """Write the one-block preview the Watch tab discovers before a run starts.
 
     The deck NAMES its trajectory log; something has to CREATE it, or the tab
@@ -563,7 +567,8 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     if not getattr(cfg, "write_molwatch_log", False):
         return
     from ..trajectory_log import molwatch_log_basename, write_initial_preview
-    token = getattr(cfg, "stage", None)
+    # ``token`` is the caller's, same as the render argument (C7): the
+    # config no longer carries a stage, and nothing here re-derives one.
     # The stage's own convergence targets travel with its log, so the Watch
     # tab's threshold line is THIS stage's and not the ladder's first.  They
     # come from the RESOLVED config, which is the whole point of resolving

@@ -143,6 +143,20 @@ def test_block_size_honours_mpi_rank_constraint():
                 )
 
 
+def test_blocksize_zero_omits_the_keyword_entirely():
+    """tuning.md § 2.11's THIRD state (decision 35 — C8, 2026-08-12): ``0``
+    asks for SIESTA's own built-in default, and the answer is that the
+    keyword is not emitted at all — omitting a line is a real answer.  The
+    BENCH-MARKS block omits its row too (a claim the deck does not carry
+    would be the block lying), and PROVENANCE records the ask."""
+    import re
+    fdf = render_fdf(_h2_struct(),
+                     SiestaConfig(system_label="j", parallel_block_size=0,
+                                  relax_type="none"))
+    assert not re.search(r"^BlockSize", fdf, re.M)
+    assert "omitted (SIESTA's own)" in fdf
+
+
 def test_explicit_blocksize_override_passes_through_verbatim():
     """User-set BlockSize is honored verbatim regardless of the
     BlockSize × mpi_np vs n_atoms ratio.
@@ -315,7 +329,12 @@ def test_cell_volume_just_above_threshold_passes():
                 f"vol = 12 A^3 (1.2x of 10-atom threshold) should "
                 f"NOT trigger the volume gate; got: {e}"
             )
-        raise
+        # Any OTHER refusal (this dense fixture legitimately fails the
+        # overlap validation) still proves the property: the VOLUME gate
+        # did not fire.  Re-raising here instead hid nothing -- the old
+        # bare swallow did, which is why this branch asserts the message
+        # rather than passing silently (2026-08-12).
+        return
     assert "BlockSize" in fdf, "render must produce a real FDF"
 
 
@@ -659,11 +678,13 @@ def test_cg_relax_does_not_emit_md_temperature_block():
 
 
 def test_fdf_stage_suffix_appears_in_run_with_block():
-    # ``stage`` is the stage's ARTIFACT TOKEN since 2026-08-10, not an int:
-    # ``-stage2`` was a hyphen (which § 6.3 reserves for a counter) plus a bare
-    # position (which R5 forbids in a filename).
+    # The token is a RENDER ARGUMENT since 2026-08-12 (C7): the emitter
+    # never learns the word from the config.  (And an ARTIFACT TOKEN since
+    # 2026-08-10, not an int: ``-stage2`` was a hyphen -- § 6.3's counter
+    # separator -- plus the bare position R5 forbids.)
     fdf = render_fdf(_h2_struct(),
-                     SiestaConfig(system_label="my-job", stage="02_medium"))
+                     SiestaConfig(system_label="my-job"),
+                     stage_token="02_medium")
     assert "my-job_02_medium.fdf" in fdf
     assert "my-job_02_medium.out" in fdf
     assert "my-job_02_medium.molwatch.log" in fdf
@@ -672,24 +693,27 @@ def test_fdf_stage_suffix_appears_in_run_with_block():
 
 def test_fdf_no_stage_suffix_when_stage_is_none():
     fdf = render_fdf(_h2_struct(),
-                     SiestaConfig(system_label="my-job", stage=None))
+                     SiestaConfig(system_label="my-job"), stage_token=None)
     assert "my-job.fdf" in fdf
     assert "my-job.molwatch.log" in fdf
     assert "Stage 0" not in fdf
 
 
-def test_convert_writes_stage_suffixed_preview_log(tmp_path):
-    """convert() drops a preview log next to the FDF; the filename
-    follows the protocol basename + stage suffix, NOT the FDF stem."""
+def test_convert_previews_log_named_from_the_label_not_the_stem(tmp_path):
+    """convert() drops a preview log next to the FDF; the filename follows
+    the protocol basename, NOT the FDF stem.  `convert` is the single-shot
+    path and carries no stage (C7, 2026-08-12) -- a ladder's per-stage logs
+    are seeded by `prep`, which holds the token
+    (tests/test_trajectory_log_stage_targets.py)."""
     import os
     in_p = tmp_path / "anything.xyz"
     in_p.write_text("2\nh2\nH 0 0 0\nH 0 0 0.74\n")
     fdf_p = tmp_path / "deliberately_unrelated_name.fdf"
     summary = convert(str(in_p), str(fdf_p),
-                      SiestaConfig(system_label="my-job", stage="03_tight"),
+                      SiestaConfig(system_label="my-job"),
                       vacuum=(12.0, 12.0, 12.0))
     assert os.path.basename(summary["molwatch_log"]) \
-        == "my-job_03_tight.molwatch.log"
+        == "my-job.molwatch.log"
 
 
 # --------------------------------------------------------------------- #

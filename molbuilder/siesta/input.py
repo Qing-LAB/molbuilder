@@ -392,7 +392,8 @@ def _stage_science(cfg: "SiestaConfig") -> str:
 
 
 def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
-               *, cell: Optional[np.ndarray] = None) -> str:
+               *, cell: Optional[np.ndarray] = None,
+               stage_token: Optional[str] = None) -> str:
     """Format a Structure as SIESTA .fdf text.
 
     If ``cell`` is None (default), the vacuum cell is derived from the STRUCTURE
@@ -612,11 +613,13 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # stdout to ``<basename>.out`` (the Watch tab's discovery chain
     # also looks for that filename).  See docs/execution/job-contracts.md.
     #
-    # Stage-aware filenames: when ``cfg.stage`` carries a stage's artifact
-    # token (``01_coarse`` -- ``identity.stage_token``), every name MOLBUILDER
-    # chooses picks it up, so a ladder produces ``<label>_01_coarse.fdf``,
-    # ``…_01_coarse.out`` and ``…_01_coarse.molwatch.log`` and a stage's deck
-    # can be matched to its own log.
+    # Stage-aware filenames: ``stage_token`` (``01_coarse`` --
+    # ``identity.stage_token``) arrives as a RENDER ARGUMENT from the caller
+    # that holds the StageRef (C7, 2026-08-12 -- it rode a config field
+    # until then, which was the emitter learning the word stages.md § 1.1
+    # forbids).  Every name MOLBUILDER chooses picks it up, so a ladder
+    # produces ``<label>_01_coarse.fdf``, ``…_01_coarse.out`` and
+    # ``…_01_coarse.molwatch.log`` and a stage's deck matches its own log.
     #
     # The SystemLabel itself stays unsuffixed, which is the whole reason the
     # ladder works: SIESTA writes and reads ``<SystemLabel>.XV`` / ``.DM`` /
@@ -627,18 +630,18 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # follows* (``job-contracts.md`` § 6.3) and a stage is not a counter, and a
     # bare position silently reassigns outputs when the ladder grows (R5).
     from ..trajectory_log.format import molwatch_log_basename
-    _stage_suffix = f"_{cfg.stage}" if cfg.stage else ""
+    _stage_suffix = f"_{stage_token}" if stage_token else ""
     _fdf_name  = f"{cfg.system_label}{_stage_suffix}.fdf"
     _out_name  = f"{cfg.system_label}{_stage_suffix}.out"
-    _mw_name   = molwatch_log_basename(cfg.system_label, cfg.stage)
+    _mw_name   = molwatch_log_basename(cfg.system_label, stage_token)
     if cfg.verbose_comments:
         out.append("# === Run with (job-layout v1) ===")
         out.append(
             "# Run from this directory -- all outputs share the "
             "SystemLabel basename below.")
         out.append(f"#     mpirun -np 4 siesta < {_fdf_name} > {_out_name}")
-        if cfg.stage:
-            out.append(f"# Stage {cfg.stage} -- {_stage_science(cfg)}")
+        if stage_token:
+            out.append(f"# Stage {stage_token} -- {_stage_science(cfg)}")
             out.append(
                 "# SIESTA reads .XV / .DM from the previous stage (same "
                 "SystemLabel, same directory).  See the Watch")
@@ -1112,7 +1115,14 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "# selected here from the kgrid above: .false. for 1x1x1",
         "# (molecule / vacuum), .true. for multi-k periodic runs.",
     ]
-    if cfg.parallel_block_size is None:
+    if cfg.parallel_block_size == 0:
+        # THE THIRD STATE (tuning.md § 2.11, decision 35 -- C8,
+        # 2026-08-12): the keyword is NOT EMITTED AT ALL.  ``0`` is how a
+        # description says "SIESTA's own built-in default" -- omitting a
+        # keyword is a real answer, the same shape as
+        # ``Diag.Algorithm ScaLAPACK`` emitting nothing (siesta.md § 7).
+        block_size = None
+    elif cfg.parallel_block_size is None:
         # GPU and CPU have fundamentally different BlockSize optima
         # (GPU targets the ELPA-CUDA 64-block sweet spot; CPU keeps
         # the historical n_atoms/mpi_np formula).  Branch the picker
@@ -1128,7 +1138,8 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         # matel_table issue, not a BlockSize issue.  The auto-
         # downgrade is gone; user's value passes through.
         block_size = int(cfg.parallel_block_size)
-    out.append(f"BlockSize          {block_size}")
+    if block_size is not None:
+        out.append(f"BlockSize          {block_size}")
     if cfg.parallel_over_k is None:
         over_k = (kx, ky, kz) != (1, 1, 1)
     else:
@@ -1476,7 +1487,9 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         resolved_defaults={
             "enable_gpu": str(bool(cfg.enable_gpu)).lower(),
             "BlockSize": (
-                f"auto -> {block_size}" if cfg.parallel_block_size is None
+                "omitted (SIESTA's own)" if cfg.parallel_block_size == 0
+                else f"auto -> {block_size}"
+                if cfg.parallel_block_size is None
                 else f"user-set -> {block_size}"
             ),
             "mpi_np": (
@@ -1518,7 +1531,9 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         },
         fields=_bench_fields,
         defaults={
-            "BlockSize":         block_size,
+            # State three omits the row too: a BENCH-MARKS line claiming a
+            # value the deck does not carry would be the block lying.
+            **({"BlockSize": block_size} if block_size is not None else {}),
             "MaxSCFIterations":  cfg.max_scf_iter,
             "MD.NumCGsteps":     cfg.relax_steps,
             "MeshCutoff":        cfg.mesh_cutoff,
@@ -1706,22 +1721,24 @@ def convert(
         else:
             summary["missing_psml"] = copy_pseudopotentials(species, lib, fdf_p.parent)
 
-    # Drop a preview <basename>[-stage<N>].molwatch.log next to the
+    # Drop a preview <basename>.molwatch.log next to the
     # .fdf so molwatch can render the initial geometry the moment the
     # user loads it -- no waiting for SIESTA to write its first
     # outcoor block.  The file is static (one preview block, no live
     # updates); for live updates while SIESTA is running, point
     # molwatch at the .out file instead.
     #
-    # Filename derives from cfg.system_label (the protocol basename)
-    # plus the optional stage suffix -- NOT from the FDF's stem.  This
+    # Filename derives from cfg.system_label (the protocol basename) --
+    # NOT from the FDF's stem (`convert` is the single-shot path and has
+    # no stage; a ladder's logs are seeded by `prep`, which holds the
+    # token).  This
     # way a user who names the FDF "anything.fdf" still gets the
     # canonical preview-log name that the Watch tab discovery chain
     # recognises.  See docs/execution/job-contracts.md.
     if cfg.write_molwatch_log:
         from ..trajectory_log import molwatch_log_basename, write_initial_preview
         mw_path = fdf_p.parent / molwatch_log_basename(
-            cfg.system_label, cfg.stage)
+            cfg.system_label, None)
         write_initial_preview(
             struct,
             mw_path,

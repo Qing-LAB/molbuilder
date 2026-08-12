@@ -133,8 +133,6 @@ def _live_ladder_decks(struct, template, stages):
     seam, one deck per element, exactly as `prep` builds them (repointed
     2026-08-12, u5, from the deleted ``render_siesta_stage_fdfs``).  The
     ordinal comes from the stage's place in the FULL ladder."""
-    import dataclasses as _dc
-
     from molbuilder.identity import stage_token
     from molbuilder.siesta.input import effective_config, render_fdf
     label = template.system_label
@@ -144,6 +142,5 @@ def _live_ladder_decks(struct, template, stages):
             continue
         eff = effective_config(template, st)
         tok = stage_token(i, st.name)
-        eff = _dc.replace(eff, stage=tok)
-        out[f"{label}_{tok}.fdf"] = render_fdf(struct, eff)
+        out[f"{label}_{tok}.fdf"] = render_fdf(struct, eff, stage_token=tok)
     return out

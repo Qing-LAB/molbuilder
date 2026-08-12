@@ -402,8 +402,6 @@ def test_an_error_in_any_stage_blocks_the_whole_produce(h2, monkeypatch):
 def _live_ladder_decks(struct, template, stages):
     """The decks the LIVE route renders (repointed 2026-08-12, u5): each
     ENABLED stage through the one seam, exactly as `prep` builds them."""
-    import dataclasses as _dc
-
     from molbuilder.identity import stage_token
     from molbuilder.siesta.input import effective_config, render_fdf
     out = {}
@@ -412,6 +410,5 @@ def _live_ladder_decks(struct, template, stages):
             continue
         eff = effective_config(template, st)
         tok = stage_token(i, st.name)
-        eff = _dc.replace(eff, stage=tok)
-        out[f"{template.system_label}_{tok}.fdf"] = render_fdf(struct, eff)
+        out[f"{template.system_label}_{tok}.fdf"] = render_fdf(struct, eff, stage_token=tok)
     return out
