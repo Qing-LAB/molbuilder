@@ -44,8 +44,10 @@ on the element, a call site cannot forget half of it.
 from __future__ import annotations
 
 import dataclasses
+import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
+                    Union)
 
 from .jobset.model import Resources
 
@@ -126,6 +128,31 @@ _EMITTER_FIELDS = ("mpi_np", "max_memory_mb")
 
 
 @dataclass(frozen=True)
+class MachineTranslation:
+    """The specialisation's coupling: its own axes → allocation fields.
+
+    `project-layout.md` § 2.3.1a splits the framework from the specialisation,
+    and this is the specialisation's half stated as data: **which axes are
+    ours** (``axes``) and **what machine ask each point implies**
+    (``to_resources``).  The benchmark's is ``("G", "K", "C")`` with
+    ``mpi_np = G·K, cpus_per_task = C`` and a ``gres`` read off the
+    environment's GPU type — which is why ``to_resources`` receives the
+    ``Environment`` as well as the point (`generator.md` § 6.1: the
+    environment is one of floor 3's inputs, and the translation is where it
+    is consumed).
+
+    **The axes are declared, not inferred**, so the resolver can refuse an
+    axis nobody owns by name: a bare callable cannot be asked what it
+    consumes, and an axis silently consumed by nothing is *present but not
+    honoured* — the shape this design exists to delete.
+    """
+    #: The axes this translation owns, in the order the grid declares them.
+    axes: Tuple[str, ...]
+    #: ``(point, environment) -> {allocation field: value}``.
+    to_resources: Callable[[Mapping[str, Any], Any], Mapping[str, Any]]
+
+
+@dataclass(frozen=True)
 class ParameterSet:
     """What `prep` step 2 hands to steps 3, 4 and 5 — **always a list**.
 
@@ -160,40 +187,51 @@ class ParameterSet:
 #  The sweep                                                            #
 # --------------------------------------------------------------------- #
 
-def _points(sweep: Optional[Mapping[str, Sequence[Any]]]) -> Tuple[Tuple, ...]:
-    """The cross product of the declared axes, in declaration order.
+def _points(sweep) -> Tuple[Mapping, ...]:
+    """The sweep's points, in the order the caller declared them.
 
-    ``None`` or ``{}`` gives **one empty point** rather than none — which is
-    what makes a production run "the sweep of length one" instead of a case the
-    caller has to remember to special-case.
+    Two spellings, one meaning (`generator.md` § 4): a **mapping of axes**
+    (``{axis: [values]}``) is a cross product in declaration order, and a
+    **sequence of points** (``[{axis: value, ...}, ...]``) is taken verbatim —
+    the form a DEPENDENT enumeration needs, where a later axis's values hang
+    on an earlier axis's choice (the benchmark's cores-per-rank bracket
+    depends on the ranks-per-GPU pick, so its grid is not a product).
+
+    ``None``, ``{}`` or ``[]`` give **one empty point** rather than none —
+    which is what makes a production run "the sweep of length one" instead of
+    a case the caller has to remember to special-case.
     """
     if not sweep:
         return ({},)
-    import itertools
-    names = list(sweep)
-    combos = itertools.product(*(list(sweep[n]) for n in names))
-    return tuple(dict(zip(names, c)) for c in combos)
+    if isinstance(sweep, Mapping):
+        import itertools
+        names = list(sweep)
+        combos = itertools.product(*(list(sweep[n]) for n in names))
+        return tuple(dict(zip(names, c)) for c in combos)
+    return tuple(dict(p) for p in sweep)
 
 
-def _check_fits(point: Mapping[str, Any], allocation: Resources) -> None:
-    """§ 4.1: *a sweep point that exceeds the allocation is refused.*
+def _check_fits(asks: Mapping[str, Any], allocation: Resources) -> None:
+    """§ 4.1: *a sweep's ask that exceeds the allocation is refused.*
+
+    ``asks`` is the point's machine half AFTER any translation, so a derived
+    rank count is bounded exactly like one the sweep named directly — its keys
+    are allocation fields by construction.
 
     **Not clamped, and not checked against capability instead.** Clamping would
     silently measure something other than what was asked for, and capability is
     the wrong bound: what you may use in this job is what you *asked* for, and
     asking for less is often the better choice (the priority trade).
     """
-    for axis, value in point.items():
-        if axis not in ALLOCATION_FIELDS:
-            continue
+    for axis, value in asks.items():
         ceiling = getattr(allocation, axis, None)
         if ceiling is None or not isinstance(value, int) \
                 or not isinstance(ceiling, int):
             continue
         if value > ceiling:
             raise ResolveError(
-                f"sweep point {axis}={value} exceeds this prep's allocation "
-                f"of {axis}={ceiling}.\n"
+                f"this sweep asks for {axis}={value}, which exceeds this "
+                f"prep's allocation of {axis}={ceiling}.\n"
                 f"  A sweep is bounded by what you ASKED FOR, not by what the "
                 f"machine has -- asking for less is often the better choice, "
                 f"because how a job is scheduled depends on how much you ask "
@@ -210,8 +248,11 @@ def _check_fits(point: Mapping[str, Any], allocation: Resources) -> None:
 def resolve(template_text: str, task, config_cls, *,
             allocation: Resources,
             stage: Optional[str] = None,
-            sweep: Optional[Mapping[str, Sequence[Any]]] = None,
-            pins: Optional[Mapping[str, Any]] = None) -> ParameterSet:
+            sweep: Union[Mapping[str, Sequence[Any]],
+                         Sequence[Mapping[str, Any]], None] = None,
+            pins: Optional[Mapping[str, Any]] = None,
+            translation: Optional[MachineTranslation] = None,
+            environment: Any = None) -> ParameterSet:
     """Turn the description and this machine's allocation into a `ParameterSet`.
 
     ``template_text`` is the calculation's ``<label>.template.toml``; ``task``
@@ -219,14 +260,26 @@ def resolve(template_text: str, task, config_cls, *,
     ``stage`` names which rung of the ladder to resolve — required when the
     description has one, refused when it does not.
 
-    ``sweep`` is ``{axis: [values]}`` and turns the result into a list of that
-    many points; ``pins`` are the parameters given a value for this prep alone
-    (§ 4.2 — ``BlockSize`` is the only member today, and it is a member by rule:
-    its right value depends on the allocation).
+    ``sweep`` is ``{axis: [values]}`` (a cross product) or an explicit
+    ``[{axis: value, ...}, ...]`` (a dependent enumeration — see
+    :func:`_points`), and turns the result into a list of that many points;
+    ``pins`` are the parameters given a value for this prep alone (§ 4.2 —
+    ``BlockSize`` is the only member today, and it is a member by rule: its
+    right value depends on the allocation).
+
+    ``translation`` is the specialisation's coupling
+    (:class:`MachineTranslation`): its declared axes, and what machine ask
+    each point implies.  It is an input to the ONE builder rather than a
+    second builder: an axis that names neither a schema field, an allocation
+    field, nor a declared translation axis is refused by name, and what the
+    translation returns is bounded by the allocation exactly like a
+    directly-named machine axis (§ 4.1).  ``environment`` is floor 1's answer
+    (`generator.md` § 6.1) and is handed to the translation, which is where a
+    machine fact like the GPU type is legitimately read.
 
     Raises :class:`ResolveError` when the stage does not exist, when a sweep
-    point exceeds the allocation, or when a pin names something the schema does
-    not have.
+    point exceeds the allocation, when an axis names nothing, or when a pin
+    names something the schema does not have.
     """
     from .template import config_from_template
 
@@ -248,15 +301,54 @@ def resolve(template_text: str, task, config_cls, *,
             f"this prep only; it cannot invent one.")
 
     elements: List[ResolvedConfig] = []
-    for point in _points(sweep):
-        _check_fits(point, allocation)
+    points = _points(sweep)
+    for point in points:
         prov = dict(provenance)
 
         # A point's axes split by WHERE they land, and the split is a lookup
-        # rather than a judgement: a name on Resources is a machine axis, and
-        # anything else is a parameter axis (generator.md § 4).
+        # rather than a judgement: a name on Resources is a machine axis, a
+        # name in the schema is a parameter axis (generator.md § 4), and a
+        # name on the translation's declared axes is the specialisation's own
+        # coordinate.  An axis on none of the three lists names nothing, and
+        # is refused BY NAME — with or without a translation, because an axis
+        # silently consumed by nothing would be present but not honoured.
         machine = {k: v for k, v in point.items() if k in ALLOCATION_FIELDS}
-        params = {k: v for k, v in point.items() if k not in ALLOCATION_FIELDS}
+        params = {k: v for k, v in point.items()
+                  if k not in ALLOCATION_FIELDS and k in known}
+        owned = set(translation.axes) if translation is not None else set()
+        orphans = sorted(set(point) - set(machine) - set(params) - owned)
+        if orphans:
+            raise ResolveError(
+                f"sweep axis(es) {', '.join(repr(k) for k in orphans)} name "
+                f"neither a {config_cls.__name__} field, an allocation field, "
+                f"nor a declared translation axis"
+                f"{' (' + ', '.join(sorted(owned)) + ')' if owned else ''}. "
+                f"An axis is a parameter, a machine ask, or the "
+                f"specialisation's own coordinate (generator.md 4).")
+        ours = [a for a in (translation.axes if translation else ()) if a in point]
+        if ours:
+            missing = [a for a in translation.axes if a not in point]
+            if missing:
+                raise ResolveError(
+                    f"point {dict(point)!r} carries translation axis(es) "
+                    f"{', '.join(repr(a) for a in ours)} but not "
+                    f"{', '.join(repr(a) for a in missing)}. A translation's "
+                    f"axes travel together; a partial coordinate would make "
+                    f"the machine ask a guess.")
+            delta = dict(translation.to_resources(point, environment))
+            bad = sorted(set(delta) - set(ALLOCATION_FIELDS))
+            if bad:
+                raise ResolveError(
+                    f"the translation returned "
+                    f"{', '.join(repr(k) for k in bad)}, which name nothing "
+                    f"on Resources. A translation may only answer with "
+                    f"allocation fields "
+                    f"({', '.join(sorted(ALLOCATION_FIELDS))}).")
+            machine.update(delta)
+        # The bound applies to what the point ASKS FOR, translated or not --
+        # a trial whose derived rank count exceeds the allocation is the same
+        # refusal as one that named mpi_np directly (§ 4.1).
+        _check_fits(machine, allocation)
 
         values = base
         if params:
@@ -275,8 +367,22 @@ def resolve(template_text: str, task, config_cls, *,
         ))
 
     return ParameterSet(elements=tuple(elements),
-                        axes=tuple(sweep or ()),
+                        axes=_axes_of(sweep, points),
                         stage=(stage_obj.name if stage_obj else None))
+
+
+def _axes_of(sweep, points: Tuple[Mapping, ...]) -> Tuple[str, ...]:
+    """Which axes produced this set, in the order they were given.
+
+    The mapping form declares them directly; the explicit-points form carries
+    them in each point, so the first point's keys speak for the set (every
+    point of one enumeration answers the same question).
+    """
+    if not sweep:
+        return ()
+    if isinstance(sweep, Mapping):
+        return tuple(sweep)
+    return tuple(points[0]) if points and points[0] else ()
 
 
 def _stage_of(task, stage: Optional[str]):
@@ -327,23 +433,45 @@ def _label_for(base: str, point: Mapping[str, Any]) -> str:
 
 
 def point_token(point: Mapping[str, Any]) -> str:
-    """A sweep coordinate as one filename-safe token.
+    """A sweep coordinate as one filename-safe token — ``G1K4C6``.
 
     **One function, fed by data** — which is why a trial directory needs no
     naming rule of its own (`generator.md` § 5). Keys in the order the sweep
     declared them, because that is the order a person wrote and reading a
     directory listing should match the command they typed.
 
-    *(The benchmark's own `G<g>K<k>C<c>` abbreviation is a second rendering of
-    this same idea and folds into it when `bench` does — `job-contracts.md`
-    § 6.3, scheduled with the merge rather than guessed at here.)*
+    **Concatenated, no inner separator** — `job-contracts.md` § 6.3 (the
+    cross-layer authority) renders the benchmark's coordinate ``bench-G1K4C6``:
+    the ``-`` announces ONE qualifier, so a separator inside the token would
+    read as more of them.  This joined with ``-`` until the bench fold (C6,
+    2026-08-11), which is when the G/K/C abbreviation stopped being a second
+    rendering in the benchmark module and became this function's ordinary
+    output.  The token is an identifier, never a parser target: what varied
+    lives in ``ParameterSet.axes`` and each element's ``point``, as data.
     """
-    return "-".join(f"{k}{_flat(v)}" for k, v in point.items())
+    parts = []
+    for k, v in point.items():
+        part = f"{k}{_flat(v)}"
+        if not _TOKEN_RE.fullmatch(part):
+            raise ResolveError(
+                f"axis {k}={v!r} renders as {part!r}, which leaves the label "
+                f"charset [A-Za-z0-9_] (job-contracts.md 6.3; the token "
+                f"becomes a SystemLabel and a directory name, and `-` inside "
+                f"it would announce a qualifier that is not there). Spell the "
+                f"value inside the charset, or drop the point.")
+        parts.append(part)
+    return "".join(parts)
+
+
+#: One rendered part of the token. ``-`` is excluded on purpose: it is the
+#: qualifier separator (§ 6.3), so a value carrying one (``-2``, ``a100:1``)
+#: is refused rather than smuggled into a SystemLabel.
+_TOKEN_RE = re.compile(r"[A-Za-z0-9_]+\Z")
 
 
 def _flat(v: Any) -> str:
     return str(v).replace(".", "p").replace(" ", "")
 
 
-__all__ = ["ParameterSet", "ResolvedConfig", "ResolveError",
-           "ALLOCATION_FIELDS", "resolve", "point_token"]
+__all__ = ["ParameterSet", "ResolvedConfig", "ResolveError", "ALLOCATION_FIELDS",
+           "MachineTranslation", "resolve", "point_token"]

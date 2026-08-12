@@ -98,7 +98,10 @@ def test_the_id_is_knowable_before_the_calculation_exists():
     two things a person knows before anything has run, so asking for it twice
     — a year apart, on another machine — gives the same answer, and the warm
     files are found."""
-    assert run_id("BDT relax", "C6H4S2") == run_id("BDT relax", "C6H4S2")
+    # A GOLDEN value, not a self-comparison: `x == x` can only catch
+    # intra-process nondeterminism, while the property claimed is
+    # cross-machine and cross-year -- which only a pinned literal states.
+    assert run_id("BDT relax", "C6H4S2") == "BDT_relax_C6H4S2"
 
 
 def test_a_different_molecule_is_a_different_id():

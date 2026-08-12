@@ -22,6 +22,19 @@ from molbuilder.bench.generate import bake_run_bench
 from molbuilder.runtime_config import (PROJECT_CONFIG_FILENAME,
                                        RuntimeConfigError, get_routing)
 
+
+@pytest.fixture(autouse=True)
+def _sandbox(tmp_path, monkeypatch):
+    """Isolated cwd + $HOME + XDG: `get_routing` deep-merges the CWD-first
+    server-wide scope, so without this the verdicts depend on the repo-root
+    ``molbuilder.json`` — caught 2026-08-12 the moment that file gained a
+    real ``scheduler.routing`` (the configured test posture)."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "home").mkdir()
+
+
 _DOMAINS = [
     {"name": "debug",  "max_time": "0-00:15:00", "partition": "htc",
      "qos": "debug"},

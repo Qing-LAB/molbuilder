@@ -19,6 +19,7 @@ Tests:
 from __future__ import annotations
 
 import pathlib
+import re
 
 import pytest
 from pathlib import Path
@@ -891,7 +892,10 @@ class TestErrorStatusesSharedBySurfaces:
         res = CliRunner().invoke(
             pseudo_group, ["check", str(tmp_path), "--xc", "PBE"])
         assert res.exit_code == 1, res.output
-        assert "ERROR" in res.output and "C" in res.output
+        # A word-boundary match: the bare substring "C" was satisfied by
+        # almost any output (a near-tautology, found 2026-08-12).
+        assert "ERROR" in res.output
+        assert re.search(r"\bC\b", res.output), res.output
 
     def test_cli_exits_zero_on_matching_set(self, tmp_path):
         # PBE (GGA) pseudo on a PBE calc -> ok -> exit 0.

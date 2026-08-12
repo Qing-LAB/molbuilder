@@ -2,8 +2,8 @@
 (``molbuilder.parse.coords.xv_to_xyz`` + ``molbuilder xv2xyz``).
 
 The key contract: a SIESTA ``.XV`` carries the periodic cell, and the
-translation must PRESERVE it (as an ASE extended-XYZ ``Lattice=`` header)
-so a downstream ``molbuilder fdf`` keeps the real cell, not a vacuum box.
+translation must PRESERVE it (as an ASE extended-XYZ ``Lattice=`` header) so
+a downstream describe + prep keeps the real cell, not a vacuum box.
 """
 from __future__ import annotations
 
@@ -76,6 +76,9 @@ def test_cli_xv2xyz(xv, tmp_path):
     out = tmp_path / "out.xyz"
     res = CliRunner().invoke(cli.cli, ["xv2xyz", str(xv), str(out)])
     assert res.exit_code == 0, res.output
-    assert "444" not in res.output       # (this fixture has 3 atoms)
     assert out.is_file()
+    # The artifact says 3 atoms where an XYZ says it -- its first line.
+    # (Replaced `"444" not in output`, a negative on an arbitrary literal
+    # that could never fail; found 2026-08-12.)
+    assert out.read_text().splitlines()[0].strip() == "3"
     assert 'Lattice="' in out.read_text().splitlines()[1]

@@ -724,8 +724,11 @@ def test_add_dataclass_options_choices_appear_in_help():
 
 
 @pytest.mark.parametrize("subcommand,flag,bad_val", [
-    ("fdf",   "--solution-method", "diagonalize"),
-    ("fdf",   "--relax-type",      "BFGS"),         # S3
+    # The two ("fdf", …) rows were RETIRED 2026-08-12: with the verb deleted
+    # (C2), click's "No such command" also exits 2, so they passed while
+    # asserting nothing about choice validation -- a vacuous green.  Choice
+    # metadata for SiestaConfig is enforced on the described path by the
+    # preflight's declared-type row instead.
     ("pyscf", "--method",          "UKKS"),
     ("pyscf", "--scf-init-guess",  "huckl"),
     ("pyscf", "--optimizer",       "geometric_v2"),

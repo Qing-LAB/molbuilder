@@ -27,7 +27,16 @@ from molbuilder.structure import Structure
 
 @pytest.fixture
 def calc(tmp_path):
-    """A described calculation, exactly as `jobset describe` leaves it."""
+    """A described calculation, exactly as `jobset describe` leaves it.
+
+    The activation config is the **dotted, bundle-scoped**
+    ``.molbuilder.json`` — the project scope the wrapper writer resolves
+    from the script's own directory.  An undotted ``molbuilder.json`` here
+    is INERT (that name is the cwd-first server scope), and until 2026-08-12
+    this fixture wrote exactly that: the tests then silently resolved
+    ``script_generation.activation`` from the developer's repo-root config —
+    14 of 24 failed under an isolated cwd+HOME while green in-repo.
+    """
     struct = Structure(elements=["S", "C", "C", "H"],
                        positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.78],
                                            [1.21, 0.0, 2.48], [2.15, 0.0, 1.94]]),
@@ -40,7 +49,7 @@ def calc(tmp_path):
         default_siesta_stages("publishable"),
         engine="siesta", shape="hierarchical", name="calc", source=str(src))
     D.write_description(desc, dest)
-    (dest / "molbuilder.json").write_text(json.dumps(
+    (dest / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "source /opt/conda/etc/profile.d/conda.sh"}}))
     return dest

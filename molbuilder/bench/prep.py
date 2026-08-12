@@ -79,7 +79,7 @@ def run_prep_bench(out_dir,
     env_path.write_text(env.to_json() + "\n", encoding="utf-8")
     written.append(env_path)
 
-    adapter, _ = resolve_launch_adapter(env, mode=mode, submit_via=submit_via)
+    adapter, _ = resolve_launch_adapter(mode=mode, submit_via=submit_via)
     for name, content in adapter.format_bench(env, ks=ks, cs=cs).items():
         p = out / name
         p.write_text(content, encoding="utf-8")

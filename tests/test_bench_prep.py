@@ -24,7 +24,7 @@ def test_run_prep_bench_writes_environment_and_sweep(tmp_path):
         tmp_path,
         overrides={"cores_per_socket": 24, "gpus_per_node": 4,
                    "gpu_type": "a100"},
-        scheduler_override="slurm",
+        scheduler_override="slurm", mode="submit",
         now_iso="2026-06-27T00:00:00Z")
 
     names = {p.name for p in written}
@@ -55,7 +55,7 @@ def test_run_prep_bench_workstation(tmp_path):
         tmp_path,
         overrides={"cores_per_socket": 8, "gpus_per_node": 1,
                    "gpu_type": "rtx"},
-        scheduler_override="workstation",
+        scheduler_override="workstation", mode="direct",
         now_iso="2026-06-27T00:00:00Z")
     assert env.scheduler == "workstation"
     text = (tmp_path / "job-gpu-sweep.sh").read_text()
@@ -69,7 +69,7 @@ def test_summary_surfaces_readiness_with_gpu(tmp_path):
     env, written = prep.run_prep_bench(
         tmp_path, overrides={"cores_per_socket": 24, "gpus_per_node": 4,
                              "gpu_type": "a100"},
-        scheduler_override="slurm", now_iso="t")
+        scheduler_override="slurm", mode="submit", now_iso="t")
     out = prep._summary(env, written)
     assert "molbuilder envs doctor" in out
     assert "molbuilder envs validate molbuilder-siesta-gpu" in out
@@ -81,7 +81,7 @@ def test_summary_readiness_validate_is_gpu_gated(tmp_path):
     # no GPUs -> doctor still shows, the GPU-env validate line does not.
     env, written = prep.run_prep_bench(
         tmp_path, overrides={"cores_per_socket": 8, "gpus_per_node": 0},
-        scheduler_override="workstation", now_iso="t")
+        scheduler_override="workstation", mode="direct", now_iso="t")
     out = prep._summary(env, written)
     assert "molbuilder envs doctor" in out
     assert "molbuilder envs validate" not in out
@@ -91,7 +91,7 @@ def test_run_prep_bench_creates_out_dir(tmp_path):
     out = tmp_path / "bundle"                          # does not exist yet
     _, written = prep.run_prep_bench(
         out, overrides={"cores_per_socket": 4, "gpus_per_node": 1},
-        scheduler_override="workstation", now_iso="t")
+        scheduler_override="workstation", mode="direct", now_iso="t")
     assert out.is_dir()
     assert (out / "environment.json").is_file()
 
@@ -115,7 +115,7 @@ def test_gpu_ks_override_in_sweep(tmp_path):
         tmp_path,
         overrides={"cores_per_socket": 24, "gpus_per_node": 2,
                    "gpu_type": "a100"},
-        scheduler_override="slurm", ks=[8, 16], now_iso="t")
+        scheduler_override="slurm", mode="submit", ks=[8, 16], now_iso="t")
     text = (tmp_path / "job-gpu-sweep.sh").read_text()
     assert "K values = 8,16" in text
     # G×K×c grid (§8.12): K=8 bracket c={1,3,6}, K=16 bracket c={1,3}
@@ -134,7 +134,7 @@ def test_gpu_instance_scaling_allows_oversubscription(tmp_path):
         tmp_path,
         overrides={"cores_per_socket": 6, "gpus_per_node": 1,
                    "gpu_type": "rtx3060"},
-        scheduler_override="workstation", ks=[1, 2, 4, 8], now_iso="t")
+        scheduler_override="workstation", mode="direct", ks=[1, 2, 4, 8], now_iso="t")
     text = (tmp_path / "job-gpu-sweep.sh").read_text()
     for k in (1, 2, 4, 8):
         assert f"point-G1K{k}" in text            # full ladder emitted
@@ -147,7 +147,7 @@ def test_run_prep_bench_core(tmp_path, monkeypatch):
     # (execution/job-system.md § 7); there is no standalone entry to test.
     monkeypatch.setattr(env_mod, "_run", lambda *a, **k: None)
     env, written = prep.run_prep_bench(
-        tmp_path, scheduler_override="workstation",
+        tmp_path, scheduler_override="workstation", mode="direct",
         overrides={"cores_per_socket": 16, "gpus_per_node": 2,
                    "gpu_type": "a100"})
     assert env.scheduler == "workstation"
@@ -336,7 +336,7 @@ def test_bench_plan_enumerates_cpu_baseline_and_gpu_sweep(tmp_path):
     out_dir = _make_bundle(tmp_path)
     manifest = json.loads((out_dir / "bench-manifest.json").read_text())
     env = _env("workstation", cores=10, gpus=1, gtype="rtx")
-    plan = render_bench_plan(env, manifest, ks=[1, 2, 5, 10])
+    plan = render_bench_plan(env, manifest, ks=[1, 2, 5, 10], mode="direct")
 
     assert "BENCH PLAN" in plan
     assert "CPU baseline" in plan                      # point 0 is the CPU
@@ -358,8 +358,8 @@ def test_bench_plan_warns_when_cpu_np_exceeds_cores(tmp_path):
     out_dir = _make_bundle(tmp_path)                   # cpu mpi_np=64
     manifest = json.loads((out_dir / "bench-manifest.json").read_text())
 
-    warn = render_bench_plan(_env("workstation", cores=10), manifest, ks=[1, 2])
+    warn = render_bench_plan(_env("workstation", cores=10), manifest, ks=[1, 2], mode="direct")
     assert "WARNING" in warn and "mpi_np=64" in warn and "REFUSE" in warn
 
-    ok = render_bench_plan(_env("workstation", cores=64), manifest, ks=[1, 2])
+    ok = render_bench_plan(_env("workstation", cores=64), manifest, ks=[1, 2], mode="direct")
     assert "WARNING" not in ok                          # 64 cores fits np=64

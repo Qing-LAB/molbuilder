@@ -192,7 +192,12 @@ def _staged(xyz, tmp_path, strategy):
                             engine="siesta", shape="flat", name="JOB",
                             source=str(xyz)),
         tmp_path)
-    (tmp_path / "molbuilder.json").write_text(json.dumps(
+    # The DOTTED, bundle-scoped project config -- the scope the wrapper
+    # writer resolves from the script's own directory.  The undotted name is
+    # the cwd-first server scope, and writing it here was inert: the tests
+    # silently read the developer's repo-root config (proven isolated,
+    # 2026-08-12).
+    (tmp_path / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "source /opt/conda/etc/profile.d/conda.sh"}}))
     if not stages:
@@ -204,8 +209,8 @@ def _staged(xyz, tmp_path, strategy):
 
 
 def test_multi_stage_cli_emits_per_stage_molwatch_logs(xyz, tmp_path):
-    """``molbuilder fdf ... --stage-strategy vib-quality`` produces one
-    ``<label>_<NN>_<name>.molwatch.log`` per enabled stage.
+    """Describing with strategy ``vib-quality`` and prepping each stage
+    produces one ``<label>_<NN>_<name>.molwatch.log`` per enabled stage.
 
     The names carried a hyphen and a bare position (``JOB-stage1``) until
     2026-08-10.  Both were wrong: ``-`` announces *a counter follows*

@@ -25,6 +25,20 @@ from molbuilder.runtime_config import (PROJECT_CONFIG_FILENAME,
                                        RuntimeConfigError, get_execution)
 
 
+@pytest.fixture(autouse=True)
+def _sandbox(tmp_path, monkeypatch):
+    """Isolated cwd + $HOME + XDG for every test in this file.
+
+    ``get_execution`` deep-merges the server-wide scope, which is CWD-first
+    with an XDG fallback — so without this the verdicts here depended on the
+    developer's repo-root ``molbuilder.json`` (found 2026-08-12; the same
+    class as the inert-fixture bug in test_prep_calculation.py)."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "home").mkdir()
+
+
 # ---- get_execution: read, default, validate, survive _normalise ------ #
 
 def _write_project(tmp_path, cfg):
@@ -68,34 +82,38 @@ def test_get_execution_non_object_raises(tmp_path):
 # ---- resolve_mode / resolve_launch_adapter --------------------------- #
 
 def test_resolve_mode_explicit_wins():
-    env = Environment(scheduler="workstation")
-    assert resolve_mode(env, "submit") == "submit"
-    assert resolve_mode(env, "direct") == "direct"
+    assert resolve_mode("submit") == "submit"
+    assert resolve_mode("direct") == "direct"
 
 
-def test_resolve_mode_derives_from_scheduler():
-    assert resolve_mode(Environment(scheduler="slurm")) == "submit"
-    assert resolve_mode(Environment(scheduler="workstation")) == "direct"
+def test_resolve_mode_refuses_unset():
+    """Unset is a REFUSAL, never a derivation from the detected scheduler
+    (`running-a-job.md` § 5.4 — the mode, not the scheduler, gates
+    submission).  Until 2026-08-12 this function DERIVED (slurm → submit)
+    and this test pinned the derivation — the one door that disagreed with
+    `jobset submit`'s; the environment left the signature with the rule, so
+    the derivation cannot quietly return."""
+    with pytest.raises(ValueError, match=r"never derived"):
+        resolve_mode(None)
 
 
 def test_resolve_launch_adapter_submit_picks_by_name_not_detection():
-    # On a DETECTED workstation, mode=submit must still pick SlurmAdapter
-    # (by name, bypassing matches) -- "submit from an interactive shell".
-    env = Environment(scheduler="workstation")
-    a, rmode = resolve_launch_adapter(env, mode="submit", submit_via="slurm")
+    # mode=submit picks SlurmAdapter BY NAME, whatever machine this is --
+    # "submit from an interactive shell".  The adapter selection takes no
+    # Environment at all since 2026-08-12, which is the stronger form of
+    # "independent of detection".
+    a, rmode = resolve_launch_adapter(mode="submit", submit_via="slurm")
     assert isinstance(a, SlurmAdapter) and rmode == "submit"
 
 
 def test_resolve_launch_adapter_direct_picks_workstation():
-    env = Environment(scheduler="slurm")
-    a, rmode = resolve_launch_adapter(env, mode="direct")
+    a, rmode = resolve_launch_adapter(mode="direct")
     assert isinstance(a, WorkstationAdapter) and rmode == "direct"
 
 
 def test_resolve_launch_adapter_unknown_submit_via_raises():
-    env = Environment(scheduler="slurm")
     with pytest.raises(ValueError, match="submit_via"):
-        resolve_launch_adapter(env, mode="submit", submit_via="pbs")
+        resolve_launch_adapter(mode="submit", submit_via="pbs")
 
 
 # ---- bake_run_bench: CPU baseline follows the adapter ----------------- #

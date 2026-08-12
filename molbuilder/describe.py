@@ -38,8 +38,9 @@ WHY A DATA OBJECT AND THEN A WRITER, rather than one function that writes.  Two
 surfaces have to produce byte-identical descriptions — the terminal and the
 browser — and the browser writes through its own concealed file layer rather
 than through raw paths.  One producer, two writers, is the shape
-``job-system.md`` § 4.1 calls Promotion A, and ``StageBundle`` is its other
-instance.
+``job-system.md`` § 4.1 calls Promotion A.  (``StageBundle`` was its other
+instance; that producer lost its last caller when the old surface went,
+2026-08-11, and folds away with `bench` — plan step 6.)
 """
 from __future__ import annotations
 

@@ -491,10 +491,10 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
     from .prep import (_overrides_from, _parse_ks, _summary, run_prep_bench,
                        utc_now_iso)
 
-    # Resolve the run-vs-submit LAUNCH policy (job-execution.md § 8.13) +
-    # the submission-domain routing table (running-a-job.md § 5.3) from
-    # the bundle's .molbuilder.json -- applied uniformly to the CPU baseline
-    # and the GPU sweep, independent of the detected scheduler.
+    # Resolve the run-vs-submit LAUNCH policy (running-a-job.md § 5.4) +
+    # the submission-domain routing table (§ 5.3) from the bundle's
+    # .molbuilder.json -- applied uniformly to the CPU baseline and the GPU
+    # sweep, independent of the detected scheduler.
     try:
         exec_cfg = get_execution(project_dir=Path(out))
         routing = get_routing(project_dir=Path(out))
@@ -502,8 +502,17 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
     except RuntimeConfigError as e:
         click.echo(f"ERROR reading execution/routing config: {e}", err=True)
         raise SystemExit(2)
-    cfg_mode, submit_via = exec_cfg["mode"], exec_cfg["submit_via"]
+    submit_via = exec_cfg["submit_via"]
     exec_domain = exec_cfg["domain"]
+    # ONE resolution, up front: everything below receives the concrete mode.
+    # Until 2026-08-12 this was resolved twice (implicitly inside
+    # run_prep_bench and again after it), and an unset mode silently derived
+    # `submit` from the detected scheduler -- § 5.4 forbids exactly that.
+    try:
+        rmode = resolve_mode(exec_cfg["mode"])
+    except ValueError as e:
+        click.echo(f"ERROR: {e}", err=True)
+        raise SystemExit(2)
 
     env, written = run_prep_bench(
         out,
@@ -511,11 +520,9 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
         scheduler_override=scheduler,
         ks=_parse_ks(gpu_ks),
         cs=_parse_ks(gpu_cs),
-        mode=cfg_mode,
+        mode=rmode,
         submit_via=submit_via,
         now_iso=utc_now_iso())
-
-    rmode = resolve_mode(env, cfg_mode)
 
     # Resolve GPU-node EXCLUSIVITY: explicit --exclusive/--no-exclusive wins,
     # else the config default (job-execution.md § 8.15).  Announce it FIRST --
@@ -556,12 +563,11 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
         raise SystemExit(2)
 
     # Bake run-bench so the CPU baseline launches the SAME way as the sweep
-    # (§ 8.13): both submit under mode=submit, both bash under direct.  Under
-    # submit + a routing table, bake the explicit domain-selection gate +
-    # recommendation (§ 4.3, § 4.4).
+    # (running-a-job.md § 5.4): both submit under mode=submit, both bash
+    # under direct.  Under submit + a routing table, bake the explicit
+    # domain-selection gate + recommendation (§ 4.3, § 4.4).
     manifest = json.loads((Path(out) / "bench-manifest.json").read_text())
-    adapter, _ = resolve_launch_adapter(env, mode=cfg_mode,
-                                        submit_via=submit_via)
+    adapter, _ = resolve_launch_adapter(mode=rmode, submit_via=submit_via)
     cpu_np = manifest["points"]["cpu"]["mpi_np"]
 
     # Effective walltime for the recommendation/fit-check: the manifest
@@ -587,7 +593,7 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
     # measured, and how to change it.  K/c match the sweep.
     ks = _parse_ks(gpu_ks) or divisors(env.topology.cores_per_socket or 0)
     cs = _parse_ks(gpu_cs)
-    plan = render_bench_plan(env, manifest, ks, cs, mode=cfg_mode,
+    plan = render_bench_plan(env, manifest, ks, cs, mode=rmode,
                              submit_via=submit_via, routing=routing,
                              recommend=recommend, job_time=job_time)
     plan_path = Path(out) / "BENCH-PLAN.md"

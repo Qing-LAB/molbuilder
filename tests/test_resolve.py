@@ -14,8 +14,9 @@ import pytest
 
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.jobset.model import Resources
-from molbuilder.resolve import (ALLOCATION_FIELDS, ParameterSet, ResolveError,
-                                point_token, resolve)
+from molbuilder.resolve import (ALLOCATION_FIELDS, MachineTranslation,
+                                ParameterSet, ResolveError, point_token,
+                                resolve)
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 from molbuilder.task import Stage, StructureRef, Task, derive_run
@@ -190,10 +191,128 @@ def test_a_run_keeps_the_calculations_own_label(template):
     assert ps[0].label == "relax"
 
 
-def test_point_token_is_deterministic_and_filename_safe():
+def test_point_token_is_the_authoritys_rendering():
+    """`job-contracts.md` § 6.3: the coordinate is ONE qualifier — ``G1K4C6``,
+    concatenated, because a separator inside it would read as more qualifiers.
+    (This joined with ``-`` until the bench fold, C6, 2026-08-11.)"""
+    assert point_token({"G": 1, "K": 4, "C": 6}) == "G1K4C6"
     assert point_token({"mpi_np": 8, "parallel_block_size": 16}) == \
-        "mpi_np8-parallel_block_size16"
+        "mpi_np8parallel_block_size16"
     assert "." not in point_token({"mesh_cutoff": 300.0})
+    assert "-" not in point_token({"mesh_cutoff": 300.0})
+
+
+# --------------------------------------------------------------------- #
+#  The explicit-points form, and the specialisation's translation seam   #
+# --------------------------------------------------------------------- #
+
+_GKC = MachineTranslation(
+    axes=("G", "K", "C"),
+    # The benchmark's coupling: K ranks per GPU on G GPUs, C cores per rank.
+    to_resources=lambda p, env: {"mpi_np": p["G"] * p["K"],
+                                 "cpus_per_task": p["C"]})
+
+
+def test_explicit_points_are_taken_verbatim_in_order(template):
+    """A dependent enumeration is not a cross product: the caller hands the
+    points themselves, and the set preserves them as given."""
+    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+                 sweep=[{"G": 1, "K": 4, "C": 4}, {"G": 1, "K": 8, "C": 2}],
+                 translation=_GKC)
+    assert len(ps) == 2 and ps.is_sweep
+    assert [e.point for e in ps] == [{"G": 1, "K": 4, "C": 4},
+                                     {"G": 1, "K": 8, "C": 2}]
+    assert ps.axes == ("G", "K", "C")
+
+
+def test_the_translation_reaches_the_elements_resources(template):
+    """The trial's rank count comes from the translated coordinate — the field
+    that makes `Job.resources` copyable rather than re-derived (§ 5)."""
+    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+                 sweep=[{"G": 1, "K": 4, "C": 2}], translation=_GKC)
+    assert ps[0].resources.mpi_np == 4
+    assert ps[0].resources.cpus_per_task == 2
+    assert ps[0].label == "relax-G1K4C2"
+
+
+def test_the_environment_reaches_the_translation(template):
+    """`generator.md` § 6.1: the Environment is one of floor 3's inputs, and
+    the translation is where it is consumed — a machine fact like the GPU
+    type is read there, not re-detected downstream."""
+    seen = {}
+
+    def _with_gpu_type(p, env):
+        seen["env"] = env
+        return {"gres": f"gpu:{env['gpu_type']}:{p['G']}"}
+
+    tr = MachineTranslation(axes=("G",), to_resources=_with_gpu_type)
+    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+                 sweep=[{"G": 2}], translation=tr,
+                 environment={"gpu_type": "a100"})
+    assert seen["env"] == {"gpu_type": "a100"}
+    assert ps[0].resources.gres == "gpu:a100:2"
+
+
+def test_a_translated_ask_is_bounded_by_the_allocation_too(template):
+    """§ 4.1 does not care how the ask was spelled: a derived rank count over
+    the allocation is the same refusal as naming ``mpi_np`` directly."""
+    with pytest.raises(ResolveError, match=r"exceeds this prep's allocation"):
+        resolve(template, _task(), SiestaConfig,
+                allocation=Resources(mpi_np=16),
+                sweep=[{"G": 1, "K": 32, "C": 1}], translation=_GKC)
+
+
+def test_an_axis_that_names_nothing_is_refused_without_a_translation(template):
+    with pytest.raises(ResolveError, match=r"name\s+neither"):
+        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+                sweep=[{"G": 1, "K": 4, "C": 6}])
+
+
+def test_an_orphan_axis_is_refused_even_with_a_translation(template):
+    """The translation declares its axes so an axis NOBODY owns cannot be
+    silently swallowed — an axis consumed by nothing would name the trial
+    directory while affecting nothing, the *present but not honoured* shape."""
+    with pytest.raises(ResolveError, match=r"'mesh_cutof'"):
+        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+                sweep=[{"G": 1, "K": 4, "C": 2, "mesh_cutof": 150}],
+                translation=_GKC)
+
+
+def test_a_partial_coordinate_is_refused_by_name(template):
+    """A translation's axes travel together: a point carrying G without K and
+    C would make the machine ask a guess."""
+    with pytest.raises(ResolveError, match=r"'K'"):
+        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+                sweep=[{"G": 1}], translation=_GKC)
+
+
+def test_a_run_with_a_translation_supplied_is_still_a_run(template):
+    """No sweep + a translation on hand (the bench entry always passes its
+    coupling) must not call it on the empty point — a run has no coordinate."""
+    ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+                 translation=_GKC)
+    assert len(ps) == 1 and ps[0].point == {}
+    assert ps[0].resources.mpi_np == ALLOC.mpi_np
+
+
+def test_a_translation_may_only_answer_with_allocation_fields(template):
+    with pytest.raises(ResolveError, match=r"nothing on Resources"):
+        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+                sweep=[{"G": 1}],
+                translation=MachineTranslation(
+                    axes=("G",),
+                    to_resources=lambda p, env: {"mesh_cutoff": 300.0}))
+
+
+def test_a_value_that_leaves_the_label_charset_is_refused(template):
+    """`job-contracts.md` § 6.3: the token becomes a SystemLabel and a
+    directory name, and a ``-`` inside it would announce a qualifier that is
+    not there.  ``G-2`` is refused, never smuggled."""
+    with pytest.raises(ResolveError, match=r"charset"):
+        point_token({"G": -2})
+    with pytest.raises(ResolveError, match=r"charset"):
+        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+                sweep=[{"mpi_np": -8}])
 
 
 def test_a_ladder_needs_a_stage_named(template):

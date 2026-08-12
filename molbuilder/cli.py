@@ -6,7 +6,7 @@ Subcommands:
     molbuilder rna AUGCAUGCAU --out file.xyz
     molbuilder smiles "c1ccccc1" --out benzene.xyz
     molbuilder name "1,4-benzenedithiol" --out bdt.xyz
-    molbuilder fdf   in.xyz out.fdf --psml-lib /opt/psml --kgrid 4x4x1
+    molbuilder jobset describe in.xyz calc/ --stage-strategy publishable
     molbuilder pyscf in.xyz out.py --functional B3LYP
     molbuilder serve --port 8000
     molbuilder watch parse run.molwatch.log
@@ -660,7 +660,7 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
         molbuilder dna ATGC | molbuilder validate -
 
         molbuilder validate run.xyz --engine siesta --exit-on-error \\
-            && molbuilder fdf run.xyz run.fdf
+            && molbuilder jobset describe run.xyz calc/
     """
     import json
     from .validation import validate, validate_geometry

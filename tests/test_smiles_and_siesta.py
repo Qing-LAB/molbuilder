@@ -304,17 +304,19 @@ def test_cell_volume_just_above_threshold_passes():
     cfg = SiestaConfig(relax_type="none",
                        wrap_into_cell=False)
     # render_fdf will issue downstream warnings (atom overlap, etc.),
-    # but the volume gate itself must pass.
+    # but the volume gate itself must pass.  An unexpected ValueError
+    # RE-RAISES: swallowing it let the test go green without the render
+    # ever succeeding, its assertion never reached (found 2026-08-12).
     try:
         fdf = render_fdf(s, cfg, cell=cell)
-        assert "BlockSize" in fdf, "render must produce a real FDF"
     except ValueError as e:
         if "below the minimum physical volume" in str(e):
             raise AssertionError(
                 f"vol = 12 A^3 (1.2x of 10-atom threshold) should "
                 f"NOT trigger the volume gate; got: {e}"
             )
-        # Other errors (overlap etc.) are not this test's concern.
+        raise
+    assert "BlockSize" in fdf, "render must produce a real FDF"
 
 
 def test_cell_volume_per_atom_threshold_scales_with_n_atoms():
