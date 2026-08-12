@@ -92,6 +92,38 @@ class ResolvedConfig:
         """Whether this element is a sweep point rather than the run itself."""
         return bool(self.point)
 
+    def render_config(self):
+        """The config **the deck writer is handed** — values ⊕ the allocation.
+
+        § 5: *"the deck writer needs the rank count — `BlockSize`'s ceiling is
+        orbitals ÷ ranks — and the wrapper writer needs the whole of it. Both
+        read one object."* This is that one object, projected for the emitter.
+
+        **Why the allocation has to reach the deck at all**, when floor 2 may
+        never name a machine: a deck is rendered at `prep`, on the machine that
+        will run it, and it records what it assumed in its BENCH-MARKS block. A
+        deck rendered without a rank count says ``mpi_np auto`` and then gets
+        launched at 32 — which is the disagreement `check_launch_matches_deck`
+        was written to catch, and the ``-np 14`` / ``propor: IMAX = 0`` crash
+        that prompted it.
+
+        So the machine facts are **not** on the description and **are** on the
+        emitter's argument. Those are different objects, and conflating them is
+        what put ``mpi_np`` in the template in the first place.
+        """
+        machine = {k: v for k, v in dataclasses.asdict(self.resources).items()
+                   if v is not None and k in _EMITTER_FIELDS
+                   and hasattr(self.values, k)}
+        return (dataclasses.replace(self.values, **machine) if machine
+                else self.values)
+
+
+#: Allocation fields the DECK WRITER also needs, under the config's own names.
+#: Deliberately not every field of ``Resources``: a partition or a wall time
+#: reaches the wrapper and never the deck, and handing them to the emitter would
+#: invite it to render one.
+_EMITTER_FIELDS = ("mpi_np", "max_memory_mb")
+
 
 @dataclass(frozen=True)
 class ParameterSet:

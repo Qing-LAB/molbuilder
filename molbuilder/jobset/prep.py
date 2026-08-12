@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 from .materialize import job_dir_names, shape_of, materialize, relink
-from .model import JobSet
+from .model import Job, JobSet, Resources
 
 
 class PrepError(Exception):
@@ -306,6 +306,212 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     return dirs
 
 
-__all__ = ["prep_jobset", "PrepError", "resolve_target",
+# --------------------------------------------------------------------- #
+#  The five steps, entire — `project-layout.md` § 2.3.1                  #
+# --------------------------------------------------------------------- #
+
+#: What an engine must supply for `prep` to render its decks: the config class
+#: its template rebuilds into, and a function from (structure, config) to deck
+#: text. **Two things, and adding an engine edits no shared logic** —
+#: `generator.md` § 7's seam, stated as data.
+def _engine_seam(engine: str):
+    if engine == "siesta":
+        from ..config.siesta import SiestaConfig
+        from ..siesta.input import render_fdf
+        return SiestaConfig, render_fdf, ".fdf"
+    raise PrepError(
+        f"no deck writer for engine {engine!r}. An engine supplies its schema "
+        f"and a deck writer (generator.md § 7); this backend has neither for "
+        f"that name.")
+
+
+def _environment_for(base: Path):
+    """**Step 1**, and its answer is *returned* rather than only written.
+
+    ``resolve_target`` persisted ``environment.json`` and its return value was
+    discarded by the only caller — so floor 1 resolved a machine and nothing
+    downstream ever heard the answer. That is the same defect as floor 2's, one
+    storey down, and it is why this returns the object.
+    """
+    from ..environment import Environment, resolve_environment
+    path = resolve_target(base)
+    if path.is_file():
+        try:
+            return Environment.from_json(path.read_text(encoding="utf-8"))
+        except Exception:              # pragma: no cover - a hand-edited file
+            pass
+    try:
+        return resolve_environment()
+    except Exception:                  # pragma: no cover - probing is optional
+        return None
+
+
+def _structure_for(task, base: Path):
+    """The structure this calculation is *of*, from the reference in the
+    description (`stages.md` § 6.3 — a reference plus a witness, never a copy).
+
+    Looked for beside the calculation first and at the recorded path second, so
+    a folder carried to a cluster with its structure alongside resolves without
+    the original tree existing there.
+
+    **The witness is checked and the mismatch is loud**: a description opened
+    against a structure that has since changed would otherwise build a
+    different calculation under the same id — § 1's second failure mode.
+    """
+    from .. import load as _load_structure
+    src = Path(task.structure.source)
+    for candidate in (base / src.name, src):
+        if candidate.is_file():
+            struct = _load_structure(candidate)
+            break
+    else:
+        raise PrepError(
+            f"the structure this calculation describes is not here: "
+            f"{task.structure.source!r}. `task.json` records a REFERENCE to it "
+            f"(engines/stages.md § 6.3), so `prep` needs the file to be either "
+            f"beside the calculation or still at that path.")
+    if struct.formula != task.structure.formula or \
+            struct.n_atoms != task.structure.atoms:
+        raise PrepError(
+            f"the structure has changed since this calculation was described: "
+            f"the description witnesses {task.structure.formula} with "
+            f"{task.structure.atoms} atoms, and {candidate} now holds "
+            f"{struct.formula} with {struct.n_atoms}.\n"
+            f"  Describing again is the honest fix -- rendering this deck would "
+            f"build a different calculation under the same id.")
+    return struct
+
+
+def prep_calculation(base_dir, stage: Optional[str] = None, *,
+                     allocation=None, env: str = None,
+                     emit_sbatch: bool = True,
+                     sweep=None, pins=None) -> List[Path]:
+    """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
+    the order it calls *forced rather than chosen*.
+
+    1. **resolve the machine** — probe it, persist ``environment.json``;
+    2. **resolve the parameters** — the description ⊕ this stage ⊕ the sweep ⊕
+       the pins, into a :class:`~molbuilder.resolve.ParameterSet`;
+    3. **render the deck(s)** — one per element of that set;
+    4. **render the wrapper**;
+    5. **build the run directory**.
+
+    **Steps 2 and 3 did not exist here until 2026-08-11**, and their absence was
+    stated by the code as a refusal: `prep` demanded that the decks already be
+    in the bundle root, because they were finished at ``molbuilder fdf`` time on
+    a machine that could not know the rank count. That is the *one real
+    migration* — the producer ran at *produce* and belonged at *prep* — and
+    steps 1 and 3 are now on the same side of the split, which is what
+    § 2.3.1's *"step 3 cannot precede step 1"* was always about.
+
+    Returns the per-job directories. Raises :class:`PrepError`.
+    """
+    from ..resolve import ResolveError, resolve
+    from ..task import FILENAME as TASK_FILENAME
+    from ..task import read_task
+    from ..template import SUFFIX as TEMPLATE_SUFFIX
+
+    base = Path(base_dir).resolve()
+    if not base.is_dir():
+        raise PrepError(f"calculation folder not found: {base}")
+    desc = base / TASK_FILENAME
+    if not desc.is_file():
+        raise PrepError(
+            f"no {TASK_FILENAME} in {base}. `prep` turns a DESCRIPTION into a "
+            f"runnable directory; write one first with `jobset describe`.")
+
+    # ---- 1. resolve the machine ---------------------------------------- #
+    environment = _environment_for(base)
+
+    # ---- 2. resolve the parameters ------------------------------------- #
+    task = read_task(desc)
+    template_path = base / f"{task.label}{TEMPLATE_SUFFIX}"
+    if not template_path.is_file():
+        raise PrepError(
+            f"no {template_path.name} beside {TASK_FILENAME}. The portable "
+            f"folder is a template PLUS a description (project-layout.md § 2.1) "
+            f"and `prep` rebuilds the config from the template.")
+    config_cls, render_deck, suffix = _engine_seam(task.engine)
+    try:
+        pset = resolve(template_path.read_text(encoding="utf-8"), task,
+                       config_cls, allocation=(allocation or Resources()),
+                       stage=stage, sweep=sweep, pins=pins)
+    except ResolveError as exc:
+        raise PrepError(str(exc)) from exc
+
+    # ---- 3. render the deck(s) ----------------------------------------- #
+    struct = _structure_for(task, base)
+    token = _token_for(task, pset.stage)
+    jobs: List[Job] = []
+    for element in pset:
+        stem = f"{element.label}_{token}" if token else element.label
+        script = f"{stem}{suffix}"
+        # The deck is rendered from values ⊕ THIS element's allocation, so it
+        # records the rank count it actually assumed.  Rendering from the
+        # values alone emits `mpi_np auto` and the launch check then refuses a
+        # deck that `prep` itself just made -- which is how this was found.
+        (base / script).write_text(render_deck(struct, element.render_config()),
+                                   encoding="utf-8")
+        jobs.append(_job_for(element, script, task, pset.stage))
+
+    # ---- 4 + 5, and the record floor 3 leaves behind -------------------- #
+    js = JobSet(name=task.label, engine=task.engine,
+                kind=("sweep" if pset.is_sweep else "ladder"),
+                shared=_shared_for(base), jobs=jobs)
+    js.write(base / "job-set.json")
+    return prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
+                       allocation=allocation)
+
+
+def _token_for(task, stage_name: Optional[str]) -> str:
+    """This stage's ``<NN>_<name>`` — the ONE namer (decision 27).
+
+    ``NN`` is the stage's place in the **full** ladder, so disabling one leaves
+    a gap rather than renumbering what follows: renumbering would hand an
+    existing output to a stage that did not produce it.
+    """
+    if not task.stages or not stage_name:
+        return ""
+    from ..identity import stage_token
+    for i, s in enumerate(task.stages, start=1):
+        if s.name == stage_name:
+            return stage_token(i, s.name)
+    return ""
+
+
+def _job_for(element, script: str, task, stage_name: Optional[str]) -> Job:
+    """One element of the parameter set as one :class:`Job`.
+
+    ``resources`` is **copied from the element**, never re-derived: the element
+    resolved it once, from the allocation, and a second derivation here is the
+    habit `generator.md` § 5 exists to end.
+
+    The **name** answers *which job is this*, and there are exactly three
+    answers because there are three things an element can be: a trial (named by
+    its sweep coordinate), a rung of a ladder (named by the stage), or the whole
+    calculation (named by its label).
+    """
+    from ..resolve import point_token
+    from ..siesta.stages import _traits, _warm_declaration
+
+    if element.point:
+        name = point_token(element.point)
+    elif stage_name:
+        name = stage_name
+    else:
+        name = task.label
+
+    siesta = task.engine == "siesta"
+    return Job(name=name, script=script, resources=element.resources,
+               warm=(_warm_declaration(element.label, element.values)
+                     if siesta else []),
+               traits=(_traits(element.values) if siesta else {}))
+
+
+def _shared_for(base: Path) -> List[str]:
+    """The static package every job links: whatever data files travel."""
+    return sorted(p.name for p in base.glob("*.psml"))
+
+__all__ = ["prep_calculation", "prep_jobset", "PrepError", "resolve_target",
            "launch_agreement", "check_launch_matches_deck",
            "LaunchAgreement"]

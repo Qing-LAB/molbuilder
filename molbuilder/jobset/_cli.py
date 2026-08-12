@@ -349,7 +349,21 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     wants and what a ladder needs before its first stage.
     """
     _check_kind(kind)
-    js, base = _load(bundle)
+    # A DESCRIBED calculation is "a template PLUS task.json"
+    # (project-layout.md § 2.1), and `prep` builds everything else from the
+    # two.  **Both are required to take this route, and the template is the
+    # load-bearing half**: a bundle from before `describe` existed carries a
+    # `task.json` and FINISHED DECKS but no template, and for it steps 2 and 3
+    # have already happened elsewhere.  Routing on `task.json` alone sent those
+    # bundles down a path that then asked for a template they never had.
+    from pathlib import Path as _P
+    from ..task import FILENAME as _TASK
+    _b = _P(bundle)
+    described = (_b / _TASK).is_file() and any(_b.glob("*.template.toml"))
+    if described:
+        base, js = _P(bundle).resolve(), None
+    else:
+        js, base = _load(bundle)
     if (from_attempt or cold) and stage is None:
         raise click.ClickException(
             "--from / --cold describe ONE stage's attempt; name the stage:\n"
@@ -362,8 +376,23 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         allocation = _Alloc(mpi_np=mpi_np, cpus_per_task=cpus_per_task,
                             gres=gres, time=time_, mem=mem,
                             max_memory_mb=max_memory_mb, domain=domain)
-        dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
-                           allocation=allocation)
+        if described:
+            # The five steps, from the DESCRIPTION -- `prep` resolves the
+            # machine, resolves the parameters, and renders the decks itself.
+            from .prep import prep_calculation
+            dirs = prep_calculation(base, stage, allocation=allocation,
+                                    env=env, emit_sbatch=emit_sbatch)
+            # `prep` WROTE floor 3 as part of those five steps; read it back
+            # rather than keeping a second copy in hand, so what the attempt
+            # setup below sees is exactly what landed on disk.
+            js, _ = _load(str(base))
+        else:
+            # A pre-made bundle: the benchmark's own, and anything produced
+            # before `describe` existed.  It carries finished decks and a
+            # job-set.json, so steps 2 and 3 have already happened elsewhere.
+            # This branch goes when `bench` folds in (step 6).
+            dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
+                               allocation=allocation)
     except PrepError as e:
         raise click.ClickException(str(e))
 
