@@ -313,3 +313,30 @@ def test_a_hand_edited_value_of_the_wrong_type_is_refused_by_name():
         r"^value = .*$", 'value = "ENORMOUS"', block, flags=re.M))
     with pytest.raises(ValueError, match="basis_size"):
         T.read_template(mutated2)
+
+
+def test_the_type_check_runs_before_shape_can_mangle(tmp_path):
+    """R4: the E5 check ran post-construction, AFTER _shape -- so a
+    scalar on a strlist exploded "Au" into ['A','u'] and PASSED the
+    check (each element a str), and a scalar on int3 died as a raw
+    TypeError naming no item.  The check now reads the RAW TOML value."""
+    import re
+    cfg = SiestaConfig(system_label="JOB", species_order=["C", "H"],
+                       kgrid=(3, 3, 1))
+    text = T.render_template(cfg)
+    i = text.index("[item.species_order]")
+    j = text.index("[item.", i + 10)
+    block = text[i:j]
+    mutated = text.replace(block, re.sub(
+        r"^value = .*$", 'value = "Au"', block, flags=re.M))
+    assert mutated != text
+    with pytest.raises(ValueError, match="species_order.*strlist"):
+        T.read_template(mutated)
+    i = text.index("[item.kgrid]")
+    j = text.index("[item.", i + 10)
+    block = text[i:j]
+    mutated = text.replace(block, re.sub(
+        r"^value = .*$", "value = 3", block, flags=re.M))
+    assert mutated != text
+    with pytest.raises(ValueError, match="kgrid.*int3"):
+        T.read_template(mutated)

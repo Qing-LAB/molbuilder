@@ -652,8 +652,8 @@ def read_template(text: str) -> Template:
     # float item and it flowed through config_from_template into the
     # engine config unrefused -- surfacing later, in rendering, with a
     # message about anything but the edit that caused it.
-    for it in items:
-        _check_item_value(it)
+    # (value checking moved INTO _item_from at R4 -- raw, pre-shape; a
+    # loop here saw values _shape had already coerced.)
     return Template(engine=str(engine), fingerprint=fingerprint, items=items)
 
 
@@ -678,25 +678,26 @@ _TYPE_CHECKS = {
 }
 
 
-def _check_item_value(it: "Item") -> None:
-    """Refuse a SET value that is not what its own declaration says it is.
-    ``range`` stays advisory (§ 3.3 calls it *"advisory bounds"* -- a value
-    outside it is a choice, not a type error); the TYPE and an enum's
-    membership are not advice."""
-    if it.value is None:
+def _check_raw_value(name: str, key: str, raw, type_: str,
+                     choices) -> None:
+    """Refuse a SET value (or default) that is not what its own
+    declaration says it is -- on the RAW parsed TOML, before ``_shape``
+    touches it.  ``range`` stays advisory (§ 3.3 calls it *"advisory
+    bounds"* -- a value outside it is a choice, not a type error); the
+    TYPE and an enum's membership are not advice."""
+    if raw is None:
         return
-    check = _TYPE_CHECKS.get(it.type)
-    if check is not None and not check(it.value):
+    check = _TYPE_CHECKS.get(type_)
+    if check is not None and not check(raw):
         raise ValueError(
-            f"template: item {it.name!r} declares type {it.type!r} but "
-            f"carries value {it.value!r}.  This file is hand-editable and "
-            f"the declaration is the contract for the edit "
+            f"template: item {name!r} declares type {type_!r} but its "
+            f"{key} is {raw!r}.  This file is hand-editable and the "
+            f"declaration is the contract for the edit "
             f"(engines/template.md § 5).")
-    if it.type == "enum" and it.choices and it.value not in it.choices:
+    if type_ == "enum" and choices and raw not in choices:
         raise ValueError(
-            f"template: item {it.name!r} is an enum of "
-            f"{', '.join(map(repr, it.choices))} but carries "
-            f"{it.value!r}.")
+            f"template: item {name!r} is an enum of "
+            f"{', '.join(map(repr, choices))} but its {key} is {raw!r}.")
 
 
 def _shape(v: Any, type_: str) -> Any:
@@ -739,6 +740,15 @@ def _item_from(name: str, body: Any) -> Item:
 
     rng = body.get("range")
     type_ = str(body["type"])
+    # § 5's type check runs on the RAW TOML value, BEFORE _shape gives it
+    # a Python shape (R4, 2026-08-12: the check ran post-construction, so
+    # _shape mangled first -- a scalar on a strlist exploded "Au" into
+    # ['A','u'] and PASSED, and a scalar on int3 died as a raw TypeError
+    # naming no item).
+    choices = body.get("choices")
+    for key in ("value", "default"):
+        _check_raw_value(name, key, body.get(key), type_,
+                         tuple(choices) if choices else None)
     return Item(                       # Item.__post_init__ enforces § 3's rest
         name=name,
         kind=str(body["kind"]),
