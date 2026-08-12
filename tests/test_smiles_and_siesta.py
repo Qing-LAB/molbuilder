@@ -66,10 +66,11 @@ def test_render_fdf_dna_4mer():
 
 
 def test_block_size_auto_pick_rule():
-    """Size-only baseline (mpi_np unknown or 1).  The auto-picked
-    BlockSize must satisfy ``BlockSize <= n_atoms`` (otherwise
-    SIESTA's per-atom distribution pass hits propor IMAX=0 on
-    multi-rank MPI runs)."""
+    """Size-only baseline (mpi_np unknown or 1).  With no rank count
+    the per-rank orbital derivation (job-contracts.md § 3.2/§ 3.3)
+    cannot be stated; the conservative ladder capped at 8 applies
+    (single-rank runs ignore BlockSize anyway).  Unchanged by U18
+    (2026-08-12) -- the contract derivation requires mpi_np."""
     from molbuilder.siesta import _auto_block_size
     # Known thresholds: each step at a power-of-2 boundary.
     assert _auto_block_size(2)  == 1
@@ -85,61 +86,63 @@ def test_block_size_auto_pick_rule():
     # has no rank-constraint to apply.
     assert _auto_block_size(81, None) == 8
     assert _auto_block_size(81, 1)    == 8
-    # Invariant: BlockSize must never exceed n_atoms (the trigger
-    # condition for `propor: ERROR: IMAX = 0`).
+    # Ladder invariant: the no-rank-info baseline never exceeds
+    # n_atoms (each ladder step sits at/below its threshold).  Note
+    # propor IMAX=0 is NOT a BlockSize trigger -- it is a
+    # matel_table/mpi_np issue (2026-05-28 empirical sweep).
     for n in range(1, 64):
         assert _auto_block_size(n) <= n, n
 
 
-def test_block_size_honours_mpi_rank_constraint():
-    """With mpi_np set, BlockSize must satisfy ``BlockSize * mpi_np
-    <= n_atoms`` so every rank gets >= 1 block.  Violating this is
-    the 2026-05-28 hemeC-dithiol failure (81 atoms x 15 ranks ->
-    BlockSize 8 left ranks 11-14 empty -> propor IMAX=0 abort)."""
+def test_block_size_honours_orbital_rank_constraint():
+    """With mpi_np set, the cap is stated in ORBITALS: SIESTA
+    distributes ORBITALS across ranks, so ``BlockSize <= min(256,
+    floor(n_orbitals_est / mpi_np))`` with n_orbitals_est = 10 *
+    n_atoms -- the SAME estimate the deck's BENCH-MARKS block
+    records (job-contracts.md § 3.2/§ 3.3; atoms-based cap retired
+    U18, 2026-08-12).  The 256 ceiling is the top of the
+    BENCH-MARKS legal override window (range=[16,256])."""
     from molbuilder.siesta import _auto_block_size
 
-    # The hemeC sighting itself.  Without rank-awareness the function
-    # returned 8 (size-only baseline) which crashed the run.
-    assert _auto_block_size(81, mpi_np=15) == 4
+    # The 2026-05-28 hemeC-dithiol geometry: 81 atoms x 15 ranks ->
+    # 810 orb-est / 15 = 54, largest pow2 <= 54 is 32.  (Its propor
+    # IMAX=0 crash was a matel_table/mpi_np issue -- BlockSize 1, 2,
+    # 4 all crashed identically -- so no BlockSize pick "fixes" it.)
+    assert _auto_block_size(81, mpi_np=15) == 32
 
-    # A few more cases sweeping the rank constraint.  With mpi_np
-    # known there is NO artificial cap -- BlockSize scales up
-    # naturally as the system + rank count grow (ScaLAPACK wants
-    # bigger blocks for cache efficiency on big matrices).
-    # 200 atoms / 16 ranks -> floor = 12, largest pow2 <= 12 is 8.
-    assert _auto_block_size(200, mpi_np=16) == 8
-    # 2000 atoms / 64 ranks -> floor = 31, largest pow2 <= 31 is 16.
-    # (Before the cap-removal this was clamped to 8.)
-    assert _auto_block_size(2000, mpi_np=64) == 16
-    # 10000 atoms / 32 ranks -> floor = 312, largest pow2 <= 312 is
-    # 256.  Big system + few ranks -> big BlockSize, as ScaLAPACK
-    # wants.
+    # Sweeping the orbital rank constraint.
+    # 200 atoms / 16 ranks -> 2000 orb / 16 = 125, pow2 = 64.
+    assert _auto_block_size(200, mpi_np=16) == 64
+    # 2000 atoms / 64 ranks -> 20000 orb / 64 = 312 -> ceiling 256.
+    assert _auto_block_size(2000, mpi_np=64) == 256
+    # 10000 atoms / 32 ranks -> 100000 orb / 32 = 3125 -> ceiling
+    # 256 (top of the BENCH-MARKS window; beyond it lies the
+    # load-imbalance regime and, past 1024, the ELPA kernel limit).
     assert _auto_block_size(10000, mpi_np=32) == 256
-    # 100 atoms / 16 ranks -> floor = 6, largest pow2 <= 6 is 4.
-    assert _auto_block_size(100, mpi_np=16) == 4
-    # 80 atoms / 32 ranks -> floor = 2, pow2 = 2.
-    assert _auto_block_size(80, mpi_np=32) == 2
-    # 20 atoms / 32 ranks (oversubscribed: rank > atoms) -> floor=0
-    # -> cap=1 -> pow2 1.  No choice of BlockSize >= 1 can give
-    # every rank a block here; the right user fix is lower mpi_np.
-    assert _auto_block_size(20, mpi_np=32) == 1
-    # 17 atoms / 4 ranks -> floor = 4, pow2 = 4.
-    assert _auto_block_size(17, mpi_np=4) == 4
-    # Universal invariant: with mpi_np set AND mpi_np <= n_atoms,
-    # BlockSize * mpi_np must NEVER exceed n_atoms + (BlockSize - 1).
-    # When mpi_np > n_atoms the run is OVERSUBSCRIBED -- no choice of
-    # BlockSize >= 1 can give every rank a block (mathematically
-    # impossible).  We floor at BlockSize=1 and let SIESTA report
-    # propor IMAX=0 for the trailing ranks; the right user fix is to
-    # lower mpi_np, not change BlockSize.
+    # 100 atoms / 16 ranks -> 1000 orb / 16 = 62, pow2 = 32.
+    assert _auto_block_size(100, mpi_np=16) == 32
+    # 80 atoms / 32 ranks -> 800 orb / 32 = 25, pow2 = 16.
+    assert _auto_block_size(80, mpi_np=32) == 16
+    # 20 atoms / 32 ranks (more ranks than ATOMS, but not than
+    # orbitals) -> 200 orb / 32 = 6, pow2 = 4.  Every rank still
+    # gets an orbital block.
+    assert _auto_block_size(20, mpi_np=32) == 4
+    # 17 atoms / 4 ranks -> 170 orb / 4 = 42, pow2 = 32.
+    assert _auto_block_size(17, mpi_np=4) == 32
+    # Universal invariants: BlockSize >= 1 always; with ranks not
+    # exceeding the orbital estimate, BlockSize * mpi_np <= 10 *
+    # n_atoms (every rank gets >= 1 ORBITAL block); and never above
+    # the 256 window top.
     for n in (5, 7, 11, 17, 19, 31, 47, 81, 199, 250):
         for r in (1, 2, 4, 7, 15, 16, 32, 64):
             bs = _auto_block_size(n, mpi_np=r)
             assert bs >= 1, f"BlockSize must be >=1, got {bs}"
-            if 2 <= r <= n:
-                assert bs * r <= n + (bs - 1), (
-                    f"BlockSize={bs} x mpi_np={r} > n_atoms={n} "
-                    f"-- last rank would be empty (propor IMAX=0)"
+            assert bs <= 256, f"BlockSize={bs} above the window top"
+            if 2 <= r <= 10 * n:
+                assert bs * r <= 10 * n, (
+                    f"BlockSize={bs} x mpi_np={r} > n_orbitals_est="
+                    f"{10 * n} -- trailing ranks would get no "
+                    f"orbital block"
                 )
 
 
@@ -155,6 +158,25 @@ def test_blocksize_zero_omits_the_keyword_entirely():
                                   relax_type="none"))
     assert not re.search(r"^BlockSize", fdf, re.M)
     assert "omitted (SIESTA's own)" in fdf
+
+
+def test_block_size_cap_derives_from_orbitals_not_atoms():
+    """Mutation pin for U18 (2026-08-12): the CPU-mode cap derives
+    from n_orbitals_est = 10 * n_atoms, not from n_atoms
+    (job-contracts.md § 3.2 provenance example + § 3.3).  Each pair
+    below separates the two derivations -- the retired atoms-based
+    cap ``floor(n_atoms / mpi_np)`` returns a DIFFERENT value, so a
+    regression to it fails loudly here.
+
+      16 atoms x 4 ranks:  atoms cap 16//4=4  -> 4
+                           orbital cap 160//4=40 -> 32
+      212 atoms x 4 ranks: atoms cap 212//4=53 -> 32
+                           orbital cap min(256, 2120//4=530) -> 256
+                           (also pins the 256 window-top ceiling)
+    """
+    from molbuilder.siesta import _auto_block_size
+    assert _auto_block_size(16, mpi_np=4) == 32
+    assert _auto_block_size(212, mpi_np=4) == 256
 
 
 def test_explicit_blocksize_override_passes_through_verbatim():
@@ -428,10 +450,14 @@ def test_wrap_into_cell_boundary_handling():
     assert np.allclose(new, p)
 
 
-def test_fdf_picks_safe_blocksize_for_hemec_case():
+def test_fdf_picks_orbital_blocksize_for_hemec_case():
     """End-to-end: render an FDF for 81 atoms with mpi_np=15 (the
-    exact 2026-05-28 hemeC-dithiol failure) and assert the emitted
-    BlockSize is 4 (or smaller), not 8."""
+    2026-05-28 hemeC-dithiol geometry) and assert the emitted
+    BlockSize follows the orbital derivation of job-contracts.md
+    § 3.2/§ 3.3: 810 orb-est / 15 ranks -> pow2 32 (U18,
+    2026-08-12; the retired atoms-based rule gave 4).  The propor
+    IMAX=0 crash of that run was a matel_table/mpi_np issue, not a
+    BlockSize one -- the wrapper's ``-np`` flag is the fix."""
     import re
     import numpy as np
     from molbuilder.structure import Structure
@@ -452,12 +478,16 @@ def test_fdf_picks_safe_blocksize_for_hemec_case():
     m = re.search(r"^BlockSize\s+(\d+)", fdf, re.MULTILINE)
     assert m, "FDF must carry an explicit BlockSize line"
     bs = int(m.group(1))
-    # Strict: must be 4 (the rank-aware pick); a regression that
-    # returns the old 8 would fail here.
-    assert bs == 4, f"expected BlockSize=4 for 81 atoms x 15 ranks, got {bs}"
-    # And the universal invariant: BlockSize x mpi_np <= n_atoms + slack.
-    assert bs * 15 <= 81 + (bs - 1), (
-        f"emitted BlockSize={bs} would leave trailing ranks empty"
+    # Strict: must be 32 (largest pow2 <= 810 orb-est / 15 ranks);
+    # a regression to the retired atoms-based pick (4) fails here.
+    assert bs == 32, (
+        f"expected BlockSize=32 for 81 atoms x 15 ranks "
+        f"(orbital derivation), got {bs}"
+    )
+    # And the orbital invariant: every rank gets >= 1 orbital block.
+    assert bs * 15 <= 10 * 81, (
+        f"emitted BlockSize={bs} would leave trailing ranks with no "
+        f"orbital block"
     )
 
 

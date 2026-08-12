@@ -76,21 +76,42 @@ def _auto_block_size(n_atoms: int,
     Pick a power-of-2 BlockSize that gives ScaLAPACK good cache
     behaviour at the requested rank count.  Larger BlockSize
     reduces communication overhead per orbital block; too-large
-    leaves some ranks idle on the diag step.  The ``floor(n_atoms
-    / mpi_np)`` formula is a reasonable upper bound for the diag
-    block; it just isn't the propor-fixing constraint it was
-    advertised as.
+    leaves some ranks idle on the diag step.  The per-rank cap is
+    stated in ORBITALS, not atoms: SIESTA distributes ORBITALS
+    across ranks (BlockSize is a block of the ScaLAPACK orbital
+    distribution -- SIESTA's own auto-pick is ``ceil(Norb /
+    Nrank)``), so the bound is ``floor(n_orbitals_est / mpi_np)``
+    with ``n_orbitals_est = 10 * n_atoms`` -- the SAME rough DZP
+    estimate the deck's BENCH-MARKS block records as
+    ``n_orbitals_est`` (job-contracts.md § 3.2 provenance example
+    + § 3.3; the atoms-based cap ``floor(n_atoms / mpi_np)`` was
+    retired U18, 2026-08-12).  It is an upper bound for the diag
+    block, not the propor-fixing constraint it was once advertised
+    as (see HISTORICAL NOTE above).
 
     Strategy
     --------
-    Two regimes -- CPU mode and GPU mode -- because the optimal
-    BlockSize is fundamentally different on the two solvers.
+    Two regimes -- CPU mode and GPU mode.  Since U18 (2026-08-12)
+    both derive the cap from the same orbital estimate; they still
+    differ in floor and in the no-rank-info fallback, because the
+    optimal BlockSize differs on the two solvers.
 
     CPU mode (default)
       * mpi_np is None or 1: size-only ladder (1, 2, 4, 8 by
-        n_atoms), capped at 8.
+        n_atoms), capped at 8.  No rank count means the per-rank
+        derivation cannot be stated; this conservative baseline
+        predates the contract and is out of its scope (single-rank
+        runs ignore BlockSize anyway).
       * mpi_np >= 2: largest power of 2 satisfying
-        ``BlockSize <= floor(n_atoms / mpi_np)``.
+        ``BlockSize <= min(256, floor(10 * n_atoms / mpi_np))``.
+        The 256 ceiling is the load-balance ceiling shared with
+        GPU mode below, and it is the top of the BENCH-MARKS legal
+        override window (``range=[16,256]``, job-contracts.md
+        § 3.3) -- the auto pick must land inside the window the
+        deck itself declares legal, and at the top of it for
+        systems big enough to hit the ceiling (that is why the
+        window top and the generator's choice agree by
+        construction on the canonical 212-atom bench deck).
 
     GPU mode (``gpu_mode=True``)
       Orbital-aware formula with two caps:
@@ -138,13 +159,13 @@ def _auto_block_size(n_atoms: int,
     is mpi_np / molecule mismatch, not BlockSize.
     """
     if gpu_mode:
-        # GPU mode wants bigger BlockSize than the historical CPU-
-        # mode formula gives (which uses n_atoms instead of
-        # n_orbitals and so under-estimates by ~10x).
-        #
-        # The orbital-aware cap is ``floor(10 * n_atoms / mpi_np)``
-        # (the 10x is a rough DZP-basis heuristic; underestimates
-        # for heavy elements like Au where DZP gives ~25 orb/atom).
+        # Orbital-aware cap: ``floor(10 * n_atoms / mpi_np)`` (the
+        # 10x is a rough DZP-basis heuristic; underestimates for
+        # heavy elements like Au where DZP gives ~25 orb/atom).
+        # Since U18 (2026-08-12) the CPU branch below derives from
+        # the same orbital estimate per job-contracts.md § 3.2/
+        # § 3.3; GPU keeps its own branch for the floor of 8 and
+        # the mpi_np=None default of 4 (GPU+MPS policy).
         # Two further caps narrow the choice to a defensible range:
         #
         #   * ``256`` (load-balance ceiling).  With BlockSize > 256
@@ -176,10 +197,21 @@ def _auto_block_size(n_atoms: int,
         elif n_atoms >=  8:  return 4
         elif n_atoms >=  4:  return 2
         else:                return 1
-    # CPU mode with mpi_np >= 2.  Rank constraint: every rank must
-    # get >= 1 atom block, i.e. ``BlockSize <= floor(n_atoms /
-    # mpi_np)``.  Take the LARGEST power of 2 that satisfies it.
-    cap = max(1, n_atoms // int(mpi_np))
+    # CPU mode with mpi_np >= 2.  Rank constraint in ORBITALS, not
+    # atoms: SIESTA distributes ORBITALS across ranks, and BlockSize
+    # is a block of that orbital distribution, so every rank must
+    # get >= 1 ORBITAL block, i.e. ``BlockSize <=
+    # floor(n_orbitals_est / mpi_np)`` with ``n_orbitals_est =
+    # 10 * n_atoms`` -- the SAME estimate the deck's BENCH-MARKS
+    # block records (job-contracts.md § 3.2 provenance example +
+    # § 3.3; atoms-based ``floor(n_atoms / mpi_np)`` retired U18,
+    # 2026-08-12).  The 256 ceiling: top of the BENCH-MARKS legal
+    # override window (``range=[16,256]``, § 3.3) and the
+    # load-balance ceiling shared with the GPU branch -- above 256
+    # a low-rank run drops below ~12 blocks/rank and tail-effect
+    # imbalance bites.  Take the LARGEST power of 2 under the cap.
+    orbital_estimate = 10 * max(1, n_atoms)
+    cap = max(1, min(256, orbital_estimate // int(mpi_np)))
     pow2 = 1
     while pow2 * 2 <= cap:
         pow2 *= 2
@@ -1123,10 +1155,11 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         # ``Diag.Algorithm ScaLAPACK`` emitting nothing (siesta.md § 7).
         block_size = None
     elif cfg.parallel_block_size is None:
-        # GPU and CPU have fundamentally different BlockSize optima
-        # (GPU targets the ELPA-CUDA 64-block sweet spot; CPU keeps
-        # the historical n_atoms/mpi_np formula).  Branch the picker
-        # via ``gpu_mode`` rather than hand-rolling it here.
+        # Both modes derive the cap from n_orbitals_est = 10 *
+        # n_atoms (job-contracts.md § 3.2/§ 3.3; atoms-based cap
+        # retired U18, 2026-08-12); GPU differs in floor (8) and in
+        # the mpi_np=None default.  Branch the picker via
+        # ``gpu_mode`` rather than hand-rolling it here.
         block_size = _auto_block_size(
             struct.n_atoms, cfg.mpi_np, gpu_mode=bool(cfg.enable_gpu),
         )
