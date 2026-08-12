@@ -97,10 +97,14 @@ flowchart TB
     D["<b>THE DESCRIPTION</b> — floor 2, portable, <b>names no machine</b>"]
 
     E["<b>Environment</b><br/>floor 1 · detected + declared<br/><i>cores · GPUs · scheduler · partition</i>"]
-    SW["<b>sweep declaration</b><br/><i>which axes vary, over what values</i><br/>an input to prep (M4)"]
+    AL["<b>allocation</b><br/><i>what you ASK FOR this run</i><br/>ranks · cores · GPUs · time · domain"]
+    SW["<b>sweep</b> <i>(benchmark only)</i><br/><i>which axes vary, over what values</i><br/>must fit INSIDE the allocation"]
+
+    E -->|"bounds"| AL
+    AL -->|"bounds"| SW
 
     D --> R
-    E --> R
+    AL --> R
     SW --> R
 
     R["<b>ParameterSet</b> — floor 3<br/><code>list[ResolvedConfig]</code><br/><b>len 1 = a run · len N = a sweep</b>"]
@@ -129,13 +133,16 @@ families, and they differ in *who is allowed to bound them*:
 | family | example | candidate values declared by | bounded by | why that source |
 |---|---|---|---|---|
 | **parameter** | `BlockSize` · `mesh_cutoff` · `energy_shift` | the template item's own `range` · `choices` · `type` | **the schema** | it is a parameter, and § 7 of `template.md` makes every schema parameter an item |
-| **machine** | `mpi_np` · `cpus_per_task` · `gpu_mode` | not a template item at all | **`Environment`'s capability** | floor 2 must never name a machine (`template.md` § 7; `project-layout.md` M1) |
+| **machine** | `mpi_np` · `cpus_per_task` · `gpu_mode` (including *none*) | not a template item at all | **the allocation** — see § 4.1 | floor 2 must never name a machine (`template.md` § 7; `project-layout.md` M1) |
 
 **Both bounds already exist as data.** The template carries `range` and `choices`
-for every parameter; `Environment` carries what this machine actually has, under
-`project-layout.md` § 2.3.1b's M1–M6. So *"is this sweep point legal?"* is
-answered by reading data that was declared for other reasons — never by a table
-inside the generator.
+for every parameter; the allocation is stated for this run and is itself bounded
+by what the cluster has. So *"is this sweep point legal?"* is answered by reading
+data that was declared for other reasons — never by a table inside the generator.
+
+> **⚠ This table said machine axes were bounded by *capability* until 2026-08-11.
+> That was wrong, and the correction is § 4.1's whole point:** a sweep is bounded
+> by **what you asked for**, not by what the machine has.
 
 > **The worked case, because it is the one that goes wrong.** `BlockSize` is a
 > parameter axis whose legal ceiling is **orbitals ÷ ranks** — and ranks are a
@@ -145,20 +152,87 @@ inside the generator.
 > resolver at step 2. It is not the sweep's job, not the deck writer's, and not
 > the wrapper's. See [`tuning.md`](?doc=engines/tuning.md) § 2.11.
 
-### 4.1 Where a sweep is declared
+### 4.1 Capability, allocation, sweep — three things, and why they must stay three
 
-**A sweep is an input to `prep`, never a field of the description.** This is
-forced, not chosen: `project-layout.md` M4 says allocation is a `prep` input and
-not part of the description, and a machine axis *is* an allocation. Putting a
-parameter axis in the description while a machine axis arrives at `prep` would
-split one concept across two floors for no reason.
+*Specified by the user, 2026-08-11. The reason matters as much as the rule, so it
+is recorded with it.*
 
-> **The exact surface a person types is [`roadmap.md`](?doc=roadmap.md)'s open
-> decision 31**, and this document deliberately stops short of it. What is fixed
-> here is the *shape*: a sweep is `{axis: [values]}`, it arrives at `prep`, and
-> its legality is checked against the two sources in the table above.
+**`project-layout.md` § 2.3.1b already separates the first two** (M1–M6:
+*capability* is what the machine has, *allocation* is what you ask for, and M4
+makes the allocation an input to `prep`). **This section adds the third and the
+containment between them:**
 
----
+```
+capability    what the cluster HAS            declared in molbuilder.json, per cluster,
+    ⊇                                          plus what floor 1 detects
+allocation    what you ASK FOR, this run      your choice — and asking for less is
+    ⊇                                          often the better choice (see below)
+sweep         the points a benchmark tries    must FIT INSIDE the allocation
+```
+
+> **The rule:** a sweep point that exceeds the allocation is refused, **not**
+> silently clamped and **not** checked against capability instead. *"The sweep …
+> should not exceed that allowable resource. It should be compatible."*
+
+**Why the allocation is not just "the capability" — and this is the part a
+design would get wrong by collapsing them:**
+
+> **How a job is scheduled depends on how much you ask for.** Ask for the
+> maximum every time and your job sits at very low priority; ask for less and it
+> starts sooner. **Which trade you want is yours to make, and it changes per
+> run** — so the allocation is a *decision*, not a fact to be derived, and
+> nothing may helpfully fill it in from what the machine happens to have.
+
+**That is also the argument for the whole benchmark → run sequence.** You sweep
+to find out *what this machine is actually fastest at*; then **you** decide the
+configuration the real run asks for, knowing both the speed and the queue cost.
+`summarize` writing *a recommendation, not a decision*
+(`project-layout.md` § 2.3.2) is the same principle one step earlier.
+
+#### 4.1a Where each of the three is stated
+
+| | stated in | shape |
+|---|---|---|
+| **capability** | `molbuilder.json` — the clusters available in this environment and **the hardware of each** — plus floor-1 detection on a workstation (M6: a workstation needs no file) | `scheduler.routing` is the existing menu of named domains and already carries **limits** (`max_time`, `max_mem_gb`). **⚠ It does not yet carry cores or GPUs per cluster**, which this design needs — recorded as a gap, not designed here |
+| **allocation** | the command, at `prep` — *"the actual run would then also provide this parameter for the resources"* | ranks, cores per rank, GPUs (or none), time, and the domain |
+| **sweep** | the command, at benchmark time — *"can we speed through these different combinations … block size, CPU numbers, GPU, and how they combine, or no GPU at all"* | `{axis: [values]}`, checked against the allocation |
+
+### 4.2 The one parameter that is also an allocation input
+
+**`BlockSize` is the case that crosses the line, and it is deliberate.** It is a
+science parameter — a template item — *and* something a benchmark measures and a
+person then pins for the real run. So a run may state it beside its resources.
+
+**Its precedence is three-deep, and each level is a real state:**
+
+| given | source | meaning |
+|---|---|---|
+| stated at `prep` | the command | you benchmarked it and chose |
+| not stated | **the template's value** | whatever the description carries |
+| template carries none | the default | `tuning.md` § 2.11's *unset → proposed*, or omitted entirely |
+
+> **This does not open a general "override any parameter at `prep`" channel**,
+> and the distinction is worth holding: `BlockSize` earns it because *the value
+> depends on the launch* — its ceiling is orbitals ÷ ranks, and ranks are an
+> allocation. **A parameter whose right value depends on how many ranks you
+> asked for cannot be finally decided in a description that names no machine.**
+> That is the membership rule; anything else varying belongs in a stage's
+> `overrides`, where the description can carry it.
+
+### 4.3 Neither one ever enters the description
+
+**A sweep and an allocation are both inputs to `prep`, never fields of the
+description.** This is forced, not chosen: M4 already says so for the allocation,
+and a machine axis *is* an allocation. Putting a parameter axis in the
+description while a machine axis arrives at `prep` would split one concept
+across two floors for no reason.
+
+**The consequence worth stating plainly:** the same portable folder is what you
+benchmark, what you then run at the configuration you chose, and what someone
+else runs on a different cluster at a configuration of their own. **None of
+those three edits it.** That is what floor 2's *names no machine* is actually
+buying.
+
 
 ## 5. `ParameterSet` — the object that makes `kind` a value
 
@@ -285,6 +359,6 @@ where two things can disagree, is not this work.
 
 | # | question | why it is not decided here |
 |---|---|---|
-| **31** | how a person *states* an allocation and a sweep | a surface decision, and the user's — § 4.1 fixes the shape without it |
+| **38** | `scheduler.routing` has **no cores, GPU count or GPU type** per entry, so *"does this allocation fit this cluster?"* cannot be answered from config | § 4.1a needs it and this document does not design the config's shape — `architecture.md` § 8 owns that |
 | **G3** | whether `bench` keeps a positional in the grammar | `architecture.md` § 0 settles the *mechanism* (a merge); the word is P9's |
 | **37** | ~~whether `transport`'s chained runs become a `ParameterSet`~~ — **decided 2026-08-11 (user): they do not.** Transport is a **separate kind — a multi-component job**: *"it involves multiple results and the transportation needs to combine all of them… a different kind of beast"* | it is not a sweep and not a ladder. **This contract covers single-parameter-set jobs** — structure, optimization, spectra — and a multi-component kind is designed on its own, not folded in here |
