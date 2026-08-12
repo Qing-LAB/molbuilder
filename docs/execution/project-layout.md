@@ -87,7 +87,7 @@ wall, or a filename convention?**
 | | where the boundary is |
 |---|---|
 | **hierarchical** | **a real wall.** The starting point stays in the parent; each run directory sees only rendered files and copies |
-| **flat** | **not built.** One directory holds both sides at once — the template sits beside the results, and stages and attempts are told apart by **filename** |
+| **flat** | **no wall is built.** One directory holds both sides at once — the template sits beside the results, and stages and attempts are told apart by **filename** |
 
 **That is also why the flat shape's results overlap on purpose.** With one
 directory there is one set of warm files, so the geometry is simply *the latest*
@@ -920,7 +920,13 @@ machine, not relaxing the molecule**.
 > different `SystemLabel` and SIESTA will not read them into the real stage; and
 > they are **forced cold**, so they cannot pick anything up either. See § 4.
 
-You submit them with `jobset submit bench tight`, then
+You submit them with `jobset submit bench tight` — **one trial per
+invocation**, the next unlaunched one, and it tells you how many remain;
+naming a trial (`jobset submit bench tight G1K8C2`) submits that one.
+Nothing submits the whole set: submission is manual and one by one, the same
+rule as every other launch *(decided 2026-08-12, user — the earlier reading
+of this sentence, one command queueing every trial, was residue of the
+retired `run-bench` batch launcher)*. When the queue has drained,
 `jobset summarize bench tight` reads the timings and writes
 `bench-result.json` — a recommendation, not a decision:
 
@@ -1474,7 +1480,7 @@ how a folder stops being trustworthy.
 | File | Kind | Written by | If you delete it |
 |---|---|---|---|
 | `task.json` | **source** | the user's surface | the calculation cannot be regenerated or reopened |
-| `<label>_<NN>_<name>.fdf` | derived | the producer, from the source | regenerate |
+| `<label>_<NN>_<name>.fdf` | derived | `prep` step 3, from the template ⊕ the allocation | re-prep |
 | `<label>_<name>.run.sh` / `.sbatch` | derived | prep, from the deck + the machine's config | re-prep |
 | `job-set.json`, `STAGE-PLAN.md` | derived | the producer / prep | regenerate |
 | `*.psml`, `mb_monitor.py` | **input**, copied in | the producer | re-resolve from the project's cache |

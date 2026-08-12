@@ -643,7 +643,9 @@ Names and values are validated **here, on your laptop, not on the cluster**
 `overrides` key the schema does not know, or a value outside its bounds is
 refused with the field named ([`stages.md § 6.6`](?doc=engines/stages.md)).
 
-> ⚠ **This verb is not built** (§ 5.3's grammar table). What it replaces —
+> ✅ **This verb LANDED 2026-08-11** (`b7ca09d7`, plan step 2) — `jobset
+> describe` writes the template + `task.json` + data files, floor 2 only.
+> What it replaces —
 > `molbuilder fdf … --jobset`, which wrote a finished flat bundle of decks — is
 > **gone** *(decided 2026-08-11, user: "obsolete residue from the flat-dir
 > design")*. It skipped the description, so nothing recorded what was asked for,
@@ -750,16 +752,17 @@ not about one run of it. **The kind is a positional, not a `--bench` flag**, bec
 `prep bench` and `prep run` are peers: measuring and running are the same act
 over different parameters (`project-layout.md § 2.3.1a`).
 
-> **What of this grammar runs today**, checked against the CLI on 2026-08-10.
-> The grammar is the target; three of its cells are not built, and a reader
-> should not have to discover that by typing.
+> **What of this grammar runs today**, re-checked against the CLI on
+> 2026-08-12. The grammar is the target; the `bench` column is not built
+> (plan step 6 folds it in), and a reader should not have to discover that
+> by typing.
 >
 > | | `run` | `bench` | no kind |
 > |---|:--:|:--:|:--:|
 > | `prep` | ✅ | ⛔ `molbuilder bench generate` + `bench prep` | ✅ (lays out every container) |
 > | `submit` | ✅ | ⛔ `molbuilder bench siesta-gpu` | — |
 > | `summarize` | — | ⛔ `molbuilder bench summarize` | — |
-> | `describe` | — | — | ⛔ **not built.** Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once. Until `describe` lands, a description is written by hand or by the planned tabs |
+> | `describe` | — | — | ✅ **LANDED 2026-08-11** (plan step 2). Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once |
 > | `status` | — | — | ✅ whole calculation · ✅ per-stage (`status <stage>`) |
 > | `plan` | — | — | ✅ |
 >
@@ -843,19 +846,21 @@ attempt, so an earlier stage's geometry is still openable after a later one has
 run. Equally, an HPC job can be `flat`. Nothing in molbuilder infers one from the
 other.
 
-> `--mode` is **required** today. `molbuilder.json` already carries an
-> `execution.mode`, and `runtime_config.get_execution()` reads, validates and
-> returns it — but **only `bench` consults it**, and wiring `submit` to fall
-> back on it (flag, then config, then detected scheduler) is recorded work
-> rather than shipped behaviour.
+> `--mode` falls back to `execution.mode` **(C11, landed 2026-08-11)**: flag,
+> then config — and the chain ends there. Unset in both is a **refusal**, not
+> a derivation from the detected scheduler: deciding `submit` from detection
+> would gate submission on where you happen to be standing, which
+> `running-a-job.md` § 5.4 forbids (*the mode, not the detected scheduler,
+> gates submission*).
 >
 > ⚠ **That key has no live contract.** It is validated by code and cited
 > throughout `molbuilder/bench/` as *"job-execution.md § 8.13"* — a document
 > **retired in the 2026-07 migration** (`audit-2026-07-28-document-migration.md`
 > maps it to `execution/running-a-job.md`, whose section numbers did not
 > survive). So `execution` is a config section the code enforces and no live
-> document defines. Writing that contract is the first half of wiring `submit`
-> to it; you cannot resolve against a rule nobody has written down.
+> document fully defines. `submit` was wired to it 2026-08-11 (C11, the note
+> above); writing the key's own contract is the half that remains — today
+> `running-a-job.md` § 5.4 is its nearest live statement.
 
 #### The loop
 
@@ -956,7 +961,8 @@ nothing"* (`checkpointing.md` S3).
 - **`plan`** prints the jobs, each one's resources, and what each would take
   from a run it is continued from. It changes nothing — the "look before you
   leap" step.
-- **`submit`** names **one** stage and takes a **required** `--mode`:
+- **`submit`** names **one** stage and takes a `--mode` (falling back to
+  `execution.mode` — C11, 2026-08-11; unset in both is a refusal, § 5.3):
   - **`submit`** hands that one job to SLURM. One `sbatch`, one invocation, no
     dependency flag, nothing queued behind it.
   - **`direct`** runs that one job **locally** (`bash …run.sh`) and waits for
@@ -1045,8 +1051,9 @@ system** adds is submission and routing:
   your calculations each row belongs to, not just which stage.
 
 A workstation with no `scheduler` block configured simply gets `.run.sh` files
-and runs with `--mode direct`; the `.sbatch` is emitted only when a scheduler is
-configured.
+and is run with `--mode direct` (or `execution.mode: direct` set once — the
+mode is always stated, never derived); the `.sbatch` is emitted only when a
+scheduler is configured.
 
 ---
 

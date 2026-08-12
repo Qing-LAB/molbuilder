@@ -162,12 +162,10 @@ earlier one's `.XV`, and it is why the formula stays out of the filename (§ 3).
 > measuring, the same continuing, the same checkpoints. What changes is what is
 > left on disk afterwards, and § 7 is where that difference stops being cosmetic.
 
-⛔ **Gap 2.** Today the producer renders both decks here and `prep` lays out the
-stage directories for the whole bundle at once. Neither matches the above: the
-decks have to move down into their stage directories and be rendered on the
-target, and `prep` has to become per-stage. `bench prep` already works this way
-— detect the machine, format the scripts for it — so the shape exists; the
-staged path does not use it yet. And read the relationship the right way round:
+✅ **Gap 2 — CLOSED 2026-08-11** (plan steps 3–4). `prep` is per-stage
+(`jobset prep run <stage>`) and renders each deck on the target, one per
+element of the resolved `ParameterSet`, allocation in hand.
+And read the relationship the right way round:
 **`prep` is the framework and benchmarking is one thing you prep**
 (`project-layout.md § 2.3.1a`) — the benchmark is simply where that framework got
 built first, so the general part needs lifting out rather than the staged path
@@ -494,14 +492,14 @@ table keeps the count.*
 
 | # | Gap | Recorded in | Blocks |
 |---|---|---|---|
-| 9 | **Nothing writes a template.** The format is settled and no code emits one, so § 4's folder cannot be produced at all | `template.md` · plan P12 u6b | **everything downstream** — this is the keystone |
-| 10 | **`jobset describe` does not exist**, and its predecessor `fdf --jobset` is now deleted. So there is no verb at all for §§ 3–4 | `job-system.md § 5.1`, § 5.3's grammar | gap 9's other half |
-| 11 | **Nothing computes the schema fingerprint.** `task.json` reserves the field and the preflight checks it; no writer fills it, so the check either never fires or always complains | `stages.md § 6.6` | the *"written against a different schema"* warning |
+| 9 | ✅ **CLOSED 2026-08-11** (plan step 1): `describe` emits `<label>.template.toml` from the schema | `template.md` · plan P12 u6b | — |
+| 10 | ✅ **CLOSED 2026-08-11** (plan step 2, `b7ca09d7`): `jobset describe` writes template + `task.json` + data files | `job-system.md § 5.1`, § 5.3's grammar | — |
+| 11 | ✅ **CLOSED 2026-08-11** (with gap 9): the template writer computes `schema_fingerprint`, mutation-tested | `stages.md § 6.6` | — |
 | 12 | **`user_custom` has no schema field.** It must be an ordinary item for USER-CUSTOM text to survive `prep`; no engine config declares one | `template.md § 9.2`, § 12 | the reserved-block completeness claim (G6) |
 | 13 | **The `required` check is unbuilt.** A stage may declare what it cannot run without; nothing verifies it in the run directory | `job-contracts.md § 4.4` · `stages.md § 5` | a TranSIESTA ladder starting without its `.TSHS` |
 | 14 | **Nothing offers a save before `prep` overwrites a folder.** Invariant **A3** — *the save precedes the change it protects* — has no trigger | `checkpointing.md § 9`, § 12 | A3, and the flat shape's only safety net |
 | 15 | **`snapshot verify` has no verb.** The archive check exists and is reachable only by attempting a restore — the worst moment to learn an archive is gone | `checkpointing.md § 12` | knowing a history is intact |
-| 16 | **`submit --mode` is required and ignores `execution.mode`.** The config key is validated and read, and only `bench` consults it — a section the code enforces and no live document defines | `job-system.md § 5.3` | the one-command workstation path |
+| 16 | ✅ **CLOSED 2026-08-11** (C11): `submit --mode` falls back to `execution.mode`; unset in both is a refusal, never a derivation from the detected scheduler (2026-08-12 aligned `bench` to the same rule) | `job-system.md § 5.3` · `running-a-job.md § 5.4` | — |
 
 **Five of checkpointing's own invariants are untestable until the layout lands**
 — **S2**, **S3**, **S4**, **S6** and **L8** are stated, tracked and deliberately

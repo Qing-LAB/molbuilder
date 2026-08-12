@@ -152,20 +152,21 @@ flowchart LR
 > template. **One format, one renderer, two states.** There is no separate "form
 > schema" to keep in step.
 
-#### 3.1a ⚠ Three keys the template drops that a UI cannot do without
+#### 3.1a ✅ Three keys the template must carry for its UI reader — CARRIED
+since 2026-08-11 (plan step 1, `4aeba915`)
 
-**Checked against `web/form-schema.md` § 1a and `script_emit.BenchField`, and the
-template loses three of them:**
+**Checked against `web/form-schema.md` § 1a and `script_emit.BenchField`; the
+template was losing all three until the TOML writer landed:**
 
 | key | what it is | status |
 |---|---|---|
-| **`label`** | the human name — *"MPI ranks (np)"*, *"Max memory (per rank)"* | **lost.** `BenchField.name` holds the *field* name (`mpi_np`) and its comment calls it *"human-readable label"*, which it is not |
-| **`section`** | which fieldset — *"Compute & budget"*, *"System"* | **lost.** `declaration_for` reads it only to decide whether the field is exposed, then discards it |
-| **`null_label`** | what *unset* is called — *"(single-process)"*, *"(auto)"* | **lost.** `optional` says unset is a real state; nothing says how to show it |
+| **`label`** | the human name — *"MPI ranks (np)"*, *"Max memory (per rank)"* | ✅ carried (`template.py` Item; was lost — `BenchField.name` held the *field* name) |
+| **`section`** | which fieldset — *"Compute & budget"*, *"System"* | ✅ carried (was read once to decide exposure, then discarded) |
+| **`null_label`** | what *unset* is called — *"(single-process)"*, *"(auto)"* | ✅ carried (was lost; `optional` said unset is a real state, nothing said how to show it) |
 
 **A template with these three missing produces a UI that cannot name its own
-fields or group them.** They cost nothing to carry — they are already in the
-field metadata — and adding them later means re-emitting every template.
+fields or group them** — which is why they are in `template.md § 5`'s key set
+and round-trip losslessly with the rest.
 
 > **So the rule for the TOML key set is: carry what every reader needs, and
 > decide it once.** `template.md` § 5's key table is the authority and gains
@@ -410,12 +411,13 @@ flowchart TB
     F7 --> F6 --> F5 --> F4 --> F3 --> F2 --> F1
 ```
 
-**Two modules do not exist today and are the whole of the new code:**
+**Two modules are the whole of the new code — both LANDED 2026-08-11
+(plan steps 1 and 3):**
 
-| module | floor | what it owns | what it replaces |
+| module | floor | what it owns | what it replaced |
 |---|:--:|---|---|
-| **`template/`** | 2 | read and write `<label>.template.toml`; the `Item` type; emit from schema | a template that is written by a CLI command and read back by nothing |
-| **`resolve/`** | 3 | template + task + `Environment` + **allocation** + sweep + pins → **`ParameterSet`** | the missing floor-2 → floor-3 edge, and `bench/`'s parallel grid builder |
+| **`template.py`** | 2 | read and write `<label>.template.toml`; the `Item` type; emit from schema | a template that was written by a CLI command and read back by nothing — `prep` now rebuilds the config from it |
+| **`resolve.py`** | 3 | template + task + `Environment` + **allocation** + sweep + pins (+ the specialisation's `MachineTranslation`) → **`ParameterSet`** | the missing floor-2 → floor-3 edge, and `bench/`'s parallel grid builder (folding at step 6) |
 
 **`resolve/` is the hinge, and it is where the duplication dies.** Everything
 `bench/` does that is not measurement-specific is one of `prep`'s five steps; once

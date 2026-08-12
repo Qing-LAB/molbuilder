@@ -259,8 +259,9 @@ worse than no check: it fails a directory that is working correctly.
 thing at different sizes**, so there is one way in and one vocabulary:
 
 ```
-describe it   →  molbuilder jobset prep    run <stage> [--from <run>]
-run it        →  molbuilder jobset submit  run <stage> --mode direct|submit
+describe it   →  molbuilder jobset describe <structure> <dir> [--stage-strategy …]
+set it up     →  molbuilder jobset prep     run <stage> [--from <run>]
+run it        →  molbuilder jobset submit   run <stage> [--mode direct|submit]
 look at it    →  molbuilder jobset status
 ```
 

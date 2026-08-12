@@ -538,13 +538,13 @@ Named, bounded debt whose full statements live in their owning docs; listed
 here so scheduling them is a roadmap edit, not an archaeology dig:
 
 - **The code against the contracts, measured 2026-08-11 — twelve conformance
-  debts (C1–C13).** Where the code has not caught up with a contract that
-  already settled: `molbuilder run` and `molbuilder fdf` still registered, the
-  template still written as `.fdf.template`, trial directories still `point-`,
-  `cfg.stage` still the emitter's only channel for the stage token, no `jobset
-  describe`, no fingerprint writer — **and one line that prints a deleted flag
-  to the user**. Each is scheduled into an existing phase, with its order
-  argued, in
+  debts (C1–C13); most CLOSED by the plan-ladder steps 1–5 (2026-08-11/12):**
+  `molbuilder run` and `molbuilder fdf` are deleted, the template is TOML with
+  a computed fingerprint, `jobset describe` exists, `--mode` falls back to
+  `execution.mode`, and the deleted-flag print is gone. Still open, scheduled
+  with steps 6–7: trial directories still `point-` (C6), `cfg.stage` still the
+  emitter's channel for the stage token (C7), `BlockSize`'s third state (C8),
+  and the rank-clamp message (C12, needs a call). The order is argued in
   [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
   § 5g. They sit *behind* the front rather than blocking it, which is why none
   earns a milestone.
@@ -573,16 +573,17 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   |---|---|---|
   | 1 names & facts | ✅ | — |
   | 2 description | ✅ | — |
-  | 3 plan | ⚠ | `stages_to_jobset` receives **no machine**, though floor 3 is defined as *asked-for + machine*. Not a bug: it runs at **produce**, on a laptop, where there is no machine to receive |
+  | 3 plan | ✅ | **the migration LANDED** (2026-08-11, plan steps 3–4): `resolve()` runs at `prep`, on the target, and every element carries its own machine ask. `stages_to_jobset` remains only as an orphaned producer that folds at step 6 |
   | 4 layout | ✅ | — |
   | 5 launch | ⚠ | `runwrap` **writes** a script and `submit` **starts** one; one floor holds both. Real, harmless, and splitting it costs more than it returns |
   | 6 observe | ⚠ | in the flat layout, one stage's verdict is still read from the whole folder |
   | 7 surfaces | ⚠ | the web has no staged path at all |
   | — | `bench/` | a second copy of floors 3–6 for sweeps; folds in after the migration below |
 
-  **Every ⚠ except floor 5's is the same unfinished change** — the producer runs
-  at *produce* and needs to run at `prep`, which the plan calls "the one real
-  migration".
+  **Every ⚠ except floor 5's was the same unfinished change** — the producer
+  ran at *produce* and needed to run at `prep`, "the one real migration" —
+  **and it landed 2026-08-11** (plan step 4). What is left of it is the
+  `bench` fold (step 6) and the web's staged path (P10).
 
 - **Capability and allocation reach `prep`** — `project-layout.md § 2.3.1b`
   defines the two and rules M1–M6. Three are held today (M1 the machine is
@@ -596,8 +597,9 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
     the header submits to another.
   - **M3 — only the detected half is recorded.** A declared `qos` or `account`
     appears in no run-directory record.
-  - **M4 — the allocation is still fixed at *produce*,** on a laptop, before
-    any machine is known.
+  - **M4 — ✅ closed 2026-08-11:** the allocation is an input to `prep`
+    (`--np/--cpus-per-task/--gpus/--time/--mem/--domain`), riding on each
+    element's `ResolvedConfig.resources`.
 
   All three close with the same move: the producer runs at `prep` rather than
   at produce, and the call that resolves the machine merges the config block
