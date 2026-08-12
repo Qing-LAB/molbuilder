@@ -646,7 +646,57 @@ def read_template(text: str) -> Template:
                 f"{type(table).__name__}")
 
     items = tuple(_item_from(name, body) for name, body in table.items())
+    # § 5: the ``type`` "types what a reader must check, which a parser
+    # cannot know".  Until the U-program follow-up (2026-08-12) NO reader
+    # checked: a hand-edit could put the string "three hundred" into a
+    # float item and it flowed through config_from_template into the
+    # engine config unrefused -- surfacing later, in rendering, with a
+    # message about anything but the edit that caused it.
+    for it in items:
+        _check_item_value(it)
     return Template(engine=str(engine), fingerprint=fingerprint, items=items)
+
+
+def _is_int(v) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+#: § 5's checkable meaning of each ``type``, for a SET value.
+_TYPE_CHECKS = {
+    "int":     _is_int,
+    "float":   lambda v: _is_int(v) or isinstance(v, float),
+    "str":     lambda v: isinstance(v, str),
+    "text":    lambda v: isinstance(v, str),
+    "bool":    lambda v: isinstance(v, bool),
+    "enum":    lambda v: isinstance(v, str),
+    "pow2":    lambda v: _is_int(v) and v > 0 and (v & (v - 1)) == 0,
+    "int3":    lambda v: (isinstance(v, (list, tuple)) and len(v) == 3
+                          and all(_is_int(x) for x in v)),
+    "strlist": lambda v: (isinstance(v, list)
+                          and all(isinstance(x, str) for x in v)),
+    "intlist": lambda v: (isinstance(v, list) and all(_is_int(x) for x in v)),
+}
+
+
+def _check_item_value(it: "Item") -> None:
+    """Refuse a SET value that is not what its own declaration says it is.
+    ``range`` stays advisory (§ 3.3 calls it *"advisory bounds"* -- a value
+    outside it is a choice, not a type error); the TYPE and an enum's
+    membership are not advice."""
+    if it.value is None:
+        return
+    check = _TYPE_CHECKS.get(it.type)
+    if check is not None and not check(it.value):
+        raise ValueError(
+            f"template: item {it.name!r} declares type {it.type!r} but "
+            f"carries value {it.value!r}.  This file is hand-editable and "
+            f"the declaration is the contract for the edit "
+            f"(engines/template.md § 5).")
+    if it.type == "enum" and it.choices and it.value not in it.choices:
+        raise ValueError(
+            f"template: item {it.name!r} is an enum of "
+            f"{', '.join(map(repr, it.choices))} but carries "
+            f"{it.value!r}.")
 
 
 def _shape(v: Any, type_: str) -> Any:

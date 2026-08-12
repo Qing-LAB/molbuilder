@@ -284,3 +284,32 @@ def test_an_unknown_item_name_is_refused_not_dropped():
     broken = text.replace("[item.mesh_cutoff]", "[item.mesh_cutof]")
     with pytest.raises(ValueError, match="mesh_cutof"):
         T.config_from_template(broken, SiestaConfig)
+
+
+def test_a_hand_edited_value_of_the_wrong_type_is_refused_by_name():
+    """E5 (U-program follow-up): a template is hand-editable, and § 5 says
+    the ``type`` is what a reader MUST check.  Until 2026-08-12 no reader
+    did -- the string "three hundred" flowed into a float field and out
+    the other side of config_from_template as a str, to surface later in
+    rendering with a message about anything but the edit."""
+    import re
+    text = T.render_template(SiestaConfig(system_label="JOB",
+                                          mesh_cutoff=300.0))
+    i = text.index("[item.mesh_cutoff]")
+    j = text.index("[item.", i + 10)
+    block = text[i:j]
+    mutated = text.replace(block, re.sub(
+        r"^value = .*$", 'value = "three hundred"', block, flags=re.M))
+    assert mutated != text
+    with pytest.raises(ValueError, match="mesh_cutoff.*float"):
+        T.read_template(mutated)
+    # an enum outside its own choices is the same class of edit
+    text2 = T.render_template(SiestaConfig(system_label="JOB",
+                                           basis_size="TZP"))
+    i = text2.index("[item.basis_size]")
+    j = text2.index("[item.", i + 10)
+    block = text2[i:j]
+    mutated2 = text2.replace(block, re.sub(
+        r"^value = .*$", 'value = "ENORMOUS"', block, flags=re.M))
+    with pytest.raises(ValueError, match="basis_size"):
+        T.read_template(mutated2)
