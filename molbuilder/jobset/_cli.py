@@ -19,6 +19,7 @@ from pathlib import Path
 
 import click
 
+from .ledger import record as _ledger
 from .model import JobSet
 from .plan import render_plan
 from .prep import prep_jobset, PrepError
@@ -229,7 +230,83 @@ def _check_kind(kind: str, js=None) -> None:
             f"(job-system.md § 5.3).")
 
 
-def _offer_bench_verdict(base, allocation):
+def _stage_bench_dir(base, stage):
+    """The stage's ``bench/`` container (job-contracts.md § 6.3), resolved
+    through the description — where its trials, its job-set and its verdict
+    all live.  Returns ``(container_path, token)``; refuses an unknown
+    stage with the ladder listed."""
+    from ..task import FILENAME, read_task
+    from .prep import _bench_container, _token_for
+    desc = Path(base) / FILENAME
+    if not desc.is_file():
+        return None, None                    # hand-built set: no container
+    task = read_task(desc)
+    if not task.stages:
+        return Path(base) / _bench_container(task, ""), ""
+    if stage is None:
+        raise click.ClickException(
+            "which stage's benchmark? name it: "
+            f"{', '.join(s.name for s in task.stages)}.")
+    for s in task.stages:
+        if s.name == stage:
+            token = _token_for(task, s.name)
+            return Path(base) / _bench_container(task, token), token
+    raise click.ClickException(
+        f"no stage named {stage!r} in this description. Available: "
+        f"{', '.join(s.name for s in task.stages)}.")
+
+
+def _pick_trial(js, base, trial, mode):
+    """Which trial this invocation launches — § 2.3.2, decided 2026-08-12:
+    ONE per invocation under submit.  Named → that one; bare → the NEXT
+    UNLAUNCHED (launch recorded as run.json in the trial's dir), with the
+    remaining count said out loud.  `--mode direct` is not submission and
+    runs the set sequentially, as ever."""
+    from .materialize import RUN_LAUNCH_FILE, job_dir_names, shape_of
+    if trial is not None:
+        if not any(j.name == trial for j in js.jobs):
+            raise click.ClickException(
+                f"no trial named {trial!r}. This sweep's trials: "
+                f"{', '.join(j.name for j in js.jobs)}.")
+        _ledger(base, "submit", "trial-picked", trial=trial,
+                picked_by="named by the user")
+        return trial
+    if mode != "submit":
+        return None                       # direct: the whole set, in order
+    dirs = job_dir_names(js, shape_of(js, base))
+    pending = [j.name for j in js.jobs
+               if not (Path(base) / dirs[j.name] / RUN_LAUNCH_FILE).is_file()]
+    if not pending:
+        raise click.ClickException(
+            f"all {len(js.jobs)} trials are launched.  next: "
+            f"molbuilder jobset summarize bench <stage>")
+    click.echo(f"next unlaunched trial: {pending[0]}  "
+               f"({len(pending)} of {len(js.jobs)} remain)")
+    _ledger(base, "submit", "trial-picked", trial=pending[0],
+            picked_by="next unlaunched (run.json absent)",
+            remaining=len(pending), total=len(js.jobs))
+    return pending[0]
+
+
+def _load_bench_set(base, stage):
+    """The stage's OWN sweep record, from its container — or the root
+    job-set for a hand-built (description-less) sweep."""
+    container, _ = _stage_bench_dir(base, stage)
+    if container is None:
+        return _load(str(base))              # legacy/hand-built library sets
+    jpath = container / _JOBSET_FILE
+    if not jpath.is_file():
+        raise click.ClickException(
+            f"no {jpath.relative_to(Path(base))} -- this stage has no "
+            f"prepped benchmark.  Run `molbuilder jobset prep bench "
+            f"{stage}` first.")
+    try:
+        return JobSet.load(jpath), Path(base)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+
+def _offer_bench_verdict(base, allocation, stage=None):
     """§ 2.3.2: a verdict can always be FOUND — finding is not permission.
 
     A benchmark lives inside the calculation it measured, so `prep run` can
@@ -242,7 +319,9 @@ def _offer_bench_verdict(base, allocation):
     """
     import dataclasses as _dc
     import json as _json
-    path = Path(base) / "bench-result.json"
+    container, _ = _stage_bench_dir(base, stage)
+    path = ((container / "bench-result.json") if container is not None
+            else Path(base) / "bench-result.json")
     if not path.is_file():
         return allocation, {}
     try:
@@ -256,7 +335,8 @@ def _offer_bench_verdict(base, allocation):
     if not choice:
         return allocation, {}
     knobs = choice.get("knobs") or {}
-    click.echo("a benchmark result exists for this calculation:")
+    click.echo(f"a benchmark result exists for "
+               f"{'stage ' + repr(stage) if stage else 'this calculation'}:")
     click.echo(f"    {choice.get('rationale', choice)}")
     if rec:
         click.echo(f"    sizing (measured on THAT machine -- a starting "
@@ -273,6 +353,12 @@ def _offer_bench_verdict(base, allocation):
         # question is asked and an unanswered question declines.
         click.echo("")
         accepted = False
+    try:
+        _src = str(path.relative_to(Path(base)))
+    except ValueError:
+        _src = str(path)
+    _ledger(base, "prep", "bench-verdict",
+            stage=stage, source=_src, accepted=accepted)
     if not accepted:
         click.echo("  not applied -- your flags and defaults stand.")
         return allocation, {}
@@ -503,8 +589,8 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             elif stage is not None:
                 # § 2.3.2's other half: a run prepped where a verdict sits
                 # is OFFERED it -- asked, never applied silently.
-                allocation, verdict_pins = _offer_bench_verdict(base,
-                                                                allocation)
+                allocation, verdict_pins = _offer_bench_verdict(
+                    base, allocation, stage=stage)
                 pins = verdict_pins or None
             from .prep import prep_calculation
             dirs = prep_calculation(base, stage, allocation=allocation,
@@ -513,8 +599,11 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                                     translation=translation)
             # `prep` WROTE floor 3 as part of those five steps; read it back
             # rather than keeping a second copy in hand, so what the attempt
-            # setup below sees is exactly what landed on disk.
-            js, _ = _load(str(base))
+            # setup below sees is exactly what landed on disk.  A sweep's
+            # record lives in the stage's bench/ container (§ 6.3), a run's
+            # at the root -- read each from its own home.
+            js, _ = (_load_bench_set(str(base), stage) if kind == "bench"
+                     else _load(str(base)))
         else:
             # A pre-made bundle: the benchmark's own, and anything produced
             # before `describe` existed.  It carries finished decks and a
@@ -530,8 +619,18 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     # resolved" (job-system.md § 2.3.3): a person debugging a machine
     # difference reads which file supplied each setting, at the moment it
     # took effect (user request 2026-08-12; secrets excluded by design).
+    # The same facts go to the bundle's LEDGER: the terminal is gone when
+    # a job misbehaves hours later; the bundle is not.
     from ..runtime_config import config_provenance, format_provenance
-    click.echo(format_provenance(config_provenance(project_dir=base)))
+    prov = config_provenance(project_dir=base)
+    click.echo(format_provenance(prov))
+    def _rel(d):
+        try:
+            return str(_P(d).resolve().relative_to(_P(base).resolve()))
+        except ValueError:
+            return str(d)
+    _ledger(base, "prep", "prepped", kind=kind, stage=stage,
+            job_dirs=sorted(_rel(d) for d in dirs), provenance=prov)
 
     if kind == "bench":
         # Trials RUN in their own directories; the attempt machinery below
@@ -651,18 +750,29 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
     Discovery is keyed by ``job-set.json``'s own data, never by parsing
     directory names back (`job-contracts.md` § 6.3).
     """
-    js, base = _load(bundle)
-    _check_kind(kind, js)
     if kind != "bench":
         raise click.ClickException(
             "summarize reads a BENCH sweep's measurements.  A run's own "
             "outputs are the calculation's results -- `jobset status` and "
             "the Watch tab are their readers (job-system.md § 5.3).")
+    js, base = _load_bench_set(bundle, stage)
+    _check_kind(kind, js)
     from ..bench.summarize import (run_summarize_jobset,
                                    summary_text, utc_now_iso)
-    res, out_path = run_summarize_jobset(js, base, stage=stage,
-                                         now_iso=utc_now_iso())
+    container, _ = _stage_bench_dir(base, stage)
+    # The container's job-set holds ONLY this stage's trials, so the verdict
+    # goes back where they live and no name filter is needed; the filter
+    # remains only for the description-less fallback.
+    res, out_path = run_summarize_jobset(
+        js, base,
+        stage=None if container is not None else stage,
+        out=(container / "bench-result.json") if container is not None
+            else None,
+        now_iso=utc_now_iso())
     click.echo(summary_text(res, out_path))
+    _ledger(base, "summarize", "verdict-written", stage=stage,
+            out=str(out_path), points=len(res.points),
+            choice=(res.choice or None))
     click.echo("next: molbuilder jobset prep run <stage>   (it will FIND "
                "this verdict and ASK)")
 
@@ -670,6 +780,7 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
 @jobset_group.command("submit", short_help="launch a prepped stage")
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("stage", required=False, default=None)
+@click.argument("trial", required=False, default=None)
 @click.option("--bundle", "bundle", default=".",
               type=click.Path(exists=True, file_okay=False),
               help="the calculation folder (default: the current directory).")
@@ -688,7 +799,7 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
 @click.option("--dry-run", is_flag=True,
               help="print the exact command each job WOULD get; launch "
                    "nothing.")
-def submit_cmd(kind: str, stage, bundle: str, mode: str, domain,
+def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                dry_run: bool) -> None:
     """Launch a prepped stage: local ``bash`` (direct) or the machine's
     submission system (submit).  Run ``prep`` first.  ``--dry-run`` shows the
@@ -699,6 +810,7 @@ def submit_cmd(kind: str, stage, bundle: str, mode: str, domain,
     consulted it while this verb demanded the flag on every call -- so the
     config said one thing and the command required another.
     """
+    mode_source = "--mode flag"
     if mode is None:
         from ..runtime_config import get_execution
         try:
@@ -721,19 +833,40 @@ def submit_cmd(kind: str, stage, bundle: str, mode: str, domain,
                 "  'direct' runs it here with bash; 'submit' hands it to the "
                 "scheduler.  Set execution.mode once for this machine, or pass "
                 "--mode for this call (running-a-job.md § 5.4).")
-    js, base = _load(bundle)
+        mode_source = "execution.mode (config)"
+    if kind == "bench":
+        # The stage's own sweep record, from its bench/ container (§ 6.3).
+        js, base = _load_bench_set(bundle, stage)
+    else:
+        if trial is not None:
+            raise click.ClickException(
+                "a TRIAL names a benchmark point; `submit run` takes a "
+                "stage only (job-system.md § 5.3).")
+        js, base = _load(bundle)
     _check_kind(kind, js)
     # The same provenance line prep printed, at the LAST moment before the
     # launch -- the mode above may have come from config, and this names
     # which file said so (user request 2026-08-12).
     from ..runtime_config import config_provenance, format_provenance
-    click.echo(format_provenance(config_provenance(project_dir=base)))
-    only = _resolve_stage(js, stage, "submit")
+    prov = config_provenance(project_dir=base)
+    click.echo(format_provenance(prov))
+    if kind == "bench" and js.kind == "sweep":
+        only = _pick_trial(js, base, trial, mode)
+    else:
+        only = _resolve_stage(js, stage, "submit")
     try:
         results = submit_jobset(js, base, mode=mode, domain=domain,
                                 dry_run=dry_run, only=only)
     except SubmitError as e:
+        _ledger(base, "submit", "refused", kind=kind, stage=stage,
+                trial=trial, mode=mode, mode_source=mode_source,
+                reason=str(e))
         raise click.ClickException(str(e))
+    _ledger(base, "submit", "launched", kind=kind, stage=stage,
+            mode=mode, mode_source=mode_source, dry_run=dry_run,
+            provenance=prov,
+            jobs=[{"job": r.name, "status": r.status, "job_id": r.job_id,
+                   "returncode": r.returncode} for r in results])
     verb = "WOULD run" if dry_run else "result"
     for r in results:
         tail = (f"job {r.job_id}" if r.job_id else

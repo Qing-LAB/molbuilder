@@ -473,8 +473,6 @@ def test_workstation_gpu_knobs_match_launcher_contract(project):
     # GPU point MUST be exactly the ones the generated launcher reads, or
     # the rank/omp count is silently wrong (params valid bash, wrong
     # meaning).  This pins producer (adapter) <-> consumer (launcher).
-    from molbuilder.bench.adapters import WorkstationAdapter
-    from molbuilder.environment import Environment, Topology
 
     fdf = project / "g.fdf"
     fdf.write_text(_PARSEABLE_FDF + "Diag.ELPA.GPU .true.\n")
@@ -489,18 +487,12 @@ def test_workstation_gpu_knobs_match_launcher_contract(project):
     assert "MB_NP" in launcher
     assert "OMP_NUM_THREADS" in launcher
 
-    env = Environment(scheduler="workstation",
-                      topology=Topology(cores_per_socket=24, gpus_per_node=1,
-                                        gpu_type="a100"))
-    sweep = WorkstationAdapter().format_bench(env)["job-gpu-sweep.sh"]
-    # the adapter drives the SAME honoured knobs (+ CUDA_VISIBLE_DEVICES for G):
-    assert "MB_NP=" in sweep
-    assert "OMP_NUM_THREADS=" in sweep
-    assert "CUDA_VISIBLE_DEVICES=" in sweep
-    run = WorkstationAdapter().format_run(
-        {"engine": "gpu", "knobs": {"gpus": 1, "ranks_per_gpu": 8}}, env,
-        script_base="prod")["run-production.sh"]
-    assert "MB_NP=8" in run
+    # (the bash-sweep emitters `format_bench`/`format_run` were DELETED
+    # 2026-08-12, step 6 u5: trials are rendered by `jobset prep bench` --
+    # each wrapper carrying its OWN translated resources is pinned in
+    # test_prep_bench_fold.test_each_trials_resources_carry_its_own_
+    # coordinate -- and a verdict reaches prep through
+    # `_offer_bench_verdict`, pinned in ..._applies_an_accepted_verdict.)
 
 
 def test_wrapper_gpu_has_no_mem_audit(project):
@@ -515,9 +507,14 @@ def test_wrapper_gpu_has_no_mem_audit(project):
 
 
 def test_no_scheduler_no_sbatch(tmp_path, monkeypatch):
-    """§ 10: with no scheduler block, only .run.sh is emitted."""
+    """§ 10: with no scheduler block, only .run.sh is emitted.
+
+    Isolation is HOME **and cwd**: the machine scope reads cwd-first
+    (running-a-job.md § 5.2), so without the chdir this test's verdict
+    depended on the developer's own molbuilder.json at the repo root."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.chdir(tmp_path)
     (tmp_path / "home").mkdir()
     (tmp_path / ".molbuilder.json").write_text(json.dumps({
         "script_generation": {"activation": "source activate"},

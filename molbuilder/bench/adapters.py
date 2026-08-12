@@ -152,8 +152,8 @@ class SlurmAdapter(SchedulerAdapter):
 class WorkstationAdapter(SchedulerAdapter):
     """Single machine: no scheduler; points run sequentially via a direct
     launch.  Uses the shared ``sweep_K`` (cores-per-socket divisors); the
-    multi-GPU width of the sweep is bounded by ``gpus_per_node`` in
-    :meth:`format_bench`, so a 1-GPU box yields only G=1 points."""
+    multi-GPU width of the sweep is bounded by ``gpus_per_node`` in the
+    grid (`sweep_grid`), so a 1-GPU box yields only G=1 points."""
     name = "workstation"
 
     def matches(self, env: Environment) -> bool:

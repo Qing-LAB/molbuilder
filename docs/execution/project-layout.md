@@ -545,13 +545,21 @@ scheduler's job id, when, and **what it continued from**.
 
 It earns its place three times over: preparing reads it and refuses to reuse a
 launched attempt; `status` can say *queued as job 481923* instead of guessing
-from an absence; and the last field is the run's provenance — *this geometry came
-from `01_coarse/run-0`* — which is worth recording whether or not anything reads
-it back. Nothing persists a job id today; `submit_jobset` returns one and the CLI
-prints it.
+from an absence (the id is `run.json`'s own `job_id` field); and the last field
+is the run's provenance — *this geometry came from `01_coarse/run-0`* — which is
+worth recording whether or not anything reads it back. A benchmark **trial
+directory is its own attempt** and gets the same file on launch — which is what
+lets `submit bench <stage>` pick the next *unlaunched* trial by its absence
+(§ 6.1 registry row).
 
-It is written **after** the launch succeeds, so a failed submission leaves the
-attempt exactly as prepare left it — still safe to prepare again.
+It is written **when the launch succeeds, not when the job finishes**: after
+`sbatch` accepts the job, and in direct mode as soon as the process *starts*.
+The distinction is the point — this file's presence answers "was this
+launched?", and recording at completion (as the code did until 2026-08-12) left
+a RUNNING direct attempt reading as never launched for its whole runtime, a
+standing double-submit window. A failed **start** still records nothing, so a
+refused launch leaves the attempt exactly as prepare left it — still safe to
+prepare again.
 
 > **How `continued_from` reaches it** *(added 2026-08-10 with the
 > implementation, because the contract asked for the field without saying who

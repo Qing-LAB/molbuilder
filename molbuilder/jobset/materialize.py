@@ -106,7 +106,7 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     | the deck says | directory |
     |---|---|
     | a stage token, job named for the stage | ``<NN>_<name>`` — the rung itself |
-    | a stage token, job named by coordinate | ``<NN>_<name>/bench-<point>`` — a trial, INSIDE the stage it measures |
+    | a stage token, job named by coordinate | ``<NN>_<name>/bench/bench-<point>`` — a trial, in the stage's ``bench/`` container |
     | no token | ``bench-<name>`` at the root — the old bench bundles, and hand-built sets |
 
     Until 2026-08-10 every kind got the trial prefix, so a staged run's
@@ -163,12 +163,18 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
             continue
         trial_token = _trial_stage_token(jobset, j)
         if trial_token:
-            # A trial NESTS inside the stage it measures --
-            # <NN>_<stage>/bench-<point>/ (generator.md § 5).  The two
-            # conventions are one question: does this element have a point?
+            # A trial NESTS inside a ``bench/`` CONTAINER inside the stage
+            # it measures -- <NN>_<stage>/bench/bench-<point>/
+            # (job-contracts.md § 6.3's Directories table, the cross-layer
+            # authority: "benchmark | bench/ inside the stage").  The
+            # container is what gives the stage's bench state ONE home --
+            # its trials, its own job-set.json, its verdict -- so two
+            # stages' benchmarks can never collide.  Until 2026-08-12 the
+            # trials sat directly in the stage (generator.md § 5's earlier
+            # wording, since amended): the authority row won.
             sd = sh.stage_dir(trial_token)
-            out[j.name] = (job_dir_name(j.name) if sd == "."
-                           else f"{sd}/{job_dir_name(j.name)}")
+            container = "bench" if sd == "." else f"{sd}/bench"
+            out[j.name] = f"{container}/{job_dir_name(j.name)}"
             continue
         # Tokenless: the OLD bench bundle's trials, and hand-built sets --
         # the bundle root, told apart by name alone.

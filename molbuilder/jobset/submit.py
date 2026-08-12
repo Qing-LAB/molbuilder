@@ -232,8 +232,10 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
                 f"sbatch failed for job {job.name!r} (rc={cp.returncode}):\n"
                 f"{cp.stderr.strip()}")
         jid = _parse_sbatch_id(cp.stdout)
-        if attempt is not None:
-            _record_launch(attempt, mode="submit", command=cmd, job_id=jid)
+        rec = attempt if attempt is not None else (
+            job_dir if jobset.kind == "sweep" else None)
+        if rec is not None:
+            _record_launch(rec, mode="submit", command=cmd, job_id=jid)
         results.append(JobResult(job.name, cmd, "submitted", job_id=jid))
     return results
 
@@ -359,16 +361,22 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
         # The launch-door claim rides the child ENV here: inheritance
         # survives forks and backgrounding, so a detached local run
         # launched through this verb never meets the gate's prompt.
-        cp = subprocess.run(cmd, cwd=str(job_dir),
-                            env={**os.environ,
-                                 "MB_LAUNCHED_BY": "jobset-submit"})
-        if attempt is not None:
-            # AFTER the launch, so a failed start leaves the attempt exactly as
-            # prepare left it -- still safe to prepare again (§ 1.6).
-            _record_launch(attempt, mode="direct", command=cmd)
-        if cp.returncode != 0:
+        proc = subprocess.Popen(cmd, cwd=str(job_dir),
+                                env={**os.environ,
+                                     "MB_LAUNCHED_BY": "jobset-submit"})
+        # AT START, not after: run.json answers "was this launched?", and a
+        # record written on completion left a running attempt reading as
+        # never launched for its whole runtime.  A failed START still
+        # records nothing -- Popen raising means no process exists, and the
+        # attempt is exactly as prepare left it (§ 1.6).
+        rec = attempt if attempt is not None else (
+            job_dir if jobset.kind == "sweep" else None)
+        if rec is not None:
+            _record_launch(rec, mode="direct", command=cmd)
+        rc = proc.wait()
+        if rc != 0:
             results.append(JobResult(job.name, cmd, "failed",
-                                     returncode=cp.returncode))
+                                     returncode=rc))
         else:
             results.append(JobResult(job.name, cmd, "ran", returncode=0))
     return results

@@ -55,7 +55,10 @@ def _prep_bench(calc):
                      allocation=Resources(mpi_np=8, cpus_per_task=8),
                      sweep=sweep, pins=pins, translation=translation,
                      emit_sbatch=False)
-    return json.loads((calc / "job-set.json").read_text())
+    # The sweep's OWN record lives in the stage's bench/ container
+    # (job-contracts.md § 6.3); the root job-set.json is the RUN plan.
+    return json.loads(
+        (calc / "01_coarse" / "bench" / "job-set.json").read_text())
 
 
 def test_the_grid_becomes_a_sweep_jobset_of_relabelled_trials(calc):
@@ -100,12 +103,12 @@ def test_each_trials_resources_carry_its_own_coordinate(calc):
 
 
 def test_trials_nest_inside_the_stage_they_measure(calc):
-    """u3, `generator.md` § 5: ``<NN>_<stage>/bench-<point>/`` — the trial
-    directory is § 6.3's authority name, INSIDE the stage, and its links
-    reach the bundle root through a COMPUTED depth, not a hardcoded hop."""
+    """`job-contracts.md` § 6.3: ``<NN>_<stage>/bench/bench-<point>/`` — the
+    trial in the stage's ``bench/`` CONTAINER, and its links reach the
+    bundle root through a COMPUTED depth, not a hardcoded hop."""
     js = _prep_bench(calc)
     name = js["jobs"][0]["name"]
-    d = calc / "01_coarse" / f"bench-{name}"
+    d = calc / "01_coarse" / "bench" / f"bench-{name}"
     assert d.is_dir()
     script = d / f"JOB-{name}_01_coarse.fdf"
     assert script.is_symlink() and script.resolve().is_file()
@@ -159,13 +162,14 @@ def test_cli_summarize_bench_reads_trials_by_data(calc):
     from molbuilder.jobset._cli import jobset_group
     js = _prep_bench(calc)
     name = js["jobs"][0]["name"]
-    d = calc / "01_coarse" / f"bench-{name}"
+    d = calc / "01_coarse" / "bench" / f"bench-{name}"
     (d / f"JOB-{name}_01_coarse-run0.out").write_text(
         "banner\nsiesta: Final energy (eV) = -1.0\n")
     r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
                                           "--bundle", str(calc)])
     assert r.exit_code == 0, r.output
-    assert (calc / "bench-result.json").is_file()
+    assert (calc / "01_coarse" / "bench" / "bench-result.json").is_file()
+    assert not (calc / "bench-result.json").exists()
     assert name in r.output
     assert "completed" in r.output       # the trial with the finished .out
     assert "unknown" in r.output         # siblings with no output yet
@@ -181,7 +185,7 @@ def _finished_trial_and_verdict(calc):
     from molbuilder.jobset._cli import jobset_group
     js = _prep_bench(calc)
     name = js["jobs"][0]["name"]
-    d = calc / "01_coarse" / f"bench-{name}"
+    d = calc / "01_coarse" / "bench" / f"bench-{name}"
     (d / f"JOB-{name}_01_coarse-run0.out").write_text(
         "x\n>> End of run:\n")
     # epoch-per-line format: consecutive deltas are the per-iter durations
@@ -238,21 +242,116 @@ def test_prep_run_applies_an_accepted_verdict_but_flags_win(calc):
 
 
 def test_cli_submit_bench_is_one_trial_per_invocation(calc):
-    """Bare `submit bench` refuses and names the trials; naming one plans
-    exactly one launch (§ 2.3.2, decided 2026-08-12)."""
+    """`submit bench <stage> [<trial>]` (§ 2.3.2, decided 2026-08-12): no
+    stage refuses by name; a bare stage picks the NEXT UNLAUNCHED trial and
+    says how many remain; naming a trial launches THAT one.  Either way ONE
+    launch per invocation -- direct mode stays exempt (not submission)."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     js = _prep_bench(calc)
     trial = js["jobs"][0]["name"]
     runner = CliRunner()
-    # SUBMIT mode: the whole set is refused -- a scheduler takes one job per
-    # invocation.  (DIRECT is not submission: it runs points sequentially
-    # in-shell and is exempt, the same rule as everywhere else.)
     r = runner.invoke(jobset_group, ["submit", "bench", "--bundle", str(calc),
                                      "--mode", "submit", "--dry-run"])
-    assert r.exit_code != 0 and "one at a time" in r.output
-    r = runner.invoke(jobset_group, ["submit", "bench", trial,
+    assert r.exit_code != 0 and "name it" in r.output
+    r = runner.invoke(jobset_group, ["submit", "bench", "coarse",
+                                     "--bundle", str(calc),
+                                     "--mode", "submit", "--dry-run"])
+    assert r.exit_code == 0, r.output
+    assert "next unlaunched trial" in r.output
+    assert f"({len(js['jobs'])} of {len(js['jobs'])} remain" in r.output
+    assert r.output.count("WOULD run") == 1
+    r = runner.invoke(jobset_group, ["submit", "bench", "coarse", trial,
                                      "--bundle", str(calc),
                                      "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
     assert r.output.count("WOULD run") == 1
+    # a trial name is a bench concept: run refuses it
+    r = runner.invoke(jobset_group, ["submit", "run", "coarse", trial,
+                                     "--bundle", str(calc), "--dry-run"])
+    assert r.exit_code != 0 and "TRIAL names a benchmark point" in r.output
+
+
+def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
+    """The root ``job-set.json`` is the RUN plan and MERGES per stage
+    (`job-contracts.md` § 6.1): prepping `medium` must not erase `coarse` --
+    erasing it broke the status rollup and silently withheld the
+    cross-stage ``.CG`` carry."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    r = CliRunner()
+    for stage in ("coarse", "medium"):
+        res = r.invoke(jobset_group, ["prep", "run", stage,
+                                      "--bundle", str(calc), "--no-sbatch"])
+        assert res.exit_code == 0, res.output
+    js = json.loads((calc / "job-set.json").read_text())
+    assert js["kind"] == "ladder"
+    assert [j["name"] for j in js["jobs"]] == ["coarse", "medium"]
+    # and re-prepping a stage REPLACES its own entry, never duplicates it
+    res = r.invoke(jobset_group, ["prep", "run", "coarse",
+                                  "--bundle", str(calc), "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    js = json.loads((calc / "job-set.json").read_text())
+    assert [j["name"] for j in js["jobs"]] == ["coarse", "medium"]
+
+
+def test_a_sweeps_record_never_touches_the_root_plan(calc):
+    """Per-kind persistence (§ 6.1): `prep bench` writes the sweep's OWN
+    ``job-set.json`` into the stage's container and leaves the root plan
+    alone -- a run prepped afterwards is a ladder, not a sweep."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    _prep_bench(calc)
+    assert not (calc / "job-set.json").exists()
+    r = CliRunner().invoke(jobset_group, ["prep", "run", "coarse",
+                                          "--bundle", str(calc),
+                                          "--no-sbatch"])
+    assert r.exit_code == 0, r.output
+    js = json.loads((calc / "job-set.json").read_text())
+    assert js["kind"] == "ladder"
+    assert [j["name"] for j in js["jobs"]] == ["coarse"]
+    sweep = json.loads(
+        (calc / "01_coarse" / "bench" / "job-set.json").read_text())
+    assert sweep["kind"] == "sweep"
+
+
+def test_every_verb_records_its_decisions_in_the_ledger(calc):
+    """The bundle's decision ledger (user rule 2026-08-12): what each verb
+    decided -- and from which inputs -- is READ BACK from the bundle, in
+    order, when the terminal is long gone."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    r = CliRunner()
+    # through the VERB: the ledger is the surface's record of what it
+    # decided -- the library returns decision data and never logs
+    res = r.invoke(jobset_group,
+                   ["prep", "bench", "coarse", "--bundle", str(calc),
+                    "--np", "8", "--cpus-per-task", "8", "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    res = r.invoke(jobset_group, ["submit", "bench", "coarse",
+                                  "--bundle", str(calc),
+                                  "--mode", "submit", "--dry-run"])
+    assert res.exit_code == 0, res.output
+    res = r.invoke(jobset_group, ["summarize", "bench", "coarse",
+                                  "--bundle", str(calc)])
+    assert res.exit_code == 0, res.output
+    lines = [json.loads(l) for l in
+             (calc / LEDGER_FILE).read_text().splitlines()]
+    got = [(e["verb"], e["decision"]) for e in lines]
+    assert got == [("prep", "prepped"),
+                   ("submit", "trial-picked"),
+                   ("submit", "launched"),
+                   ("summarize", "verdict-written")]
+    prep = lines[0]
+    assert prep["kind"] == "bench" and prep["stage"] == "coarse"
+    assert "provenance" in prep            # WHERE each setting came from
+    pick = lines[1]
+    assert pick["picked_by"].startswith("next unlaunched")
+    assert pick["total"] == pick["remaining"] == len(
+        json.loads((calc / "01_coarse" / "bench"
+                    / "job-set.json").read_text())["jobs"])
+    launch = lines[2]
+    assert launch["mode"] == "submit"
+    assert launch["mode_source"] == "--mode flag"
+    assert launch["jobs"][0]["status"] == "planned"

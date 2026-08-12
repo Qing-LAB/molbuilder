@@ -200,7 +200,8 @@ def resolve_target(base_dir) -> Path:
 
 
 def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
-                emit_sbatch: bool = True, allocation=None) -> List[Path]:
+                emit_sbatch: bool = True, allocation=None,
+                record_dir=None) -> List[Path]:
     """Render launchers + lay out the per-job tree under ``base_dir``.
 
     Steps, in order:
@@ -319,7 +320,11 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     # itself (user request 2026-08-12; secrets excluded by construction).
     from ..runtime_config import config_provenance, format_provenance
     from .plan import render_plan
-    (base / "STAGE-PLAN.md").write_text(
+    # The plan lands BESIDE the job-set it describes: the run's at the
+    # root, a bench's inside its stage's bench/ container -- so a bench
+    # prep can never overwrite the run's reviewable plan (U1, 2026-08-12).
+    plan_dir = Path(record_dir) if record_dir is not None else base
+    (plan_dir / "STAGE-PLAN.md").write_text(
         render_plan(jobset) + "\n\n"
         + format_provenance(config_provenance(project_dir=base)) + "\n",
         encoding="utf-8")
@@ -539,12 +544,74 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         jobs.append(_job_for(element, script, task, pset.stage, seam))
 
     # ---- 4 + 5, and the record floor 3 leaves behind -------------------- #
-    js = JobSet(name=task.label, engine=task.engine,
-                kind=("sweep" if pset.is_sweep else "ladder"),
+    # ``kind`` is INTENT, not length (review 2026-08-12: a one-point grid is
+    # still a benchmark).  A sweep's whole record — its job-set, its plan,
+    # later its verdict — lives in the stage's ``bench/`` container
+    # (job-contracts.md § 6.3's Directories row, the cross-layer authority),
+    # so two stages' benchmarks can never collide.  The ROOT job-set.json
+    # is the RUN's plan and MERGES per stage, so prepping `tight` no longer
+    # erases `coarse` — status, and the cross-stage ``--from`` carry whose
+    # pair rule needs the source job on file, read the whole ladder.
+    kind = "sweep" if sweep is not None else "ladder"
+    js = JobSet(name=task.label, engine=task.engine, kind=kind,
                 shared=_shared_for(base), jobs=jobs)
-    js.write(base / "job-set.json")
+    if kind == "sweep":
+        record_dir = base / _bench_container(task, token)
+        record_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        record_dir = base
+        js = _merge_run_jobset(base / "job-set.json", js)
+    js.write(record_dir / "job-set.json")
+    # The allocation is NOT passed on: every job already carries its own
+    # resolved resources, per element (generator.md § 5).  Passing it made
+    # prep_jobset re-apply the BASE allocation over every job — the review's
+    # "stomp": each trial's wrapper rendered with the base rank count
+    # instead of its own translated G·K.
     return prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
-                       allocation=allocation)
+                       record_dir=record_dir)
+
+
+def _bench_container(task, token: str) -> str:
+    """Where a stage's bench state lives — ``<NN>_<stage>/bench`` in the
+    hierarchy, ``bench`` at the root of a flat (or stageless) calculation.
+    `job-contracts.md` § 6.3: *"benchmark | bench/ inside the stage it
+    measures"*."""
+    from .shape import Shape
+    sd = Shape.named(task.shape).stage_dir(token) if token else "."
+    return "bench" if sd == "." else f"{sd}/bench"
+
+
+def _merge_run_jobset(path: Path, new: JobSet) -> JobSet:
+    """The root ``job-set.json`` is the RUN's whole plan: each stage's prep
+    updates its OWN row and leaves the others standing.
+
+    Until 2026-08-12 every prep wrote only its own elements, so `prep run
+    tight` erased `coarse` from floor 3 — breaking the status rollup and,
+    worse, the ``--from`` pair rule: with the source job gone, `warm_carry`
+    read the pair as unverified and silently withheld ``.CG``
+    (`project-layout.md` § 2.3.4 row 3).
+    """
+    if not path.is_file():
+        return new
+    try:
+        old = JobSet.load(path)
+    except ValueError:
+        return new              # unreadable or legacy: replaced outright
+    if old.kind != "ladder":
+        return new              # a pre-container sweep leftover: replaced
+    fresh = {j.name for j in new.jobs}
+    kept = [j for j in old.jobs if j.name not in fresh]
+    merged = dataclasses.replace(
+        new, jobs=kept + list(new.jobs),
+        shared=sorted(set(old.shared) | set(new.shared)))
+    # The plan's order is the LADDER's, not the order stages were prepped
+    # in: re-prepping `coarse` must not move it below `medium`.  The seq
+    # token is zero-padded (§ 6.3) so it sorts as it reads.
+    from .materialize import stage_refs
+    refs = stage_refs(merged)
+    return dataclasses.replace(
+        merged, jobs=sorted(merged.jobs,
+                            key=lambda j: (refs[j.name].token or "", j.name)))
 
 
 def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,

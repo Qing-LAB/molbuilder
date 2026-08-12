@@ -514,7 +514,10 @@ def test_direct_mode_is_untouched_because_it_is_not_submission(tmp_path,
     for d in ("bench-G1K1C4", "bench-G1K2C4"):
         (tmp_path / d).mkdir()
         (tmp_path / d / "job-gpu.run.sh").write_text("x")
-    monkeypatch.setattr(_submit.subprocess, "run", lambda *a, **k: _CP())
+    class _Proc:
+        def wait(self):
+            return 0
+    monkeypatch.setattr(_submit.subprocess, "Popen", lambda *a, **k: _Proc())
     res = submit_jobset(_sweep(), tmp_path, mode="direct")
     assert [r.status for r in res] == ["ran", "ran"]
 
@@ -545,8 +548,11 @@ def test_a_failure_skips_nothing_because_nothing_depends_on_anything(tmp_path,
     for d in ("bench-G1K1C4", "bench-G1K2C4"):
         (tmp_path / d).mkdir()
         (tmp_path / d / "job-gpu.run.sh").write_text("x")
-    monkeypatch.setattr(_submit.subprocess, "run",
-                        lambda *a, **k: _CP(returncode=2))
+    class _Proc:
+        def wait(self):
+            return 2
+    monkeypatch.setattr(_submit.subprocess, "Popen",
+                        lambda *a, **k: _Proc())
     res = submit_jobset(_sweep(), tmp_path, mode="direct")
     assert [r.status for r in res] == ["failed", "failed"], (
         "a failed point must not skip the next -- sweep points are independent")
@@ -655,26 +661,31 @@ def test_cli_submit_dry_run_lists_commands(tmp_path):
 
 
 def test_submit_accepts_exactly_these_options(tmp_path):
-    """`jobset submit` takes a kind, a stage, and four options -- no more.
+    """`jobset submit` takes a kind, a stage, a trial and four options --
+    no more.  TRIAL names one benchmark point (§ 2.3.2, decided
+    2026-08-12); `run` refuses it.
 
     An equality, and at the CLI because that is the surface a person types: an
     option added without a decision fails here whatever it is called.
     """
     from molbuilder.jobset._cli import submit_cmd
     assert {q.name for q in submit_cmd.params} == {
-        "kind", "stage", "bundle", "mode", "domain", "dry_run"}
+        "kind", "stage", "trial", "bundle", "mode", "domain", "dry_run"}
 
 
 def test_cli_submit_of_a_whole_sweep_refuses_and_says_which(tmp_path):
-    """The refusal has to reach the person who typed it, with the names -- a
-    library error that the CLI swallowed into a stack trace would be the same
-    disaster with worse ergonomics."""
+    """One job per scheduler invocation, kept by SELECTION rather than
+    refusal (§ 2.3.2, decided 2026-08-12): a bare `submit bench` picks the
+    NEXT UNLAUNCHED trial, says which and how many remain, and plans
+    exactly ONE launch."""
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
     r = runner.invoke(grp, ["submit", "bench", "--bundle", str(tmp_path),
                             "--mode", "submit", "--dry-run"])
-    assert r.exit_code != 0
-    assert "one at a time" in r.output and "G1K1C4" in r.output
+    assert r.exit_code == 0, r.output
+    assert "next unlaunched trial: G1K1C4" in r.output
+    assert "2 of 2 remain" in r.output
+    assert r.output.count("WOULD run") == 1
 
 
 def test_cli_submit_refuses_when_no_mode_is_set_anywhere(tmp_path, monkeypatch):
@@ -703,16 +714,17 @@ def test_direct_launch_carries_the_launch_door_claim(tmp_path, monkeypatch):
     import molbuilder.jobset.submit as sub
     seen = {}
 
-    def fake_run(cmd, **kw):
+    def fake_popen(cmd, **kw):
         seen["env"] = kw.get("env")
-        class _CP:
-            returncode = 0
-        return _CP()
+        class _Proc:
+            def wait(self):
+                return 0
+        return _Proc()
     js = _sweep()
     _write_config(tmp_path)
     _write_fdf(tmp_path / "job-gpu.fdf")
     prep_jobset(js, tmp_path, emit_sbatch=False)
-    monkeypatch.setattr(sub.subprocess, "run", fake_run)
+    monkeypatch.setattr(sub.subprocess, "Popen", fake_popen)
     sub.submit_jobset(js, tmp_path, mode="direct", only=js.jobs[0].name)
     assert seen["env"]["MB_LAUNCHED_BY"] == "jobset-submit"
 
@@ -734,14 +746,16 @@ def test_sbatch_command_carries_the_claim_explicitly(tmp_path):
 
 def test_cli_submit_falls_back_to_the_configs_mode(tmp_path, monkeypatch):
     """C11: with no flag, ``execution.mode`` serves.  Reaching the
-    whole-sweep refusal downstream is the proof the mode resolved."""
+    next-unlaunched trial pick downstream is the proof the mode resolved
+    to `submit` (direct mode never picks -- it runs the set in order)."""
     import molbuilder.runtime_config as rc
     monkeypatch.setattr(rc, "get_execution", lambda *a, **k: {"mode": "submit"})
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
     r = runner.invoke(grp, ["submit", "bench", "--bundle", str(tmp_path),
                             "--dry-run"])
-    assert r.exit_code != 0 and "one at a time" in r.output
+    assert r.exit_code == 0, r.output
+    assert "next unlaunched trial" in r.output
 
 
 def test_cli_submit_surfaces_a_broken_config_as_its_own_error(

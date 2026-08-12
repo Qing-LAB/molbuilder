@@ -170,16 +170,16 @@ def test_from_dict_rejects_major_mismatch():
         BenchResult.from_dict({"schema": "molbuilder/bench-result@2"})
 
 
-def test_choice_is_consumable_by_format_run():
-    # The decoupling contract: the bench-result 'choice' feeds prep-run's
-    # adapter.format_run directly (§ 5.4) -- no shared code path.
-    from molbuilder.bench.adapters import SlurmAdapter
-    from molbuilder.environment import Environment, Topology
+def test_choice_survives_a_json_round_trip_for_the_offer():
+    """RETIRED 2026-08-12: `adapter.format_run` no longer exists -- a
+    verdict reaches production prep through `_offer_bench_verdict`
+    (allocation + pins; pinned end-to-end in test_prep_bench_fold).  What
+    THIS file still owns is the artifact: the `choice` written here must
+    carry the knobs that offer reads back.
+    """
+    import json
     res = build_bench_result(_pts())
-    env = Environment(scheduler="slurm",
-                      topology=Topology(cores_per_socket=24, gpus_per_node=4,
-                                        gpu_type="a100"))
-    script = SlurmAdapter().format_run(
-        res.choice, env, script_base="prod")["run-production.sh"]
-    # winner gpu-k8 (gpus=1, K=8) -> -n 8, c re-resolved 24//8=3.
-    assert "sbatch --gres=gpu:a100:1 -n 8 -c 3 prod.sbatch" in script
+    back = json.loads(res.to_json())
+    knobs = (back.get("choice") or {}).get("knobs") or {}
+    assert knobs, "choice.knobs is what prep-run's offer consumes"
+

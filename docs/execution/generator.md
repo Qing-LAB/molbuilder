@@ -388,7 +388,12 @@ renderable on its own, and no downstream reader ever re-derives a value or asks
 > because a benchmark is a separate lifecycle. **Under this design it stops being
 > true:** a sweep is a `ParameterSet` inside a described calculation, so it has a
 > description like anything else, and its trials nest inside the stage they
-> measure — `<seq>_<name>/bench-<point>/`. The two directory conventions become
+> measure — in its `bench/` **container**: `<seq>_<name>/bench/bench-<point>/`
+> (`job-contracts.md` § 6.3's Directories table, the cross-layer authority).
+> The container gives a stage's bench state ONE home — its trials, its own
+> `bench/job-set.json` (the sweep's record; the root `job-set.json` stays the
+> RUN plan, merged per stage and never overwritten), and its verdict
+> `bench/bench-result.json`. The two directory conventions become
 > one question (*does this element have a `point`?*) instead of two kinds.
 
 ---
