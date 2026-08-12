@@ -2554,10 +2554,17 @@ def render_run_wrapper(script_path: Path, *,
             # out with MB_MONITOR=0.  Killed by _mb_cleanup; also self-exits
             # when this wrapper's PID ($$) disappears.
             f'_monitor_pid=""\n'
+            # The interpreter is PROBED (python3 first, python second):
+            # bare `python` does not exist on python3-only hosts, and the
+            # backgrounded launch swallowed the 127 -- the log then said
+            # "monitor: pid=N" for a monitor that died at exec (R9,
+            # 2026-08-12).
+            f'_mb_py="$(command -v python3 || command -v python || true)"\n'
             f'if [ "${{MB_MONITOR:-1}}" = "1" ] '
             f'&& command -v nice >/dev/null 2>&1 '
+            f'&& [ -n "$_mb_py" ] '
             f'&& [ -f mb_monitor.py ]; then\n'
-            f'    nice -n 19 python mb_monitor.py '
+            f'    nice -n 19 "$_mb_py" mb_monitor.py '
             f'--out "$_out_file" --timing "$_scf_timing_log" '
             f'--log "{basename}.monitor.log" '
             f'--util "{basename}.util.csv" '
@@ -2571,7 +2578,8 @@ def render_run_wrapper(script_path: Path, *,
             f'-> {basename}.monitor.log + {basename}.util.csv"\n'
             f'else\n'
             f'    _log INFO "monitor: not started (set MB_MONITOR=1; needs '
-            f'nice + mb_monitor.py beside the job)"\n'
+            f'nice + a python interpreter + mb_monitor.py beside the '
+            f'job)"\n'
             f'fi\n'
             + (f'_siesta_retry=${{MB_RETRY_N:-0}}\n'
                f'_siesta_retry_max={continue_retries}\n'
@@ -2893,8 +2901,11 @@ def render_run_wrapper(script_path: Path, *,
         f"    esac\n"
         f"  else\n"
         f"    echo \"  Non-interactive shell: refusing.  Launch via\" >&2\n"
-        f"    echo \"  'molbuilder jobset submit', or set MB_LAUNCHED_BY=manual\" >&2\n"
-        f"    echo \"  to override deliberately.\" >&2\n"
+        f"    echo \"  'molbuilder jobset submit', or override deliberately:\" >&2\n"
+        f"    echo \"    MB_LAUNCHED_BY=manual bash {basename}.run.sh   # local\" >&2\n"
+        f"    echo \"    sbatch --export=ALL,MB_LAUNCHED_BY=manual ...  # hand-sbatch\" >&2\n"
+        f"    echo \"  (the sbatch form matters: a site or config with\" >&2\n"
+        f"    echo \"  'export: NONE' strips a plain env var.)\" >&2\n"
         f"    echo \"launched-by: NONE -- refused at the launch-door gate\"\n"
         f"    exit 2\n"
         f"  fi\n"

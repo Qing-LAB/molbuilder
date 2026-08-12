@@ -482,25 +482,47 @@ something you carry out one command at a time.
 
 ---
 
-## 4. Where `JobSet`s come from — the two producers
+## 4. Where `JobSet`s come from — derived at `prep`, from the description
 
-A `JobSet` is never written by hand; a **producer** builds it from a higher-level
-input. There are exactly two producers today, and this is the one place engine
-knowledge lives.
+A `JobSet` is never written by hand — and it is never emitted *beside* the
+description either. **`prep`, on the target machine, derives it from the
+description** (the template + `task.json`, floor 2) as part of its five steps
+([`project-layout.md § 2.3.1`](?doc=execution/project-layout.md)): step 2
+resolves the description against this machine into a `ParameterSet`
+(`molbuilder/resolve.py`) — **always a list**, a production run being the list
+with one element and a benchmark the same list with N
+([`generator.md § 5`](?doc=execution/generator.md)) — and steps 3–5 render one
+deck and wrapper per element and write the plan down. The root `job-set.json`
+is the RUN plan, merged per stage and never overwritten; a sweep's own record
+lives in the stage's `bench/` container (`job-contracts.md` § 6.1).
 
 ```mermaid
 flowchart LR
-    C["a staged SiestaConfig"] -->|"stages_to_jobset"| L["JobSet (ladder)"]
-    G["a benchmark grid<br/>(GPUs × ranks × cores)"] -->|"sweep_to_jobset"| S["JobSet (sweep)"]
+    D["the description<br/>(template + task.json)"] -->|"prep step 2<br/>resolve.py"| PS["ParameterSet<br/>(a list — len 1 = a run)"]
+    PS -->|"steps 3–5, one element"| L["JobSet (ladder)<br/>the root RUN plan"]
+    PS -->|"prep bench: the grid<br/>as N elements"| S["JobSet (sweep)<br/>the stage's bench/"]
 ```
 
-### 4.1 The SIESTA staged ladder (`stages_to_jobset`)
+> **This section was titled "the two producers" until 2026-08-12** and walked
+> `stages_to_jobset` (the SIESTA ladder) and `sweep_to_jobset` (the benchmark
+> grid) as today's builders. Both were **deleted in the 2026-08-12 fold** (plan
+> step 6 u5), along with `build_siesta_stage_bundle` and `bench/to_jobset.py`:
+> they took an in-memory config assembled from CLI flags and emitted the
+> `JobSet` *beside* the description instead of deriving it *from* it — the one
+> defect the 2026-08-11 source read named (*every floor writes its artifact
+> and reads none*). The engine knowledge they held did not vanish: what a
+> SIESTA stage *is* still lives in `molbuilder/siesta/stages.py`, consumed by
+> `prep`'s engine seam instead of by a producer.
 
-`molbuilder/siesta/stages.py::stages_to_jobset(cfg, stages)` turns a **template**
-(one ordinary `SiestaConfig`) plus a **ladder** (a list of `task.py::Stage`, from
-`task.json`) into a **ladder** JobSet — one job per enabled stage, script
-`<label>_<stage>.fdf`. An engine config carries no stage list, so the ladder is
-an argument rather than a field ([`engines/stages.md`](?doc=engines/stages.md)
+### 4.1 The SIESTA staged ladder
+
+`molbuilder/siesta/stages.py` holds SIESTA's stage knowledge — the shipped
+ladder (`default_siesta_stages`), what a stage's warm restart means, and the
+traits a warm condition is compared against — consumed at `prep` through the
+engine seam (`jobset/prep.py`): one job per enabled stage of the description's
+ladder, script `<label>_<NN>_<stage>.fdf`. An engine config carries no stage
+list, so the ladder lives in `task.json`, never in the config
+([`engines/stages.md`](?doc=engines/stages.md)
 § 1.1). Three things are *derived*, and each encodes a design decision:
 
 - **A stage that runs out of steps without converging simply stops**, and you
@@ -549,12 +571,16 @@ The three **strategy presets** flip only the enable flags:
 `vib-quality` = (✅, ✅, ✅).
 
 **The warm-retry budget now travels the whole way** (fixed 2026-08-07).
-`continue_retries` is an ordinary field of the shared schema; `stages_to_jobset`
-carries it into `jobset.Resources` — the same road `mpi_np` and `omp_threads`
-ride — and `jobset/prep` hands it to `write_run_wrapper`, which bakes it into
-the wrapper's own retry loop (`?doc=execution/running-a-job.md` § 3.5). It
-becomes **no `sbatch` flag**, which is why it is the one row of
-`job-contracts.md § 6.2`'s translation table with no SLURM name.
+`continue_retries` rides `jobset.Resources` on the resolved element — the same
+road every machine-side value takes since the fold — and `jobset/prep` hands it
+to `write_run_wrapper`, which bakes it into the wrapper's own retry loop
+(`?doc=execution/running-a-job.md` § 3.5). It becomes **no `sbatch` flag**,
+which is why it is the one row of `job-contracts.md § 6.2`'s translation table
+with no SLURM name. *(Until 2026-08-12 this sentence named `stages_to_jobset`
+as the carrier and called the field "an ordinary field of the shared schema" —
+the producer died in the fold, and the machine facts left floor 2 with it:
+the budget is part of the allocation `resolve.py` puts on the element, not of
+the template.)*
 
 **The retries happen inside the one job the scheduler ran.** `continue_retries`
 is a loop in a single job's wrapper — it is not a between-jobs mechanism, and
@@ -565,16 +591,19 @@ no SLURM name.
 > of the shared stage schema: it controls a loop inside one emitted script, and
 > SIESTA has no such loop to control.
 
-### 4.2 The benchmark sweep (`sweep_to_jobset`)
+### 4.2 The benchmark sweep
 
-`molbuilder/bench/to_jobset.py::sweep_to_jobset(...)` builds a **sweep** — one
-independent job per point of a `(GPUs, ranks-per-GPU, cores-per-rank)` grid,
-**nothing carried between points** (they do not depend on each other, and never
-did — this is why the sweep was never a reason to keep the edge machinery). It
-is the producer behind
-the benchmark workflow (§ 6). Because a sweep is just another `JobSet`, the same
-`jobset` verbs run it — benchmarking is not a separate machine, it is the job
-system pointed at a resource grid.
+`jobset prep bench <stage>` builds a **sweep** — one independent job per point
+of a `(GPUs, ranks-per-GPU, cores-per-rank)` grid enumerated from *this*
+machine's probed topology (`molbuilder/bench/grid.py::sweep_grid`), handed to
+the same five steps as a longer `ParameterSet`, **nothing carried between
+points** (they do not depend on each other, and never did — this is why the
+sweep was never a reason to keep the edge machinery). Because a sweep is just
+another `JobSet`, the same `jobset` verbs run it — benchmarking is not a
+separate machine, it is `prep` whose parameters are a set rather than a point
+([`project-layout.md § 2.3.1a`](?doc=execution/project-layout.md)). *(This
+heading named `bench/to_jobset.py::sweep_to_jobset` as the builder until
+2026-08-12 — deleted with the fold, § 4's note.)*
 
 > **A ladder that is *not* a JobSet — PySCF.** PySCF also supports staged
 > relaxation, but it runs its stages as an **in-script loop inside the single
@@ -661,10 +690,17 @@ refused with the field named ([`stages.md § 6.6`](?doc=engines/stages.md)).
 
 ### 5.2 What `prep` lays out on disk
 
-> **The tree below is a ladder's.** A **sweep** differs in two ways: its folders
-> are `point-<name>` — its points have no order, so no ordinal — and there is no
-> attempt layer, because a point is prepped and run in its own folder. Nothing
-> is copied between points; they are independent.
+> **The tree below is a ladder's.** A **sweep** differs in two ways: its trials
+> live in the measured stage's container as `<NN>_<stage>/bench/bench-<point>/`
+> — named by their **settings**, because points have no order — and a trial
+> directory **is its own attempt**: a launched trial carries its `run.json`
+> directly, with no `run-<n>` layer inside
+> ([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)). Nothing is
+> copied between points; they are independent. *(Amended 2026-08-12: this note
+> still named `point-<name>` folders — a prefix retired 2026-08-07 — and said
+> "there is no attempt layer", which the fold's `run.json`-in-the-trial
+> arrangement made half-wrong: the layer exists, collapsed onto the trial
+> directory itself.)*
 
 `prep` turns the portable bundle into a tree you can run. Two ideas make it
 safe and small:
@@ -725,8 +761,13 @@ flowchart LR
 #### The grammar
 
 ```
-molbuilder jobset <verb> <kind> [<stage>]  [options]
-                    │      │        │
+molbuilder jobset <verb> <kind> [<stage>] [<trial>]  [options]
+                    │      │        │         │
+                    │      │        │         └─ submit bench only: WHICH trial
+                    │      │        │            to launch, by its name
+                    │      │        │            (`bench-G1K4C6`).  Omitted, the
+                    │      │        │            NEXT UNLAUNCHED trial is picked
+                    │      │        │            and said out loud
                     │      │        └─ which stage — by its NAME (`tight`), its
                     │      │           NUMBER (`3`, or `03`), or the whole token
                     │      │           (`03_tight`), whichever you have in front
@@ -755,22 +796,26 @@ not about one run of it. **The kind is a positional, not a `--bench` flag**, bec
 over different parameters (`project-layout.md § 2.3.1a`).
 
 > **What of this grammar runs today**, re-checked against the CLI on
-> 2026-08-12. The grammar is the target; the `bench` column is not built
-> (plan step 6 folds it in), and a reader should not have to discover that
-> by typing.
+> 2026-08-12, after the fold landed. **The whole grammar now runs** — the
+> `bench` column shipped with plan step 6.
 >
 > | | `run` | `bench` | no kind |
 > |---|:--:|:--:|:--:|
-> | `prep` | ✅ | ⛔ `molbuilder bench generate` + `bench prep` | ✅ (lays out every container) |
-> | `submit` | ✅ | ⛔ `molbuilder bench siesta-gpu` | — |
-> | `summarize` | — | ✅ **LANDED 2026-08-12** (step 6 u4) — discovery keyed by `job-set.json`, results through the ordinary artifacts, async | — |
+> | `prep` | ✅ — with no stage it lays out every container | ✅ **LANDED 2026-08-12** (step 6) — `prep bench <stage>`: probe the machine, enumerate the grid, render the trials into the stage's `bench/` | — the kind is required |
+> | `submit` | ✅ | ✅ **LANDED 2026-08-12** (step 6) — `submit bench <stage> [<trial>]`: the named trial, or the next unlaunched, ONE per invocation | — |
+> | `summarize` | — refuses: a run's outputs *are* the results, read by `status` and the Watch tab | ✅ **LANDED 2026-08-12** (step 6 u4) — discovery keyed by `job-set.json`, results through the ordinary artifacts, async | — |
 > | `describe` | — | — | ✅ **LANDED 2026-08-11** (plan step 2). Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once |
 > | `status` | — | — | ✅ whole calculation · ✅ per-stage (`status <stage>`) |
 > | `plan` | — | — | ✅ |
 >
-> `prep|submit bench` refuse with a pointer at the bench command that works,
-> rather than reporting an unknown word — the fold-in is designed
-> (this section's grammar), not done.
+> *(Until 2026-08-12 the `bench` cells read ⛔ with pointers at `molbuilder
+> bench generate` / `bench prep` / `bench siesta-gpu`, and this note called
+> the grammar "the target, not built". `bench generate` and `bench prep`
+> were deleted with the fold — the pointers would now name commands that do
+> not exist — and the bare-`prep` cell moved: laying out every container is
+> `prep run` with no stage, because the kind positional is required. The
+> standalone `bench siesta-gpu` np/omp/BlockSize sweep and `bench
+> probe-scheduler` remain as companions outside this grammar.)*
 >
 > **`status <stage>` landed 2026-08-10**, and with it the last inconsistency in
 > this grammar: `plan` and `status` took the *folder* as their positional while
@@ -1090,13 +1135,19 @@ flowchart LR
   real core and GPU counts (read from the scheduler via `scontrol show node`,
   not from whatever login node you happen to be on), so the numbers are the ones
   the job will actually run against.
-- **Two comparable points → `bench-manifest.json`** (`molbuilder/bench-manifest@2`).
-  This is the clever bit: to compare CPU vs GPU **hardware** fairly, both points
-  use the *same solver* (`ELPA-1STAGE`) and run in the *same environment*
-  (`molbuilder-siesta-gpu`); the only difference is one flag toggling the GPU on.
-  Both are trimmed to 5 SCF iterations with convergence checks off — you are
-  timing the machine, not converging the chemistry. (The CPU point sets the GPU
-  flag *explicitly off*, because the GPU-linked build defaults to on.)
+- **Trials are the stage's science, made measurable — by pins, not by
+  splicing.** Each trial's deck is **rendered from the description** like any
+  deck, with the benchmark's pins laid over the resolved values
+  (`template.md § 8.1`: rebuild and render, never splice): SCF capped at 5
+  iterations, relaxation steps zeroed (a single point — you are timing an
+  iteration, not converging the chemistry), restart forced clean, the GPU
+  eigensolver (`ELPA-1STAGE`) on every trial so the grid isolates the
+  hardware, and a **per-trial relabel** so no trial can read or overwrite the
+  real run's warm files. *(Until 2026-08-12 this bullet described
+  `bench-manifest.json` (`molbuilder/bench-manifest@2`) and its two
+  comparable CPU/GPU points — the shipped-bundle machinery deleted in step 6
+  u5. Nothing writes or reads a manifest now; the pair-of-points comparison
+  went with it, and the sweep is the GPU grid below.)*
 - **The `(G, K, c)` grid** — the shape of the sweep, and why: `G` = number of
   GPUs (1 up to the node's count); `K` = MPI ranks per GPU, tried at the divisors
   of the socket's core count (so ranks divide evenly); `c` = CPU cores per rank,
@@ -1119,18 +1170,23 @@ flowchart LR
   skip warm-up), plus a utilisation reading and peak memory. The **winner is the
   fastest completed point**; the tool also recommends a memory request (peak ×
   1.15) and a walltime (per-iteration time × a nominal iteration count × a safety
-  factor). The recorded choice is **portable** — `prep-run` re-resolves the
-  concrete rank and core counts for whatever machine it is later run on.
+  factor). The recorded choice is **portable** — `prep run` finds the verdict,
+  **asks**, and re-resolves the concrete rank and core counts for whatever
+  machine it is later run on *(the asker was named `prep-run`, a baked bundle
+  executable, until the fold retired it)*.
 
 `molbuilder bench probe-scheduler` is a companion that reads a live cluster
 (`sinfo`/`sacctmgr`) and proposes a `scheduler` block + routing menu you can
 merge into your config with `--write`.
 
-> **One honest gap.** The benchmark already
-> *produces* a `JobSet` (`bench prep` writes `job-set.json`), but it still
-> *executes* through its original, proven inline-shell sweep rather than
-> `jobset submit`. Both paths use the identical `(G,K,c)` grid, so results match;
-> retiring the inline path once it is cluster-validated is the open follow-up.
+> **The gap this box used to record is closed** *(2026-08-12)*. It read: *"the
+> benchmark already produces a `JobSet` (`bench prep` writes `job-set.json`),
+> but it still executes through its original, proven inline-shell sweep rather
+> than `jobset submit`; retiring the inline path once it is cluster-validated
+> is the open follow-up."* The fold retired the inline path — and `bench prep`
+> itself — in step 6 u5: a trial now executes only through `jobset submit
+> bench`, one trial per invocation, with its launch recorded in the trial's
+> own `run.json`.
 
 ---
 
@@ -1138,12 +1194,17 @@ merge into your config with `--write`.
 
 ### Shipped today (command line)
 
-The `JobSet` model and persistence; the SIESTA ladder producer
-(`stages_to_jobset`) and the benchmark sweep producer; all four verbs (`plan` / `prep` / `submit` /
-`status`) in both `submit` and `direct` modes; SLURM submission with routing
-domains, **one job per invocation**; and the full benchmark workflow. Saving and
-re-entering a calculation's states is `molbuilder snapshot`
-([`running-a-job.md § 6`](?doc=execution/running-a-job.md)).
+The `JobSet` model and persistence; the description-to-plan derivation at
+`prep` (§ 4 — the `ParameterSet`, one deck and wrapper per element); all six
+verbs (`describe` / `prep` / `plan` / `submit` / `summarize` / `status`) in
+both `submit` and `direct` modes; SLURM submission with routing domains, **one
+job per invocation**; and the full benchmark workflow through the same loop
+(§ 7). Saving and re-entering a calculation's states is `molbuilder snapshot`
+([`running-a-job.md § 6`](?doc=execution/running-a-job.md)). *(Until
+2026-08-12 this paragraph shipped "the SIESTA ladder producer
+(`stages_to_jobset`) and the benchmark sweep producer" and counted four verbs
+— the producers died in the fold and `describe`/`summarize` joined the
+grammar; § 4's note has the story.)*
 
 > **Not "dependency chains" — that line said so until 2026-08-11 and had been
 > wrong since 2026-08-10.** `Carry`, `depends_on`, `dep_kind`, `carry_deref` and
@@ -1158,18 +1219,23 @@ This is the migration the project is undertaking, planned in
 web"). Today there is **no `jobset` web blueprint, no `/api/jobset/*` route**,
 and the web Build tab still renders a single `.fdf` (it drops the stage table).
 
-- **Phase 1 — a web bundle producer.** The Build tab's stage table becomes a real
-  `JobSet` producer, calling the same `build_siesta_stage_bundle` seam (§ 4.1).
+- **Phase 1 — the Build tab writes the description.** The stage table becomes a
+  real `describe` surface, writing the same template + `task.json` the CLI verb
+  writes; the target's `prep` derives the `JobSet` from it as ever (§ 4).
+  *(This phase read "a web bundle producer, calling the same
+  `build_siesta_stage_bundle` seam" until 2026-08-12 — that seam was deleted
+  with the producers, and a browser writing floor 3 is exactly what the
+  describe/prep split forbids: the browser is not on the machine that runs.)*
 - **Phase 2 — web Plan + Status (read-only).** Reusing the *already-shipped*
   run decoder in the browser, with no new parser. **A branch control was
   planned here and is not needed**: the checkpoint rework removed the verb, and
   forking is restore-then-save — both already routed and both already in the
   sidebar panel ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7.1).
 - **Phases 3–4 — other engines, gated on a cluster-validation milestone.**
-  transport, PySCF and spectra **producers** — one function each, turning that
-  engine's config into a `JobSet` (§ 9) — with their tab mirrors, behind a hard
-  gate: prove the SIESTA ladder end-to-end
-  (produce → prep → submit → monitor) on a real cluster *before* broadening.
+  transport, PySCF and spectra — **one engine seam each** (§ 9), teaching
+  `prep` to render that engine's decks from a description — with their tab
+  mirrors, behind a hard gate: prove the SIESTA ladder end-to-end
+  (describe → prep → submit → monitor) on a real cluster *before* broadening.
   Reaching transport is also where the single-parent limit (§ 2, design decision
   #6) is lifted to a branching graph.
 
@@ -1191,18 +1257,31 @@ Where each responsibility lives, for someone extending the framework:
 | Concern | Module |
 |---|---|
 | The data model + `job-set.json` read/write + `validate()` | `molbuilder/jobset/model.py` |
-| SIESTA ladder producer + the pure `build_siesta_stage_bundle` seam | `molbuilder/siesta/stages.py` |
-| Benchmark sweep producer | `molbuilder/bench/to_jobset.py` |
+| The description + this machine → `ParameterSet` (`prep` step 2; the config ↔ exchange translation boundary) | `molbuilder/resolve.py` |
+| SIESTA's stage knowledge — the shipped ladder, the warm-file declaration, the traits — consumed by the engine seam | `molbuilder/siesta/stages.py` |
+| The benchmark grid — the `(G × K × c)` enumeration `prep bench` consumes | `molbuilder/bench/grid.py` |
 | Lay out the materialized tree (job folders + symlinks, and `prepare_attempt`) | `molbuilder/jobset/materialize.py` |
-| Render wrappers once + carry-in + `STAGE-PLAN.md` | `molbuilder/jobset/prep.py` |
+| The five steps (`prep_calculation`) — resolve, render decks + wrappers, carry-in, `STAGE-PLAN.md` — and the engine seam | `molbuilder/jobset/prep.py` |
 | The human-readable plan table | `molbuilder/jobset/plan.py` |
 | Submit **one** job (SLURM or direct) + domain routing + the refusal to submit more than one per invocation | `molbuilder/jobset/submit.py` |
 | Per-stage status roll-up (reuses `decode_run_dir`) | `molbuilder/jobset/runstatus.py` |
+| The sweep's reader — trials' artifacts → `bench-result.json` (the pure timing parsers are `molbuilder/bench/result.py`) | `molbuilder/jobset/summarize.py` |
+| The decision ledger (`jobset-decisions.log`, one JSON object per decision) | `molbuilder/jobset/ledger.py` |
 | The CLI verbs (`molbuilder jobset …`) | `molbuilder/jobset/_cli.py` |
 | The `.sbatch` header emission (shared with single-job) | `molbuilder/runwrap.py::render_sbatch` |
-| The benchmark workflow (detect / manifest / grid / summarize) | `molbuilder/bench/*` |
 
-**To add a new engine to the job system**, you write **one producer** —
-a function that turns that engine's config into a `JobSet` — and nothing else.
+*(Three rows changed 2026-08-12 with the fold: "SIESTA ladder producer + the
+pure `build_siesta_stage_bundle` seam", "benchmark sweep producer —
+`bench/to_jobset.py`", and "the benchmark workflow (detect / manifest / grid /
+summarize) — `bench/*`" named modules and functions deleted in step 6 u5.
+Their live successors are the `resolve.py`, `bench/grid.py`,
+`jobset/summarize.py` and `jobset/ledger.py` rows above.)*
+
+**To add a new engine to the job system**, you write **one engine seam** — the
+plugin that teaches `prep` step 3 to render that engine's decks from a resolved
+config ([`generator.md § 7`](?doc=execution/generator.md)) — and nothing else.
 The verbs, the materializer, the submitter, and the status layer are all
-engine-agnostic and pick it up for free. That is the whole payoff of decision #1.
+engine-agnostic and pick it up for free. That is the whole payoff of decision
+#1. *(Until 2026-08-12 this read "you write one producer — a function that
+turns that engine's config into a `JobSet`" — the producer seam died with the
+fold, and what an engine now owns is rendering, not planning.)*
