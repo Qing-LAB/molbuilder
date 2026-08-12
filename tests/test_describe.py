@@ -101,7 +101,30 @@ def test_the_structure_is_a_reference_and_a_witness_never_a_copy(struct, cfg,
     assert task.structure.source == "structures/bdt.xyz"
     assert task.structure.formula == struct.formula
     assert task.structure.atoms == struct.n_atoms
+    # The source names a path that does not exist HERE, so there is
+    # nothing to copy -- the reference still records.  (U20: this line
+    # used to read as a NO-COPY pin, the pre-M9 contract, green only by
+    # this fixture accident; the copy half is its own test below.)
     assert not list((tmp_path / "calc").glob("*.xyz"))
+
+
+def test_an_existing_structure_file_travels_with_the_calculation(
+        struct, cfg, tmp_path):
+    """M9 / stages.md § 6.3 (amended U19): the data FILE is copied beside
+    task.json, exactly like the pseudos -- what stays forbidden is
+    coordinates embedded IN task.json.  This is the pin test_describe
+    lacked while test_prep_calculation asserted the copy: the two files
+    asserted OPPOSITE contracts, both green, because this fixture's
+    source never existed on disk."""
+    src = tmp_path / "bdt.xyz"
+    src.write_text(struct.to_xyz())
+    D.write_description(_describe(struct, cfg, source=str(src)),
+                        tmp_path / "calc")
+    copied = tmp_path / "calc" / "bdt.xyz"
+    assert copied.is_file()
+    assert copied.read_text() == src.read_text()
+    task = read_task(tmp_path / "calc" / "task.json")
+    assert task.structure.source == str(src)   # the reference still records
 
 
 def test_a_ladder_becomes_stages_and_varies(struct, cfg, tmp_path):

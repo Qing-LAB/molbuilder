@@ -340,7 +340,7 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
     else:                                  # pragma: no cover
         raise WrapperError(f"unknown engine for cold-restart: {engine!r}")
     return (
-        f"# --- Cold-restart: NAME SWEEP (job-contracts.md 4.1) --------\n"
+        f"# --- Cold-restart: NAME SWEEP --------------------------\n"
         f"# Everything named after the run's id goes aside, except what\n"
         f"# molbuilder itself wrote.  No list of engine extensions: a\n"
         f"# list is a snapshot of one build, and a file nobody listed\n"

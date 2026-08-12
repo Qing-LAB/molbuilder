@@ -432,3 +432,30 @@ def test_prep_underway_with_no_answer_proceeds_and_says_so(calc):
              (calc / LEDGER_FILE).read_text().splitlines()]
     asks = [e for e in lines if e["decision"] == "underway-ask"]
     assert asks and asks[-1]["answer"].startswith("no answer")
+
+
+def test_a_trial_is_cold_by_construction(calc):
+    """§ 2.3.2's forced-cold half, pinned at its mechanism (U20): the
+    RELABEL is what makes a trial cold -- its deck's SystemLabel names
+    warm files that never exist, and nothing links the real run's warm
+    state into a trial's directory.  A benchmark that warm-started from
+    the production run would measure the wrong thing silently."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    r = CliRunner().invoke(jobset_group, ["prep", "run", "coarse",
+                                          "--bundle", str(calc),
+                                          "--no-sbatch"])
+    assert r.exit_code == 0, r.output
+    # the production run leaves warm state under the BASE label
+    (calc / "01_coarse" / "JOB.DM").write_text("warm density")
+    (calc / "01_coarse" / "JOB.XV").write_text("warm coords")
+    js = _prep_bench(calc)
+    for j in js["jobs"]:
+        d = calc / "01_coarse" / "bench" / f"bench-{j['name']}"
+        # no file or link under the BASE label reaches the trial
+        assert not list(d.glob("JOB.*")), list(d.iterdir())
+        # and the deck's own label is the trial's, so SIESTA's UseSave*
+        # looks for JOB-<point>.DM -- which never exists
+        import re
+        deck = (d / f"JOB-{j['name']}_01_coarse.fdf").read_text()
+        assert re.search(rf"^SystemLabel\s+JOB-{j['name']}\s*$", deck, re.M)

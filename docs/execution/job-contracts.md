@@ -455,7 +455,7 @@ wrapper contains these and nothing else:
 | **Continuation flags** | the shared `--continue` / `--cold` / `--force` handling |
 | **SIESTA-specific argument parsing** | `-np` / `-omp` and friends |
 | **Run index resolution** | picks `-runN` so a re-run never overwrites |
-| **Cold-restart: move engine warm-start files aside** | what `--cold` does |
+| **Cold-restart: NAME SWEEP** | what `--cold` does — everything the id names goes aside, minus what molbuilder wrote (§ 4.1, U17) |
 | **Per-run log file** | where this invocation's log goes |
 | **Runtime status banner** | prints what it found — warm files, ranks |
 | **Probe SIESTA build at runtime** | reads the build's own capabilities |

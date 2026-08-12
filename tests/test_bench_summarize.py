@@ -59,13 +59,26 @@ def test_cpu_ranks_survive_a_real_sized_out(tmp_path):
 
 
 def test_an_incomplete_point_is_never_the_winner(tmp_path):
-    fast_but_unfinished = parse_point(
-        "x", _point_dir(tmp_path, "x", "job", "going\n"), "job", "gpu", {})
-    done = parse_point(
-        "y", _point_dir(tmp_path, "y", "job", ">> End of run:\n"),
-        "job", "gpu", {})
+    """U20: rebuilt twice over.  The old assert read `(choice or
+    {}).get("label", "y") == "y"` -- vacuously green while choose_winner
+    returned no "label" key (it gained one at U13).  De-vacuousing it then
+    exposed the FIXTURE: the 'done' point had no timing, so under the
+    contract ("the fastest COMPLETED point by s/iter; {} if no point
+    produced a time") NOBODY could win and the old default hid that too.
+    Now the incomplete point carries the FASTER time and must still
+    lose -- which is the claim in this test's name."""
+    dx = _point_dir(tmp_path, "x", "job", "going\n")
+    (dx / "job-run0.scf-timing.log").write_text(
+        "100.0 scf 1\n101.0 scf 2\n102.0 scf 3\n")      # 1 s/iter, unfinished
+    fast_but_unfinished = parse_point("x", dx, "job", "gpu", {})
+    dy = _point_dir(tmp_path, "y", "job", ">> End of run:\n")
+    (dy / "job-run0.scf-timing.log").write_text(
+        "100.0 scf 1\n104.0 scf 2\n108.0 scf 3\n")      # 4 s/iter, done
+    done = parse_point("y", dy, "job", "gpu", {})
+    assert fast_but_unfinished.s_per_iter() < done.s_per_iter()
     choice = choose_winner([fast_but_unfinished, done])
-    assert (choice or {}).get("label", "y") == "y"
+    assert choice, "a completed, timed point must produce a winner"
+    assert choice["label"] == "y"
 
 
 def test_summary_text_names_every_point_and_the_output(tmp_path):

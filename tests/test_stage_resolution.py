@@ -399,16 +399,4 @@ def test_an_error_in_any_stage_blocks_the_whole_produce(h2, monkeypatch):
             Stage(name="bad", overrides={"mesh_cutoff": 999.0})])
 
 
-def _live_ladder_decks(struct, template, stages):
-    """The decks the LIVE route renders (repointed 2026-08-12, u5): each
-    ENABLED stage through the one seam, exactly as `prep` builds them."""
-    from molbuilder.identity import stage_token
-    from molbuilder.siesta.input import effective_config, render_fdf
-    out = {}
-    for i, st in enumerate(stages, start=1):
-        if not getattr(st, "enabled", True):
-            continue
-        eff = effective_config(template, st)
-        tok = stage_token(i, st.name)
-        out[f"{template.system_label}_{tok}.fdf"] = render_fdf(struct, eff, stage_token=tok)
-    return out
+from _ladder_helpers import _live_ladder_decks  # noqa: E402  (U20: the one renderer)
