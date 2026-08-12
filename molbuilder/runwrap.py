@@ -2530,16 +2530,6 @@ def render_run_wrapper(script_path: Path, *,
         )
 
     env_activation = (
-        f"# --- Per-run log file (current directory; see docs/execution/running-a-job.md § 5) -\n"
-        f'_runwrap_log="$PWD/{basename}.runwrap-$(date +%Y%m%d-%H%M%S).log"\n'
-        f"# ABSOLUTE, and it has to be.  With attempt directories the wrapper\n"
-        f"# cd's into run-<n>/ after this point, and every later reference --\n"
-        f"# the propor/ERROR hints grep \"$_out_file\" \"$_runwrap_log\" -- would\n"
-        f"# otherwise resolve against the attempt directory, where the log is\n"
-        f"# not, silently searching half the evidence.  The log cannot open\n"
-        f"# inside the attempt because it captures the setup that BUILDS it.\n"
-        f'exec > >(tee -a "$_runwrap_log") 2> >(tee -a "$_runwrap_log" >&2)\n'
-        f"\n"
         f"# Structured log helper.\n"
         f"_log() {{\n"
         f"    printf '[%s] [%-5s] %s\\n' \"$(date '+%H:%M:%S%z')\" \"$1\" \"$2\" >&2\n"
@@ -2592,15 +2582,23 @@ def render_run_wrapper(script_path: Path, *,
         f"# Disable nounset for the bootstrap ONLY; restore it before our\n"
         f"# own logic (where -u still catches real bugs).\n"
         f"set +u\n"
+        f"# A help request runs NONE of the bootstrap: asking what a script\n"
+        f"# does must not require a working preamble or activation -- a\n"
+        f"# broken module line would kill -h at the activation, three\n"
+        f"# screens before the usage text it asked for (U10, 2026-08-12).\n"
+        f'if [ "$_mb_help" = "0" ]; then\n'
         f"{_preamble_block}"
         f"# --- Activation (verbatim from script_generation.activation) ---\n"
         f'_log STAGE "{_activation_form} {target_env}"\n'
         f"{_activation_form} {target_env}\n"
+        f"fi\n"
         f"set -u\n"
         f"\n"
-        f'_log INFO "CONDA_DEFAULT_ENV=${{CONDA_DEFAULT_ENV:-<unset>}}"\n'
-        f'_log INFO "CONDA_PREFIX=${{CONDA_PREFIX:-<unset>}}"\n'
-        f'_log INFO "which python: $(command -v python 2>/dev/null || echo \'(not on PATH)\')"\n'
+        f'if [ "$_mb_help" = "0" ]; then\n'
+        f'  _log INFO "CONDA_DEFAULT_ENV=${{CONDA_DEFAULT_ENV:-<unset>}}"\n'
+        f'  _log INFO "CONDA_PREFIX=${{CONDA_PREFIX:-<unset>}}"\n'
+        f'  _log INFO "which python: $(command -v python 2>/dev/null || echo \'(not on PATH)\')"\n'
+        f"fi\n"
         f"\n"
     )
 
@@ -2929,6 +2927,28 @@ def render_run_wrapper(script_path: Path, *,
         f"#\n"
         f"set -euo pipefail\n"
         f"\n"
+        f"# Help is answerable by ANYONE: -h/--help is scanned before the\n"
+        f"# launch-door gate, so asking what a script does never meets a\n"
+        f"# permission prompt (U10, 2026-08-12).  The flag is only NOTED\n"
+        f"# here -- the engine arg loop below owns the usage text.\n"
+        f"_mb_help=0\n"
+        f'for _mb_a in ${{@:+"$@"}}; do\n'
+        f'    case "$_mb_a" in -h|--help) _mb_help=1 ;; esac\n'
+        f"done\n"
+        f"\n"
+        f"# --- Per-run log file (current directory; see docs/execution/running-a-job.md § 5) -\n"
+        f'_runwrap_log="$PWD/{basename}.runwrap-$(date +%Y%m%d-%H%M%S).log"\n'
+        f"# ABSOLUTE, and it has to be.  With attempt directories the wrapper\n"
+        f"# cd's into run-<n>/ after this point, and every later reference --\n"
+        f"# the propor/ERROR hints grep \"$_out_file\" \"$_runwrap_log\" -- would\n"
+        f"# otherwise resolve against the attempt directory, where the log is\n"
+        f"# not, silently searching half the evidence.  The log cannot open\n"
+        f"# inside the attempt because it captures the setup that BUILDS it.\n"
+        f"# It opens BEFORE the launch-door gate (U10), so a refusal is a\n"
+        f"# fact on disk -- the log alone answers what happened, even when\n"
+        f"# nothing ran.\n"
+        f'exec > >(tee -a "$_runwrap_log") 2> >(tee -a "$_runwrap_log" >&2)\n'
+        f"\n"
         f"# --- Launch-door gate (one door: jobset submit) ----------\n"
         f"# `molbuilder jobset submit` sets MB_LAUNCHED_BY when it launches\n"
         f"# this script (direct: child env; sbatch: --export on the command\n"
@@ -2936,17 +2956,27 @@ def render_run_wrapper(script_path: Path, *,
         f"# launch bookkeeping, the deck/launch agreement check and the\n"
         f"# mode/config resolution.  MB_LAUNCHED_BY=manual is the\n"
         f"# deliberate override, and the value is logged either way\n"
-        f"# (job-contracts.md 2.6).\n"
-        f"if [ -z \"${{MB_LAUNCHED_BY:-}}\" ]; then\n"
+        f"# (job-contracts.md 2.6).  A help request skips the gate: it\n"
+        f"# launches nothing.\n"
+        f"if [ -z \"${{MB_LAUNCHED_BY:-}}\" ] && [ \"$_mb_help\" = \"0\" ]; then\n"
         f"  echo \"WARNING: {basename}.run.sh was called directly, not via\" >&2\n"
         f"  echo \"  'molbuilder jobset submit'.  Direct calls skip launch\" >&2\n"
         f"  echo \"  bookkeeping and the deck/launch agreement check.\" >&2\n"
         f"  if [ -t 0 ]; then\n"
         f"    printf \"  Proceed anyway? [y/N] \" >&2\n"
-        f"    read -r _mb_answer\n"
+        f"    # `|| true`: EOF (Ctrl-D, a closed pty) must fall through to\n"
+        f"    # the refusal below -- under set -e a failed `read` would kill\n"
+        f"    # the script mid-prompt with NO verdict line (U10).\n"
+        f"    _mb_answer=\"\"\n"
+        f"    read -r _mb_answer || true\n"
         f"    case \"${{_mb_answer}}\" in\n"
-        f"      y|Y|yes|YES) MB_LAUNCHED_BY=manual ;;\n"
+        f"      # EXPORTED, not just set: the warm-retry re-execs this very\n"
+        f"      # wrapper, and an unexported answer would re-prompt (or\n"
+        f"      # refuse, stdin long gone) mid-retry at 3am (U10).  The\n"
+        f"      # submit door already exports; the manual door must too.\n"
+        f"      y|Y|yes|YES) export MB_LAUNCHED_BY=manual ;;\n"
         f"      *) echo \"  Aborted.  (MB_LAUNCHED_BY=manual skips this prompt.)\" >&2\n"
+        f"         echo \"launched-by: NONE -- refused at the launch-door gate\"\n"
         f"         exit 2 ;;\n"
         f"    esac\n"
         f"  else\n"
@@ -2958,10 +2988,11 @@ def render_run_wrapper(script_path: Path, *,
         f"  fi\n"
         f"fi\n"
         f"# The verdict, in the JOB'S OWN OUTPUT: under sbatch this line is in\n"
-        f"# the job's .out, so the log alone answers \"was this launched\n"
-        f"# properly, run by hand on purpose, or refused?\" -- no terminal\n"
-        f"# needed, and nothing can sit waiting on one (no-TTY never prompts).\n"
-        f"echo \"launched-by: ${{MB_LAUNCHED_BY}}\"\n"
+        f"# the job's .out, and since the tee above it is ALSO in the runwrap\n"
+        f"# log -- either alone answers \"was this launched properly, run by\n"
+        f"# hand on purpose, or refused?\" -- no terminal needed, and nothing\n"
+        f"# can sit waiting on one (no-TTY never prompts).\n"
+        f'echo "launched-by: ${{MB_LAUNCHED_BY:-none (help)}}"\n'
         f"# Per docs/execution/running-a-job.md § 5: the wrapper does NOT change cwd.\n"
         f"# SLURM lands the job in SLURM_SUBMIT_DIR by default; direct\n"
         f"# callers ``cd`` to the project dir before invoking.  The\n"

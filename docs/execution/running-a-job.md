@@ -601,15 +601,24 @@ flowchart TD
     B -- no --> D{"interactive terminal?"}
     D -- yes --> E["warn, ask y/N"]
     E -- y --> C2["log: launched-by: manual<br/>proceed"]
-    E -- n --> F["exit 2"]
+    E -- "n / EOF" --> F["log: launched-by: NONE -- refused<br/>exit 2"]
     D -- "no (nohup · cron · hand-sbatch)" --> G["log: launched-by: NONE -- refused<br/>exit 2, message names the door<br/>and the override"]
 ```
 
-**The verdict is in the job's own output log**, not only on a terminal: under
-sbatch the `launched-by:` line lands in the job's `.out`, so on the cluster
-the log alone answers *"was this launched properly, run by hand on purpose,
-or refused?"* — and nothing can ever sit waiting on a prompt, because a
-non-interactive shell never prompts, it refuses. The deliberate manual form
+**The verdict is in the job's own output log AND the runwrap log**: the
+wrapper opens its per-run log (tee) *before* the gate, so every outcome —
+proceed, manual yes, refusal — is a fact on disk even when nothing ran;
+under sbatch the `launched-by:` line also lands in the job's `.out`. Either
+log alone answers *"was this launched properly, run by hand on purpose, or
+refused?"* — and nothing can ever sit waiting on a prompt, because a
+non-interactive shell never prompts, it refuses (EOF at the prompt is a
+refusal too, with the same verdict line). Four edges repaired 2026-08-12
+(U10): the interactive **yes is `export`ed**, so the warm-retry re-exec of
+the same wrapper does not re-prompt mid-retry; EOF falls to the refusal
+instead of dying under `set -e` with no verdict; `-h`/`--help` is scanned
+**before** the gate and runs none of the bootstrap — asking what a script
+does needs neither a claim nor a working activation; and the refusal
+reaches the runwrap log as above. The deliberate manual form
 is `MB_LAUNCHED_BY=manual bash JOB.run.sh` (backgroundable), and the value is
 logged so the choice is on record. *(`bench-runner` was the transitional
 claim of the old bench launchers; they died at step 6 u5, 2026-08-12, and no

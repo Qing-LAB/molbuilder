@@ -104,3 +104,52 @@ def test_provenance_never_carries_secret_material(tmp_path):
     assert "tls" not in text
     assert "secret" not in text.lower()
     assert "execution.mode = 'direct'" in text
+
+
+# ---- U10 (2026-08-12): the gate's four repaired edges ----------------- #
+
+def test_the_refusal_verdict_lands_in_the_runwrap_log_too(tmp_path):
+    """The log tee opens BEFORE the gate, so a refusal is a fact on
+    disk -- the runwrap log alone answers what happened, even when
+    nothing ran."""
+    sh = _wrapper(tmp_path)
+    env = {k: v for k, v in os.environ.items() if k != "MB_LAUNCHED_BY"}
+    cp = subprocess.run(["bash", str(sh)], cwd=str(tmp_path),
+                        stdin=subprocess.DEVNULL, capture_output=True,
+                        text=True, env=env)
+    assert cp.returncode == 2
+    assert "launched-by: NONE" in cp.stdout        # the job's own output
+    logs = list(tmp_path.glob("*.runwrap-*.log"))
+    assert logs, "no runwrap log written for the refused launch"
+    assert "launched-by: NONE" in logs[0].read_text()
+
+
+def test_help_is_answerable_without_a_claim_or_an_environment(tmp_path):
+    """-h/--help is scanned BEFORE the gate and runs NONE of the
+    bootstrap: asking what a script does never meets a permission
+    prompt, and a broken activation cannot kill the answer."""
+    sh = _wrapper(tmp_path)
+    env = {k: v for k, v in os.environ.items() if k != "MB_LAUNCHED_BY"}
+    cp = subprocess.run(["bash", str(sh), "-h"], cwd=str(tmp_path),
+                        stdin=subprocess.DEVNULL, capture_output=True,
+                        text=True, env=env)
+    assert cp.returncode == 0, cp.stderr
+    assert "Usage:" in cp.stdout
+    assert "was called directly" not in cp.stderr   # gate never spoke
+    # `conda activate` does not exist in this bare shell: reaching the
+    # usage proves the bootstrap was skipped, not survived.
+
+
+def test_the_manual_yes_is_exported_for_the_warm_retry_exec(tmp_path):
+    """The y-branch EXPORTS the claim: the warm-retry re-execs this very
+    wrapper, and an unexported answer would re-prompt (or refuse, stdin
+    long gone) mid-retry.  Rendered-text pin plus a child-visibility
+    check driven through the same case arm."""
+    sh = _wrapper(tmp_path)
+    text = sh.read_text()
+    assert "export MB_LAUNCHED_BY=manual" in text
+    # EOF on the prompt must fall to the refusal, not die under set -e
+    assert 'read -r _mb_answer || true' in text
+    # and the interactive decline prints the verdict line too
+    ix = text.index("Aborted.")
+    assert "launched-by: NONE" in text[ix:ix + 300]

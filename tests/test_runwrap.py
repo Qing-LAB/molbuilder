@@ -601,8 +601,13 @@ def _emit_truncated_wrapper(tmp_path, basename, suffix=".fdf"):
     # Cut at the newline AFTER the ``which python:`` line.
     end_eol = text.find("\n", end_ix)
     assert end_eol >= 0
-    # Plus the blank line that separates blocks.
     cut_end = end_eol + 1
+    # Since U10 the bootstrap + state dump sit inside the help guard
+    # (``if [ "$_mb_help" = "0" ]``); the cut must swallow its closing
+    # ``fi`` or the truncated wrapper keeps an unopened one.
+    if text[cut_end:cut_end + 3] == "fi\n":
+        cut_end += 3
+    # Plus the blank line that separates blocks.
     if text[cut_end:cut_end + 1] == "\n":
         cut_end += 1
     text = (

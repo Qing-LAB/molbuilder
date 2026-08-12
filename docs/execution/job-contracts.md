@@ -449,7 +449,7 @@ wrapper contains these and nothing else:
 
 | block | what it is for |
 |---|---|
-| **Launch-door gate** | one launch door (`job-system.md` § 5.3): `submit` sets `MB_LAUNCHED_BY` (direct: child env; sbatch: `--export=ALL,MB_LAUNCHED_BY=jobset-submit`, robust to site export policy). Without it a terminal call warns and asks; a non-interactive call refuses with exit 2 and the fix. `MB_LAUNCHED_BY=manual` is the deliberate, logged override — the value is recorded either way *(user, 2026-08-12)* |
+| **Launch-door gate** | one launch door (`job-system.md` § 5.3): `submit` sets `MB_LAUNCHED_BY` (direct: child env; sbatch: `--export=ALL,MB_LAUNCHED_BY=jobset-submit`, robust to site export policy). Without it a terminal call warns and asks (a **yes is exported**, so the warm-retry re-exec keeps the answer; **EOF refuses** with the verdict line); a non-interactive call refuses with exit 2 and the fix; `-h`/`--help` is answered **before** the gate with no bootstrap run. `MB_LAUNCHED_BY=manual` is the deliberate, logged override — the verdict is recorded in the job's `.out` **and the runwrap log** either way *(user 2026-08-12; edges repaired U10)* |
 | **Baked preamble** | the site's own lines, verbatim from `script_generation.preamble` |
 | **Activation** | the one activation statement, verbatim |
 | **Continuation flags** | the shared `--continue` / `--cold` / `--force` handling |
