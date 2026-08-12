@@ -123,6 +123,54 @@ two hand-maintained copies of `default` would drift silently."* This document
 adds the consequence: **a sweep needs no bounds of its own**, because the bounds
 it needs are already declared upstream of it.
 
+### 3.1 ⭐ The template's other reader — the UI is built *from* it
+
+*Raised by the user, 2026-08-11: the UI is static today, and it should be
+constructed from the template instead. **That is a future plan — but it changes
+what the template must carry now**, which is why it is in this contract and not
+deferred with the work.*
+
+**The shift is small to state and large in consequence.**
+[`template.md`](?doc=engines/template.md) § 5 already says the template and the
+form *"are generated from one source and cannot drift apart"* — schema → template
+and schema → form, two siblings. **The direction the user wants is
+schema → template → UI:** the template is what the UI reads, so editing a
+template changes the interface.
+
+```mermaid
+flowchart LR
+    S["schema"] --> T["<b>template</b><br/><i>the catalogue, with values</i>"]
+    T --> UI["<b>the UI</b><br/><i>renders the items</i>"]
+    T --> PR["<b>prep</b><br/><i>resolves and renders</i>"]
+    T --> P["<b>a person</b><br/><i>reads the calculation</i>"]
+    T --> V["<b>validation</b>"]
+```
+
+> **Why a UI can read a template at all, when a new calculation has none.** The
+> blank form is the **schema-emitted default template** — every item at its
+> default, no values chosen. Opening an existing calculation renders *its*
+> template. **One format, one renderer, two states.** There is no separate "form
+> schema" to keep in step.
+
+#### 3.1a ⚠ Three keys the template drops that a UI cannot do without
+
+**Checked against `web/form-schema.md` § 1a and `script_emit.BenchField`, and the
+template loses three of them:**
+
+| key | what it is | status |
+|---|---|---|
+| **`label`** | the human name — *"MPI ranks (np)"*, *"Max memory (per rank)"* | **lost.** `BenchField.name` holds the *field* name (`mpi_np`) and its comment calls it *"human-readable label"*, which it is not |
+| **`section`** | which fieldset — *"Compute & budget"*, *"System"* | **lost.** `declaration_for` reads it only to decide whether the field is exposed, then discards it |
+| **`null_label`** | what *unset* is called — *"(single-process)"*, *"(auto)"* | **lost.** `optional` says unset is a real state; nothing says how to show it |
+
+**A template with these three missing produces a UI that cannot name its own
+fields or group them.** They cost nothing to carry — they are already in the
+field metadata — and adding them later means re-emitting every template.
+
+> **So the rule for the TOML key set is: carry what every reader needs, and
+> decide it once.** `template.md` § 5's key table is the authority and gains
+> `label`, `section` and `null_label`; this section is why.
+
 ---
 
 ## 4. What bounds a sweep — and why nothing new is invented
@@ -198,15 +246,25 @@ configuration the real run asks for, knowing both the speed and the queue cost.
 
 | | stated in | shape |
 |---|---|---|
-| **capability** | `molbuilder.json` — the clusters available in this environment and **the hardware of each** — plus floor-1 detection on a workstation (M6: a workstation needs no file) | `scheduler.routing` is the existing menu of named domains and already carries **limits** (`max_time`, `max_mem_gb`). **⚠ It does not yet carry cores or GPUs per cluster**, which this design needs — recorded as a gap, not designed here |
+| **capability** | `molbuilder.json` — the clusters available in this environment and **the hardware of each** — plus floor-1 detection on a workstation (M6: a workstation needs no file) | `scheduler.routing` is the existing menu of named domains and already carries **limits** (`max_time`, `max_mem_gb`). It does **not** yet carry cores, GPUs or node type per domain — **the shape it needs is drafted in [`asu-sol.md`](?doc=execution/asu-sol.md) § 5.3** (decision 38) |
 | **allocation** | the command, at `prep` — *"the actual run would then also provide this parameter for the resources"* | ranks, cores per rank, GPUs (or none), time, and the domain |
 | **sweep** | the command, at benchmark time — *"can we speed through these different combinations … block size, CPU numbers, GPU, and how they combine, or no GPU at all"* | `{axis: [values]}`, checked against the allocation |
 
-### 4.2 The one parameter that is also an allocation input
+### 4.2 The third `prep` input: a parameter **pin**
 
-**`BlockSize` is the case that crosses the line, and it is deliberate.** It is a
-science parameter — a template item — *and* something a benchmark measures and a
-person then pins for the real run. So a run may state it beside its resources.
+**`prep` takes three inputs, not two** — an allocation, a sweep, and a set of
+**pins**: template parameters given a value for *this* prep, overriding what the
+description carries. **`BlockSize` is the only member today**, and it is a member
+by rule rather than by exception:
+
+> **A parameter belongs in the pin channel when its right value depends on the
+> allocation.** `BlockSize`'s ceiling is orbitals ÷ ranks, and ranks are an
+> allocation — so it cannot be finally decided in a description that names no
+> machine. **Anything else that varies belongs in a stage's `overrides`**, where
+> the description can carry it.
+
+It is a science parameter — a template item — *and* something a benchmark
+measures and a person then pins for the real run.
 
 **Its precedence is three-deep, and each level is a real state:**
 
@@ -216,13 +274,9 @@ person then pins for the real run. So a run may state it beside its resources.
 | not stated | **the template's value** | whatever the description carries |
 | template carries none | the default | `tuning.md` § 2.11's *unset → proposed*, or omitted entirely |
 
-> **This does not open a general "override any parameter at `prep`" channel**,
-> and the distinction is worth holding: `BlockSize` earns it because *the value
-> depends on the launch* — its ceiling is orbitals ÷ ranks, and ranks are an
-> allocation. **A parameter whose right value depends on how many ranks you
-> asked for cannot be finally decided in a description that names no machine.**
-> That is the membership rule; anything else varying belongs in a stage's
-> `overrides`, where the description can carry it.
+> **The pin channel is bounded by that rule, not by a list**, which is what stops
+> it becoming a general "override anything at `prep`" back door. A second member
+> would have to argue the same dependency; none does today.
 
 ### 4.3 Neither one ever enters the description
 
@@ -264,7 +318,7 @@ the maximum?* — is § 4.1's priority trade, and no measurement settles it:
 | | typically runs on | why |
 |---|---|---|
 | **the benchmark** | a short, high-priority domain | trials are minutes — SCF capped, MD steps zeroed — so they fit a short limit and get scheduled quickly |
-| **the real run** | a long domain, often 24 h | the calculation needs it; and the more resources it asks for, the longer it waits |
+| **the real run** | a long domain — on Sol, `public`/`general` at 7 days, `highmem` at 2, or `long` QOS at 14 | the calculation needs the time; and the more resources it asks for, the longer it waits |
 
 **So the two halves of `bench-result@1` are not a nicety — they are what makes
 this work**, and the existing split is already the right one:
@@ -303,15 +357,22 @@ this work**, and the existing split is already the right one:
 | **shape** | an ordered `list[ResolvedConfig]`, plus the axes that produced it |
 
 **Each element is a complete, validated configuration** — the template's values,
-this stage's `overrides` on top, then this sweep point's values on top of that.
-Precedence is that order and it is total: every element is renderable on its own,
-and no downstream reader ever re-derives a value or asks *"was this a benchmark?"*
+this stage's `overrides` on top, this sweep point's values on top of that, and any
+**pin** (§ 4.2) last. Precedence is that order and it is total: every element is
+renderable on its own, and no downstream reader ever re-derives a value or asks
+*"was this a benchmark?"*
+
+> **An element carries its allocation as well as its parameters, and that is the
+> point.** The deck writer needs the rank count (`BlockSize`'s ceiling is orbitals
+> ÷ ranks) and the wrapper writer needs the whole of it. **Both read one object**,
+> resolved once, instead of one reading a config and the other re-deriving.
 
 **What each element carries beyond its values:**
 
 | field | why it exists |
 |---|---|
 | `values` | the resolved parameters — what the deck writer renders |
+| **`resources`** | **this element's own allocation** — ranks, cores per rank, GPUs, time, domain. **Per element, because a sweep over `mpi_np` gives each trial a different rank count**, and because this is the field that structurally ends § 5h's finding B: `Job.resources` is copied from here, so it can no longer be read out of an engine config |
 | `point` | which sweep coordinate this is (`{}` for a run) — what names the trial directory |
 | `label` | the `SystemLabel` in force. **A trial's is relabelled**, which is what structurally prevents a benchmark from reading the real run's warm files (`project-layout.md` § 2.3.2) |
 | `provenance` | which source set each value — template · stage override · sweep point. This is what makes `M3`'s *"the numbers were wrong"* answerable |
@@ -354,7 +415,7 @@ flowchart TB
 | module | floor | what it owns | what it replaces |
 |---|:--:|---|---|
 | **`template/`** | 2 | read and write `<label>.template.toml`; the `Item` type; emit from schema | a template that is written by a CLI command and read back by nothing |
-| **`resolve/`** | 3 | template + task + environment + sweep → **`ParameterSet`** | the missing floor-2 → floor-3 edge, and `bench/`'s parallel grid builder |
+| **`resolve/`** | 3 | template + task + `Environment` + **allocation** + sweep + pins → **`ParameterSet`** | the missing floor-2 → floor-3 edge, and `bench/`'s parallel grid builder |
 
 **`resolve/` is the hinge, and it is where the duplication dies.** Everything
 `bench/` does that is not measurement-specific is one of `prep`'s five steps; once
@@ -366,7 +427,7 @@ left to implement.
 | floor | may read | must never |
 |---|---|---|
 | 2 · `template` · `task` | its own files | know a machine exists |
-| 3 · `resolve` | template · task · `Environment` · the sweep | write a file |
+| 3 · `resolve` | template · task · `Environment` · the allocation · the sweep · the pins | write a file |
 | 3 · `model` | a `ParameterSet` | re-read the template |
 | 4 · `materialize` | a `JobSet` · `Shape` | re-resolve a parameter |
 | 5 · `submit` · `runwrap` | the built directory · `read_by` items | decide anything (M5) |

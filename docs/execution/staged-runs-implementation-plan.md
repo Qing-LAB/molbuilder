@@ -2931,8 +2931,9 @@ flags — and **that config carries three facts floor 2 may not name**:
 
 | # | finding | evidence |
 |---|---|---|
-| **A** | **`mpi_np`, `omp_threads`, `continue_retries` are template items.** Of 39 exposed `SiestaConfig` items, these three are machine facts, and `template.md` § 7 forbids exactly them: *"a machine fact — ranks, GPUs, queue, partition, wall time … resolved at `prep`"* | `config/siesta.py:830` et al. carry a `section`, so `template.declaration_for` emits them. *(`diag_algorithm` was checked and is **correct** — `template.md` § 6.1 names it `kind="engine"` with `read_by=["wrapper"]`.)* |
-| **B** | those three are **exactly** what floor 3 reads back out | `siesta/stages.py:226-228` — `Resources(mpi_np=eff.mpi_np, cpus_per_task=eff.omp_threads, continue_retries=eff.continue_retries)` |
+| **A** | **Machine facts are template items.** `template.md` § 7 forbids exactly them: *"a machine fact — ranks, GPUs, queue, partition, wall time … resolved at `prep`"*. **⚠ Corrected 2026-08-11 on review — the first pass tested a *guessed list of names* and got this wrong in both directions.** Re-done against all 39 exposed items: the machine facts are **`mpi_np`** (ranks), **`omp_threads`** (cores per rank, `-c`) and **`max_memory_mb`** (`ulimit -v` — *missed the first time*). **`continue_retries` is NOT one** — it is a retry *policy*, names no machine, and legitimately stays at floor 2 | `config/siesta.py:830` (`mpi_np`), `:898` (`omp_threads`), `:920` (`max_memory_mb`) each carry a `section`, so `template.declaration_for` emits them. *(`diag_algorithm` and `enable_gpu` were checked and are **correct** — engine keywords whose wrapper dependency `template.md` § 6.1 handles with `read_by`.)* |
+| **A2** | *(surfaced by the same re-check, and each needs a call rather than an assumption)* | **`psml_lib`** is a **path into this machine's filesystem** — it offends `template.md` § 7's *data files* exclusion rather than its machine one, since pseudopotentials travel in the shared package. **`system_label`** is a template item *and* derived from `task.json` as `Task.label` — a **second home for one identity**, which `run-identity.md` § 2.0a says is derived and not stored |
+| **B** | the machine ones are read straight back out by floor 3 | `siesta/stages.py:226-228` — `Resources(mpi_np=eff.mpi_np, cpus_per_task=eff.omp_threads, continue_retries=eff.continue_retries)`. **Two of those three are the leak; the third is not** — reading `continue_retries` from the config is correct, because a retry policy is floor 2's to carry. `max_memory_mb` leaks by a different road: it reaches `ulimit -v` in the wrapper without passing through `Resources` at all |
 | **C** | **the two producers differ precisely where one is wrong.** `sweep_to_jobset` builds `Resources` from **`env.topology`** — correct under M4. `stages_to_jobset` builds it from the **config** — the leak | `bench/to_jobset.py:56-60` vs `siesta/stages.py:226` |
 | **D** | **~75 lines exist to detect the leak rather than remove it.** `launch_agreement` + `check_launch_matches_deck` compare *what the deck was rendered for* against *what it will be launched at* — a disagreement that is only constructible because a machine fact rode through floor 2. Its own docstring records the shipped crash (`-np 14`, `propor: IMAX = 0`) | `jobset/prep.py:76-149`, and the diagnosis at `:88-91` |
 | **E** | **`prep` implements three of its five steps, and says so in an error.** Steps 2 (resolve parameters) and 3 (render deck) are absent; step 3's absence is a refusal: *"script not in bundle root (render the inputs before prep)"* | `jobset/prep.py:233-235` |
@@ -2956,7 +2957,7 @@ The order is forced by what each needs to exist beneath it:
 
 | # | build | why here | closes |
 |---|---|---|---|
-| **1** | **`template/` in TOML.** One file, `kind` · `read_by` · no payload. Writer computes the fingerprint. **Move the three machine facts out of the schema's exposed set** | it is the bottom of the data spine; everything else reads it. Doing (A) here rather than later means floor 3 is *built* against a clean floor 2 instead of being corrected afterwards | G · H · A · C4 · C5 · C10 |
+| **1** | **`template/` in TOML.** One file, `kind` · `read_by` · no payload, **plus `label` · `section` · `null_label` so the UI can be built from it** ([`generator.md`](?doc=execution/generator.md) § 3.1). Writer computes the fingerprint. **Move `mpi_np`, `omp_threads` and `max_memory_mb` out of the exposed set** — they become allocation fields (A). `continue_retries` stays | it is the bottom of the data spine; everything else reads it. Doing (A) here rather than later means floor 3 is *built* against a clean floor 2 instead of being corrected afterwards | G · H · A · C4 · C5 · C10 · **the UI key set** |
 | **2** | **`jobset describe`** — writes template + `task.json` + data files, floor 2 only | the only writer of floor 2 today is the verb step 4 deletes | C9 |
 | **3** | **`resolve/` → `ParameterSet`.** template ⊕ overrides ⊕ sweep point → `list[ResolvedConfig]`; `Resources` built from `Environment` + the allocation | **the hinge.** It consumes floor 1 and floor 2 — the two artifacts nothing reads — and it is what makes a run *"a sweep of length one"* | the one defect · B · C |
 | **4** | **`prep` gains steps 2 and 3**, looping over the `ParameterSet` | steps 2 and 3 have nothing to do until step 3 above exists | E · § 9.3's migration |
@@ -2981,6 +2982,56 @@ The order is forced by what each needs to exist beneath it:
 **Net: the build adds two modules and removes more than it adds**, which is
 § 9.4's test and the reason this is the right shape rather than merely a tidier
 one.
+
+---
+
+## 5i. The R×3 review before coding — 2026-08-11
+
+*The gate before the transformation starts. Three passes, and per the standing
+rule the **subject widens** each time: the unit → everything written this session
+→ the seams and the other readers. **Nine defects, and three of them are in my
+own § 5h.***
+
+### Pass 1 — the unit: does `generator.md` say what the contracts say?
+
+| # | defect | fixed |
+|---|---|---|
+| 1 | § 4.1a called the per-domain hardware block *"a gap, not designed here"* — but `asu-sol.md` § 5.3 now designs it | points at it |
+| 2 | § 4.4a said a run domain is *"often 24 h"*; Sol's are 7 days (`public`/`general`), 2 (`highmem`), 14 (`long` QOS). 24 h is `class`, and 1 day is `lightwork` — neither is a production domain | real limits named |
+| 3 | `BlockSize` was described as riding *"beside the resources"*, which made a parameter look like an allocation | **`prep` has THREE inputs** — allocation, sweep, and **pins** — and pin membership is a *rule*: a parameter whose right value depends on the allocation |
+| 4 | § 6 and § 6.1 listed `resolve/`'s inputs as *template + task + environment + sweep* — **the allocation was missing from the module that consumes it** | both corrected |
+| 5 | **⭐ `ResolvedConfig` carried no `resources`.** A sweep over `mpi_np` gives every element a *different rank count*, so resources are necessarily per-element — and without the field there was nowhere for them to live | added, and it is **the field that structurally ends finding B**: `Job.resources` is copied from the element, so it can no longer be read out of an engine config |
+
+### Pass 2 — widened: is what I wrote earlier this session actually right?
+
+| # | defect | correction |
+|---|---|---|
+| 6 | **§ 5h finding A was wrong in both directions**, because it tested a **guessed list of field names** instead of examining the exposed set — the exact error mode the standing rule *"look for a membership RULE, not a list"* exists to prevent | re-done against all 39 items. **Missed `max_memory_mb`** (a machine fact: `ulimit -v`). **Wrongly included `continue_retries`** — a retry *policy*, which names no machine and legitimately stays at floor 2 |
+| 7 | finding B said *"those three are exactly what floor 3 reads back"* | two of the three are the leak; the third is correct. And `max_memory_mb` leaks by a **different road** — straight to the wrapper, never through `Resources` |
+| 8 | the same re-check surfaced two items needing a decision rather than an assumption | **`psml_lib`** is a path into a machine's filesystem (offends the *data files* exclusion, since pseudos travel in the shared package); **`system_label`** is a template item *and* derived as `Task.label` — one identity, two homes |
+
+### Pass 3 — widened again: the seams, and the readers nobody counted
+
+| # | finding |
+|---|---|
+| 9 | **⭐ The template has a fourth reader and the key set does not serve it.** The user settled that **the UI should be built *from* the template**, not merely generated from the same schema. Checked against `web/form-schema.md` § 1a: the template drops **`label`** (the human name — `BenchField.name` holds the *field* name while its comment calls itself *"human-readable label"*), **`section`** (the fieldset; read only to decide exposure, then discarded) and **`null_label`** (what *unset* is called). A template missing these produces a UI that cannot name or group its own fields. Added to `template.md` § 5, which owns the key set |
+| 10 | **A live defect on the path being built.** `cli.py:1847` and `web/blueprints/build.py:252` both pass `max_memory_mb` to `write_run_wrapper`; **`jobset/prep.py:237` does not.** So on the staged path a user's *"Max memory (per rank)"* is accepted, stored, and **silently dropped** — it never becomes `ulimit -v`. *"Present but not honoured"*, the shape this plan keeps deleting |
+
+> **Finding 10 is the argument for finding 5, made by the code.** Three call
+> sites build the same wrapper and one forgot a field. **When the allocation is
+> one object carried on the element, a call site cannot forget half of it** —
+> that is what the design buys, stated as a bug it makes unconstructible.
+
+### Verdict
+
+**The design is consistent and the build order holds** — no pass found a
+contradiction between `generator.md`, `architecture.md`, `project-layout.md` and
+`template.md`, and the nine defects were all *incompleteness or my own error*,
+not disagreement between contracts.
+
+**Two things must be settled by the user before step 1 writes a template**, both
+from pass 2 finding 8, because both change what the exposed item set contains:
+`psml_lib` and `system_label`. Everything else is decided.
 
 ---
 

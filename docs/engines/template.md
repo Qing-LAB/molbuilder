@@ -289,6 +289,9 @@ never validated by molbuilder (§ 9.2)."""
 | `anchor` | the engine keyword this becomes. A bare keyword, never a sentence |
 | `expands` | the engine keywords a `deck` item produces, as a list |
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
+| `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
+| `section` | which **fieldset** it belongs to — *"Compute & budget"*. Also what makes a field exposed at all |
+| `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
 | `range` · `unit` · `choices` · `group` | bounds, label, enum members, and whether *vary per stage* starts ticked |
 | `help` | what this is, in prose. Multi-line is ordinary TOML |
 
@@ -304,9 +307,11 @@ interpreted.
 flowchart LR
     subgraph I["one item"]
       K["kind"]; RB["read_by"]; V["value"]; D["default"]
-      T["type · choices"]; R["range · unit"]; G["group"]; H["help"]; A["anchor · expands"]
+      T["type · choices"]; R["range · unit"]; G["group · section"]; H["help · label"]; A["anchor · expands"]
+      NL["null_label"]
     end
-    T --> UI["a surface<br/><i>picks the control</i>"]
+    NL --> UI
+    T --> UI["a surface<br/><i>picks the control,<br/>names it, groups it</i>"]
     R --> UI
     D --> UI
     G --> UI
@@ -320,6 +325,15 @@ flowchart LR
     RB --> WW
     K --> MON["the monitor"]
 ```
+
+> **⭐ `label`, `section` and `null_label` were added 2026-08-11**, when the user
+> settled that **the UI is to be built *from* the template** rather than merely
+> generated from the same schema —
+> [`generator.md`](?doc=execution/generator.md) § 3.1. Without them a template
+> cannot name its own fields or group them, and `optional` says *unset* is a real
+> state while nothing says how to show it. They are already in the field metadata,
+> so carrying them costs nothing — and adding them later means re-emitting every
+> template written before.
 
 **Every key comes from the field's own metadata**
 ([`web/form-schema.md`](?doc=web/form-schema.md) § 1a: `help`, `range`, `unit`,
