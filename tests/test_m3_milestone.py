@@ -142,25 +142,16 @@ def test_the_refusal_says_the_files_are_safe(tmp_path):
     assert "nothing is renamed" in msg
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "P10 (reason corrected 2026-08-10) -- the CHECK exists and is asserted "
-    "above, but no producer calls it: `molbuilder fdf` writes over an existing "
-    "deck silently.  This said 'P5, which rewrites the produce path entirely', "
-    "and P5 has now rewritten one: the STAGED branch is transactional and "
-    "writes a description.  It did NOT touch the path this test exercises -- "
-    "`fdf` with no ladder flag, the single-deck produce -- which is P10's, and "
-    "which also still writes no task.json.  Same owner, same gap, and the old "
-    "reason would have expired silently the moment P5 closed."))
-def test_the_cli_produce_path_refuses_a_second_time(tmp_path):
-    from click.testing import CliRunner
-
-    from molbuilder.cli import cli
-    xyz = tmp_path / "w.xyz"
-    xyz.write_text("3\n\nO 0 0 0\nH 0.76 0.59 0\nH -0.76 0.59 0\n")
-    out = tmp_path / f"{ID}.fdf"
-    CliRunner().invoke(cli, ["fdf", str(xyz), str(out)],
-                       catch_exceptions=False)
-    (tmp_path / f"{ID}.XV").write_text("relaxed coords\n")
-    r = CliRunner().invoke(cli, ["fdf", str(xyz), str(out)],
-                           catch_exceptions=False)
-    assert r.exit_code != 0
+# ``test_the_cli_produce_path_refuses_a_second_time`` was RETIRED 2026-08-11.
+#
+# It was a strict xfail recording a real defect: `molbuilder fdf` called no
+# producer-side overwrite check, so a second produce wrote over an existing deck
+# beside a relaxed ``.XV`` silently.  **The verb was deleted, so the defect went
+# with it** -- and a strict xfail that starts passing is itself a failure, which
+# is the mechanism working: it refused to be quietly right.
+#
+# The CHECK it guarded (``check_overwrite``) is still asserted directly above.
+# Whether `prep` re-rendering a deck in place needs the same guard is a
+# DIFFERENT question -- a deck is derived from the description now, and
+# `project-layout.md` § 1.5 makes each ATTEMPT immutable rather than each deck.
+# Reinstating this against the new path would assert an answer nobody has made.

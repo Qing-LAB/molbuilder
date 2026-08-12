@@ -766,12 +766,10 @@ class SiestaConfig:
         "engine_key":  '(molbuilder: filename token + log naming)',
         "help":  "stage token <NN>_<name> (e.g. 01_coarse) carried by this "
                  "stage's deck, stdout and log; None keeps the unsuffixed name",
-        # skip_cli: the CLI's ``--stage`` flag (cli.py::cmd_fdf) is
-        # the richer entry point -- it sets cfg.stage AND applies the
-        # tier-aligned overlay (relax_type / steps / force_tol /
-        # max_displ) via apply_siesta_stage().  Auto-generating a
-        # CLI option from this field would collide with that.  Python
-        # API + form still set cfg.stage directly.
+        # skip_cli: nothing bridges SiestaConfig to click since
+        # ``molbuilder fdf`` went (2026-08-11); `prep` sets cfg.stage
+        # from the StageRef it holds.  The field itself leaves at C7,
+        # when the token becomes a render ARGUMENT.
         "skip_cli":   True,
     })
 

@@ -135,6 +135,18 @@ def test_the_named_stages_overrides_are_what_got_rendered(calc):
     assert "MD.MaxForceTol 0.04" in medium
 
 
+def test_the_deck_carries_its_stages_token_and_header(calc):
+    """The stage's artifact token reaches the rendered deck: every filename
+    molbuilder chooses picks it up, and the ``# Stage <token> --`` line names
+    the science of the config being rendered, so the comment cannot drift from
+    the keywords below it (decision 27).  Gated here because `prep` is the
+    token's producer now -- ``molbuilder fdf --stage N`` was, until it went."""
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+    coarse = (calc / "calc_01_coarse.fdf").read_text()
+    assert "calc_01_coarse.out" in coarse
+    assert "# Stage 01_coarse --" in coarse
+
+
 def test_the_template_supplies_what_no_stage_varies(calc):
     prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
     assert "MeshCutoff 300.0" in (calc / "calc_01_coarse.fdf").read_text()

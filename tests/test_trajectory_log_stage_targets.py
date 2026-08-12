@@ -165,6 +165,44 @@ def _invoke(*args):
     return CliRunner().invoke(cli, list(args), catch_exceptions=False)
 
 
+def _staged(xyz, tmp_path, strategy):
+    """Describe a calculation and `prep` every enabled stage of *strategy*.
+
+    **Repointed 2026-08-11**, when `molbuilder fdf` was deleted. These tests ran
+    one command that rendered the whole ladder at once; the ladder is now
+    described first and `prep` renders **one stage per call**, on the machine
+    that will run it. The property is unchanged — one
+    ``<label>_<NN>_<name>.molwatch.log`` per enabled stage, beside the deck that
+    writes it — but it is now assembled a stage at a time, which is the split
+    the whole design rests on.
+    """
+    import json
+
+    from molbuilder import describe as D
+    from molbuilder import load as _load
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.jobset.model import Resources
+    from molbuilder.jobset.prep import prep_calculation
+    from molbuilder.siesta.stages import default_siesta_stages
+
+    struct = _load(xyz)
+    stages = default_siesta_stages(strategy) if strategy else []
+    D.write_description(
+        D.build_description(struct, SiestaConfig(system_label="JOB"), stages,
+                            engine="siesta", shape="flat", name="JOB",
+                            source=str(xyz)),
+        tmp_path)
+    (tmp_path / "molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "source /opt/conda/etc/profile.d/conda.sh"}}))
+    if not stages:
+        prep_calculation(tmp_path, None, allocation=Resources(mpi_np=4))
+    for s in stages:
+        if s.enabled:
+            prep_calculation(tmp_path, s.name, allocation=Resources(mpi_np=4))
+    return tmp_path
+
+
 def test_multi_stage_cli_emits_per_stage_molwatch_logs(xyz, tmp_path):
     """``molbuilder fdf ... --stage-strategy vib-quality`` produces one
     ``<label>_<NN>_<name>.molwatch.log`` per enabled stage.
@@ -174,10 +212,7 @@ def test_multi_stage_cli_emits_per_stage_molwatch_logs(xyz, tmp_path):
     (`job-contracts.md` § 6.3), and a log named for a position could not be
     matched to the deck that wrote it once a user named their stages.  P4
     units 2-4."""
-    fdf = tmp_path / "JOB.fdf"
-    r = _invoke("fdf", str(xyz), str(fdf),
-                "--stage-strategy", "vib-quality")
-    assert r.exit_code == 0, r.output
+    _staged(xyz, tmp_path, "vib-quality")
     logs = sorted(p.name for p in tmp_path.glob("JOB_*.molwatch.log"))
     assert logs == ["JOB_01_coarse.molwatch.log",
                     "JOB_02_medium.molwatch.log",
@@ -198,10 +233,7 @@ def test_per_stage_molwatch_log_carries_stage_target(xyz, tmp_path):
       02_medium: 0.04 (publishable)
       03_tight:  0.01 (crystal-tight)
     """
-    fdf = tmp_path / "JOB.fdf"
-    r = _invoke("fdf", str(xyz), str(fdf),
-                "--stage-strategy", "vib-quality")
-    assert r.exit_code == 0, r.output
+    _staged(xyz, tmp_path, "vib-quality")
     text1 = (tmp_path / "JOB_01_coarse.molwatch.log").read_text()
     text2 = (tmp_path / "JOB_02_medium.molwatch.log").read_text()
     text3 = (tmp_path / "JOB_03_tight.molwatch.log").read_text()
@@ -218,10 +250,7 @@ def test_per_stage_molwatch_log_carries_max_steps(xyz, tmp_path):
     """Each per-stage log carries its own ``max_steps`` so the
     inspector can render the right "progress through the stage"
     indicator.  Defaults: stage1=600, stage2=200, stage3=100."""
-    fdf = tmp_path / "JOB.fdf"
-    r = _invoke("fdf", str(xyz), str(fdf),
-                "--stage-strategy", "vib-quality")
-    assert r.exit_code == 0, r.output
+    _staged(xyz, tmp_path, "vib-quality")
     text1 = (tmp_path / "JOB_01_coarse.molwatch.log").read_text()
     text2 = (tmp_path / "JOB_02_medium.molwatch.log").read_text()
     text3 = (tmp_path / "JOB_03_tight.molwatch.log").read_text()
@@ -233,10 +262,7 @@ def test_per_stage_molwatch_log_carries_max_steps(xyz, tmp_path):
 def test_two_stage_strategy_emits_only_two_logs(xyz, tmp_path):
     """``--stage-strategy publishable`` (default: stage1+stage2)
     produces TWO logs, not three -- stage3 is disabled."""
-    fdf = tmp_path / "JOB.fdf"
-    r = _invoke("fdf", str(xyz), str(fdf),
-                "--stage-strategy", "publishable")
-    assert r.exit_code == 0, r.output
+    _staged(xyz, tmp_path, "publishable")
     logs = sorted(p.name for p in tmp_path.glob("JOB_*.molwatch.log"))
     assert logs == ["JOB_01_coarse.molwatch.log",
                     "JOB_02_medium.molwatch.log"]
@@ -246,9 +272,8 @@ def test_single_stage_path_unchanged_by_c14(xyz, tmp_path):
     """The single-stage (non-multi-stage) CLI path predates C1.4 and
     must not regress -- one ``.molwatch.log`` (or none, depending on
     cfg.write_molwatch_log) and no ``-stage`` suffix in the filename."""
-    fdf = tmp_path / "JOB.fdf"
-    # No --stage-strategy / --stages-json -> single-stage branch.
-    r = _invoke("fdf", str(xyz), str(fdf))
-    assert r.exit_code == 0, r.output
+    # No ladder -> a description with a single parameter set (stages.md 6.5),
+    # which `prep` renders without a stage token.
+    _staged(xyz, tmp_path, None)
     # No -stageN logs.
     assert not any(tmp_path.glob("JOB-stage*.molwatch.log"))

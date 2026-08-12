@@ -450,8 +450,19 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         # records the rank count it actually assumed.  Rendering from the
         # values alone emits `mpi_np auto` and the launch check then refuses a
         # deck that `prep` itself just made -- which is how this was found.
-        (base / script).write_text(render_deck(struct, element.render_config()),
-                                   encoding="utf-8")
+        # The stage's artifact TOKEN reaches the emitter here.  It feeds three
+        # names -- the deck, the engine's stdout, and the molwatch log -- and
+        # leaving it unset made two stages of one calculation write to a single
+        # `<label>.molwatch.log`.  Caught by the trajectory-log tests when
+        # `molbuilder fdf` was deleted, which is the channel that used to carry
+        # it.  C7 replaces `cfg.stage` with a render ARGUMENT; until then the
+        # field is how the emitter is told, and `prep` -- which holds the
+        # StageRef -- is what tells it.
+        cfg = element.render_config()
+        if token and hasattr(cfg, "stage"):
+            cfg = dataclasses.replace(cfg, stage=token)
+        (base / script).write_text(render_deck(struct, cfg), encoding="utf-8")
+        _seed_trajectory_log(struct, cfg, base)
         jobs.append(_job_for(element, script, task, pset.stage))
 
     # ---- 4 + 5, and the record floor 3 leaves behind -------------------- #
@@ -461,6 +472,39 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     js.write(base / "job-set.json")
     return prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
                        allocation=allocation)
+
+
+def _seed_trajectory_log(struct, cfg, base: Path) -> None:
+    """Write the one-block preview the Watch tab discovers before a run starts.
+
+    The deck NAMES its trajectory log; something has to CREATE it, or the tab
+    has nothing to find until the engine writes its first step. That seeding
+    lived inside ``convert`` — which writes a deck to disk — and `prep` renders
+    the text and writes it itself, so the preview was silently skipped.
+
+    **Found by the trajectory-log tests when `molbuilder fdf` was deleted.**
+    They named a real property of the product, not of the verb, which is why
+    they were repointed rather than retired.
+    """
+    if not getattr(cfg, "write_molwatch_log", False):
+        return
+    from ..trajectory_log import molwatch_log_basename, write_initial_preview
+    token = getattr(cfg, "stage", None)
+    # The stage's own convergence targets travel with its log, so the Watch
+    # tab's threshold line is THIS stage's and not the ladder's first.  They
+    # come from the RESOLVED config, which is the whole point of resolving
+    # before rendering: `coarse` and `tight` disagree about both of these.
+    targets = {}
+    for key, attr in (("max_force_ev_per_ang", "relax_force_tol"),
+                      ("max_steps", "relax_steps")):
+        value = getattr(cfg, attr, None)
+        if value is not None:
+            targets[key] = value
+    write_initial_preview(
+        struct,
+        base / molwatch_log_basename(cfg.system_label, token),
+        job=cfg.system_label, engine="siesta",
+        stage_name=token, convergence_targets=(targets or None))
 
 
 def _token_for(task, stage_name: Optional[str]) -> str:

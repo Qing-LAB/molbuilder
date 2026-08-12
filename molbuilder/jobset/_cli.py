@@ -488,13 +488,15 @@ def _echo_resolved(js, base, stage_name: str, attempt) -> None:
 @click.option("--bundle", "bundle", default=".",
               type=click.Path(exists=True, file_okay=False),
               help="the calculation folder (default: the current directory).")
-@click.option("--mode", type=click.Choice(["submit", "direct"]), required=True,
+@click.option("--mode", type=click.Choice(["submit", "direct"]), default=None,
               help="HOW to launch, which is a fact about this MACHINE and not "
                    "about the layout: 'direct' = run it here with bash; "
                    "'submit' = hand it to the scheduler molbuilder.json "
                    "configures.  Independent of the description's `shape` "
                    "(engines/stages.md § 6.7) -- a workstation running "
-                   "hierarchical is ordinary.")
+                   "hierarchical is ordinary.  **Defaults to `execution.mode` "
+                   "in molbuilder.json**, which is what running-a-job.md § 5.4 "
+                   "says gates submission; pass it only to override that.")
 @click.option("--domain", default=None,
               help="scheduler.routing domain -> -p/-q (submit mode; EXPLICIT, "
                    "never auto-picked).")
@@ -505,7 +507,25 @@ def submit_cmd(kind: str, stage, bundle: str, mode: str, domain,
                dry_run: bool) -> None:
     """Launch a prepped stage: local ``bash`` (direct) or the machine's
     submission system (submit).  Run ``prep`` first.  ``--dry-run`` shows the
-    exact command before anything is irreversible."""
+    exact command before anything is irreversible.
+
+    ``--mode`` falls back to ``execution.mode``.  `running-a-job.md` § 5.4 says
+    that setting is what gates submission, and until 2026-08-11 only ``bench``
+    consulted it while this verb demanded the flag on every call -- so the
+    config said one thing and the command required another.
+    """
+    if mode is None:
+        from ..runtime_config import get_execution
+        try:
+            mode = (get_execution() or {}).get("mode")
+        except Exception:                    # a malformed config is its own error
+            mode = None
+        if not mode:
+            raise click.ClickException(
+                "no --mode, and molbuilder.json sets no `execution.mode`.\n"
+                "  'direct' runs it here with bash; 'submit' hands it to the "
+                "scheduler.  Set execution.mode once for this machine, or pass "
+                "--mode for this call (running-a-job.md § 5.4).")
     _check_kind(kind)
     js, base = _load(bundle)
     only = _resolve_stage(js, stage, "submit")

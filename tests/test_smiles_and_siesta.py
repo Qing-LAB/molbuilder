@@ -1090,72 +1090,17 @@ class TestSiestaStageOverlay:
             f"stage 3 max_displ must be 0.02 A (crystal-tight per "
             f"engines/tuning.md sect. 2.2); got {s3['relax_max_displ']}")
 
-    def test_cli_stage_flag_emits_broyden_for_stage_2_and_3(self, tmp_path):
-        """End-to-end: ``molbuilder fdf --stage N`` does THREE things
-        in one flag (per the contract documented at
-        ``cmd_siesta`` in cli.py):
-
-          (a) Overlays the per-stage tier values via
-              ``apply_siesta_stage`` -- ``MD.TypeOfRun``, force tol,
-              max displ, max steps.
-          (b) Sets ``cfg.stage = N`` so the molwatch-log filename
-              gets the ``-stageN`` suffix.
-          (c) Emits the ``# Stage N of a staged relaxation`` header
-              comment.
-
-        The test gates ALL THREE.  A regression that only honors (a)
-        (e.g. drops the ``_dc.replace(cfg, stage=int(stage))`` line at
-        cli.py around line 510) silently loses the filename suffix
-        and the header comment -- without breaking the algorithm
-        choice -- and is exactly the failure mode this test exists
-        to catch.
-        """
-        from click.testing import CliRunner
-        from molbuilder.cli import cli
-        xyz = tmp_path / "h2.xyz"
-        xyz.write_text("2\n\nH 0 0 0\nH 0 0 0.74\n")
-        for stage in ("1", "2", "3"):
-            out_fdf = tmp_path / f"h2_stage{stage}.fdf"
-            runner = CliRunner()
-            result = runner.invoke(
-                cli, ["fdf", str(xyz), str(out_fdf), "--stage", stage,
-                      "--vacuum", "12"],
-                catch_exceptions=False,
-            )
-            assert result.exit_code == 0, result.output
-            text = out_fdf.read_text()
-
-            # (a) Algorithm choice: stage 1 -> CG, stage 2/3 -> Broyden.
-            if stage == "1":
-                assert "MD.TypeOfRun CG" in text, (
-                    f"Stage 1 must emit CG; got:\n"
-                    f"{[ln for ln in text.splitlines() if 'TypeOfRun' in ln]}")
-            else:
-                assert "MD.TypeOfRun Broyden" in text, (
-                    f"Stage {stage} must emit Broyden; got:\n"
-                    f"{[ln for ln in text.splitlines() if 'TypeOfRun' in ln]}")
-
-            # (b) cfg.stage was set: the ARTIFACT TOKEN goes downstream into
-            # the deck, the stdout and the molwatch-log names.  ``--stage N``
-            # resolves the tier's name through SIESTA_STAGE_NAMES -- the same
-            # table the ladder reads -- so both doors emit one token.
-            from molbuilder.config.siesta import (SIESTA_STAGE_NAMES,
-                                                   SIESTA_STAGE_PRESETS)
-            from molbuilder.identity import stage_token
-            want = stage_token(int(stage), SIESTA_STAGE_NAMES[int(stage)])
-            assert f"_{want}" in text, (
-                f"--stage {stage} must propagate the token {want!r} into the "
-                f"rendered fdf so the molwatch / output filenames carry it.  "
-                f"Missing in:\n"
-                f"{[ln for ln in text.splitlines() if 'stage' in ln.lower()][:5]}")
-
-            # (c) Stage header comment: catches a regression that
-            # drops a ``# Stage <token> -- <the science>`` line whose
-            # numbers are read off THE CONFIG BEING RENDERED, so the comment
-            # cannot drift from the keywords below it (decision 27).
-            assert f"# Stage {want} --" in text, (
-                f"--stage {stage} must emit its stage line.  Missing in:\n"
-                f"{[ln for ln in text.splitlines() if ln.startswith('# Stage')]}")
-            assert (f"force tol "
-                    f"{SIESTA_STAGE_PRESETS[int(stage)]['relax_force_tol']}"
-                    in text)
+    # ``test_cli_stage_flag_emits_broyden_for_stage_2_and_3`` was RETIRED
+    # 2026-08-11 with `molbuilder fdf` (C2), the only channel it drove.  It
+    # gated three properties, and each has a home on the live path:
+    #
+    #   (a) the per-stage tier values (CG vs Broyden, force tol) -- the
+    #       preset tables are asserted directly by the tests above, and the
+    #       rendered rung by test_prep_calculation.py::
+    #       test_the_named_stages_overrides_are_what_got_rendered;
+    #   (b) the stage's artifact token reaching the artifact NAMES --
+    #       test_trajectory_log_stage_targets.py (repointed the same day);
+    #   (c) the token + `# Stage <token> --` header inside the RENDERED deck
+    #       -- test_prep_calculation.py::
+    #       test_the_deck_carries_its_stages_token_and_header, added with
+    #       this retirement so the property never lost a producer-side gate.

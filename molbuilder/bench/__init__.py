@@ -414,7 +414,8 @@ def _resolve_project(project_dir: Path) -> Tuple[Path, Path, str]:
     if not runsh.exists():
         raise ValueError(
             f"expected wrapper not found: {runsh}. "
-            f"Run 'molbuilder run {fdf.name}' first."
+            f"Render it with `molbuilder jobset prep` -- the `molbuilder "
+            f"run` verb was deleted 2026-08-11 (conventions.md § 3)."
         )
     return fdf, runsh, basename
 

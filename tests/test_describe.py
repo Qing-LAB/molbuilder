@@ -191,6 +191,29 @@ def test_a_failure_while_writing_publishes_nothing(struct, cfg, tmp_path,
 
 
 # --------------------------------------------------------------------- #
+#  The name — inherited from the retired test_cli_system_label.py        #
+# --------------------------------------------------------------------- #
+#  That file's nine tests all went through `molbuilder fdf`, which was
+#  deleted 2026-08-11.  Two of its properties are about the NAME rather than
+#  about that verb, so they move here rather than going with it.
+
+def test_a_name_that_cannot_normalise_is_a_clean_refusal(struct, cfg):
+    """A label becomes a filename and a shell word, so the character set is
+    narrow.  A name outside it must be refused by name, not crash."""
+    with pytest.raises((ValueError, D.DescribeError)):
+        _describe(struct, cfg, name="Über")
+
+
+def test_a_refused_name_writes_nothing(struct, cfg, tmp_path):
+    """The refusal happens while nothing has been written — *ask → check →
+    write*, and the check is before the write rather than beside it."""
+    with pytest.raises((ValueError, D.DescribeError)):
+        D.write_description(_describe(struct, cfg, name="Über"),
+                            tmp_path / "calc")
+    assert not (tmp_path / "calc").exists()
+
+
+# --------------------------------------------------------------------- #
 #  The two surfaces write the same bytes                                #
 # --------------------------------------------------------------------- #
 

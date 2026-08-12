@@ -8,13 +8,15 @@ roles:
   * subcommand routing (``main(["X", ...]) -> proper handler``) works
     for the build verbs without hitting heavy external deps
   * the dataclass -> click bridge (add_dataclass_options) wires every
-    SiestaConfig / PySCFConfig field through to the right kwarg
+    PySCFConfig field through to the right kwarg
 
-Heavy dispatches (smiles needs RDKit, name needs PubChem, fdf needs
-ASE + a structure file, watch serve binds a port) are tested via
-mocks where reasonable and via ``--help`` only otherwise.  An end-to-
-end test that produces a real .fdf file lives in
-``test_smiles_and_siesta.py``; this file stays light.
+Heavy dispatches (smiles needs RDKit, name needs PubChem, watch serve
+binds a port) are tested via mocks where reasonable and via ``--help``
+only otherwise.  ``molbuilder fdf`` was DELETED 2026-08-11 (C1+C2): a
+deck is rendered by `jobset prep` from a description, so SiestaConfig
+no longer meets click at all.  The rendered deck is owned by
+``tests/test_prep_calculation.py``, value fidelity by the template
+round-trip (``tests/test_template_roundtrip.py``).
 """
 
 from __future__ import annotations
@@ -34,7 +36,9 @@ from molbuilder import cli
 
 _SUBCOMMANDS = [
     "peptide", "dna", "rna", "smiles", "name",
-    "fdf", "pyscf",
+    # "fdf" left with the verb (C2, 2026-08-11); "pyscf" stays until
+    # decision 34 reworks the emitted-script path the same way.
+    "pyscf",
     "modify",
     "serve", "watch",
 ]
@@ -177,29 +181,17 @@ def test_pyscf_atom_block_emits_to_stdout(monkeypatch, capsys, tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  Phase 5b: stdin support (`fdf - out.fdf`, `pyscf - out.py`)          #
+#  Phase 5b: stdin support (`pyscf - out.py`)                           #
 # --------------------------------------------------------------------- #
-
-
-def test_fdf_reads_xyz_from_stdin(monkeypatch, tmp_path):
-    """``molbuilder fdf - out.fdf`` reads stdin, sniffs XYZ vs PDB
-    from the first non-blank line, writes to a temp file, and feeds
-    that into the standard convert() pipeline.  Without this you
-    can't pipe ``molbuilder dna ATGC | molbuilder fdf -``."""
-    import io
-    xyz = "2\nh2 stdin\nH 0 0 0\nH 0.74 0 0\n"
-    monkeypatch.setattr("sys.stdin", io.StringIO(xyz))
-    out_fdf = tmp_path / "h2.fdf"
-    rc = cli.main(["fdf", "--vacuum", "12", "-", str(out_fdf),
-                   "--no-copy-psml", "--no-write-md-history"])
-    assert rc == 0
-    assert out_fdf.exists() and out_fdf.stat().st_size > 0
-    text = out_fdf.read_text()
-    assert "NumberOfAtoms" in text
+#  The fdf twin of these tests went with the verb (C2, 2026-08-11).
+#  The stdin helper is shared, so the sniff stays gated through pyscf.
 
 
 def test_pyscf_reads_xyz_from_stdin(monkeypatch, tmp_path):
-    """Same Unix-pipe support on the pyscf subcommand."""
+    """``molbuilder pyscf - out.py`` reads stdin, sniffs XYZ vs PDB from
+    the first non-blank line, writes to a temp file, and feeds that into
+    the standard convert() pipeline.  Without this you can't pipe
+    ``molbuilder dna ATGC | molbuilder pyscf -``."""
     import io
     xyz = "2\nh2 stdin\nH 0 0 0\nH 0.74 0 0\n"
     monkeypatch.setattr("sys.stdin", io.StringIO(xyz))
@@ -268,7 +260,9 @@ def test_pyscf_cli_help_lists_all_review_fix_l_options():
 
 def test_stdin_pdb_sniffs_correctly(monkeypatch, tmp_path):
     """Stdin sniff: a first line that isn't an integer is treated as
-    PDB (HEADER / TITLE / ATOM / HETATM all qualify)."""
+    PDB (HEADER / TITLE / ATOM / HETATM all qualify).  Ran through
+    ``fdf`` until 2026-08-11; the sniff belongs to the shared stdin
+    helper, so it repointed at pyscf rather than retiring."""
     import io
     pdb = (
         "ATOM      1  H   MOL A   1       0.000   0.000   0.000  1.00  0.00           H\n"
@@ -276,9 +270,9 @@ def test_stdin_pdb_sniffs_correctly(monkeypatch, tmp_path):
         "END\n"
     )
     monkeypatch.setattr("sys.stdin", io.StringIO(pdb))
-    out_fdf = tmp_path / "h2.fdf"
-    rc = cli.main(["fdf", "--vacuum", "12", "-", str(out_fdf),
-                   "--no-copy-psml", "--no-write-md-history"])
+    out_py = tmp_path / "h2.py"
+    rc = cli.main(["pyscf", "-", str(out_py), "--no-optimize",
+                   "--no-density-fit"])
     assert rc == 0
 
 
@@ -401,7 +395,7 @@ def test_add_dataclass_options_skip_filters_fields(tmp_path):
     """`skip=` excludes named fields -- the corresponding click options
     don't appear on the command, so the underlying function doesn't
     receive them.  Used when a command already has those options
-    defined manually (cf. cmd_fdf today)."""
+    defined manually (cf. cmd_pyscf today)."""
     import click as _click
     import dataclasses
 
@@ -476,55 +470,27 @@ def test_add_dataclass_options_works_on_real_pyscf_config():
 # --------------------------------------------------------------------- #
 #  Bridge coverage: every non-skip dataclass field is wired to the CLI  #
 #                                                                       #
-#  These tests are the safety net for the add_dataclass_options bridge  #
-#  migration of cmd_fdf / cmd_pyscf.  Three layers, each catching a     #
-#  different class of bug:                                              #
+#  Safety net for the add_dataclass_options bridge under cmd_pyscf.     #
+#  Three layers, each catching a different class of bug:                #
 #                                                                       #
-#    1. Bridge exposure -- every SiestaConfig / PySCFConfig field       #
-#       without ``skip_cli=True`` must appear as a click option on the  #
-#       corresponding subcommand's ``--help``.  Catches "bridge dropped #
-#       a field" when the metadata key is misspelled or a new field     #
-#       lands without metadata.                                         #
+#    1. Bridge exposure -- every PySCFConfig field without              #
+#       ``skip_cli=True`` must appear as a click option on the          #
+#       subcommand's ``--help``.  Catches "bridge dropped a field"      #
+#       when the metadata key is misspelled or a new field lands        #
+#       without metadata.                                               #
 #                                                                       #
-#    2. CLI -> Config plumbing -- a curated list of (flag, value) pairs #
-#       per subcommand.  Each invocation patches the heavy ``convert``  #
-#       to a no-op that captures the SiestaConfig / PySCFConfig         #
-#       actually constructed; the test then asserts the captured        #
-#       config has the expected attribute value.  Catches wrong-kwarg-  #
-#       name and type-coercion bugs (e.g. mesh_cutoff arriving as       #
-#       string "199.0" instead of float 199.0).                         #
+#    2. CLI -> Config plumbing -- (flag, value) pairs invoked against   #
+#       a patched ``convert`` that captures the constructed config.     #
+#       Catches wrong-kwarg-name and type-coercion bugs.                #
 #                                                                       #
-#    3. Default-value render -- assert each scalar default appears in   #
-#       the FDF output of a default SiestaConfig().  Earlier mutation   #
-#       testing (mesh_cutoff 300 -> 100) revealed 0 test failures here  #
-#       because no test pinned the default rendering; this layer fills  #
-#       that gap.                                                       #
+#  The SiestaConfig half of every layer was RETIRED 2026-08-11 with     #
+#  `molbuilder fdf` (C2): SiestaConfig no longer meets click at all,    #
+#  so there is no bridge to guard.  What those tests really protected   #
+#  -- a described value reaching the deck unchanged -- is owned by the  #
+#  template round-trip (test_template_roundtrip.py, all 39 exposed      #
+#  fields) and `prep`'s preflight declared-type row; the rendered deck  #
+#  by test_prep_calculation.py.                                         #
 # --------------------------------------------------------------------- #
-
-
-def test_fdf_cli_exposes_every_non_skip_siesta_field():
-    """Bridge invariant: every SiestaConfig field without skip_cli=True
-    must surface as a click option on the fdf subcommand."""
-    import dataclasses
-    from click.testing import CliRunner
-    from molbuilder.config.siesta import SiestaConfig
-
-    runner = CliRunner()
-    res = runner.invoke(cli.cli, ["fdf", "--help"])
-    assert res.exit_code == 0, res.output
-    out = res.output
-    for fld in dataclasses.fields(SiestaConfig):
-        if fld.metadata.get("skip_cli"):
-            continue
-        flag = "--" + fld.name.replace("_", "-")
-        # bool fields land as ``--foo / --no-foo``; either form proves
-        # the option is wired.
-        if fld.type in ("bool", bool):
-            no_flag = "--no-" + fld.name.replace("_", "-")
-            assert flag in out or no_flag in out, \
-                f"Bridge dropped bool field {fld.name}"
-        else:
-            assert flag in out, f"Bridge dropped scalar field {fld.name}"
 
 
 def test_pyscf_cli_exposes_every_non_skip_pyscf_field():
@@ -554,108 +520,8 @@ def _h2_xyz_at(path):
     return str(path)
 
 
-def _stub_siesta_summary(out_path):
-    return {"fdf": str(out_path), "n_atoms": 2, "species": ["H"],
-            "missing_psml": []}
-
-
 def _stub_pyscf_summary(out_path):
     return {"py": str(out_path), "n_atoms": 2, "charge": 0, "label": "h2"}
-
-
-@pytest.mark.parametrize("flag,cli_val,attr,expected", [
-    # Each row: a SiestaConfig field whose CLI override must round-trip
-    # cleanly through the bridge.  Fields are picked across the dataclass
-    # layout so a regression in any tier (basic / advanced / output /
-    # relaxation) shows up here.  Bools live in their own test below.
-    # 2026-05-27: ``--system-name`` removed when ``system_name`` was
-    # collapsed into ``system_label`` (one job-name field; the FDF
-    # generator emits both SystemName and SystemLabel from
-    # cfg.system_label).
-    ("--system-label",           "demo",     "system_label",           "demo"),
-    ("--basis-size",             "TZP",      "basis_size",             "TZP"),
-    ("--pao-energy-shift",       "0.005",    "pao_energy_shift",       0.005),
-    ("--xc-functional",          "VDW",      "xc_functional",          "VDW"),
-    ("--xc-authors",             "DRSLL",    "xc_authors",             "DRSLL"),
-    ("--mesh-cutoff",            "199.0",    "mesh_cutoff",            199.0),
-    ("--mixing-weight",          "0.05",     "mixing_weight",          0.05),
-    ("--pulay-history",          "8",        "pulay_history",          8),
-    ("--dm-tolerance",           "1e-7",     "dm_tolerance",           1e-7),
-    ("--dm-energy-tolerance",    "1e-3",     "dm_energy_tolerance",    1e-3),
-    ("--max-scf-iter",           "777",      "max_scf_iter",           777),
-    ("--electronic-temperature", "1500.0",   "electronic_temperature", 1500.0),
-    ("--solution-method",        "OMM",      "solution_method",        "OMM"),
-    ("--relax-type",             "FIRE",     "relax_type",             "FIRE"),
-    ("--relax-steps",            "999",      "relax_steps",            999),
-    ("--relax-force-tol",        "0.005",    "relax_force_tol",        0.005),
-    ("--relax-max-displ",        "0.10",     "relax_max_displ",        0.10),
-    ("--net-charge",             "-2",       "net_charge",             -2),
-    ("--spin-total",             "1.0",      "spin_total",             1.0),
-    # Verlet/Nose MD fields added in S1 (see config/siesta.py).
-    ("--md-initial-temperature", "350.0",    "md_initial_temperature", 350.0),
-    ("--md-target-temperature",  "298.15",   "md_target_temperature",  298.15),
-    ("--md-length-timestep",     "0.5",      "md_length_timestep",     0.5),
-])
-def test_fdf_cli_override_propagates_to_siesta_config(
-        flag, cli_val, attr, expected, monkeypatch, tmp_path):
-    """Each SiestaConfig CLI flag must arrive at the SiestaConfig actually
-    used by convert().  Catches kwarg-name typos and type-coercion bugs."""
-    captured = {}
-
-    def fake_convert(input_path, fdf_path, config, vacuum=None):
-        captured["cfg"] = config
-        return _stub_siesta_summary(fdf_path)
-    monkeypatch.setattr("molbuilder.siesta.convert", fake_convert)
-
-    in_xyz = _h2_xyz_at(tmp_path / "h2.xyz")
-    out_fdf = tmp_path / "h2.fdf"
-    rc = cli.main(["fdf", "--vacuum", "12", in_xyz, str(out_fdf), flag, cli_val])
-    assert rc == 0
-    assert getattr(captured["cfg"], attr) == expected, (
-        f"{flag} {cli_val!r}: expected SiestaConfig.{attr}={expected!r}, "
-        f"got {getattr(captured['cfg'], attr)!r}"
-    )
-
-
-@pytest.mark.parametrize("attr,flag_off,flag_on", [
-    # Bool fields surface as --foo / --no-foo pairs.  The default for
-    # each is True, so passing the negative form must flip it to False;
-    # passing the positive form on top of an already-True default must
-    # keep it True (round-trip).
-    # use_save_dm / _cg / _xv are RETIRED (P3 unit 4, 2026-08-08) and so are
-    # their three generated flags.  They were the members of SIESTA's restart
-    # group carried individually, which run-identity.md § 4 rule 2 forbids;
-    # `--restart clean|continue` is the one field that sets them now, and
-    # tests/test_restart_group.py covers it.  These rows are deleted rather
-    # than commented out -- their absence is what proves the subtraction.
-    ("write_forces",      "--no-write-forces",      "--write-forces"),
-    ("write_coor_step",   "--no-write-coor-step",   "--write-coor-step"),
-    ("write_coor_xmol",   "--no-write-coor-xmol",   "--write-coor-xmol"),
-    ("write_md_history",  "--no-write-md-history",  "--write-md-history"),
-    ("wrap_into_cell",    "--no-wrap-into-cell",    "--wrap-into-cell"),
-    ("verbose_comments",  "--no-verbose-comments",  "--verbose-comments"),
-    ("copy_psml",         "--no-copy-psml",         "--copy-psml"),
-    ("spin_polarized",    "--no-spin-polarized",    "--spin-polarized"),
-])
-def test_fdf_cli_bool_flags_round_trip(
-        attr, flag_off, flag_on, monkeypatch, tmp_path):
-    """``--no-foo`` flips the bool to False and the positive form keeps
-    True.  Catches a bridge regression where bool fields are turned
-    into is_flag=True (one-way switch) instead of a flag pair."""
-    captured = []
-
-    def fake_convert(input_path, fdf_path, config, vacuum=None):
-        captured.append(config)
-        return _stub_siesta_summary(fdf_path)
-    monkeypatch.setattr("molbuilder.siesta.convert", fake_convert)
-
-    in_xyz = _h2_xyz_at(tmp_path / "h2.xyz")
-    out_fdf = tmp_path / "h2.fdf"
-
-    assert cli.main(["fdf", "--vacuum", "12", in_xyz, str(out_fdf), flag_off]) == 0
-    assert getattr(captured[-1], attr) is False, f"{flag_off} did not flip {attr}"
-    assert cli.main(["fdf", "--vacuum", "12", in_xyz, str(out_fdf), flag_on]) == 0
-    assert getattr(captured[-1], attr) is True, f"{flag_on} did not set {attr}"
 
 
 @pytest.mark.parametrize("flag,cli_val,attr,expected", [
