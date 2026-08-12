@@ -22,6 +22,7 @@ variation), so the two job-set kinds stay one mechanism.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -192,7 +193,7 @@ def resolve_target(base_dir) -> Path:
 
 
 def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
-                emit_sbatch: bool = True) -> List[Path]:
+                emit_sbatch: bool = True, allocation=None) -> List[Path]:
     """Render launchers + lay out the per-job tree under ``base_dir``.
 
     Steps, in order:
@@ -211,6 +212,19 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     invalid JobSet or a script that isn't in the bundle root.
     """
     from ..runwrap import write_run_wrapper
+
+    # ---- the ALLOCATION -- what you asked for, on this prep --------------- #
+    # `project-layout.md` M4: an allocation is an input to `prep`, not a field
+    # of the description and not a decision at submit.  Where it states a value
+    # it WINS over whatever the JobSet carried, because the JobSet was built on
+    # a machine that, by construction, did not know this one.
+    if allocation is not None:
+        stated = {k: v for k, v in dataclasses.asdict(allocation).items()
+                  if v is not None}
+        jobset = dataclasses.replace(jobset, jobs=[
+            dataclasses.replace(j, resources=dataclasses.replace(j.resources,
+                                                                 **stated))
+            for j in jobset.jobs])
 
     errs = jobset.validate()
     if errs:
@@ -251,6 +265,11 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
             # `job-system.md § 4.1` recorded the SIESTA ladder as never
             # having implemented `continue` (2026-08-07, P2 unit 3).
             continue_retries=r.continue_retries,
+            # Until 2026-08-11 this line did not exist, so a staged run
+            # silently dropped a cap the user had set: `cli.py` and the web
+            # blueprint both passed it and this call site did not.  Carried on
+            # the allocation, it cannot be forgotten by one of three.
+            max_memory_mb=r.max_memory_mb,
             emit_sbatch=emit_sbatch,
         )
         rendered.add(job.script)

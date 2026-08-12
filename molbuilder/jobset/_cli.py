@@ -311,11 +311,32 @@ def _resolve_stage(js, stage, verb: str):
               help="force one conda env for every job (default: auto-route "
                    "per script from the .fdf -- correct for a mixed CPU/GPU "
                    "ladder).")
+@click.option("--np", "mpi_np", type=int, default=None, metavar="N",
+              help="MPI ranks to ASK FOR. Part of the allocation, not of the "
+                   "description -- how a job is scheduled depends on how much "
+                   "you ask for, so this is yours to choose per run.")
+@click.option("--cpus-per-task", type=int, default=None, metavar="C",
+              help="cores per rank (OMP). sbatch -c.")
+@click.option("--gpus", "gres", default=None, metavar="TYPE:N",
+              help="GPUs, by type -- e.g. a100:1, a100.40gb:1, a30:2. The MIG "
+                   "slices are separate askable types, not a smaller ask of "
+                   "the same one.")
+@click.option("--time", "time_", default=None, metavar="D-HH:MM:SS",
+              help="wall time to ask for.")
+@click.option("--mem", default=None, metavar="SIZE",
+              help="memory for the whole job, e.g. 80GB. '0' asks for all of "
+                   "the node's.")
+@click.option("--max-memory-mb", type=int, default=None, metavar="MB",
+              help="per-rank cap, baked into the wrapper as ulimit -v.")
+@click.option("--domain", default=None, metavar="NAME",
+              help="which named domain to run in (a scheduler.routing entry -- "
+                   "a partition and a QOS together, with its own limits).")
 @click.option("--sbatch/--no-sbatch", "emit_sbatch", default=True,
               help="emit .sbatch wrappers (default on; auto-skipped when no "
                    "scheduler is configured).")
 def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
-             emit_sbatch: bool) -> None:
+             mpi_np, cpus_per_task, gres, time_, mem, max_memory_mb,
+             domain, emit_sbatch: bool) -> None:
     """Set a stage up to run, and report what was done.
 
     Renders the wrappers, then makes that stage's next ``run-<n>``, links the
@@ -334,7 +355,15 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             "--from / --cold describe ONE stage's attempt; name the stage:\n"
             "    molbuilder jobset prep run <stage> --from 01_coarse/run-0")
     try:
-        dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch)
+        # The ALLOCATION -- what you ask the scheduler for on THIS prep.
+        # Assembled here and nowhere else, so a value cannot reach the wrapper
+        # by two roads (generator.md § 4.1).
+        from .model import Resources as _Alloc
+        allocation = _Alloc(mpi_np=mpi_np, cpus_per_task=cpus_per_task,
+                            gres=gres, time=time_, mem=mem,
+                            max_memory_mb=max_memory_mb, domain=domain)
+        dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
+                           allocation=allocation)
     except PrepError as e:
         raise click.ClickException(str(e))
 

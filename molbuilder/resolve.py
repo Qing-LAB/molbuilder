@@ -54,11 +54,18 @@ class ResolveError(Exception):
     """A parameter set could not be resolved. Nothing was rendered."""
 
 
-#: The allocation's own field names — everything on :class:`Resources`. A sweep
-#: axis naming one of these is a **machine** axis and lands on the resources; an
-#: axis naming anything else is a **parameter** axis and lands on the values
-#: (`generator.md` § 4). One list, so the split is a lookup and not a guess.
-MACHINE_AXES: Tuple[str, ...] = tuple(f.name for f in
+#: The allocation's own field names — everything on :class:`Resources`.
+#:
+#: A sweep axis naming one of these lands on the **resources**; an axis naming
+#: anything else lands on the **values** (`generator.md` § 4's two families).
+#: One list, so the split is a lookup rather than a judgement.
+#:
+#: Named for the allocation and **not** "machine axes", because the two are not
+#: the same set: ``continue_retries`` rides on ``Resources`` as the exchange
+#: struct to the wrapper, but it is a retry *policy* and names no machine, so it
+#: is legitimately also a template item. The split this list drives is *"where
+#: does this value go"*, which is exactly the allocation's shape.
+ALLOCATION_FIELDS: Tuple[str, ...] = tuple(f.name for f in
                                       dataclasses.fields(Resources))
 
 
@@ -145,7 +152,7 @@ def _check_fits(point: Mapping[str, Any], allocation: Resources) -> None:
     asking for less is often the better choice (the priority trade).
     """
     for axis, value in point.items():
-        if axis not in MACHINE_AXES:
+        if axis not in ALLOCATION_FIELDS:
             continue
         ceiling = getattr(allocation, axis, None)
         if ceiling is None or not isinstance(value, int) \
@@ -216,8 +223,8 @@ def resolve(template_text: str, task, config_cls, *,
         # A point's axes split by WHERE they land, and the split is a lookup
         # rather than a judgement: a name on Resources is a machine axis, and
         # anything else is a parameter axis (generator.md § 4).
-        machine = {k: v for k, v in point.items() if k in MACHINE_AXES}
-        params = {k: v for k, v in point.items() if k not in MACHINE_AXES}
+        machine = {k: v for k, v in point.items() if k in ALLOCATION_FIELDS}
+        params = {k: v for k, v in point.items() if k not in ALLOCATION_FIELDS}
 
         values = base
         if params:
@@ -307,4 +314,4 @@ def _flat(v: Any) -> str:
 
 
 __all__ = ["ParameterSet", "ResolvedConfig", "ResolveError",
-           "MACHINE_AXES", "resolve", "point_token"]
+           "ALLOCATION_FIELDS", "resolve", "point_token"]

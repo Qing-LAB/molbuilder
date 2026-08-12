@@ -72,6 +72,14 @@ class Resources:
     mpi_np:        Optional[int]   = None    # SLURM -n (MPI ranks)
     cpus_per_task: Optional[int]   = None    # SLURM -c (OMP cores/rank); == SiestaConfig.omp_threads
     continue_retries: Optional[int] = None   # NOT a SLURM flag -- baked into the wrapper
+    max_memory_mb:    Optional[int] = None   # NOT a SLURM flag either -- `ulimit -v`
+    #  ^ added 2026-08-11.  It is a MACHINE fact (how much memory one rank may
+    #  take on this node), so it belongs to the allocation -- and until it lived
+    #  here it reached the wrapper from `cli.py` and `web/blueprints/build.py`
+    #  but NOT from `jobset/prep.py`, so a staged run silently dropped a cap the
+    #  user had set.  Three call sites building one wrapper from loose keyword
+    #  arguments, and one forgot a field; carried on the allocation, it cannot
+    #  be forgotten by one of them (generator.md § 5).
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)

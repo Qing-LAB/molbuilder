@@ -223,9 +223,15 @@ def stages_to_jobset(
         # the one Resources field that becomes no sbatch flag at all
         # (job-contracts.md § 6.2).
         eff = resolved[name]
-        return Resources(mpi_np=getattr(eff, "mpi_np", None),
-                         cpus_per_task=getattr(eff, "omp_threads", None),
-                         continue_retries=getattr(eff, "continue_retries", None))
+        # ONLY the retry budget comes from the config, and that is deliberate:
+        # it is a POLICY and names no machine, so floor 2 is its right home.
+        #
+        # `mpi_np` and `omp_threads` used to be read here too, and that was the
+        # leak: they are machine facts, `template.md` § 7 forbids them at floor
+        # 2, and reading them here made a description that named a machine into
+        # a JobSet that believed it.  They now arrive as the ALLOCATION, at
+        # `prep`, on the machine that will run it (M4).
+        return Resources(continue_retries=getattr(eff, "continue_retries", None))
 
     # The token each stage's files carry -- from the SAME helper the renderer
     # uses, so the JobSet cannot name a script the renderer did not write.

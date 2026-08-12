@@ -273,6 +273,15 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     if not section:
         return None
 
+    # § 7 lists three things that are NOT items, and the first is "a machine
+    # fact -- ranks, GPUs, queue, partition, wall time".  A field that declares
+    # itself one is excluded HERE rather than by having its ``section`` taken
+    # away, because a `section` answers *"may a surface show this"* and this
+    # answers *"is it part of the calculation's description"* -- two questions
+    # that happen to have had one switch.
+    if f.metadata.get("allocation"):
+        return None
+
     ann, optional = _unwrap_optional(annotation)
 
     # A ``List[<dataclass>]`` is a STAGE LADDER, and a ladder is not a template

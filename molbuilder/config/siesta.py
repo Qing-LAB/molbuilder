@@ -836,6 +836,13 @@ class SiestaConfig:
     # Compute & budget workflow-group card.
     mpi_np: Optional[int] = field(default=None, metadata={
         "section": "Compute & budget",
+        # NOT a template item: a machine fact, which floor 2 must never
+        # name (engines/template.md 7).  It arrives as the ALLOCATION at
+        # `prep`, on the machine that will run it (project-layout.md M4).
+        # The `section` stays so the Build form can still offer it until
+        # the web has a prep surface of its own (P10/P11) -- exposure to a
+        # surface and membership of the template are different questions.
+        "allocation": True,
         "item_kind":  "wrapper",
         "workflow_group": "budget",
         "label":      "MPI ranks (np)",
@@ -905,6 +912,13 @@ class SiestaConfig:
     # with the PySCF / spectra scripts.
     omp_threads: Optional[int] = field(default=None, metadata={
         "section": "Compute & budget",
+        # NOT a template item: a machine fact, which floor 2 must never
+        # name (engines/template.md 7).  It arrives as the ALLOCATION at
+        # `prep`, on the machine that will run it (project-layout.md M4).
+        # The `section` stays so the Build form can still offer it until
+        # the web has a prep surface of its own (P10/P11) -- exposure to a
+        # surface and membership of the template are different questions.
+        "allocation": True,
         "item_kind":  "wrapper",
         "workflow_group": "budget",
         "label":      "OMP threads per rank",
@@ -928,6 +942,13 @@ class SiestaConfig:
     # records it so the /results trajectory inspector shows the cap.
     max_memory_mb: Optional[int] = field(default=None, metadata={
         "section": "Compute & budget",
+        # NOT a template item: a machine fact, which floor 2 must never
+        # name (engines/template.md 7).  It arrives as the ALLOCATION at
+        # `prep`, on the machine that will run it (project-layout.md M4).
+        # The `section` stays so the Build form can still offer it until
+        # the web has a prep surface of its own (P10/P11) -- exposure to a
+        # surface and membership of the template are different questions.
+        "allocation": True,
         "item_kind":  "wrapper",
         "workflow_group": "budget",
         "label":      "Max memory (per rank)",

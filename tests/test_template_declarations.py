@@ -66,7 +66,7 @@ def test_every_exposed_field_gets_a_declaration(cls):
     A field the form shows and the template omits would be a setting a user
     can change and the calculation cannot record."""
     exposed = {f.name for f in dataclasses.fields(cls)
-               if f.metadata.get("section")}
+               if f.metadata.get("section") and not f.metadata.get("allocation")}
     declared = set(_decls(cls))
     # The one legitimate subtraction: a stage ladder is not a template item.
     ladders = {f.name for f in dataclasses.fields(cls)
@@ -167,7 +167,7 @@ def test_declarations_keep_the_configs_own_order():
     template a person reads should not be a third arrangement of them."""
     names = [d.name for d in declarations_for(SiestaConfig)]
     expected = [f.name for f in dataclasses.fields(SiestaConfig)
-                if f.metadata.get("section")]
+                if f.metadata.get("section") and not f.metadata.get("allocation")]
     assert names == expected
 
 

@@ -86,10 +86,10 @@ def test_unset_is_encoded_as_an_absent_key_not_an_empty_one():
     """§ 3: *"a missing ``value`` means explicitly unset"*.  TOML has no null,
     so absence is the encoding — and writing ``value = ""`` instead would make
     *unset* indistinguishable from an empty string."""
-    text = T.render_template(SiestaConfig(system_label="JOB", mpi_np=None))
-    item = T.read_template(text).get("mpi_np")
+    text = T.render_template(SiestaConfig(system_label="JOB", net_charge=None))
+    item = T.read_template(text).get("net_charge")
     assert item.value is None and not item.is_set
-    assert "\nvalue" not in text.split("[item.mpi_np]")[1].split("[item.")[0]
+    assert "\nvalue" not in text.split("[item.net_charge]")[1].split("[item.")[0]
 
 
 def test_a_template_missing_an_item_keeps_the_class_default():
@@ -205,7 +205,7 @@ def test_an_optional_item_says_what_unset_is_called():
     """``optional`` says *unset* is a real state; ``null_label`` is what says
     how to show it.  Without it a tri-select has no third label."""
     text = T.render_template(SiestaConfig(system_label="JOB"))
-    assert T.read_template(text).get("mpi_np").null_label
+    assert T.read_template(text).get("parallel_block_size").null_label
 
 
 def test_the_three_surface_keys_survive_the_round_trip():
@@ -223,8 +223,14 @@ def test_every_exposed_field_becomes_an_item_and_declares_its_kind():
     declares is an item, and each one's ``kind`` says who consumes it."*  A
     field this vocabulary cannot place is a gap to fix, not an item to drop."""
     items = T.declarations_for(SiestaConfig)
+    # The membership rule, stated exactly: every parameter the schema declares
+    # is an item -- and § 7's first exclusion is "a machine fact", which a
+    # field declares about itself.  ``section`` answers *may a surface show
+    # this*; ``allocation`` answers *is it part of the description*.  They were
+    # one switch until 2026-08-11 and are two questions.
     exposed = [f.name for f in __import__("dataclasses").fields(SiestaConfig)
-               if f.metadata.get("section")]
+               if f.metadata.get("section")
+               and not f.metadata.get("allocation")]
     assert sorted(i.name for i in items) == sorted(exposed)
     assert all(i.kind in T.KINDS for i in items)
 

@@ -79,8 +79,11 @@ def test_the_description_names_no_machine(struct, cfg, tmp_path):
     D.write_description(_describe(struct, cfg), tmp_path / "calc")
     raw = tomllib.loads((tmp_path / "calc" / "relax.template.toml").read_text())
     machine = ("mpi_np", "omp_threads", "max_memory_mb")
-    carrying = [n for n in machine if "value" in raw["item"][n]]
-    assert carrying == [], f"floor 2 is naming a machine: {carrying}"
+    present = [n for n in machine if n in raw["item"]]
+    assert present == [], (
+        f"floor 2 is naming a machine: {present}. These are allocation "
+        f"fields as of 2026-08-11 -- they are stated at `prep`, on the machine "
+        f"that will run it, and are not items at all.")
 
 
 # --------------------------------------------------------------------- #

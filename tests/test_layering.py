@@ -126,6 +126,10 @@ _L2_MODULES = {
                          # L1 config dataclasses, and is imported by the siesta
                          # producers, by ``describe`` and (later) by prep --
                          # a config-shaped verb, not a core type.
+    "resolve",           # FLOOR 3 -- the description + the machine become a
+                         # ParameterSet (execution/generator.md § 5).  L2: it
+                         # composes L1 ``task`` with L2 ``template`` and
+                         # ``jobset.model``; imported by jobset/prep.
     "describe",          # the `describe` ROUTE, floor 2 only
                          # (execution/architecture.md § 4).  L2 because it
                          # composes L1 ``task`` with L2 ``template`` and
