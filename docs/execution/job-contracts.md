@@ -449,6 +449,7 @@ wrapper contains these and nothing else:
 
 | block | what it is for |
 |---|---|
+| **Launch-door gate** | one launch door (`job-system.md` § 5.3): `submit` sets `MB_LAUNCHED_BY` (direct: child env; sbatch: `--export=ALL,MB_LAUNCHED_BY=jobset-submit`, robust to site export policy). Without it a terminal call warns and asks; a non-interactive call refuses with exit 2 and the fix. `MB_LAUNCHED_BY=manual` is the deliberate, logged override — the value is recorded either way *(user, 2026-08-12)* |
 | **Baked preamble** | the site's own lines, verbatim from `script_generation.preamble` |
 | **Activation** | the one activation statement, verbatim |
 | **Continuation flags** | the shared `--continue` / `--cold` / `--force` handling |
@@ -1242,6 +1243,14 @@ parser) split a name without knowing what is in it.
 a hyphen announces *"a counter follows"*, so one inside a name makes it
 impossible to tell where the name ends. Names use `_`; the system uses `-` to
 append to them.
+
+**And it is why a sweep coordinate renders as ONE qualifier.** The token is the
+point's axes in declaration order, each as `<axis><value>`, **concatenated with
+no separator** (`G1K4C6`); a value's `.` is spelled `p`, and the whole token
+must stay inside `[A-Za-z0-9_]` — a value that would carry a `-` or any other
+separator into it is refused, not escaped. Built by `resolve.point_token`, and
+by nothing else: the token is an identifier, never a parser target — what
+varied travels as data on the `ParameterSet`.
 
 #### Character sets
 

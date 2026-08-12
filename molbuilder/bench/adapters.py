@@ -179,6 +179,10 @@ class SchedulerAdapter:
 
         head = [
             "#!/usr/bin/env bash",
+            # TRANSITIONAL (dies with this launcher at plan step 6 u5): the
+            # wrappers gate on the launch-door claim; this runner is the
+            # shipped bench door until `jobset submit bench` lands.
+            "export MB_LAUNCHED_BY=bench-runner",
             f"# job-gpu-sweep.sh -- generated for scheduler '{self.name}'",
             f"#   topology: gpus/node={gpn} cores/socket="
             f"{cps if cps else '?'} gpu_type={gtype}",
@@ -312,6 +316,7 @@ class SchedulerAdapter:
 
         head = [
             "#!/usr/bin/env bash",
+            "export MB_LAUNCHED_BY=bench-runner",   # transitional, see sweep
             f"# run-production.sh -- generated for scheduler '{self.name}'",
             # json.dumps keeps the knobs on ONE escaped line: a newline /
             # metachar in a value can't break out of this '#' comment.
@@ -461,30 +466,42 @@ def recommend_domain(routing: List[Dict], job_secs: int,
     return fits[0]["name"] if fits else None
 
 
-def resolve_mode(env: Environment, mode: Optional[str] = None) -> str:
-    """Resolve the launch MODE (job-execution.md § 8.13): an explicit
-    ``execution.mode`` ("direct" | "submit") wins; otherwise derive from the
-    DETECTED scheduler (slurm -> submit, else -> direct).  Always returns a
-    concrete "direct" or "submit"."""
+def resolve_mode(mode: Optional[str] = None) -> str:
+    """Validate the launch MODE (`running-a-job.md` § 5.4): an explicit
+    ``execution.mode`` ("direct" | "submit") is returned as given, and unset
+    is a REFUSAL — never a derivation from the detected scheduler.
+
+    Deriving ``submit`` from detection would gate submission on where you
+    happen to be standing, which § 5.4 forbids (*the mode, not the detected
+    scheduler, gates submission*).  Until 2026-08-12 this function derived,
+    and was the one door that disagreed with ``jobset submit``'s — which is
+    why it no longer takes the ``Environment``: an input it may not consult
+    is an invitation to consult it.
+    """
     if mode in ("direct", "submit"):
         return mode
-    return "submit" if env.scheduler == "slurm" else "direct"
+    raise ValueError(
+        "no execution.mode is set.  'direct' runs points here with bash; "
+        "'submit' hands them to the scheduler.  Set execution.mode in "
+        "molbuilder.json (running-a-job.md 5.4) -- it is never derived from "
+        "the detected scheduler.")
 
 
-def resolve_launch_adapter(env: Environment, *, mode: Optional[str] = None,
+def resolve_launch_adapter(*, mode: Optional[str] = None,
                            submit_via: str = "slurm"
                            ) -> Tuple[SchedulerAdapter, str]:
     """Select the adapter that LAUNCHES benchmark points, honoring the
     run-vs-submit policy independently of the detected scheduler
-    (job-execution.md § 8.13).  Returns ``(adapter, resolved_mode)``.
+    (`running-a-job.md` § 5.4).  Returns ``(adapter, resolved_mode)``.
 
       * ``submit`` -> the ``submit_via`` adapter (picked BY NAME, bypassing
         ``matches`` so "submit from an interactive shell" works);
       * ``direct`` -> the workstation adapter (direct bash, sequential).
 
-    Topology still comes from ``env`` (detection); only the launch mechanism
-    is chosen here -- detection and launch are decoupled."""
-    rmode = resolve_mode(env, mode)
+    Topology stays with the ``Environment`` where the ADAPTER reads it
+    (``format_bench(env, …)``); the selection here consults nothing but the
+    policy, which is why this function no longer takes the environment."""
+    rmode = resolve_mode(mode)
     if rmode == "submit":
         for a in ADAPTERS:
             if a.name == submit_via:

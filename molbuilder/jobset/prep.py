@@ -1,23 +1,26 @@
-"""Prep engine — render the per-job launchers and lay out the tree
-(docs/execution/job-system.md, step 5).
+"""Prep — the five steps of `project-layout.md` § 2.3.1.
 
-This is the step BETWEEN the pure ``materialize`` (data symlinks) and the
-``submit`` launch.  It mirrors what the benchmark already does in
-``bench/generate.py`` — render the wrappers **once per distinct script, in
-the bundle root, from the REAL file** (so ``write_run_wrapper``'s
-``Path.resolve()`` is a no-op and the ``.run.sh`` / ``.sbatch`` land where
-intended), then symlink those wrappers into each job's ``point-<name>/`` dir
-alongside the data symlinks.  Per-job resource *variation* is NOT baked here
-— it is applied by ``submit`` as scheduler CLI flags over the shared
-wrapper, exactly as the bench launch line does.  That is what lets one
-rendered ``.sbatch`` serve every point of a sweep.
+:func:`prep_calculation` is the five entire, on the described route: a
+description plus its template in, one rendered deck and wrapper **per
+element** of the resolved :class:`~molbuilder.resolve.ParameterSet` out.
+:func:`prep_jobset` is steps 4–5 alone, over an existing ``job-set.json`` —
+the route a bundle from before ``describe`` takes, and the shared tail of
+both.
 
-Why render-in-root-then-symlink (not render-in-each-dir): the materialized
-script is a SYMLINK back to the bundle root; ``write_run_wrapper`` resolves
-symlinks and would write the wrapper next to the *resolved* target.
-Rendering from the real bundle-root file is the only placement that is both
-correct and consistent with the benchmark (shared wrapper, CLI-flag
-variation), so the two job-set kinds stay one mechanism.
+The framework here was first built inside the benchmark and the general part
+lifted out (§ 2.3.1a: *benchmarking is `prep` whose parameters are a set
+rather than a point* — the five steps are general, the grid is the
+specialisation).
+
+Wrappers render **once per distinct ``job.script``, in the bundle root, from
+the real file**: ``write_run_wrapper`` resolves symlinks, so rendering from a
+materialized link would land the wrapper beside the resolved target instead
+of where the job runs.  On the described route every element renders its own
+deck, so per-script is per-element and each wrapper carries its own
+element's resources.  A legacy sweep whose jobs share one script gets one
+wrapper carrying the first job's resources as defaults, with ``submit``
+varying the rest per job as scheduler flags — a mechanism that folds away
+with ``bench`` (plan step 6).
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ import dataclasses
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 from .materialize import job_dir_names, shape_of, materialize, relink
 from .model import Job, JobSet, Resources
@@ -83,13 +86,17 @@ def launch_agreement(job_dir, job) -> LaunchAgreement:
     count … A parameter that depends on the launch cannot be decided before the
     launch is known."*
 
-    Today step 3 happens at `molbuilder fdf`, on whatever machine typed it, and
-    the rank count is resolved hours later by the wrapper. **The two halves of
-    one ordered sequence run in different places, and nothing carried the
-    first's answer to the third.** On 2026-08-10 that produced a deck rendered
-    with no rank count — so ``BlockSize`` from the size-only branch — launched
-    at ``-np 14``, and SIESTA refused at startup with *"You have too many
-    processors for the system size"*.
+    Until 2026-08-11, step 3 ran at `molbuilder fdf` on whatever machine typed
+    it, and the rank count was resolved hours later by the wrapper — the two
+    halves of one ordered sequence in different places, with nothing carrying
+    the first's answer to the third. On 2026-08-10 that produced a deck
+    rendered with no rank count — so ``BlockSize`` from the size-only branch —
+    launched at ``-np 14``, and SIESTA refused at startup with *"You have too
+    many processors for the system size"*. The migration then moved rendering
+    into `prep` (ladder step 4), so both halves resolve on one machine — and
+    this comparison stays, because a deck can still meet a launch it was not
+    rendered for: a re-prep with a new allocation, a hand-carried deck, an
+    edited wrapper.
 
     P4 unit 5 put the launch quantity **into** the deck, which is why that
     failure was diagnosable at all. **Recording is not agreeing**: this is the
@@ -235,6 +242,10 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
         raise PrepError(f"bundle root not found: {base}")
 
     # ---- 0. resolve the machine (§ 2.3.1 step ONE) ---------------------- #
+    # Idempotent by contract (resolve_target early-returns on an existing
+    # environment.json).  On the described route `prep_calculation` already
+    # ran step 1; this call is the LEGACY route's step 1 -- prep_jobset is a
+    # public entry for bundles that predate `describe` -- not a re-decision.
     resolve_target(base)
 
     # ---- 1. render wrappers once per distinct script (in the root) ------ #
@@ -299,10 +310,16 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
 
     # ---- 4. emit STAGE-PLAN.md (§ 5 D3; mirrors bench's BENCH-PLAN.md) --- #
     # The reviewable plan lands in the bundle at prep, not just on the
-    # `jobset plan` command's stdout.
+    # `jobset plan` command's stdout.  It carries the CONFIG PROVENANCE --
+    # which files supplied the effective execution settings -- so a
+    # behaviour difference between two machines is explained by the bundle
+    # itself (user request 2026-08-12; secrets excluded by construction).
+    from ..runtime_config import config_provenance, format_provenance
     from .plan import render_plan
-    (base / "STAGE-PLAN.md").write_text(render_plan(jobset) + "\n",
-                                        encoding="utf-8")
+    (base / "STAGE-PLAN.md").write_text(
+        render_plan(jobset) + "\n\n"
+        + format_provenance(config_provenance(project_dir=base)) + "\n",
+        encoding="utf-8")
     return dirs
 
 
@@ -310,15 +327,39 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
 #  The five steps, entire — `project-layout.md` § 2.3.1                  #
 # --------------------------------------------------------------------- #
 
-#: What an engine must supply for `prep` to render its decks: the config class
-#: its template rebuilds into, and a function from (structure, config) to deck
-#: text. **Two things, and adding an engine edits no shared logic** —
-#: `generator.md` § 7's seam, stated as data.
-def _engine_seam(engine: str):
+@dataclass(frozen=True)
+class EngineSeam:
+    """What an engine supplies for `prep` to run the five steps over it —
+    `generator.md` § 7's seam ("a plugin, not a branch"), stated as data.
+
+    Everything engine-specific that the loop below needs lives HERE, so the
+    loop itself never asks which engine it is in.  ``_job_for`` branched on
+    ``task.engine == "siesta"`` until 2026-08-12, which was § 7's forbidden
+    ``if`` one floor down from where it was deleted.
+    """
+    #: The config class the template rebuilds into.
+    config_cls: type
+    #: ``(structure, config) -> deck text``.
+    render_deck: Callable
+    #: The deck's type suffix (``.fdf``).
+    suffix: str
+    #: ``config -> the engine's identity literal`` (``SystemLabel`` / ``JOB``).
+    label_of: Callable
+    #: ``(label, config) -> warm-file declaration`` for the Job.
+    warm_for: Callable
+    #: ``config -> traits`` the launcher routes on (GPU solver, …).
+    traits_for: Callable
+
+
+def _engine_seam(engine: str) -> EngineSeam:
     if engine == "siesta":
         from ..config.siesta import SiestaConfig
         from ..siesta.input import render_fdf
-        return SiestaConfig, render_fdf, ".fdf"
+        from ..siesta.stages import _traits, _warm_declaration
+        return EngineSeam(config_cls=SiestaConfig, render_deck=render_fdf,
+                          suffix=".fdf",
+                          label_of=lambda cfg: cfg.system_label,
+                          warm_for=_warm_declaration, traits_for=_traits)
     raise PrepError(
         f"no deck writer for engine {engine!r}. An engine supplies its schema "
         f"and a deck writer (generator.md § 7); this backend has neither for "
@@ -431,11 +472,12 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             f"no {template_path.name} beside {TASK_FILENAME}. The portable "
             f"folder is a template PLUS a description (project-layout.md § 2.1) "
             f"and `prep` rebuilds the config from the template.")
-    config_cls, render_deck, suffix = _engine_seam(task.engine)
+    seam = _engine_seam(task.engine)
     try:
         pset = resolve(template_path.read_text(encoding="utf-8"), task,
-                       config_cls, allocation=(allocation or Resources()),
-                       stage=stage, sweep=sweep, pins=pins)
+                       seam.config_cls, allocation=(allocation or Resources()),
+                       stage=stage, sweep=sweep, pins=pins,
+                       environment=environment)
     except ResolveError as exc:
         raise PrepError(str(exc)) from exc
 
@@ -445,7 +487,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     jobs: List[Job] = []
     for element in pset:
         stem = f"{element.label}_{token}" if token else element.label
-        script = f"{stem}{suffix}"
+        script = f"{stem}{seam.suffix}"
         # The deck is rendered from values ⊕ THIS element's allocation, so it
         # records the rank count it actually assumed.  Rendering from the
         # values alone emits `mpi_np auto` and the launch check then refuses a
@@ -461,9 +503,11 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         cfg = element.render_config()
         if token and hasattr(cfg, "stage"):
             cfg = dataclasses.replace(cfg, stage=token)
-        (base / script).write_text(render_deck(struct, cfg), encoding="utf-8")
-        _seed_trajectory_log(struct, cfg, base)
-        jobs.append(_job_for(element, script, task, pset.stage))
+        (base / script).write_text(seam.render_deck(struct, cfg),
+                                   encoding="utf-8")
+        _seed_trajectory_log(struct, cfg, base, engine=task.engine,
+                             label=seam.label_of(cfg))
+        jobs.append(_job_for(element, script, task, pset.stage, seam))
 
     # ---- 4 + 5, and the record floor 3 leaves behind -------------------- #
     js = JobSet(name=task.label, engine=task.engine,
@@ -474,7 +518,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                        allocation=allocation)
 
 
-def _seed_trajectory_log(struct, cfg, base: Path) -> None:
+def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
+                         label: str) -> None:
     """Write the one-block preview the Watch tab discovers before a run starts.
 
     The deck NAMES its trajectory log; something has to CREATE it, or the tab
@@ -485,6 +530,10 @@ def _seed_trajectory_log(struct, cfg, base: Path) -> None:
     **Found by the trajectory-log tests when `molbuilder fdf` was deleted.**
     They named a real property of the product, not of the verb, which is why
     they were repointed rather than retired.
+
+    ``engine`` and ``label`` come through the caller from the
+    :class:`EngineSeam` — this function hardcoded ``"siesta"`` and read
+    ``cfg.system_label`` until 2026-08-12, which was the seam leaking.
     """
     if not getattr(cfg, "write_molwatch_log", False):
         return
@@ -502,8 +551,8 @@ def _seed_trajectory_log(struct, cfg, base: Path) -> None:
             targets[key] = value
     write_initial_preview(
         struct,
-        base / molwatch_log_basename(cfg.system_label, token),
-        job=cfg.system_label, engine="siesta",
+        base / molwatch_log_basename(label, token),
+        job=label, engine=engine,
         stage_name=token, convergence_targets=(targets or None))
 
 
@@ -520,10 +569,16 @@ def _token_for(task, stage_name: Optional[str]) -> str:
     for i, s in enumerate(task.stages, start=1):
         if s.name == stage_name:
             return stage_token(i, s.name)
-    return ""
+    # Unreachable through prep_calculation -- resolve._stage_of already
+    # refused an unknown stage -- and LOUD rather than "" if a future caller
+    # reaches it another way: an empty token would silently drop the stage
+    # from every artifact name (job-contracts.md § 6.3).
+    raise PrepError(f"stage {stage_name!r} is not in this description's "
+                    f"ladder: {', '.join(s.name for s in task.stages)}.")
 
 
-def _job_for(element, script: str, task, stage_name: Optional[str]) -> Job:
+def _job_for(element, script: str, task, stage_name: Optional[str],
+             seam: EngineSeam) -> Job:
     """One element of the parameter set as one :class:`Job`.
 
     ``resources`` is **copied from the element**, never re-derived: the element
@@ -536,7 +591,6 @@ def _job_for(element, script: str, task, stage_name: Optional[str]) -> Job:
     calculation (named by its label).
     """
     from ..resolve import point_token
-    from ..siesta.stages import _traits, _warm_declaration
 
     if element.point:
         name = point_token(element.point)
@@ -545,15 +599,15 @@ def _job_for(element, script: str, task, stage_name: Optional[str]) -> Job:
     else:
         name = task.label
 
-    siesta = task.engine == "siesta"
     return Job(name=name, script=script, resources=element.resources,
-               warm=(_warm_declaration(element.label, element.values)
-                     if siesta else []),
-               traits=(_traits(element.values) if siesta else {}))
+               warm=seam.warm_for(element.label, element.values),
+               traits=seam.traits_for(element.values))
 
 
 def _shared_for(base: Path) -> List[str]:
-    """The static package every job links: whatever data files travel."""
+    """The static package every job links — the pseudopotentials
+    (``*.psml``; the shared-package data-file set, `project-layout.md` § 2.1).
+    """
     return sorted(p.name for p in base.glob("*.psml"))
 
 __all__ = ["prep_calculation", "prep_jobset", "PrepError", "resolve_target",

@@ -667,6 +667,7 @@ def _shim_bootstrap(host_env: str) -> str:
 
 _RUN_BENCH = """\
 #!/usr/bin/env bash
+export MB_LAUNCHED_BY=bench-runner
 # run-bench -- run the WHOLE benchmark matrix: CPU baseline (point 0) then the
 # GPU sweep, in order.  Each runs in its own dir (the sweep isolates points).
 # See BENCH-PLAN.md (written by ./prep-bench) for the enumerated plan.
@@ -784,6 +785,7 @@ def bake_run_bench(out_dir, adapter, cpu_np: int, mode: str, *,
     routing = routing or []
     head = (
         "#!/usr/bin/env bash\n"
+        "export MB_LAUNCHED_BY=bench-runner\n"   # transitional (step 6 u5)
         f"# run-bench (baked by prep: scheduler '{adapter.name}', mode "
         f"'{mode}') -- run the WHOLE matrix: CPU baseline (point 0) then the\n"
         "# GPU sweep.  CPU and GPU launch the SAME way (job-execution.md "
@@ -882,18 +884,19 @@ def render_bench_plan(env, manifest: dict, ks: List[int],
                       routing: Optional[List[dict]] = None,
                       recommend: Optional[str] = None,
                       job_time: Optional[str] = None) -> str:
-    """Human-readable benchmark plan (job-execution.md § 8.4): the full test
-    matrix -- CPU baseline (point 0) + the GPU ``G × K × c`` grid -- with the
-    varied axes, ranks/cores per point, what is measured, and exactly how to
-    change each.  Built from the DETECTED environment + the manifest, so it
-    always matches what ``./run-bench`` will actually run.  ``cs`` is the
-    explicit cores/rank list (else the per-K bracket {1, cores//K, 2cores//K}).
-    ``mode`` ("direct"|"submit") is the resolved launch policy (§ 8.13), stated
-    up front so the user knows whether ./run-bench submits or runs in-shell.
+    """Human-readable benchmark plan: the full test matrix -- CPU baseline
+    (point 0) + the GPU ``G × K × c`` grid -- with the varied axes,
+    ranks/cores per point, what is measured, and exactly how to change each.
+    Built from the DETECTED environment + the manifest, so it always matches
+    what ``./run-bench`` will actually run.  ``cs`` is the explicit
+    cores/rank list (else the per-K bracket {1, cores//K, 2cores//K}).
+    ``mode`` ("direct"|"submit") is the resolved launch policy
+    (`running-a-job.md` § 5.4), stated up front so the user knows whether
+    ./run-bench submits or runs in-shell.
     """
     from .adapters import _bracket_cs, resolve_mode
 
-    rmode = resolve_mode(env, mode)
+    rmode = resolve_mode(mode)
     launch = (f"submit via {submit_via} (sbatch per point; CPU + GPU both "
               "queued)" if rmode == "submit"
               else "direct bash (sequential, current shell)")

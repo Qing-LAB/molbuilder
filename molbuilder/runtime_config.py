@@ -485,7 +485,7 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
             )
         out["scheduler"] = dict(sched)
 
-    # --- execution section (job-execution.md § 8.13) ---------------- #
+    # --- execution section (running-a-job.md § 5.4) ------------------ #
     # The run-vs-submit launch policy.  Like ``scheduler``, it is merged +
     # validated lazily by its getter (:func:`get_execution`); here we only
     # keep it out of the allowlist's drop set and reject a non-object early.
@@ -863,6 +863,82 @@ def _read_scope(path: Path) -> Dict[str, Any]:
     if not path.is_file():
         return {}
     return read_config(path)
+
+
+#: The sections :func:`config_provenance` reports.  A deliberate ALLOWLIST:
+#: the machine file also carries ``auth`` / ``tls`` / ``secret_key_file``,
+#: and provenance output lands in terminals, STAGE-PLAN.md and shipped run
+#: logs -- material that must never travel there.
+_PROVENANCE_SECTIONS = ("execution", "script_generation")
+
+
+def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """Which config files this process consults, and which one supplied each
+    execution-relevant value — the answer to *"where did that setting come
+    from?"* at the moment it takes effect (user request, 2026-08-12: the
+    inert-fixture bug class is invisible without it).
+
+    Safe for logs **by construction**: paths, presence, and the effective
+    values of :data:`_PROVENANCE_SECTIONS` plus the scheduler's routing
+    domain names — never the file contents (see the allowlist note above).
+
+    Returns ``{"sources": [...], "effective": {...}, "domains": [...]}``:
+    ``sources`` lists each scope as ``{scope, path, found}`` in precedence
+    order (bundle last = wins); ``effective`` maps ``section.key`` to
+    ``{"value": ..., "from": "machine"|"bundle"}``.
+    """
+    cwd_path = Path(CONFIG_FILENAME)
+    machine_path = cwd_path if cwd_path.is_file() else _per_user_fallback_path()
+    machine_via = "cwd" if cwd_path.is_file() else "xdg"
+    sources = [{"scope": "machine", "path": str(machine_path.resolve()),
+                "found": machine_path.is_file(), "via": machine_via}]
+    machine_raw = _read_scope(machine_path)
+
+    bundle_raw: Dict[str, Any] = {}
+    if project_dir is not None:
+        bundle_path = Path(project_dir) / PROJECT_CONFIG_FILENAME
+        sources.append({"scope": "bundle", "path": str(bundle_path),
+                        "found": bundle_path.is_file(), "via": "bundle"})
+        bundle_raw = _read_project(Path(project_dir))
+
+    effective: Dict[str, Dict[str, Any]] = {}
+    for section in _PROVENANCE_SECTIONS:
+        for scope_name, raw in (("machine", machine_raw),
+                                ("bundle", bundle_raw)):
+            block = raw.get(section)
+            if not isinstance(block, Mapping):
+                continue
+            for key, value in block.items():
+                # later scope overwrites: bundle wins, mirroring _deep_merge
+                effective[f"{section}.{key}"] = {"value": value,
+                                                 "from": scope_name}
+
+    domains: List[str] = []
+    for raw in (machine_raw, bundle_raw):
+        sched = raw.get("scheduler")
+        if isinstance(sched, Mapping):
+            routing = sched.get("routing")
+            if isinstance(routing, list):
+                domains = [str(r.get("name")) for r in routing
+                           if isinstance(r, Mapping) and r.get("name")]
+    return {"sources": sources, "effective": effective, "domains": domains}
+
+
+def format_provenance(prov: Mapping[str, Any]) -> str:
+    """The ONE rendering of :func:`config_provenance` — the CLI echo and
+    STAGE-PLAN.md both use it, so they cannot drift."""
+    lines = ["config:"]
+    for s in prov["sources"]:
+        state = "found" if s["found"] else "absent"
+        via = f", via {s['via']}" if s["found"] and s["via"] != "bundle" else ""
+        lines.append(f"  {s['scope']:<8}{s['path']}  ({state}{via})")
+    for key in sorted(prov["effective"]):
+        e = prov["effective"][key]
+        lines.append(f"  {key} = {e['value']!r}   <- {e['from']}")
+    if prov["domains"]:
+        lines.append(f"  scheduler.routing domains: "
+                     f"{', '.join(prov['domains'])}")
+    return "\n".join(lines)
 
 
 def _read_server_wide() -> Dict[str, Any]:
@@ -1312,15 +1388,20 @@ def get_scheduler(
 def get_execution(
     project_dir: Optional[Path] = None,
 ) -> Dict[str, Any]:
-    """Return the effective ``execution`` block (job-execution.md § 8.13):
-    the run-vs-submit launch policy, read at prep time on the target.
+    """Return the effective ``execution`` block: the run-vs-submit launch
+    policy, read at prep time on the target.  The nearest live contract is
+    `running-a-job.md` § 5.4 — the section this block's retired home
+    (*job-execution.md § 8.13*, 2026-07 migration) maps to; the key's own
+    full contract is still to be written (`job-system.md` § "The loop").
 
     Server-wide and project scopes are deep-merged (project wins).
 
     Returns:
         {
-            "mode":       "direct" | "submit" | None,   # None -> caller
-                          # derives from the detected scheduler
+            "mode":       "direct" | "submit" | None,   # None -> UNSET: the
+                          # caller refuses or asks.  Never derived from the
+                          # detected scheduler -- § 5.4: the mode, not the
+                          # scheduler, gates submission
             "submit_via": "slurm",                       # backend when submit
         }
 
@@ -1344,13 +1425,13 @@ def get_execution(
     if mode is not None and mode not in ("direct", "submit"):
         raise RuntimeConfigError(
             f'execution.mode must be "direct" or "submit"; got {mode!r}.\n'
-            "Fix it in .molbuilder.json (job-execution.md § 8.13).")
+            "Fix it in .molbuilder.json (running-a-job.md § 5.4).")
     submit_via = merged.get("submit_via", "slurm")
     domain = merged.get("domain")
     if domain is not None and not isinstance(domain, str):
         raise RuntimeConfigError(
             f"execution.domain must be a string (a scheduler.routing name); "
-            f"got {type(domain).__name__} (job-execution.md § 8.14).")
+            f"got {type(domain).__name__} (running-a-job.md § 5.4).")
     return {"mode": mode, "submit_via": submit_via, "domain": domain}
 
 

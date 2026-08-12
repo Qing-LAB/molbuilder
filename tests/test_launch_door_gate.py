@@ -1,0 +1,106 @@
+"""The launch-door gate + config provenance (user decisions, 2026-08-12).
+
+Contract: `job-contracts.md` § 2.6 (the Launch-door gate row: one launch
+door; `submit` sets ``MB_LAUNCHED_BY``, a bare call warns or refuses,
+``manual`` is the logged override) · the provenance allowlist in
+`runtime_config` (paths + execution-relevant values only — the machine file
+also carries auth/tls, which must never reach a terminal or a shipped log).
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+
+import pytest
+
+from molbuilder.runtime_config import config_provenance, format_provenance
+from molbuilder.runwrap import write_run_wrapper
+
+
+@pytest.fixture(autouse=True)
+def _sandbox(tmp_path, monkeypatch):
+    """Isolated cwd + HOME so nothing here reads the developer's config."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "home").mkdir()
+
+
+def _wrapper(tmp_path):
+    (tmp_path / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    (tmp_path / "JOB.fdf").write_text("SystemLabel JOB\n")
+    return write_run_wrapper(tmp_path / "JOB.fdf", env="e")
+
+
+# ---- the gate, in the emitted text and under execution ---------------- #
+
+def test_the_wrapper_carries_the_gate_block(tmp_path):
+    text = _wrapper(tmp_path).read_text()
+    assert "# --- Launch-door gate" in text
+    assert "MB_LAUNCHED_BY" in text
+
+
+def test_a_bare_noninteractive_call_refuses_with_the_fix(tmp_path):
+    """No claim + no terminal -> exit 2 before ANY work, naming both the
+    right door and the deliberate override.  This is the `nohup`, cron and
+    hand-`sbatch` case."""
+    sh = _wrapper(tmp_path)
+    env = {k: v for k, v in os.environ.items() if k != "MB_LAUNCHED_BY"}
+    cp = subprocess.run(["bash", str(sh)], cwd=str(tmp_path),
+                        stdin=subprocess.DEVNULL, capture_output=True,
+                        text=True, env=env)
+    assert cp.returncode == 2
+    assert "jobset submit" in cp.stderr
+    assert "MB_LAUNCHED_BY=manual" in cp.stderr
+
+
+def test_a_claimed_call_passes_the_gate(tmp_path):
+    """With the claim set the gate says nothing -- the script proceeds (and
+    fails LATER here for lack of an engine, which is not the gate's exit
+    code and carries none of its message)."""
+    sh = _wrapper(tmp_path)
+    cp = subprocess.run(["bash", str(sh)], cwd=str(tmp_path),
+                        stdin=subprocess.DEVNULL, capture_output=True,
+                        text=True,
+                        env={**os.environ, "MB_LAUNCHED_BY": "manual"})
+    assert "was called directly" not in cp.stderr
+    assert cp.returncode != 2 or "Launch-door" not in cp.stderr
+
+
+# ---- config provenance ------------------------------------------------ #
+
+def test_provenance_names_each_values_source(tmp_path):
+    (tmp_path / "molbuilder.json").write_text(json.dumps(
+        {"execution": {"mode": "direct"},
+         "script_generation": {"activation": "conda activate"}}))
+    bundle = tmp_path / "calc"
+    bundle.mkdir()
+    (bundle / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "source activate"}}))
+    prov = config_provenance(project_dir=bundle)
+    assert prov["effective"]["execution.mode"] == {
+        "value": "direct", "from": "machine"}
+    # the bundle wins where both speak
+    assert prov["effective"]["script_generation.activation"] == {
+        "value": "source activate", "from": "bundle"}
+    scopes = {s["scope"]: s for s in prov["sources"]}
+    assert scopes["machine"]["found"] and scopes["machine"]["via"] == "cwd"
+    assert scopes["bundle"]["found"]
+
+
+def test_provenance_never_carries_secret_material(tmp_path):
+    """The allowlist is the guarantee: auth/tls/secret_key_file live in the
+    same machine file and must never reach the formatted output, which lands
+    in terminals, STAGE-PLAN.md and shipped logs."""
+    (tmp_path / "molbuilder.json").write_text(json.dumps(
+        {"execution": {"mode": "direct"},
+         "tls": {"key": "PEMKEYMATERIAL"},
+         "secret_key_file": "/run/secrets/mb"}))
+    text = format_provenance(config_provenance(project_dir=None))
+    assert "PEMKEYMATERIAL" not in text
+    assert "tls" not in text
+    assert "secret" not in text.lower()
+    assert "execution.mode = 'direct'" in text

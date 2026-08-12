@@ -805,11 +805,90 @@ def test_cli_submit_of_a_whole_sweep_refuses_and_says_which(tmp_path):
     assert "one at a time" in r.output and "G1K1C4" in r.output
 
 
-def test_cli_submit_requires_mode(tmp_path):
+def test_cli_submit_refuses_when_no_mode_is_set_anywhere(tmp_path, monkeypatch):
+    """No ``--mode`` and no ``execution.mode`` is a REFUSAL, never a
+    derivation from the detected scheduler (`running-a-job.md` § 5.4 — the
+    mode, not the scheduler, gates submission).
+
+    Isolated from this machine's own molbuilder.json: C11's fallback reads
+    it, so without the patch this test's verdict would depend on the
+    developer's config.
+    """
+    import molbuilder.runtime_config as rc
+    monkeypatch.setattr(rc, "get_execution", lambda *a, **k: {})
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
     r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path)])
-    assert r.exit_code != 0                                # --mode required
+    assert r.exit_code != 0
+    assert "execution.mode" in r.output
+
+
+def test_direct_launch_carries_the_launch_door_claim(tmp_path, monkeypatch):
+    """`submit --mode direct` sets MB_LAUNCHED_BY in the child env — the
+    claim the wrapper's launch-door gate checks (job-contracts.md § 2.6).
+    Env inheritance survives forks, so a backgrounded local run launched
+    through the verb never meets the gate's prompt."""
+    import molbuilder.jobset.submit as sub
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["env"] = kw.get("env")
+        class _CP:
+            returncode = 0
+        return _CP()
+    js = _sweep()
+    _write_config(tmp_path)
+    _write_fdf(tmp_path / "job-gpu.fdf")
+    prep_jobset(js, tmp_path, emit_sbatch=False)
+    monkeypatch.setattr(sub.subprocess, "run", fake_run)
+    sub.submit_jobset(js, tmp_path, mode="direct", only=js.jobs[0].name)
+    assert seen["env"]["MB_LAUNCHED_BY"] == "jobset-submit"
+
+
+def test_sbatch_command_carries_the_claim_explicitly(tmp_path):
+    """The sbatch path passes the claim ON THE COMMAND LINE
+    (--export=ALL,MB_LAUNCHED_BY=…): env inheritance is fragile against a
+    site's export policy, and the CLI flag wins over it."""
+    from molbuilder.jobset.submit import submit_jobset
+    js = _sweep()
+    _write_config(tmp_path)
+    _write_fdf(tmp_path / "job-gpu.fdf")
+    results = submit_jobset(js, tmp_path, mode="submit", dry_run=True,
+                            only=js.jobs[0].name)
+    cmd = results[0].command
+    assert "--export" in cmd
+    assert cmd[cmd.index("--export") + 1] == "ALL,MB_LAUNCHED_BY=jobset-submit"
+
+
+def test_cli_submit_falls_back_to_the_configs_mode(tmp_path, monkeypatch):
+    """C11: with no flag, ``execution.mode`` serves.  Reaching the
+    whole-sweep refusal downstream is the proof the mode resolved."""
+    import molbuilder.runtime_config as rc
+    monkeypatch.setattr(rc, "get_execution", lambda *a, **k: {"mode": "submit"})
+    _sweep().write(tmp_path / "job-set.json")
+    runner, grp = _runner()
+    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path),
+                            "--dry-run"])
+    assert r.exit_code != 0 and "one at a time" in r.output
+
+
+def test_cli_submit_surfaces_a_broken_config_as_its_own_error(
+        tmp_path, monkeypatch):
+    """A malformed molbuilder.json is ITS OWN error.  Until 2026-08-12 it was
+    swallowed into *"set execution.mode"* -- advice to set a value the user
+    may already have set."""
+    import molbuilder.runtime_config as rc
+
+    def boom(*a, **k):
+        raise rc.RuntimeConfigError(
+            "execution.mode must be 'direct' or 'submit'")
+    monkeypatch.setattr(rc, "get_execution", boom)
+    _sweep().write(tmp_path / "job-set.json")
+    runner, grp = _runner()
+    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path)])
+    assert r.exit_code != 0
+    assert "could not be resolved" in r.output
+    assert "must be 'direct' or 'submit'" in r.output
 
 
 # --------------------------------------------------------------------- #
@@ -921,6 +1000,7 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
                   for m in _re.finditer(r"^\| \*\*(.+?)\*\* \|", doc[start:end], _re.M)}
     assert documented, "§ 2.6's wrapper table could not be read — repoint this"
 
+    _write_config(tmp_path)      # activation from the bundle, not the cwd
     (tmp_path / "JOB.fdf").write_text("x")
     txt = write_run_wrapper(tmp_path / "JOB.fdf", env="e").read_text()
     emitted = {h.split("(")[0].strip()
@@ -1286,7 +1366,9 @@ def test_plan_and_status_take_the_bundle_the_same_way_every_verb_does(tmp_path):
     # the command took the string verbatim and never reached the resolver.
     r = runner.invoke(grp, ["status", "3", "--bundle", str(tmp_path)])
     assert r.exit_code == 0, r.output
-    assert r.output.splitlines()[0].startswith("STAGE 03_tight")
+    # The CONTENT property (3 resolved to 03_tight), not its line position --
+    # pinning splitlines()[0] made any banner a false failure (2026-08-12).
+    assert "STAGE 03_tight" in r.output
 
 
 def test_a_ladder_refuses_to_act_on_all_of_itself(tmp_path):
@@ -1310,12 +1392,13 @@ def test_a_ladder_refuses_to_act_on_all_of_itself(tmp_path):
     assert r.exit_code != 0
     assert "acts on ONE stage" in r.output
     assert "01_coarse, 03_tight" in r.output   # ordinals, at the moment you choose
-    # Every line of advice it prints must be a command that works -- the
+    # Every piece of advice it prints must be a command that works -- the
     # option set is pinned by test_submit_accepts_exactly_these_options.
-    for line in r.output.splitlines():
-        for word in re.findall(r"--[a-z-]+", line):
-            assert word in {"--bundle", "--mode", "--domain", "--dry-run"}, (
-                f"the refusal advertises {word}, which submit does not accept")
+    # Scanned over the whole output, not per line: option tokens are single
+    # words, so line-splitting added an assumption without adding a check.
+    for word in re.findall(r"--[a-z][a-z-]*", r.output):
+        assert word in {"--bundle", "--mode", "--domain", "--dry-run"}, (
+            f"the refusal advertises {word}, which submit does not accept")
 
 
 def test_what_a_run_continues_from_is_copied_never_linked(tmp_path):
@@ -2100,6 +2183,7 @@ def _prep_output(tmp_path, mpi_np_deck, mpi_np_launch):
     from molbuilder.jobset.model import Job, JobSet, Resources
 
     _describe(tmp_path, "hierarchical", names=("coarse",))
+    _write_config(tmp_path)      # the wrapper's activation, bundle-scoped
     _deck_rendered_for(tmp_path / "JOB_01_coarse.fdf", mpi_np_deck)
     (tmp_path / "JOB_01_coarse.run.sh").write_text("#!/bin/bash\nexit 0\n")
     JobSet(name="JOB", engine="siesta", kind="ladder",
@@ -2148,6 +2232,7 @@ def test_prep_stays_quiet_about_a_deck_that_makes_no_claim(tmp_path):
     from molbuilder.jobset.model import Job, JobSet, Resources
 
     _describe(tmp_path, "hierarchical", names=("coarse",))
+    _write_config(tmp_path)      # the wrapper's activation, bundle-scoped
     (tmp_path / "JOB_01_coarse.fdf").write_text("SystemLabel JOB\n")
     (tmp_path / "JOB_01_coarse.run.sh").write_text("#!/bin/bash\nexit 0\n")
     JobSet(name="JOB", engine="siesta", kind="ladder",

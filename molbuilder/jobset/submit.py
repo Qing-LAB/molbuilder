@@ -203,6 +203,12 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         if pq:
             cmd += ["-p", pq[0], "-q", pq[1]]
         cmd += _sbatch_resource_flags(job.resources)
+        # The launch-door claim, EXPLICIT on the command line: environment
+        # inheritance alone is fragile (sites override SLURM's --export
+        # policy), and the CLI flag wins over site defaults, so the claim
+        # reaches the job's env wherever it runs (job-contracts.md § 2.6,
+        # the Launch-door gate row).
+        cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-submit"]
         cmd.append(sbatch_name)          # relative; we cd into the job dir
 
         if dry_run:
@@ -216,7 +222,9 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
                 "(add a scheduler block to .molbuilder.json, or use "
                 "--mode direct).")
         cp = subprocess.run(cmd, cwd=str(job_dir),
-                            capture_output=True, text=True)
+                            capture_output=True, text=True,
+                            env={**os.environ,
+                                 "MB_LAUNCHED_BY": "jobset-submit"})
         if cp.returncode != 0:
             results.append(JobResult(job.name, cmd, "failed",
                                      returncode=cp.returncode))
@@ -348,7 +356,12 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
             raise SubmitError(
                 f"job {job.name!r}: {run_name} not in {job_dir} "
                 "(run prep_jobset first).")
-        cp = subprocess.run(cmd, cwd=str(job_dir))
+        # The launch-door claim rides the child ENV here: inheritance
+        # survives forks and backgrounding, so a detached local run
+        # launched through this verb never meets the gate's prompt.
+        cp = subprocess.run(cmd, cwd=str(job_dir),
+                            env={**os.environ,
+                                 "MB_LAUNCHED_BY": "jobset-submit"})
         if attempt is not None:
             # AFTER the launch, so a failed start leaves the attempt exactly as
             # prepare left it -- still safe to prepare again (§ 1.6).

@@ -213,10 +213,10 @@ def _check_kind(kind: str) -> None:
     """Refuse ``bench`` with a pointer rather than a shrug.
 
     The grammar has room for it and the fold-in is designed
-    (staged-runs-architecture.md step 1c: ``bench generate`` + ``bench prep``
-    become ``jobset prep bench``, and ``bench prep-run`` IS ``jobset prep run``
-    written a second time).  Until that lands, saying where the working command
-    lives beats pretending the word is unknown.
+    (`staged-runs-implementation-plan.md` step 6 / P9: ``bench generate`` +
+    ``bench prep`` become ``jobset prep bench``, and ``bench prep-run`` IS
+    ``jobset prep run`` written a second time).  Until that lands, saying
+    where the working command lives beats pretending the word is unknown.
     """
     if kind == "bench":
         raise click.ClickException(
@@ -396,6 +396,13 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     except PrepError as e:
         raise click.ClickException(str(e))
 
+    # WHERE the effective config came from -- part of "prep prints what it
+    # resolved" (job-system.md § 2.3.3): a person debugging a machine
+    # difference reads which file supplied each setting, at the moment it
+    # took effect (user request 2026-08-12; secrets excluded by design).
+    from ..runtime_config import config_provenance, format_provenance
+    click.echo(format_provenance(config_provenance(project_dir=base)))
+
     if stage is None:
         click.echo(f"prepped {len(dirs)} job dir(s) under {base}:")
         for d in dirs:
@@ -518,9 +525,19 @@ def submit_cmd(kind: str, stage, bundle: str, mode: str, domain,
         from ..runtime_config import get_execution
         try:
             mode = (get_execution() or {}).get("mode")
-        except Exception:                    # a malformed config is its own error
-            mode = None
+        except Exception as exc:
+            # A malformed config -- unreadable file, or an execution.mode
+            # that names neither launch mode (get_execution validates; ONE
+            # place defines what a mode is) -- is ITS OWN error.  Swallowing
+            # it here told the user to set a value they may already have set.
+            raise click.ClickException(
+                f"execution.mode could not be resolved from molbuilder.json: "
+                f"{exc}\n  Fix the config, or pass --mode explicitly for "
+                f"this call.") from exc
         if not mode:
+            # Unset is a refusal, never a derivation: deciding `submit` from
+            # a DETECTED scheduler would gate submission on detection, which
+            # running-a-job.md § 5.4 forbids.
             raise click.ClickException(
                 "no --mode, and molbuilder.json sets no `execution.mode`.\n"
                 "  'direct' runs it here with bash; 'submit' hands it to the "
@@ -528,6 +545,11 @@ def submit_cmd(kind: str, stage, bundle: str, mode: str, domain,
                 "--mode for this call (running-a-job.md § 5.4).")
     _check_kind(kind)
     js, base = _load(bundle)
+    # The same provenance line prep printed, at the LAST moment before the
+    # launch -- the mode above may have come from config, and this names
+    # which file said so (user request 2026-08-12).
+    from ..runtime_config import config_provenance, format_provenance
+    click.echo(format_provenance(config_provenance(project_dir=base)))
     only = _resolve_stage(js, stage, "submit")
     try:
         results = submit_jobset(js, base, mode=mode, domain=domain,

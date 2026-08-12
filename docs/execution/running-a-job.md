@@ -551,6 +551,59 @@ job falls back to the floor and a CPU job to the partition default. An
 Config is written at mode `0600` by `write_config_scope` (deep-merge a patch
 onto the chosen scope, re-validate, then write in place).
 
+### 5.5 The launch door — who may start a run, and how the run proves it
+
+*Decided with the user, 2026-08-12. One section for the whole story: which
+files decide the launch, how the decision reaches the running job, and what
+the job's own log says about it.*
+
+**Two config files feed every launch, and each value knows where it came
+from:**
+
+| file | scope | found where |
+|---|---|---|
+| `molbuilder.json` (no dot) | **this machine** — activation, scheduler, `execution.mode` | the directory the command runs from, else `~/.config/molbuilder/` |
+| `.molbuilder.json` (dotted) | **this calculation** — travels with the folder | inside the calculation, beside `task.json`; **wins on conflict** |
+
+`prep` and `submit` print the provenance — every path consulted, found or
+absent, and each effective value tagged with its source file — and `prep`
+writes the same block into `STAGE-PLAN.md`, so a behaviour difference between
+two machines is explained by the bundle itself. Secret sections (`auth`,
+`tls`, `secret_key_file`) are excluded by an allowlist, never by care.
+
+**There is ONE launch door.** `molbuilder jobset submit` resolves the mode
+(flag, else `execution.mode`, else a refusal — never the detected scheduler),
+runs the deck/launch agreement check, records the attempt, and launches
+**one job per invocation**. When it launches, it stamps the claim
+`MB_LAUNCHED_BY=jobset-submit` — into the child environment for a direct
+run (inheritance survives `nohup` and backgrounding), and **explicitly on
+the command line** for a scheduler run (`sbatch
+--export=ALL,MB_LAUNCHED_BY=jobset-submit`, which beats any site export
+policy).
+
+**Every `.run.sh` gates on that claim** before doing any work
+(`job-contracts.md` § 2.6, the Launch-door gate row):
+
+```mermaid
+flowchart TD
+    A[".run.sh starts"] --> B{"MB_LAUNCHED_BY set?"}
+    B -- "yes (jobset-submit · manual · bench-runner)" --> C["log: launched-by: &lt;value&gt;<br/>proceed"]
+    B -- no --> D{"interactive terminal?"}
+    D -- yes --> E["warn, ask y/N"]
+    E -- y --> C2["log: launched-by: manual<br/>proceed"]
+    E -- n --> F["exit 2"]
+    D -- "no (nohup · cron · hand-sbatch)" --> G["log: launched-by: NONE -- refused<br/>exit 2, message names the door<br/>and the override"]
+```
+
+**The verdict is in the job's own output log**, not only on a terminal: under
+sbatch the `launched-by:` line lands in the job's `.out`, so on the cluster
+the log alone answers *"was this launched properly, run by hand on purpose,
+or refused?"* — and nothing can ever sit waiting on a prompt, because a
+non-interactive shell never prompts, it refuses. The deliberate manual form
+is `MB_LAUNCHED_BY=manual bash JOB.run.sh` (backgroundable), and the value is
+logged so the choice is on record. *(`bench-runner` is the transitional claim
+of the old bench launcher and dies with it — plan step 6.)*
+
 ---
 
 ## 6. Saving a calculation — `molbuilder snapshot`

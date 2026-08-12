@@ -554,8 +554,14 @@ def test_write_missing_script_raises(tmp_path):
 # ---------------------------------------------------------------------
 
 
+import os
 import shutil
 import subprocess
+
+#: Direct wrapper executions in tests are DELIBERATE manual calls -- the
+#: documented override for the launch-door gate (job-contracts.md § 2.6),
+#: which otherwise refuses a bare non-interactive invocation.
+_MANUAL = {"MB_LAUNCHED_BY": "manual"}
 
 
 def _emit_truncated_wrapper(tmp_path, basename, suffix=".fdf"):
@@ -628,6 +634,7 @@ def _run_wrapper(wrapper_path, *args):
         capture_output=True,
         text=True,
         timeout=10,
+        env={**os.environ, **_MANUAL},
     )
     return proc.stdout, proc.stderr, proc.returncode
 
@@ -756,7 +763,7 @@ def test_help_flag_lists_continue_and_force(tmp_path, _autosetup_minimal_config)
     stub = stub_dir / "conda"
     stub.write_text("#!/usr/bin/env bash\nexit 0\n")
     stub.chmod(0o755)
-    env = {**dict(__import__("os").environ),
+    env = {**dict(__import__("os").environ), **_MANUAL,
             "PATH": f"{stub_dir}:" + __import__("os").environ.get("PATH", "")}
     proc = subprocess.run(
         [bash, str(wrapper_path), "-h"],
@@ -1108,6 +1115,7 @@ def test_pyscf_cold_actually_moves_optimized_xyz_aside(tmp_path):
         [bash, str(script_path)],
         cwd=str(tmp_path),
         capture_output=True, text=True, timeout=15,
+        env={**os.environ, **_MANUAL},
     )
     assert proc.returncode == 0, (
         f"cold-restart block exited non-zero;\n"
