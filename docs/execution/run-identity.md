@@ -11,10 +11,13 @@ run is actually launched and what the wrapper does with the files;
 derived from; [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
 — the plan that motivates this contract and schedules the work.
 
-**Status: proposed, not built.** Written first, built to. `job-contracts.md § 4`
-describes the shipped behaviour; this document says how the id that drives it
-should be *constructed*, and asks each engine to declare something it does not
-declare today.
+**Status: landed.** Written first, then built to: `task.json` stores the id
+and proves it on every parse (`Task._check_id`, with `describe` — 2026-08-11,
+plan step 2), the label reaches every filename through `identity.py`, and
+`prep`'s five steps derive the decks from the description (2026-08-12,
+step 4). *(This line read "proposed, not built" until 2026-08-12.)*
+`job-contracts.md § 4` still describes the shipped warm-restart behaviour the
+id drives.
 
 **This contract owns:** how a run id is built, what it may and may not be tied
 to, how it is normalised, and the per-engine group of parameters that decides

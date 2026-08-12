@@ -142,7 +142,13 @@
           "path": "execution/architecture.md"
         },
         {
+          "path": "execution/generator.md"
+        },
+        {
           "path": "execution/handoff-bundle.md"
+        },
+        {
+          "path": "execution/asu-sol.md"
         }
       ]
     },

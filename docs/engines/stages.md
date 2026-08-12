@@ -15,10 +15,14 @@ is resolved *from*, and the format every engine's parameters share;
 [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
 — the plan that motivates this contract and schedules the work.
 
-**Status: proposed, not built.** This document is written first and the code is
-built to it, the way `web/spectrumchart.md` and `web/vibrationview.md` were.
-Nothing in `SiestaConfig` matches it yet; the differences and the order of work
-are in the plan, not here (R3).
+**Status: landed.** This document was written first and the code built to it,
+the way `web/spectrumchart.md` and `web/vibrationview.md` were: `task.json`
+and `jobset describe` shipped 2026-08-11 (plan step 2), and `prep`'s five
+steps — the effective config resolved from the template ⊕ a stage's
+`overrides` and rendered per stage on the target — shipped 2026-08-12
+(step 4). *(This line read "proposed, not built — nothing in `SiestaConfig`
+matches it yet" until 2026-08-12.)* Remaining work stays in the plan, not
+here (R3).
 
 **This contract owns:** what a stage is, which fields are a stage's and which are
 the shared schema's, how an effective config is formed, where a promoted field
@@ -200,8 +204,10 @@ form):
 > rule above: even had the tag stayed wrong, a user could tick the box.
 
 **The four hard-coded values are historical residue, and the tagging proves it**
-(2026-08-07). Of the four that `render_siesta_stage_fdfs` can vary, **two are not
-even tagged as stage settings**:
+(2026-08-07). Of the four that `render_siesta_stage_fdfs` could vary *(the
+shipped renderer this critique was written against; deleted 2026-08-12 with the
+pre-resolve producers — `varies` + `overrides` through `prep` is the mechanism
+now)*, **two are not even tagged as stage settings**:
 
 | hard-coded as varying | what the config actually tags it |
 |---|---|
@@ -500,8 +506,11 @@ resolves to a partition and QoS the same way. That is **the machine's knowledge*
 and `job-system.md`'s decision 3 keeps it on the machine — a description that
 carried a walltime would stop being portable, and would be wrong the moment it
 was opened on a different cluster. A per-stage walltime is a real thing to want;
-it is asked for at export (`job-system.md § 5.1`'s `--stage-resources`), where
-the target is known.
+it is part of the **allocation, an input to `prep`** on the target, where the
+machine is known (`project-layout.md § 2.3.1b`). *(Until 2026-08-12 this
+sentence sent the reader to `job-system.md § 5.1`'s `--stage-resources` — a
+flag deleted with the old describe verb, M4: it put a walltime and a queue
+inside the folder this very paragraph says must name no machine.)*
 
 ### 5.1 The middle row, and what it costs
 
@@ -670,11 +679,14 @@ whatever keys the JSON happened to carry would throw away validation, defaulting
 and the `engine_key` mapping, and re-implement all three badly.
 
 **It carries the shipped schema convention.** `job-contracts.md § 6.1` fixes it:
-`molbuilder/<name>@<major>`, checked **major-only** through the one shared helper
-`molbuilder/persist.py`, and *"New persisted artifacts must use it."* That check
-is not a promise that somebody writes migrations — it is *"refuses with a clear
-message rather than mis-parsing"*, which is the behaviour this file wants. The
-artifact registry gains its row when the reader lands.
+`molbuilder/<name>@<major>`, checked **name + major** through the one shared
+helper `molbuilder/persist.py` (`check_schema`), and *"New persisted artifacts
+must use it."* That check is not a promise that somebody writes migrations — it
+is *"refuses with a clear message rather than mis-parsing"*, which is the
+behaviour this file wants. The artifact registry carries its row
+(`job-contracts.md § 6.1`). *(Amended 2026-08-12 with § 6.1 itself, U9: this
+repeated the "major-only" rule, which the check once implemented literally —
+any `@1` artifact parsed as any other `@1` artifact.)*
 
 ### 6.2 `varies` declares the columns; `overrides` fills the cells it chooses to
 

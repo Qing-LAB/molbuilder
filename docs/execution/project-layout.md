@@ -1676,9 +1676,11 @@ produces** — a bundle with `point-stage1/` and `point-stage2/` was refused too
 which meant a staged job-set had never been checkpointable.
 
 **A directory that carries its description owns its subdirectories.** Holding
-`task.json`, `job-set.json` or `bench-manifest.json` is what says *these are my
+`task.json` or `job-set.json` is what says *these are my
 stages, not somebody else's calculations* — each already an artifact this system
-persists, so nothing new had to be invented. The old rule still applies to a
+persists, so nothing new had to be invented. *(`bench-manifest.json` was the
+third marker until U19, 2026-08-12 — retired with the artifact itself; nothing
+writes one, so nothing can own a folder by it.)* The old rule still applies to a
 directory that declares nothing: a topic folder holding two unrelated
 calculations is still refused, and now says why.
 
@@ -1705,14 +1707,30 @@ than no invariant, because it fails a directory that is working correctly.
 
 1. **Every path segment matches `[A-Za-z0-9_-]+`**, and a topic is one of the
    nine (`job-contracts.md § 2.5`).
-2. **A calculation directory is named by its run id**, and that id is the
-   `SystemLabel` in every stage deck inside it (`run-identity.md § 3`).
-3. **Every file a stage reads or writes shares one basename** — the id
-   (`job-contracts.md § 2.1`, Rule 2). This is what makes warm restart work
-   across stages without copying anything.
-4. **[hierarchical] A stage directory's `seq` is assigned once and never reassigned**;
-   stages append (§ 4.2). Flat has no stage directories and so no `seq` — its
-   order is the description's list order (§ 4.1).
+2. **A calculation directory is named by the user; `task.json` says which
+   calculation it is** (`run-identity.md § 3.0`), and the **label** — not the
+   id — is the `SystemLabel` in every stage deck inside it. *(Reversed: this
+   read "named by its run id, and that id is the SystemLabel" until
+   2026-08-12, stale since 2026-08-07/09 — § 3.0 gave the folder level back
+   to the user, and decision 26 made the id, `<label>_<formula>`, a record in
+   `task.json` that is never a filename stem.)*
+3. **Who names a file decides whether it carries the stage**
+   (`job-contracts.md § 6.3`): the files the **engine** names — the warm
+   files, `<label>.XV` / `.DM` / `.CG` — are bare and share the label's one
+   basename, which is what makes warm restart work across stages without
+   copying anything; the files **molbuilder** names carry
+   `<label>_<NN>_<stage>`, and the repetition is the mix-up check. *(Reversed:
+   until 2026-08-12 this read "every file a stage reads or writes shares one
+   basename — the id", stale twice over — the stem is the label, decision 26,
+   and decision 21 put the stage token into every molbuilder-named file.)*
+4. **[both] A stage's `seq` is assigned once and never reassigned**; stages
+   append (§ 4.2). The hierarchy carries it on the stage directory, and the
+   flat shape carries it in the deck's filename — read back off the artifacts,
+   stored nowhere else (§ 4.1, decision 27). *(Reversed: until 2026-08-12
+   this was marked [hierarchical] and ended "flat has no stage directories
+   and so no `seq` — its order is the description's list order", which
+   decision 27 — 2026-08-10, quoted in § 4.1's box — called exactly
+   backwards: the flat shape is the one with nowhere else to put the order.)*
 4a. **[hierarchical] No directory in this tree points at a file that does not exist yet.**
    Stages are set up one at a time, after the previous one finished, so
    everything a run continues from is a real file copied in before it starts
@@ -1752,7 +1770,10 @@ than no invariant, because it fails a directory that is working correctly.
 
 10. **A calculation folder carries no machine knowledge** — no walltime, no
     partition, no activation. Those are `molbuilder.json`'s, outside the tree.
-    Benchmark files are the deliberate exception and sit at ④.
+    The machine-measurement files are the deliberate exception —
+    `environment.json` at the root, the benchmark files in the stage's
+    `bench/` container (§ 5.1). *(The last sentence said they "sit at ④"
+    until 2026-08-12 — one of the three numberings § 2.6's note records.)*
 11. **A parameter difference is a different deck; a resource difference is a
     different launch.** Neither mechanism is used for the other's job.
 12. **Derived files can be deleted and regenerated** from `task.json` plus the
