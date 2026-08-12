@@ -150,7 +150,7 @@ def test_a_file_no_list_ever_named_is_still_detected(calc):
 
 
 @pytest.mark.parametrize("name", [
-    f"{ID}.fdf", f"{ID}_coarse.fdf", f"{ID}.fdf.template",
+    f"{ID}.fdf", f"{ID}_coarse.fdf", f"{ID}.template.toml",
     f"{ID}.run.sh", f"{ID}.sbatch", f"{ID}.molwatch.log",
     f"{ID}-run0.out", f"{ID}_tight-run2.out", f"{ID}.log",
 ])

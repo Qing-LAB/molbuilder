@@ -463,6 +463,7 @@ class PySCFConfig:
     job_name: str = field(default="pyscf_relax", metadata={
         "workflow_group": "profile",
         "section":  "System",
+        "item_kind":  "produce",
         "label":    "Job name",
         "engine_key":  '(molbuilder: filename + log-name basename)',
         "id_suffix": "job-name",
@@ -668,6 +669,7 @@ class PySCFConfig:
     # ---------------- Main optimization ----------------
     optimize: bool = field(default=True, metadata={
         "section": "Compute & budget",
+        "item_kind":  "produce",
         # Profile-level: gates whether a relax happens at all --
         # run-shape identity (relax-or-single-point).
         "workflow_group": "profile",
@@ -920,6 +922,7 @@ class PySCFConfig:
     verbose_comments: bool = field(default=True, metadata={
         "workflow_group": "profile",
         "section": "Compute & budget",
+        "item_kind":  "produce",
         "label":   "Verbose comments in script",
         "engine_key":  '(molbuilder: script comment-block control)',
         "help": "emit inline tuning hints + troubleshooting block in the script",

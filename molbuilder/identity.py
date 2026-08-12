@@ -141,7 +141,7 @@ MAX_LABEL_BYTES = _NAME_LIMIT - _STAGE_BUDGET - len(_LONGEST_EXTENSION)
 #: what a user goes back to read, and nothing here may treat them as leftovers.
 OUR_FILE_PATTERNS: Sequence[str] = (
     # inputs we generated
-    "{label}.fdf", "{label}_*.fdf", "{label}.fdf.template",
+    "{label}.fdf", "{label}_*.fdf", "{label}.template.toml",
     "{label}.py", "{label}_*.py",
     # the wrapper and its scheduler header
     "{label}.run.sh", "{label}_*.run.sh",

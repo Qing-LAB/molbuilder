@@ -1719,7 +1719,7 @@ def _staged(root, stages=("01_coarse", "02_tight"), attempts=2, dm=BIG):
     """A calculation folder shaped like `project-layout.md` § 1.1's nested form."""
     (root / "task.json").write_text('{"engine": "siesta"}')
     (root / "Au.psml").write_text("<pseudo/>\n")
-    (root / "job.fdf.template").write_text("SystemLabel job\n")
+    (root / "job.template.toml").write_text("SystemLabel job\n")
     for stage in stages:
         sdir = root / stage
         sdir.mkdir(exist_ok=True)

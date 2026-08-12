@@ -98,7 +98,7 @@ def test_a_stage_ladder_is_not_a_template_item():
 @pytest.mark.parametrize("cls", ENGINES, ids=lambda c: c.__name__)
 def test_every_declaration_has_a_named_type(cls):
     for d in declarations_for(cls):
-        assert d.type_ in DECL_TYPES, f"{d.name}: {d.type_}"
+        assert d.type in DECL_TYPES, f"{d.name}: {d.type}"
 
 
 @pytest.mark.parametrize("cls", ENGINES, ids=lambda c: c.__name__)
@@ -107,7 +107,7 @@ def test_an_enum_declaration_carries_its_members(cls):
     and a reader can validate what was typed.  An enum without them declares
     a constraint nobody can check."""
     for d in declarations_for(cls):
-        if d.type_ == "enum":
+        if d.type == "enum":
             assert d.choices, d.name
 
 
@@ -129,14 +129,14 @@ def test_a_bool_is_typed_bool_and_not_int():
     wrong order types every checkbox as an integer — and a surface would draw
     seven number boxes where the form draws seven checkboxes."""
     d = _decls(SiestaConfig)
-    assert d["spin_polarized"].type_ == "bool"
-    assert d["relax_steps"].type_ == "int"
+    assert d["spin_polarized"].type == "bool"
+    assert d["relax_steps"].type == "int"
 
 
 def test_the_kgrid_is_one_declaration_not_three():
     """It is one decision — how finely reciprocal space is sampled — and a
     stage overriding it overrides all three components together."""
-    assert _decls(SiestaConfig)["kgrid"].type_ == "int3"
+    assert _decls(SiestaConfig)["kgrid"].type == "int3"
 
 
 def test_range_unit_and_group_come_from_the_field_metadata():
@@ -145,7 +145,7 @@ def test_range_unit_and_group_come_from_the_field_metadata():
     control, label it, and decide whether its *vary per stage* box starts
     ticked."""
     d = _decls(SiestaConfig)["mesh_cutoff"]
-    assert d.range_ == (100.0, 1000.0)
+    assert d.range == (100.0, 1000.0)
     assert d.unit == "Ry"
     assert d.group == "stage"
 

@@ -497,6 +497,8 @@ class SiestaConfig:
     })
     relax_steps: int = field(default=200, metadata={
         "section": "Compute & budget",
+        "item_kind":  "deck",
+        "expands":    ['MD.NumCGsteps', 'MD.FinalTimeStep'],
         # Resource-budget cap — same as max_scf_iter, this is "how
         # many outer steps am I willing to wait for", not a
         # convergence target.  Scales with system size, not stage.
@@ -576,6 +578,7 @@ class SiestaConfig:
     # those two it becomes NO sbatch flag -- it is baked in at install time.
     continue_retries: int = field(default=1, metadata={
         "section":        "Compute & budget",
+        "item_kind":  "wrapper",
         # A retry budget is compute you are agreeing to spend, so it sits in
         # the budget card with the other resource asks.  It restricts
         # nothing: like any field it can be ticked to vary per stage
@@ -668,6 +671,8 @@ class SiestaConfig:
     # "start from" row (web/task-setup-plan.md § 6).
     restart: str = field(default="clean", metadata={
         "section": "Compute & budget",
+        "item_kind":  "deck",
+        "expands":    ['DM.UseSaveDM', 'MD.UseSaveXV', 'MD.UseSaveCG'],
         "workflow_group": "stage",
         "label": "Start from",
         "choices": ("clean", "continue"),
@@ -719,6 +724,7 @@ class SiestaConfig:
     # was hunting for these knobs at the bottom of the form).
     wrap_into_cell: bool = field(default=True, metadata={
         "section": "Output & positioning",
+        "item_kind":  "produce",
         "workflow_group": "profile",
         "label": "Wrap atoms into cell",
         "engine_key":  '(molbuilder: pre-emission positioning)',
@@ -732,6 +738,7 @@ class SiestaConfig:
     # etc.) plus a "Troubleshooting" block at the end.
     verbose_comments: bool = field(default=True, metadata={
         "section": "Output & positioning",
+        "item_kind":  "produce",
         "workflow_group": "profile",
         "label": "Verbose inline comments",
         "engine_key":  '(molbuilder: .fdf comment-block control)',
@@ -829,6 +836,7 @@ class SiestaConfig:
     # Compute & budget workflow-group card.
     mpi_np: Optional[int] = field(default=None, metadata={
         "section": "Compute & budget",
+        "item_kind":  "wrapper",
         "workflow_group": "budget",
         "label":      "MPI ranks (np)",
         "engine_key":  '(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)',
@@ -897,6 +905,7 @@ class SiestaConfig:
     # with the PySCF / spectra scripts.
     omp_threads: Optional[int] = field(default=None, metadata={
         "section": "Compute & budget",
+        "item_kind":  "wrapper",
         "workflow_group": "budget",
         "label":      "OMP threads per rank",
         # Not a SIESTA fdf keyword.  Emits ``export OMP_NUM_THREADS=N``
@@ -919,6 +928,7 @@ class SiestaConfig:
     # records it so the /results trajectory inspector shows the cap.
     max_memory_mb: Optional[int] = field(default=None, metadata={
         "section": "Compute & budget",
+        "item_kind":  "wrapper",
         "workflow_group": "budget",
         "label":      "Max memory (per rank)",
         # Not a SIESTA fdf keyword.  Emits ``ulimit -v`` into .run.sh
@@ -1012,6 +1022,7 @@ class SiestaConfig:
     # the CLI side, also hand-rolled.
     psml_lib: Optional[str] = field(default=None, metadata={
         "section":    "System",
+        "item_kind":  "produce",
         # Run-profile identity — which pseudopotential library this
         # run uses is fixed per-project, set alongside SystemLabel
         # and the spin/charge knobs.
@@ -1106,6 +1117,8 @@ class SiestaConfig:
     })
     spin_total: Optional[float] = field(default=None, metadata={
         "section":     "Spin",
+        "item_kind":  "deck",
+        "expands":    ['Spin.Fix', 'Spin.Total'],
         "workflow_group": "profile",
         "label":       "Target spin moment",
         "null_label":  "(default)",

@@ -1,67 +1,211 @@
-"""The template — an engine config as a readable, machine-readable file.
+"""The template — a calculation's parameter catalogue, as one TOML file.
 
-**Module:** L2 (model). Imports ``config.*`` and ``script_emit``; imported by
-``siesta/*`` producers and, later, by ``jobset/prep``. Nothing here touches the
-filesystem or a scheduler.
+**Module:** L2 (model). Imports ``persist`` and the standard library; imported by
+``siesta/*`` producers, by ``validation/task``, and (when it exists) by
+``resolve/``. Nothing here touches the filesystem or a scheduler.
 
-**Contract:** [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
-§ 3.7 (the item-block format) · [`engines/stages.md`](?doc=engines/stages.md)
-§ 4 (the template is the science backbone; effective config = its values ⊕ a
-stage's ``overrides``).
+**Contract:** [`engines/template.md`](?doc=engines/template.md) — § 3 the required
+keys, § 4 the TOML format, § 5 the anatomy of an item, § 6 the ``kind``
+vocabulary and ``read_by`` · [`execution/generator.md`](?doc=execution/generator.md)
+§ 3.1 — why the UI is a reader and which keys serve it.
 
-The template is *"everything a script owns, with values"*: every field the
-engine's config declares, each wrapped in
+WHAT IT IS.  Every parameter the engine's schema declares, each carrying its
+value, what it is validated as, who owns it, and what we know about it.  **One
+artifact, four readers** (`template.md` § 5): a person learns the calculation, a
+**surface renders it**, ``prep`` rebuilds a config and renders decks, and
+validation gets a real object out of it.
 
-    # === molbuilder item <field> BEGIN ===
-    #   field <name> anchor=… type=… range=[a,b] unit=… default=… group=…
-    #   <what we know about this item, in prose>
-    <the payload, exactly as it lands in the deck>
-    # === molbuilder item <field> END ===
+THE VALUE IS ON THE ITEM, ONCE.  A template stores each value exactly once,
+which is the whole argument for TOML over the engine's own format (§ 4.1): a
+file that parses cleanly and describes a *different* calculation than it appears
+to is the failure mode worth designing out, and storing a value twice is how you
+get one.
 
-so that **one artifact serves four readers**: a person learns the calculation
-and the reasoning, the UI renders it, ``prep`` extracts the deck, and the
-validator gets a real config out of it.
+**An absent ``value`` means explicitly unset** (§ 3) — a real state, distinct
+from the default.  TOML has no null, so absence is the only encoding, and it is
+unambiguous.
 
-**The read is from ``value=``, never from the payload** (§ 3.7 property 2,
-decided 2026-08-07). A payload can be absent — ten of SIESTA's exposed fields
-write no deck line at their defaults — several lines (``spin_total`` writes
-``Spin.Fix`` *and* ``Spin.Total``), or a ``%block``. None of that changes how
-the value is read, because the value is on the declaration line.
+WHAT CHANGED ON 2026-08-11, and why the old shape could not stay.  This module
+emitted the retired item-block format — ``# === molbuilder item <field> BEGIN
+===`` wrapping a copy of the deck's own lines — and it built that by taking a
+**rendered deck** and lifting payloads out of it with a regex.  Two things were
+wrong with it and both are structural:
 
-**And the deck is re-rendered, not spliced.** ``prep`` rebuilds a config, applies
-the stage's ``overrides``, and goes through the same emitter every other deck
-goes through. § 3.7 property 1's guarantee — *a value cannot change shape between
-what a person read and what the engine got* — survives as a **checked** property:
-``tests/test_template_roundtrip.py`` asserts the rendered line is byte-identical
-to the template's payload for every item no stage overrode. Substituting in place
-could not work at all, because a stage overriding ``relax_type`` moves the step
-budget's site from ``MD.NumCGsteps`` to ``MD.FinalTimeStep`` — the anchor itself
-is chosen by another field's value.
+  * **the direction was inverted.**  The contract is schema → template → deck.
+    Deriving the template *from* a deck made the deck the source and the
+    catalogue a projection of it, so ``prep`` could not render from the template
+    without already having what it was about to render.
+  * **the payload was a second copy of every value**, which is exactly the
+    self-disagreement § 4.1 rejects.
+
+TOML has no payload key, so ``render_template`` needs no deck and the whole
+lifting apparatus — ``_anchor_token``, ``_payload_for``, ``_DECL_RE``,
+``_coerce`` — is gone rather than ported.
+
+THE WRITER CHECKS ITSELF.  ``tomllib`` reads TOML and does not write it, so the
+emitter here is hand-rolled — and § 4.1 requires that whatever emits a template
+**read its own output back and compare it to what it meant to write**.
+:func:`render_template` builds the payload as a plain object, serialises it,
+parses the result, and refuses if the two differ.  That turns *"we emitted TOML
+correctly"* from an assumption into a property checked on every call.
 """
 from __future__ import annotations
 
 import dataclasses
 import hashlib
 import re
+import tomllib
 import typing
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple
 
-from .script_emit import BLOCK_ITEM, BenchField, emit_item_block
+from .persist import check_schema_major
+
+
+SCHEMA = "molbuilder/template@1"
+
+#: The suffix of a template's filename; the stem is the ``SystemLabel``.
+#: ``<label>.template.toml`` (`job-contracts.md` § 6.3).  It was
+#: ``<label>.fdf.template`` until 2026-08-11 — an engine-flavoured name for a
+#: file that is not an ``.fdf`` and never was.
+SUFFIX = ".template.toml"
+
+#: § 6 — closed. An unknown ``kind`` is refused, never skipped, because a reader
+#: that quietly dropped an item it did not understand would emit a deck missing
+#: a parameter and say nothing.
+KINDS = ("engine", "deck", "wrapper", "produce", "monitor")
+
+#: § 5 — the validation vocabulary. TOML types the *storage*; this types what a
+#: reader must check, which a parser cannot know: that ``pow2`` is a power of
+#: two, that ``enum`` is drawn from ``choices``, that ``text`` is verbatim engine
+#: text to be copied rather than interpreted.
+TYPES = ("int", "float", "str", "bool", "enum", "pow2",
+         "int3", "strlist", "intlist", "text")
+
+
+def _refuse(msg: str, *, where: str = "") -> NoReturn:
+    raise ValueError(f"template{': ' + where if where else ''}: {msg}")
 
 
 # --------------------------------------------------------------------- #
-#  A config field's declaration                                         #
+#  One item                                                             #
 # --------------------------------------------------------------------- #
 
-#: How a Python annotation becomes a declaration ``type`` (§ 3.3's vocabulary,
-#: extended by § 3.7).  A field with ``choices`` is an ``enum`` whatever its
-#: Python type, because that is what a reader needs in order to validate it.
-_ANNOTATION_TYPES = {
-    bool:  "bool",     # checked BEFORE int -- bool IS an int in Python, and
-    int:   "int",      # getting that order wrong types every checkbox as int
-    float: "float",
-    str:   "str",
-}
+@dataclass(frozen=True)
+class Item:
+    """One parameter, with everything all four readers need from it.
+
+    The four required keys (§ 3) are the ones without defaults here:
+    :attr:`name`, :attr:`kind`, :attr:`type`, :attr:`help`. Everything else is
+    present when it applies and absent when it does not — *"absent is not a
+    failure; it is the honest statement that the parameter has no default, no
+    bounds, no unit, or no other reader."*
+
+    ``value`` is ``None`` for **explicitly unset**, which is the state § 3
+    distinguishes from the default. TOML cannot express null, so a written
+    template simply omits the key.
+    """
+    name: str
+    kind: str
+    type: str
+    help: str
+
+    value:   Any = None
+    default: Any = None
+
+    # --- reaching the deck (§ 6) ---
+    anchor:  str = ""                       # required when kind == "engine"
+    expands: Tuple[str, ...] = ()           # required when kind == "deck"
+    read_by: Tuple[str, ...] = ()           # § 6.1 — who ELSE derives from it
+
+    # --- bounds and presentation ---
+    choices: Optional[Tuple[str, ...]] = None   # required when type == "enum"
+    range:   Optional[Tuple[float, float]] = None
+    unit:    Optional[str] = None
+    group:   Optional[str] = None           # workflow_group: profile/stage/budget
+
+    # --- what a SURFACE needs (generator.md § 3.1a) -------------------- #
+    # Added 2026-08-11 with the decision that the UI is built FROM the
+    # template rather than merely generated from the same schema.  Without
+    # these three a template cannot name its own fields or group them, and
+    # ``optional`` says unset is a real state while nothing says how to show
+    # it.  They cost nothing -- they are already in the field metadata -- and
+    # adding them later would mean re-emitting every template written before.
+    label:      str = ""                    # "MPI ranks (np)" -- the human name
+    section:    str = ""                    # "Compute & budget" -- the fieldset
+    null_label: str = ""                    # "(auto)" -- what UNSET is called
+
+    #: Whether *unset* is a state this item has at all. Not written to the
+    #: file — it is recoverable from the schema and is carried here because
+    #: :func:`schema_fingerprint` has always included it.
+    optional: bool = False
+
+    def __post_init__(self) -> None:
+        if self.kind not in KINDS:
+            _refuse(f"kind {self.kind!r} is not one of {', '.join(KINDS)}",
+                    where=self.name)
+        if self.type not in TYPES:
+            _refuse(f"type {self.type!r} is not one of {', '.join(TYPES)}",
+                    where=self.name)
+        # § 3's conditionally-required keys. Each is required *by the item's own
+        # declaration*, so the check belongs on the object and not only on the
+        # parse -- a producer building Items by hand gets the same refusal.
+        if self.kind == "engine" and not self.anchor:
+            _refuse("kind='engine' needs an 'anchor' -- an engine item that "
+                    "names no keyword cannot reach the deck", where=self.name)
+        if self.kind == "deck" and not self.expands:
+            _refuse("kind='deck' needs 'expands' -- it is how a reader learns "
+                    "which keywords this item produces", where=self.name)
+        if self.type == "enum" and not self.choices:
+            _refuse("type='enum' needs 'choices' -- an enum with no members "
+                    "cannot be validated or rendered as a control",
+                    where=self.name)
+
+    @property
+    def is_set(self) -> bool:
+        """Whether this item carries a value (§ 3's *absent means unset*)."""
+        return self.value is not None
+
+
+@dataclass(frozen=True)
+class Template:
+    """A parsed template: the three top-level keys, and the items in order."""
+    engine: str
+    fingerprint: str
+    items: Tuple[Item, ...] = ()
+
+    def __iter__(self):
+        return iter(self.items)
+
+    def get(self, name: str) -> Optional[Item]:
+        for it in self.items:
+            if it.name == name:
+                return it
+        return None
+
+    def values(self) -> Dict[str, Any]:
+        """``{name: value}`` for every item that carries one.
+
+        Items that are **unset** are omitted rather than mapped to ``None``:
+        see :func:`config_from_template` for why that is the correct reading
+        and not a loss.
+        """
+        return {it.name: it.value for it in self.items if it.is_set}
+
+
+# --------------------------------------------------------------------- #
+#  From the schema — the edge that makes this data-driven               #
+# --------------------------------------------------------------------- #
+
+#: How a Python annotation becomes a declaration ``type``.  ``bool`` is checked
+#: BEFORE ``int`` -- a bool IS an int in Python, and getting that order wrong
+#: types every checkbox as a number.
+_ANNOTATION_TYPES = {bool: "bool", int: "int", float: "float", str: "str"}
+
+#: Which ``kind`` a field takes when its metadata does not say.  Almost every
+#: exposed field is one of the engine's own keywords; the exceptions declare
+#: themselves with an ``item_kind`` in their metadata.
+_DEFAULT_KIND = "engine"
 
 
 def _unwrap_optional(ann) -> Tuple[Any, bool]:
@@ -73,48 +217,69 @@ def _unwrap_optional(ann) -> Tuple[Any, bool]:
     return ann, False
 
 
+_BARE_ANCHOR = re.compile(r"^\s*(%block\s+[A-Za-z][\w.-]*|[A-Za-z][\w.-]*)")
+
+
+def _bare_anchor(engine_key: str) -> str:
+    """The keyword an ``engine_key`` leads with, or ``""`` if it leads with none.
+
+    § 5: an anchor is *"a bare keyword, never a sentence"*, but ``engine_key``
+    is older than that rule and carries three other shapes, measured against
+    ``SiestaConfig``: a **note** (``(molbuilder: ...)``), an **alternation**
+    (``A | B``), and a **conjunction** (``A + B``). The last two are ``deck``
+    items whose ``expands`` lists every keyword they may produce, declared in
+    metadata; the first is not an engine item at all and is refused above.
+
+    What is left for this function is the common case and one tidy-up: a bare
+    keyword, possibly followed by a prose note in parentheses, of which only
+    the keyword is the anchor.
+    """
+    m = _BARE_ANCHOR.match(engine_key or "")
+    return m.group(1) if m else ""
+
+
 def _decl_type(ann, choices) -> Optional[str]:
     """The declaration ``type`` for one annotation, or None if unnameable."""
     if choices:
         return "enum"
     if ann in _ANNOTATION_TYPES:
         return _ANNOTATION_TYPES[ann]
-    # Tuple[int, int, int] -- the k-grid.  Named rather than flattened to
-    # three fields: it is one decision ("how finely is reciprocal space
-    # sampled"), and a stage overriding it overrides all three together.
-    if typing.get_origin(ann) is tuple:
-        args = typing.get_args(ann)
-        if args and all(a is int for a in args):
-            return "int3"
+    origin, args = typing.get_origin(ann), typing.get_args(ann)
+    # Tuple[int, int, int] -- the k-grid.  Named rather than flattened to three
+    # fields: it is ONE decision ("how finely is reciprocal space sampled"), and
+    # a stage overriding it overrides all three together.
+    if origin is tuple and args and all(a is int for a in args):
+        return "int3"
+    if origin is list and args:
+        if args[0] is str:
+            return "strlist"
+        if args[0] is int:
+            return "intlist"
     return None
 
 
-def declaration_for(f: "dataclasses.Field", annotation) -> Optional[BenchField]:
-    """The § 3.7 declaration for one config field, or ``None`` if it has no
-    place in a template.
+def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
+    """The § 3 item for one config field, or ``None`` if it has no place here.
 
     ``None`` means **not exposed** — a field with no ``section`` is internal
-    (`web/form-schema.md § 1a`), so no surface renders it and a template that
-    listed it would be offering the user something no tab can show.
+    (`web/form-schema.md` § 1a), so no surface renders it and a template that
+    listed it would offer the user something no tab can show.
 
     Raises ``ValueError`` for an exposed field whose type has no name in the
-    grammar: that is a gap in the vocabulary, and the loud version of it is
-    the only one that gets fixed.
+    grammar: that is a gap in the vocabulary, and the loud version of it is the
+    only one that gets fixed.
     """
-    if not f.metadata.get("section"):
+    section = f.metadata.get("section")
+    if not section:
         return None
 
     ann, optional = _unwrap_optional(annotation)
 
     # A ``List[<dataclass>]`` is a STAGE LADDER, and a ladder is not a template
     # item -- it is the user's decision about what varies, and it lives in
-    # ``task.json`` (`engines/stages.md § 1.1`).  Excluded for what it is,
-    # with a reason, rather than left to fall through to the type error below,
-    # which would report a vocabulary gap where there is none.
-    #
-    # ``PySCFConfig.stages`` is the only one left: SIESTA's was deleted in P2
-    # unit 2, and PySCF keeps its own because that ladder runs inside a single
-    # process.  When PySCF's path is reworked this branch goes with it.
+    # ``task.json`` (`engines/stages.md` § 1.1).  Excluded for what it IS, with
+    # a reason, rather than left to fall through to the type error below, which
+    # would report a vocabulary gap where there is none.
     _args = typing.get_args(ann)
     if (typing.get_origin(ann) in (list, tuple)
             and _args and dataclasses.is_dataclass(_args[0])):
@@ -125,32 +290,59 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[BenchField]:
     if type_ is None:
         raise ValueError(
             f"field {f.name!r}: no declaration type for annotation {ann!r}. "
-            f"Add one to DECL_TYPES (job-contracts.md 3.3) rather than "
-            f"leaving the field out of the template -- § 3.7's premise is "
-            f"that every allowed item has a place in the file.")
+            f"Add one to the grammar (engines/template.md § 5) rather than "
+            f"leaving the field out of the template -- § 7's premise is that "
+            f"every parameter the schema declares is an item.")
 
     rng = f.metadata.get("range")
-    return BenchField(
+    kind = f.metadata.get("item_kind") or _DEFAULT_KIND
+    anchor = _bare_anchor(f.metadata.get("engine_key", "") or f.name)
+    expands = tuple(f.metadata.get("expands", ()) or ())
+
+    # § 7: "a parameter that cannot be given a ``kind`` is a gap in this
+    # vocabulary, and the loud version of that is the only one that gets
+    # fixed."  An ``engine_key`` that is a molbuilder NOTE rather than a
+    # keyword -- ``(molbuilder: ...)`` -- names nothing the deck can carry, so
+    # a field left at the default kind is not classified, it is unclassified.
+    if kind == "engine" and not anchor:
+        raise ValueError(
+            f"field {f.name!r}: kind defaults to 'engine' but its engine_key "
+            f"names no keyword ({f.metadata.get('engine_key','')!r}). Give it "
+            f"an explicit metadata['item_kind'] -- one of "
+            f"{', '.join(KINDS)} (engines/template.md § 6). Leaving it out "
+            f"would put a note where the deck expects a keyword.")
+    if kind == "deck" and not expands and anchor:
+        expands = (anchor,)
+
+    return Item(
         name=f.name,
-        anchor=f.metadata.get("engine_key", "") or f.name,
-        type_=type_,
-        range_=(tuple(rng) if rng else None),
+        kind=kind,
+        type=type_,
+        help=str(f.metadata.get("help", "") or ""),
+        default=(f.default if f.default is not dataclasses.MISSING else None),
+        anchor=(anchor if kind == "engine" else ""),
+        expands=expands,
+        read_by=tuple(f.metadata.get("read_by", ()) or ()),
+        choices=(tuple(choices) if choices else None),
+        range=(tuple(rng) if rng else None),
         unit=f.metadata.get("unit"),
         group=f.metadata.get("workflow_group"),
-        choices=(tuple(choices) if choices else None),
+        label=str(f.metadata.get("label", "") or ""),
+        section=str(section),
+        null_label=str(f.metadata.get("null_label", "") or ""),
         optional=optional,
     )
 
 
-def declarations_for(config_cls) -> List[BenchField]:
+def declarations_for(config_cls) -> List[Item]:
     """Every exposed field of *config_cls*, in declaration order.
 
-    Declaration order, not alphabetical: the config's field order is the
-    form's order and the deck's order, and a template a person reads should
-    not be a third arrangement of the same things.
+    Declaration order, not alphabetical: the config's field order is the form's
+    order and the deck's order, and a template a person reads should not be a
+    third arrangement of the same things.
     """
     hints = typing.get_type_hints(config_cls)
-    out: List[BenchField] = []
+    out: List[Item] = []
     for f in dataclasses.fields(config_cls):
         decl = declaration_for(f, hints[f.name])
         if decl is not None:
@@ -170,35 +362,35 @@ FINGERPRINT_VERSION = "1"
 def schema_fingerprint(config_cls) -> str:
     """A short, stable digest of the shape a description was written against.
 
-    ``task.json`` carries one (`engines/stages.md § 6.6`), and the preflight's
+    ``task.json`` carries one (`engines/stages.md` § 6.6), and the preflight's
     only **non-refusal** row is *"the schema fingerprint matches"* — a
     description written when ``mesh_cutoff`` was bounded [50, 2000] and read
     after it became [50, 800] names a field that still exists and a value that
     is no longer legal, which is worth saying out loud rather than discovering
     at the engine.
 
-    **This is the writer that row has been missing since it was written.**
-    Unit 4a's rule: it is computed by whatever writes the template, because
-    that is the moment the schema is in hand.
-
     What goes in is what a *description* can depend on: the field's name, its
-    declaration type, its bounds, its enum members, and whether unset is a
-    state it has. Deliberately NOT included:
+    declaration type, its bounds, its enum members, and whether unset is a state
+    it has. Deliberately NOT included:
 
       * **the default** — a template records the value in use, so changing a
         default cannot invalidate a description that already carries values;
-      * **help text, labels, units, `workflow_group`** — presentation. A
-        reworded tooltip must not make every stored description suspect, and
-        a fingerprint that cried wolf would be turned off.
+      * **help text, labels, units, ``group``, ``section``** — presentation. A
+        reworded tooltip must not make every stored description suspect, and a
+        fingerprint that cried wolf would be turned off.
 
     So it changes when a field is added, removed, retyped, re-bounded, or has
     its choices changed — and not otherwise.
+
+    **The recipe is unchanged from the item-block era on purpose.** Every
+    fingerprint already stored in a ``task.json`` was computed by it, and
+    altering the recipe would invalidate all of them at once for no gain.
     """
     parts: List[str] = [f"v{FINGERPRINT_VERSION}"]
     for d in sorted(declarations_for(config_cls), key=lambda d: d.name):
-        rng = f"{d.range_[0]},{d.range_[1]}" if d.range_ else ""
+        rng = f"{d.range[0]},{d.range[1]}" if d.range else ""
         choices = "|".join(d.choices) if d.choices else ""
-        parts.append(f"{d.name}:{d.type_}:{rng}:{choices}:{int(d.optional)}")
+        parts.append(f"{d.name}:{d.type}:{rng}:{choices}:{int(d.optional)}")
     digest = hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
     return digest[:16]
 
@@ -215,162 +407,317 @@ def fingerprint_matches(config_cls, recorded: str) -> bool:
     return recorded == schema_fingerprint(config_cls)
 
 
-
-
-
 # --------------------------------------------------------------------- #
-#  Writing a template                                                   #
+#  Writing                                                              #
 # --------------------------------------------------------------------- #
 
-#: A ``%block`` payload runs to its ``%endblock``.
-_BLOCK_OPEN = "%block"
+def _toml_basic(s: str) -> str:
+    """A TOML basic string — one line, escapes processed."""
+    out = s.replace("\\", "\\\\").replace('"', '\\"')
+    out = out.replace("\n", "\\n").replace("\t", "\\t").replace("\r", "\\r")
+    return f'"{out}"'
 
 
-def _anchor_token(engine_key: str) -> Optional[str]:
-    """The literal token a deck line starts with, or ``None``.
+def _toml_multiline(s: str) -> str:
+    """A TOML multi-line basic string, for prose that carries newlines.
 
-    ``None`` for the three shapes ``engine_key`` actually carries besides a
-    plain keyword, measured against ``SiestaConfig`` on 2026-08-07:
-
-      * a **parenthesised note** — the field reaches no deck line at all
-        (``mpi_np``, ``psml_lib``, ``restart``, ``continue_retries``, …);
-      * an **alternation**, ``A | B`` — which site is used depends on another
-        field's value (``relax_steps``);
-      * a **conjunction**, ``A + B`` — one field writes two lines
-        (``spin_total``).
-
-    Only the payload is affected: the value rides on the declaration, so a
-    ``None`` here costs a block its illustrative body and nothing else. This
-    is exactly why § 3.7 stopped making the anchor load-bearing.
+    Multi-line **basic** (``\"\"\"``) rather than literal (``'''``) because a
+    literal string has no escape at all: a body containing ``'''`` could not be
+    written, and help text is prose we do not control the punctuation of.
     """
-    ek = (engine_key or "").strip()
-    if not ek or ek.startswith("(") or "|" in ek or "+" in ek:
-        return None
-    return ek
+    body = s.replace("\\", "\\\\").replace('"""', '\\"""')
+    # A body ending in a quote would merge with the closing delimiter.
+    if body.endswith('"'):
+        body = body[:-1] + '\\"'
+    # TOML trims a newline immediately after the opening delimiter, so the
+    # value is exactly ``body`` -- which the round-trip check below proves.
+    return f'"""\n{body}"""'
 
 
-def _payload_for(anchor: Optional[str], deck_lines: List[str]) -> str:
-    """The deck lines this anchor owns, verbatim, or ``""``."""
-    if not anchor:
-        return ""
-    if anchor.startswith(_BLOCK_OPEN):
-        name = anchor.split(None, 1)[-1]
-        out, inside = [], False
-        for line in deck_lines:
-            low = line.strip().lower()
-            if low.startswith(f"{_BLOCK_OPEN} {name}".lower()):
-                inside = True
-            if inside:
-                out.append(line)
-                if low.startswith("%endblock"):
-                    break
-        return "\n".join(out)
-    pat = re.compile(rf"^\s*{re.escape(anchor)}\b")
-    return "\n".join(l for l in deck_lines if pat.match(l))
+def _toml_value(v: Any) -> str:
+    if isinstance(v, bool):                 # before int -- a bool IS an int
+        return "true" if v else "false"
+    if isinstance(v, (int,)):
+        return str(v)
+    if isinstance(v, float):
+        # repr keeps the decimal point, so a float round-trips as a float and
+        # not as an int -- 300.0 must not come back as 300.
+        return repr(v)
+    if isinstance(v, str):
+        return (_toml_multiline(v) if "\n" in v else _toml_basic(v))
+    if isinstance(v, (list, tuple)):
+        return "[" + ", ".join(_toml_value(x) for x in v) + "]"
+    raise TypeError(f"template: cannot write {type(v).__name__} to TOML")
 
 
-def render_template(deck_text: str, config, *, config_cls=None) -> str:
-    """The template for *config*, given the deck it renders to.
+#: The order keys appear inside an item.  Fixed so two templates of the same
+#: calculation diff cleanly, and so the file reads the way § 4.2's example does:
+#: what it is, then what it is worth, then what bounds it, then the prose.
+_ITEM_KEY_ORDER = ("kind", "anchor", "expands", "type", "choices", "value",
+                   "default", "unit", "range", "group", "section", "label",
+                   "null_label", "read_by", "help")
 
-    ``deck_text`` is what the ordinary emitter produced for this config — the
-    payloads are lifted **out of it** rather than re-implemented, so
-    ``payload == what lands in the deck`` is true by construction for every
-    item with a usable anchor, and the round-trip guard covers the rest.
+
+def _item_payload(it: Item) -> Dict[str, Any]:
+    """The mapping one item becomes — omitting everything absent (§ 3)."""
+    out: Dict[str, Any] = {"kind": it.kind, "type": it.type}
+    if it.anchor:
+        out["anchor"] = it.anchor
+    if it.expands:
+        out["expands"] = list(it.expands)
+    if it.choices:
+        out["choices"] = list(it.choices)
+    # An absent ``value`` is the encoding of *explicitly unset* (§ 3).
+    if it.value is not None:
+        out["value"] = list(it.value) if isinstance(it.value, tuple) else it.value
+    if it.default is not None:
+        out["default"] = (list(it.default) if isinstance(it.default, tuple)
+                          else it.default)
+    if it.unit:
+        out["unit"] = it.unit
+    if it.range:
+        out["range"] = list(it.range)
+    if it.group:
+        out["group"] = it.group
+    if it.section:
+        out["section"] = it.section
+    if it.label:
+        out["label"] = it.label
+    if it.null_label:
+        out["null_label"] = it.null_label
+    if it.read_by:
+        out["read_by"] = list(it.read_by)
+    out["help"] = it.help
+    return out
+
+
+def render_template(config, *, config_cls=None, engine: str = "",
+                    title: str = "") -> str:
+    """The template for *config*, as TOML.
+
+    **It takes no deck.** The catalogue comes from the schema and the values
+    from *config*; a deck is what ``prep`` renders *from* this, later and on the
+    machine that will run it. Until 2026-08-11 this function took the rendered
+    deck and lifted payloads out of it, which inverted the contract's direction
+    and stored every value twice.
+
+    *engine* names whose schema these items belong to (§ 3); it defaults to the
+    config class's own ``ENGINE`` attribute or its lower-cased class-name stem.
+
+    Raises ``ValueError`` if the emitted text does not parse back to what it
+    meant to write — see the module docstring; § 4.1 asks for exactly this.
     """
     cls = config_cls or type(config)
-    deck_lines = deck_text.splitlines()
-    defaults = {f.name: (f.default if f.default is not dataclasses.MISSING
-                         else None)
-                for f in dataclasses.fields(cls)}
-    out: List[str] = []
-    for d in declarations_for(cls):
-        out.append(emit_item_block(
-            d,
-            value=getattr(config, d.name),
-            default=defaults.get(d.name),
-            help_text=_help_of(cls, d.name),
-            payload=_payload_for(_anchor_token(d.anchor), deck_lines),
-        ))
-    return "\n\n".join(out) + "\n"
+    eng = engine or _engine_name(cls)
+    items = [
+        dataclasses.replace(d, value=getattr(config, d.name, None))
+        for d in declarations_for(cls)
+    ]
+    # Unit 4a's rule: the fingerprint is computed by whatever writes the
+    # template, because that is the moment the schema is in hand.  Nothing
+    # wrote one until 2026-08-11, so `validation/task.py`'s check either never
+    # fired or always complained.
+    payload = {
+        "schema": SCHEMA,
+        "engine": eng,
+        "fingerprint": schema_fingerprint(cls),
+        "item": {it.name: _item_payload(it) for it in items},
+    }
+
+    lines: List[str] = []
+    if title:
+        for ln in title.splitlines():
+            lines.append(f"# {ln}".rstrip())
+    lines.append(f"schema      = {_toml_value(SCHEMA)}")
+    lines.append(f"engine      = {_toml_value(eng)}")
+    lines.append(f"fingerprint = {_toml_value(payload['fingerprint'])}")
+    for it in items:
+        body = _item_payload(it)
+        lines.append("")
+        lines.append(f"[item.{it.name}]")
+        for key in _ITEM_KEY_ORDER:
+            if key in body:
+                lines.append(f"{key} = {_toml_value(body[key])}")
+    text = "\n".join(lines) + "\n"
+
+    # § 4.1 -- read our own output back and compare it with what we meant.
+    # tomllib does not write TOML, so this is the only thing standing between a
+    # quoting bug and a template that parses cleanly and says something else.
+    try:
+        parsed = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:      # pragma: no cover - defensive
+        raise ValueError(
+            f"template: emitted TOML does not parse ({exc}). This is a bug in "
+            f"the writer, not in the config.") from exc
+    if parsed != payload:
+        diff = _first_difference(payload, parsed)
+        raise ValueError(
+            f"template: emitted TOML does not read back as written -- {diff}. "
+            f"This is a bug in the writer (engines/template.md § 4.1 asks for "
+            f"exactly this check).")
+    return text
 
 
-def _help_of(cls, name: str) -> str:
-    for f in dataclasses.fields(cls):
-        if f.name == name:
-            return str(f.metadata.get("help", "") or "")
+def _engine_name(cls) -> str:
+    """Whose schema these items are — from the class, never guessed by a caller."""
+    named = getattr(cls, "ENGINE", "")
+    if named:
+        return str(named)
+    stem = cls.__name__
+    for suffix in ("Config", "Configuration"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+    return stem.lower()
+
+
+def _first_difference(want: Any, got: Any, path: str = "") -> str:
+    """Where two payloads first disagree, named so the bug is findable."""
+    if isinstance(want, Mapping) and isinstance(got, Mapping):
+        for k in want:
+            if k not in got:
+                return f"{path}.{k} is missing after the round trip".lstrip(".")
+            sub = _first_difference(want[k], got[k], f"{path}.{k}")
+            if sub:
+                return sub
+        for k in got:
+            if k not in want:
+                return f"{path}.{k} appeared from nowhere".lstrip(".")
+        return ""
+    if want != got:
+        return (f"{path or 'the document'}: wrote {want!r}, read back {got!r}")
     return ""
 
 
 # --------------------------------------------------------------------- #
-#  Reading one back                                                     #
+#  Reading                                                              #
 # --------------------------------------------------------------------- #
 
-_DECL_RE = re.compile(r"^#\s*field\s+(\S+)\s+(.*)$")
+_REQUIRED_ITEM_KEYS = ("kind", "type", "help")
+
+_KNOWN_ITEM_KEYS = frozenset(_ITEM_KEY_ORDER)
 
 
-def _coerce(raw: str, type_: str):
-    if type_ == "bool":
-        return raw.lower() == "true"
-    if type_ == "int":
-        return int(raw)
-    if type_ == "float":
-        return float(raw)
-    if type_ == "int3":
-        return tuple(int(x) for x in raw.split(","))
-    return raw                      # str, enum
+def read_template(text: str) -> Template:
+    """Parse a template, refusing rather than guessing.
 
+    The order is § 3's: the schema string first, so a file from a future major
+    fails saying so instead of failing on whichever key moved.
 
-def read_template(text: str) -> Dict[str, Any]:
-    """``{field name: value}`` from a template's item blocks.
-
-    A **scan**, not a parse: the markers name the field and the declaration
-    carries the value, so nothing here understands ``.fdf`` syntax — which is
-    § 3.7 property 2's whole point, and just as well, since nothing in
-    molbuilder can read an ``.fdf`` back into a config.
-
-    A block whose declaration has no ``value=`` yields ``None``: that is an
-    optional field left unset, which is a real state and not the default.
+    Every refusal names the item it is about, because a template is a file a
+    person is invited to edit (§ 4.1: *"hand-editable — yes"*), and *"missing
+    required key 'kind'"* with no item name sends them to read the whole file.
     """
-    from .script_emit import MARKER_RE
+    try:
+        raw = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        _refuse(f"not valid TOML -- {exc}")
 
-    values: Dict[str, Any] = {}
-    current: Optional[str] = None
-    for line in text.splitlines():
-        m = MARKER_RE.match(line)
-        if m:
-            name = m.group(1)
-            if not name.startswith(f"{BLOCK_ITEM} "):
-                current = None
-                continue
-            current = (name.split(None, 1)[1] if m.group(2) == "BEGIN"
-                       else None)
-            continue
-        if current is None:
-            continue
-        d = _DECL_RE.match(line.strip())
-        if not d or d.group(1) != current:
-            continue
-        kv = dict(tok.split("=", 1) for tok in d.group(2).split()
-                  if "=" in tok)
-        raw = kv.get("value")
-        values[current] = (None if raw is None
-                           else _coerce(raw, kv.get("type", "str")))
-    return values
+    check_schema_major(str(raw.get("schema") or ""), SCHEMA, label="template")
+
+    engine = raw.get("engine")
+    if not engine or not isinstance(engine, str):
+        _refuse("missing required key 'engine' -- without it a reader cannot "
+                "know which config class these items belong to, and would have "
+                "to infer it from their names (engines/template.md § 3)")
+    if "fingerprint" not in raw:
+        _refuse("missing required key 'fingerprint'. An EMPTY string is legal "
+                "and means 'makes no claim'; the key itself is required so "
+                "that silence is deliberate (engines/template.md § 3)")
+    fingerprint = str(raw.get("fingerprint") or "")
+
+    table = raw.get("item") or {}
+    if not isinstance(table, Mapping):
+        _refuse(f"'item' must be a table of items, got "
+                f"{type(table).__name__}")
+
+    items = tuple(_item_from(name, body) for name, body in table.items())
+    return Template(engine=str(engine), fingerprint=fingerprint, items=items)
+
+
+def _shape(v: Any, type_: str) -> Any:
+    """Give a parsed value the Python shape its declared type implies.
+
+    TOML has one sequence, and the config classes do not: ``kgrid`` is a
+    ``Tuple[int, int, int]`` while ``species_order`` is a ``List[str]``, and
+    both come back from ``tomllib`` as a plain list. Without this an item
+    round-trips to a value that is *equal in content and different in type*,
+    which is the quietest kind of loss — and it is what the writer's own
+    round-trip check cannot see, because the check compares the TOML payload
+    with itself rather than the config with the config.
+
+    **This is not the deleted ``_coerce``.** That one parsed *strings* back
+    into values because the item-block format stored everything as text. TOML
+    types its own scalars; the only thing left to decide is list versus tuple,
+    and the declared type is what decides it.
+    """
+    if v is None:
+        return None
+    if type_ == "int3":
+        return tuple(int(x) for x in v)
+    if type_ == "intlist":
+        return [int(x) for x in v]
+    if type_ == "strlist":
+        return [str(x) for x in v]
+    return v
+
+
+def _item_from(name: str, body: Any) -> Item:
+    if not isinstance(body, Mapping):
+        _refuse(f"expected a table, got {type(body).__name__}", where=name)
+    unknown = sorted(set(body) - _KNOWN_ITEM_KEYS)
+    if unknown:
+        _refuse(f"unknown key(s) {', '.join(repr(k) for k in unknown)} "
+                f"(known: {', '.join(_ITEM_KEY_ORDER)})", where=name)
+    for key in _REQUIRED_ITEM_KEYS:
+        if key not in body:
+            _refuse(f"missing required key {key!r}", where=name)
+
+    rng = body.get("range")
+    type_ = str(body["type"])
+    return Item(                       # Item.__post_init__ enforces § 3's rest
+        name=name,
+        kind=str(body["kind"]),
+        type=type_,
+        help=str(body["help"]),
+        value=_shape(body.get("value"), type_),
+        default=_shape(body.get("default"), type_),
+        anchor=str(body.get("anchor", "") or ""),
+        expands=tuple(body.get("expands", ()) or ()),
+        read_by=tuple(body.get("read_by", ()) or ()),
+        choices=(tuple(body["choices"]) if body.get("choices") else None),
+        range=(tuple(rng) if rng else None),
+        unit=body.get("unit"),
+        group=body.get("group"),
+        label=str(body.get("label", "") or ""),
+        section=str(body.get("section", "") or ""),
+        null_label=str(body.get("null_label", "") or ""),
+    )
 
 
 def config_from_template(text: str, config_cls):
     """An ordinary instance of *config_cls*, rebuilt from a template.
 
     What ``prep`` holds before it applies a stage's ``overrides``
-    (`engines/stages.md § 4`). A field the template does not carry keeps the
-    class default — a template written against an older schema is missing
-    fields, not wrong about them, and the fingerprint is what says so.
+    (`engines/stages.md` § 4).
+
+    **An unset item is omitted rather than passed as ``None``**, so the class
+    default applies. That is the correct reading rather than a loss: every
+    field for which *unset* is a real state is annotated ``Optional[...]`` and
+    defaults to ``None`` already, so omitting and passing ``None`` agree —
+    while for a field that is not optional, passing ``None`` would replace a
+    real default with a value its own type forbids.
+
+    A field the template does not carry keeps the class default too: a template
+    written against an older schema is **missing** fields, not wrong about them,
+    and the fingerprint is what says so.
     """
     known = {f.name for f in dataclasses.fields(config_cls)}
-    vals = {k: v for k, v in read_template(text).items() if k in known}
+    vals = {k: v for k, v in read_template(text).values().items() if k in known}
     return config_cls(**vals)
 
 
-__all__ = ["declaration_for", "declarations_for", "schema_fingerprint",
-           "fingerprint_matches", "FINGERPRINT_VERSION",
+__all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "FINGERPRINT_VERSION",
+           "Item", "Template",
+           "declaration_for", "declarations_for",
+           "schema_fingerprint", "fingerprint_matches",
            "render_template", "read_template", "config_from_template"]

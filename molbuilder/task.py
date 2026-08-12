@@ -10,7 +10,7 @@ is a calculation *of*, which settings the user chose to tune (``varies``), and
 the per-stage cells that differ (``stages[].overrides``).
 
 **It carries only what CHANGES.**  Everything that does not is in the template
-(``<label>.fdf.template``), written once — so there is no ``base`` key here, and a
+(``<label>.template.toml``), written once — so there is no ``base`` key here, and a
 stage that omits a varied field renders with the template's value (§ 4).  It
 **names no machine** either: ranks, queues and walltimes are decided by ``prep``
 on the target (``execution/project-layout.md`` § 2.1).

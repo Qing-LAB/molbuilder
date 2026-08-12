@@ -63,7 +63,6 @@ BLOCK_ATOM_METADATA = "atom-metadata"
 BLOCK_USER_CUSTOM   = "user-custom"
 #: § 3.7 item blocks: the marker is ``item <field>``, so the NAME reaches
 #: the marker and prep can rebuild a config by scanning.
-BLOCK_ITEM          = "item"
 
 
 def begin_marker(name: str) -> str:
@@ -318,30 +317,6 @@ def _scalar(v) -> str:
     if isinstance(v, (list, tuple)):
         return ",".join(_scalar(x) for x in v)
     return str(v)
-
-
-def emit_item_block(f: "BenchField", *, value, default=None,
-                    help_text: str = "", payload: str = "") -> str:
-    """One template item block — `job-contracts.md § 3.7`.
-
-    ``payload`` is what this item contributes to the deck, verbatim, and may
-    be **empty**: ten of SIESTA's exposed fields write no line at their
-    defaults, and an empty payload is the honest record of that. The value
-    still travels, on the declaration.
-    """
-    if f.type_ == "enum" and not f.choices:
-        raise ValueError(
-            f"item {f.name!r}: type=enum with no choices. A surface cannot "
-            "build the dropdown and a reader cannot validate what was typed "
-            "(job-contracts.md 3.7).")
-    name = f"{BLOCK_ITEM} {f.name}"
-    out = [begin_marker(name), decl_line(f, value=value, default=default)]
-    for para in (help_text or "").strip().splitlines():
-        out.append(f"#   {para.strip()}" if para.strip() else "#")
-    if payload:
-        out.extend(payload.splitlines())
-    out.append(end_marker(name))
-    return "\n".join(out)
 
 
 def emit_atom_metadata(regions: Dict[str, List[int]],
@@ -771,7 +746,7 @@ __all__ = [
     "BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
     "BLOCK_ATOM_METADATA", "BLOCK_USER_CUSTOM",
     "MARKER_RE", "begin_marker", "end_marker",
-    "BLOCK_ITEM", "DECL_TYPES", "decl_line", "emit_item_block",
+    "DECL_TYPES", "decl_line",
     # Bench declarations
     "BenchField", "SIESTA_BENCH_FIELDS",
     # Emitters
