@@ -699,7 +699,7 @@ def _echo_resolved(js, base, stage_name: str, attempt) -> None:
     `prep`. Until then this reports what the deck *already says*, which is a
     weaker claim honestly made rather than the stronger one faked.
     """
-    from .prep import launch_agreement
+    from .agreement import disagreement_note, launch_agreement
     job = next((j for j in js.jobs if j.name == stage_name), None)
     if job is None:
         return
@@ -714,17 +714,21 @@ def _echo_resolved(js, base, stage_name: str, attempt) -> None:
     if a.verdict == "silent":
         return                       # the deck makes no claim; say nothing
     deck = Path(job.script).name
+    _ledger(base, "prep", "launch-agreement", stage=stage_name,
+            verdict=a.verdict, rendered_for=a.rendered_text,
+            launching_at=a.launch_text)
     if a.verdict == "agrees":
         click.echo(f"  {deck}: rendered for mpi_np {a.rendered_text} "
                    f"-- agrees with this launch")
         return
+    # The WHY and the remedy are the agreement module's one wording
+    # (disagreement_note); this surface adds only its framing -- what will
+    # happen next if nothing changes.
     click.echo(click.style(
         f"  {deck}: rendered for mpi_np {a.rendered_text}, but this launch "
         f"asks {a.launch_text}\n"
-        f"    submit WILL REFUSE this -- a deck derives values from the rank "
-        f"count (BlockSize above all), so one rendered for a different launch "
-        f"is wrong for this one.  Re-render it, or launch at "
-        f"{a.rendered_text}.", fg="yellow"), err=True)
+        f"    submit WILL REFUSE this -- " + disagreement_note(a),
+        fg="yellow"), err=True)
 
 
 @jobset_group.command("summarize",

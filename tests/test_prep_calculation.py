@@ -109,7 +109,7 @@ def test_the_launch_agreement_holds_for_a_deck_prep_just_made(calc):
     """`check_launch_matches_deck` refuses a deck rendered for another launch.
     A deck `prep` itself rendered must never trip it — and it did, on the first
     run of this path, because the deck was rendered from the values alone."""
-    from molbuilder.jobset.prep import launch_agreement
+    from molbuilder.jobset.agreement import launch_agreement
     from molbuilder.jobset._cli import _load
     prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32))
     js, _ = _load(str(calc))

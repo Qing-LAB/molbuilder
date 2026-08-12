@@ -202,11 +202,11 @@ floor 1 doing the job it exists for.
 |---|---|---|---|---|---|---|
 | **1** | **names & plain facts** | what a thing is called; what this machine is | `identity` · `environment` · `persist` | `resolve_stage_ref` · `stage_token` · `parse_stage_token` · `run_id` · `normalise_id` · `resolve_environment` · `detect_scheduler` · `read_json` / `write_json` | `environment.json` | know what a folder is |
 | **2** | **description** | what the person asked for | `task` | `read_task` · `write_task` · `derive_run` · `varies_for` | `task.json` | **name a machine** |
-| **3** | **plan** | asked-for **+ machine** → a list of jobs | `siesta/stages` · `bench/to_jobset` · `jobset/model` | `stages_to_jobset` · `default_siesta_stages` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `JobSet.write` / `load` / `validate` | `job-set.json` | touch the disk |
+| **3** | **plan** | asked-for **+ machine** → a list of jobs | `siesta/stages` · `resolve` · `jobset/model` | `default_siesta_stages` · `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins → `ParameterSet`) · `JobSet.write` / `load` / `validate` | `job-set.json` | touch the disk *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
 | **4** | **layout** | where every file sits | `jobset/materialize` · `jobset/shape` | `materialize` · `job_dir_names` · `stage_refs` · `shape_of` · `Shape.named` · `prepare_attempt` · `attempts` · `latest_attempt` · `relink` | the folder tree; `run-<n>/` | know about a queue |
-| **5** | **launch** | how a folder becomes a running program | `jobset/prep` · `runwrap` · `jobset/submit` | `prep_jobset` · `resolve_target` · `launch_agreement` · `check_launch_matches_deck` · `write_run_wrapper` · `render_sbatch` · `submit_jobset` | `.run.sh` · `.sbatch` · `run.json` | decide physics |
+| **5** | **launch** | how a folder becomes a running program | `jobset/prep` · `jobset/agreement` · `runwrap` · `jobset/submit` | `prep_jobset` · `resolve_target` · `launch_agreement` · `check_launch_matches_deck` · `write_run_wrapper` · `render_sbatch` · `submit_jobset` | `.run.sh` · `.sbatch` · `run.json` | decide physics |
 | **6** | **observe** | what happened | `jobset/runstatus` · `parse/dirs` | `jobset_status` · `render_status` · `render_stage_status` · `decode_run_dir` | — | write anything |
-| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `web` | `molbuilder jobset {plan,prep,submit,status}` · the web blueprints | — | work out a name, a folder, or a launch |
+| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobset/ledger` · `web` | `molbuilder jobset {plan,prep,submit,status}` · the web blueprints · `ledger.record` (each verb's decisions, into `jobset-decisions.log`) | `jobset-decisions.log` | work out a name, a folder, or a launch |
 
 **The rule that makes it a layering:** *a floor may call down and return up; it
 may never reach across.* Floor 5 deciding a rank count that floor 3 already
@@ -310,7 +310,7 @@ classDiagram
 | **`JobSet` / `Job` / `WarmFile`** | 3 | *what jobs does that mean, on this machine?* | a producer (`stages_to_jobset`, `sweep_to_jobset`) |
 | **`Shape`** | 4 | *where do this stage's files live?* | `Shape.named`, from the description |
 | **`Attempt`** | 4 | *which try is this, and what was put in it?* | `prepare_attempt` |
-| **`LaunchAgreement`** | 5 | *does this deck match the launch it is about to get?* | `launch_agreement` |
+| **`LaunchAgreement`** | 5 | *does this deck match the launch it is about to get?* | `launch_agreement` (`jobset/agreement.py` — its own floor-5 module since 2026-08-12, so `prep` and `submit` both import it downward and neither imports the other) |
 | **`StageStatus` / `JobSetStatus`** | 6 | *where has this got to?* | `jobset_status` |
 
 **A `Job` names no other `Job`.** It declares `warm` — *what* it would take from

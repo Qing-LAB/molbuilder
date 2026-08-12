@@ -113,7 +113,7 @@ def test_a1_exactly_one_module_spells_a_stage_token():
 _ONE_BUILDER = {
     "StageRef":        ("jobset/materialize.py", "stage_refs"),
     "Attempt":         ("jobset/materialize.py", "prepare_attempt"),
-    "LaunchAgreement": ("jobset/prep.py",        "launch_agreement"),
+    "LaunchAgreement": ("jobset/agreement.py",   "launch_agreement"),
     "Shape":           ("jobset/shape.py",       None),
 }
 
@@ -201,17 +201,19 @@ _FLOOR = {
     "persist.py":             1,
     "task.py":                2,
     "siesta/stages.py":       3,
-    "bench/to_jobset.py":     3,
+    "resolve.py":             3,
     "jobset/model.py":        3,
     "jobset/materialize.py":  4,
     "jobset/shape.py":        4,
     "jobset/submit.py":       5,
     "jobset/prep.py":         5,
+    "jobset/agreement.py":    5,
     "runwrap.py":             5,
     "jobset/runstatus.py":    6,
     "parse/dirs/":            6,
     "cli.py":                 7,
     "jobset/_cli.py":         7,
+    "jobset/ledger.py":       7,
     "web/":                   7,
 }
 

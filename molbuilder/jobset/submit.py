@@ -52,8 +52,8 @@ from typing import Dict, List, Optional, Tuple
 # alongside three siblings that are not needed anywhere else.  A second,
 # top-level import shadowed by that one sat here until 2026-08-10 doing
 # nothing.
+from .agreement import DeckLaunchMismatch, check_launch_matches_deck
 from .model import JobSet, Resources
-from .prep import check_launch_matches_deck
 
 
 class SubmitError(Exception):
@@ -269,7 +269,12 @@ def _resolve_launch(jobset: JobSet, base_dir: Path, job, suffix: str):
     this is the paragraph to argue with.*
     """
     job_dir, attempt = _launch_dir(jobset, base_dir, job)
-    check_launch_matches_deck(job_dir, job)
+    try:
+        check_launch_matches_deck(job_dir, job)
+    except DeckLaunchMismatch as e:
+        # M5: the refusal is SUBMIT's -- the agreement floor states the
+        # fact, this verb is what declines to act on it.
+        raise SubmitError(str(e)) from e
     return job_dir, attempt, _wrapper_name(job.script, suffix)
 
 

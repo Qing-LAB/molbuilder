@@ -2064,7 +2064,7 @@ def test_the_prep_warning_and_the_submit_refusal_cannot_disagree(
     So this asserts the equivalence directly, across every shape the question
     has, rather than checking each surface's wording in isolation.
     """
-    from molbuilder.jobset.prep import launch_agreement
+    from molbuilder.jobset.agreement import launch_agreement
     from molbuilder.jobset.submit import submit_jobset, SubmitError
 
     js = _one_stage_bundle(tmp_path, mpi_np_deck=deck, mpi_np_launch=launch)
@@ -2087,7 +2087,7 @@ def _prep_output(tmp_path, mpi_np_deck, mpi_np_launch):
     bundle -- the pre-made-bundle arm, retired with U2/U4 (described-only:
     `describe` is floor 2's only writer).  The contract these tests pin is
     unchanged and lives where it lived: the reporter and submit's refusal
-    both read the ONE comparison, `prep.launch_agreement`."""
+    both read the ONE comparison, `agreement.launch_agreement`."""
     import contextlib, io
     from molbuilder.jobset._cli import _echo_resolved
     from molbuilder.jobset.model import Job, JobSet, Resources
