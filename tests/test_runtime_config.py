@@ -8,7 +8,8 @@ Covered:
 * malformed JSON raises ``RuntimeConfigError`` (not silent swallow)
 * non-dict top-level / sections raise ``RuntimeConfigError``
 * missing file returns ``{}`` (not raise)
-* unknown top-level keys are ignored silently (forward compat)
+* unknown top-level keys are REFUSED with the known set named (U7,
+  2026-08-12 -- "ignored silently" is how admin/rate_limit were dropped)
 * the convenience accessors filter junk values defensively
 
 Every test ``chdir``s into ``tmp_path`` so the repo-root molbuilder.json
@@ -134,21 +135,65 @@ def test_flat_fills_in_when_nested_partial(monkeypatch, tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  Forward compat: unknown keys ignored silently                        #
+#  Unknown keys are refused, never silently ineffective (U7)            #
 # --------------------------------------------------------------------- #
 
 
-def test_unknown_top_level_keys_ignored(monkeypatch, tmp_path):
-    """The file should be free to grow new top-level sections in
-    future releases without breaking older readers."""
+def test_unknown_top_level_keys_are_refused_by_name(monkeypatch, tmp_path):
+    """This pinned the OPPOSITE until 2026-08-12 ("free to grow new
+    sections without breaking older readers") -- and that tolerance is
+    exactly how `admin` and `rate_limit`, sections with live getters,
+    were silently dropped: the file looked configured and nobody could
+    be admin.  A key the loader does not know is a typo or a section
+    nobody wired -- both deserve an error naming what IS known."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
         "tls":   {"cert": "/c.pem", "key": "/k.pem"},
         "future_section": {"some_key": 42},
-        "another_top_level": "ignored",
+    }))
+    with pytest.raises(RuntimeConfigError, match="future_section"):
+        read_config()
+    # the refusal teaches: every known section is named
+    with pytest.raises(RuntimeConfigError, match="admin"):
+        read_config()
+
+
+def test_admin_emails_survive_the_loader(monkeypatch, tmp_path):
+    """THE U7 regression pin: `admin` must reach `get_admin_emails`
+    through read_config.  Until 2026-08-12 `_normalise` dropped it (the
+    section was absent from its ad-hoc allowlist), so the web layer read
+    post-strip config and NOBODY could be admin, silently."""
+    from molbuilder.runtime_config import get_admin_emails
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
+        "admin": {"emails": ["Operator@ASU.edu", "  second@asu.edu "]},
     }))
     cfg = read_config()
-    assert cfg == {"tls": {"cert": "/c.pem", "key": "/k.pem"}}
+    assert get_admin_emails(cfg) == frozenset(
+        {"operator@asu.edu", "second@asu.edu"})
+
+
+def test_rate_limit_survives_the_loader(monkeypatch, tmp_path):
+    """Same defect family as admin: the tuning block must round-trip."""
+    from molbuilder.runtime_config import get_rate_limit
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
+        "rate_limit": {"enabled": False, "allowlist": ["10.0.0.1"]},
+    }))
+    cfg = read_config()
+    assert get_rate_limit(cfg) == {"enabled": False,
+                                   "allowlist": ["10.0.0.1"]}
+
+
+def test_admin_with_a_broken_emails_shape_is_refused(monkeypatch, tmp_path):
+    """A mistyped emails list must not fail silently into the
+    safe-but-wrong 'nobody'."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
+        "admin": {"emails": "operator@asu.edu"},
+    }))
+    with pytest.raises(RuntimeConfigError, match="admin.emails"):
+        read_config()
 
 
 # --------------------------------------------------------------------- #
@@ -212,3 +257,16 @@ def test_read_config_rejects_empty_string_envs_value(monkeypatch, tmp_path):
     }))
     with pytest.raises(RuntimeConfigError, match="cannot be empty"):
         read_config()
+
+
+def test_underscore_keys_are_comments_and_pass(monkeypatch, tmp_path):
+    """JSON has no comments; the committed templates use "_comment_*"
+    keys.  An explicit underscore marker is not the typo class the
+    unknown-key refusal exists for (running-a-job.md § 5)."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
+        "_comment_about_this_file": "explains things",
+        "tls": {"cert": "/c.pem", "key": "/k.pem"},
+    }))
+    cfg = read_config()
+    assert cfg == {"tls": {"cert": "/c.pem", "key": "/k.pem"}}

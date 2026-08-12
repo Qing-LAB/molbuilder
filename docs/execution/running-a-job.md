@@ -422,8 +422,18 @@ run-viewer will reuse (the status note below).
 ## 5. Configuration — `molbuilder.json`
 
 The server reads config to bake site-specifics into wrappers. It is validated
-by `molbuilder/runtime_config.py`; every section is optional, unknown keys are
-ignored.
+by `molbuilder/runtime_config.py`; every section is optional, and an **unknown
+top-level key is refused with the known sections named** — never ignored
+(the one exception: a key starting with `_` is a comment, e.g.
+`"_comment_tls"`, and is ignored by design — an explicit marker is not the
+typo class the refusal exists for).
+*(Amended 2026-08-12, U7: "unknown keys are ignored" was the documented
+behaviour, and it is exactly how `admin` and `rate_limit` — sections with
+live readers — were silently dropped before reaching the web layer: the file
+looked configured and nobody could be admin. The same hole swallows every
+typo'd section name. The section registry in `runtime_config.py` is the one
+total list of what exists, which scope each section may live in, and whose
+values provenance may print.)*
 
 > **The sections below are the four a *calculation* uses.** The same file also
 > configures the *server* — sign-in, TLS, the rate limiter, the admin list —

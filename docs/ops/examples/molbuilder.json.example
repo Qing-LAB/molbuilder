@@ -1,128 +1,109 @@
 {
-  "_comment_about_this_file":
-    "Template molbuilder.json for a molbuilder SERVER deployment (tls / envs / auth / script_generation).  Copy to ./molbuilder.json (the directory you run `molbuilder serve` from) or ~/.config/molbuilder/molbuilder.json (the XDG fallback), then DELETE the keys you don't need.  The SCHEDULER / execution / routing sections for HPC script generation live in the companion template molbuilder.asu-sol.json in this same directory.  JSON doesn't support real comments, so each section is prefixed with a _comment_<section> key; molbuilder silently ignores any key starting with an underscore.  Full schema reference: docs/ops/deployment.md § 5 + docs/execution/running-a-job.md § 5.  This template is pinned against the live reader by tests/test_scheduler_config.py -- keep it in sync with the code in the same commit.",
-
-  "_comment_tls":
-    "TLS certificate paths.  Required for any non-loopback bind (the serve command refuses --host != 127.0.0.1 without TLS or --allow-insecure-binding).  Get a free Let's Encrypt cert via certbot, or use your institution's wildcard cert.  Omit this whole section for localhost-only deployments.",
+  "_comment_about_this_file": "Template molbuilder.json for a molbuilder SERVER deployment (tls / envs / auth / script_generation).  Copy to ./molbuilder.json (the directory you run `molbuilder serve` from) or ~/.config/molbuilder/molbuilder.json (the XDG fallback), then DELETE the keys you don't need.  The SCHEDULER / execution / routing sections for HPC script generation live in the companion template molbuilder.asu-sol.json in this same directory.  JSON doesn't support real comments, so each section is prefixed with a _comment_<section> key; molbuilder silently ignores any key starting with an underscore.  Full schema reference: docs/ops/deployment.md \u00a7 5 + docs/execution/running-a-job.md \u00a7 5.  This template is pinned against the live reader by tests/test_scheduler_config.py -- keep it in sync with the code in the same commit.",
+  "_comment_tls": "TLS certificate paths.  Required for any non-loopback bind (the serve command refuses --host != 127.0.0.1 without TLS or --allow-insecure-binding).  Get a free Let's Encrypt cert via certbot, or use your institution's wildcard cert.  Omit this whole section for localhost-only deployments.",
   "tls": {
     "cert": "/etc/letsencrypt/live/molbuilder.your-host.edu/fullchain.pem",
-    "key":  "/etc/letsencrypt/live/molbuilder.your-host.edu/privkey.pem"
+    "key": "/etc/letsencrypt/live/molbuilder.your-host.edu/privkey.pem"
   },
-
-  "_comment_envs":
-    "Conda env name overrides.  molbuilder dispatches PySCF / SIESTA / MDTools work into the matching env (so PySCF imports don't pollute the host env).  Defaults are 'molbuilder-pySCF' / 'molbuilder-siesta' / 'molbuilder-MDtools' / 'molbuilder-tests'; only set this section if you renamed your envs.",
+  "_comment_envs": "Conda env name overrides.  molbuilder dispatches PySCF / SIESTA / MDTools work into the matching env (so PySCF imports don't pollute the host env).  Defaults are 'molbuilder-pySCF' / 'molbuilder-siesta' / 'molbuilder-MDtools' / 'molbuilder-tests'; only set this section if you renamed your envs.",
   "envs": {
-    "siesta":  "molbuilder-siesta",
-    "pyscf":   "molbuilder-pySCF",
+    "siesta": "molbuilder-siesta",
+    "pyscf": "molbuilder-pySCF",
     "mdtools": "molbuilder-MDtools",
-    "tests":   "molbuilder-tests"
+    "tests": "molbuilder-tests"
   },
-
-  "_comment_auth":
-    "Optional authentication.  Omit the entire 'auth' section for localhost-only single-user deployments (no login screen).  When present, each entry in 'providers' becomes a separate sign-in button on the login page; molbuilder NEVER sees passwords -- it only receives the verified identity (email) from each provider and matches it against THAT provider's own 'allowed_users' list.  Setup walkthroughs per kind: docs/ops/deployment.md.  The referenced secret FILES (~/.molbuilder/secret.key, ~/.molbuilder/<provider>_client_secret) are created once per host -- see docs/ops/deployment.md § 5.1 for the mkdir/chmod/generation recipe; molbuilder.json itself carries paths only, never secret bytes.",
+  "_comment_auth": "Optional authentication.  Omit the entire 'auth' section for localhost-only single-user deployments (no login screen).  When present, each entry in 'providers' becomes a separate sign-in button on the login page; molbuilder NEVER sees passwords -- it only receives the verified identity (email) from each provider and matches it against THAT provider's own 'allowed_users' list.  Setup walkthroughs per kind: docs/ops/deployment.md.  The referenced secret FILES (~/.molbuilder/secret.key, ~/.molbuilder/<provider>_client_secret) are created once per host -- see docs/ops/deployment.md \u00a7 5.1 for the mkdir/chmod/generation recipe; molbuilder.json itself carries paths only, never secret bytes.",
   "auth": {
-
-    "_comment_trust_proxy":
-      "ProxyFix opt-in.  Leave at false (the default) for direct-TLS deploys (`molbuilder serve --cert --key` with NO reverse proxy in front).  Set to true ONLY when an actual proxy (Caddy / nginx / Traefik / Cloudflare) sits in front of molbuilder and scrubs client-supplied X-Forwarded-* headers before adding its own -- otherwise an attacker can spoof those headers and influence the redirect URIs molbuilder hands to OAuth / CAS providers.",
+    "_comment_trust_proxy": "ProxyFix opt-in.  Leave at false (the default) for direct-TLS deploys (`molbuilder serve --cert --key` with NO reverse proxy in front).  Set to true ONLY when an actual proxy (Caddy / nginx / Traefik / Cloudflare) sits in front of molbuilder and scrubs client-supplied X-Forwarded-* headers before adding its own -- otherwise an attacker can spoof those headers and influence the redirect URIs molbuilder hands to OAuth / CAS providers.",
     "trust_proxy": false,
-
-    "_comment_providers":
-      "List one entry per sign-in option you want on the login page.  Order is preserved (top-listed appears first / highest).  Supported kinds today: 'google', 'github', 'microsoft', 'orcid' (OAuth 2.0 / OIDC), and 'cas' (Apereo CAS, e.g. ASURITE).  Each 'id' must be unique and URL-safe (it keys the route path /login/<id>).  Each entry has its OWN allowed_users -- there is no global allowlist; an email allowed via Google is NOT implicitly allowed via GitHub.  Failing to list any users in a provider's allowed_users means nobody can sign in via that provider (fail-closed).",
+    "_comment_providers": "List one entry per sign-in option you want on the login page.  Order is preserved (top-listed appears first / highest).  Supported kinds today: 'google', 'github', 'microsoft', 'orcid' (OAuth 2.0 / OIDC), and 'cas' (Apereo CAS, e.g. ASURITE).  Each 'id' must be unique and URL-safe (it keys the route path /login/<id>).  Each entry has its OWN allowed_users -- there is no global allowlist; an email allowed via Google is NOT implicitly allowed via GitHub.  Failing to list any users in a provider's allowed_users means nobody can sign in via that provider (fail-closed).",
     "providers": [
-
       {
-        "_comment_google":
-          "Setup: https://console.cloud.google.com/apis/credentials -> Create Credentials -> OAuth client ID -> Web application.  Register redirect URI 'https://<your-host>/oauth-callback/google'.  client_secret_file is preferred over a literal client_secret (mode-0600 file with just the GOCSPX-... value).  Optional 'hosted_domain' restricts to Google Workspace tenants by domain (IdP-side filter, stricter than allowed_users alone).",
-        "id":                 "google",
-        "label":              "Sign in with Google",
-        "kind":               "google",
-        "client_id":          "1234567890-abcdefghijklmnop.apps.googleusercontent.com",
+        "_comment_google": "Setup: https://console.cloud.google.com/apis/credentials -> Create Credentials -> OAuth client ID -> Web application.  Register redirect URI 'https://<your-host>/oauth-callback/google'.  client_secret_file is preferred over a literal client_secret (mode-0600 file with just the GOCSPX-... value).  Optional 'hosted_domain' restricts to Google Workspace tenants by domain (IdP-side filter, stricter than allowed_users alone).",
+        "id": "google",
+        "label": "Sign in with Google",
+        "kind": "google",
+        "client_id": "1234567890-abcdefghijklmnop.apps.googleusercontent.com",
         "client_secret_file": "~/.molbuilder/google_client_secret",
-        "hosted_domain":      [],
+        "hosted_domain": [],
         "allowed_users": [
           "user1@example.edu",
           "user2@gmail.com"
         ]
       },
-
       {
-        "_comment_cas":
-          "Apereo CAS protocol.  Used for institutional SSO (e.g. ASU's CAS at weblogin.asu.edu).  CAS rarely releases an email attribute, so molbuilder synthesises one from {principal}@{email_domain} -- set email_domain to the domain that matches what's in allowed_users.  If your CAS DOES release a mail attribute, set 'email_attribute' to its CAS attribute name (e.g. \"mail\") and the synthesise step is bypassed.  service_url is auto-derived from the request when null.",
-        "id":                   "asu_cas",
-        "label":                "Sign in with ASURITE ID",
-        "kind":                 "cas",
-        "version":              3,
-        "login_url":            "https://weblogin.example.edu/cas/login",
+        "_comment_cas": "Apereo CAS protocol.  Used for institutional SSO (e.g. ASU's CAS at weblogin.asu.edu).  CAS rarely releases an email attribute, so molbuilder synthesises one from {principal}@{email_domain} -- set email_domain to the domain that matches what's in allowed_users.  If your CAS DOES release a mail attribute, set 'email_attribute' to its CAS attribute name (e.g. \"mail\") and the synthesise step is bypassed.  service_url is auto-derived from the request when null.",
+        "id": "asu_cas",
+        "label": "Sign in with ASURITE ID",
+        "kind": "cas",
+        "version": 3,
+        "login_url": "https://weblogin.example.edu/cas/login",
         "service_validate_url": "https://weblogin.example.edu/cas/serviceValidate",
-        "service_url":          null,
-        "ca_certs":             null,
-        "email_attribute":      null,
-        "email_domain":         "example.edu",
+        "service_url": null,
+        "ca_certs": null,
+        "email_attribute": null,
+        "email_domain": "example.edu",
         "allowed_users": [
           "user1@example.edu",
           "user2@example.edu"
         ]
       },
-
       {
-        "_comment_github":
-          "Setup: https://github.com/settings/developers -> OAuth Apps -> New OAuth App.  Authorization callback URL = 'https://<your-host>/oauth-callback/github'.  GitHub returns the user's PRIMARY+VERIFIED email even when hidden from their public profile (we request the user:email scope).  Optional 'allowed_organizations' restricts access to members of these orgs (IdP-side filter via the user:read:org scope).",
-        "id":                    "github",
-        "label":                 "Sign in with GitHub",
-        "kind":                  "github",
-        "client_id":             "Iv1.abcdefghijklmnop",
-        "client_secret_file":    "~/.molbuilder/github_client_secret",
+        "_comment_github": "Setup: https://github.com/settings/developers -> OAuth Apps -> New OAuth App.  Authorization callback URL = 'https://<your-host>/oauth-callback/github'.  GitHub returns the user's PRIMARY+VERIFIED email even when hidden from their public profile (we request the user:email scope).  Optional 'allowed_organizations' restricts access to members of these orgs (IdP-side filter via the user:read:org scope).",
+        "id": "github",
+        "label": "Sign in with GitHub",
+        "kind": "github",
+        "client_id": "Iv1.abcdefghijklmnop",
+        "client_secret_file": "~/.molbuilder/github_client_secret",
         "allowed_organizations": [],
         "allowed_users": [
           "user1@example.edu"
         ]
       },
-
       {
-        "_comment_microsoft":
-          "Microsoft / Azure AD OIDC.  Setup: https://portal.azure.com -> Microsoft Entra ID -> App registrations -> New registration.  Redirect URI (type 'Web') = 'https://<your-host>/oauth-callback/microsoft'.  Generate a client secret under 'Certificates & secrets'.  tenant_id is one of: 'common' (any Microsoft account incl. personal), 'organizations' (any work/school), a tenant GUID, or a verified domain like 'asu.onmicrosoft.com' (restricts to that tenant only).",
-        "id":                 "microsoft",
-        "label":              "Sign in with Microsoft",
-        "kind":               "microsoft",
-        "client_id":          "abc12345-de67-89f0-1234-56789abcdef0",
+        "_comment_microsoft": "Microsoft / Azure AD OIDC.  Setup: https://portal.azure.com -> Microsoft Entra ID -> App registrations -> New registration.  Redirect URI (type 'Web') = 'https://<your-host>/oauth-callback/microsoft'.  Generate a client secret under 'Certificates & secrets'.  tenant_id is one of: 'common' (any Microsoft account incl. personal), 'organizations' (any work/school), a tenant GUID, or a verified domain like 'asu.onmicrosoft.com' (restricts to that tenant only).",
+        "id": "microsoft",
+        "label": "Sign in with Microsoft",
+        "kind": "microsoft",
+        "client_id": "abc12345-de67-89f0-1234-56789abcdef0",
         "client_secret_file": "~/.molbuilder/microsoft_client_secret",
-        "tenant_id":          "common",
+        "tenant_id": "common",
         "allowed_users": [
           "user1@example.edu"
         ]
       },
-
       {
-        "_comment_orcid":
-          "ORCID OAuth 2.0 / OIDC.  Useful when collaborators have ORCIDs but no Google/GitHub.  Setup: https://orcid.org/developer-tools -> Register a Public API client.  Redirect URI = 'https://<your-host>/oauth-callback/orcid'.  ORCID returns the user's email ONLY if they marked it public; when absent molbuilder uses the 16-digit ORCID iD itself as the identity (so allowed_users in that case contains ORCID iDs like '0000-0001-2345-6789' rather than email addresses).",
-        "id":                 "orcid",
-        "label":              "Sign in with ORCID",
-        "kind":               "orcid",
-        "client_id":          "APP-1234567890ABCDEF",
+        "_comment_orcid": "ORCID OAuth 2.0 / OIDC.  Useful when collaborators have ORCIDs but no Google/GitHub.  Setup: https://orcid.org/developer-tools -> Register a Public API client.  Redirect URI = 'https://<your-host>/oauth-callback/orcid'.  ORCID returns the user's email ONLY if they marked it public; when absent molbuilder uses the 16-digit ORCID iD itself as the identity (so allowed_users in that case contains ORCID iDs like '0000-0001-2345-6789' rather than email addresses).",
+        "id": "orcid",
+        "label": "Sign in with ORCID",
+        "kind": "orcid",
+        "client_id": "APP-1234567890ABCDEF",
         "client_secret_file": "~/.molbuilder/orcid_client_secret",
         "allowed_users": [
           "user1@example.edu",
           "0000-0001-2345-6789"
         ]
       }
-
     ]
   },
-
-  "_comment_secret_key_file":
-    "Path to the Flask session-signing key.  Auto-generated on first run (32 random bytes, mode 0600).  Required when 'auth' is set; quietly ignored otherwise.  If omitted while auth is on, molbuilder generates an ephemeral per-process key and warns -- sessions then invalidate on every restart, which is annoying but safe.",
+  "_comment_secret_key_file": "Path to the Flask session-signing key.  Auto-generated on first run (32 random bytes, mode 0600).  Required when 'auth' is set; quietly ignored otherwise.  If omitted while auth is on, molbuilder generates an ephemeral per-process key and warns -- sessions then invalidate on every restart, which is annoying but safe.",
   "secret_key_file": "~/.molbuilder/secret.key",
-
-  "_comment_script_generation":
-    "REQUIRED before molbuilder can install any .run.sh wrapper (the web Save-to-dir flow and the CLI both refuse without it -- a missing section is the classic 'the .fdf saved but no .run.sh appeared' symptom).  Inputs read by the wrapper GENERATOR at generate time and baked verbatim into every generated .run.sh.  Per docs/execution/running-a-job.md § 5 (v2 rewrite, 2026-06-24): the wrapper itself does no runtime discovery -- it is a self-contained shell script that runs the baked lines and aborts loud on any error.\n\nTwo keys: 'preamble' (verbatim bash lines run before activation) and 'activation' (one of 'source activate' / 'conda activate').  Both are valid in either scope (server-wide molbuilder.json + project-scope .molbuilder.json).  Preamble strings concatenate across scopes (server first, project after).  Activation: project wins; else server-wide; else the generator refuses to emit a wrapper.",
+  "_comment_script_generation": "REQUIRED before molbuilder can install any .run.sh wrapper (the web Save-to-dir flow and the CLI both refuse without it -- a missing section is the classic 'the .fdf saved but no .run.sh appeared' symptom).  Inputs read by the wrapper GENERATOR at generate time and baked verbatim into every generated .run.sh.  Per docs/execution/running-a-job.md \u00a7 5 (v2 rewrite, 2026-06-24): the wrapper itself does no runtime discovery -- it is a self-contained shell script that runs the baked lines and aborts loud on any error.\n\nTwo keys: 'preamble' (verbatim bash lines run before activation) and 'activation' (one of 'source activate' / 'conda activate').  Both are valid in either scope (server-wide molbuilder.json + project-scope .molbuilder.json).  Preamble strings concatenate across scopes (server first, project after).  Activation: project wins; else server-wide; else the generator refuses to emit a wrapper.",
   "script_generation": {
-
-    "_comment_preamble":
-      "Verbatim multi-line bash run at the top of every generated .run.sh, BEFORE the activation line.  Lines are copied as-is.\n\nThe example below has two verified lines for ASU Research Computing's Sol cluster:\n\n  (1) 'module load mamba' -- Sol provides mamba as an environment module; this is the canonical incantation to make the conda toolchain (and thus 'source activate <env>') callable in non-interactive shells.\n\n  (2) 'export OMPI_MCA_orte_tmpdir_base=\"${TMPDIR:-/tmp}\"' -- routes OpenMPI's shared-memory backing files off the NFS-mounted env prefix onto node-local fast storage (honours SLURM's per-job TMPDIR; falls back to /tmp).  Without this, every mpirun under from-source SIESTA on an NFS home emits OpenMPI's 'shared memory backing file on a network filesystem' warning AND shmem traffic becomes silent NFS round-trips.\n\nAdapt these two lines for other sites.  Chain multiple commands with \\n.  Standard SLURM-set environment variables are visible at runtime: $SLURM_JOB_ID, $SLURM_NTASKS, $SLURM_CPUS_PER_TASK, $SLURM_JOB_NODELIST, $SLURM_SUBMIT_DIR, $TMPDIR (per slurm.schedmd.com/sbatch.html).",
+    "_comment_preamble": "Verbatim multi-line bash run at the top of every generated .run.sh, BEFORE the activation line.  Lines are copied as-is.\n\nThe example below has two verified lines for ASU Research Computing's Sol cluster:\n\n  (1) 'module load mamba' -- Sol provides mamba as an environment module; this is the canonical incantation to make the conda toolchain (and thus 'source activate <env>') callable in non-interactive shells.\n\n  (2) 'export OMPI_MCA_orte_tmpdir_base=\"${TMPDIR:-/tmp}\"' -- routes OpenMPI's shared-memory backing files off the NFS-mounted env prefix onto node-local fast storage (honours SLURM's per-job TMPDIR; falls back to /tmp).  Without this, every mpirun under from-source SIESTA on an NFS home emits OpenMPI's 'shared memory backing file on a network filesystem' warning AND shmem traffic becomes silent NFS round-trips.\n\nAdapt these two lines for other sites.  Chain multiple commands with \\n.  Standard SLURM-set environment variables are visible at runtime: $SLURM_JOB_ID, $SLURM_NTASKS, $SLURM_CPUS_PER_TASK, $SLURM_JOB_NODELIST, $SLURM_SUBMIT_DIR, $TMPDIR (per slurm.schedmd.com/sbatch.html).",
     "preamble": "module load mamba\nexport OMPI_MCA_orte_tmpdir_base=\"${TMPDIR:-/tmp}\"",
-
-    "_comment_activation":
-      "How the wrapper activates the conda env.  Two legal values:\n\n  * 'source activate'   -- legacy form; works whenever the 'activate' script is on PATH.  Typical after 'module load mamba' on HPC clusters.\n\n  * 'conda activate'    -- modern shell-function form; requires the conda hook ('conda.sh') to have been sourced IN THE WRAPPER ITSELF.  The .run.sh runs in a NON-interactive bash that never reads ~/.bashrc, so 'conda init' in your rc does NOT help -- you MUST pair this form with a preamble line that loads the hook, e.g. \"source ~/miniconda3/etc/profile.d/conda.sh\" (workstations) or 'module load mamba' (HPC).  Without it every run dies with: CondaError: Run 'conda init' before 'conda activate'.\n\nNo default -- the operator MUST set this in at least one scope, or the generator refuses to emit a wrapper.  For Sol use 'source activate'.",
+    "_comment_activation": "How the wrapper activates the conda env.  Two legal values:\n\n  * 'source activate'   -- legacy form; works whenever the 'activate' script is on PATH.  Typical after 'module load mamba' on HPC clusters.\n\n  * 'conda activate'    -- modern shell-function form; requires the conda hook ('conda.sh') to have been sourced IN THE WRAPPER ITSELF.  The .run.sh runs in a NON-interactive bash that never reads ~/.bashrc, so 'conda init' in your rc does NOT help -- you MUST pair this form with a preamble line that loads the hook, e.g. \"source ~/miniconda3/etc/profile.d/conda.sh\" (workstations) or 'module load mamba' (HPC).  Without it every run dies with: CondaError: Run 'conda init' before 'conda activate'.\n\nNo default -- the operator MUST set this in at least one scope, or the generator refuses to emit a wrapper.  For Sol use 'source activate'.",
     "activation": "source activate"
+  },
+  "_comment_admin": "Who may use the operator routes -- the rate limiter's block list and server reload.  Absent or empty means NOBODY (ops/deployment.md).  Requires auth to be on to be usable.",
+  "admin": {
+    "emails": [
+      "operator@example.edu"
+    ]
+  },
+  "_comment_rate_limit": "Tunes the always-on IP rate limit + scanner detection; omit for defaults, set enabled=false to disable (ops/deployment.md).",
+  "rate_limit": {
+    "enabled": true,
+    "allowlist": []
   }
 }

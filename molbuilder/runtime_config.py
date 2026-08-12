@@ -326,21 +326,26 @@ def _validate_provider(entry: Any, idx: int) -> Dict[str, Any]:
 # --------------------------------------------------------------------- #
 
 
-def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
-    """Fold flat-shape keys into the nested schema + validate values.
+# --------------------------------------------------------------------- #
+#  The SECTION REGISTRY -- one row per top-level section (U7,           #
+#  2026-08-12).  Everything the loader knows about a section is in its  #
+#  row: how it is read (its validator), which SCOPES it may live in,    #
+#  and whether provenance may print its VALUES.  `_normalise`,          #
+#  `_read_project`'s scope refusal, `config_provenance` and             #
+#  `write_config_scope` all consult THIS table and nothing else.        #
+#                                                                       #
+#  Why a table: until it existed each of those four sites kept its own  #
+#  partial list, and the gaps were live bugs -- `_normalise` never      #
+#  learned `admin` or `rate_limit`, so it silently DROPPED them and     #
+#  `get_admin_emails` read post-strip config: nobody could be admin,    #
+#  and nothing said why.  A section is either in this table or its      #
+#  presence is an ERROR; there is no third state in which it looks      #
+#  configured and does nothing.                                         #
+# --------------------------------------------------------------------- #
 
-    Precedence: when both the nested section AND the flat key are
-    present, the nested value wins.  Migrating from flat to nested is
-    therefore non-destructive -- adding the ``tls`` block doesn't
-    require removing the top-level ``cert``/``key``.
-
-    Value-type validation lives here so :func:`get_tls` and
-    :func:`get_envs` can stay trivial accessors and callers never see
-    a section whose entries aren't the documented types.
-    """
-    out: Dict[str, Any] = {}
-
-    # --- TLS section ------------------------------------------------- #
+def _read_tls(raw: Mapping[str, Any]):
+    # Flat-shape ``cert``/``key`` fold in; nested wins (see _normalise's
+    # precedence note).
     tls = _read_section(raw, "tls")
     for flat_key in ("cert", "key"):
         if flat_key in raw and flat_key not in tls:
@@ -351,10 +356,10 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
                 f"{CONFIG_FILENAME}: 'tls.{k}' must be a string, "
                 f"got {type(v).__name__}"
             )
-    if tls:
-        out["tls"] = tls
+    return tls or None
 
-    # --- envs section ------------------------------------------------ #
+
+def _read_envs(raw: Mapping[str, Any]):
     envs = _read_section(raw, "envs")
     for k, v in envs.items():
         if not isinstance(k, str) or not isinstance(v, str):
@@ -371,139 +376,201 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
                 f"{CONFIG_FILENAME}: 'envs' entries cannot be empty "
                 f"strings; got {k!r} -> {v!r}."
             )
-    if envs:
-        out["envs"] = envs
+    return envs or None
 
-    # --- auth section ------------------------------------------------ #
-    #
-    # Optional; absent ``auth`` means no authentication (the right
-    # default for the localhost-only single-user deployment shape).
-    #
-    # When present, the schema is::
-    #
-    #     "auth": {
-    #         "providers": [
-    #             { "id": ..., "label": ..., "kind": ..., ... },
-    #             ...
-    #         ]
-    #     }
-    #
-    # Each provider entry is a self-contained sign-in option that
-    # renders as its own button on the login page.  ``id`` keys the
-    # route paths (``/login/<id>`` and either ``/oauth-callback/<id>``
-    # or ``/cas-callback/<id>`` depending on kind), so it must be a
-    # URL-safe slug and unique across the list.
-    #
-    # Per-provider ``allowed_users`` is the access gate -- there is
-    # no global allowlist.  An identity authenticated through provider
-    # X is matched ONLY against X's own ``allowed_users``; an email
-    # missing from the list means access denied even if it appears
-    # in some other provider's list.  This makes each entry self-
-    # contained and avoids precedence-rule surprises.
-    #
-    # Supported kinds and the shape contract for each are documented
-    # in ``_validate_provider`` below.  See ``docs/ops/deployment.md``
-    # for the operator walkthrough per backend.
-    # Explicit-presence check (rather than ``if auth:``): writing
-    # ``"auth": {}`` is almost certainly a mistake and we want to
-    # catch it with a clear error rather than silently degrading to
-    # no-auth mode.  Omit the key entirely to disable auth.
-    if "auth" in raw:
-        auth = _read_section(raw, "auth")
-        providers = auth.get("providers")
-        if not isinstance(providers, list) or not providers:
+
+def _read_auth(raw: Mapping[str, Any]):
+    # Optional; absent ``auth`` means no authentication (the right default
+    # for the localhost-only single-user deployment shape).  Explicit-
+    # presence check (rather than ``if auth:``): writing ``"auth": {}`` is
+    # almost certainly a mistake and we want a clear error rather than a
+    # silent degrade to no-auth mode.  Schema and the per-provider
+    # ``allowed_users`` gate: ``_validate_provider`` and
+    # ``docs/ops/deployment.md``.
+    if "auth" not in raw:
+        return None
+    auth = _read_section(raw, "auth")
+    providers = auth.get("providers")
+    if not isinstance(providers, list) or not providers:
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'auth.providers' must be a "
+            f"non-empty list of provider entries when the 'auth' "
+            f"section is present.  Got {type(providers).__name__}."
+        )
+    seen_ids: set[str] = set()
+    validated: list[Dict[str, Any]] = []
+    for idx, entry in enumerate(providers):
+        v = _validate_provider(entry, idx)
+        if v["id"] in seen_ids:
             raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'auth.providers' must be a "
-                f"non-empty list of provider entries when the 'auth' "
-                f"section is present.  Got {type(providers).__name__}."
+                f"{CONFIG_FILENAME}: duplicate provider id "
+                f"{v['id']!r} in auth.providers (each entry's "
+                f"id keys its route path, so they must be unique)."
             )
-        seen_ids: set[str] = set()
-        validated: list[Dict[str, Any]] = []
-        for idx, entry in enumerate(providers):
-            v = _validate_provider(entry, idx)
-            if v["id"] in seen_ids:
-                raise RuntimeConfigError(
-                    f"{CONFIG_FILENAME}: duplicate provider id "
-                    f"{v['id']!r} in auth.providers (each entry's "
-                    f"id keys its route path, so they must be unique)."
-                )
-            seen_ids.add(v["id"])
-            validated.append(v)
+        seen_ids.add(v["id"])
+        validated.append(v)
 
-        # Optional ``auth.trust_proxy`` flag.  When True, the web layer
-        # installs werkzeug.middleware.proxy_fix.ProxyFix so the FIRST
-        # upstream proxy's X-Forwarded-* headers are honoured.  Default
-        # False -- the right choice for direct-TLS deploys.  See
-        # _setup_session_security in molbuilder/web/auth.py for the
-        # security implications of flipping it on.
-        trust_proxy = auth.get("trust_proxy", False)
-        if not isinstance(trust_proxy, bool):
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'auth.trust_proxy' must be a "
-                f"JSON boolean (true / false); got "
-                f"{type(trust_proxy).__name__}."
-            )
+    # Optional ``auth.trust_proxy`` flag.  When True, the web layer
+    # installs werkzeug's ProxyFix so the FIRST upstream proxy's
+    # X-Forwarded-* headers are honoured.  Default False -- the right
+    # choice for direct-TLS deploys (see _setup_session_security in
+    # molbuilder/web/auth.py for the security implications).
+    trust_proxy = auth.get("trust_proxy", False)
+    if not isinstance(trust_proxy, bool):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'auth.trust_proxy' must be a "
+            f"JSON boolean (true / false); got "
+            f"{type(trust_proxy).__name__}."
+        )
+    return {"providers": validated, "trust_proxy": trust_proxy}
 
-        out["auth"] = {
-            "providers":   validated,
-            "trust_proxy": trust_proxy,
-        }
 
-    # --- secret_key_file --------------------------------------------- #
-    #
-    # Path to the file holding the Flask session-signing key.  Auto-
-    # generated on first use when missing (32 random bytes via os.
-    # urandom).  Required when auth is enabled; quietly ignored
-    # otherwise (no sessions to sign).
+def _read_secret_key_file(raw: Mapping[str, Any]):
+    # Path to the Flask session-signing key file.  Auto-generated on first
+    # use when missing; required when auth is enabled, quietly unused
+    # otherwise.  A top-level SCALAR, not a section -- the registry row is
+    # what says so.
     secret_key_file = raw.get("secret_key_file")
-    if secret_key_file is not None:
-        if not isinstance(secret_key_file, str):
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'secret_key_file' must be a "
-                f"string path; got {type(secret_key_file).__name__}."
-            )
-        out["secret_key_file"] = secret_key_file
+    if secret_key_file is None:
+        return None
+    if not isinstance(secret_key_file, str):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'secret_key_file' must be a "
+            f"string path; got {type(secret_key_file).__name__}."
+        )
+    return secret_key_file
 
-    # --- script_generation section (docs/execution/running-a-job.md § 5) ----------- #
-    if "script_generation" in raw:
-        out["script_generation"] = _validate_script_generation(
-            raw["script_generation"])
 
-    # --- scheduler section (running-a-job.md § 5.3) --------------- #
-    # Validated lazily by get_scheduler (which merges scopes first and
-    # applies the refuse-to-emit rule on the MERGED result).  Here we
-    # only need to (a) keep the key out of the allowlist's drop set and
-    # (b) reject a non-object early.  A partial block (e.g. project
-    # scope supplying only ``defaults.time``) is legal at this layer --
-    # completeness is a merged-config property, enforced in get_scheduler.
-    if "scheduler" in raw:
-        sched = raw["scheduler"]
-        if not isinstance(sched, Mapping):
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'scheduler' must be an object; got "
-                f"{type(sched).__name__}."
-            )
-        out["scheduler"] = dict(sched)
+def _require_object_section(raw: Mapping[str, Any], name: str):
+    """The lazy-validated sections (scheduler, execution, rate_limit):
+    merged and/or validated by their getters or consumers, so here we
+    only keep the key alive and reject a non-object early.  A partial
+    block (e.g. project scope supplying only ``defaults.time``) is legal
+    at this layer -- completeness is a merged-config property."""
+    if name not in raw:
+        return None
+    section = raw[name]
+    if not isinstance(section, Mapping):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: '{name}' must be an object; got "
+            f"{type(section).__name__}."
+        )
+    return dict(section)
 
-    # --- execution section (running-a-job.md § 5.4) ------------------ #
-    # The run-vs-submit launch policy.  Like ``scheduler``, it is merged +
-    # validated lazily by its getter (:func:`get_execution`); here we only
-    # keep it out of the allowlist's drop set and reject a non-object early.
-    if "execution" in raw:
-        execn = raw["execution"]
-        if not isinstance(execn, Mapping):
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'execution' must be an object; got "
-                f"{type(execn).__name__}."
-            )
-        out["execution"] = dict(execn)
 
-    # --- checkpoint section (checkpointing.md § 4) -------------------- #
-    # Validated eagerly: a wrong size limit or a mistyped engine list decides
-    # where every file in a calculation is stored, and the failure is silent.
-    if "checkpoint" in raw:
-        out["checkpoint"] = _validate_checkpoint(raw["checkpoint"])
+def _read_admin(raw: Mapping[str, Any]):
+    # Who may do the things only an operator should do (ops/deployment.md;
+    # read back by get_admin_emails -- absent or empty means NOBODY).
+    # Eagerly shape-checked: a mistyped emails list would otherwise fail
+    # silently into the safe-but-wrong "nobody".
+    if "admin" not in raw:
+        return None
+    section = raw["admin"]
+    if not isinstance(section, Mapping):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'admin' must be an object like "
+            f'{{"emails": ["operator@example.edu"]}}; got '
+            f"{type(section).__name__}."
+        )
+    emails = section.get("emails", [])
+    if (not isinstance(emails, (list, tuple))
+            or not all(isinstance(e, str) for e in emails)):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'admin.emails' must be a list of "
+            f"email strings; got {emails!r}."
+        )
+    return dict(section)
 
+
+#: name -> how it is read · where it may live · whether provenance may
+#: print its values.  ``scopes``: "machine" = molbuilder.json (cwd/XDG),
+#: "project" = a bundle's .molbuilder.json.  A section absent from a
+#: scope's tuple is REFUSED there, never silently ignored -- S1c's
+#: argument, generalised: a section that is read, validated and then
+#: dropped looks effective while nobody applied it.  ``provenance_safe``
+#: gates `config_provenance`: True only where every value is printable
+#: in logs (no secrets, no paths to secrets).
+_SECTIONS: Dict[str, Dict[str, Any]] = {
+    "tls":               {"read": _read_tls,
+                          "scopes": ("machine",), "provenance_safe": False},
+    "envs":              {"read": _read_envs,
+                          "scopes": ("machine",), "provenance_safe": False},
+    "auth":              {"read": _read_auth,
+                          "scopes": ("machine",), "provenance_safe": False},
+    "secret_key_file":   {"read": _read_secret_key_file,
+                          "scopes": ("machine",), "provenance_safe": False},
+    "execution":         {"read": lambda raw: _require_object_section(
+                              raw, "execution"),
+                          "scopes": ("machine", "project"),
+                          "provenance_safe": True},
+    "script_generation": {"read": lambda raw: (
+                              _validate_script_generation(
+                                  raw["script_generation"])
+                              if "script_generation" in raw else None),
+                          "scopes": ("machine", "project"),
+                          "provenance_safe": True},
+    "scheduler":         {"read": lambda raw: _require_object_section(
+                              raw, "scheduler"),
+                          "scopes": ("machine", "project"),
+                          "provenance_safe": False},
+    "checkpoint":        {"read": lambda raw: (
+                              _validate_checkpoint(raw["checkpoint"])
+                              if "checkpoint" in raw else None),
+                          "scopes": ("machine",), "provenance_safe": False},
+    "admin":             {"read": _read_admin,
+                          "scopes": ("machine",), "provenance_safe": False},
+    "rate_limit":        {"read": lambda raw: _require_object_section(
+                              raw, "rate_limit"),
+                          "scopes": ("machine",), "provenance_safe": False},
+}
+
+#: Top-level keys that are NOT section names but are still known: the
+#: legacy flat spelling of ``tls`` (folded by ``_read_tls``).
+_FLAT_ALIASES = ("cert", "key")
+
+
+def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
+    """Read every registered section + validate values; refuse the rest.
+
+    Precedence: when both the nested ``tls`` section AND the flat
+    ``cert``/``key`` keys are present, the nested value wins.  Migrating
+    from flat to nested is therefore non-destructive.
+
+    **An unknown top-level key is an ERROR, not tolerance** (U7,
+    2026-08-12; running-a-job.md § 5 amended).  "Ignored silently" was the
+    documented behaviour, and it is exactly how `admin` and `rate_limit`
+    -- sections with live getters -- were dropped before they reached the
+    web layer: the file looked configured and nobody could be admin.  The
+    same hole swallows every typo'd section name.  The registry makes
+    "known" one total list, so refusing is precise and the message can
+    name what IS known.
+
+    Value-type validation lives in each section's ``read`` (see
+    ``_SECTIONS``) so the ``get_*`` accessors stay trivial and callers
+    never see a section whose entries aren't the documented types.
+    """
+    # A leading underscore marks a COMMENT key ("_comment_tls": ...) --
+    # JSON has no comments and the committed templates lean on this idiom.
+    # An explicit marker is not the typo class the refusal exists for.
+    unknown = sorted(k for k in raw
+                     if k not in _SECTIONS and k not in _FLAT_ALIASES
+                     and not k.startswith("_"))
+    if unknown:
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: unknown top-level "
+            f"key(s) {', '.join(map(repr, unknown))}.  Known sections: "
+            f"{', '.join(_SECTIONS)} (plus the flat tls aliases "
+            f"{', '.join(_FLAT_ALIASES)}).  A key this loader does not "
+            f"know would be silently ineffective -- refused instead, so a "
+            f"typo cannot masquerade as configuration "
+            f"(running-a-job.md § 5).  A key starting with '_' is a "
+            f"comment and is ignored by design."
+        )
+    out: Dict[str, Any] = {}
+    for name, spec in _SECTIONS.items():
+        value = spec["read"](raw)
+        if value is not None:
+            out[name] = value
     return out
 
 
@@ -869,7 +936,10 @@ def _read_scope(path: Path) -> Dict[str, Any]:
 #: the machine file also carries ``auth`` / ``tls`` / ``secret_key_file``,
 #: and provenance output lands in terminals, STAGE-PLAN.md and shipped run
 #: logs -- material that must never travel there.
-_PROVENANCE_SECTIONS = ("execution", "script_generation")
+#: Derived from the registry -- a section's values may be printed in logs
+#: only where its row says so (the one list, U7).
+_PROVENANCE_SECTIONS = tuple(
+    name for name, spec in _SECTIONS.items() if spec["provenance_safe"])
 
 
 def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
@@ -970,6 +1040,9 @@ def _read_project(project_dir: Path) -> Dict[str, Any]:
     """
     scope = _read_scope(Path(project_dir) / PROJECT_CONFIG_FILENAME)
     if "checkpoint" in scope:
+        # The registry says machine-only too, but checkpoint keeps its own
+        # message: S1c is the section-specific WHY, and the operator
+        # reading this refusal is mid-mistake about exactly that.
         raise RuntimeConfigError(
             f"{Path(project_dir) / PROJECT_CONFIG_FILENAME}: a 'checkpoint' "
             f"section may not live in a project or calculation folder.  The "
@@ -978,6 +1051,21 @@ def _read_project(project_dir: Path) -> Dict[str, Any]:
             f"differently for no recorded reason, and so that nobody can "
             f"change where files are stored between a save and a restore "
             f"(docs/execution/checkpointing.md S1c, I2c)."
+        )
+    misplaced = sorted(
+        k for k in scope
+        if k in _SECTIONS and "project" not in _SECTIONS[k]["scopes"])
+    if misplaced:
+        allowed = ", ".join(n for n, spec in _SECTIONS.items()
+                            if "project" in spec["scopes"])
+        raise RuntimeConfigError(
+            f"{Path(project_dir) / PROJECT_CONFIG_FILENAME}: "
+            f"{', '.join(map(repr, misplaced))} may not live in a project "
+            f"or calculation folder -- machine sections have one home, the "
+            f"server-wide {CONFIG_FILENAME}.  A bundle may carry: "
+            f"{allowed}.  (Refused rather than ignored: a section that is "
+            f"read, validated and then silently dropped looks effective "
+            f"while nobody applied it.)"
         )
     return scope
 
@@ -1514,6 +1602,17 @@ def write_config_scope(
         cwd_path = Path(CONFIG_FILENAME).resolve()
         target = cwd_path if cwd_path.is_file() else _per_user_fallback_path()
     else:
+        # The same scope rule reads enforce (the registry): refusing at
+        # WRITE time beats producing a file every later read refuses.
+        misplaced = sorted(
+            k for k in patch
+            if k in _SECTIONS and "project" not in _SECTIONS[k]["scopes"])
+        if misplaced:
+            raise RuntimeConfigError(
+                f"{', '.join(map(repr, misplaced))} may not be written into "
+                f"a project-scope {PROJECT_CONFIG_FILENAME}: machine "
+                f"sections have one home, the server-wide {CONFIG_FILENAME}."
+            )
         target = Path(project_dir) / PROJECT_CONFIG_FILENAME
 
     existing: Dict[str, Any] = {}

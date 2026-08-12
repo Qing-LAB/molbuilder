@@ -109,32 +109,38 @@ def test_explicit_xdg_config_home_is_honored(sandbox, monkeypatch):
 
 
 def test_project_overlay_replaces_scalar(sandbox):
+    # `execution` here, not `envs`: the merge mechanics need a section a
+    # BUNDLE may legitimately carry, and since U7 the registry refuses
+    # machine-only sections in project scope (envs is one -- every
+    # consumer reads it through read_config()).
     (sandbox / "molbuilder.json").write_text(json.dumps({
-        "envs": {"siesta": "server-siesta"},
+        "execution": {"mode": "submit"},
     }))
     proj = sandbox / "myproject"
     proj.mkdir()
     (proj / PROJECT_CONFIG_FILENAME).write_text(json.dumps({
-        "envs": {"siesta": "project-siesta"},
+        "execution": {"mode": "direct"},
     }))
     cfg = read_effective_config(project_dir=proj)
-    assert cfg["envs"]["siesta"] == "project-siesta"
+    assert cfg["execution"]["mode"] == "direct"
 
 
 def test_project_overlay_deep_merges_objects(sandbox):
     (sandbox / "molbuilder.json").write_text(json.dumps({
-        "envs": {"siesta": "server-siesta", "pyscf": "server-pyscf"},
+        "scheduler": {"kind": "slurm",
+                      "defaults": {"time": "0-01:00:00", "mem": "8G"}},
     }))
     proj = sandbox / "myproject"
     proj.mkdir()
     (proj / PROJECT_CONFIG_FILENAME).write_text(json.dumps({
-        "envs": {"siesta": "project-siesta"},
+        "scheduler": {"defaults": {"time": "0-04:00:00"}},
     }))
     cfg = read_effective_config(project_dir=proj)
-    # pyscf preserved from server, siesta overridden.
-    assert cfg["envs"] == {
-        "siesta": "project-siesta",
-        "pyscf":  "server-pyscf",
+    # mem preserved from server, time overridden -- objects recurse.
+    assert cfg["scheduler"]["kind"] == "slurm"
+    assert cfg["scheduler"]["defaults"] == {
+        "time": "0-04:00:00",
+        "mem":  "8G",
     }
 
 
@@ -144,10 +150,10 @@ def test_project_only_returns_project_layer(sandbox):
     proj = sandbox / "myproject"
     proj.mkdir()
     (proj / PROJECT_CONFIG_FILENAME).write_text(json.dumps({
-        "envs": {"siesta": "project-siesta"},
+        "execution": {"mode": "direct"},
     }))
     cfg = read_effective_config(project_dir=proj)
-    assert cfg["envs"]["siesta"] == "project-siesta"
+    assert cfg["execution"]["mode"] == "direct"
 
 
 def test_project_dir_none_returns_server_layer_unchanged(sandbox):
@@ -371,3 +377,39 @@ def test_write_overwriting_existing_corrupt_file(sandbox):
     })
     cfg = json.loads(target.read_text())
     assert cfg["script_generation"]["preamble"] == "module load mamba"
+
+
+def test_machine_sections_are_refused_in_project_scope(sandbox):
+    """The registry's scope rule (U7): a machine-only section in a
+    bundle's .molbuilder.json is REFUSED, never silently unread -- S1c's
+    argument generalised beyond checkpoint.  `admin` in a bundle would
+    otherwise look effective while the web layer never sees it."""
+    import pytest
+    from molbuilder.runtime_config import (RuntimeConfigError,
+                                           read_effective_config)
+    proj = sandbox / "proj"
+    proj.mkdir(exist_ok=True)
+    (proj / ".molbuilder.json").write_text(json.dumps({
+        "admin": {"emails": ["x@y.edu"]},
+        "script_generation": {"activation": "conda activate"},
+    }))
+    with pytest.raises(RuntimeConfigError) as e:
+        read_effective_config(project_dir=proj)
+    assert "admin" in str(e.value)
+    assert "machine sections have one home" in str(e.value)
+
+
+def test_write_config_scope_refuses_machine_sections_for_a_bundle(sandbox):
+    """Refusing at WRITE time beats producing a file every later read
+    refuses (U7 -- the same registry row drives both)."""
+    import pytest
+    from molbuilder.runtime_config import (RuntimeConfigError,
+                                           write_config_scope)
+    proj = sandbox / "proj2"
+    proj.mkdir(exist_ok=True)
+    with pytest.raises(RuntimeConfigError, match="admin"):
+        write_config_scope(proj, {"admin": {"emails": ["x@y.edu"]}})
+    assert not (proj / ".molbuilder.json").exists()
+    # a bundle section still writes fine
+    out = write_config_scope(proj, {"execution": {"mode": "direct"}})
+    assert out.is_file()
