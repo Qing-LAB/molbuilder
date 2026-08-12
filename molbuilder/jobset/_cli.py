@@ -950,19 +950,33 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     config said one thing and the command required another.
     """
     mode_source = "--mode flag"
-    if mode is None:
+    domain_source = "--domain flag" if domain else None
+    # The BUNDLE's scope gates its own launches (R3, 2026-08-12): this
+    # called get_execution() with no project_dir, so a calculation's
+    # .molbuilder.json execution block never reached submission while the
+    # provenance echo below claimed it did (running-a-job § 5.2: the
+    # project scope wins).
+    _execn = {}
+    if mode is None or domain is None:
         from ..runtime_config import get_execution
         try:
-            mode = (get_execution() or {}).get("mode")
+            _execn = get_execution(project_dir=Path(bundle)) or {}
         except Exception as exc:
             # A malformed config -- unreadable file, or an execution.mode
             # that names neither launch mode (get_execution validates; ONE
             # place defines what a mode is) -- is ITS OWN error.  Swallowing
             # it here told the user to set a value they may already have set.
             raise click.ClickException(
-                f"execution.mode could not be resolved from molbuilder.json: "
-                f"{exc}\n  Fix the config, or pass --mode explicitly for "
-                f"this call.") from exc
+                f"the execution block could not be resolved from config: "
+                f"{exc}\n  Fix the config, or pass --mode/--domain "
+                f"explicitly for this call.") from exc
+    if domain is None and _execn.get("domain"):
+        # § 5.4's other half: execution.domain is the machine's default
+        # routing -- documented, returned, and never consulted until R3.
+        domain = _execn["domain"]
+        domain_source = "execution.domain (config)"
+    if mode is None:
+        mode = _execn.get("mode")
         if not mode:
             # Unset is a refusal, never a derivation: deciding `submit` from
             # a DETECTED scheduler would gate submission on detection, which
@@ -1002,7 +1016,8 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 reason=str(e))
         raise click.ClickException(str(e))
     _ledger(base, "submit", "launched", kind=kind, stage=stage,
-            mode=mode, mode_source=mode_source, dry_run=dry_run,
+            mode=mode, mode_source=mode_source,
+            domain=domain, domain_source=domain_source, dry_run=dry_run,
             provenance=prov,
             jobs=[{"job": r.name, "status": r.status, "job_id": r.job_id,
                    "returncode": r.returncode} for r in results])

@@ -2467,3 +2467,60 @@ def test_resources_fields_equal_the_contracts_list_exactly():
                   "mpi_np", "cpus_per_task",
                   "continue_retries", "max_memory_mb"}
     assert {f.name for f in dataclasses.fields(Resources)} == documented
+
+
+def test_submit_honours_the_bundles_own_execution_block(tmp_path,
+                                                        monkeypatch):
+    """R3: the bundle's .molbuilder.json execution block gates ITS OWN
+    launches (running-a-job § 5.2, project scope wins).  Until 2026-08-12
+    submit resolved execution with NO project_dir, so a bundle declaring
+    mode=direct was submitted by whatever the machine config said --
+    while the provenance echo claimed the bundle file took effect."""
+    import json as _json
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "home").mkdir()
+    bundle = tmp_path / "b"
+    bundle.mkdir()
+    _sweep().write(bundle / "job-set.json")
+    (bundle / ".molbuilder.json").write_text(_json.dumps(
+        {"execution": {"mode": "direct"}}))
+    runner, grp = _runner()
+    # no --mode: the BUNDLE's direct serves -- direct runs the set, and
+    # with nothing prepped that is a missing-wrapper refusal (proof the
+    # direct path was taken, not the submit path's scheduler error)
+    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(bundle),
+                            "--dry-run"])
+    assert r.exit_code == 0, r.output
+    assert "WOULD run" in r.output and "bash" in r.output
+    assert "sbatch" not in r.output
+
+
+def test_submit_defaults_the_domain_from_the_bundles_execution_block(
+        tmp_path, monkeypatch):
+    """R3's other half: execution.domain -- documented in running-a-job
+    §§ 5.3-5.4, returned by get_execution, consulted by nothing until
+    2026-08-12 -- now serves as the default routing when --domain is
+    absent, and the sbatch line carries its -p/-q."""
+    import json as _json
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "home").mkdir()
+    bundle = tmp_path / "b"
+    bundle.mkdir()
+    _sweep().write(bundle / "job-set.json")
+    (bundle / ".molbuilder.json").write_text(_json.dumps({
+        "execution": {"mode": "submit", "domain": "fast"},
+        "scheduler": {"kind": "slurm",
+                      "directives": {"partition": "general", "qos": "public"},
+                      "routing": [{"name": "fast", "partition": "htc",
+                                   "qos": "express",
+                                   "max_time": "0-04:00:00"}]},
+    }))
+    runner, grp = _runner()
+    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(bundle),
+                            "--dry-run"])
+    assert r.exit_code == 0, r.output
+    assert "-p htc" in r.output and "-q express" in r.output
