@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..identity import RestartGroup
 
@@ -789,6 +789,9 @@ class SiestaConfig:
     write_molwatch_log: bool = field(default=True, metadata={
         "help": "write <job>.molwatch.log preview (lets molwatch render before SIESTA does)",
             "engine_key":  '(molbuilder: writes <basename>.molwatch.log preview)',
+        # Consumed by the GENERATOR, not the deck: § 7's kind, stated
+        # because the engine_key is a molbuilder note (U16).
+        "item_kind": "produce",
     })
 
     # ---------------- Parallel execution (MPI) ----------------
@@ -1074,11 +1077,18 @@ class SiestaConfig:
     copy_psml: bool = field(default=True, metadata={
         "help": "copy psml files into the output directory (alongside the FDF)",
             "engine_key":  '(molbuilder: triggers .psml staging step)',
+        "item_kind": "produce",
     })
-    species_order: Optional[Sequence[str]] = field(default=None, metadata={
+    # ``List`` and not ``Sequence`` since U16: the template grammar names
+    # ``strlist`` for ``List[str]``, and this field is an ITEM -- it orders
+    # the ChemicalSpeciesLabel block, which run-identity § 6a calls
+    # identity-sensitive, so a template that omitted it did not pin the
+    # deck it claims to describe.
+    species_order: Optional[List[str]] = field(default=None, metadata={
         "help": "comma-separated species order (e.g. 'C,H,S,Au')",
         "skip_cli": True,
             "engine_key":  '(molbuilder: ChemicalSpeciesLabel block ordering)',
+        "item_kind": "produce",
     })
 
     # Net charge.  When None (default), render_fdf auto-detects from the

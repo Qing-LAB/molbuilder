@@ -270,8 +270,14 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     only one that gets fixed.
     """
     section = f.metadata.get("section")
-    if not section:
-        return None
+    # NO section gate (U16, 2026-08-12).  ``section`` answers *where on
+    # the form* -- a surface hint, legitimately absent for a field no tab
+    # shows -- while membership is § 7's TOTAL rule: every parameter the
+    # schema declares is an item, excluded only by the three rows below.
+    # The gate that stood here was a fourth, unlisted exclusion, and it
+    # silently kept species_order (identity-sensitive, run-identity
+    # § 6a), write_forces, write_coor_step, write_molwatch_log and
+    # copy_psml out of every template.
 
     # § 7 lists three things that are NOT items, and the first is "a machine
     # fact -- ranks, GPUs, queue, partition, wall time".  A field that declares
@@ -337,7 +343,7 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
         unit=f.metadata.get("unit"),
         group=f.metadata.get("workflow_group"),
         label=str(f.metadata.get("label", "") or ""),
-        section=str(section),
+        section=str(section or ""),
         null_label=str(f.metadata.get("null_label", "") or ""),
         optional=optional,
     )
@@ -721,7 +727,18 @@ def config_from_template(text: str, config_cls):
     and the fingerprint is what says so.
     """
     known = {f.name for f in dataclasses.fields(config_cls)}
-    vals = {k: v for k, v in read_template(text).values().items() if k in known}
+    vals = read_template(text).values()
+    unknown = sorted(k for k in vals if k not in known)
+    if unknown:
+        # Refused, never dropped (U16): this is a file people edit by
+        # hand, and an item the schema does not know is a typo or a
+        # renamed field -- either way, silently ignoring it renders a
+        # deck missing what the person believes they set.
+        raise ValueError(
+            f"template names item(s) the {config_cls.__name__} schema does "
+            f"not declare: {', '.join(map(repr, unknown))}.  A template "
+            f"item is a schema field (engines/template.md § 7); check the "
+            f"spelling against the schema's own names.")
     return config_cls(**vals)
 
 

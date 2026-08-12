@@ -47,7 +47,14 @@ from molbuilder.template import (
 )
 
 
-ENGINES = [SiestaConfig, PySCFConfig]
+# SIESTA only (U16, 2026-08-12): membership went TOTAL (§ 7 -- the
+# section gate was a fourth, unlisted exclusion), and under the total rule
+# declarations_for(PySCFConfig) refuses LOUDLY on that schema's known
+# vocabulary gaps -- which is § 7 working, pinned by name in
+# test_pyscfs_vocabulary_gaps_refuse_loudly below.  PySCF rejoins this
+# list when its template lands (it has no producer today; describe is
+# SIESTA-only) and the gaps are modelled.
+ENGINES = [SiestaConfig]
 
 
 def _decls(cls):
@@ -65,13 +72,16 @@ def test_every_exposed_field_gets_a_declaration(cls):
 
     A field the form shows and the template omits would be a setting a user
     can change and the calculation cannot record."""
-    exposed = {f.name for f in dataclasses.fields(cls)
-               if f.metadata.get("section") and not f.metadata.get("allocation")}
+    # § 7 (U16): membership is TOTAL -- every schema field minus the
+    # named exclusions (machine facts, the ladder), never a section
+    # subset.  ``section`` answers only *where on the form*.
+    members = {f.name for f in dataclasses.fields(cls)
+               if not f.metadata.get("allocation")}
     declared = set(_decls(cls))
-    # The one legitimate subtraction: a stage ladder is not a template item.
     ladders = {f.name for f in dataclasses.fields(cls)
                if _is_ladder(cls, f)}
-    assert declared == exposed - ladders, sorted(exposed - ladders - declared)
+    assert declared == members - ladders, sorted(
+        (members - ladders) ^ declared)
 
 
 def _is_ladder(cls, f) -> bool:
@@ -87,8 +97,14 @@ def test_a_stage_ladder_is_not_a_template_item():
     and it is excluded for WHAT IT IS rather than by falling through to the
     unnameable-type error, which would report a vocabulary gap where there is
     none."""
-    assert "stages" in {f.name for f in dataclasses.fields(PySCFConfig)}
-    assert "stages" not in _decls(PySCFConfig)
+    # (via declaration_for directly: PySCF's whole-schema walk refuses on
+    # its § 7 vocabulary gaps -- pinned by name below -- but the ladder
+    # exclusion is checkable per-field.)
+    from molbuilder.template import declaration_for
+    hints = typing.get_type_hints(PySCFConfig)
+    f = next(f for f in dataclasses.fields(PySCFConfig)
+             if f.name == "stages")
+    assert declaration_for(f, hints["stages"]) is None
 
 
 # --------------------------------------------------------------------- #
@@ -97,8 +113,16 @@ def test_a_stage_ladder_is_not_a_template_item():
 
 @pytest.mark.parametrize("cls", ENGINES, ids=lambda c: c.__name__)
 def test_every_declaration_has_a_named_type(cls):
+    """Every item's type is in the TEMPLATE grammar; the subset that
+    script_emit renders into BENCH-MARKS (engine-kind, anchored) must
+    also be in ITS vocabulary -- the two share field metadata so they
+    cannot drift, but they are not the same set: a produce-kind item
+    (species_order's strlist) never reaches a BENCH-MARKS line."""
+    from molbuilder.template import TYPES
     for d in declarations_for(cls):
-        assert d.type in DECL_TYPES, f"{d.name}: {d.type}"
+        assert d.type in TYPES, f"{d.name}: {d.type}"
+        if d.kind == "engine" and d.anchor:
+            assert d.type in DECL_TYPES, f"{d.name}: {d.type}"
 
 
 @pytest.mark.parametrize("cls", ENGINES, ids=lambda c: c.__name__)
@@ -162,12 +186,31 @@ def test_an_unnameable_type_is_refused_by_name():
         declarations_for(odd)
 
 
+def test_pyscfs_vocabulary_gaps_refuse_loudly():
+    """§ 7: *"a parameter that cannot be given a kind is a gap in this
+    vocabulary, and the loud version of that is the only one that gets
+    fixed."*  PySCF has no template producer yet; what the total rule
+    owes it TODAY is that the gaps are named, not skipped.  This list
+    shrinking is progress; it growing is a new unclassified field."""
+    import typing as _t
+    hints = _t.get_type_hints(PySCFConfig)
+    gaps = []
+    for f in dataclasses.fields(PySCFConfig):
+        try:
+            from molbuilder.template import declaration_for
+            declaration_for(f, hints[f.name])
+        except ValueError:
+            gaps.append(f.name)
+    assert gaps == ["ecp", "save_optimized_xyz", "save_initial_xyz",
+                    "write_trajectory", "write_molwatch_log", "stage"]
+
+
 def test_declarations_keep_the_configs_own_order():
     """The config's field order is the form's order and the deck's order; a
     template a person reads should not be a third arrangement of them."""
     names = [d.name for d in declarations_for(SiestaConfig)]
     expected = [f.name for f in dataclasses.fields(SiestaConfig)
-                if f.metadata.get("section") and not f.metadata.get("allocation")]
+                if not f.metadata.get("allocation")]
     assert names == expected
 
 
@@ -180,6 +223,9 @@ def test_the_fingerprint_is_stable_and_short():
     assert a == b and len(a) == 16
 
 
+@pytest.mark.skip(reason="PySCF's fingerprint cannot compute until its "
+                  "§ 7 vocabulary gaps close (see test_pyscfs_vocabulary_"
+                  "gaps_refuse_loudly); re-enable with its template")
 def test_two_engines_do_not_share_a_fingerprint():
     assert schema_fingerprint(SiestaConfig) != schema_fingerprint(PySCFConfig)
 

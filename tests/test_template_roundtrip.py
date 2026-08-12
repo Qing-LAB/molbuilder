@@ -197,8 +197,14 @@ def test_every_item_carries_what_a_surface_needs_to_render_it():
     held the *field* name, ``section`` was read only to decide exposure and
     then discarded, and ``null_label`` was gone entirely."""
     for item in T.declarations_for(SiestaConfig):
-        assert item.label, f"{item.name} has no human-readable label"
-        assert item.section, f"{item.name} has no fieldset"
+        # A label and a fieldset serve the FORM.  An item with no section
+        # sits on no tab (§ 7/U16: membership is total; section answers
+        # only *where on the form*), so demanding them there would invent
+        # UI for a field no surface renders.  What every item DOES owe
+        # every reader is its help text.
+        if item.section:
+            assert item.label, f"{item.name} has no human-readable label"
+        assert item.help, f"{item.name} has no help text"
 
 
 def test_an_optional_item_says_what_unset_is_called():
@@ -223,15 +229,16 @@ def test_every_exposed_field_becomes_an_item_and_declares_its_kind():
     declares is an item, and each one's ``kind`` says who consumes it."*  A
     field this vocabulary cannot place is a gap to fix, not an item to drop."""
     items = T.declarations_for(SiestaConfig)
-    # The membership rule, stated exactly: every parameter the schema declares
-    # is an item -- and § 7's first exclusion is "a machine fact", which a
-    # field declares about itself.  ``section`` answers *may a surface show
-    # this*; ``allocation`` answers *is it part of the description*.  They were
-    # one switch until 2026-08-11 and are two questions.
-    exposed = [f.name for f in __import__("dataclasses").fields(SiestaConfig)
-               if f.metadata.get("section")
-               and not f.metadata.get("allocation")]
-    assert sorted(i.name for i in items) == sorted(exposed)
+    # The membership rule, stated exactly (U16 made it literal): every
+    # parameter the schema declares is an item, excluded only by § 7's
+    # named rows -- "a machine fact" (``allocation``, a fact a field
+    # declares about itself) and the ladder.  ``section`` is NOT in this
+    # expression at all: it answers *where on the form*, and gating
+    # membership on it was the fourth, unlisted exclusion that silently
+    # kept species_order (identity-sensitive) out of every template.
+    members = [f.name for f in __import__("dataclasses").fields(SiestaConfig)
+               if not f.metadata.get("allocation")]
+    assert sorted(i.name for i in items) == sorted(members)
     assert all(i.kind in T.KINDS for i in items)
 
 
@@ -250,3 +257,30 @@ def test_a_deck_item_says_which_keywords_it_produces():
     for item in T.declarations_for(SiestaConfig):
         if item.kind == "deck":
             assert item.expands, item.name
+
+
+# ---- U16 (2026-08-12): total membership, exercised end to end -------- #
+
+def test_the_five_ungated_fields_round_trip_through_a_template():
+    """species_order (identity-sensitive, run-identity § 6a) and the four
+    toggles the section gate silently dropped: set them, write the
+    template, read it back -- the value survives, which is what 'the
+    template describes the deck' means."""
+    cfg = SiestaConfig(system_label="JOB",
+                       species_order=["C", "H", "S", "Au"],
+                       write_forces=False, copy_psml=False)
+    back = T.config_from_template(T.render_template(cfg), SiestaConfig)
+    assert list(back.species_order) == ["C", "H", "S", "Au"]
+    assert back.write_forces is False
+    assert back.copy_psml is False
+
+
+def test_an_unknown_item_name_is_refused_not_dropped():
+    """E4: this is a file people edit by hand; a typo'd item silently
+    ignored renders a deck missing what the person believes they set.
+    Until U16 config_from_template filtered on `k in known` -- the drop."""
+    text = T.render_template(SiestaConfig(system_label="JOB"))
+    assert "[item.mesh_cutoff]" in text
+    broken = text.replace("[item.mesh_cutoff]", "[item.mesh_cutof]")
+    with pytest.raises(ValueError, match="mesh_cutof"):
+        T.config_from_template(broken, SiestaConfig)
