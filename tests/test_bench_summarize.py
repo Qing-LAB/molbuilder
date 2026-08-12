@@ -22,7 +22,7 @@ def _make_point(bundle, g, k, c, per_iter, sm, cpu, bound, mem, *,
     # points are G x K x c (independent cores/rank axis); the dir + knobs
     # carry all three (execution/job-system.md § 7, "knobs": {gpus, ranks_per_gpu,
     # cores_per_rank}).
-    d = bundle / f"point-G{g}K{k}C{c}"
+    d = bundle / f"bench-G{g}K{k}C{c}"
     d.mkdir()
     (d / "job-gpu-run0.scf-timing.log").write_text(_timing(per_iter))
     (d / "job-gpu.monitor.log").write_text(
@@ -52,15 +52,15 @@ def test_summarize_bundle_builds_result_and_winner(tmp_path):
     b = _bundle(tmp_path)
     res = summarize.summarize_bundle(b, now_iso="2026-06-27T22:00:00Z")
 
-    assert {p.label for p in res.points} == {"point-G1K8C3", "point-G1K4C6"}
+    assert {p.label for p in res.points} == {"bench-G1K8C3", "bench-G1K4C6"}
     win = res.choice
     assert win["engine"] == "gpu"
     assert win["knobs"] == {"gpus": 1, "ranks_per_gpu": 8,
                             "cores_per_rank": 3}          # the fast one
-    assert "point-G1K8C3 fastest" in win["rationale"]
+    assert "bench-G1K8C3 fastest" in win["rationale"]
 
     # per-point metrics parsed from the artifacts
-    p8 = next(p for p in res.points if p.label == "point-G1K8C3")
+    p8 = next(p for p in res.points if p.label == "bench-G1K8C3")
     assert p8.s_per_iter() == 1538.0
     assert p8.metrics["gpu_sm_mean_pct"] == 91.0
     assert p8.metrics["peak_rss_gb"] == 25.2
@@ -96,10 +96,10 @@ def test_discover_ignores_non_point_dirs(tmp_path):
     b = tmp_path / "b"
     b.mkdir()
     (b / "notapoint").mkdir()
-    (b / "point-bad").mkdir()
+    (b / "bench-bad").mkdir()
     _make_point(b, 2, 4, 4, 1000.0, 80, 30, "GPU-bound", 30.0)
     pts = summarize.discover_points(b)
-    assert [p.label for p in pts] == ["point-G2K4C4"]
+    assert [p.label for p in pts] == ["bench-G2K4C4"]
 
 
 def test_cpu_point_recovers_np_from_out(tmp_path):
@@ -122,4 +122,4 @@ def test_summary_text_smoke(tmp_path):
     res, out_path = summarize.run_summarize(b, now_iso="t")
     txt = summarize.summary_text(res, out_path)
     assert "ranked points" in txt
-    assert "point-G1K8C3" in txt and "winner" in txt
+    assert "bench-G1K8C3" in txt and "winner" in txt

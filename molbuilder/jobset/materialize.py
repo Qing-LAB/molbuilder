@@ -2,7 +2,7 @@
 directories (docs/execution/job-system.md).
 
 Filesystem ONLY: it knows nothing about schedulers or engines.  For each
-job it creates ``point-<name>/`` and lays relative symlinks for
+job it creates ``bench-<name>/`` and lays relative symlinks for
 
   * the static ``shared`` package + the job's own ``script`` (identical
     bytes for the job — pseudos, geometry, monitor, the per-job input),
@@ -11,7 +11,7 @@ job it creates ``point-<name>/`` and lays relative symlinks for
 This is the generalization of the benchmark's ``_mb_point`` helper.
 
 Carry symlinks point at concrete filenames in the producer's dir (e.g.
-``../point-stage1/job.XV``).  At materialize time (prep) the producer has
+``../bench-stage1/job.XV``).  At materialize time (prep) the producer has
 not run yet, so these are intentionally **dangling** symlinks — they
 resolve once the producer writes the file, and the submit engine's
 dependency ordering guarantees the consumer starts only after that.
@@ -54,14 +54,17 @@ def relink(link_dir: Path, target: str, link_name: str) -> None:
 
 
 def job_dir_name(job_name: str) -> str:
-    """The on-disk directory for a **sweep** job — the benchmark's
-    ``point-<...>`` convention.
+    """The on-disk directory for a **trial** — ``bench-<point>``.
+
+    `job-contracts.md` § 6.3 is the authority: ``bench-`` plus the coordinate
+    as ONE qualifier (``bench-G1K4C6``).  This wrote ``point-…`` until the
+    fold (C6, 2026-08-12) — the name the docs had already retired.
 
     A ladder's stage directory is NOT this: see :func:`job_dir_names`, which is
     what every caller should use, because the answer depends on the job SET
-    (its kind, and the deck each job carries) rather than on a name alone.
+    (the deck each job carries) rather than on a name alone.
     """
-    return f"point-{job_name}"
+    return f"bench-{job_name}"
 
 
 def shape_of(jobset: JobSet, base_dir) -> Optional["Shape"]:
@@ -72,17 +75,20 @@ def shape_of(jobset: JobSet, base_dir) -> Optional["Shape"]:
     so this reads it, and every layer below takes the answer as an argument
     rather than going looking for it a second time.
 
-    ``None`` where the question does not arise: a **sweep** is laid out
-    ``point-<name>`` in either shape, which is why a benchmark bundle carries
-    no description and needs none. ``None`` also when a ladder has no
-    ``task.json`` — bundles produced before 2026-08-10, and the hand-built
-    JobSets in the tests — and :func:`job_dir_names` reads that as the
-    hierarchy, which is what they all are. That fallback is transitional and
-    dies with the last such bundle; it is **not** an inference from data, which
-    § 6.7 forbids, but the absence of a file that is now always written.
+    ``None`` only when there is no ``task.json`` to read — bundles produced
+    before 2026-08-10, hand-built JobSets in the tests, and the OLD bench
+    bundle format (which folds away at plan step 6 u5).
+    :func:`job_dir_names` reads ``None`` as the hierarchy, which is what they
+    all are. That fallback is transitional and dies with the last such
+    bundle; it is **not** an inference from data, which § 6.7 forbids, but
+    the absence of a file that is now always written.
+
+    *(This branched on ``kind != "ladder"`` until 2026-08-12 — "a benchmark
+    bundle carries no description and needs none" — which `generator.md` § 5
+    said would stop being true under the fold, and did: a described sweep is
+    a ParameterSet inside a described calculation, shaped like anything
+    else.)*
     """
-    if jobset.kind != "ladder":
-        return None
     from ..task import FILENAME, read_task
     from .shape import Shape
     desc = Path(base_dir) / FILENAME
@@ -94,18 +100,19 @@ def shape_of(jobset: JobSet, base_dir) -> Optional["Shape"]:
 def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     """``{job name: directory name}`` for a whole JobSet — the naming authority.
 
-    Two kinds, two conventions, and `project-layout.md` § 4.1 is explicit about
-    which is which:
+    One question, not two kinds (`generator.md` § 5): *does this job have a
+    stage, a point, or both?*
 
-    | kind | directory |
+    | the deck says | directory |
     |---|---|
-    | ``sweep`` (the benchmark) | ``point-<name>`` |
-    | ``ladder`` (a stage ladder) | ``<seq>_<name>`` — ``01_coarse``, ``02_tight`` |
+    | a stage token, job named for the stage | ``<NN>_<name>`` — the rung itself |
+    | a stage token, job named by coordinate | ``<NN>_<name>/bench-<point>`` — a trial, INSIDE the stage it measures |
+    | no token | ``bench-<name>`` at the root — the old bench bundles, and hand-built sets |
 
-    Until 2026-08-10 every kind got ``point-<name>``, so a staged run's
-    directories came out ``point-coarse/`` (`worked-example.md` gap 6). The
-    contract's fix is *"branch on ``JobSet.kind``"* — and that branch lives in
-    :func:`stage_refs`, once, rather than here as well.
+    Until 2026-08-10 every kind got the trial prefix, so a staged run's
+    directories came out ``point-coarse/`` (`worked-example.md` gap 6); until
+    2026-08-12 the split was a branch on ``JobSet.kind`` and trials could not
+    nest at all.  Now it is read off each deck's own name.
 
     **The seq is read back off the deck, not counted here.** ``job.script`` is
     ``<label>_<NN>_<name>.fdf`` (decision 27), so the token the directory is
@@ -115,7 +122,7 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     exactly what `engines/stages.md` R5 forbids: a number that shifts when the
     ladder changes, silently handing one stage's directory to another.
 
-    A ladder job whose script carries no token falls back to ``point-<name>``.
+    A ladder job whose script carries no token falls back to ``bench-<name>``.
     That is not a staged-producer JobSet — hand-written, or older than decision
     27 — and inventing a seq for it would be guessing at the one number that
     must never be guessed.
@@ -126,12 +133,11 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     ``jobset.kind`` a second time here is how the directory and the deck get to
     disagree about what a job is.
 
-    ``shape`` decides where a **ladder's** stages sit: hierarchical gives each
-    one a directory, flat is depth 1 and they all sit in the bundle root
-    (:class:`~molbuilder.jobset.shape.Shape`). It is **not consulted for a
-    sweep** — ``point-<name>`` is the benchmark's own convention and is the
-    same in either layout, which is why a bench bundle needs no description to
-    be laid out.
+    ``shape`` decides where a **stage** sits: hierarchical gives each one a
+    directory, flat is depth 1 and they all sit in the bundle root
+    (:class:`~molbuilder.jobset.shape.Shape`).  A described trial nests
+    under its stage's directory, so the shape reaches it through the stage;
+    only the tokenless fallback ignores it.
 
     ``None`` means *hierarchical*, and it now means only one thing: **a ladder
     with no description to read**. Every surface resolves the shape through
@@ -149,9 +155,40 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     from .shape import Shape
     sh = shape or Shape.named("hierarchical")
     refs = stage_refs(jobset)
-    return {j.name: (sh.stage_dir(refs[j.name].token)
-                     if refs[j.name].token else job_dir_name(j.name))
-            for j in jobset.jobs}
+    out: Dict[str, str] = {}
+    for j in jobset.jobs:
+        if refs[j.name].token:
+            # A rung of the ladder: the stage directory itself.
+            out[j.name] = sh.stage_dir(refs[j.name].token)
+            continue
+        trial_token = _trial_stage_token(jobset, j)
+        if trial_token:
+            # A trial NESTS inside the stage it measures --
+            # <NN>_<stage>/bench-<point>/ (generator.md § 5).  The two
+            # conventions are one question: does this element have a point?
+            sd = sh.stage_dir(trial_token)
+            out[j.name] = (job_dir_name(j.name) if sd == "."
+                           else f"{sd}/{job_dir_name(j.name)}")
+            continue
+        # Tokenless: the OLD bench bundle's trials, and hand-built sets --
+        # the bundle root, told apart by name alone.
+        out[j.name] = job_dir_name(j.name)
+    return out
+
+
+def _trial_stage_token(jobset: JobSet, job) -> Optional[str]:
+    """The ``<NN>_<stage>`` a TRIAL's deck carries, or ``None``.
+
+    A trial's script is ``<label>-<point>_<NN>_<stage>.ext`` — its own § 6.3
+    label (the calculation's, qualified by the coordinate) plus the stage
+    token.  Anchoring the parse on that full label is what keeps a stage
+    name containing ``_`` unambiguous, exactly as for a rung
+    (`identity.parse_stage_token`).
+    """
+    from ..identity import stage_token
+    parsed = parse_stage_token(os.path.basename(job.script),
+                               f"{jobset.name}-{job.name}")
+    return stage_token(*parsed) if parsed else None
 
 
 def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
@@ -167,7 +204,7 @@ def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
     gets ``seq=None`` rather than being left out of the mapping. Omission was
     the shape until 2026-08-10, and it pushed the same question — *what if
     there is no ordinal?* — out to four callers, who answered it four different
-    ways: ``point-<name>`` here, the row number in ``plan``, ``None`` in
+    ways: ``bench-<name>`` here, the row number in ``plan``, ``None`` in
     ``runstatus``, and a whole second lookup-and-refusal branch in the CLI.
     Two of those four printed a **position** where a reader reads an ordinal.
     A total answer is what lets each caller read one and never test membership.
@@ -182,11 +219,13 @@ def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
     dependency edges, ``--stage-resources`` keys and the CLI all point at, so
     resolving to the other one would hand back a name this JobSet does not have.
     """
-    ladder = jobset.kind == "ladder"
+    # NO kind branch (2026-08-12): the parse is anchored on the jobset's
+    # label, so a TRIAL's script (whose label is the coordinate-qualified
+    # one) never matches and gets seq=None -- the same answer the old
+    # ``if ladder`` guard produced, read off the deck instead of a field.
     out: Dict[str, StageRef] = {}
     for j in jobset.jobs:
-        parsed = (parse_stage_token(os.path.basename(j.script), jobset.name)
-                  if ladder else None)
+        parsed = parse_stage_token(os.path.basename(j.script), jobset.name)
         out[j.name] = StageRef(parsed[0] if parsed else None, j.name)
     return out
 
@@ -225,10 +264,14 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
             # stage finds them lying there; there is no producer directory to
             # reach into.
             continue
-        # static package + this job's own input script: same bytes, one
-        # level up in the bundle root.
+        # static package + this job's own input script: same bytes, in the
+        # bundle root.  The prefix is COMPUTED, not "..": a nested trial dir
+        # (<NN>_<stage>/bench-<point>/) is depth 2, and a hardcoded one-level
+        # hop would dangle -- the same destruction class the flat guard
+        # above records (M5, 2026-08-10).
+        up = os.path.relpath(str(base), str(d))
         for fname in list(jobset.shared) + [job.script]:
-            relink(d, os.path.join("..", fname), os.path.basename(fname))
+            relink(d, os.path.join(up, fname), os.path.basename(fname))
         # NOTHING ELSE IS LINKED IN.  A second loop here laid the `Carry`
         # symlinks -- into a producer's directory, before the producer had
         # run, so they dangled by design.  Deleted 2026-08-10 with `Carry`

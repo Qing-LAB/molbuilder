@@ -144,13 +144,15 @@ def test_two_solvers_give_two_conda_environments(slab, template, ladder,
     assert "gpu" in tight_env
 
 
-def test_rank_override_reaches_each_stages_resources(template, ladder):
-    """``mpi_np`` is the third row of § 5's table: a field the deck never
-    carries, which rides to the wrapper on ``Job.resources``."""
-    jobset = stages_to_jobset(template, ladder, shared=[])
-    by_name = {j.name: j for j in jobset.jobs}
-    assert by_name["coarse"].resources.mpi_np == 4
-    assert by_name["tight"].resources.mpi_np == 16
+# ``test_rank_override_reaches_each_stages_resources`` was RETIRED
+# 2026-08-12.  It pinned mpi_np riding on the PRODUCER's stage resources --
+# machine facts at floor 2, the exact contract M4 deleted -- and had been
+# failing silently since `stages_to_jobset._res` was reduced to
+# ``continue_retries`` (found the first time this file ran in a targeted
+# batch).  The property's live home: the allocation is an input to `prep`,
+# per-element -- test_prep_calculation.py::
+# test_the_allocation_reaches_the_jobs_resources.  The dead producer and
+# the rest of its tests retire together at step 6 u5.
 
 
 # --------------------------------------------------------------------- #

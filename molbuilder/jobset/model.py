@@ -139,7 +139,7 @@ class WarmFile:
 @dataclass
 class Job:
     """One unit of work.  ``name`` is unique within the set and becomes the
-    job directory (``point-<name>/``) and the SLURM ``-J`` name.  ``script``
+    job directory (``bench-<name>/``) and the SLURM ``-J`` name.  ``script``
     is the per-job input filename (e.g. the rendered ``.fdf``).
 
     **A Job names no other Job.**  There is no ``depends_on``, no ``dep_kind``

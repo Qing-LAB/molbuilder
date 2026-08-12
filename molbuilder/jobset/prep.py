@@ -302,11 +302,14 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
             # same destruction `materialize` guards against, one step later.
             continue
         stem = Path(job.script).stem
+        # Computed prefix, not "..": a nested trial dir is depth 2 and a
+        # hardcoded one-level hop would dangle (see materialize's own note).
+        up = os.path.relpath(str(base), str(d))
         for wrapper in (f"{stem}.run.sh", f"{stem}.sbatch"):
             if (base / wrapper).exists():
-                relink(d, f"../{wrapper}", wrapper)
+                relink(d, os.path.join(up, wrapper), wrapper)
         if has_monitor:
-            relink(d, "../mb_monitor.py", "mb_monitor.py")
+            relink(d, os.path.join(up, "mb_monitor.py"), "mb_monitor.py")
 
     # ---- 4. emit STAGE-PLAN.md (§ 5 D3; mirrors bench's BENCH-PLAN.md) --- #
     # The reviewable plan lands in the bundle at prep, not just on the

@@ -166,7 +166,7 @@ class SchedulerAdapter:
         parallel); on a workstation each runs in-place (sequential).
 
         **Output isolation:** every (G, K, c) point runs in its own
-        ``point-G<g>K<k>C<c>/`` subdirectory (shared artifacts symlinked in),
+        ``bench-G<g>K<k>C<c>/`` subdirectory (shared artifacts symlinked in),
         so points never clobber the ``job-gpu`` basename and summarize maps
         each directory back to its (G, K, c) label."""
         topo = env.topology
@@ -194,7 +194,7 @@ class SchedulerAdapter:
                                  if cs_explicit
                                  else "{1, cores//K, 2*cores//K} per K "
                                       "(starved / 1-socket / cross-socket)"),
-            "#   each point runs in its own point-G<g>K<k>C<c>/ dir (isolated "
+            "#   each point runs in its own bench-G<g>K<k>C<c>/ dir (isolated "
             "outputs).",
         ]
         if self.name == "slurm":
@@ -226,7 +226,7 @@ class SchedulerAdapter:
         # shared ``sweep_grid`` (single source of truth with the JobSet
         # producer); this loop only renders each point's bash.
         for (g, k, c) in sweep_grid(gpn, cps, ks, cs_explicit):
-            d = f"point-G{g}K{k}C{c}"
+            d = f"bench-G{g}K{k}C{c}"
             total = k * c
             notes = []
             if cps and k > cps:

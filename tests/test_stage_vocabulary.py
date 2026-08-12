@@ -86,9 +86,6 @@ _CONSTANT_IS_STAGEY = lambda name: "STAGE" in name  # noqa: E731
 # the observing side, or a different sense of the word entirely.
 PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
     # -- the ten -------------------------------------------------------
-    "--stage": (
-        1, "molbuilder/cli.py",
-        "single-shot tier overlay; P5 retires the flag, the presets stay"),
     "apply_siesta_stage": (
         1, "molbuilder/config/siesta.py", "applies that overlay"),
     "SIESTA_STAGE_PRESETS": (
@@ -96,7 +93,10 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "the tier values -- real science, kept as the defaults a new stage "
         "is created with"),
     "--stage-strategy": (
-        2, "molbuilder/cli.py", "named presets over the *enable* flags"),
+        2, ("molbuilder/cli.py", "molbuilder/jobset/_cli.py"),
+        "named presets over the *enable* flags -- on `pyscf` (until decision "
+        "34 reworks it) and on `jobset describe`, where the ladder is "
+        "described rather than rendered"),
     "SIESTA_STAGE_STRATEGY_PRESETS": (
         2, "molbuilder/config/siesta.py",
         "those presets -- pure enable-mask data now; the applier that turned "
@@ -116,8 +116,6 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "PySCF's builds its own StageSpec; task.py's builds the design's "
         "own Stage, and it is what --stages-json reaches now that the "
         "SIESTA parser is deleted (P2)"),
-    "--stage-resources": (
-        4, "molbuilder/cli.py", "per-stage scheduler asks, a *second* file"),
     # Mechanism 5 -- SiestaStageSpec, _default_siesta_stages,
     # validate_siesta_stages -- is RETIRED (P2 unit 2, 2026-08-07).  These
     # three rows are deleted rather than commented out: their absence is
@@ -268,8 +266,6 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
     #  `checkpointing.md` L4 -- *nothing tags a state on your behalf* -- and
     #  their rows are deleted rather than annotated, because this ledger's
     #  own rule is that the deletion IS the proof the subtraction happened.
-    "_emit_siesta_multi_stage": (
-        None, "molbuilder/cli.py", "the CLI's glue over 3, 4, 6 and 7"),
     "StageStatus": (
         None, "molbuilder/jobset/runstatus.py", "the observing side"),
     "_stage_state": (
@@ -296,6 +292,15 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "SIESTA *diagonalisation*, unrelated role -- same word"),
     "DIAG_2STAGE": (
         None, "molbuilder/bench/__init__.py", "likewise"),
+    "_stage_of": (
+        None, "molbuilder/resolve.py",
+        "step 2's rung lookup -- which Stage this prep resolves, refusing "
+        "rather than picking one (landed with the resolver, plan step 3)"),
+    "_trial_stage_token": (
+        None, "molbuilder/jobset/materialize.py",
+        "the <NN>_<stage> a TRIAL's deck carries -- what nests "
+        "bench-<point>/ inside the stage it measures (step 6 u3); a "
+        "label-anchored parse of the deck's own name, never a count"),
 }
 
 # The JS side is attributed by FILE rather than by token: a hundred CSS class
@@ -320,7 +325,14 @@ JS_LEDGER: dict[str, tuple[int | None, str]] = {
 #: TEN since P2 unit 2 the same day: mechanism 5 -- SiestaStageSpec and its
 #: two helpers -- is deleted.  That is the first subtraction of the program,
 #: and the number falling is what makes it a fact rather than a claim.
-MECHANISM_COUNT = 10
+#:
+#: NINE since 2026-08-11/12: `molbuilder fdf` went (plan step 5, C2) and took
+#: mechanism 1's flag ``--stage`` and mechanism 4's ``--stage-resources``
+#: with it -- the single-shot tier overlay is no longer expressible from any
+#: surface (the presets remain as the ladder's defaults, applied by
+#: ``apply_siesta_stage`` at resolve time).  ``--stage-strategy`` moved to
+#: `jobset describe`, where the ladder is DESCRIBED rather than rendered.
+MECHANISM_COUNT = 9
 
 
 def _py_sources() -> list[Path]:

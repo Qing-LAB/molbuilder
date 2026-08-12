@@ -99,6 +99,23 @@ def test_each_trials_resources_carry_its_own_coordinate(calc):
         assert r["gres"] == f"gpu:a100:{g}"
 
 
+def test_trials_nest_inside_the_stage_they_measure(calc):
+    """u3, `generator.md` § 5: ``<NN>_<stage>/bench-<point>/`` — the trial
+    directory is § 6.3's authority name, INSIDE the stage, and its links
+    reach the bundle root through a COMPUTED depth, not a hardcoded hop."""
+    js = _prep_bench(calc)
+    name = js["jobs"][0]["name"]
+    d = calc / "01_coarse" / f"bench-{name}"
+    assert d.is_dir()
+    script = d / f"JOB-{name}_01_coarse.fdf"
+    assert script.is_symlink() and script.resolve().is_file()
+    wrapper = d / f"JOB-{name}_01_coarse.run.sh"
+    assert wrapper.is_symlink() and wrapper.resolve().is_file()
+    # nothing landed at the old flat location
+    assert not (calc / f"bench-{name}").exists()
+    assert not (calc / f"point-{name}").exists()
+
+
 def test_a_machine_without_gpus_is_refused_by_name(calc):
     import click
     (calc / "environment.json").write_text(

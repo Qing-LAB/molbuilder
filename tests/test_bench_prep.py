@@ -137,7 +137,7 @@ def test_gpu_instance_scaling_allows_oversubscription(tmp_path):
         scheduler_override="workstation", mode="direct", ks=[1, 2, 4, 8], now_iso="t")
     text = (tmp_path / "job-gpu-sweep.sh").read_text()
     for k in (1, 2, 4, 8):
-        assert f"point-G1K{k}" in text            # full ladder emitted
+        assert f"bench-G1K{k}" in text            # full ladder emitted
     assert "INVALID" not in text                  # K=8 > 6 not rejected
     assert "K=8 > cores/socket=6" in text         # flagged, not skipped (§8.12)
 

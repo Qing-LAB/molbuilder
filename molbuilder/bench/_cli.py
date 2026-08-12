@@ -389,7 +389,7 @@ RESOURCE MODEL -- think in three independent knobs, no arithmetic in your head:
 The tool computes the rest:
     ranks (np)   = K x G          (apps-per-GPU times #GPUs)
     cores total  = K x c x G      (and cores PER GPU = K x c)
-A point is named point-G<G>K<K>C<c>; its job shows as job-gpu-G<G>K<K>C<c>.
+A point is named bench-G<G>K<K>C<c>; its job shows as job-gpu-G<G>K<K>C<c>.
 \b
 EXAMPLES (read each as a sentence):
 \b

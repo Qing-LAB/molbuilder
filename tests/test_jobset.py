@@ -111,18 +111,18 @@ def test_materialize_creates_dirs_and_symlinks(tmp_path):
     for f in js.shared + [j.script for j in js.jobs]:
         (tmp_path / f).write_text("x")
     dirs = materialize(js, tmp_path)
-    assert [d.name for d in dirs] == ["point-s1", "point-s2"]
+    assert [d.name for d in dirs] == ["bench-s1", "bench-s2"]
     # shared package symlinked into each job dir (relative).
-    link = tmp_path / "point-s1" / "C.psml"
+    link = tmp_path / "bench-s1" / "C.psml"
     assert link.is_symlink() and os.readlink(link) == os.path.join("..", "C.psml")
     # the job's own input symlinked in.
-    assert (tmp_path / "point-s2" / "demo_s2.fdf").is_symlink()
+    assert (tmp_path / "bench-s2" / "demo_s2.fdf").is_symlink()
 
 
 def test_materialize_lays_no_link_into_another_job(tmp_path):
     """The inverse of what this test used to assert, and that is the change.
 
-    It read: the carry symlink exists, points at `../point-s1/demo.XV`, and
+    It read: the carry symlink exists, points at `../bench-s1/demo.XV`, and
     **dangles** -- *"dangling is fine (s1 hasn't run yet)"*.  It was fine only
     because a scheduler dependency stopped the consumer starting early and a
     run-time step localized the link before the engine could write through it.
@@ -136,10 +136,10 @@ def test_materialize_lays_no_link_into_another_job(tmp_path):
     for f in js.shared + [j.script for j in js.jobs]:
         (tmp_path / f).write_text("x")
     materialize(js, tmp_path)
-    d = tmp_path / "point-s2"
+    d = tmp_path / "bench-s2"
     assert not (d / "demo.XV").exists() and not (d / "demo.XV").is_symlink()
     strays = [e.name for e in d.iterdir()
-              if e.is_symlink() and "point-s1" in os.readlink(e)]
+              if e.is_symlink() and "bench-s1" in os.readlink(e)]
     assert not strays, f"links into another job's directory: {strays}"
     # ...and the legitimate links are untouched: shared package + own deck.
     assert sorted(e.name for e in d.iterdir()) == ["C.psml", "demo_s2.fdf",
@@ -152,7 +152,7 @@ def test_materialize_is_idempotent(tmp_path):
         (tmp_path / f).write_text("x")
     materialize(js, tmp_path)
     materialize(js, tmp_path)              # no exception, no duplication
-    assert (tmp_path / "point-s2" / "demo_s2.fdf").is_symlink()
+    assert (tmp_path / "bench-s2" / "demo_s2.fdf").is_symlink()
 
 
 def test_materialize_rejects_invalid_jobset(tmp_path):
@@ -163,7 +163,7 @@ def test_materialize_rejects_invalid_jobset(tmp_path):
 
 
 def test_job_dir_name():
-    assert job_dir_name("stage1") == "point-stage1"
+    assert job_dir_name("stage1") == "bench-stage1"
 
 
 # --------------------------------------------------------------------- #
@@ -224,18 +224,18 @@ def test_job_dir_names_sweep_keeps_the_point_convention():
     js = JobSet(name="JOB", engine="siesta", kind="sweep",
                 jobs=[Job(name="np4", script="JOB.fdf"),
                       Job(name="np8", script="JOB.fdf")])
-    assert job_dir_names(js) == {"np4": "point-np4", "np8": "point-np8"}
+    assert job_dir_names(js) == {"np4": "bench-np4", "np8": "bench-np8"}
 
 
 def test_job_dir_names_ladder_without_a_token_falls_back_rather_than_guessing():
-    """A hand-written ladder whose deck carries no token gets ``point-<name>``.
+    """A hand-written ladder whose deck carries no token gets ``bench-<name>``.
     Inventing a seq for it would be guessing at the one number § 4.2 says is
     assigned once and never reassigned."""
     from molbuilder.jobset.materialize import job_dir_names
     from molbuilder.jobset.model import Job, JobSet
     js = JobSet(name="JOB", engine="siesta", kind="ladder",
                 jobs=[Job(name="only", script="JOB.fdf")])
-    assert job_dir_names(js) == {"only": "point-only"}
+    assert job_dir_names(js) == {"only": "bench-only"}
 
 
 # --------------------------------------------------------------------- #
@@ -454,7 +454,7 @@ def test_prep_renders_real_wrappers_into_each_job_dir(tmp_path):
     # rendered ONCE in the bundle root, from the real file.
     assert (tmp_path / "job-gpu.run.sh").is_file()
     # symlinked into BOTH job dirs (one shared wrapper, the bench model).
-    for name in ("point-G1K1C4", "point-G1K2C4"):
+    for name in ("bench-G1K1C4", "bench-G1K2C4"):
         link = tmp_path / name / "job-gpu.run.sh"
         assert link.is_symlink() and os.readlink(link) == "../job-gpu.run.sh"
         assert link.resolve() == (tmp_path / "job-gpu.run.sh").resolve()
@@ -578,8 +578,8 @@ def test_submit_slurm_parses_the_id_and_records_the_launch(tmp_path,
     went with batch submission, and this half is what `status` reads back.
     """
     js = _ladder()
-    (tmp_path / "point-s1").mkdir()
-    (tmp_path / "point-s1" / "demo_s1.sbatch").write_text("x")
+    (tmp_path / "bench-s1").mkdir()
+    (tmp_path / "bench-s1" / "demo_s1.sbatch").write_text("x")
     monkeypatch.setattr(_submit.subprocess, "run",
                         lambda *a, **k: _CP(stdout="Submitted batch job 111"))
     res = submit_jobset(js, tmp_path, mode="submit", only="s1")
@@ -588,15 +588,15 @@ def test_submit_slurm_parses_the_id_and_records_the_launch(tmp_path,
 
 def test_submit_slurm_errors_when_not_prepped(tmp_path):
     # real run (not dry): a missing wrapper is a friendly error, not a crash.
-    (tmp_path / "point-s1").mkdir()
+    (tmp_path / "bench-s1").mkdir()
     with pytest.raises(SubmitError, match="prep first"):
         submit_jobset(_ladder(), tmp_path, mode="submit", only="s1")
 
 
 def test_submit_slurm_raises_on_sbatch_failure(tmp_path, monkeypatch):
     js = _ladder()
-    (tmp_path / "point-s1").mkdir()
-    (tmp_path / "point-s1" / "demo_s1.sbatch").write_text("x")
+    (tmp_path / "bench-s1").mkdir()
+    (tmp_path / "bench-s1" / "demo_s1.sbatch").write_text("x")
     monkeypatch.setattr(_submit.subprocess, "run",
                         lambda *a, **k: _CP(returncode=1, stderr="boom"))
     with pytest.raises(SubmitError, match="sbatch failed"):
@@ -639,7 +639,7 @@ def test_direct_mode_is_untouched_because_it_is_not_submission(tmp_path,
     each job here, in order, waiting for each — nothing queues, nothing races,
     and the user's 2026-08-10 directive keeps the flat shape runnable this
     way."""
-    for d in ("point-G1K1C4", "point-G1K2C4"):
+    for d in ("bench-G1K1C4", "bench-G1K2C4"):
         (tmp_path / d).mkdir()
         (tmp_path / d / "job-gpu.run.sh").write_text("x")
     monkeypatch.setattr(_submit.subprocess, "run", lambda *a, **k: _CP())
@@ -670,7 +670,7 @@ def test_a_failure_skips_nothing_because_nothing_depends_on_anything(tmp_path,
     arrives with several jobs, and its points are independent by definition:
     one bad point says nothing about the next.
     """
-    for d in ("point-G1K1C4", "point-G1K2C4"):
+    for d in ("bench-G1K1C4", "bench-G1K2C4"):
         (tmp_path / d).mkdir()
         (tmp_path / d / "job-gpu.run.sh").write_text("x")
     monkeypatch.setattr(_submit.subprocess, "run",
@@ -766,7 +766,7 @@ def test_cli_prep_lays_out_dirs(tmp_path):
                             "--no-sbatch"])
     assert r.exit_code == 0, r.output
     assert "prepped 2 trial dir(s)" in r.output
-    assert (tmp_path / "point-G1K1C4" / "job-gpu.run.sh").is_symlink()
+    assert (tmp_path / "bench-G1K1C4" / "job-gpu.run.sh").is_symlink()
 
 
 def test_cli_submit_dry_run_lists_commands(tmp_path):
@@ -912,8 +912,8 @@ def test_status_fresh_bundle_all_not_started(tmp_path):
 
 
 def test_status_pending_and_warm_files(tmp_path):
-    (tmp_path / "point-s1").mkdir()
-    (tmp_path / "point-s1" / "demo.XV").write_text("x")   # label = jobset.name
+    (tmp_path / "bench-s1").mkdir()
+    (tmp_path / "bench-s1" / "demo.XV").write_text("x")   # label = jobset.name
     st = jobset_status(_ladder(), tmp_path)
     assert st.stages[0].state == "pending"                # dir, no .out
     assert "demo.XV" in st.stages[0].warm_files
@@ -921,11 +921,11 @@ def test_status_pending_and_warm_files(tmp_path):
 
 def test_status_first_incomplete_advances(tmp_path, monkeypatch):
     import molbuilder.parse.dirs.job as jobmod
-    for n in ("point-s1", "point-s2"):
+    for n in ("bench-s1", "bench-s2"):
         d = tmp_path / n; d.mkdir(); (d / "demo.out").write_text("x")
     monkeypatch.setattr(jobmod, "decode_run_dir",
-                        _fake_decoder({"point-s1": "finished",
-                                       "point-s2": "running"}))
+                        _fake_decoder({"bench-s1": "finished",
+                                       "bench-s2": "running"}))
     st = jobset_status(_ladder(), tmp_path)
     assert st.stages[0].state == "finished"
     assert st.first_incomplete == "s2" and st.complete is False
@@ -933,11 +933,11 @@ def test_status_first_incomplete_advances(tmp_path, monkeypatch):
 
 def test_status_complete_when_all_finished(tmp_path, monkeypatch):
     import molbuilder.parse.dirs.job as jobmod
-    for n in ("point-s1", "point-s2"):
+    for n in ("bench-s1", "bench-s2"):
         d = tmp_path / n; d.mkdir(); (d / "demo.out").write_text("x")
     monkeypatch.setattr(jobmod, "decode_run_dir",
-                        _fake_decoder({"point-s1": "finished",
-                                       "point-s2": "finished"}))
+                        _fake_decoder({"bench-s1": "finished",
+                                       "bench-s2": "finished"}))
     st = jobset_status(_ladder(), tmp_path)
     assert st.complete is True and st.first_incomplete is None
     assert "All stages finished" in render_status(st)
@@ -964,7 +964,7 @@ def test_status_finished_with_real_siesta_out(tmp_path):
     import shutil
     fix = (Path(__file__).parent / "watch" / "fixtures" / "siesta_frozen"
            / "hemeC-stage2-run3-finished-42fr.out")
-    d = tmp_path / "point-s1"; d.mkdir()
+    d = tmp_path / "bench-s1"; d.mkdir()
     shutil.copy(fix, d / "demo.out")            # label = jobset.name = "demo"
     st = jobset_status(_ladder(), tmp_path)
     assert st.stages[0].state == "finished"     # REAL parse of a finished run
@@ -1079,7 +1079,7 @@ def test_job_dir_names_sweep_is_unchanged_by_the_total_refs():
     from molbuilder.jobset.model import Job, JobSet
     js = JobSet(name="JOB", engine="siesta", kind="sweep",
                 jobs=[Job(name="p1", script="JOB_p1.fdf")])
-    assert job_dir_names(js) == {"p1": "point-p1"}
+    assert job_dir_names(js) == {"p1": "bench-p1"}
 
 
 def test_a_sweep_point_prints_a_dash_not_its_row_under_seq(tmp_path):
@@ -1092,7 +1092,7 @@ def test_a_sweep_point_prints_a_dash_not_its_row_under_seq(tmp_path):
     body = [l for l in render_plan(js).splitlines() if "p2" in l]
     assert body[0].split()[0] == "-"          # NOT "1", which the row would be
     # tmp_path, never ".": status READS the filesystem, and a repo that
-    # happened to hold a `point-p2/` would decide this test's outcome.
+    # happened to hold a `bench-p2/` would decide this test's outcome.
     out = render_status(jobset_status(js, tmp_path))
     assert [l.split()[0] for l in out.splitlines() if "p2" in l] == ["-"]
 
@@ -1262,7 +1262,7 @@ def test_a_gpu_stage_is_routed_by_its_DECK_not_by_an_unset_gres(tmp_path):
 
     # a sweep point that STATES its gres is honoured unchanged: the benchmark
     # sweeps a GPU count, which is not a property of one deck
-    pt = tmp_path / "point-G1K1C4"; pt.mkdir()
+    pt = tmp_path / "bench-G1K1C4"; pt.mkdir()
     assert _job_wants_gpu(pt, Job(name="p", script="job-gpu.fdf",
                                   resources=Resources(gres="gpu:a100:1"))) is True
 
@@ -1918,7 +1918,7 @@ def test_a_flat_ladder_lays_every_stage_out_in_the_bundle_root():
 
 
 def test_a_sweep_is_laid_out_the_same_way_in_either_shape():
-    """`point-<name>` is the benchmark's own convention and says nothing about
+    """`bench-<name>` is the benchmark's own convention and says nothing about
     flat or hierarchical -- which is why a bench bundle needs no description to
     be laid out at all."""
     from molbuilder.jobset.materialize import job_dir_names
@@ -1928,7 +1928,7 @@ def test_a_sweep_is_laid_out_the_same_way_in_either_shape():
                 jobs=[Job(name="p1", script="JOB_p1.fdf")])
     assert (job_dir_names(js, Shape.named("flat"))
             == job_dir_names(js, Shape.named("hierarchical"))
-            == {"p1": "point-p1"})
+            == {"p1": "bench-p1"})
 
 
 def _describe(base, shape, names=("coarse", "tight")):
@@ -1968,7 +1968,7 @@ def test_the_surfaces_read_the_shape_from_the_description(tmp_path):
 
 
 def test_a_sweep_asks_no_description_for_its_shape(tmp_path):
-    """`point-<name>` is the benchmark's convention in either layout, which is
+    """`bench-<name>` is the benchmark's convention in either layout, which is
     why a bench bundle carries no `task.json` and needs none."""
     from molbuilder.jobset.materialize import shape_of
     from molbuilder.jobset.model import Job, JobSet

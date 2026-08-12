@@ -1,7 +1,7 @@
 """``bench summarize`` -- read a run sweep's artifacts -> ``bench-result``.
 
 Step 3 of the target side (benchmark-workflow.md § 7.4): walk the
-per-point ``point-G<g>K<k>C<c>/`` directories the sweep produced (§ 7.3
+per-point ``bench-G<g>K<k>C<c>/`` directories the sweep produced (§ 7.3
 isolation), parse each point's timing / utilization / state with the pure
 parsers in :mod:`molbuilder.bench.result`, and write ``bench-result.json``
 (§ 5.3) -- the only input ``prep-run`` needs.
@@ -27,7 +27,7 @@ from .result import (
 # with SCF.MustConverge .false. still exits cleanly and prints these).
 _DONE_MARKERS = ("Job completed", "End of run", "siesta: Final energy",
                  ">> End of run:")
-_POINT_RE = re.compile(r"^point-G(\d+)K(\d+)C(\d+)$")
+_POINT_RE = re.compile(r"^bench-G(\d+)K(\d+)C(\d+)$")
 _RUN_IDX = re.compile(r"-run(\d+)\.")
 
 
@@ -102,11 +102,11 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
 
 
 def discover_points(bundle) -> List[BenchPoint]:
-    """Find + parse every sweep point: the GPU ``point-G<g>K<k>C<c>/`` dirs,
+    """Find + parse every sweep point: the GPU ``bench-G<g>K<k>C<c>/`` dirs,
     plus a single CPU run (``job-cpu-*`` in the bundle root) if present."""
     bundle = Path(bundle)
     pts: List[BenchPoint] = []
-    for d in sorted(p for p in bundle.glob("point-G*K*C*") if p.is_dir()):
+    for d in sorted(p for p in bundle.glob("bench-G*K*C*") if p.is_dir()):
         m = _POINT_RE.match(d.name)
         if not m:
             continue

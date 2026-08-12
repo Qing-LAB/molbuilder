@@ -37,18 +37,18 @@ def test_sweep_to_jobset_grid_matches_bash_sweep():
     adapter = adapters.SlurmAdapter()
     js = sweep_to_jobset(adapter, env)
     bash = adapter.format_bench(env)["job-gpu-sweep.sh"]
-    bash_points = set(re.findall(r"_mb_point (point-G\d+K\d+C\d+)", bash))
-    jobset_points = {f"point-{j.name}" for j in js.jobs}
+    bash_points = set(re.findall(r"_mb_point (bench-G\d+K\d+C\d+)", bash))
+    jobset_points = {f"bench-{j.name}" for j in js.jobs}
     assert jobset_points == bash_points and jobset_points
 
 
 def test_sweep_jobset_materializes_to_summarize_dirs(tmp_path):
-    """Materializing the JobSet yields point-G<g>K<k>C<c>/ dirs -- exactly the
+    """Materializing the JobSet yields bench-G<g>K<k>C<c>/ dirs -- exactly the
     convention summarize._POINT_RE globs."""
     js = sweep_to_jobset(adapters.SlurmAdapter(), _env(cores=24, gpn=1))
     (tmp_path / "job-gpu.fdf").write_text("x")
     dirs = materialize(js, tmp_path)
-    R = re.compile(r"^point-G\d+K\d+C\d+$")               # == summarize._POINT_RE
+    R = re.compile(r"^bench-G\d+K\d+C\d+$")               # == summarize._POINT_RE
     assert dirs and all(R.match(d.name) for d in dirs)
 
 

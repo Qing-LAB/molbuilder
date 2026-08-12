@@ -3,7 +3,7 @@
 
 This is the keystone both producers feed: the SIESTA stage ladder and
 (once it migrates) the benchmark sweep render to a JobSet, ``prep_jobset``
-renders the launchers + lays out the ``point-<name>/`` tree, and THIS engine
+renders the launchers + lays out the ``bench-<name>/`` tree, and THIS engine
 launches them.  It assumes prep already ran (the wrappers are symlinked into
 each job dir); it renders nothing itself.
 
@@ -275,7 +275,7 @@ def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Pat
     """Where this job runs, and the attempt to record the launch into.
 
     Two layouts meet here.  A SWEEP has no attempt layer -- ``prep`` lays out
-    ``point-<name>/`` and the point runs there, as it always has.  A LADDER
+    ``bench-<name>/`` and the point runs there, as it always has.  A LADDER
     stage prepped with ``jobset prep run <stage>`` has ``<seq>_<name>/run-<n>/``,
     and that is where it runs, because an attempt is immutable once it has run
     (``project-layout.md`` § 1.5) and a re-run must not land on top of one.

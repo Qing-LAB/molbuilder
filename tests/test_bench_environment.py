@@ -229,13 +229,13 @@ def test_format_bench_workstation_emits_direct_grid():
             "OMP_NUM_THREADS=3 ./job-gpu.run.sh") in s
     assert "SEQUENTIALLY" in s
     # each point is isolated in its own G/K/c dir
-    assert "_mb_point point-G1K8C3" in s
-    assert "( cd point-G1K8C3 &&" in s
+    assert "_mb_point bench-G1K8C3" in s
+    assert "( cd bench-G1K8C3 &&" in s
 
 
 def test_format_bench_isolates_points_at_runtime(tmp_path):
     # Functional: the workstation sweep must run each point in its OWN
-    # point-G<g>K<k>/ dir with the shared files symlinked in, so outputs
+    # bench-G<g>K<k>/ dir with the shared files symlinked in, so outputs
     # never collide on the job-gpu basename.
     (tmp_path / "job-gpu.fdf").write_text("fake fdf\n")
     (tmp_path / "C.psml").write_text("pseudo\n")
@@ -255,13 +255,13 @@ def test_format_bench_isolates_points_at_runtime(tmp_path):
     # G×K×c grid (§8.12): cps=4 -> K∈{1,2,4}, c bracket {1,cps//K,2cps//K}:
     #   K=1->{1,4,8}, K=2->{1,2,4}, K=4->{1,2}  = 8 points; C1 is in every row.
     for k in (1, 2, 4):
-        d = tmp_path / f"point-G1K{k}C1"
+        d = tmp_path / f"bench-G1K{k}C1"
         assert d.is_dir()
         assert (d / "job-gpu.fdf").is_symlink()
         assert (d / "C.psml").is_symlink()
     ran = (tmp_path / "_ran.log").read_text().split()
     assert len(ran) == 8                       # one run per (K,c) point...
-    assert all("point-G1K" in line for line in ran)   # ...each in its dir
+    assert all("bench-G1K" in line for line in ran)   # ...each in its dir
 
 
 def test_format_bench_unknown_cores_uses_fallback_ks():

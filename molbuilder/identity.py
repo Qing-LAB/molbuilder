@@ -279,7 +279,7 @@ class StageRef:
         """``<NN>_<name>`` — or ``None``, when there is no ordinal to put in it.
 
         Optional rather than a bare name, because a job without an ordinal has
-        no token: it is named by the *other* convention (``point-<name>``), and
+        no token: it is named by the *other* convention (``bench-<name>``), and
         handing back something token-shaped would invite a caller to write it
         into a path.
         """
