@@ -601,8 +601,9 @@ the log alone answers *"was this launched properly, run by hand on purpose,
 or refused?"* — and nothing can ever sit waiting on a prompt, because a
 non-interactive shell never prompts, it refuses. The deliberate manual form
 is `MB_LAUNCHED_BY=manual bash JOB.run.sh` (backgroundable), and the value is
-logged so the choice is on record. *(`bench-runner` is the transitional claim
-of the old bench launcher and dies with it — plan step 6.)*
+logged so the choice is on record. *(`bench-runner` was the transitional
+claim of the old bench launchers; they died at step 6 u5, 2026-08-12, and no
+shipped script emits it any more.)*
 
 ---
 

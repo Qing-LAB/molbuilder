@@ -215,6 +215,17 @@ def write_description(desc: Description, dest, *,
     try:
         for filename, text in desc.files().items():
             (staging / filename).write_text(text, encoding="utf-8")
+        # The STRUCTURE travels with the calculation (found by M9's walk,
+        # 2026-08-12): the description records a reference plus a witness
+        # (stages.md § 6.3), and `prep` looks "beside the calculation
+        # FIRST" -- but nothing made that true.  A relative source recorded
+        # from another cwd was unresolvable the moment you stood inside the
+        # folder.  Copied like the pseudos: the file is the calculation's
+        # data, the PATH stays this machine's.
+        src = (Path(desc.task.structure.source).expanduser()
+               if desc.task.structure.source else None)
+        if src is not None and src.is_file():
+            shutil.copy2(src, staging / src.name)
         if psml_lib and desc.pseudo_species:
             from .siesta.input import copy_pseudopotentials
             lib = Path(psml_lib).expanduser()

@@ -1,18 +1,16 @@
-"""``molbuilder jobset ...`` — operate on a bundle's ``job-set.json``
-(docs/execution/job-system.md).
+"""``molbuilder jobset ...`` — the calculation's one grammar
+(docs/execution/job-system.md § 5.3).
 
-The thin CLI/bundle wrapper the framework needed: the engine-agnostic
-target-side verbs over a persisted JobSet, mirroring ``molbuilder bench``.
-Each command loads ``<bundle>/job-set.json`` and calls one engine:
+``describe`` writes the portable folder (floor 2); on the machine that runs
+it, ``prep`` derives floor 3 and everything below (the five steps of
+project-layout.md § 2.3.1), ``submit`` launches ONE job per invocation, and
+``summarize`` reads a sweep's results back.  Nothing is produced on a host
+and shipped — a bundle carrying a pre-made ``job-set.json`` is the legacy
+route, and it narrows with every fold.
 
-  * ``plan``    -> ``render_plan``    (the jobs + per-job resources, dry)
-  * ``prep``    -> ``prep_jobset``    (render launchers + lay out point dirs)
-  * ``submit``  -> ``submit_jobset``  (launch; ``--dry-run`` shows commands)
-
-It owns no policy: the JobSet (produced on the host) is the source of truth;
-these verbs just realize it on the target.  ``submit`` defaults to
-``--dry-run`` off but PRINTS what it will do — the user picks the mode and
-domain explicitly (assistant, not nanny; never a silent auto-submit).
+The verbs own no policy: ``submit`` PRINTS what it will do and the user
+picks the mode and domain explicitly (assistant, not nanny; never a silent
+auto-submit).
 """
 
 from __future__ import annotations
@@ -48,9 +46,11 @@ def _load(bundle: str) -> tuple:
 
 @click.group("jobset", short_help="run a job-set bundle (stage ladder / sweep)")
 def jobset_group() -> None:
-    """Operate on a bundle's ``job-set.json`` -- the engine-agnostic
-    execution framework (job-system.md).  Produce the JobSet on the
-    host; ``prep`` then ``submit`` it on the target."""
+    """The calculation's verbs, one grammar (job-system.md § 5.3):
+    ``describe`` writes the portable folder; on the machine that runs it,
+    ``prep`` derives everything else and ``submit`` launches one job per
+    invocation.  Floor 3 (``job-set.json``) is DERIVED at prep, on the
+    target -- nothing is produced on a host and shipped."""
 
 
 #: The calculation folder, spelled the same way on every verb.

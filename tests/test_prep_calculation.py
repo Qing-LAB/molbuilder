@@ -175,8 +175,12 @@ def test_a_folder_with_no_description_is_refused_by_name(tmp_path):
 def test_a_structure_that_changed_since_describing_is_refused(calc, tmp_path):
     """§ 6.3's witness earning its place: the description records a formula and
     an atom count, so building a *different* calculation under the same id is
-    caught rather than discovered in the results."""
-    (tmp_path / "bdt.xyz").write_text(
+    caught rather than discovered in the results.
+
+    The mutated file is the CALCULATION'S OWN copy — `describe` copies the
+    structure in since 2026-08-12 (M9's walk found nothing made "beside the
+    calculation first" true), and that copy is what `prep` reads."""
+    (calc / "bdt.xyz").write_text(
         Structure(elements=["H", "H"],
                   positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
                   vacuum=(10.0, 10.0, 10.0)).to_xyz())

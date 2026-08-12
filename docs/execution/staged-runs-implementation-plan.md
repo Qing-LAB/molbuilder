@@ -1918,9 +1918,14 @@ doctrine: a thin shell over the web API; `click`).
 **Subtracts:** `bench generate`, `bench prep`, `bench summarize`, `bench
 prep-run` as top-level verbs.
 
-**Milestone M9.** The session in step 1c runs verbatim, from inside a
-calculation folder. `--help` reads as one grammar rather than two surfaces over
-one mechanism.
+**Milestone M9 ✅ RAN 2026-08-12**, verbatim, from inside a calculation
+folder: describe → prep bench → submit bench (one trial; the bare form
+refuses with kind-correct advice) → summarize (winner ranked) → prep run
+(the verdict FOUND, SHOWN, ASKED; applied only where flags were silent) →
+submit run carrying the measured knobs. `--help` reads as one grammar.
+**The walk found one real gap, fixed with it:** nothing made "the structure
+travels beside the calculation" true — `describe` now copies it in, and the
+witness test guards the copy that travels.
 
 **Reviews:** 1 · 2 (two names for one act is what the old split cost — prove
 there is now one) · 3 (walk the whole loop: describe → prep bench → submit →

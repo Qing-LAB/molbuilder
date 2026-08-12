@@ -435,7 +435,9 @@ def _refuse_batch_submission(jobset: JobSet, base_dir: Path, *,
             "same cores and interconnect, so the sweep measures contention "
             "rather than scaling.\n"
             "  Name the one you mean:\n"
-            "    molbuilder jobset submit run <stage> --mode submit\n"
+            f"    molbuilder jobset submit "
+            f"{'bench <trial>' if jobset.kind == 'sweep' else 'run <stage>'}"
+            " --mode submit\n"
             "  `--mode direct` is not affected: it runs them here, in order, "
             "waiting for each.")
 
