@@ -2957,13 +2957,32 @@ The order is forced by what each needs to exist beneath it:
 
 | # | build | why here | closes |
 |---|---|---|---|
-| **1** | **`template/` in TOML.** One file, `kind` · `read_by` · no payload, **plus `label` · `section` · `null_label` so the UI can be built from it** ([`generator.md`](?doc=execution/generator.md) § 3.1). Writer computes the fingerprint. **⚠ The machine facts do NOT move here — see below** | it is the bottom of the data spine; everything else reads it. Doing (A) here rather than later means floor 3 is *built* against a clean floor 2 instead of being corrected afterwards | G · H · A · C4 · C5 · C10 · **the UI key set** |
+| **1** ✅ | **LANDED 2026-08-11 (4aeba915).** **`template/` in TOML.** One file, `kind` · `read_by` · no payload, **plus `label` · `section` · `null_label` so the UI can be built from it** ([`generator.md`](?doc=execution/generator.md) § 3.1). Writer computes the fingerprint. **⚠ The machine facts do NOT move here — see below** | it is the bottom of the data spine; everything else reads it. Doing (A) here rather than later means floor 3 is *built* against a clean floor 2 instead of being corrected afterwards | G · H · A · C4 · C5 · C10 · **the UI key set** |
 | **2** | **`jobset describe`** — writes template + `task.json` + data files, floor 2 only | the only writer of floor 2 today is the verb step 4 deletes | C9 |
 | **3** | **`resolve/` → `ParameterSet`.** template ⊕ overrides ⊕ sweep point ⊕ pin → `list[ResolvedConfig]`, each carrying its **own** `resources`, built from `Environment` + the allocation. **⚠ `mpi_np`, `omp_threads` and `max_memory_mb` leave the exposed item set HERE, not at step 1** | **the hinge.** It consumes floor 1 and floor 2 — the two artifacts nothing reads — and it is what makes a run *"a sweep of length one"* | the one defect · B · C |
 | **4** | **`prep` gains steps 2 and 3**, looping over the `ParameterSet` | steps 2 and 3 have nothing to do until step 3 above exists | E · § 9.3's migration |
 | **5** | **delete the old surface** — `cmd_run`, `cmd_fdf`, the `--chain` message | now that a producer exists to replace it | C1 · C2 · C3 · C11 |
 | **6** | **fold `bench`**: `sweep_to_jobset` and `stages_to_jobset` become one enumeration; `transform_fdf` deletes | `project-layout.md` § 2.3.1a's *"largest, least revertible"* — and it is only safe once (3) is proven on the staged path | F · C6 |
 | **7** | **`cfg.stage` out of the emitter**, token as a render argument | `prep` holds the `StageRef` only after (4) | C7 · C8 |
+
+> ### ✅ Step 1 landed — 2026-08-11, commit `4aeba915`
+>
+> `molbuilder/template.py` is one TOML file: the `Item` type, `kind` · `read_by`,
+> **no payload**, the three surface keys, and the writer computes the
+> fingerprint. **C4, C5 and C10 close with it**, and G and H above with them.
+>
+> **Three things the build itself found, which is the argument for doing it in
+> this order:**
+>
+> | | |
+> |---|---|
+> | **the loud refusal works** | `template.md` § 7 says an unclassifiable parameter is *"a gap in this vocabulary"* to fix loudly. Making `declaration_for` refuse by name found **8 such fields in `SiestaConfig`** — and then **3 more in `PySCFConfig`**, which nothing would have surfaced otherwise |
+> | **the writer's self-check earned its keep immediately** | § 4.1 asks the emitter to read its own output back. It is mutation-tested, and it is what makes *"we emitted TOML correctly"* a property rather than a hope |
+> | **the round trip caught a live bug in its first run** | `kgrid` is a `Tuple[int, int, int]` and TOML has one sequence type, so it round-tripped to a **list** — equal in content, different in type. Fixed by shaping from the declared type on read; now lossless over all 39 exposed fields |
+>
+> **What did NOT move, deliberately:** the item *set*. `mpi_np`, `omp_threads`
+> and `max_memory_mb` are still template items, now correctly typed
+> `kind="wrapper"` — they leave at step 3, for the reason below.
 
 > ### ⚠ Why the machine facts move at step 3 and not step 1 — found at the gate
 >
