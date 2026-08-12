@@ -558,6 +558,42 @@ def _echo_resolved(js, base, stage_name: str, attempt) -> None:
         f"{a.rendered_text}.", fg="yellow"), err=True)
 
 
+@jobset_group.command("summarize",
+                      short_help="read a sweep's results -> bench-result.json")
+@click.argument("kind", type=click.Choice(_KINDS))
+@click.argument("stage", required=False, default=None)
+@click.option("--bundle", "bundle", default=".",
+              type=click.Path(exists=True, file_okay=False),
+              help="the calculation folder (default: the current directory).")
+def summarize_cmd(kind: str, stage, bundle: str) -> None:
+    """Read the trials' artifacts and write ``bench-result.json`` — a
+    recommendation, not a decision (`project-layout.md` § 2.3.2): you read
+    it, you decide.
+
+    **Asynchronous by design** (user, 2026-08-12): trials are ordinary jobs
+    whose results land in the same logs as any run — the ``.out`` timer, the
+    monitor's samples.  Run this after the queue drains; a trial that has
+    produced nothing yet reports ``state=unknown`` and one started but
+    unfinished ``incomplete`` — never a failure of the set.
+    Discovery is keyed by ``job-set.json``'s own data, never by parsing
+    directory names back (`job-contracts.md` § 6.3).
+    """
+    js, base = _load(bundle)
+    _check_kind(kind, js)
+    if kind != "bench":
+        raise click.ClickException(
+            "summarize reads a BENCH sweep's measurements.  A run's own "
+            "outputs are the calculation's results -- `jobset status` and "
+            "the Watch tab are their readers (job-system.md § 5.3).")
+    from ..bench.prep import utc_now_iso
+    from ..bench.summarize import run_summarize_jobset, summary_text
+    res, out_path = run_summarize_jobset(js, base, stage=stage,
+                                         now_iso=utc_now_iso())
+    click.echo(summary_text(res, out_path))
+    click.echo("next: molbuilder jobset prep run <stage>   (it will FIND "
+               "this verdict and ASK)")
+
+
 @jobset_group.command("submit", short_help="launch a prepped stage")
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("stage", required=False, default=None)

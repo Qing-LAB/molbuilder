@@ -151,6 +151,30 @@ def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
     assert "config:" in r.output          # provenance rides every prep
 
 
+def test_cli_summarize_bench_reads_trials_by_data(calc):
+    """u4: discovery keyed by job-set.json's data, results through the same
+    artifacts as any run, ASYNC — a trial with no output yet reports
+    ``incomplete`` rather than failing the set (user, 2026-08-12)."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    js = _prep_bench(calc)
+    name = js["jobs"][0]["name"]
+    d = calc / "01_coarse" / f"bench-{name}"
+    (d / f"JOB-{name}_01_coarse-run0.out").write_text(
+        "banner\nsiesta: Final energy (eV) = -1.0\n")
+    r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
+                                          "--bundle", str(calc)])
+    assert r.exit_code == 0, r.output
+    assert (calc / "bench-result.json").is_file()
+    assert name in r.output
+    assert "completed" in r.output       # the trial with the finished .out
+    assert "unknown" in r.output         # siblings with no output yet
+    # A run's outputs are the calculation's, not a benchmark's to rank.
+    r = CliRunner().invoke(jobset_group,
+                           ["summarize", "run", "--bundle", str(calc)])
+    assert r.exit_code != 0
+
+
 def test_cli_submit_bench_is_one_trial_per_invocation(calc):
     """Bare `submit bench` refuses and names the trials; naming one plans
     exactly one launch (§ 2.3.2, decided 2026-08-12)."""

@@ -154,6 +154,58 @@ def _read_system(bundle: Path) -> Dict:
     return sysd
 
 
+def discover_points_from_jobset(bundle, jobset,
+                                stage: Optional[str] = None
+                                ) -> List[BenchPoint]:
+    """Discovery keyed by the DATA floor 3 wrote — the fold's reader
+    (plan step 6 u4).
+
+    Each trial's directory comes from the naming authority
+    (``job_dir_names``) and its knobs from the job's own ``resources`` —
+    never by parsing a directory name back (`job-contracts.md` § 6.3: the
+    token is an identifier, not a parser target).  ``stage`` filters to the
+    trials of one stage, read off each deck's own token.
+
+    :func:`discover_points` above remains for the OLD bench bundle format
+    and dies with it (u5).
+    """
+    from ..jobset.materialize import (_trial_stage_token, job_dir_names,
+                                      shape_of)
+    bundle = Path(bundle)
+    dirs = job_dir_names(jobset, shape_of(jobset, bundle))
+    pts: List[BenchPoint] = []
+    for j in jobset.jobs:
+        if stage is not None:
+            tok = _trial_stage_token(jobset, j)
+            if not tok or not tok.endswith(f"_{stage}"):
+                continue
+        knobs: Dict = {}
+        if j.resources.mpi_np:
+            knobs["ranks"] = j.resources.mpi_np
+        if j.resources.cpus_per_task:
+            knobs["cores_per_rank"] = j.resources.cpus_per_task
+        if j.resources.gres:
+            knobs["gres"] = j.resources.gres
+        pts.append(parse_point(
+            j.name, bundle / dirs[j.name], Path(j.script).stem,
+            "gpu" if j.resources.gres else "cpu", knobs))
+    return pts
+
+
+def run_summarize_jobset(jobset, bundle, *, stage: Optional[str] = None,
+                         out=None, now_iso: Optional[str] = None):
+    """Summarize a described sweep through the data-keyed reader and write
+    ``bench-result.json``; returns ``(BenchResult, out_path)``."""
+    res = build_bench_result(
+        discover_points_from_jobset(bundle, jobset, stage=stage),
+        environment=_read_environment(Path(bundle)),
+        system=_read_system(Path(bundle)),
+        now_iso=now_iso)
+    out_path = Path(out) if out else Path(bundle) / "bench-result.json"
+    out_path.write_text(res.to_json() + "\n", encoding="utf-8")
+    return res, out_path
+
+
 def summarize_bundle(bundle, *, now_iso: Optional[str] = None) -> BenchResult:
     """Assemble the ``bench-result`` for a run bundle directory."""
     return build_bench_result(

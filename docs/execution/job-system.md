@@ -761,7 +761,7 @@ over different parameters (`project-layout.md § 2.3.1a`).
 > |---|:--:|:--:|:--:|
 > | `prep` | ✅ | ⛔ `molbuilder bench generate` + `bench prep` | ✅ (lays out every container) |
 > | `submit` | ✅ | ⛔ `molbuilder bench siesta-gpu` | — |
-> | `summarize` | — | ⛔ `molbuilder bench summarize` | — |
+> | `summarize` | — | ✅ **LANDED 2026-08-12** (step 6 u4) — discovery keyed by `job-set.json`, results through the ordinary artifacts, async | — |
 > | `describe` | — | — | ✅ **LANDED 2026-08-11** (plan step 2). Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once |
 > | `status` | — | — | ✅ whole calculation · ✅ per-stage (`status <stage>`) |
 > | `plan` | — | — | ✅ |
