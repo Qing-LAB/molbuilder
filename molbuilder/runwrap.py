@@ -502,7 +502,12 @@ def _runtime_status_block(
             f"    fi\n"
             f"fi\n"
         )
-        warm_files_label = "DM/CG/XV/LWF/ZM"
+        # DERIVED from the one tuple, like the detection above it: a
+        # hand-typed five-name label told a .TSHS-only directory the
+        # engine "will load DM/CG/XV..." -- files that were not there --
+        # while the detection had already keyed on all thirteen (R9).
+        warm_files_label = "/".join(x.lstrip(".")
+                                    for x in _SIESTA_WARM_SUFFIXES)
     elif engine == "pyscf":
         # PySCF's ``mf.chkfile`` is keyed on ``JOB`` (a Python
         # variable in the .py script), same naming-mismatch risk as
@@ -1889,10 +1894,13 @@ def render_run_wrapper(script_path: Path, *,
             f"                   Prior .DM/.CG/.XV warm-start files STAY\n"
             f"                   on disk -- SIESTA will still load them.\n"
             f"  --cold,\n"
-            f"  --from-scratch   move .DM/.CG/.XV/.LWF/.ZM warm-start\n"
-            f"                   files into a timestamped backup dir\n"
-            f"                   BEFORE running.  Use when a prior run\n"
-            f"                   was bad (e.g. wrong constraints) and its\n"
+            f"  --from-scratch   NAME SWEEP: move EVERYTHING named after\n"
+            f"                   the run's id -- minus what molbuilder\n"
+            f"                   itself wrote -- into a timestamped\n"
+            f"                   backup dir BEFORE running (job-contracts\n"
+            f"                   4.1; a list of extensions was a snapshot\n"
+            f"                   of one build).  Use when a prior run was\n"
+            f"                   bad (e.g. wrong constraints) and its\n"
             f"                   restart files would corrupt this run.\n"
             f"                   Combine with -f to also restart the\n"
             f"                   run-index sequence at -run0.\n"
@@ -2441,13 +2449,22 @@ def render_run_wrapper(script_path: Path, *,
         # defined.  A hook nothing defines is dead weight in every
         # wrapper and a false lead in every debugging session.)
 
+        # ``|| true`` on every arm: this trap runs UNDER set -e, and bash
+        # exits on the failure of the command following the final ``&&`` --
+        # a monitor already dead (the COMMON case at cleanup) killed the
+        # trap mid-body and skipped the MPS teardown below (R9,
+        # 2026-08-12; the warm-retry's identical kill was already
+        # guarded).  Same for a vanished MPS control daemon under
+        # pipefail.
         f'    [ -n "${{_monitor_pid:-}}" ] && kill "$_monitor_pid" '
-        f"2>/dev/null\n"
-        f'    [ -n "${{_rank_helper:-}}" ] && rm -f "$_rank_helper" 2>/dev/null\n'
+        f"2>/dev/null || true\n"
+        f'    [ -n "${{_rank_helper:-}}" ] && rm -f "$_rank_helper" '
+        f"2>/dev/null || true\n"
         f'    if [ "${{_mps_started:-0}}" = "1" ]; then\n'
-        f"        echo quit | nvidia-cuda-mps-control >/dev/null 2>&1\n"
+        f"        echo quit | nvidia-cuda-mps-control >/dev/null 2>&1 "
+        f"|| true\n"
         f'        rm -rf "${{CUDA_MPS_PIPE_DIRECTORY:-}}" '
-        f'"${{CUDA_MPS_LOG_DIRECTORY:-}}" 2>/dev/null\n'
+        f'"${{CUDA_MPS_LOG_DIRECTORY:-}}" 2>/dev/null || true\n'
         f"    fi\n"
         f"}}\n"
         f"trap _mb_cleanup EXIT\n"
@@ -2833,12 +2850,12 @@ def render_run_wrapper(script_path: Path, *,
         f"\n"
         f"# --- Per-run log file (current directory; see docs/execution/running-a-job.md § 5) -\n"
         f'_runwrap_log="$PWD/{basename}.runwrap-$(date +%Y%m%d-%H%M%S).log"\n'
-        f"# ABSOLUTE, and it has to be.  With attempt directories the wrapper\n"
-        f"# cd's into run-<n>/ after this point, and every later reference --\n"
-        f"# the propor/ERROR hints grep \"$_out_file\" \"$_runwrap_log\" -- would\n"
-        f"# otherwise resolve against the attempt directory, where the log is\n"
-        f"# not, silently searching half the evidence.  The log cannot open\n"
-        f"# inside the attempt because it captures the setup that BUILDS it.\n"
+        f"# ABSOLUTE, and it has to be: every later reference -- the\n"
+        f"# propor/ERROR hints grep \"$_out_file\" \"$_runwrap_log\" -- must\n"
+        f"# resolve wherever it runs from.  (A comment here claimed the\n"
+        f"# wrapper 'cd's into run-<n>/ after this point' -- the attempt-dir\n"
+        f"# cd was retired 2026-08-10, and this wrapper twice states it\n"
+        f"# never changes cwd; R9 removed the ghost.)\n"
         f"# It opens BEFORE the launch-door gate (U10), so a refusal is a\n"
         f"# fact on disk -- the log alone answers what happened, even when\n"
         f"# nothing ran.\n"
