@@ -293,7 +293,7 @@ written twice: every tab already has a schema, so every tab gets this.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen** | becomes the deck's suffix, `<label>_<NN>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1K4C6`, and a flat stdout is `<label>_<NN>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains |
+| `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen**; **compared case-insensitively everywhere** (two names differing only in case are ONE name, refused as a duplicate) | becomes the deck's suffix, `<label>_<NN>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1K4C6`, and a flat stdout is `<label>_<NN>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains. Case folds because the name keys **filenames**, and the filesystems these run on include case-insensitive ones (macOS, some network mounts) — `Tight.fdf` and `tight.fdf` are one file there, so `Tight` and `tight` must be one stage everywhere (D6, 2026-08-12: the constructor compared exact strings while both parsers folded case; all three doors agree now) |
 | `enabled` | bool | whether this stage is rendered at all |
 | `overrides` | map | schema field name → that stage's value |
 

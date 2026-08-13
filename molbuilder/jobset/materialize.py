@@ -461,7 +461,12 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
         relink(attempt, os.path.join(up, fname),
                os.path.basename(fname))
         linked.append(os.path.basename(fname))
-    for extra in ("mb_monitor.py",):
+    # mb_monitor.py: the load monitor.  makov_payne_correction.py: the
+    # post-run script a CHARGED deck's own header instructs the user to
+    # run "after SIESTA finishes" -- i.e. HERE, beside the .out, so the
+    # link is what keeps that instruction honest in the hierarchical
+    # shape (E6 integration, 2026-08-12; prep writes it at the root).
+    for extra in ("mb_monitor.py", "makov_payne_correction.py"):
         if (base / extra).exists():
             relink(attempt, os.path.join(up, extra), extra)
             linked.append(extra)

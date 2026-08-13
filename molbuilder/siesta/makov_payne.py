@@ -343,9 +343,21 @@ def main():
 
     out_path = Path(args.out)
     if not out_path.is_file():
-        print(f"error: {{out_path}} not found.  Run SIESTA first, or pass "
-              "--out to point at the correct file.", file=sys.stderr)
-        sys.exit(1)
+        # molbuilder's wrapper writes ``<label>...-run<N>.out`` (one per
+        # attempt), not the bare default -- discover the newest one here
+        # and SAY which was picked, so running this beside the output
+        # just works (E6 integration, 2026-08-12).
+        candidates = sorted(Path(".").glob("*-run*.out"),
+                            key=lambda c: c.stat().st_mtime)
+        if candidates:
+            out_path = candidates[-1]
+            print(f"note: {{Path(args.out)}} not found; reading "
+                  f"{{out_path}} (newest -run*.out in this directory).")
+        else:
+            print(f"error: {{out_path}} not found and no *-run*.out "
+                  "here.  Run SIESTA first, or pass --out to point at "
+                  "the correct file.", file=sys.stderr)
+            sys.exit(1)
     text = out_path.read_text(errors="replace")
 
     E_raw = parse_total_energy(text)
