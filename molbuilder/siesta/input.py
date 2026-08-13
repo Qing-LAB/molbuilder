@@ -32,7 +32,6 @@ except ImportError as exc:  # pragma: no cover
         "molbuilder.siesta needs ASE; install with `pip install ase`"
     ) from exc
 
-from ..identity import stage_token
 from ..structure import Structure
 # SiestaConfig is the L1 dataclass; this module imports it for use by
 # the generator below.  External callers can import it from either
@@ -230,13 +229,16 @@ def _block_size_bounds(n_atoms: int,
     validating a requested override"*.  Advice about a value that was derived
     from the launch has to be derived from the same launch, and until
     2026-08-10 it was not: the range was the module constant ``(16, 256)``
-    while the default came from :func:`_auto_block_size`.  The two disagree
-    routinely rather than exceptionally — ``_auto_block_size(200, mpi_np=16)``
-    is 8 and ``(20, mpi_np=32)`` is 1, both below the declared floor — so the
-    block advised a *validator* that its own emitted value was illegal, and
-    advised a *bench tool* it could climb to 256 when this deck's rank
-    constraint caps it at 4.  Climbing is the dangerous direction: above
-    ``floor(n_atoms / mpi_np)`` some ranks get no block at all.
+    while the default came from :func:`_auto_block_size`.  The two disagreed
+    routinely rather than exceptionally — under the ATOMS-era derivation of
+    the day, ``_auto_block_size(200, mpi_np=16)`` was 8 and ``(20,
+    mpi_np=32)`` was 1, both below the declared floor (U18's orbital
+    derivation gives 64 and 4; the history keeps the old numbers because
+    they are what motivated the fix) — so the block advised a *validator*
+    that its own emitted value was illegal, and advised a *bench tool* it
+    could climb past this deck's own rank constraint.  Climbing is the
+    dangerous direction: above ``floor(n_orbitals_est / mpi_np)`` some
+    ranks get no block at all.
 
     **One derivation, not two.**  The upper bound IS
     :func:`_auto_block_size`'s answer, because that function already picks the
@@ -671,7 +673,14 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         out.append(
             "# Run from this directory -- all outputs share the "
             "SystemLabel basename below.")
-        out.append(f"#     mpirun -np 4 siesta < {_fdf_name} > {_out_name}")
+        # the deck's OWN rank count (R11 -- a hardcoded 4 contradicted
+        # the BENCH-MARKS mpi_np three blocks down; "auto" says the
+        # wrapper decides)
+        _np_hint = "auto" if cfg.mpi_np is None else str(int(cfg.mpi_np))
+        out.append(f"#     mpirun -np {_np_hint} siesta "
+                   f"< {_fdf_name} > {_out_name}"
+                   + ("   # -np auto: the wrapper resolves it"
+                      if cfg.mpi_np is None else ""))
         if stage_token:
             out.append(f"# Stage {stage_token} -- {_stage_science(cfg)}")
             out.append(

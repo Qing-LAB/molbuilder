@@ -143,7 +143,9 @@ is `[]` unless pseudos were copied and some were absent) plus two conditional ke
 >>> fdf = render_fdf(struct, SiestaConfig(system_label="hemeC"))   # → the full .fdf text
 ```
 
-The text **opens with a provenance + bench-marks wrapper** (§ 3), then the engine
+The text **carries its provenance + bench-marks record at the tail**, behind
+the machine-record banner (job-contracts § 3.1, physics-first order —
+amended R11 2026-08-12; this line said "opens with"), before that the engine
 header — so it does *not* start with `SystemName`. The header block itself reads:
 
 ```fdf

@@ -569,30 +569,41 @@ metadata attached to the script itself, molbuilder reserves **comment-block
 regions** of every generated file for its own use, plus one clearly-marked
 zone the user owns.
 
-The payoff: `head -50 my-job.fdf` answers "which molbuilder made this, with
-what defaults"; a `.fdf` carries the same region/frozen labels as the sidecar
-that produced it (no coordination needed); tools read a stable contract
-surface instead of scraping the engine body; and user edits survive
-regeneration.
+The payoff: `tail -40 my-job.fdf` answers "which molbuilder made this, with
+what defaults" *(this said `head -50` while the record blocks led the file —
+see the order note below)*; a `.fdf` carries the same region/frozen labels
+as the sidecar that produced it (no coordination needed); tools read a
+stable contract surface instead of scraping the engine body; and user edits
+survive regeneration.
 
 ### 3.1 The reserved blocks
 
-Blocks appear top-to-bottom in this order. **Every reserved block is
-optional** — a file with none of them is still a valid engine input. Only the
-ENGINE BODY is always present (it is the file's actual content, not a
-"block"). A tool that needs a specific block refuses cleanly when it is
-absent, rather than guessing.
+Blocks appear top-to-bottom in this order — **the physics first**. *(Amended
+2026-08-12, R11: this section still drew the record blocks LEADING the file
+— H→P→B→A→E→U — an order the emitter deliberately left: a scientist opening
+a generated input scrolled past ~95 record lines (a real 212-atom junction:
+nearer 300) before the first SIESTA keyword.  The record is data ABOUT the
+file, so it follows the calculation behind the machine-record banner;
+USER-CUSTOM stays on the science side of that line because it is the one
+block a person is meant to edit.  The code carried this rationale; the
+contract now does too.)* **Every reserved block is optional** — a file with
+none of them is still a valid engine input. Only the ENGINE BODY is always
+present (it is the file's actual content, not a "block"). A tool that needs
+a specific block refuses cleanly when it is absent, rather than guessing —
+and parsers find blocks by MARKERS, never by position, so the order is
+ergonomics, not interface.
 
 ```mermaid
 flowchart TD
-    H["HEADER  (reserved — defined but not emitted today)"]
+    E["ENGINE BODY  — the actual .fdf / .py content (always present)"]
+    U["USER-CUSTOM  — your territory, preserved verbatim"]
+    M["machine-record banner — 'data about the file; not hand-edited'"]
     P["PROVENANCE  — who/when/what-defaults"]
     B["BENCH-MARKS  — which fields a tool may override"]
     A["ATOM-METADATA  — regions / frozen / annotations JSON"]
-    E["ENGINE BODY  — the actual .fdf / .py content (always present)"]
-    U["USER-CUSTOM  — your territory, preserved verbatim"]
-    H --> P --> B --> A --> E --> U
+    E --> U --> M --> P --> B --> A
 ```
+*(HEADER remains reserved-but-unemitted.)*
 
 Every reserved block is delimited by literal marker lines
 (`molbuilder/script_emit.py`); parsers find blocks by scanning for them:
