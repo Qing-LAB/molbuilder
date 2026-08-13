@@ -25,6 +25,19 @@ from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
 
+@pytest.fixture(autouse=True)
+def _isolated(monkeypatch, tmp_path_factory):
+    """The rest of the sandbox (B-9, 2026-08-13): the calc fixture's
+    dotted .molbuilder.json fixed the bundle scope, but the file still
+    ran with cwd = repo root, so the repo's SERVER-scope molbuilder.json
+    (preamble concatenation, scheduler) kept folding into every wrapper
+    under test."""
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))
+
+
 @pytest.fixture
 def calc(tmp_path):
     """A described calculation, exactly as `jobset describe` leaves it.

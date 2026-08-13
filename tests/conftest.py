@@ -37,6 +37,13 @@ def checkpoint_config(tmp_path, monkeypatch):
     home = tmp_path / "config-home"
     home.mkdir()
     monkeypatch.chdir(home)
+    # The OTHER two-thirds of the sandbox (H-5, 2026-08-13): read_config's
+    # default lookup falls back to $XDG_CONFIG_HOME / ~/.config when the
+    # cwd file is absent (deployment.md § 5), so a chdir alone leaves the
+    # default-read tests floating on the developer's own per-user config.
+    monkeypatch.setenv("HOME", str(tmp_path / "user-home"))
+    (tmp_path / "user-home").mkdir()
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
 
     def _set(**section) -> Path:
         target = home / "molbuilder.json"

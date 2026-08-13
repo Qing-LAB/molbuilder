@@ -247,17 +247,26 @@ class TestParseSCFOverflowVariants:
         import re
         m = re.match(r"^\s*scf:\s*(\d+)", line, re.IGNORECASE)
         data_start = m.end(1)
+        expected = [-660624.384691, -760090.911374, -760091.068034,
+                    45.787763, -15.068303, 410.273625]
         vals = _parse_scf_floats(m.group(0).split(":", 1)[1].lstrip()[1:],
                                   line=line, data_start=data_start)
-        # The regex path resolves it for this case; that's the
-        # documented behaviour.  But the column path is ALSO
-        # exercised + tested directly:
+        # (B-7, 2026-08-13: ``vals`` was computed and never asserted, and
+        # the fallback was only ever called as the bare helper -- so the
+        # DISPATCH wiring in _parse_scf_floats could be deleted with every
+        # test green.)  The regex path resolves this case:
+        assert vals == pytest.approx(expected)
+        # ...and when layer 1 CANNOT (a rest-string it can't split), the
+        # dispatcher itself must fall through to the column slicer:
+        via_dispatch = _parse_scf_floats("not floats at all",
+                                         line=line, data_start=data_start)
+        assert via_dispatch == pytest.approx(expected), (
+            "the column-position fallback is not reachable through "
+            "_parse_scf_floats -- the dispatch wiring is broken")
+        # The column path stays tested directly too:
         from molbuilder.parse.engines.siesta import _parse_scf_floats_by_columns
         cols = _parse_scf_floats_by_columns(line, data_start)
-        assert cols == pytest.approx([
-            -660624.384691, -760090.911374, -760091.068034,
-            45.787763, -15.068303, 410.273625,
-        ])
+        assert cols == pytest.approx(expected)
 
 
 # --------------------------------------------------------------------- #

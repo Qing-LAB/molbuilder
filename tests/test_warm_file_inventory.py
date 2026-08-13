@@ -32,11 +32,29 @@ subtraction landed and removed a re-derivation on the way out.
 """
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
 
 from molbuilder import runwrap
+
+
+@pytest.fixture(autouse=True)
+def _isolated(monkeypatch, tmp_path_factory):
+    """The renders resolve script_generation config from cwd + HOME/XDG
+    (B-9, 2026-08-13): unsandboxed, every wrapper here folded in the
+    developer's repo-root molbuilder.json, so the banner/mover surfaces
+    under test varied by machine.  Sandboxed, with the activation the
+    writer requires DECLARED by the test."""
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    cwd = tmp_path_factory.mktemp("cwd")
+    (cwd / "molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    monkeypatch.chdir(cwd)
 
 
 ENGINES = (

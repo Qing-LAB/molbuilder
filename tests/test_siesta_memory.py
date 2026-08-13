@@ -318,10 +318,20 @@ def test_estimate_node_mem_cap(tmp_path):
 
 
 def test_estimate_floor_respected_for_tiny_system(tmp_path):
+    """The floor must LIFT the answer, so the probe puts it ABOVE the raw
+    estimate (B-5, 2026-08-13: with the default 4 GB floor under a ~8 GB
+    one-atom estimate, deleting the floor's max() stayed green -- the
+    assert was satisfied by the estimate itself)."""
     fdf = _carbon_fdf(tmp_path, n_atoms=1, mesh="100 Ry", edge=8.0)
     est = estimate_siesta_memory(fdf, ntasks=1)
     assert est.request_gb >= math.ceil(MemModel().floor_gb)
     assert est.capped is False
+    lifted = estimate_siesta_memory(
+        fdf, ntasks=1,
+        model=MemModel.from_config({"floor_gb": est.request_gb + 48.0}))
+    assert lifted.request_gb >= est.request_gb + 48, (
+        "a floor above the raw estimate did not lift the request -- "
+        "the floor max() is gone")
 
 
 def test_estimate_extra_gb_adds(tmp_path):

@@ -109,20 +109,20 @@ class TestExtractFromOut:
         )
         assert result == set()
 
-    def test_streaming_stops_at_section_end_not_eof(self, tmp_path):
+    def test_streaming_stops_at_section_end_not_eof(self, tmp_path,
+                                                    monkeypatch):
         """2026-06-14 robustness pass: the reader streams the file
-        line-by-line and STOPS as soon as the constraints section
-        ends.  Pin that we don't accidentally regress to slurping
-        the whole file -- a 100 MB .out (real BDT trajectories
-        reach this size) used to OOM the previous implementation.
+        line-by-line and STOPS as soon as the constraints section ends
+        -- a 100 MB .out used to OOM the pre-streaming implementation.
 
-        Test approach: write a .out where the constraints section
-        sits in the first ~1 KB but the file continues for many
-        MB after.  Assert the parser returns the correct set
-        AND that reading it does not blow up memory (we measure
-        process RSS before/after the call and require <50 MB
-        growth)."""
-        import resource
+        Pinned by COUNTING BYTES READ through the parser's own ``open``
+        (B-6, 2026-08-13).  The RSS probe this replaces read
+        ``ru_maxrss``, a process-lifetime HIGH-WATER: whenever any
+        earlier test in the process had already peaked higher, "growth"
+        read 0 and the slurp regression it guarded sailed through --
+        false-passing in exactly the dangerous direction -- while a
+        160 MB fixture was written on every run to feed it."""
+        from molbuilder.parse.engines import _sidecar
         body_head = dedent("""\
             siesta: Constraints applied in the following order:
             siesta: Constraint (3): pos
@@ -130,39 +130,53 @@ class TestExtractFromOut:
 
             siesta: program continues with normal SCF output...
         """)
-        # Pad to a big file.  ~80 bytes per line at 2M lines.
         out = tmp_path / "huge.out"
         with open(out, "w") as fh:
             fh.write(body_head)
             line_pat = "   scf:    {0}  -1234.567890  -1234.567890  0.0001\n"
-            for i in range(2_000_000):
+            for i in range(20_000):
                 fh.write(line_pat.format(i))
-        # Sanity check that the file actually grew.
-        size_mb = out.stat().st_size / (1024 * 1024)
-        assert size_mb > 50, (
-            f"fixture should be > 50 MB to exercise streaming; "
-            f"got {size_mb:.1f} MB"
-        )
-        rss_before = resource.getrusage(
-            resource.RUSAGE_SELF).ru_maxrss
+        total = out.stat().st_size
+        assert total > 500_000, "fixture too small to prove early exit"
+
+        consumed = {"bytes": 0}
+        real_open = open
+
+        class _Counting:
+            def __init__(self, f):
+                self._f = f
+
+            def __iter__(self):
+                for line in self._f:
+                    consumed["bytes"] += len(line)
+                    yield line
+
+            def readline(self, *a, **k):
+                s = self._f.readline(*a, **k)
+                consumed["bytes"] += len(s)
+                return s
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return self._f.__exit__(*exc)
+
+            def __getattr__(self, name):
+                return getattr(self._f, name)
+
+        def counting_open(file, *a, **k):
+            f = real_open(file, *a, **k)
+            return _Counting(f) if str(file) == str(out) else f
+
+        monkeypatch.setattr(_sidecar, "open", counting_open, raising=False)
         result = read_frozen_atoms_from_siesta_out(str(out))
-        rss_after = resource.getrusage(
-            resource.RUSAGE_SELF).ru_maxrss
         # 0-based 4, 5, 6.
-        assert result == {4, 5, 6}, (
-            f"expected {{4,5,6}}; got {result}"
-        )
-        # Memory growth must be modest -- pre-streaming the .read()
-        # path would push RSS up by ~80-200 MB (file size + python
-        # string overhead).
-        rss_growth_mb = (rss_after - rss_before) / 1024
-        assert rss_growth_mb < 50, (
-            f"streaming regression: RSS grew by {rss_growth_mb:.1f} "
-            f"MB on an 80 MB .out file.  Pre-streaming the whole "
-            f"file was loaded into a python string; the streaming "
-            f"implementation should grow RSS by <50 MB regardless "
-            f"of file size."
-        )
+        assert result == {4, 5, 6}, f"expected {{4,5,6}}; got {result}"
+        assert 0 < consumed["bytes"] < total // 10, (
+            f"read {consumed['bytes']} of {total} bytes -- the parser no "
+            f"longer stops at the section end (or the counter never saw "
+            f"the open)")
 
     def test_single_range_no_comma(self, tmp_path):
         """A single ``[ N -- M ]`` line (no comma-separated parts)."""

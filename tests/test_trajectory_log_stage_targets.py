@@ -28,6 +28,22 @@ from molbuilder.structure import Structure
 from molbuilder.trajectory_log import write_initial_preview
 
 
+@pytest.fixture(autouse=True)
+def _isolated(monkeypatch, tmp_path_factory):
+    """CLI invocations here render real decks and wrappers, which
+    resolve config from cwd + HOME/XDG (H-8, 2026-08-13): unsandboxed,
+    the file ran against the repo root's molbuilder.json, so the emitted
+    text under test varied with the developer's config."""
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    cwd = tmp_path_factory.mktemp("cwd")
+    (cwd / "molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    monkeypatch.chdir(cwd)
+
+
 # A 3-D (non-linear) molecule so the derived vacuum cell isn't degenerate at
 # the default vacuum=0 (structure-periodicity.md).  These CLI tests exercise
 # stage/log mechanics, not geometry, so methane is fine.

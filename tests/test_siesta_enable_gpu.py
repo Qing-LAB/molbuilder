@@ -23,7 +23,8 @@ import numpy as np
 import pytest
 
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.diagnostics import Capabilities, set_capabilities
+from molbuilder.diagnostics import (Capabilities, reset_capabilities,
+                                    set_capabilities)
 from molbuilder.siesta.input import render_fdf
 from molbuilder.structure import Structure
 from molbuilder import runwrap as _runwrap
@@ -79,7 +80,11 @@ def caps_with_gpu_env():
         conda_envs=frozenset({"molbuilder-siesta", "molbuilder-siesta-gpu"}),
     ))
     yield
-    set_capabilities(Capabilities(runtime_config={}))
+    # DROP the snapshot rather than binding an empty one (B-9,
+    # 2026-08-13): binding Capabilities(runtime_config={}) put a state
+    # nobody chose where "unset" belongs; conftest's autouse reset is
+    # the real guarantee, and this is the matching un-set.
+    reset_capabilities()
 
 
 # --------------------------------------------------------------------- #
