@@ -19,6 +19,7 @@ flags them is one somebody will disable.
 from __future__ import annotations
 
 import inspect
+import json
 import re
 import shutil
 import subprocess
@@ -26,6 +27,25 @@ import subprocess
 import pytest
 
 from molbuilder.runwrap import render_run_wrapper, write_run_wrapper
+
+
+@pytest.fixture(autouse=True)
+def _isolated(monkeypatch, tmp_path_factory):
+    """The renders resolve script_generation config from cwd + HOME/XDG
+    (G-3, 2026-08-13): unsandboxed, every wrapper here was rendered with
+    the developer's repo-root molbuilder.json folded in, so what I4 was
+    checked against varied by machine -- and failed in an isolated cwd
+    (the writer rightly REFUSES with no activation declared, which is
+    exactly what running the file isolated exposed).  One sandboxed cwd +
+    HOME for the file, with the activation DECLARED by the test."""
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    cwd = tmp_path_factory.mktemp("cwd")
+    (cwd / "molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    monkeypatch.chdir(cwd)
 
 
 #: `git` as a COMMAND WORD: at the start of a line, after a shell operator
@@ -133,13 +153,20 @@ def test_the_check_does_not_fire_on_words_that_merely_contain_git(tmp_path):
 
 
 def test_the_rendered_text_is_what_gets_written(tmp_path):
-    """`render_*` and `write_*` must not drift, or the check reads a draft."""
+    """`render_*` and `write_*` must not drift, or the check reads a draft.
+
+    Compared without the PROVENANCE timestamp (the 67cee62a class, G-3):
+    generated-at is wall clock at seconds precision and the two renders
+    run in sequence, so byte equality flaked across a second boundary."""
+    def _logic(text: str) -> str:
+        return "\n".join(l for l in text.splitlines()
+                         if not l.lstrip("# ").startswith("generated-at"))
     script = tmp_path / "job.fdf"
     script.write_text("SystemLabel job\n")
     rendered = render_run_wrapper(script, env="molbuilder-siesta")
     written = write_run_wrapper(script, env="molbuilder-siesta",
                                 emit_sbatch=False)
-    assert written.read_text() == rendered
+    assert _logic(written.read_text()) == _logic(rendered)
 
 
 @pytest.mark.skipif(not shutil.which("bash"), reason="bash not on PATH")

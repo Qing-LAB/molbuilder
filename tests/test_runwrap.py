@@ -9,6 +9,7 @@ confirm chmod and the resulting filename.
 from __future__ import annotations
 
 import json
+import re
 import stat
 from pathlib import Path
 
@@ -97,9 +98,16 @@ def test_render_siesta_always_uses_mpirun():
     # ``--continue``).
     assert '$_launch_cmd my-job.fdf > $_out_file' in text
     assert '_out_file="my-job-run${_run_n}.out"' in text
-    assert "exec " not in text or "exec {" not in text, (
-        "no top-level exec — the wrapper traps SIESTA's exit code"
-    )
+    # No exec OF THE ENGINE, matched as a command line (G-1, 2026-08-13):
+    # the disjunction that stood here was vacuous -- ``exec > >(tee...)``
+    # is always present, so the whole assert rested on "exec {" never
+    # appearing, a string no wrapper ever contained.  Redirection-only
+    # exec is legitimate; exec REPLACING the shell with the launch is
+    # what would lose SIESTA's exit code.
+    assert not re.search(r"^\s*exec\s+(?:\$_launch_cmd|\S*mpirun|\S*siesta)",
+                         text, re.M), (
+        "the wrapper execs the engine -- its exit code can no longer be "
+        "trapped")
     # Post-2026-06-24: ``conda activate`` uses the ``_target_env`` var
     # rather than a hardcoded env name (so the same activation line
     # works in both autodetect=true and autodetect=false branches).
@@ -453,12 +461,19 @@ def test_render_pyscf():
 
 
 def test_render_pyscf_ignores_mpi_np():
-    """np is meaningless for python; emit the same wrapper either way."""
+    """np is meaningless for python; emit the same wrapper either way.
+
+    Compared without the PROVENANCE timestamp (the 67cee62a class):
+    generated-at is wall clock at seconds precision, so byte equality
+    of two sequential renders flaked across a second boundary."""
+    def _logic(text: str) -> str:
+        return "\n".join(l for l in text.splitlines()
+                         if not l.lstrip("# ").startswith("generated-at"))
     _bind()
     a = render_run_wrapper(Path("/x/y.py"))
     _bind()
     b = render_run_wrapper(Path("/x/y.py"), mpi_np=8)
-    assert a == b
+    assert _logic(a) == _logic(b)
 
 
 def test_render_multidot_basename_preserved():
@@ -525,6 +540,12 @@ def test_write_preserves_multidot_basename(tmp_path):
 
 
 def test_write_overwrites_existing(tmp_path):
+    """The second write RE-RENDERS: the new mpi_np lands as the baked
+    default, and the first render never had one.  (G-2, 2026-08-13: the
+    pins that stood here -- ``first != second`` and ``"-np 8" in second``
+    -- were satisfied by the generation timestamp and by the wrapper's
+    always-present usage text, so the write→render plumbing of mpi_np
+    was effectively unpinned.)"""
     _bind()
     script = tmp_path / "x.fdf"
     script.write_text("# fake\n")
@@ -532,8 +553,8 @@ def test_write_overwrites_existing(tmp_path):
     first = wrapper.read_text()
     write_run_wrapper(script, mpi_np=8)
     second = wrapper.read_text()
-    assert first != second
-    assert "-np 8" in second
+    assert "_mpi_np_default=8" in second
+    assert "_mpi_np_default=8" not in first
 
 
 def test_write_missing_script_raises(tmp_path):
