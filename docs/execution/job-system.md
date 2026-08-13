@@ -764,10 +764,12 @@ flowchart LR
 molbuilder jobset <verb> <kind> [<stage>] [<trial>]  [options]
                     │      │        │         │
                     │      │        │         └─ submit bench only: WHICH trial
-                    │      │        │            to launch, by its name
-                    │      │        │            (`bench-G1K4C6`).  Omitted, the
-                    │      │        │            NEXT UNLAUNCHED trial is picked
-                    │      │        │            and said out loud
+                    │      │        │            to launch, by its point's NAME
+                    │      │        │            (`G1K4C6` — the directory adds
+                    │      │        │            the `bench-` prefix, § 6.3).
+                    │      │        │            Omitted, the NEXT UNLAUNCHED
+                    │      │        │            trial is picked and said out
+                    │      │        │            loud
                     │      │        └─ which stage — by its NAME (`tight`), its
                     │      │           NUMBER (`3`, or `03`), or the whole token
                     │      │           (`03_tight`), whichever you have in front

@@ -38,8 +38,13 @@ def _res_str(r) -> str:
 
 
 def render_plan(jobset: JobSet) -> str:
-    """Render the plan: one row per job (resources, dependency, carry) plus
-    the dependency graph.  Reads only the JobSet -- no IO."""
+    """Render the plan: one row per job — its seq, input deck, warm files
+    and resources.  Reads only the JobSet -- no IO.
+
+    (The *"dependency, carry, plus the dependency graph"* this promised
+    until A10, 2026-08-12, died 2026-08-10 with stage chaining: nothing
+    orders anything, and a carry is a COPY ``prep --from`` makes, read
+    from the attempt's marker — not a plan column.)"""
     js = jobset
     lines: List[str] = [
         f"JOB-SET PLAN -- {js.name} ({js.engine}, {js.kind})",

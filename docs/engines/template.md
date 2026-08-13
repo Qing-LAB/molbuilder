@@ -290,7 +290,7 @@ never validated by molbuilder (§ 9.2)."""
 | `expands` | the engine keywords a `deck` item produces, as a list |
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
-| `section` | which **fieldset** it belongs to — *"Compute & budget"*. Also what makes a field exposed at all |
+| `section` | which **fieldset** it belongs to — *"Compute & budget"*. A UI groups by it; a section-less item is still an item (§ 7's membership is TOTAL — *"also what makes a field exposed at all"* stood here against § 7 until 2026-08-12; `species_order` is section-less and shipped) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
 | `range` · `unit` · `choices` · `group` | bounds, label, enum members, and whether *vary per stage* starts ticked |
 | `help` | what this is, in prose. Multi-line is ordinary TOML |

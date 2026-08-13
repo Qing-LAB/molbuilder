@@ -169,11 +169,15 @@ def describe_cmd(structure: str, dest: str, shape: str,
         f"  cd {out_dir} && molbuilder jobset prep run <stage>", err=True)
 
 
-@jobset_group.command("plan", short_help="show the plan (jobs, resources, deps)")
+@jobset_group.command("plan",
+                      short_help="show the plan (jobs, warm files, resources)")
 @_bundle_option
 def plan_cmd(bundle: str) -> None:
-    """Print the job-set plan: one row per job (resources, dependency,
-    carry) + the order.  Reads only ``job-set.json`` -- changes nothing."""
+    """Print the job-set plan: one row per job — its seq, input deck, warm
+    files and resources, in ladder order.  Reads only ``job-set.json`` --
+    changes nothing.  (Stages do not chain and nothing here is a
+    dependency: what a stage continues from is said at ``prep --from``,
+    project-layout.md § 1.6.)"""
     js, _ = _load(bundle)
     click.echo(render_plan(js))
 
@@ -300,10 +304,14 @@ def _load_bench_set(base, stage):
         return _load(str(base))              # legacy/hand-built library sets
     jpath = container / _JOBSET_FILE
     if not jpath.is_file():
+        # the bare form is the stageless spelling -- interpolating a None
+        # here told the user to run "prep bench None" (A4, 2026-08-12)
+        verb = ("molbuilder jobset prep bench"
+                + (f" {stage}" if stage is not None else ""))
         raise click.ClickException(
-            f"no {jpath.relative_to(Path(base))} -- this stage has no "
-            f"prepped benchmark.  Run `molbuilder jobset prep bench "
-            f"{stage}` first.")
+            f"no {jpath.relative_to(Path(base))} -- "
+            f"{'this stage has' if stage is not None else 'this calculation has'} "
+            f"no prepped benchmark.  Run `{verb}` first.")
     try:
         return JobSet.load(jpath), Path(base)
     except ValueError as e:
@@ -750,9 +758,17 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         sweep = pins = translation = None
         if kind == "bench":
             if stage is None:
-                raise click.ClickException(
-                    "prep bench measures ONE stage's configuration; "
-                    "name it:\n    molbuilder jobset prep bench <stage>")
+                from ..task import read_task as _rt_bench
+                if _rt_bench(base / _TASK).stages:
+                    raise click.ClickException(
+                        "prep bench measures ONE stage's configuration; "
+                        "name it:\n    molbuilder jobset prep bench <stage>")
+                # § 6.5 STAGELESS (A4, 2026-08-12): the calculation IS its
+                # one rung, so the bare bench measures the one parameter
+                # set -- record and verdict in the root bench/ container.
+                # Refusing here left that container WRITERLESS and made
+                # the stageless verdict offer (below, "here or never")
+                # dead code: no stage name exists for the user to type.
             sweep, pins, translation = _bench_inputs(base)
         elif stage is not None:
             # § 2.3.2's other half: a run prepped where a verdict sits

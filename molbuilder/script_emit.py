@@ -178,9 +178,12 @@ SIESTA_BENCH_FIELDS: List[BenchField] = [
     # about the engine -- ``siesta/input.py`` supplies it per deck through
     # ``_block_size_bounds``.  It carried ``(16, 256)`` until 2026-08-10, a
     # constant that disagreed with the emitted default routinely rather than
-    # exceptionally (``_auto_block_size(200, mpi_np=16)`` is 8), so the block
-    # declared its own value out of bounds.  Leaving it None means a renderer
-    # that forgets emits NO range rather than a wrong one.
+    # exceptionally (under the ATOMS-era derivation of the day,
+    # ``_auto_block_size(200, mpi_np=16)`` was 8; U18's orbital derivation
+    # gives 64 -- the history keeps the old number because it is what
+    # motivated the fix), so the block declared its own value out of
+    # bounds.  Leaving it None means a renderer that forgets emits NO
+    # range rather than a wrong one.
     BenchField("BlockSize",        "BlockSize",        "pow2"),
     BenchField("MaxSCFIterations", "MaxSCFIterations", "int"),
     BenchField("MD.NumCGsteps",    "MD.NumCGsteps",    "int"),

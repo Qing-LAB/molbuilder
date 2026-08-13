@@ -831,18 +831,22 @@ TRANSLATES an old block's ``frozen_atoms`` in rather than refusing.)*
 
 **Rules (reconciled to code):**
 
-- **Format is `molstruct-json/v4`, `schema_version: 4`.** v4 added the
-  per-atom **`annotations`** channel additively (see
-  [`model/structure-annotations.md`](?doc=model/structure-annotations.md)).
-  The on-disk `.molstruct.json` sidecar itself is now schema **v6**; the
-  read-side accepts sidecar/in-body versions `(3, 4, 5, 6)`
-  (`molbuilder/parse/sidecars/molstruct.py`).
+- **Format is `molstruct-json/v<SCHEMA_VERSION>`** — the version number is
+  READ from the sidecar's one authority (`sidecars/molstruct.SCHEMA_VERSION`,
+  **7** today), never typed here or in the emitter, so this block, the
+  `.molstruct.json` and this bullet cannot drift apart.  The read side
+  accepts the CURRENT version only (`_READABLE_SCHEMA_VERSIONS`); an old
+  block's `frozen_atoms` key is **translated** into a `regions` label on
+  read rather than refused.  *(Until 2026-08-12 this bullet taught
+  "`v4`, `schema_version: 4` … sidecar itself v6 … read-side accepts
+  (3, 4, 5, 6)" — three version claims, all stale, ten lines under the
+  amendment that corrected the example above it.)*
 - **Emission is conditional.** The generator emits the block **only** when
-  `regions` **or** `frozen_atoms` **or** `annotations` is non-empty. A
-  label-free generation has *no* block at all (not an empty one) — absence is
-  the honest signal "this generation had no labels", so it cannot later
-  suppress a sidecar the user adds afterward. (The old rule said regions/frozen
-  only; the annotations channel was added to the trigger with v4.)
+  `regions` **or** `annotations` is non-empty — frozen atoms ARE a
+  `regions` label now, not a trigger of their own.  A label-free
+  generation has *no* block at all (not an empty one) — absence is the
+  honest signal "this generation had no labels", so it cannot later
+  suppress a sidecar the user adds afterward.
 - **Indices are 0-based** (matching the sidecar and `Structure.regions` /
   `Structure.frozen_atoms`). SIESTA's engine-body `%block Geometry.Constraints`
   is **1-based** by SIESTA convention. The two coexist in one file on purpose;
@@ -875,11 +879,14 @@ regenerate an empty one is emitted.
 ### 3.6 Versioning and what a tool may assume
 
 Each structured block versions **independently**: BENCH-MARKS carries
-`version v1`, ATOM-METADATA carries `format: molstruct-json/v4`, PROVENANCE is
+`version v1`, ATOM-METADATA carries `format: molstruct-json/v<SCHEMA_VERSION>`
+(the sidecar authority's number — see § 3.4's rules; hand-typing it here is
+how this sentence went stale at "v4" until 2026-08-12), PROVENANCE is
 additive-keys-only (no tag), HEADER is free-form prose. There is **no
 autodetection and no silent upgrade** — a parser reads the version tag and
 either handles it or refuses, pointing the user at "regenerate with the
-current molbuilder". Given a conforming file, a tool may assume: PROVENANCE
+current molbuilder"; the ONE translation is § 3.4's read-side rename of an
+old block's `frozen_atoms` into a `regions` label. Given a conforming file, a tool may assume: PROVENANCE
 answers who/when/what-defaults; BENCH-MARKS lists the overridable fields and
 their bounds; ATOM-METADATA round-trips (its dict feeds the same
 `apply_to_structure` path the sidecar uses); USER-CUSTOM survives
@@ -1136,7 +1143,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Job-set plan | `job-set.json` at the root — the RUN plan, **merged per stage, never overwritten**; a sweep's own record is `<seq>_<stage>/bench/job-set.json` (§ 6.3) | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` |
 | Task description | `task.json` | `molbuilder/task@1` | `task.py` | `engine`, `shape`, `run`, `structure`, `varies`, `stages[]` — **what changes**; what does not is in `<label>.template.toml` |
 | Deck template | `<label>.template.toml` | `molbuilder/template@1` | `template.py` | `schema`, `engine`, `fingerprint`, `item.<name>` — **every parameter, with its value.** The only TOML artifact, because it is the only one a person reads and edits ([`engines/template.md`](?doc=engines/template.md)) |
-| Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` | *(sidecar pair, bare-int `schema_version` = 6)* | `bundle_writer.py`, `sidecars/molstruct.py` | geometry; `regions` / `frozen_atoms` / `structure_hash` |
+| Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` | *(sidecar pair, bare-int `schema_version` from `sidecars/molstruct.SCHEMA_VERSION` — never typed in a doc)* | `bundle_writer.py`, `sidecars/molstruct.py` | geometry; `regions` (frozen atoms are a label inside it) / `structure_hash` |
 | Checkpoint archive | `.binsnapshots/<digest>/MANIFEST.do_not_edit` | *(3-col tab-separated `<sha256>\t<bytes>\t<key>`)* | `checkpoint.py` | the directory is the sha256 of this file (§ 6.1) |
 | Run launch record | `<attempt>/run.json` — a trial dir is its own attempt, so a launched trial carries one too; written at process **start** (a running job must read as launched) | `molbuilder/run-launch@1` | `jobset/materialize.py` (`write_run_launch`) | `mode`, `command`, `job_id`, `launched_at`, `continued_from` |
 | Decision ledger | `jobset-decisions.log` — append-only JSONL at the bundle root; every verb records each decision it makes (config provenance, mode + its source, trial pick, verdict offer + answer), so a machine's behaviour is explained by reading the file, hours later, without the terminal | *(one JSON object per line, `at`/`verb`/`decision` + facts)* | `jobset/ledger.py` | `at`, `verb`, `decision` |

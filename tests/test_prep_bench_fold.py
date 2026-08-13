@@ -592,6 +592,62 @@ def test_a_stageless_calculation_runs_end_to_end(tmp_path):
     assert job_dir_names(sweep)["G1K1C4"] == "bench-G1K1C4"
 
 
+def test_a_stageless_calculation_can_be_benchmarked(tmp_path):
+    """A4 (redo 2026-08-12): R1 wired the stageless verdict offer, but no
+    code path could CREATE a stageless benchmark -- the bare `prep bench`
+    refused asking for a stage name that does not exist, and the
+    summarize hint interpolated the None ("prep bench None").  The bare
+    bench now measures the one parameter set, mirroring bare `prep run`;
+    its record lives in the root bench/ container."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
+    dest = tmp_path / "calc"
+    D.write_description(
+        D.build_description(struct, SiestaConfig(system_label="JOB"), (),
+                            engine="siesta", shape="hierarchical",
+                            name="JOB", source=str(tmp_path / "h2.xyz")),
+        dest)
+    (dest / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    (dest / "environment.json").write_text(
+        Environment(scheduler="workstation",
+                    topology=Topology(sockets=1, cores_per_socket=4,
+                                      gpus_per_node=1,
+                                      gpu_type="a100")).to_json() + "\n")
+    r = CliRunner()
+    res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(dest),
+                                  "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    assert "prep bench None" not in res.output
+    js = json.loads((dest / "bench" / "job-set.json").read_text())
+    assert js["kind"] == "sweep" and len(js["jobs"]) >= 2
+    # trial decks carry NO stage token: the calculation is its one rung
+    for j in js["jobs"]:
+        assert (dest / j["script"]).is_file()
+        assert "_0" not in j["script"], j["script"]
+    # a laddered calculation's bare bench still owes a name
+    ladder = tmp_path / "laddered"
+    D.write_description(
+        D.build_description(struct, SiestaConfig(system_label="JOB"),
+                            default_siesta_stages("publishable"),
+                            engine="siesta", shape="hierarchical",
+                            name="JOB", source=str(tmp_path / "h2.xyz")),
+        ladder)
+    (ladder / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(ladder),
+                                  "--no-sbatch"])
+    assert res.exit_code != 0
+    assert "name it" in res.output
+
+
 def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
     """A5 (redo 2026-08-12): FLAT has no stage directory for `bench/` to
     nest inside, so unqualified, two stages' benchmarks shared one root

@@ -167,11 +167,16 @@ pseudopotentials are absent cannot run
 
 ## 3. What the `.fdf` contains (sections, in emission order)
 
-`render_fdf` emits these blocks in order — but the whole body is **wrapped** by the
-shared script-contract blocks: a `provenance` + `bench-marks` header (and an
-optional `atom-metadata` block) on top, and a `user-custom` placeholder + an
-always-emitted post-processing-hook footer at the bottom (`input.py:1387`). So the
-file does **not** begin at row 1 below. `SystemLabel` is the basename SIESTA
+`render_fdf` emits these blocks in order, and since the physics-first
+amendment (`job-contracts.md` § 3.1, 2026-08-01/recorded 2026-08-12) the
+engine body IS the file's head — the file **begins at row 1 below**.  The
+shared script-contract blocks follow it as the tail, in § 3.1's order:
+`user-custom` placeholder, status banner, `provenance`, `bench-marks`, and
+the optional `atom-metadata` last — which is why `tail -40` on any deck
+shows its record.  Parsers find every block by its MARKERS, never by
+position, so this order is ergonomics, not interface.  *(Until 2026-08-12
+this paragraph still taught the retired header-on-top wrapping the § 3.1
+amendment had corrected.)*  `SystemLabel` is the basename SIESTA
 prefixes every output file with; `MeshCutoff` sets the real-space integration grid
 fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 

@@ -9,7 +9,9 @@ contract.
 Public surface here
 -------------------
 
-* :data:`SCHEMA_VERSION`            — current on-disk schema (6).
+* :data:`SCHEMA_VERSION`            — current on-disk schema.  The number
+  lives ONLY on the constant below — typed here too, it went stale at
+  "(6)" while the constant said 7 (redo 2026-08-12).
 * :exc:`MolstructJsonError`         — raised on malformed input or
   invariant violations.  Canonical home; the read-side re-imports.
 * :func:`sidecar_path_for`          — canonical ``<stem>.molstruct

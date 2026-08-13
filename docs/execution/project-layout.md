@@ -941,10 +941,17 @@ in-shell, waiting for each. When the queue has drained,
 `bench-result.json` — a recommendation, not a decision:
 
 ```jsonc
-{ "choice": { "mpi_np": 32, "cpus_per_task": 4, "gpu_mode": "mps",
-              "diag_algorithm": "elpa", "block_size": 128 },
-  "recommend": "elpa · G=1 K=4 C=6 · block 128 · 2.3× faster than the ScaLAPACK baseline" }
+{ "choice":    { "label": "G1K4C6", "engine": "siesta",
+                 "knobs": { "mpi_np": 4, "cpus_per_task": 6, "gres": "gpu:a100:1" },
+                 "mechanism": "elpa",
+                 "rationale": "G1K4C6 fastest (2.3 s/iter); gpu-bound; vs G1K8C2 3.1 s/iter" },
+  "recommend": { "mem_gb": 96, "time": "0-02:52:00",
+                 "time_basis": "2.3s/iter x 200 iters x 1.5 (adjust to your run)" } }
 ```
+*(the sample tracks `bench/result.py`'s writer — `choice.label` is the
+winning trial's id, its knobs ride under `knobs`, and `recommend` is
+measured sizing, not prose; the flat-key sample that stood here until
+2026-08-12 was the retired pre-fold shape)*
 
 **You read it. You decide.** Nothing acts on it until you hand it back.
 
