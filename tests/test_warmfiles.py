@@ -13,17 +13,41 @@ from molbuilder import warmfiles as W
 
 
 # --------------------------------------------------------------------- #
-#  Byte-faith: the seeds ARE today's tuples                              #
+#  Byte-faith: the files SAY this vocabulary, spelled here as LITERALS   #
 # --------------------------------------------------------------------- #
+#
+# B-2 (final review, 2026-08-13): these two pinned the loader against
+# runwrap's tuples -- which U3 made ALIASES OF THE SAME LOADER, so both
+# sides moved together and deleting every inventory-only row from the
+# TOML stayed green while the wrapper banner silently shrank.  A
+# byte-faith pin needs one side the test's own bytes.
 
-def test_siesta_inventory_reproduces_the_tuple_it_retires():
-    from molbuilder.runwrap import _SIESTA_WARM_SUFFIXES
-    assert W.inventory("siesta") == _SIESTA_WARM_SUFFIXES
+#: siesta/warm-files.toml, every section, in row order (order is
+#: load-bearing: Job.warm order, the banner order).
+_SIESTA_INVENTORY = (".XV", ".DM", ".LWF", ".ZM", ".Bonds", ".PARTIAL",
+                     ".EIG", ".HSX", ".WFSX", ".STRUCT_NEXT_ITER",
+                     ".CG", ".TSHS", ".TSDE")
+
+#: pyscf/warm-files.toml, same rule.
+_PYSCF_INVENTORY = (".chk", "_optimized.xyz", "_geom_optim.xyz",
+                    "_geom_optim.tmp", "_geom.tmp")
 
 
-def test_pyscf_inventory_reproduces_the_tuple_it_retires():
-    from molbuilder.runwrap import _PYSCF_WARM_SUFFIXES
-    assert W.inventory("pyscf") == _PYSCF_WARM_SUFFIXES
+def test_siesta_inventory_is_the_declared_vocabulary():
+    assert W.inventory("siesta") == _SIESTA_INVENTORY
+
+
+def test_pyscf_inventory_is_the_declared_vocabulary():
+    assert W.inventory("pyscf") == _PYSCF_INVENTORY
+
+
+def test_runwrap_banner_tuples_are_the_loader_alias():
+    """The U3 re-plumbing itself: runwrap's tuples ARE the loader's
+    answer.  Meaningful again now that the loader's answer is pinned to
+    literals above -- equality to a pinned side is no tautology."""
+    from molbuilder.runwrap import _PYSCF_WARM_SUFFIXES, _SIESTA_WARM_SUFFIXES
+    assert _SIESTA_WARM_SUFFIXES == _SIESTA_INVENTORY
+    assert _PYSCF_WARM_SUFFIXES == _PYSCF_INVENTORY
 
 
 def test_siesta_optimization_carries_exactly_the_declared_trio():
