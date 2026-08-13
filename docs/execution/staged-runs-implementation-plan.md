@@ -1874,7 +1874,10 @@ record).
 
 **Subtracts:** any language anywhere still describing an *automatic* checkpoint.
 
-**Milestone M8.** All twenty-two invariants have an assertion. **I2** (every
+**Milestone M8.** All of `checkpointing.md`'s invariants have an assertion —
+**thirty-one** today (twenty-two when this milestone was written; the
+2026-08-09 rework split and added rows, and a count typed here goes stale
+exactly this way). **I2** (every
 MANIFEST entry matches its file by name, size and sha256) and **S1** (tracked
 XOR archived, never both, never neither) run over a **real produced folder**,
 not a fixture. A `prep` about to overwrite results asks first and prints the
@@ -2362,7 +2365,7 @@ flowchart TB
     M4 --> M5["M5 · one shape out"]
     M5 --> M6["M6 · prep, five moves"]
     M6 --> M7["M7 · one attempt, no chain"]
-    M7 --> M8["M8 · 22 invariants + the prompt"]
+    M7 --> M8["M8 · the invariants + the prompt"]
     M8 --> M9["M9 · one CLI grammar"]
     M9 --> M12["M12 · the architecture is pinned"]
     M12 --> D7{{"D7 · prove it on a real cluster"}}
@@ -2929,6 +2932,16 @@ defect that produced them in place.*
 **The read-back half is not missing — it is unwired.** That is a better position
 than the plan assumed, and it changes the work: `resolve/` has a parser to call.
 
+> **⚠ Read the tables in this section as the 2026-08-08 source read they
+> are, not as the present** (closure note, 2026-08-13): the migration
+> (steps 3–4) and the fold (step 6) have since closed rows C–H — the
+> producers are deleted, `prep` performs all five steps, the template is
+> read by `resolve()` on every prep, the splicing died with
+> `bench/generate.py`, and the retired template format left `template.py`.
+> Row D's pair was deliberately KEPT (see § 5h's amended deletion table).
+> The findings stay because the diagnosis — *a caller re-derives a
+> layer's decision* — is the load-bearing part.
+
 ### What that one defect forces downstream
 
 Because floor 3 has no input, it takes an in-memory config assembled from CLI
@@ -3016,7 +3029,7 @@ The order is forced by what each needs to exist beneath it:
 
 | deleted | lines | because |
 |---|--:|---|
-| `launch_agreement` + `check_launch_matches_deck` | ~75 | the disagreement becomes unconstructible once (A) lands |
+| ~~`launch_agreement` + `check_launch_matches_deck`~~ **kept — the prediction missed** | ~75 | the row said the disagreement "becomes unconstructible once (A) lands"; (A) landed and the pair is LIVE on the submit path (`jobset/agreement.py`), because a launch-time `-np` override can still disagree with the rendered deck — a road (A) never closed.  Recorded 2026-08-13: a deletion promise nothing tracked, caught by the final review |
 | `_anchor_token` · `_payload_for` · `_DECL_RE` · `_coerce` · `render_template`'s deck arg | ~120 | TOML has no payload |
 | `transform_fdf` · `_set_or_append` · `_remove_directive` · `_norm_label` | ~120 | render from the template instead of splicing a deck |
 | one of the two producers | ~60 | one enumeration, two lengths |
@@ -4055,7 +4068,7 @@ the schedule for them, which is the half that belongs to a plan:
 | **`StageRef`** | 1 | six hand-written ways to compute a stage's number | **P9**, pulled early | ✅ landed |
 | **`Shape`** | 4 | a producer emitting flat **and** nested at once | **P5** | ✅ landed |
 | **`Attempt`** | 4 | `prepare_attempt` handing back a bag of string keys | **P6** | ✅ landed |
-| **`LaunchSpec`** | 5 | the run script picking a rank count on its own | **P6** unit 2 | ◐ the *agreement* landed as `LaunchAgreement`; the move behind it did not |
+| **`LaunchSpec`** | 5 | the run script picking a rank count on its own | **P6** unit 2 | ✅ closed by the migration (2026-08-11): the allocation rides the element and the deck renders from it, so the run script no longer picks — `LaunchAgreement` remains the launch-time cross-check (this row read ◐ for two days after § 9.3's own landing) |
 
 **The order was forced, not chosen.** `Shape` had to come before `LaunchSpec` —
 you cannot pin a deck to a launch while two layouts are being emitted at once.
@@ -4074,19 +4087,21 @@ would risk the one workflow that works end to end today.
 ### 9.3 The one real migration, and why it sequences the rest
 
 **Where the code stands floor by floor is [`roadmap.md`](?doc=roadmap.md) § 6.**
-What belongs here is the sequencing fact it produces: **every open item except
-one is the same unfinished change.** The producer runs at *produce* and needs to
-run at *prep* — `project-layout.md` § 1 calls it **"the one real migration"**.
-When it lands:
+What belonged here was the sequencing fact it produced: every open item except
+one was the same unfinished change — the producer ran at *produce* and needed
+to run at *prep*, `project-layout.md` § 1's **"the one real migration"**.
+**It LANDED** (2026-08-11, steps 3–4; the bench fold followed 2026-08-12 —
+this section read as future tense for two days after its own § 5h recorded
+the landing, which is the D3-class drift the final review caught):
 
-- floor 3 finally receives a machine, and the contract's definition of it
-  becomes true of **both** its entry points instead of one;
-- `LaunchSpec` stops being a gap;
-- P6 units 2, 4 and 5 and P10 stop being separate items;
-- `bench/generate.py`'s deck writing becomes the *special case* § 2.3.1a always
-  meant it to be, rather than a second implementation.
+- floor 3 receives a machine, and the contract's definition of it is true of
+  its one remaining entry point;
+- `LaunchSpec` stopped being a gap;
+- P6 units 2, 4 and 5 and P10 stopped being separate items;
+- `bench/generate.py` died with the fold rather than becoming a special case
+  — a better outcome than the one predicted.
 
-**Its shape is already known, because it has been done once.** Step 1 —
+**Its shape was already known, because it had been done once.** Step 1 —
 resolving the machine — was missing from the `prep` route and was added to it.
 No floor moved. No floor was created. **The migration is the same act: the route
 gains a step it currently skips.** That is the best evidence available that the
