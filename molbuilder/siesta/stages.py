@@ -117,7 +117,12 @@ def _traits(eff) -> Dict[str, str]:
     layer compares it as a string and never learns what it means, which is what
     keeps SIESTA's restart group out of the engine-agnostic core.
     """
-    return {OPTIMIZER_TRAIT: str(getattr(eff, "relax_type", "") or "")}
+    # normalized at the ONE producer (R11, 2026-08-12): the jobset layer
+    # compares this as a string, and "Broyden" vs "broyden" -- the same
+    # optimizer, spelled by two hands -- compared unequal and silently
+    # withheld the warm .CG the pair rule exists to carry
+    return {OPTIMIZER_TRAIT:
+            str(getattr(eff, "relax_type", "") or "").strip().lower()}
 
 
 def _warm_declaration(label: str, eff) -> List[WarmFile]:

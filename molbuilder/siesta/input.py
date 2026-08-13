@@ -1541,10 +1541,18 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     _bs_range = _block_size_bounds(struct.n_atoms, cfg.mpi_np,
                                    gpu_mode=bool(cfg.enable_gpu),
                                    emitted=block_size)
+    # STATE THREE drops the whole declaration, not just the defaults row:
+    # § 3.3 says a deliberately omitted keyword means "no `field
+    # BlockSize` line at all -- not offered for override" (R11,
+    # 2026-08-12: only the defaults row was dropped, so the block
+    # declared an override window for a keyword the deck refuses to
+    # carry -- the block lying, the exact defect its own comment below
+    # names for the defaults half).
     _bench_fields = [
         (dataclasses.replace(f, range_=_bs_range) if f.anchor == "BlockSize"
          else f)
         for f in _sc.SIESTA_BENCH_FIELDS
+        if not (f.anchor == "BlockSize" and block_size is None)
     ]
     _bench_marks = _sc.emit_bench_marks(
         metadata={
@@ -1568,7 +1576,16 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             # value the deck does not carry would be the block lying.
             **({"BlockSize": block_size} if block_size is not None else {}),
             "MaxSCFIterations":  cfg.max_scf_iter,
-            "MD.NumCGsteps":     cfg.relax_steps,
+            # only when the DECK carries the line (CG/Broyden/FIRE):
+            # relax "none" and the Verlet/Nose dynamics emit no
+            # MD.NumCGsteps, and a defaults row for an absent keyword is
+            # the block lying -- the same rule as BlockSize's state
+            # three one entry up (R11, 2026-08-12)
+            **({"MD.NumCGsteps": cfg.relax_steps}
+               if (cfg.relax_type
+                   and cfg.relax_type.strip().upper()
+                   in ("CG", "BROYDEN", "FIRE"))
+               else {}),
             "MeshCutoff":        cfg.mesh_cutoff,
         },
     )

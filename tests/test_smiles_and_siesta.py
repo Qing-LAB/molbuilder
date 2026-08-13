@@ -158,6 +158,10 @@ def test_blocksize_zero_omits_the_keyword_entirely():
                                   relax_type="none"))
     assert not re.search(r"^BlockSize", fdf, re.M)
     assert "omitted (SIESTA's own)" in fdf
+    # R11: § 3.3's state three is "no `field BlockSize` line AT ALL" --
+    # until 2026-08-12 only the defaults row was dropped, so BENCH-MARKS
+    # declared an override window for a keyword the deck refuses to carry
+    assert "field BlockSize" not in fdf
 
 
 def test_block_size_cap_derives_from_orbitals_not_atoms():

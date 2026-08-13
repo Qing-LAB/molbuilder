@@ -1385,8 +1385,10 @@ def _shipped_ladder():
                         warm=_warm_declaration(label, eff),
                         traits=_traits(eff)))
     js = JobSet(name=label, engine="siesta", kind="ladder", jobs=jobs)
+    # lowercase since R11: the trait normalizes at its ONE producer so
+    # "Broyden" vs "broyden" (one optimizer, two hands) compare equal
     assert [j.traits["optimizer"] for j in js.jobs] == \
-        ["CG", "Broyden", "Broyden"], "the fixture's premise moved"
+        ["cg", "broyden", "broyden"], "the fixture's premise moved"
     return js
 
 
