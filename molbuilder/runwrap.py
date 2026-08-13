@@ -61,6 +61,44 @@ class WrapperError(Exception):
     routing, missing script file, ..."""
 
 
+def _phys_cores_probe_block() -> str:
+    """Bash that sets ``_phys_cores``, ``_n_sockets`` and ``_cps``.
+
+    Prefer ``lscpu`` because it reports PHYSICAL cores; ``nproc`` counts
+    hyperthread siblings, which would make ``_cps`` too large and lead to
+    over-binding.  Falls back to ``nproc / 2`` (conservative 2-way-HT
+    assumption) when lscpu is unavailable.
+
+    ``|| true`` sits INSIDE each substitution on purpose: under
+    ``set -e`` an assignment whose command substitution fails aborts the
+    script, so without it a box with no ``lscpu`` died HERE -- before
+    reaching the fallback written for exactly that case, and before
+    ``-h`` could print usage (R9).
+
+    Shared by both engines.  SIESTA's GPU rank policy divides the socket
+    among MPI ranks; PySCF has no MPI and uses ``_phys_cores`` as the
+    last-resort thread count when no allocation states one.  One probe,
+    because "how many cores does this machine have" has one answer and
+    two engines asking it separately is how they come to disagree.
+    """
+    return (
+        '_phys_cores=$(LANG=C lscpu -p=Core,Socket 2>/dev/null '
+        '| grep -v "^#" | sort -u | wc -l 2>/dev/null || true)\n'
+        'if [ -z "$_phys_cores" ] || [ "$_phys_cores" -lt 1 ]; then\n'
+        '    _logical=$(nproc --all 2>/dev/null '
+        '|| getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)\n'
+        '    _phys_cores=$(( _logical / 2 ))\n'
+        '    [ "$_phys_cores" -lt 1 ] && _phys_cores=$_logical\n'
+        'fi\n'
+        '_n_sockets=$(LANG=C lscpu -p=Socket 2>/dev/null '
+        '| grep -v "^#" | sort -u | wc -l 2>/dev/null || true)\n'
+        'if [ -z "$_n_sockets" ] || [ "$_n_sockets" -lt 1 ]; '
+        'then _n_sockets=1; fi\n'
+        '_cps=$(( _phys_cores / _n_sockets ))\n'
+        '[ "$_cps" -lt 1 ] && _cps=1\n'
+    )
+
+
 def _run_index_resolver(basename: str, ext: str = ".out") -> str:
     """Bash block that resolves ``_out_file`` to
     ``{basename}-runN{ext}``.
@@ -1289,22 +1327,7 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         # substitution fails triggers errexit, so with lscpu absent the
         # wrapper died HERE -- before the nproc fallback written for
         # exactly that case, and before -h could print usage (R9).
-        '_phys_cores=$(LANG=C lscpu -p=Core,Socket 2>/dev/null '
-        '| grep -v "^#" | sort -u | wc -l 2>/dev/null || true)\n'
-        'if [ -z "$_phys_cores" ] || [ "$_phys_cores" -lt 1 ]; then\n'
-        '    # Fallback: nproc / 2 (assume 2-way HT, conservative\n'
-        '    # estimate; bare nproc would over-count on HT boxes).\n'
-        '    _logical=$(nproc --all 2>/dev/null '
-        '|| getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)\n'
-        '    _phys_cores=$(( _logical / 2 ))\n'
-        '    [ "$_phys_cores" -lt 1 ] && _phys_cores=$_logical\n'
-        'fi\n'
-        '_n_sockets=$(LANG=C lscpu -p=Socket 2>/dev/null '
-        '| grep -v "^#" | sort -u | wc -l 2>/dev/null || true)\n'
-        'if [ -z "$_n_sockets" ] || [ "$_n_sockets" -lt 1 ]; '
-        'then _n_sockets=1; fi\n'
-        '_cps=$(( _phys_cores / _n_sockets ))\n'
-        '[ "$_cps" -lt 1 ] && _cps=1\n'
+        + _phys_cores_probe_block() +
         # ---- MPS availability ----
         # NVIDIA Multi-Process Service: a daemon that lets multiple
         # CUDA client processes share one GPU CONCURRENTLY via Hyper-Q
@@ -1718,11 +1741,18 @@ def render_run_wrapper(script_path: Path, *,
     #     overrides via cfg.omp_threads only when running an
     #     OMP-compiled SIESTA build (hybrid MPI+OMP).
     #
-    #   * PySCF: handled in-script by molbuilder.runtime_info, which
-    #     sets OMP_NUM_THREADS = physical_cores (NOT physical_cores
-    #     // mpi_np -- PySCF doesn't use MPI, only OMP).  The
-    #     wrapper deliberately leaves OMP_NUM_THREADS unset so the
-    #     in-script setdefault wins.
+    #   * PySCF: the WRAPPER resolves and exports OMP_NUM_THREADS
+    #     (P1b, 2026-08-13) -- ``-omp`` flag, else OMP_NUM_THREADS,
+    #     else the scheduler's allocation, else this node's physical
+    #     cores.  No division by a rank count: PySCF is OpenMP-only.
+    #
+    #     It used to leave the variable unset so the script's own
+    #     setdefault would win, and the script counted the whole NODE.
+    #     Correct on a workstation, where the node IS the allocation;
+    #     wrong under a scheduler, where a job holding 8 of 128 cores
+    #     started 128 threads and time-sliced them onto its 8.  The
+    #     script keeps the same chain for the case that still needs it
+    #     -- ``python job.py`` run by hand, with no wrapper.
     env_prefix = ""
     if category == "siesta":
         # GPU mode is detected from the .fdf (the single source of
@@ -2525,10 +2555,28 @@ def render_run_wrapper(script_path: Path, *,
             _continue_force_args_parser("PySCF wrapper")
             + f"# --- PySCF wrapper argument parsing -------------\n"
             f'_dry_run=0\n'
+            f'_omp_flag=""\n'
             f'while [ $# -gt 0 ]; do\n'
             f'    case "$1" in\n'
             f"        --dry-run|--dryrun)\n"
             f'            _dry_run=1; shift ;;\n'
+            # -omp / -np are what `jobset submit` hands EVERY .run.sh
+            # (submit._run_sh_args).  This parser used to reject them as
+            # unknown and exit 1, so `submit --mode direct` on a PySCF
+            # job with resources set died before Python started -- on the
+            # workstation posture, where direct mode is the normal way to
+            # run.  -omp is the thread count and is honoured; -np is
+            # accepted and reported, because PySCF is OpenMP-only and a
+            # silently swallowed rank count would let a user believe they
+            # had asked for something.
+            f"        -omp|--omp)\n"
+            f'            _omp_flag="$2"; shift 2 ;;\n'
+            f"        -np|--np)\n"
+            f'            if [ "${{2:-1}}" != "1" ]; then\n'
+            f'                echo "molbuilder: -np $2 ignored -- PySCF is '
+            f'OpenMP-only (no MPI ranks); use -omp for thread count" >&2\n'
+            f'            fi\n'
+            f'            shift 2 ;;\n'
             f"        -h|--help)\n"
             f'            cat <<USAGE\n'
             f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [--cold] [--dry-run] [-h]\n'
@@ -2557,6 +2605,14 @@ def render_run_wrapper(script_path: Path, *,
             f"                   and its warm state would corrupt this\n"
             f"                   run.  Combine with -f to also restart\n"
             f"                   the run-index sequence at -run0.\n"
+            f"  -omp N           OpenMP threads.  Highest precedence;\n"
+            f"                   otherwise OMP_NUM_THREADS, else the\n"
+            f"                   scheduler's allocation, else this\n"
+            f"                   node's physical cores.\n"
+            f"  -np N            accepted and IGNORED -- PySCF is\n"
+            f"                   OpenMP-only.  Present because\n"
+            f"                   `jobset submit` passes it to every\n"
+            f"                   run script; N>1 prints a note.\n"
             f"  --dry-run        resolve + log the launch command, then\n"
             f"                   exit WITHOUT running PySCF.\n"
             f"  -h               this help.\n"
@@ -2568,6 +2624,31 @@ def render_run_wrapper(script_path: Path, *,
             f"    esac\n"
             f"done\n"
             f"\n"
+            # --- Thread sizing: the WRAPPER decides ------------------
+            # Same order the script applies, resolved one layer up and
+            # EXPORTED, so the two cannot disagree and the banner can
+            # state the number before Python starts.  The script keeps
+            # its own identical chain for the case that matters: a user
+            # running ``python job.py`` by hand, with no wrapper at all.
+            #
+            # The node is the last resort, not the first answer.  Asking
+            # the machine when a scheduler has granted a slice of it is
+            # how a job on a 128-core node claimed 128 threads for the 8
+            # cores it owned.
+            + "# --- OpenMP thread sizing (allocation first) ---\n"
+            + _phys_cores_probe_block()
+            + 'if [ -n "$_omp_flag" ]; then\n'
+              '    _omp_threads="$_omp_flag"; _omp_from="-omp flag"\n'
+              'elif [ -n "${OMP_NUM_THREADS:-}" ]; then\n'
+              '    _omp_threads="$OMP_NUM_THREADS"; _omp_from="OMP_NUM_THREADS"\n'
+              'elif [ -n "${SLURM_CPUS_PER_TASK:-}" ]; then\n'
+              '    _omp_threads="$SLURM_CPUS_PER_TASK"\n'
+              '    _omp_from="SLURM_CPUS_PER_TASK"\n'
+              'else\n'
+              '    _omp_threads="$_phys_cores"; _omp_from="node physical cores"\n'
+              'fi\n'
+              'export OMP_NUM_THREADS="$_omp_threads"\n'
+              '\n'
             # PySCF uses ``.pyscf.log`` instead of ``.out`` so the
             # Results-tab inspector dispatcher can tell PySCF output
             # apart from SIESTA's (which keeps ``.out``).  Per
@@ -2588,6 +2669,8 @@ def render_run_wrapper(script_path: Path, *,
             f'echo "  Host        : $(hostname)"\n'
             f'echo "  Cwd         : $(pwd)"\n'
             f'echo "  Conda       : ${{CONDA_DEFAULT_ENV:-?}}"\n'
+            f'echo "  OMP threads : $_omp_threads (from $_omp_from; '
+            f'node has $_phys_cores physical cores)"\n'
             # ---- Mode + constraints (mirrors SIESTA; see siesta
             # banner above for the rationale). ----
             f'echo "  Mode        : $_mode"\n'

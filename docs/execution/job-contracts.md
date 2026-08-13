@@ -482,6 +482,7 @@ wrapper contains these and nothing else:
 | **Activation** | the one activation statement, verbatim |
 | **Continuation flags** | the shared `--continue` / `--cold` / `--force` handling |
 | **SIESTA-specific argument parsing** | `-np` / `-omp` and friends |
+| **OpenMP thread sizing** | PySCF only. Resolves the thread count — `-omp` flag, else `OMP_NUM_THREADS`, else the scheduler's allocation, else this node's physical cores — and **exports** it, so the wrapper and the script cannot disagree. Deciding, not computing: the node is the last resort, never the first answer. Added 2026-08-13 (P1b) because the wrapper deliberately left the variable unset and the script counted the whole node, so a job holding 8 cores of a 128-core node started 128 threads and time-sliced them onto its 8. PySCF is OpenMP-only, so `-np` is accepted, reported and ignored — `submit` passes it to every run script |
 | **Run index resolution** | picks `-runN` so a re-run never overwrites |
 | **Cold-restart: NAME SWEEP** | what `--cold` does — everything the id names goes aside, minus what molbuilder wrote (§ 4.1, U17) |
 | **Runtime status banner** | prints what it found — warm files, ranks |

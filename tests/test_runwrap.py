@@ -433,17 +433,38 @@ def test_render_siesta_max_memory_emits_ulimit():
     assert "8388608" in text
 
 
-def test_render_pyscf_does_not_pin_threads():
-    """PySCF parallelism is BLAS/OpenMP threading; never pin those
-    to 1 for a PySCF wrapper."""
+def test_render_pyscf_never_serialises_threading():
+    """PySCF's parallelism IS OpenMP threading -- never pin it to 1.
+
+    Rewritten 2026-08-13 (P1b).  The claim is unchanged; the mechanism
+    is.  This asserted that ``OMP_NUM_THREADS`` never appeared in a
+    PySCF wrapper at all, which was how the wrapper abdicated thread
+    sizing to the script -- and the script counted the whole NODE, so a
+    job holding 8 of 128 cores started 128 threads.  The wrapper now
+    RESOLVES the count (allocation first) and exports it.
+
+    So the rule is not "never mention it", it is:
+      * never pin it to 1 -- that serialises the calculation;
+      * leave the BLAS variables to the script, which owns the
+        one-thread-per-worker discipline that stops OMP x BLAS from
+        multiplying.
+    """
     _bind()
     text = render_run_wrapper(Path("/x/y.py"))
-    for needle in ("OMP_NUM_THREADS", "MKL_NUM_THREADS",
-                    "OPENBLAS_NUM_THREADS"):
+    for needle in ("MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
         assert needle not in text, (
-            f"PySCF wrapper unexpectedly pins {needle!r} -- this "
-            f"serialises PySCF's main parallelism path"
+            f"PySCF wrapper pins {needle!r} -- BLAS pinning is the "
+            f"script's job (molbuilder/runtime_info.py)"
         )
+    assert 'export OMP_NUM_THREADS="$_omp_threads"' in text
+    for serialising in ('OMP_NUM_THREADS=1', 'OMP_NUM_THREADS="1"'):
+        assert serialising not in text, (
+            "PySCF wrapper pins OpenMP to a single thread -- that "
+            "serialises its main parallelism path"
+        )
+    # ...and the count is taken from the allocation before the machine.
+    assert text.index("SLURM_CPUS_PER_TASK") < text.index(
+        '_omp_from="node physical')
 
 
 # --------------------------------------------------------------------- #

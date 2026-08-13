@@ -76,3 +76,63 @@ def test_the_log_says_where_the_number_came_from():
     src = "\n".join(emit_threading_setup_lines(None))
     assert "_MB_THREADS_FROM" in src
     assert "from {_MB_THREADS_FROM}" in src
+
+
+# --------------------------------------------------------------------- #
+#  The wrapper side (P1b)                                               #
+# --------------------------------------------------------------------- #
+
+
+def _pyscf_wrapper(tmp_path, monkeypatch):
+    """Render a PySCF run-wrapper in an isolated cwd + HOME."""
+    import json
+    from molbuilder import runwrap
+    home = tmp_path / "home"; home.mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"preamble": "true",
+                               "activation": "source activate"}}))
+    (tmp_path / "job.py").write_text("print('hi')\n")
+    return runwrap.render_run_wrapper(tmp_path / "job.py")
+
+
+def test_the_wrapper_accepts_the_flags_submit_actually_sends(
+        tmp_path, monkeypatch):
+    """`jobset submit` hands EVERY run script `-np N -omp M`
+    (submit._run_sh_args).  The PySCF parser used to reject both as
+    unknown and exit 1, so `submit --mode direct` on a PySCF job with
+    resources set died before Python started -- on the workstation
+    posture, where direct mode is the normal way to run."""
+    t = _pyscf_wrapper(tmp_path, monkeypatch)
+    assert "-omp|--omp)" in t, "-omp must be parsed, not rejected"
+    assert "-np|--np)" in t, "-np must be tolerated, not rejected"
+    # ...and -np must be visibly ignored rather than silently swallowed:
+    # PySCF has no MPI ranks, and a user who asked for some should hear.
+    assert "OpenMP-only" in t
+
+
+def test_the_wrapper_exports_the_thread_count_it_resolved(
+        tmp_path, monkeypatch):
+    """One layer decides.  The script keeps the same chain for a hand
+    run, but when the wrapper is in play its answer is the answer."""
+    t = _pyscf_wrapper(tmp_path, monkeypatch)
+    assert 'export OMP_NUM_THREADS="$_omp_threads"' in t
+    # The allocation is consulted BEFORE the node.
+    assert t.index("SLURM_CPUS_PER_TASK") < t.index('_omp_from="node physical')
+
+
+def test_the_wrapper_banner_states_where_the_count_came_from(
+        tmp_path, monkeypatch):
+    t = _pyscf_wrapper(tmp_path, monkeypatch)
+    assert "OMP threads : $_omp_threads (from $_omp_from" in t
+
+
+def test_both_engines_share_one_core_probe(tmp_path, monkeypatch):
+    """`how many cores does this machine have` has one answer; two
+    engines probing separately is how they come to disagree."""
+    from molbuilder.runwrap import _phys_cores_probe_block
+    probe = _phys_cores_probe_block()
+    assert "_phys_cores=" in probe and "_cps=" in probe
+    assert probe in _pyscf_wrapper(tmp_path, monkeypatch)
