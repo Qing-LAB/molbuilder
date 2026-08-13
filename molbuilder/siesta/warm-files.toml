@@ -1,0 +1,54 @@
+# SIESTA's warm-state vocabulary -- job-contracts.md § 4.2a.
+# ONE file: the declaration builder, the wrapper inventory, validation
+# and the guards all derive from these rows.  Row order is load-bearing
+# (Job.warm order; the banner/test order) -- append, don't reorder.
+# The vocabulary is closed: suffix · carry · requires_same · honoured_by.
+
+schema = "molbuilder/warm-files@1"
+engine = "siesta"
+
+# ---- every SIESTA calculation ---------------------------------------
+
+[[base.file]]
+suffix      = ".XV"             # coordinates + velocities (the geometry)
+carry       = "when-continuing"
+honoured_by = "MD.UseSaveXV"
+
+[[base.file]]
+suffix      = ".DM"             # converged density matrix
+carry       = "when-continuing"
+honoured_by = "DM.UseSaveDM"
+
+[[base.file]]
+suffix = ".LWF"                 # localized Wannier functions
+[[base.file]]
+suffix = ".ZM"                  # Z-matrix state
+[[base.file]]
+suffix = ".Bonds"
+[[base.file]]
+suffix = ".PARTIAL"
+[[base.file]]
+suffix = ".EIG"                 # eigenvalues
+[[base.file]]
+suffix = ".HSX"                 # Hamiltonian + overlap
+[[base.file]]
+suffix = ".WFSX"                # saved wavefunctions
+[[base.file]]
+suffix = ".STRUCT_NEXT_ITER"    # next-iteration geometry
+
+# ---- optimization: extends base -------------------------------------
+
+[[optimization.file]]
+suffix        = ".CG"           # the optimizer's own history
+carry         = "when-continuing"
+requires_same = "optimizer"     # meaningless across algorithms -- a CG
+                                # history handed to Broyden corrupts the
+                                # restart (project-layout § 2.3.4 row 3)
+honoured_by   = "MD.UseSaveCG"
+
+# ---- transport: a different vocabulary, same format -----------------
+
+[[transport.file]]
+suffix = ".TSHS"                # TranSIESTA self-energy Hamiltonian
+[[transport.file]]
+suffix = ".TSDE"                # NEGF density

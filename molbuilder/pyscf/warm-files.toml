@@ -1,0 +1,31 @@
+# PySCF's warm-state vocabulary -- job-contracts.md § 4.2a.
+# Suffixes, not extensions: ``.chk`` is a real extension, the geomeTRIC
+# rows are label suffixes (``<JOB>_optimized.xyz``).  No honoured_by
+# keys: the generated PySCF SCRIPT carries the warm-restart logic
+# itself (§ 4.2), so there is no deck keyword to agree with -- the
+# parity guard for its hooks is the read-side/--cold inventory test.
+
+schema = "molbuilder/warm-files@1"
+engine = "pyscf"
+
+# ---- every PySCF calculation ----------------------------------------
+
+[[base.file]]
+suffix = ".chk"                 # SCF checkpoint (init-guess source)
+
+# ---- optimization (geomeTRIC) ---------------------------------------
+
+[[optimization.file]]
+suffix = "_optimized.xyz"       # latest converged geometry
+[[optimization.file]]
+suffix = "_geom_optim.xyz"      # geomeTRIC trajectory
+[[optimization.file]]
+suffix = "_geom_optim.tmp"
+[[optimization.file]]
+suffix = "_geom.tmp"
+
+# ---- vibration: shares the checkpoint story -------------------------
+# (an empty section IS a statement: base only, nothing type-specific --
+#  the § 4.2a growth rule's smallest expansion)
+
+[vibration]

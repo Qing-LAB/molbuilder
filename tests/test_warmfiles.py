@@ -1,0 +1,134 @@
+"""The warm-file rules loader — `job-contracts.md` § 4.2a's one reader.
+
+Written with the module (U1, 2026-08-13), from the contract: the closed
+vocabulary, the [base]+sections hierarchy, the growth-rule refusal, and
+— the byte-faith pins — the seed files reproducing EXACTLY the tuples
+they will retire, which is what turns U2/U3 into provable re-plumbing.
+"""
+from __future__ import annotations
+
+import pytest
+
+from molbuilder import warmfiles as W
+
+
+# --------------------------------------------------------------------- #
+#  Byte-faith: the seeds ARE today's tuples                              #
+# --------------------------------------------------------------------- #
+
+def test_siesta_inventory_reproduces_the_tuple_it_retires():
+    from molbuilder.runwrap import _SIESTA_WARM_SUFFIXES
+    assert W.inventory("siesta") == _SIESTA_WARM_SUFFIXES
+
+
+def test_pyscf_inventory_reproduces_the_tuple_it_retires():
+    from molbuilder.runwrap import _PYSCF_WARM_SUFFIXES
+    assert W.inventory("pyscf") == _PYSCF_WARM_SUFFIXES
+
+
+def test_siesta_optimization_carries_exactly_the_declared_trio():
+    """The carry rows are § 2.3.4's three, in its row order, with the
+    pair condition on the history — the exact declaration U2 renders."""
+    rows = [r for r in W.rules_for("siesta", "optimization") if r.carry]
+    assert [(r.suffix, r.requires_same, r.honoured_by) for r in rows] == [
+        (".XV", None, "MD.UseSaveXV"),
+        (".DM", None, "DM.UseSaveDM"),
+        (".CG", "optimizer", "MD.UseSaveCG"),
+    ]
+
+
+def test_transport_has_its_own_vocabulary_and_no_optimizer_history():
+    rows = W.rules_for("siesta", "transport")
+    suffixes = [r.suffix for r in rows]
+    assert ".TSHS" in suffixes and ".TSDE" in suffixes
+    assert ".CG" not in suffixes
+    # transport carries nothing between stages today: inventory-only
+    assert not any(r.carry for r in rows if r.suffix in (".TSHS", ".TSDE"))
+
+
+def test_an_empty_section_is_base_only():
+    """[vibration] with no rows IS a statement — the smallest expansion
+    the § 4.2a growth rule allows."""
+    assert [r.suffix for r in W.rules_for("pyscf", "vibration")] == [".chk"]
+
+
+# --------------------------------------------------------------------- #
+#  The growth rule's refusal                                             #
+# --------------------------------------------------------------------- #
+
+def test_an_unknown_calculation_is_refused_naming_the_sections():
+    with pytest.raises(W.WarmFilesError) as e:
+        W.rules_for("siesta", "spectroscopy")
+    msg = str(e.value)
+    assert "spectroscopy" in msg
+    assert "optimization" in msg and "transport" in msg
+    assert "new section" in msg
+
+
+def test_base_is_not_a_calculation_type():
+    with pytest.raises(W.WarmFilesError):
+        W.rules_for("siesta", "base")
+
+
+# --------------------------------------------------------------------- #
+#  The closed vocabulary, enforced                                       #
+# --------------------------------------------------------------------- #
+
+def _write_rules(tmp_path, monkeypatch, text):
+    f = tmp_path / "warm-files.toml"
+    f.write_text(text)
+    monkeypatch.setattr(W, "_rules_path", lambda engine: f)
+    return f
+
+
+_HEAD = 'schema = "molbuilder/warm-files@1"\nengine = "x"\n'
+
+
+def test_a_fourth_key_is_refused_as_the_design_signal(tmp_path, monkeypatch):
+    _write_rules(tmp_path, monkeypatch,
+                 _HEAD + '[[base.file]]\nsuffix = ".A"\nwhen = "always"\n')
+    with pytest.raises(W.WarmFilesError, match="closed"):
+        W.load_warm_files("x")
+
+
+def test_a_carry_value_outside_the_vocabulary_is_refused(tmp_path,
+                                                         monkeypatch):
+    _write_rules(tmp_path, monkeypatch,
+                 _HEAD + '[[base.file]]\nsuffix = ".A"\ncarry = "always"\n')
+    with pytest.raises(W.WarmFilesError, match="when-continuing"):
+        W.load_warm_files("x")
+
+
+def test_one_suffix_lives_in_one_section(tmp_path, monkeypatch):
+    _write_rules(tmp_path, monkeypatch,
+                 _HEAD + '[[base.file]]\nsuffix = ".A"\n'
+                 '[[opt.file]]\nsuffix = ".A"\n')
+    with pytest.raises(W.WarmFilesError, match="one row per file"):
+        W.load_warm_files("x")
+
+
+def test_a_file_without_base_reads_as_truncated(tmp_path, monkeypatch):
+    _write_rules(tmp_path, monkeypatch,
+                 _HEAD + '[[opt.file]]\nsuffix = ".A"\n')
+    with pytest.raises(W.WarmFilesError, match="base"):
+        W.load_warm_files("x")
+
+
+def test_the_engine_key_must_match_the_package(tmp_path, monkeypatch):
+    _write_rules(tmp_path, monkeypatch,
+                 'schema = "molbuilder/warm-files@1"\nengine = "y"\n'
+                 '[base]\n')
+    with pytest.raises(W.WarmFilesError, match="agree"):
+        W.load_warm_files("x")
+
+
+def test_a_wrong_schema_major_is_refused(tmp_path, monkeypatch):
+    _write_rules(tmp_path, monkeypatch,
+                 'schema = "molbuilder/warm-files@2"\nengine = "x"\n[base]\n')
+    with pytest.raises(ValueError):
+        W.load_warm_files("x")
+
+
+def test_a_missing_file_names_the_expected_home():
+    with pytest.raises(W.WarmFilesError, match="warm-files.toml"):
+        W.load_warm_files("no_such_engine")

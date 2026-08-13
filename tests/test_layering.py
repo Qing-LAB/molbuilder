@@ -100,6 +100,14 @@ _L1_MODULES = {
                          # tab and the codec must all reach ONE normaliser or
                          # the id a surface shows differs from the one the
                          # engine writes -- 3's rule 1.
+    "warmfiles",         # the warm-file rules loader (job-contracts § 4.2a):
+                         # an engine's warm-state vocabulary as ONE data
+                         # file, [base] + a section per calculation type.
+                         # L1 on stdlib tomllib + ``persist`` for the schema
+                         # gate -- load-bearing like ``task``'s leaf posture:
+                         # the jobset seam, the wrapper generator and
+                         # validation must all reach ONE loader or the
+                         # vocabulary forks again (U1, 2026-08-13).
     "task",              # the task.json codec (engines/stages.md 6) -- one
                          # calculation's description: engine name, shape,
                          # base, varies, stages.  L1 because it imports only

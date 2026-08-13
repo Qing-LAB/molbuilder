@@ -238,9 +238,17 @@ def _continue_force_args_parser(name_for_usage: str) -> str:
 #: SIESTA's warm-restart files, by suffix.  The SAME inventory the ``--cold``
 #: move-aside covers (job-contracts.md § 4.2) -- one list, so a new warm hook
 #: cannot be carried without also being moved aside, or vice versa.
+#: CANONICAL ORDER (U1 precursor, 2026-08-13): the carry rows first, in
+#: `project-layout.md` § 2.3.4's own row order (.XV geometry, .DM density,
+#: .CG history), then the inventory-only rows, transport's last.  The old
+#: order was an arbitrary listing; the warm-files rules file (job-contracts
+#: § 4.2a) reproduces THIS order, so canonicalizing here first is what lets
+#: U3 prove itself byte-identical.  Order is cosmetic at runtime -- an
+#: ``||`` chain and a banner label -- which is why this is safe as its own
+#: deliberate commit.
 _SIESTA_WARM_SUFFIXES = (
-    ".DM", ".CG", ".XV", ".LWF", ".ZM", ".Bonds", ".PARTIAL", ".EIG",
-    ".HSX", ".WFSX", ".STRUCT_NEXT_ITER", ".TSHS", ".TSDE",
+    ".XV", ".DM", ".LWF", ".ZM", ".Bonds", ".PARTIAL", ".EIG",
+    ".HSX", ".WFSX", ".STRUCT_NEXT_ITER", ".CG", ".TSHS", ".TSDE",
 )
 
 #: PySCF's warm-restart files, by SUFFIX rather than extension -- ``.chk`` is
