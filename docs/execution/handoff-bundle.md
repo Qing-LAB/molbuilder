@@ -182,9 +182,11 @@ the sidecar's `structure_hash` lets the next loader detect the mismatch — but
 a UI that writes a handoff SHOULD warn before targeting a stem that already
 exists.
 
-On schema: the reader handles ATOM-METADATA **v3 and v4**; a version below 3
-raises `BundleError` ("re-render with current molbuilder"); above 4 loads with
-a `notes` warning ("molbuilder expects 4").
+On schema: the reader accepts the **current version only** (the number rides
+`sidecars/molstruct.SCHEMA_VERSION`; job-contracts § 3.4).  Anything else
+raises `BundleError` ("re-render with current molbuilder") — the
+v3-and-v4-with-a-notes-warning story that stood here described a removed
+behaviour (F-6, 2026-08-13).
 
 ## 6. The two surfaces
 

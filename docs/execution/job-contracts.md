@@ -438,8 +438,14 @@ tree for reusable geometries matching `*_optimized.xyz`, `*.STRUCT_OUT`, and
 
 ### 2.6 The run wrapper — `.run.sh` and `.sbatch`
 
-**`prep` writes the wrapper**, on the machine that will run the job, and it is
-the only thing that does. The wrapper activates the routed conda env and
+**`prep` writes the wrapper**, on the machine that will run the job, and on
+the described route it is the only thing that does.  *(Two recorded side
+doors call the same emitter: the web install-wrapper endpoint —
+`web/blueprints/build.py`, the low-level tool the described route
+supersedes — and transport's driver, which emits wrappers for its own
+kind.  Neither renders a wrapper a different way; the sentence that stood
+here claimed exclusivity the tree never had.)*  The wrapper activates the
+routed conda env and
 executes the tool (`molbuilder/runwrap.py::render_run_wrapper`). Routing is by
 extension:
 
@@ -833,8 +839,10 @@ block cites that schema rather than duplicating it.
 key of its own beside ``regions`` — the retired shape.  Frozen atoms are an
 ordinary label INSIDE ``regions`` now; the version number rides the
 sidecar's one authority (`sidecars/molstruct.SCHEMA_VERSION`, 7 today) so
-this block and the ``.molstruct.json`` cannot disagree, and the reader
-TRANSLATES an old block's ``frozen_atoms`` in rather than refusing.)*
+this block and the ``.molstruct.json`` cannot disagree, and the read side
+accepts the CURRENT version only — an old block, its ``frozen_atoms`` key
+included, is REFUSED with the regenerate message, never silently
+upgraded.)*
 
 **Rules (reconciled to code):**
 
@@ -843,8 +851,12 @@ TRANSLATES an old block's ``frozen_atoms`` in rather than refusing.)*
   **7** today), never typed here or in the emitter, so this block, the
   `.molstruct.json` and this bullet cannot drift apart.  The read side
   accepts the CURRENT version only (`_READABLE_SCHEMA_VERSIONS`); an old
-  block's `frozen_atoms` key is **translated** into a `regions` label on
-  read rather than refused.  *(Until 2026-08-12 this bullet taught
+  block — its `frozen_atoms` key included — is **refused** with the
+  regenerate message.  Every reader refuses the retired key
+  (`transport/bundle.py`, the molstruct sidecar loader,
+  `apply_metadata_dict`): *no translation exists*, and the sentence that
+  stood here promised one the tree never performed (final review F-5,
+  2026-08-13).  *(Until 2026-08-12 this bullet taught
   "`v4`, `schema_version: 4` … sidecar itself v6 … read-side accepts
   (3, 4, 5, 6)" — three version claims, all stale, ten lines under the
   amendment that corrected the example above it.)*
@@ -892,8 +904,9 @@ how this sentence went stale at "v4" until 2026-08-12), PROVENANCE is
 additive-keys-only (no tag), HEADER is free-form prose. There is **no
 autodetection and no silent upgrade** — a parser reads the version tag and
 either handles it or refuses, pointing the user at "regenerate with the
-current molbuilder"; the ONE translation is § 3.4's read-side rename of an
-old block's `frozen_atoms` into a `regions` label. Given a conforming file, a tool may assume: PROVENANCE
+current molbuilder" — there is NO translation anywhere: § 3.4's readers
+refuse the retired `frozen_atoms` key with the same regenerate message
+(F-5, 2026-08-13). Given a conforming file, a tool may assume: PROVENANCE
 answers who/when/what-defaults; BENCH-MARKS lists the overridable fields and
 their bounds; ATOM-METADATA round-trips (its dict feeds the same
 `apply_to_structure` path the sidecar uses); USER-CUSTOM survives
@@ -1312,7 +1325,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Job-set plan | `job-set.json` at the root — the RUN plan, **merged per stage, never overwritten**; a sweep's own record is `<seq>_<stage>/bench/job-set.json` (§ 6.3) | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` |
 | Warm-file vocabulary | `<engine>/warm-files.toml`, shipped IN the engine's package (§ 4.2a); a calculation may carry its own copy (U6a) | `molbuilder/warm-files@1` | `warmfiles.py` | `[base]` + one section per calculation type; rows of `suffix` · `carry` · `requires_same` · `honoured_by` |
 | Task description | `task.json` | `molbuilder/task@1` | `task.py` | `engine`, `shape`, `run`, `structure`, `varies`, `stages[]` — **what changes**; what does not is in `<label>.template.toml` |
-| Deck template | `<label>.template.toml` | `molbuilder/template@1` | `template.py` | `schema`, `engine`, `fingerprint`, `item.<name>` — **every parameter, with its value.** The only TOML artifact, because it is the only one a person reads and edits ([`engines/template.md`](?doc=engines/template.md)) |
+| Deck template | `<label>.template.toml` | `molbuilder/template@1` | `template.py` | `schema`, `engine`, `fingerprint`, `item.<name>` — **every parameter, with its value.** TOML because a person reads and edits it ([`engines/template.md`](?doc=engines/template.md)); the warm-file vocabulary two rows up shares the format for the same reason (§ 4.2a's UI-edit door) |
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` | *(sidecar pair, bare-int `schema_version` from `sidecars/molstruct.SCHEMA_VERSION` — never typed in a doc)* | `bundle_writer.py`, `sidecars/molstruct.py` | geometry; `regions` (frozen atoms are a label inside it) / `structure_hash` |
 | Checkpoint archive | `.binsnapshots/<digest>/MANIFEST.do_not_edit` | *(3-col tab-separated `<sha256>\t<bytes>\t<key>`)* | `checkpoint.py` | the directory is the sha256 of this file (§ 6.1) |
 | Run launch record | `<attempt>/run.json` — a trial dir is its own attempt, so a launched trial carries one too; written at process **start** (a running job must read as launched) | `molbuilder/run-launch@1` | `jobset/materialize.py` (`write_run_launch`) | `mode`, `command`, `job_id`, `launched_at`, `continued_from` |
@@ -1329,7 +1342,10 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 > `molbuilder/bench-manifest@2` today. The row stays visible because this
 > table is the artifact registry, and an artifact that shipped is history a
 > reader of old bundles may still meet, not noise.
-> (2026-08-06). It was a bare basename, and the parser rejected a separator. It
+> **Why a checkpoint MANIFEST key is a relative path, not a basename**
+> (2026-08-06)  *(this note's lead-in was clobbered by the bench-manifest
+> retirement insert above and is reconstructed from its own content,
+> 2026-08-13)*. It was a bare basename, and the parser rejected a separator. It
 > could not be: `.gitignore` receives the raw archive globs (`*.DM`), and a
 > gitignore pattern with no slash matches at **every** level, while the archive
 > walk matched only the top one — so a big binary in a subdirectory was
@@ -1391,8 +1407,11 @@ single shared helper `molbuilder/persist.py` (`schema_major`, `check_schema`,
 `read_json`, `write_json`), adopted by `environment.py`, `bench/result.py`,
 `jobset/model.py`, `task.py`, `template.py`, and `checkpoint.py` (it was
 hand-rolled three times with a subtle missing-`@` inconsistency before). New
-persisted artifacts must use it. The two bare-integer exceptions
-(`.molstruct.json` = 6, the decoded run = 1) predate the convention.
+persisted artifacts must use it. The two bare-integer exceptions predate the
+convention: `.molstruct.json`, whose number lives in
+`sidecars/molstruct.SCHEMA_VERSION` and is never typed in a doc (the "= 6"
+this sentence carried had already drifted from the code — exactly the drift
+the registry row above forbids), and the decoded run (= 1).
 *(Amended 2026-08-12, U9: this said "the major only" and named the helper
 `check_schema_major` — and the check implemented "major only" literally, so
 any `@1` artifact parsed as any other `@1` artifact. § 6.3's own amendment
@@ -1540,9 +1559,9 @@ last paragraph says why).
 | **deck** | `<label>_<NN>_<stage>.fdf` | flat: the root · hierarchical: inside `<NN>_<stage>/` |
 | **wrapper** | `<label>_<NN>_<stage>.run.sh` / `.sbatch` | beside its deck |
 | **trajectory log** | `<label>_<NN>_<stage>.molwatch.log` | beside its deck |
-| **stdout** | flat `<label>_<NN>_<stage>-run<N>.out` · hierarchical `<label>_<NN>_<stage>.out` | flat: beside the deck · hierarchical: inside `run-<n>/` |
+| **stdout** | `<label>_<NN>_<stage>-run<N>.out` — the wrapper's run counter rides the name in EVERY shape (§ 2.3, D18d: one emitter; this row said the hierarchy dropped the counter, against the section that owns the rule AND the code) | flat: beside the deck · hierarchical: inside `run-<n>/` |
 | **warm-restart state** | `<label>.XV` `.DM` `.CG` — **bare** | flat: shared at the root · hierarchical: inside the attempt |
-| **launch record** | `run.json` | hierarchical only, inside the attempt |
+| **launch record** | `run.json` | inside the attempt (hierarchy) — and inside a LAUNCHED TRIAL's dir in every shape: a trial dir is its own attempt (§ 1.6; the registry row) |
 
 **One rule generates the whole Name column: who names the file decides whether
 it carries the stage.** A file **SIESTA** names is bare, because SIESTA looks for
@@ -1562,7 +1581,8 @@ and never reassigned, which is what keeps it clear of `engines/stages.md` R5
 
 **The one thing still shape-dependent is the attempt**, and only because one
 shape has a directory for it: flat separates attempts with the `-run<N>` counter
-the wrapper assigns (§ 2.6), the hierarchy with `run-<n>/`. That is a mechanism
+alone, the hierarchy with `run-<n>/` directories — the counter still rides the
+filename there too (§ 2.3, D18d: one emitter, one name). That is a mechanism
 for not clobbering a previous output, not a name for a stage.
 
 #### Directories
@@ -1574,7 +1594,7 @@ for not clobbering a previous output, not a name for a stage.
 | **attempt** *(hierarchical)* | `run-<n>` — **not** padded | a counter of invocations that happened, not a designed sequence; `run-` is reserved and its members are numbers, full stop |
 | **benchmark** | `bench/` inside the stage it measures; **flat**, where no stage directory exists, `bench_<seq>_<stage>/` at the root (bare `bench/` for a stageless calculation) | a benchmark nests in what it measures (`project-layout.md § 3`) — and in flat the token qualifies the container's own name, or two stages' benchmarks would share one directory and overwrite each other (A5, 2026-08-12).  Underscore-joined, so it cannot be read as a trial's dash-joined `bench-<point>` |
 | **trial** | `bench-G<gpus>K<ranks-per-gpu>C<cores>` | a sweep has no order, so the name carries **what was tried** — which is what lets `summarize` map a directory back to its point |
-| **warm state moved aside** | `<label>-restart-aside-<UTC>/` | `--cold` moves, never deletes (`checkpointing.md` I3) |
+| **warm state moved aside** | `<label>-restart-aside-<UTC>/` | `--cold` moves, never deletes — § 4.1's own rule (the I3 citation that stood here pointed at an invariant that disowns run-layer cold semantics) |
 
 #### History
 

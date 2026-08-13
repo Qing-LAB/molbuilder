@@ -402,7 +402,10 @@ renderable on its own, and no downstream reader ever re-derives a value or asks
 
 **Top-down, and each module is named for the floor it serves.** A module may
 import downward and never upward, which is
-[`architecture.md`](?doc=architecture.md) § 1's floor rule expressed as files:
+[`execution/architecture.md`](?doc=execution/architecture.md) § 1's floor rule
+expressed as files *(the link said bare `architecture.md`, which resolves to
+the ROOT doc of that name — a wrong page, worse than a dead one; F-9,
+2026-08-13)*:
 
 ```mermaid
 flowchart TB
