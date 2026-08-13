@@ -275,10 +275,17 @@ def _read_initial_energy_from_log(traj_path: str) -> Optional[float]:
                 candidates.append(os.path.join(base, entry))
     except OSError:
         pass
-    candidates.sort()
+    # NUMERIC run order, and the bare log at the FRONT so ``reversed``
+    # reads it LAST -- exactly the docstring's rule (fixed 2026-08-13):
+    # a lexicographic sort put run10 before run3, and appending the bare
+    # log after the sort made the FALLBACK beat every -run<N>.
+    def _run_n(path: str) -> int:
+        m = re.search(r"-run(\d+)\.pyscf\.log$", os.path.basename(path))
+        return int(m.group(1)) if m else -1
+    candidates.sort(key=_run_n)
     bare = os.path.join(base, stem + ".pyscf.log")
     if os.path.isfile(bare):
-        candidates.append(bare)
+        candidates.insert(0, bare)
 
     for log_path in reversed(candidates):
         try:
