@@ -642,6 +642,31 @@ dispatch() {
         echo "    bash ${SCRIPT_DIR}/install-env.sh bootstrap --yes" >&2
         exit 1
     fi
+    # HAND THE RESOLVED MANAGER DOWN.  ``detect_env_mgr`` probes four
+    # ways -- PATH, $MAMBA_EXE/$CONDA_EXE, a $CONDA_PREFIX walk, and
+    # common install roots on disk -- precisely because ``conda`` is
+    # often a shell function with its bin dir absent from a sub-shell's
+    # PATH.  The Python side re-derives the binary in
+    # ``diagnostics._find_conda_binary``, which probes ONLY PATH and
+    # then $MAMBA_EXE / $CONDA_EXE.  Without this export the shim would
+    # find conda, create the host env with it, and then hand off to a
+    # Python process that cannot find conda at all -- detection
+    # succeeding and execution failing, on the very setup the disk
+    # probe exists to rescue.
+    #
+    # Export the variable matching the manager we actually resolved, so
+    # the child agrees with the parent rather than searching again.
+    # Only set when unset: an operator who exported one deliberately
+    # keeps their choice (and if it were already set, probe step 2
+    # would have selected it anyway).
+    local _mgr_var="CONDA_EXE"
+    case "$(basename "${ENV_MGR}")" in
+        mamba|micromamba) _mgr_var="MAMBA_EXE" ;;
+    esac
+    if [[ -z "${!_mgr_var:-}" ]]; then
+        export "${_mgr_var}=${ENV_MGR}"
+    fi
+
     PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" \
     MOLBUILDER_REPO_ROOT="${REPO_ROOT}" \
         "${_py}" -m molbuilder envs "$@"
