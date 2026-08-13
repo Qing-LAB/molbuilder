@@ -831,6 +831,14 @@ def test_python_api_ecp_none_sentinel_disables_ecp(h2o, ecp_value):
     ``gto.M(ecp="none")`` which raises at runtime."""
     text = render_script(h2o, PySCFConfig(ecp=ecp_value))
     compile(text, "<ecp>", "exec")
+    # No ecp KWARG line at all -- matched as a LINE (B-4, 2026-08-13):
+    # the fixed-width literals this replaces guessed at the emitter's
+    # column alignment (1 and 5 spaces where the emission is 8), so all
+    # four asserted the absence of strings the script never contains in
+    # any state, and the verbose COMMENT that mentions `ecp = ...` kept
+    # the sibling positive test green with the kwarg block deleted.
+    import re as _re
+    assert not _re.search(r'^\s*ecp\s+=', text, _re.M)
     # The literal strings ecp="none" / ecp="None" must NEVER appear in
     # the generated gto.M(...) call.
     assert 'ecp     = "none"' not in text
@@ -840,10 +848,15 @@ def test_python_api_ecp_none_sentinel_disables_ecp(h2o, ecp_value):
 
 
 def test_python_api_ecp_explicit_lanl2dz_passes_through(h2o):
-    """An explicit ECP name still propagates verbatim."""
+    """An explicit ECP name still propagates verbatim -- as the gto.M
+    KWARG, matched as a line.  The fixed-width literal this replaces
+    (5-space / 1-space) never matched the 8-space emission and passed
+    via the verbose COMMENT (`# \\`ecp = "..."\\``): deleting the kwarg
+    block stayed green (B-4, 2026-08-13)."""
+    import re as _re
     text = render_script(h2o, PySCFConfig(ecp="lanl2dz", basis="cc-pVDZ"))
-    assert ('ecp     = "lanl2dz"' in text
-            or 'ecp = "lanl2dz"' in text)
+    assert _re.search(r'^\s*ecp\s+= "lanl2dz",$', text, _re.M), (
+        "the ecp kwarg line is missing from the emitted gto.M(...) call")
 
 
 
