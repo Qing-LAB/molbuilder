@@ -122,10 +122,11 @@ a CUDA-accelerated SIESTA (with the ELPA GPU eigensolver, TranSiesta, and TBtran
 isn't available as a conda package. `molbuilder envs install siesta-gpu`
 (or `bootstrap --include-source-builds`) automates the whole thing:
 
-- the **toolchain comes from conda** — gcc/gfortran 14 with its linker, archiver,
+- the **toolchain comes from conda** — gcc/gfortran **14.3** (a deliberate
+  minor-version pin, § 6.1) with its linker, archiver,
   C-library sysroot and kernel headers, plus cmake, ninja, OpenMPI, OpenBLAS
-  (not MKL), ScaLAPACK, libxc, and the **CUDA toolkit itself** (you do *not*
-  install CUDA on the host). No host compiler should be required:
+  (not MKL), ScaLAPACK, libxc, `readline`, and the **CUDA toolkit itself** (you
+  do *not* install CUDA on the host). No host compiler should be required:
   conda-forge installs the toolchain under target-prefixed names only
   (`x86_64-conda-linux-gnu-gcc`) and ships no bare `gcc`, so an install step
   creates bare-name links in the env for the third-party Makefiles this build
@@ -137,7 +138,14 @@ isn't available as a conda package. `molbuilder envs install siesta-gpu`
   env, which is what you see on an env built before this existed — re-run
   `molbuilder envs install siesta-gpu` to pick the links up. It warns rather
   than fails because such an env still builds and runs SIESTA; the risk is
-  latent, not present;
+  latent, not present. Pointing bare `gcc` at the conda toolchain exposes a
+  second half of the same problem: that compiler's header search covers its own
+  directories and the sysroot, **not** `$CONDA_PREFIX/include`, and lua's
+  Makefile *assigns* `CFLAGS` rather than appending, so conda's
+  `-isystem <env>/include` never reaches it. The build step therefore exports
+  `C_INCLUDE_PATH` and `LIBRARY_PATH` — read by gcc itself, so no Makefile can
+  override them — which is how the bundled lua finds `<readline/readline.h>`
+  on a machine with no `libreadline-dev`;
 - **ELPA** is built from a version-pinned, SHA256-checked tarball
   (`2024.05.001`) with autotools (`--enable-nvidia-gpu`, `--with-cuda-path=<env>`);
 - **SIESTA** (`5.4.2`) is cloned with submodules and built with cmake+Ninja, MPI +
@@ -148,6 +156,72 @@ The build is resumable (sentinels + a toolchain fingerprint) and needs ~30 GB of
 free space under the env prefix. An **NVIDIA driver is optional** — the binary
 builds and runs CPU-only without a GPU; you only need `nvidia-smi` to actually use
 the GPU at run time.
+
+### 6.1 Toolchain version — why 14.3, and how to change it
+
+The compiler is pinned to a **minor** version, `gcc/gxx/gfortran_linux-64=14.3`.
+`14` would not be a pin: conda reads it as `14.*`, so two machines installing the
+same recipe weeks apart can resolve to different compilers and only one of them
+builds.
+
+That is not hypothetical. **gcc 14.4's gfortran miscompiles SIESTA's
+`Src/kpoint_t.F90`** and the build dies at the link step:
+
+```
+undefined reference to `process_k_cell_'
+```
+
+`process_k_cell` is an *optional dummy procedure* argument of `kpoint_read`,
+host-associated into an internal subprogram and called under `present()`. 14.4
+emits a direct call to a global `process_k_cell_` instead of an indirect call
+through the argument. No library exports that symbol, so **no linker flag can
+fix it** — the fault is in code generation and the link is only where it shows.
+14.3.0 compiles the same file correctly.
+
+Only targets that link `libsiesta.a` fail (`siesta` itself and the
+SiestaSubroutine drivers); the `Util/` binaries link fine, because the linker
+never extracts the bad archive member. A build that gets to ~4650/4719 and then
+fails on `Src/siesta` is this.
+
+> **Do not apply the source patch that circulates for this.** It comments out
+> both `if (present(process_k_cell)) call process_k_cell(...)` blocks and calls
+> the callback safe to skip. It is not: that callback forces **exactly one
+> k-point along the transport direction**, which is physically required in
+> TranSiesta/NEGF because that direction is a semi-infinite open boundary, not a
+> periodic one. Remove it and a transport run asking for a 4×4×4 grid silently
+> uses 4 k-points along transport. Since we build with TranSiesta on, the patch
+> trades a loud build failure for a quiet wrong answer.
+
+**To choose a different compiler** — for the CUDA pairing below, or if 14.3 is
+ever unavailable:
+
+```bash
+bash scripts/install-env.sh install molbuilder-siesta-gpu --gcc 13 --yes
+MOLBUILDER_GCC=13 molbuilder envs install siesta-gpu     # equivalent
+```
+
+`--gcc` is handled by the shim itself rather than forwarded, because the recipe
+reads `MOLBUILDER_GCC` when it is imported — a Python-side option would arrive
+too late. It takes a plain version (`14`, `14.3`, `14.3.0`); for a wildcard, set
+`MOLBUILDER_GCC='14.*'` directly. On the Python entry point, export the variable
+before the command.
+
+CUDA constrains the choice independently: **CUDA 12.0–12.7 wants gcc ≤ 13** and
+**CUDA 11.x wants gcc ≤ 11**. The installer checks this pairing and fails fast
+with the value to use.
+
+**A version change only affects a fresh solve.** An env that already exists keeps
+the compiler it was built with, so re-running `install` on a machine that already
+has the bad toolchain changes nothing. Use `--clean`, which wipes the conda env
+(`conda env remove -n <name> -y`) *and* the artifact directory, then installs
+fresh:
+
+```bash
+bash scripts/install-env.sh install molbuilder-siesta-gpu --clean --yes
+```
+
+There is no `envs remove` subcommand — `install --clean` is the one door, so the
+wipe and the reinstall cannot get out of step.
 
 **One environment fix worth knowing:** on NFS-mounted homes, OpenMPI's
 shared-memory files can land on the network and slow every `mpirun`. The GPU env's

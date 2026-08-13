@@ -164,7 +164,9 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
                                  --gcc 14.3.  Same as MOLBUILDER_GCC.
                                  Only affects a FRESH solve -- an env
                                  that already exists keeps the compiler
-                                 it was built with, so remove it first.
+                                 it was built with, so pair it with
+                                 --clean to change one:
+                                   ... install <recipe> --clean --gcc 14.3
 
   bash scripts/install-env.sh advise <recipe>
       Recommend mpi_np / omp / mps for the recipe + this host.
