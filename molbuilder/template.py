@@ -771,6 +771,23 @@ def _item_from(name: str, body: Any) -> Item:
     )
 
 
+def template_fields(config_cls) -> set:
+    """The field names a TEMPLATE may carry — the schema minus the machine
+    facts.
+
+    THE membership rule, spelled once (A-9, 2026-08-13).  A field tagged
+    ``allocation: True`` is § 7's forbidden machine fact: it arrives as
+    the ALLOCATION at `prep`, on the machine that will run it, and never
+    as a template item, a stage override, a pin, or a parameter sweep
+    axis.  :func:`declaration_for` already excluded such fields from the
+    WRITE side; every read-side gate used ``dataclasses.fields`` names
+    instead, so a hand-edited ``mpi_np`` item / override / pin passed and
+    the deck rendered for a rank count the allocation never granted.
+    """
+    return {f.name for f in dataclasses.fields(config_cls)
+            if not f.metadata.get("allocation")}
+
+
 def config_from_template(text: str, config_cls):
     """An ordinary instance of *config_cls*, rebuilt from a template.
 
@@ -788,8 +805,22 @@ def config_from_template(text: str, config_cls):
     written against an older schema is **missing** fields, not wrong about them,
     and the fingerprint is what says so.
     """
-    known = {f.name for f in dataclasses.fields(config_cls)}
+    known = template_fields(config_cls)
     vals = read_template(text).values()
+    machine = sorted(k for k in vals
+                     if k not in known
+                     and any(f.name == k
+                             for f in dataclasses.fields(config_cls)))
+    if machine:
+        # The WRITE side never emits these (declaration_for returns None
+        # for an allocation-tagged field), so one in a template is a hand
+        # edit -- refused with the § 7 story rather than the typo story.
+        raise ValueError(
+            f"template names machine fact(s) "
+            f"{', '.join(map(repr, machine))}, which floor 2 must never "
+            f"carry (engines/template.md § 7): they arrive as the "
+            f"ALLOCATION at `prep`, on the machine that runs the job.  "
+            f"Remove them from the template and state them at prep.")
     unknown = sorted(k for k in vals if k not in known)
     if unknown:
         # Refused, never dropped (U16): this is a file people edit by
@@ -808,4 +839,5 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "FINGERPRINT_VERSION",
            "Item", "Template",
            "declaration_for", "declarations_for",
            "schema_fingerprint", "fingerprint_matches",
-           "render_template", "read_template", "config_from_template"]
+           "render_template", "read_template", "config_from_template",
+           "template_fields"]

@@ -286,13 +286,39 @@ def resolve(template_text: str, task, config_cls, *,
     base = config_from_template(template_text, config_cls)
     provenance = {f.name: "template" for f in dataclasses.fields(config_cls)}
 
+    # § 7's membership rule, spelled ONCE (template.template_fields): a
+    # field tagged as the allocation's is a machine fact floor 2 must
+    # never carry, so overrides, pins and parameter axes are all gated on
+    # the TEMPLATE-ELIGIBLE set.  Until 2026-08-13 every gate here used
+    # ``dataclasses.fields`` names, so a hand-edited override or pin
+    # naming ``mpi_np`` passed and the deck rendered for a rank count the
+    # allocation never granted (final review A-9).
+    from .template import template_fields
+    known = template_fields(config_cls)
+    machine_facts = ({f.name for f in dataclasses.fields(config_cls)}
+                     - known)
+
     stage_obj = _stage_of(task, stage)
     if stage_obj is not None and stage_obj.overrides:
+        bad = sorted(set(stage_obj.overrides) & machine_facts)
+        if bad:
+            raise ResolveError(
+                f"stage {stage_obj.name!r} overrides "
+                f"{', '.join(map(repr, bad))} -- machine fact(s) the "
+                f"description must never carry (engines/template.md § 7): "
+                f"they arrive as the ALLOCATION at prep, on the machine "
+                f"that runs the job.")
         base = _apply(base, stage_obj.overrides)
         provenance.update({k: "stage" for k in stage_obj.overrides})
 
-    known = {f.name for f in dataclasses.fields(config_cls)}
     pins = dict(pins or {})
+    bad = sorted(set(pins) & machine_facts)
+    if bad:
+        raise ResolveError(
+            f"pin(s) {', '.join(map(repr, bad))} name machine fact(s) "
+            f"(engines/template.md § 7). A pin overrides a template item "
+            f"for this prep only; the machine's asks travel as the "
+            f"allocation, never as items.")
     unknown = sorted(set(pins) - known)
     if unknown:
         raise ResolveError(
@@ -318,13 +344,25 @@ def resolve(template_text: str, task, config_cls, *,
         owned = set(translation.axes) if translation is not None else set()
         orphans = sorted(set(point) - set(machine) - set(params) - owned)
         if orphans:
+            hint = ""
+            mistagged = sorted(set(orphans) & machine_facts)
+            if mistagged:
+                # e.g. ``omp_threads``: a config field whose EXCHANGE name
+                # is the allocation's (cpus_per_task) -- § 7 again, with
+                # the road named instead of the bare refusal.
+                hint = (f"  ({', '.join(map(repr, mistagged))} is a "
+                        f"machine fact -- sweep an allocation axis "
+                        f"({', '.join(sorted(ALLOCATION_FIELDS))}) or a "
+                        f"declared translation axis instead, "
+                        f"engines/template.md § 7.)")
             raise ResolveError(
                 f"sweep axis(es) {', '.join(repr(k) for k in orphans)} name "
-                f"neither a {config_cls.__name__} field, an allocation field, "
+                f"neither a template item of {config_cls.__name__}, an "
+                f"allocation field, "
                 f"nor a declared translation axis"
                 f"{' (' + ', '.join(sorted(owned)) + ')' if owned else ''}. "
                 f"An axis is a parameter, a machine ask, or the "
-                f"specialisation's own coordinate (generator.md 4).")
+                f"specialisation's own coordinate (generator.md 4)." + hint)
         ours = [a for a in (translation.axes if translation else ()) if a in point]
         if ours:
             missing = [a for a in translation.axes if a not in point]

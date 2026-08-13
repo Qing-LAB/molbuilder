@@ -164,23 +164,46 @@ def _fingerprint_row(task, cls) -> List[Issue]:
 
 
 def _names_exist(task, cls, fields) -> List[Issue]:
-    """Every name in ``varies`` and every ``overrides`` key is a real field.
+    """Every name in ``varies`` and every ``overrides`` key is a real field
+    — a real TEMPLATE field: a machine fact refuses with § 7's story.
 
     ``varies`` is checked too, not only the overrides. ``task.py`` enforces
     ``overrides ⊆ varies`` without a schema, so a *misspelt* name that appears
     in both passes the codec cleanly — the subset holds, and both are wrong the
     same way. This is the only place that can catch it.
+
+    A name that IS a field but is tagged as the allocation's (``mpi_np``,
+    ``omp_threads``, ``max_memory_mb``) refuses too, with the machine-fact
+    story rather than the typo story: floor 2 must never carry it
+    (engines/template.md § 7), and until 2026-08-13 the existence check
+    admitted it — a description varying ``mpi_np`` rendered a deck for a
+    rank count the allocation never granted (final review A-9).
     """
+    def _machine(name) -> bool:
+        return bool(fields[name].metadata.get("allocation"))
+
+    def _machine_msg(lead) -> str:
+        return (f"{lead} a machine fact the description must never carry "
+                f"(engines/template.md § 7): it arrives as the ALLOCATION "
+                f"at prep, on the machine that runs the job")
+
     out: List[Issue] = []
     for name in (task.varies or ()):
         if name not in fields:
             out.append(Issue("error", _no_such_field(
                 name, fields, cls, "'varies' names"), where="task.varies"))
+        elif _machine(name):
+            out.append(Issue("error", _machine_msg(
+                f"'varies' names {name!r},"), where="task.varies"))
     for st in (task.stages or ()):
         for key in st.overrides:
             if key not in fields:
                 out.append(Issue("error", _no_such_field(
                     key, fields, cls, f"stage {st.name!r} overrides"),
+                    where="task.stages.overrides", stage=st.name))
+            elif _machine(key):
+                out.append(Issue("error", _machine_msg(
+                    f"stage {st.name!r} overrides {key!r},"),
                     where="task.stages.overrides", stage=st.name))
     return out
 

@@ -336,3 +336,39 @@ def test_a_pin_naming_nothing_in_the_schema_is_refused(template):
     with pytest.raises(ResolveError, match=r"nothing in the"):
         resolve(template, _task(), SiestaConfig, allocation=ALLOC,
                 pins={"blocksize": 16})
+
+
+# --------------------------------------------------------------------- #
+#  § 7 — machine facts cannot enter through floor 2's doors (A-9)        #
+# --------------------------------------------------------------------- #
+
+def test_a_pin_naming_a_machine_fact_is_refused_with_its_story(template):
+    """A-9 (final review, 2026-08-13): the gates here checked
+    ``dataclasses.fields`` names, and ``mpi_np`` IS a field — tagged
+    ``allocation: True``, § 7's forbidden machine fact.  A pin naming it
+    passed every gate and the deck rendered for a rank count the
+    allocation never granted."""
+    with pytest.raises(ResolveError, match=r"machine fact"):
+        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+                pins={"mpi_np": 8})
+
+
+def test_a_stage_override_naming_a_machine_fact_is_refused(template):
+    ladder = (Stage(name="a", overrides={"omp_threads": 4}),)
+    t = Task(engine="siesta", shape="hierarchical",
+             run=derive_run("relax", "C3H2S", stage_names=("a",)),
+             structure=StructureRef(source="bdt.xyz", formula="C3H2S",
+                                    atoms=6),
+             varies=("omp_threads",), stages=ladder)
+    with pytest.raises(ResolveError, match=r"machine fact"):
+        resolve(template, t, SiestaConfig, allocation=ALLOC, stage="a")
+
+
+def test_a_sweep_axis_spelling_a_machine_fact_names_the_road(template):
+    """``omp_threads`` is a config field whose EXCHANGE name belongs to
+    the allocation (``cpus_per_task``, job-contracts § 6.2) — until the
+    fix it slipped through the params split and landed on the VALUES, so
+    the deck varied while the allocation stood still."""
+    with pytest.raises(ResolveError, match=r"machine fact"):
+        resolve(template, _task(), SiestaConfig, allocation=ALLOC,
+                sweep={"omp_threads": [1, 2]})

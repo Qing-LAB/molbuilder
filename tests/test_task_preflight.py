@@ -350,3 +350,30 @@ def test_a_number_is_refused_for_a_boolean_field():
 
 def test_a_legal_boolean_is_accepted():
     assert preflight(_staged({"spin_polarized": True})) == []
+
+
+# --------------------------------------------------------------------- #
+#  A-9 — a machine fact refuses with § 7's story, not the typo story     #
+# --------------------------------------------------------------------- #
+
+def test_an_override_naming_a_machine_fact_is_refused_with_the_story():
+    """A-9 (final review, 2026-08-13): ``mpi_np`` IS a schema field --
+    tagged ``allocation: True``, `engines/template.md` § 7's forbidden
+    machine fact -- so the existence check admitted it and a description
+    varying it rendered a deck for a rank count the allocation never
+    granted.  The refusal names the § 7 road, because the person typing
+    it is mid-mistake about exactly that."""
+    issues = _errors(preflight(_staged({"mpi_np": 8})))
+    assert issues, "a machine-fact override passed the preflight"
+    assert any("machine fact" in i.message and "ALLOCATION" in i.message
+               for i in issues)
+
+
+def test_varies_naming_a_machine_fact_is_refused_too():
+    # varies and stages travel together (§ 6.5), so the realistic bad
+    # input carries the name in both -- and both rows must say so.
+    issues = _errors(preflight(_staged({"omp_threads": 4})))
+    assert any(i.where == "task.varies"
+               and "machine fact" in i.message for i in issues)
+    assert any(i.where == "task.stages.overrides"
+               and "machine fact" in i.message for i in issues)

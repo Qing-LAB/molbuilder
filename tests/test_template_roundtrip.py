@@ -340,3 +340,24 @@ def test_the_type_check_runs_before_shape_can_mangle(tmp_path):
     assert mutated != text
     with pytest.raises(ValueError, match="kgrid.*int3"):
         T.read_template(mutated)
+
+
+def test_a_hand_added_machine_fact_item_is_refused_with_the_story():
+    """A-9 (final review, 2026-08-13): ``declaration_for`` never WRITES an
+    allocation-tagged field into a template, so one in a template is a
+    hand edit — refused with § 7's machine-fact story (state it at prep),
+    never the typo story."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.template import config_from_template, render_template
+    text = render_template(SiestaConfig(system_label="JOB"))
+    text += ('\n[item.mpi_np]\n'
+             'kind = "wrapper"\n'
+             'type = "int"\n'
+             'value = 8\n'
+             'default = 8\n'
+             'group = "budget"\n'
+             'section = "Compute & budget"\n'
+             'label = "MPI ranks (np)"\n'
+             'help = "hand-added"\n')
+    with pytest.raises(ValueError, match=r"machine fact"):
+        config_from_template(text, SiestaConfig)
