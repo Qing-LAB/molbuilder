@@ -1168,6 +1168,26 @@ runs against WHICHEVER copy is in effect, and the provenance block +
 difference or a surprising carry is debuggable from the plan alone, the
 ledger rule this design already follows everywhere else.
 
+**The derivation order — who reads the file, in dependency order.**  This is
+the contract's own structure, not a schedule: each reader depends on the ones
+before it, so the order is forced, and any implementation that walks it
+differently has misread the design.
+
+1. **The loader + schema** (`molbuilder/warm-files@1`) — everything below is
+   its client.
+2. **The declaration builder** (`_warm_declaration`'s successor) — turns the
+   calculation's type section into `Job.warm` + the traits, the data
+   `warm_carry` already evaluates unchanged.
+3. **The wrapper inventories** — banner and warm-detection derive from the
+   same rows (the § 4.2 hint/list distinction stands: the cold sweep stays a
+   NAME SWEEP and reads no list).
+4. **The `honoured_by` agreement check** — mandatory before anything ships,
+   because it is what makes 2 and 3 safe against a drifting file.
+5. **The § 4.2 guard** flips from "one tuple per engine" to "one file per
+   engine".
+6. **The per-calculation copy + the UI door** — last, because it is the same
+   mechanism at a second precedence level, and it inherits every guard above.
+
 **What stays code, and why** *(the closed doors, each with its reason)*:
 
 * **`warm_carry` stays the one interpreter** — the pair evaluation needs both
