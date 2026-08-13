@@ -72,14 +72,23 @@ class RuntimeConfigError(Exception):
 
 
 def read_config(path: Optional[Path] = None) -> Dict[str, Any]:
-    """Read ``molbuilder.json`` from ``path`` or cwd.
+    """Read ``molbuilder.json`` from ``path``, or resolve the SERVER-WIDE
+    file: cwd first, XDG fallback second — one file, never both.
+
+    That two-step lookup is `docs/ops/deployment.md` § 5's promise for THE
+    SERVER, and until 2026-08-13 only the section getters kept it: this
+    default read was cwd-only, so an operator with an XDG-only config got
+    a server with **no auth and no TLS** while `jobset` honoured the very
+    same file (final review A-7, the config split-brain).
 
     Returns the normalised dict (see :func:`_normalise`).  Returns
-    ``{}`` if the file doesn't exist (not an error -- the file is
-    optional).  Raises :class:`RuntimeConfigError` when the JSON is
-    malformed or the schema is invalid.
+    ``{}`` if no file exists (not an error -- the file is optional).
+    Raises :class:`RuntimeConfigError` when the JSON is malformed or the
+    schema is invalid.
     """
     cfg_path = path if path is not None else Path(CONFIG_FILENAME)
+    if path is None and not cfg_path.is_file():
+        cfg_path = _per_user_fallback_path()
     if not cfg_path.is_file():
         return {}
     try:
@@ -1059,15 +1068,12 @@ def _read_server_wide() -> Dict[str, Any]:
     """Server-wide config: cwd ``./molbuilder.json`` first, XDG
     fallback ``~/.config/molbuilder/molbuilder.json`` second.
 
-    The cwd-first preference matches existing behaviour (every test +
-    deployment path written before 2026-06-24 reads from cwd).  XDG is
-    a fallback for users who'd rather not litter their project dirs
-    with config files.
+    Since 2026-08-13 this IS :func:`read_config`'s own default lookup
+    (A-7 closed the split-brain where serve/TLS/auth read cwd-only while
+    these getters fell back to XDG); the alias stays because the section
+    getters read better naming the SCOPE than the mechanism.
     """
-    cwd_path = Path(CONFIG_FILENAME)
-    if cwd_path.is_file():
-        return _read_scope(cwd_path)
-    return _read_scope(_per_user_fallback_path())
+    return read_config()
 
 
 def _read_project(project_dir: Path) -> Dict[str, Any]:

@@ -13,7 +13,10 @@ Covered:
 * the convenience accessors filter junk values defensively
 
 Every test ``chdir``s into ``tmp_path`` so the repo-root molbuilder.json
-template never leaks into the reader.
+template never leaks into the reader — and since ``read_config()``'s
+default lookup gained the deployment.md § 5 XDG fallback (A-7,
+2026-08-13), HOME/XDG are sandboxed too, or the developer's own
+``~/.config/molbuilder/molbuilder.json`` would decide these outcomes.
 """
 
 from __future__ import annotations
@@ -24,6 +27,13 @@ import pytest
 
 from molbuilder.runtime_config import (CONFIG_FILENAME, RuntimeConfigError,
                                          get_envs, get_tls, read_config)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_home(monkeypatch, tmp_path_factory):
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
 
 
 # --------------------------------------------------------------------- #

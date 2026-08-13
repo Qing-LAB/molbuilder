@@ -103,6 +103,25 @@ def test_explicit_xdg_config_home_is_honored(sandbox, monkeypatch):
     assert cfg["envs"]["pyscf"] == "elsewhere-pyscf"
 
 
+def test_the_bare_default_read_honours_the_same_fallback(sandbox):
+    """A-7 (final review, 2026-08-13): `deployment.md` § 5 promises the
+    cwd→XDG two-step for THE SERVER, but serve/TLS/auth/diagnostics read
+    through the bare ``read_config()``, which was cwd-only — an operator
+    with an XDG-only config got a no-auth, no-TLS server while `jobset`
+    honoured the very same file.  The default read and the section
+    getters now share ONE lookup."""
+    from molbuilder.runtime_config import get_tls, read_config
+    xdg_dir = sandbox / "home" / ".config" / "molbuilder"
+    xdg_dir.mkdir(parents=True)
+    (xdg_dir / "molbuilder.json").write_text(json.dumps({
+        "tls": {"cert": "c.pem", "key": "k.pem"}}))
+    assert get_tls(read_config()) == {"cert": "c.pem", "key": "k.pem"}
+    # cwd still wins when both exist -- one file, never both (§ 5)
+    (sandbox / "molbuilder.json").write_text(json.dumps({
+        "tls": {"cert": "cwd.pem", "key": "cwd-k.pem"}}))
+    assert read_config()["tls"]["cert"] == "cwd.pem"
+
+
 # --------------------------------------------------------------------- #
 #  read_effective_config -- project scope + deep merge                  #
 # --------------------------------------------------------------------- #
