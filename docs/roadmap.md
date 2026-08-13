@@ -549,6 +549,16 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   § 5g. They sit *behind* the front rather than blocking it, which is why none
   earns a milestone.
 
+- **The warm-file rules file** — contract settled 2026-08-13 (user decision),
+  [`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a: each
+  engine's warm-state vocabulary becomes ONE hierarchical data file
+  (`[base]` + a section per calculation type), replacing the three
+  hard-coded copies (`_warm_declaration`, the runwrap suffix tuples, the
+  emitter's keyword gating agreement-by-discipline).  Implementation order:
+  the loader + schema, `_warm_declaration` reads it, the runwrap inventories
+  read it, the `honoured_by` agreement check, the § 4.2 one-file guard, then
+  the per-calculation copy + UI exposure (the § 3.1 template mechanism).
+  Note W2 below is this same seam seen from runstatus — one fix serves both.
 - **Backend concern seams W1–W5** — `backend-architecture.md § 5`:
   runwrap's SIESTA reach-ins (W1), `jobset/runstatus.py`'s warm-file
   table → producer-supplied inventory (W2), `runtime_config`'s untyped

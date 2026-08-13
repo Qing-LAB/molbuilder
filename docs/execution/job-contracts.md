@@ -1048,6 +1048,144 @@ if _os.path.exists(_chk) and _os.path.getsize(_chk) > 0:
 > (`_PYSCF_WARM_RESTART_INVENTORY` in `tests/test_runwrap.py`) fails if a hook
 > gains a read-side but forgets the glob.
 
+### 4.2a The warm-file rules file — the inventory as data *(contract 2026-08-13; user decision — implementation tracked in `roadmap.md`)*
+
+**The concrete problem this solves.** When SIESTA's next version adds a
+restart file, or a stage gains a new optimizer, or PySCF changes what its
+checkpoint carries, *today* three separate pieces of Python must be edited in
+agreement: the engine's declaration builder (`siesta/stages.py::_warm_declaration`),
+the wrapper's suffix inventory (`runwrap.py`), and the deck emitter's keyword
+gating.  Nothing but discipline keeps them agreeing — § 4.2's own history
+records the day one of three copies drifted to ten entries under a comment
+claiming it matched the others.  A hidden disagreement does not crash: it
+silently carries a file the deck will not honour, or withholds one it would —
+the two failures `run-identity.md § 4` calls the silent pair.
+
+**The rule: each engine ships its warm-state vocabulary as ONE data file,**
+`<engine>/warm-files.toml`, schema-stamped like every persisted artifact
+(§ 6.1), and every consumer derives from it.  "Where do I check?" gets a
+filename for an answer, and an engine-version change becomes one labeled edit.
+
+**The structure is hierarchical — per engine, per CALCULATION TYPE** *(user
+decision 2026-08-13)*: what a SIESTA **optimization** hands forward (`.XV`,
+`.DM`, `.CG`) is not what a SIESTA **transport** run does (`.TSHS`, `.TSDE`
+— the TranSIESTA self-energy and NEGF density), and a PySCF **vibration**
+shares the checkpoint story of a PySCF optimization while another PySCF
+calculation may write different result files entirely.  So the file holds a
+`[base]` section — what every calculation of this engine shares — plus one
+section per calculation type, extending it:
+
+```toml
+schema = "molbuilder/warm-files@1"
+engine = "siesta"
+
+# -- every SIESTA calculation ------------------------------------
+[[base.file]]
+suffix       = ".XV"              # relaxed coordinates
+carry        = "when-continuing"  # follows the stage's restart policy
+honoured_by  = "MD.UseSaveXV"     # the deck keyword that reads it
+
+[[base.file]]
+suffix       = ".DM"
+carry        = "when-continuing"
+honoured_by  = "DM.UseSaveDM"
+
+# -- optimization: extends base ----------------------------------
+[[optimization.file]]
+suffix        = ".CG"
+carry         = "when-continuing"
+requires_same = "optimizer"       # the PAIR condition — see the example
+honoured_by   = "MD.UseSaveCG"
+
+# -- transport: a different vocabulary, same format --------------
+[[transport.file]]
+suffix = ".TSHS"                  # TranSIESTA self-energy Hamiltonian
+[[transport.file]]
+suffix = ".TSDE"                  # NEGF density
+# (inventory-only rows: banner + cold sweep know them; nothing carries)
+```
+
+**The growth rule — expand by section, never by branch.**  A new calculation
+type, a new engine version's extra file, a new result artifact: each is a new
+SECTION or a new row in this file, reviewed as data.  The reader resolves
+`base` + the calculation's own type section (the type comes from the
+description, the same place the engine does) and **refuses an unknown type by
+naming the sections that exist** — the same unknown-key discipline as every
+other loader.  Code changes only when the VOCABULARY below cannot express a
+new situation, and that is the signal to design, not to patch.
+
+**The closed vocabulary — three keys, and it stays three.**  `carry`
+(`when-continuing` | absent = inventory-only), `requires_same` (a trait name
+the pair must agree on), `honoured_by` (the deck keyword that reads the file).
+The moment a rules file grows conditionals it becomes a worse programming
+language; anything this vocabulary cannot say belongs in the ONE interpreter
+(`jobset/model.py::warm_carry`), which stays code on purpose.
+
+```mermaid
+flowchart TB
+    RF["<b>warm-files.toml</b><br/>one per engine · [base] + one section per<br/>calculation type · schema-stamped<br/><i>suffix · carry · requires_same · honoured_by</i>"]
+    RF --> DECL["declaration builder<br/><i>fills Job.warm in job-set.json</i>"]
+    RF --> INV["wrapper inventory<br/><i>banner + warm detection</i>"]
+    RF --> VAL["validation<br/><i>present-but-not-honoured checks</i>"]
+    RF --> GUARD["§ 4.2 guard test<br/><i>one FILE per engine, not one tuple</i>"]
+    RF --> UI["the UI<br/><i>renders the file for fine modification;<br/>a calculation may carry its own copy</i>"]
+    RF -. "honoured_by column" .-> EMIT["agreement check:<br/>a continuing deck must emit<br/>every declared keyword"]
+    DECL --> WC["warm_carry — the ONE interpreter<br/><i>evaluates requires_same when both<br/>stages are known, at prep --from</i>"]
+```
+
+**Worked example — the shipped ladder, both directions.**  `coarse` relaxes
+with the CG optimizer, `medium` and `tight` with Broyden.  Prep `medium
+--from 01_coarse/run-0`: the `.XV` and `.DM` carry (the destination
+continues), but `.CG` is **withheld** — its `requires_same = "optimizer"`
+compares `cg` against `broyden`, and a CG history handed to a Broyden stage
+would corrupt the restart while the run still reports success.  Prep `tight
+--from 02_medium/run-0`: both stages are Broyden, the traits agree, and the
+history **carries**.  Every fact in that paragraph is readable from data
+today — the stage policy in `task.json`, the declaration and traits in
+`job-set.json` — and this section moves the last hard-coded layer (the
+engine's rule table) into the same readable form.
+
+**A template like any other — and the UI's door to it** *(user decision
+2026-08-13)*.  The engine's file is the schema-emitted DEFAULT, and the same
+two-state mechanism the parameter template uses
+([`generator.md`](?doc=execution/generator.md) § 3.1: *one format, one
+renderer, two states*) applies here:
+
+* **Default state**: no copy in the calculation folder — `prep` reads the
+  engine's own `warm-files.toml`.  This is almost every calculation.
+* **Fine-tuned state**: `describe` (or the UI) copies the file INTO the
+  calculation, beside `task.json`, and that copy wins for this calculation —
+  the same nearest-file precedence as `.molbuilder.json`.  The edit that
+  motivates it is surgical: withhold `.DM` for one debugging ladder, declare
+  an extra result file a new engine build writes, tighten a pair condition.
+* **The UI exposes the file itself** for that fine modification — rendered
+  from the same artifact, the § 3.1 direction (the template IS the
+  interface), never a second hand-maintained form.
+
+Two guards keep a fine-tuned copy honest: the `honoured_by` agreement check
+runs against WHICHEVER copy is in effect, and the provenance block +
+`STAGE-PLAN.md` name which file supplied the vocabulary — so a machine
+difference or a surprising carry is debuggable from the plan alone, the
+ledger rule this design already follows everywhere else.
+
+**What stays code, and why** *(the closed doors, each with its reason)*:
+
+* **`warm_carry` stays the one interpreter** — the pair evaluation needs both
+  stages in hand, which only exists at `prep --from`; an interpreter in config
+  is a contradiction in terms.
+* **A separate file, not a section of the engine field schema** — warm files
+  are not parameters: the schema's rows are things a user tunes with bounds
+  and units, and its readers (the template, the UI, BENCH-MARKS) have no use
+  for suffixes.  Mixing them would put a second kind of row into every
+  schema reader.  What the two share is the discipline, not the artifact:
+  stamped, single-source, derived-never-copied.
+* **The `honoured_by` agreement check is mandatory, not optional** — a rules
+  file whose keywords the emitter stopped gating is § 4's silent pair
+  reborn as config drift; the check is the fingerprint idea applied here.
+* **The restart policy itself stays in `task.json`** — which files exist is
+  the engine's vocabulary; whether THIS stage continues is the calculation's
+  choice.  Two different owners, two different files.
+
 ### 4.3 Project-ID extraction
 
 For `--cold` to move aside the *right* files, the wrapper must read the ID
