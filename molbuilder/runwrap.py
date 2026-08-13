@@ -552,7 +552,11 @@ def _runtime_status_block(
             f"    fi\n"
             f"fi\n"
         )
-        warm_files_label = "chk"
+        # DERIVED like SIESTA's (D11, 2026-08-12): hand-typed "chk", the
+        # banner told a <JOB>_optimized.xyz-only directory "engine will
+        # load existing chk" while the detection keyed on all five.
+        warm_files_label = "/".join(x.lstrip(".")
+                                    for x in _PYSCF_WARM_SUFFIXES)
     else:                                  # pragma: no cover
         raise WrapperError(f"unknown engine for status block: {engine!r}")
 
@@ -566,6 +570,18 @@ def _runtime_status_block(
     # portable case-insensitive matching (no gawk IGNORECASE),
     # quote-stripping for SystemLabel, ``|| true`` under set-e,
     # ``:-`` default under set-u.
+    # The SAME sanitizer as the cold block's extraction (D13,
+    # 2026-08-12): this unconditional copy runs AFTER the cold one and
+    # overwrote its sanitized value with an unsanitized re-read --
+    # exposure nil today (every consumer quotes), but two extractions
+    # with one sanitizer is exactly how the quoting discipline erodes.
+    _sanitize = (
+        'case "$_warm_label" in\n'
+        '    *[!A-Za-z0-9._-]*)\n'
+        f'        _warm_label="{basename}"\n'
+        '        ;;\n'
+        'esac\n'
+    )
     if engine == "siesta":
         label_extract_unconditional = (
             f'_warm_label=$(awk \''
@@ -573,6 +589,7 @@ def _runtime_status_block(
             f'{{ gsub(/"/, "", $2); print $2; exit }}'
             f'\' "{script_name}" 2>/dev/null || true)\n'
             f'_warm_label="${{_warm_label:-{basename}}}"\n'
+            + _sanitize
         )
     else:                              # pyscf
         # Same octal-\047 escape rationale as in label_extract above.
@@ -582,6 +599,7 @@ def _runtime_status_block(
             f'{{print $2; exit}}'
             f'\' "{script_name}" 2>/dev/null || true)\n'
             f'_warm_label="${{_warm_label:-{basename}}}"\n'
+            + _sanitize
         )
     return (
         f"# --- Runtime status banner --------------------------\n"
@@ -1614,14 +1632,26 @@ def render_run_wrapper(script_path: Path, *,
             and env_lookup_category == "siesta-gpu"
             and caps.conda_envs
             and not caps.env_available(target_env)):
+        # The category fires for GPU decks AND CPU-ELPA decks (any ELPA
+        # variant needs the source build) -- until D14 (2026-08-12) the
+        # message diagnosed only the GPU case, telling a Diag.Algorithm
+        # elpa* + GPU-false user to turn off a toggle that was already
+        # off.  Name the ask the deck actually makes.
+        _wants_gpu = _fdf_requests_gpu(script_path)
+        _ask = ("GPU diagonalization (``Diag.ELPA.GPU .true.``)"
+                if _wants_gpu else
+                "the ELPA eigensolver (``Diag.Algorithm elpa*``)")
+        _way_out = ("turn off the SIESTA ``Use GPU`` toggle"
+                    if _wants_gpu else
+                    "set ``Diag.Algorithm`` back to ScaLAPACK")
         raise WrapperError(
-            f"`{script_path.name}` requests GPU diagonalization "
-            f"(``Diag.ELPA.GPU .true.``) but the ``{target_env}`` env "
-            f"is not installed.  Install it with "
+            f"`{script_path.name}` requests {_ask} but the "
+            f"``{target_env}`` env is not installed (every ELPA "
+            f"variant, CPU or GPU, lives in that source build).  "
+            f"Install it with "
             f"``python -m molbuilder envs install {target_env}`` "
-            f"(source build, takes ~10 minutes), or turn off the "
-            f"SIESTA ``Use GPU`` toggle and regenerate the .fdf to "
-            f"run on the precompiled CPU SIESTA."
+            f"(source build, takes ~10 minutes), or {_way_out} and "
+            f"regenerate the .fdf to run on the precompiled CPU SIESTA."
         )
 
     basename = script_path.stem
@@ -1669,11 +1699,12 @@ def render_run_wrapper(script_path: Path, *,
     if category == "siesta":
         # GPU mode is detected from the .fdf (the single source of
         # truth -- see _fdf_requests_gpu).  When on, the wrapper
-        # switches to the ELPA-CUDA defaults policy researched
-        # 2026-06-15:
-        #   * mpi_np = 2 if dual-socket OR cores/socket >= 16,
-        #     else 1 (clamped <= n_atoms)
-        #   * OMP = cores_per_socket // 2, forced even
+        # switches to the ELPA-CUDA runtime defaults policy
+        # (_mb_gpu_rank_policy; shipped values, not the 2026-06-15
+        # draft this comment carried until D12f):
+        #   * with MPS: mpi_np = phys_cores/4, capped at 4
+        #   * without: 2 on dual-socket / >=16-core-socket, else 1
+        #   * OMP = core budget / EFFECTIVE rank count (post-parse)
         #   * mpirun --bind-to core --map-by package:PE=$OMP
         # Sources: ELPA User Guide §"ELPA - Usability" (Raven A100,
         # 2024.05 benchmarks); SIESTA performance-options doc; OpenMPI
@@ -1972,7 +2003,9 @@ def render_run_wrapper(script_path: Path, *,
             f"        -h|--help)\n"
             f'            cat <<USAGE\n'
             f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [--cold] '
-            f"[-np N] [-omp N] [-h]\n"
+            f"[-np N] [-omp N] [--dry-run]"
+            + (" [--mps|--no-mps]" if gpu_mode else "")
+            + " [-h]\n"
             f"\n"
             f"  --continue, -c   resume from prior run.  Scans existing\n"
             f"                   -runN.out files and writes -run(N+1).\n"
@@ -2001,8 +2034,9 @@ def render_run_wrapper(script_path: Path, *,
             f"  -omp N,          override OpenMP threads per MPI rank.\n"
             f"  -t N, --threads  Aliased.  Default was $_omp_threads_default.\n"
             f"                   (For SIESTA: pure MPI w/ OMP=1 is the\n"
-            f"                   typical CPU recipe; GPU mode auto-picks\n"
-            f"                   half-the-cores-per-package, even.)\n"
+            f"                   typical CPU recipe; GPU mode auto-fills\n"
+            f"                   the core budget divided by the rank\n"
+            f"                   count.)\n"
             f"  --dry-run        resolve + log the launch command and the\n"
             f"                   rank->GPU/NUMA placement for the current\n"
             f"                   allocation, then exit WITHOUT running\n"
@@ -2163,6 +2197,15 @@ def render_run_wrapper(script_path: Path, *,
                 '$CUDA_MPS_PIPE_DIRECTORY/control); falling back '
                 'to no-MPS." >&2\n'
                 '                _use_mps_default=0\n'
+                # D18b: the exports must not outlive the fallback -- a
+                # CUDA client finding these set talks to a daemon-less
+                # pipe dir and hangs at init.  The dirs go here too:
+                # the EXIT trap reads these very vars, so after the
+                # unset nothing else would remove them.
+                '                rm -rf "$CUDA_MPS_PIPE_DIRECTORY" '
+                '"$CUDA_MPS_LOG_DIRECTORY" 2>/dev/null || true\n'
+                '                unset CUDA_MPS_PIPE_DIRECTORY '
+                'CUDA_MPS_LOG_DIRECTORY\n'
                 '                break\n'
                 '            fi\n'
                 '        done\n'
@@ -2429,7 +2472,7 @@ def render_run_wrapper(script_path: Path, *,
             f'            _dry_run=1; shift ;;\n'
             f"        -h|--help)\n"
             f'            cat <<USAGE\n'
-            f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [--cold] [-h]\n'
+            f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [--cold] [--dry-run] [-h]\n'
             f"\n"
             f"  --continue, -c   resume from prior run.  Scans existing\n"
             f"                   -runN.pyscf.log files and writes\n"
@@ -2455,6 +2498,8 @@ def render_run_wrapper(script_path: Path, *,
             f"                   and its warm state would corrupt this\n"
             f"                   run.  Combine with -f to also restart\n"
             f"                   the run-index sequence at -run0.\n"
+            f"  --dry-run        resolve + log the launch command, then\n"
+            f"                   exit WITHOUT running PySCF.\n"
             f"  -h               this help.\n"
             f"USAGE\n"
             f"            exit 0 ;;\n"
@@ -2569,7 +2614,15 @@ def render_run_wrapper(script_path: Path, *,
         f"# No-ops unless the relevant vars were set, so it is safe for\n"
         f"# CPU / PySCF / non-MPS runs.  Cleans (a) the per-rank GPU\n"
         f"# launcher temp file and (b) the MPS daemon + its pipe/log dirs.\n"
+        f"_mb_cleanup_ran=0\n"
         f"_mb_cleanup() {{\n"
+        # Idempotence guard: a caught signal runs cleanup and exits,
+        # which fires the EXIT trap and would run it AGAIN (D17,
+        # 2026-08-12 -- before the signal trap below, a walltime
+        # SIGTERM ran no cleanup at all: MPS daemon + pipe dirs leaked
+        # and neither log said "killed").
+        f'    [ "${{_mb_cleanup_ran:-0}}" = "1" ] && return 0 || true\n'
+        f"    _mb_cleanup_ran=1\n"
         # (a ``_mb_claim_runwrap_log`` hook call sat here until U19,
         # guarded by ``command -v`` -- for a function NO emitter ever
         # defined.  A hook nothing defines is dead weight in every
@@ -2594,6 +2647,13 @@ def render_run_wrapper(script_path: Path, *,
         f"    fi\n"
         f"}}\n"
         f"trap _mb_cleanup EXIT\n"
+        f"_mb_on_signal() {{\n"
+        f'    _log WARN "caught SIGTERM/SIGINT (scheduler kill or '
+        f'Ctrl-C) -- cleaning up" || true\n'
+        f"    _mb_cleanup\n"
+        f"    exit 143\n"
+        f"}}\n"
+        f"trap _mb_on_signal TERM INT\n"
         f"\n"
         f"_log STAGE \"===== molbuilder wrapper start =====\"\n"
         f'_log INFO "timestamp:  $(date \'+%Y-%m-%d %H:%M:%S %Z\')"\n'
@@ -2604,8 +2664,8 @@ def render_run_wrapper(script_path: Path, *,
         f'_log INFO "argv:       $0 $*"\n'
         f'_log INFO "log file:   $_runwrap_log"\n'
         f"# Scheduler context -- only emit if the var is set.  These are\n"
-        f"# read for diagnostic logging + launch tuning (see § 1.5 of\n"
-        f"# docs/execution/running-a-job.md § 5); they do NOT alter activation or preamble.\n"
+        f"# read for diagnostic logging + launch tuning (running-a-job.md\n"
+        f"# 2.1-2.2a); they do NOT alter activation or preamble.\n"
         f'for _v in SLURM_JOB_ID SLURM_NTASKS SLURM_CPUS_PER_TASK \\\n'
         f"          SLURM_JOB_NODELIST SLURM_GPUS SLURM_JOB_GPUS \\\n"
         f"          PBS_JOBID PBS_NP PBS_NODEFILE; do\n"
@@ -3503,10 +3563,14 @@ def render_sbatch(script_path: Path,
                 if _clamped != _have_mb:
                     memory = f"{-(-_clamped // 1024)}G"
 
-    site = "asu-sol" if partition == "public" else "custom"
+    # NO site inference (D12g, 2026-08-12): `site = "asu-sol" if
+    # partition == "public"` hard-coded a facility name from a partition
+    # string -- exactly what running-a-job § 5.3 forbids ("the framework
+    # hard-codes no names or limits").  The partition itself is the fact;
+    # it is already printed on its own directive line below.
     lines: List[str] = [
         "#!/bin/bash",
-        f"# === molbuilder sbatch header (scheduler: slurm; site: {site}) ===",
+        "# === molbuilder sbatch header (scheduler: slurm) ===",
         "# Generated at prep from the `scheduler` config block.",
         "# Authoritative design: docs/execution/job-system.md.",
         "# Submit with:  cd <projdir>; sbatch "

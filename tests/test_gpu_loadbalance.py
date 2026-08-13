@@ -89,11 +89,18 @@ def test_gpu_wrapper_writes_per_rank_helper(tmp_path):
 def test_single_unified_exit_trap(tmp_path):
     """Bug fix: a second ``trap ... EXIT`` would REPLACE the first, so all
     teardown (per-rank helper + MPS daemon) must route through ONE
-    unified trap.  Assert exactly one trap COMMAND + the cleanup wiring."""
+    unified cleanup.  The contract is one EXIT trap -- the TERM/INT trap
+    added for D17 (2026-08-12: a walltime SIGTERM leaked the MPS daemon
+    with no 'killed' line) clobbers nothing and routes through the SAME
+    cleanup, guarded idempotent so signal-then-exit runs it once."""
     t = _gpu(tmp_path)
-    trap_cmds = [ln for ln in t.splitlines() if ln.strip().startswith("trap ")]
-    assert trap_cmds == ["trap _mb_cleanup EXIT"], trap_cmds
+    trap_cmds = [ln.strip() for ln in t.splitlines()
+                 if ln.strip().startswith("trap ")]
+    exit_traps = [c for c in trap_cmds if c.endswith(" EXIT")]
+    assert exit_traps == ["trap _mb_cleanup EXIT"], trap_cmds
+    assert "trap _mb_on_signal TERM INT" in trap_cmds, trap_cmds
     assert "_mb_cleanup() {" in t
+    assert '[ "${_mb_cleanup_ran:-0}" = "1" ]' in t   # idempotence guard
     assert "_mps_started=1" in t          # MPS sets the flag, not its own trap
     assert '[ "${_mps_started:-0}" = "1" ]' in t
 
@@ -309,7 +316,10 @@ def test_wrapper_ships_standalone_monitor(tmp_path):
 
 def test_monitor_killed_in_unified_cleanup(tmp_path):
     """The monitor kill lives in _mb_cleanup (the ONE EXIT trap), not its
-    own trap (which would clobber the others)."""
+    own trap (which would clobber the others).  The D17 signal trap is
+    not a second EXIT trap -- see test_single_unified_exit_trap."""
     t = _gpu(tmp_path)
-    trap_cmds = [ln for ln in t.splitlines() if ln.strip().startswith("trap ")]
-    assert trap_cmds == ["trap _mb_cleanup EXIT"], trap_cmds
+    trap_cmds = [ln.strip() for ln in t.splitlines()
+                 if ln.strip().startswith("trap ")]
+    exit_traps = [c for c in trap_cmds if c.endswith(" EXIT")]
+    assert exit_traps == ["trap _mb_cleanup EXIT"], trap_cmds
