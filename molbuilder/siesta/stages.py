@@ -125,31 +125,31 @@ def _traits(eff) -> Dict[str, str]:
             str(getattr(eff, "relax_type", "") or "").strip().lower()}
 
 
-def _warm_declaration(label: str, eff) -> List[WarmFile]:
+def _warm_declaration(label: str, eff,
+                      calculation: str = "optimization") -> List[WarmFile]:
     """What a stage with this resolved config takes from a run it continues.
 
-    `run-identity.md` § 4 rule 4 fixes the set: *"`restart: continue` means the
-    geometry, the density and the optimizer's history — `.XV`, `.DM`, `.CG` —
-    because that is what continuing a relaxation *is*"*, and rule 2 makes
-    ``restart`` the ONE field that says so. A ``clean`` stage declares nothing,
-    and that is the same answer its deck gives: ``_continues`` gates
-    ``MD.UseSaveXV`` / ``DM.UseSaveDM`` / ``MD.UseSaveCG`` too, so files placed
-    for a ``clean`` stage would sit unread — § 4's *"present but not
+    THE ROWS COME FROM THE RULES FILE (`job-contracts.md` § 4.2a, U2
+    2026-08-13): ``siesta/warm-files.toml``'s carry rows for this
+    CALCULATION TYPE, gated -- as ever -- on the stage actually
+    continuing: `run-identity.md` § 4 rule 2 makes ``restart`` the ONE
+    field that says so, and ``_continues`` gates the deck's
+    ``MD.UseSave*`` keywords from the same answer, so files placed for a
+    ``clean`` stage would sit unread -- § 4's *"present but not
     honoured"*, the silent half of the pair.
 
-    Only `.CG` is conditional, and the condition is the pair's, not this
-    stage's: *"a CG state is meaningless to a Broyden stage, so blindly
-    carrying it would corrupt the restart"* (`job-system.md` § 4.1). Which
-    source it will be compared against is unknown here — `--from` names it at
-    `prep` — so what is declared is the **condition**, and
-    :func:`~molbuilder.jobset.materialize.warm_carry` evaluates it once both
-    stages are in hand.
+    The pair conditions (``requires_same`` -- only `.CG` carries one
+    today) are DECLARED here and EVALUATED by
+    :func:`~molbuilder.jobset.model.warm_carry`, the one interpreter,
+    once ``--from`` names the source and both stages are in hand.  The
+    hard-coded XV/DM/CG list this replaces was one of the three copies
+    § 4.2a's history records drifting.
     """
+    from ..warmfiles import rules_for
     from .input import _continues
     if not _continues(eff):
         return []
-    return [WarmFile(f"{label}.XV"),
-            WarmFile(f"{label}.DM"),
-            WarmFile(f"{label}.CG", requires_same=OPTIMIZER_TRAIT)]
+    return [WarmFile(f"{label}{r.suffix}", requires_same=r.requires_same)
+            for r in rules_for("siesta", calculation) if r.carry]
 
 

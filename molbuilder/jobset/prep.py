@@ -265,7 +265,8 @@ class EngineSeam:
     #: files, and until 2026-08-12 it kept the run's label (found by the
     #: first sweep that ever rendered a deck).
     relabel: Callable
-    #: ``(label, config) -> warm-file declaration`` for the Job.
+    #: ``(label, config, calculation) -> warm-file declaration`` for the
+    #: Job -- the engine reads its § 4.2a rules file for the TYPE (U2).
     warm_for: Callable
     #: ``config -> traits`` the launcher routes on (GPU solver, …).
     traits_for: Callable
@@ -667,7 +668,8 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
         name = task.label
 
     return Job(name=name, script=script, resources=element.resources,
-               warm=seam.warm_for(element.label, element.values),
+               warm=seam.warm_for(element.label, element.values,
+                                  task.calculation),
                traits=seam.traits_for(element.values))
 
 
