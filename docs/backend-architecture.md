@@ -195,8 +195,8 @@ The design intent ([`execution/job-system.md`](?doc=execution/job-system.md)):
 
 | Module | L | Role | Engine knowledge? |
 |---|---|---|---|
-| `jobset/` (`model` / `materialize` / `prep` / `plan` / `submit` / `_cli`) | L2 | engine-agnostic staged-execution core | **none** (correct) |
-| `jobset/runstatus.py` | L2 | read-only per-stage status + warm-file inventory | **leaks** (see W2) |
+| `jobset/` (`model` / `materialize` / `shape` / `prep` / `plan` / `submit` / `summarize` / `agreement` / `ledger` / `_cli`) | L2 | engine-agnostic staged-execution core | **none** (correct) |
+| `jobset/runstatus.py` | L2 | read-only per-stage status + warm-file inventory | none since U3 — derives from the § 4.2a rules files (W2 closed) |
 | `bench/` | L2 | benchmark sweep; a **JobSet producer** | siesta (sanctioned — producer) |
 | `runwrap.py` | L2 | the `.run.sh` / `.sbatch` launcher emitter | **deep** (see W1) |
 | `runtime_config.py` | L2 | `molbuilder.json` reader (scheduler / routing / exec) | — (see W3) |
@@ -217,9 +217,9 @@ uniformly"), catalogued here so a future refactor knows where the seams are:
 | # | Seam | Where |
 |---|---|---|
 | W1 | **`runwrap.py` is the coupling hotspot.** Engine-aware by necessity (restart semantics), but it also reaches into SIESTA *science* (`siesta.memory.estimate_siesta_memory` for the `--mem` audit) and the `.fdf` *input schema* (`_fdf_requests_gpu` / `_fdf_requests_elpa` / `_parse_fdf_n_atoms`). Execution is fused to one engine's input + memory model rather than sitting behind an interface. | `runwrap.py` (`estimate_siesta_memory`; the three `_fdf_*` helpers) |
-| W2 | **The one leak inside the "agnostic" core.** `jobset/runstatus.py` hardcodes `siesta`→`.XV/.DM/.CG`, `pyscf`→`.chk` warm-file extensions — the only post-producer module that knows engines. Extract to a producer-supplied inventory or an engine registry. | `jobset/runstatus.py` (`_WARM_FILES` table) |
+| W2 | ~~**The one leak inside the "agnostic" core.**~~ **CLOSED (U3, 2026-08-13):** `jobset/runstatus.py`'s hardcoded warm-file table now derives from the engines' `warm-files.toml` rules files through the one loader (`job-contracts.md` § 4.2a) — the row stays so the seam's history is findable | `jobset/runstatus.py` |
 | W3 | **`runtime_config` leaks scheduler schema as untyped dicts** into `jobset/submit.py` and `runwrap.py` (`d["partition"]`, `d["qos"]`, …), and the module also bundles web-auth/TLS config with scheduler config — two concerns in one reader. | `runtime_config.py`; consumers `jobset/submit.py`, `runwrap.py` |
-| W4 | **Transport bypasses the framework.** `transport/orchestrate.py` hand-rolls a bash driver (`render_driver`) and fuses orchestration with `.fdf` science + structure construction (`electrode_wizard`) in one file, instead of producing a `JobSet`. This is the documented future migration, blocked on `depends_on` becoming multi-parent (`List[str]`) for the device diamond. | `transport/orchestrate.py` |
+| W4 | **Transport stays its own kind — decided, not deferred** (2026-08-11, user; `execution/architecture.md` § 2.2). `transport/orchestrate.py` hand-rolls its bash driver and fuses orchestration with `.fdf` science + structure construction in one file.  The sentence that stood here called folding it into a `JobSet` "the documented future migration, blocked on `depends_on` becoming multi-parent" — that fold is NOT scheduled: the decision is that transport is a separate kind and the edge machinery is not coming back for it | `transport/orchestrate.py` |
 | W5 | **Two modules misfiled under "workflow."** `bundle_writer.py` and `script_emit.py` are really **data** serializers (they reach into `parse.types`, `sidecars`, `structure`), not execution verbs — this doc files them under § 2 for that reason. | `bundle_writer.py`, `script_emit.py` |
 
 The scheduler vocabulary in `jobset/model.py::Resources` (`mpi_np`, `time`,

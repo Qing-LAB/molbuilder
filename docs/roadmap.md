@@ -65,9 +65,10 @@ dropped — the stage table POSTs a ladder that goes nowhere.
 
 **Where the work stands.** The whole engine-agnostic framework already
 exists on the command line: the `jobset` model and its `job-set.json`
-persistence, the `molbuilder jobset plan/prep/submit/status` verbs (both
-local `bash` execution and SLURM submission, **one job per invocation**), and
-the SIESTA stage producer (`stages_to_jobset`). What is missing is the **web front-end** onto that framework —
+persistence, the `molbuilder jobset describe/prep/plan/submit/summarize/status`
+verbs (both local `bash` execution and SLURM submission, **one job per
+invocation**), and `prep`'s five steps writing floor 3 on the target (*the
+chaining producers died in the 2026-08-12 fold*). What is missing is the **web front-end** onto that framework —
 the setup tabs cannot yet produce a bundle, show its plan, or report its
 run status. What is built lives in
 [`execution/job-system.md`](?doc=execution/job-system.md) (the JobSet framework
@@ -446,13 +447,13 @@ dropped in the same commit that closes its item)*:
 - **Multi-frame trajectory persistence.** Persist multi-frame trajectories
   as extended-XYZ (via ASE) with a sidecar manifest — the one open item
   from the frame-series work.
-- **SIESTA retry: finish the wiring.** `continue_retries` reaches the
-  wrapper only through the web install-wrapper door; the validated config
-  field is decorative on the CLI and JobSet-ladder paths (thread it through
-  `stages_to_jobset` → `jobset/prep.py` + a CLI flag —
-  `execution/job-system.md § 5` records the gap). Also add the exit-code
-  belt: check the `.out` for `SCF_NOT_CONV`/`ABNORMAL_TERMINATION` on a
-  *zero* exit too, so the retry (and honest failure reporting) survives an
+- **SIESTA retry: the exit-code belt.** *(The wiring half of this item
+  LANDED — 2026-08-07 on the old producer road, and 2026-08-13 for the
+  described route: `resolve.py` performs job-contracts § 6.2's translation,
+  so the template's `continue_retries` rides the element's Resources and
+  `prep` bakes it into the wrapper on every path.)*  What remains: check
+  the `.out` for `SCF_NOT_CONV`/`ABNORMAL_TERMINATION` on a *zero* exit
+  too, so the retry (and honest failure reporting) survives an
   MPI stack that doesn't propagate abort statuses.
 - **Watch discovery: make the `JOB` resolver test real.**
   `test_load_directory_falls_back_to_py_job_name` still writes the retired
@@ -600,17 +601,17 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   |---|---|---|
   | 1 names & facts | ✅ | — |
   | 2 description | ✅ | — |
-  | 3 plan | ✅ | **the migration LANDED** (2026-08-11, plan steps 3–4): `resolve()` runs at `prep`, on the target, and every element carries its own machine ask. `stages_to_jobset` remains only as an orphaned producer that folds at step 6 |
+  | 3 plan | ✅ | **the migration LANDED** (2026-08-11, plan steps 3–4): `resolve()` runs at `prep`, on the target, and every element carries its own machine ask. The orphaned producer folded away 2026-08-12 (step 6) |
   | 4 layout | ✅ | — |
   | 5 launch | ⚠ | `runwrap` **writes** a script and `submit` **starts** one; one floor holds both. Real, harmless, and splitting it costs more than it returns |
   | 6 observe | ⚠ | in the flat layout, one stage's verdict is still read from the whole folder |
   | 7 surfaces | ⚠ | the web has no staged path at all |
-  | — | `bench/` | a second copy of floors 3–6 for sweeps; folds in after the migration below |
+  | — | `bench/` | ~~a second copy of floors 3–6 for sweeps~~ **folded 2026-08-12** (step 6 u1–u5): a sweep is `prep` with a longer step 2; the legacy `siesta-gpu` stack survives pending plan row 8 |
 
   **Every ⚠ except floor 5's was the same unfinished change** — the producer
   ran at *produce* and needed to run at `prep`, "the one real migration" —
-  **and it landed 2026-08-11** (plan step 4). What is left of it is the
-  `bench` fold (step 6) and the web's staged path (P10).
+  **and it landed 2026-08-11** (plan step 4). The `bench` fold followed
+  2026-08-12 (step 6); what is left is the web's staged path (P10).
 
 - **Capability and allocation reach `prep`** — `project-layout.md § 2.3.1b`
   defines the two and rules M1–M6. Three are held today (M1 the machine is
