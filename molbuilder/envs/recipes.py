@@ -192,6 +192,34 @@ def _spec(name: str, version_var: str = "") -> str:
 # 14.3.0 compiles the same file correctly: this repo's own
 # libsiesta.a carries no such undefined symbol.
 #
+# DO NOT "FIX" THIS BY PATCHING kpoint_t.F90.  A workaround
+# circulating online comments out both
+# ``if (present(process_k_cell)) call process_k_cell(...)`` blocks and
+# calls the callback "safe to bypass if you do not strictly require
+# it".  It is not safe for us.  That callback is
+# ``ts_kpoint_scf.F90:79 process_k_cell_displ``, and what it does is:
+#
+#     if ( TSmode .and. ts_tidx > 0 ) then
+#       k_cell(:,i) = 0 ; k_cell(i,:) = 0
+#       k_cell(i,i) = 1          ! exactly ONE k-point along transport
+#       k_displ(i)  = 0._dp
+#
+# In a TranSIESTA/NEGF run the transport direction is NOT periodic --
+# it is a semi-infinite open boundary -- so sampling k-points along it
+# is physically meaningless, and this is the code that silently forces
+# the grid to one point there.  Delete it and a transport run asking
+# for a 4x4x4 grid quietly USES 4 k-points along transport and reports
+# nothing.  We build -DSIESTA_WITH_TRANSIESTA=ON and ship a transport
+# surface (docs/engines/transport.md), so that trade turns a loud build
+# failure into a silent wrong answer.  Pin the compiler instead; it
+# costs nothing and touches no source.
+#
+# A compiler-flag workaround (-O0 / -fno-inline, on the theory that
+# 14.4 mis-resolves the host-associated dummy while inlining the
+# CONTAINS'd setup_mp into kpoint_read at -O3) is UNTESTED -- it cannot
+# be tested on a 14.3 toolchain, which does not reproduce the bug --
+# and would slow the whole build to work around one file.
+#
 # Override per-install with ``--gcc <X.Y>`` or ``MOLBUILDER_GCC``.
 # CUDA pairing still applies and is checked in builds.py: CUDA
 # 12.0-12.7 wants gcc <= 13, CUDA 11.x wants gcc <= 11.
