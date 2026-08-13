@@ -358,9 +358,29 @@ def resolve(template_text: str, task, config_cls, *,
             values = _apply(values, pins)
             prov.update({k: "pin" for k in pins})
 
+        resources = dataclasses.replace(allocation, **machine)
+        # § 6.2's translation boundary (job-contracts.md): floor 3 maps
+        # config → exchange HERE, and ``continue_retries`` is the one
+        # rider that is legitimately also a template item (a retry
+        # POLICY, not a machine fact — ALLOCATION_FIELDS' own note).  An
+        # explicitly stated allocation wins; otherwise the resolved
+        # config's answer rides the element, exactly as the § 6.2 row
+        # ("translated at resolve.py") describes.  Until 2026-08-13 the
+        # note above CLAIMED the ride and nothing performed it: the web
+        # route handed the value straight to the wrapper writer while the
+        # CLI route resolved an allocation that never carried it, so the
+        # wrapper rendered NO retry loop and `job-system.md § 4.1`'s
+        # "travels the whole way" was true of one road out of two
+        # (final review A-5).
+        if resources.continue_retries is None:
+            budget = getattr(values, "continue_retries", None)
+            if budget is not None:
+                resources = dataclasses.replace(resources,
+                                                continue_retries=budget)
+
         elements.append(ResolvedConfig(
             values=values,
-            resources=dataclasses.replace(allocation, **machine),
+            resources=resources,
             point=dict(point),
             label=_label_for(task.label, point),
             provenance=prov,

@@ -191,3 +191,39 @@ def test_a_structure_that_changed_since_describing_is_refused(calc, tmp_path):
 def test_a_stage_that_is_not_in_the_ladder_is_refused(calc):
     with pytest.raises(PrepError, match=r"coarse"):
         prep_calculation(calc, "nonesuch", allocation=Resources(mpi_np=8))
+
+
+# --------------------------------------------------------------------- #
+#  The warm-retry budget — § 6.2's one no-flag row, on THIS route        #
+# --------------------------------------------------------------------- #
+
+def test_the_warm_retry_budget_travels_the_described_route(calc):
+    """A-5 (final review, 2026-08-13): `job-contracts.md § 6.2`'s last row
+    says ``continue_retries`` is *"translated at resolve.py — rides the
+    element's Resources; prep bakes it into the wrapper"*.  Until the fix
+    nothing performed that translation on this route: the web route hands
+    the value straight to the wrapper writer, while the described route
+    resolved an allocation that never carried it — so the wrapper rendered
+    NO retry loop and `job-system.md § 4.1`'s "travels the whole way" was
+    true of one road out of two.
+
+    Pinned on the EMITTED TEXT because the defect class is a value that
+    travels correctly and is dropped at the last hop.  Both precedences:
+    the template's answer rides by default; an explicit allocation wins."""
+    tpl = calc / "calc.template.toml"
+    head, sep, tail = tpl.read_text().partition("[item.continue_retries]")
+    assert sep, "the template lost its continue_retries item"
+    body, nxt, rest = tail.partition("\n[item.")
+    assert "value = 1" in body, body
+    tpl.write_text(head + sep + body.replace("value = 1", "value = 4", 1)
+                   + nxt + rest)
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+    text = (calc / "calc_01_coarse.run.sh").read_text()
+    assert "_siesta_retry_max=4" in text, (
+        "the template's warm-retry budget never reached the wrapper -- "
+        "the § 6.2 translation at resolve.py is broken again (A-5)")
+    # an explicitly stated allocation wins over the template's answer
+    prep_calculation(calc, "coarse",
+                     allocation=Resources(mpi_np=8, continue_retries=2))
+    text = (calc / "calc_01_coarse.run.sh").read_text()
+    assert "_siesta_retry_max=2" in text
