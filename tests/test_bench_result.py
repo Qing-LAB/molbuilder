@@ -2,12 +2,15 @@
 (molbuilder/bench/result.py)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from molbuilder.bench.result import (
     BenchPoint, BenchResult, build_bench_result, choose_winner,
-    parse_mpi_ranks, parse_sacct_mem, parse_scf_timing,
-    parse_util_csv_peak_mem, parse_util_summary, recommend_resources,
+    compare_asked_to_ran, parse_effective_run, parse_mpi_ranks,
+    parse_sacct_mem, parse_scf_timing, parse_util_csv_peak_mem,
+    parse_util_summary, recommend_resources,
 )
 
 
@@ -183,3 +186,132 @@ def test_choice_survives_a_json_round_trip_for_the_offer():
     knobs = (back.get("choice") or {}).get("knobs") or {}
     assert knobs, "choice.knobs is what prep-run's offer consumes"
 
+
+
+# --------------------------------------------------------------------- #
+#  What the trial ACTUALLY ran -- the readback + the comparison          #
+# --------------------------------------------------------------------- #
+#
+# Restores, on the current design, the check the deleted legacy bench
+# module carried as `parse_point_out`'s effective_np / effective_omp /
+# effective_bs / effective_diag.  Without it a benchmark records the
+# settings it ASKED for as though they were the measurement, and a silent
+# fallback (ELPA -> CPU solver, a launcher handing back fewer ranks)
+# competes in the ranking under a label describing a run that never
+# happened.
+
+#: A REAL SIESTA run's output, not a hand-written sample -- the setup
+#: lines this parser depends on are exactly as the binary printed them.
+_FROZEN_OUT = (Path(__file__).parent / "watch" / "fixtures" /
+               "siesta_frozen" / "hemeC-stage2-run3-finished-42fr.out")
+
+#: The wrapper's launch record.  The thread count appears in no SIESTA
+#: output, so this file is its only witness.
+_WRAP_LOG = """\
+[2026-08-13 09:14:02] INFO  resolved launch : mpirun -np 8 job.fdf > job-run0.out
+[2026-08-13 09:14:02] INFO  launch mode     : mpirun (local)
+[2026-08-13 09:14:02] INFO  ranks / omp     : 8 ranks x 2 OMP threads
+"""
+
+
+def test_effective_run_is_read_from_a_real_siesta_output():
+    out = _FROZEN_OUT.read_text(encoding="utf-8", errors="replace")
+    eff = parse_effective_run(out, _WRAP_LOG)
+    assert eff["mpi_np"] == 8              # "* Running on 8 nodes in parallel."
+    assert eff["omp_threads"] == 2         # wrapper log only
+    assert eff["blocksize"] == 8           # "* ProcessorY, Blocksize:  4  8"
+    assert eff["diag_algorithm"] == "D&C"  # "diag: Algorithm  = D&C"
+
+
+def test_the_setup_lines_sit_far_past_a_16kb_head():
+    """Why summarize reads a wide window: the eigensolver and the parallel
+    grid are printed AFTER the basis/pseudopotential report.  In this real
+    42-atom run they are ~49 KB in -- a 16 KB head (the window that finds
+    the rank count) sees neither, and the check would silently never fire."""
+    raw = _FROZEN_OUT.read_bytes()
+    assert raw.find(b"* Running on") < 16384
+    assert raw.find(b"diag: Algorithm") > 16384
+    head16 = raw[:16384].decode("utf-8", "replace")
+    assert parse_effective_run(head16, "").get("diag_algorithm") is None
+
+
+def test_effective_run_reports_only_what_it_could_read():
+    """No artifacts -> no claims.  'Could not check' must be tellable from
+    'checked and matched', so absent keys are absent, not defaulted."""
+    assert parse_effective_run("", "") == {}
+    only_wrapper = parse_effective_run("", _WRAP_LOG)
+    assert only_wrapper == {"mpi_np": 8, "omp_threads": 2}
+
+
+def test_elpa_gpu_key_is_captured_when_the_build_reached_elpa():
+    out = ("* Running on 4 nodes in parallel.\n"
+           "* ProcessorY, Blocksize:    2   64\n"
+           "diag: Algorithm                                = ELPA-2stage\n"
+           "diag: ELPA GPU string key                      = nvidia-gpu\n")
+    eff = parse_effective_run(out, "")
+    assert eff["diag_algorithm"] == "ELPA-2stage"
+    assert eff["elpa_gpu"] == "nvidia-gpu"
+
+
+def test_agreement_is_silence():
+    asked = {"mpi_np": 8, "cpus_per_task": 2, "diag_algorithm": "ELPA-1STAGE"}
+    ran = {"mpi_np": 8, "omp_threads": 2, "diag_algorithm": "ELPA-1stage"}
+    # Case differs because the deck shouts and SIESTA prints mixed case.
+    assert compare_asked_to_ran(asked, ran) == {}
+
+
+def test_a_silent_eigensolver_fallback_is_caught():
+    """The failure this whole check exists for: the deck asked for the GPU
+    eigensolver, SIESTA used the CPU one and said so only in its output."""
+    m = compare_asked_to_ran({"diag_algorithm": "ELPA-1STAGE"},
+                             {"diag_algorithm": "D&C"})
+    assert m == {"diag_algorithm": {"asked": "ELPA-1STAGE", "ran": "D&C"}}
+
+
+def test_fewer_ranks_and_wrong_threads_are_caught():
+    m = compare_asked_to_ran({"mpi_np": 8, "cpus_per_task": 4},
+                             {"mpi_np": 4, "omp_threads": 8})
+    assert m["mpi_np"] == {"asked": 8, "ran": 4}
+    assert m["omp_threads"] == {"asked": 4, "ran": 8}
+
+
+def test_a_knob_only_one_side_knows_is_not_a_disagreement():
+    """Silence is the honest answer to an unanswered question -- claiming a
+    mismatch from a missing readback would bar good trials from winning."""
+    assert compare_asked_to_ran({"mpi_np": 8}, {}) == {}
+    assert compare_asked_to_ran({}, {"mpi_np": 4}) == {}
+
+
+def test_a_trial_that_ran_something_else_cannot_win_even_if_fastest():
+    pts = [
+        BenchPoint("gpu-k8", "gpu", {"gpus": 1},
+                   {"s_per_iter": 10.0}, state="completed",
+                   effective={"diag_algorithm": "D&C"},
+                   mismatch={"diag_algorithm": {"asked": "ELPA-1STAGE",
+                                                "ran": "D&C"}}),
+        BenchPoint("gpu-k4", "gpu", {"gpus": 2},
+                   {"s_per_iter": 99.0}, state="completed"),
+    ]
+    c = choose_winner(pts)
+    assert c["label"] == "gpu-k4", "the fastest row measured another machine"
+    assert "excluded" in c["rationale"] and "gpu-k8" in c["rationale"]
+    assert "asked ELPA-1STAGE, ran D&C" in c["rationale"]
+
+
+def test_no_winner_when_every_timed_trial_ran_something_else():
+    """Better no recommendation than the least-wrong of a bad table."""
+    pts = [BenchPoint(f"p{i}", "gpu", {}, {"s_per_iter": float(i + 1)},
+                      state="completed",
+                      mismatch={"mpi_np": {"asked": 8, "ran": 4}})
+           for i in range(3)]
+    assert choose_winner(pts) == {}
+
+
+def test_the_readback_survives_the_json_round_trip():
+    pts = [BenchPoint("g", "gpu", {"gpus": 1}, {"s_per_iter": 5.0},
+                      state="completed",
+                      effective={"blocksize": 64, "diag_algorithm": "D&C"},
+                      mismatch={"mpi_np": {"asked": 8, "ran": 4}})]
+    back = BenchResult.from_dict(build_bench_result(pts).to_dict())
+    assert back.points[0].effective["blocksize"] == 64
+    assert back.points[0].mismatch["mpi_np"]["ran"] == 4

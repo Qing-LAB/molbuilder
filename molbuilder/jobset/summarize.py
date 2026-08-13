@@ -26,8 +26,9 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from ..bench.result import (
-    BenchPoint, BenchResult, build_bench_result, parse_mpi_ranks,
-    parse_scf_timing, parse_util_csv_peak_mem, parse_util_summary,
+    BenchPoint, BenchResult, build_bench_result, compare_asked_to_ran,
+    mismatch_phrase, parse_effective_run, parse_mpi_ranks, parse_scf_timing,
+    parse_util_csv_peak_mem, parse_util_summary,
 )
 
 # "the run finished" markers in a SIESTA .out (best-effort; a capped bench
@@ -70,6 +71,44 @@ def _latest_run_file(d: Path, basename: str, suffix: str) -> Optional[Path]:
     return max(cands, key=_idx)
 
 
+#: How far into a SIESTA ``.out`` the setup lines can sit.  The launch
+#: header (``* Running on N nodes``) is in the first KB, but the parallel
+#: grid and the eigensolver are printed AFTER the basis and pseudopotential
+#: report -- ~49 KB into a real 42-atom run, and further for a bigger
+#: system.  A 16 KB head window (the one that reads the rank count) sees
+#: neither, so this is a deliberately generous but still bounded read.
+_SETUP_WINDOW = 512 * 1024
+
+
+def _wrapper_log(d: Path, basename: str) -> Path:
+    """The most recent ``<basename>.runwrap-<stamp>.log`` in ``d``.
+
+    The stamp is ``%Y%m%d-%H%M%S`` (``runwrap.py``), so lexical order IS
+    chronological order.  Returns a non-existent path when there is none
+    -- ``_read`` turns that into ``""`` and the caller simply learns less.
+    """
+    logs = sorted(d.glob(f"{basename}.runwrap-*.log"))
+    return logs[-1] if logs else d / f"{basename}.runwrap-none.log"
+
+
+def _asked_diag_algorithm(d: Path, basename: str) -> Optional[str]:
+    """The eigensolver the trial's OWN deck asked for, or ``None``.
+
+    Read from the deck beside its results rather than re-derived from the
+    engine word -- the same rule ``_winner_mechanism`` follows, and for
+    the same reason: ``engine == "gpu"`` does not name an algorithm, and
+    guessing one invents the very fact this check exists to verify.
+    """
+    deck = d / f"{basename}.fdf"
+    if not deck.is_file():
+        return None
+    for line in _read(deck).splitlines():
+        toks = line.split("#", 1)[0].split()
+        if len(toks) >= 2 and _norm(toks[0]) == "diagalgorithm":
+            return toks[1]
+    return None
+
+
 def parse_point(label: str, d: Path, basename: str, engine: str,
                 knobs: Dict) -> BenchPoint:
     """Parse one point's artifacts (in directory ``d``, output basename
@@ -104,6 +143,7 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     # rank count, and the verdict's CPU half had no np.
     out = _latest_run_file(d, basename, "out")
     out_tail = _read(out, tail=16384) if out is not None else ""
+    out_head = _read(out, head=_SETUP_WINDOW) if out is not None else ""
     if out is None:
         state = "unknown"
     elif any(m in out_tail for m in _DONE_MARKERS):
@@ -111,13 +151,27 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     else:
         state = "incomplete"
     if engine == "cpu" and "mpi_np" not in knobs:
-        n = (parse_mpi_ranks(_read(out, head=16384))
-             if out is not None else None)
+        n = parse_mpi_ranks(out_head)
         if n is not None:
             knobs["mpi_np"] = n
 
+    # What the trial REALLY ran with, and whether that is what it was
+    # asked to run.  Until 2026-08-13 nothing compared the two: the
+    # requested knobs were written into the record as though they were
+    # the measurement, so a silent fallback (ELPA -> the CPU solver, a
+    # launcher handing back fewer ranks, OMP_NUM_THREADS set in the
+    # environment) produced a row whose label described a run that never
+    # happened -- and `choose_winner` ranked it against the others.
+    effective = parse_effective_run(out_head, _read(_wrapper_log(d, basename)))
+    asked = dict(knobs)
+    alg = _asked_diag_algorithm(d, basename)
+    if alg is not None:
+        asked["diag_algorithm"] = alg
+    mismatch = compare_asked_to_ran(asked, effective)
+
     return BenchPoint(label=label, engine=engine, knobs=knobs,
-                      metrics=metrics, bound=bound, state=state)
+                      metrics=metrics, bound=bound, state=state,
+                      effective=effective, mismatch=mismatch)
 
 
 
@@ -277,8 +331,20 @@ def summary_text(res: BenchResult, out_path: Path) -> str:
         spi_s = f"{spi:g}s/iter" if spi is not None else "n/a"
         lines.append(f"  {p.label:<12} {p.engine:<4} {spi_s:<12} "
                      f"{p.state:<11} bound={p.bound}")
+        # A trial that ran something else is not a slower trial, it is a
+        # different experiment.  Say so on its own line rather than
+        # leaving the reader to find it in the JSON.
+        if p.mismatch:
+            lines.append(f"  {'':<12} !! ran something other than asked: "
+                         f"{mismatch_phrase(p.mismatch)} "
+                         f"-- excluded from the choice")
     if res.choice:
         lines.append(f"  winner: {res.choice.get('rationale')}")
+    elif any(p.mismatch for p in res.points):
+        lines.append("  NO WINNER: every timed trial ran something other "
+                     "than it was asked to.  The times are real but they do "
+                     "not measure the settings on their labels -- fix the "
+                     "cause and re-run before trusting a choice.")
     if res.recommend:
         lines.append(f"  recommend: {res.recommend}")
     lines.append(f"  wrote: {out_path}")

@@ -1181,8 +1181,28 @@ flowchart LR
   > name carries what was tried* already anticipates.
 - **Measure → `bench-result.json`** (`molbuilder/bench-result@1`): each point is
   parsed for its SCF wall-time **per iteration** (averaged over iterations 3–5 to
-  skip warm-up), plus a utilisation reading and peak memory. The **winner is the
-  fastest completed point**; the tool also recommends a memory request (peak ×
+  skip warm-up), plus a utilisation reading and peak memory.
+  > **A trial is also asked what it actually ran, and a trial that ran
+  > something else cannot win** *(2026-08-13)*. Each point's own artifacts are
+  > read back — SIESTA's `* Running on N nodes in parallel.`, its
+  > `* ProcessorY, Blocksize:` and `diag: Algorithm` lines, and the wrapper's
+  > `ranks / omp` record (the only witness to the thread count) — into the
+  > point's `effective` block, and compared against what it was asked for into
+  > its `mismatch` block. Both travel in the record. **The reason is that the
+  > fallbacks are silent**: an ELPA/GPU build that cannot initialise drops to
+  > the CPU solver and says so only in its output, a launcher may hand back
+  > fewer ranks than requested, and an `OMP_NUM_THREADS` in the environment
+  > overrides the scheduler's `-c`. Without the comparison the row keeps the
+  > label it asked for and is ranked against the others as though it measured
+  > that configuration. A mismatched point stays in the record and is named in
+  > the rationale; it is barred only from winning, and if **every** timed
+  > point mismatches there is no winner at all rather than the least-wrong of
+  > them. *(This restores, on the current design, the `effective_np` /
+  > `effective_omp` / `effective_bs` / `effective_diag` readback that the
+  > deleted legacy `bench` module carried.)*
+
+  The **winner is the fastest completed point** that ran what it was asked to
+  run; the tool also recommends a memory request (peak ×
   1.15) and a walltime (per-iteration time × a nominal iteration count × a safety
   factor). The recorded choice is **portable** — `prep run` finds the verdict,
   **asks**, and re-resolves the concrete rank and core counts for whatever

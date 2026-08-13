@@ -89,3 +89,78 @@ def test_summary_text_names_every_point_and_the_output(tmp_path):
     text = summary_text(res, Path("/tmp/bench-result.json"))
     assert "p1" in text and "completed" in text
     assert "bench-result.json" in text
+
+
+# --------------------------------------------------------------------- #
+#  What the trial actually ran -- the WIRING, not the parsers            #
+# --------------------------------------------------------------------- #
+#
+# The parsers themselves are pinned in test_bench_result.py.  What these
+# pin is that `parse_point` actually READS a trial's artifacts and fills
+# `effective` / `mismatch` -- a mutation blanking the readback passed the
+# whole bench suite before these existed, which is the shape of the
+# original defect: the check can be absent and everything stays green.
+
+def _ran_trial(tmp_path, name, basename, *, ranks, omp, algorithm,
+               asked_algorithm):
+    """A trial directory holding what a real run leaves behind: its deck
+    (what was ASKED), its .out and its wrapper log (what RAN)."""
+    d = _point_dir(
+        tmp_path, name, basename,
+        "* Running on {} nodes in parallel.\n".format(ranks)
+        + "padding\n" * 3000                       # push setup lines deep
+        + "* ProcessorY, Blocksize:    2   64\n"
+        + "diag: Algorithm                              = {}\n".format(algorithm)
+        + "scf: 1\n>> End of run:\n")
+    (d / f"{basename}.fdf").write_text(
+        f"SystemLabel {basename}\nDiag.Algorithm {asked_algorithm}\n")
+    (d / f"{basename}.runwrap-20260813-091402.log").write_text(
+        f"[..] INFO  ranks / omp     : {ranks} ranks x {omp} OMP threads\n")
+    return d
+
+
+def test_parse_point_reads_back_what_the_trial_really_ran(tmp_path):
+    d = _ran_trial(tmp_path, "ok", "job", ranks=8, omp=2,
+                   algorithm="ELPA-1stage", asked_algorithm="ELPA-1STAGE")
+    pt = parse_point("ok", d, "job", "gpu",
+                     {"mpi_np": 8, "cpus_per_task": 2})
+    assert pt.effective["mpi_np"] == 8
+    assert pt.effective["omp_threads"] == 2
+    assert pt.effective["blocksize"] == 64
+    assert pt.effective["diag_algorithm"] == "ELPA-1stage"
+    assert pt.mismatch == {}, "asked and ran agree; case must not matter"
+
+
+def test_parse_point_catches_a_trial_that_ran_something_else(tmp_path):
+    """The deck asked for the GPU eigensolver on 8 ranks; SIESTA used the
+    CPU solver and the launcher gave 4.  Both must show up."""
+    d = _ran_trial(tmp_path, "fell-back", "job", ranks=4, omp=2,
+                   algorithm="D&C", asked_algorithm="ELPA-1STAGE")
+    pt = parse_point("fell-back", d, "job", "gpu",
+                     {"mpi_np": 8, "cpus_per_task": 2})
+    assert pt.mismatch["mpi_np"] == {"asked": 8, "ran": 4}
+    assert pt.mismatch["diag_algorithm"] == {"asked": "ELPA-1STAGE",
+                                             "ran": "D&C"}
+    assert pt.state == "completed", "the run finished -- it just ran elsewise"
+
+
+def test_a_trial_with_no_artifacts_claims_nothing(tmp_path):
+    """'Could not check' must never masquerade as 'checked and matched'."""
+    d = _point_dir(tmp_path, "bare", "job")
+    pt = parse_point("bare", d, "job", "gpu", {"mpi_np": 8})
+    assert pt.effective == {} and pt.mismatch == {}
+
+
+def test_summary_text_shows_a_mismatch_and_refuses_a_bogus_winner(tmp_path):
+    d = _ran_trial(tmp_path, "only", "job", ranks=4, omp=2,
+                   algorithm="D&C", asked_algorithm="ELPA-1STAGE")
+    (d / "job-run0.scf-timing.log").write_text(
+        "1782535754.0 1 scf: 1\n1782535854.0 2 scf: 2\n"
+        "1782535954.0 3 scf: 3\n")
+    pt = parse_point("only", d, "job", "gpu", {"mpi_np": 8})
+    res = build_bench_result([pt])
+    text = summary_text(res, Path("bench-result.json"))
+    assert "ran something other than asked" in text
+    assert "asked 8, ran 4" in text
+    assert res.choice == {}, "the only timed trial measured another setup"
+    assert "NO WINNER" in text

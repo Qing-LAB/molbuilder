@@ -135,6 +135,105 @@ def parse_mpi_ranks(out_text: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+# What the run ACTUALLY used, printed by SIESTA itself and by the wrapper.
+# Formats verified against real frozen output in
+# tests/watch/fixtures/siesta_frozen/ and against the writers in SIESTA's
+# Src/runinfo_m.F90:60, Src/initparallel.F:256 and Src/diag_option.F90:385ff.
+_PROCY_BS = re.compile(r"^\s*\*\s*ProcessorY,\s*Blocksize:\s*(\d+)\s+(\d+)",
+                       re.MULTILINE)
+_DIAG_ALG = re.compile(r"^\s*diag:\s*Algorithm\s+=\s*(\S+)", re.MULTILINE)
+_ELPA_GPU = re.compile(r"^\s*diag:\s*ELPA GPU string key\s+=\s*(\S+)",
+                       re.MULTILINE)
+#: The wrapper's own record of the launch it resolved (``runwrap.py``'s
+#: ``_log INFO "ranks / omp     : $_mpi_np ranks x $_omp_threads OMP threads"``).
+#: The thread count exists NOWHERE in SIESTA's output, so this is its only
+#: witness.
+_WRAP_RANKS_OMP = re.compile(
+    r"ranks\s*/\s*omp\s*:\s*(\d+)\s+ranks\s+x\s+(\d+)\s+OMP threads")
+
+
+def parse_effective_run(out_text: str = "", wrapper_log: str = "") -> Dict:
+    """What a trial REALLY ran with, read back from its own artifacts.
+
+    A benchmark that records the settings it *asked for* measures a table
+    of labels, not of runs: SIESTA falls back silently (an unavailable
+    ELPA/GPU build drops to the CPU solver and says so only in its
+    output), a launcher may hand back fewer ranks than requested, and
+    ``OMP_NUM_THREADS`` set in the environment overrides the scheduler's
+    ``-c``.  Any of those makes a row describe a run that did not happen.
+
+    Returns only the keys it could actually find, so a caller can tell
+    *"checked and matched"* from *"could not check"*:
+
+    ``mpi_np``          MPI ranks -- SIESTA's ``* Running on N nodes in
+                        parallel.``, falling back to the wrapper's log.
+    ``omp_threads``     OMP threads per rank -- the wrapper's log only.
+    ``blocksize``       the ScaLAPACK/ELPA block size SIESTA settled on.
+    ``diag_algorithm``  the eigensolver actually used (``ELPA-2stage``,
+                        ``D&C``, ...) -- the fallback witness.
+    ``elpa_gpu``        ELPA's GPU string key, printed only by an
+                        ELPA-enabled build that reached the ELPA path.
+
+    Pure text in, values out -- both texts are optional, and an empty or
+    unparsable one contributes nothing rather than raising.
+    """
+    eff: Dict = {}
+
+    ranks = parse_mpi_ranks(out_text)
+    m = _WRAP_RANKS_OMP.search(wrapper_log)
+    if m:
+        if ranks is None:
+            ranks = int(m.group(1))
+        eff["omp_threads"] = int(m.group(2))
+    if ranks is not None:
+        eff["mpi_np"] = ranks
+
+    m = _PROCY_BS.search(out_text)
+    if m:
+        # The line prints ProcessorY first, then Blocksize.
+        eff["blocksize"] = int(m.group(2))
+    m = _DIAG_ALG.search(out_text)
+    if m:
+        eff["diag_algorithm"] = m.group(1)
+    m = _ELPA_GPU.search(out_text)
+    if m:
+        eff["elpa_gpu"] = m.group(1)
+    return eff
+
+
+def compare_asked_to_ran(asked: Dict, effective: Dict) -> Dict:
+    """Where a trial's run disagrees with what it was asked to do.
+
+    ``{knob: {"asked": <requested>, "ran": <observed>}}`` for every knob
+    present on BOTH sides and unequal; ``{}`` when everything comparable
+    agreed, or when nothing could be compared.  A knob only one side
+    knows about is not a disagreement -- it is an unanswered question,
+    and silence is the honest answer.
+
+    ``cpus_per_task`` is the scheduler's cores-per-rank and
+    ``omp_threads`` is what the wrapper set from it (``runwrap.py``
+    resolves ``OMP_NUM_THREADS`` → ``SLURM_CPUS_PER_TASK``), so they are
+    the same question asked of two layers and are compared as one.
+    Eigensolver names are compared case-blind because the deck shouts
+    (``ELPA-1STAGE``) where SIESTA prints mixed case (``ELPA-1stage``).
+    """
+    pairs = (("mpi_np", "mpi_np"),
+             ("cpus_per_task", "omp_threads"),
+             ("diag_algorithm", "diag_algorithm"))
+    out: Dict = {}
+    for asked_key, ran_key in pairs:
+        a, r = asked.get(asked_key), effective.get(ran_key)
+        if a is None or r is None:
+            continue
+        if isinstance(a, str) and isinstance(r, str):
+            same = a.strip().lower() == r.strip().lower()
+        else:
+            same = a == r
+        if not same:
+            out[ran_key] = {"asked": a, "ran": r}
+    return out
+
+
 _SACCT_MEM = re.compile(r"\bmem=([0-9.]+)([KMGT])", re.IGNORECASE)
 _SACCT_UNIT = {"K": 1 / 1048576, "M": 1 / 1024, "G": 1.0, "T": 1024.0}
 
@@ -176,6 +275,14 @@ class BenchPoint:
     metrics: Dict = field(default_factory=dict)      # s_per_iter, sm%, rss...
     bound:   Optional[str] = None                    # gpu | host | mixed
     state:   str = "unknown"                         # completed|timeout|...
+    #: What the run ACTUALLY used, read back from its own artifacts
+    #: (:func:`parse_effective_run`).  Empty when nothing could be read.
+    effective: Dict = field(default_factory=dict)
+    #: Where ``effective`` disagrees with ``knobs`` --
+    #: ``{knob: {"asked": x, "ran": y}}``.  Empty means everything
+    #: comparable agreed, OR that nothing was comparable; ``effective``
+    #: is what tells those two apart.
+    mismatch: Dict = field(default_factory=dict)
 
     def s_per_iter(self) -> Optional[float]:
         v = self.metrics.get("s_per_iter")
@@ -231,11 +338,31 @@ class BenchResult:
 # --------------------------------------------------------------------- #
 
 
+def mismatch_phrase(mismatch: Dict) -> str:
+    """``{"mpi_np": {"asked": 8, "ran": 4}}`` -> ``"mpi_np asked 8, ran 4"``
+    -- one readable clause per disagreeing knob."""
+    return "; ".join(f"{k} asked {v.get('asked')}, ran {v.get('ran')}"
+                     for k, v in sorted(mismatch.items()))
+
+
 def choose_winner(points: List[BenchPoint]) -> Dict:
     """The portable ``choice`` (§ 5.4): the fastest COMPLETED point by
-    steady-state s/iter.  Returns ``{}`` if no point produced a time."""
-    ranked = [p for p in points
-              if p.state == "completed" and p.s_per_iter() is not None]
+    steady-state s/iter.  Returns ``{}`` if no point produced a time.
+
+    **A trial that did not run what it was asked to run cannot win.**  Its
+    time is real, but it measures a different configuration than its label
+    claims -- a point asking for the GPU eigensolver that silently fell
+    back to the CPU one would otherwise be compared against the GPU points
+    as though it were one, and the recommendation drawn from that table
+    would be advice about a machine nobody used.  Such points stay in the
+    record (with their ``mismatch`` on their face) and are named in the
+    rationale; they are only barred from winning.  If every timed point
+    disagrees with its request, there is no winner -- ``{}`` rather than
+    the least-wrong of them."""
+    timed = [p for p in points
+             if p.state == "completed" and p.s_per_iter() is not None]
+    ranked = [p for p in timed if not p.mismatch]
+    excluded = [p for p in timed if p.mismatch]
     if not ranked:
         return {}
     win = min(ranked, key=lambda p: p.s_per_iter())
@@ -247,6 +374,10 @@ def choose_winner(points: List[BenchPoint]) -> Dict:
     if others:
         nxt = others[0]
         bits.append(f"vs {nxt.label} {nxt.s_per_iter():g} s/iter")
+    if excluded:
+        bits.append("excluded (ran something other than asked): "
+                    + ", ".join(f"{p.label} [{mismatch_phrase(p.mismatch)}]"
+                                for p in excluded))
     # ``label`` is DATA (U13, 2026-08-12): it identified the winner only
     # inside the rationale prose, so anything needing the winning trial
     # back -- the mechanism read, a human's cross-check -- had to parse a
@@ -306,6 +437,8 @@ def build_bench_result(points: List[BenchPoint], *,
 __all__ = [
     "SCHEMA", "BenchPoint", "BenchResult",
     "parse_scf_timing", "parse_util_summary", "parse_util_csv_peak_mem",
-    "parse_sacct_mem", "parse_mpi_ranks", "choose_winner",
+    "parse_sacct_mem", "parse_mpi_ranks",
+    "parse_effective_run", "compare_asked_to_ran",
+    "mismatch_phrase", "choose_winner",
     "recommend_resources", "build_bench_result",
 ]
