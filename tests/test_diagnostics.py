@@ -343,21 +343,68 @@ class TestEnvManagerAutodetect:
         self._set_which(monkeypatch, {"conda": "/opt/conda/bin/conda"})
         assert diagnostics._find_conda_binary() == "/opt/conda/bin/conda"
 
-    def test_falls_back_to_mamba_exe_env_var(self, monkeypatch):
+    @staticmethod
+    def _exe(tmp_path, name):
+        """A real executable file -- the env-var fallback checks, as
+        ``shutil.which`` does for PATH and as install-env.sh's probe
+        already did (``[[ -n "${v}" && -x "${v}" ]]``).  Fictional paths
+        no longer stand in for one."""
+        p = tmp_path / name
+        p.write_text("#!/bin/sh\n")
+        p.chmod(0o755)
+        return str(p)
+
+    def test_falls_back_to_mamba_exe_env_var(self, monkeypatch, tmp_path):
         """When nothing is on PATH but ``$MAMBA_EXE`` is set (mamba's
         activation hook does this), use it."""
-        monkeypatch.setenv("MAMBA_EXE", "/opt/mamba/bin/mamba")
+        mamba = self._exe(tmp_path, "mamba")
+        monkeypatch.setenv("MAMBA_EXE", mamba)
         monkeypatch.delenv("CONDA_EXE", raising=False)
         self._set_which(monkeypatch, {})
-        assert diagnostics._find_conda_binary() == "/opt/mamba/bin/mamba"
+        assert diagnostics._find_conda_binary() == mamba
 
-    def test_mamba_exe_wins_over_conda_exe(self, monkeypatch):
+    def test_mamba_exe_wins_over_conda_exe(self, monkeypatch, tmp_path):
         """Both env vars set -- ``$MAMBA_EXE`` wins (faster manager,
         consistent with the PATH preference order)."""
-        monkeypatch.setenv("MAMBA_EXE", "/opt/mamba/bin/mamba")
-        monkeypatch.setenv("CONDA_EXE", "/opt/conda/bin/conda")
+        mamba = self._exe(tmp_path, "mamba")
+        conda = self._exe(tmp_path, "conda")
+        monkeypatch.setenv("MAMBA_EXE", mamba)
+        monkeypatch.setenv("CONDA_EXE", conda)
         self._set_which(monkeypatch, {})
-        assert diagnostics._find_conda_binary() == "/opt/mamba/bin/mamba"
+        assert diagnostics._find_conda_binary() == mamba
+
+    def test_a_stale_env_var_does_not_beat_a_good_one(self, monkeypatch,
+                                                       tmp_path):
+        """THE hole install-env.sh's hand-off exposed.  The shim probes
+        for a manager and exports the one it found -- but MAMBA_EXE is
+        consulted first here, so a stale MAMBA_EXE (removed or renamed
+        install) beat the correct CONDA_EXE the shim had just set.  The
+        shell rejected that path as non-executable and Python accepted
+        it: two probes disagreeing, which is the failure this seam
+        exists to end."""
+        conda = self._exe(tmp_path, "conda")
+        monkeypatch.setenv("MAMBA_EXE", str(tmp_path / "removed-mamba"))
+        monkeypatch.setenv("CONDA_EXE", conda)
+        self._set_which(monkeypatch, {})
+        assert diagnostics._find_conda_binary() == conda
+
+    def test_a_directory_is_not_an_env_manager(self, monkeypatch, tmp_path):
+        """os.access(X_OK) is true for a directory; isfile is what makes
+        the check mean 'a program I can run'."""
+        monkeypatch.setenv("MAMBA_EXE", str(tmp_path))
+        monkeypatch.delenv("CONDA_EXE", raising=False)
+        self._set_which(monkeypatch, {})
+        assert diagnostics._find_conda_binary() is None
+
+    def test_a_non_executable_file_is_not_an_env_manager(self, monkeypatch,
+                                                         tmp_path):
+        p = tmp_path / "conda"
+        p.write_text("#!/bin/sh\n")
+        p.chmod(0o644)
+        monkeypatch.setenv("CONDA_EXE", str(p))
+        monkeypatch.delenv("MAMBA_EXE", raising=False)
+        self._set_which(monkeypatch, {})
+        assert diagnostics._find_conda_binary() is None
 
     def test_no_manager_returns_none(self, monkeypatch):
         monkeypatch.delenv("MAMBA_EXE", raising=False)

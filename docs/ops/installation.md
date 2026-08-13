@@ -125,7 +125,7 @@ isn't available as a conda package. `molbuilder envs install siesta-gpu`
 - the **toolchain comes from conda** — gcc/gfortran 14 with its linker, archiver,
   C-library sysroot and kernel headers, plus cmake, ninja, OpenMPI, OpenBLAS
   (not MKL), ScaLAPACK, libxc, and the **CUDA toolkit itself** (you do *not*
-  install CUDA on the host). No host compiler is required, and none is used:
+  install CUDA on the host). No host compiler should be required:
   conda-forge installs the toolchain under target-prefixed names only
   (`x86_64-conda-linux-gnu-gcc`) and ships no bare `gcc`, so an install step
   creates bare-name links in the env for the third-party Makefiles this build

@@ -239,7 +239,19 @@ def _find_conda_binary() -> Optional[str]:
         path = shutil.which(candidate)
         if path:
             return path
-    return os.environ.get("MAMBA_EXE") or os.environ.get("CONDA_EXE") or None
+    # The env-var fallback must check the path is EXECUTABLE, the way
+    # ``shutil.which`` does above and the way install-env.sh's probe
+    # already did (``[[ -n "${v}" && -x "${v}" ]]``).  Returning an
+    # unvalidated value let a stale ``MAMBA_EXE`` -- pointing at a
+    # removed or renamed install -- beat a correct ``CONDA_EXE`` that
+    # the shim had just exported, because MAMBA_EXE is consulted first.
+    # The shell rejected that path and Python accepted it, which is the
+    # two-probes-disagreeing failure this whole seam exists to end.
+    for var in ("MAMBA_EXE", "CONDA_EXE"):
+        val = os.environ.get(var)
+        if val and os.path.isfile(val) and os.access(val, os.X_OK):
+            return val
+    return None
 
 
 def _list_conda_envs(conda: str) -> frozenset:

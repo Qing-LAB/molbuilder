@@ -1392,11 +1392,17 @@ _SIESTA_GPU = Recipe(
         'case "$(command -v gcc)" in '
         '  "$CONDA_PREFIX"/bin/*) ;; '
         '  "") echo "[molbuilder] note: no bare gcc on PATH" >&2 ;; '
+        # NO BACKTICKS in this message.  Inside a double-quoted shell
+        # string they are command substitution, not punctuation: an
+        # earlier draft wrote "Re-run `molbuilder envs install
+        # siesta-gpu`" and would have EXECUTED that, recursively, from
+        # inside an install.  Caught reading the generated bash in full
+        # rather than the Python that generates it.
         '  *) echo "[molbuilder] WARNING: bare gcc resolves to'
         ' $(command -v gcc), outside $CONDA_PREFIX.  Bundled Makefiles'
         ' that call gcc directly (flook/lua) would use the HOST'
-        ' toolchain.  Re-run `molbuilder envs install siesta-gpu` to'
-        ' pick up the bare-name shims." >&2 ;; '
+        ' toolchain.  Re-run: molbuilder envs install siesta-gpu --'
+        ' that creates the bare-name shims." >&2 ;; '
         'esac; '
         "siesta --version",
     ),
