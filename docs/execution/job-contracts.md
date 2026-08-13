@@ -995,12 +995,15 @@ timestamp, a name match, or the checkpoint history answers *"is something here"*
 without ever claiming to know what an engine produces. The lists below exist to
 be **written into a deck**, not to be matched against a directory.
 
-**SIESTA (13 suffixes):** `.DM` (density matrix), `.CG` (CG optimizer state),
-`.XV` (coords+velocities), `.LWF` (Wannier), `.ZM` (Z-matrix), `.Bonds`,
-`.PARTIAL`, `.EIG`, `.HSX` (Hamiltonian+overlap, TranSIESTA restart), `.WFSX`
-(saved wavefunctions), `.STRUCT_NEXT_ITER` (next-iter geometry), `.TSHS` /
-`.TSDE` (TranSIESTA self-energy H / NEGF density). SIESTA reads these itself
-when the matching `MD.UseSave*` / `DM.UseSaveDM` flags are set.
+**SIESTA:** the authoritative rows are `siesta/warm-files.toml` (§ 4.2a
+— since U3, 2026-08-13, this document lists none of them: a prose copy of
+the file's rows would be the drifting second listing this whole section
+exists to retire).  Illustratively: the geometry/density/history trio the
+carry cares about, the inventory-only rows (Wannier, Z-matrix,
+eigenvalues, wavefunctions, …), and transport's `.TSHS`/`.TSDE` in their
+own section.  SIESTA reads these itself when the matching `MD.UseSave*` /
+`DM.UseSaveDM` flags are set — the file's `honoured_by` column, checked
+by the § 4.2a agreement test.
 
 **Of those, three do the work `prep` cares about** — `.XV` (the geometry),
 `.DM` (the density) and `.CG` (the optimizer's history). They are what a stage
@@ -1025,11 +1028,12 @@ that was told to start clean. The group is declared in code as
 same idea, generated control flow instead of declared keys — as
 `config/pyscf.py::PYSCF_RESTART_GROUP`.
 
-**PySCF (5 files):** `<JOB>.chk` (SCF init guess), `<JOB>_optimized.xyz`
-(latest converged geometry), `<JOB>_geom_optim.xyz` (geomeTRIC trajectory),
-`<JOB>_geom_optim.tmp`, `<JOB>_geom.tmp` (geomeTRIC temporaries). Unlike
-SIESTA, the *generated PySCF script* contains the warm-restart logic
-explicitly:
+**PySCF:** the authoritative rows are `pyscf/warm-files.toml` (§ 4.2a) —
+the checkpoint in `[base]`, the geomeTRIC files under `[optimization]`,
+`[vibration]` deliberately empty (base only).  Unlike SIESTA, the
+*generated PySCF script* contains the warm-restart logic explicitly (which
+is why those rows carry no `honoured_by` — there is no deck keyword to
+agree with; the parity guard for its hooks stands instead):
 
 ```python
 # SCF init guess from a prior checkpoint, if present:
@@ -1306,6 +1310,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | ~~Benchmark manifest~~ | ~~`bench-manifest.json`~~ | ~~`molbuilder/bench-manifest@2`~~ | *(retired — no writer, no reader; note below)* | ~~`points.{cpu,gpu}`~~ |
 | Benchmark result | `<seq>_<stage>/bench/bench-result.json` — in the stage's container (§ 6.3) | `molbuilder/bench-result@1` | `bench/result.py` | `points`, `choice`, `recommend` |
 | Job-set plan | `job-set.json` at the root — the RUN plan, **merged per stage, never overwritten**; a sweep's own record is `<seq>_<stage>/bench/job-set.json` (§ 6.3) | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` |
+| Warm-file vocabulary | `<engine>/warm-files.toml`, shipped IN the engine's package (§ 4.2a); a calculation may carry its own copy (U6a) | `molbuilder/warm-files@1` | `warmfiles.py` | `[base]` + one section per calculation type; rows of `suffix` · `carry` · `requires_same` · `honoured_by` |
 | Task description | `task.json` | `molbuilder/task@1` | `task.py` | `engine`, `shape`, `run`, `structure`, `varies`, `stages[]` — **what changes**; what does not is in `<label>.template.toml` |
 | Deck template | `<label>.template.toml` | `molbuilder/template@1` | `template.py` | `schema`, `engine`, `fingerprint`, `item.<name>` — **every parameter, with its value.** The only TOML artifact, because it is the only one a person reads and edits ([`engines/template.md`](?doc=engines/template.md)) |
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` | *(sidecar pair, bare-int `schema_version` from `sidecars/molstruct.SCHEMA_VERSION` — never typed in a doc)* | `bundle_writer.py`, `sidecars/molstruct.py` | geometry; `regions` (frozen atoms are a label inside it) / `structure_hash` |

@@ -132,3 +132,51 @@ def test_a_wrong_schema_major_is_refused(tmp_path, monkeypatch):
 def test_a_missing_file_names_the_expected_home():
     with pytest.raises(W.WarmFilesError, match="warm-files.toml"):
         W.load_warm_files("no_such_engine")
+
+
+# --------------------------------------------------------------------- #
+#  U4 — the honoured_by agreement check (mandatory, § 4.2a)              #
+# --------------------------------------------------------------------- #
+
+def _siesta_deck(restart: str) -> str:
+    import numpy as np
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.input import render_fdf
+    from molbuilder.structure import Structure
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    return render_fdf(struct, SiestaConfig(system_label="JOB",
+                                           restart=restart))
+
+
+def test_a_continuing_deck_emits_every_declared_keyword():
+    """§ 4.2a: the check that makes a drifting rules file catchable.  A
+    rules file whose keywords the emitter stopped gating is § 4's silent
+    pair reborn as config drift — a file carried in and never read."""
+    import re
+    deck = _siesta_deck("continue")
+    rules = [r for r in W.rules_for("siesta", "optimization")
+             if r.honoured_by]
+    assert rules, "the optimization vocabulary declares no keywords?"
+    for rule in rules:
+        assert re.search(rf"^{re.escape(rule.honoured_by)}\s+\.true\.",
+                         deck, re.M), (
+            f"{rule.suffix}: the rules file declares {rule.honoured_by!r} "
+            f"honours it, and a continuing deck does not set that keyword "
+            f"— the carry would be 'present but not honoured'")
+
+
+def test_a_clean_deck_honours_nothing():
+    """The other silent half: a clean deck emitting UseSave* would read
+    warm state a stage was told to ignore."""
+    import re
+    deck = _siesta_deck("clean")
+    for rule in W.rules_for("siesta", "optimization"):
+        if rule.honoured_by:
+            assert not re.search(
+                rf"^{re.escape(rule.honoured_by)}\s+\.true\.", deck,
+                re.M), (
+                f"a clean deck sets {rule.honoured_by} .true. — warm "
+                f"state would be read by a stage told to start clean")

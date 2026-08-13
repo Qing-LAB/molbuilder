@@ -133,11 +133,19 @@ def test_there_is_exactly_one_warm_inventory_per_engine():
     the absence of the past rather than the shape of the present.
     """
     import inspect
-    declared = set(re.findall(r"^(_[A-Z_]*WARM[A-Z_]*)\s*=",
-                              inspect.getsource(runwrap), re.M))
+    src = inspect.getsource(runwrap)
+    declared = set(re.findall(r"^(_[A-Z_]*WARM[A-Z_]*)\s*=", src, re.M))
     assert declared == {"_SIESTA_WARM_SUFFIXES", "_PYSCF_WARM_SUFFIXES"}, (
         f"runwrap declares warm inventories {sorted(declared)}; the contract "
         "gives each engine exactly one")
+    # U5 (job-contracts § 4.2a): one FILE per engine, and these names are
+    # its READ, never a second listing -- a literal tuple reappearing
+    # here is the fork § 4.2a retired coming back.
+    for name in declared:
+        m = re.search(rf"^{name}\s*=\s*(.+)$", src, re.M)
+        assert "_warm_inventory(" in m.group(1), (
+            f"{name} is not derived from the warm-files loader: "
+            f"{m.group(1)!r}")
 
 
 @pytest.mark.parametrize("engine,const,ext,body", ENGINES)
