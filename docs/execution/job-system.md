@@ -302,7 +302,13 @@ actual two-stage ladder for benzene-dithiol on gold, with every field annotated:
                                       // `bench-<name>`, because inventing a
                                       // seq would be guessing at the one
                                       // number that must never be guessed.
-      "resources": {                  // ALL seven fields are always written,
+      "resources": {                  // ALL NINE fields are always written
+                                      // (§ 4.1 and job-contracts § 6.2, U19:
+                                      // seven scheduler asks plus the two
+                                      // no-flag riders, continue_retries and
+                                      // max_memory_mb -- this comment said
+                                      // "seven" while its own § 4.1 named
+                                      // the eighth),
         "domain":        null,        // nulls included — see the note below
         "time":          "04:00:00",
         "exclusive":     null,
@@ -559,9 +565,12 @@ scientific rationale live in [`engines/tuning.md`](?doc=engines/tuning.md)):
 
 | Stage | Enabled by default | Relaxation | Steps |
 |---|:--:|---|--:|
-| stage1 | ✅ | CG | 600 |
-| stage2 | ✅ | Broyden | 200 |
-| stage3 | — | Broyden | 100 |
+| coarse | ✅ | CG | 600 |
+| medium | ✅ | Broyden | 200 |
+| tight | — | Broyden | 100 |
+
+*(The rows said `stage1/2/3` — positional names the P4 rename retired;
+the shipped ladder names its rungs `coarse` / `medium` / `tight`.)*
 
 *(Whether to go on after a stage runs out of steps is a question you answer by
 looking at it.)*
@@ -1250,7 +1259,8 @@ example file today), and wiring the notifier hook to a real messaging service
 (a proof-of-concept stub exists).
 
 The through-line: the CLI framework on this page is the settled foundation, and
-the web work is *additive on top of it* — it reuses these exact producers,
+the web work is *additive on top of it* — it reuses the same five-step
+`prep` (the producers this sentence once named died in the 2026-08-12 fold),
 decoders, and wrappers rather than reinventing them.
 
 ---

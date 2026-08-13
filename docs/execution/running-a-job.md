@@ -297,8 +297,11 @@ launch (all in `molbuilder/runwrap.py`):
 - **NVIDIA-MPS (Hyper-Q)** — the NVIDIA Multi-Process Service, which lets two or
   more MPI ranks share one GPU concurrently. Enabled only when (a)
   `nvidia-cuda-mps-control` is on `PATH`, (b) the user did not opt out
-  (`--no-mps` or `MOLBUILDER_USE_MPS`), and (c) `ranks_per_gpu ≥ 2` (single-rank
-  MPS is pointless and auto-disabled). The per-job MPS daemon is torn down by a
+  (`--no-mps` or `MOLBUILDER_USE_MPS`), and (c) there are more ranks than
+  GPUs — the moment sharing actually happens (D18a; until 2026-08-13 this
+  bullet still described the RETIRED `ranks_per_gpu ≥ 2` gate, which
+  mis-fired exactly when ranks and GPUs were equal).  Single-GPU-per-rank
+  runs need no MPS and get none. The per-job MPS daemon is torn down by a
   single `EXIT` trap.
 - **Per-rank GPU + NUMA pinning.** A generated helper assigns each rank a GPU
   (`CUDA_VISIBLE_DEVICES`) and, when the rank's cpuset spans more than one
@@ -783,9 +786,11 @@ refuses, and names the files that differ.
 The original single-job doc carried a benchmark/sweep cookbook and two large
 implementation-design sections. Those have been overtaken: the batch/sweep,
 HPC-deployment, and benchmarking workflow is now the **JobSet framework**
-(`execution/job-system.md`), which self-bootstraps `molbuilder` on the target
-and drives the whole matrix through one entry point rather than shipping a
-standalone `mbbench/` library or static per-point scripts. The single-job
-wrapper on this page is the primitive that framework runs; the framework, its
-`bench-manifest@2`, the `(G, K, c)` grid, routing domains, and submit-vs-direct
-execution are documented there.
+(`execution/job-system.md`), which drives the whole matrix through one entry
+point rather than shipping a standalone `mbbench/` library or static
+per-point scripts. The single-job wrapper on this page is the primitive that
+framework runs; the framework, the `(G, K, c)` grid, routing domains, and
+submit-vs-direct execution are documented there.  *(Until 2026-08-13 this
+paragraph still promised a "self-bootstraps molbuilder on the target"
+mechanism and a `bench-manifest@2` artifact — both retired; job-system § 7
+records their retirement itself.)*

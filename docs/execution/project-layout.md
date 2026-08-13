@@ -12,11 +12,12 @@ history must always hold;
 [`execution/run-identity.md`](?doc=execution/run-identity.md) — the id a
 calculation's files share.
 
-**Status: mostly shipped, described here for the first time as one picture.**
-Every level below exists in code today except `task.json`, its reader, and the
-stage-directory naming in § 4. What this document adds is the *whole*: which
+What this document adds is the *whole*: which
 directory owns what, how parameter tuning and resource tuning nest, and where the
-saved history sits.
+saved history sits.  *(Status lives in `roadmap.md`, never in a contract — R3.
+The Status block that stood here was also FALSE: it called `task.json`, its
+reader and § 4's stage naming unbuilt long after all three shipped, which is
+exactly why R3 keeps status out of contracts.)*
 
 **This contract owns:** the levels of the tree, who may write at each one, how
 each level is named, and the invariants that hold across them. It does not
@@ -943,7 +944,8 @@ in-shell, waiting for each. When the queue has drained,
 ```jsonc
 { "choice":    { "label": "G1K4C6", "engine": "siesta",
                  "knobs": { "mpi_np": 4, "cpus_per_task": 6, "gres": "gpu:a100:1" },
-                 "mechanism": "elpa",
+                 "mechanism": { "enable_gpu": true,
+                                "diag_algorithm": "ELPA-1STAGE" },
                  "rationale": "G1K4C6 fastest (2.3 s/iter); gpu-bound; vs G1K8C2 3.1 s/iter" },
   "recommend": { "mem_gb": 96, "time": "0-02:52:00",
                  "time_basis": "2.3s/iter x 200 iters x 1.5 (adjust to your run)" } }
@@ -1644,11 +1646,15 @@ binary business.
 archived file at that path never changes either. A new save point stores the
 attempts that appeared since the last one and references the rest.
 
-That is the disk-growth problem solved by structure rather than by hashing. The
-archive copies every big file on every save today, and a five-stage mission with
-a 2 GB density matrix per stage pays for all of it every time. Immutable attempts
-make *"archive what is new"* both correct and obvious, where a content-addressed
-store would have been correct and hopeful.
+The shipped archive is CONTENT-ADDRESSED (`checkpointing.md` § 3: the
+`.binsnapshots/<digest>/` directory is the sha256 of its own manifest), so
+identical content is stored once and a save references what already exists —
+a five-stage mission with an unchanged 2 GB density matrix does not pay for
+it five times.  *(The paragraph that stood here said the archive "copies
+every big file on every save today" and argued a content-addressed store
+would have been "correct and hopeful" — describing the design the code had
+already surpassed; `checkpoint.py` and `checkpointing.md` agree against it.)*
+Immutable attempts make *"archive what is new"* obvious on top of that.
 
 **Flat, and this is the honest asymmetry.** There is one `<label>.DM`, and every
 stage overwrites it. The path is stable while its contents are not, so a save

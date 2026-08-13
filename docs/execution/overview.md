@@ -3,6 +3,11 @@
 **Role:** overview
 **Domain:** execution
 
+**Companions:**
+[`docs/README.md`](?doc=README.md) — the tree-wide index and the R-rules this
+header follows; every doc this overview routes is its own companion (§ 1's
+table names them all).
+
 This is the **start-here map** for everything about turning a generated input
 into a finished result: where a run's files live, how the wrapper runs and
 resumes it, how you configure and checkpoint it, and how batches of jobs are
@@ -14,7 +19,7 @@ around.
 
 ## 1. The map — which doc to open
 
-Eleven documents live here, and they come in **three kinds**. Knowing which kind
+Thirteen documents live here, and they come in **three kinds**. Knowing which kind
 you are reading tells you how much to trust it and what to do when two disagree.
 
 - A **contract** says what a thing *is*. It is the authority. When a contract and
@@ -154,7 +159,7 @@ flowchart TB
       CJ["CLI<br/>JobSet framework:<br/>ladders, sweeps, HPC, benchmarks"]
     end
     subgraph target["The target migration"]
-      WJ["Web UI<br/>drives the JobSet framework<br/>(batches, plan/status, branch)"]
+      WJ["Web UI<br/>drives the JobSet framework<br/>(batches, plan/status)"]
     end
     CJ -. "reuse the same producers,<br/>decoders, and wrappers" .-> WJ
     classDef t fill:#eef;
@@ -173,7 +178,7 @@ flowchart TB
 | Parameter / resource sweep | ✅ | — | `job-system.md § 4.2` |
 | Benchmark → recommended resources | ✅ | — | `job-system.md § 7` |
 | SLURM deployment (routing domains; **one job per submission**) | ✅ | ⏳ | `job-system.md § 6` |
-| Checkpoint **branch** (explore a what-if tail) | ✅ | ⏳ | `job-system.md § 8` |
+| Fork a what-if tail (save from a restored state — there is no `branch` verb) | ✅ | ⏳ | `checkpointing.md § 7.1` |
 
 `✅` shipped · `⏳` planned (see [`roadmap.md`](?doc=roadmap.md) workstream 1) ·
 `—` not applicable / not planned for that surface.
@@ -206,11 +211,14 @@ stage 2 pick up stage 1's geometry with nobody instructing it: SIESTA looks for
 `job.XV`, and there it is. It is *also* exactly why stage 2 overwrites stage 1 —
 same filename, same directory.
 
-**The proposed hierarchical shape** gives each stage a directory and each attempt
-a subdirectory inside it, so nothing overwrites anything.
+**The hierarchical shape** — shipped and selectable beside flat, the
+description's required `shape` field choosing between them — gives each stage
+a directory and each attempt a subdirectory inside it, so nothing overwrites
+anything.  *(This paragraph called it "proposed" long after it shipped —
+the wrong side of history for an overview, found by the 2026-08-12 review.)*
 
 ```
-FLAT (ships today)                    HIERARCHICAL (proposed)
+FLAT                                  HIERARCHICAL
 bdt_au/                               bdt_au/
 ├── bdt_au_01_coarse.fdf                 ├── task.json
 ├── bdt_au_02_tight.fdf               ├── bdt_au.psml
@@ -259,7 +267,7 @@ worse than no check: it fails a directory that is working correctly.
 thing at different sizes**, so there is one way in and one vocabulary:
 
 ```
-describe it   →  molbuilder jobset describe <structure> <dir> [--stage-strategy …]
+describe it   →  molbuilder jobset describe <structure> <dir> --shape flat|hierarchical [--stage-strategy …]
 set it up     →  molbuilder jobset prep     run <stage> [--from <run>]
 run it        →  molbuilder jobset submit   run <stage> [--mode direct|submit]
 look at it    →  molbuilder jobset status
