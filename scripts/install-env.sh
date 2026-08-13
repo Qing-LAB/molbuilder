@@ -18,6 +18,14 @@
 #     3. Forward "$@" verbatim to `python -m molbuilder envs ...`
 #        inside the host env.
 #
+#   ONE flag breaks rule 3, and only one: ``--gcc <X.Y>``.  It is
+#   consumed here and re-exported as MOLBUILDER_GCC instead of being
+#   forwarded, because recipes.py reads that variable at IMPORT time
+#   into the module-level ``_GCC_VERSION`` -- a Python-side option
+#   would arrive after the value it must change was already frozen.
+#   Any future shim-consumed flag needs a forcing reason of that kind;
+#   without one it belongs in Python with everything else.
+#
 #   Everything else -- recipe-name validation, --rebuild component
 #   lookup, --check / --dry-run semantics, the elsi→siesta alias,
 #   per-component preflight, doctor reports -- lives in Python where
@@ -178,6 +186,9 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
         --no-skip-existing       re-run install on envs already present
         --dry-run                print the plan; do not install
         --yes / -y               non-interactive (CI / HPC batch)
+        --gcc <X.Y>              shim-handled; see ``install`` above.
+                                 Relevant here because
+                                 --include-source-builds compiles SIESTA.
 
 Two equivalent entry points (use whichever you prefer):
 
@@ -193,6 +204,10 @@ Two equivalent entry points (use whichever you prefer):
   PATH after activation -- ``python -m molbuilder`` is the form,
   and PYTHONPATH must point at the repo root.  The shim sets
   PYTHONPATH for you, which is why it Just Works from any CWD.)
+
+  Equivalent EXCEPT for ``--gcc``, which only the shim understands
+  (it must be set before Python imports the recipes).  On path (b),
+  export MOLBUILDER_GCC=<X.Y> before the command instead.
 
 Environment variables:
   MOLBUILDER_HOST_ENV            host env name (default: molbuilder).
@@ -739,6 +754,27 @@ dispatch() {
 # Runs BEFORE the no-subcommand check so a bare ``--gcc 14.3`` (no
 # subcommand) still lands on the usage message rather than an unbound
 # $1 under ``set -u``.
+# Shape-check the value rather than passing it straight through: a typo
+# like ``--gcc 14,3`` or ``--gcc gcc14`` would otherwise reach the conda
+# solver as ``gcc_linux-64=14,3`` and fail minutes later, after the host
+# env work, with a message about a package spec rather than about the
+# flag the user mistyped.  Deliberately narrow: the flag is the guided
+# path, MOLBUILDER_GCC is the expert one and skips this check.
+#
+# Note what the env var can and CANNOT do.  recipes.py renders
+# ``gcc_linux-64={_GCC_VERSION}`` -- it always supplies the ``=`` -- so
+# a wildcard (``14.*``) works but a range (``>=13,<15``) becomes the
+# malformed ``gcc_linux-64==>=13,<15``.  The message below says only
+# what is true; do not widen it to "any conda spec".
+_mb_set_gcc() {
+    if ! [[ "$1" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+        echo "[molbuilder] --gcc wants a version like 14.3 (got '$1')." >&2
+        echo "[molbuilder] Need a wildcard? export MOLBUILDER_GCC='14.*' instead." >&2
+        exit 2
+    fi
+    export MOLBUILDER_GCC="$1"
+}
+
 _MB_ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -747,16 +783,11 @@ while [[ $# -gt 0 ]]; do
                 echo "[molbuilder] --gcc needs a version, e.g. --gcc 14.3" >&2
                 exit 2
             fi
-            export MOLBUILDER_GCC="$2"
+            _mb_set_gcc "$2"
             shift 2
             ;;
         --gcc=*)
-            _MB_GCC_VAL="${1#--gcc=}"
-            if [[ -z "${_MB_GCC_VAL}" ]]; then
-                echo "[molbuilder] --gcc= needs a version, e.g. --gcc=14.3" >&2
-                exit 2
-            fi
-            export MOLBUILDER_GCC="${_MB_GCC_VAL}"
+            _mb_set_gcc "${1#--gcc=}"
             shift
             ;;
         *)
@@ -769,8 +800,14 @@ done
 # "${_MB_ARGS[@]}" on an empty array is an unbound-variable error under
 # ``set -u`` on bash < 4.4, which is still what some HPC login nodes ship.
 set -- ${_MB_ARGS[@]+"${_MB_ARGS[@]}"}
+# Announce only an OVERRIDE.  The recipe's own default is already a pin
+# (14.3), so silence here means "the vetted default"; a line here means
+# the user or their environment moved off it, which is worth seeing --
+# including when MOLBUILDER_GCC came from the environment rather than
+# the flag, since that is the case nobody remembers setting.
 if [[ -n "${MOLBUILDER_GCC:-}" ]]; then
-    echo "[molbuilder] toolchain pinned: gcc/gxx/gfortran_linux-64=${MOLBUILDER_GCC}" >&2
+    echo "[molbuilder] toolchain override: gcc/gxx/gfortran_linux-64=${MOLBUILDER_GCC}" \
+         "(recipe default is 14.3)" >&2
 fi
 
 if [[ $# -eq 0 ]]; then
