@@ -11,6 +11,22 @@ from pathlib import Path
 import pytest
 
 from molbuilder.jobset.model import Job, JobSet, Resources, SCHEMA, WarmFile
+
+
+@pytest.fixture(autouse=True)
+def _sandbox(tmp_path_factory, monkeypatch):
+    """cwd + HOME isolation for EVERY test here (I6, 2026-08-13): the
+    prep/submit tests read runtime config through the cascade, and
+    without this they read the DEVELOPER's cwd molbuilder.json and
+    ~/.molbuilder -- found state, the contamination class the 2026-08-12
+    isolation memory records.  Tests that need their own cwd/HOME
+    (monkeypatch.chdir / setenv) still win: their monkeypatching applies
+    after this fixture's."""
+    box = tmp_path_factory.mktemp("sandbox")
+    monkeypatch.chdir(box)
+    monkeypatch.setenv("HOME", str(box / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (box / "home").mkdir()
 from molbuilder.jobset.materialize import job_dir_name, materialize
 from molbuilder.jobset.plan import render_plan
 from molbuilder.jobset import submit as _submit
@@ -2514,17 +2530,26 @@ def test_the_library_itself_refuses_a_whole_ladder(tmp_path):
 
 
 def test_resources_fields_equal_the_contracts_list_exactly():
-    """job-contracts § 6.2's sentence and the dataclass, an equality in
-    BOTH directions (U19, 2026-08-12).  The sentence said 'exactly seven'
-    over a nine-field class for months because nothing compared them: a
-    field added without a § 6.2 decision fails here, and so does a row
-    whose field was deleted."""
+    """job-contracts § 6.2's OWN SENTENCE and the dataclass, an equality
+    in BOTH directions (U19, 2026-08-12; re-pinned I1, 2026-08-13).  The
+    first version held its own nine-name literal, so editing the doc's
+    list back to seven reddened NOTHING -- a doc-equality test that never
+    read the doc.  This parses the sentence's backticked field names, so
+    a field added without a § 6.2 decision fails here, a doc row deleted
+    fails here, and the doc drifting from the class fails here."""
     import dataclasses
+    import re as _re
     from molbuilder.jobset.model import Resources
-    documented = {"domain", "time", "exclusive", "mem", "gres",
-                  "mpi_np", "cpus_per_task",
-                  "continue_retries", "max_memory_mb"}
-    assert {f.name for f in dataclasses.fields(Resources)} == documented
+    doc = (Path(__file__).resolve().parent.parent
+           / "docs" / "execution" / "job-contracts.md").read_text(
+               encoding="utf-8")
+    start = doc.index("dataclass holds exactly")
+    end = doc.index("This sentence said", start)
+    names = {m for m in _re.findall(r"`([a-z_]+)`", doc[start:end])}
+    assert len(names) >= 7, (
+        "§ 6.2's field sentence could not be parsed -- repoint this "
+        f"(found {sorted(names)})")
+    assert {f.name for f in dataclasses.fields(Resources)} == names
 
 
 def test_submit_honours_the_bundles_own_execution_block(tmp_path,

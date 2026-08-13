@@ -23,6 +23,24 @@ from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
 
+@pytest.fixture(autouse=True)
+def _sandbox(tmp_path_factory, monkeypatch):
+    """cwd + HOME isolation for EVERY test here (I6, 2026-08-13).
+
+    The `calc` fixture and its users read runtime config through the
+    cascade, and without this they read the DEVELOPER's cwd
+    molbuilder.json and ~/.molbuilder -- the contamination that made a
+    prep test pass GREEN off a config the test never wrote (the A8 pin's
+    own first version, and the 14-of-24 failure the 2026-08-12 isolation
+    memory records).  The correct pattern the newer tests already use,
+    applied to the whole file."""
+    box = tmp_path_factory.mktemp("sandbox")
+    monkeypatch.chdir(box)
+    monkeypatch.setenv("HOME", str(box / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (box / "home").mkdir()
+
+
 @pytest.fixture
 def calc(tmp_path):
     """A described calculation on a machine whose probe found one a100."""
@@ -267,9 +285,13 @@ def test_cli_submit_bench_is_one_trial_per_invocation(calc):
                                      "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
     assert r.output.count("WOULD run") == 1
-    # a trial name is a bench concept: run refuses it
+    # a trial name is a bench concept: run refuses it.  --mode is stated
+    # (I6, 2026-08-13): without it this invocation passed GREEN off the
+    # developer's own execution.mode -- the isolation sandbox exposed it,
+    # and the subject here is the TRIAL refusal, not mode resolution.
     r = runner.invoke(jobset_group, ["submit", "run", "coarse", trial,
-                                     "--bundle", str(calc), "--dry-run"])
+                                     "--bundle", str(calc),
+                                     "--mode", "submit", "--dry-run"])
     assert r.exit_code != 0 and "TRIAL names a benchmark point" in r.output
 
 
@@ -521,17 +543,44 @@ def test_the_two_stage_sequence_carries_the_geometry_forward(calc):
     assert [j["name"] for j in js["jobs"]] == ["coarse", "medium"]
 
 
+def test_the_verb_renders_the_trial_decks_it_promises(calc):
+    """I5 (2026-08-13): every earlier deck-content pin supplied the
+    grid, pins and translation itself through library internals
+    (`_bench_inputs` + `prep_calculation`), so the VERB's own wiring of
+    them was unpinned.  This drives `jobset prep bench coarse` -- the
+    command a user types -- and asserts the CONTENT of what lands: each
+    trial deck carries the TRIAL's own identity line (§ 2.3.2's relabel,
+    which is what keys its warm files away from the run's), and the
+    sweep's record rows point at those very decks."""
+    import re
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    res = CliRunner().invoke(jobset_group, ["prep", "bench", "coarse",
+                                            "--bundle", str(calc),
+                                            "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    js = json.loads(
+        (calc / "01_coarse" / "bench" / "job-set.json").read_text())
+    assert js["kind"] == "sweep" and len(js["jobs"]) >= 2
+    for j in js["jobs"]:
+        deck = (calc / j["script"]).read_text()
+        m = re.search(r"^SystemLabel\s+(\S+)", deck, re.M)
+        assert m and m.group(1) == f"JOB-{j['name']}", (
+            f"{j['script']}: identity line {m.group(1) if m else None!r} "
+            f"is not the trial's own label -- its warm files would "
+            f"collide with the run's")
+
+
 def test_a_fine_tuned_vocabulary_copy_wins_and_is_named(calc):
     """U6a (§ 4.2a's template mechanism): a calculation carrying its own
     warm-files.toml is the fine-tuned state -- nearest file wins, the
     surgical edit here being 'withhold the density' (the .DM row loses
     its carry flag).  The plan names WHICH file answered, so the
     surprising carry is debuggable from the bundle alone."""
-    import pathlib
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
-    engine_file = (pathlib.Path("molbuilder") / "siesta" /
-                   "warm-files.toml").resolve()
+    from molbuilder import warmfiles as _wf
+    engine_file = _wf._rules_path("siesta")
     text = engine_file.read_text()
     text = text.replace(
         'suffix      = ".DM"             # converged density matrix\n'
