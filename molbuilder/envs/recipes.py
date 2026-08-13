@@ -1258,6 +1258,19 @@ _SIESTA_GPU = Recipe(
         f"gcc_linux-64={_GCC_VERSION}",
         f"gxx_linux-64={_GCC_VERSION}",
         f"gfortran_linux-64={_GCC_VERSION}",
+        # The rest of the toolchain, DECLARED rather than inherited.
+        # conda-forge's gcc_linux-64 pulls these transitively today, so
+        # naming them changes no solve -- but a build environment that
+        # is complete only by the solver's good manners is one dependency
+        # bump away from silently borrowing the host's.  These three are
+        # what make the compiler self-contained: the linker + archiver
+        # (binutils), the C library headers and startup files (sysroot),
+        # and the kernel headers the sysroot is built against.  Without
+        # them a conda gcc reaches into /usr/include and the host glibc,
+        # which is precisely the assumption this env exists to remove.
+        "binutils_linux-64",
+        "sysroot_linux-64",
+        "kernel-headers_linux-64",
         "cmake>=3.30", "ninja", "make", "git", "m4",
         # ``curl`` (not just libcurl).  builds.py's ELPA clone phase
         # downloads the tarball via curl; on HPC nodes the system
@@ -1325,12 +1338,57 @@ _SIESTA_GPU = Recipe(
         # libraries" recommends.
     ),
     build_spec=_SIESTA_GPU_BUILD,
+    # ---- bare-name toolchain shims (runs after conda create, BEFORE
+    #      the source build) -------------------------------------------
+    #
+    # conda-forge installs the toolchain under TARGET-PREFIXED names
+    # only -- ``x86_64-conda-linux-gnu-gcc``, ``...-ar``, ``...-ld`` --
+    # and sets CC/CXX/FC to those via its activate.d hook.  It ships no
+    # bare ``gcc``.  That is fine for anything honouring $CC, and wrong
+    # for the bundled third-party Makefiles this build compiles: flook's
+    # lua-5.3.5 hardcodes ``CC= gcc``, so on a box with build-essential
+    # it silently compiled with the HOST gcc (11.4 here) and linked the
+    # result into a SIESTA built by conda's gcc 14 -- and on a box
+    # WITHOUT a host toolchain it fails outright.  Measured before this
+    # step existed: gcc, g++, gfortran, cc, c++, ar, ranlib, ld, nm and
+    # strip were ALL absent from the env and all ten resolved to
+    # /usr/bin.
+    #
+    # The build wrapper puts <env>/bin first on PATH, so a bare-name
+    # symlink there wins over the host's.  Idempotent: only creates a
+    # link when the bare name is absent, so it never shadows a real
+    # conda-provided tool.  ``cc``/``c++`` are the historic aliases many
+    # configure scripts still probe for.
+    extra_steps=((
+        "bash", "-c",
+        'set -e; B="$CONDA_PREFIX/bin"; P=x86_64-conda-linux-gnu; n=0; '
+        'link() { '
+        '  [ -e "$B/$2" ] && return 0; '
+        '  [ -x "$B/$P-$1" ] || return 0; '
+        '  ln -s "$P-$1" "$B/$2"; n=$((n+1)); '
+        '}; '
+        'for t in gcc g++ gfortran ar ranlib ld nm strip as objdump objcopy; '
+        'do link "$t" "$t"; done; '
+        'link gcc cc; link g++ c++; '
+        'echo "[molbuilder] toolchain shims: created $n bare-name link(s)'
+        ' in $B (bundled Makefiles that call bare gcc/ar must not reach'
+        ' the host toolchain)" >&2',
+    ),),
     verify_argv=(
         "bash", "-c",
         # _bypass_conda_run puts <env>/bin on PATH for the verify call;
         # the activate.d hook's PATH munging is duplicated by our
         # env_overrides so siesta is reachable.  ``--version`` exits 0
-        # with the version banner.
+        # with the version banner.  The toolchain assertion rides along:
+        # a bare ``gcc`` that resolves outside the env means the shim
+        # step did not take, and the next bundled Makefile will compile
+        # against the host again.
+        'case "$(command -v gcc)" in '
+        '  "$CONDA_PREFIX"/bin/gcc) ;; '
+        '  *) echo "toolchain: bare gcc resolves to $(command -v gcc),'
+        ' outside $CONDA_PREFIX -- host toolchain would be used by'
+        ' bundled Makefiles" >&2; exit 1 ;; '
+        'esac; '
         "siesta --version",
     ),
     verify_expect_contains="siesta",

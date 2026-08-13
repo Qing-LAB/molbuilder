@@ -122,9 +122,18 @@ a CUDA-accelerated SIESTA (with the ELPA GPU eigensolver, TranSiesta, and TBtran
 isn't available as a conda package. `molbuilder envs install siesta-gpu`
 (or `bootstrap --include-source-builds`) automates the whole thing:
 
-- the **toolchain comes from conda** — gcc/gfortran 14, cmake, ninja, OpenMPI,
-  OpenBLAS (not MKL), ScaLAPACK, libxc, and the **CUDA toolkit itself** (you do
-  *not* install CUDA on the host);
+- the **toolchain comes from conda** — gcc/gfortran 14 with its linker, archiver,
+  C-library sysroot and kernel headers, plus cmake, ninja, OpenMPI, OpenBLAS
+  (not MKL), ScaLAPACK, libxc, and the **CUDA toolkit itself** (you do *not*
+  install CUDA on the host). No host compiler is required, and none is used:
+  conda-forge installs the toolchain under target-prefixed names only
+  (`x86_64-conda-linux-gnu-gcc`) and ships no bare `gcc`, so an install step
+  creates bare-name links in the env for the third-party Makefiles this build
+  compiles. Without them, flook's bundled lua — which hardcodes `CC= gcc` —
+  picks up `/usr/bin/gcc` on a machine that has one (mixing a host-compiled
+  object into a conda-compiled SIESTA) and fails outright on a machine that
+  does not. The `verify` step asserts that a bare `gcc` resolves inside the
+  env, so a regression here is caught at install time rather than mid-build;
 - **ELPA** is built from a version-pinned, SHA256-checked tarball
   (`2024.05.001`) with autotools (`--enable-nvidia-gpu`, `--with-cuda-path=<env>`);
 - **SIESTA** (`5.4.2`) is cloned with submodules and built with cmake+Ninja, MPI +
