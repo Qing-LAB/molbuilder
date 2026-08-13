@@ -91,22 +91,35 @@ def _wrapper_log(d: Path, basename: str) -> Path:
     return logs[-1] if logs else d / f"{basename}.runwrap-none.log"
 
 
-def _asked_diag_algorithm(d: Path, basename: str) -> Optional[str]:
-    """The eigensolver the trial's OWN deck asked for, or ``None``.
+def deck_value(deck: Path, keyword: str) -> Optional[str]:
+    """The value an fdf deck gives ``keyword``, or ``None`` if absent.
 
-    Read from the deck beside its results rather than re-derived from the
-    engine word -- the same rule ``_winner_mechanism`` follows, and for
-    the same reason: ``engine == "gpu"`` does not name an algorithm, and
-    guessing one invents the very fact this check exists to verify.
+    **First match wins, because that is what SIESTA does.** libfdf's
+    ``fdf_locate`` walks from the first line and stops at the first
+    label that matches (``do while ((.not. fdf_locate) .and. ...)``), so
+    a deck that names a keyword twice is read with its FIRST value.
+
+    One reader, because there were two and they disagreed: this function
+    returned the first match while ``_winner_mechanism`` looped to the
+    end and kept the LAST, so on a deck with a duplicated keyword the
+    verdict named an algorithm SIESTA had not used -- and that verdict is
+    what `prep run` offers to apply to the production calculation.
+    Comparison is through ``_norm``, so ``Diag.Algorithm`` /
+    ``diag_algorithm`` / ``DIAGALGORITHM`` are one keyword.
     """
-    deck = d / f"{basename}.fdf"
     if not deck.is_file():
         return None
+    want = _norm(keyword)
     for line in _read(deck).splitlines():
         toks = line.split("#", 1)[0].split()
-        if len(toks) >= 2 and _norm(toks[0]) == "diagalgorithm":
+        if len(toks) >= 2 and _norm(toks[0]) == want:
             return toks[1]
     return None
+
+
+def _trial_deck(d: Path, basename: str) -> Path:
+    """The deck a trial ran, beside its results."""
+    return d / f"{basename}.fdf"
 
 
 def parse_point(label: str, d: Path, basename: str, engine: str,
@@ -115,6 +128,13 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     ``basename``) into a :class:`BenchPoint`."""
     metrics: Dict = {}
     knobs = dict(knobs)
+    # What the JOB SET asked for, snapshotted BEFORE the recovery below
+    # can fold an observation into it.  A CPU point whose job-set carries
+    # no rank count has it recovered FROM the .out -- comparing that
+    # against the same .out is comparing a number with itself, and the
+    # empty result reads as "checked and matched" when nothing was
+    # checked.  The asked side must never contain a measurement.
+    asked = dict(knobs)
 
     timing = _latest_run_file(d, basename, "scf-timing.log")
     if timing is not None:
@@ -163,10 +183,20 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     # environment) produced a row whose label described a run that never
     # happened -- and `choose_winner` ranked it against the others.
     effective = parse_effective_run(out_head, _read(_wrapper_log(d, basename)))
-    asked = dict(knobs)
-    alg = _asked_diag_algorithm(d, basename)
+    deck = _trial_deck(d, basename)
+    alg = deck_value(deck, "Diag.Algorithm")
     if alg is not None:
         asked["diag_algorithm"] = alg
+    # BlockSize is pinned by `_bench_inputs` and SIESTA may settle on a
+    # different one, so it is asked-for AND observable -- the fourth of
+    # the legacy readback's four checks, captured but never compared
+    # until now.
+    bs = deck_value(deck, "BlockSize")
+    if bs is not None:
+        try:
+            asked["blocksize"] = int(bs)
+        except ValueError:
+            pass                      # a non-numeric BlockSize: not ours to judge
     mismatch = compare_asked_to_ran(asked, effective)
 
     return BenchPoint(label=label, engine=engine, knobs=knobs,
@@ -294,10 +324,13 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     marks = _extract_bench_marks_dict(text) or {}
     if "gpu_mode" in marks:
         mech["enable_gpu"] = str(marks["gpu_mode"]).lower() == "true"
-    for line in text.splitlines():
-        toks = line.split("#", 1)[0].split()
-        if len(toks) >= 2 and _norm(toks[0]) == "diagalgorithm":
-            mech["diag_algorithm"] = toks[1]
+    # Through the ONE deck reader.  This loop kept the LAST match while
+    # `deck_value` takes the first -- two readers of one file, disagreeing
+    # on a deck that names the keyword twice, and this is the copy whose
+    # answer `prep run` offers to apply to the production calculation.
+    alg = deck_value(deck, "Diag.Algorithm")
+    if alg is not None:
+        mech["diag_algorithm"] = alg
     return mech
 
 

@@ -165,9 +165,20 @@ def parse_effective_run(out_text: str = "", wrapper_log: str = "") -> Dict:
     Returns only the keys it could actually find, so a caller can tell
     *"checked and matched"* from *"could not check"*:
 
-    ``mpi_np``          MPI ranks -- SIESTA's ``* Running on N nodes in
-                        parallel.``, falling back to the wrapper's log.
-    ``omp_threads``     OMP threads per rank -- the wrapper's log only.
+    ``mpi_np``          MPI ranks -- **SIESTA's own** ``* Running on N
+                        nodes in parallel.``, and nowhere else.  The
+                        wrapper logs a rank count too, but it writes that
+                        line BEFORE it launches, so it records what the
+                        wrapper INTENDED; MPI can hand back fewer.  Using
+                        it as a fallback would let an intention be
+                        recorded as an observation -- the exact
+                        conflation this function exists to prevent -- and
+                        it would agree with the request by construction.
+    ``omp_threads``     OMP threads per rank -- the wrapper's log only,
+                        since no SIESTA output states it.  This one IS
+                        the wrapper's resolved value, but the wrapper
+                        exports it in the same script that runs the
+                        engine, so it is what the process actually got.
     ``blocksize``       the ScaLAPACK/ELPA block size SIESTA settled on.
     ``diag_algorithm``  the eigensolver actually used (``ELPA-2stage``,
                         ``D&C``, ...) -- the fallback witness.
@@ -180,13 +191,13 @@ def parse_effective_run(out_text: str = "", wrapper_log: str = "") -> Dict:
     eff: Dict = {}
 
     ranks = parse_mpi_ranks(out_text)
-    m = _WRAP_RANKS_OMP.search(wrapper_log)
-    if m:
-        if ranks is None:
-            ranks = int(m.group(1))
-        eff["omp_threads"] = int(m.group(2))
     if ranks is not None:
         eff["mpi_np"] = ranks
+    m = _WRAP_RANKS_OMP.search(wrapper_log)
+    if m:
+        # Only the thread count is taken from the wrapper.  Its rank
+        # count (group 1) is deliberately ignored -- see the docstring.
+        eff["omp_threads"] = int(m.group(2))
 
     m = _PROCY_BS.search(out_text)
     if m:
@@ -219,6 +230,7 @@ def compare_asked_to_ran(asked: Dict, effective: Dict) -> Dict:
     """
     pairs = (("mpi_np", "mpi_np"),
              ("cpus_per_task", "omp_threads"),
+             ("blocksize", "blocksize"),
              ("diag_algorithm", "diag_algorithm"))
     out: Dict = {}
     for asked_key, ran_key in pairs:

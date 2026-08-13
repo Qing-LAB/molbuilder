@@ -164,3 +164,49 @@ def test_summary_text_shows_a_mismatch_and_refuses_a_bogus_winner(tmp_path):
     assert "asked 8, ran 4" in text
     assert res.choice == {}, "the only timed trial measured another setup"
     assert "NO WINNER" in text
+
+
+def test_one_deck_reader_and_it_takes_the_first_match(tmp_path):
+    """libfdf's `fdf_locate` walks from the top and STOPS at the first
+    matching label, so a deck naming a keyword twice is read with its
+    FIRST value.  There were two readers here -- this one and
+    `_winner_mechanism`'s loop, which kept the LAST -- so a duplicated
+    keyword made the verdict name an algorithm SIESTA never used, and
+    that verdict is what `prep run` offers to apply to production."""
+    from molbuilder.jobset.summarize import deck_value
+    deck = tmp_path / "job.fdf"
+    deck.write_text("Diag.Algorithm ELPA-1STAGE\n"
+                    "Diag.Algorithm D&C\n"
+                    "BlockSize 256\n")
+    assert deck_value(deck, "Diag.Algorithm") == "ELPA-1STAGE"
+    assert deck_value(deck, "BlockSize") == "256"
+    # `_norm` folds separators and case: one keyword, many spellings.
+    assert deck_value(deck, "diag_algorithm") == "ELPA-1STAGE"
+    assert deck_value(deck, "MeshCutoff") is None
+    assert deck_value(tmp_path / "absent.fdf", "BlockSize") is None
+
+
+def test_a_block_size_siesta_changed_shows_up_on_the_point(tmp_path):
+    """End-to-end: the deck asks 256, the .out reports 64."""
+    d = _ran_trial(tmp_path, "bs", "job", ranks=8, omp=2,
+                   algorithm="ELPA-1stage", asked_algorithm="ELPA-1STAGE")
+    (d / "job.fdf").write_text("SystemLabel job\n"
+                               "Diag.Algorithm ELPA-1STAGE\n"
+                               "BlockSize 256\n")
+    pt = parse_point("bs", d, "job", "gpu", {"mpi_np": 8, "cpus_per_task": 2})
+    assert pt.effective["blocksize"] == 64
+    assert pt.mismatch["blocksize"] == {"asked": 256, "ran": 64}
+
+
+def test_a_recovered_rank_count_is_never_compared_with_itself(tmp_path):
+    """A CPU point whose job-set carries no rank count has it recovered
+    FROM the .out.  That recovered value must not then be compared
+    against the same .out: an empty `mismatch` would read as 'checked and
+    matched' when nothing was checked.  The knob is still recorded --
+    only the CLAIM of having verified it is withheld."""
+    d = _ran_trial(tmp_path, "cpu", "job", ranks=4, omp=2,
+                   algorithm="D&C", asked_algorithm="D&C")
+    pt = parse_point("cpu", d, "job", "cpu", {})     # job-set knows no ranks
+    assert pt.knobs["mpi_np"] == 4, "the observation is still recorded"
+    assert pt.effective["mpi_np"] == 4
+    assert "mpi_np" not in pt.mismatch

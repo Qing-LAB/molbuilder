@@ -239,8 +239,30 @@ def test_effective_run_reports_only_what_it_could_read():
     """No artifacts -> no claims.  'Could not check' must be tellable from
     'checked and matched', so absent keys are absent, not defaulted."""
     assert parse_effective_run("", "") == {}
-    only_wrapper = parse_effective_run("", _WRAP_LOG)
-    assert only_wrapper == {"mpi_np": 8, "omp_threads": 2}
+
+
+def test_the_wrapper_log_is_not_a_rank_witness():
+    """The wrapper writes `ranks / omp` BEFORE it launches, so its rank
+    count is what it INTENDED -- MPI can hand back fewer.  Taking it as a
+    fallback would record an intention as an observation, and it would
+    agree with the request by construction, which is the one thing this
+    check exists to detect.  Only SIESTA's own line witnesses ranks.
+
+    The thread count is different and legitimately comes from here: no
+    SIESTA output states it, and the wrapper exports it in the same
+    script that runs the engine."""
+    assert parse_effective_run("", _WRAP_LOG) == {"omp_threads": 2}
+    both = parse_effective_run("* Running on 4 nodes in parallel.\n", _WRAP_LOG)
+    assert both["mpi_np"] == 4, "SIESTA's count must win over the wrapper's 8"
+    assert both["omp_threads"] == 2
+
+
+def test_a_block_size_siesta_changed_is_caught():
+    """The fourth of the legacy readback's four checks.  `_bench_inputs`
+    pins BlockSize; SIESTA may settle on another value."""
+    m = compare_asked_to_ran({"blocksize": 256}, {"blocksize": 64})
+    assert m == {"blocksize": {"asked": 256, "ran": 64}}
+    assert compare_asked_to_ran({"blocksize": 64}, {"blocksize": 64}) == {}
 
 
 def test_elpa_gpu_key_is_captured_when_the_build_reached_elpa():
