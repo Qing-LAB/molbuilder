@@ -264,11 +264,23 @@ def test_propor_diagnostic_still_reads_out_after_timing(tmp_path):
 
 
 def test_pyscf_has_no_scf_timing(tmp_path):
+    """The SCF-timing instrument is SIESTA's: a PySCF wrapper emits
+    neither the tee nor its block.
+
+    Pinned by the instrument's own marker and header, not by the bare
+    string ``scf-timing.log`` (2026-08-13): since the cold-sweep
+    exception list derives from ``identity.OUR_FILE_PATTERNS`` -- one
+    enumeration for both engines -- that NAME appears in every
+    wrapper's sweep exceptions, which is correct and harmless (it says
+    *if such a file exists, leave it alone*).  The substring assert
+    read that as the instrument and failed on a wrapper that has none.
+    """
     p = tmp_path / "q.py"
     p.write_text("# fake\n")
     t = runwrap.render_run_wrapper(p)
     assert "_mb_scf_tee" not in t
-    assert "scf-timing.log" not in t
+    assert "SCF per-iteration timing instrument" not in t
+    assert "_scf_timing_log=" not in t
 
 
 # --------------------------------------------------------------------- #
