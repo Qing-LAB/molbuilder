@@ -65,11 +65,6 @@ _L1_MODULES = {
     "runtime_info",      # cross-cutting threading / GPU / runtime-info emitters
                          # (string emitters + physical_core_count -- L1 because no
                          # domain deps; siesta + pyscf + spectra + runwrap all use it)
-    "pseudos",           # PSML pseudopotential header parser + coverage check
-                         # (pure XML parsing + dataclass; no domain deps)
-    "checkpoint",        # run-dir checkpoint/restart helpers; L1 because the
-                         # L1 ``config`` dataclasses (siesta/pyscf) import it,
-                         # so it must sit at or below L1 (no domain deps).
     "annotations_fdf",   # fdf emit-strategy registry for extensible atom-
                          # annotation channels; pure (typing only, struct is
                          # duck-typed) -- siesta/input consumes it.
@@ -162,6 +157,20 @@ _L2_MODULES = {
                          # per-engine parsers + ScriptSourceTextParser.)
     "projects",          # filesystem layout / naming rules
     "runtime_config",    # molbuilder.json reader
+    "pseudos",           # PSML header parser + coverage check -- L2 because
+                         # resolve_psml_lib anchors relative paths on the
+                         # projects/ convention (imports projects, L2).  Its
+                         # importers are L2/L3 only (siesta.memory,
+                         # validation, web, cli).  Sat in L1 until B-1's
+                         # scanner fix (2026-08-13) made the relative import
+                         # visible -- the classification was wrong, not the
+                         # import.
+    "checkpoint",        # run-dir checkpoint/restart -- L2: reads the
+                         # server-wide config (runtime_config.get_checkpoint,
+                         # S1c).  The L1 rationale that stood here ("the L1
+                         # config dataclasses import it") was STALE: no
+                         # config module imports it; only cli + the web
+                         # blueprint (both L3) do.  Same B-1 discovery.
     "diagnostics",       # capabilities snapshot
     "envs",              # subprocess dispatch
     "runwrap",           # bash-wrapper emitter
@@ -224,11 +233,19 @@ def _module_layer(rel_path: Path) -> str | None:
     return None
 
 
-def _import_targets(tree: ast.AST) -> set[str]:
+def _import_targets(tree: ast.AST, rel_path: Path) -> set[str]:
     """Collect every ``molbuilder.<head>...`` import target as the
     top-level ``<head>``.  Imports of stdlib / third-party packages
-    are filtered out -- only intra-package imports matter."""
+    are filtered out -- only intra-package imports matter.
+
+    RELATIVE imports are resolved against the file's own package (B-1,
+    2026-08-13): ``from ..runwrap import X`` in ``jobset/_cli.py`` IS an
+    import of ``molbuilder.runwrap``, and this scanner dropped every
+    relative form with a named module -- the DOMINANT spelling in the
+    tree (~493 relative vs ~207 absolute) -- so a cross-layer violation
+    written relatively was invisible to the whole test."""
     heads = set()
+    pkg = list(rel_path.parts[:-1])   # the file's package under molbuilder/
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -237,6 +254,22 @@ def _import_targets(tree: ast.AST) -> set[str]:
                     heads.add(name.split(".")[1])
         elif isinstance(node, ast.ImportFrom):
             mod = node.module or ""
+            if node.level > 0:
+                # ``from .X import Y`` / ``from ..X import Y``: strip
+                # (level - 1) packages off the file's own, then descend
+                # into ``mod``.  The first component under molbuilder/
+                # is the head the layer tables judge.
+                strip = node.level - 1
+                if strip > len(pkg):
+                    continue          # reaches above molbuilder/ -- not ours
+                target = (pkg[:len(pkg) - strip] if strip else list(pkg))
+                target += mod.split(".") if mod else []
+                if target:
+                    heads.add(target[0])
+                # empty target = `from . import X` at the package root,
+                # i.e. `from molbuilder import X`: the __init__ gate's
+                # business, same as the absolute spelling below.
+                continue
             if mod == "molbuilder":
                 # `from molbuilder import X` -- X can be any layer's
                 # re-exported public symbol; treat as not-an-import-of-
@@ -244,11 +277,6 @@ def _import_targets(tree: ast.AST) -> set[str]:
                 continue
             if mod.startswith("molbuilder."):
                 heads.add(mod.split(".")[1])
-            elif mod == "" and node.level > 0:
-                # Relative import: `from .X import Y` or `from ..X import Y`.
-                # We don't try to resolve these to absolute layers; the
-                # surrounding package boundary already enforces locality.
-                continue
     return heads
 
 
@@ -342,7 +370,7 @@ def test_module_does_not_import_from_higher_layer(rel_path: Path):
     src = (Path(__file__).resolve().parent.parent
            / "molbuilder" / rel_path).read_text()
     tree = ast.parse(src, filename=str(rel_path))
-    targets = _import_targets(tree)
+    targets = _import_targets(tree, rel_path)
 
     bad = []
     for head in targets:
