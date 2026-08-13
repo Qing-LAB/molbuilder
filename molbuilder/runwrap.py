@@ -516,10 +516,16 @@ def _runtime_status_block(
         # read ONE list, so a run whose only warm file is
         # ``<JOB>_optimized.xyz`` can no longer announce a clean start and
         # then have that very file moved aside as warm state.
+        # BRACED, not bare: four of the five suffixes start with "_", so
+        # an unbraced "$_warm_label_optimized.xyz" parses as one variable
+        # name -- unbound under set -u, killing EVERY fresh-directory run
+        # before launch (a .chk on disk short-circuits the || chain and
+        # hides it).  SIESTA's branch survives bare only because its "."
+        # terminates the name; same brace lesson as bench/grid.py.
         warmstart_test = " || ".join(
             piece
             for suf in _PYSCF_WARM_SUFFIXES
-            for piece in (f'[ -e "$_warm_label{suf}" ]',
+            for piece in (f'[ -e "${{_warm_label}}{suf}" ]',
                           f'[ -e "{basename}{suf}" ]')
         )
         warmstart_listing = " ".join(
@@ -1317,6 +1323,14 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
             f'fi\n'
             if n_atoms_lit else ""
         )
+        # return 0, EXPLICITLY: without the n_atoms clamp above (absent
+        # whenever the .fdf has no NumberOfAtoms line -- optional in
+        # SIESTA, the coordinates block is authoritative), the body ends
+        # on the `[ ... -lt 1 ] && ...` guard, which FAILS on every box
+        # whose computed default is >= 1 -- and a function's return is
+        # its last command's status, so under set -e the wrapper died at
+        # the first bare call below (found 2026-08-12 by the F6 probe).
+        + 'return 0\n'
         + '}\n'
         '_mb_gpu_rank_policy\n'
         +
@@ -1829,12 +1843,14 @@ def render_run_wrapper(script_path: Path, *,
             f'END {{ print v }}\' "{script_name}" 2>/dev/null || true)\n'
             f'case "$_mb_gpu_val" in\n'
             f'    {"|".join(_GPU_TRUTHY)})\n'
+            f'        _mb_gpu_active=1\n'
             f'        _mpi_np_default={gpu_mpi_default}\n'
             f'        _omp_threads_default={gpu_omp_default}\n'
             f'        echo "molbuilder: .fdf requests GPU '
             f'($_mb_gpu_val) -> default mpi_np=$_mpi_np_default, '
             f'omp=$_omp_threads_default" >&2 ;;\n'
             f'    *)\n'
+            f'        _mb_gpu_active=0\n'
             f'        _mpi_np_default={cpu_mpi_default}\n'
             f'        _omp_threads_default={cpu_omp_default} ;;\n'
             f'esac\n'
@@ -1872,6 +1888,39 @@ def render_run_wrapper(script_path: Path, *,
             f'_omp_threads="${{OMP_NUM_THREADS:-'
             f'${{SLURM_CPUS_PER_TASK:-$_omp_threads_default}}}}"\n'
             f'_dry_run=0\n'
+            # Explicit-flag markers: --mps/--no-mps re-derive the rank
+            # and OMP defaults for the new regime, and these are how the
+            # re-derivation knows a value was USER-CHOSEN and must not be
+            # touched.  Without the guard, `-np 9 --no-mps` ended at the
+            # 2-rank policy default -- the arm's chain read MB_NP/SLURM
+            # (unset) and fell through to the policy, clobbering the
+            # flag (redo F6, runtime-proven 2026-08-12).
+            f'_np_from_flag=0\n'
+            f'_omp_from_flag=0\n'
+            + (
+                # The --mps/--no-mps arm body, ONE function so the two
+                # arms cannot drift apart.  Defined here, before the
+                # parse loop -- a definition between case arms is a bash
+                # syntax error.  See the arm comment below for the F6
+                # story it exists to close.
+                '_mb_mps_arm() {\n'
+                '    _use_mps_default="$1"\n'
+                '    type _mb_gpu_rank_policy >/dev/null 2>&1 '
+                '|| return 0\n'
+                '    _mb_gpu_rank_policy\n'
+                '    _gpu_mpi_np_default='
+                '"${MOLBUILDER_MPI_NP:-$_gpu_mpi_np_default}"\n'
+                '    if [ "$_np_from_flag" = "0" ]; then\n'
+                '        _mpi_np="${MB_NP:-${SLURM_NTASKS:-'
+                '${PBS_NP:-$_gpu_mpi_np_default}}}"\n'
+                '    fi\n'
+                # The OMP width is NOT re-derived here: a later `-np`
+                # would change the rank count after the fact, so the
+                # width comes from the post-parse epilogue below, where
+                # the effective count is final.
+                '}\n'
+                if gpu_mode else ""
+            ) +
             f'while [ $# -gt 0 ]; do\n'
             f'    case "$1" in\n'
             f"        -np|--np)\n"
@@ -1879,13 +1928,13 @@ def render_run_wrapper(script_path: Path, *,
             f'                echo "ERROR: -np requires a value" >&2\n'
             f"                exit 1\n"
             f"            fi\n"
-            f'            _mpi_np="$2"; shift 2 ;;\n'
+            f'            _mpi_np="$2"; _np_from_flag=1; shift 2 ;;\n'
             f"        -omp|--omp|-t|--threads)\n"
             f'            if [ $# -lt 2 ]; then\n'
             f'                echo "ERROR: -omp requires a value" >&2\n'
             f"                exit 1\n"
             f"            fi\n"
-            f'            _omp_threads="$2"; shift 2 ;;\n'
+            f'            _omp_threads="$2"; _omp_from_flag=1; shift 2 ;;\n'
             f"        --dry-run|--dryrun)\n"
             f"            # Resolve + LOG the launch command and the\n"
             f"            # rank<->GPU/NUMA placement, then exit WITHOUT\n"
@@ -1900,26 +1949,24 @@ def render_run_wrapper(script_path: Path, *,
             # below (MPS has overhead with no concurrency benefit when
             # only one process touches the GPU).
             + (
-                f"        --mps)\n"
-                f'            _use_mps_default=1\n'
-                f'            type _mb_gpu_rank_policy >/dev/null 2>&1 '
-                f'&& _mb_gpu_rank_policy || true\n'
-                f'            _mpi_np="${{MB_NP:-${{SLURM_NTASKS:-'
-                f'${{PBS_NP:-${{_gpu_mpi_np_default:-$_mpi_np}}}}}}}}"\n'
-                f'            shift ;;\n'
-                f"        --no-mps)\n"
                 # The flag flips the REGIME, and the rank policy branches
                 # on the regime -- but the policy ran back in the GPU
                 # block, pre-parse, so --no-mps without -np kept the
                 # 4-rank MPS default the no-MPS policy caps at 2 (R9/F6).
-                # Re-derive here and re-resolve through the SAME
-                # precedence chain, so -np/MB_NP/SLURM_NTASKS still win.
-                f'            _use_mps_default=0\n'
-                f'            type _mb_gpu_rank_policy >/dev/null 2>&1 '
-                f'&& _mb_gpu_rank_policy || true\n'
-                f'            _mpi_np="${{MB_NP:-${{SLURM_NTASKS:-'
-                f'${{PBS_NP:-${{_gpu_mpi_np_default:-$_mpi_np}}}}}}}}"\n'
-                f'            shift ;;\n'
+                # Re-derive for the new regime, mirroring the GPU block's
+                # own order (policy -> MOLBUILDER_MPI_NP override -> OMP
+                # width from the budget), and SKIP anything the user set
+                # explicitly: an unguarded re-resolve read MB_NP/SLURM
+                # (unset) and fell to the policy default, so `-np 9
+                # --no-mps` ran 2 ranks while the comment here claimed
+                # "-np still wins" (redo F6, 2026-08-12).  One body,
+                # parameterized by the regime, so the two arms cannot
+                # drift apart (the body is _mb_mps_arm, defined above
+                # the parse loop).
+                "        --mps)\n"
+                '            _mb_mps_arm 1; shift ;;\n'
+                "        --no-mps)\n"
+                '            _mb_mps_arm 0; shift ;;\n'
                 if gpu_mode else ""
             ) +
             f"        -h|--help)\n"
@@ -1994,6 +2041,29 @@ def render_run_wrapper(script_path: Path, *,
             f'\'$_omp_threads\'" >&2\n'
             f"    exit 1\n"
             f"fi\n"
+            + (
+                # Auto-OMP width from the EFFECTIVE rank count, once the
+                # count is FINAL.  Inside the parse loop the answer
+                # depends on flag order (`--no-mps -np 9` derived the
+                # width before -np landed: 9 ranks x the 2-rank width);
+                # here _mpi_np is settled and validated positive.
+                # Explicit choices still win: -omp (_omp_from_flag),
+                # OMP_NUM_THREADS, SLURM_CPUS_PER_TASK, and the
+                # MOLBUILDER_* policy overrides, in the same precedence
+                # as the pre-parse resolution.  GPU regime only -- the
+                # CPU width is baked and has no runtime budget.
+                'if [ "$_mb_gpu_active" = "1" ] && '
+                '[ "$_omp_from_flag" = "0" ] && '
+                'type _mb_gpu_rank_policy >/dev/null 2>&1; then\n'
+                '    _omp_default=$(( _gpu_budget / _mpi_np ))\n'
+                '    [ "$_omp_default" -lt 1 ] && _omp_default=1\n'
+                '    _omp_default='
+                '"${MOLBUILDER_OMP_NUM_THREADS:-$_omp_default}"\n'
+                '    _omp_threads="${OMP_NUM_THREADS:-'
+                '${SLURM_CPUS_PER_TASK:-$_omp_default}}"\n'
+                'fi\n'
+                if gpu_mode else ""
+            ) +
             f"\n"
             + _run_index_resolver(basename)
             + _cold_restart_aside_block(basename, engine="siesta")

@@ -276,7 +276,13 @@ launch (all in `molbuilder/runwrap.py`):
   over `nvidia-smi -L`), sets `ranks_per_gpu = mpi_np / ngpu` (≥ 1), and prints a
   `GPU load-balance` line. GPU-mode rank/thread defaults are computed at runtime
   (rank default ≈ `physical_cores / 4`, capped at 4 with MPS — the ELPA-no-NCCL
-  sweet spot; OMP fills the remaining GPU-core budget).
+  sweet spot; without MPS the policy drops to 2 ranks on dual-socket or
+  ≥ 16-core-socket boxes, else 1). The auto-OMP width fills the GPU-core
+  budget **divided by the effective rank count, settled after all flags are
+  parsed** (2026-08-12): `--mps`/`--no-mps` re-derive the regime's *defaults*,
+  and an explicit `-np`/`-omp` is never clobbered by that re-derivation —
+  before this, `-np 9 --no-mps` ran 2 ranks, and the width could pair 9 ranks
+  with the 2-rank thread count.
 - **NVIDIA-MPS (Hyper-Q)** — the NVIDIA Multi-Process Service, which lets two or
   more MPI ranks share one GPU concurrently. Enabled only when (a)
   `nvidia-cuda-mps-control` is on `PATH`, (b) the user did not opt out

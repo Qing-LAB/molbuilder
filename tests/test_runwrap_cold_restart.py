@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -163,9 +164,16 @@ def _strip_preamble_activation(text: str) -> str:
     assert em >= 0, "activation conda-dump end marker not found"
     close = text.find("\nfi\n", em)
     assert close >= 0, "post-activation guard close not found"
+    # ``set -u`` is restored explicitly: the real wrapper disables
+    # nounset around the activation (NVCC_PREPEND_FLAGS) and re-enables
+    # it INSIDE the region cut here, so without this line the stripped
+    # harness runs everything after the preamble with nounset off --
+    # which is how the unbraced-$_warm_label death (redo NEW-1) stayed
+    # invisible to every executed test in this file.
     return (
         text[:start]
         + "# preamble + activation stripped for CI (no conda here).\n"
+        + "set -u\n"
         + text[close + 4:]
     )
 
@@ -195,8 +203,165 @@ def _truncated_siesta(tmp_path: Path, basename: str = "myjob") -> Path:
     return wrapper
 
 
+def _truncated_pyscf(tmp_path: Path, basename: str = "myjob") -> Path:
+    """Build a PySCF wrapper truncated before the ``exec`` engine launch,
+    same trick as :func:`_truncated_siesta`: the run-index, cold-restart
+    and warm-start-detection logic all execute, the engine does not."""
+    _bind()
+    script = tmp_path / f"{basename}.py"
+    script.write_text("# fake\n")
+    wrapper = write_run_wrapper(script)
+    text = _strip_preamble_activation(wrapper.read_text())
+    # "\nexec python", NOT "\nexec ": the log-redirect line
+    # (``exec > >(tee ...)``) matches the bare form FIRST, and cutting
+    # there skips the warm-start detection this harness exists to reach
+    # (that vacuous cut let the first version of the fresh-dir pin pass
+    # against the broken render).
+    cut = text.find("\nexec python")
+    assert cut > 0, "no exec-python launch line in the PySCF wrapper"
+    wrapper.write_text(text[:cut] + "\nexit 0\n")
+    return wrapper
+
+
 def _has_bash() -> bool:
     return shutil.which("bash") is not None
+
+
+@pytest.mark.skipif(not _has_bash(), reason="bash not available")
+class TestPyscfFreshDirectorySurvives:
+    """Redo NEW-1 (2026-08-12, introduced 8981376a): the warm-start test
+    emitted ``[ -e "$_warm_label_optimized.xyz" ]`` -- four of PySCF's
+    five warm suffixes start with ``_``, so the shell parsed the whole
+    thing as ONE variable name, unbound under ``set -u``, and EVERY
+    fresh-directory run died before launch.  A ``.chk`` on disk
+    short-circuits the ``||`` chain and hides it, which is why only the
+    fresh directory -- the most common state there is -- was the death
+    scenario, and why this pin plants NOTHING."""
+
+    def test_fresh_directory_reaches_the_launch_line(self, tmp_path):
+        wrapper = _truncated_pyscf(tmp_path)
+        proc = subprocess.run(
+            ["bash", str(wrapper)],
+            cwd=tmp_path,
+            capture_output=True, text=True, timeout=20,
+            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
+        )
+        assert "unbound variable" not in proc.stderr, proc.stderr
+        assert proc.returncode == 0, (
+            f"wrapper exited {proc.returncode}\n"
+            f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}"
+        )
+
+    def test_no_unbraced_warm_label_concatenation_renders(self, tmp_path):
+        """The render-side half: no ``$_warm_label`` immediately followed
+        by a name character may appear anywhere in either engine's
+        wrapper -- braces or a ``.`` must terminate the expansion."""
+        for make in ("myjob.py", "myjob.fdf"):
+            d = tmp_path / make.replace(".", "_")
+            d.mkdir()
+            script = d / make
+            script.write_text("# fake\n" if make.endswith(".py") else
+                              "SystemLabel myjob\n")
+            _bind()
+            text = write_run_wrapper(script).read_text()
+            assert not re.search(r"\$_warm_label[A-Za-z0-9_]", text), (
+                f"{make}: unbraced $_warm_label concatenation renders"
+            )
+
+
+def _bind_gpu():
+    set_capabilities(Capabilities(
+        runtime_config={},
+        conda_binary="/usr/bin/conda",
+        conda_envs=frozenset(["molbuilder-siesta", "molbuilder-siesta-gpu"]),
+    ))
+
+
+def _gpu_wrapper(tmp_path: Path, fdf_text: str) -> Path:
+    """A GPU-mode wrapper, stripped for bare-shell execution."""
+    _bind_gpu()
+    fdf = tmp_path / "myjob.fdf"
+    fdf.write_text(fdf_text)
+    wrapper = write_run_wrapper(fdf)
+    wrapper.write_text(_strip_preamble_activation(wrapper.read_text()))
+    return wrapper
+
+
+def _dry(wrapper: Path, tmp_path: Path, *args: str):
+    """--dry-run the wrapper with every rank/OMP env override scrubbed,
+    so the resolution under test is the FLAG chain, not this shell's."""
+    env = {**os.environ, "MB_LAUNCHED_BY": "manual"}
+    for k in ("OMP_NUM_THREADS", "SLURM_CPUS_PER_TASK", "MB_NP",
+              "SLURM_NTASKS", "PBS_NP", "MOLBUILDER_MPI_NP",
+              "MOLBUILDER_OMP_NUM_THREADS"):
+        env.pop(k, None)
+    return subprocess.run(["bash", str(wrapper), "--dry-run", *args],
+                          cwd=tmp_path, capture_output=True, text=True,
+                          timeout=30, env=env)
+
+
+_GPU_FDF = "SystemLabel myjob\nNumberOfAtoms 444\nDiag.ELPA.GPU .true.\n"
+
+
+@pytest.mark.skipif(not _has_bash(), reason="bash not available")
+class TestGpuFlagPrecedence:
+    """Redo F6 (2026-08-12, runtime-proven): ``-np 9 --no-mps`` ran 2
+    ranks -- the MPS arm's re-resolve chain read MB_NP/SLURM (unset) and
+    fell through to the regime policy default, clobbering the flag the
+    comment claimed still won.  The fix: explicit-flag markers guard the
+    re-resolve, and the auto-OMP width derives from the EFFECTIVE rank
+    count in a post-parse epilogue (inside the loop it depended on flag
+    order)."""
+
+    def test_np_flag_survives_no_mps_in_both_orders(self, tmp_path):
+        wrapper = _gpu_wrapper(tmp_path, _GPU_FDF)
+        for order in (("-np", "9", "--no-mps"), ("--no-mps", "-np", "9")):
+            proc = _dry(wrapper, tmp_path, *order)
+            out = proc.stdout + proc.stderr
+            assert proc.returncode == 0, out[-800:]
+            assert re.search(r"mpirun -np 9\b", out), (
+                f"{order}: flag-set rank count lost:\n{out[-800:]}"
+            )
+
+    def test_bare_no_mps_takes_the_no_mps_policy_count(self, tmp_path):
+        wrapper = _gpu_wrapper(tmp_path, _GPU_FDF)
+        proc = _dry(wrapper, tmp_path, "--no-mps")
+        out = proc.stdout + proc.stderr
+        assert proc.returncode == 0, out[-800:]
+        m = re.search(r"mpirun -np (\d+)\b", out)
+        assert m, out[-800:]
+        # 2 on dual-socket / >=16-core-socket boxes, 1 on small ones --
+        # never the 4-rank MPS-regime default the original R9/F6 bug
+        # kept after the regime flipped.
+        assert int(m.group(1)) in (1, 2), out[-800:]
+
+    def test_auto_omp_width_divides_by_the_effective_count(self, tmp_path):
+        """9 ranks x the 2-rank width oversubscribed the box; the
+        epilogue's invariant is ranks x width <= physical cores."""
+        wrapper = _gpu_wrapper(tmp_path, _GPU_FDF)
+        proc = _dry(wrapper, tmp_path, "--no-mps", "-np", "9")
+        out = proc.stdout + proc.stderr
+        assert proc.returncode == 0, out[-800:]
+        cores = re.search(r"detected phys_cores=(\d+)", out)
+        width = re.search(r"package:PE=(\d+)", out)
+        assert cores and width, out[-800:]
+        assert 9 * int(width.group(1)) <= int(cores.group(1)), (
+            f"9 ranks x PE={width.group(1)} oversubscribes "
+            f"{cores.group(1)} cores:\n{out[-800:]}"
+        )
+
+    def test_gpu_fdf_without_numberofatoms_still_launches(self, tmp_path):
+        """The rank-policy function must return 0: without the n_atoms
+        clamp (NumberOfAtoms is OPTIONAL in SIESTA) its body ended on a
+        failed ``[ ... ] && ...`` guard, and under ``set -e`` the first
+        bare call killed every such wrapper pre-launch (found by the F6
+        probe, 2026-08-12)."""
+        wrapper = _gpu_wrapper(
+            tmp_path, "SystemLabel myjob\nDiag.ELPA.GPU .true.\n")
+        proc = _dry(wrapper, tmp_path)
+        out = proc.stdout + proc.stderr
+        assert proc.returncode == 0, out[-800:]
+        assert "resolved launch" in out, out[-800:]
 
 
 @pytest.mark.skipif(not _has_bash(), reason="bash not available")

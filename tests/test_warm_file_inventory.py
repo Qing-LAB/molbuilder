@@ -2,7 +2,11 @@
 
 Contract: `execution/staged-runs-implementation-plan.md`, item 12c, whose *Done when* is stated
 as a mutation and is written that way here — **add a suffix to the list and
-watch both behaviours change.**
+watch both behaviours change.**  Since U17 (2026-08-12) the ``--cold`` mover
+is a NAME SWEEP (`job-contracts.md` § 4.1) and no longer reads the list at
+all — so its half of the mutation inverted: the banner must show the new
+suffix, and the mover must NOT (an enumeration reappearing there is the
+snapshot-of-one-build regression the sweep replaced).
 
 **The failure this prevents is silent and asymmetric.** Two lists that agree
 today, with nothing keeping them agreeing:
@@ -50,14 +54,20 @@ def _wrapper(tmp_path, ext, body, **kw):
 
 
 @pytest.mark.parametrize("engine,const,ext,body", ENGINES)
-def test_adding_a_suffix_changes_both_behaviours(tmp_path, monkeypatch,
-                                                 engine, const, ext, body):
-    """12c's *Done when*, executed rather than described.
+def test_adding_a_suffix_changes_the_banner_and_only_the_banner(
+        tmp_path, monkeypatch, engine, const, ext, body):
+    """12c's *Done when*, re-stated for the § 4.1 name sweep (U17,
+    2026-08-12).
 
-    A suffix nobody would invent is added to the engine's one tuple, and the
-    emitted wrapper must show it in **both** places: the ``--cold`` move-aside
-    and the startup banner's warm-state test. One of the two is the silent
-    contamination; the other is the silent false 'clean start'.
+    A suffix nobody would invent is added to the engine's one tuple.  The
+    startup banner must show it -- the banner ENUMERATES, and a suffix it
+    does not test is a run announcing a clean start over live warm state.
+    The ``--cold`` mover must NOT show it: since U17 the mover is a NAME
+    SWEEP (*"everything the id names, minus what molbuilder wrote"*,
+    job-contracts § 4.1), so any suffix is covered by construction and an
+    enumeration REAPPEARING in the mover is the snapshot-of-one-build
+    regression the sweep replaced.  (The sweep's behaviour itself --
+    files actually moving -- is executed in test_runwrap_cold_restart.)
     """
     marker = "_mb_probe.state"
     before = _wrapper(tmp_path, ext, body)
@@ -72,9 +82,13 @@ def test_adding_a_suffix_changes_both_behaviours(tmp_path, monkeypatch,
     assert re.search(rf'\[ -e "[^"]*{re.escape(marker)}" \]', banner), (
         "the startup banner does not read the engine's warm list: a run whose "
         "only warm file has this suffix would announce a clean start")
-    assert marker in mover, (
-        "the --cold move-aside does not read the engine's warm list: the file "
-        "would survive --cold and warm-start a run told to start clean")
+    assert '"$_warm_label".*' in mover, (
+        "the --cold mover lost its name-sweep glob: files named by the "
+        "run's id would survive --cold")
+    assert marker not in mover, (
+        "the --cold mover enumerates a warm suffix again: a list is a "
+        "snapshot of one build, and job-contracts § 4.1 replaced it with "
+        "the name sweep")
 
 
 #: The generated comments that open the two blocks, in the order the wrapper
@@ -85,7 +99,7 @@ def test_adding_a_suffix_changes_both_behaviours(tmp_path, monkeypatch,
 #: which lands in an unrelated ``--help`` line -- so one block's match
 #: satisfied the other's assertion, and two mutations retyping the mover's
 #: list survived. **This module's own subject, reproduced inside its test.**
-_MOVER_HEADING = "--- Cold-restart: move engine warm-start files aside ---"
+_MOVER_HEADING = "--- Cold-restart: NAME SWEEP"
 _BANNER_HEADING = "--- Runtime status banner"
 
 
