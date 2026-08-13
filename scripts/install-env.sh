@@ -368,7 +368,15 @@ EOF
             # for input.  (User-confirmed 2026-06-24: "running
             # without the --yes end up with stucking for ever and
             # no fucking message at all".)
-            if [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
+            # TRY TO OPEN IT.  ``[ -r /dev/tty ]`` tests the device
+            # node's PERMISSIONS, which are rw for everyone -- it is
+            # true even when the process has no controlling terminal,
+            # and the open then fails with ENXIO ("No such device or
+            # address").  So this guard passed and the read below died
+            # with a raw bash error in exactly the cases it was written
+            # to catch: batch jobs, cron, nohup, CI, `env -i`.  Only an
+            # open answers "is there a terminal I can prompt on".
+            if ! (exec 3</dev/tty) 2>/dev/null; then
                 echo "[molbuilder] no TTY for confirmation; pass --yes to skip." >&2
                 exit 2
             fi
