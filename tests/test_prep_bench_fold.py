@@ -521,6 +521,48 @@ def test_the_two_stage_sequence_carries_the_geometry_forward(calc):
     assert [j["name"] for j in js["jobs"]] == ["coarse", "medium"]
 
 
+def test_the_cg_pair_rule_holds_both_ways_on_a_live_bundle(calc):
+    """G2 I-list (2026-08-13): project-layout § 2.3.4 row 3 driven
+    through the VERBS on a real described bundle, both directions.  The
+    shipped ladder is coarse=CG, medium=Broyden, tight=Broyden -- so
+    coarse->medium must WITHHOLD `.CG` (a CG history is meaningless to
+    Broyden; carrying it would corrupt the restart) while medium->tight
+    must CARRY it (same optimizer, verified through the merged plan the
+    A11-era merge keeps whole).  The first version of this test asserted
+    a blind carry and the SYSTEM was right to refuse it."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    r = CliRunner()
+    res = r.invoke(jobset_group, ["prep", "run", "coarse",
+                                  "--bundle", str(calc), "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    a1 = calc / "01_coarse" / "run-0"
+    (a1 / "JOB.XV").write_text("relaxed coords")
+    (a1 / "JOB.CG").write_text("cg history")
+    res = r.invoke(jobset_group, ["prep", "run", "medium",
+                                  "--bundle", str(calc), "--no-sbatch",
+                                  "--from", "01_coarse/run-0"])
+    assert res.exit_code == 0, res.output
+    a2 = calc / "02_medium" / "run-0"
+    carried = {p.name for p in a2.glob("JOB.*") if not p.is_symlink()}
+    assert "JOB.XV" in carried
+    assert "JOB.CG" not in carried, (
+        "a CG-optimizer history crossed into a Broyden stage -- the "
+        "corrupting carry § 2.3.4 row 3 exists to prevent")
+    (a2 / "JOB.XV").write_text("more relaxed")
+    (a2 / "JOB.CG").write_text("broyden history")
+    res = r.invoke(jobset_group, ["prep", "run", "tight",
+                                  "--bundle", str(calc), "--no-sbatch",
+                                  "--from", "02_medium/run-0"])
+    assert res.exit_code == 0, res.output
+    a3 = calc / "03_tight" / "run-0"
+    carried = {p.name for p in a3.glob("JOB.*") if not p.is_symlink()}
+    assert "JOB.XV" in carried
+    assert "JOB.CG" in carried, (
+        "same-optimizer pair (broyden->broyden) withheld the history -- "
+        "the pair verification broke on the live path")
+
+
 def test_a_stageless_calculation_runs_end_to_end(tmp_path):
     """R1 (review-4 keystone): `engines/stages.md` § 6.5's single-
     parameter-set calculation is a FIRST-CLASS run.  Until 2026-08-12 the

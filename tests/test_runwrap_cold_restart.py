@@ -304,6 +304,42 @@ _GPU_FDF = "SystemLabel myjob\nNumberOfAtoms 444\nDiag.ELPA.GPU .true.\n"
 
 
 @pytest.mark.skipif(not _has_bash(), reason="bash not available")
+class TestTrialLabelledCold:
+    """G2 I-list (2026-08-13): a TRIAL's deck carries the coordinate-
+    qualified label (``JOB-G1K4C6``), and its warm files are keyed on it
+    (project-layout § 2.3.2 -- the relabelling exists so trial warm state
+    never collides with the run's).  The name sweep must move THOSE files
+    on --cold; every prior cold test used a plain label."""
+
+    def test_cold_moves_trial_labelled_warm_files(self, tmp_path):
+        _bind()
+        script = tmp_path / "JOB-G1K4C6.fdf"
+        script.write_text(
+            "SystemLabel JOB-G1K4C6\nNumberOfAtoms 1\n"
+            "%block AtomicCoordinatesAndAtomicSpecies\n0 0 0 1\n"
+            "%endblock AtomicCoordinatesAndAtomicSpecies\n")
+        wrapper = write_run_wrapper(script)
+        text = _strip_preamble_activation(wrapper.read_text())
+        cut = text.find("mpirun")
+        if cut < 0:
+            cut = text.find("\nexec ")
+        assert cut > 0
+        wrapper.write_text(text[:cut] + "\nexit 0\n")
+        for ext in ("DM", "XV", "CG"):
+            (tmp_path / f"JOB-G1K4C6.{ext}").write_text(f"trial {ext}")
+        proc = subprocess.run(
+            ["bash", str(wrapper), "--cold"], cwd=tmp_path,
+            capture_output=True, text=True, timeout=20,
+            env={**os.environ, "MB_LAUNCHED_BY": "manual"})
+        assert proc.returncode == 0, proc.stderr
+        for ext in ("DM", "XV", "CG"):
+            assert not (tmp_path / f"JOB-G1K4C6.{ext}").exists(), (
+                f"trial-labelled JOB-G1K4C6.{ext} survived --cold")
+        asides = list(tmp_path.glob("JOB-G1K4C6-restart-aside-*"))
+        assert len(asides) == 1, asides
+
+
+@pytest.mark.skipif(not _has_bash(), reason="bash not available")
 class TestGpuFlagPrecedence:
     """Redo F6 (2026-08-12, runtime-proven): ``-np 9 --no-mps`` ran 2
     ranks -- the MPS arm's re-resolve chain read MB_NP/SLURM (unset) and
