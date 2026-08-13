@@ -273,8 +273,10 @@ class EngineSeam:
     #: files, and until 2026-08-12 it kept the run's label (found by the
     #: first sweep that ever rendered a deck).
     relabel: Callable
-    #: ``(label, config, calculation) -> warm-file declaration`` for the
-    #: Job -- the engine reads its § 4.2a rules file for the TYPE (U2).
+    #: ``(label, config, calculation, base_dir) -> warm-file declaration``
+    #: for the Job -- the engine reads its § 4.2a rules file for the TYPE
+    #: (U2), and ``base_dir`` lets a calculation's own fine-tuned copy win
+    #: (U6a; the comment said 3 args while the call passed 4 -- C-d).
     warm_for: Callable
     #: ``config -> traits`` the launcher routes on (GPU solver, …).
     traits_for: Callable

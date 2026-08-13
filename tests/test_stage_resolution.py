@@ -256,10 +256,27 @@ def test_two_stages_with_one_name_are_refused_where_the_ladder_is_read():
     collision does not fail -- it silently overwrites a stage.  The refusal
     lives where the ladder is READ (task.py; repointed 2026-08-12, u5 --
     the render-time copy died with its renderer), and it is
-    case-insensitive because the names become filenames."""
-    from molbuilder.task import stages_from_dicts
-    with pytest.raises(ValueError, match="two stages named"):
-        stages_from_dicts([{"name": "tight"}, {"name": "Tight"}])
+    case-insensitive because the names become filenames.  Driven through
+    ``read_task`` — the codec's live route — since 2026-08-13, when the
+    caller-less ``stages_from_dicts`` wrapper it used was deleted (V22)."""
+    import json as _json
+
+    from molbuilder.task import read_task
+    payload = {
+        "schema": "molbuilder/task@1", "engine": "siesta", "shape": "flat",
+        "run": {"name": "j", "id": "j"},
+        "structure": {"source": "h2.xyz"},
+        "varies": ["mesh_cutoff"],
+        "stages": [{"name": "tight", "overrides": {"mesh_cutoff": 200}},
+                   {"name": "Tight", "overrides": {"mesh_cutoff": 300}}],
+    }
+    import tempfile
+    from pathlib import Path as _P
+    with tempfile.TemporaryDirectory() as d:
+        p = _P(d) / "task.json"
+        p.write_text(_json.dumps(payload))
+        with pytest.raises(ValueError, match="two stages named"):
+            read_task(p)
 
 
 def test_a_stage_name_that_is_not_a_filename_is_refused():

@@ -117,11 +117,11 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "'Tight' and 'tight' one deck; both parsers and the constructor "
         "call this instead of keeping their own loops"),
     "stages_from_dicts": (
-        3, ("molbuilder/config/pyscf.py", "molbuilder/task.py"),
-        "parses it.  TWO declarations of one name, and that is the point: "
-        "PySCF's builds its own StageSpec; task.py's builds the design's "
-        "own Stage, and it is what --stages-json reaches now that the "
-        "SIESTA parser is deleted (P2)"),
+        3, ("molbuilder/config/pyscf.py",),
+        "parses it -- PySCF's own StageSpec ladder, the one --stages-json "
+        "reaches.  (task.py's same-named twin was deleted 2026-08-13, "
+        "V22: zero production callers; its duplicate-name refusal lives "
+        "on the read_task route.)"),
     # Mechanism 5 -- SiestaStageSpec, _default_siesta_stages,
     # validate_siesta_stages -- is RETIRED (P2 unit 2, 2026-08-07).  These
     # three rows are deleted rather than commented out: their absence is

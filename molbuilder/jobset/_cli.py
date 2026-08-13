@@ -422,7 +422,7 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
     click.echo("  re-rendering replaces the DECKS only: the warm files are "
                "NOT touched and nothing is renamed (run-identity.md § 6).")
     if (Path(base) / ".git").is_dir():
-        click.echo("  (a checkpoint repo exists -- `molbuilder checkpoint "
+        click.echo("  (a checkpoint repo exists -- `molbuilder snapshot "
                    "save` first records the current state)")
     try:
         ok = click.confirm("  proceed (re-render the decks)?", default=True)

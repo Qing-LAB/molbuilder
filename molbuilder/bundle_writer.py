@@ -151,43 +151,7 @@ def write_bundle_as_handoff(bundle: BundleResult,
     return (xyz_path, sidecar_path if sidecar_path.exists() else None)
 
 
-def _atomic_write_text(path: Path, text: str) -> None:
-    """Write ``text`` to ``path`` atomically (tmp + rename) so a
-    partial write never leaves a half-XYZ on disk.
-
-    Tmp filename is unique per writer (PID + monotonic-ns) so two
-    concurrent writers to the same final path don't collide on the
-    same tmp file (a deterministic ``<path>.tmp`` would let writer B's
-    ``open(...)`` truncate writer A's in-flight bytes before either
-    finishes, and the ``os.replace`` would commit a mix).
-    """
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(
-        path.suffix + f".{os.getpid()}.{time.monotonic_ns()}.tmp"
-    )
-    try:
-        with open(tmp, "w", encoding="utf-8") as fh:
-            fh.write(text)
-            fh.flush()
-            try:
-                os.fsync(fh.fileno())
-            except OSError:
-                # Some filesystems (tmpfs on certain kernels) reject
-                # fsync — the data is still in the OS buffer + will
-                # land before the replace.  Don't let a quirky FS
-                # block the write.
-                pass
-        os.replace(tmp, path)
-    finally:
-        if tmp.exists():
-            try:
-                tmp.unlink()
-            except OSError:
-                pass
+# _atomic_write_text was deleted 2026-08-13 (V22): zero callers -- the
+# writers here go through persist.write_json / their own tmp+rename.
 
 
-__all__ = [
-    "BundleWriteError",
-    "write_bundle_as_handoff",
-]
