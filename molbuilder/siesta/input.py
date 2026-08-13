@@ -103,14 +103,14 @@ def _auto_block_size(n_atoms: int,
         runs ignore BlockSize anyway).
       * mpi_np >= 2: largest power of 2 satisfying
         ``BlockSize <= min(256, floor(10 * n_atoms / mpi_np))``.
-        The 256 ceiling is the load-balance ceiling shared with
-        GPU mode below, and it is the top of the BENCH-MARKS legal
-        override window (``range=[16,256]``, job-contracts.md
-        § 3.3) -- the auto pick must land inside the window the
-        deck itself declares legal, and at the top of it for
-        systems big enough to hit the ceiling (that is why the
-        window top and the generator's choice agree by
-        construction on the canonical 212-atom bench deck).
+        The 256 ceiling is the LOAD-BALANCE ceiling shared with GPU
+        mode below: past it, too few blocks circulate per rank for
+        BLACS to balance, with no cache gain to pay for it.  (Until
+        2026-08-12 this bullet also propped 256 on "the top of the
+        BENCH-MARKS legal override window, range=[16,256]" -- a
+        constant § 3.3 retired 2026-08-10; the deck's declared window
+        is now per-deck ``[1, floor(n_orbitals_est/mpi_np)]`` and the
+        auto pick lands inside it by the same min() above.)
 
     GPU mode (``gpu_mode=True``)
       Orbital-aware formula with two caps:
@@ -1122,18 +1122,17 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     out.append("")
 
     # ---- Parallel execution (MPI) -------------------------------
-    # Always emit explicit values so the FDF behaves the same across
-    # SIESTA versions and across system sizes.  Without an explicit
-    # `BlockSize`, SIESTA auto-picks one as `ceil(Norb / Nrank)`,
-    # which is fine for distributing the orbital matrix but is
-    # *also* used elsewhere in the pipeline -- including a per-atom
-    # distribution step right before mesh setup.  When the system
-    # is small (e.g., a 14-atom molecule -> Norb~134, auto-picked
-    # BlockSize=34 with 4 MPI ranks), the auto value is much larger
-    # than the atom count, and that earlier step bails with
-    #     propor: ERROR: IMAX = 0
-    # An explicit smaller BlockSize keeps every distribution step
-    # well-conditioned regardless of system size.
+    # BlockSize is a THROUGHPUT knob, not a crash guard: the empirical
+    # sweep recorded in the HISTORICAL NOTE above (2026-05-28, hemeC)
+    # showed the ``propor: ERROR: IMAX = 0`` startup crash identical at
+    # BlockSize 1, 2 and 4 -- it is matel_table's proportionality check
+    # against the rank count, and the remedy is a smaller -np.  The
+    # paragraph that stood here until 2026-08-12 still taught the
+    # pre-sweep theory ("an explicit smaller BlockSize keeps every
+    # distribution step well-conditioned") -- the OPPOSITE of the deck
+    # text emitted ten lines below, in the same function.  Nor is the
+    # keyword always emitted: parallel_block_size == 0 is the third
+    # state, no BlockSize line at all (tuning.md § 2.11, decision 35).
     out.append("# --- Parallel execution (MPI) ---")
     if v: out += [
         "# These settings matter only with `mpirun -np N siesta`",
@@ -1456,12 +1455,12 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "#   * tighten DM.Energy.Tolerance to 1e-5 eV",
             "#",
             "# 'propor: ERROR: IMAX = 0' on parallel run:",
-            "#   * caused by SIESTA's auto-picked BlockSize (which",
-            "#     scales with Norb / Nrank) being too large for an",
-            "#     unrelated per-atom distribution step earlier in",
-            "#     the pipeline.  Setting BlockSize explicitly above",
-            "#     overrides the auto-choice -- if it still fails,",
-            "#     drop BlockSize to 4 or 1.",
+            "#   * too many MPI ranks for this molecule's radial-",
+            "#     function tables (matel_table's proportionality",
+            "#     check).  Retry with a smaller rank count -- the",
+            "#     wrapper's ``-np`` flag.  BlockSize does NOT fix",
+            "#     this: an empirical sweep crashed identically at",
+            "#     BlockSize 1, 2 and 4 (2026-05-28).",
             "#   * for 1x1x1 (Gamma) k-grids, also confirm that",
             "#     Diag.ParallelOverK is .false. (we set it above",
             "#     based on the kgrid).",

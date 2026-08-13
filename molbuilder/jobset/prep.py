@@ -269,6 +269,31 @@ class EngineSeam:
     warm_for: Callable
     #: ``config -> traits`` the launcher routes on (GPU solver, …).
     traits_for: Callable
+    #: ``(struct, config, deck_path) -> None`` — the sibling files this
+    #: engine's deck TEXT promises (E6: a charged SIESTA deck instructs
+    #: running a script; the promise must be kept on every route that
+    #: renders the deck).  ``None`` for an engine whose decks promise
+    #: nothing.
+    sibling_artifacts: Optional[Callable] = None
+
+
+def _siesta_sibling_artifacts(struct, cfg, deck_path: Path) -> None:
+    """The sibling files a SIESTA deck's own text PROMISES.
+
+    A charged deck instructs ``python3 makov_payne_correction.py`` in its
+    header -- a promise only ``convert`` kept until E6 (redo 2026-08-12):
+    the described route rendered the same header and never wrote the
+    script, so `prep` shipped an instruction to run a file that did not
+    exist.  Same writer both routes, so they cannot drift."""
+    from ..chemistry import resolve_net_charge
+    from ..siesta.makov_payne import emit_correction_script
+    try:
+        q = resolve_net_charge(struct, getattr(cfg, "net_charge", None))
+    except Exception:
+        q = 0
+    if q != 0:
+        emit_correction_script(fdf_path=deck_path,
+                               system_label=cfg.system_label, q=q)
 
 
 def _engine_seam(engine: str) -> EngineSeam:
@@ -281,7 +306,8 @@ def _engine_seam(engine: str) -> EngineSeam:
                           label_of=lambda cfg: cfg.system_label,
                           relabel=lambda cfg, label: dataclasses.replace(
                               cfg, system_label=label),
-                          warm_for=_warm_declaration, traits_for=_traits)
+                          warm_for=_warm_declaration, traits_for=_traits,
+                          sibling_artifacts=_siesta_sibling_artifacts)
     raise PrepError(
         f"no deck writer for engine {engine!r}. An engine supplies its schema "
         f"and a deck writer (generator.md § 7); this backend has neither for "
@@ -455,6 +481,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             deck_text = seam.render_deck(struct, cfg,
                                          stage_token=(token or None))
         (base / script).write_text(deck_text, encoding="utf-8")
+        if seam.sibling_artifacts is not None:
+            seam.sibling_artifacts(struct, cfg, base / script)
         _seed_trajectory_log(struct, cfg, base, engine=task.engine,
                              label=seam.label_of(cfg),
                              token=(token or None))

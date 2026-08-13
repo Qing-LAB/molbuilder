@@ -193,12 +193,19 @@ class Task:
         # either: the claims are made true at the claimed home (U15,
         # 2026-08-12).
         if self.stages is not None:
-            names = [s.name for s in self.stages]
+            # CASE-INSENSITIVELY, like both parsers (D6, redo 2026-08-12):
+            # the names key filenames, and the filesystems these run on
+            # include case-insensitive ones -- "Tight" and "tight" are one
+            # deck there.  The constructor compared exact strings while
+            # the parsers folded case, so the seam disagreed with its own
+            # doors.
+            names = [s.name.lower() for s in self.stages]
             dups = sorted({n for n in names if names.count(n) > 1})
             if dups:
                 raise ValueError(
                     f"task: duplicate stage name(s) "
-                    f"{', '.join(map(repr, dups))}. A stage's name keys its "
+                    f"{', '.join(map(repr, dups))} (compared "
+                    f"case-insensitively). A stage's name keys its "
                     f"directory, its deck and its status row -- two stages "
                     f"sharing one silently hand one the other's files "
                     f"(engines/stages.md 6.6)")

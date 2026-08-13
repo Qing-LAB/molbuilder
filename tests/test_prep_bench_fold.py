@@ -592,6 +592,39 @@ def test_a_stageless_calculation_runs_end_to_end(tmp_path):
     assert job_dir_names(sweep)["G1K1C4"] == "bench-G1K1C4"
 
 
+def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
+    """E6 (redo 2026-08-12): a charged deck's header instructs
+    ``python3 makov_payne_correction.py`` -- a promise only `convert`
+    kept.  The described route rendered the same header and never wrote
+    the script, so prep shipped an instruction to run a file that did
+    not exist.  The seam's sibling_artifacts hook writes it now."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
+    dest = tmp_path / "calc"
+    D.write_description(
+        D.build_description(struct, SiestaConfig(system_label="JOB",
+                                                 net_charge=1), (),
+                            engine="siesta", shape="hierarchical",
+                            name="JOB", source=str(tmp_path / "h2.xyz")),
+        dest, struct=struct)
+    (dest / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    res = CliRunner().invoke(jobset_group,
+                             ["prep", "run", "--bundle", str(dest),
+                              "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    deck = next(dest.glob("*.fdf")).read_text()
+    if "makov_payne_correction.py" in deck:
+        assert (dest / "makov_payne_correction.py").is_file(), (
+            "the deck instructs running a script prep did not write")
+
+
 def test_a_stageless_calculation_can_be_benchmarked(tmp_path):
     """A4 (redo 2026-08-12): R1 wired the stageless verdict offer, but no
     code path could CREATE a stageless benchmark -- the bare `prep bench`

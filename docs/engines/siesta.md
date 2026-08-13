@@ -158,10 +158,16 @@ NumberOfSpecies   3
 
 `convert` is the file-to-file path; it returns a summary and (when
 `cfg.psml_lib` is set + `cfg.copy_psml=True`) copies each `<Element>.psml` into the
-`.fdf`'s directory. Missing pseudopotentials are listed in `missing_psml`, and the
-caller — today `jobset prep` — exits 2 on a non-empty list, because a deck whose
-pseudopotentials are absent cannot run
-([`conventions.md § 3`](?doc=process/conventions.md)).
+`.fdf`'s directory, listing what it could not find in `missing_psml`.  On the
+described route the roles split: **`describe --psml-lib` is what copies the
+pseudos into the calculation** (they are its data files and travel with it),
+and **`prep` refuses to render a deck whose pseudos are absent** — the
+render's own validation, surfaced as a clean refusal naming the elements
+(A8, 2026-08-12).  A deck whose pseudopotentials are absent cannot run
+([`conventions.md § 3`](?doc=process/conventions.md)).  *(Until 2026-08-12
+this sentence claimed "`jobset prep` exits 2 on a non-empty `missing_psml`
+list" — prep never had that list; the copy is describe's and the refusal is
+the render's.)*
 
 ---
 
