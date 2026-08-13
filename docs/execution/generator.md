@@ -489,3 +489,103 @@ where two things can disagree, is not this work.
 | **38** | `scheduler.routing` has **no cores, GPU count or GPU type** per entry, so *"does this allocation fit this cluster?"* cannot be answered from config | § 4.1a needs it and this document does not design the config's shape — `architecture.md` § 8 owns that |
 | **G3** | whether `bench` keeps a positional in the grammar | `architecture.md` § 0 settles the *mechanism* (a merge); the word is P9's |
 | **37** | ~~whether `transport`'s chained runs become a `ParameterSet`~~ — **decided 2026-08-11 (user): they do not.** Transport is a **separate kind — a multi-component job**: *"it involves multiple results and the transportation needs to combine all of them… a different kind of beast"* | it is not a sweep and not a ladder. **This contract covers single-parameter-set jobs** — structure, optimization, spectra — and a multi-component kind is designed on its own, not folded in here |
+
+---
+
+## 10. How a value is decided — who, when, and from what default
+
+*(Added 2026-08-12, user order: the workflow must state how parameters are
+decided and where their defaults come from, in one place.  The mechanics all
+exist in the sections above and in the companion contracts; this section is the
+cross-cutting answer, and it points rather than copies — a value stated twice
+is a value that drifts, which is § 3's whole argument.)*
+
+**Every parameter in the system belongs to exactly one of five classes, and
+the class answers three questions at once: WHO decides the value, WHEN it is
+decided, and WHERE its default comes from.**  A parameter that seems to belong
+to two classes is the smell § 4 warns about — the same fact decided on two
+floors.
+
+| class | examples | decided at | by | default comes from |
+|---|---|---|---|---|
+| **1 · physics** | `mesh_cutoff`, k-grid, XC functional, basis, `restart` | **describe** (floor 2) | the user, per stage | the **engine field schema** — the single source § 3 draws; the template carries it |
+| **2 · structure facts** | cell, **vacuum**, frozen atoms, regions | before describe (the structure file), or **at describe** (`--vacuum`) | whoever built the structure | *unset* — a cell is resolved from the structure at render, with a named default and a warning when nobody chose |
+| **3 · machine / allocation** | `mpi_np`, `omp_threads`, `max_memory_mb`, domain, partition, time | **prep** (floor 3), on the machine that runs it | the resolver, from Environment + config + what you asked for | the detected **Environment** and the scheduler config — never floor 2 ([`engines/template.md`](?doc=engines/template.md) § 7 forbids it) |
+| **4 · runtime overrides** | `-np` / `-omp` flags, `MB_NP`, `OMP_NUM_THREADS`, `--mps` / `--no-mps` | **launch**, inside the wrapper | the person or scheduler launching | the values class 3 baked; see the chain below |
+| **5 · policy** | `continue_retries`, stage `restart` policy | **describe** (floor 2) | the user | the schema, like class 1 — a policy is portable, which is why it is *not* class 3 |
+
+### 10.1 Class 1 — physics: the schema is the only default table
+
+The engine field schema declares every parameter molbuilder models, **with its
+type, range, unit and default** — § 3's two `generates` edges make it the
+single source, and [`engines/template.md`](?doc=engines/template.md) § 5's rule
+(*"two hand-maintained copies of `default` would drift silently"*) is why no
+other list of defaults exists anywhere in this design, this section included.
+To read the defaults, read the template a describe writes: every item at its
+default IS the blank form (§ 3.1).  A stage changes a value by **override**
+(`task.json`, [`engines/stages.md`](?doc=engines/stages.md) § 2) — the ladder
+is differences against the template, never a second copy of it.
+
+**Engine scope is the schema itself.**  Each engine has its own field schema,
+so *"is this parameter meaningful for this engine?"* is answered by membership:
+SIESTA's `mesh_cutoff` simply does not exist in PySCF's schema, and no shared
+name is resolved through a branch (see § 7 — the engine seam is a plugin, not
+an `if`).
+
+### 10.2 Class 2 — structure facts: they ride the structure, and engines read what they read
+
+The cell, the vacuum, frozen atoms and regions live **on the structure**, not
+in any engine's config — one structure, every surface seeing the same facts.
+They travel with the calculation as the structure document plus its
+`.molstruct.json` sidecar (a bare `.xyz` has nowhere to put a vacuum; describe
+writes the pair whenever the structure carries metadata — 2026-08-12, the
+`--vacuum` fix).
+
+**A structure fact is meaningful only to an engine that reads that fact.**
+The vacuum is a *cell* concern: SIESTA is periodic, so its deck must state a
+box, and the vacuum decides the box for an isolated molecule.  A PySCF
+molecular calculation has no box — the fact rides along unread, and that is
+correct behaviour, not loss.  The rule generalises: an engine consumes the
+structure facts its input format expresses, and no fact is an error for the
+engine that cannot express it.
+
+**The default is a warning, not a value.**  Nobody chose a vacuum → the cell
+resolver (`molbuilder/cell.py`, the one line every surface asks) applies its
+named default and prep says so out loud — *"axis 0 (3 Å — the default, none
+set)"*.  A silent default here would be a scientific choice made by omission.
+
+### 10.3 Class 3 — machine and allocation: decided at prep, bounded by the Environment
+
+§ 3's spine: the **Environment** (detected: cores, GPUs, scheduler, conda)
+bounds the **allocation** (asked: ranks, cores, GPUs, time, domain), and both
+enter resolution at **prep, on the machine that will run it** — which is the
+whole reason describe and prep are two verbs
+([`execution/project-layout.md`](?doc=execution/project-layout.md) § 2.3.1).
+There is no schema default for `mpi_np`: the default is **derived from the
+machine standing under the command** (physical cores, clamped — see
+[`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.1), which
+is why it may not appear in a floor-2 template at all.
+
+### 10.4 Class 4 — runtime: the wrapper's chain, highest wins
+
+[`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3 owns the
+full chain; it is stated once there and only summarised here:
+
+```
+flag (-np / -omp)  >  MB_NP / OMP_NUM_THREADS  >  scheduler env  >  baked default
+```
+
+GPU mode adds a **regime policy** (rank count and OMP width differ with and
+without MPS): flipping the regime at launch (`--mps` / `--no-mps`) re-derives
+the *defaults* for the new regime, and the auto-OMP width divides the core
+budget by the **effective** rank count once flags are parsed — an explicit
+`-np` or `-omp` is never clobbered by the re-derivation (fixed 2026-08-12;
+the flags always win, now genuinely).
+
+### 10.5 Reading a decision back
+
+Every resolved value states its source: the deck's provenance block and
+`STAGE-PLAN.md` name **which file supplied each setting** (config, template,
+override, environment), and jobset decisions land in `jobset-decisions.log`
+via `jobset/ledger.py` — so *"why is this value 4?"* is answered by reading
+the plan, not by re-deriving the chain by hand.

@@ -18,52 +18,31 @@ from . import (
 @click.group("bench",
              context_settings={"help_option_names": ["-h", "--help"]})
 def bench_group() -> None:
-    """Benchmark CPU vs GPU on YOUR machine, then run production with the
-    winner -- no hand-tuning of queue names, core counts, or bindings.
+    """Benchmark utilities.
 
     \b
-    WORKFLOW (run `molbuilder bench <cmd> --help` for each):
-      generate    HOST    one .fdf -> a portable, self-contained bundle
-      prep        TARGET  detect the machine -> environment.json + the sweep
-      summarize   TARGET  read the sweep's outputs -> bench-result.json
-      prep-run    TARGET  bench-result.json -> production run script
-      siesta-gpu  (legacy) in-place np/omp/BlockSize sweep on one project
+    THE BENCHMARK ITSELF MOVED (2026-08-12, the fold): a benchmark is a
+    described calculation's sweep, run through the jobset verbs --
+      molbuilder jobset prep bench <stage>      render the trial decks
+      molbuilder jobset submit bench <stage>    launch trials, ONE BY ONE
+      molbuilder jobset summarize <stage>       read outputs -> verdict
+    `molbuilder jobset --help` owns that workflow; its contract is
+    docs/execution/job-contracts.md section 6.
 
     \b
-    KEY TERMS (these trip everyone up -- read once):
-      rank   one MPI PROCESS = one running copy of SIESTA.  N ranks = N
-             processes computing in parallel, exchanging data by messages.
-      -n     the NUMBER OF RANKS (SLURM --ntasks; identical to `mpirun
-             -np N`).  NOT the CPU count.
-      -c     CPU cores per rank (OpenMP threads inside each process).
-      ==>    total CPU cores = -n * -c.
-      G      number of GPUs (--gres=gpu:<type>:G).
-      K      MPI ranks PER GPU (so -n = K*G); K ranks share one GPU (MPS).
-      c      cores per rank of a GPU point = cores_per_socket / K.
+    WHAT REMAINS HERE (run `molbuilder bench <cmd> --help` for each):
+      siesta-gpu       (legacy) in-place np/omp/BlockSize sweep on ONE
+                       existing SIESTA-GPU project directory
+      probe-scheduler  read a live SLURM cluster (sinfo/sacctmgr) into a
+                       proposed `scheduler` config block for molbuilder.json
 
     \b
-    TUNING the GPU point -- is -n (= K*G) too small or too big?
-      * SWEEP K (e.g. `prep --gpu-ks 8,16`): if s/iter keeps dropping, -n
-        was too small; if it rises, -n is too big (MPS contention, c->1).
-      * the monitor's GPU sm% (util.csv / [UTIL-SUMMARY]; in
-        bench-result.json as `bound`): sustained high sm% = GPU saturated
-        (good); low sm% while cpu% is pegged = host-bound (more ranks
-        won't help -- the CPU side feeding ELPA-CUDA is the limit).
-
-    \b
-    CPU point: SIESTA CPU is MPI-only, so 1 core/rank (-c 1); -n*-c must
-    fit one node.  Scale with `sbatch -n <np>`; override -c per submission.
-
-    \b
-    PLACEMENT / GPU<->CPU BINDING (we do NOT hand-craft it):
-      --gpu-exclusive   GPU job takes the WHOLE node (default, from config).
-                        Clean timing; lets the launcher pin each rank to its
-                        GPU's own socket (it owns all cores).
-      --no-gpu-exclusive  pack jobs; placement is left to SLURM (no pin).
-      We never use --gpu-bind (it conflicts with the per-rank launcher) and
-      under a non-exclusive SLURM alloc we TRUST the scheduler's cpuset.
-      Runtime: `MB_NO_SOCKET_PIN=1 sbatch job-gpu.sbatch` disables the
-      auto socket-pin -- A/B it to see if the pin actually helps.
+    KEY TERMS (for siesta-gpu's points):
+      rank  one MPI PROCESS = one running copy of SIESTA.  N ranks = N
+            processes computing in parallel, exchanging data by messages.
+      np    the NUMBER OF RANKS (`mpirun -np N`).  NOT the CPU count.
+      omp   OpenMP threads inside each rank; total cores = np * omp.
+      bs    BlockSize -- the BLACS distribution block (tuning.md 2.11).
     """
 
 
