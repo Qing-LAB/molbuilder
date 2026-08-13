@@ -391,6 +391,30 @@ def resolve(template_text: str, task, config_cls, *,
                         stage=(stage_obj.name if stage_obj else None))
 
 
+def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any]]:
+    """``[(stage name, resolved config)]`` for every ENABLED stage, in
+    ladder order — the sequence checks' input (`engines/stages.md` § 6.4 /
+    § 6.6a), resolved by the SAME primitives as `prep` step 2 (template ⊕
+    stage overrides), so what the checks compare is what the decks would
+    say.  No machine fact is involved: a sequence question never needs the
+    allocation.
+
+    Exists so the surface that surfaces those findings does not re-derive
+    the resolution with primitives of its own — the caller-re-derivation
+    habit `job-system.md` § 9 diagnoses (added with A-8, 2026-08-13, which
+    found the § 6.6a warning had no production caller at all).
+    """
+    from .template import config_from_template
+    base = config_from_template(template_text, config_cls)
+    out: List[Tuple[str, Any]] = []
+    for s in (task.stages or ()):
+        if not getattr(s, "enabled", True):
+            continue
+        out.append((s.name,
+                    _apply(base, s.overrides) if s.overrides else base))
+    return out
+
+
 def _axes_of(sweep, points: Tuple[Mapping, ...]) -> Tuple[str, ...]:
     """Which axes produced this set, in the order they were given.
 

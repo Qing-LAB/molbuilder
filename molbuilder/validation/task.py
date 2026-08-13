@@ -48,7 +48,8 @@ _ONE_PROCESS_ENGINES = ("pyscf",)
 
 
 def preflight(task, config_cls=None, *,
-              generators: Optional[Dict[str, Any]] = None) -> List[Issue]:
+              generators: Optional[Dict[str, Any]] = None,
+              template_text: Optional[str] = None) -> List[Issue]:
     """§ 6.6's schema-dependent half, in the order the contract lists them.
 
     ``task`` is a parsed :class:`molbuilder.task.Task` — the codec's own four
@@ -59,6 +60,15 @@ def preflight(task, config_cls=None, *,
     ``generators`` maps engine name → config class, and defaults to what this
     backend actually ships. It is an argument so a test can ask "what happens
     for an engine we do not have" without inventing one in the registry.
+
+    ``template_text``, when the caller has it, adds the SEQUENCE findings —
+    § 6.4's loosening ladder and § 6.6a's identical-and-clean recompute.
+    Both compare RESOLVED stages, so they need the template, and both are
+    *"a warning, not a preflight row"* (§ 6.6a): they proceed.  Optional
+    because half of § 6.6 is answerable from the description alone; but
+    until 2026-08-13 NO production surface ran the sequence checks at all —
+    `stages.md` :884 said "implemented" over a function only tests called
+    (final review A-8).
 
     Every finding names what it refused (§ 6.6's right-hand column) — this is a
     file people edit by hand, so a refusal owes them the offending key, the
@@ -99,6 +109,21 @@ def preflight(task, config_cls=None, *,
     #  is not an integer, and reached the deck as `MD.NumCGsteps 100.7`.
     out.extend(_values_are_the_declared_type(task, fields))
     out.extend(_values_in_bounds(task, fields))
+
+    # -- 5. the sequence's own findings (§ 6.4 / § 6.6a) -- warnings -------
+    if template_text is not None and task.stages:
+        from ..resolve import resolved_ladder
+        from .stages import (check_identical_stages,
+                             check_ladder_does_not_loosen)
+        try:
+            ladder = resolved_ladder(template_text, task, cls)
+        except Exception:
+            # An unresolvable template earns prep's OWN refusal moments
+            # later, with its own wording (a template it cannot rebuild
+            # from) -- a sequence WARNING must not preempt it as a crash.
+            ladder = []
+        out.extend(check_ladder_does_not_loosen(ladder))
+        out.extend(check_identical_stages(ladder))
     return out
 
 

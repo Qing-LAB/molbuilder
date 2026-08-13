@@ -341,3 +341,45 @@ def test_it_never_refuses():
     before anything is written; this one proceeds if it was meant."""
     assert all(i.severity != "error"
                for i in check_identical_stages(_pair("clean", "clean")))
+
+
+# --------------------------------------------------------------------- #
+#  A-8 — the sequence findings are REACHABLE, not merely implemented     #
+# --------------------------------------------------------------------- #
+
+def test_the_sequence_warnings_reach_the_prep_surface(tmp_path):
+    """A-8 (final review, 2026-08-13): `stages.md` :884 said § 6.6a was
+    "implemented at validation/stages.py::check_identical_stages" while NO
+    production surface called it — `validate_ladder`'s only callers were
+    tests, so the warning was unreachable end-to-end.  The sequence checks
+    now ride the § 6.6 preflight when the template is in hand, and `prep`
+    is the surface that has both halves.  Pinned through the CLI: the note
+    must reach the person about to pay for the recompute."""
+    import json
+
+    from click.testing import CliRunner
+
+    from molbuilder import describe as D
+    from molbuilder.jobset._cli import jobset_group
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
+    dest = tmp_path / "calc"
+    D.write_description(
+        D.build_description(
+            struct, SiestaConfig(system_label="JOB"),
+            _ladder(("a", {"mesh_cutoff": 200.0}),
+                    ("b", {"mesh_cutoff": 200.0})),
+            engine="siesta", shape="hierarchical",
+            name="JOB", source=str(tmp_path / "h2.xyz")),
+        dest)
+    (dest / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    r = CliRunner()
+    res = r.invoke(jobset_group, ["prep", "run", "a", "--bundle", str(dest),
+                                  "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    assert "recomputes" in res.output, res.output
