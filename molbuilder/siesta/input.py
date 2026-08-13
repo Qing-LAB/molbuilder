@@ -1663,53 +1663,109 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
 
 
 def _emit_dispersion_template(xc_authors: str, v: bool) -> List[str]:
-    """Commented-out Grimme-D2 dispersion-correction template emitted
-    when XC.functional is non-vdW (PBE / BLYP / hybrids).  See gap #3
-    in docs/design.md.
+    """Commented-out dispersion-correction template emitted when
+    XC.functional is non-vdW (PBE / BLYP / hybrids).  See gap #3 in
+    docs/design.md and docs/engines/siesta.md § "Reference sources".
 
     The template is commented so the default behaviour is unchanged
-    (the user opts in by uncommenting).  Parameter values are
-    placeholders -- per-species C6 / R0 come from the Grimme-D2 table
-    (Grimme 2006, J. Comput. Chem. 27, 1787); for biomolecule-typical
-    species (C, N, O, H, P, S) the 21-pair grid is small enough to
-    paste in by hand once you've decided you want it.
+    (the user opts in by uncommenting).  Three routes are offered: a
+    vdW-aware XC; ``DFTD3 T`` (one line, parameters matched to the
+    functional) for a SIESTA built against s-dftd3; and the older D2
+    pair potential via ``MM.Potentials`` for one that is not.
+
+    Every value here is checked against the SIESTA manual entry for
+    ``MM.Potentials`` (Docs/tex/sections/Options/Auxiliary_force_field
+    .tex) and against the block parser in Src/molecularmechanics.F90.
+    The example rows are ``Util/Grimme``'s own output (installed as
+    ``fdf2grimme``), so they are what SIESTA would write for itself.
     """
-    out: List[str] = []
-    out.append("# --- Dispersion correction (commented template) ---")
-    if v:
-        out += [
-            f"# {xc_authors} is a non-dispersive XC: long-range vdW",
-            "# (C6/r^6) is missing.  Organic / biomolecule consequences:",
-            "#   * DNA stacking under-bound by 5-10 kcal/mol per pair",
-            "#   * peptide folding favours wrong conformers",
-            "#   * molecular crystals: lattice constants too long by 0.1-0.3 A",
-            "#   * surface adsorption (benzene/graphite, etc.) off ~10x",
-            "# Two ways to fix.  Pick ONE:",
-            "#",
-            "# 1) Switch to a vdW-aware XC (cheapest correctness):",
-            "#      XC.functional VDW",
-            "#      XC.authors    DRSLL    (or KBM, LMKLL, BH, VV)",
-            "#    The non-local correlation lives in the functional;",
-            "#    no MM.Potentials block needed.",
-            "#",
-            "# 2) Add Grimme-D2 empirical dispersion ON TOP of the",
-            "#    current XC (cheap, additive, no XC change).  Fill in",
-            "#    one row per atom-species pair from Grimme-D2 tables.",
-            "#    Uncomment to enable:",
-        ]
-    out += [
+    # The fdf lines themselves -- identical in both the terse and the
+    # annotated deck, because they are what the user actually pastes.
+    # Copied from `fdf2grimme`'s output for a C/H deck.
+    d2_block = [
+        "# MM.UnitsEnergy   eV     # units of the C6 column",
+        "# MM.UnitsDistance Ang    # units of the R0 column",
+        "# MM.Grimme.S6     0.75   # PBE 0.75, BLYP 1.20, B3LYP 1.05",
+        "# MM.Grimme.D      20.    # damping steepness d (D2 uses 20)",
         "# %block MM.Potentials",
-        "#   # species_i  species_j  type     C6 (J*nm^6/mol)  R0 (Ang)",
-        "#   #   C           C         Grimme   1.75             1.452",
-        "#   #   C           H         Grimme   ...              ...",
-        "#   #   N           N         Grimme   ...              ...",
-        "#   # See SIESTA manual sec. 5.20 (MM.Potentials) and Grimme",
-        "#   # (2006) Tables 1+2 for C6 / R0 per species.  The example",
-        "#   # values ARE Grimme 2006's (C: C6=1.75 J*nm^6/mol, R0=1.452 A);",
-        "#   # the old header labelled them Eh*Bohr^6 / Bohr, units they",
-        "#   # never were.  CHECK your SIESTA version's expected",
-        "#   # MM.Potentials units against the manual before uncommenting.",
+        "#   1  1  Grimme   18.14   2.904   # C / C",
+        "#   1  2  Grimme    5.13   2.453   # C / H",
         "# %endblock MM.Potentials",
+    ]
+
+    out: List[str] = ["# --- Dispersion correction (commented template) ---"]
+    if not v:
+        out += [
+            "# DFT-D3 on top of the current XC -- one line, no table:",
+            "#      DFTD3 T",
+            "# ...or Grimme-D2 pair potentials, which SIESTA's own",
+            "# `fdf2grimme <this file>` writes for you:",
+        ]
+        return out + d2_block
+
+    out += [
+        f"# {xc_authors} is a non-dispersive XC: long-range vdW",
+        "# (C6/r^6) is missing.  Organic / biomolecule consequences:",
+        "#   * DNA stacking under-bound by 5-10 kcal/mol per pair",
+        "#   * peptide folding favours wrong conformers",
+        "#   * molecular crystals: lattice constants too long by 0.1-0.3 A",
+        "#   * surface adsorption (benzene/graphite, etc.) off ~10x",
+        "# Three ways to fix.  Pick ONE:",
+        "#",
+        "# 1) Switch to a vdW-aware XC (cheapest correctness):",
+        "#      XC.functional VDW",
+        "#      XC.authors    DRSLL    (or KBM, LMKLL, BH, VV)",
+        "#    The non-local correlation lives in the functional;",
+        "#    no dispersion block needed.",
+        "#",
+        "# 2) DFT-D3 on top of the current XC -- one line, no table:",
+        "#      DFTD3 T",
+        "#    SIESTA then picks D3 parameters matched to the",
+        "#    functional (DFTD3.UseXCDefaults, default true: PBE,",
+        "#    PBESol, RevPBE, RPBE, LYP, BLYP -- and HSE06 / PBE0",
+        "#    with LibXC).  Newer and better than D2: the C6 depend",
+        "#    on each atom's coordination, and a 3-body term is",
+        "#    included.  Requires a SIESTA built against s-dftd3;",
+        "#    if yours is not, use route 3 below.",
+        "#",
+        "# 3) Grimme-D2 via the molecular-mechanics pair potential.",
+        "#    Do NOT type this table by hand -- SIESTA ships a utility",
+        "#    that writes it from this very deck:",
+        "#      fdf2grimme <this file>",
+        "#    (SIESTA's Util/Grimme; installed under that name in",
+        "#    molbuilder's siesta env).  Paste its output, which looks",
+        "#    like this:",
+    ]
+    out += d2_block
+    out += [
+        "#",
+        "#    Set MM.Grimme.S6 yourself: SIESTA's default is 1.66, a",
+        "#    DZ-basis value, NOT your functional's.",
+        "#    Column by column:",
+        "#      1,2  the two SPECIES NUMBERS from ChemicalSpeciesLabel",
+        "#           -- integers.  Element symbols are NOT accepted:",
+        "#           SIESTA counts the line but cannot parse it, then",
+        '#           stops with "Too many lines in MM.Potentials block',
+        '#           are not read".',
+        "#      3    the potential name, Grimme",
+        "#      4    C6 for the PAIR, in eV*Ang^6:",
+        "#             C6_ij = sqrt(C6_i * C6_j)",
+        "#      5    R0 for the PAIR, in Ang -- the SUM of the two",
+        "#           atomic vdW radii, already carrying Grimme's 1.1",
+        "#           correction factor:  R0_ij = R0_i + R0_j",
+        "#    SIESTA evaluates",
+        "#      E = -s6 * C6_ij / r^6 * 1/(1+exp(-d*(r/R0_ij - 1)))",
+        "#    so R0_ij is the distance where damping is 1/2.  Halving",
+        "#    it (passing a per-atom radius) stops suppressing the",
+        "#    term between BONDED atoms, double-counting binding that",
+        "#    DFT already describes.",
+        "#",
+        "#    Grimme 2006 (J. Comput. Chem. 27, 1787) tabulates the",
+        "#    PER-ATOM values in J*nm^6/mol and nm.  To convert:",
+        "#      C6[eV*Ang^6] = C6[J*nm^6/mol] * 10.36",
+        "#      R0[Ang]      = R0[nm] * 10",
+        "#    Carbon: 1.75 -> 18.14 eV*Ang^6, and 0.1452 nm -> 1.452",
+        "#    Ang, so a C-C PAIR takes R0 = 2.904.",
     ]
     return out
 

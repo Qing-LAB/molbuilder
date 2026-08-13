@@ -562,6 +562,36 @@ alias), `test_cli_siesta_stages.py` + `test_siesta_form_schema_stage_table.py`
 - **Pulay** DM mixing (SCF section) — Pulay, *Chem. Phys. Lett.* **73**, 393 (1980).
 - **ELPA** eigensolver (§ 7) — Marek et al., *J. Phys.: Condens. Matter* **26**,
   213201 (2014). **FIRE** relaxation (§ 8) — Bitzek et al., *PRL* **97**, 170201 (2006).
-- Dispersion (**DFT-D2**, the §7-XC `MM.Potentials` template) — Grimme, *J. Comput.
-  Chem.* **27**, 1787 (2006). Kleinman-Bylander pseudopotential form — see
+- Dispersion — **DFT-D2** (the `MM.Potentials` template) Grimme, *J. Comput.
+  Chem.* **27**, 1787 (2006); **DFT-D3** (the `DFTD3 T` route) Grimme, Antony,
+  Ehrlich, Krieg, *J. Chem. Phys.* **132**, 154104 (2010).
+  Kleinman-Bylander pseudopotential form — see
   [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md).
+
+### Reference sources — where the authoritative SIESTA documentation lives
+
+molbuilder does not vendor the SIESTA manual (it is versioned with SIESTA, and
+the Documents tab serves markdown, not PDF). When an fdf keyword's meaning,
+units, or default is in question, these are the sources that settle it, in
+descending order of authority:
+
+| Source | Where | Settles |
+| --- | --- | --- |
+| Manual source (LaTeX) | `<siesta-gpu env>/opt/siesta-gpu-stack/src/siesta/Docs/tex/sections/` — one `.tex` per topic, e.g. `Options/Auxiliary_force_field.tex` for the `MM.*` keywords | The documented meaning, units, and defaults of every fdf entry |
+| The block/keyword parser | same tree, `Src/*.F90` — e.g. `Src/molecularmechanics.F90` for `MM.Potentials` | What the binary *actually* does when the manual is ambiguous |
+| Shipped utilities | `Util/` in the same tree; installed into the siesta env's `bin/` | Correct-by-construction input. `fdf2grimme <deck>.fdf` prints a complete D2 `MM.Potentials` block for the deck's species |
+| Online manual | <https://docs.siesta-project.org> | Same content, current release |
+
+Two facts worth keeping in view because they differ between our two envs:
+
+- The **CPU** build (`molbuilder-siesta`) is compiled with **DFT-D3** support
+  (`DFTD3`, `DFTD3.UseXCDefaults`, `DFTD3.BJdamping`, …) and ships
+  `fdf2grimme`. The **GPU** build (`molbuilder-siesta-gpu`) has neither: it
+  carries the full manual + source tree instead.
+- The manual is only present in the GPU env, because that one is built from
+  source; the conda CPU env ships binaries and utilities without `Docs/`.
+
+Checking a keyword against the parser rather than memory is what caught the
+three errors in the emitted D2 example (species *numbers* not symbols; C6 in
+`eV·Å⁶` not `J·nm⁶/mol`; `R0` the *sum* of the two atomic radii) — see
+`_emit_dispersion_template` in `molbuilder/siesta/input.py`.
