@@ -291,10 +291,16 @@ launch (all in `molbuilder/runwrap.py`):
   single `EXIT` trap.
 - **Per-rank GPU + NUMA pinning.** A generated helper assigns each rank a GPU
   (`CUDA_VISIBLE_DEVICES`) and, when the rank's cpuset spans more than one
-  socket, pins it with `numactl` to the NUMA node that *owns* its GPU. The
-  GPU→NUMA mapping is probed at **generation** time (NVML + sysfs) and baked as a
-  literal, overridable at runtime with `MOLBUILDER_GPU_NUMA`. Opt out of socket
-  pinning with `MB_NO_SOCKET_PIN=1`.
+  socket, pins it with `numactl` to the NUMA node that *owns* its GPU — **the
+  helper probes that mapping itself, per rank, at run time** (nvidia-smi +
+  sysfs). Opt out of socket pinning with `MB_NO_SOCKET_PIN=1`.  Separately,
+  the **whole-job** `numactl` wrap (single-GPU, off-SLURM only — it is
+  cleared under SLURM and for multi-GPU runs, where one node cannot own
+  every rank) uses a GPU→NUMA answer probed at **generation** time (NVML +
+  sysfs), baked as a literal and overridable with `MOLBUILDER_GPU_NUMA`.
+  *(Until 2026-08-12 this bullet put the baked literal and the override
+  inside the per-rank story — the per-rank helper reads neither; the
+  override's whole reach is the whole-job wrap.)*
 
 > **Override precedence, stated once:** `MOLBUILDER_MPI_NP` /
 > `MOLBUILDER_OMP_NUM_THREADS` change the GPU-mode **defaults only** — an

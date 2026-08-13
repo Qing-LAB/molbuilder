@@ -302,9 +302,13 @@ and **there is one convention for it**:
   `render_siesta_stage_fdfs` and `stages_to_jobset` as the renderers — both
   deleted in the fold, step 6 u5; the JobSet is derived from the description,
   never emitted beside it)* — names each stage's input `.fdf`
-  and stdout `.out` **`<label>_<NN>_<name>`**: an **underscore** joining the
-  label, the stage's assigned ordinal and its name (the shipped ladder's names
-  are `coarse` / `medium` / `tight`):
+  and stdout `.out` from the stem **`<label>_<NN>_<name>`**: an **underscore**
+  joining the label, the stage's assigned ordinal and its name (the shipped
+  ladder's names are `coarse` / `medium` / `tight`).  The stdout additionally
+  carries the wrapper's run counter — `<stem>-run<N>.out` — in EVERY shape
+  (one emitter; the attempt directory disambiguates in the hierarchy and the
+  counter does in flat, but the filename is the same in both — D18d,
+  2026-08-12):
 
   ```
   bundle-or-dir/

@@ -749,7 +749,7 @@ flowchart LR
     R["a run<br/>runs"]
 
     UI --> P
-    P -->|"--bench"| B
+    P -->|"prep bench"| B
     B -->|"the measured answer"| P
     P -->|"a run directory"| R
     R -->|"its results, and what you learned"| P
@@ -1096,7 +1096,7 @@ sequenceDiagram
     B->>T: template.toml · task.json · pseudopotentials
     Note over T: portable — names no machine
 
-    U->>C: prep tight --bench
+    U->>C: jobset prep bench tight
     C->>T: bench/ — decks made measurable
     U->>C: submit
     C->>E: run the trials
@@ -1106,7 +1106,7 @@ sequenceDiagram
 
     Note over U: you read it and decide
 
-    U->>C: prep tight --bench-result … --from 01_coarse/run-0
+    U->>C: jobset prep run tight --from 01_coarse/run-0 (offered the verdict — answers yes)
     C->>T: 02_tight/<label>_02_tight.fdf · run-0/ · copied .XV
     C-->>U: what it resolved, and what it copied
     U->>C: submit tight

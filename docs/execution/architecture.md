@@ -100,7 +100,7 @@ rule, and you can read a folder and know what happened without opening a file.
 >
 > | | what it is | which kind |
 > |---|---|---|
-> | **`bench`** | a whole second lifecycle for measuring — build · run · read · use-the-answer, each with two spellings | **a merge.** The resolution is already settled: *benchmarking is `prep`, specialised* (`project-layout.md § 2.3.1a`) |
+> | **`bench`** | ~~a whole second lifecycle for measuring — build · run · read · use-the-answer, each with two spellings~~ **MERGED (the fold, 2026-08-12):** benchmarking IS `prep`, specialised (`project-layout.md § 2.3.1a`) — the jobset verbs own the whole loop, and `bench/` keeps only two utilities (`siesta-gpu`, `probe-scheduler`) | **a merge, now landed.** This row stays as the record that the rule was breached and how the breach closed |
 > | **`transport`** | `transport bundle` emits `run-transport.sh`, which **chains** three coupled runs outside the job system entirely | **a separate kind** *(decided 2026-08-11, user)*. A `JobSet` carries no edges, and it is not getting any: transport is a **multi-component job** — several results combined — designed on its own rather than folded into the single-parameter-set pipeline ([`engines/transport.md`](?doc=engines/transport.md) § 8) |
 >
 > **They are not the same problem, and a plan that treated them alike would
