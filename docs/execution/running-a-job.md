@@ -211,6 +211,17 @@ When `mpi_np` was left auto at generation, the baked default is the machine's
 `NumberOfAtoms` in the `.fdf`), with a printed note. A user who *explicitly*
 sets `mpi_np > n_atoms` is honoured and warned.
 
+> **The auto-rank `.sbatch` floor (F15, recorded 2026-08-13).** A GPU job
+> generated with auto ranks writes `#SBATCH -n <gpu count>` as a header
+> floor — and inside the job, `SLURM_NTASKS` from that floor outranks the
+> runtime GPU policy, so the job runs at the floor, not the policy.  This
+> path is unreachable in the jobset workflow (prep always resolves an
+> explicit rank count) and moot wherever `mpi_np` is set explicitly — the
+> project's practice.  The guard for the remaining case is the `--dry-run`
+> inspection: it names each value's source and warns when the sibling
+> header's `-n` disagrees with the resolved count, so the mistake cannot
+> pass the check you run before spending a queue slot.
+
 > ### ⚠ The clamp is a heuristic guard, not the mechanism — corrected 2026-08-11
 >
 > This section used to say *"a run with more MPI ranks than atoms **aborts**

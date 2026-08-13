@@ -128,6 +128,7 @@ def _run_index_resolver(basename: str, ext: str = ".out") -> str:
         f'        _existing_max=$_n\n'
         f"    fi\n"
         f"done\n"
+        f"shopt -u nullglob 2>/dev/null || true\n"  # D18c: restore
         f"\n"
         f'if [ "$_force" = "1" ]; then\n'
         f"    # --force: explicitly restart the sequence at -run0 (SIESTA's\n"
@@ -345,12 +346,15 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
         f"# molbuilder itself wrote.  No list of engine extensions: a\n"
         f"# list is a snapshot of one build, and a file nobody listed\n"
         f"# is a file --cold walks past.\n"
+        # THE ONE label extraction (F13, 2026-08-13): outside the --cold
+        # guard, so the status banner below reads THIS value instead of
+        # re-extracting without the sanitizer and overwriting it.
+        + label_extract +
         f'if [ "$_cold" = "1" ]; then\n'
         f"    # UTC timestamp keeps multiple cold runs from colliding.\n"
         f'    _aside="{basename}-restart-aside-$(date -u +%Y%m%dT%H%M%SZ)"\n'
         f"    _moved=0\n"
         f"    shopt -s nullglob 2>/dev/null || true\n"
-        f"    {label_extract}"
         f"    echo \"[molbuilder] --cold: name sweep over "
         f"\\\"$_warm_label\\\".* and \\\"{basename}\\\".* -- everything the id "
         f"names, minus what molbuilder wrote\" >&2\n"
@@ -374,6 +378,7 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
         f"    else\n"
         f'        echo "[molbuilder] --cold: nothing under this name to move; already a clean start" >&2\n'
         f"    fi\n"
+        f"    shopt -u nullglob 2>/dev/null || true\n"  # D18c: restore
         f"fi\n"
         f"\n"
     )
@@ -570,37 +575,12 @@ def _runtime_status_block(
     # portable case-insensitive matching (no gawk IGNORECASE),
     # quote-stripping for SystemLabel, ``|| true`` under set-e,
     # ``:-`` default under set-u.
-    # The SAME sanitizer as the cold block's extraction (D13,
-    # 2026-08-12): this unconditional copy runs AFTER the cold one and
-    # overwrote its sanitized value with an unsanitized re-read --
-    # exposure nil today (every consumer quotes), but two extractions
-    # with one sanitizer is exactly how the quoting discipline erodes.
-    _sanitize = (
-        'case "$_warm_label" in\n'
-        '    *[!A-Za-z0-9._-]*)\n'
-        f'        _warm_label="{basename}"\n'
-        '        ;;\n'
-        'esac\n'
-    )
-    if engine == "siesta":
-        label_extract_unconditional = (
-            f'_warm_label=$(awk \''
-            f'tolower($1) == "systemlabel" '
-            f'{{ gsub(/"/, "", $2); print $2; exit }}'
-            f'\' "{script_name}" 2>/dev/null || true)\n'
-            f'_warm_label="${{_warm_label:-{basename}}}"\n'
-            + _sanitize
-        )
-    else:                              # pyscf
-        # Same octal-\047 escape rationale as in label_extract above.
-        label_extract_unconditional = (
-            f'_warm_label=$(awk -F\'["\\047]\' \''
-            f'/^[[:space:]]*JOB[[:space:]]*=/ '
-            f'{{print $2; exit}}'
-            f'\' "{script_name}" 2>/dev/null || true)\n'
-            f'_warm_label="${{_warm_label:-{basename}}}"\n'
-            + _sanitize
-        )
+    # NO second extraction (F13, 2026-08-13): ``$_warm_label`` is
+    # extracted ONCE, sanitized, by the cold-restart block's prefix --
+    # which runs unconditionally, before this banner, in both engines.
+    # The unconditional re-read that stood here overwrote the sanitized
+    # value with an unsanitized one on every --cold run.
+    label_extract_unconditional = ""
     return (
         f"# --- Runtime status banner --------------------------\n"
         f"# Reads the actual on-disk script + state files at run\n"
@@ -719,7 +699,7 @@ def _bash_numa_from_gpu(gpu_expr: str, out_var: str,
     """Emit bash that resolves the NUMA node of the GPU at index
     ``gpu_expr`` into ``out_var`` (``-1`` when unknown).
 
-    Single source for the sysfs lookup so the per-rank launcher (§ 7.5.1)
+    Single source for the sysfs lookup so the per-rank launcher (running-a-job.md § 3.3)
     and the ``--dry-run`` placement report don't each carry their own
     copy of the subtle bit: ``nvidia-smi`` prints an **8-hex-digit** PCI
     domain (``00000000:02:00.0``) but the kernel sysfs path uses **4**
@@ -753,7 +733,7 @@ def _gpu_loadbalance_block() -> str:
     EMITS  one stderr line ``molbuilder: GPU load-balance -- N ranks over
            G GPU(s) = K rank(s)/GPU`` -- the human-checkable confirmation
            that K matches the allocation (validation pinpoint for the
-           § 11 benchmark sweep).
+           benchmark sweep, job-contracts.md § 6).
     WHY: K is the knob the benchmark sizes; it must come from the ACTUAL
     runtime allocation (SLURM may grant a different GPU count than
     generation assumed).  1 GPU degenerates to all-ranks-on-GPU0 (the
@@ -908,7 +888,7 @@ def _gpu_per_rank_launcher_block() -> str:
     GOAL: give every MPI rank its own GPU and (under SLURM) defer CPU/mem
     placement to the scheduler.  Implements the general load-balance
     model -- 1 GPU degenerates to "all ranks on GPU0", N GPUs
-    block-distribute -- with no code fork on GPU count (§ 7.5.1).
+    block-distribute -- with no code fork on GPU count (running-a-job.md § 3.3).
 
     WRITES a runtime helper ``.mb-rank-launch-$$.sh`` (``trap``-removed on
     EXIT) in which each rank computes ``gpu = local_rank*ngpu/localsize``,
@@ -920,7 +900,7 @@ def _gpu_per_rank_launcher_block() -> str:
           ``_launch_cmd`` assembly interpolates in place of bare siesta).
     UNDER SLURM (``$SLURM_JOB_ID`` set): clears ``$_numa_wrap_gpu`` and
           ``$_mpirun_bind`` so we do NOT double-bind against SLURM's
-          cgroup cpuset (P1 in § 7.5.1.b; the benchmark logs the actual
+          cgroup cpuset (running-a-job.md § 3.3; the benchmark logs the actual
           cpuset to confirm SLURM bound near the GPU).
     WHY a helper FILE (not ``bash -c``): the per-rank logic can't survive
     as a word-split ``_launch_cmd`` string -- the ``bash -c`` quoting
@@ -1112,6 +1092,9 @@ def _siesta_dry_run_block(script_name: str, gpu_mode: bool) -> str:
     """
     _dr_stem = script_name.rsplit(".", 1)[0]
     return (
+        # Emitted header: § 2.6's anatomy guard reads blocks by these
+        # (D9, user decision 2026-08-13: document, don't soften).
+        f"# --- Dry-run preview (--dry-run) ----------------------\n"
         f'if [ "$_dry_run" = 1 ]; then\n'
         f'    echo ""\n'
         f'    echo "===== molbuilder DRY RUN (no SIESTA launch) ====="\n'
@@ -1192,7 +1175,7 @@ def _siesta_scf_timing_func() -> str:
     it tees SIESTA stdout to the ``.out`` AND timestamps every ``scf:``
     iteration line into a per-run ``.scf-timing.log`` as
     ``<epoch.ns> <iter#> <full scf line>``, so per-iteration wall time =
-    consecutive-stamp delta (report mean of iters 3–5, § 11.0).
+    consecutive-stamp delta (report mean of iters 3–5; running-a-job.md § 4.1).
 
     EXPECTED OUTPUT: `<basename>-runN.scf-timing.log`, one line per SCF
     iteration; subtracting adjacent epochs gives the steady-state
@@ -2781,13 +2764,17 @@ def render_run_wrapper(script_path: Path, *,
             f"# below reads the .out for ``propor: ERROR`` and prints a\n"
             f"# retry suggestion.  Then we re-exit with SIESTA's code.\n"
             f"# stdout is piped through _mb_scf_tee, which writes the .out\n"
-            f"# AND the per-iteration .scf-timing.log (§ 11.0b); SIESTA's\n"
+            f"# AND the per-iteration .scf-timing.log (running-a-job.md § 4.1); SIESTA's\n"
             f"# stderr stays on the wrapper's stderr (runwrap log).  We read\n"
             f"# ${{PIPESTATUS[0]}} so awk never masks SIESTA's exit code.\n"
             f'_scf_timing_log="${{_out_file%.out}}.scf-timing.log"\n'
             f'_log INFO "scf timing  : per-iteration stamps -> '
             f'$_scf_timing_log"\n'
-            # --- Background job monitor (PoC; § 11.0b) -------------------
+            # A '# ---' header in the EMITTED text: § 2.6's anatomy guard
+            # reads blocks by these headers, and this real compute-node
+            # work was structurally invisible to it (D9, user decision
+            # 2026-08-13: document, don't soften the claim).
+            f"# --- Background job monitor ---------------------------\n"
             # The monitor is the SELF-CONTAINED, stdlib-only ``mb_monitor.py``
             # shipped next to this wrapper (a copy of molbuilder/monitor.py).
             # It runs with the JOB's OWN python from the working dir -- NO
@@ -2994,6 +2981,7 @@ def render_run_wrapper(script_path: Path, *,
     else:
         launch_block = (
             f'_log INFO "resolved launch : {inner}"\n'
+            f"# --- Dry-run preview (--dry-run) ----------------------\n"
             f'if [ "$_dry_run" = 1 ]; then\n'
             f'    echo ""\n'
             f'    echo "===== molbuilder DRY RUN (no PySCF launch) ====="\n'
@@ -3183,7 +3171,7 @@ def _ship_monitor_script(dest_dir: Path) -> Path:
     the JOB's OWN python, from the working directory -- molbuilder is
     never installed and the backend env has no numpy/molbuilder, so the
     monitor cannot be reached as ``python -m molbuilder monitor``.  A
-    verbatim copy of the stdlib-only module solves it (§ 11.0b, item F).
+    verbatim copy of the stdlib-only module solves it (running-a-job.md § 4.1).
     Overwrites any existing copy so it stays in sync with the package.
     """
     from . import monitor as _monitor
@@ -3308,7 +3296,7 @@ def write_run_wrapper(script_path: Path, *,
     # the wrapper can run it with the JOB's own python (the backend env
     # has no molbuilder/numpy; molbuilder is never installed -- it runs
     # from the repo dir only).  ``mb_monitor.py`` is a verbatim copy of
-    # the stdlib-only molbuilder/monitor.py (§ 11.0b, item F).
+    # the stdlib-only molbuilder/monitor.py (running-a-job.md § 4.1).
     if script_path.suffix.lower() == ".fdf":
         _ship_monitor_script(script_path.parent)
 
@@ -3345,10 +3333,10 @@ def _maybe_write_sbatch(script_path: Path,
       * ``-n`` (ntasks) = the **MPI rank count** (``mpi_np``) for BOTH CPU
         and GPU jobs.  For GPU jobs ``--gres`` carries the **GPU count**,
         which is INDEPENDENT of the rank count: under the K-ranks-per-GPU
-        load-balance model (§ 7.5.1), ranks may exceed GPUs (e.g. 8 ranks
+        load-balance model (running-a-job.md § 3.3), ranks may exceed GPUs (e.g. 8 ranks
         sharing 1 A100 via MPS -> ``-n 8 --gres=gpu:a100:1``).
       * Unset ``mpi_np`` falls back to 1 (the launcher still resolves the
-        runtime rank count from ``SLURM_NTASKS``, § 7.3).
+        runtime rank count from ``SLURM_NTASKS``, running-a-job.md § 3.1).
     """
     from . import runtime_config as _rc
     project_dir = script_path.parent if script_path.parent.exists() else None
@@ -3372,7 +3360,7 @@ def _maybe_write_sbatch(script_path: Path,
     if gpu:
         # ``--gres`` carries the GPU COUNT; ``-n`` (ntasks) is the MPI
         # RANK count.  These are INDEPENDENT -- under the K-ranks-per-GPU
-        # load-balance model (§ 7.5.1) ranks may exceed GPUs (e.g. 8 ranks
+        # load-balance model (running-a-job.md § 3.3) ranks may exceed GPUs (e.g. 8 ranks
         # sharing 1 A100 via MPS).  So ntasks = mpi_np, NOT the GPU count.
         if gpu_count is None:
             gpu_count = 1   # default to 1 GPU when --gres count not given
@@ -3380,7 +3368,7 @@ def _maybe_write_sbatch(script_path: Path,
     else:
         # CPU job: ntasks = mpi_np (the rank count).  When unset, 1 is a
         # safe header floor -- under sbatch the launcher reads
-        # SLURM_NTASKS (§ 7.3), so the user controls scale via -n.
+        # SLURM_NTASKS (running-a-job.md § 3.1), so the user controls scale via -n.
         ntasks = mpi_np if (mpi_np and mpi_np >= 1) else 1
 
     return write_sbatch(
@@ -3485,10 +3473,10 @@ def render_sbatch(script_path: Path,
         share one GPU via MPS, so ntasks = mpi_np, NOT the GPU count
         (this line said "1 rank per GPU -- pass gpu_count", which its
         own caller contradicts).  Under sbatch the
-        launcher reads ``SLURM_NTASKS`` (runwrap line ~1367), so this
-        ``-n`` and ``mpirun -np`` agree by construction (§ 7.3).
+        launcher reads ``SLURM_NTASKS`` (the resolution chain in the args block), so this
+        ``-n`` and ``mpirun -np`` agree by construction (running-a-job.md § 3.1).
       gpu: emit the ``--gres`` + ``--gres-flags=enforce-binding`` lines
-        and route to ``scheduler.gpu.partition`` (§ 7.4, § 8).
+        and route to ``scheduler.gpu.partition`` (running-a-job.md § 5.3).
       exclusive: ``--exclusive``.  Defaults to ``scheduler.gpu.exclusive``
         for GPU jobs (None => use the config value); always off for CPU.
     """
@@ -3521,7 +3509,7 @@ def render_sbatch(script_path: Path,
 
     if gpu:
         # GPU jobs route to gpu.partition when set; else the same
-        # partition (on Sol `public` carries the GPU nodes -- § 7.4).
+        # partition, from the scheduler config (running-a-job.md § 5.3).
         partition = gpu_cfg.get("partition") or partition
         gpu_type  = gpu_type or gpu_cfg.get("default_type")
         if not gpu_type:
@@ -3531,7 +3519,11 @@ def render_sbatch(script_path: Path,
                 "(running-a-job.md § 3.1)."
             )
         if gpu_count is None:
-            gpu_count = ntasks  # 1 rank per GPU (§ 7.5.1)
+            gpu_count = ntasks  # a floor only -- ranks routinely EXCEED GPUs
+                                # (K ranks share a GPU via MPS,
+                                # running-a-job.md § 3.3); the old
+                                # '1 rank per GPU' comment taught the
+                                # retired model (D12e, 2026-08-13)
         if exclusive is None:
             exclusive = bool(gpu_cfg.get("exclusive", False))
     else:
@@ -3634,7 +3626,7 @@ def render_sbatch(script_path: Path,
         "# Generated at prep from the `scheduler` config block.",
         "# Authoritative design: docs/execution/job-system.md.",
         "# Submit with:  cd <projdir>; sbatch "
-        f"{basename}.sbatch   (NOT bash -- § 7.8)",
+        f"{basename}.sbatch   (NOT bash -- sbatch reads the #SBATCH header; bash would ignore it)",
         "#",
         f"#SBATCH -J {basename}",
         "#SBATCH -N 1",
@@ -3650,7 +3642,7 @@ def render_sbatch(script_path: Path,
         lines.append(f"#SBATCH --gres=gpu:{gpu_type}:{gpu_count}")
         # Nudge SLURM toward co-locating the CPU cores with the GPU's
         # NUMA node; the launcher still does the authoritative per-rank
-        # runtime bind (§ 7.5.1).
+        # runtime bind (running-a-job.md § 3.3).
         lines.append("#SBATCH --gres-flags=enforce-binding")
     if exclusive:
         lines.append("#SBATCH --exclusive")
@@ -3693,7 +3685,7 @@ def render_sbatch(script_path: Path,
         "# SLURM lands us in SLURM_SUBMIT_DIR = the project dir; the\n"
         "# launcher never cd's (running-a-job.md § 5).  --export=NONE means a\n"
         "# clean env, so the launcher's `module load mamba` + activation\n"
-        "# are load-bearing (§ 7.1).  \"$@\" forwards --cold / --continue.\n"
+        "# are load-bearing (running-a-job.md § 2.2a).  \"$@\" forwards --cold / --continue.\n"
         f"bash {basename}.run.sh \"$@\"\n"
     )
     return "\n".join(lines) + "\n" + body

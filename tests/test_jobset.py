@@ -902,9 +902,6 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
                 for h in _re.findall(r"^# --- (.+?) -*$", txt, _re.M)}
 
     _write_config(tmp_path)      # activation from the bundle, not the cwd
-    # an ESTIMABLE CPU deck: the memory block only renders when the
-    # estimator can read the size fields (and never for GPU decks, which
-    # budget through gpu.mem) -- an "x" deck hid the row
     (tmp_path / "JOB.fdf").write_text(
         "SystemName j\nSystemLabel JOB\nNumberOfAtoms 100\n"
         "NumberOfSpecies 1\nMeshCutoff 300 Ry\nBasis.Size DZP\n")
@@ -921,17 +918,40 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
     maximal = _blocks(write_run_wrapper(tmp_path / "GPU.fdf", env="e",
                                         mpi_np=4, gres="gpu:a100:1",
                                         continue_retries=2).read_text())
-    union = minimal | maximal
+    # The ESTIMABLE CPU deck (D9 tightening, user decision 2026-08-13):
+    # the Memory block renders only from a chemically parseable deck
+    # (species + coordinates) -- which NEITHER fixture above carries, so
+    # its row lived on the conditional escape and could stop rendering
+    # without any test noticing.  (The comment claiming JOB.fdf was
+    # "estimable" was false -- the G2 re-review's finding.)
+    (tmp_path / "EST.fdf").write_text(
+        "SystemName e\nSystemLabel EST\nNumberOfAtoms 2\n"
+        "NumberOfSpecies 1\nMeshCutoff 300 Ry\nBasis.Size DZP\n"
+        "%block ChemicalSpeciesLabel\n1 1 H\n"
+        "%endblock ChemicalSpeciesLabel\n"
+        "%block AtomicCoordinatesAndAtomicSpecies\n"
+        "0.0 0.0 0.0 1\n0.0 0.0 0.74 1\n"
+        "%endblock AtomicCoordinatesAndAtomicSpecies\n")
+    estimable = _blocks(write_run_wrapper(tmp_path / "EST.fdf",
+                                          env="e", mpi_np=2).read_text())
+    # PySCF (D9: the guard never rendered one, so its parsing header
+    # matched no row and its anatomy was unguarded entirely)
+    (tmp_path / "PY.py").write_text('JOB = "PY"\nimport pyscf\n')
+    pyscf = _blocks(write_run_wrapper(tmp_path / "PY.py",
+                                      env="e").read_text())
+    union = minimal | maximal | estimable | pyscf
     assert union <= documented, (
         "the wrapper emits blocks job-contracts.md § 2.6 does not list:\n"
         f"  {sorted(union - documented)}")
-    # a documented row these two renders did not produce must SAY it is
-    # conditional -- the memory audit needs a chemically parseable deck
-    # (species + coordinates) neither fixture carries
+    # EVERY documented row must render in at least one fixture -- the
+    # conditional tag describes WHEN a block appears, it is not an
+    # exemption from proof.  Before this (D9), any conditional-tagged
+    # row could silently stop being emitted and the guard stayed green.
     unrendered = documented - union
-    assert unrendered <= conditional, (
-        "§ 2.6 lists unconditional blocks the wrapper never emitted:\n"
-        f"  {sorted(unrendered - conditional)}")
+    assert not unrendered, (
+        "§ 2.6 lists blocks no fixture renders -- extend the fixture set "
+        f"or retire the rows:\n  {sorted(unrendered)}")
+    assert conditional, "the conditional tags vanished from the table"
 
 
 def test_prep_writes_stage_plan_md(tmp_path):

@@ -408,15 +408,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     stages = tuple(_stage_from_obj(s, varies, i)
                    for i, s in enumerate(raw_stages))
 
-    seen: dict[str, str] = {}
-    for st in stages:
-        low = st.name.lower()
-        if low in seen:
-            _refuse(f"two stages named {st.name!r}"
-                    + (f" and {seen[low]!r}" if seen[low] != st.name else "")
-                    + " -- names are compared case-insensitively because they "
-                      "become filenames (engines/stages.md 6.6)")
-        seen[low] = st.name
+    _refuse_duplicate_stage_names(stages)
 
     # ``varies`` stays a tuple here even when empty: it travels WITH
     # ``stages``, and an empty one is a real state -- several stages that
@@ -548,6 +540,16 @@ def _ladder_from_objs(payload: Any) -> Tuple[Tuple[str, ...],
     stages = tuple(_stage_from_obj(obj, frozen, i)
                    for i, obj in enumerate(payload))
 
+    _refuse_duplicate_stage_names(stages)
+
+    return frozen, stages
+
+
+def _refuse_duplicate_stage_names(stages) -> None:
+    """ONE copy of the case-insensitive duplicate check (D10, 2026-08-13:
+    both parsers carried an identical loop, and the constructor a third
+    exact-string variant -- three checks, one rule, drifting apart).
+    Case folds because names key filenames (engines/stages.md § 2)."""
     seen: dict[str, str] = {}
     for st in stages:
         low = st.name.lower()
@@ -557,8 +559,6 @@ def _ladder_from_objs(payload: Any) -> Tuple[Tuple[str, ...],
                     + " -- names are compared case-insensitively because they "
                       "become filenames (engines/stages.md 6.6)")
         seen[low] = st.name
-
-    return frozen, stages
 
 
 def derive_run(name: str, formula: str = "", *, created: str = "",

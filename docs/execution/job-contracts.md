@@ -470,14 +470,14 @@ wrapper contains these and nothing else:
 
 | block | what it is for |
 |---|---|
-| **Launch-door gate** | one launch door (`job-system.md` § 5.3): `submit` sets `MB_LAUNCHED_BY` (direct: child env; sbatch: `--export=ALL,MB_LAUNCHED_BY=jobset-submit`, robust to site export policy). Without it a terminal call warns and asks (a **yes is exported**, so the warm-retry re-exec keeps the answer; **EOF refuses** with the verdict line); a non-interactive call refuses with exit 2 and the fix; `-h`/`--help` is answered **before** the gate with no bootstrap run. `MB_LAUNCHED_BY=manual` is the deliberate, logged override — the verdict is recorded in the job's `.out` **and the runwrap log** either way *(user 2026-08-12; edges repaired U10)* |
+| **Per-run log file** | where this invocation's log goes — emitted FIRST, before the gate, so even a refused launch leaves a record *(row order corrected 2026-08-13: it sat 8th while emitting first)* |
+| **Launch-door gate** | one launch door (`job-system.md` § 5.3): `submit` sets `MB_LAUNCHED_BY` (direct: child env; sbatch: `--export=ALL,MB_LAUNCHED_BY=jobset-submit`, robust to site export policy). Without it a terminal call warns and asks (a **yes is exported**, so the warm-retry re-exec keeps the answer; **EOF refuses** with the verdict line); a non-interactive call refuses with exit 2 and the fix; `-h`/`--help` is **scanned** before the gate (§ 5.5's verb — the gate steps aside; the usage text itself prints later, in the args loop) with no bootstrap run. `MB_LAUNCHED_BY=manual` is the deliberate, logged override — the verdict is recorded in the job's `.out` **and the runwrap log** either way *(user 2026-08-12; edges repaired U10)* |
 | **Baked preamble** | the site's own lines, verbatim from `script_generation.preamble` |
 | **Activation** | the one activation statement, verbatim |
 | **Continuation flags** | the shared `--continue` / `--cold` / `--force` handling |
 | **SIESTA-specific argument parsing** | `-np` / `-omp` and friends |
 | **Run index resolution** | picks `-runN` so a re-run never overwrites |
 | **Cold-restart: NAME SWEEP** | what `--cold` does — everything the id names goes aside, minus what molbuilder wrote (§ 4.1, U17) |
-| **Per-run log file** | where this invocation's log goes |
 | **Runtime status banner** | prints what it found — warm files, ranks |
 | **Probe SIESTA build at runtime** | reads the build's own capabilities |
 | **Record resolved launch command + placement** | writes down what it is about to do |
@@ -487,6 +487,9 @@ wrapper contains these and nothing else:
 | **GPU<->CPU socket co-location** | *(GPU decks only)* pins ranks beside the GPU's own NUMA node so host<->device traffic stays on-socket |
 | **Memory: estimate** | *(decks the estimator can read)* the CPU memory estimate vs the SLURM allocation, so an OOM is predicted in the log rather than discovered by the scheduler |
 | **Geometry-cap check + warm-retry** | *(`continue_retries` > 0)* bounded re-exec with `--continue` on a geometry-step cap hit — the retry budget the deck records |
+| **PySCF wrapper argument parsing** | *(PySCF wrappers)* the same flag handling for the `.py` route |
+| **Background job monitor** | launches the self-contained `mb_monitor.py` beside the run (nice 19, self-exits with the wrapper; opt out `MB_MONITOR=0`) — real compute-node work, headered and listed since 2026-08-13 (it was structurally invisible to the guard) |
+| **Dry-run preview** | the `--dry-run` inspection: resolved command, each value's SOURCE, the sbatch-header cross-check — then exit 0, nothing launched |
 | **Launch SIESTA + capture exit** | the exec, and the exit code |
 
 *(Amended 2026-08-12, R9: the table claimed exhaustiveness while listing
