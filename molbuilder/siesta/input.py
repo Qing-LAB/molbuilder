@@ -968,6 +968,20 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "# set to 'clean' carries none of this group (run-identity.md § 4).",
         ]
         out.append("DM.UseSaveDM      .true.")
+        if v: out += [
+            "",
+            "# MD.UseSaveXV: read the .XV this SystemLabel names -- the",
+            "# geometry the previous run left.  Same one-field group as",
+            "# DM.UseSaveDM above, and emitted for EVERY continuing",
+            "# calculation, not only a relaxing one: SIESTA honours it at",
+            "# initialisation regardless of MD mode, and a static stage",
+            "# continuing at the relaxed geometry is exactly the case that",
+            "# needs it.  (Until 2026-08-13 it was emitted only inside the",
+            "# relaxation branch, so a continuing non-relax stage DECLARED",
+            "# and copied a .XV its own deck never read -- run-identity.md",
+            "# § 4's \"present but not honoured\", final review A-6.)",
+        ]
+        out.append("MD.UseSaveXV      .true.")
 
     # ---- Spin polarisation ---------------------------------------
     # Targeted SIESTA version range: 4.1 -- 5.x.
@@ -1373,9 +1387,12 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         if _continues(cfg):
             if v: out += [
                 "",
-                "# MD.UseSaveCG / UseSaveXV: read the .CG / .XV this",
-                "# SystemLabel names.  Same group as DM.UseSaveDM above and",
-                "# the same one field decides all of it (run-identity.md § 4).",
+                "# MD.UseSaveCG: read the .CG this SystemLabel names -- the",
+                "# optimizer's own history.  Same group as DM.UseSaveDM /",
+                "# MD.UseSaveXV above and the same one field decides all of",
+                "# it (run-identity.md § 4).  UseSaveXV itself moved up to",
+                "# the unconditional continue group (A-6, 2026-08-13): the",
+                "# geometry read is not a relaxation concern.",
             ]
             if not is_md:
                 # Emitted for every RELAXATION (CG, Broyden, FIRE) and not for
@@ -1393,7 +1410,6 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
                 # corrected to describe the code; whether the CODE is right is
                 # open.
                 out.append("MD.UseSaveCG      .true.")
-            out.append("MD.UseSaveXV      .true.")
         out.append("")
 
     # Output

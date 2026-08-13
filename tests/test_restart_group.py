@@ -150,6 +150,22 @@ def test_the_deck_never_carries_a_member_the_run_mode_ignores():
     assert "MD.UseSaveCG" not in _group_lines(verlet)
 
 
+def test_a_continuing_static_stage_still_reads_the_geometry():
+    """A-6 (final review, 2026-08-13): a continuing stage with NO
+    relaxation — the ladder's classic finisher, SCF-only at the relaxed
+    geometry — declared and copied ``.XV`` while its deck emitted only
+    ``DM.UseSaveDM``: the geometry sat beside the run unread and SIESTA
+    computed at the DECK's coordinates — `run-identity.md` § 4's *present
+    but not honoured*, silent in the worst direction (the run reports
+    success at the wrong geometry).  ``MD.UseSaveXV`` is honoured at
+    initialisation regardless of run mode, so it rides the same
+    unconditional continue group as ``DM.UseSaveDM``; ``MD.UseSaveCG``
+    stays a relaxation member."""
+    assert _group_lines(_deck(restart="continue", relax_type="none")) == \
+        ["DM.UseSaveDM", "MD.UseSaveXV"]
+    assert _group_lines(_deck(restart="clean", relax_type="none")) == []
+
+
 def test_a_missing_restart_field_reads_as_clean():
     """The safe reading of silence. The dangerous direction is resuming when
     nobody asked -- that discards nothing, but it silently changes what the
