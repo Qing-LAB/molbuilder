@@ -31,6 +31,30 @@ from ..config.pyscf import PySCFConfig
 from ..structure import Structure
 
 
+#: How many times an open-shell SCF may be re-converged from the
+#: orbitals ``mf.stability()`` suggests before the script gives up and
+#: warns.  Three (user decision 2026-08-13): a genuine broken-symmetry
+#: solution is usually repaired on the first restart, and a case that
+#: survives three has a problem no amount of retrying will fix.
+#: Exhausting them WARNS and continues -- a hint does not end the run.
+_STABILITY_MAX_RESTARTS = 3
+
+#: How much the energy must FALL for a stability restart to count as a
+#: repair, in Hartree.  1e-8 Ha is far below chemical significance
+#: (1 kcal/mol = 1.6e-3 Ha) and comfortably above SCF numerical noise.
+#:
+#: The energy is the criterion, not the orbital coefficients.  Comparing
+#: coefficients looks obvious and is wrong: a degenerate shell -- O2's
+#: pi pair, any symmetric radical -- can be rotated freely within its
+#: degenerate space, so ``stability()`` returns numerically different
+#: orbitals describing an identical state, for ever.  Measured on O2
+#: triplet UHF/STO-3G: round 1 genuinely repairs (dE = -1.5e-03), then
+#: rounds 2 and 3 return dE = +3.6e-10 and +1.6e-09 -- no improvement,
+#: yet a coefficient test called all three unstable and the run ended
+#: with a false warning.
+_STABILITY_ENERGY_TOL = 1e-8
+
+
 # --------------------------------------------------------------------- #
 #  Solvent presets (dielectric constants at 25 deg C)                  #
 # --------------------------------------------------------------------- #
@@ -587,6 +611,15 @@ def render_script(struct: Structure,
         out.append(_emit_molwatch_callback_wire("mf"))
     out.append("")
 
+    # ---------------------------------------------- SCF + stability
+    # BEFORE any geometry work.  Optimizing on a broken-symmetry saddle
+    # produces a wrong geometry and wrong frequencies, and finding out
+    # afterwards helps nobody.  Open-shell only; a closed-shell check is
+    # a singlet->triplet question the user rarely asked.
+    _stability_checked = method_class.startswith("U")
+    if _stability_checked:
+        out += _emit_stability_block(cfg, v)
+
     # ------------------------------------------------------------- run
     if cfg.optimize:
         if v:
@@ -649,46 +682,15 @@ def render_script(struct: Structure,
             out.append("# ============================================================")
             out.append("#  Single-point SCF (no optimization)")
             out.append("# ============================================================")
-        out.append("e = mf.kernel()")
+        if not _stability_checked:
+            out.append("e = mf.kernel()")
+        else:
+            # Already converged AND stability-checked above; re-running
+            # would repeat the work and discard the stabilised orbitals.
+            out.append("# SCF converged + stability-checked above.")
         out.append('print(f"Total energy: {e:.8f} Hartree")')
         out.append("mol_eq = mol")
     out.append("")
-
-    # ------------------------------------------------------------- stability
-    # Open-shell stability check (UKS / UHF only).
-    #
-    # Why: open-shell SCFs can converge to broken-symmetry SADDLE
-    # points -- the energy looks converged but the wavefunction is
-    # not the variational minimum.  PySCF's mf.stability() examines
-    # internal (orbital rotation) and external (real -> complex /
-    # restricted -> unrestricted) instabilities and prints a warning
-    # if found, with new MO coefficients to restart from.
-    #
-    # We do NOT auto-rerun the SCF when an instability is reported --
-    # we surface the warning to the user and let them decide whether
-    # to take the suggested step.  Real-world advice: if stability
-    # warns, restart with `mf.kernel(dm0=mf.make_rdm1(mo_coeff,
-    # mf.mo_occ))` after replacing mo_coeff with the new vectors;
-    # the cost is one extra SCF, the alternative is silently shipping
-    # a non-variational answer.
-    #
-    # We don't emit this for RKS / RHF: closed-shell stability is
-    # mostly a singlet -> triplet check that's rarely the user's
-    # concern (and the call is no-op cheap but adds noise to a
-    # tutorial script that's already dense).
-    if method_class.startswith("U"):
-        if v:
-            out.append("# ============================================================")
-            out.append("#  Open-shell stability check")
-            out.append("# ============================================================")
-            out.append("# Catches broken-symmetry saddles in UKS / UHF: a result")
-            out.append("# that LOOKS converged but isn't the variational minimum.")
-            out.append("# mf.stability() prints a warning + suggested MOs")
-            out.append("# if an instability is found.  See PySCF's docs for")
-            out.append("# rerunning from the suggested vectors.")
-        out.append('print("\\n=== Stage: stability analysis ===")')
-        out.append("mf.stability()")
-        out.append("")
 
     # ------------------------------------------------------------- frequencies
     # Analytic Hessian + RRHO thermochemistry, opt-in.  Runs at mol_eq
@@ -793,6 +795,134 @@ def render_script(struct: Structure,
         + "\n\n".join(_record)
         + "\n"
     )
+
+
+def _emit_stability_block(cfg: PySCFConfig, v: bool) -> List[str]:
+    """Initial SCF + open-shell stability loop, emitted BEFORE any
+    geometry work.
+
+    Why before.  An open-shell SCF can converge to a broken-symmetry
+    SADDLE point: the energy stops changing, ``mf.converged`` is True,
+    and the wavefunction is still not the variational minimum.  Until
+    2026-08-13 this script called ``mf.stability()`` AFTER the whole
+    optimization and only printed what it found -- so a run that landed
+    on a saddle at the first geometry optimized every subsequent step
+    and computed its frequencies on the wrong electronic state, then
+    said so at the end.  The emitter's own comment named the remedy and
+    declined to apply it.
+
+    What it does now: converge, check, and if the check hands back
+    better orbitals, rebuild the density matrix from them and converge
+    again -- up to three times.  Persistent instability WARNS and
+    continues (user decision 2026-08-13): a hint does not get to end the
+    run.
+
+    Measured on O2 triplet UHF/STO-3G, which is internally unstable:
+    the first SCF reports -147.63404851 Ha as converged; one restart
+    from the suggested orbitals gives -147.63555611 Ha, 1.5 mHa lower,
+    and the next check then passes.
+
+    Emitted only for UKS / UHF.  Closed-shell stability is a
+    singlet->triplet question that is rarely the user's concern and
+    costs a check nobody asked for.
+    """
+    out: List[str] = []
+    if v:
+        out += [
+            "# ============================================================",
+            "#  SCF + open-shell stability check",
+            "# ============================================================",
+            "# An open-shell SCF can settle on a broken-symmetry SADDLE",
+            "# point: the energy stops moving and `mf.converged` is True,",
+            "# but the wavefunction is NOT the lowest-energy one.  Every",
+            "# geometry step and every frequency computed afterwards would",
+            "# then describe the wrong electronic state.",
+            "#",
+            "# So we converge, ask `mf.stability()`, and if it hands back",
+            "# better orbitals we rebuild the density matrix from them and",
+            "# converge again -- before any geometry work starts.",
+            "#",
+            "# On O2 triplet (UHF/STO-3G) the first SCF reports",
+            "# -147.63404851 Ha as converged; one restart gives",
+            "# -147.63555611 Ha -- 1.5 mHa lower -- and is then stable.",
+            "#",
+            "# A run that is still unstable after the retries WARNS and",
+            "# continues: this is advice, not a veto.  The log says which",
+            "# of the three outcomes happened, so 'checked and stable' is",
+            "# never confused with 'never checked'.",
+        ]
+    out += [
+        'print("\\n=== Stage: SCF + stability ===")',
+        "e = mf.kernel()",
+        'print(f"[molbuilder] initial SCF: {e:.8f} Hartree '
+        '(converged={mf.converged})")',
+        "",
+        f"_MB_STABILITY_MAX = {int(_STABILITY_MAX_RESTARTS)}",
+        f"_MB_STABILITY_ETOL = {_STABILITY_ENERGY_TOL!r}",
+        "_MB_STABILITY_ROUNDS = 0",
+        "_MB_STABLE = None          # None = could not check",
+        "import numpy as _mb_np",
+        "try:",
+        "    for _r in range(1, _MB_STABILITY_MAX + 1):",
+        "        _internal = mf.stability()[0]",
+        "        if _mb_np.allclose(_mb_np.asarray(_internal),",
+        "                           _mb_np.asarray(mf.mo_coeff)):",
+        "            _MB_STABLE = True          # nothing suggested at all",
+        "            break",
+        "        _e_prev = e",
+        "        e = mf.kernel(mf.make_rdm1(_internal, mf.mo_occ))",
+        "        if e < _e_prev - _MB_STABILITY_ETOL:",
+        "            _MB_STABILITY_ROUNDS = _r",
+        '            print(f"[molbuilder] stability round {_r}: '
+        'instability repaired, "',
+        '                  f"{_e_prev:.8f} -> {e:.8f} Hartree '
+        '(dE={e - _e_prev:+.3e})")',
+        "            continue",
+        # The energy did not fall, so the orbitals stability() handed
+        # back are not a better solution -- they are the SAME solution
+        # expressed differently.  Degenerate shells (O2's pi pair, any
+        # symmetric radical) are rotated freely within the degenerate
+        # space, so a coefficient comparison flags them forever while
+        # the physics is identical.  The energy is the criterion; the
+        # coefficients are not.
+        "        _MB_STABLE = True",
+        '        print(f"[molbuilder] stability round {_r}: suggested '
+        'orbitals gave no "',
+        '              f"further improvement (dE={e - _e_prev:+.3e}); '
+        'treating as stable. "',
+        '              f"Common for degenerate shells, which are rotated '
+        'freely within "',
+        '              f"the degenerate space.")',
+        "        break",
+        "    else:",
+        "        _MB_STABLE = False",
+        "except (NotImplementedError, AttributeError) as _exc:",
+        # Law A: a check that could not run says so.  Silence would read
+        # as a clean bill of health.
+        '    print(f"[molbuilder] stability: NOT CHECKED -- this method '
+        'does not implement it ({_exc})")',
+        "",
+        "# One line, three distinguishable outcomes.",
+        "if _MB_STABLE is None:",
+        '    print("[molbuilder] stability: NOT CHECKED. The energy below '
+        'has not been tested for a broken-symmetry solution.")',
+        "elif _MB_STABLE and _MB_STABILITY_ROUNDS == 0:",
+        '    print("[molbuilder] stability: CHECKED, stable on the first '
+        'SCF (no restart needed).")',
+        "elif _MB_STABLE:",
+        '    print(f"[molbuilder] stability: CHECKED, reached a stable '
+        'solution after {_MB_STABILITY_ROUNDS} restart(s).")',
+        "else:",
+        '    print(f"[molbuilder] stability: WARNING -- still internally '
+        'unstable after {_MB_STABILITY_MAX} restarts. "',
+        '          "The results below may describe a saddle point, not '
+        'the ground state. "',
+        '          "Continuing because this is advice, not a veto -- but '
+        'treat the geometry and any "',
+        '          "frequencies as provisional.")',
+        "",
+    ]
+    return out
 
 
 def _emit_stages_loop(cfg: PySCFConfig,
