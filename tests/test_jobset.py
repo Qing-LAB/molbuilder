@@ -677,7 +677,7 @@ def test_submit_accepts_exactly_these_options(tmp_path):
         "kind", "stage", "trial", "bundle", "mode", "domain", "dry_run"}
 
 
-def test_cli_submit_of_a_whole_sweep_refuses_and_says_which(tmp_path):
+def test_cli_submit_of_a_whole_sweep_picks_the_next_unlaunched(tmp_path):
     """One job per scheduler invocation, kept by SELECTION rather than
     refusal (§ 2.3.2, decided 2026-08-12): a bare `submit bench` picks the
     NEXT UNLAUNCHED trial, says which and how many remain, and plans
@@ -1794,7 +1794,11 @@ def test_status_seq_is_none_for_a_sweep_point():
     from molbuilder.jobset.model import Job, JobSet
     js = JobSet(name="JOB", engine="siesta", kind="sweep",
                 jobs=[Job(name="p1", script="JOB.fdf")])
-    assert jobset_status(js, ".").stages[0].seq is None
+    # tmp-independent: the set is hand-built and never touches disk,
+    # but "." as a base path reads whatever cwd the RUNNER happens to
+    # be in -- an accidental dependence on found state (G2 I-list,
+    # 2026-08-12).  A path that cannot exist keeps the call honest.
+    assert jobset_status(js, "/nonexistent-base").stages[0].seq is None
 
 
 # --------------------------------------------------------------------- #

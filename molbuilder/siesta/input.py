@@ -57,10 +57,13 @@ def _auto_block_size(n_atoms: int,
     ----------------------------------------
     This function previously claimed to guard against ``propor:
     ERROR: IMAX = 0`` via the formula
-    ``BlockSize <= floor(n_atoms / Nrank)``.  Empirical sweep
-    (probe in /tmp/siesta-mpi-probe, results captured in design
-    notes) confirms that claim was wrong: SIESTA crashes IDENTICALLY
-    with BlockSize = 1, 2, 4 at mpi_np = 15 on hemeC-dithiol.
+    ``BlockSize <= floor(n_atoms / Nrank)``.  An empirical sweep on
+    2026-05-28 disproved it: SIESTA crashes IDENTICALLY with
+    BlockSize = 1, 2, 4 at mpi_np = 15 on hemeC-dithiol.  THIS NOTE
+    is the durable record of that result -- the probe ran in a /tmp
+    scratch that no longer exists, so the numbers here are the
+    artifact (softened 2026-08-12; a citation pointing at deleted
+    scratch read as if a repo artifact backed it).
 
     The propor crash is in ``matel_table.F90``'s MPI-deduplication
     of radial-function tables, not in any BLACS distribution.  It
