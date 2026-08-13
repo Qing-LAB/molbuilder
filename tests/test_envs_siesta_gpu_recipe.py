@@ -553,3 +553,143 @@ def test_every_component_argv_renders_through_template(recipe, phase):
                 f"the rendered payload:\n{r.stderr}\n"
                 f"payload was:\n{payload}"
             )
+
+
+# --------------------------------------------------------------------- #
+#  Header + library search paths for the BUNDLED Makefiles              #
+#                                                                        #
+#  Reported 2026-08-13 from a CLEAN machine (no libreadline-dev):        #
+#                                                                        #
+#    lua.c:82:10: fatal error: readline/readline.h:                      #
+#                 No such file or directory                              #
+#    make[4]: *** [<builtin>: lua.o] Error 1                             #
+#    ninja: build stopped: subcommand failed.                            #
+#    [ 8/10] siesta.build: FAILED                                        #
+#                                                                        #
+#  lua-5.3.5's src/Makefile ASSIGNS CFLAGS rather than appending it, so  #
+#  conda's ``-isystem <env>/include`` never reaches it.  Its ``linux``   #
+#  target then compiles with -DLUA_USE_LINUX (switching on              #
+#  LUA_USE_READLINE, so lua.c includes <readline/readline.h>) and links  #
+#  -lreadline, both with an empty search path.  While bare ``gcc`` was   #
+#  still the HOST gcc that resolved against /usr/include by accident.    #
+#  Once the bare-name shims point ``gcc`` at the conda toolchain --      #
+#  whose only header dirs are its own plus the sysroot, NOT              #
+#  <env>/include -- a machine without libreadline-dev fails outright.    #
+#                                                                        #
+#  The fix has two halves and BOTH are load-bearing:                     #
+#    (a) ``readline`` DECLARED in conda_packages -- the package;         #
+#    (b) C_INCLUDE_PATH / LIBRARY_PATH exported by the build step --     #
+#        the search path.  gcc reads those itself, so unlike CPPFLAGS    #
+#        no Makefile assignment can override them.                       #
+#                                                                        #
+#  Verified against the real sources before landing: the bundled         #
+#  lua-5.3.5 fails with the exact error above under conda-toolchain      #
+#  shims, and builds liblua.a + lua + luac against the env's readline    #
+#  with the rendered prefix applied.                                     #
+# --------------------------------------------------------------------- #
+import os as _os
+
+
+def _flook_building_component(recipe):
+    """The component whose build step compiles the bundled Lua engine."""
+    for comp in recipe.build_spec.components:
+        if "Lua-Engine" in " ".join(comp.build_argv):
+            return comp
+    raise AssertionError(
+        "no component builds External/Lua-Engine -- if flook was turned "
+        "off, these readline guards are obsolete and should be retired, "
+        "not weakened"
+    )
+
+
+def test_readline_is_declared_not_inherited(recipe):
+    """``readline`` must be named outright.
+
+    SIESTA's External/Lua-Engine/CMakeLists.txt does
+    ``find_library(readline REQUIRED)`` -- one of only two hard-REQUIRED
+    find_library calls in the whole source tree (the other is ``dl``,
+    which glibc provides).  It was reaching the env only because
+    ``python`` happens to pull it in transitively.
+    """
+    assert "readline" in recipe.conda_packages
+
+
+def test_the_lua_build_step_is_the_one_carrying_the_search_paths(recipe):
+    """Pins the two halves to the SAME component.
+
+    Exporting the paths from a component that does not build flook
+    would leave the real compile untouched.
+    """
+    comp = _flook_building_component(recipe)
+    payload = " ".join(comp.build_argv)
+    assert "C_INCLUDE_PATH" in payload
+    assert "LIBRARY_PATH" in payload
+
+
+@pytest.mark.parametrize(
+    "preset, expect_c, expect_l",
+    [
+        (None, "{p}/include", "{p}/lib"),
+        ("/preexisting", "{p}/include:/preexisting", "{p}/lib:/preexisting"),
+    ],
+    ids=["unset", "preserves-preexisting"],
+)
+def test_build_step_exports_search_paths_to_the_compiler(
+        tmp_path, recipe, preset, expect_c, expect_l):
+    """Run the REAL rendered build payload with ``cmake`` stubbed out,
+    then read back what the compiler would actually have seen.
+
+    Asserting that the string ``C_INCLUDE_PATH`` appears in the payload
+    (as the test above does, for a different purpose) would still pass
+    if the export sat AFTER ``cmake --build``, or were spelled so that
+    no shell ever applied it.  Executing it and reading the values out
+    of the stub is the only version that fails for the right reason.
+
+    The prepend arm matters because a bare assignment would silently
+    discard a search path the caller had already set, and a ``:``-
+    joined empty element means "the current directory" to gcc.
+    """
+    env_prefix = tmp_path / "env"
+    stub_bin = tmp_path / "bin"
+    stub_bin.mkdir()
+    seen = tmp_path / "seen.txt"
+    stub = stub_bin / "cmake"
+    stub.write_text(
+        "#!/bin/sh\n"
+        f'printf "%s\\n%s\\n" "$C_INCLUDE_PATH" "$LIBRARY_PATH" > "{seen}"\n'
+        "exit 0\n"
+    )
+    stub.chmod(0o755)
+
+    comp = _flook_building_component(recipe)
+    subs = dict(_STUB_TEMPLATE_SUBS)
+    subs["env_prefix"] = str(env_prefix)
+    # A src that does not exist: the lua MYCFLAGS=-fPIC patch's
+    # ``[ -f ... ]`` guard must skip cleanly rather than abort.
+    subs["src"] = str(tmp_path / "absent-src")
+    rendered = _apply_template_fn(comp.build_argv, subs)
+    assert rendered[0] in ("sh", "bash") and rendered[1] == "-c"
+    payload = rendered[2]
+
+    env = dict(_os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+    env.pop("C_INCLUDE_PATH", None)
+    env.pop("LIBRARY_PATH", None)
+    if preset is not None:
+        env["C_INCLUDE_PATH"] = preset
+        env["LIBRARY_PATH"] = preset
+
+    r = _subprocess.run(["sh", "-c", payload], env=env,
+                        capture_output=True, text=True)
+    assert r.returncode == 0, f"payload failed:\n{r.stderr}"
+    assert seen.exists(), (
+        "the stubbed cmake never ran -- the payload aborted before the "
+        f"build:\n{r.stderr}"
+    )
+    got_c, got_l = seen.read_text().splitlines()
+    assert got_c == expect_c.format(p=env_prefix), (
+        f"C_INCLUDE_PATH seen by the build was {got_c!r}"
+    )
+    assert got_l == expect_l.format(p=env_prefix), (
+        f"LIBRARY_PATH seen by the build was {got_l!r}"
+    )

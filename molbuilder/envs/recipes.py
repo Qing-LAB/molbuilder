@@ -1187,6 +1187,52 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
         # ``CFLAGS=`` (override, not ``+=``).  Patching the source
         # Makefile means aotus's copy operation propagates the fix
         # to the build tree on every build.
+        # Header + library search paths for the BUNDLED Makefiles.
+        #
+        # conda's activate.d hook exports CFLAGS/CPPFLAGS/LDFLAGS
+        # carrying ``-isystem <env>/include`` and ``-L<env>/lib``, and
+        # cmake picks those up -- so every cmake-driven compile in this
+        # build already searches the env.  lua-5.3.5's src/Makefile
+        # does
+        #     CFLAGS= -O2 -Wall -Wextra -DLUA_COMPAT_5_2 \
+        #             $(SYSCFLAGS) $(MYCFLAGS)
+        # -- an ASSIGNMENT, not an append -- so the env's flags never
+        # reach it.  Its ``linux`` target then compiles with
+        # -DLUA_USE_LINUX (which switches on LUA_USE_READLINE, so
+        # lua.c does ``#include <readline/readline.h>``) and links
+        # ``-lreadline``, both with an empty include/library path.
+        #
+        # On a host carrying libreadline-dev that quietly resolved to
+        # /usr/include + /usr/lib -- another instance of the host
+        # assumption the bare-name toolchain shims exist to remove,
+        # and it stayed invisible while bare ``gcc`` still WAS the
+        # host gcc.  Once the shims point bare ``gcc`` at the conda
+        # toolchain (whose only header dirs are its own and the
+        # sysroot -- <env>/include is NOT among them), a clean machine
+        # dies at
+        #     lua.c:82:10: fatal error: readline/readline.h:
+        #                  No such file or directory
+        #
+        # C_INCLUDE_PATH and LIBRARY_PATH are read by gcc ITSELF, not
+        # by make, so no Makefile assignment can override them --
+        # which is precisely why they are the right lever and CPPFLAGS
+        # is not.  They name the same directories conda's own flags
+        # already do (C_INCLUDE_PATH has -isystem semantics, matching
+        # conda's ``-isystem <env>/include``), so for every compile
+        # that already honoured CFLAGS this is a duplicate and changes
+        # nothing; for the bundled Makefiles it is the whole fix.
+        #
+        # Prepend-if-set is spelled with ``[ -n ... ]`` rather than
+        # ``:+`` because ``${`` would be eaten as a format placeholder
+        # by _apply_template -- see the subshell note above.
+        'if [ -n "$C_INCLUDE_PATH" ]; '
+        'then C_INCLUDE_PATH={env_prefix}/include:$C_INCLUDE_PATH; '
+        'else C_INCLUDE_PATH={env_prefix}/include; fi; '
+        'export C_INCLUDE_PATH; '
+        'if [ -n "$LIBRARY_PATH" ]; '
+        'then LIBRARY_PATH={env_prefix}/lib:$LIBRARY_PATH; '
+        'else LIBRARY_PATH={env_prefix}/lib; fi; '
+        'export LIBRARY_PATH; '
         "_lua_mk={src}/External/Lua-Engine/flook/aotus/external/lua-5.3.5/src/Makefile; "
         "if [ -f \"$_lua_mk\" ] && grep -q '^MYCFLAGS=$' \"$_lua_mk\"; "
         "then "
@@ -1271,6 +1317,23 @@ _SIESTA_GPU = Recipe(
         "binutils_linux-64",
         "sysroot_linux-64",
         "kernel-headers_linux-64",
+        # GNU readline -- a DECLARED build dependency of the flook /
+        # Lua engine, not a nicety.  Two independent places demand it:
+        #   * SIESTA's External/Lua-Engine/CMakeLists.txt does
+        #     ``find_library(readline REQUIRED)`` in
+        #     flook_add_dependencies() -- cmake aborts without it;
+        #   * the bundled lua-5.3.5 ``linux`` target compiles with
+        #     -DLUA_USE_LINUX (which turns on LUA_USE_READLINE, so
+        #     lua.c includes <readline/readline.h>) and links
+        #     ``SYSLIBS="-Wl,-E -ldl -lreadline"``.
+        # Until now it was in the env only because ``python`` happens
+        # to pull it in transitively -- the same "complete only by the
+        # solver's good manners" hazard the three lines above exist to
+        # close.  ncurses (libtinfo, readline's own dependency) comes
+        # with it.  See the C_INCLUDE_PATH/LIBRARY_PATH bridge in the
+        # SIESTA build step for why having the package is necessary
+        # but NOT sufficient.
+        "readline",
         "cmake>=3.30", "ninja", "make", "git", "m4",
         # ``curl`` (not just libcurl).  builds.py's ELPA clone phase
         # downloads the tarball via curl; on HPC nodes the system
