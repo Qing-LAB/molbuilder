@@ -600,6 +600,51 @@ class PySCFConfig:
         "tier":  "advanced",
         "help":  "SCF convergence tolerance on the energy (Hartree)",
     })
+    scf_conv_tol_grad: float = field(default=0.0, metadata={
+        "section": "SCF",
+        # Tightens stage-to-stage alongside scf_conv_tol: same reason,
+        # a different (and for forces, the decisive) quantity.
+        "workflow_group": "stage",
+        "label": "scf.conv_tol_grad",
+        "engine_key":  'mf.conv_tol_grad',
+        "range": (0.0, 1e-2),
+        "tier":  "advanced",
+        # Verified against the installed PySCF 2.13.0 source
+        # (``scf.hf.kernel``):
+        #     if conv_tol_grad is None:
+        #         conv_tol_grad = numpy.sqrt(conv_tol)
+        # so the shipped default 1e-9 energy tolerance yields ~3.2e-5
+        # for the gradient.  SCF declares convergence on the ENERGY
+        # change and the orbital-gradient norm together, and it is the
+        # gradient that sets how clean the forces are -- so tightening
+        # only scf_conv_tol moves the criterion that matters for a
+        # geometry optimization as a square root.
+        #
+        # Default 0.0 means "leave PySCF's derivation alone" rather
+        # than a number of our choosing: picking one here would
+        # silently re-tune every existing run's SCF.  The script
+        # reports the effective value either way, so the parameter is
+        # never merely implicit.
+        "help":  ("orbital-gradient convergence threshold; 0 = PySCF's "
+                  "own sqrt(conv_tol) (~3e-5 at conv_tol=1e-9).  The "
+                  "gradient is what the forces come from -- tighten "
+                  "this (1e-6, 1e-7) when forces look noisy"),
+    })
+    scf_soscf: bool = field(default=False, metadata={
+        "section": "SCF",
+        # Profile-level: an SCF-algorithm choice made with the system,
+        # like level_shift -- not a per-stage tightening.
+        "workflow_group": "profile",
+        "label": "Second-order SCF (SOSCF)",
+        "engine_key":  'mf.newton()',
+        "tier":  "advanced",
+        "help":  ("switch the SCF to a second-order Newton solver.  "
+                  "Slower per iteration and needs more memory, but "
+                  "converges cases where DIIS oscillates forever "
+                  "(open-shell metals, near-degenerate frontier "
+                  "orbitals).  The usual escalation order is DIIS -> "
+                  "level shift / damping -> SOSCF"),
+    })
     scf_max_cycle: int = field(default=100, metadata={
         "section": "SCF",
         # Resource-budget cap — patience, not convergence definition.

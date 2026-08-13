@@ -345,7 +345,134 @@ Head-Gordon, *JCP* **144**, 214110 (2016).
 
 ---
 
-## 7. Cross-engine equivalence & versioning
+## 7. SCF convergence, and what to do when it fights you
+
+This section is here so you can **overrule the emitter on purpose**. Everything
+below is a hint about how the machinery behaves — the chemistry call is yours.
+
+### 7.1 "Converged" is two tests, not one
+
+PySCF stops the SCF when **both** of these hold:
+
+| Test | What it measures | PySCF knob | molbuilder field |
+|---|---|---|---|
+| energy change | how much the total energy moved on the last cycle | `mf.conv_tol` | `scf_conv_tol` (default `1e-9` Ha) |
+| orbital gradient | how far the orbitals still are from stationary | `mf.conv_tol_grad` | `scf_conv_tol_grad` (default `0` → PySCF derives it) |
+
+When you leave `conv_tol_grad` unset, PySCF derives it — `scf/hf.py`, verified
+against the installed 2.13.0 source:
+
+```python
+if conv_tol_grad is None:
+    conv_tol_grad = numpy.sqrt(conv_tol)
+```
+
+So the shipped `1e-9` energy tolerance yields **≈3.2e-5** for the gradient.
+
+That matters because **the forces come from the gradient, not from the energy.**
+Tighten `scf_conv_tol` from `1e-9` to `1e-10` and the gradient criterion moves
+only from 3.2e-5 to 1.0e-5 — a square root of the effort you thought you spent.
+If a geometry optimization keeps taking small noisy steps near the end, set
+`scf_conv_tol_grad` directly (`1e-6`, `1e-7`) instead of chasing `conv_tol`.
+
+The script states which of the two you got, every run:
+
+```
+[molbuilder] SCF convergence: energy 1.0e-09 Hartree, orbital gradient 3.2e-05
+             (derived: sqrt(conv_tol)); solver DFUKS.
+```
+
+`derived: sqrt(conv_tol)` vs `explicit` is the difference between *PySCF picked
+this* and *you picked this*, and both also land in `_RUNTIME_INFO`.
+
+### 7.2 The escalation order when the SCF won't converge
+
+Work down this list; each rung costs more than the one above it.
+
+1. **DIIS** (the default). PySCF extrapolates from previous Fock matrices.
+   Fast, and right for the large majority of closed-shell organics.
+2. **Bigger DIIS subspace** — `diis_space` 12–20. Try this first when the SCF
+   *oscillates* between two energies rather than drifting.
+3. **Level shift** — `level_shift` 0.1–0.3 Ha. Pushes empty orbitals up in
+   energy so the occupied set stops trading places with them cycle to cycle.
+   The classic fix for a small or unphysical HOMO–LUMO gap. It **changes the
+   converged answer** unless you finish with it back at 0.
+4. **Damping** — `damp` 0.3–0.5. Mixes in the previous density to stop
+   overshooting. Same caveat: taper it off.
+5. **SOSCF** — `scf_soscf = True`, emitting `mf.newton()`. Instead of
+   extrapolating, this solves for the orbital rotation directly
+   (Newton–Raphson). It converges cases where DIIS oscillates indefinitely —
+   open-shell metals, near-degenerate frontier orbitals — at the price of more
+   time and memory per iteration.
+
+Two things change under SOSCF, and neither is a fault:
+
+- `mf.max_cycle` now counts **macro** iterations, each running many
+  micro-iterations. The same number buys far more work than it did under DIIS.
+- `diis_space` and `damp` stop applying — the Newton solver doesn't use them.
+  Its own damping knob is `mf.ah_level_shift` (default 0).
+
+### 7.3 What an SCF "instability" actually is
+
+An SCF finds *a* stationary solution. It does not promise the **lowest** one.
+
+Concretely: converge a stretched O₂ triplet and the SCF may settle on a
+symmetric solution where both oxygens carry identical spin density. Every
+convergence test passes. The energy looks fine. But a lower-energy solution
+exists in which the symmetry is broken — and that one is the physical answer.
+The SCF simply never looked in that direction.
+
+This is why `mf.stability()` exists: it asks whether a small orbital rotation
+would *lower* the energy. If yes, it hands back a better set of orbitals.
+
+**What a wrong answer looks like.** Nothing in the output says "wrong". You get
+a converged energy, a completed optimization, and a frequency calculation — all
+computed on the wrong electronic state. The tell is usually indirect: an energy
+that disagrees with literature by a few kcal/mol, a spin contamination value
+that looks off, or imaginary frequencies at a geometry that should be a minimum.
+
+**What molbuilder does about it.** For open-shell runs (UHF/UKS) the script
+converges the SCF, calls `mf.stability()`, and if better orbitals come back
+re-converges from them — up to **3 restarts**
+(`_STABILITY_MAX_RESTARTS`). A restart counts as a repair only if the energy
+**falls** by more than **1e-8 Ha** (`_STABILITY_ENERGY_TOL`), which is far below
+chemical significance (1 kcal/mol = 1.6e-3 Ha) and comfortably above SCF noise.
+
+This runs **before** any geometry work, because optimizing on the wrong state
+and finding out afterwards helps nobody. Closed-shell runs are not checked: a
+restricted→unrestricted instability is a singlet-versus-triplet question you
+would have asked deliberately.
+
+**Why the energy and not the orbitals.** Comparing orbital *coefficients* to
+decide "did this change" looks obvious and is wrong. A degenerate shell — O₂'s
+π pair, any symmetric radical — can be rotated freely within its degenerate
+space, so `stability()` returns numerically different coefficients for a
+physically identical state, for ever. Measured on O₂ triplet UHF/STO-3G: round 1
+genuinely repairs (ΔE = −1.5e-3 Ha), then rounds 2 and 3 return ΔE = +3.6e-10
+and +1.6e-9 — no improvement, yet a coefficient test called all three unstable
+and ended the run with a false warning.
+
+### 7.4 Reading the outcome
+
+"Ran and found nothing" must never read the same as "never ran", so the script
+prints exactly one verdict line — quoted here verbatim from the emitter:
+
+| Line | Meaning |
+|---|---|
+| `stability: CHECKED, stable on the first SCF (no restart needed).` | checked; already the best solution found |
+| `stability: CHECKED, reached a stable solution after N restart(s).` | checked; was broken, repaired — use this result |
+| `stability: WARNING -- still internally unstable after 3 restarts.` | checked; **not** repaired — everything below it is suspect |
+| `stability: NOT CHECKED. The energy below has not been tested for a broken-symmetry solution.` | no claim either way |
+| `stability: NOT CHECKED -- this method does not implement it (<error>)` | the method has no `stability()`; printed alongside the line above |
+
+A closed-shell (RHF/RKS) run emits no stability block at all — see § 7.3 for why.
+
+A run that exhausts its restarts **warns and continues**. A hint does not end
+your run — but do not publish that geometry without looking at it.
+
+---
+
+## 8. Cross-engine equivalence & versioning
 
 **SIESTA ↔ PySCF.** PySCF/geomeTRIC is **stricter overall** at a given tier, for
 a reason that is about the *number of criteria* rather than their values:

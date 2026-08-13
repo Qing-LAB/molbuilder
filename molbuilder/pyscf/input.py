@@ -24,6 +24,7 @@ module instead of the actual PySCF library).
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import List, Optional
 
@@ -550,6 +551,25 @@ def render_script(struct: Structure,
         out.append("# level_shift > 0 helps for hard cases (open-shell metals,")
         out.append("# diffuse anions); 0.1-0.3 is typical when needed.")
     out.append(f"mf.conv_tol  = {cfg.scf_conv_tol:.0e}")
+    # SCF convergence is judged on TWO quantities -- the energy change
+    # and the orbital-gradient norm -- and it is the gradient that
+    # decides how clean the forces are.  PySCF derives it from the
+    # energy tolerance when unset (verified in scf.hf.kernel: ``if
+    # conv_tol_grad is None: conv_tol_grad = numpy.sqrt(conv_tol)``),
+    # so tightening conv_tol alone moves the force criterion only as a
+    # square root.  Either way the script states the effective number:
+    # a derived value the user cannot see is the same problem as an
+    # undocumented one.
+    if cfg.scf_conv_tol_grad > 0:
+        out.append(f"mf.conv_tol_grad = {cfg.scf_conv_tol_grad:.0e}"
+                   f"    # set explicitly")
+    else:
+        _derived = math.sqrt(cfg.scf_conv_tol)
+        if v:
+            out.append(f"# mf.conv_tol_grad left at PySCF's default: "
+                       f"sqrt(conv_tol) = {_derived:.2e}.")
+            out.append("# Set cfg.scf_conv_tol_grad (e.g. 1e-6) to fix it "
+                       "independently of the energy tolerance.")
     out.append(f"mf.max_cycle = {cfg.scf_max_cycle}")
     out.append(f'mf.init_guess = "{cfg.scf_init_guess}"')
     if cfg.level_shift:
@@ -602,6 +622,62 @@ def render_script(struct: Structure,
     # .to_gpu() sees the complete CPU mf and the GPU mirror has
     # the same settings.
     out.append("mf = _mb_to_gpu_if_enabled(mf)")
+
+    # Second-order (Newton-Raphson) SCF -- the last rung of the
+    # convergence escalation, after DIIS and level shift / damping.
+    #
+    # Emitted AFTER the GPU promotion on purpose.  ``.to_gpu()`` wants
+    # the fully-assembled plain SCF object (see the comment above), and
+    # gpu4pyscf's own SCF classes carry ``.newton()`` (checked against
+    # gpu4pyscf 1.7.0), so wrapping last works on both paths and
+    # wrapping first would hand ``to_gpu`` a class it need not know.
+    if cfg.scf_soscf:
+        if v:
+            out.append("")
+            out.append("# Second-order SCF: solve for the orbital rotation "
+                       "directly (Newton-Raphson)")
+            out.append("# instead of extrapolating Fock matrices.  Costs "
+                       "more per iteration and more")
+            out.append("# memory, but converges cases where DIIS oscillates "
+                       "indefinitely -- open-shell")
+            out.append("# metals and near-degenerate frontier orbitals are "
+                       "the usual reasons.")
+            out.append("#")
+            out.append("# Two behaviours change and neither is an error:")
+            out.append("#   * mf.max_cycle now counts MACRO iterations "
+                       "(each runs many micro-")
+            out.append("#     iterations), so the same number buys far more "
+                       "work than under DIIS.")
+            out.append("#   * mf.diis_space / mf.damp stop applying -- the "
+                       "Newton solver does not")
+            out.append("#     use them.  Its own damping knob is "
+                       "mf.ah_level_shift (default 0).")
+        out.append("mf = mf.newton()")
+        out.append('print("[molbuilder] SCF solver: second-order (SOSCF, '
+                   'mf.newton()); max_cycle counts macro iterations.")')
+
+    # Record what the SCF will ACTUALLY converge to, read off the LIVE
+    # object rather than restated from the config -- a reported value
+    # that cannot drift from what the run did.  conv_tol_grad stays
+    # None until kernel() derives it, so apply PySCF's own rule here
+    # (scf.hf.kernel: sqrt(conv_tol)) to report a number rather than a
+    # null.  Which of the two it is gets recorded alongside, because
+    # "we chose 3.2e-5" and "PySCF derived 3.2e-5" are different facts.
+    out.append("")
+    out.append("_RUNTIME_INFO['scf_conv_tol'] = float(mf.conv_tol)")
+    out.append("_RUNTIME_INFO['scf_conv_tol_grad'] = float("
+               "mf.conv_tol_grad if mf.conv_tol_grad is not None "
+               "else mf.conv_tol ** 0.5)")
+    out.append("_RUNTIME_INFO['scf_conv_tol_grad_source'] = ("
+               "'explicit' if mf.conv_tol_grad is not None "
+               "else 'derived: sqrt(conv_tol)')")
+    out.append(f"_RUNTIME_INFO['scf_soscf'] = {bool(cfg.scf_soscf)!r}")
+    out.append("_RUNTIME_INFO['scf_solver_class'] = type(mf).__name__")
+    out.append("print(f\"[molbuilder] SCF convergence: energy "
+               "{_RUNTIME_INFO['scf_conv_tol']:.1e} Hartree, orbital "
+               "gradient {_RUNTIME_INFO['scf_conv_tol_grad']:.1e} \"\n"
+               "      f\"({_RUNTIME_INFO['scf_conv_tol_grad_source']}); "
+               "solver {_RUNTIME_INFO['scf_solver_class']}.\")")
 
     # Wire the production-mf SCF callback so per-cycle SCF history is
     # captured for every opt step across the stages loop.  The emitter
