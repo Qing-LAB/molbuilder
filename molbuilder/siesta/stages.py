@@ -126,7 +126,8 @@ def _traits(eff) -> Dict[str, str]:
 
 
 def _warm_declaration(label: str, eff,
-                      calculation: str = "optimization") -> List[WarmFile]:
+                      calculation: str = "optimization",
+                      base_dir=None) -> List[WarmFile]:
     """What a stage with this resolved config takes from a run it continues.
 
     THE ROWS COME FROM THE RULES FILE (`job-contracts.md` § 4.2a, U2
@@ -150,6 +151,7 @@ def _warm_declaration(label: str, eff,
     if not _continues(eff):
         return []
     return [WarmFile(f"{label}{r.suffix}", requires_same=r.requires_same)
-            for r in rules_for("siesta", calculation) if r.carry]
+            for r in rules_for("siesta", calculation,
+                               base_dir) if r.carry]
 
 

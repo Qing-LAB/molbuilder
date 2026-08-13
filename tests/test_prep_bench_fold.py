@@ -521,6 +521,39 @@ def test_the_two_stage_sequence_carries_the_geometry_forward(calc):
     assert [j["name"] for j in js["jobs"]] == ["coarse", "medium"]
 
 
+def test_a_fine_tuned_vocabulary_copy_wins_and_is_named(calc):
+    """U6a (§ 4.2a's template mechanism): a calculation carrying its own
+    warm-files.toml is the fine-tuned state -- nearest file wins, the
+    surgical edit here being 'withhold the density' (the .DM row loses
+    its carry flag).  The plan names WHICH file answered, so the
+    surprising carry is debuggable from the bundle alone."""
+    import pathlib
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    engine_file = (pathlib.Path("molbuilder") / "siesta" /
+                   "warm-files.toml").resolve()
+    text = engine_file.read_text()
+    text = text.replace(
+        'suffix      = ".DM"             # converged density matrix\n'
+        'carry       = "when-continuing"\n'
+        'honoured_by = "DM.UseSaveDM"',
+        'suffix      = ".DM"             # fine-tuned: NOT carried here')
+    (calc / "warm-files.toml").write_text(text)
+    r = CliRunner()
+    res = r.invoke(jobset_group, ["prep", "run", "medium",
+                                  "--bundle", str(calc), "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    js = json.loads((calc / "job-set.json").read_text())
+    warm = {w["name"] for j in js["jobs"] if j["name"] == "medium"
+            for w in j["warm"]}
+    assert "JOB.XV" in warm and "JOB.CG" in warm
+    assert "JOB.DM" not in warm, (
+        "the calculation's own vocabulary says the density does not "
+        "carry, and the engine default answered anyway")
+    plan = (calc / "STAGE-PLAN.md").read_text()
+    assert f"warm-files: {calc / 'warm-files.toml'}" in plan
+
+
 def test_the_cg_pair_rule_holds_both_ways_on_a_live_bundle(calc):
     """G2 I-list (2026-08-13): project-layout § 2.3.4 row 3 driven
     through the VERBS on a real described bundle, both directions.  The

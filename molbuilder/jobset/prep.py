@@ -228,8 +228,16 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     # root, a bench's inside its stage's bench/ container -- so a bench
     # prep can never overwrite the run's reviewable plan (U1, 2026-08-12).
     plan_dir = Path(record_dir) if record_dir is not None else base
+    # WHICH file supplied the warm-file vocabulary (U6a provenance): the
+    # engine's own, or this calculation's fine-tuned copy -- a surprising
+    # carry must be debuggable from the plan alone (§ 4.2a).
+    try:
+        from ..warmfiles import load_warm_files
+        _vocab = f"warm-files: {load_warm_files(jobset.engine, base).path}\n"
+    except Exception:
+        _vocab = ""    # an engine without a rules file has no line to print
     (plan_dir / "STAGE-PLAN.md").write_text(
-        render_plan(jobset) + "\n\n"
+        render_plan(jobset) + "\n\n" + _vocab
         + format_provenance(config_provenance(project_dir=base)) + "\n",
         encoding="utf-8")
     return dirs
@@ -487,7 +495,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         _seed_trajectory_log(struct, cfg, base, engine=task.engine,
                              label=seam.label_of(cfg),
                              token=(token or None))
-        jobs.append(_job_for(element, script, task, pset.stage, seam))
+        jobs.append(_job_for(element, script, task, pset.stage, seam,
+                             base))
 
     # ---- 4 + 5, and the record floor 3 leaves behind -------------------- #
     # ``kind`` is INTENT, not length (review 2026-08-12: a one-point grid is
@@ -646,7 +655,7 @@ def _token_for(task, stage_name: Optional[str]) -> str:
 
 
 def _job_for(element, script: str, task, stage_name: Optional[str],
-             seam: EngineSeam) -> Job:
+             seam: EngineSeam, base_dir=None) -> Job:
     """One element of the parameter set as one :class:`Job`.
 
     ``resources`` is **copied from the element**, never re-derived: the element
@@ -669,7 +678,7 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
 
     return Job(name=name, script=script, resources=element.resources,
                warm=seam.warm_for(element.label, element.values,
-                                  task.calculation),
+                                  task.calculation, base_dir),
                traits=seam.traits_for(element.values))
 
 

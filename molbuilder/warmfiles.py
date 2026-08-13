@@ -64,9 +64,13 @@ class WarmRule:
 
 @dataclass(frozen=True)
 class WarmFilesDoc:
-    """A parsed rules file: the engine and its sections, in file order."""
+    """A parsed rules file: the engine and its sections, in file order.
+    ``path`` is WHICH file answered -- the engine's own, or a
+    calculation's fine-tuned copy (U6a) -- and it is what provenance
+    prints, so a surprising carry is debuggable from the plan alone."""
     engine: str
     sections: Tuple[Tuple[str, Tuple[WarmRule, ...]], ...]
+    path: str = ""
 
     def section_names(self) -> List[str]:
         return [name for name, _ in self.sections if name != "base"]
@@ -104,14 +108,24 @@ def _parse_row(obj: dict, *, where: str) -> WarmRule:
                     honoured_by=hon)
 
 
-def load_warm_files(engine: str) -> WarmFilesDoc:
-    """Read and validate ``<engine>/warm-files.toml``, preserving file order.
+def load_warm_files(engine: str, base_dir=None) -> WarmFilesDoc:
+    """Read and validate the rules file, preserving file order.
+
+    NEAREST FILE WINS (U6a, § 4.2a's template mechanism): a calculation
+    carrying its own ``warm-files.toml`` beside ``task.json`` is the
+    fine-tuned state and answers for that calculation; without one, the
+    engine's own file answers -- the default state, which is almost
+    every calculation.  Same precedence idea as ``.molbuilder.json``.
 
     File order is load-bearing both ways: :func:`rules_for` hands the
     declaration builder its rows in it (so ``Job.warm`` is stable), and
     :func:`inventory` hands the wrapper its banner/test order from it.
     """
     path = _rules_path(engine)
+    if base_dir is not None:
+        local = Path(base_dir) / FILENAME
+        if local.is_file():
+            path = local
     if not path.is_file():
         raise WarmFilesError(
             f"no {FILENAME} for engine {engine!r} (expected {path}). "
@@ -148,10 +162,12 @@ def load_warm_files(engine: str) -> WarmFilesDoc:
         raise WarmFilesError(
             f"{path}: no [base] section.  Every engine has one -- it may "
             f"be empty, but its absence reads as a truncated file.")
-    return WarmFilesDoc(engine=engine, sections=tuple(sections))
+    return WarmFilesDoc(engine=engine, sections=tuple(sections),
+                        path=str(path))
 
 
-def rules_for(engine: str, calculation: str) -> List[WarmRule]:
+def rules_for(engine: str, calculation: str,
+              base_dir=None) -> List[WarmRule]:
     """``[base]`` + the calculation's own section, in file order.
 
     The type-scoped answer: what THIS calculation carries between stages
@@ -160,7 +176,7 @@ def rules_for(engine: str, calculation: str) -> List[WarmRule]:
     new calculation type is a new section, and the refusal is the prompt
     that says where it goes.
     """
-    doc = load_warm_files(engine)
+    doc = load_warm_files(engine, base_dir)
     table = dict(doc.sections)
     if calculation not in table or calculation == "base":
         raise WarmFilesError(
