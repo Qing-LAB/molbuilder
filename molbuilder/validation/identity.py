@@ -42,7 +42,7 @@ produce, and the reason that parameter is named ``label``. Same shape of imperfe
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Sequence
+from typing import Dict, List, Optional, Sequence
 
 from ..identity import is_ours
 from ..issues import Issue
@@ -62,12 +62,18 @@ from ..warmfiles import inventory as _warm_inventory
 #: construction is a re-derivation with extra steps; those helpers existed for
 #: the shell attempt-directory block, which P7 unit 1 retired, and this reads
 #: the tuples directly now.
-_INVENTORY: Dict[str, Sequence[str]] = {
-    # DERIVED from the one rules file (U3, 2026-08-13) -- validation
-    # stops reaching into runwrap for a vocabulary neither owns.
-    "siesta": _warm_inventory("siesta"),
-    "pyscf":  _warm_inventory("pyscf"),
-}
+def _engine_inventory(engine: str) -> Optional[Sequence[str]]:
+    """The engine's warm inventory, DERIVED from the one rules file (U3,
+    2026-08-13) — validation stops reaching into runwrap for a vocabulary
+    neither owns — and resolved AT USE, never at import (C-b, same day):
+    the module-level dict that stood here loaded both engines' TOMLs the
+    moment anything imported ``validation``, so one malformed file broke
+    every entry point.  ``None`` for an engine with no rules file — the
+    caller already treats unknown engines as *not refused twice*."""
+    try:
+        return _warm_inventory(engine)
+    except Exception:
+        return None
 
 
 def warm_files_present(directory, label: str, engine: str = "") -> List[str]:
@@ -256,7 +262,7 @@ def _foreign_state(directory, run_id: str, engine: str) -> List[str]:
     — which keeps this correct for PySCF, where a "suffix" is
     ``_optimized.xyz`` rather than an extension.
     """
-    suffixes = _INVENTORY.get(engine)
+    suffixes = _engine_inventory(engine)
     if not suffixes or not run_id:
         return []
     d = Path(directory)

@@ -34,10 +34,21 @@ from .model import JobSet
 # vocabulary, already citing a retired doc.  The carry rows are status's
 # question -- could a stage here hand state to the next one?
 from ..warmfiles import carry_inventory as _carry_inventory
-_WARM_FILES = {
-    "siesta": _carry_inventory("siesta"),
-    "pyscf":  _carry_inventory("pyscf"),
-}
+
+
+def _warm_files(engine: str):
+    """The engine's carry rows, resolved AT USE — never at import (C-b,
+    2026-08-13): the module-level dict that stood here loaded BOTH
+    engines' rules files the moment anything imported
+    ``molbuilder.jobset``, so one malformed TOML killed every entry
+    point with an import-time traceback.  Resolved here, a broken rules
+    file refuses at the status call it affects, with the loader's own
+    message — the same moment `prep` already owns for its copy.  An
+    engine without a rules file simply has no carry rows to report."""
+    try:
+        return _carry_inventory(engine)
+    except Exception:
+        return ()
 
 # decode_run_dir states we treat as "this stage is done".
 _DONE = "finished"
@@ -126,7 +137,7 @@ def _warm_present(stage_dir: Path, label: str, engine: str) -> List[str]:
     """Which engine warm-restart files actually exist (real files, not
     dangling carry symlinks) in this stage's dir."""
     out: List[str] = []
-    for ext in _WARM_FILES.get(engine, ()):
+    for ext in _warm_files(engine):
         f = stage_dir / f"{label}{ext}"
         if f.is_file():                      # follows symlinks; dangling -> False
             out.append(f.name)
