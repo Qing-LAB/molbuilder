@@ -1699,12 +1699,16 @@ def _emit_dispersion_template(xc_authors: str, v: bool) -> List[str]:
         ]
     out += [
         "# %block MM.Potentials",
-        "#   # species_i  species_j  type     C6 (Eh*Bohr^6)  R0 (Bohr)",
-        "#   #   C           C         Grimme   1.75            1.452",
-        "#   #   C           H         Grimme   ...             ...",
-        "#   #   N           N         Grimme   ...             ...",
+        "#   # species_i  species_j  type     C6 (J*nm^6/mol)  R0 (Ang)",
+        "#   #   C           C         Grimme   1.75             1.452",
+        "#   #   C           H         Grimme   ...              ...",
+        "#   #   N           N         Grimme   ...              ...",
         "#   # See SIESTA manual sec. 5.20 (MM.Potentials) and Grimme",
-        "#   # (2006) Tables 1+2 for C6 / R0 per species.",
+        "#   # (2006) Tables 1+2 for C6 / R0 per species.  The example",
+        "#   # values ARE Grimme 2006's (C: C6=1.75 J*nm^6/mol, R0=1.452 A);",
+        "#   # the old header labelled them Eh*Bohr^6 / Bohr, units they",
+        "#   # never were.  CHECK your SIESTA version's expected",
+        "#   # MM.Potentials units against the manual before uncommenting.",
         "# %endblock MM.Potentials",
     ]
     return out
