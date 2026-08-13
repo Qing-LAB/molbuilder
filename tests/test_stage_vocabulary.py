@@ -286,11 +286,10 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         None, "molbuilder/validation/stages.py",
         "§ 6.6a's check that a stage does not recompute the one before it -- "
         "a question ABOUT a ladder, not a way of expressing one"),
-    "DIAG_1STAGE": (
-        None, "molbuilder/bench/__init__.py",
-        "SIESTA *diagonalisation*, unrelated role -- same word"),
-    "DIAG_2STAGE": (
-        None, "molbuilder/bench/__init__.py", "likewise"),
+    # DIAG_1STAGE / DIAG_2STAGE (bench/__init__.py's diagonalisation
+    # constants -- same word, unrelated role) left the ledger 2026-08-13
+    # when the legacy siesta-gpu stack was deleted: the rows' removal is
+    # the proof the subtraction happened, per this test's own rule.
     "_stage_of": (
         None, "molbuilder/resolve.py",
         "step 2's rung lookup -- which Stage this prep resolves, refusing "

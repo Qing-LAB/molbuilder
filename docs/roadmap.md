@@ -447,14 +447,20 @@ dropped in the same commit that closes its item)*:
 - **Multi-frame trajectory persistence.** Persist multi-frame trajectories
   as extended-XYZ (via ASE) with a sidecar manifest — the one open item
   from the frame-series work.
-- **SIESTA retry: the exit-code belt.** *(The wiring half of this item
-  LANDED — 2026-08-07 on the old producer road, and 2026-08-13 for the
-  described route: `resolve.py` performs job-contracts § 6.2's translation,
-  so the template's `continue_retries` rides the element's Resources and
-  `prep` bakes it into the wrapper on every path.)*  What remains: check
-  the `.out` for `SCF_NOT_CONV`/`ABNORMAL_TERMINATION` on a *zero* exit
-  too, so the retry (and honest failure reporting) survives an
-  MPI stack that doesn't propagate abort statuses.
+- **Convergence / termination feedback lives in the MONITOR** (decided
+  2026-08-13, user).  *(The retry-wiring half of the old "SIESTA retry"
+  item LANDED — 2026-08-07 on the old producer road, 2026-08-13 for the
+  described route: `resolve.py` performs job-contracts § 6.2's
+  translation, so the template's `continue_retries` rides the element's
+  Resources and `prep` bakes it into the wrapper on every path.)*  What
+  remains — detecting from the `.out` that a run STOPPED, and whether it
+  stopped converged or not (`SCF_NOT_CONV` / `ABNORMAL_TERMINATION`, on a
+  *zero* exit too, since an MPI stack may not propagate abort statuses) —
+  is **not the execution branch's job**: it belongs to the engine-specific
+  monitor script (`mb_monitor.py`) shipped beside the wrapper, the surface
+  whose whole purpose is telling the user what the calculation is doing.
+  Build the detection there, as monitor feedback the user reads, not as
+  prep/submit machinery.
 - **Watch discovery: make the `JOB` resolver test real.**
   `test_load_directory_falls_back_to_py_job_name` still writes the retired
   `job_name = "…"` form and passes via an earlier discovery step — it never
@@ -606,7 +612,7 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   | 5 launch | ⚠ | `runwrap` **writes** a script and `submit` **starts** one; one floor holds both. Real, harmless, and splitting it costs more than it returns |
   | 6 observe | ⚠ | in the flat layout, one stage's verdict is still read from the whole folder |
   | 7 surfaces | ⚠ | the web has no staged path at all |
-  | — | `bench/` | ~~a second copy of floors 3–6 for sweeps~~ **folded 2026-08-12** (step 6 u1–u5): a sweep is `prep` with a longer step 2; the legacy `siesta-gpu` stack survives pending plan row 8 |
+  | — | `bench/` | ~~a second copy of floors 3–6 for sweeps~~ **folded 2026-08-12** (step 6 u1–u5): a sweep is `prep` with a longer step 2; the legacy `siesta-gpu` stack was deleted 2026-08-13 (user: no obsolete paths beside the verb that replaced them) |
 
   **Every ⚠ except floor 5's was the same unfinished change** — the producer
   ran at *produce* and needed to run at `prep`, "the one real migration" —

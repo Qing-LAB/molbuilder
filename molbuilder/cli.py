@@ -315,10 +315,9 @@ def cli() -> None:
 # self-contained click group registered here as a single sub-group.
 cli.add_command(envs_group)
 
-# `molbuilder bench ...`  (siesta-gpu sweep over BENCH-MARKS).
-# Reads the BENCH-MARKS block emitted by the generator (Step 2a) and
-# runs short SIESTA jobs across a handful of (np, omp, BlockSize)
-# combinations.  See molbuilder/bench/.
+# `molbuilder bench ...`  -- only `probe-scheduler` remains (a config
+# helper): the benchmark itself is a jobset (`jobset prep bench`), and
+# the legacy in-place siesta-gpu sweep was deleted 2026-08-13.
 cli.add_command(bench_group)
 
 # `molbuilder jobset ...`  (engine-agnostic staged execution: plan / prep /
