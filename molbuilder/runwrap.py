@@ -957,6 +957,19 @@ def _gpu_per_rank_launcher_block() -> str:
         '    echo "molbuilder: under SLURM (job $SLURM_JOB_ID) -- '
         'trusting scheduler cpuset for CPU/mem binding '
         '(no manual numactl)" >&2\n'
+        # Off SLURM with >1 GPU in play, the whole-job wrap is WRONG by
+        # construction: it binds every rank to GPU0\'s node, and the
+        # per-rank helper\'s own finer numactl (each rank pinned beside
+        # ITS GPU) cannot escape the outer cpuset -- half the ranks were
+        # locked cross-socket from the very GPU they serve, tripping the
+        # helper\'s own WARN (R9/F7, 2026-08-12).  The helper owns
+        # placement whenever ranks span GPUs; the whole-job wrap stays
+        # only for the single-GPU case it was designed for.
+        'elif [ "${_ngpu:-0}" -ge 2 ] && [ -n "$_numa_wrap_gpu" ]; then\n'
+        '    _numa_wrap_gpu=""\n'
+        '    echo "molbuilder: $_ngpu GPUs in play -- per-rank NUMA '
+        'binding via the rank helper (whole-job numactl would pin '
+        'every rank to GPU0\'s socket)" >&2\n'
         'fi\n'
     )
 
