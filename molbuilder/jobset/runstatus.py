@@ -28,12 +28,15 @@ from .materialize import (RUN_LAUNCH_FILE, attempts, job_dir_names,
                           latest_attempt, shape_of, stage_refs)
 from .model import JobSet
 
-# Engine-native warm-restart files keyed by the project id (system label),
-# from script-execution.md's inventory.  Presence of these in a stage dir is
-# what lets that stage (or the next) warm-start.
+# Engine-native warm-restart files keyed by the project id (system label).
+# DERIVED from the one rules file (job-contracts § 4.2a; U3/W2, 2026-08-13):
+# the per-engine dict that stood here was the THIRD hand-kept copy of the
+# vocabulary, already citing a retired doc.  The carry rows are status's
+# question -- could a stage here hand state to the next one?
+from ..warmfiles import carry_inventory as _carry_inventory
 _WARM_FILES = {
-    "siesta": (".XV", ".DM", ".CG"),
-    "pyscf":  (".chk",),
+    "siesta": _carry_inventory("siesta"),
+    "pyscf":  _carry_inventory("pyscf"),
 }
 
 # decode_run_dir states we treat as "this stage is done".

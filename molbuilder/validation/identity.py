@@ -46,7 +46,7 @@ from typing import Dict, List, Sequence
 
 from ..identity import is_ours
 from ..issues import Issue
-from ..runwrap import _PYSCF_WARM_SUFFIXES, _SIESTA_WARM_SUFFIXES
+from ..warmfiles import inventory as _warm_inventory
 
 
 #: engine -> the shipped warm-restart SUFFIXES an id keys.
@@ -63,8 +63,10 @@ from ..runwrap import _PYSCF_WARM_SUFFIXES, _SIESTA_WARM_SUFFIXES
 #: the shell attempt-directory block, which P7 unit 1 retired, and this reads
 #: the tuples directly now.
 _INVENTORY: Dict[str, Sequence[str]] = {
-    "siesta": _SIESTA_WARM_SUFFIXES,
-    "pyscf":  _PYSCF_WARM_SUFFIXES,
+    # DERIVED from the one rules file (U3, 2026-08-13) -- validation
+    # stops reaching into runwrap for a vocabulary neither owns.
+    "siesta": _warm_inventory("siesta"),
+    "pyscf":  _warm_inventory("pyscf"),
 }
 
 

@@ -246,10 +246,11 @@ def _continue_force_args_parser(name_for_usage: str) -> str:
 #: U3 prove itself byte-identical.  Order is cosmetic at runtime -- an
 #: ``||`` chain and a banner label -- which is why this is safe as its own
 #: deliberate commit.
-_SIESTA_WARM_SUFFIXES = (
-    ".XV", ".DM", ".LWF", ".ZM", ".Bonds", ".PARTIAL", ".EIG",
-    ".HSX", ".WFSX", ".STRUCT_NEXT_ITER", ".CG", ".TSHS", ".TSDE",
-)
+#: DERIVED, not listed (U3, 2026-08-13): the literal tuple this held is
+#: retired -- ``siesta/warm-files.toml`` is the one source, this name the
+#: wrapper generator's read of it.
+from .warmfiles import inventory as _warm_inventory
+_SIESTA_WARM_SUFFIXES = _warm_inventory("siesta")
 
 #: PySCF's warm-restart files, by SUFFIX rather than extension -- ``.chk`` is
 #: just ``.chk`` but the others end ``_optimized.xyz`` and the like, which no
@@ -263,10 +264,7 @@ _SIESTA_WARM_SUFFIXES = (
 #: was wrong is the one `run-identity.md § 5` says must never be weakened,
 #: because it is the one always present.  SIESTA's pair was derived from a
 #: single tuple by P3's Review 2 for exactly this reason; PySCF's was missed.
-_PYSCF_WARM_SUFFIXES = (
-    ".chk", "_optimized.xyz", "_geom_optim.xyz", "_geom_optim.tmp",
-    "_geom.tmp",
-)
+_PYSCF_WARM_SUFFIXES = _warm_inventory("pyscf")
 
 
 def _cold_restart_aside_block(basename: str, *, engine: str) -> str:

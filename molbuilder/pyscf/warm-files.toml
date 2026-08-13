@@ -12,6 +12,8 @@ engine = "pyscf"
 
 [[base.file]]
 suffix = ".chk"                 # SCF checkpoint (init-guess source)
+carry  = "when-continuing"      # the one file a continuing PySCF run
+                                # reads (the script auto-loads it)
 
 # ---- optimization (geomeTRIC) ---------------------------------------
 

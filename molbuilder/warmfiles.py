@@ -172,6 +172,19 @@ def rules_for(engine: str, calculation: str) -> List[WarmRule]:
     return list(table.get("base", ())) + list(table[calculation])
 
 
+def carry_inventory(engine: str) -> Tuple[str, ...]:
+    """The carry rows across every section, in file order — the type-blind
+    CARRY hint: *"could a stage here hand state to the next one?"*, which
+    is `runstatus`'s question (its own per-engine table was the THIRD fork
+    of this vocabulary until U3, 2026-08-13).  Type-blind for the same
+    reason :func:`inventory` is: status reads a directory where the
+    description may not be in hand, and a hint may over-include."""
+    doc = load_warm_files(engine)
+    return tuple(rule.suffix
+                 for _, rows in doc.sections
+                 for rule in rows if rule.carry)
+
+
 def inventory(engine: str) -> Tuple[str, ...]:
     """Every suffix the engine may warm-start from — ``[base]`` plus all
     sections, in file order.  The type-blind answer, for the wrapper's
