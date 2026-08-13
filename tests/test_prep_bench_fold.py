@@ -718,6 +718,49 @@ def test_a_config_refusal_is_a_refusal_not_a_traceback(tmp_path, monkeypatch):
     assert "Traceback" not in res.output, res.output
 
 
+def test_prep_bench_asks_when_a_trial_is_already_launched(calc):
+    """A7 (redo 2026-08-12): `prep bench` re-renders the very decks a
+    QUEUED trial's symlinks point at, and the underway-ask ran for
+    `prep run` only -- so that re-render was silent.  The ask now sees
+    launched trials; unanswerable, it proceeds saying so (§ 6 warns, it
+    does not refuse)."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.materialize import write_run_launch
+    js = _prep_bench(calc)
+    first = js["jobs"][0]["name"]
+    write_run_launch(calc / "01_coarse" / "bench" / f"bench-{first}",
+                     mode="submit", command=["sbatch", "x"], job_id="7")
+    res = CliRunner().invoke(jobset_group,
+                             ["prep", "bench", "coarse",
+                              "--bundle", str(calc), "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    assert "under way" in res.output
+    assert "launched trial(s)" in res.output and first in res.output
+
+
+def test_a_stage_without_an_open_attempt_refuses_to_launch(calc):
+    """C5 (redo 2026-08-12, R2's missing half): a hierarchical stage
+    prepped without `prep run` -- decks and wrappers in place, no run-<n>
+    -- used to launch IN ITS OWN CONTAINER: no run.json, silently
+    relaunchable, everything § 1.5/1.6 exist to prevent.  It refuses now
+    and names the verb that opens the attempt."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.prep import prep_calculation as _pc
+    _pc(calc, "coarse", allocation=Resources(mpi_np=2, cpus_per_task=2),
+        emit_sbatch=False)             # library prep: NO attempt opened
+    assert not (calc / "01_coarse" / "run-0").exists()
+    res = CliRunner().invoke(jobset_group,
+                             ["submit", "run", "coarse",
+                              "--bundle", str(calc),
+                              "--mode", "direct"])
+    assert res.exit_code != 0
+    assert "no attempt is open" in res.output
+    assert "prep run coarse" in res.output
+    assert not (calc / "01_coarse" / "run.json").exists()
+
+
 def test_a_direct_sweep_resumes_past_launched_trials(calc):
     """A6 (redo 2026-08-12): direct mode runs the set in order, and the
     launched-trial refusal (R2) made it die at the FIRST record -- an

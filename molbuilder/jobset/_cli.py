@@ -310,11 +310,16 @@ def _load_bench_set(base, stage):
         raise click.ClickException(str(e))
 
 
-def _ask_if_underway(base, stage) -> None:
+def _ask_if_underway(base, stage, *, bench_container=None) -> None:
     """§ 6's moment (run-identity.md, softened 2026-08-08): before writing,
     SAY what is in the folder — and when what is there says a run already
     HAPPENED (a launched attempt's ``run.json``, warm files at the root),
     ask before re-rendering over it (A3/U14, 2026-08-12).
+
+    ``bench_container`` widens the evidence to a sweep's launched trials
+    (A7, 2026-08-12): `prep bench` re-renders the very decks a QUEUED
+    trial's symlinks point at, and until A7 the ask ran for `prep run`
+    only, so that re-render was silent.
 
     The default is YES and an unanswerable prompt PROCEEDS, saying so —
     the inverse of the verdict offer, deliberately: applying someone
@@ -346,6 +351,21 @@ def _ask_if_underway(base, stage) -> None:
                     evidence.append(
                         f"{a.relative_to(Path(base))}/ was launched "
                         f"(its run.json)")
+    elif not task.stages:
+        # § 6.5 STAGELESS: the calculation's attempts sit at the ROOT --
+        # the stage gate above cannot see them (A7, 2026-08-12).
+        for n in attempts(Path(base)):
+            a = Path(base) / f"run-{n}"
+            if was_launched(a):
+                evidence.append(f"{a.name}/ was launched (its run.json)")
+    if bench_container is not None:
+        launched = [p.parent.name for p in
+                    sorted(Path(bench_container).glob("bench-*/run.json"))]
+        if launched:
+            evidence.append(
+                f"launched trial(s) in "
+                f"{Path(bench_container).relative_to(Path(base))}/: "
+                + ", ".join(launched))
     from ..validation.identity import warm_files_present
     warm = warm_files_present(base, task.label, task.engine)
     if warm:
@@ -753,6 +773,18 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             # § 6's say-what-is-there, and the A3 ask when a run already
             # happened here (U14).
             _ask_if_underway(base, stage)
+        else:
+            # A7: `prep bench` re-renders the decks a QUEUED trial's links
+            # point at -- same moment, wider evidence (launched trials in
+            # the stage's container).  An unresolvable container is left
+            # to prep's own refusal.
+            try:
+                cont, _tok = (_stage_bench_dir(base, stage)
+                              if stage is not None
+                              else (Path(base) / "bench", None))
+            except click.ClickException:
+                cont = None
+            _ask_if_underway(base, stage, bench_container=cont)
         from .prep import prep_calculation
         dirs = prep_calculation(base, stage, allocation=allocation,
                                 env=env, emit_sbatch=emit_sbatch,

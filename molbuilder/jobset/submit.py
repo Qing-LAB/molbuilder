@@ -295,9 +295,23 @@ def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Pat
     """
     from .materialize import (RUN_LAUNCH_FILE, attempts, job_dir_names,
                               shape_of, was_launched)
-    d = base_dir / job_dir_names(jobset, shape_of(jobset, base_dir))[job.name]
+    sh = shape_of(jobset, base_dir)
+    d = base_dir / job_dir_names(jobset, sh)[job.name]
     ns = attempts(d)
     if not ns:
+        # C5 (2026-08-12, R2's missing half): a HIERARCHICAL ladder stage
+        # with no attempt open used to fall through to (d, None) -- it
+        # launched in its own container, wrote no run.json, and was
+        # silently relaunchable, everything § 1.5/1.6 exist to prevent.
+        # Only that case refuses: a sweep trial IS its own attempt (below),
+        # and flat keeps no attempt directories at all.
+        if (jobset.kind == "ladder" and sh is not None
+                and sh.keeps_attempts_as_directories):
+            raise SubmitError(
+                f"job {job.name!r}: no attempt is open under {d.name}/ -- "
+                f"a hierarchical stage runs in run-<n>, never in its own "
+                f"container (project-layout.md § 1.5, 1.6).  Open one:\n"
+                f"    molbuilder jobset prep run {job.name}")
         # An attempt-less dir (a sweep trial) is ITS OWN attempt, and
         # § 1.5's immutability applies to it the same way (R2, 2026-08-12:
         # until then a named trial -- or any direct re-invocation -- was
