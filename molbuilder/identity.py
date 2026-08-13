@@ -164,6 +164,19 @@ OUR_FILE_PATTERNS: Sequence[str] = (
     "{label}-run*.pyscf.log", "{label}_*-run*.pyscf.log",
     # geomeTRIC's own optimizer log
     "{label}.log", "{label}_geom_*.log",
+    # the wrapper's own session log, the monitor's rolling status and its
+    # utilisation samples, and the per-run SCF timing instrument -- all
+    # molbuilder-written HISTORY, same as the stdout above.  Missing until
+    # 2026-08-13 (final review E-2): warm_files_present answers by
+    # SUBTRACTION, so the wrapper's own logs were reported back as the
+    # ENGINE's restart state at the underway-ask and rename decision
+    # points -- and the --cold name sweep (whose bash exception list is
+    # DERIVED from these rows since the same fix, E-1) moved a prior
+    # flat-staged stage's stdout and timing logs into the aside dir.
+    "{label}.runwrap-*.log", "{label}_*.runwrap-*.log",
+    "{label}.monitor.log", "{label}_*.monitor.log",
+    "{label}.util.csv", "{label}_*.util.csv",
+    "{label}-run*.scf-timing.log", "{label}_*-run*.scf-timing.log",
 )
 
 

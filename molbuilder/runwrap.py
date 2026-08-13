@@ -286,17 +286,17 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
     hint list a deck writes and ``prep`` carries between stages -- and
     stop being read here.
 
-    What survives the sweep is § 4.1's exception, by name shape:
-
-      * the deck and script (``*.fdf`` / ``*.py``), the template
-        (``*.template.toml``), the pseudopotentials (``*.psml``) --
-        molbuilder wrote them;
-      * the wrappers (``*.run.sh`` / ``*.sbatch``) and molbuilder's own
-        logs (``*.runwrap-*.log`` / ``*.molwatch.log``);
-      * prior OUTPUTS survive by construction: ``<basename>-run0.out``
-        and friends are hyphen-joined, so ``<id>.*`` / ``<id>_*`` never
-        match them -- the engine reads none of them, and results are not
-        state.
+    What survives the sweep is § 4.1's exception — *what molbuilder
+    wrote* — and since 2026-08-13 (E-1) the bash case list is DERIVED
+    from ``identity.OUR_FILE_PATTERNS``, the one Python spelling of that
+    enumeration, plus ``*.psml`` (element-named, defensive) and the aside
+    dirs themselves.  One list, two languages, no second copy to drift:
+    the hand list that stood here lacked ``*.out`` and the
+    monitor/util/scf-timing logs, and its comment claimed prior outputs
+    "survive by construction (hyphen-joined)" — false for a FLAT STAGED
+    calculation, whose ``<id>_<NN>_<stage>-run<N>.out`` matches
+    ``<id>_*``: ``--cold`` on stage 2 moved stage 1's stdout and timing
+    history into the aside dir.
 
     Backups land in ``<basename>-restart-aside-<UTC-timestamp>/`` so the
     user can inspect / recover the prior state.  Deleting that directory
@@ -346,6 +346,15 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
         )
     else:                                  # pragma: no cover
         raise WrapperError(f"unknown engine for cold-restart: {engine!r}")
+    # § 4.1's "except what molbuilder wrote", derived from the ONE
+    # enumeration (identity.OUR_FILE_PATTERNS) rather than hand-spelled
+    # here in a second language (E-1, 2026-08-13).  ``{label}`` becomes a
+    # glob star because the sweep's own globs already anchor on the id --
+    # the exception only needs the SHAPE of our names.
+    from .identity import OUR_FILE_PATTERNS
+    _exceptions = "|".join(sorted(
+        {p.replace("{label}", "*") for p in OUR_FILE_PATTERNS}
+        | {"*.psml", "*-restart-aside-*"}))
     return (
         f"# --- Cold-restart: NAME SWEEP --------------------------\n"
         f"# Everything named after the run's id goes aside, except what\n"
@@ -368,9 +377,9 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
         f'{basename}.* {basename}_*; do\n'
         f'        [ -e "$_f" ] || continue\n'
         f'        case "$_f" in\n'
-        f"            # molbuilder-written, by name shape (4.1's exception)\n"
-        f"            *.fdf|*.py|*.psml|*.template.toml|*.run.sh|*.sbatch|\\\n"
-        f"            *.runwrap-*.log|*.molwatch.log|*-restart-aside-*) continue ;;\n"
+        f"            # molbuilder-written, by name shape (4.1's exception;\n"
+        f"            # derived from identity.OUR_FILE_PATTERNS)\n"
+        f"            {_exceptions}) continue ;;\n"
         f"        esac\n"
         f'        if [ "$_moved" = "0" ]; then\n'
         f'            mkdir -p "$_aside"\n'

@@ -799,23 +799,38 @@ class TestNameSweep:
                 "myjob.orbdata.v99"} <= moved
 
     def test_what_molbuilder_wrote_survives_the_sweep(self, tmp_path):
-        """§ 4.1's exception: the deck, the template, the
-        pseudopotentials, the wrappers and molbuilder's own logs stay
-        put -- and prior -runN outputs survive by name shape (hyphen-
-        joined, never matching ``<id>.*``)."""
+        """§ 4.1's exception: everything molbuilder wrote stays put, and
+        since E-1 (2026-08-13) the bash exception list is DERIVED from
+        ``identity.OUR_FILE_PATTERNS`` -- so the run-indexed HISTORY
+        survives in every shape.  The hand list this replaces lacked
+        ``*.out`` and the monitor/util/scf-timing logs, and its comment
+        claimed prior outputs "survive by construction (hyphen-joined)"
+        -- false for a FLAT STAGED calculation, whose
+        ``myjob_01_coarse-run0.out`` matches the ``myjob_*`` glob:
+        ``--cold`` on stage 2 moved stage 1's stdout and timing history
+        into the aside dir."""
         wrapper = _truncated_siesta(tmp_path)
         (tmp_path / "myjob.template.toml").write_text("x")
         (tmp_path / "myjob.molwatch.log").write_text("x")
         (tmp_path / "myjob-run0.out").write_text("results")
+        (tmp_path / "myjob.out").write_text("results")
+        (tmp_path / "myjob_01_coarse-run0.out").write_text("stage 1 stdout")
+        (tmp_path / "myjob-run0.scf-timing.log").write_text("timing")
+        (tmp_path / "myjob.monitor.log").write_text("status")
+        (tmp_path / "myjob.util.csv").write_text("samples")
+        (tmp_path / "myjob.runwrap-20260813-000000.log").write_text("session")
         (tmp_path / "myjob.DM").write_text("state")
         proc = subprocess.run(
             ["bash", str(wrapper), "--cold"], cwd=tmp_path,
             capture_output=True, text=True, timeout=20,
             env={**os.environ, "MB_LAUNCHED_BY": "manual"})
         assert proc.returncode == 0, proc.stderr
-        assert (tmp_path / "myjob.fdf").is_file()
-        assert (tmp_path / "myjob.run.sh").is_file()
-        assert (tmp_path / "myjob.template.toml").is_file()
-        assert (tmp_path / "myjob.molwatch.log").is_file()
-        assert (tmp_path / "myjob-run0.out").is_file()
+        for kept in ("myjob.fdf", "myjob.run.sh", "myjob.template.toml",
+                     "myjob.molwatch.log", "myjob-run0.out", "myjob.out",
+                     "myjob_01_coarse-run0.out",
+                     "myjob-run0.scf-timing.log", "myjob.monitor.log",
+                     "myjob.util.csv", "myjob.runwrap-20260813-000000.log"):
+            assert (tmp_path / kept).is_file(), (
+                f"{kept} went into the aside dir -- molbuilder's own "
+                f"history treated as engine state")
         assert not (tmp_path / "myjob.DM").exists()

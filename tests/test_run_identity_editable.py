@@ -153,6 +153,12 @@ def test_a_file_no_list_ever_named_is_still_detected(calc):
     f"{ID}.fdf", f"{ID}_coarse.fdf", f"{ID}.template.toml",
     f"{ID}.run.sh", f"{ID}.sbatch", f"{ID}.molwatch.log",
     f"{ID}-run0.out", f"{ID}_tight-run2.out", f"{ID}.log",
+    # the session logs the E-2 fix added (2026-08-13): the wrapper's own
+    # log, the monitor's status + samples, and the per-run SCF timing --
+    # all reported back as ENGINE warm state until these rows existed
+    f"{ID}.runwrap-20260813-000000.log", f"{ID}.monitor.log",
+    f"{ID}.util.csv", f"{ID}-run0.scf-timing.log",
+    f"{ID}_01_coarse-run0.scf-timing.log",
 ])
 def test_what_molbuilder_wrote_is_never_mistaken_for_engine_state(calc, name):
     """The other half of the inversion, and the half that has to be exact.
