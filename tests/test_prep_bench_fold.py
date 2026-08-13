@@ -707,13 +707,70 @@ def test_a_stageless_calculation_runs_end_to_end(tmp_path):
     assert (dest / "run-0" / "run.json").is_file(), res.output
     res = r.invoke(jobset_group, ["status", "--bundle", str(dest)])
     assert res.exit_code == 0, res.output
-    # a hand-built SWEEP's tokenless jobs keep their bench-<name> homes
+    # a SWEEP's tokenless jobs live in the bare bench/ container beside
+    # their own record (§ 6.3's stageless row; A-2, 2026-08-13) -- never
+    # at the root where R1's misfiling put the stageless RUN
     from molbuilder.jobset.materialize import job_dir_names
     from molbuilder.jobset.model import Job, JobSet, Resources
     sweep = JobSet(name="X", engine="siesta", kind="sweep",
                    jobs=[Job(name="G1K1C4", script="job-gpu.fdf",
                              resources=Resources())])
-    assert job_dir_names(sweep)["G1K1C4"] == "bench-G1K1C4"
+    assert job_dir_names(sweep)["G1K1C4"] == "bench/bench-G1K1C4"
+
+
+def test_a_stageless_calculation_continues_from_its_own_attempt(tmp_path):
+    """A-3 (final review, 2026-08-13): ``--from run-0`` on a § 6.5
+    stageless calculation names the ROOT job, whose directory is ``.`` --
+    and matching the path's HEAD component could never equal ``.``, so
+    the pair read as UNVERIFIED and `warm_carry` silently withheld the
+    conditional ``.CG`` while prep reported success.  The source is the
+    attempt's PARENT read back through the naming authority, and a job
+    continuing from its own attempt is the one pair that cannot disagree
+    with itself."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.materialize import write_run_launch
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
+    dest = tmp_path / "calc"
+    D.write_description(
+        D.build_description(struct, SiestaConfig(system_label="JOB"), (),
+                            engine="siesta", shape="hierarchical",
+                            name="JOB", source=str(tmp_path / "h2.xyz")),
+        dest)
+    (dest / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    # a stageless calculation that CONTINUES: `restart` is the ONE field
+    # that says so (run-identity.md § 4 rule 2), set where a user sets it
+    # -- the template.
+    tpl = dest / "JOB.template.toml"
+    head, sep, tail = tpl.read_text().partition("[item.restart]")
+    assert sep, "the template lost its restart item"
+    assert 'value = "clean"' in tail
+    tpl.write_text(head + sep + tail.replace('value = "clean"',
+                                             'value = "continue"', 1))
+    r = CliRunner()
+    res = r.invoke(jobset_group, ["prep", "run", "--bundle", str(dest),
+                                  "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    # the attempt ran (hit its step cap, say): warm files in the root
+    # attempt, launch on record
+    (dest / "run-0" / "JOB.XV").write_text("relaxed coords")
+    (dest / "run-0" / "JOB.CG").write_text("cg history")
+    write_run_launch(dest / "run-0", mode="direct", command=["bash"])
+    res = r.invoke(jobset_group, ["prep", "run", "--bundle", str(dest),
+                                  "--no-sbatch", "--from", "run-0"])
+    assert res.exit_code == 0, res.output
+    carried = {p.name for p in (dest / "run-1").glob("JOB.*")
+               if not p.is_symlink()}
+    assert "JOB.XV" in carried
+    assert "JOB.CG" in carried, (
+        "continuing a stageless calculation from its own attempt withheld "
+        "the optimizer history -- the self-pair read as unverified (A-3)")
 
 
 def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
@@ -788,6 +845,32 @@ def test_a_stageless_calculation_can_be_benchmarked(tmp_path):
     for j in js["jobs"]:
         assert (dest / j["script"]).is_file()
         assert "_0" not in j["script"], j["script"]
+    # A-2 (2026-08-13): the trials live IN the bare bench/ container,
+    # beside the record just read -- not at the root, where the
+    # underway-ask never looked and a re-prep silently re-rendered the
+    # decks a queued trial's links point at.
+    for j in js["jobs"]:
+        assert (dest / "bench" / f"bench-{j['name']}").is_dir()
+        assert not (dest / f"bench-{j['name']}").exists()
+    # A-4 (2026-08-13): a stageless calculation owns no stage, so the lone
+    # name after `bench` binds to the TRIAL -- the exact form prep's own
+    # hint prints.  Until the fix it bound to the ignored stage positional
+    # and the NEXT unlaunched trial launched instead of the one named.
+    t0, t1 = js["jobs"][0]["name"], js["jobs"][1]["name"]
+    res = r.invoke(jobset_group, ["submit", "bench", t1, "--bundle",
+                                  str(dest), "--mode", "direct", "--dry-run"])
+    assert res.exit_code == 0, res.output
+    would = [l for l in res.output.splitlines() if "WOULD run" in l]
+    assert len(would) == 1, res.output
+    assert t1 in would[0] and t0 not in would[0], res.output
+    # two names on a stageless calculation contradict its own form: refuse
+    res = r.invoke(jobset_group, ["submit", "bench", t0, t1, "--bundle",
+                                  str(dest), "--mode", "direct", "--dry-run"])
+    assert res.exit_code != 0 and "stageless" in res.output
+    # and summarize with a name refuses rather than silently ignoring it
+    res = r.invoke(jobset_group, ["summarize", "bench", "not-a-stage",
+                                  "--bundle", str(dest)])
+    assert res.exit_code != 0 and "stageless" in res.output
     # a laddered calculation's bare bench still owes a name
     ladder = tmp_path / "laddered"
     D.write_description(
@@ -850,6 +933,17 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
     mj = json.loads(medium.read_text())
     assert all("01_coarse" in j["script"] for j in cj["jobs"])
     assert all("02_medium" in j["script"] for j in mj["jobs"])
+    # A-1 (2026-08-13): the TRIALS live in the same qualified container as
+    # the record.  Until job_dir_names and prep shared one spelling
+    # (materialize.bench_container), flat trials fell into an unqualified
+    # shared root bench/ -- two stages' same-coordinate trials collided
+    # (run.json cross-contamination read as "all trials launched") while
+    # the underway-ask globbed the qualified container and found nothing.
+    for cont, record in (("bench_01_coarse", cj), ("bench_02_medium", mj)):
+        for j in record["jobs"]:
+            assert (dest / cont / f"bench-{j['name']}").is_dir(), (
+                f"trial {j['name']} not in {cont}/")
+    assert not (dest / "bench").exists()
 
 
 def test_a_flat_stageless_calculation_preps_to_completion(tmp_path):

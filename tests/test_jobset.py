@@ -234,13 +234,17 @@ def test_job_dir_names_ladder_keeps_a_gap_a_gap():
 
 
 def test_job_dir_names_sweep_keeps_the_point_convention():
-    """The benchmark is untouched by the ladder's rule."""
+    """The benchmark is untouched by the ladder's rule -- and its tokenless
+    trials live in the bare ``bench/`` container beside their own record
+    (job-contracts.md § 6.3's stageless row; until 2026-08-13 they fell to
+    the root while the record sat in ``bench/``, final review A-2)."""
     from molbuilder.jobset.materialize import job_dir_names
     from molbuilder.jobset.model import Job, JobSet
     js = JobSet(name="JOB", engine="siesta", kind="sweep",
                 jobs=[Job(name="np4", script="JOB.fdf"),
                       Job(name="np8", script="JOB.fdf")])
-    assert job_dir_names(js) == {"np4": "bench-np4", "np8": "bench-np8"}
+    assert job_dir_names(js) == {"np4": "bench/bench-np4",
+                                 "np8": "bench/bench-np8"}
 
 
 def test_job_dir_names_ladder_without_a_token_falls_back_rather_than_guessing():
@@ -341,10 +345,13 @@ def test_prep_renders_real_wrappers_into_each_job_dir(tmp_path):
     prep_jobset(js, tmp_path, env="molbuilder-siesta-gpu", emit_sbatch=False)
     # rendered ONCE in the bundle root, from the real file.
     assert (tmp_path / "job-gpu.run.sh").is_file()
-    # symlinked into BOTH job dirs (one shared wrapper, the bench model).
+    # symlinked into BOTH trial dirs (one shared wrapper, the bench model).
+    # A tokenless trial nests in the bare bench/ container (§ 6.3), depth 2,
+    # so the link prefix is COMPUTED -- a hardcoded ".." would dangle.
     for name in ("bench-G1K1C4", "bench-G1K2C4"):
-        link = tmp_path / name / "job-gpu.run.sh"
-        assert link.is_symlink() and os.readlink(link) == "../job-gpu.run.sh"
+        link = tmp_path / "bench" / name / "job-gpu.run.sh"
+        assert link.is_symlink() and \
+            os.readlink(link) == "../../job-gpu.run.sh"
         assert link.resolve() == (tmp_path / "job-gpu.run.sh").resolve()
 
 
@@ -527,8 +534,8 @@ def test_direct_mode_is_untouched_because_it_is_not_submission(tmp_path,
     each job here, in order, waiting for each — nothing queues, nothing races,
     and the user's 2026-08-10 directive keeps the flat shape runnable this
     way."""
-    for d in ("bench-G1K1C4", "bench-G1K2C4"):
-        (tmp_path / d).mkdir()
+    for d in ("bench/bench-G1K1C4", "bench/bench-G1K2C4"):
+        (tmp_path / d).mkdir(parents=True)
         (tmp_path / d / "job-gpu.run.sh").write_text("x")
     class _Proc:
         def wait(self):
@@ -561,8 +568,8 @@ def test_a_failure_skips_nothing_because_nothing_depends_on_anything(tmp_path,
     arrives with several jobs, and its points are independent by definition:
     one bad point says nothing about the next.
     """
-    for d in ("bench-G1K1C4", "bench-G1K2C4"):
-        (tmp_path / d).mkdir()
+    for d in ("bench/bench-G1K1C4", "bench/bench-G1K2C4"):
+        (tmp_path / d).mkdir(parents=True)
         (tmp_path / d / "job-gpu.run.sh").write_text("x")
     class _Proc:
         def wait(self):
@@ -1037,7 +1044,7 @@ def test_job_dir_names_sweep_is_unchanged_by_the_total_refs():
     from molbuilder.jobset.model import Job, JobSet
     js = JobSet(name="JOB", engine="siesta", kind="sweep",
                 jobs=[Job(name="p1", script="JOB_p1.fdf")])
-    assert job_dir_names(js) == {"p1": "bench-p1"}
+    assert job_dir_names(js) == {"p1": "bench/bench-p1"}
 
 
 def test_a_sweep_point_prints_a_dash_not_its_row_under_seq(tmp_path):
@@ -1897,9 +1904,10 @@ def test_a_flat_ladder_lays_every_stage_out_in_the_bundle_root():
 
 
 def test_a_sweep_is_laid_out_the_same_way_in_either_shape():
-    """`bench-<name>` is the benchmark's own convention and says nothing about
-    flat or hierarchical -- which is why a bench bundle needs no description to
-    be laid out at all."""
+    """``bench/bench-<name>`` is the benchmark's own convention and says
+    nothing about flat or hierarchical -- a TOKENLESS trial has no stage
+    directory to nest in, so the bare container is the same in both shapes
+    (which is why a bench bundle needs no description to be laid out)."""
     from molbuilder.jobset.materialize import job_dir_names
     from molbuilder.jobset.model import Job, JobSet
     from molbuilder.jobset.shape import Shape
@@ -1907,7 +1915,7 @@ def test_a_sweep_is_laid_out_the_same_way_in_either_shape():
                 jobs=[Job(name="p1", script="JOB_p1.fdf")])
     assert (job_dir_names(js, Shape.named("flat"))
             == job_dir_names(js, Shape.named("hierarchical"))
-            == {"p1": "bench-p1"})
+            == {"p1": "bench/bench-p1"})
 
 
 def _describe(base, shape, names=("coarse", "tight")):

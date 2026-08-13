@@ -246,29 +246,57 @@ def _check_kind(kind: str, js=None) -> None:
 
 
 def _stage_bench_dir(base, stage):
-    """The stage's ``bench/`` container (job-contracts.md § 6.3), resolved
+    """The stage's bench container (job-contracts.md § 6.3), resolved
     through the description — where its trials, its job-set and its verdict
     all live.  Returns ``(container_path, token)``; refuses an unknown
-    stage with the ladder listed."""
+    stage with the ladder listed, and a NAMED stage on a stageless
+    calculation (which has none to name)."""
     from ..task import FILENAME, read_task
-    from .prep import _bench_container, _token_for
+    from .materialize import bench_container
+    from .prep import token_for
+    from .shape import Shape
     desc = Path(base) / FILENAME
     if not desc.is_file():
         return None, None                    # hand-built set: no container
     task = read_task(desc)
+    sh = Shape.named(task.shape)
     if not task.stages:
-        return Path(base) / _bench_container(task, ""), ""
+        if stage is not None:
+            raise click.ClickException(
+                f"this calculation is stageless (engines/stages.md § 6.5) "
+                f"-- it has no stage named {stage!r}.  Its one benchmark "
+                f"lives in bench/; drop the name.")
+        return Path(base) / bench_container(sh, ""), ""
     if stage is None:
         raise click.ClickException(
             "which stage's benchmark? name it: "
             f"{', '.join(s.name for s in task.stages)}.")
     for s in task.stages:
         if s.name == stage:
-            token = _token_for(task, s.name)
-            return Path(base) / _bench_container(task, token), token
+            token = token_for(task, s.name)
+            return Path(base) / bench_container(sh, token), token
     raise click.ClickException(
         f"no stage named {stage!r} in this description. Available: "
         f"{', '.join(s.name for s in task.stages)}.")
+
+
+def _bench_positionals(bundle, stage, trial):
+    """The grammar gives ``bench`` two optional names after it — (stage,
+    trial) — but a STAGELESS calculation owns no stage, so a lone name
+    there IS the trial: exactly the form prep's own hint prints
+    (``submit bench <trial>``).  Until 2026-08-13 that name bound to the
+    stage positional, was silently ignored, and the NEXT unlaunched trial
+    launched instead of the one named (final review A-4)."""
+    from ..task import FILENAME, read_task
+    desc = Path(bundle) / FILENAME
+    if stage is None or not desc.is_file() or read_task(desc).stages:
+        return stage, trial
+    if trial is not None:
+        raise click.ClickException(
+            f"this calculation is stageless (engines/stages.md § 6.5): "
+            f"after `bench` name at most the trial, but got both "
+            f"{stage!r} and {trial!r}.")
+    return None, stage
 
 
 def _pick_trial(js, base, trial, mode):
@@ -277,7 +305,7 @@ def _pick_trial(js, base, trial, mode):
     UNLAUNCHED (launch recorded as run.json in the trial's dir), with the
     remaining count said out loud.  `--mode direct` is not submission and
     runs the set sequentially, as ever."""
-    from .materialize import RUN_LAUNCH_FILE, job_dir_names, shape_of
+    from .materialize import job_dir_names, shape_of, was_launched
     if trial is not None:
         if not any(j.name == trial for j in js.jobs):
             raise click.ClickException(
@@ -290,7 +318,7 @@ def _pick_trial(js, base, trial, mode):
         return None                       # direct: the whole set, in order
     dirs = job_dir_names(js, shape_of(js, base))
     pending = [j.name for j in js.jobs
-               if not (Path(base) / dirs[j.name] / RUN_LAUNCH_FILE).is_file()]
+               if not was_launched(Path(base) / dirs[j.name])]
     if not pending:
         raise click.ClickException(
             f"all {len(js.jobs)} trials are launched.  next: "
@@ -348,13 +376,13 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
     if not desc.is_file():
         return
     task = read_task(desc)
-    from .materialize import attempts, was_launched
+    from .materialize import RUN_LAUNCH_FILE, attempts, was_launched
     from .shape import Shape
     evidence = []
     if task.stages and stage is not None:
-        from .prep import _token_for
+        from .prep import token_for
         try:
-            token = _token_for(task, stage)
+            token = token_for(task, stage)
         except Exception:
             token = None
         if token:
@@ -375,7 +403,8 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
                 evidence.append(f"{a.name}/ was launched (its run.json)")
     if bench_container is not None:
         launched = [p.parent.name for p in
-                    sorted(Path(bench_container).glob("bench-*/run.json"))]
+                    sorted(Path(bench_container)
+                           .glob(f"bench-*/{RUN_LAUNCH_FILE}"))]
         if launched:
             evidence.append(
                 f"launched trial(s) in "
@@ -800,11 +829,11 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             # A7: `prep bench` re-renders the decks a QUEUED trial's links
             # point at -- same moment, wider evidence (launched trials in
             # the stage's container).  An unresolvable container is left
-            # to prep's own refusal.
+            # to prep's own refusal.  (Until 2026-08-13 the stageless arm
+            # hardcoded `base/"bench"` here -- a second spelling of the
+            # container rule, the C-c habit.)
             try:
-                cont, _tok = (_stage_bench_dir(base, stage)
-                              if stage is not None
-                              else (Path(base) / "bench", None))
+                cont, _tok = _stage_bench_dir(base, stage)
             except click.ClickException:
                 cont = None
             _ask_if_underway(base, stage, bench_container=cont)
@@ -1097,7 +1126,10 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         domain = _execn["domain"]
         domain_source = "execution.domain (config)"
     if kind == "bench":
-        # The stage's own sweep record, from its bench/ container (§ 6.3).
+        # § 6.5: on a stageless calculation the lone name after `bench`
+        # IS the trial (A-4) -- then the stage's own sweep record, from
+        # its bench container (§ 6.3).
+        stage, trial = _bench_positionals(bundle, stage, trial)
         js, base = _load_bench_set(bundle, stage)
     else:
         if trial is not None:

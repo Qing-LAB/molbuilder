@@ -457,7 +457,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 
     # ---- 3. render the deck(s) ----------------------------------------- #
     struct = _structure_for(task, base)
-    token = _token_for(task, pset.stage)
+    token = token_for(task, pset.stage)
     jobs: List[Job] = []
     for element in pset:
         stem = f"{element.label}_{token}" if token else element.label
@@ -511,7 +511,12 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     js = JobSet(name=task.label, engine=task.engine, kind=kind,
                 shared=_shared_for(base), jobs=jobs)
     if kind == "sweep":
-        record_dir = base / _bench_container(task, token)
+        # The container spelling is materialize's (the naming authority):
+        # ONE function places the record here and the trials in
+        # job_dir_names, so the two can never disagree again (A-1/A-2).
+        from .materialize import bench_container
+        from .shape import Shape
+        record_dir = base / bench_container(Shape.named(task.shape), token)
         record_dir.mkdir(parents=True, exist_ok=True)
     else:
         record_dir = base
@@ -529,25 +534,6 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # instead of its own translated G·K.
     return prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
                        record_dir=record_dir)
-
-
-def _bench_container(task, token: str) -> str:
-    """Where a stage's bench state lives — ``<NN>_<stage>/bench`` in the
-    hierarchy, ``bench_<NN>_<stage>`` at the root of a FLAT calculation,
-    ``bench`` at the root of a stageless one.
-    `job-contracts.md` § 6.3: *"benchmark | bench/ inside the stage it
-    measures"* — in flat there IS no stage directory to sit inside, so the
-    token qualifies the container's own name instead (A5, 2026-08-12:
-    unqualified, two flat stages' benchmarks shared one root ``bench/``
-    and each prep overwrote the other's job-set, plan and verdict).  The
-    underscore join keeps it apart from a TRIAL's ``bench-<point>``
-    (§ 6.3's dash-joined qualifier), which lives INSIDE a container.
-    Stageless keeps bare ``bench`` — one parameter set cannot collide."""
-    from .shape import Shape
-    sd = Shape.named(task.shape).stage_dir(token) if token else "."
-    if sd == ".":
-        return f"bench_{token}" if token else "bench"
-    return f"{sd}/bench"
 
 
 def _merge_run_jobset(path: Path, new: JobSet,
@@ -633,12 +619,16 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
         stage_name=token, convergence_targets=(targets or None))
 
 
-def _token_for(task, stage_name: Optional[str]) -> str:
+def token_for(task, stage_name: Optional[str]) -> str:
     """This stage's ``<NN>_<name>`` — the ONE namer (decision 27).
 
     ``NN`` is the stage's place in the **full** ladder, so disabling one leaves
     a gap rather than renumbering what follows: renumbering would hand an
     existing output to a stage that did not produce it.
+
+    Public since 2026-08-13: the CLI's container/underway surfaces need the
+    same answer, and reaching in for a private name was the re-derivation
+    habit the final review's C-c row names.
     """
     if not task.stages or not stage_name:
         return ""

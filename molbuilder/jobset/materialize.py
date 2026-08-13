@@ -96,6 +96,37 @@ def shape_of(jobset: JobSet, base_dir) -> Optional["Shape"]:
     return Shape.named(read_task(desc).shape)
 
 
+def bench_container(shape: "Shape", token: str = "") -> str:
+    """Where a stage's bench state lives — its trials, the sweep's own
+    ``job-set.json``, its verdict — relative to the bundle root.
+
+    ``<NN>_<stage>/bench`` in the hierarchy; ``bench_<NN>_<stage>`` at the
+    root of a FLAT calculation; bare ``bench`` for a stageless one.
+    `job-contracts.md` § 6.3: *"benchmark | bench/ inside the stage it
+    measures"* — in flat there IS no stage directory to sit inside, so the
+    token qualifies the container's own name instead (A5, 2026-08-12:
+    unqualified, two flat stages' benchmarks shared one root ``bench/``
+    and each prep overwrote the other's job-set, plan and verdict).  The
+    underscore join keeps it apart from a TRIAL's dash-joined
+    ``bench-<point>``, which lives INSIDE a container.
+
+    **This is the ONE spelling of that rule.**  `prep` lays the sweep's
+    record down with it and :func:`job_dir_names` places the trials with
+    it — which is what makes "record here, trials there" impossible to
+    reintroduce on one side only.  Until 2026-08-13 the rule lived twice
+    (here as an inline ``if``, in `prep` as ``_bench_container``) and the
+    two disagreed in BOTH non-hierarchical layouts: flat trials fell into
+    an unqualified shared ``bench/`` while the record sat in
+    ``bench_<NN>_<stage>/``, and a stageless sweep's trials sat at the
+    ROOT while its record sat in ``bench/`` — so `submit` launched trials
+    in directories the underway-ask never looked at (final review A-1/A-2).
+    """
+    sd = shape.stage_dir(token) if token else "."
+    if sd == ".":
+        return f"bench_{token}" if token else "bench"
+    return f"{sd}/bench"
+
+
 def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     """``{job name: directory name}`` for a whole JobSet — the naming authority.
 
@@ -105,9 +136,10 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     | the deck says | the set says | directory |
     |---|---|---|
     | a stage token, job named for the stage | — | ``<NN>_<name>`` — the rung itself |
-    | a stage token, job named by coordinate | — | ``<NN>_<name>/bench/bench-<point>`` — a trial, in the stage's ``bench/`` container |
+    | a stage token, job named by coordinate | — | a trial, in the stage's bench CONTAINER (:func:`bench_container`): ``<NN>_<name>/bench/bench-<point>`` hierarchical, ``bench_<NN>_<name>/bench-<point>`` flat |
     | no token | ``kind="ladder"``, job named AS the set | ``.`` — the bundle root: a STAGELESS calculation (`engines/stages.md` § 6.5) IS its own one rung, and runs where its deck already sits.  In § 6.5's form the job and the set share the calculation's one label (`run-identity.md` § 2) — an identity that survives submit's only-narrowing, where a length test flipped the answer mid-flight (found by this row's first cut, R1) |
-    | no token | anything else | ``bench-<name>`` at the root — hand-built sets (sweeps, and tokenless ladders whose jobs are their own names), told apart by name alone |
+    | no token | ``kind="sweep"`` | ``bench/bench-<name>`` — a STAGELESS calculation's trial, in the bare container where its sweep's record already sits (§ 6.3's stageless row; until 2026-08-13 these fell to the root, final review A-2) |
+    | no token | ``kind="ladder"``, job named its own way | ``bench-<name>`` at the root — hand-built tokenless ladders (tests), told apart by name alone |
 
     Until 2026-08-10 every kind got the trial prefix, so a staged run's
     directories came out ``point-coarse/`` (`worked-example.md` gap 6); until
@@ -171,26 +203,31 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
             continue
         trial_token = _trial_stage_token(jobset, j)
         if trial_token:
-            # A trial NESTS inside a ``bench/`` CONTAINER inside the stage
-            # it measures -- <NN>_<stage>/bench/bench-<point>/
+            # A trial NESTS inside the stage's bench CONTAINER
             # (job-contracts.md § 6.3's Directories table, the cross-layer
             # authority: "benchmark | bench/ inside the stage").  The
             # container is what gives the stage's bench state ONE home --
             # its trials, its own job-set.json, its verdict -- so two
             # stages' benchmarks can never collide.  Until 2026-08-12 the
-            # trials sat directly in the stage (generator.md § 5's earlier
-            # wording, since amended): the authority row won.
-            sd = sh.stage_dir(trial_token)
-            container = "bench" if sd == "." else f"{sd}/bench"
+            # trials sat directly in the stage; until 2026-08-13 this line
+            # spelled the flat container ``bench/`` itself, unqualified --
+            # exactly the two-flat-stages collision A5 closed on the
+            # record side (final review A-1): bench_container is now the
+            # one spelling for both sides.
+            container = bench_container(sh, trial_token)
             out[j.name] = f"{container}/{job_dir_name(j.name)}"
             continue
         # Tokenless: the deck says nothing, so the SET is the only data
         # left (see the docstring's R1 paragraph).  A stageless ladder IS
-        # its own one rung and runs at the root; a hand-built sweep's
-        # points are siblings told apart by name.
-        out[j.name] = ("." if jobset.kind == "ladder"
-                       and j.name == jobset.name
-                       else job_dir_name(j.name))
+        # its own one rung and runs at the root; a stageless SWEEP's
+        # points live in the bare ``bench/`` container beside their own
+        # record (A-2, 2026-08-13); a hand-built tokenless ladder's
+        # own-named jobs stay siblings at the root.
+        if jobset.kind == "ladder":
+            out[j.name] = ("." if j.name == jobset.name
+                           else job_dir_name(j.name))
+        else:
+            out[j.name] = f"{bench_container(sh, '')}/{job_dir_name(j.name)}"
     return out
 
 
@@ -553,17 +590,26 @@ def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
     """Which job produced the attempt named by ``--from``, or ``None``.
 
     ``continue_from`` is bundle-relative and always ``<stage dir>/run-<n>``
-    (`job-system.md` § 5.3), so the stage is its head component read back
+    (`job-system.md` § 5.3), so the stage is the attempt's PARENT read back
     through the SAME naming authority that wrote it. Nothing is parsed out of
-    the name: :func:`job_dir_names` is asked, and a head that matches no job
+    the name: :func:`job_dir_names` is asked, and a parent that matches no job
     simply has no answer — which :func:`warm_carry` then treats as *unverified*
     rather than guessing.
+
+    The parent, not the first path component (A-3, 2026-08-13): a STAGELESS
+    calculation's stage dir is ``.`` — its attempts sit at the root, so
+    ``--from run-0`` has ``run-0`` as its head and ``.`` as its parent.
+    Matching on the head could never equal ``.``, so continuing a stageless
+    calculation from its own attempt read as *unverified* and silently
+    withheld every conditional carry (``.CG``) — prep still reported
+    success.  ``Path("run-0").parent`` is ``"."``, exactly the naming
+    authority's answer for the § 6.5 root job.
     """
     if not continue_from:
         return None
-    head = Path(continue_from).parts[0] if Path(continue_from).parts else ""
+    parent = str(Path(continue_from).parent)
     for j in jobset.jobs:
-        if dir_of.get(j.name) == head:
+        if dir_of.get(j.name) == parent:
             return j
     return None
 
