@@ -110,6 +110,12 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         3, "molbuilder/cli.py",
         "the whole ladder from a file; its help says 'Unknown keys ignored', "
         "which P1 reverses"),
+    "_refuse_duplicate_stage_names": (
+        None, "molbuilder/task.py",
+        "the ONE case-insensitive duplicate check (D10, 2026-08-13) -- "
+        "names key filenames, and case-insensitive filesystems make "
+        "'Tight' and 'tight' one deck; both parsers and the constructor "
+        "call this instead of keeping their own loops"),
     "stages_from_dicts": (
         3, ("molbuilder/config/pyscf.py", "molbuilder/task.py"),
         "parses it.  TWO declarations of one name, and that is the point: "
