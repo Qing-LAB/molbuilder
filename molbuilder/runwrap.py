@@ -789,7 +789,7 @@ def _gpu_loadbalance_block() -> str:
         'fi\n'
         'echo "molbuilder: GPU load-balance -- $_mpi_np ranks over '
         '$_ngpu GPU(s) = $_ranks_per_gpu rank(s)/GPU '
-        '(MPS when >=2)" >&2\n'
+        '(MPS when ranks exceed GPUs)" >&2\n'
         "\n"
     )
 
@@ -1110,6 +1110,7 @@ def _siesta_dry_run_block(script_name: str, gpu_mode: bool) -> str:
     EXPECTED OUTCOME: a ``DRY RUN`` banner + mapping table on stdout/log,
     then ``exit 0`` -- nothing else runs.
     """
+    _dr_stem = script_name.rsplit(".", 1)[0]
     return (
         f'if [ "$_dry_run" = 1 ]; then\n'
         f'    echo ""\n'
@@ -1117,11 +1118,40 @@ def _siesta_dry_run_block(script_name: str, gpu_mode: bool) -> str:
         f'    echo "  Resolved cmd : $_launch_cmd {script_name} '
         f'> $_out_file"\n'
         f'    echo "  Launch mode  : $_launch_note"\n'
-        f'    echo "  MPI ranks    : $_mpi_np"\n'
-        f'    echo "  OMP threads  : $_omp_threads"\n'
+        f'    echo "  MPI ranks    : $_mpi_np   '
+        f'(source: ${{_np_source:-?}})"\n'
+        f'    echo "  OMP threads  : $_omp_threads   '
+        f'(source: ${{_omp_source:-?}})"\n'
+        f'    echo "  Env          : ${{CONDA_DEFAULT_ENV:-<none active>}}"\n'
         f'    echo "  SLURM        : job=${{SLURM_JOB_ID:-<none>}} '
         f'ntasks=${{SLURM_NTASKS:-?}} cpus/task=${{SLURM_CPUS_PER_TASK:-?}} '
         f'gpus=${{SLURM_JOB_GPUS:-${{SLURM_GPUS:-?}}}}"\n'
+        # The sbatch-header cross-check (user design 2026-08-13): run
+        # OUTSIDE a SLURM job with the sibling .sbatch present, a local
+        # dry-run resolves through the policy and looks right -- while
+        # the header's -n is what will actually rule once submitted
+        # (SLURM_NTASKS outranks the baked default).  Read the header
+        # back and WARN on disagreement, so the stale-header mistake is
+        # caught before a queue slot is spent.
+        f'    if [ -z "${{SLURM_JOB_ID:-}}" ] '
+        f'&& [ -f "{_dr_stem}.sbatch" ] 2>/dev/null; then\n'
+        f"        _hdr_all=$(sed -n 's/^#SBATCH[[:space:]]*//p' "
+        f'"{_dr_stem}.sbatch" | tr "\\n" " " || true)\n'
+        f'        echo "  sbatch header: $_hdr_all"\n'
+        f"        _hdr_n=$(printf %s \"$_hdr_all\" | sed -n "
+        f"'s/.*\\(-n\\|--ntasks\\)[= ]\\([0-9][0-9]*\\).*/\\2/p' "
+        f'| head -1 || true)\n'
+        f'        if [ -n "$_hdr_n" ] && [ "$_hdr_n" != "$_mpi_np" ]; then\n'
+        f'            echo "  WARNING: submitted through that header, '
+        f'SLURM_NTASKS=$_hdr_n will OVERRIDE"\n'
+        f'            echo "           the $_mpi_np rank(s) resolved above.  '
+        f'Scale with:"\n'
+        f'            echo "               sbatch -n $_mpi_np '
+        f'{_dr_stem}.sbatch"\n'
+        f'            echo "           or regenerate so header and deck '
+        f'agree."\n'
+        f"        fi\n"
+        f"    fi\n"
         + (
             f'    echo "  Visible GPUs : ${{_ngpu:-0}}"\n'
             f'    echo "  Ranks/GPU    : ${{_ranks_per_gpu:-?}} '
@@ -2098,6 +2128,29 @@ def render_run_wrapper(script_path: Path, *,
                 'fi\n'
                 if gpu_mode else ""
             ) +
+            # WHERE each number came from, computed once the values are
+            # final -- the --dry-run report prints these so a wrong scale
+            # is caught BEFORE a queue slot is spent (user design,
+            # 2026-08-13: dry-run is the pre-submission inspection).
+            '_np_source="generation default"\n'
+            'if [ "$_np_from_flag" = "1" ]; then _np_source="-np flag"\n'
+            'elif [ -n "${MB_NP:-}" ]; then _np_source="MB_NP env"\n'
+            'elif [ -n "${SLURM_NTASKS:-}" ]; then '
+            '_np_source="SLURM_NTASKS (the sbatch reservation)"\n'
+            'elif [ -n "${PBS_NP:-}" ]; then '
+            '_np_source="PBS_NP (the qsub reservation)"\n'
+            'elif [ "${_mb_gpu_active:-0}" = "1" ]; then '
+            '_np_source="GPU runtime policy"\n'
+            'fi\n'
+            '_omp_source="generation default"\n'
+            'if [ "$_omp_from_flag" = "1" ]; then _omp_source="-omp flag"\n'
+            'elif [ -n "${OMP_NUM_THREADS:-}" ]; then '
+            '_omp_source="OMP_NUM_THREADS env"\n'
+            'elif [ -n "${SLURM_CPUS_PER_TASK:-}" ]; then '
+            '_omp_source="SLURM_CPUS_PER_TASK (the sbatch -c reservation)"\n'
+            'elif [ "${_mb_gpu_active:-0}" = "1" ]; then '
+            '_omp_source="core budget / rank count (GPU policy)"\n'
+            'fi\n'
             f"\n"
             + _run_index_resolver(basename)
             + _cold_restart_aside_block(basename, engine="siesta")
@@ -2155,8 +2208,15 @@ def render_run_wrapper(script_path: Path, *,
                 # ``_dry_run != 1`` guard: a --dry-run must not start the
                 # MPS daemon (a real GPU side-effect).  The dry-run report
                 # still shows the would-be MPS state from _use_mps_str.
+                # GATE: ranks > GPUs -- ANY shared GPU gets the funnel
+                # (user decision 2026-08-13).  The floor-division gate
+                # (`_ranks_per_gpu >= 2`) missed the uneven split: 3
+                # ranks over 2 GPUs floors to 1, yet GPU0 hosts 2 ranks
+                # -- sharing by driver TIME-SLICING, kernels taking
+                # turns, without the concurrency MPS exists to provide.
                 'if [ "$_use_mps_default" = "1" ] '
-                '&& [ "$_ranks_per_gpu" -ge 2 ] '
+                '&& [ "$_mpi_np" -gt "${_ngpu:-0}" ] '
+                '&& [ "${_ngpu:-0}" -ge 1 ] '
                 '&& [ "${_dry_run:-0}" != "1" ]; then\n'
                 '    export CUDA_MPS_PIPE_DIRECTORY="/tmp/mb-mps-$$"\n'
                 '    export CUDA_MPS_LOG_DIRECTORY="/tmp/mb-mps-$$-log"\n'

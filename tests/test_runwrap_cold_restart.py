@@ -350,6 +350,42 @@ class TestGpuFlagPrecedence:
             f"{cores.group(1)} cores:\n{out[-800:]}"
         )
 
+    def test_dry_run_names_sources_and_flags_a_stale_header(self, tmp_path):
+        """User design 2026-08-13: dry-run is the pre-submission
+        inspection.  It must say WHERE each number came from, and -- run
+        locally with a sibling .sbatch -- read the header back and WARN
+        when the header's -n would override the resolved count once
+        SLURM_NTASKS exists (the header always wins inside a job)."""
+        _bind_gpu()
+        (tmp_path / "molbuilder.json").write_text(json.dumps({
+            "script_generation": {"activation": "source activate"},
+            "scheduler": {"kind": "slurm",
+                          "directives": {"partition": "general",
+                                         "qos": "public"},
+                          "gpu": {"default_type": "a100"}},
+        }))
+        fdf = tmp_path / "myjob.fdf"
+        fdf.write_text(_GPU_FDF)
+        wrapper = write_run_wrapper(fdf)   # emits myjob.sbatch too (-n 1)
+        assert "#SBATCH -n 1" in (tmp_path / "myjob.sbatch").read_text()
+        wrapper.write_text(_strip_preamble_activation(wrapper.read_text()))
+        proc = _dry(wrapper, tmp_path, "-np", "3")
+        out = proc.stdout + proc.stderr
+        assert proc.returncode == 0, out[-800:]
+        assert "(source: -np flag)" in out, out[-800:]
+        assert "sbatch header:" in out and "-n 1" in out, out[-800:]
+        assert "WARNING" in out and "OVERRIDE" in out, out[-800:]
+        assert "sbatch -n 3 myjob.sbatch" in out, out[-800:]
+
+    def test_mps_gate_is_any_shared_gpu(self, tmp_path):
+        """User decision 2026-08-13: MPS starts whenever ranks exceed
+        GPUs -- the floor-division gate missed the uneven split (3 ranks
+        over 2 GPUs shared GPU0 by time-slicing, without the funnel)."""
+        wrapper = _gpu_wrapper(tmp_path, _GPU_FDF)
+        text = wrapper.read_text()
+        assert '[ "$_mpi_np" -gt "${_ngpu:-0}" ]' in text
+        assert '[ "$_ranks_per_gpu" -ge 2 ]' not in text
+
     def test_gpu_fdf_without_numberofatoms_still_launches(self, tmp_path):
         """The rank-policy function must return 0: without the n_atoms
         clamp (NumberOfAtoms is OPTIONAL in SIESTA) its body ended on a

@@ -135,9 +135,14 @@ def test_cpu_wrapper_target_is_bare_siesta(tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_mps_keyed_on_ranks_per_gpu_and_not_dry_run(tmp_path):
+def test_mps_keyed_on_any_shared_gpu_and_not_dry_run(tmp_path):
+    """User decision 2026-08-13: MPS whenever ranks exceed GPUs -- the
+    floor-division gate (`_ranks_per_gpu >= 2`) missed the uneven split
+    (3 ranks / 2 GPUs shared GPU0 by time-slicing, no funnel)."""
     t = _gpu(tmp_path)
-    assert ('[ "$_use_mps_default" = "1" ] && [ "$_ranks_per_gpu" -ge 2 ] '
+    assert ('[ "$_use_mps_default" = "1" ] '
+            '&& [ "$_mpi_np" -gt "${_ngpu:-0}" ] '
+            '&& [ "${_ngpu:-0}" -ge 1 ] '
             '&& [ "${_dry_run:-0}" != "1" ]' in t)
 
 
