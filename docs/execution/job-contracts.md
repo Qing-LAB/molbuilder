@@ -809,20 +809,27 @@ block cites that schema rather than duplicating it.
 
 ```
 # === molbuilder atom-metadata BEGIN ===
-# format: molstruct-json/v4
+# format: molstruct-json/v7
 # {
-#   "schema_version": 4,
+#   "schema_version": 7,
 #   "n_atoms_total":  212,
-#   "regions":     { "L-electrode": [11,12,…], "R-electrode": [200,…], "bridge": [60,…] },
-#   "frozen_atoms": [88, 89, …, 211],
-#   "annotations": { … },              # v4 channel; optional
+#   "regions":     { "L-electrode": [11,12,…], "R-electrode": [200,…],
+#                    "bridge": [60,…], "frozen": [88, 89, …, 211] },
+#   "annotations": { … },              # optional
 #   "created_by":  "molbuilder modify",
 #   "created_at":  "2026-05-20T14:23:00Z"
 # }
 # === molbuilder atom-metadata END ===
 ```
 
-**Rules (reconciled to code — the block is now v4, not v3):**
+*(Amended 2026-08-12, R11: the example taught v4 with ``frozen_atoms`` as a
+key of its own beside ``regions`` — the retired shape.  Frozen atoms are an
+ordinary label INSIDE ``regions`` now; the version number rides the
+sidecar's one authority (`sidecars/molstruct.SCHEMA_VERSION`, 7 today) so
+this block and the ``.molstruct.json`` cannot disagree, and the reader
+TRANSLATES an old block's ``frozen_atoms`` in rather than refusing.)*
+
+**Rules (reconciled to code):**
 
 - **Format is `molstruct-json/v4`, `schema_version: 4`.** v4 added the
   per-atom **`annotations`** channel additively (see

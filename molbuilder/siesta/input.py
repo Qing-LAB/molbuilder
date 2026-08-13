@@ -1155,6 +1155,12 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "# k-points (.true.) or over orbitals (.false.).  Auto-",
         "# selected here from the kgrid above: .false. for 1x1x1",
         "# (molecule / vacuum), .true. for multi-k periodic runs.",
+        "# NOTE with ELPA (CPU or GPU): SIESTA's ELPA path solves per",
+        "# k-point over ORBITALS; with ParallelOverK .true. each",
+        "# k-group diagonalises its own k-points and the ELPA GPU",
+        "# offload applies within each group.  For few-k metallic",
+        "# slabs the .false. (orbital) split usually wins on GPU --",
+        "# if you hand-tune one, benchmark it (jobset prep bench).",
     ]
     if cfg.parallel_block_size == 0:
         # THE THIRD STATE (tuning.md § 2.11, decision 35 -- C8,

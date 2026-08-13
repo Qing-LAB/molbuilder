@@ -257,22 +257,17 @@ def emit_bench_marks(metadata: Dict[str, Any],
         for key in metadata.keys():
             out.append(f"#   {key:<{max_key}}  {metadata[key]}")
         out.append("#")
-    # Align the field-decl columns so the block is human-readable.
-    max_name   = max((len(f.name)   for f in fields), default=0)
-    max_anchor = max((len(f.anchor) for f in fields), default=0)
+    # Through decl_line -- THE one renderer (R11, 2026-08-12: this loop
+    # hand-rolled its own dialect, silently dropping choices/optional/
+    # group -- a bench tool reading Diag.Algorithm's enum saw no legal
+    # values at all, the drift decl_line's own docstring says one
+    # renderer exists to prevent).  Column alignment went with the
+    # hand-roll; the parser never needed it and § 3.7 says one shape.
     for f in fields:
-        line = (
-            f"#   field {f.name:<{max_name}}  "
-            f"anchor={f.anchor:<{max_anchor}}  type={f.type_}"
-        )
-        if f.range_ is not None:
-            lo, hi = f.range_
-            line += f"  range=[{lo},{hi}]"
-        if f.unit:
-            line += f"  unit={f.unit}"
-        if f.name in defaults and defaults[f.name] is not None:
-            line += f"  default={defaults[f.name]}"
-        out.append(line)
+        out.append(decl_line(
+            f, default=(defaults[f.name]
+                        if f.name in defaults
+                        and defaults[f.name] is not None else None)))
     out.append(end_marker(BLOCK_BENCH_MARKS))
     return "\n".join(out)
 
