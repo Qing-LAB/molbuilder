@@ -867,3 +867,47 @@ def test_rebuild_elsi_remaps_to_siesta_in_python():
     # Must NOT report "unknown choice" -- the alias must remap before
     # the unknown-choice validator runs.
     assert "unknown" not in result.output.lower(), result.output
+
+
+def test_bypass_wrapper_survives_a_command_containing_shell_metacharacters():
+    """The diagnostic echo must not break the command it reports.
+
+    `_bypass_conda_run` logged the inner command with
+    ``echo "[bypass] cmd={shlex.quote(...)}"``.  shlex.quote emits
+    SINGLE quotes, which are inert inside a DOUBLE-quoted echo -- so a
+    command whose own text contained a double quote closed the echo
+    early and the remainder was parsed as shell.  The first step with
+    one (the siesta-gpu toolchain shims, whose body has
+    ``B="$CONDA_PREFIX/bin"`` and a ``link() {`` function) died with
+    ``syntax error near unexpected token '('`` -- raised by the
+    DIAGNOSTIC line, about a command that was perfectly valid.
+
+    Everything a real step throws at it: double quotes, parentheses, a
+    function definition, ``$(( ))`` arithmetic, single quotes, and a
+    backslash.
+    """
+    import shlex
+    import subprocess
+
+    from molbuilder.envs.install import _bypass_conda_run
+
+    nasty = ('set -e; B="$X/bin"; f() { echo "a(b)"; }; n=$((1+1)); '
+             "g='single'; h=\"embedded 'single' inside double\"; "
+             'printf "%s\\n" "$B$n$g$h"')
+    argv = ("conda", "run", "-n", "someenv", "--no-capture-output",
+            "bash", "-c", nasty)
+    new_argv, _ = _bypass_conda_run(argv, "/tmp/does-not-matter")
+
+    wrapper = new_argv[-1]
+    cp = subprocess.run(["bash", "-n", "-c", wrapper],
+                        capture_output=True, text=True, timeout=30)
+    assert cp.returncode == 0, (
+        f"generated wrapper is not valid bash:\n{cp.stderr}")
+
+    # A second, independent lexer must also find the quoting balanced --
+    # `bash -n` and shlex disagreeing would mean we got lucky, not right.
+    shlex.split(wrapper)          # raises ValueError if a quote dangles
+
+    # The reported command carries the inner script verbatim, so the log
+    # line is copy-pasteable rather than merely suggestive.
+    assert 'f() { echo "a(b)"; }' in wrapper

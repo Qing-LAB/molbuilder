@@ -103,10 +103,26 @@ def _bypass_conda_run(argv: Sequence[str], env_prefix: str
     # silent ``exec: --: invalid option`` failure with no other
     # context (which is what the user just hit) wastes everyone's
     # time.  Each line tagged ``[bypass]`` so it's filterable.
-    debug_cmd_repr = " ".join(cmd)
+    # The debug echoes report the command EXACTLY as it will be exec'd,
+    # and each echo argument is quoted as ONE shell word.
+    #
+    # This used to build ``echo "[bypass] cmd={shlex.quote(...)}"`` --
+    # shlex.quote emits SINGLE quotes, dropped inside a DOUBLE-quoted
+    # echo, so a command containing a double quote closed the echo early
+    # and the remainder was parsed as shell.  The first step whose text
+    # had one (the toolchain-shim step, whose body contains
+    # ``B="$CONDA_PREFIX/bin"`` and a ``link() {`` function) died with
+    # ``syntax error near unexpected token '('`` -- in the DIAGNOSTIC
+    # line, while the command it was reporting was perfectly valid.
+    # Quoting for the wrong context turned a debugging aid into the
+    # failure it was meant to explain.
+    #
+    # ``cmd_q`` rather than a bare join: the logged line is then
+    # copy-pasteable, and argv boundaries survive.
+    debug_cmd_repr = cmd_q
     wrapper = (
-        f'echo "[bypass] env_prefix={env_q}" >&2; '
-        f'echo "[bypass] cmd={shlex.quote(debug_cmd_repr)}" >&2; '
+        f'echo {shlex.quote(f"[bypass] env_prefix={env_prefix}")} >&2; '
+        f'echo {shlex.quote(f"[bypass] cmd={debug_cmd_repr}")} >&2; '
         f"export CONDA_PREFIX={env_q}; "
         f"export CONDA_DEFAULT_ENV={env_name}; "
         f'export PATH={env_q}/bin"${{PATH:+:$PATH}}"; '
@@ -115,7 +131,7 @@ def _bypass_conda_run(argv: Sequence[str], env_prefix: str
         f"export TMPDIR={env_q}/var/tmp; "
         f"export PIP_CACHE_DIR={env_q}/var/cache/pip; "
         f"if [ -d {activate_d} ]; then "
-        f'echo "[bypass] sourcing activate.d/*.sh in {activate_d}" >&2; '
+        f'echo {shlex.quote(f"[bypass] sourcing activate.d/*.sh in {activate_d}")} >&2; '
         f'for _f in {activate_d}/*.sh; do '
         f'[ -f "$_f" ] || continue; '
         f'echo "[bypass]   . $_f" >&2; '
@@ -125,7 +141,7 @@ def _bypass_conda_run(argv: Sequence[str], env_prefix: str
         f'echo "[bypass] (no activate.d directory)" >&2; '
         f"fi; "
         f'echo "[bypass] final PATH=$PATH" >&2; '
-        f'echo "[bypass] exec: {shlex.quote(debug_cmd_repr)}" >&2; '
+        f'echo {shlex.quote(f"[bypass] exec: {debug_cmd_repr}")} >&2; '
         f"exec {cmd_q}"
     )
     # ``bash -c`` (no -l): we don't want the user's login files
