@@ -1613,11 +1613,22 @@ def get_routing(
         if gpu_part is not None and not isinstance(gpu_part, str):
             raise RuntimeConfigError(
                 f"scheduler.routing[{i}].gpu_partition must be a string.")
-        out.append({
+        # PASS-THROUGH for columns this reader does not consume (R10,
+        # 2026-08-12: rebuilding the row from a known-key list silently
+        # STRIPPED everything else -- decision 38's drafted node_type /
+        # max_cores / gpu{} columns vanished between the file and every
+        # caller, so drafting a column in config was indistinguishable
+        # from not writing it).  Validated keys keep their validated
+        # values; unknown keys ride along untouched -- a routing row is
+        # the operator's description of their cluster, and this reader
+        # owns only the keys it checks.
+        row = dict(dom)
+        row.update({
             "name": name, "max_time": dom["max_time"],
             "max_mem_gb": mem, "partition": dom["partition"],
             "qos": dom["qos"], "gpu_partition": gpu_part,
         })
+        out.append(row)
     return out
 
 

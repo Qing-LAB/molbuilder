@@ -264,3 +264,32 @@ def test_example_templates_cite_only_existing_docs():
             if not (repo / m.group(0)).is_file():
                 bad.append(f"{name}: {m.group(0)}")
     assert not bad, f"example templates cite missing docs: {bad}"
+
+
+def test_routing_rows_keep_the_operators_own_columns(tmp_path, monkeypatch):
+    """R10 (review-4 G5): get_routing rebuilt each row from a known-key
+    list, silently STRIPPING everything else -- decision 38's drafted
+    node_type/max_cores/gpu{} columns vanished between the file and
+    every caller, so drafting a column was indistinguishable from not
+    writing it.  Unknown columns now ride along; validated keys keep
+    their validated values."""
+    import json as _json
+    from molbuilder.runtime_config import get_routing
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "home").mkdir()
+    (tmp_path / "molbuilder.json").write_text(_json.dumps({
+        "scheduler": {"kind": "slurm",
+                      "directives": {"partition": "p", "qos": "q"},
+                      "routing": [{"name": "fast", "partition": "htc",
+                                   "qos": "express",
+                                   "max_time": "0-04:00:00",
+                                   "node_type": "epyc-7713",
+                                   "max_cores": 128,
+                                   "gpu": {"type": "a100"}}]}}))
+    rows = get_routing()
+    assert rows[0]["node_type"] == "epyc-7713"
+    assert rows[0]["max_cores"] == 128
+    assert rows[0]["gpu"] == {"type": "a100"}
+    assert rows[0]["max_time"] == "0-04:00:00"       # validated keys intact
