@@ -93,7 +93,17 @@ def read_config(path: Optional[Path] = None) -> Dict[str, Any]:
             f"{cfg_path}: top-level value must be an object, "
             f"got {type(raw).__name__}"
         )
-    return _normalise(raw)
+    try:
+        return _normalise(raw)
+    except RuntimeConfigError as exc:
+        # The validators speak in terms of the SCHEMA and spell the
+        # generic name; the reader knows WHICH file refused.  A malformed
+        # project .molbuilder.json or XDG file used to refuse naming
+        # 'molbuilder.json' with no path (R10, 2026-08-12).
+        msg = str(exc)
+        if str(cfg_path) not in msg:
+            raise RuntimeConfigError(f"{cfg_path}: {msg}") from None
+        raise
 
 
 def _read_section(raw: Mapping[str, Any], key: str) -> Dict[str, Any]:
@@ -974,10 +984,25 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
                         "found": bundle_path.is_file(), "via": "bundle"})
         bundle_raw = _read_project(Path(project_dir))
 
+    # RAW file bytes decide what a file "supplied" (R10, 2026-08-12: the
+    # normalized scopes injected validator defaults, and provenance then
+    # showed them as file-supplied values -- the display existing to
+    # answer "which file said this" answered it about keys no file
+    # said).
+    def _raw_file(path: Path) -> Dict[str, Any]:
+        try:
+            obj = json.loads(path.read_text())
+            return obj if isinstance(obj, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    machine_file = _raw_file(machine_path)
+    bundle_file = (_raw_file(Path(project_dir) / PROJECT_CONFIG_FILENAME)
+                   if project_dir is not None else {})
     effective: Dict[str, Dict[str, Any]] = {}
     for section in _PROVENANCE_SECTIONS:
-        for scope_name, raw in (("machine", machine_raw),
-                                ("bundle", bundle_raw)):
+        for scope_name, raw in (("machine", machine_file),
+                                ("bundle", bundle_file)):
             block = raw.get(section)
             if not isinstance(block, Mapping):
                 continue
@@ -985,6 +1010,22 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
                 # later scope overwrites: bundle wins, mirroring _deep_merge
                 effective[f"{section}.{key}"] = {"value": value,
                                                  "from": scope_name}
+    # ONE exception, asked of its owner rather than re-derived (R10):
+    # script_generation.preamble does not merge bundle-wins -- it
+    # CONCATENATES server-then-bundle (get_script_generation's bespoke
+    # rule), and showing one scope as the source misreported the other
+    # half away.
+    if "script_generation.preamble" in effective:
+        try:
+            chunks = get_script_generation(
+                project_dir=project_dir)["preamble_chunks"] or []
+            if len(chunks) > 1:
+                effective["script_generation.preamble"] = {
+                    "value": " + ".join(t for _sc, t in chunks),
+                    "from": "+".join(_sc for _sc, _t in chunks)
+                            + " (concatenated)"}
+        except Exception:
+            pass                      # display must never break a prep
 
     domains: List[str] = []
     for raw in (machine_raw, bundle_raw):
@@ -1593,11 +1634,14 @@ def write_config_scope(
       * a path: ``<project_dir>/.molbuilder.json``.
 
     The patch is deep-merged ONTO the existing file's contents (per
-    :func:`_deep_merge`), preserving keys outside the patch.  Files
-    are written mode 0600 to match :mod:`molbuilder.auth_setup`'s
-    precedent -- a config file may carry secret-file PATHS, deploy
-    context, or per-cluster setup commands that aren't meant for
-    casual inspection.
+    :func:`_deep_merge`), preserving keys outside the patch.  A corrupt
+    existing file REFUSES rather than being overwritten (R10,
+    2026-08-12 -- the documented 'log nothing, overwrite' destroyed
+    whatever a hand-edit broke).  Files are written atomically
+    (persist.write_bytes) at mode 0600, matching
+    :mod:`molbuilder.auth_setup`'s precedent -- a config file may carry
+    secret-file PATHS, deploy context, or per-cluster setup commands
+    that aren't meant for casual inspection.
 
     Returns the resolved target path.
     """
@@ -1623,11 +1667,19 @@ def write_config_scope(
         try:
             existing = json.loads(target.read_text())
             if not isinstance(existing, dict):
-                existing = {}
-        except (OSError, json.JSONDecodeError):
-            # Corrupt file -- log nothing, overwrite.  Callers that
-            # want to preserve it should make a backup before calling.
-            existing = {}
+                raise RuntimeConfigError(
+                    f"{target}: exists but is not a JSON object -- refusing "
+                    f"to merge a patch over it.  Fix or remove the file "
+                    f"first.")
+        except (OSError, json.JSONDecodeError) as exc:
+            # REFUSED, not overwritten (R10, 2026-08-12: 'log nothing,
+            # overwrite' silently destroyed whatever a hand-edit broke --
+            # a config carrying auth providers and TLS paths is exactly
+            # the file a user cannot afford to lose to a typo).
+            raise RuntimeConfigError(
+                f"{target}: unreadable ({exc}) -- refusing to overwrite a "
+                f"corrupt config.  Fix the JSON (or move the file aside) "
+                f"and retry.") from exc
 
     merged = _deep_merge(existing, dict(patch))
     # Round-trip through the validator BEFORE writing so we never
@@ -1640,16 +1692,12 @@ def write_config_scope(
 
     target.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(merged, indent=2, sort_keys=False) + "\n"
-    # Atomic create with 0600 perms (same trick as auth_setup).
-    fd = os.open(
-        str(target),
-        os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-        0o600,
-    )
-    try:
-        os.write(fd, rendered.encode("utf-8"))
-    finally:
-        os.close(fd)
+    # Through the ONE atomic writer (U8's shape; R10 aligned this last
+    # in-place O_TRUNC write with it -- a crash mid-write left a
+    # truncated config for every later read to refuse).  chmod after:
+    # a config may carry secret-file paths and deploy context.
+    from .persist import write_bytes
+    write_bytes(target, rendered.encode("utf-8"))
     os.chmod(target, 0o600)
     return target
 

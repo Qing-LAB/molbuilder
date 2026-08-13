@@ -367,16 +367,22 @@ def test_write_validates_before_writing(sandbox):
     assert not (sandbox / "molbuilder.json").exists()
 
 
-def test_write_overwriting_existing_corrupt_file(sandbox):
-    """If the existing file is corrupt JSON, write_config_scope
-    overwrites it with the patch (the user's chosen content) rather
-    than refusing to write.  Documented behaviour in the docstring."""
+def test_write_refuses_to_overwrite_a_corrupt_file(sandbox):
+    """R10 (review-4 G7): this test pinned the OPPOSITE -- 'overwrites
+    it with the patch... documented behaviour' -- and that tolerance
+    silently destroyed whatever a hand-edit broke: a config carrying
+    auth providers and TLS paths is exactly the file a user cannot
+    afford to lose to a typo plus any later --write.  Corrupt now
+    REFUSES, naming the path and the way out."""
+    import pytest
+    from molbuilder.runtime_config import RuntimeConfigError
     (sandbox / "molbuilder.json").write_text("not valid json {{{")
-    target = write_config_scope(project_dir=None, patch={
-        "script_generation": {"preamble": "module load mamba"},
-    })
-    cfg = json.loads(target.read_text())
-    assert cfg["script_generation"]["preamble"] == "module load mamba"
+    with pytest.raises(RuntimeConfigError, match="refusing to overwrite"):
+        write_config_scope(project_dir=None, patch={
+            "script_generation": {"preamble": "module load mamba"},
+        })
+    # the broken content is untouched -- nothing was destroyed
+    assert (sandbox / "molbuilder.json").read_text() == "not valid json {{{"
 
 
 def test_machine_sections_are_refused_in_project_scope(sandbox):

@@ -80,7 +80,10 @@ class Environment:
     site:      Site = field(default_factory=Site)
     source:    Dict[str, str] = field(default_factory=dict)
     detected_at: Optional[str] = None
-    tool:      str = "prep-bench@1"
+    # the LIVE writer (resolve_target, prep step 1); "prep-bench@1" -- the
+    # deleted verb -- stamped every fresh record until R10, 2026-08-12
+    # (U19 fixed only from_dict's re-read default)
+    tool:      str = "jobset-prep@1"
 
     # ----- JSON round-trip (the persisted contract) ----------------- #
 
