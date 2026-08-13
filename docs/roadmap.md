@@ -552,9 +552,26 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
 - **The warm-file rules file** — contract settled 2026-08-13 (user
   decision) and stated ENTIRELY in
   [`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a,
-  including the derivation order.  This row is only the scheduling pointer
-  (R3).  Unscheduled; W2 below is the same seam seen from runstatus — one
-  fix serves both.
+  including the derivation order.  **Planned 2026-08-13, seven units in
+  the contract's own order** (each done-when is an artifact-identity
+  proof until behavior is MEANT to change):
+  **U0** `task.json` gains `calculation` (absent = `optimization`, the
+  stageless absent-is-a-state pattern; codec + describe + § 6.6
+  preflight land TOGETHER — a half-landed key refuses every fresh
+  bundle) · **U1** loader `molbuilder/warmfiles.py` (L1, `tomllib`) +
+  `molbuilder/warm-files@1` + the two seed files carrying EXACTLY
+  today's 13+5-suffix vocabulary · **U2** `_warm_declaration` reads the
+  rules; done when `job-set.json` is byte-identical and the two-way .CG
+  pin passes unchanged · **U3** runwrap inventories +
+  `validation/identity.warm_files_present` derive from the loader;
+  **W2 folds in here**; done when rendered wrappers are byte-identical ·
+  **U4** the mandatory `honoured_by` agreement test, mutation-proven ·
+  **U5** the § 4.2 guard flips to one-FILE-per-engine (no literal tuple
+  survives), § 4.2's prose list becomes illustrative-with-pointer,
+  § 6.1 registry row · **U6a** per-calculation copy precedence +
+  provenance naming which file supplied the vocabulary · **U6b** UI
+  exposure — scheduled with workstream 1's web track (needs the
+  template TOML writer).  Awaiting the user's go to start U0.
 - **Backend concern seams W1–W5** — `backend-architecture.md § 5`:
   runwrap's SIESTA reach-ins (W1), `jobset/runstatus.py`'s warm-file
   table → producer-supplied inventory (W2), `runtime_config`'s untyped
