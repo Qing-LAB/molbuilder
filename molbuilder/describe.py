@@ -55,6 +55,7 @@ from .task import FILENAME as TASK_FILENAME
 from .task import Stage, StructureRef, Task, derive_run, varies_for
 from .template import SUFFIX as TEMPLATE_SUFFIX
 from .template import render_template
+from .workingcopy_structure import StructureCodec
 
 
 class DescribeError(Exception):
@@ -194,8 +195,14 @@ def _check(task: Task, cfg, *, generators=None) -> None:
 # --------------------------------------------------------------------- #
 
 def write_description(desc: Description, dest, *,
-                      psml_lib=None) -> List[Path]:
+                      psml_lib=None, struct=None) -> List[Path]:
     """Write *desc* into *dest*, publishing every file or none.
+
+    *struct*, when given, is the structure AS DESCRIBED -- including any
+    modification describe itself applied (``--vacuum``).  It decides how the
+    structure travels: with metadata, as the codec pair; without, as a raw
+    copy of the source (see the comment at the copy below).  ``None`` keeps
+    the raw-copy behaviour for callers that never modify.
 
     The transaction is a staging directory **beside the target**, published
     with :func:`os.replace` once every artifact exists, and removed entirely if
@@ -222,10 +229,25 @@ def write_description(desc: Description, dest, *,
         # from another cwd was unresolvable the moment you stood inside the
         # folder.  Copied like the pseudos: the file is the calculation's
         # data, the PATH stays this machine's.
+        #
+        # WHICH bytes travel is the codec's call (2026-08-12): describe can
+        # MODIFY the structure it was handed (--vacuum), and those facts
+        # live in metadata a bare .xyz has nowhere to put -- so a raw copy
+        # silently dropped them, and prep rendered the 3 A-default cell
+        # over an explicit scientific choice.  A structure with metadata
+        # travels as the codec pair (document + .molstruct.json, the pair
+        # prep's loader already reads); one without travels as the raw
+        # copy, byte-identical provenance.
         src = (Path(desc.task.structure.source).expanduser()
                if desc.task.structure.source else None)
         if src is not None and src.is_file():
-            shutil.copy2(src, staging / src.name)
+            pair = ([] if struct is None else
+                    StructureCodec().files(struct, staging / src.name))
+            if len(pair) > 1:      # keep_sidecar: metadata worth carrying
+                for path, data in pair:
+                    path.write_bytes(data)
+            else:
+                shutil.copy2(src, staging / src.name)
         if psml_lib and desc.pseudo_species:
             from .siesta.input import copy_pseudopotentials
             lib = Path(psml_lib).expanduser()

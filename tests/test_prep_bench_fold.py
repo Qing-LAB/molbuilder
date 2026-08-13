@@ -8,6 +8,7 @@ one trial per invocation) · `generator.md` §§ 2, 5 · `template.md` § 8.1
 from __future__ import annotations
 
 import json
+import os
 
 import numpy as np
 import pytest
@@ -555,12 +556,31 @@ def test_a_stageless_calculation_runs_end_to_end(tmp_path):
     assert not (dest / "bench-JOB").exists()  # the old misfiling
     assert "prep run <stage>" not in res.output   # no circular hint
     assert "submit run --mode" in res.output
+    # Every link in the attempt RESOLVES.  The 2026-08-12 redo found the
+    # first version of this test asserting existence only, over links that
+    # all dangled (prepare_attempt hopped a hardcoded "../.." over a
+    # depth-1 attempt): prep exited 0, submit was dead.  Existence of a
+    # symlink proves nothing -- resolve it.
+    links = [p for p in (dest / "run-0").iterdir() if p.is_symlink()]
+    assert links, "the attempt holds no links -- prep changed shape"
+    for link in links:
+        assert link.resolve().is_file(), \
+            f"{link.name} -> {os.readlink(link)} dangles"
     js = json.loads((dest / "job-set.json").read_text())
     assert js["kind"] == "ladder" and len(js["jobs"]) == 1
     res = r.invoke(jobset_group, ["submit", "run", "--bundle", str(dest),
                                   "--mode", "direct", "--dry-run"])
     assert res.exit_code == 0, res.output
     assert res.output.count("WOULD run") == 1
+    # A REAL direct launch, not --dry-run: the launcher stats the wrapper
+    # THROUGH the link (a dangling one reads as absent and earns the
+    # "run prep_jobset first" refusal), and run.json is written at start,
+    # so the record proves the launch began no matter how the engine's
+    # process exits in this environment.
+    res = r.invoke(jobset_group, ["submit", "run", "--bundle", str(dest),
+                                  "--mode", "direct"])
+    assert "run prep_jobset first" not in res.output
+    assert (dest / "run-0" / "run.json").is_file(), res.output
     res = r.invoke(jobset_group, ["status", "--bundle", str(dest)])
     assert res.exit_code == 0, res.output
     # a hand-built SWEEP's tokenless jobs keep their bench-<name> homes
@@ -570,6 +590,45 @@ def test_a_stageless_calculation_runs_end_to_end(tmp_path):
                    jobs=[Job(name="G1K1C4", script="job-gpu.fdf",
                              resources=Resources())])
     assert job_dir_names(sweep)["G1K1C4"] == "bench-G1K1C4"
+
+
+def test_a_config_refusal_is_a_refusal_not_a_traceback(tmp_path, monkeypatch):
+    """A8 (redo 2026-08-12): the described route's most likely
+    first-contact failure -- ``script_generation.activation`` unset --
+    escaped `prep` as a raw ``RuntimeConfigError`` traceback.  The named
+    user-fixable classes translate to PrepError at the library seam, so
+    the CLI answers with the refusal text, not a stack.
+
+    Sandboxed cwd+HOME: the first version of this test passed a fake HOME
+    to CliRunner's ``env`` -- which never touches ``os.environ`` -- and
+    prepped GREEN off the developer's own molbuilder.json in the repo cwd."""
+    from click.testing import CliRunner
+    from molbuilder import describe as D
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.structure import Structure
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "home").mkdir()
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
+    dest = tmp_path / "calc"
+    D.write_description(
+        D.build_description(struct, SiestaConfig(system_label="JOB"), (),
+                            engine="siesta", shape="hierarchical",
+                            name="JOB", source=str(tmp_path / "h2.xyz")),
+        dest)
+    (dest / ".molbuilder.json").write_text("{}")   # no activation anywhere
+    res = CliRunner().invoke(jobset_group,
+                             ["prep", "run", "--bundle", str(dest),
+                              "--no-sbatch"])
+    assert res.exit_code != 0
+    assert "activation" in res.output, res.output
+    assert "Traceback" not in res.output, res.output
 
 
 def test_a_launched_trial_refuses_relaunch_and_selection_skips_it(calc):

@@ -136,12 +136,27 @@ def _norm(key: str) -> str:
 
 
 def _read_system(bundle: Path) -> Dict:
-    """Minimal system descriptor from the fdf (engine + NumberOfAtoms)."""
+    """Minimal system descriptor (engine + atom count).
+
+    From the DESCRIPTION first: ``task.json``'s witness records exactly
+    these two facts, and a described sweep always has one.  Until
+    2026-08-12 this looped over ``job-gpu.fdf`` / ``job-cpu.fdf`` — the
+    OLD bench-bundle deck names, whose writer died with the fold (step 6
+    u5) — so every described sweep's ``bench-result.json.system``
+    silently degraded to ``{"engine": "siesta"}`` (A9).  Description-less
+    bundles fall back to any root deck; like every reader in this
+    module, absence degrades rather than raises — this is a reporter.
+    """
+    from ..task import FILENAME, read_task
+    desc = Path(bundle) / FILENAME
+    if desc.is_file():
+        try:
+            t = read_task(desc)
+            return {"engine": t.engine, "n_atoms": t.structure.atoms}
+        except Exception:
+            pass    # malformed description: fall through to the decks
     sysd: Dict = {"engine": "siesta"}
-    for name in ("job-gpu.fdf", "job-cpu.fdf"):
-        fdf = Path(bundle) / name
-        if not fdf.is_file():
-            continue
+    for fdf in sorted(Path(bundle).glob("*.fdf")):
         for line in _read(fdf).splitlines():
             toks = line.split("#", 1)[0].split()
             if len(toks) >= 2 and _norm(toks[0]) == "numberofatoms":
@@ -150,7 +165,8 @@ def _read_system(bundle: Path) -> Dict:
                 except ValueError:
                     pass
                 break
-        break
+        if "n_atoms" in sysd:
+            break
     return sysd
 
 

@@ -448,22 +448,27 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     attempt, is_new = resolve_attempt(stage_dir)
     attempt.mkdir(parents=True, exist_ok=True)
 
-    # Inputs: the deck and the shared package, linked UP to the stage dir and
-    # the bundle root.  Identical bytes for every attempt, so a link is right
-    # here -- it is the warm state below that must be a copy.
+    # Inputs: the deck and the shared package, linked UP to the bundle root.
+    # Identical bytes for every attempt, so a link is right here -- it is the
+    # warm state below that must be a copy.  The prefix is COMPUTED, not
+    # "../..": a stageless calculation's stage dir IS the bundle root (its
+    # attempt sits at depth 1) and a bench trial's attempt sits at depth 3,
+    # so a hardcoded two-level hop dangles at both -- the same destruction
+    # class materialize() records above (M5, 2026-08-10).
+    up = os.path.relpath(str(base), str(attempt))
     linked: List[str] = []
     for fname in [job.script] + list(jobset.shared):
-        relink(attempt, os.path.join("..", "..", fname),
+        relink(attempt, os.path.join(up, fname),
                os.path.basename(fname))
         linked.append(os.path.basename(fname))
     for extra in ("mb_monitor.py",):
         if (base / extra).exists():
-            relink(attempt, os.path.join("..", "..", extra), extra)
+            relink(attempt, os.path.join(up, extra), extra)
             linked.append(extra)
     stem = Path(job.script).stem
     for wrapper in (f"{stem}.run.sh", f"{stem}.sbatch"):
         if (base / wrapper).exists():
-            relink(attempt, os.path.join("..", "..", wrapper), wrapper)
+            relink(attempt, os.path.join(up, wrapper), wrapper)
             linked.append(wrapper)
 
     # Re-preparing an attempt that was already carried into: UNDO the previous

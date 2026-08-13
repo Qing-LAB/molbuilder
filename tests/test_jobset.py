@@ -2558,3 +2558,42 @@ def test_submit_defaults_the_domain_from_the_bundles_execution_block(
                             "--dry-run"])
     assert r.exit_code == 0, r.output
     assert "-p htc" in r.output and "-q express" in r.output
+
+
+def test_an_explicit_direct_mode_survives_a_configured_domain(
+        tmp_path, monkeypatch):
+    """A3 (redo 2026-08-12): a machine config quite normally records BOTH
+    `execution.mode` and `execution.domain` -- the domain is that
+    machine's default SLURM routing.  Pouring the domain in regardless of
+    mode made `--mode direct` impossible on such a machine: the seam
+    correctly refuses direct+domain, so the CLI must not inject a domain
+    the user never asked for into a mode it cannot apply to.  An EXPLICIT
+    `--domain` with `--mode direct` still reaches the seam's refusal."""
+    import json as _json
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "home").mkdir()
+    bundle = tmp_path / "b"
+    bundle.mkdir()
+    _sweep().write(bundle / "job-set.json")
+    (bundle / ".molbuilder.json").write_text(_json.dumps({
+        "execution": {"mode": "submit", "domain": "fast"},
+        "scheduler": {"kind": "slurm",
+                      "directives": {"partition": "general", "qos": "public"},
+                      "routing": [{"name": "fast", "partition": "htc",
+                                   "qos": "express",
+                                   "max_time": "0-04:00:00"}]},
+    }))
+    runner, grp = _runner()
+    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(bundle),
+                            "--mode", "direct", "--dry-run"])
+    assert r.exit_code == 0, r.output
+    assert "WOULD run" in r.output and "bash" in r.output
+    assert "domain is a SLURM-submit concept" not in r.output
+    # the stated contradiction stays an error
+    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(bundle),
+                            "--mode", "direct", "--domain", "fast",
+                            "--dry-run"])
+    assert r.exit_code != 0
+    assert "SLURM-submit concept" in r.output

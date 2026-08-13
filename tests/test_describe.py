@@ -127,6 +127,45 @@ def test_an_existing_structure_file_travels_with_the_calculation(
     assert task.structure.source == str(src)   # the reference still records
 
 
+def test_a_described_modification_travels_as_the_codec_pair(
+        struct, cfg, tmp_path):
+    """The ``--vacuum`` fix (2026-08-12): describe can MODIFY the structure
+    it was handed, and those facts live in metadata a bare .xyz has nowhere
+    to put -- so the raw copy silently dropped them and prep rendered the
+    3 A-default cell over an explicit scientific choice.  With ``struct``
+    passed, a structure carrying metadata travels as the codec pair, and
+    prep's own loader reads the vacuum back."""
+    src = tmp_path / "bdt.xyz"
+    src.write_text(struct.to_xyz())     # bare xyz: no vacuum in these bytes
+    D.write_description(_describe(struct, cfg, source=str(src)),
+                        tmp_path / "calc", struct=struct)
+    assert (tmp_path / "calc" / "bdt.molstruct.json").is_file(), \
+        "the metadata sidecar did not travel"
+    from molbuilder.jobset.prep import _structure_for
+    task = read_task(tmp_path / "calc" / "task.json")
+    reloaded = _structure_for(task, tmp_path / "calc")
+    assert reloaded.vacuum == (10.0, 10.0, 10.0), (
+        "prep reloads the structure without the vacuum the description "
+        "was built with -- the deck would get the default cell")
+
+
+def test_the_vacuum_flag_reaches_the_travelling_structure(tmp_path):
+    """The CLI half of the same fix: ``describe --vacuum 8`` on a bare
+    XYZ must put 8 A on the structure that travels, not only on the one
+    in memory."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.workingcopy_structure import StructureCodec
+    xyz = tmp_path / "h2.xyz"
+    xyz.write_text("2\n\nH 0 0 0\nH 0 0 0.74\n")
+    res = CliRunner().invoke(jobset_group, [
+        "describe", str(xyz), str(tmp_path / "calc"),
+        "--shape", "hierarchical", "--vacuum", "8", "--name", "JOB"])
+    assert res.exit_code == 0, res.output
+    reloaded = StructureCodec().load(tmp_path / "calc" / "h2.xyz")
+    assert reloaded.vacuum == (8.0, 8.0, 8.0)
+
+
 def test_a_ladder_becomes_stages_and_varies(struct, cfg, tmp_path):
     D.write_description(_describe(struct, cfg,
                                   default_siesta_stages("publishable")),

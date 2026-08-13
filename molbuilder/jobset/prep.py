@@ -45,6 +45,28 @@ class PrepError(Exception):
     the bundle root)."""
 
 
+from contextlib import contextmanager
+
+
+@contextmanager
+def _user_error_as_prep():
+    """Translate the USER-FIXABLE refusal classes the steps below raise into
+    :class:`PrepError`, so every caller of the two prep entries has ONE class
+    to catch.  Without this the described route's two most likely
+    first-contact failures -- missing pseudos (``ValidationError`` out of the
+    deck render) and an unset ``script_generation.activation``
+    (``RuntimeConfigError`` out of the wrapper render) -- escaped the CLI as
+    raw tracebacks (A8, 2026-08-12).  Only the NAMED classes translate: a
+    ``TypeError`` here is a bug and should look like one."""
+    from ..issues import ValidationError
+    from ..runtime_config import RuntimeConfigError
+    from ..runwrap import WrapperError
+    try:
+        yield
+    except (ValidationError, RuntimeConfigError, WrapperError) as exc:
+        raise PrepError(str(exc)) from exc
+
+
 def resolve_target(base_dir) -> Path:
     """**Step 1 of the five: resolve the machine** (`project-layout.md`
     § 2.3.1) — probe cores, GPUs, scheduler and conda, and persist the answer
@@ -140,30 +162,32 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 f"job {job.name!r}: script {job.script!r} not in bundle root "
                 f"{base} (render the inputs before prep).")
         r = job.resources
-        write_run_wrapper(
-            script_path,
-            env=env,
-            mpi_np=r.mpi_np,
-            cpus_per_task=r.cpus_per_task,
-            time=r.time,
-            gres=r.gres,
-            mem=r.mem,
-            exclusive=r.exclusive,
-            # The warm-retry budget, which becomes no sbatch flag: the
-            # wrapper bakes it into its own retry loop at install time
-            # (running-a-job.md § 3.5).  This line is the second half of the
-            # road job-contracts.md § 6.2 describes -- without it the field
-            # was carried the whole way here and then dropped, which is why
-            # `job-system.md § 4.1` recorded the SIESTA ladder as never
-            # having implemented `continue` (2026-08-07, P2 unit 3).
-            continue_retries=r.continue_retries,
-            # Until 2026-08-11 this line did not exist, so a staged run
-            # silently dropped a cap the user had set: `cli.py` and the web
-            # blueprint both passed it and this call site did not.  Carried on
-            # the allocation, it cannot be forgotten by one of three.
-            max_memory_mb=r.max_memory_mb,
-            emit_sbatch=emit_sbatch,
-        )
+        with _user_error_as_prep():
+            write_run_wrapper(
+                script_path,
+                env=env,
+                mpi_np=r.mpi_np,
+                cpus_per_task=r.cpus_per_task,
+                time=r.time,
+                gres=r.gres,
+                mem=r.mem,
+                exclusive=r.exclusive,
+                # The warm-retry budget, which becomes no sbatch flag: the
+                # wrapper bakes it into its own retry loop at install time
+                # (running-a-job.md § 3.5).  This line is the second half of
+                # the road job-contracts.md § 6.2 describes -- without it the
+                # field was carried the whole way here and then dropped, which
+                # is why `job-system.md § 4.1` recorded the SIESTA ladder as
+                # never having implemented `continue` (2026-08-07, P2 unit 3).
+                continue_retries=r.continue_retries,
+                # Until 2026-08-11 this line did not exist, so a staged run
+                # silently dropped a cap the user had set: `cli.py` and the
+                # web blueprint both passed it and this call site did not.
+                # Carried on the allocation, it cannot be forgotten by one of
+                # three.
+                max_memory_mb=r.max_memory_mb,
+                emit_sbatch=emit_sbatch,
+            )
         rendered.add(job.script)
 
     # ---- 2. data symlinks ---------------------------------------------- #
@@ -306,11 +330,19 @@ def _structure_for(task, base: Path):
     against a structure that has since changed would otherwise build a
     different calculation under the same id — § 1's second failure mode.
     """
-    from .. import load as _load_structure
+    from ..workingcopy_structure import StructureCodec
+    codec = StructureCodec()
     src = Path(task.structure.source)
-    for candidate in (base / src.name, src):
+    # The codec, not the bare loader: describe writes the structure as the
+    # pair when it carries metadata (--vacuum lives NOWHERE a bare .xyz can
+    # put it), and the codec applies the .molstruct.json when present and
+    # changes nothing when absent.  The suffix-corrected candidate is the
+    # codec's own naming rule (a .pdb source travels as <stem>.xyz).
+    for candidate in (base / src.name,
+                      (base / src.name).with_suffix(codec.GEOMETRY_SUFFIX),
+                      src):
         if candidate.is_file():
-            struct = _load_structure(candidate)
+            struct = codec.load(candidate)
             break
     else:
         raise PrepError(
@@ -417,9 +449,12 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         # `prep` holds the StageRef, so `prep` says it, per call -- the
         # config field that used to carry it is gone, and the emitter never
         # learns the word (engines/stages.md § 1.1).
-        (base / script).write_text(
-            seam.render_deck(struct, cfg, stage_token=(token or None)),
-            encoding="utf-8")
+        # The render's refusals (missing pseudos above all) are user-fixable
+        # and translate to PrepError -- see _user_error_as_prep (A8).
+        with _user_error_as_prep():
+            deck_text = seam.render_deck(struct, cfg,
+                                         stage_token=(token or None))
+        (base / script).write_text(deck_text, encoding="utf-8")
         _seed_trajectory_log(struct, cfg, base, engine=task.engine,
                              label=seam.label_of(cfg),
                              token=(token or None))
@@ -442,7 +477,12 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         record_dir.mkdir(parents=True, exist_ok=True)
     else:
         record_dir = base
-        js = _merge_run_jobset(base / "job-set.json", js)
+        js = _merge_run_jobset(
+            base / "job-set.json", js,
+            # The CURRENT ladder bounds what the merge keeps (A11): a
+            # stageless calculation's ladder is its one label.
+            ladder=frozenset(s.name for s in (task.stages or ())) or
+                   frozenset({task.label}))
     js.write(record_dir / "job-set.json")
     # The allocation is NOT passed on: every job already carries its own
     # resolved resources, per element (generator.md § 5).  Passing it made
@@ -463,7 +503,8 @@ def _bench_container(task, token: str) -> str:
     return "bench" if sd == "." else f"{sd}/bench"
 
 
-def _merge_run_jobset(path: Path, new: JobSet) -> JobSet:
+def _merge_run_jobset(path: Path, new: JobSet,
+                      ladder: Optional[frozenset] = None) -> JobSet:
     """The root ``job-set.json`` is the RUN's whole plan: each stage's prep
     updates its OWN row and leaves the others standing.
 
@@ -472,6 +513,12 @@ def _merge_run_jobset(path: Path, new: JobSet) -> JobSet:
     worse, the ``--from`` pair rule: with the source job gone, `warm_carry`
     read the pair as unverified and silently withheld ``.CG``
     (`project-layout.md` § 2.3.4 row 3).
+
+    ``ladder`` is the CURRENT task's stage-name set, and it bounds what is
+    kept (A11, 2026-08-12): a row is standing only while its stage is still
+    on the ladder — a stage removed from ``task.json`` used to stay in the
+    plan forever, its deck gone.  A set whose NAME differs is a different
+    calculation's plan and is replaced outright, same as the legacy cases.
     """
     if not path.is_file():
         return new
@@ -481,8 +528,12 @@ def _merge_run_jobset(path: Path, new: JobSet) -> JobSet:
         return new              # unreadable or legacy: replaced outright
     if old.kind != "ladder":
         return new              # a pre-container sweep leftover: replaced
+    if old.name != new.name:
+        return new              # a renamed calculation: the old plan is
+                                # another name's plan, not rows to keep
     fresh = {j.name for j in new.jobs}
-    kept = [j for j in old.jobs if j.name not in fresh]
+    kept = [j for j in old.jobs if j.name not in fresh
+            and (ladder is None or j.name in ladder)]
     merged = dataclasses.replace(
         new, jobs=kept + list(new.jobs),
         shared=sorted(set(old.shared) | set(new.shared)))

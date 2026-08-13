@@ -148,7 +148,11 @@ def describe_cmd(structure: str, dest: str, shape: str,
             source=str(structure),
             pseudo_species=_detect_species(struct.elements),
         )
-        written = write_description(desc, out_dir, psml_lib=psml_lib)
+        # The struct AS DESCRIBED travels: --vacuum replaced it in memory,
+        # and a raw copy of the source dropped that choice on the floor
+        # (prep re-rendered the 3 A-default cell over it, found 2026-08-12).
+        written = write_description(desc, out_dir, psml_lib=psml_lib,
+                                    struct=struct)
     except DescribeError as e:
         raise click.ClickException(str(e))
     except (ValueError, OSError) as e:
@@ -994,11 +998,6 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 f"the execution block could not be resolved from config: "
                 f"{exc}\n  Fix the config, or pass --mode/--domain "
                 f"explicitly for this call.") from exc
-    if domain is None and _execn.get("domain"):
-        # § 5.4's other half: execution.domain is the machine's default
-        # routing -- documented, returned, and never consulted until R3.
-        domain = _execn["domain"]
-        domain_source = "execution.domain (config)"
     if mode is None:
         mode = _execn.get("mode")
         if not mode:
@@ -1011,6 +1010,18 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 "scheduler.  Set execution.mode once for this machine, or pass "
                 "--mode for this call (running-a-job.md § 5.4).")
         mode_source = "execution.mode (config)"
+    if domain is None and mode == "submit" and _execn.get("domain"):
+        # § 5.4's other half: execution.domain is the machine's default
+        # routing -- documented, returned, and never consulted until R3.
+        # ONLY for the submit mode (mode resolves first, above): domain is
+        # a SLURM concept the seam refuses in 'direct', so pouring the
+        # config default in unconditionally made `--mode direct` impossible
+        # on any machine whose config records its routing (A3, 2026-08-12).
+        # An EXPLICIT --domain with --mode direct still reaches the seam's
+        # refusal -- a stated contradiction is an error, a config default
+        # is not.
+        domain = _execn["domain"]
+        domain_source = "execution.domain (config)"
     if kind == "bench":
         # The stage's own sweep record, from its bench/ container (§ 6.3).
         js, base = _load_bench_set(bundle, stage)
