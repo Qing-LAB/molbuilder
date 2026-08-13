@@ -260,21 +260,24 @@ def test_two_stages_with_one_name_are_refused_where_the_ladder_is_read():
     ``read_task`` — the codec's live route — since 2026-08-13, when the
     caller-less ``stages_from_dicts`` wrapper it used was deleted (V22)."""
     import json as _json
-
-    from molbuilder.task import read_task
-    payload = {
-        "schema": "molbuilder/task@1", "engine": "siesta", "shape": "flat",
-        "run": {"name": "j", "id": "j"},
-        "structure": {"source": "h2.xyz"},
-        "varies": ["mesh_cutoff"],
-        "stages": [{"name": "tight", "overrides": {"mesh_cutoff": 200}},
-                   {"name": "Tight", "overrides": {"mesh_cutoff": 300}}],
-    }
     import tempfile
     from pathlib import Path as _P
+
+    from molbuilder.task import (Stage, StructureRef, Task, derive_run,
+                                 read_task, write_task)
     with tempfile.TemporaryDirectory() as d:
         p = _P(d) / "task.json"
-        p.write_text(_json.dumps(payload))
+        write_task(p, Task(
+            engine="siesta", shape="flat",
+            run=derive_run("j", stage_names=("tight", "medium")),
+            structure=StructureRef(source="h2.xyz"),
+            varies=("mesh_cutoff",),
+            stages=(Stage(name="tight", overrides={"mesh_cutoff": 200.0}),
+                    Stage(name="medium", overrides={"mesh_cutoff": 300.0}))))
+        # the codec wrote a valid file; a hand edit introduces the clash
+        raw = _json.loads(p.read_text())
+        raw["stages"][1]["name"] = "Tight"
+        p.write_text(_json.dumps(raw))
         with pytest.raises(ValueError, match="two stages named"):
             read_task(p)
 

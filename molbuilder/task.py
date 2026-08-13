@@ -302,13 +302,12 @@ class Task:
 # --------------------------------------------------------------------- #
 
 #: What a refusal calls the thing it is refusing -- ``task.json``, the file
-#: this module owns.  (The surface-supplied-ladder parse that renamed it,
-#: ``stages_from_dicts``, was deleted 2026-08-13 with zero production
-#: callers; the default is now the only name in use.)
-#:
-#: A ContextVar rather than a plain global because the web layer serves
-#: requests concurrently: two parses in flight would otherwise swap each
-#: other's label and blame the wrong input.
+#: this module owns.  (The surface-supplied-ladder parse that renamed it per
+#: call, ``stages_from_dicts`` + its ``_refusals_name`` wrapper, was deleted
+#: 2026-08-13 (V22) with zero production callers -- the docstring's claimed
+#: callers used config/pyscf's same-named, different function.  The default
+#: is now the only name in use; the ContextVar shape stays because the web
+#: layer serves requests concurrently.)
 _SOURCE: contextvars.ContextVar[str] = contextvars.ContextVar(
     "task_refusal_source", default=FILENAME)
 
@@ -318,9 +317,272 @@ def _refuse(msg: str, *, where: str = "") -> NoReturn:
         f"{_SOURCE.get()}{': ' + where if where else ''}: {msg}")
 
 
-# (_refusals_name and the stages_from_dicts/_ladder_from_objs pair it
-#  served were deleted 2026-08-13, V22: zero production callers -- the
-#  docstring's claimed callers used config/pyscf's same-named, different
-#  function.  _SOURCE stays: its default names every codec refusal.)
+def _as_object(value: Any, *, where: str) -> Mapping[str, Any]:
+    """Refuse a non-object where § 6 specifies one, *saying* so.
+
+    Without this the key check below iterates a string's characters and
+    reports ``unknown key 's'`` for ``"engine": "siesta"`` — technically a
+    refusal, but a person hand-editing the file (the plan's decision 3)
+    learns nothing from it."""
+    if not isinstance(value, Mapping):
+        _refuse(f"expected an object, got {type(value).__name__}", where=where)
+    return value
 
 
+def _check_keys(obj: Mapping[str, Any], allowed: Tuple[str, ...], *,
+                where: str) -> None:
+    """§ 6.1 rule 1 — an unknown key is refused, not ignored, because an
+    ignored key is a calculation quietly different from the one asked for."""
+    for key in obj:
+        if key in allowed:
+            continue
+        near = difflib.get_close_matches(key, allowed, n=1, cutoff=0.7)
+        hint = f" -- did you mean {near[0]!r}?" if near else \
+               f" (known keys: {', '.join(allowed)})"
+        _refuse(f"unknown key {key!r}{hint}", where=where)
+
+
+def _require(obj: Mapping[str, Any], key: str, *, where: str) -> Any:
+    if key not in obj:
+        _refuse(f"missing required key {key!r}", where=where)
+    return obj[key]
+
+
+# --------------------------------------------------------------------- #
+#  Reading                                                              #
+# --------------------------------------------------------------------- #
+
+def _task_from_dict(obj: Mapping[str, Any]) -> Task:
+    """Parse a description, refusing rather than guessing.
+
+    The order is § 6.6's: the schema string first, so a file from a future
+    major fails saying so instead of failing on whichever key moved."""
+    if not isinstance(obj, Mapping):
+        _refuse(f"expected a JSON object, got {type(obj).__name__}")
+
+    check_schema(str(obj.get("schema") or ""), SCHEMA, label=FILENAME)
+    _check_keys(obj, _TOP_KEYS, where="")
+
+    engine_obj = _as_object(_require(obj, "engine", where=""), where="engine")
+    _check_keys(engine_obj, ("name",), where="engine")
+    engine = str(_require(engine_obj, "name", where="engine"))
+
+    shape = _require(obj, "shape", where="")
+    if shape not in SHAPES:
+        _refuse(f"shape {shape!r} is not one of {' / '.join(SHAPES)}. "
+                "It is required and never inferred -- inferring it would "
+                "hand you a directory tree you did not ask for "
+                "(engines/stages.md 6.7)")
+
+    run_obj = _as_object(_require(obj, "run", where=""), where="run")
+    _check_keys(run_obj, _RUN_KEYS, where="run")
+    run = Run(name=str(_require(run_obj, "name", where="run")),
+              id=str(_require(run_obj, "id", where="run")),
+              created=str(run_obj.get("created", "")))
+
+    struct_obj = _as_object(_require(obj, "structure", where=""),
+                            where="structure")
+    _check_keys(struct_obj, _STRUCTURE_KEYS, where="structure")
+    structure = StructureRef(
+        source=str(_require(struct_obj, "source", where="structure")),
+        formula=str(struct_obj.get("formula", "")),
+        atoms=int(struct_obj.get("atoms", 0)))
+
+    # the calculation TYPE: optional, absent = "optimization" (§ 4.2a's
+    # absent-is-a-state).  Shape-checked here; MEMBERSHIP (does the
+    # engine's vocabulary have this section?) is answered where the
+    # warm-files rules are read.
+    calc = obj.get("calculation", "optimization")
+    if not isinstance(calc, str) or not STAGE_NAME_RE.match(calc):
+        _refuse(f"calculation {calc!r} must match [A-Za-z0-9_]+ -- it "
+                "names a section of the engine's warm-file vocabulary "
+                "(job-contracts.md 4.2a)")
+
+    has_stages = "stages" in obj
+    has_varies = "varies" in obj
+    if has_varies and not has_stages:
+        _refuse("'varies' without 'stages'. A description with no stages is "
+                "one parameter set, and there is nothing to vary across "
+                "(engines/stages.md 6.5)")
+
+    if not has_stages:
+        return Task(engine=engine, shape=shape, run=run, structure=structure,
+                    calculation=calc,
+                    schema_fingerprint=str(obj.get("schema_fingerprint", "")))
+
+    raw_stages = obj["stages"]
+    if not isinstance(raw_stages, (list, tuple)) or not raw_stages:
+        _refuse("'stages' is present but empty. A description WITH stages has "
+                "at least one; a calculation with a single parameter set omits "
+                "the key entirely (engines/stages.md 6.5)")
+
+    varies = tuple(str(v) for v in obj.get("varies", ()))
+    stages = tuple(_stage_from_obj(s, varies, i)
+                   for i, s in enumerate(raw_stages))
+
+    _refuse_duplicate_stage_names(stages)
+
+    # ``varies`` stays a tuple here even when empty: it travels WITH
+    # ``stages``, and an empty one is a real state -- several stages that
+    # differ in nothing but their name.  (``None`` is reserved for the
+    # no-stages case above, which § 6.5 spells by omitting both keys.)
+    return Task(engine=engine, shape=shape, run=run, structure=structure,
+                varies=varies, stages=stages, calculation=calc,
+                schema_fingerprint=str(obj.get("schema_fingerprint", "")))
+
+
+def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
+                    index: int) -> Stage:
+    where = f"stage {index}"
+    _as_object(obj, where=where)
+
+    name = str(obj.get("name", ""))
+    where = f"stage {name!r}" if name else where
+    _check_keys(obj, STAGE_FIELDS, where=where)
+    if "name" not in obj:
+        _refuse("missing required key 'name'", where=where)
+    if not STAGE_NAME_RE.match(name):
+        _refuse(f"stage name {name!r} must match [A-Za-z0-9_]+ -- it becomes "
+                "a filename (engines/stages.md 6.6)")
+
+    overrides = dict(_as_object(obj.get("overrides") or {},
+                                where=f"{where} overrides"))
+    for key in overrides:
+        if key in STAGE_FIELDS:
+            _refuse(f"override {key!r} names a stage field. A stage has "
+                    f"exactly {', '.join(STAGE_FIELDS)}; an override may not "
+                    "redefine one (engines/stages.md 2)", where=where)
+
+    # § 6.2 -- a SUBSET of `varies`, never a superset.
+    #
+    # No key outside `varies`: a demoted parameter must not leave a value
+    # hiding in a stage nobody can see.  But a varied key may be ABSENT, and
+    # absent means "this stage uses the TEMPLATE's value" -- a real state, and
+    # the one the table draws as a quiet cell.  Requiring equality (as this did
+    # until 2026-08-07) both made `varies` redundant -- derivable as the key set
+    # of any stage -- and forced every cell to be filled with a copy.
+    extra = sorted(set(overrides) - set(varies))
+    if extra:
+        _refuse(f"override(s) {', '.join(repr(k) for k in extra)} not listed "
+                "in 'varies'. A stage may only override a field the user "
+                "promoted, or a demoted parameter leaves a value hiding "
+                "(engines/stages.md 6.2)", where=where)
+
+    return Stage(name=name, enabled=bool(obj.get("enabled", True)),
+                 overrides=overrides)
+
+
+def varies_for(overrides_seq) -> Tuple[str, ...]:
+    """The promoted columns of a ladder — every override key, first seen first.
+
+    § 6.2: ``varies`` is *"the set of fields the user chose to tune"*, and
+    ``overrides`` is a **subset** of it. A surface that supplies a ladder
+    without stating ``varies`` separately has already said what varies by
+    listing what each stage overrides, and asking for it twice would be a
+    second place to disagree.
+
+    **The union, and not one stage's keys**, because a stage may leave a
+    promoted cell empty — that means *"use the template's value"*, which is a
+    real state § 6.2 protects, not an absence of intent.
+
+    One function so the two surfaces that build a ladder without a description
+    — a dict payload (``--stages-json``, the web) and a ready-made
+    :class:`Stage` list (``--stage-strategy``) — cannot derive different
+    columns from the same ladder.
+    """
+    out: list = []
+    for overrides in overrides_seq:
+        for key in overrides or {}:
+            if key not in out:
+                out.append(key)
+    return tuple(out)
+
+
+# (stages_from_dicts + _ladder_from_objs were deleted 2026-08-13, V22:
+#  zero production callers -- --stages-json reaches config/pyscf's
+#  same-named, different function.  Their duplicate-name refusal lives
+#  on below, on read_task's own path.)
+
+
+def _refuse_duplicate_stage_names(stages) -> None:
+    """ONE copy of the case-insensitive duplicate check (D10, 2026-08-13:
+    both parsers carried an identical loop, and the constructor a third
+    exact-string variant -- three checks, one rule, drifting apart).
+    Case folds because names key filenames (engines/stages.md § 2)."""
+    seen: dict[str, str] = {}
+    for st in stages:
+        low = st.name.lower()
+        if low in seen:
+            _refuse(f"two stages named {st.name!r}"
+                    + (f" and {seen[low]!r}" if seen[low] != st.name else "")
+                    + " -- names are compared case-insensitively because they "
+                      "become filenames (engines/stages.md 6.6)")
+        seen[low] = st.name
+
+
+def derive_run(name: str, formula: str = "", *, created: str = "",
+               stage_names: Tuple[str, ...] = ()) -> Run:
+    """Build a :class:`Run` with its id derived, not retyped.
+
+    The one place a description's id is *made*.  § 3 rule 1 -- *"it happens
+    once, when the description is written, and the result is stored"* -- is
+    only true if there is one place it can happen, and a producer spelling
+    ``Run(name=n, id=run_id(n, f))`` inline is a second place waiting to drift
+    (the browser and the CLI must write the same bytes, § 6.4).
+
+    ``stage_names`` is worth passing when the ladder is known: it makes the
+    cap the real one rather than the budget guessed for an unknown ladder.
+    :meth:`Task.__post_init__` re-derives with the stages it can see, so a
+    ``Run`` built without them still checks out."""
+    return Run(name=name, created=created,
+               id=run_id(name, formula, stage_names=stage_names))
+
+
+def read_task(path) -> Task:
+    """Read and parse ``task.json``."""
+    return Task.from_dict(read_json(path))
+
+
+# --------------------------------------------------------------------- #
+#  Writing                                                              #
+# --------------------------------------------------------------------- #
+
+def _task_to_dict(task: Task) -> dict:
+    """The JSON object for a description.
+
+    Key order is § 6's, so a written file reads like the contract's own
+    example and a diff between two descriptions lines up."""
+    out: dict[str, Any] = {
+        "schema": SCHEMA,
+        "engine": {"name": task.engine},
+        "shape": task.shape,
+        "run": {"name": task.run.name, "id": task.run.id},
+    }
+    if task.run.created:
+        out["run"]["created"] = task.run.created
+    if task.schema_fingerprint:
+        out["schema_fingerprint"] = task.schema_fingerprint
+    # absent-is-a-state: an optimization writes no key (§ 4.2a)
+    if task.calculation != "optimization":
+        out["calculation"] = task.calculation
+    out["structure"] = {"source": task.structure.source,
+                        "formula": task.structure.formula,
+                        "atoms": task.structure.atoms}
+    # Absent together, never empty -- an empty list would be a second way to
+    # spell "one stage" (§ 6.5).
+    if task.stages:
+        out["varies"] = list(task.varies or ())
+        out["stages"] = [{"name": s.name, "enabled": s.enabled,
+                          "overrides": dict(s.overrides)}
+                         for s in task.stages]
+    return out
+
+
+def write_task(path, task: Task):
+    """Write ``task.json`` atomically (``persist.write_json``)."""
+    return write_json(path, task.to_dict())
+
+
+__all__ = ["SCHEMA", "FILENAME", "SHAPES", "STAGE_FIELDS",
+           "Run", "StructureRef", "Stage", "Task",
+           "derive_run", "read_task", "varies_for", "write_task"]
