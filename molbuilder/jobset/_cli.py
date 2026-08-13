@@ -97,8 +97,15 @@ _bundle_option = click.option(
               help="isolation vacuum (A) per side on isolated axes. Needed "
                    "for a flat or linear molecule from a bare XYZ, which "
                    "otherwise has a degenerate cell.")
+@click.option("--calculation", "calculation", default="optimization",
+              show_default=True, metavar="TYPE",
+              help="which KIND of calculation this describes -- the key "
+                   "into the engine's warm-file vocabulary (job-contracts "
+                   "4.2a).  The engine's sections define what is legal, "
+                   "checked where the vocabulary is read.")
 def describe_cmd(structure: str, dest: str, shape: str,
-                 stage_strategy, name, engine: str, psml_lib, vacuum) -> None:
+                 stage_strategy, name, engine: str, psml_lib, vacuum,
+                 calculation: str) -> None:
     """Write the portable description: the template, ``task.json``, and the
     data files.
 
@@ -145,7 +152,7 @@ def describe_cmd(structure: str, dest: str, shape: str,
         desc = build_description(
             struct, cfg, stages,
             engine=engine, shape=shape, name=run_name,
-            source=str(structure),
+            source=str(structure), calculation=calculation,
             pseudo_species=_detect_species(struct.elements),
         )
         # The struct AS DESCRIBED travels: --vacuum replaced it in memory,

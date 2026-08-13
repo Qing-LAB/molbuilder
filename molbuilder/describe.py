@@ -119,6 +119,7 @@ def build_description(
     name: str,
     source: str,
     created: str = "",
+    calculation: str = "optimization",
     pseudo_species: Sequence[str] = (),
     generators: Optional[Dict[str, Any]] = None,
 ) -> Description:
@@ -153,6 +154,7 @@ def build_description(
         # to spell "one parameter set", so the no-ladder case passes neither.
         varies=(varies_for(s.overrides for s in ladder) if ladder else None),
         stages=(ladder or None),
+        calculation=calculation,
         schema_fingerprint="",
     )
 
@@ -163,11 +165,13 @@ def build_description(
     # AFTER the checks, from the same call that renders the catalogue.
     text = render_template(cfg, engine=engine)
     from .template import schema_fingerprint
-    stamped = Task(
-        engine=task.engine, shape=task.shape, run=task.run,
-        structure=task.structure, varies=task.varies, stages=task.stages,
-        schema_fingerprint=schema_fingerprint(type(cfg)),
-    )
+    # dataclasses.replace, NOT a re-listed constructor (U0, 2026-08-13):
+    # the re-listing that stood here silently DROPPED any field it did not
+    # name -- the `calculation` key would have been lost on the stamped
+    # copy, and so would every field added after it.
+    import dataclasses as _dc
+    stamped = _dc.replace(task,
+                          schema_fingerprint=schema_fingerprint(type(cfg)))
     return Description(task=stamped, template=text,
                        pseudo_species=tuple(pseudo_species))
 

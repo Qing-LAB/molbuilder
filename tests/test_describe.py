@@ -166,6 +166,34 @@ def test_the_vacuum_flag_reaches_the_travelling_structure(tmp_path):
     assert reloaded.vacuum == (8.0, 8.0, 8.0)
 
 
+def test_the_calculation_key_is_absent_is_a_state(struct, cfg, tmp_path):
+    """U0 (warm-files § 4.2a, 2026-08-13): `calculation` keys the engine's
+    warm-file vocabulary.  Absent IS "optimization" (the § 6.5 pattern),
+    so an optimization description writes no key; a non-default type
+    round-trips; a shape-violating value is refused naming the rule.
+    Membership (does the engine have this section?) is NOT checked here —
+    that is the rules file's question, answered where it is read."""
+    D.write_description(_describe(struct, cfg), tmp_path / "calc")
+    raw = json.loads((tmp_path / "calc" / "task.json").read_text())
+    assert "calculation" not in raw
+    assert read_task(tmp_path / "calc" / "task.json").calculation == \
+        "optimization"
+    desc = D.build_description(struct, cfg, (), engine="siesta",
+                               shape="hierarchical", name="relax",
+                               source="structures/bdt.xyz",
+                               calculation="transport")
+    D.write_description(desc, tmp_path / "calc2")
+    raw = json.loads((tmp_path / "calc2" / "task.json").read_text())
+    assert raw["calculation"] == "transport"
+    assert read_task(tmp_path / "calc2" / "task.json").calculation == \
+        "transport"
+    with pytest.raises(Exception, match=r"calculation.*A-Za-z0-9_"):
+        D.build_description(struct, cfg, (), engine="siesta",
+                            shape="hierarchical", name="relax",
+                            source="structures/bdt.xyz",
+                            calculation="no-hyphens!")
+
+
 def test_a_ladder_becomes_stages_and_varies(struct, cfg, tmp_path):
     D.write_description(_describe(struct, cfg,
                                   default_siesta_stages("publishable")),

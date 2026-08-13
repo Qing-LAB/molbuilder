@@ -76,7 +76,7 @@ STAGE_FIELDS = ("name", "enabled", "overrides")
 STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 _TOP_KEYS = ("schema", "engine", "shape", "run", "schema_fingerprint",
-             "structure", "varies", "stages")
+             "structure", "varies", "stages", "calculation")
 _RUN_KEYS = ("name", "id", "created")
 _STRUCTURE_KEYS = ("source", "formula", "atoms")
 
@@ -164,6 +164,14 @@ class Task:
     varies: Optional[Tuple[str, ...]] = None
     stages: Optional[Tuple[Stage, ...]] = None
     schema_fingerprint: str = ""
+    #: WHICH KIND of calculation this describes -- the key into the
+    #: engine's warm-file vocabulary (`job-contracts.md` § 4.2a: [base] +
+    #: one section per type).  Absent-is-a-state, like ``stages``: the
+    #: default IS "optimization", so an optimization description carries
+    #: no key.  Membership (does the engine have this section?) is the
+    #: rules file's question, answered where the file is read -- this
+    #: codec checks only the SHAPE (U0, 2026-08-13).
+    calculation: str = "optimization"
 
     def __post_init__(self) -> None:
         """§ 6.5 holds for the object too, not only for the file.
@@ -174,6 +182,12 @@ class Task:
         (§ 6.2).  The two are absent together or present together, and
         ``stages`` is never an empty tuple: that would be the second
         spelling of "one stage" § 6.5 rules out."""
+        if not isinstance(self.calculation, str) \
+                or not STAGE_NAME_RE.match(self.calculation):
+            raise ValueError(
+                f"task: calculation {self.calculation!r} must match "
+                "[A-Za-z0-9_]+ -- it names a section of the engine's "
+                "warm-file vocabulary (job-contracts.md 4.2a)")
         if (self.varies is None) != (self.stages is None):
             raise ValueError(
                 "task: 'varies' and 'stages' are absent together or present "
@@ -387,6 +401,16 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
         formula=str(struct_obj.get("formula", "")),
         atoms=int(struct_obj.get("atoms", 0)))
 
+    # the calculation TYPE: optional, absent = "optimization" (§ 4.2a's
+    # absent-is-a-state).  Shape-checked here; MEMBERSHIP (does the
+    # engine's vocabulary have this section?) is answered where the
+    # warm-files rules are read.
+    calc = obj.get("calculation", "optimization")
+    if not isinstance(calc, str) or not STAGE_NAME_RE.match(calc):
+        _refuse(f"calculation {calc!r} must match [A-Za-z0-9_]+ -- it "
+                "names a section of the engine's warm-file vocabulary "
+                "(job-contracts.md 4.2a)")
+
     has_stages = "stages" in obj
     has_varies = "varies" in obj
     if has_varies and not has_stages:
@@ -396,6 +420,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
 
     if not has_stages:
         return Task(engine=engine, shape=shape, run=run, structure=structure,
+                    calculation=calc,
                     schema_fingerprint=str(obj.get("schema_fingerprint", "")))
 
     raw_stages = obj["stages"]
@@ -415,7 +440,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # differ in nothing but their name.  (``None`` is reserved for the
     # no-stages case above, which § 6.5 spells by omitting both keys.)
     return Task(engine=engine, shape=shape, run=run, structure=structure,
-                varies=varies, stages=stages,
+                varies=varies, stages=stages, calculation=calc,
                 schema_fingerprint=str(obj.get("schema_fingerprint", "")))
 
 
@@ -603,6 +628,9 @@ def _task_to_dict(task: Task) -> dict:
         out["run"]["created"] = task.run.created
     if task.schema_fingerprint:
         out["schema_fingerprint"] = task.schema_fingerprint
+    # absent-is-a-state: an optimization writes no key (§ 4.2a)
+    if task.calculation != "optimization":
+        out["calculation"] = task.calculation
     out["structure"] = {"source": task.structure.source,
                         "formula": task.structure.formula,
                         "atoms": task.structure.atoms}
