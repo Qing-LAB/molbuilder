@@ -105,12 +105,21 @@ def test_main_exits_cleanly_when_molbuilder_json_is_malformed(
     assert "invalid JSON" in err
 
 
-def test_resolve_ignores_unknown_keys(monkeypatch, tmp_path):
-    """Extra keys are tolerated -- only ``cert`` and ``key`` are read.
-    Lets the file grow non-TLS sections later without breaking now."""
+def test_resolve_refuses_unknown_keys(monkeypatch, tmp_path):
+    """U7 (2026-08-12): an unknown top-level key is REFUSED with the known
+    sections named -- 'tolerated so the file can grow' is the exact hole
+    that silently ate admin/rate_limit.  This test fabricated a 'host'
+    key (no consumer anywhere) to pin the retired tolerance, and lived in
+    a file the fix session's hand-rolled batteries never ran -- the fresh
+    full testrun.py batch is what caught it."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "molbuilder.json").write_text(json.dumps(
         {"cert": "/c.pem", "key": "/k.pem", "host": "example.com"}))
+    with pytest.raises(Exception, match="unknown top-level key.*host"):
+        _resolve_tls(None, None)
+    # the flat tls aliases themselves remain read, as ever
+    (tmp_path / "molbuilder.json").write_text(json.dumps(
+        {"cert": "/c.pem", "key": "/k.pem"}))
     assert _resolve_tls(None, None) == ("/c.pem", "/k.pem")
 
 

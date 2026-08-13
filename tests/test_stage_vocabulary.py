@@ -189,6 +189,20 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "name.  Split out because `status <stage>` must resolve a name "
         "without inheriting the whole-set refusal: a whole-ladder status is "
         "a legitimate thing to ask for, unlike a whole-ladder submit"),
+    "_lone_stageless_job": (
+        None, "molbuilder/jobset/_cli.py",
+        "the door's answer when there is NO stage name to type: a "
+        "ladder-kind set with ONE tokenless job named as its set IS the "
+        "calculation (`engines/stages.md` § 6.5), so the bare verbs act on "
+        "it (R1, 2026-08-12 -- until then they refused with a list of "
+        "stages that did not exist)"),
+    "_stage_bench_dir": (
+        None, "molbuilder/jobset/_cli.py",
+        "where a stage's benchmark lives -- the `bench/` container "
+        "(job-contracts § 6.3) resolved through the description, one "
+        "answer for the trials, the job-set and the verdict, with the "
+        "same unknown-stage refusal as every other lookup (U1, "
+        "2026-08-12)"),
     "render_stage_status": (
         None, "molbuilder/jobset/runstatus.py",
         "the per-stage view (job-system.md 5.3) -- what happened to ONE "

@@ -87,6 +87,13 @@ _L1_MODULES = {
                          # five (project-layout.md 2.3.1), which the benchmark
                          # merely happened to need first (2.3.1a).  L1: stdlib
                          # probes plus ``persist`` for the @major check.
+    "scheduler_probe",   # the TARGET scheduler: parse sinfo/sacctmgr text into
+                         # a proposed ``scheduler`` config block (job-system
+                         # § 7).  Moved out of ``bench/`` 2026-08-12 (U-program
+                         # follow-up): what it produces is molbuilder.json
+                         # config, not benchmarking.  L1 beside
+                         # ``environment`` -- pure parsing + derivation on
+                         # stdlib alone; the CLI runs the subprocesses.
     "identity",          # the run id: normalise once, build from inputs
                          # (execution/run-identity.md 2-3).  L1 on stdlib
                          # alone, and that is load-bearing: the CLI, the web
@@ -132,9 +139,11 @@ _L2_MODULES = {
                          # ``jobset.model``; imported by jobset/prep.
     "describe",          # the `describe` ROUTE, floor 2 only
                          # (execution/architecture.md § 4).  L2 because it
-                         # composes L1 ``task`` with L2 ``template`` and
-                         # ``validation.task``; it is imported by the jobset
-                         # CLI group and (later) by the web's describe route,
+                         # composes L1 ``task`` with L2 ``template``,
+                         # ``validation.task`` and ``workingcopy_structure``
+                         # (the pair the structure travels as when describe
+                         # modified it); it is imported by the jobset CLI
+                         # group and (later) by the web's describe route,
                          # and imports neither.
     "siesta", "pyscf",   # script generators
     "spectra",           # spectra engines + script renderers

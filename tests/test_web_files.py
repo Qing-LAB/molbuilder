@@ -2320,18 +2320,18 @@ class TestRootsContract:
         assert label == "projects"
         assert str(path).endswith("/projects")
 
-    def test_unknown_file_picker_section_ignored(self, tmp_path):
-        # The file_picker section is no longer recognised; passing it
-        # in molbuilder.json should NOT error (unknown-section graceful
-        # ignore), but it also has no effect -- the picker still
-        # returns just projects/.
-        from molbuilder.runtime_config import read_config
+    def test_stale_file_picker_section_is_refused_by_name(self, tmp_path):
+        # The file_picker section went with the single-root pivot, and
+        # since the unknown-keys guard (2026-08-12) a section the loader
+        # does not know is REFUSED with its name, not silently dropped:
+        # "a key this loader does not know would be silently
+        # ineffective" is exactly what happened to a user's stale
+        # file_picker block under the old graceful ignore.
+        from molbuilder.runtime_config import RuntimeConfigError, read_config
         cfg_file = tmp_path / "molbuilder.json"
         cfg_file.write_text('{"file_picker": {"roots": ["~/scratch"]}}')
-        cfg = read_config(cfg_file)
-        # The section is dropped during _normalise (unknown sections
-        # are silently ignored).
-        assert "file_picker" not in cfg
+        with pytest.raises(RuntimeConfigError, match="file_picker"):
+            read_config(cfg_file)
 
     def test_get_file_picker_roots_removed_from_runtime_config(self):
         # The accessor that v1 added was dropped during the single-
