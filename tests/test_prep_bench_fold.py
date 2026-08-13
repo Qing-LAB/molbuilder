@@ -592,6 +592,93 @@ def test_a_stageless_calculation_runs_end_to_end(tmp_path):
     assert job_dir_names(sweep)["G1K1C4"] == "bench-G1K1C4"
 
 
+def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
+    """A5 (redo 2026-08-12): FLAT has no stage directory for `bench/` to
+    nest inside, so unqualified, two stages' benchmarks shared one root
+    container and each prep overwrote the other's job-set, plan and
+    verdict.  The token qualifies the container's own name in flat —
+    ``bench_<NN>_<stage>/`` — underscore-joined so it cannot read as a
+    trial's dash-joined ``bench-<point>``."""
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
+    dest = tmp_path / "calc"
+    D.write_description(
+        D.build_description(struct, SiestaConfig(system_label="JOB"),
+                            default_siesta_stages("publishable"),
+                            engine="siesta", shape="flat", name="JOB",
+                            source=str(tmp_path / "h2.xyz")),
+        dest)
+    (dest / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    (dest / "environment.json").write_text(
+        Environment(scheduler="workstation",
+                    topology=Topology(sockets=1, cores_per_socket=4,
+                                      gpus_per_node=1,
+                                      gpu_type="a100")).to_json() + "\n")
+    sweep, pins, translation = _bench_inputs(dest)
+    prep_calculation(dest, "coarse",
+                     allocation=Resources(mpi_np=8, cpus_per_task=8),
+                     sweep=sweep, pins=pins, translation=translation,
+                     emit_sbatch=False)
+    prep_calculation(dest, "medium",
+                     allocation=Resources(mpi_np=8, cpus_per_task=8),
+                     sweep=sweep, pins=pins, translation=translation,
+                     emit_sbatch=False)
+    coarse = dest / "bench_01_coarse" / "job-set.json"
+    medium = dest / "bench_02_medium" / "job-set.json"
+    assert coarse.is_file() and medium.is_file()
+    assert not (dest / "bench" / "job-set.json").exists()
+    # each record still names ITS stage's decks: no overwrite happened
+    cj = json.loads(coarse.read_text())
+    mj = json.loads(medium.read_text())
+    assert all("01_coarse" in j["script"] for j in cj["jobs"])
+    assert all("02_medium" in j["script"] for j in mj["jobs"])
+
+
+def test_a_flat_stageless_calculation_preps_to_completion(tmp_path):
+    """A2 (redo 2026-08-12): `_lone_stageless_job` is shape-blind, so a
+    FLAT stageless calculation's bare prep ran the attempt tail the CLI
+    itself added -- and prepare_attempt's flat refusal turned a
+    SUCCESSFUL prep into exit 1.  Flat prep is complete without an
+    attempt; only an explicit --from/--cold (attempt asks flat cannot
+    serve) reaches the refusal."""
+    from click.testing import CliRunner
+    from molbuilder import describe as D
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.structure import Structure
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
+    dest = tmp_path / "calc"
+    D.write_description(
+        D.build_description(struct, SiestaConfig(system_label="JOB"), (),
+                            engine="siesta", shape="flat",
+                            name="JOB", source=str(tmp_path / "h2.xyz")),
+        dest)
+    (dest / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    r = CliRunner()
+    res = r.invoke(jobset_group, ["prep", "run", "--bundle", str(dest),
+                                  "--no-sbatch"])
+    assert res.exit_code == 0, res.output
+    assert "no attempt to open" in res.output
+    assert "submit run" in res.output
+    assert not (dest / "run-0").exists()
+    # an attempt ASK on flat is still the one refusal, with its story
+    res = r.invoke(jobset_group, ["prep", "run", "--bundle", str(dest),
+                                  "--no-sbatch", "--cold"])
+    assert res.exit_code != 0
+    assert "flat" in res.output
+
+
 def test_a_config_refusal_is_a_refusal_not_a_traceback(tmp_path, monkeypatch):
     """A8 (redo 2026-08-12): the described route's most likely
     first-contact failure -- ``script_generation.activation`` unset --
@@ -631,7 +718,26 @@ def test_a_config_refusal_is_a_refusal_not_a_traceback(tmp_path, monkeypatch):
     assert "Traceback" not in res.output, res.output
 
 
-def test_a_launched_trial_refuses_relaunch_and_selection_skips_it(calc):
+def test_a_direct_sweep_resumes_past_launched_trials(calc):
+    """A6 (redo 2026-08-12): direct mode runs the set in order, and the
+    launched-trial refusal (R2) made it die at the FIRST record -- an
+    interrupted direct sweep could never finish.  The loop now skips a
+    launched trial out loud and runs the rest; submit mode's
+    next-unlaunched pick is untouched."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.materialize import write_run_launch
+    js = _prep_bench(calc)
+    first = js["jobs"][0]["name"]
+    write_run_launch(calc / "01_coarse" / "bench" / f"bench-{first}",
+                     mode="direct", command=["bash", "x"])
+    res = CliRunner().invoke(jobset_group,
+                             ["submit", "bench", "coarse",
+                              "--bundle", str(calc),
+                              "--mode", "direct", "--dry-run"])
+    assert res.exit_code == 0, res.output
+    assert "skip" in res.output and first in res.output
+    assert res.output.count("WOULD run") == len(js["jobs"]) - 1
     """R2: § 1.5's immutability holds for trials AT THE SEAM -- a named
     relaunch is refused by the library naming run.json and the next
     verbs, and the bare form's next-unlaunched pick SKIPS the launched

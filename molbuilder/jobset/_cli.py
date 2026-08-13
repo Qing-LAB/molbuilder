@@ -809,7 +809,26 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                    "(open its attempt)")
         return
 
-    from .materialize import prepare_attempt
+    from .materialize import prepare_attempt, shape_of
+    sh = shape_of(js, base)
+    if (sh is not None and not sh.keeps_attempts_as_directories
+            and not from_attempt and not cold):
+        # FLAT keeps no attempt directories, so a flat prep is COMPLETE
+        # right here: the wrappers are rendered, the shared warm set lies
+        # in the root, and continuing is free (project-layout.md § 1).
+        # The attempt tail below is the CLI's OWN addition -- until A2
+        # (2026-08-12) it ran anyway and prepare_attempt's flat refusal
+        # turned a SUCCESSFUL prep into exit 1.  An explicit --from or
+        # --cold still falls through: the user asked for attempt
+        # machinery flat does not have, and prepare_attempt owns that
+        # refusal's text.
+        click.echo(f"prepped {len(dirs)} job dir(s) under {base}  "
+                   "(flat: no attempt to open; runs are told apart by "
+                   "the wrapper's output index)")
+        click.echo("next: molbuilder jobset submit run "
+                   + (f"{stage} " if stage is not None else "")
+                   + "--mode submit|direct")
+        return
     try:
         rep = prepare_attempt(js, base, attempt_target,
                               continue_from=from_attempt,
@@ -1060,7 +1079,9 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     for r in results:
         tail = (f"job {r.job_id}" if r.job_id else
                 (f"rc={r.returncode}" if r.returncode is not None else ""))
-        click.echo(f"  {verb}  {r.name:<12} {' '.join(r.command)}  "
+        # a skipped trial was not run and WOULD not be -- its verb says so
+        v = "skip     " if r.status.startswith("skipped") else verb
+        click.echo(f"  {v}  {r.name:<12} {' '.join(r.command)}  "
                    f"[{r.status}] {tail}".rstrip())
     if not dry_run:
         click.echo("next: molbuilder jobset status   (look before the next "

@@ -310,8 +310,9 @@ def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Pat
                 f"{(d / RUN_LAUNCH_FILE)} records it.  A trial measures "
                 f"its point ONCE (project-layout.md § 1.5: immutable once "
                 f"it has run); read the sweep back with `molbuilder "
-                f"jobset summarize bench <stage>`, or prep a fresh "
-                f"benchmark to measure again.")
+                f"jobset summarize bench <stage>`.  To measure this point "
+                f"again, move the trial's directory aside yourself -- "
+                f"molbuilder never deletes results.")
         return d, None
     last = d / f"run-{ns[-1]}"
     if was_launched(last):
@@ -369,7 +370,20 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
     SLURM's ``afterok`` meaning locally; it went with the edges.
     """
     results: List[JobResult] = []
+    from .materialize import job_dir_names, shape_of, was_launched
+    dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
     for job in jobset.jobs:
+        # A6 (2026-08-12): a direct SWEEP resumes past what already ran.
+        # A trial is immutable once launched (§ 1.5), and the submit
+        # path's next-unlaunched pick already skips it -- but direct runs
+        # the set in order, so without this the loop DIED at the first
+        # launched trial and an interrupted sweep could never finish.
+        # The skip is said out loud in the results.  Ladder stages keep
+        # the refusal below: their re-run is a NEW attempt the user opens.
+        if jobset.kind == "sweep" and was_launched(base_dir / dirs[job.name]):
+            results.append(JobResult(job.name, [],
+                                     "skipped -- already launched"))
+            continue
         job_dir, attempt, run_name = _resolve_launch(
             jobset, base_dir, job, ".run.sh")
         cmd = ["bash", run_name] + _run_sh_args(job.resources)

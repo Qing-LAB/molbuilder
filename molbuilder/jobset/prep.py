@@ -495,12 +495,21 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 
 def _bench_container(task, token: str) -> str:
     """Where a stage's bench state lives — ``<NN>_<stage>/bench`` in the
-    hierarchy, ``bench`` at the root of a flat (or stageless) calculation.
+    hierarchy, ``bench_<NN>_<stage>`` at the root of a FLAT calculation,
+    ``bench`` at the root of a stageless one.
     `job-contracts.md` § 6.3: *"benchmark | bench/ inside the stage it
-    measures"*."""
+    measures"* — in flat there IS no stage directory to sit inside, so the
+    token qualifies the container's own name instead (A5, 2026-08-12:
+    unqualified, two flat stages' benchmarks shared one root ``bench/``
+    and each prep overwrote the other's job-set, plan and verdict).  The
+    underscore join keeps it apart from a TRIAL's ``bench-<point>``
+    (§ 6.3's dash-joined qualifier), which lives INSIDE a container.
+    Stageless keeps bare ``bench`` — one parameter set cannot collide."""
     from .shape import Shape
     sd = Shape.named(task.shape).stage_dir(token) if token else "."
-    return "bench" if sd == "." else f"{sd}/bench"
+    if sd == ".":
+        return f"bench_{token}" if token else "bench"
+    return f"{sd}/bench"
 
 
 def _merge_run_jobset(path: Path, new: JobSet,
