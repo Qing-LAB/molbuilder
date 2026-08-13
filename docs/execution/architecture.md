@@ -144,9 +144,11 @@ the floor plan had no room for.
 > | **import depth** | which file may `import` which | `tests/test_layering.py`, mechanically | `L1` · `L2` · `L3` |
 > | **floor** (this document) | which *role* owns a decision | `tests/test_architecture_rules.py` | 1 names … 7 surfaces |
 >
-> They overlap without matching. `persist` is import-depth **L1** and has no
-> floor at all — a small helper both sides borrow. `identity` is both.
-> `jobset` is one import tier (`L2`) and spans **four** floors (3–6).
+> They overlap without matching. `persist` is import-depth **L1** and sits on
+> **floor 1** with the other plain facts (§ 2.1 row 1 lists it; the floor
+> test pins it — this line once said "no floor at all" against both).
+> `identity` is both. `jobset` is one import tier (`L2`) and spans **five**
+> floors (3–7: `_cli` and `ledger` are row 7's surfaces).
 >
 > **In this document, "floor" always means the second.** The import grouping is
 > [`architecture.md`](?doc=architecture.md) § 3.
@@ -210,7 +212,7 @@ note records the deletion.)*
 | **4** | **layout** | where every file sits | `jobset/materialize` · `jobset/shape` | `materialize` · `job_dir_names` · `stage_refs` · `shape_of` · `Shape.named` · `prepare_attempt` · `attempts` · `latest_attempt` · `relink` | the folder tree; `run-<n>/` | know about a queue |
 | **5** | **launch** | how a folder becomes a running program | `jobset/prep` · `jobset/agreement` · `runwrap` · `jobset/submit` | `prep_jobset` · `resolve_target` · `launch_agreement` · `check_launch_matches_deck` · `write_run_wrapper` · `render_sbatch` · `submit_jobset` | `.run.sh` · `.sbatch` · `run.json` | decide physics |
 | **6** | **observe** | what happened | `jobset/runstatus` · `jobset/summarize` · `parse/dirs` | `jobset_status` · `render_status` · `render_stage_status` · `decode_run_dir` | — | write anything |
-| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobset/ledger` · `web` | `molbuilder jobset {plan,prep,submit,status}` · the web blueprints · `ledger.record` (each verb's decisions, into `jobset-decisions.log`) | `jobset-decisions.log` | work out a name, a folder, or a launch |
+| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobset/ledger` · `web` | `molbuilder jobset {describe,prep,plan,submit,summarize,status}` · the web blueprints · `ledger.record` (each verb's decisions, into `jobset-decisions.log`) | `jobset-decisions.log` | work out a name, a folder, or a launch |
 
 **The rule that makes it a layering:** *a floor may call down and return up; it
 may never reach across.* Floor 5 deciding a rank count that floor 3 already
@@ -483,7 +485,9 @@ do not:
 | 10 | **7 · surfaces** |
 | 11–12 | outside — the wrapper and the engine, at run time |
 
-**Four of the thirteen rows sit outside the floors**, and that is the honest
+**Six of the twelve rows sit outside the floors** (1–2, 6–7, 11–12 — the
+counts this sentence carried, "four of thirteen", matched no table), and
+that is the honest
 answer rather than a gap: this stack is about turning a description into a
 running job, and the structure model, the form schema and the science
 validators are separately-owned contracts that hand it their results.

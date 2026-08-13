@@ -124,9 +124,11 @@ formula — is written into `task.json` and never becomes a filename:
 **This is what the code has always done.** `cli.py:700` builds the label with
 `normalise_id(typed_name)` — one string, the formula nowhere in it — and
 `input.py:550` writes `f"{cfg.system_label}{suffix}.fdf"`. The composite
-`run_id(label, formula)` exists and is called from **thirteen places, every one a
-test**. This document used to describe that composite as the filename; it never
-was.
+`run_id(label, formula)` exists and its production callers are `task.py`'s
+two — `derive_run` builds the id and the codec's validation recomputes it
+(*this sentence said "thirteen places, every one a test" — false since the
+description landed*). This document used to describe that composite as the
+filename; it never was.
 
 **What the split costs, and it is not nothing.** With the formula in the stem,
 two calculations of *different molecules* sharing a typed label in one directory
@@ -551,6 +553,15 @@ One field cannot produce either.
 An identity that tried to prevent every wrong continuation would have to include
 everything, and § 2.1 is about why that is worse. The cases below are real, and
 the answer to each is a message, not a wider pin.
+
+> **Which sayers are live** (honesty note, 2026-08-13): the **wrapper
+> banner** rows run on every launch, and the reader's preflight rows run at
+> `prep` — those surfaces exist.  The rows that name *"the surface, at
+> check time"* describe the web prep surface (P10/P11), whose check-time
+> reader (`validation/identity.check_prior_state`) is built and **not yet
+> called from any production path** — a dormant surface, waiting on its
+> phase, not a shipped one.  The banner row is the one that must never be
+> weakened precisely because it is the always-present layer under that gap.
 
 | Case | Why the id cannot fix it | Who says it, and what |
 |---|---|---|

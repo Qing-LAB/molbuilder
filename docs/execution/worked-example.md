@@ -207,8 +207,9 @@ The trials live **under the stage they measure**, in their own container:
 ```
 
 *The trial prefix is `bench-` ([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md),
-the cross-layer authority); the shipped code still writes `point-` and the rename
-carries a parser cost in `summarize`.*
+the cross-layer authority) — and since 2026-08-12 the shipped code writes it
+too (the `point-` era ended with the fold; `summarize` reads the job-set's
+own data, never a parsed directory name).*
 
 **Why under the stage, and not once per project.** The best rank count depends on
 the science: mesh cutoff changes the grid, basis size changes the matrix, and
@@ -221,17 +222,21 @@ cannot read — or overwrite — the density matrix the real run depends on. Tha
 relabelling is not a leftover from when benchmarking was standalone; it is
 exactly what lets a trial live inside a stage's directory.
 
-⛔ **Gap 3.** Every piece exists; nothing connects them. `bench generate` takes a
-deck and an output directory, so you *can* hand it `<label>_02_tight.fdf` and
-`--out 02_tight/bench` — but no command does, nothing records that this bundle
-measures that stage, and getting it wrong is silent.
+✅ **Gap 3 — CLOSED 2026-08-12** (the fold). The connection IS the command:
+`jobset prep bench <stage>` renders the trials into that stage's own
+`bench/` container and lays the sweep's record beside them, so *which stage
+this benchmark measures* is structural, not a hand-composed pairing.  (The
+`bench generate` this gap was written against is deleted — the whole legacy
+stack followed on 2026-08-13.)
 
-⛔ **Gap 4.** The answer reaches a script but not the description. The shipped
-chain works — `bench summarize` writes `bench-result.json`, and `bench prep-run`
-turns it into `run-production.sh`, re-resolving the portable choice for whatever
-machine you are on. What it never touches is `task.json`. So the resource
-answer lives only in a generated script, and the next `generate` — which rebuilds
-everything from the description — quietly reverts to the defaults.
+✅ **Gap 4 — CLOSED 2026-08-12** (§ 2.3.2's verdict offer). The measured
+answer reaches **the next `prep`**, not the description — deliberately:
+a rank count is a machine fact the description must never carry
+(`engines/template.md` § 7).  `summarize bench` writes the verdict into the
+stage's container, and `prep run <stage>` *finds it and asks*; on yes the
+measured machine half fills the allocation fields you did not state, and
+the winning eigensolver arrives as pins.  Silence is No.  (The
+`bench prep-run`/`run-production.sh` chain this gap described is deleted.)
 
 ---
 
@@ -450,9 +455,9 @@ describing #5's fix in terms the layout contract had already ruled out.
 | # | Gap | Severity |
 |---|---|---|
 | 1 | **Saving the structure into the tree is a step nobody owns.** The description points at a path; a workspace geometry has none | small, but it is the first thing a user hits |
-| 2 | **Produce/prep boundary is undefined locally.** Nothing says who creates the stage containers when host and target are the same machine | design decision, one sentence |
-| 3 | **Nothing connects a benchmark to the stage it measures.** The parts compose by hand and getting it wrong is silent | small |
-| 4 | **The measured answer reaches a script, never the description.** `bench prep-run` writes `run-production.sh`; `task.json` never learns, so the next `generate` reverts to defaults | medium — it is the point of measuring |
+| 2 | ~~**Produce/prep boundary is undefined locally.**~~ **Closed 2026-08-11** (plan steps 3–4, § 4's own ✅ above): `prep` owns the containers on EVERY machine — host-equals-target is the same call | ✅ closed |
+| 3 | ~~**Nothing connects a benchmark to the stage it measures.**~~ **Closed 2026-08-12** (the fold): `prep bench <stage>` renders trials into the stage's own container — the connection is structural | ✅ closed |
+| 4 | ~~**The measured answer reaches a script, never the description.**~~ **Closed 2026-08-12** (§ 2.3.2): `prep run` finds the stage's verdict and ASKS; the answer reaches the next prep's allocation + pins — never the description, which may not carry machine facts (§ 7) | ✅ closed |
 | 5 | ~~**Stage-to-stage carry is broken.**~~ **Closed 2026-08-10.** The producer stopped emitting `depends_on` and `Carry` entirely, so nothing dangles. ⚠ This row used to say *"fixed by resolving the attempt at **submit**"* — which contradicted `project-layout.md § 2.3.4`, where the copy is made **at `prep`, from the run you name with `--from`**. The contract was right: by then the source has already finished, so there is nothing to resolve later | ✅ closed |
 | 6 | ~~**Stage directories are named `point-<name>`.**~~ **Closed 2026-08-10.** `job_dir_names` branches on `JobSet.kind`; a ladder gets `01_coarse/`, a sweep keeps `point-*` | ✅ closed |
 | 7 | ~~**No hand-run entry point for one stage.**~~ **Closed 2026-08-10.** The grammar was already fixed in `job-system.md` and used by two other documents; this file had not caught up. `jobset prep run <stage> --from <run>` / `jobset submit run <stage>`, stage as the positional (user, 2026-08-10). ⚠ *This row also said `--chain` runs a ladder unattended; it does not — line 327 of this same document records it deleted on that date, and stages do not chain (`project-layout.md` § 1.6). Corrected 2026-08-11.* The ordering constraint stands: it must exist before the wrapper's directory-making prologue is retired | ✅ closed |
@@ -470,8 +475,11 @@ set the next stage up (`project-layout.md` § 1.6). **Gap 6 rode along**, being
 the same code. And the shell block that caused the regression was **retired
 rather than repaired** — its guard against being run from inside an attempt, its
 `$PWD` bug and its `--force` refusal all stopped existing once Python decided the
-directory. Of the four gaps still open, none is a regression: they are the four
-**joins** (§ "What the shape of this list says") that were never built.
+directory. Of the gaps this walkthrough found, only gap 1 (saving the
+structure into the tree) remains open — and it is not a regression: it is a
+**join** (§ "What the shape of this list says") that was never built.  *(This
+sentence counted "four open" until 2026-08-13; gaps 2, 3 and 4 closed with
+the plan's steps 3–4 and the fold, and their rows above say how.)*
 
 **The lesson is worth more than the fix.** The system was already built the right
 way — `materialize` lays out directories and links, `submit` picks the working
@@ -497,7 +505,7 @@ table keeps the count.*
 | 11 | ✅ **CLOSED 2026-08-11** (with gap 9): the template writer computes `schema_fingerprint`, mutation-tested | `stages.md § 6.6` | — |
 | 12 | **`user_custom` has no schema field.** It must be an ordinary item for USER-CUSTOM text to survive `prep`; no engine config declares one | `template.md § 9.2`, § 12 | the reserved-block completeness claim (G6) |
 | 13 | **The `required` check is unbuilt.** A stage may declare what it cannot run without; nothing verifies it in the run directory | `job-contracts.md § 4.4` · `stages.md § 5` | a TranSIESTA ladder starting without its `.TSHS` |
-| 14 | **Nothing offers a save before `prep` overwrites a folder.** Invariant **A3** — *the save precedes the change it protects* — has no trigger | `checkpointing.md § 9`, § 12 | A3, and the flat shape's only safety net |
+| 14 | ~~**Nothing offers a save before `prep` overwrites a folder.**~~ **Closed 2026-08-12** (A3/U14): `prep` now SAYS what is under way — launched attempts, launched trials, warm files — asks before re-rendering, and points at the snapshot verbs when a checkpoint repo exists | `checkpointing.md § 9` · `run-identity.md § 6` | — |
 | 15 | **`snapshot verify` has no verb.** The archive check exists and is reachable only by attempting a restore — the worst moment to learn an archive is gone | `checkpointing.md § 12` | knowing a history is intact |
 | 16 | ✅ **CLOSED 2026-08-11** (C11): `submit --mode` falls back to `execution.mode`; unset in both is a refusal, never a derivation from the detected scheduler (2026-08-12 aligned `bench` to the same rule) | `job-system.md § 5.3` · `running-a-job.md § 5.4` | — |
 
