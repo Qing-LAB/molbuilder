@@ -184,10 +184,16 @@ def emit_threading_setup_lines(threads: Optional[int]) -> List[str]:
     # allocation is otherwise indistinguishable in the log from one
     # that was told 128 -- and that is the failure this resolution
     # order exists to prevent.
+    # Probe the node ONCE and reuse it.  The count is wanted in three
+    # places -- the resolver's last resort, this banner, and
+    # _RUNTIME_INFO['physical_cores'] -- and each call re-imports psutil
+    # or re-reads /proc/cpuinfo for an answer that cannot change during
+    # a run.
+    out.append("_MB_PHYS_CORES = _mb_count_physical_cores()")
     out.append("print(")
     out.append("    f'molbuilder: requested {_MB_REQUESTED_THREADS} PySCF threads '")
     out.append("    f'from {_MB_THREADS_FROM} '")
-    out.append("    f'(node physical={_mb_count_physical_cores()}, '")
+    out.append("    f'(node physical={_MB_PHYS_CORES}, '")
     out.append("    f'logical={os.cpu_count() or 1}, BLAS=1).  '")
     out.append("    f'Override via OMP_NUM_THREADS env.'")
     out.append(")")
@@ -236,7 +242,7 @@ def emit_runtime_info_capture_lines(use_gpu: bool,
     out.append("    'n_threads_pyscf':         _MB_REQUESTED_THREADS,  # may be re-read post-import")
     out.append("    'n_threads_omp':           int(os.environ['OMP_NUM_THREADS']),")
     out.append("    'n_threads_blas':          int(os.environ['OPENBLAS_NUM_THREADS']),")
-    out.append("    'physical_cores':          _mb_count_physical_cores(),")
+    out.append("    'physical_cores':          _MB_PHYS_CORES,")
     out.append("    'logical_cores':           os.cpu_count() or 1,")
     out.append(f"    'max_memory_mb':           {int(max_memory_mb) if max_memory_mb is not None else None!r},")
     out.append(f"    'gpu_requested':           {bool(use_gpu)!r},")

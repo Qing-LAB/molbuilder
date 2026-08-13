@@ -136,3 +136,51 @@ def test_both_engines_share_one_core_probe(tmp_path, monkeypatch):
     probe = _phys_cores_probe_block()
     assert "_phys_cores=" in probe and "_cps=" in probe
     assert probe in _pyscf_wrapper(tmp_path, monkeypatch)
+
+
+# ------------------------------------------------------------------ #
+#  The two chains are ONE policy in two languages                     #
+#                                                                     #
+#  The wrapper resolves and exports OMP_NUM_THREADS; the script keeps  #
+#  the same chain for ``python job.py`` run by hand.  The wrapper's    #
+#  comment claimed the two were "identical" while it was missing       #
+#  PBS_NCPUS and NSLOTS -- and because the wrapper EXPORTS the         #
+#  variable, the script's chain saw it already set and never reached   #
+#  its own PBS step.  Net effect under qsub: the engine got the whole  #
+#  node, which is the 128-threads-for-8-cores bug the block exists to  #
+#  prevent, in the one configuration where NOT using the wrapper would #
+#  have been correct.                                                  #
+#                                                                     #
+#  A comment cannot hold two languages in step.  This does.            #
+# ------------------------------------------------------------------ #
+
+_CHAIN = ("OMP_NUM_THREADS", "SLURM_CPUS_PER_TASK", "PBS_NCPUS", "NSLOTS")
+
+
+def test_the_script_consults_the_whole_chain_in_order():
+    from molbuilder.runtime_info import emit_threading_setup_lines
+    text = "\n".join(emit_threading_setup_lines(threads=None))
+    at = [text.index(f"'{v}'") for v in _CHAIN]
+    assert at == sorted(at), "script chain out of order"
+    assert text.index("_mb_count_physical_cores(), 'node physical cores'") \
+        > max(at), "the node must be the last resort, not an early answer"
+
+
+def test_the_wrapper_consults_the_same_chain_in_the_same_order(
+        tmp_path, monkeypatch):
+    """Every scheduler variable the script knows, the wrapper must know.
+
+    Anything the wrapper omits is not merely unhandled -- it is
+    OVERWRITTEN, because exporting OMP_NUM_THREADS disables the script's
+    own lookup of it.
+    """
+    t = _pyscf_wrapper(tmp_path, monkeypatch)
+    at = [t.index(f'"${{{v}:-}}"') for v in _CHAIN[1:]]
+    assert at == sorted(at), "wrapper chain out of order"
+    for v in _CHAIN[1:]:
+        assert f'_omp_from="{v}"' in t, (
+            f"the wrapper never consults {v}; under that scheduler it "
+            f"exports the node's core count and the script -- which DOES "
+            f"consult it -- is pre-empted by the export"
+        )
+    assert t.index('_omp_from="node physical cores"') > max(at)

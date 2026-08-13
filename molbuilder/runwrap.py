@@ -2644,6 +2644,23 @@ def render_run_wrapper(script_path: Path, *,
               'elif [ -n "${SLURM_CPUS_PER_TASK:-}" ]; then\n'
               '    _omp_threads="$SLURM_CPUS_PER_TASK"\n'
               '    _omp_from="SLURM_CPUS_PER_TASK"\n'
+              # PBS/Torque and SGE/UGE.  These two were MISSING while the
+              # comment above claimed the chains were identical, and the
+              # omission did more damage than a plain mismatch: because
+              # this branch EXPORTS OMP_NUM_THREADS, the script's own
+              # chain sees it already set and never reaches its PBS_NCPUS
+              # step.  So under qsub the wrapper handed the engine the
+              # whole node -- reintroducing, for PBS and SGE users only,
+              # the exact 128-cores-for-an-8-core-allocation bug this
+              # block exists to prevent, and doing it in the one
+              # configuration where running WITHOUT the wrapper would
+              # have been correct.  Keep in step with
+              # runtime_info._mb_resolve_threads; the two are one policy
+              # in two languages and the test asserts they agree.
+              'elif [ -n "${PBS_NCPUS:-}" ]; then\n'
+              '    _omp_threads="$PBS_NCPUS"; _omp_from="PBS_NCPUS"\n'
+              'elif [ -n "${NSLOTS:-}" ]; then\n'
+              '    _omp_threads="$NSLOTS"; _omp_from="NSLOTS"\n'
               'else\n'
               '    _omp_threads="$_phys_cores"; _omp_from="node physical cores"\n'
               'fi\n'
