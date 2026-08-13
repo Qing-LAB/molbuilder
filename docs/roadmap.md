@@ -571,7 +571,11 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   § 6.1 registry row · **U6a** per-calculation copy precedence +
   provenance naming which file supplied the vocabulary · **U6b** UI
   exposure — scheduled with workstream 1's web track (needs the
-  template TOML writer).  Awaiting the user's go to start U0.
+  template TOML writer).  **U0–U6a LANDED 2026-08-13** (3f70d685 ·
+  94c13f63 · 19675fd2 · bfed75a4 · dffe7d65 · d7258acd): every identity
+  proof held, the agreement check is mutation-proven, the three
+  hard-coded copies are retired, and the fine-tuned copy wins with its
+  source named in the plan.  Open: **U6b only** (the UI door, web track).
 - **Backend concern seams W1–W5** — `backend-architecture.md § 5`:
   runwrap's SIESTA reach-ins (W1), `jobset/runstatus.py`'s warm-file
   table → producer-supplied inventory (W2), `runtime_config`'s untyped
