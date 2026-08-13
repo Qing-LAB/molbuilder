@@ -167,7 +167,35 @@ def _spec(name: str, version_var: str = "") -> str:
     return f"{name}{version_var}" if version_var else name
 
 
-_GCC_VERSION    = _env_default("MOLBUILDER_GCC", "14")          # gcc_linux-64=<N>
+# gcc_linux-64=<X.Y> -- pinned to a MINOR version, deliberately.
+#
+# ``14`` was never a pin: conda reads it as ``14.*``, so two machines
+# installing this same recipe weeks apart legitimately resolve to
+# different compilers, and only one of them builds.  That is exactly
+# what happened -- 14.3.0 here, 14.4.0 on a clean machine.
+#
+# gcc 14.4's gfortran miscompiles SIESTA's ``Src/kpoint_t.F90``.
+# ``process_k_cell`` there is an OPTIONAL dummy PROCEDURE
+# (``procedure(my_sub), optional``, kpoint_t.F90:154+168) that is
+# host-associated into a CONTAINS'd internal subprogram and called
+# under ``present()`` (:302, :346).  14.4 emits a DIRECT call to a
+# global ``process_k_cell_`` instead of an indirect call through the
+# dummy argument, so every target that links ``libsiesta.a`` dies at
+# link time with
+#
+#     undefined reference to `process_k_cell_'
+#
+# No library exports that symbol and no linker flag can conjure it --
+# the mistake is in code generation and the linker is only where it
+# becomes visible.  (The Util/ binaries that do NOT link libsiesta.a
+# built fine, because ld never extracts the bad archive member.)
+# 14.3.0 compiles the same file correctly: this repo's own
+# libsiesta.a carries no such undefined symbol.
+#
+# Override per-install with ``--gcc <X.Y>`` or ``MOLBUILDER_GCC``.
+# CUDA pairing still applies and is checked in builds.py: CUDA
+# 12.0-12.7 wants gcc <= 13, CUDA 11.x wants gcc <= 11.
+_GCC_VERSION    = _env_default("MOLBUILDER_GCC", "14.3")
 
 
 # ---- CUDA version resolution: env override > host probe > project default ----

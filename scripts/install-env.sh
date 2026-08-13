@@ -151,6 +151,12 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
                                  reinstall (source-build recipes only)
         --yes / -y               proceed without confirmation prompts
         --skip-network-check     for firewalled hosts
+      Handled by this shim (not forwarded):
+        --gcc <X.Y>              pin the source-build toolchain, e.g.
+                                 --gcc 14.3.  Same as MOLBUILDER_GCC.
+                                 Only affects a FRESH solve -- an env
+                                 that already exists keeps the compiler
+                                 it was built with, so remove it first.
 
   bash scripts/install-env.sh advise <recipe>
       Recommend mpi_np / omp / mps for the recipe + this host.
@@ -208,6 +214,17 @@ Environment variables:
   MOLBUILDER_CUDA_CC             siesta-gpu: force CUDA compute
                                  capability (e.g. 8.0) when nvidia-smi
                                  is unavailable.
+  MOLBUILDER_GCC                 source-build recipes: which
+                                 gcc/gxx/gfortran_linux-64 to install.
+                                 Default 14.3 -- a MINOR-version pin,
+                                 because gcc 14.4's gfortran
+                                 miscompiles SIESTA's kpoint_t.F90 and
+                                 the SIESTA link then fails with
+                                 ``undefined reference to
+                                 `process_k_cell_'``.  CUDA pairing
+                                 also constrains it: CUDA 12.0-12.7
+                                 wants <= 13, CUDA 11.x wants <= 11.
+                                 Equivalent to the --gcc <X.Y> flag.
 
 .condarc / pip config:
   The host-env create step respects ~/.condarc by default -- if you
@@ -705,6 +722,56 @@ dispatch() {
 # The only auto-creation point is bootstrap.  Every other subcommand
 # expects the host env to already exist -- if it doesn't, the user's
 # next step is bootstrap, not "copy this conda block."
+
+# ---- --gcc <X.Y>: pin the source-build toolchain ------------------------
+#
+# Intercepted HERE, in the shell, and EXPORTED rather than forwarded to
+# the Python layer.  recipes.py reads MOLBUILDER_GCC at IMPORT time into
+# the module-level ``_GCC_VERSION``; a Python-side flag would arrive
+# after the value it needs to change was already frozen.
+#
+# Stripped from "$@" before the subcommand dispatch below, so
+# ``--gcc 14.3 install siesta-gpu`` and ``install siesta-gpu --gcc=14.3``
+# both work -- the dispatch must see the SUBCOMMAND as $1.
+# ORIGINAL_ARGS was captured at the top of the file and still holds the
+# flag, so the re-exec hint the conda probe prints stays runnable.
+#
+# Runs BEFORE the no-subcommand check so a bare ``--gcc 14.3`` (no
+# subcommand) still lands on the usage message rather than an unbound
+# $1 under ``set -u``.
+_MB_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --gcc)
+            if [[ -z "${2:-}" || "${2}" == -* ]]; then
+                echo "[molbuilder] --gcc needs a version, e.g. --gcc 14.3" >&2
+                exit 2
+            fi
+            export MOLBUILDER_GCC="$2"
+            shift 2
+            ;;
+        --gcc=*)
+            _MB_GCC_VAL="${1#--gcc=}"
+            if [[ -z "${_MB_GCC_VAL}" ]]; then
+                echo "[molbuilder] --gcc= needs a version, e.g. --gcc=14.3" >&2
+                exit 2
+            fi
+            export MOLBUILDER_GCC="${_MB_GCC_VAL}"
+            shift
+            ;;
+        *)
+            _MB_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+# ``${a[@]+"${a[@]}"}`` -- the empty-array guard.  A bare
+# "${_MB_ARGS[@]}" on an empty array is an unbound-variable error under
+# ``set -u`` on bash < 4.4, which is still what some HPC login nodes ship.
+set -- ${_MB_ARGS[@]+"${_MB_ARGS[@]}"}
+if [[ -n "${MOLBUILDER_GCC:-}" ]]; then
+    echo "[molbuilder] toolchain pinned: gcc/gxx/gfortran_linux-64=${MOLBUILDER_GCC}" >&2
+fi
 
 if [[ $# -eq 0 ]]; then
     cat <<'EOF' >&2
