@@ -2168,7 +2168,7 @@ def render_run_wrapper(script_path: Path, *,
             + f"# MPI rank count: $_mpi_np (default: $_mpi_np_default, "
             f"source: {mpi_source})\n"
             f"{clamp_note}"
-            f"# Thread / BLAS pinning.\n"
+            f"# --- Thread / BLAS pinning ------------------------------\n"
             f"#   * OMP_NUM_THREADS ({omp_source}): SIESTA mainline is\n"
             f"#     mostly not OMP-aware, so pure MPI with OMP=1 is the\n"
             f"#     standard recipe.  Bump only with an OMP-compiled\n"
@@ -2212,6 +2212,7 @@ def render_run_wrapper(script_path: Path, *,
                 # ranks over 2 GPUs floors to 1, yet GPU0 hosts 2 ranks
                 # -- sharing by driver TIME-SLICING, kernels taking
                 # turns, without the concurrency MPS exists to provide.
+                '# --- MPS daemon (Hyper-Q GPU sharing) -------------------\n'
                 'if [ "$_use_mps_default" = "1" ] '
                 '&& [ "$_mpi_np" -gt "${_ngpu:-0}" ] '
                 '&& [ "${_ngpu:-0}" -ge 1 ] '
@@ -2697,7 +2698,16 @@ def render_run_wrapper(script_path: Path, *,
         f"2>/dev/null || true\n"
         f'    [ -n "${{_rank_helper:-}}" ] && rm -f "$_rank_helper" '
         f"2>/dev/null || true\n"
-        f'    if [ "${{_mps_started:-0}}" = "1" ]; then\n'
+        # BOTH conditions (E-3, 2026-08-13): _mps_started says a daemon
+        # was launched, and the pipe dir still being set says OUR pipe is
+        # the one the control client will talk through.  The readiness
+        # fallback unsets the pipe dirs on its way out, and with them
+        # unset `nvidia-cuda-mps-control` addresses the DEFAULT pipe --
+        # so the trap could quit a user's GLOBAL daemon this run never
+        # started.  A partially-started daemon still gets cleaned up: the
+        # fallback path removes the per-job dirs itself before unsetting.
+        f'    if [ "${{_mps_started:-0}}" = "1" ] '
+        f'&& [ -n "${{CUDA_MPS_PIPE_DIRECTORY:-}}" ]; then\n'
         f"        echo quit | nvidia-cuda-mps-control >/dev/null 2>&1 "
         f"|| true\n"
         f'        rm -rf "${{CUDA_MPS_PIPE_DIRECTORY:-}}" '

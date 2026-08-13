@@ -488,7 +488,9 @@ wrapper contains these and nothing else:
 | **Probe SIESTA build at runtime** | reads the build's own capabilities |
 | **Record resolved launch command + placement** | writes down what it is about to do |
 | **SCF per-iteration timing instrument** | the benchmark sampler |
+| **Thread / BLAS pinning** | the OMP/MKL/OpenBLAS thread exports (and, hybrid GPU builds, the OMP bind vars) — real compute-node policy, headered and listed since 2026-08-13 (E-6: it rendered headerless, structurally invisible to the guard below) |
 | **GPU load-balance: rank <-> GPU matching** | *(GPU decks only)* maps MPI ranks onto visible GPUs (K ranks per device via MPS) so a 2-GPU node does not stack every rank on device 0 |
+| **MPS daemon** | *(GPU decks only)* starts the per-job Hyper-Q daemon when ranks share a GPU — per-job pipe/log dirs, readiness poll with a no-MPS fallback, torn down by the one EXIT trap (same E-6 repair as the pinning row) |
 | **GPU mode: ELPA-CUDA defaults** | *(GPU decks only)* the researched rank/thread policy for the ELPA-CUDA build, overridable by every knob the usage names |
 | **GPU<->CPU socket co-location** | *(GPU decks only)* pins ranks beside the GPU's own NUMA node so host<->device traffic stays on-socket |
 | **Memory: estimate** | *(decks the estimator can read)* the CPU memory estimate vs the SLURM allocation, so an OOM is predicted in the log rather than discovered by the scheduler |
