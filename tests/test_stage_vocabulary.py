@@ -535,10 +535,30 @@ def test_no_emitted_name_is_keyed_on_a_stage_position():
 # .py runs inside it.  Proving there is no second offender belongs to P5,
 # which is the phase that owns what a producer may emit.
 
+# "run.sh" is NOT a marker (B-3, 2026-08-13): merely writing the
+# wrapper's FILENAME somewhere in a module said nothing about the
+# invocation arriving with activation and the monitor around it, and it
+# exempted the whole module from the question.
 WRAPPER_MARKERS = ("conda activate", "source activate", "module load",
-                   "run.sh", "mb_monitor", "molwatch")
+                   "mb_monitor", "molwatch")
 
-ENGINE_INVOCATION = re.compile(r"^\s*(?:if\s+!\s+)?(\S*siesta)\s*<", re.M)
+# The invocation may arrive behind a launcher (B-3: `mpirun -np 4
+# siesta < deck` was invisible to the bare form, and every parallel
+# invocation is spelled that way).
+ENGINE_INVOCATION = re.compile(
+    r"^\s*(?:if\s+!\s+)?"
+    r"(?:\S*(?:mpirun|srun|exec)\s+(?:\S+\s+)*?)?"
+    r"(\S*siesta)\s*<", re.M)
+
+
+def test_question_3_sees_a_launcher_prefixed_invocation():
+    """The regex's own mutation guard: the spellings a module could emit."""
+    assert ENGINE_INVOCATION.search("siesta < in.fdf > out.out")
+    assert ENGINE_INVOCATION.search("if ! siesta < in.fdf; then")
+    assert ENGINE_INVOCATION.search("mpirun -np 4 siesta < in.fdf")
+    assert ENGINE_INVOCATION.search("mpirun -np 4 --bind-to core siesta < a")
+    assert ENGINE_INVOCATION.search("srun siesta < in.fdf")
+    assert not ENGINE_INVOCATION.search("# siesta < deck is the shape")
 
 
 #: The ONE module allowed to emit an engine invocation.  It is the wrapper
