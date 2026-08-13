@@ -354,11 +354,21 @@ def test_gpu_wrapper_keeps_siesta_template_intact(
     fdf.write_text(fdf_text, encoding="utf-8")
     wrapper_path = _runwrap.write_run_wrapper(fdf)
     wrapper_text = wrapper_path.read_text(encoding="utf-8")
-    # Signature 1: SIESTA log extension (.out), NOT .pyscf.log.
-    assert ".pyscf.log" not in wrapper_text, (
-        "wrapper fell through to the PySCF code path -- the SIESTA "
-        "branch didn't render.  Check that the routing fix overrides "
-        "the ENV lookup only, leaving `category` untouched."
+    # Signature 1: the run-index resolver globs SIESTA's output
+    # extension.  The bare substring ".pyscf.log" is no longer a branch
+    # signature: the cold-sweep exception list is derived from
+    # identity.OUR_FILE_PATTERNS (one enumeration, engine-agnostic --
+    # a SIESTA job directory may legitimately hold a PySCF log), so it
+    # appears in EVERY wrapper.  What tells the branches apart is the
+    # extension the resolver actually indexes attempts on.
+    assert '-run"*.out; do' in wrapper_text, (
+        "wrapper's run-index resolver doesn't glob .out -- the SIESTA "
+        "branch didn't render."
+    )
+    assert '-run"*.pyscf.log; do' not in wrapper_text, (
+        "wrapper fell through to the PySCF code path.  Check that the "
+        "routing fix overrides the ENV lookup only, leaving `category` "
+        "untouched."
     )
     # Signature 2: bash syntax-check the rendered wrapper.  An
     # unclosed heredoc / unbalanced quote / dangling brace would fail
