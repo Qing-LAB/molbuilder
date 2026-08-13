@@ -572,10 +572,13 @@ class SpectraResults:
     # fields and the UI can ignore it.
     engine_metadata:           Dict[str, Any] = field(default_factory=dict)
 
-    # Runtime facts captured by the emitted script when it ran:
-    # n_threads_pyscf, n_threads_omp, n_threads_blas, physical_cores,
-    # logical_cores, gpu_requested, gpu_used, gpu_name,
-    # gpu_compute_capability, cuda_version, hostname.  Lets the
+    # Runtime facts captured by the emitted script when it ran.  The
+    # canonical key list is molbuilder.runtime_info.RUNTIME_INFO_KEYS --
+    # NOT restated here.  It used to be, and the copy silently lost
+    # ``max_memory_mb``; a list repeated in prose is a list that drifts.
+    # Engines may also record keys beyond the canonical set (the PySCF
+    # script adds scf_conv_tol, scf_solver_class, ...), so treat this as
+    # an open dict whose canonical members are documented there.  Lets the
     # /results page display "this run used 20 PySCF threads, BLAS=1,
     # GPU ON (RTX 4090, CC 8.9, CUDA 12.4)" so users can verify
     # the resources actually matched what they expected -- a 40-on-

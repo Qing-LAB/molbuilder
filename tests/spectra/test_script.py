@@ -623,17 +623,38 @@ class TestPySCFScriptThreadingSetup:
         # The call site is the _emit_pyscf_thread_pool block.
         assert "_pyscf_lib.num_threads(_MB_REQUESTED_THREADS)" in script
 
-    def test_default_threads_auto_detects_physical_cores(self):
-        """cfg.threads=None -> the script computes physical cores at
-        run time via /proc/cpuinfo + psutil fallback.  Hard-coding
-        os.cpu_count() would give logical cores (HT) which is what
-        caused the user's load=40 bug."""
+    def test_default_threads_ask_the_allocation_then_the_node(self):
+        """cfg.threads=None -> the script asks what it was GIVEN before
+        it asks how big the machine is.
+
+        This test used to pin ``_MB_REQUESTED_THREADS =
+        _mb_count_physical_cores()`` -- counting the whole node, always.
+        Right on a workstation, where the node IS the allocation; wrong
+        and expensively so under a scheduler, where a job granted 8 of a
+        128-core node started 128 OpenMP threads and the cgroup then
+        time-sliced them onto the 8 cores it had actually granted.  P1a
+        replaced it with a resolution chain, and this test is repinned to
+        the chain rather than retired: the original concern (physical,
+        not logical, cores) survives as its LAST step.
+        """
         from molbuilder.spectra.pyscf_script import render_spectra_script
         script = render_spectra_script(_struct_water(),
                                        SpectraConfig(threads=None))
-        assert "_mb_count_physical_cores" in script
-        assert "_MB_REQUESTED_THREADS = _mb_count_physical_cores()" in script
-        # Sanity-check the helper logic.
+        assert ("_MB_REQUESTED_THREADS, _MB_THREADS_FROM = "
+                "_mb_resolve_threads()") in script
+        # The chain, in order: what the wrapper exported, then what each
+        # scheduler family allocated, then -- only then -- the machine.
+        order = [script.index(f"'{v}'") for v in
+                 ("OMP_NUM_THREADS", "SLURM_CPUS_PER_TASK",
+                  "PBS_NCPUS", "NSLOTS")]
+        assert order == sorted(order), (
+            "the thread-resolution chain is emitted out of order; the "
+            "allocation must be consulted before the node"
+        )
+        # Node size remains the fallback, and still counts PHYSICAL
+        # cores -- hard-coding os.cpu_count() would give logical (HT)
+        # cores, which is the load=40 bug this block exists to prevent.
+        assert "_mb_count_physical_cores(), 'node physical cores'" in script
         assert "/proc/cpuinfo" in script
         assert "psutil" in script
 
@@ -642,10 +663,16 @@ class TestPySCFScriptThreadingSetup:
         script = render_spectra_script(_struct_water(),
                                        SpectraConfig(threads=12))
         assert "_MB_REQUESTED_THREADS = 12" in script
-        # Auto-detection helper is still defined (for the
-        # physical_cores / logical_cores runtime-info fields) but
-        # not called for the requested count.
-        assert "_MB_REQUESTED_THREADS = _mb_count_physical_cores()" not in script
+        # An explicit count is the user's decision and outranks both the
+        # allocation and the node: the resolver is not called at all.
+        # Anchored on the RESOLVER, not on the retired
+        # ``= _mb_count_physical_cores()`` spelling -- that string stopped
+        # existing in P1a, so the old assertion passed for the wrong
+        # reason and would have kept passing if the resolver HAD run.
+        assert "_mb_resolve_threads()" not in script
+        # The helper itself stays defined: physical_cores / logical_cores
+        # are still reported in _RUNTIME_INFO.
+        assert "_mb_count_physical_cores" in script
 
     def test_runtime_info_dict_populated(self):
         """The script builds a _RUNTIME_INFO dict the JSON dump

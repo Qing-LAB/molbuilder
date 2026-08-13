@@ -69,25 +69,40 @@ class MolwatchEmitter:
             fh.write(f"# job: {self.job}\n")
             fh.write("# units: energy=eV, force=eV/Ang, coords=Ang\n")
             fh.write(f"# created: {_mw_time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
-            # Runtime-info header: one ``# key: value`` line per
-            # canonical key.  The trajectory-log parser reads these
-            # back into Trajectory.runtime_info; the /results
-            # trajectory inspector renders them as the same
-            # CPU/GPU/Host rows the spectra inspector uses.  Skipped
-            # when runtime_info is None (callers without the shared
-            # threading-setup block).
+            # Runtime-info header: one ``# runtime.<key>: <value>`` line
+            # for EVERY key the caller handed us, in the order they
+            # populated it.  The trajectory-log parser reads these back
+            # into Trajectory.runtime_info; the /results trajectory
+            # inspector renders them as the same CPU/GPU/Host rows the
+            # spectra inspector uses.  Skipped when runtime_info is None
+            # (callers without the shared threading-setup block).
+            #
+            # NO WHITELIST HERE, deliberately.  This loop used to carry a
+            # literal tuple of eleven key names, and it had already
+            # drifted from molbuilder.runtime_info.RUNTIME_INFO_KEYS --
+            # ``max_memory_mb`` is IN the canonical list, was written by
+            # every script, and was silently dropped on the way to disk.
+            # Nothing could have caught it: the canonical tuple is
+            # imported by nobody, and the reader
+            # (parse/engines/molwatch.py) accepts any ``runtime.<key>``
+            # it finds, so the writer was the only closed door in an
+            # otherwise open pipe.
+            #
+            # A whitelist cannot live here anyway: this class is inlined
+            # into the generated script verbatim via inspect.getsource,
+            # which copies the class body ONLY -- the script runs in an
+            # env where ``molbuilder`` is not importable, so the class
+            # can never reference the canonical tuple at runtime.  Write
+            # what you are given; let the caller decide what is worth
+            # recording.  RUNTIME_INFO_KEYS stays as documentation of the
+            # keys every engine SHOULD populate, which is a different job
+            # from filtering.
             if runtime_info:
-                for k in ("n_threads_pyscf", "n_threads_omp", "n_threads_blas",
-                          "physical_cores", "logical_cores",
-                          "gpu_requested", "gpu_used", "gpu_name",
-                          "gpu_compute_capability", "cuda_version",
-                          "hostname"):
-                    if k in runtime_info:
-                        v = runtime_info[k]
-                        # Strip newlines so a misbehaving value can't
-                        # break the line-oriented parse.
-                        v_str = str(v).replace("\n", " ").replace("\r", " ")
-                        fh.write(f"# runtime.{k}: {v_str}\n")
+                for k, v in runtime_info.items():
+                    # Strip newlines so a misbehaving value can't
+                    # break the line-oriented parse.
+                    v_str = str(v).replace("\n", " ").replace("\r", " ")
+                    fh.write(f"# runtime.{k}: {v_str}\n")
             # Convergence-target header: one ``# convergence.<key>:
             # <value>`` line per known target.  The trajectory-log
             # parser reads these into ``runtime_info["convergence_

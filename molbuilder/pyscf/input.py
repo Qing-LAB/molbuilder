@@ -496,8 +496,10 @@ def render_script(struct: Structure,
     # load" the whole time.  SCF cycle hook is wired on the production
     # mf below; the opt-step hook is wired inside the stages loop's
     # ``optimize(...)`` call.
-    if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
-        out += _emit_molwatch_emitter(v, cfg)
+    # NOTE: the molwatch emitter is NOT constructed here.  It writes its
+    # whole header -- including every ``# runtime.<key>`` line -- inside
+    # __init__, so it must be built only once _RUNTIME_INFO is complete;
+    # see the construction site below the SCF setup for the full story.
 
     # ------------------------------------------------------------- main scf
     out.append("# ============================================================")
@@ -679,11 +681,30 @@ def render_script(struct: Structure,
                "      f\"({_RUNTIME_INFO['scf_conv_tol_grad_source']}); "
                "solver {_RUNTIME_INFO['scf_solver_class']}.\")")
 
-    # Wire the production-mf SCF callback so per-cycle SCF history is
-    # captured for every opt step across the stages loop.  The emitter
-    # itself was instantiated earlier (above the SCF setup); we attach
-    # the hook here once mf is in its final form.
+    # Construct the molwatch emitter HERE -- after the SCF setup, after
+    # the _RUNTIME_INFO writes above -- and then wire the callback.
+    #
+    # It used to be built before the SCF setup so the Watch tab had a
+    # file to load early (a stage's optimize() can run for hours, and
+    # "no file to load" is a bad thing to stare at).  That intent is
+    # preserved: everything between there and here is attribute
+    # assignment on ``mf``, and the first expensive call -- the SCF in
+    # the stability block -- is still below us.
+    #
+    # But MolwatchEmitter.__init__ writes the ENTIRE header, every
+    # ``# runtime.<key>`` line included, and a log header cannot be
+    # rewritten once the first data block follows it.  Building it
+    # before the SCF setup therefore froze _RUNTIME_INFO at whatever it
+    # held at that moment, and silently dropped every key written after
+    # -- which is exactly what happened to the five scf_* facts added
+    # above: present in the process, present on stdout, absent from the
+    # artifact /results actually renders.  The GPU keys survived only
+    # because the probe happens to run before the old construction site.
+    #
+    # So the rule is: _RUNTIME_INFO is populated FIRST, the emitter is
+    # built AFTER.  Any future runtime fact belongs above this line.
     if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
+        out += _emit_molwatch_emitter(v, cfg)
         out.append(_emit_molwatch_callback_wire("mf"))
     out.append("")
 
