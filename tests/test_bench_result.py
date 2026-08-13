@@ -257,12 +257,14 @@ def test_the_wrapper_log_is_not_a_rank_witness():
     assert both["omp_threads"] == 2
 
 
-def test_a_block_size_siesta_changed_is_caught():
-    """The fourth of the legacy readback's four checks.  `_bench_inputs`
-    pins BlockSize; SIESTA may settle on another value."""
-    m = compare_asked_to_ran({"blocksize": 256}, {"blocksize": 64})
-    assert m == {"blocksize": {"asked": 256, "ran": 64}}
-    assert compare_asked_to_ran({"blocksize": 64}, {"blocksize": 64}) == {}
+def test_an_adapted_block_size_never_bars_a_trial():
+    """SIESTA shrinking the requested block so every rank gets one
+    (initparallel.F), or ELPA rounding it up to a power of two, is
+    documented behaviour that depends on the RANK COUNT -- the axis a
+    sweep varies.  Comparing it would mark most trials of a small system
+    as "ran something else" and leave the benchmark with no winner.  It
+    is recorded, never compared."""
+    assert compare_asked_to_ran({"blocksize": 256}, {"blocksize": 64}) == {}
 
 
 def test_elpa_gpu_key_is_captured_when_the_build_reached_elpa():

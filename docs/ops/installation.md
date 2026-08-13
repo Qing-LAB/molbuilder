@@ -132,8 +132,12 @@ isn't available as a conda package. `molbuilder envs install siesta-gpu`
   compiles. Without them, flook's bundled lua — which hardcodes `CC= gcc` —
   picks up `/usr/bin/gcc` on a machine that has one (mixing a host-compiled
   object into a conda-compiled SIESTA) and fails outright on a machine that
-  does not. The `verify` step asserts that a bare `gcc` resolves inside the
-  env, so a regression here is caught at install time rather than mid-build;
+  does not. The shim step's own exit code is the gate on a fresh install; the
+  `verify` step additionally **warns** when a bare `gcc` resolves outside the
+  env, which is what you see on an env built before this existed — re-run
+  `molbuilder envs install siesta-gpu` to pick the links up. It warns rather
+  than fails because such an env still builds and runs SIESTA; the risk is
+  latent, not present;
 - **ELPA** is built from a version-pinned, SHA256-checked tarball
   (`2024.05.001`) with autotools (`--enable-nvidia-gpu`, `--with-cuda-path=<env>`);
 - **SIESTA** (`5.4.2`) is cloned with submodules and built with cmake+Ninja, MPI +

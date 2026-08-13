@@ -228,9 +228,19 @@ def compare_asked_to_ran(asked: Dict, effective: Dict) -> Dict:
     Eigensolver names are compared case-blind because the deck shouts
     (``ELPA-1STAGE``) where SIESTA prints mixed case (``ELPA-1stage``).
     """
+    # ``blocksize`` is deliberately NOT here.  It is read back and kept
+    # in ``effective`` -- it is real measured data and belongs in the
+    # record -- but SIESTA ADJUSTING it is normal, not a fault:
+    # ``initparallel.F`` shrinks the requested block so every rank
+    # receives one, and ELPA's GPU path rounds it up to a power of two.
+    # Both depend on the rank count, which is the axis a sweep varies.
+    # Comparing it would therefore mark most trials of a small system as
+    # "ran something other than asked" and bar them from winning, which
+    # would leave a legitimate benchmark with no winner at all.  A
+    # mismatch here must mean the trial's LABEL is a lie, not that the
+    # engine adapted a tuning parameter the way it documents.
     pairs = (("mpi_np", "mpi_np"),
              ("cpus_per_task", "omp_threads"),
-             ("blocksize", "blocksize"),
              ("diag_algorithm", "diag_algorithm"))
     out: Dict = {}
     for asked_key, ran_key in pairs:

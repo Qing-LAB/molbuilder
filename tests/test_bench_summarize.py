@@ -186,16 +186,18 @@ def test_one_deck_reader_and_it_takes_the_first_match(tmp_path):
     assert deck_value(tmp_path / "absent.fdf", "BlockSize") is None
 
 
-def test_a_block_size_siesta_changed_shows_up_on_the_point(tmp_path):
-    """End-to-end: the deck asks 256, the .out reports 64."""
+def test_both_block_sizes_are_recorded_and_neither_bars_the_trial(tmp_path):
+    """End-to-end: the deck asks 256, the .out reports 64.  Both land on
+    the point as data; the trial stays eligible to win."""
     d = _ran_trial(tmp_path, "bs", "job", ranks=8, omp=2,
                    algorithm="ELPA-1stage", asked_algorithm="ELPA-1STAGE")
     (d / "job.fdf").write_text("SystemLabel job\n"
                                "Diag.Algorithm ELPA-1STAGE\n"
                                "BlockSize 256\n")
     pt = parse_point("bs", d, "job", "gpu", {"mpi_np": 8, "cpus_per_task": 2})
-    assert pt.effective["blocksize"] == 64
-    assert pt.mismatch["blocksize"] == {"asked": 256, "ran": 64}
+    assert pt.effective["blocksize"] == 64          # what SIESTA used
+    assert pt.effective["blocksize_asked"] == 256    # what the deck asked
+    assert "blocksize" not in pt.mismatch, "an adapted block size is not a fault"
 
 
 def test_a_recovered_rank_count_is_never_compared_with_itself(tmp_path):

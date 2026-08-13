@@ -1379,15 +1379,24 @@ _SIESTA_GPU = Recipe(
         # _bypass_conda_run puts <env>/bin on PATH for the verify call;
         # the activate.d hook's PATH munging is duplicated by our
         # env_overrides so siesta is reachable.  ``--version`` exits 0
-        # with the version banner.  The toolchain assertion rides along:
-        # a bare ``gcc`` that resolves outside the env means the shim
-        # step did not take, and the next bundled Makefile will compile
-        # against the host again.
+        # with the version banner.
+        #
+        # The toolchain note rides along as a WARNING, not a gate.  A
+        # bare ``gcc`` resolving outside the env means the shim step did
+        # not take (or the env predates it), so the next bundled
+        # Makefile would compile against the host -- worth saying, but
+        # the binary in front of us demonstrably works, and failing
+        # verify would condemn a healthy env over a latent risk.  The
+        # hard gate is the shim step's own exit code on a fresh install;
+        # this is the cross-check that notices an env built before it.
         'case "$(command -v gcc)" in '
-        '  "$CONDA_PREFIX"/bin/gcc) ;; '
-        '  *) echo "toolchain: bare gcc resolves to $(command -v gcc),'
-        ' outside $CONDA_PREFIX -- host toolchain would be used by'
-        ' bundled Makefiles" >&2; exit 1 ;; '
+        '  "$CONDA_PREFIX"/bin/*) ;; '
+        '  "") echo "[molbuilder] note: no bare gcc on PATH" >&2 ;; '
+        '  *) echo "[molbuilder] WARNING: bare gcc resolves to'
+        ' $(command -v gcc), outside $CONDA_PREFIX.  Bundled Makefiles'
+        ' that call gcc directly (flook/lua) would use the HOST'
+        ' toolchain.  Re-run `molbuilder envs install siesta-gpu` to'
+        ' pick up the bare-name shims." >&2 ;; '
         'esac; '
         "siesta --version",
     ),

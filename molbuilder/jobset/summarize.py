@@ -187,14 +187,16 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     alg = deck_value(deck, "Diag.Algorithm")
     if alg is not None:
         asked["diag_algorithm"] = alg
-    # BlockSize is pinned by `_bench_inputs` and SIESTA may settle on a
-    # different one, so it is asked-for AND observable -- the fourth of
-    # the legacy readback's four checks, captured but never compared
-    # until now.
+    # The block size the deck REQUESTED, recorded beside the one SIESTA
+    # settled on.  Both travel in the record because the pair is useful
+    # benchmark data -- but they are not compared, and a divergence
+    # never bars a trial: see the note on ``compare_asked_to_ran``'s
+    # pairs.  SIESTA adapting the block size to the rank count is
+    # documented behaviour, not a trial running something else.
     bs = deck_value(deck, "BlockSize")
     if bs is not None:
         try:
-            asked["blocksize"] = int(bs)
+            effective["blocksize_asked"] = int(bs)
         except ValueError:
             pass                      # a non-numeric BlockSize: not ours to judge
     mismatch = compare_asked_to_ran(asked, effective)
