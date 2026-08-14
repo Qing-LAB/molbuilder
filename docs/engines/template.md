@@ -1157,6 +1157,109 @@ takes it from there.
 
 ---
 
+## 10a. THE CHAIN, traced — every call from the catalogue to the deck
+
+**What this section is for.** *"One file describes the calculation"* is a claim
+about a chain of calls, and a chain nobody has written down is a chain nobody
+can judge. This is that chain, function by function, with **where each one
+lives** — because the floor a function sits on is half of whether it is right
+(§ 2.1, and `generator.md` § 6's rule that imports go DOWN only).
+
+```mermaid
+flowchart TD
+    subgraph F0["the master — authored, edited as TOML"]
+      CAT["<b>data/catalogue.template.toml</b><br/>82 items · both engines"]
+    end
+
+    subgraph F2["floor 2 · description — names no machine"]
+      LOAD["template.load_catalogue()"]
+      READ["template.read_template(text)<br/><i>→ Template(items)</i>"]
+      SEL["template.select(t, engine=, category=, kind=, read_by=)<br/>template.one(t, name, engine=)<br/><b>§ 8.0 — THE ONE READ API</b>"]
+      TWV["template.template_with_values(config, engine=)<br/><i>the catalogue, narrowed, with the answers</i>"]
+      TPL["<b>&lt;label&gt;.template.toml</b> + task.json"]
+    end
+
+    subgraph F1["floor 1 · the machine"]
+      ENV["probe → environment.json<br/><i>ranks · threads · memory</i>"]
+    end
+
+    subgraph F3["floor 3 · plan — engine-agnostic"]
+      CFT["template.config_from_template(text, cls)<br/><i>narrow to the engine, rebuild the config</i>"]
+      EFF["resolve.effective_config(cfg, overrides, where=)<br/><b>the ⊕ operator — stages.md § 4's one place</b>"]
+      RES["resolve.resolve(text, task, cls, allocation, pins)<br/><i>→ ParameterSet</i>"]
+      RC["element.render_config()<br/><i>values ⊕ the allocation</i>"]
+    end
+
+    subgraph FE["the engine seam — the only engine-aware step"]
+      DECK["seam.render_deck<br/><i>siesta.render_fdf · pyscf.render_script</i>"]
+      WRAP["runwrap.render_run_wrapper"]
+    end
+
+    CAT --> LOAD --> READ --> SEL
+    SEL --> UI["a surface: panels from category,<br/>filtered by engines"]
+    UI --> TWV --> TPL
+    TWV -.->|"describe.describe()"| TPL
+    TPL --> CFT --> RES
+    ENV --> RES
+    RES -->|"⊕ stage ⊕ sweep ⊕ pin"| EFF
+    EFF --> RES
+    RES --> RC --> DECK --> WRAP --> RUN["the run directory"]
+```
+
+### 10a.1 The calls in order, and what each is FOR
+
+| # | call | floor | what it does | why it cannot be folded into its neighbour |
+|---|---|---|---|---|
+| 1 | `load_catalogue()` | 2 | reads the master file | — |
+| 2 | `read_template(text)` | 2 | parses and **refuses** a file that breaks § 3 | parsing is where a hand edit is caught; a reader that guessed would produce a different calculation silently |
+| 3 | `select` / `one` | 2 | the **only** read API (§ 8.0) | every other reader is a caller of these; a second reader is a second answer |
+| 4 | `template_with_values` | 2 | the catalogue → **this calculation's** template | § 4.3: the surface fills in answers to questions the catalogue already asked |
+| 5 | `config_from_template` | 3 | narrows to one engine, rebuilds the config | the deck writer takes an ordinary config, not a template (D4: `prep` **rebuilds and renders**, it never splices) |
+| 6 | `effective_config` | 3 | **⊕** — the template's values plus a mapping of overrides | R1: what comes back is an ordinary config, so the shipped validator and emitter both take it unchanged and nothing downstream learns the word *stage* |
+| 7 | `resolve` | 3 | applies the whole precedence and returns a `ParameterSet` | it is where **capability ⊇ allocation ⊇ sweep** is enforced; a sweep exceeding the grant is refused, not clamped |
+| 8 | `element.render_config()` | 3 | values **⊕ the allocation** | a deck records what it assumed in BENCH-MARKS; one rendered without a rank count says `mpi_np auto` and is then launched at 32 |
+| 9 | `seam.render_deck` | engine | the `.fdf` / `.py` | the only step that knows an engine's spelling |
+| 10 | `render_run_wrapper` | engine | the `.run.sh` | — |
+
+### 10a.2 Precedence, in the order `resolve` applies it
+
+**template ⊕ stage overrides ⊕ sweep point ⊕ pin** — and every one of those ⊕
+is the same function, `effective_config`, called four times:
+
+| step | where the cells come from | refused if they name a machine fact |
+|---|---|---|
+| base | `config_from_template` | — |
+| ⊕ stage | `task.json`'s stage `overrides` | **yes** — § 7 |
+| ⊕ sweep | the sweep point | **yes** |
+| ⊕ pin | `--pin`, this prep only | **yes** |
+
+**One operator, four callers, one rule.** That is what makes *"the one place
+this happens"* checkable rather than aspirational: a second implementation would
+have to be found, and there is nowhere for one to hide.
+
+### 10a.3 What the trace makes visible
+
+**The engine appears exactly twice** — steps 9 and 10. Everything above is
+engine-agnostic, which is `generator.md` § 7's test (*adding an engine adds
+files and edits none*) stated as a property of this diagram rather than as a
+hope. Any import from `siesta/` or `pyscf/` above step 9 is a leak; that is how
+`effective_config` was found sitting in `siesta/input.py` while floor 3 and the
+validation layer both reached into one engine to do something neither engine
+owns *(moved 2026-08-14, audit § 6.1)*.
+
+**The machine enters at exactly one point** — step 7, and only as the
+`allocation` argument. Floor 2 never sees it, which is what makes a template
+portable (G1).
+
+**And the shapes that are the SAME shape** are now visible as such: a stage's
+`overrides`, a sweep point, and a pin are three names for *a mapping of cells
+that differ*. They differ in where they come from and in nothing else — which is
+why the operator takes a mapping, and why `resolve` fabricating a
+`Stage(name="resolve")` to pass a plain dict was packaging invented to fit a
+signature.
+
+---
+
 ## 11. Use cases — the file doing its job
 
 ### 11.1 Describe on a laptop, run on a cluster
