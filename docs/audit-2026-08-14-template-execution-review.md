@@ -2178,3 +2178,62 @@ free* -- that a single count cannot express.
 **What C1 has already unblocked:** SS 25.2's writer now has a target shape --
 take N config classes, emit one item table, merge by the test, and let each
 deck writer render. `Item` does not change.
+
+---
+
+## 37 - C3 PREPARED: the two coercion paths disagree, measured
+
+SS 25.3 flagged that type coercion happens twice by two mechanisms. Here is the
+consequence, measured rather than reasoned:
+
+```
+template value 300  ->  cfg.mesh_cutoff = 300   (int)    ->  MeshCutoff 300 Ry
+stage override 300  ->  cfg.mesh_cutoff = 300.0 (float)  ->  MeshCutoff 300.0 Ry
+```
+
+**The same number, arriving by the two paths the contract defines, produces
+two different decks.**
+
+| path | what it does | why |
+|---|---|---|
+| **stage override** -- `effective_config` | widens `int` -> `float` from the **dataclass annotation** | its own comment: *"an override that arrived from JSON carries JSON's types, and JSON has one number ... the same number, a different deck"* |
+| **template value** -- `config_from_template` | **no widening.** `_TYPE_CHECKS["float"]` accepts an int, and `_shape` returns it unchanged | nothing decided it should; the check validates the TYPE and the shaper only fixes list-vs-tuple |
+
+### 37.1 - What it costs, stated honestly
+
+**Not a physics error** -- SIESTA reads `300` and `300.0` as the same 300 Ry.
+What it breaks is **faithfulness**, which is G4's whole subject:
+
+* **G4's own test is textual** -- *"render a stage's deck from the template and
+  from the config a surface held; **the text is identical**"*. Two decks for one
+  calculation fail it while computing the same answer.
+* **BENCH-MARKS' `default=` row** is emitted from the value, so it differs too.
+* Anything comparing decks by hash -- a checkpoint, a byte-identical readback,
+  T10's own harness -- sees a change that is not one.
+
+> **And it is why SS 18.1's doc fix mattered more than it looked.** SS 6.3's
+> example carried `value = 300` for a float field. Anyone copying the
+> contract's own illustration into a hand-written template got a deck differing
+> from the same calculation written `300.0` -- and `render_template` emits
+> `300.0`, because `_toml_value` uses `repr()` on floats *precisely so a float
+> round-trips as a float*. The writer was careful; the reader was not.
+
+### 37.2 - What C3 has to decide
+
+The two paths disagree because **they answer to different authorities**: the
+dataclass annotation on one side, the item's declared `type` on the other.
+SS 25.3 asked which should win; this measurement says the answer cannot be
+*"leave it"*.
+
+| option | |
+|---|---|
+| **the template's `type` is the authority** | `_shape` widens for `type="float"`, exactly as `effective_config` does for the annotation. Then the template's declared vocabulary governs its own values, and SS 25.1's move puts both behind one operator |
+| **the annotation is the authority** | `config_from_template` widens using `dataclasses.fields`, duplicating `effective_config`'s logic -- two implementations of one rule, which is what SS 25.1 exists to end |
+| **refuse instead of widening** | a template declaring `type="float"` with an int VALUE is refused at read. Strictest, and it would have caught SS 6.3's example. But it breaks hand-editing, which G5 protects: a person writing `300` means 300 |
+
+**Recommendation: the first.** It puts the rule where the vocabulary already
+is, matches what the writer already does (`repr()` on floats), and leaves
+hand-editing forgiving. It is also the option that makes SS 25.1's move a
+simplification rather than a relocation.
+
+*(No code. This is C3's content, and SS 26 holds.)*
