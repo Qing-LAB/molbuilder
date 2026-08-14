@@ -276,3 +276,78 @@ class TestCheckOpenShellMetalUsesAnalyzer:
             "config (atomic ground state IS open-shell doublet; cluster-"
             "context override needs ≥ 4 atoms).  "
             f"Got {len(issues)} issue(s).")
+
+
+# --------------------------------------------------------------------- #
+#  The ECP hint — it ASKS, it never chooses                             #
+#                                                                       #
+#  Added 2026-08-13 with T9.  molbuilder used to PICK an ECP here:       #
+#  "lanl2dz" whenever any element had Z > 36 and the basis was not       #
+#  def2.  That auto-rule is retired -- *"who defines heavy? there is no  #
+#  clear reasoning or standard"* -- and the user asked for the other     #
+#  half to stay: *"you can still have the validation function to give    #
+#  hints - that should be confirmed."*  So the number survives ONLY as   #
+#  the bound of a question, and the message prints it so a reader can    #
+#  disagree.                                                             #
+# --------------------------------------------------------------------- #
+
+def _pt_complex():
+    return Structure(
+        elements=["Pt", "C", "C", "C", "C"],
+        positions=np.array([[0.0, 0, 0], [2, 0, 0], [0, 2, 0],
+                            [-2, 0, 0], [0, -2, 0]]),
+        vacuum=(12.0, 12.0, 12.0))
+
+
+def _ecp_findings(struct, **kw):
+    cfg = PySCFConfig(job_name="pt", **kw)
+    return [i for i in validate(struct, cfg)
+            if getattr(i, "where", "") == "config.ecp"]
+
+
+def test_all_electron_heavy_atom_is_pointed_out():
+    found = _ecp_findings(_pt_complex(), basis="cc-pVDZ")
+    assert len(found) == 1
+    msg = found[0].message
+    assert "Pt" in msg and "ALL-ELECTRON" in msg
+    # It must show its own criterion rather than hiding one.
+    assert "Z > 36" in msg
+    # And it must say how to answer it, in the field's own vocabulary.
+    assert "ecp_atoms" in msg
+
+
+def test_the_hint_is_a_warning_and_never_blocks():
+    """A hint the user confirms.  An error would be molbuilder deciding
+    that all-electron Pt is not allowed, which is not its call."""
+    found = _ecp_findings(_pt_complex(), basis="cc-pVDZ")
+    assert found and all(i.severity == "warn" for i in found)
+
+
+def test_a_declared_ecp_covering_the_element_silences_it():
+    assert _ecp_findings(_pt_complex(), basis="cc-pVDZ",
+                         ecp="lanl2dz", ecp_atoms=["Pt"]) == []
+    assert _ecp_findings(_pt_complex(), basis="cc-pVDZ",
+                         ecp="lanl2dz", ecp_atoms=["*"]) == []
+
+
+def test_a_selector_that_MISSES_the_element_still_warns():
+    """The case a coarser check would let through: an ECP is declared,
+    but ``["C"]`` does not cover the Pt.  A typo (``["P"]`` for
+    ``["Pt"]``) reads exactly like this."""
+    found = _ecp_findings(_pt_complex(), basis="cc-pVDZ",
+                          ecp="lanl2dz", ecp_atoms=["C"])
+    assert len(found) == 1 and "Pt" in found[0].message
+
+
+def test_def2_brings_its_own_and_the_check_stays_quiet():
+    """A fact about that basis family, not a rule applied elsewhere."""
+    for basis in ("def2-SVP", "def2_SVP", "def2svp", "DEF2-TZVP"):
+        assert _ecp_findings(_pt_complex(), basis=basis) == [], basis
+
+
+def test_light_elements_are_never_mentioned():
+    water = Structure(elements=["O", "H", "H"],
+                      positions=np.array([[0.0, 0, 0], [0.96, 0, 0],
+                                          [-0.24, 0.93, 0]]),
+                      vacuum=(12.0, 12.0, 12.0))
+    assert _ecp_findings(water, basis="cc-pVDZ") == []

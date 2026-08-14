@@ -18,7 +18,8 @@ import numpy as np
 
 from ..issues import Issue
 from ..structure import Structure
-from .chemistry import (_check_metal_basis_adequacy,
+from .chemistry import (_check_ecp_declared_for_the_atoms_that_usually_want_one,
+                        _check_metal_basis_adequacy,
                         check_open_shell_metal,
                         _check_peptide_protonation)
 from .sidecar import _check_frozen_atoms_consumed
@@ -218,6 +219,18 @@ def _validate_pyscf(struct: Structure, cfg,
     # Basis adequacy for transition metals.
     issues += _check_metal_basis_adequacy(
         struct, basis=getattr(cfg, "basis", ""),
+        engine_label=f"PySCF method={cfg.method}",
+    )
+
+    # The ECP hint -- directly after basis adequacy, because the two are the
+    # same conversation: what the basis covers, and what the core potential
+    # covers.  It ASKS.  Since 2026-08-13 nothing picks an ECP for the user,
+    # so this is the only place a bare all-electron Pt gets mentioned.
+    issues += _check_ecp_declared_for_the_atoms_that_usually_want_one(
+        struct,
+        ecp=getattr(cfg, "ecp", "") or "",
+        ecp_atoms=getattr(cfg, "ecp_atoms", ()) or (),
+        basis=getattr(cfg, "basis", ""),
         engine_label=f"PySCF method={cfg.method}",
     )
 

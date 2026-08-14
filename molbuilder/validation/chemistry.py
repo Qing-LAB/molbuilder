@@ -65,6 +65,74 @@ def _check_peptide_protonation(struct: Structure,
     )]
 
 
+#: The row-5 boundary (Kr, Z=36).  It is NOT a definition of "heavy" and
+#: decides nothing on its own -- it only bounds WHOM THE HINT BELOW NAMES,
+#: and the hint prints the criterion so a reader can disagree with it.
+#:
+#: Until 2026-08-13 this same number silently ADDED ``lanl2dz`` to a
+#: calculation.  The user retired that: *"there is no point to limit
+#: matching to heavy -- who defines heavy? there is no clear reasoning or
+#: standard ... explicit is better than implicit."*  Kept only as the
+#: threshold of a question, never of an action.
+_ECP_HINT_Z = 36
+
+
+def _check_ecp_declared_for_the_atoms_that_usually_want_one(
+        struct: Structure, *, ecp: str, ecp_atoms, basis: str,
+        engine_label: str) -> List[Issue]:
+    """WARN when a structure carries post-Kr elements and no ECP covers them.
+
+    **This hint asks; it never chooses.**  molbuilder used to pick an ECP
+    for you here.  It no longer does, and the reason it still speaks is the
+    other half of the same ruling: *"you can still have the validation
+    function to give hints -- that should be confirmed."*
+
+    Two ways for an element to be covered, and both are honest answers:
+
+    * a ``def2-*`` basis, which brings its own Stuttgart ECP; or
+    * an ``ecp`` name whose ``ecp_atoms`` patterns select that element.
+
+    Neither is inferred from the other, and a covered element is simply not
+    mentioned.
+    """
+    from ..chemistry import resolve_pyscf_ecp
+    from ..pyscf.input import _ATOMIC_NUMBER
+
+    # def2-* carries its own ECP for exactly these elements -- a fact about
+    # the basis, not a rule this function applies to anything else.
+    if (basis or "").lower().replace("_", "").replace("-", "").startswith("def2"):
+        return []
+
+    covered = resolve_pyscf_ecp(struct, ecp, ecp_atoms) or {}
+    uncovered: List[str] = []
+    for el in struct.elements:
+        sym = str(el).capitalize()
+        if (_ATOMIC_NUMBER.get(sym, 0) > _ECP_HINT_Z
+                and sym not in covered and sym not in uncovered):
+            uncovered.append(sym)
+    if not uncovered:
+        return []
+
+    named = ", ".join(uncovered)
+    return [Issue(
+        "warn",
+        (f"No effective core potential covers {named}, so {engine_label} "
+         f"will treat {'them' if len(uncovered) > 1 else 'it'} "
+         f"ALL-ELECTRON on basis '{basis}'.  For elements past Kr that is "
+         f"usually wrong twice over: the cost is large (Pt alone carries 78 "
+         f"electrons), and without a scalar-relativistic ECP the bond "
+         f"lengths and orbital energies are off -- Pt-Pt by ~0.1 A, Au gaps "
+         f"by ~1 eV.  To use one, name it and say which atoms get it: "
+         f"ecp = 'lanl2dz' with ecp_atoms = {uncovered!r} (or ['*'] for "
+         f"every element present).  A def2-* basis is the other route -- it "
+         f"brings its own ECP and this check stays quiet.  "
+         f"If you meant all-electron, this is the confirmation: nothing is "
+         f"added for you.  (Named here because Z > {_ECP_HINT_Z}; that "
+         f"bound decides what gets mentioned, nothing else.)"),
+        "config.ecp",
+    )]
+
+
 def _check_metal_basis_adequacy(struct: Structure, *,
                                   basis: str, engine_label: str
                                   ) -> List[Issue]:
