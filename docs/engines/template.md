@@ -336,7 +336,7 @@ interpreted.
 flowchart LR
     subgraph I["one item"]
       K["kind"]; RB["read_by"]; V["value"]; D["default"]
-      T["type · choices"]; R["range · unit"]; G["group · section"]; H["help · label"]; A["anchor · expands"]
+      T["type · choices"]; R["range · unit"]; G["group"]; H["help · label"]; A["anchor · expands"]
       NL["null_label"]
     end
     NL --> UI
@@ -355,7 +355,9 @@ flowchart LR
     K --> MON["the monitor"]
 ```
 
-> **⭐ `label`, `section` and `null_label` were added 2026-08-11**, when the user
+> **⭐ `label`, `section` and `null_label` were added 2026-08-11**
+> *(`section` was replaced by `category` at `@2` — § 6.2; the other two
+> stand)*, when the user
 > settled that **the UI is to be built *from* the template** rather than merely
 > generated from the same schema —
 > [`generator.md`](?doc=execution/generator.md) § 3.1. Without them a template
@@ -523,17 +525,20 @@ the other's value.
 [item.mesh_cutoff]
 kind     = "engine"
 category = "accuracy"
-category = "accuracy"
 engines  = ["siesta"]        # SIESTA only; a PySCF surface never shows it
 anchor   = "MeshCutoff"
-value    = 300
+type     = "float"
+value    = 300.0
 unit     = "Ry"
+help     = "The real-space integration grid, in Ry."
 
 [item.job_name]
 kind     = "produce"
 category = "procedure"
 # no `engines` key -- applies to every engine
+type     = "str"
 value    = "run1"
+help     = "What this run is called."
 ```
 
 ### 6.4 An item may be declared without a value
@@ -1004,8 +1009,9 @@ description.
 
   ```toml
   [item.block_size]
-  kind    = "engine"
-  anchor  = "BlockSize"
+  kind     = "engine"
+  category = "execution"
+  anchor   = "BlockSize"
   type    = "pow2"
   # no `value` — unset, so prep proposes one from the orbital and rank counts
   range   = [16, 128]

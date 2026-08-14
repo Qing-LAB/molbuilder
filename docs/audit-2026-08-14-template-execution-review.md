@@ -1268,3 +1268,32 @@ routing.
 | **3** | The seam leak (§ 6.1) — `resolve._apply` imports from `siesta/` | **move** `effective_config` to a shared module; it is already engine-agnostic |
 | **4** | Invariant 5's *"forced cold"* (§ 17.1) | **delete the clause** — the relabel is sufficient and the code's own comment says so |
 
+### 23.4 · Gate A built, and §§ 3.1–3.2 closed by it
+
+`tests/test_doc_claims.py` now also walks every fenced ```` ```toml ```` block in
+`engines/template.md`, parses it, and asserts each `[item.*]` carries § 3's four
+required keys with a `type` from the closed vocabulary.
+
+**It found more than the review had.** §§ 3.1 and 3.2 recorded a duplicate key
+and one missing `category`. The gate showed § 6.3's example **also omits `type`
+and `help`** on *both* its items — four required keys, three of them missing,
+in the contract's own illustration of its format.
+
+| fixed | was |
+|---|---|
+| § 6.3's `mesh_cutoff` | `category` twice (so the block did not parse) · `value = 300` where § 4.2's same item says `300.0` · no `type` · no `help` |
+| § 6.3's `job_name` | no `type` · no `help` |
+| § 12's `block_size` | no `category` |
+| § 5's key diagram | node `group · section` → `group` |
+| § 5's ⭐ note | now says `section` was replaced by `category` at `@2` |
+
+**Mutation-tested**: re-introducing the duplicate key fails with
+*"fenced toml block 2 does not parse: Cannot overwrite a value"*, and removing
+a `category` fails naming the block and item.
+
+> **Both gates found things reading did not**, and in the same direction:
+> reading checks what a document *says*, and these were things it **failed to
+> say** — an undocumented vocabulary (§ 23.1) and examples missing required
+> keys. That is the honest boundary between the two methods, and the reason to
+> run the gates before the next reading pass rather than after.
+

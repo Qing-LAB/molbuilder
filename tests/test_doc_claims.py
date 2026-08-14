@@ -141,3 +141,63 @@ def test_the_template_required_keys_agree_across_their_three_homes():
     text = (DOCS / "engines/template.md").read_text(encoding="utf-8")
     for key in required:
         assert f"`{key}`" in text, f"§ 3 never names the required key {key!r}"
+
+
+# --------------------------------------------------------------------- #
+#  Gate A -- a worked example must be a VALID example                    #
+#                                                                        #
+#  audit-2026-08-14 3.1/3.2: the contract's own TOML carried a DUPLICATE  #
+#  KEY (so it did not parse at all), one example omitted `category` and   #
+#  two omitted `type` and `help` -- all four of them keys 3 calls         #
+#  REQUIRED on every item.  A contract whose illustrations its own reader #
+#  would refuse teaches the wrong shape to everyone who copies one.       #
+# --------------------------------------------------------------------- #
+
+def _fenced_toml(doc_rel: str):
+    """Every ```toml block in a document, de-indented, with its index."""
+    text = (DOCS / doc_rel).read_text(encoding="utf-8")
+    for i, block in enumerate(re.findall(r"```toml\n(.*?)```", text, re.S)):
+        # Some examples are indented inside a list item; TOML does not mind
+        # leading spaces on a key line, but a uniform two-space indent is
+        # stripped so the block reads as it would on disk.
+        yield i, "\n".join(ln[2:] if ln.startswith("  ") else ln
+                            for ln in block.splitlines())
+
+
+def test_every_template_example_parses_as_toml():
+    """§ 6.3's example carried ``category`` twice. TOML forbids a duplicate
+    key, so the contract's illustration of the format could not be loaded by
+    the format's own reader."""
+    import tomllib
+    for i, body in _fenced_toml("engines/template.md"):
+        try:
+            tomllib.loads(body)
+        except Exception as exc:              # noqa: BLE001 - report any of them
+            pytest.fail(f"engines/template.md fenced toml block {i} does not "
+                        f"parse: {exc}\n{body[:400]}")
+
+
+def test_every_template_example_item_carries_the_required_keys():
+    """And each ``[item.*]`` satisfies § 3 -- the same four the reader wants,
+    with a ``type`` from the closed vocabulary."""
+    import tomllib
+    bad = []
+    for i, body in _fenced_toml("engines/template.md"):
+        try:
+            parsed = tomllib.loads(body)
+        except Exception:
+            continue                          # the test above owns parse errors
+        for name, item in (parsed.get("item") or {}).items():
+            missing = [k for k in template._REQUIRED_ITEM_KEYS if k not in item]
+            if missing:
+                bad.append(f"block {i}, item {name!r}: missing {missing}")
+            t = item.get("type")
+            if t is not None and t not in template.TYPES:
+                bad.append(f"block {i}, item {name!r}: type {t!r} is not in "
+                           f"TYPES {template.TYPES}")
+    assert not bad, (
+        "engines/template.md illustrates items its own reader would refuse:\n  "
+        + "\n  ".join(bad)
+        + "\n(§ 3 lists the required keys; § 5 the type vocabulary.)"
+    )
+
