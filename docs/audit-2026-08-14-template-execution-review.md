@@ -1245,12 +1245,21 @@ names all three fields.
 > and this was an absence. Mutation-tested: renaming a member to `BROKEN` fails
 > the gate by name.
 
-### 23.2 · Fixes landed this pass
+### 23.2 · Fixes landed this pass — TIER 1 COMPLETE
 
-| finding | fix |
-|---|---|
-| **§ 22.1** | `tests/test_doc_claims.py` — built, mutation-tested |
-| **new (23.1)** | `template.md` § 6.4 gains the resolver registry; `job-contracts.md` § 6.2 names `Job.resources` |
+| finding | fix | commit |
+|---|---|---|
+| **§ 22.1** | `tests/test_doc_claims.py` — 8 vocabularies, both directions; mutation-tested | `6015f8ae` |
+| **new (§ 23.1)** | `template.md` § 6.4 gains the **resolver registry** (the closed set was enforced and undocumented); `job-contracts.md` § 6.2 names `Job.resources` | `6015f8ae` |
+| **§ 18.5 Gate A** | fenced examples parse and satisfy § 3; mutation-tested | `00edc723` |
+| **§§ 3.1–3.2** | duplicate `category` deleted · `300` → `300.0` · `block_size` gains `category` · both § 6.3 items gain `type` + `help` | `00edc723` |
+| **§ 3.4** | `section` out of § 5's diagram; the ⭐ note says it was replaced at `@2` | `00edc723` |
+| **§ 4** | dead `dict` branch deleted · `config_from_template`'s stale reason · the doubled `section` explanation · `one()`'s message | `5af51051` |
+| **§ 2** | § 6.1 **re-argued from `enable_gpu`** · § 4.2's example · § 11.3's use case · `generator.md` §§ 4, 8 · `job-contracts.md` § 6.2's GPU row | `5af51051` |
+
+**Not fixed, deliberately:** `Template.engine`'s compat shim (§ 4, row 4) —
+removing it touches every caller reading `t.engine`, which is a refactor, not a
+cleanup. It stays on the Tier 2 list beside the seam leak.
 
 ### 23.3 · Still open, and why
 
