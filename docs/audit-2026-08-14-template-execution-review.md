@@ -1525,3 +1525,50 @@ that a trial is relabelled **and** forced cold (invariant 5 — the contract was
 right, the code was behind, and that gap is closed) · the two SIESTA
 environments splitting on provenance · routing on GPU alone.
 
+---
+
+## 27 · The link between § 25 (code to investigate) and § 26 (contracts to settle)
+
+**So neither list is read alone.** § 25's entries are notes until the contract
+beside them lands; § 26's decisions are what turn each into work. Nothing in the
+left column is touched before its right column is settled.
+
+| § 25 code note | blocked on | what the contract must say before it can be done |
+|---|---|---|
+| **25.1** `effective_config` — the `⊕` operator in `siesta/` | **C3** | where `⊕` lives in the unified flow, and whether it operates on the config class's annotations or the template's declared `type`. *Its new home follows from that answer, not from tidiness.* |
+| **25.2** `render_template` / `declarations_for` — one config class in | **C1** | what a multi-engine file looks like: one item table with per-item `engines`, or per-engine sections; how one item carries a different spelling per engine while staying one item |
+| **25.3** two type-coercion paths | **C3** | same decision as 25.1, from the other side — if the template's `type` is the authority, one of the two paths goes |
+| **25.4** the wrapper still scans the deck for GPU | **C4** | whether `prep` hands the wrapper writer the resolved values, with the scan kept only as the standalone fallback |
+| **§ 4 row 4** `Template.engine` compat shim | **C1** | if a file carries several engines, `engines[0]` stops being meaningful and the shim goes with it |
+| **§ 20** three serialisation policies | **C2** | where the machine/exchange parameters sit in the template model — the encoding follows from what each parameter IS |
+
+---
+
+## 28 · C5 — the documents must be *aware of* the template model, not merely consistent with it
+
+**The four decisions in § 26.2 are not the whole document job.** Several
+contracts still describe the world before the template was the source of truth:
+they are not wrong sentence by sentence, they are written as though the
+template does not exist. Alignment means each says **what it now owns, and what
+it defers to the template for**.
+
+| document | how it still reads pre-template | what alignment needs |
+|---|---|---|
+| **`web/form-schema.md`** | describes the form as built from **dataclass field metadata** (`section`, `workflow_group`, `help`, …) — `dataclass_to_form_schema` | `generator.md` § 3.1 changed the direction to **schema → template → UI**. Two mechanisms for one job now exist on paper. This is the biggest gap, because the UI is the last consumer and it is being designed off whichever of the two a reader lands on |
+| **`engines/stages.md`** | owns `task.json`, `⊕`, and the stage vocabulary — written before `prep` rebuilt the config from a template | must say the ladder's overrides apply **to template items**, and hand `⊕`'s definition to whatever C3 decides |
+| **`execution/job-system.md`** § 4.1 | the SIESTA ladder described through `siesta/stages.py` and per-stage config | say which parts are template items now |
+| **`execution/running-a-job.md`** § 3 | the wrapper's own resolution chain | reconcile with `template.md` § 6.4's `omp_threads` resolver — the same chain is stated in both, and C4 decides who owns it |
+| **`execution/job-contracts.md`** § 6.2 | the config ↔ scheduler translation table | after C2, say which of those rows are template items and which are allocation-only |
+| **`engines/siesta.md`** · **`engines/pyscf.md`** | each engine's own parameter story | point at the template for the catalogue; keep the engine-specific science |
+
+> **The test for "aligned"** is the one § 0.1 produced: a document is aligned
+> when it answers a **different question** from the template — *why this value,
+> what it means scientifically, how the layer behaves* — and defers the
+> **enumeration** to the template. A document that re-lists items is not aligned
+> however correct its list is today, because that is the shape that drifts.
+
+**Not yet read, and each may add rows here:** the rest of `job-contracts.md` and
+`project-layout.md`, `checkpointing.md`, `architecture.md`, `run-identity.md`,
+`running-a-job.md`, `stages.md`, `form-schema.md`, the staged-runs plan.
+§ 16 orders them; § 21 is what to check each against.
+
