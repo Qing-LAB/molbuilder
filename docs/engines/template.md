@@ -524,13 +524,45 @@ order and filters the contents by engine. A SIESTA user sees `mesh_cutoff` under
 *Accuracy*; a PySCF user sees `grid_level`. Same panel, same position, same
 mental model.
 
-**Items are never merged across engines.** `net_charge` (SIESTA) and `charge`
-(PySCF) are two items in `category="system"`, not one shared item. Merging them
-would mean inventing a shared vocabulary and deriving each engine's spelling from
-it — which buys nothing a category does not, and risks fusing things that merely
-sound alike. `dm_tolerance` is a density-matrix criterion and `scf_conv_tol` is
-an energy criterion; both are *"SCF convergence"* in English and neither can take
-the other's value.
+### Items merge when they are the same question with the same answer
+
+> **The test, and both halves are required:** two engines share an item when it
+> is **the same question** *and* **the same answer**. A shared *name* is
+> evidence of neither, and a different keyword is evidence against neither.
+
+**The engine's spelling is the GENERATOR's, not the template's.** A merged item
+carries the answer; each engine's deck writer renders it however that engine
+needs — which is what `kind = "deck"` has always meant (§ 6): *molbuilder's own
+item, reaching the deck through molbuilder's rule rather than one keyword.* The
+template never learns either spelling, so no shared vocabulary is invented and
+nothing is derived.
+
+| one item | SIESTA emits | PySCF emits |
+|---|---|---|
+| `use_gpu` | `Diag.ELPA.GPU` (with the ELPA solver gate) | the GPU backend selection |
+| `charge` | `NetCharge` | `gto.M(charge=)` |
+| `verbose_comments`, `write_molwatch_log` | *(no keyword — `kind="produce"`)* | same |
+
+**What does NOT merge, and the rule is what says so.** `dm_tolerance` is a
+density-matrix criterion and `scf_conv_tol` is an energy criterion. Both are
+*"SCF convergence"* in English, **neither can take the other's value**, so they
+are two questions and stay two items. The old rule refused every merge to avoid
+fusing things that merely sound alike; the test refuses exactly those and
+permits the rest.
+
+> **Spin is the case that needs care, and it is not merged today.** SIESTA
+> carries `spin_polarized` (bool) **and** `spin_total`; PySCF carries `spin`.
+> Both numbers are *the count of unpaired electrons* — the same quantity — but
+> the answer is **decomposed differently**, and there is a third state the
+> count alone cannot express: *polarized, moment free* (SIESTA
+> `SpinPolarized` without `Spin.Fix`; PySCF UKS at `spin = 0`). A shared flag
+> beside a shared number expresses all three; one merged number does not.
+
+*(Rewritten 2026-08-14. This paragraph read **"items are never merged across
+engines"** — a rule whose own justification was the risk of fusing things that
+merely sound alike. The test does that job directly, and the flat refusal was
+keeping `net_charge`/`charge` as two names for one question, which is the
+defect § 1 of the unification plan measured.)*
 
 ```toml
 [item.mesh_cutoff]

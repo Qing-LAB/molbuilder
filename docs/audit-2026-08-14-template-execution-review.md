@@ -2137,3 +2137,44 @@ structural information"* and becomes two smaller questions:
 > declared anywhere: they are constants in `script_emit`. That is the same
 > *reader-built-writer-missing* shape found five times elsewhere, and SS 33
 > is why it must be filled in rather than retired.
+
+---
+
+## 36 - C1's contract text LANDED, and the frozen-label spec fixed
+
+| | |
+|---|---|
+| **`job-contracts.md` SS 3.4** | the ATOM-METADATA example now spells the frozen label the way the code writes it, and a new bullet applies SS 3.4's own one-authority rule to the NAME: it is `structure.FROZEN_LABEL`, cited rather than re-spelled. **Gated both ways** in `test_doc_claims.py`, mutation-tested |
+| **`engines/template.md` SS 6.3** | *"items are never merged across engines"* replaced by the **merge test**, per the user's ruling |
+
+### 36.1 - What SS 6.3 now says
+
+> Two engines share an item when it is **the same question** *and* **the same
+> answer**. A shared name is evidence of neither; a different keyword is
+> evidence against neither. **The engine's spelling is the GENERATOR's** --
+> which is what `kind = "deck"` has always meant.
+
+The old paragraph's own justification was *the risk of fusing things that
+merely sound alike*. The test does that job directly -- `dm_tolerance` and
+`scf_conv_tol` still stay two items, because neither can take the other's
+value -- while the flat refusal was keeping `net_charge` / `charge` as two
+names for one question, which is the defect SS 1 of the unification plan
+measured.
+
+Spin is recorded in the section as **not merged today**, with the reason: the
+two numbers are the same quantity (unpaired electrons) but the answer is
+decomposed differently, and there is a third state -- *polarized, moment
+free* -- that a single count cannot express.
+
+### 36.2 - Still open on C1
+
+1. **spin** -- shared flag + shared number (SS 32.3's finding), or leave the
+   engines' decompositions alone?
+2. **`expands` on a merged item** -- union, omit, or per-engine? It documents
+   rather than steers (SS 8.1), so this is a readability call, not a mechanism
+   one.
+3. **`engines` explicit or derived** once items list several.
+
+**What C1 has already unblocked:** SS 25.2's writer now has a target shape --
+take N config classes, emit one item table, merge by the test, and let each
+deck writer render. `Item` does not change.
