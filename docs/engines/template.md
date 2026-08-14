@@ -346,42 +346,66 @@ never validated by molbuilder (§ 9.2)."""
 
 ### 4.3 Where a template comes from — the catalogue, with the answers filled in
 
-**There is one master file and it is authored, not generated.**
+**There is one master file, and it is authored rather than generated.**
 
-| | |
+| | what it is | who touches it |
+|---|---|---|
+| **the catalogue** — `molbuilder/data/catalogue.template.toml` | every parameter both engines declare: category, type, bounds, prose, **default**. Shipped with the package | a maintainer, **editing the TOML directly** |
+| **a calculation's template** — `<label>.template.toml` | the same items, narrowed to the engine in use, carrying the **values** a person chose | a surface writes it; a person may edit it |
+
+```mermaid
+flowchart TD
+    CAT["<b>catalogue.template.toml</b><br/>authored · every parameter · defaults<br/><i>82 items — 45 siesta, 40 pyscf, 3 both</i>"]
+    UI["a surface<br/><i>panels from category,<br/>contents filtered by engine</i>"]
+    TPL["<b>&lt;label&gt;.template.toml</b><br/>this calculation — same items, with values"]
+    RD["read + narrow to one engine<br/><code>config_from_template</code>"]
+    CFG["the engine's config object<br/><i>a name, a type, its validators</i>"]
+    DECK["the deck<br/><code>.fdf</code> · <code>.py</code>"]
+    ALLOC["<b>prep</b>, on the machine that granted it<br/><i>ranks · threads · memory</i>"]
+
+    CAT -->|"every item, both engines"| UI
+    UI -->|"the answers"| TPL
+    TPL --> RD
+    RD -->|"this engine's items only"| CFG
+    CFG --> DECK
+    ALLOC -.->|"the three valueless items"| DECK
+
+    CAT -.->|"⛔ never derived FROM a config class"| CFG
+```
+
+**Reading the arrows, because each one is a rule:**
+
+| arrow | what travels, and why it is that way round |
 |---|---|
-| **the catalogue** | `molbuilder/data/catalogue.template.toml` — every parameter both engines declare, with its category, type, bounds, prose and **default**. Shipped with the package. **Edited directly, as TOML** |
-| **a calculation's template** | the catalogue, narrowed to the engine being used, with the **values** a person chose |
-
-So making a template is: **read the catalogue, keep this engine's items, set the
-values.** Nothing derives the catalogue from anything; it *is* the definition.
-
-```
-catalogue.template.toml        authored, correct, unmodified
-        │
-        ▼   a surface reads it, shows the panels, a person answers
-<label>.template.toml          this calculation — same items, with values
-        │
-        ▼   read, narrowed to one engine
-   the engine's config object
-        │
-        ▼
-   the deck
-```
+| catalogue → surface | **every** item, both engines. A surface builds the six panels from `category` and filters the contents by `engines` — one panel set serving every engine, which is why `category` is engine-independent (§ 6.2) |
+| surface → template | **only the answers.** The items themselves are not re-invented; the surface is filling in a form whose questions the catalogue already asked |
+| template → config | narrowed to one engine first, **then** read as that schema's fields. Skip the narrowing and a two-engine file is refused for both engines, each seeing the other's items as names it does not know |
+| config → deck | the engine's own writer, which never sees the template. It receives an ordinary config object, which is why a config class is a **translator** and not a source (§ 2.1) |
+| prep ⇢ deck | the three allocation items are answered here, on the machine that granted them — never in the file (§ 6.4, § 7) |
 
 > **⛔ There is no config → template writer, and there must not be one.**
 > `render_template(config)` reflected a Python class into a file, which made the
 > class the master and the file a printout of it — § 2.1's forbidden direction.
-> **Deleted 2026-08-14.** A parameter is added by editing the catalogue, which is
-> what *"the template is the master"* means in practice: the change lands in one
-> TOML file and both engines' surfaces see it without a Python edit.
+> **Deleted 2026-08-14.**
+>
+> The cost of the inverted arrangement was concrete, not theoretical:
+> **enriching the catalogue meant editing Python**, two engines' parameters
+> could never share one file (the writer took one config class, so it emitted
+> one engine's items), and the thing a surface and the generator are supposed to
+> **share** was a view of Python rather than the source. Adding a parameter now
+> lands in one TOML file and both surfaces see it.
 
-**The catalogue is authored correct, and that is what makes § 7's machine-fact
-rule enforceable in one place.** Nobody hand-injects an `mpi_np` value into it;
-a surface supplies values for the items that take them, and the three allocation
-items (`rank_count`, `omp_threads`, `node_memory` — § 6.4) are answered at `prep`
-on the machine that granted them. The file does not have to defend itself
-against its own author.
+**Why the catalogue is authored rather than generated, stated once.** A
+generated catalogue has a source, and that source becomes the real master
+whatever the contract says. The moment the catalogue is authored, the question
+*"where is this parameter defined?"* has one answer for every parameter, in every
+engine — and that is the property G2 and G3 both rest on.
+
+**And it is why § 7's machine-fact rule needs no defence inside the file.** The
+catalogue is authored correct and is not modified; a surface supplies values for
+the items that take them; the three allocation items are answered at `prep`. The
+file does not have to defend itself against its own author. *(User, 2026-08-14 —
+recorded because the reverse assumption produced a "leak" that was not one.)*
 
 ---
 
