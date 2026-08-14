@@ -22,11 +22,12 @@ matter are the ones nobody suspected. Suspicions raised by reading were then
 | `docs/engines/template.md` | 1010 |
 | `molbuilder/template.py` | 1111 |
 | `docs/execution/generator.md` | 594 |
+| `molbuilder/resolve.py` | 559 |
 
 | not yet read | lines |
 |---|---|
 | `docs/execution/job-contracts.md` · `job-system.md` · `project-layout.md` · `checkpointing.md` · `architecture.md` · `run-identity.md` · `running-a-job.md` · the staged-runs plan | ~12,400 |
-| `molbuilder/jobset/*` · `resolve.py` · `task.py` | ~5,800 |
+| `molbuilder/jobset/*` · `task.py` | ~5,200 |
 | the test suites for the above | — |
 
 **Stated plainly because a partial review reported as a whole one is worse than
@@ -188,3 +189,94 @@ writer never landing. That is a pattern in how the work is sequenced, not five
 coincidences — and the cheapest guard against it is the one already used for
 `read_by` on 2026-08-13: a test that asserts *someone actually produces this*,
 written in the same commit that adds the reader.
+
+
+---
+
+## 6 · `docs/execution/generator.md` — read in full, 594 lines
+
+**6.1 · § 4's table still holds the `@1` position.** It classes `mpi_np`,
+`cpus_per_task` and `gpu_mode` as *"not a template item at all"*. At `@2` they
+**are** items — declared valueless, each naming a `resolver` (`template.md`
+§ 6.4, landed as T4). Two contracts, two answers, and this one is the doc a
+reader consults for *what data exists*.
+
+**6.2 · § 8's deletion table lists a deletion that turned out differently.**
+*"the wrapper reading the deck text to find ELPA | `read_by` tells it"*. What
+happened on 2026-08-13 is that the READ was deleted outright — the premise
+(*only the source build has ELPA*) was measured false — so `read_by` does not
+tell the wrapper anything about ELPA; the wrapper reads `enable_gpu` for GPU
+runtime facts and routes on that alone. The row's *outcome* is right (the scan
+is gone) and its *mechanism* is wrong.
+
+**6.3 · Not a defect, recorded because it is the design's best moment.** § 4.1's
+capability ⊇ allocation ⊇ sweep, with the reason attached — *"how a job is
+scheduled depends on how much you ask for"* — is the clearest argument in the
+execution docs, and it is what makes `_check_fits` refuse rather than clamp.
+It is also checkable on ASU Sol (§ 4.4a), which is rare for a design claim.
+
+---
+
+## 7 · `molbuilder/resolve.py` — read in full, 559 lines
+
+**This is the best-built module reviewed.** Precedence is implemented in the
+order the contract states (template ⊕ stage ⊕ sweep ⊕ pin), every refusal names
+the axis and the rule, and `_check_fits` refuses rather than clamps with the
+reason in the message. The findings below are boundary issues, not logic ones.
+
+### 7.1 · Floor 3 imports from an engine package — the seam leaks
+
+```python
+def _apply(cfg, overrides):
+    from .siesta.input import effective_config      # floor 3 -> engine
+    from .task import Stage
+    return effective_config(cfg, Stage(name="resolve", overrides=dict(overrides)))
+```
+
+`generator.md` § 7 states the test: *"adding an engine adds files and edits
+none. If a new engine requires a change inside `resolve/`, `materialize` or
+`submit`, the seam has leaked and the leak is the bug."* Here the **shared**
+floor-3 resolver depends on **SIESTA's** package to resolve a PySCF calculation.
+
+The docstring sees it and defends the wrong half: *"`effective_config` lives
+under `siesta/` for historical reasons and its body is entirely
+engine-agnostic … calling it here keeps 'the one place this happens' true
+rather than growing a second implementation beside it."* Not duplicating it is
+right. **The conclusion should be that the one place is in the wrong place** —
+an engine-agnostic primitive belongs in a shared module, not imported upward
+out of one engine.
+
+Second-order: it also fabricates a `Stage(name="resolve")` to carry overrides
+into a function whose parameter is a stage. Using a domain object as a
+parameter bag is a smell that would disappear with the move.
+
+### 7.2 · `__all__` omits `resolved_ladder` — the same drift as `template.py`
+
+A public function with a documented production caller, absent from the declared
+surface. **Two modules, the same defect** (§ 1.5), which makes it a habit rather
+than an oversight: `__all__` is hand-maintained and nothing checks it against
+what the module actually offers.
+
+### 7.3 · `_check_fits` is inert when the allocation states no bound
+
+It skips any axis whose allocation value is `None`. That is defensible — an
+unstated bound cannot be exceeded — but it means the *"a sweep is bounded by
+what you asked for"* guarantee is **silent on a workstation**, which is exactly
+where `project-layout.md` M6 says no allocation file is needed. Worth stating in
+the contract rather than leaving a reader to infer that the guard always fires.
+
+---
+
+## 8 · The pattern, restated after four files
+
+Two habits show up in more than one place, and both are cheaper to fix as
+habits than as instances:
+
+1. **Reader built, writer never lands.** `engines`, `read_by`, `resolver`,
+   `RUNTIME_INFO_KEYS`, the execution panel. The guard that works is the one
+   used for `read_by` on 2026-08-13: in the same commit as the reader, a test
+   that asserts *something actually produces this*.
+2. **`__all__` drifts from the real API.** `template.py` omits `select`/`one`;
+   `resolve.py` omits `resolved_ladder`. A single test over the package —
+   *every public callable named in a module's contract docstring appears in
+   `__all__`* — would close both and stay closed.
