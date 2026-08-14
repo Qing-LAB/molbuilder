@@ -3550,3 +3550,62 @@ a large cell samples them differently."""
 
 > **Both hints follow SS 40.5's rule** -- structure, not markup, because the
 > same string is read in a terminal, in the template file, and by a UI.
+
+---
+
+## 55 - THE TYPE VOCABULARY, ruled -- the last contract question
+
+*(User "go ahead", 2026-08-14. This is the decision SS 54 fed and the last
+contract item before code.)*
+
+### 55.1 - The vocabulary, member by member, with its evidence
+
+| member | uses | ruling |
+|---|:--:|---|
+| `int` `float` `str` `bool` `enum` | 81 | **keep** -- the ordinary five |
+| `strlist` | 2 | **keep** -- `species_order`, `ecp_atoms` |
+| **`pow2`** | 0 | **KEEP and MAKE REACHABLE.** One field wants it (`parallel_block_size`), the checker is already written and correct, and a user's 96 is emitted unchecked today (SS 50.1). SS 5's stated purpose for `type` is *a constraint a parser cannot see*, and this is the only member that is one |
+| **`text`** | 0 | **KEEP, reserved.** For `user_custom`, which the user named load-bearing (SS 33) |
+| **`int3`** | 1 | **KEEP** -- `kgrid`. SS 53.5 ruled the non-diagonal matrix deferred, so a diagonal mesh IS three ints |
+| **`float3`** | -- | **ADD.** The k-grid displacement (SS 54): three floats, one per axis, independent. Nothing else in `TYPES` can carry it |
+| **`intlist`** | 0 | **KEEP, reserved** -- `frozen_indices` is SS 4.2's own worked example and is not a config field yet. Same shape as `text`: work not done, not machinery unwanted |
+| **`monitor`** *(a `kind`, not a type)* | 0 | **KEEP, and write the record.** SS 50.3 found the entire design record is three lines restating one sentence. The monitor layer is real and samples real things; what is missing is any statement of what a monitor ITEM would be. **Retiring a kind whose layer exists would be the wrong deletion** |
+
+### 55.2 - The principle this settles, stated once
+
+> **A zero-use member is a cleanup candidate only if nothing is waiting on
+> it.** `strmap` had one field and modelled **storage**, so it went.
+> `pow2`, `text` and `intlist` have zero fields and model **questions** with
+> named fields waiting -- so they stay. The count is not the test; **what the
+> member models is.**
+
+*(That is the rule SS 33 arrived at for `text` and SS 48 for `pow2`,
+generalised. It is worth stating because the count is the tempting test and
+it gets `strmap` and `text` exactly backwards.)*
+
+### 55.3 - `TYPES` after this ruling
+
+```
+int  float  str  bool  enum  pow2  int3  float3  strlist  intlist  text
+```
+
+**Eleven** -- one more than today. The programme retired `strmap` and adds
+`float3` for a capability SIESTA actually has and molbuilder could not
+express, which is a different transaction from the one SS 11's size test
+worries about.
+
+### 55.4 - So the contract phase is COMPLETE
+
+| | |
+|---|---|
+| C1 merge test | ✅ ruled, text landed |
+| C2 allocation | ✅ ruled |
+| C3 coercion authority | ✅ ruled |
+| C4 config -> wrapper road | ✅ ruled |
+| C5 document alignment | in progress, unblocking nothing |
+| C6 format / content seam | ✅ ruled, C6b flagged for build time |
+| k-grid science read | ✅ done (SS 53, SS 54) |
+| **the type vocabulary** | ✅ **ruled here** |
+
+**Nothing on paper now blocks the code.** SS 26's rule has been satisfied
+rather than suspended.
