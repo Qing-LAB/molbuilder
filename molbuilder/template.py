@@ -199,8 +199,11 @@ class Item:
 @dataclass(frozen=True)
 class Template:
     """A parsed template: the three top-level keys, and the items in order."""
-    engine: str
+    engine: str                     # engines[0] -- the @1 spelling, kept for callers
     fingerprint: str
+    #: Every engine this calculation can run on (§ 6.3).  ``engine`` above is
+    #: its first element; a @1 file yields a one-element list.
+    engines: Tuple[str, ...] = ()
     items: Tuple[Item, ...] = ()
 
     def __iter__(self):
@@ -697,6 +700,7 @@ def read_template(text: str) -> Template:
                 "know which config classes these items belong to, and would "
                 "have to infer it from their names (engines/template.md § 3)")
     engine = engines[0]
+    engines_t = tuple(engines)
     if "fingerprint" not in raw:
         _refuse("missing required key 'fingerprint'. An EMPTY string is legal "
                 "and means 'makes no claim'; the key itself is required so "
@@ -717,7 +721,8 @@ def read_template(text: str) -> Template:
     # message about anything but the edit that caused it.
     # (value checking moved INTO _item_from at R4 -- raw, pre-shape; a
     # loop here saw values _shape had already coerced.)
-    return Template(engine=str(engine), fingerprint=fingerprint, items=items)
+    return Template(engine=str(engine), fingerprint=fingerprint,
+                    engines=engines_t, items=items)
 
 
 def _is_int(v) -> bool:
@@ -849,6 +854,113 @@ def template_fields(config_cls) -> set:
     """
     return {f.name for f in dataclasses.fields(config_cls)
             if not f.metadata.get("allocation")}
+
+
+# --------------------------------------------------------------------- #
+#  § 8.0 -- THE ONE READ API                                            #
+# --------------------------------------------------------------------- #
+
+def _as_tuple(v) -> Tuple[str, ...]:
+    if v is None:
+        return ()
+    return (v,) if isinstance(v, str) else tuple(v)
+
+
+def _check_engine(t: "Template", engine) -> None:
+    """Refuse an engine this template does not serve (§ 3).
+
+    *"This calculation does not run on that engine"* and *"no items
+    matched"* are different answers, and an empty list cannot tell them
+    apart -- a caller would read a refusal as an absence and carry on.
+    """
+    if engine and t.engines and engine not in t.engines:
+        raise ValueError(
+            f"this template describes a calculation for {list(t.engines)}, "
+            f"not {engine!r}. An empty result would read as 'no items "
+            f"matched' when the truth is 'this calculation does not run on "
+            f"that engine' (engines/template.md § 3).")
+
+
+def select(t: "Template", *, category=None, engine=None,
+           kind=None, read_by=None) -> List[Item]:
+    """The items matching every filter given, **in category order**.
+
+    One function, one file, every reader (`engines/template.md` § 8.0).
+    Each argument filters on an axis the item already declares; **omitting
+    one means do not filter on it**, so ``select(t)`` is every item -- which
+    is exactly what ``prep`` step 2 wants.
+
+        select(t, category="accuracy", engine="siesta")   # one panel
+        select(t, kind=("engine", "deck"), engine=e)      # the deck writer
+        select(t, category="execution", engine=e)         # a benchmark
+
+    **A filter, not a query language.** The axes are closed vocabularies
+    declared on the item, so this is a dict comparison -- no expression to
+    parse, no index to build, and a reader in another language does the same
+    with ``tomllib.load`` and a comprehension. § 8's *"a reader never asks a
+    second source"* holds: this is a convenience over data the caller already
+    has in hand, never a service it must call.
+
+    Category order, not declaration order, because the categories ARE the
+    reading order (§ 6.2) and a surface renders panels top to bottom. Within
+    a category the config's own field order survives, which is § 8's rule
+    that a template a person reads is not a third arrangement of the same
+    things.
+    """
+    _check_engine(t, engine)
+    want_cat = _as_tuple(category)
+    want_kind = _as_tuple(kind)
+    out: List[Item] = []
+    for it in t.items:
+        # `engines` empty means ALL engines (§ 6.3) -- absence is not a
+        # narrower claim than presence, it is a wider one.
+        if engine and it.engines and engine not in it.engines:
+            continue
+        if want_cat and not (set(want_cat) & set(it.category)):
+            continue
+        if want_kind and it.kind not in want_kind:
+            continue
+        if read_by and read_by not in it.read_by:
+            continue
+        out.append(it)
+
+    def _rank(it: Item) -> int:
+        # The item's PRIMARY category is its panel (§ 6.2); an item with no
+        # category sorts last rather than crashing, because a reader's job
+        # is to report a malformed file, not to be the thing that breaks.
+        if not it.category:
+            return len(CATEGORIES)
+        try:
+            return CATEGORIES.index(it.category[0])
+        except ValueError:
+            return len(CATEGORIES)
+
+    return sorted(out, key=_rank)      # stable: ties keep declaration order
+
+
+def one(t: "Template", name: str, *, engine: str = None) -> Optional[Item]:
+    """The item called *name*, or ``None`` when it does not apply here.
+
+    **``None`` and an exception mean different things, and that is the
+    point.** ``None`` is *"this calculation has no such parameter for this
+    engine"* -- ``one(t, "mesh_cutoff", engine="pyscf")`` on a template whose
+    item declares ``engines = ["siesta"]``. It raises when the name is not in
+    the file at all, because that is a caller asking for something this
+    format never had: *"does not apply"* and *"should be here and is not"*
+    must never read the same. Law A, applied to a lookup.
+    """
+    _check_engine(t, engine)
+    for it in t.items:
+        if it.name != name:
+            continue
+        if engine and it.engines and engine not in it.engines:
+            return None                      # declared, but not for this engine
+        return it
+    raise KeyError(
+        f"no item {name!r} in this template (engines={t.engine!r}). If the "
+        f"parameter exists for another engine it would still be listed, so "
+        f"this is a name this template never carried -- not an item that "
+        f"does not apply here (engines/template.md § 8.0).")
 
 
 def config_from_template(text: str, config_cls):

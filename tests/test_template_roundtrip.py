@@ -418,3 +418,61 @@ def test_a_template_file_missing_category_is_refused_on_READ():
             'type = "int"\nhelp = "x"\n')
     with pytest.raises(ValueError, match=r"missing required key 'category'"):
         T.read_template(text)
+
+
+# ------------------------------------------------------------------ #
+#  § 8.0 -- the one read API                                          #
+# ------------------------------------------------------------------ #
+
+def _siesta_template():
+    return T.read_template(T.render_template(SiestaConfig(), engine="siesta"))
+
+
+def test_select_with_no_filter_is_every_item():
+    """`prep` step 2 filters nothing -- it wants them all (§ 8)."""
+    t = _siesta_template()
+    assert len(T.select(t)) == len(t.items)
+
+
+def test_select_returns_items_in_CATEGORY_order():
+    """The categories ARE the reading order (§ 6.2); a surface renders
+    panels top to bottom, so the API hands them over that way rather than
+    making every caller re-sort."""
+    t = _siesta_template()
+    order = [T.CATEGORIES.index(i.category[0]) for i in T.select(t)]
+    assert order == sorted(order)
+
+
+def test_select_finds_an_item_by_its_SECOND_category():
+    """The whole point of a category being a list: an item panels under
+    its first and stays findable under the rest.  `pao_energy_shift`
+    panels under `method` and must be found under `accuracy`, where a
+    user hunting precision knobs will look."""
+    t = _siesta_template()
+    found = [i.name for i in T.select(t, category="accuracy")]
+    assert "pao_energy_shift" in found
+    assert T.one(t, "pao_energy_shift").category[0] == "method"
+
+
+def test_select_filters_compose():
+    t = _siesta_template()
+    both = T.select(t, category="execution", kind="wrapper")
+    assert both and all("execution" in i.category and i.kind == "wrapper"
+                        for i in both)
+
+
+def test_an_engine_this_template_does_not_serve_is_REFUSED():
+    """*"This calculation does not run on that engine"* and *"no items
+    matched"* are different answers, and an empty list cannot tell them
+    apart -- a caller would read the refusal as an absence and carry on."""
+    t = _siesta_template()
+    with pytest.raises(ValueError, match=r"does not run on that engine|not 'pyscf'"):
+        T.select(t, engine="pyscf")
+
+
+def test_one_raises_for_a_name_the_template_never_had():
+    """`None` means *does not apply here*; a missing NAME is a different
+    thing and must not borrow that answer (Law A, applied to a lookup)."""
+    t = _siesta_template()
+    with pytest.raises(KeyError, match="no item 'not_a_parameter'"):
+        T.one(t, "not_a_parameter")
