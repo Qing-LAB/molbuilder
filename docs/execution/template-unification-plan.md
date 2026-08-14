@@ -150,15 +150,16 @@ Each unit lands with its own tests and commit. **Docs first within each unit.**
 | **T4** | **Execution items valueless, with resolvers** | ✅ `d4d85418` |
 | **T5+T6** | **PySCF renders at all** + its catalogue | ✅ `93403618` — 39 items, six categories |
 | **T7** | **`execution/` docs** catch up to `@2` — the version string was the smaller half (§ 5) | ✅ 6 edits across 5 files |
-| **T8** | **The wrapper reads `read_by`** instead of scanning deck text for `ELPA` | ⬜ open — `diag_algorithm` declares it since `1f723e51`, so the data is waiting |
+| **T8** | **The wrapper reads `read_by`** instead of scanning deck text for `ELPA` | ✅ **closed by deleting the scan** (§ 9) — the premise under it was false |
 | **T9** | **`ecp` → name + atom selector**, deleting `strmap` (§ 8) | ⬜ open — user design, 2 decisions needed first |
 | **T10** | **The `.fdf` before/after comparison** (§ 8) | ✅ **57 decks byte-identical**, harness mutation-tested |
 
 **What is true right now.** Both engines render a template at `@2`; every item
 carries a category from a closed six; execution items are declared valueless
-with named resolvers; `select`/`one` are the one read API; and the refactor is
-**proven not to have moved the deck** (T10). The code is *ahead* of
-`execution/`'s docs, which is T7.
+with named resolvers; `select`/`one` are the one read API; the refactor is
+**proven not to have moved the deck** (T10); and the wrapper's reads of the deck
+are declared and guarded (T8). **T9 is the only unit left**, and it needs two
+decisions before it can start.
 
 **Not in scope, and deliberately:** the UI. It is the last consumer and it is
 built from this file; designing it now would fix panels against categories that
@@ -485,3 +486,92 @@ coordinate lines — which is what § 9.1 specifies.
 **Harness:** `t10_render.py`, kept in the session scratchpad. It is deliberately
 NOT a test in the suite: it compares two *trees*, so it has no meaning once the
 baseline is old. The reproduction recipe is the table above.
+
+---
+
+## 9. T8 — closed by deleting the read, not by declaring it (2026-08-13)
+
+T8 was written as *"the wrapper reads `read_by` instead of scanning deck text for
+ELPA"*, and `generator.md` § 8 listed that scan under **what this design
+deletes**. Walking it before writing any code found the design's premise, and
+then found the premise was false.
+
+### 9.1 What the walk found first — a declaration nobody could be missing from
+
+The wrapper reads the deck in **two** places, for **two different questions**:
+
+| scanner | question | call sites |
+|---|---|---|
+| `_fdf_requests_elpa` | which conda env to activate | 1 |
+| `_fdf_requests_gpu` | the GPU **runtime** — gres, MPS, the NUMA pin, the rank/thread budget | 8 |
+
+Only `diag_algorithm` declared `read_by`. An implementation that trusted the
+declarations — which is exactly what T8 was — would have dropped every GPU
+runtime fact in silence, while the deck still said `Diag.ELPA.GPU .true.`
+
+So `enable_gpu` got its declaration, and a guard was written for **the direction
+that catches drift**: *for every place the wrapper reads the deck, some item
+declares that read.* The scanners are their own oracle — the test builds a
+one-line deck from a field's `engine_key` and asks the scanner whether it sees
+it, so it never restates a keyword and cannot drift from `runwrap`'s own regexes.
+Mutation-tested: removing the declaration fails it by name (`24e5cd69`).
+
+### 9.2 Then the premise collapsed
+
+The ELPA scan existed because *"ELPA is linked only into the source build"*
+(`recipes.py`, and three docs downstream). **Measured instead of inherited** — an
+H2 probe in the packaged `molbuilder-siesta`:
+
+| deck | result |
+|---|---|
+| `Diag.Algorithm ELPA-2stage` | exit 0 — E = −30.136019 eV |
+| `Diag.Algorithm ELPA-1stage` | exit 0 — E = −30.136019 eV |
+| `Divide-and-Conquer` | exit 0 — E = −30.136019 eV, identical |
+| `ELPA-2stage` + `Diag.ELPA.GPU .true.` | **exit 1** — `ELPA_ERROR_ENTRY_NOT_FOUND` |
+
+conda-forge's SIESTA links no external `libelpa` — the true observation the false
+conclusion was drawn from — but ELPA is compiled **in** through ELSI: 279 defined
+ELPA symbols, zero undefined. Only the GPU entry is absent, a **missing build
+option, not a missing device**.
+
+**The harm was concrete.** The two SIESTA envs split on **provenance**: one
+installs from packages on any machine, the other must be **built from source**,
+which some HPC sites do not permit. Routing CPU-ELPA to the source build refused
+a runnable calculation wherever compiling is not allowed — for a solver the
+installed baseline already has.
+
+### 9.3 How it closed
+
+`_fdf_requests_elpa` lost its only caller and was **deleted**; GPU alone routes;
+`diag_algorithm`'s `read_by` came **back off**, because the wrapper genuinely
+reads nothing from it. The wrapper now reads exactly one item, and that one is
+declared and guarded.
+
+> **The lesson worth keeping is the shape of the error, not the ELPA fact.**
+> *Knowing a keyword is not providing the capability* — the packaged binary
+> carries `ELPA-1stage`, `ELPA-2stage` and `Diag.ELPA.GPU` as strings whether or
+> not it can run them. A `read_by` declaration asserting a dependency that does
+> not exist is the same defect the key exists to remove, aimed the other way.
+
+### 9.4 The vocabulary this settles, for the UI to build on
+
+**Capability and need are different things, pointing in opposite directions:**
+
+| | declared by | says |
+|---|---|---|
+| **provides** | a **build** | *"I have ELPA, and it was built with CUDA"* |
+| **requires** | a **deck value** | *"this run needs a GPU-capable ELPA"* |
+
+And a need splits by **who satisfies it** — a **build need** by choosing an env,
+a **run need** by the scheduler ask. `Diag.ELPA.GPU .true.` raises one of each,
+which is why fusing them into the single token `siesta-gpu` broke.
+
+**User decisions (2026-08-13), recorded so they are not re-derived:**
+
+- **Two envs, and the count stays two.** The capability vocabulary is finer than
+  the env list, so precision never costs a third environment.
+- **What is *available* is filtered by what is *needed*, and the user picks.**
+  Auto-routing is the fallback for *no choice given* only — `write_run_wrapper`
+  already guards on `env is None`, so a named env always wins.
+- **`bench` sweeps computation resources, never the env.**
+- **CPU-ELPA is offered as a choice** when GPU is not selected.
