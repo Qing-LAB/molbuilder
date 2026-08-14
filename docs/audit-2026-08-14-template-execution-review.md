@@ -2746,3 +2746,62 @@ plan measured.
 > conversation and left open in the document, so it read as unresolved for
 > two more sections. That is the same failure this report charges elsewhere --
 > a decision made once and not written where the next reader looks.
+
+---
+
+## 44 - The reserved blocks ARE the user's data -- three places disagree about that
+
+**User, 2026-08-14:** *"the reserved blocks is the user customized data, so
+you should make the document consistent."*
+
+### 44.1 - The disagreement, in the three places that state it
+
+| where | says | consistent? |
+|---|---|---|
+| `script_emit.machine_record_banner`'s **docstring** | *"how molbuilder reads the file BACK -- provenance, the benchmarking anchors, and **the per-atom labels that reconstruct the structure**"* | **yes** -- this is the persistence channel, named exactly |
+| the **emitted banner**, in every deck | *"MOLBUILDER RECORD -- everything below this line is written and read by molbuilder, and **is NOT part of the calculation**"* | **no** -- ATOM-METADATA sits below that line |
+| `template.md` SS 9's table | ATOM-METADATA's content comes from *"the structure and its `.molstruct.json` sidecar"* | **yes** -- it is the user's own data |
+
+### 44.2 - Why the emitted wording is the wrong one
+
+Below that banner sit the **regions, the frozen set, and the electrode /
+bridge labels**. They are:
+
+* **the user's**, not molbuilder's -- they come from the structure the user
+  built and annotated;
+* **part of the calculation's identity** -- the frozen set decides what
+  relaxes, and a relaxation rewrites coordinates while the labels are what
+  still say which atom is which afterwards;
+* **required by a later calculation** -- transport reads electrode / bridge /
+  frozen membership back out (SS 33, R15).
+
+*"Not part of the calculation"* is true of PROVENANCE (a generation snapshot)
+and defensible for BENCH-MARKS (derived bounds). It is **false of
+ATOM-METADATA**, and the banner covers all three.
+
+### 44.3 - What is actually true, and it is the honest framing
+
+> **Below the banner is the PERSISTENT RECORD: what molbuilder writes so it
+> -- or a later calculation -- can read this file back.** Some of it is about
+> the generation (PROVENANCE), some is derived bounds (BENCH-MARKS), and some
+> is **the user's own structural data** (ATOM-METADATA), which is why it
+> round-trips (`job-contracts.md` SS 3.6). None of it is a SETTING -- editing
+> it does not change what the engine computes -- and that is what the banner
+> should say, rather than that it is not part of the calculation.
+
+**The distinction the banner wants is *setting* vs *record*, not *calculation*
+vs *not-calculation*.** The docstring already draws it correctly: *"those are
+data, not settings"*.
+
+### 44.4 - The three edits, and one of them changes deck output
+
+| # | where | change |
+|---|---|---|
+| 1 | `script_emit.machine_record_banner` -- **the emitted text** | *"is NOT part of the calculation"* -> *"is not a SETTING: molbuilder writes it so this file can be read back, and editing it changes nothing the engine computes"*. **This changes every generated deck**, so it needs its own decision and a T10-style re-baseline |
+| 2 | `job-contracts.md` SS 3.1 | the mermaid node labels the banner *"data about the file; not hand-edited"* -- true, but it should say the region below **includes the user's structural data**, which is why SS 3.6 promises it round-trips |
+| 3 | `template.md` SS 9 | already correct after SS 34's edit; add the one line that the region below the banner is the **persistence channel**, so all three read alike |
+
+> **Only edit 1 touches code, and it touches OUTPUT.** SS 26's rule applies
+> with extra force: it is a one-line string whose change alters every deck
+> molbuilder has ever written, so it is a contract decision first and a commit
+> second.
