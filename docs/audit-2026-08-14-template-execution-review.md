@@ -2276,3 +2276,62 @@ differed.
 *(And it lowers C3's priority relative to C1/C2/C6, which change what the
 format can express. C3 makes one rule one implementation -- worth doing, not
 urgent.)*
+
+---
+
+## 38 - SCIENCE: `mesh_cutoff` is a REQUEST, and the grid quantises it
+
+*(User asked whether SIESTA allows `300.5`. It does -- and the answer that
+came back matters more than the question.)*
+
+Measured, H2 in an 8 A box, everything else held:
+
+```
+asked 300    Ry  ->  Total = -30.136693
+asked 300.5  Ry  ->  Total = -30.136693     IDENTICAL
+asked 301.7  Ry  ->  Total = -30.136693     IDENTICAL
+
+InitMesh: Mesh cutoff (required, used) =   301.700   349.790 Ry
+InitMesh: MESH = 90 x 90 x 90 = 729000
+```
+
+### 38.1 - What this establishes
+
+1. **`type = "float"` is correct.** SIESTA accepts a continuous value and
+   echoes it back exactly -- `redata: Mesh Cutoff = 300.5000 Ry`. It is not a
+   disguised integer.
+2. **But the value is an ASK, not the effective quantity.** SIESTA builds a
+   real-space grid of integer dimensions, so the cutoff it can actually
+   deliver is discrete. It reports both -- *"(required, used)"* -- and the
+   **used** cutoff is the one the physics sees: 349.79 Ry for a 301.7 Ry ask.
+3. **A band of asked values is one calculation.** 300, 300.5 and 301.7 all
+   land on the same 90x90x90 mesh and give the same energy to every digit
+   printed.
+
+### 38.2 - Why it matters beyond curiosity
+
+| | |
+|---|---|
+| **a fine sweep of `mesh_cutoff` measures nothing** | between snap points the deck differs and the calculation does not. A convergence study stepping 300 -> 310 -> 320 may be three runs of one calculation, and would read as *"converged"* for the wrong reason |
+| **the deck records the ask; the output records the used** | which is the **asked vs effective** distinction the project already draws in `bench/result.py`, and `template.md` SS 6.4 draws for resolvers. Here it appears inside a plain science parameter, where nothing currently names it |
+| **the snap point is system-dependent** | it follows from the cell, so the same ask gives a different used cutoff for a different box. Measured on one small system here -- the QUANTISATION is general, the numbers are not |
+
+### 38.3 - What to check, and where it belongs
+
+**Owner: `engines/tuning.md` SS 2.5** (the mesh-cutoff tier ladder) -- **not
+read this pass.** What to look for: whether it says the value is a request and
+the grid quantises it, and whether its tier ladder (150 / 300 / 500) is spaced
+wide enough that each tier is genuinely a different grid. Wide tiers are
+*right* under this finding -- the ladder's spacing may already encode it
+without saying so.
+
+**Also worth stating in `engines/siesta.md`'s mesh section:** *"the deck
+carries what you asked for; the run reports what it used, and they differ."*
+A user comparing a deck against an output and finding 301.7 vs 349.79 has no
+way to know that is correct.
+
+> **Recorded as a science finding rather than a defect.** Nothing is wrong in
+> the code -- SIESTA is behaving as designed and molbuilder passes the value
+> through faithfully. What is missing is that **no document says this**, and a
+> user tuning a cutoff or reading a convergence study cannot infer it from
+> anything molbuilder writes.
