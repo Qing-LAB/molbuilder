@@ -14,7 +14,7 @@ type = "str"
 value = "siesta"
 default = "siesta"
 group = "profile"
-label = "SystemLabel"
+label = "System label (output prefix)"
 help = "FDF SystemLabel; output files get this prefix.  Must match [A-Za-z0-9_-]+ (job-layout v1; no dots)."
 
 [item.basis_size]
@@ -27,7 +27,7 @@ choices = ["SZ", "DZ", "SZP", "DZP", "TZP"]
 value = "DZP"
 default = "DZP"
 group = "stage"
-label = "PAO.BasisSize"
+label = "Basis size"
 help = "PAO basis size: SZ / DZ / SZP / DZP / TZP (rough -> tight)"
 
 [item.pao_energy_shift]
@@ -41,7 +41,7 @@ default = 0.01
 unit = "Ry"
 range = [0.001, 0.05]
 group = "stage"
-label = "PAO.EnergyShift"
+label = "Orbital confinement (energy shift)"
 help = "smaller = more diffuse / more accurate; production work uses 0.005-0.01 Ry"
 
 [item.mesh_cutoff]
@@ -55,7 +55,7 @@ default = 300.0
 unit = "Ry"
 range = [100.0, 1000.0]
 group = "stage"
-label = "MeshCutoff"
+label = "Real-space grid cutoff"
 help = """
 Real-space integration grid (Ry).  Sets the spacing of the 3D mesh SIESTA uses for Hartree + XC potentials, via the plane-wave-equivalent kinetic-energy cutoff.
 Per-tier: screening 150, loose preopt 200-250, publishable 350, tight (vib/phonons) 500 (600 for first-row elements).
@@ -97,7 +97,7 @@ choices = ["diagon", "OMM", "transiesta"]
 value = "diagon"
 default = "diagon"
 group = "profile"
-label = "SolutionMethod"
+label = "Solution method"
 help = "diagon / OMM / transiesta (transiesta requires the TranSIESTA build)"
 
 [item.mixing_weight]
@@ -110,7 +110,7 @@ value = 0.02
 default = 0.02
 range = [0.001, 0.5]
 group = "profile"
-label = "DM.MixingWeight"
+label = "SCF mixing weight"
 help = "DM mixing weight; smaller = more conservative SCF, lower if oscillating"
 
 [item.pulay_history]
@@ -123,7 +123,7 @@ value = 3
 default = 3
 range = [0, 20]
 group = "profile"
-label = "DM.NumberPulay"
+label = "Pulay history depth"
 help = "Pulay history depth; 3 is SIESTA-tutorial default for relaxation"
 
 [item.dm_tolerance]
@@ -136,7 +136,7 @@ value = 1e-05
 default = 1e-05
 range = [1e-08, 0.001]
 group = "stage"
-label = "DM.Tolerance"
+label = "Density-matrix tolerance"
 help = """
 Density-matrix element convergence threshold for the inner SCF loop.  Forces are derived from the converged density -- sloppy SCF -> noisy forces -> optimizer thrashes.
 Per-tier (dimensionless): screening 1e-3, loose preopt 1e-4, publishable 1e-4, tight (vib/IR) 1e-5.
@@ -153,7 +153,7 @@ default = 0.0001
 unit = "eV"
 range = [1e-08, 0.1]
 group = "stage"
-label = "DM.Energy.Tolerance"
+label = "SCF energy tolerance"
 help = "redundant SCF energy guard (eV)"
 
 [item.max_scf_iter]
@@ -180,7 +180,7 @@ default = 300.0
 unit = "K"
 range = [0.0, 5000.0]
 group = "profile"
-label = "ElectronicTemperature"
+label = "Electronic temperature"
 help = "electronic temperature for Fermi-Dirac smearing (K)"
 
 [item.kgrid]
@@ -233,7 +233,7 @@ choices = ["CG", "Broyden", "FIRE", "Verlet", "Nose", "none"]
 value = "CG"
 default = "CG"
 group = "stage"
-label = "MD.TypeOfRun"
+label = "Relaxation / MD algorithm"
 help = """
 MD/relax algorithm.  Per-tier guidance:
   • CG       — robust for loose warm-up stages (far from minimum, large forces).  No memory cost.  Oscillates near a minimum on stiff / coupled systems (metals, interfaces, vdW stacks).
@@ -269,7 +269,7 @@ default = 0.02
 unit = "eV/Å"
 range = [0.001, 0.5]
 group = "stage"
-label = "MD.MaxForceTol"
+label = "Force convergence threshold"
 help = """
 Force-tol stop criterion: max unconstrained atomic force below which the relaxation declares success.  Ignored by Verlet/Nose (those are MD, not relax).
 Per-tier (eV/Å): screening 0.10, loose preopt 0.05, publishable 0.04 (Gaussian-OPT default), tight (vib/IR) 0.01, very-tight (NEB barrier) 0.001.
@@ -286,7 +286,7 @@ default = 0.05
 unit = "Å"
 range = [0.001, 0.5]
 group = "stage"
-label = "MD.MaxCGDispl"
+label = "Max displacement per step"
 help = """
 Displacement cap per optimiser step (Å).  In SIESTA 5.4.2 ``MD.MaxCGDispl`` is the universal displacement-cap keyword across CG, Broyden, AND FIRE despite the CG-prefixed name.  Hard ceiling that catches line-search over-shoot.
 Per-tier (Å): screening 0.30, loose preopt 0.20, publishable 0.05, tight (vib/IR) 0.02.
@@ -315,7 +315,7 @@ default = 300.0
 unit = "K"
 range = [0.0, 5000.0]
 group = "profile"
-label = "MD.InitialTemperature"
+label = "Initial temperature"
 help = "initial-velocity-seed temperature for Verlet/Nose molecular dynamics (K).  IGNORED by CG / Broyden / FIRE geometry relaxation -- those don't have velocities to seed."
 
 [item.md_target_temperature]
@@ -327,7 +327,7 @@ type = "float"
 unit = "K"
 range = [0.0, 5000.0]
 group = "profile"
-label = "MD.TargetTemperature"
+label = "Target temperature (NVT)"
 null_label = "(use MD.InitialTemperature)"
 help = "Nose-Hoover NVT target temperature (K).  Used ONLY by Nose dynamics; CG / Broyden / FIRE / Verlet ignore this.  Defaults to md_initial_temperature when unset."
 
@@ -342,7 +342,7 @@ default = 1.0
 unit = "fs"
 range = [0.1, 5.0]
 group = "profile"
-label = "MD.LengthTimeStep"
+label = "MD timestep"
 help = "integration timestep for Verlet/Nose dynamics (fs).  1.0 fs is SIESTA's default and works for systems without H; bonded H typically needs 0.5 fs for stable energy conservation.  IGNORED by CG / Broyden / FIRE geometry relaxation."
 
 [item.restart]
@@ -473,7 +473,7 @@ anchor = "BlockSize"
 type = "pow2"
 resolver = "block_size"
 group = "budget"
-label = "BlockSize"
+label = "ScaLAPACK block size"
 null_label = "(auto)"
 help = "ScaLAPACK BlockSize for the diagonaliser's orbital distribution; affects cache efficiency at moderate rank counts.  None = auto: largest power of 2 that leaves >= 2 blocks per rank.  0 = OMIT the keyword entirely -- SIESTA's own built-in default, the third state (tuning.md 2.11, decision 35).  NOTE: BlockSize does NOT fix the ``propor: ERROR: IMAX = 0`` crash -- that was the previous (incorrect) claim and is contradicted by direct empirical sweep (BS = 1, 2, 4 all crash at the same mpi_np).  Propor is a vector-proportionality check in matel_table's MPI-deduplication step; lower mpi_np (use the wrapper's ``-np`` override) to clear that crash.  Set BlockSize explicitly only for the rare ScaLAPACK perf-tuning case (>1000 atoms on >= 16 ranks, where 16 or 32 helps)."
 
@@ -707,6 +707,7 @@ category = ["method"]
 engines = ["pyscf"]
 anchor = "df.auxbasis"
 type = "str"
+label = "Auxiliary fitting basis"
 help = "auxiliary fitting basis; None lets density_fit() auto-pick"
 
 [item.density_fit]
@@ -858,7 +859,7 @@ type = "int"
 value = 8
 default = 8
 range = [4, 20]
-label = "mf.diis_space"
+label = "DIIS subspace size"
 help = "DIIS subspace size; bump to 12-20 for oscillating SCFs"
 
 [item.damp]
@@ -870,7 +871,7 @@ type = "float"
 value = 0.0
 default = 0.0
 range = [0.0, 0.9]
-label = "mf.damp"
+label = "SCF damping factor"
 help = "Roothaan damping factor; 0.3-0.5 helps when DIIS alone isn't enough"
 
 [item.optimize]
@@ -992,6 +993,7 @@ engines = ["pyscf"]
 type = "bool"
 value = true
 default = true
+label = "Save the optimised geometry"
 help = "snapshot the relaxed geometry to <job>_optimized.xyz"
 
 [item.save_initial_xyz]
@@ -1001,6 +1003,7 @@ engines = ["pyscf"]
 type = "bool"
 value = true
 default = true
+label = "Save the input geometry"
 help = "snapshot the input geometry to <job>_initial.xyz"
 
 [item.write_trajectory]
@@ -1010,6 +1013,7 @@ engines = ["pyscf"]
 type = "bool"
 value = true
 default = true
+label = "Write the optimisation trajectory"
 help = "stream geomeTRIC's <job>_geom_optim.xyz so molwatch can watch it live"
 
 [item.compute_frequencies]

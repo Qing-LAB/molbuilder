@@ -344,6 +344,47 @@ never validated by molbuilder (§ 9.2)."""
 
 ---
 
+### 4.3 Where a template comes from — the catalogue, with the answers filled in
+
+**There is one master file and it is authored, not generated.**
+
+| | |
+|---|---|
+| **the catalogue** | `molbuilder/data/catalogue.template.toml` — every parameter both engines declare, with its category, type, bounds, prose and **default**. Shipped with the package. **Edited directly, as TOML** |
+| **a calculation's template** | the catalogue, narrowed to the engine being used, with the **values** a person chose |
+
+So making a template is: **read the catalogue, keep this engine's items, set the
+values.** Nothing derives the catalogue from anything; it *is* the definition.
+
+```
+catalogue.template.toml        authored, correct, unmodified
+        │
+        ▼   a surface reads it, shows the panels, a person answers
+<label>.template.toml          this calculation — same items, with values
+        │
+        ▼   read, narrowed to one engine
+   the engine's config object
+        │
+        ▼
+   the deck
+```
+
+> **⛔ There is no config → template writer, and there must not be one.**
+> `render_template(config)` reflected a Python class into a file, which made the
+> class the master and the file a printout of it — § 2.1's forbidden direction.
+> **Deleted 2026-08-14.** A parameter is added by editing the catalogue, which is
+> what *"the template is the master"* means in practice: the change lands in one
+> TOML file and both engines' surfaces see it without a Python edit.
+
+**The catalogue is authored correct, and that is what makes § 7's machine-fact
+rule enforceable in one place.** Nobody hand-injects an `mpi_np` value into it;
+a surface supplies values for the items that take them, and the three allocation
+items (`rank_count`, `omp_threads`, `node_memory` — § 6.4) are answered at `prep`
+on the machine that granted them. The file does not have to defend itself
+against its own author.
+
+---
+
 ## 5. Anatomy of an item
 
 | key | what it says |
@@ -406,10 +447,12 @@ flowchart LR
 > so carrying them costs nothing — and adding them later means re-emitting every
 > template written before.
 
-**Every key comes from the field's own metadata**
-([`web/form-schema.md`](?doc=web/form-schema.md) § 1a: `help`, `range`, `unit`,
-`choices`, `engine_key`, `workflow_group`). The template and the form are
-generated from one source and cannot drift apart.
+> **⚠ This paragraph described the inverted direction and is struck.** It read:
+> *"Every key comes from the field's own metadata … the template and the form
+> are generated from one source and cannot drift apart."* That made the config
+> classes the master and the template their printout — § 2.1. **Every key is
+> authored in the catalogue** (§ 4.3); a config class carries a name, a type and
+> its validators, and nothing else. *(Struck 2026-08-14.)*
 
 > **The same source feeds BENCH-MARKS, and that is a rule.** A generated deck's
 > BENCH-MARKS block ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3)

@@ -1130,7 +1130,17 @@ def config_from_template(text: str, config_cls):
     and the fingerprint is what says so.
     """
     known = template_fields(config_cls)
-    vals = read_template(text).values()
+    # § 6.3: ONE file carries every engine the calculation can run on, so the
+    # items are filtered to this engine's BEFORE they are read as its fields.
+    # Without this, a catalogue serving SIESTA and PySCF is refused for both --
+    # each sees the other's items as names its schema does not declare, which
+    # is the very thing the `engines` axis exists to prevent.  `select` refuses
+    # an engine the file does not serve, so *"does not run on that engine"*
+    # stays distinct from *"no items matched"*.
+    parsed = read_template(text)
+    eng = _engine_name(config_cls)
+    mine = select(parsed, engine=eng) if parsed.engines else parsed.items
+    vals = {it.name: it.value for it in mine if it.is_set}
     machine = sorted(k for k in vals
                      if k not in known
                      and any(f.name == k
