@@ -2100,3 +2100,40 @@ first place.
 **Owner: `engines/template.md` SS 9.1** (which draws the line) **with**
 **`execution/job-contracts.md` SS 3.4** (which owns the format). Neither
 currently names the mechanism.
+
+### 35.5 - The template's share of the seam is the FORMAT (user, 2026-08-14)
+
+> *"this template part probably would focus on the FORMAT of how the text
+> should be constructed such as begin mark, end mark, quote etc."*
+
+**That splits C6 cleanly, and each half goes where it already belongs:**
+
+| | who supplies it | why there |
+|---|---|---|
+| **CONTENT** -- which atoms are frozen, which regions exist, the annotation channels | **the structure + sidecar**, as the generator's other input | a fact about *which atoms*; `template.md` SS 9.1 already forbids it as a template item |
+| **FORMAT** -- the begin/end markers, the comment prefix, how a payload line is quoted | **the template** | it is a property of the **engine's file syntax**, not of this structure and not of this run. It is exactly the kind of thing an item declares |
+| **ASSEMBLY** | **the generator** | it holds both and writes the file |
+
+**Why FORMAT is genuinely a template concern.** It is engine-specific and
+structure-independent -- the two properties that make something an item. Today
+every block is fenced `# === molbuilder <name> BEGIN ===` with a `#` prefix,
+hard-coded in `script_emit.py`, which works only because both shipped engines
+comment with `#`. A Fortran-input engine (`!`) or anything C-like (`//`) would
+need the emitter edited -- the seam leak `generator.md` SS 7 names.
+
+**What this makes tractable.** C6 stops being *"design a mechanism for
+structural information"* and becomes two smaller questions:
+
+1. **Which format facts does an engine declare?** Comment prefix, marker
+   shape, how a multi-line payload (the molstruct JSON) is line-prefixed, how
+   a quote inside verbatim user text is handled.
+2. **How does the generator ask for content?** The registry pattern
+   `annotations_fdf` already proves (SS 35.2), extended to regions and the
+   frozen set so no deck writer carries those names.
+
+> **And it explains the `text` type's zero uses (SS 32 / C6).** `type = "text"`
+> is *"verbatim engine text, copied rather than interpreted"* -- the FORMAT
+> half of USER-CUSTOM. It is unused because the format facts have never been
+> declared anywhere: they are constants in `script_emit`. That is the same
+> *reader-built-writer-missing* shape found five times elsewhere, and SS 33
+> is why it must be filled in rather than retired.
