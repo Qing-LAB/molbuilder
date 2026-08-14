@@ -955,3 +955,54 @@ block, which is the copy that drifted.
 > mechanically. Running them before the next reading pass turns roughly a third
 > of this report into a test run.
 
+---
+
+## 19 · `materialize.write_run_launch` — § 13's inconsistency, now inside one dict literal
+
+§ 13 found `WarmFile` and `Resources` disagreeing about *absent vs null* forty
+lines apart. `run.json`'s writer does it in **one body**:
+
+```python
+body = {
+    "schema": RUN_LAUNCH_SCHEMA,
+    "mode": mode,
+    "command": list(command),
+    "job_id": job_id,                 # None -> written as  "job_id": null
+    "launched_at": ...,
+}
+# ABSENT, not null, when this run started from the structure.
+# ``checkpointing.md`` S3 words its test that way -- *"names a directory
+# that exists or is absent"* -- and the two are different to a reader that
+# tests for the key rather than for its truthiness.
+if continued_from:
+    body["continued_from"] = str(continued_from)
+```
+
+**`job_id` is written as `null` when there is none; `continued_from` vanishes** —
+and the comment arguing that absence is the meaningful encoding sits **three
+lines below** the null it does not apply to.
+
+The distinction the comment draws is not special to `continued_from`. A
+`--mode direct` launch has no scheduler id, so `job_id` is exactly as
+"unset" as `continued_from` is for a run started from the structure, and a
+reader testing `"job_id" in body` gets a different answer than one testing its
+truthiness — which is the comment's own criterion.
+
+> **This raises § 13 from a style inconsistency to a real one.** Three shipped
+> writers now: `Resources.to_dict` (all nulls), `WarmFile.to_dict` (omit),
+> `write_run_launch` (**both, in one object**). No document states a policy, so
+> each writer picked, and one picked twice.
+>
+> **Core document: `execution/job-contracts.md` § 6.1** — it owns the persisted
+> artifacts and already lists all three of these files in one table, which is
+> the natural place for one sentence settling it. **What to look for beyond
+> these three:** `bench-result.json` and `environment.json` answer the same
+> question and were not read this pass.
+>
+> **The cheap resolution, if a rule is wanted rather than a survey:** the
+> project already has one, stated twice and implemented three times — *absence
+> is a distinct state, and a key that is missing and a key that is null are
+> different claims* (`engines/template.md` § 3, `checkpointing.md` S3,
+> `template.py`'s `_item_payload`, `WarmFile.to_dict`). `Resources`' all-nulls
+> is the deliberate exception and can stay one, **named as such**.
+
