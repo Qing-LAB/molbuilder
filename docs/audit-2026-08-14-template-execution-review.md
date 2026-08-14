@@ -607,3 +607,56 @@ against a third:
 > enumerated field list against the dataclass, would close that family the way
 > the citation gate closed this one.
 
+---
+
+## 13 · Cross-boundary: *absent* vs *null* — one artifact, two answers
+
+`molbuilder/jobset/model.py` holds both classes that serialise into
+`job-set.json`, forty lines apart, and they take **opposite positions on the
+same question**: how does an unset optional field appear on disk?
+
+| class | `to_dict` | so an unset field is |
+|---|---|---|
+| `WarmFile` | omits `requires_same` when falsy, **with the reason attached** | **absent** |
+| `Resources` | `dataclasses.asdict(self)` — every field, always | **`null`** |
+
+`WarmFile`'s rationale is argued, and it argues against its neighbour:
+
+> *"ABSENT, not null, when the file is unconditional — the same reading
+> `checkpointing.md` S3 asks for elsewhere: **a key that is missing and a key
+> that is null are different claims** to anything testing for it."*
+
+**The same position is taken in two more places**, which is what makes this a
+boundary issue rather than a style quibble:
+
+| where | says |
+|---|---|
+| `engines/template.md` § 3 | *"a missing `value` means **explicitly unset*** — a real state, distinct from the default" |
+| `molbuilder/template.py` `_item_payload` | *"An absent `value` is the encoding of explicitly unset (§ 3)"* — omits the key |
+| `execution/checkpointing.md` S3 | cited by `WarmFile` as the origin of the reading |
+
+So **three contracts and two implementations** hold that *absent ≠ null and the
+difference is load-bearing* — and `Resources`, serialising into the same file,
+writes nulls for all nine fields. `job-system.md` § 3.1's example shows exactly
+that (`"domain": null, "exclusive": null, "mem": null, "gres": null`) and
+annotates it *"nulls included — see the note below"*.
+
+**This is not asserted as a defect.** `Resources` may be right to be explicit: a
+reader of `job-set.json` can see all nine asks exist and which were left to
+resolve, and the note below that example presumably argues it *(unread — the
+note is in the part of `job-system.md` § 3.1 not yet quoted here)*.
+
+**What is a defect is that neither side knows about the other.** Two
+serialisation policies meet in one file, each with its own justification, and
+no document names the disagreement or says which applies where. The decision to
+make is one sentence in `job-contracts.md` § 6.1 (which owns persisted
+artifacts): *an unset optional is written as `null` in `Resources` because the
+reader needs the full ask visible, and omitted elsewhere because absence is a
+distinct state* — or the opposite. Either is fine; **silence is what leaves the
+next writer to pick by coin-flip.**
+
+> **Core document: `execution/job-contracts.md` § 6.1.** Look beyond
+> `model.py`: the same question is answered by `template.py`'s `_item_payload`,
+> by `WarmFile.to_dict`, and by whatever writes `run.json` and
+> `bench-result.json` — none of which were compared against each other.
+
