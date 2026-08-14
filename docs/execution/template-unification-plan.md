@@ -164,8 +164,93 @@ T1 may still move.
 | **Q1** | Is `basis` `method` or `accuracy`? | T1 | `method` — it is the dominant accuracy knob but is *reported* as level of theory (*"B3LYP-D3/def2-TZVP"*) |
 | **Q2** | Is `electronic_temperature` `accuracy` or `system`? | T1 | `accuracy` for molecules (smearing aids convergence), but it changes occupations, so `system` for a genuinely finite-temperature calculation. May need both, by context |
 | **Q3** | Should `optimize` / `compute_frequencies` be a 7th category (*task*), above the rest? | T1 | keep in `outputs` — the ladder in `task.json` is the real mission statement. Reopen if T1 shows the panel reads badly |
-| **Q4** | Does `max_memory_mb` split into two items? | T1, U-C | **yes.** SIESTA's is `execution` (a ulimit); PySCF's is `accuracy`/`convergence` (it selects in-core vs out-of-core). Under this scheme they were never one item — the cleanest argument yet for the U-C split |
-| **Q5** | Do `hook`-flagged items need a declared hook *name*, or is `kind` + `read_by` enough? | T4 | defer — `BlockSize` is the only worked example, and one example is not a mechanism |
+| **Q4** | ~~Does `max_memory_mb` split into two items?~~ | ~~T1, U-C~~ | **ANSWERED 2026-08-13 (user): no split — it becomes a valueless item.** See § 5.1 |
+| **Q5** | Do items needing a computed value declare a *resolver*? | T4 | **ANSWERED 2026-08-13 (user): yes — a named resolver.** See § 5.2 |
+
+---
+
+### 5.1 Memory is asked for, not budgeted (answers Q4)
+
+**User decision, 2026-08-13.** Memory is not the limiting factor when a job
+queues — **core and GPU counts are**. A job asks for what the node has, and the
+maximum available is already known: from `environment.json` on a cluster, or
+detected on a workstation. So a *number* in the template earns nothing.
+
+`max_memory_mb` is therefore **one item, `category = "execution"`, normally
+valueless** — the § 6.4 pattern, and the third instance of it after `BlockSize`
+and the rank count:
+
+| state | means |
+|---|---|
+| no `value` | **use the maximum allowable**, resolved at `prep` from the environment |
+| `value` set | an explicit ceiling — honoured, but see the clamp below |
+
+**This retires the Q4 split.** The split was proposed because one name carried
+two things: an allocation ceiling (machine) and `mol.max_memory` (science, it
+selects in-core vs out-of-core). If *unset means the ceiling*, the two coincide
+by construction and there is nothing to separate. It also closes REVIEW-2's
+"PySCF `max_memory` clobber" — nothing clobbers anything when the default IS the
+allocation.
+
+**It also fixes a live defect.** `PySCFConfig.max_memory_mb` currently defaults
+to a **static 4000 MB** regardless of the machine. On a large node PySCF goes
+out-of-core for no reason; `mol.max_memory` is precisely what it consults to
+choose. *"The maximum available"* is a better default than any constant, because
+the right constant does not exist.
+
+**An explicit value is CLAMPED to the allocation, and the clamp is logged.**
+Asking for 64 GB on a 16 GB grant and being believed means PySCF chooses in-core
+and is OOM-killed hours in; the failure is late, expensive and unexplained. You
+cannot be given more than you were granted, so `prep` clamps and says so, and the
+ask and the effective value are both recorded — the asked-vs-effective seam again.
+
+**Lands in T4** with the other execution items, and the config default changes
+from `4000` to unset in the same unit.
+
+### 5.2 `resolver` — the item names who computes its value (answers Q5)
+
+**User decision, 2026-08-13.** Some items cannot be answered by a constant: the
+value depends on the machine, on an explicit ask, or on both. The item **names
+the resolver**, and `prep` calls it.
+
+Four known members, which is what makes this a mechanism rather than a special
+case for `BlockSize`:
+
+| item | unset → | an explicit value → |
+|---|---|---|
+| `max_memory_mb` | the node's maximum, from `environment.json` or detection | clamped to the allocation, and the clamp logged (§ 5.1) |
+| `block_size` | proposed from the orbital and rank counts | honoured verbatim |
+| rank count | the allocation | it is an ask; `prep` resolves against what was granted |
+| `threads` | `OMP_NUM_THREADS` → `SLURM_CPUS_PER_TASK` → `PBS_NCPUS` → `NSLOTS` → physical cores | honoured; it outranks the chain |
+
+**A NAME from a closed registry — never code in the file.** The template is data:
+hand-editable, and it travels between machines. Executable content in it would
+end both properties, and would make a description something you must trust rather
+than something you can read. So `resolver = "node_memory"` names a resolver
+molbuilder ships, an unknown name is an error a reader **reports** (§ 3), and the
+registry is a closed vocabulary like `kind` and `category`.
+
+**The contract:**
+
+```
+resolve(asked: value | None, env: Environment) -> (effective, reason)
+```
+
+`reason` is not decoration. Every one of these produces a number the user did not
+type, and this session's rule holds: a value the run obeys but nobody can see is
+the same problem as an undocumented one. The reason lands in the log and the
+decision ledger, so *"64 GB, clamped from your 96 GB ask to the allocation"* is
+readable after the fact.
+
+**Why this belongs on the item rather than in `prep`.** Today `prep` must *know*
+that `block_size` needs proposing and `threads` needs a chain — a layer carrying
+a list of special field names, which is exactly what G3 exists to remove. With a
+declared resolver, `prep` calls what the item names and a new engine adds its own
+without anyone editing `prep`. The same argument `read_by` won in § 6.1.
+
+**It does not weaken § 2.** The resolver runs at `prep`, on the machine, with
+floor 1 knowledge. The template still declares only the question; the answer is
+computed where the answer is knowable.
 
 ---
 
