@@ -105,6 +105,45 @@ The template is a **floor 2 — description** object
   > *"could a machine decide this?"* but *"may a person?"*** — and for
   > `BlockSize` they may.
 
+### 2.1 The direction of flow — the template is the MASTER
+
+**template → per-engine config → that engine's input file.** One direction, and
+everything else follows from it.
+
+`SiestaConfig` and `PySCFConfig` are **translators, not sources.** Their job is
+to take what the template says and hand the engine's writer an object shaped the
+way that engine needs. A parameter is **defined** in the template; a config
+object only **carries** it on the way out.
+
+| | |
+|---|---|
+| where a parameter is defined | **the template** |
+| what a config class is for | translating the template into one engine's shape |
+| what a deck writer sees | a config object, never the template |
+
+**What this forbids: deriving the template from the config classes.** That makes
+the classes the master and the template a printout of them — so *enriching the
+template* would mean editing Python, two engines' catalogues could never live in
+one file, and the thing a surface and the generator are supposed to **share**
+would be a view rather than the source.
+
+> ⚠ **This reverses what § 5 and § 6.1's registry row have said.** § 5: *"every
+> key comes from the field's own metadata … the template and the form are
+> generated from one source"*. The registry row: written by `template.py`. Both
+> describe **how the file is produced today**, and today's producer runs the
+> inverted direction — `render_template(config)` prints one engine's dataclass
+> into a file. **Recorded 2026-08-14 (user): that is the implementation's
+> limitation, not the design.** The migration is § 2.1a.
+
+### 2.1a What this migration still has to settle
+
+Stated here rather than discovered later. Neither is answered by the rule above.
+
+| | question |
+|---|---|
+| **a** | **What does a config class still carry?** If `range`, `unit`, `category`, `choices` and `help` belong to the template, a dataclass needs only enough to hold a value on its way to the engine. That decision sizes the whole migration |
+| **b** | **The form reads the same metadata.** `web/form-schema.md` § 1a builds controls from `range` / `unit` / `choices` / `help` on the fields. Moving the catalogue moves the form's source with it — **UI, deferred by the plan** (`template-unification-plan.md` § 4). Known, not forgotten |
+
 **And the template is not a deck.** A deck is a **floor 3 (plan)** product,
 written by the engine's deck writer at `prep` step 3, on the target machine.
 
@@ -534,6 +573,23 @@ a *method*, an *accuracy* — so a surface builds the same six panels in the sam
 order and filters the contents by engine. A SIESTA user sees `mesh_cutoff` under
 *Accuracy*; a PySCF user sees `grid_level`. Same panel, same position, same
 mental model.
+
+#### What the WRITER puts in the file
+
+`engines` at the top lists every engine the file serves. On an item it is
+**omitted whenever the item applies to all of them** — which § 6.3's rule
+already says, read from the writer's side rather than the reader's:
+
+| the file serves | an item contributed by | carries |
+|---|---|---|
+| one engine | that engine | **nothing** — it applies to all one of them |
+| several | **all** of them (a merge) | **nothing** — same reason |
+| several | some of them | `engines = [...]`, naming those |
+
+So a single-engine template is written exactly as it always was, and the key
+appears only where it narrows something. **An `engines` list naming every
+engine the file serves is redundant, not wrong** — a reader treats it the same
+as absence, and a writer should not emit it.
 
 ### Items merge when they are the same question with the same answer
 
