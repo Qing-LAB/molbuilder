@@ -3467,3 +3467,86 @@ settled into** (SS 43) and needs no new type at all.
 > costs one member in a closed vocabulary that just lost `strmap` and is
 > keeping `pow2` for one field. `intlist`'s zero uses (SS 32) should be
 > weighed against it in the same decision.
+
+---
+
+## 54 - The displacement: it is a 3-vector, and 0.5 must NOT be the default
+
+*(User: "why not set displacement with 0.5 default? and also your siesta
+example has one float value, does that mean [0.5,0.5,0.5]?")*
+
+### 54.1 - Yes -- one float per ROW, three rows, so it is a 3-vector
+
+`kgridinit.F`'s own annotation, per line:
+
+```
+4  0  0   0.50     # (kscell(i,1),i=1,3), displ(1)
+0  4  0   0.50     # (kscell(i,2),i=1,3), displ(2)
+0  0  4   0.50     # (kscell(i,3),i=1,3), displ(3)
+```
+
+So that example is **`displ = [0.5, 0.5, 0.5]`** -- shifted on all three axes.
+Each axis is independent: `[0.5, 0.5, 0.0]` is legal and meaningful.
+
+### 54.2 - Why 0.5 must not be the default
+
+| case | correct shift | why |
+|---|---|---|
+| **`1x1x1`** -- molbuilder's **shipped default**, a molecule in a box | **0.0** | a 0.5 shift moves the single k-point to the **zone boundary** instead of Gamma. For an isolated system that is simply the wrong point |
+| **odd meshes** | 0.0 | the unshifted grid already contains Gamma and is symmetric about it |
+| **even meshes**, metals especially | **0.5** | the true Monkhorst-Pack set: no Gamma, and better sampling per point |
+| **transport** | **0.0, forced** | `process_k_cell_displ` zeroes the transport direction's displacement -- SIESTA overrides whatever was asked |
+
+> **So the right shift depends on the mesh parity, and defaulting to 0.5 would
+> break the most common case molbuilder ships.** Default `[0, 0, 0]`.
+
+**Not auto-derived either** *(per-axis 0.5 where n is even, 0 where odd)*,
+which is what some codes do. That is molbuilder choosing physics by omission,
+and the project's rule is the opposite -- *explicit is better than implicit*.
+**Offer it, default it safe, and say when to change it.**
+
+### 54.3 - The UI hint, drafted -- per SS 40.4's one formatted `help` key
+
+```
+help = """
+Shifts the k-point mesh off Gamma, one value per axis, in units of the mesh
+spacing.  [0,0,0] is Gamma-centred.
+
+  0.0    Gamma-centred.  Required for a 1x1x1 mesh (an isolated molecule),
+         and the safe choice for ODD meshes, which already contain Gamma.
+  0.5    The classic Monkhorst-Pack shift.  Use on EVEN meshes -- it
+         samples better than a Gamma-centred grid of the same size, and
+         matters most for metals.
+
+Axes are independent: [0.5, 0.5, 0.0] shifts two and leaves the third on
+Gamma -- which is what a slab wants when the third axis is vacuum.
+
+TRANSPORT: SIESTA forces this to 0 along the transport direction, whatever
+you set, because that direction is sampled at one k-point."""
+```
+
+### 54.4 - And the same for the mesh itself, which had no such hint
+
+SS 39.3 drafted `mesh_cutoff`'s. The k-grid needs one too, and the two share
+the shape SS 38 and SS 53.4 both found -- **you ask, and SIESTA reports what it
+actually used**:
+
+```
+help = """
+Monkhorst-Pack sampling of the Brillouin zone, one count per axis.
+
+  1x1x1        an isolated molecule -- only Gamma matters
+  4x4x4 - 8x8x8  a periodic 3D crystal
+  n x n x 1    a slab; no sampling along the vacuum axis
+
+Cost scales linearly with the number of k-points.  Converge by raising the
+density ~1.5x per axis: the total energy should move less than 1 meV/atom.
+
+SIESTA reports an EQUIVALENT CUTOFF for whatever mesh you give -- a length
+that says how dense the sampling really is.  That number, not the counts,
+is what makes two DIFFERENT cells comparable: the same 4x4x4 on a small and
+a large cell samples them differently."""
+```
+
+> **Both hints follow SS 40.5's rule** -- structure, not markup, because the
+> same string is read in a terminal, in the template file, and by a UI.
