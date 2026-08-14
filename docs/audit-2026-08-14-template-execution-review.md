@@ -24,9 +24,8 @@ matter are the ones nobody suspected. Suspicions raised by reading were then
 | `docs/execution/generator.md` | 594 |
 | `molbuilder/resolve.py` | 559 |
 | `docs/execution/job-system.md` | 1322 |
-| `docs/execution/job-contracts.md` §§ 3.1–3.2, 6.2, 6.3 | *(partial — those sections in full)* |
-
-| `docs/execution/project-layout.md` § 7 (the invariants) | 110 |
+| `docs/execution/job-contracts.md` §§ 3.1–3.2, 6.2, 6.3 | *(those sections in full)* |
+| `docs/execution/project-layout.md` § 7 — the invariants | 110 |
 | `molbuilder/jobset/model.py` — the serialisation surface | 140 |
 | `molbuilder/task.py` — the model | — |
 
