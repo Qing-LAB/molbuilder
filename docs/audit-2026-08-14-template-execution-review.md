@@ -2749,7 +2749,12 @@ plan measured.
 
 ---
 
-## 44 - The reserved blocks ARE the user's data -- three places disagree about that
+## 44 - ~~The reserved blocks ARE the user's data -- three places disagree~~ **RETRACTED (SS 47)**
+
+> **⛔ THIS SECTION IS WRONG AND IS RETRACTED -- see SS 47.** The banner is
+> correct as written; I read *"part of the calculation"* loosely and
+> manufactured an inconsistency. Left in place rather than deleted, because a
+> retracted finding that vanishes reads later as one nobody checked.
 
 **User, 2026-08-14:** *"the reserved blocks is the user customized data, so
 you should make the document consistent."*
@@ -2967,3 +2972,60 @@ specialisation is right; its address is not, in the same way
 > **And it is findable before PySCF's bench is written**, which was the point
 > of asking: a second engine arriving at a shared caller that imports the
 > first engine's grid is how `siesta/` came to be reachable from `resolve/`.
+
+---
+
+## 47 - SS 44 RETRACTED: the banner is true, and the distinction is the useful part
+
+**User, 2026-08-14:** *"the banner is true. it is not part of the calculation
+related to the script. i see nothing wrong. the comment and customized block
+are for information carry on only."*
+
+**Correct, and SS 44 is withdrawn.** I conflated two different things:
+
+| | |
+|---|---|
+| *part of **this** calculation* | what the engine computes from, when it runs **this script**. That is the **ENGINE BODY** |
+| *used by a **later** calculation* | what the file carries forward. That is everything below the banner |
+
+**The banner claims the first, and it is right.** The frozen atoms reach the
+engine through `%block Geometry.Constraints` **in the engine body** -- that is
+the part that changes what SIESTA computes. ATOM-METADATA is the *record* of
+the labels, for carrying forward. Hand-editing it changes nothing the engine
+does; it only makes the file unreadable to the tool that wrote it, which is
+what the banner's docstring says in as many words: *"those are data, not
+settings."*
+
+### 47.1 - The distinction, stated once so it is not re-muddled
+
+```
+ENGINE BODY        the calculation.  The engine reads this.
+                   Frozen atoms arrive HERE, as Geometry.Constraints.
+
+--- banner ---
+
+PROVENANCE         a generation snapshot
+BENCH-MARKS        derived bounds a tool may override
+ATOM-METADATA      the structural labels, CARRIED FORWARD
+```
+
+**And SS 33 is unaffected.** *The blocks are a persistence channel* and *the
+blocks are not part of this calculation* are **both true** -- carrying
+information to a later run is precisely not being an input to this one. The
+banner separates settings from records; SS 33 says why the records matter.
+There was never a conflict.
+
+### 47.2 - What this retracts
+
+| SS 44 proposed | status |
+|---|---|
+| edit 1 -- change the emitted banner text | **withdrawn.** It is correct, and changing it would have altered every deck for no reason |
+| edit 2 -- `job-contracts.md` SS 3.1's mermaid | **withdrawn** |
+| edit 3 -- one line in `template.md` SS 9 | **withdrawn** -- SS 34's edit already says what is true |
+
+> **The error is the one this report keeps charging elsewhere, made by me for
+> the fourth time today: reading a precise statement loosely and calling the
+> result an inconsistency.** SS 24 recorded three; this is the fourth, and the
+> only one that would have changed shipped output. It is also the reason SS 26's
+> contract-first rule earns its place -- had I *fixed* SS 44 instead of
+> recording it, every deck would now differ.
