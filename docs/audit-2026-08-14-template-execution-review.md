@@ -3241,3 +3241,68 @@ config field today.
 > retirement would cost nothing today. Recorded as the honest state rather
 > than a recommendation: the monitor is a real layer, and a kind reserved for
 > a layer that exists is different from one reserved for nothing.
+
+---
+
+## 51 - K-GRID: what SIESTA offers vs what molbuilder exposes *(user order)*
+
+**User, 2026-08-14:** *"for k-grid, i suggest we fully understand what siesta
+needs and properly present it and also if needed redesign UI to properly
+reflect this full details."*
+
+### 51.1 - What SIESTA offers -- read from the shipped binary, not from memory
+
+| keyword | what it specifies |
+|---|---|
+| `kgrid_Monkhorst_Pack` / `kgrid.MonkhorstPack` | the **3x3 integer matrix + a displacement per row** -- the general Monkhorst-Pack form |
+| `kgrid_cutoff` / `kgrid.Cutoff` | a **real-space length**; SIESTA derives the mesh from it and the cell |
+| `kgrid.File` | read the grid from a file |
+| `__ts_kpoint_scf_m_MOD_process_k_cell_displ` | TranSiesta **forcing** the transport direction to one k-point -- it zeroes a row and column of the k_cell matrix and sets that displacement to 0 |
+
+*(That last symbol is the function whose miscompilation under gcc 14.4 broke
+the clean-machine build -- so the matrix and the displacement are not
+theoretical: they are load-bearing machinery that transport depends on.)*
+
+### 51.2 - What molbuilder exposes: the diagonal, Gamma-centred, only
+
+```
+%block kgrid_Monkhorst_Pack
+1 0 0 0.0        <- kgrid[0], and the displacement is HARD-CODED 0.0
+0 1 0 0.0
+0 0 1 0.0
+%endblock kgrid_Monkhorst_Pack
+```
+
+`kgrid` is `Tuple[int, int, int]` -- three diagonal entries. **Three things
+are not offered at all:**
+
+| missing | why it matters |
+|---|---|
+| **the displacement (shift)** | Gamma-centred vs shifted is a real scientific choice: for even meshes a 0.5 shift samples better, while Gamma-centred is required for some symmetries **and for transport**. molbuilder always writes `0.0` and nothing says so |
+| **the non-diagonal matrix** | sampling commensurate with a supercell. A diagonal mesh on a supercell is not wrong, but it is not the mesh a user may want |
+| **`kgrid.Cutoff`** | arguably the **better default interface**: it is cell-size aware, so one number gives consistent sampling density across systems of different sizes -- which is what a user comparing structures actually wants |
+
+### 51.3 - Why this is more than a missing knob
+
+`template.md` SS 7 already names the rule: *"a keyword molbuilder does not
+model is **work not done yet**, and the answer is to model it."* And SS 49.2
+found that `int3` **is the type that encodes the omission** -- it models the
+diagonal molbuilder stores, not the parameter SIESTA takes.
+
+> **So the k-grid is the worked example of the whole `strmap` lesson:** a type
+> chosen for what molbuilder happened to store, which then makes the missing
+> capability invisible. Nobody reading `type = "int3"` would guess a
+> displacement column exists.
+
+### 51.4 - The work, in order, and none of it is code yet
+
+| # | step | owner |
+|---|---|---|
+| 1 | **Establish what SIESTA does with each form** -- especially the displacement's effect and how `kgrid.Cutoff` maps to a mesh. Read `Src/kgrid.F` / `find_kgrid.F` (both named in the binary) | science, then `engines/siesta.md` |
+| 2 | **Decide what molbuilder offers**: full matrix + displacement, or diagonal + displacement, or cutoff-based, or a choice of forms | contract -- `engines/siesta.md` SS 6 (Lattice & k-grid) |
+| 3 | **Then the type follows** -- SS 49.4's `matrix` earns its place only if (2) offers the matrix; a diagonal + displacement wants a different shape again | `engines/template.md` SS 5 |
+| 4 | **Then the UI** -- the user asked for it to reflect the full detail, and it can only do that once (2) is decided | deferred, per SS 28 |
+
+> **Step 1 is a READ, and it is the one nobody has done** -- this section is
+> the first time the four forms have been listed together. Everything after it
+> is a decision that needs that reading first.
