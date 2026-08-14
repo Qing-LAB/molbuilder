@@ -693,3 +693,62 @@ def test_build_step_exports_search_paths_to_the_compiler(
     assert got_l == expect_l.format(p=env_prefix), (
         f"LIBRARY_PATH seen by the build was {got_l!r}"
     )
+
+
+# --------------------------------------------------------------------- #
+#  The gcc pin belongs to a SIESTA TAG, not to molbuilder               #
+#                                                                       #
+#  User, 2026-08-14: "note that with new siesta version this could       #
+#  change so this is version specific".  A comment saying so is what     #
+#  the code carried; these are the gates that make it true, because a    #
+#  version stamp with no gate is worse than none.                       #
+# --------------------------------------------------------------------- #
+
+def test_the_pinned_siesta_tag_has_a_measured_gcc_row():
+    """Bumping ``_SIESTA_REF`` without revisiting the pin fails HERE.
+
+    The pin exists because SIESTA 5.4.2's ``Src/kpoint_t.F90`` miscompiles
+    under gcc 14.4.  A later SIESTA may restructure that optional dummy
+    procedure or fix it outright, at which point the pin is holding the
+    toolchain back for a defect that no longer exists.  Nothing would say
+    so on its own -- hence this test.
+
+    If it fails: build the new tag, then check ``libsiesta.a`` for an
+    undefined ``process_k_cell_``.  If it links, the tag needs no pin and
+    the row records that; if it does not, the row records the gcc that
+    works.  Either way the answer is MEASURED before the row is written.
+    """
+    from molbuilder.envs import recipes as R
+    assert R._SIESTA_REF in R._GCC_PIN_BY_SIESTA_REF, (
+        f"SIESTA is pinned to {R._SIESTA_REF!r} but no gcc row was measured "
+        f"for it (rows: {sorted(R._GCC_PIN_BY_SIESTA_REF)}).  The gcc pin is "
+        f"specific to the SIESTA source we build -- re-test before assuming "
+        f"the old one carries."
+    )
+
+
+def test_the_default_gcc_comes_from_that_row_and_is_a_minor_pin():
+    """``14`` is not a pin -- conda reads it as ``14.*``, so two machines
+    installing weeks apart resolve to different compilers and only one of
+    them builds.  That is the whole reason the pin is a minor version."""
+    import os as _os
+    from molbuilder.envs import recipes as R
+    if _os.environ.get("MOLBUILDER_GCC"):
+        pytest.skip("MOLBUILDER_GCC overrides the table by design")
+    row = R._GCC_PIN_BY_SIESTA_REF.get(R._SIESTA_REF)
+    assert row is not None, (
+        f"no measured gcc row for SIESTA {R._SIESTA_REF!r} -- see the "
+        f"test above, which names the re-test")
+    assert R._GCC_VERSION == row
+    assert R._GCC_VERSION.count(".") >= 1, (
+        f"{R._GCC_VERSION!r} is a major-only spec, which conda reads as a "
+        f"wildcard -- see docs/ops/installation.md 6.1")
+
+
+def test_an_unmeasured_tag_falls_back_conservatively_not_to_a_wildcard():
+    """A branch ref or a future release has no row.  The fallback is the
+    newest MEASURED pin, still minor-pinned: an unmeasured tag is a reason
+    to be conservative, not a reason to let the solver pick."""
+    from molbuilder.envs import recipes as R
+    assert R._GCC_WHEN_UNMEASURED in R._GCC_PIN_BY_SIESTA_REF.values()
+    assert R._GCC_PIN_BY_SIESTA_REF.get("rel-5.4") is None    # no row today

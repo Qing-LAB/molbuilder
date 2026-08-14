@@ -238,7 +238,35 @@ def _spec(name: str, version_var: str = "") -> str:
 # Override per-install with ``--gcc <X.Y>`` or ``MOLBUILDER_GCC``.
 # CUDA pairing still applies and is checked in builds.py: CUDA
 # 12.0-12.7 wants gcc <= 13, CUDA 11.x wants gcc <= 11.
-_GCC_VERSION    = _env_default("MOLBUILDER_GCC", "14.3")
+
+#: **The pin is keyed by SIESTA source tag, because that is what it is a pin
+#: FOR** (user, 2026-08-14).  A bare ``_GCC_VERSION = "14.3"`` reads as
+#: *"molbuilder needs gcc 14.3"*, which is not the claim; the claim is that
+#: THIS TAG's ``Src/kpoint_t.F90`` miscompiles under 14.4.  Writing it as a
+#: table keyed by the tag says so in the code rather than only in the comment
+#: above, and gives the next person somewhere to add a row.
+#:
+#: A row here means: measured on that tag, and the build completes.
+_GCC_PIN_BY_SIESTA_REF = {
+    # 14.4 miscompiles the optional dummy procedure (see above); 14.3.0 does
+    # not.  Verified end-to-end on a clean machine 2026-08-14.
+    "5.4.2": "14.3",
+}
+
+#: What to use for a tag nobody has measured -- an override, a branch ref like
+#: ``rel-5.4``, or a future release.  It is the newest MEASURED pin rather than
+#: "whatever conda resolves", because an unmeasured tag is a reason to be
+#: conservative and not a reason to gamble; and it stays a MINOR pin, since
+#: ``14`` is not a pin at all (conda reads it as ``14.*``).
+#:
+#: ``tests/test_envs_siesta_gpu_recipe.py`` asserts the default tag has a row,
+#: so bumping ``_SIESTA_REF`` without revisiting this fails loudly instead of
+#: silently carrying a pin measured against a SIESTA nobody is building.
+_GCC_WHEN_UNMEASURED = "14.3"
+
+_GCC_VERSION    = _env_default(
+    "MOLBUILDER_GCC",
+    _GCC_PIN_BY_SIESTA_REF.get(_SIESTA_REF, _GCC_WHEN_UNMEASURED))
 
 
 # ---- CUDA version resolution: env override > host probe > project default ----
