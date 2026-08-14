@@ -2554,3 +2554,63 @@ eleven values already do, and it is the only option under which SS 6.1's
 
 *(No code. SS 26 holds -- and note this is the honest remainder of T8: the
 declaration landed, the hand-off did not.)*
+
+### 41.4 - Why GPU is different, and it is not arbitrary (user, 2026-08-14)
+
+> *"it's because it is up to the user to decide if gpu should or should not be
+> used and it also need to be benchmark tested to see if gpu is used what's the
+> best np/blocksize etc for using with it"*
+
+**That corrects SS 41.1.** I asked why one value takes a different road than the
+other eleven, as though the roads were interchangeable. They are not -- they
+carry **two different kinds of thing**, and `prep` holds both:
+
+| | what it is | where it lives on the element | who decides it |
+|---|---|---|---|
+| the eleven | the **allocation** -- what was asked of the scheduler and granted | `ResolvedConfig.resources` | the machine + your ask, resolved at `prep` |
+| **`enable_gpu`** | a **template item** -- a choice about how the calculation runs | `ResolvedConfig.values` | **the user**, in the description, before any machine is known |
+
+**So the asymmetry is not *one value versus eleven*. It is: the wrapper is
+handed the ALLOCATION and is handed nothing from the CONFIG.** Every one of the
+eleven comes from `Resources`; `enable_gpu` lives in `values`, and that road
+does not exist.
+
+**And `read_by` is precisely the declaration of that missing road** --
+*"which items of the CONFIG does the wrapper derive from"* (SS 6.1). It has no
+mechanism behind it because the mechanism it names is the one absent road.
+
+### 41.5 - The benchmark half, which makes it upstream rather than parallel
+
+GPU is not merely *another* execution knob: **it is a choice the benchmark is
+run under.** The user picks it, and the sweep then answers *given that*, what
+`mpi_np` and `BlockSize` are best -- which is why `bench`'s grid is
+`(GPUs, ranks-per-GPU, cores-per-rank)` and why `_auto_block_size` takes
+`gpu_mode` as an input.
+
+```
+user chooses      enable_gpu          (template item, floor 2)
+        |
+        v
+benchmark sweeps  np x blocksize      GIVEN that choice
+        |
+        v
+run asks for      the allocation      mpi_np, gres, cpus_per_task ...
+```
+
+So `enable_gpu` is **upstream of the allocation**, not a member of it -- which
+is why it is correctly NOT `allocation`-tagged (SS 31.3 kept it that way) and
+why it belongs in the description that travels.
+
+### 41.6 - What C4 therefore decides
+
+Not *"pass it or parse it"* but: **does the config -> wrapper road get built?**
+
+| | |
+|---|---|
+| **build it** | `prep` passes the items whose `read_by` names the wrapper, from `element.values`, beside the allocation it already passes. `read_by` becomes a mechanism. The deck scan stays for standalone use |
+| **leave it** | the wrapper keeps re-deriving a user choice by parsing the artifact that choice produced -- and `read_by` stays a declaration nothing reads |
+
+**Recommendation unchanged, reason improved:** build the road. Not for
+consistency with the eleven -- they are a different kind -- but because a
+**user's decision** should reach the layer that acts on it by being *handed
+over*, not by being *recovered from a rendered file*.
