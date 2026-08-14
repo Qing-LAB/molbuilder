@@ -3162,3 +3162,82 @@ general k-grid form is actually offered**; if molbuilder stays diagonal-only,
 > `int3` must go and `matrix` earns its place. If no, `int3` is correct and
 > the contract should **say** that only the diagonal form is offered -- which
 > today it does not.
+
+---
+
+## 50 - `pow2` is NOT enforced on the path that needs it, and `monitor` has no record
+
+### 50.1 - Measured: a user's non-power-of-two block size passes through
+
+*(User: "for blocksize -- isn't it a right thing to enforce the format after
+however it is produced?" and "if the code takes care of it, i am ok. but keep
+it next to blocksize could remind the code to make sure the value has a
+special requirement.")*
+
+**The code does not take care of it.**
+
+```
+parallel_block_size = 64   ->  BlockSize 64
+parallel_block_size = 96   ->  BlockSize 96      NOT a power of two
+parallel_block_size = 100  ->  BlockSize 100     NOT a power of two
+```
+
+`_auto_block_size` caps **its own proposal** to a power of two -- PROVENANCE
+prints *"capped pow2"* -- but a **user-supplied** value is emitted verbatim,
+and a benchmark-pinned one takes the same path. **The constraint lives in the
+auto branch and nowhere else**, which is the branch least likely to break it.
+
+### 50.2 - So the user's reasoning holds, and it is the stronger form
+
+> *"enforce the format after however it is produced"*
+
+That is the right shape: the value has three producers -- the auto rule, a
+person, and a benchmark pin -- and the constraint belongs **after** all three,
+not inside one. `resolve.py`'s precedence already funnels them to a single
+point (template -> stage -> sweep -> **pin**), so there is one place where the
+effective value exists and can be checked.
+
+**And declaring `pow2` next to the field earns its place exactly as the user
+says** -- *"keep it next to blocksize could remind the code to make sure the
+value has a special requirement"*. Today nothing anywhere states the
+requirement except a comment inside the auto branch and a help line.
+
+| | |
+|---|---|
+| **declare `pow2`** | the requirement becomes **data on the item**, so a surface can refuse 96 before the deck exists, and `_check_raw_value` already knows how to check it -- `_TYPE_CHECKS["pow2"]` exists and is correct |
+| **enforce after resolution** | the effective value is checked once, wherever it came from |
+
+> **The two are the same fix.** `_TYPE_CHECKS["pow2"]` is already written and
+> already unreachable -- it validates a type nothing declares. Declaring the
+> type turns an existing, tested checker on. **Nothing new is built.**
+
+### 50.3 - `monitor`: no field, and no design record found
+
+*(User: "what's monitor designed for? any record?")*
+
+Measured: **no field in either config declares `item_kind = "monitor"`.**
+
+What the contract says about it, in full -- this is all of it:
+
+| where | says |
+|---|---|
+| `template.md` SS 6's kind table | *`monitor` -- the item "shapes what the monitor writes"; reaches the deck: **no**; who acts on it: the monitor* |
+| SS 8's reader table | *the monitor - what it should write - filters `kind == "monitor"`* |
+| SS 8.0's call table | `select(t, kind="monitor")` |
+
+**That is the entire record.** Three lines, all restating the same sentence,
+and none saying **what a monitor item would BE**.
+
+The monitor itself is real and does real work -- `monitor.py` samples node CPU
+percent, memory in use, and per-GPU SM/memory utilisation through the run
+(`generator.md` SS 4.4). So plausible monitor items exist: **a sampling
+interval, which metrics to record, whether to sample GPUs at all.** None is a
+config field today.
+
+> **So `monitor` is the fourth reserved-for-work-not-done member**, beside
+> `text` (SS 33), `pow2` (SS 48) and arguably `intlist`. The difference: `text`
+> and `pow2` have a **named field waiting** (`user_custom`, `block_size`), and
+> `monitor` has **no candidate at all** -- which makes it the one member whose
+> retirement would cost nothing today. Recorded as the honest state rather
+> than a recommendation: the monitor is a real layer, and a kind reserved for
+> a layer that exists is different from one reserved for nothing.
