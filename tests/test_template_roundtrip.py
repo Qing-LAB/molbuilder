@@ -363,3 +363,58 @@ def test_a_hand_added_machine_fact_item_is_refused_with_the_story():
              'help = "hand-added"\n')
     with pytest.raises(ValueError, match=r"machine fact"):
         config_from_template(text, SiestaConfig)
+
+
+# ------------------------------------------------------------------ #
+#  § 6.2 -- the category guards                                       #
+#                                                                     #
+#  Both of these were added after a mutation sweep found the refusals  #
+#  they defend were UNTESTED: opening the closed vocabulary, and       #
+#  dropping `category` from the required keys, each left the suite     #
+#  green.  A refusal nothing exercises is a refusal that will be       #
+#  deleted by the next person who finds it inconvenient.               #
+# ------------------------------------------------------------------ #
+
+def test_an_unknown_category_is_refused_not_accepted():
+    """The vocabulary is closed (§ 6.2).
+
+    An accepted-but-unknown category is worse than a rejected one: a
+    surface would silently drop the item -- it belongs to no panel -- so
+    a parameter vanishes from the form while remaining in the file.
+    """
+    import dataclasses
+    from dataclasses import field as dc_field
+    from molbuilder.template import declarations_for
+    bad = dataclasses.make_dataclass("Bad", [
+        ("x", int, dc_field(default=1, metadata={
+            "category": ("thermodynamics",),      # not one of the six
+            "help": "x", "workflow_group": "stage"}))])
+    with pytest.raises(ValueError, match=r"unknown category 'thermodynamics'"):
+        declarations_for(bad)
+
+
+def test_a_field_with_no_category_is_refused_by_name():
+    """§ 3: `category` is required, and the refusal NAMES the field.
+
+    'missing required key' with no field name sends a reader to search
+    the whole schema -- the same reason § 3 requires item-named refusals.
+    """
+    import dataclasses
+    from dataclasses import field as dc_field
+    from molbuilder.template import declarations_for
+    nocat = dataclasses.make_dataclass("NoCat", [
+        ("mesh_cutoff", int, dc_field(default=1, metadata={
+            "help": "x", "workflow_group": "stage"}))])
+    with pytest.raises(ValueError, match=r"mesh_cutoff.*no `category`"):
+        declarations_for(nocat)
+
+
+def test_a_template_file_missing_category_is_refused_on_READ():
+    """The write side validating is not enough: a template is a file a
+    person is invited to edit (§ 4.1), so a hand-deleted `category` must
+    be caught when the file is read, not only when it is generated."""
+    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\nfingerprint = ""\n\n'
+            '[item.x]\nkind = "engine"\nanchor = "X"\n'
+            'type = "int"\nhelp = "x"\n')
+    with pytest.raises(ValueError, match=r"missing required key 'category'"):
+        T.read_template(text)
