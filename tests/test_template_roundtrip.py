@@ -489,6 +489,27 @@ def test_select_filters_compose():
                         for i in both)
 
 
+def test_read_by_filters_on_SEVERAL_layers_like_its_siblings():
+    """Every filter on `select` is any-of, and `read_by` was the exception.
+
+    `category` and `kind` have always accepted a scalar or a sequence, because
+    a reader legitimately asks for more than one at a time -- the deck writer
+    wants `engine` and `deck` in one question.  `read_by` accepted a scalar
+    only, and the failure was SILENT: asking for two layers compared the whole
+    tuple against the item's members, matched nothing, and returned an empty
+    list that reads exactly like *no item is read by either* (audit § 1.3).
+    """
+    t = _siesta_template()
+    one = [i.name for i in T.select(t, read_by="wrapper")]
+    assert one, "no item declares read_by=wrapper -- the fixture is wrong"
+    many = [i.name for i in T.select(t, read_by=("wrapper", "monitor"))]
+    assert many == one, (
+        "asking for two layers must return at least what asking for one "
+        "returns; an empty list here is the scalar-only bug")
+    # And a layer nothing declares is an empty answer, which is the honest one.
+    assert T.select(t, read_by="produce") == []
+
+
 def test_an_engine_this_template_does_not_serve_is_REFUSED():
     """*"This calculation does not run on that engine"* and *"no items
     matched"* are different answers, and an empty list cannot tell them

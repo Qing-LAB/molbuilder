@@ -522,3 +522,59 @@ def test_the_read_by_guard_fails_when_a_declaration_goes_missing(tmp_path):
 #  that code is simply unguarded here, which is the honest state.  A test
 #  that pins a format the contract rejects makes the replacement harder and
 #  states policy that is not policy.
+
+
+def test_both_spellings_of_optional_are_understood():
+    """``Optional[int]`` and ``int | None`` are the same annotation.
+
+    They report DIFFERENT origins -- ``typing.Union`` and ``types.UnionType`` --
+    so a check for one silently misses the other.  Nothing in the configs uses
+    the newer spelling today, which is why this is a trap rather than a live
+    bug: the first field written that way would be declared NOT optional and
+    then fail to get a type at all, with the error pointing at the annotation
+    instead of at the check that could not read it (audit § 1.1).
+    """
+    import typing as _t
+    from molbuilder.template import _unwrap_optional
+    assert _unwrap_optional(_t.Optional[int]) == (int, True)
+    assert _unwrap_optional(int | None) == (int, True)
+    assert _unwrap_optional(_t.Optional[str]) == (str, True)
+    assert _unwrap_optional(str | None) == (str, True)
+    # A union that is not an Optional stays un-unwrapped, both ways round.
+    assert _unwrap_optional(int | str) == (int | str, False)
+    assert _unwrap_optional(int) == (int, False)
+
+
+#: Fixtures for § 1.1, at MODULE scope on purpose: this file uses
+#: ``from __future__ import annotations``, so annotations are strings and
+#: ``get_type_hints`` resolves them against the module globals.  A dataclass
+#: defined inside a test function cannot be resolved at all.
+_PEP604_META = {"category": ("execution",), "engine_key": "Thing",
+                "help": "a thing", "null_label": "(auto)"}
+
+
+@dataclasses.dataclass
+class _OldSpelling:
+    thing: typing.Optional[int] = dc_field(default=None,
+                                           metadata=_PEP604_META)
+
+
+@dataclasses.dataclass
+class _NewSpelling:
+    thing: int | None = dc_field(default=None, metadata=_PEP604_META)
+
+
+def test_a_field_annotated_the_new_way_declares_the_same_item():
+    """End to end, because § 1.1's cost is a DECLARATION that differs.
+
+    The same field written both ways must produce the same item -- same type,
+    same ``optional`` -- or a config modernised one field at a time would
+    silently change its own template.
+    """
+    from molbuilder.template import declaration_for
+    old = declaration_for(dataclasses.fields(_OldSpelling)[0],
+                          typing.get_type_hints(_OldSpelling)["thing"])
+    new = declaration_for(dataclasses.fields(_NewSpelling)[0],
+                          typing.get_type_hints(_NewSpelling)["thing"])
+    assert old.type == new.type == "int"
+    assert old.optional is new.optional is True

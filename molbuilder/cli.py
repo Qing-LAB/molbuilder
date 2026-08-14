@@ -102,6 +102,7 @@ def add_dataclass_options(cls, *,
     by `jobset prep` from a description, not from flags.
     """
     import dataclasses
+    import types
     import typing
 
     skip_set = set(skip)
@@ -133,10 +134,13 @@ def add_dataclass_options(cls, *,
             choices = fld.metadata.get("choices")
 
             ann = resolved_hints.get(fld.name, fld.type)
-            # Walk Optional[X] / Union[X, None]
+            # Walk Optional[X] / Union[X, None] / X | None.  The last spelling
+            # reports ``types.UnionType`` rather than ``typing.Union``, so a
+            # check for one misses the other and the option would be typed as
+            # the whole union instead of its inner type (audit § 1.1).
             origin = typing.get_origin(ann)
             args   = typing.get_args(ann)
-            if origin is typing.Union and type(None) in args:
+            if origin in (typing.Union, types.UnionType) and type(None) in args:
                 inner = next((a for a in args if a is not type(None)), str)
                 py_t  = inner
             else:

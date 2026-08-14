@@ -55,6 +55,7 @@ import dataclasses
 import hashlib
 import re
 import tomllib
+import types
 import typing
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple
@@ -268,9 +269,19 @@ _ANNOTATION_TYPES = {bool: "bool", int: "int", float: "float", str: "str"}
 _DEFAULT_KIND = "engine"
 
 
+#: The two spellings of a union.  ``Optional[X]`` and ``X | None`` mean the same
+#: thing and report DIFFERENT origins -- ``typing.Union`` and ``types.UnionType``
+#: -- so a check for one silently misses the other.  Nothing in the configs uses
+#: the newer spelling today, which is exactly why this is worth naming: the first
+#: field written that way would be declared NOT optional and then fail to get a
+#: type at all, and the error would point at the annotation rather than at the
+#: check that could not read it (audit § 1.1).
+_UNION_ORIGINS = (typing.Union, types.UnionType)
+
+
 def _unwrap_optional(ann) -> Tuple[Any, bool]:
-    """``Optional[X]`` → ``(X, True)``; anything else → ``(ann, False)``."""
-    if typing.get_origin(ann) is typing.Union:
+    """``Optional[X]`` / ``X | None`` → ``(X, True)``; anything else → ``(ann, False)``."""
+    if typing.get_origin(ann) in _UNION_ORIGINS:
         args = [a for a in typing.get_args(ann) if a is not type(None)]
         if len(args) == 1:
             return args[0], True
@@ -1043,6 +1054,11 @@ def select(t: "Template", *, category=None, engine=None,
     _check_engine(t, engine)
     want_cat = _as_tuple(category)
     want_kind = _as_tuple(kind)
+    # ``read_by`` filters the same way its siblings do -- any-of, scalar or
+    # sequence.  It took a SCALAR ONLY until 2026-08-14, so a caller asking for
+    # two layers got an empty list rather than an error: the tuple was compared
+    # against the item's members and never matched (audit § 1.3).
+    want_read_by = _as_tuple(read_by)
     out: List[Item] = []
     for it in t.items:
         # `engines` empty means ALL engines (§ 6.3) -- absence is not a
@@ -1053,7 +1069,7 @@ def select(t: "Template", *, category=None, engine=None,
             continue
         if want_kind and it.kind not in want_kind:
             continue
-        if read_by and read_by not in it.read_by:
+        if want_read_by and not (set(want_read_by) & set(it.read_by)):
             continue
         out.append(it)
 
