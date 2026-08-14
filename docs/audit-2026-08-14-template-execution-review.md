@@ -1006,3 +1006,59 @@ truthiness — which is the comment's own criterion.
 > `template.py`'s `_item_payload`, `WarmFile.to_dict`). `Resources`' all-nulls
 > is the deliberate exception and can stay one, **named as such**.
 
+---
+
+## 20 · The full *absent vs null* tally — and a correction to §§ 13 and 19
+
+Read the two remaining writers § 19 named as open. **They change the
+conclusion**, so the earlier framing is corrected here rather than left to be
+discovered.
+
+| writer | artifact | policy |
+|---|---|---|
+| `Resources.to_dict` | `job-set.json` | `dataclasses.asdict` — **all nulls** |
+| `BenchResult.to_dict` | `bench-result.json` | every key always present; `asdict(p)` per point — **all nulls** |
+| `Environment.to_dict` | `environment.json` | `asdict(topology)`, `asdict(site)` — **all nulls** |
+| `WarmFile.to_dict` | inside `job-set.json` | **omits** an unset `requires_same`, with the reason |
+| `template._item_payload` | `<label>.template.toml` | **omits** an unset `value`, with the reason |
+| `write_run_launch` | `run.json` | **both**, in one dict literal (§ 19) |
+
+### 20.1 · What I got wrong in §§ 13 and 19
+
+Both sections framed all-nulls as *"the deliberate exception"* to a documented
+rule. **The tally says the opposite: all-nulls is the majority practice — three
+artifacts of six — and the documented rule is the minority.**
+
+The rule is real and argued in two contracts (`engines/template.md` § 3,
+`checkpointing.md` S3) and honoured by two writers plus half of a third. But it
+is not what most persisted artifacts do, and describing `Resources` as *an
+exception* implied a consensus that does not exist.
+
+> **Why the correction matters for the fix, not just for accuracy.** Under the
+> old framing the action was small: name one exception in a sentence. Under the
+> real tally, `job-contracts.md` § 6.1 has to decide *which* policy its registry
+> requires — and if it chooses the documented one, three shipped writers change
+> and their readers with them. If it chooses `asdict`, then `template.md` § 3's
+> *"a missing `value` means explicitly unset"* is a template-only rule and
+> should say so, because that file's whole three-state model (**unset** vs
+> **default** vs **absent from the file**) depends on it.
+>
+> **That is a real design decision, not a cleanup** — which is what the earlier
+> framing would have hidden. Recorded here so whoever picks it up starts from
+> six writers and a choice, rather than from one exception and a tidy-up.
+
+### 20.2 · The template's three states are the strongest argument on the rule's side
+
+`engines/template.md` § 3 needs absence to mean something because it
+distinguishes **three** states that `null` cannot: *unset* (key absent),
+*at its default* (`value` present and equal to `default`), and *not a parameter
+of this calculation* (item absent). A writer using `asdict` collapses the first
+into a null and loses the distinction the contract's § 6.4 resolver story is
+built on.
+
+**No other artifact here needs three states**, which is very likely why the
+practice diverged — and is also the shape of the answer: the rule belongs to
+files that carry *declarations*, and `asdict` suits files that carry *records*.
+Both halves are then defensible and, more importantly, **statable in one
+sentence each**.
+
