@@ -1900,3 +1900,65 @@ SS 26 holds. Open, and each is one sentence to rule:
    produces*, which now differs per engine. It documents rather than steers
    (SS 8.1), so: union, omit, or per-engine.
 
+---
+
+## 33 - CONSTRAINT ON ANY CLEANUP: the reserved blocks are a PERSISTENCE CHANNEL
+
+**User, 2026-08-14, before the cleanup:**
+
+> *"user customized content is a key component to carry structural
+> information and others persistently across scripts - some of these
+> information will be regenerated from the final script and for use in later
+> cases. for example, atom labels are saved in the .fdf for siesta so it is
+> not lost in optimization and later in the connection with transport (not
+> implemented yet), these labels are important to keep track of frozen atoms,
+> and bridges etc."*
+
+### 33.1 - What this establishes
+
+**The deck is not write-only.** `job-contracts.md` SS 3.1 already says parsers
+find blocks by markers -- so the blocks are an **interface**, and the
+information in them flows BACK out:
+
+| block | carries | read back for |
+|---|---|---|
+| **ATOM-METADATA** | regions, frozen atoms, annotation channels | surviving a relaxation, and **transport** -- which atoms are electrodes, which are the bridge, which are held fixed |
+| **USER-CUSTOM** | a person's own engine text | the next generation of the same calculation |
+
+**Atom labels are identity, not decoration.** A relaxation rewrites
+coordinates; the labels say *which atom is which* afterwards. Transport then
+needs exactly that -- electrode / bridge / frozen membership -- and it is not
+implemented yet, so nothing today would notice if the carrier were weakened.
+**That is precisely why it must not be.**
+
+### 33.2 - What it forbids in the cleanup
+
+| candidate | ruling |
+|---|---|
+| **`text` type** (SS 32's C6: 0 uses, unreachable) | **KEEP. Do not drop.** It is reserved for `user_custom` (SS 9.2), and the user has now named that component load-bearing. Its zero count is *work not done*, not *machinery nobody wants* -- the opposite of `strmap` |
+| ATOM-METADATA's emission rule | **unchanged.** T10 measured it round-tripping: regions, `frozen_atoms` and annotation channels all present, in exactly the 6 of 57 decks whose structures carry them |
+| the reserved-block markers | **unchanged**, and now understood as a parsing contract rather than a comment convention |
+
+### 33.3 - What it re-frames
+
+SS 9.2 argues USER-CUSTOM must live in the **template** because `prep` cannot
+harvest it from a previous deck -- there is no previous deck, `prep` renders
+one per stage, and `prep` must be reproducible. **That still holds, and does
+not conflict with reading information back out of a deck.** Two different
+directions:
+
+* **template -> deck**, every time, reproducibly: what the calculation IS.
+* **deck -> a later step**: what the completed run's structure MEANS -- labels,
+  regions, frozen sets -- for a stage or a kind of calculation that comes after.
+
+The second is why the blocks exist at all, and it is the half a cleanup would
+quietly damage, because **its consumer is not written yet.**
+
+### 33.4 - Added to the cross-index (SS 21.2) as a load-bearing rule
+
+> **R15. The generated deck carries structural identity forward.** Atom
+> labels, regions and frozen sets ride in ATOM-METADATA so they survive a
+> relaxation and reach later calculations -- transport above all. A change
+> that drops, reorders or lossily rewrites those blocks breaks a consumer that
+> **does not exist yet**, so no test today would catch it.
+> *Owner: `execution/job-contracts.md` SS 3.1 / SS 3.4.*
