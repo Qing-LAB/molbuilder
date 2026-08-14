@@ -2389,3 +2389,55 @@ for; the run reports what it used.**
 > sound and its `+/-50` guidance is right *for the reason it does not give*.
 > The gap only bites a user who reasons about the parameter rather than
 > following the ladder -- which is exactly the user the tuning guide is for.
+
+---
+
+## 40 - NOTE: tuning guidance belongs in the template, as a UI hint
+
+**User, 2026-08-14:** *"this should be provided at the UI hint. keep a note on
+that. template is a good place to save such UI hints too."*
+
+### 40.1 - The template already carries UI-facing keys
+
+It is not a new capability -- SS 5's key set is already half presentation:
+
+| key | answers |
+|---|---|
+| `label` | what to call it on screen |
+| `null_label` | what *unset* is called -- *(auto)*, *(no cap)* |
+| `unit` - `range` - `choices` | how to bound and constrain the control |
+| `category` | which panel |
+| `group` | whether *vary per stage* starts ticked |
+| `help` | what this is, in prose |
+
+So SS 38/SS 39's guidance -- *the cutoff is a request, the grid quantises it,
+step +/-50 Ry not +/-10* -- has a home already: it is prose about the
+parameter, and `help` is multi-line by design (SS 4.1 chose TOML partly for
+that). Putting it there makes it reach **the template, the deck's verbose
+comments, and the UI** from one place, which is the SS 3 *stated once* rule.
+
+### 40.2 - The open question: is *what is this* the same key as *how do I choose it*
+
+`help` currently answers **what the parameter is**. Tuning guidance answers
+**how to pick a value** -- a tier ladder, a convergence step, when to go
+higher. `engines/tuning.md` is a whole document of the second kind, and none
+of it is in the template.
+
+| | |
+|---|---|
+| **one key** -- put it all in `help` | no new vocabulary *(the user's rule: do not invent options)*. But `help` becomes long, and a UI showing it inline gets a paragraph where it wanted a sentence |
+| **two keys** -- `help` (what) + a tuning hint (how) | a UI can show one inline and the other behind *more*; `tuning.md`'s per-parameter material gets a destination. Costs one key in a closed vocabulary |
+
+**Not recommended either way yet** -- it wants the UI's actual shape, and the
+UI is deliberately unstarted (SS 28). What is worth deciding early is only
+**that tuning guidance is template data rather than document-only**, which the
+user has now said.
+
+### 40.3 - The work item
+
+| | |
+|---|---|
+| **now** | record it *(this section)* |
+| **with C1/C2** | decide one key or two |
+| **then** | move `tuning.md`'s per-parameter guidance into the items -- starting with `mesh_cutoff`'s *request-not-delivered* caveat (SS 39.3), which is the case that exposed the gap |
+| **check** | `tuning.md` becomes the *why* (the science, the citations, the cross-engine map) and the items carry the *how much* -- SS 0.1's alignment test applied to a document nobody has yet aligned |
