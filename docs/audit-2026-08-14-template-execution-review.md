@@ -2589,13 +2589,16 @@ run under.** The user picks it, and the sweep then answers *given that*, what
 
 ```
 user chooses      enable_gpu          (template item, floor 2)
-        |
-        v
+      ->
 benchmark sweeps  np x blocksize      GIVEN that choice
-        |
-        v
+      ->
 run asks for      the allocation      mpi_np, gres, cpus_per_task ...
 ```
+
+*(Drawn with arrows rather than `|`: the table gate scans every line beginning
+with a pipe and does not skip fenced blocks, so an ASCII diagram using them
+reads as an orphaned table row. Same class as the citation gate's inability to
+tell a quoted example from a live one -- SS 12.3.)*
 
 So `enable_gpu` is **upstream of the allocation**, not a member of it -- which
 is why it is correctly NOT `allocation`-tagged (SS 31.3 kept it that way) and
