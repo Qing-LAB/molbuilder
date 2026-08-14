@@ -2872,3 +2872,66 @@ seam test passing on a case nobody has exercised yet.
 |---|---|---|
 | **25.7** | `bench/grid.py::sweep_grid` -- is it SIESTA's specialisation or shared? | nothing; it is a read, and it decides whether PySCF's bench adds a file or edits one |
 | **25.8** | PySCF's `MachineTranslation` -- its axes, and what each point implies for `Resources` | C2 (ruled here), since `threads` becomes the allocation field its points must land on |
+
+---
+
+## 46 - `sweep_grid`'s K is RANKS-PER-GPU, not k-points -- a name that invites the wrong reading
+
+**User, 2026-08-14:** *"is this sweep_grid the old k_grid related sweep? we've
+already agreed that k_grid is not a calculation setup but a scientific
+judgement the user need to make so it is not part of bench any more."*
+
+### 46.1 - Measured: it is not, and never was
+
+```
+def sweep_grid(gpn, cps, ks, cs_explicit):
+    for g in range(1, gpn + 1):        # G = GPUs per node
+        for k in ks:                   # K = RANKS PER GPU
+            for c in (cs_explicit or _bracket_cs(cps, k)):   # c = cores/rank
+                yield (g, k, c)
+```
+
+`G1K4C6` = **1 GPU, 4 ranks per GPU, 6 cores per rank**. Three resource axes.
+No Brillouin-zone sampling anywhere in it.
+
+### 46.2 - But the reading it invites is the dangerous one
+
+In a SIESTA context **`K` reads as k-points**, and `kgrid` is a real
+`SiestaConfig` field (`type = "int3"`, emitted as
+`%block kgrid_Monkhorst_Pack`). A person seeing `bench-G1K4C6` in a directory
+listing has every reason to think the benchmark swept k-points -- **exactly
+the error the user is guarding against**: a scientific judgement measured as
+if it were a resource.
+
+**The contract already agrees on the substance.** `template.md` SS 6.2 puts
+`kgrid` in **`accuracy`**, not `execution`, and only `execution` is the
+sweepable set -- *"mesh_cutoff changes speed too, but it changes the answer,
+so sweeping it measures a different calculation each time."* The same argument
+covers `kgrid`. **Nothing in the code sweeps it.**
+
+### 46.3 - So the finding is the NAME
+
+| | |
+|---|---|
+| **right** | the mechanism, the axes, and the category rule keeping `kgrid` out of the sweepable set |
+| **misleading** | one letter -- in a token that appears in **directory names on disk** (`bench-G1K4C6`), in `job-contracts.md` SS 6.3's worked example, and in every summary a person reads |
+| **cost of leaving it** | a reader concludes the benchmark sweeps k-points, and either trusts a result that does not exist or distrusts the benchmark that does |
+
+**Two options, and the second is nearly free:**
+
+1. **Rename the axis** `K` -> `R` (ranks per GPU): `bench-G1R4C6`. Truthful,
+   but the token is a **directory name and a SystemLabel suffix**, so it
+   changes paths on disk and anything reading them.
+2. **Say what the letters mean where the token is defined.**
+   `bench/grid.py`'s docstring spells it; `job-contracts.md` SS 6.3 -- the
+   **cross-layer authority for every name** -- renders `bench-G1K4C6` without
+   saying what G, K and C are. One clause there, and in the summary output.
+
+**Recommendation: (2) now; (1) only if the token is revised for another
+reason.** The letters are load-bearing on disk; the ambiguity is fixable with
+prose, and SS 6.3 is exactly where a reader goes to decode a name.
+
+> **Recorded because the question was the right one to ask.** The mechanism is
+> correct and the contract does keep `kgrid` out of the sweep -- but a design
+> whose name suggests it does the forbidden thing will be asked about again,
+> and the next asker may not check.
