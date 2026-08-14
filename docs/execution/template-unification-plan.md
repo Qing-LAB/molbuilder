@@ -141,17 +141,23 @@ reason: conflating them produced a benchmark that measured labels, not runs.
 
 Each unit lands with its own tests and commit. **Docs first within each unit.**
 
-| # | unit | why this order |
+| # | unit | status |
 |---|---|---|
-| **T0** | ✅ **The contract** — `template.md` § 6.2–6.5, § 8.0, `@2` bump | done (`3ec667a5`), reviewed twice, this file |
-| **T1** | **The SIESTA catalogue** — all 44 fields placed in the six categories, misfits named rather than forced | SIESTA's backend already works with the template, so this is a **regroup, not a migration**. It is also the cheapest way to test whether six categories are right |
-| **T2** | **`category` + `engines` in the emitter and reader** — `declaration_for` emits them, `read_template` requires them, `section` retired | the schema change, once the categories are confirmed by T1 |
-| **T3** | **`select` / `one`** — § 8.0, with `prep` step 2 repointed as the first caller | one real caller, not a speculative API |
-| **T4** | **Execution items as valueless declarations** — rank count, threads, wall time | needs T2's `category` to have somewhere to live |
-| **T5** | **PySCF renders at all** — `ecp`'s union annotation, then whatever refuses next | today it cannot produce a template; this is the blocker for every PySCF claim below |
-| **T6** | **The PySCF catalogue**, same six categories | proves the categories are engine-independent rather than SIESTA-shaped |
-| **T7** | **`execution/` docs** — `job-contracts.md`, `project-layout.md`, `architecture.md` updated for `@2` and the one-file model | written once, after the shape stops moving |
-| **T8** | **The second reader** (deck writer or wrapper writer) through `select` | the point at which the API earns its keep |
+| **T0** | **The contract** — `template.md` § 6.2–6.5, § 8.0, `@2` bump | ✅ `3ec667a5`, reviewed 3× |
+| **T1** | **The SIESTA catalogue** — 44 fields, six categories | ✅ `2e715088` |
+| **T2** | **`category`/`engines`/`resolver` in emitter + reader**; `section` retired | ✅ `5d1abbfa` (data), `bba4960c` (code), `07f9763e` (guards) |
+| **T3** | **`select` / `one`** — § 8.0's read API | ✅ `8f2e1ab6`; review fixes `1f723e51` |
+| **T4** | **Execution items valueless, with resolvers** | ✅ `d4d85418` |
+| **T5+T6** | **PySCF renders at all** + its catalogue | ✅ `93403618` — 39 items, six categories |
+| **T7** | **`execution/` docs** — `job-contracts.md` and `project-layout.md` still cite `template@1` | ⬜ open |
+| **T8** | **The wrapper reads `read_by`** instead of scanning deck text for `ELPA` | ⬜ open — `diag_algorithm` declares it since `1f723e51`, so the data is waiting |
+| **T9** | **`ecp` → name + atom selector**, deleting `strmap` (§ 8) | ⬜ open — user design, 2 decisions needed first |
+| **T10** | **The `.fdf` before/after comparison** (§ 8) | ⬜ **OWED** — attempted and misreported |
+
+**What is true right now.** Both engines render a template at `@2`; every item
+carries a category from a closed six; execution items are declared valueless
+with named resolvers; and `select`/`one` are the one read API. The code is
+*ahead* of `execution/`'s docs (T7) and *behind* on one verification (T10).
 
 **Not in scope, and deliberately:** the UI. It is the last consumer and it is
 built from this file; designing it now would fix panels against categories that
@@ -372,3 +378,69 @@ Not a template-design defect: the format is right and the data is thin. It is
 config metadata to improve, engine by engine, and the natural moment is
 alongside each engine's catalogue (T1 for SIESTA, T6 for PySCF). Recorded here
 so the UI phase does not discover it as a surprise.
+
+---
+
+## 8. Open units (2026-08-13, end of session)
+
+### T9 · `ecp` becomes a name plus an atom selector (user design)
+
+**Supersedes the `strmap` type added in T5, which should be DELETED with it.**
+
+`strmap` modelled the storage shape PySCF happens to accept (`str | dict`)
+rather than the question a user answers. The question is two:
+**which ECP**, and **which atoms get it**. A dict conflates them and can express
+something nobody wants — different ECP families on different elements in one
+calculation.
+
+```toml
+[item.ecp]         type = "str"      value = "lanl2dz"
+[item.ecp_atoms]   type = "strlist"  value = ["Au", "Pt"]
+```
+
+`[]` none · `["*"]` all · `["Au"]` one element · `["A*"]` a pattern.
+
+**Both halves already have types**, so a new entry in the closed type vocabulary
+disappears — and it renders as two ordinary controls instead of a raw table
+nobody can validate, which is the point of the whole programme.
+
+**The scientific premise, to confirm before building:** nobody needs *different*
+ECP families per element in one run. def2 bases carry their own ECPs; LANL2DZ is
+what you reach for when you are *not* on def2. Mixing families across elements is
+legal in PySCF and almost never right — so the dict form is not a capability
+being lost, it is one that should not have been exposed.
+
+**Scope — larger than `strmap` was.** That was one serialization function; this
+changes `PySCFConfig`'s schema (one field becomes two), the emitter that builds
+`gto.M(ecp=...)`, the auto-detection that picks ECPs for heavy atoms on non-def2
+bases, and validation. The wildcard matcher needs writing and testing against
+real element symbols.
+
+**Two decisions needed first:**
+1. Does `["*"]` mean *all atoms* or *all heavy atoms*? The current auto-rule is
+   heavy-only.
+2. Is `ecp = ""` with a non-empty atom list an error, or *"auto-pick per
+   element"*?
+
+### T10 · The `.fdf` before/after comparison — OWED, NOT DONE
+
+G4 asks that the deck `prep` renders is the deck the surface would have
+rendered, and the template refactor changed `SiestaConfig`'s metadata (category,
+resolver, label, item_kind) without any intended change to deck output. **That
+has not been verified.**
+
+An attempt on 2026-08-13 **reported "byte-identical" and was wrong**: both files
+were 0 bytes, because generation refused on an unrelated validation error
+(`spin_polarized` with metals wants `spin_total`) and `diff` compared two empty
+files. Recorded because the failure mode is the interesting part — *a comparison
+that produces no output looks exactly like a comparison that found no
+difference.*
+
+**Redo with:** a config that passes validation, a baseline worktree at
+`2e715088` (the last commit before T2a touched code), and an explicit
+non-empty-file assertion before the diff is believed.
+
+**Must also confirm § 9's reserved blocks survive** — `user_custom`
+(`siesta/input.py:1637`, `emit_user_custom_placeholder`), the crystal unit cell,
+and the atom labels that ride with the atoms (§ 9.1). A metadata refactor is
+exactly the kind of change that could drop one silently.
