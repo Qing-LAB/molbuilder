@@ -2441,3 +2441,52 @@ user has now said.
 | **with C1/C2** | decide one key or two |
 | **then** | move `tuning.md`'s per-parameter guidance into the items -- starting with `mesh_cutoff`'s *request-not-delivered* caveat (SS 39.3), which is the case that exposed the gap |
 | **check** | `tuning.md` becomes the *why* (the science, the citations, the cross-engine map) and the items carry the *how much* -- SS 0.1's alignment test applied to a document nobody has yet aligned |
+
+### 40.4 - RULED: one key, and it may be formatted (user, 2026-08-14)
+
+> *"one key is fine. this is a message, but format can contain bullet points,
+> highlights etc to help user right?"*
+
+**One key: `help`.** No new vocabulary -- SS 40.2's two-key option is closed.
+
+**And it may be formatted.** It is a multi-line TOML string by design (SS 4.1
+chose TOML partly so prose sits with the item it explains), so bullets, blank
+lines and small tables are already expressible.
+
+### 40.5 - The one constraint: three readers see it RAW
+
+| consumer | renders as |
+|---|---|
+| the template file | **plain text** -- a person opens it (G5) |
+| CLI `--help` (`cli.py:132` reads `metadata["help"]`) | **plain text**, in a terminal |
+| *(later)* the UI | rendered |
+
+> **So: structure travels, inline markup does not.** Bullets (`-`), blank
+> lines, short labelled lines and a tier ladder read correctly in all three.
+> `**bold**`, backticks and links show as literal characters in two of the
+> three -- a terminal and the file itself.
+
+**The guidance, one line:** *write `help` as if it will be read in a terminal,
+because it will be. Use structure for emphasis, not markup.*
+
+A worked shape, for the case that started this (SS 39.3):
+
+```
+help = """
+The real-space integration grid, in Ry.  Higher is finer and slower.
+
+This is a REQUEST: SIESTA builds an integer grid and reports the cutoff it
+actually used, which is higher.  A band of requested values gives the same
+grid and the same answer.
+
+  150        screening only
+  200-250    loose preopt
+  350        publishable (semicore metals 400+)
+  500        tight -- vib/phonons (600 first-row)
+
+Converge by +/-50 Ry, not a few Ry: a small step can land inside one grid
+and read as converged when nothing changed."""
+```
+
+Readable in a terminal, readable in the file, and a UI can style it. **No key
+was added and no reader needs to change.**
