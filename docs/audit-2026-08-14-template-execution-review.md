@@ -2935,3 +2935,35 @@ prose, and SS 6.3 is exactly where a reader goes to decode a name.
 > correct and the contract does keep `kgrid` out of the sweep -- but a design
 > whose name suggests it does the forbidden thing will be asked about again,
 > and the next asker may not check.
+
+### 46.4 - SS 45.3's open check is ANSWERED in principle (user, 2026-08-14)
+
+> *"so since we agreed benchmark also is a workflow for pyscf this solves your
+> question i believe"*
+
+**It does.** SS 45.3 asked whether `sweep_grid` is SIESTA's specialisation or
+shared code a second engine must bend around. The answer follows from a split
+the contract already makes -- `generator.md` SS 2.3.1a: **benchmarking is
+`prep` whose parameters are a set rather than a point.** The **five steps are
+the framework**; the **grid is the specialisation**.
+
+So: **a shared bench workflow with a per-engine grid is the design**, and
+`sweep_grid` being `(G, K, c)`-shaped is *correct* as SIESTA's specialisation.
+It is not a design question.
+
+**What remains is factual, and it is SS 25.1's shape exactly:** `sweep_grid`'s
+own docstring names its consumer as *"`jobset prep bench`'s `_bench_inputs`"*
+-- a **shared floor calling a SIESTA-shaped grid directly**. The
+specialisation is right; its address is not, in the same way
+`effective_config`'s body is right and its address is not.
+
+**So work item 25.7 changes from a QUESTION to a MIGRATION STEP:**
+
+| | |
+|---|---|
+| ~~is `sweep_grid` a specialisation or shared?~~ | **answered: it is a specialisation** |
+| **25.7 (revised)** | move it behind the engine seam, so `jobset prep bench` asks the engine for its grid instead of importing SIESTA's. The seam already exists -- `EngineSeam` (SS 35.2's target shape) and `MachineTranslation` (SS 45.3) -- so this adds a member, not a mechanism |
+
+> **And it is findable before PySCF's bench is written**, which was the point
+> of asking: a second engine arriving at a shared caller that imports the
+> first engine's grid is how `siesta/` came to be reachable from `resolve/`.
