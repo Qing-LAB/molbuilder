@@ -169,7 +169,10 @@ def test_the_description_no_longer_carries_the_rank_count(template):
     out.  It is an allocation now, and the template has no opinion."""
     import tomllib
     raw = tomllib.loads(template)
-    assert "mpi_np" not in raw["item"]
+    # @2: the item is DECLARED (a surface must be able to ask) but carries
+    # no value -- so the leak this step closed stays closed: floor 3 has
+    # nothing to read straight back out.
+    assert "value" not in raw["item"]["mpi_np"]
     ps = resolve(template, _task(), SiestaConfig, allocation=Resources(mpi_np=8))
     assert ps[0].resources.mpi_np == 8
 

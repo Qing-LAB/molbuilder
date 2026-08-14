@@ -75,8 +75,10 @@ def test_every_exposed_field_gets_a_declaration(cls):
     # § 7 (U16): membership is TOTAL -- every schema field minus the
     # named exclusions (machine facts, the ladder), never a section
     # subset.  ``section`` answers only *where on the form*.
-    members = {f.name for f in dataclasses.fields(cls)
-               if not f.metadata.get("allocation")}
+    # @2 (§ 6.4): an allocation field IS a member -- the item is declared,
+    # valueless, so a surface can ask for ranks and the wrapper writer knows
+    # to look.  § 7's machine-fact row excludes the VALUE, not the item.
+    members = {f.name for f in dataclasses.fields(cls)}
     declared = set(_decls(cls))
     ladders = {f.name for f in dataclasses.fields(cls)
                if _is_ladder(cls, f)}
@@ -225,8 +227,7 @@ def test_declarations_keep_the_configs_own_order():
     """The config's field order is the form's order and the deck's order; a
     template a person reads should not be a third arrangement of them."""
     names = [d.name for d in declarations_for(SiestaConfig)]
-    expected = [f.name for f in dataclasses.fields(SiestaConfig)
-                if not f.metadata.get("allocation")]
+    expected = [f.name for f in dataclasses.fields(SiestaConfig)]
     assert names == expected
 
 

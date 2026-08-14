@@ -78,12 +78,21 @@ def test_the_description_names_no_machine(struct, cfg, tmp_path):
     """
     D.write_description(_describe(struct, cfg), tmp_path / "calc")
     raw = tomllib.loads((tmp_path / "calc" / "relax.template.toml").read_text())
+    # RESTATED AT @2 (§ 6.4).  The rule is "name no machine", and what
+    # names a machine is an ANSWER, not a question.  These items ARE now
+    # declared -- a surface must be able to ask for ranks, and the wrapper
+    # writer must know to look -- but they carry no `value`, so the folder
+    # still means the same thing wherever it is copied.
     machine = ("mpi_np", "omp_threads", "max_memory_mb")
-    present = [n for n in machine if n in raw["item"]]
-    assert present == [], (
-        f"floor 2 is naming a machine: {present}. These are allocation "
-        f"fields as of 2026-08-11 -- they are stated at `prep`, on the machine "
-        f"that will run it, and are not items at all.")
+    answered = [n for n in machine
+                if n in raw["item"] and "value" in raw["item"][n]]
+    assert answered == [], (
+        f"floor 2 is naming a machine: {answered} carry a value. The item "
+        f"declares the QUESTION; `prep` states the answer on the machine "
+        f"that will run it (engines/template.md § 2, § 6.4).")
+    # ...and the questions must be present, or no surface could ask them.
+    for n in machine:
+        assert n in raw["item"], f"{n} is not declared; a surface cannot ask for it"
 
 
 # --------------------------------------------------------------------- #

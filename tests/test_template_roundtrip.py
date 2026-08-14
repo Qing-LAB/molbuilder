@@ -55,6 +55,16 @@ def test_a_config_survives_the_round_trip(cfg):
     user did not write."""
     back = T.config_from_template(T.render_template(cfg), SiestaConfig)
     for item in T.declarations_for(SiestaConfig):
+        if item.allocation:
+            # DELIBERATELY lossy at @2 (§ 2, G1): a machine fact's value is
+            # never written, so it cannot come back.  The item travels; the
+            # answer does not, and `prep` supplies it on the machine that
+            # granted it.  A round trip that preserved it would mean the
+            # description had asserted a machine fact.
+            assert getattr(back, item.name) is None, (
+                f"{item.name}'s value survived the trip; the template "
+                f"asserted a machine fact and is no longer portable")
+            continue
         assert getattr(back, item.name) == getattr(cfg, item.name), item.name
 
 
@@ -238,8 +248,11 @@ def test_every_exposed_field_becomes_an_item_and_declares_its_kind():
     # expression at all: it answers *where on the form*, and gating
     # membership on it was the fourth, unlisted exclusion that silently
     # kept species_order (identity-sensitive) out of every template.
-    members = [f.name for f in __import__("dataclasses").fields(SiestaConfig)
-               if not f.metadata.get("allocation")]
+    # At @2 an allocation field IS a member (§ 6.4): the item is declared,
+    # valueless, so a surface can ask for ranks and the wrapper writer knows
+    # to look.  Only the LADDER is excluded now -- the machine-fact row of
+    # § 7 excludes the VALUE, not the item.
+    members = [f.name for f in __import__("dataclasses").fields(SiestaConfig)]
     assert sorted(i.name for i in items) == sorted(members)
     assert all(i.kind in T.KINDS for i in items)
 
@@ -344,25 +357,40 @@ def test_the_type_check_runs_before_shape_can_mangle(tmp_path):
         T.read_template(mutated)
 
 
-def test_a_hand_added_machine_fact_item_is_refused_with_the_story():
-    """A-9 (final review, 2026-08-13): ``declaration_for`` never WRITES an
-    allocation-tagged field into a template, so one in a template is a
-    hand edit — refused with § 7's machine-fact story (state it at prep),
-    never the typo story."""
+def test_a_hand_added_machine_fact_VALUE_is_refused_with_the_story():
+    """A-9, restated at @2.
+
+    Until @2 an allocation-tagged field was never WRITTEN into a
+    template, so its mere presence meant a hand edit and the item was
+    refused.  § 6.4 changed that: the ITEM is now declared -- valueless,
+    with its resolver -- because a surface must be able to ask for ranks.
+    So the refusal moved from the item to its VALUE, which is where § 2
+    always put it: *the template declares the question and never asserts
+    the answer.*
+
+    The failure guarded against is unchanged: a deck once rendered for a
+    rank count the allocation never granted.
+    """
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.template import config_from_template, render_template
-    text = render_template(SiestaConfig(system_label="JOB"))
-    text += ('\n[item.mpi_np]\n'
-             'kind = "wrapper"\n'
-             'type = "int"\n'
-             'value = 8\n'
-             'default = 8\n'
-             'group = "budget"\n'
-             'category = ["execution"]\n'
-             'label = "MPI ranks (np)"\n'
-             'help = "hand-added"\n')
-    with pytest.raises(ValueError, match=r"machine fact"):
-        config_from_template(text, SiestaConfig)
+    import molbuilder.template as T
+    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\nfingerprint = ""\n\n'
+            '[item.mpi_np]\nkind = "wrapper"\ncategory = ["execution"]\n'
+            'resolver = "rank_count"\ntype = "int"\nvalue = 8\n'
+            'help = "hand-added"\n')
+    with pytest.raises(ValueError, match=r"answers from the ALLOCATION"):
+        T.read_template(text)
+
+
+def test_the_item_itself_is_legitimate_only_its_value_is_not():
+    """The other half, and the reason the test above had to change: the
+    same file WITHOUT a value must be accepted, or a surface could never
+    ask the question."""
+    import molbuilder.template as T
+    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\nfingerprint = ""\n\n'
+            '[item.mpi_np]\nkind = "wrapper"\ncategory = ["execution"]\n'
+            'resolver = "rank_count"\ntype = "int"\nhelp = "ask me"\n')
+    t = T.read_template(text)
+    assert T.one(t, "mpi_np").value is None
 
 
 # ------------------------------------------------------------------ #
@@ -495,3 +523,74 @@ def test_an_item_claiming_an_unlisted_engine_is_refused():
             'type = "int"\nhelp = "x"\n')
     with pytest.raises(ValueError, match=r"x: declares engines \['pyscf'\]"):
         T.read_template(text)
+
+
+# ------------------------------------------------------------------ #
+#  T4 -- execution items are DECLARED, valueless, with a resolver     #
+# ------------------------------------------------------------------ #
+
+def test_the_execution_panel_carries_the_machine_questions():
+    """§ 6.4: a surface must be able to ASK for ranks, threads and memory.
+
+    Until @2 these were excluded outright, so a UI reading the execution
+    panel had no way to raise the question at all -- finding F1 of the
+    2026-08-13 fresh-eyes review.
+    """
+    t = _siesta_template()
+    names = {i.name for i in T.select(t, category="execution")}
+    for q in ("mpi_np", "omp_threads", "max_memory_mb"):
+        assert q in names, f"{q} is not on the execution panel; a surface cannot ask for it"
+
+
+def test_an_allocation_item_is_emitted_VALUELESS_however_the_config_is_filled():
+    """§ 2 / G1: the template may declare the question, never assert the
+    answer.
+
+    The config may legitimately hold a rank count -- it was resolved on
+    some machine -- but writing it into a portable description is the
+    exact failure the rule exists for: a hand-edited `mpi_np` once
+    rendered a deck for ranks the allocation never granted.
+    """
+    t = T.read_template(T.render_template(SiestaConfig(mpi_np=64),
+                                          engine="siesta"))
+    assert T.one(t, "mpi_np").value is None, (
+        "a rank count reached the template; the description now asserts a "
+        "machine fact and is no longer portable")
+
+
+def test_every_resolver_named_is_one_the_registry_knows():
+    """§ 6.4: the vocabulary is closed, and a resolver is a NAME rather
+    than code -- a template you must TRUST is not a template you can
+    READ."""
+    t = _siesta_template()
+    named = [i.resolver for i in t.items if i.resolver]
+    assert named, "no item declares a resolver -- the key is specified but dead"
+    for r in named:
+        assert r in T.RESOLVERS
+
+
+def test_an_unknown_resolver_is_refused():
+    import dataclasses
+    from dataclasses import field as dc_field
+    bad = dataclasses.make_dataclass("Bad", [
+        ("x", int, dc_field(default=1, metadata={
+            "category": ("execution",), "resolver": "ask_a_friend",
+            "help": "x", "workflow_group": "budget"}))])
+    with pytest.raises(ValueError, match=r"unknown resolver 'ask_a_friend'"):
+        T.declarations_for(bad)
+
+
+def test_the_items_that_need_a_resolver_have_one():
+    """The behavioural half.  A resolver key that exists but is declared
+    nowhere is the hollow-mechanism pattern this session hit three times
+    (RUNTIME_INFO_KEYS, read_by, and this one) -- so the guard is that
+    the items § 6.4's table names actually carry theirs."""
+    t = _siesta_template()
+    expected = {"mpi_np": "rank_count", "omp_threads": "omp_threads",
+                "max_memory_mb": "node_memory",
+                "parallel_block_size": "block_size"}
+    for name, res in expected.items():
+        got = T.one(t, name)
+        assert got is not None and got.resolver == res, (
+            f"{name} should declare resolver {res!r}; § 6.4 names it and "
+            f"nothing else will fill the value")

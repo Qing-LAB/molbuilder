@@ -91,6 +91,28 @@ KINDS = ("engine", "deck", "wrapper", "produce", "monitor")
 CATEGORIES = ("system", "method", "accuracy", "convergence",
               "procedure", "execution")
 
+#: The closed RESOLVER vocabulary (§ 6.4).  An item that cannot be answered by
+#: a constant NAMES who computes its value, and ``prep`` calls it -- so no
+#: layer carries a list of which fields are special, which is G3 again.
+#:
+#: A NAME, never code.  A template is data: hand-editable, and it travels
+#: between machines.  Executable content in it would end both properties and
+#: make a description something you must TRUST rather than something you can
+#: READ.  An unknown name is an error a reader reports (§ 3).
+#:
+#: ``allocation`` resolvers answer from what the scheduler GRANTED and their
+#: items are always valueless; ``block_size`` proposes a value a person may
+#: also set or measure.
+RESOLVERS = ("rank_count", "omp_threads", "node_memory", "block_size")
+
+#: The resolvers that answer from what the scheduler GRANTED.  An item naming
+#: one may never carry a value: that is § 2's rule that the template declares
+#: the QUESTION and never asserts the ANSWER, and it is checked on READ because
+#: a template is a file a person is invited to edit.  ``block_size`` is
+#: deliberately absent -- prep PROPOSES it, but a person or a benchmark may
+#: also set it, and honouring that was a 2026-08-11 user decision.
+ALLOCATION_RESOLVERS = ("rank_count", "omp_threads", "node_memory")
+
 #: § 5 — the validation vocabulary. TOML types the *storage*; this types what a
 #: reader must check, which a parser cannot know: that ``pow2`` is a power of
 #: two, that ``enum`` is drawn from ``choices``, that ``text`` is verbatim engine
@@ -163,6 +185,12 @@ class Item:
     #: registry, never code (§ 6.4).  A template carrying executable content
     #: would be something you must trust rather than something you can read.
     resolver: str = ""
+
+    #: Whether this item's value belongs to the ALLOCATION rather than to the
+    #: calculation (§ 2, G1).  Not written to the file: it is recoverable from
+    #: the schema, and it exists so the writer can refuse to assert a machine
+    #: fact -- such an item is emitted VALUELESS however the config is filled.
+    allocation: bool = False
 
     #: Whether *unset* is a state this item has at all. Not written to the
     #: file — it is recoverable from the schema and is carried here because
@@ -318,8 +346,18 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     # away, because a `section` answers *"may a surface show this"* and this
     # answers *"is it part of the calculation's description"* -- two questions
     # that happen to have had one switch.
-    if f.metadata.get("allocation"):
-        return None
+    # § 6.4 (schema @2): a machine fact's VALUE is still forbidden, but the
+    # ITEM is declared -- valueless, with the resolver that will answer it.
+    # A surface must know the question exists in order to ask it, and the
+    # wrapper writer must know to look.  Until @2 this returned None, so the
+    # question was invisible: a UI reading the execution panel had no way to
+    # ask for ranks, threads or memory at all.
+    #
+    # The protection is unchanged and lives where it always did: the value
+    # never reaches a config, because ``template_fields`` strips these names
+    # on the rebuild path.  Declaring the question is portable; answering it
+    # on the wrong machine is not.
+    _alloc = bool(f.metadata.get("allocation"))
 
     ann, optional = _unwrap_optional(annotation)
 
@@ -360,6 +398,11 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
                 f"is closed: {CATEGORIES}.")
     engines = tuple(f.metadata.get("engines", ()) or ())
     resolver = str(f.metadata.get("resolver", "") or "")
+    if resolver and resolver not in RESOLVERS:
+        raise ValueError(
+            f"field {f.name!r}: unknown resolver {resolver!r}. The vocabulary "
+            f"is closed: {RESOLVERS}. A resolver is a NAME molbuilder ships, "
+            f"never code in the file (engines/template.md § 6.4).")
     kind = f.metadata.get("item_kind") or _DEFAULT_KIND
     anchor = _bare_anchor(f.metadata.get("engine_key", "") or f.name)
     expands = tuple(f.metadata.get("expands", ()) or ())
@@ -381,6 +424,7 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
 
     return Item(
         name=f.name,
+        allocation=_alloc,
         kind=kind,
         type=type_,
         help=str(f.metadata.get("help", "") or ""),
@@ -580,8 +624,14 @@ def render_template(config, *, config_cls=None, engine: str = "",
     """
     cls = config_cls or type(config)
     eng = engine or _engine_name(cls)
+    # An allocation item is emitted VALUELESS whatever the config holds
+    # (§ 2, G1).  The config may legitimately carry a rank count -- it was
+    # resolved on some machine -- but writing it here would make the
+    # description assert a machine fact and stop being portable, which is the
+    # failure a hand-edited mpi_np once caused.
     items = [
-        dataclasses.replace(d, value=getattr(config, d.name, None))
+        dataclasses.replace(d, value=(None if d.allocation
+                                      else getattr(config, d.name, None)))
         for d in declarations_for(cls)
     ]
     # Unit 4a's rule: the fingerprint is computed by whatever writes the
@@ -721,6 +771,22 @@ def read_template(text: str) -> Template:
     # message about anything but the edit that caused it.
     # (value checking moved INTO _item_from at R4 -- raw, pre-shape; a
     # loop here saw values _shape had already coerced.)
+    # § 2 / G1: an allocation-backed item may be DECLARED but never
+    # ANSWERED here.  Checked on read, not only on write, because a template
+    # is a file a person is invited to edit (§ 4.1) -- and a hand-edited
+    # ``mpi_np`` value is precisely the failure this rule was written
+    # against: a deck once rendered for a rank count the allocation never
+    # granted.  The item itself is legitimate at @2; its VALUE is not.
+    for _it in items:
+        if _it.resolver in ALLOCATION_RESOLVERS and _it.value is not None:
+            _refuse(
+                f"carries value {_it.value!r}, but its resolver "
+                f"{_it.resolver!r} answers from the ALLOCATION -- what the "
+                f"scheduler granted on the machine that runs it. A template "
+                f"declares the question and never asserts the answer, or it "
+                f"stops being portable (engines/template.md § 2). Remove the "
+                f"value; `prep` fills it", where=_it.name)
+
     # § 6.3: an item's `engines` narrows the FILE's list -- it cannot widen
     # it.  An item naming an engine this calculation does not run on is a
     # contradiction between the two, and accepting it would let a surface

@@ -854,6 +854,7 @@ class SiestaConfig:
     # Compute & budget workflow-group card.
     mpi_np: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
+        "resolver": "rank_count",
         "section": "Compute & budget",
         # NOT a template item: a machine fact, which floor 2 must never
         # name (engines/template.md 7).  It arrives as the ALLOCATION at
@@ -894,6 +895,7 @@ class SiestaConfig:
 
     parallel_block_size: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
+        "resolver": "block_size",
         "section": "Compute & budget",
         "workflow_group": "budget",
         "label": "BlockSize",
@@ -935,6 +937,7 @@ class SiestaConfig:
     # with the PySCF / spectra scripts.
     omp_threads: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
+        "resolver": "omp_threads",
         "section": "Compute & budget",
         # NOT a template item: a machine fact, which floor 2 must never
         # name (engines/template.md 7).  It arrives as the ALLOCATION at
@@ -966,6 +969,7 @@ class SiestaConfig:
     # records it so the /results trajectory inspector shows the cap.
     max_memory_mb: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
+        "resolver": "node_memory",
         "section": "Compute & budget",
         # NOT a template item: a machine fact, which floor 2 must never
         # name (engines/template.md 7).  It arrives as the ALLOCATION at
