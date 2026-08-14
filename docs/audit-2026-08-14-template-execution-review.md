@@ -43,6 +43,63 @@ pass, which is worth admitting rather than quietly fixing.
 
 ---
 
+## 0 · Finding index — the CORE DOCUMENT to open for each issue
+
+**Every finding names the document that OWNS the concept, not only the line
+where the symptom shows.** A fix aimed at the symptom is how this corpus got
+here: the same fact was corrected in one place and left in another (§ 11,
+pattern 3). Open the core document, fix the rule there, then sweep every
+restatement the ownership map below lists.
+
+| # | finding | **core document — where the concept is OWNED** | what to look for beyond the local line |
+|---|---|---|---|
+| 1.1 | `_unwrap_optional` misses PEP 604 | `engines/template.md` § 5 (the `type` vocabulary) → `molbuilder/template.py` | **every place an annotation is inspected.** The sibling `_decl_type` had the same bug; look for `typing.get_origin(...) is typing.Union` anywhere, including `cli.py`'s option bridge, which walks annotations the same way |
+| 1.2 | `engines` is a hollow axis | `engines/template.md` § 6.3 | the decision is *contract-level*: either a producer writes multi-engine files, or § 6.3 says "one engine per file today". Then `select`/`one`/`_check_engine`/`Item.engines` follow. Also `generator.md` § 7's engine-seam claim rests on it |
+| 1.3 | `select(read_by=)` takes a scalar only | `engines/template.md` § 8.0 | § 8.0 lists the calls each reader makes — check **every** documented call signature against the implementation, not just this one |
+| 1.4 | `category` required by contract + reader, not by `Item` | `engines/template.md` § 3 | § 3's *"four required keys"* is stated in three places (§ 3 table, `_REQUIRED_ITEM_KEYS`, `Item`'s docstring) and they disagree. Fix the count in one place and make the other two derive or assert |
+| 1.5 | `__all__` omits the headline API | `docs/process/package-layout.md` (module surfaces) | **not a template issue** — it is 2 of 2 modules read. Belongs to the package convention, and wants one test over the package |
+| 2 | contract describes retired ELPA routing | `engines/template.md` §§ 6.1, 11.3, 4.2 | `read_by`'s whole *rationale* is the ELPA story. Rewriting the example is not enough — § 6.1 must be re-argued from `enable_gpu`, its only live case |
+| 2 | machine axes "not a template item at all" | `execution/generator.md` § 4 | the `@2` change (T4) makes them valueless items; check § 4's whole two-family table, § 4.2's pin channel, and § 10's class-3 row for the same assumption |
+| 3.1 | duplicate TOML key in the example | `engines/template.md` § 6.3 | **every fenced example in the file** — § 3.2 and § 9.2 show the same family (examples left behind when the rule moved) |
+| 3.2 | `block_size` example omits `category` | `engines/template.md` § 12 | as above — validate examples against § 3's required set |
+| 3.4 | `section` residue | `engines/template.md` § 5 | `section` is retired in the template but **live in the FORM** (`web/form-schema.md`). Any sweep must keep those apart — same word, two mechanisms |
+| 4 | residue in `template.py` | `engines/template.md` § 5 + the module | dead `dict` branch, stale comments, `Template.engine` compat shim. The shim is governed by the project's *rename = delete old* rule, not by the template contract |
+| 5 | `generator.md` § 8's deletion row | `execution/generator.md` § 8 | the row credits `read_by`; the deletion happened for a different reason. Check § 8's other rows against what actually landed |
+| 6.1 | floor 3 imports from `siesta/` | `execution/generator.md` §§ 6.1, 7 (the floor rule and the engine seam) | the fix is a **move**, not a rewrite: `effective_config` is engine-agnostic and lives in an engine package. Check what else `resolve/`, `materialize` and `submit` import from `siesta/` |
+| 7.1 | `Resources` shown as 7 fields | `execution/job-contracts.md` § 6.2 **(the authority)** | the guide's copy is the symptom. The authority is right and **tested** — so the fix is to delete the copy, not to sync it |
+| 7.2 | a guide restates a contract | `execution/job-contracts.md` § 6.2 vs `job-system.md` § 3 | sweep `job-system.md` for **every** vocabulary table it restates from job-contracts; it cites the authority and repeats it anyway |
+| 7.3 | one heading twice in one file | `execution/job-system.md` §§ 1, 5.4 | — |
+| 8.1 | GPU-request row names `diag_algorithm` | `execution/job-contracts.md` § 6.2 | this is **the cross-layer authority** (§ 6.3 says it wins) — a stale row here propagates by design. Check every row for T8/T9 residue |
+| 9.2 | `kgrid` in the PROVENANCE example | `execution/job-contracts.md` § 3.2 | same examples-left-behind family |
+
+---
+
+## 0.1 · Ownership map — who owns each concept, and who restates it
+
+Built by reading the four documents together, which is the only way this is
+visible. **A restatement is not automatically wrong** — a guide may summarise.
+It is wrong when it restates *the enumerable detail* the contract owns, because
+that is what drifts (§ 11, pattern 3).
+
+| concept | **owner** | restated by | verdict |
+|---|---|---|---|
+| the item model (`kind`, `category`, `type`, `value`) | `engines/template.md` §§ 3, 5, 6 | `generator.md` § 3.1a (the three UI keys) | **acceptable** — § 3.1a argues *why* the keys exist and defers the key set to § 5 |
+| which parameters are machine facts | `engines/template.md` §§ 2, 7 | `generator.md` § 4 · § 10 class 3 · `resolve.py`'s gates | **§ 4 has DRIFTED** — it still says "not a template item at all" |
+| the resource vocabulary (the nine fields, config ↔ SLURM) | `execution/job-contracts.md` § 6.2 | `job-system.md` § 3 + § 3.1's example · `Resources`' docstring | **§ 3 has DRIFTED** (7 vs 9). The docstring restatement is *deliberate and argued* — and is the one that stayed correct, because it sits beside the code |
+| every name in the system | `execution/job-contracts.md` § 6.3 | `resolve.point_token` · `identity.stage_token` | **clean** — and the model for the rest: a rule, the one function that implements it, and they agree |
+| the five `prep` steps | `execution/project-layout.md` § 2.3.1 | `template.md` § 11.1 · `generator.md` § 3 · `job-system.md` § 5 | **not yet checked** — three restatements of one sequence is the highest-risk drift left unread |
+| the reserved blocks | `execution/job-contracts.md` § 3.1 | `engines/template.md` § 9 | **clean** — § 9 asks a different question (*where does each block's content come from*), which is complement, not copy |
+| what a stage is, and overrides | `engines/stages.md` § 4 | `template.md` § 1 · `resolve.py` `_apply` | **not yet read** |
+
+> **The pattern in this table is the finding.** Every clean row is one where the
+> restatement answers a *different question* from the owner. Every drifted row
+> is one where the restatement answers the *same* question in fewer words.
+> That is a usable editing rule: **a guide may say why; the contract says what,
+> and the guide must not enumerate it.**
+
+
+---
+
 ## 1 · Defects confirmed by probe
 
 Each was found by reading, then verified by running code.
