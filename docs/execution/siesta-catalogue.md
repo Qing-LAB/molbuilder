@@ -99,46 +99,35 @@ therefore **valueless with a resolver** (§ 6.4).
 
 ---
 
-## 2. The six hard placements
+## 2. The six hard placements — dissolved by multi-tagging
 
-Each is a real judgement call. My position, then the case against it.
+**User decision, 2026-08-13: `category` is a list, and it does not affect the
+script** (`template.md` § 6.2). The first entry is the panel; the rest make the
+item findable where a user would look. That retires all six agonised calls — each
+was a symptom of forcing one answer where the parameter genuinely has two.
 
-**M1 · `pao_energy_shift` → `method` (not `accuracy`).** It sets the orbital
-confinement radii, so it is genuinely a basis-quality knob and belongs beside
-`mesh_cutoff` by function. Placed with `basis_size` because a user changes them
-together and reports them together — *"DZP with a 50 meV energy shift"* is one
-sentence. **Against:** it is `workflow_group = "stage"`, i.e. it tightens down the
-ladder, which is the signature of an accuracy knob. Weakest of my six.
+| was | now | why the second tag |
+|---|---|---|
+| **M1** `pao_energy_shift` | `["method", "accuracy"]` | reported beside the basis; tightens like an accuracy knob |
+| **M2** `electronic_temperature` | `["accuracy", "system"]` | smearing for a molecule; a real temperature for a finite-T run |
+| **M3** `solution_method` | `["method", "convergence"]` | **the one I called wrong.** `OrderN` is approximate, so it panels under `method`; a user hunting a stubborn SCF still finds it under `convergence` |
+| **M4** `restart` | `["convergence", "execution"]` | an initial-guess choice that reads as run plumbing |
+| **M5** `relax_max_displ` | `["outputs", "convergence"]` | a geometry convergence aid, shown with its siblings |
+| **M6** `system_label` | `["outputs", "system"]` | names the system; prefixes every output file |
 
-**M2 · `electronic_temperature` → `accuracy` (Q2).** For a molecule it is
-smearing that aids convergence. **Against:** it changes occupations, so it changes
-the answer — and for a genuinely finite-temperature calculation it is a `system`
-fact, not a numerical one. It may need to be context-dependent, which no other
-item is; if so, `accuracy` is the safer default because it warns rather than
-reassures.
+**M3 was the load-bearing one and it is now simply correct.** I had placed it in
+`convergence` while arguing it belonged in `method` — the multi-tag gives both,
+and the earlier note that it *"argues for a cross-reference rather than a second
+category"* is exactly this mechanism.
 
-**M3 · `solution_method` → `convergence` (not `method`).** `diagon` vs `OMM` vs
-`OrderN` is how you reach the solution. **Against:** `OrderN` is *approximate* —
-it changes the answer, not just the route — so by the § 6.2 test it is a `method`
-choice. **I think this one is genuinely wrong as placed** and would move it to
-`method`, except that then a user hunting a stubborn SCF will not find it. It
-argues for a `read_by`-style cross-reference rather than a second category.
+**The nuance moves to `help`, where a user reads it.** *"`OrderN` scales linearly
+but is approximate — it changes the answer, not just the route"* is a sentence.
+It was never a taxonomy problem.
 
-**M4 · `restart` → `convergence`.** It expands to `DM.UseSaveDM`: reuse the
-previous density matrix, which is an *initial-guess* choice — PySCF's
-`scf_init_guess = "chkfile"` is the same idea and sits in `convergence`.
-**Against:** it reads as run plumbing, so `execution` is the intuitive guess. The
-cross-engine parallel decided it.
-
-**M5 · `relax_max_displ` → `outputs`.** It caps the optimizer's step. **Against:**
-it is a convergence aid for a *geometry* rather than an SCF, so `convergence` is
-defensible. Placed with the other `relax_*` items so the relaxation reads as one
-panel; splitting one knob off would be worse than a slightly loose category.
-
-**M6 · `system_label` → `outputs`.** `SystemLabel` prefixes every output file, so
-in practice it is the naming of results. **Against:** it names the *system*, which
-is what category 1 is called. If we want a `identity` concept it would live with
-`job_name`, which is where the same question will arise for PySCF.
+**One placement is NOT a free choice.** `execution` is the benchmark's sweepable
+set, so it is a claim that the knob changes speed and not the answer. The eight
+items in § 1.6 each meet that test; `mesh_cutoff` deliberately does not, though it
+also costs time.
 
 ---
 

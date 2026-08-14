@@ -437,9 +437,39 @@ the calculation** it answers. They are different axes and neither implies the
 other: `diag_algorithm` is `kind="engine"` (a SIESTA keyword) and
 `category="execution"` (it changes speed, not the answer).
 
-**The vocabulary is closed, and the order below is the reading order** — a
-surface presents the categories top to bottom, because that is the order a
-person decides things in and the order a methods section is written in.
+**A category has NO effect on the generated script.** The deck writer filters on
+`kind`; a differently-categorised item produces byte-identical output. It is a
+**presentation and discovery** key, and that is what licenses the next rule.
+
+**`category` is a LIST, and an item may carry several** — because parameters
+genuinely belong to more than one question. `DM.MixingWeight` is how you *reach*
+convergence; `MeshCutoff` decides accuracy *and* costs time; `SolutionMethod`
+is a method choice that a user hunting a stubborn SCF will look for under
+convergence.
+
+| position | meaning |
+|---|---|
+| **first** | the **primary** — the panel this item is presented on |
+| the rest | *also relevant* — `select(category=…)` returns it, so it is findable where a user would look |
+
+Forcing one answer per item wasted effort on placements that changed nothing and
+hid items from the people looking for them. Multi-tagging costs nothing and the
+nuance belongs in `help` anyway: *"raising this improves accuracy and slows every
+step"* is a sentence, not a taxonomy.
+
+> **`execution` is the exception, and stays precise.** A benchmark takes
+> `category="execution"` as the **sweepable set** — the knobs that change speed
+> and not the answer (§ 6.2). Tagging something `execution` that changes the
+> answer means a sweep silently measures a different calculation at each point.
+> So `execution` is a claim about the parameter, not a hint about where to show
+> it, and an item carrying it should carry nothing that contradicts it.
+
+**The order below is the reading order** — a surface presents the categories top
+to bottom, because that is the order a person decides things in and the order a
+methods section is written in. **A surface may coarsen it**: showing `accuracy`
+and `convergence` as one *Calculation standards* panel is a presentation
+decision, and the template does not forbid it. What the template owes a surface
+is the semantics; how many panels they become is the surface's call.
 
 | # | `category` | the question | SIESTA | PySCF |
 |---|---|---|---|---|

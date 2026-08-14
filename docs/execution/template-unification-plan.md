@@ -47,7 +47,7 @@ Three orthogonal axes on every item:
 
 | axis | answers | closed? |
 |---|---|:--:|
-| `category` | which **question about the calculation** — the UI panel | yes, six |
+| `category` | which **questions about the calculation** it answers — a **LIST**; first entry is the panel (§ 5.4) | yes, six |
 | `engines` | whose **vocabulary** it is | yes, the file's list |
 | `kind` | which **layer consumes** it | yes, five |
 
@@ -77,7 +77,9 @@ written in.
 **`accuracy` ≠ `convergence`.** Accuracy is what answer you will *accept*;
 convergence is how to *reach* it. A user whose SCF oscillates must reach for
 `level_shift`, not a looser `conv_tol` — which "fixes" the symptom by accepting a
-worse answer. One panel holding both invites that substitution.
+worse answer. They remain distinct *categories* for that reason, but a **surface
+may present them as one panel** (§ 5.4) — the distinction is a semantic one the
+`help` text carries, not a wall the UI must build.
 
 **`execution` is the sweepable set**, because those knobs change **speed and not
 the answer**. `mesh_cutoff` changes speed too, but it changes the answer, so
@@ -161,9 +163,9 @@ T1 may still move.
 
 | # | question | blocks | my position |
 |---|---|---|---|
-| **Q1** | Is `basis` `method` or `accuracy`? | T1 | `method` — it is the dominant accuracy knob but is *reported* as level of theory (*"B3LYP-D3/def2-TZVP"*) |
-| **Q2** | Is `electronic_temperature` `accuracy` or `system`? | T1 | `accuracy` for molecules (smearing aids convergence), but it changes occupations, so `system` for a genuinely finite-temperature calculation. May need both, by context |
-| **Q3** | Should `optimize` / `compute_frequencies` be a 7th category (*task*), above the rest? | T1 | keep in `outputs` — the ladder in `task.json` is the real mission statement. Reopen if T1 shows the panel reads badly |
+| **Q1** | Is `basis` `method` or `accuracy`? | ~~T1~~ | **MOOT (2026-08-13).** `category` is a list — it is `["method", "accuracy"]`. See § 5.4 |
+| **Q2** | Is `electronic_temperature` `accuracy` or `system`? | ~~T1~~ | **MOOT (2026-08-13).** *"May need both"* was the answer; it is `["accuracy", "system"]`. See § 5.4 |
+| **Q3** | Should a 7th `task` category split out of `outputs`? | T2 | **REOPENED — T1 found the evidence.** `outputs` holds 16 of 44 and absorbs three questions. Still open; multi-tagging reduces the urgency but does not answer it |
 | **Q4** | ~~Does `max_memory_mb` split into two items?~~ | ~~T1, U-C~~ | **ANSWERED 2026-08-13 (user): no split — it becomes a valueless item.** See § 5.1 |
 | **Q5** | Do items needing a computed value declare a *resolver*? | T4 | **ANSWERED 2026-08-13 (user): yes — a named resolver.** See § 5.2 |
 
@@ -269,6 +271,42 @@ discovered:
 So a template on disk today is a valid `@1` file and every reader still works.
 Nothing is half-migrated; the contract simply landed first, which is what lets
 T1's catalogue be checked against a settled shape instead of a moving one.
+
+---
+
+### 5.4 `category` is a list, and it does not affect the script
+
+**User decision, 2026-08-13.** Two facts, and the second follows from the first.
+
+**1. A category changes nothing the engine sees.** The deck writer filters on
+`kind`; a differently-categorised item produces byte-identical output. It is a
+**presentation and discovery** key. T1 spent six paragraphs agonising over
+placements that could not alter a single line of any deck.
+
+**2. So an item may carry several.** `category = ["method", "convergence"]` —
+first entry is the panel, the rest make it findable where a user would look.
+Parameters genuinely belong to more than one question, and forcing one answer
+both wasted effort and *hid* items from the people hunting them.
+
+This retired all six of T1's hard placements (see the catalogue § 2). The
+load-bearing one was `solution_method`, which I had placed in `convergence` while
+arguing it belonged in `method`; it is now both, which is what the note *"argues
+for a cross-reference rather than a second category"* was reaching for.
+
+**The nuance belongs in `help`.** *"`OrderN` scales linearly but is approximate —
+it changes the answer, not just the route"* is a sentence a user reads at the
+moment of choosing. It was never a taxonomy problem.
+
+**A surface may coarsen the panels.** Showing `accuracy` and `convergence` as one
+*Calculation standards* panel is a presentation decision the template does not
+forbid. What the template owes a surface is the semantics; how many panels they
+become is the surface's call.
+
+> **`execution` is the exception and stays a precise claim.** A benchmark takes
+> it as the **sweepable set** — knobs that change speed and not the answer. Tag
+> something `execution` that changes the answer and a sweep silently measures a
+> different calculation at each point. Unlike the other five, this one is not a
+> hint about where to show an item.
 
 ---
 
