@@ -538,8 +538,8 @@ build the run directory — and both restatements agree with it:
 `project-layout.md` § 2.3.1: *"the same **five steps** in the same order"* — of
 `prep`. `job-system.md` § 5: *"**one verb** on the host and **five** on the
 target"* — `prep`, `plan`, `submit`, `summarize`, `status`. Different sets, same
-count, adjacent documents, and `generator.md` § 2.3.1a leans on the phrase *"the
-five steps are general"* to make its framework/specialisation argument.
+count, adjacent documents, and `generator.md` § 2 leans on `project-layout.md` § 2.3.1a's phrase
+*"the five steps are general"* to make its framework/specialisation argument.
 
 Nothing here is factually wrong. But *"the five"* is now ambiguous across the
 execution domain, and the two sets are one word apart in the same sentence
@@ -568,3 +568,37 @@ contract's — a local sequence inside one of them should not reuse the word.**
 > five, reading `job-system.md` shows another, and reading `prep.py` shows a
 > third numbering of the same work. It is only visible with all three open —
 > which is the whole argument for reading this way.
+
+### 12.3 · The reviewer made the same class of error, one commit ago
+
+Writing § 12 I cited *"`generator.md` § 2.3.1a"*. **§ 2.3.1a belongs to
+`project-layout.md`**; `generator.md` § 2 merely quotes it. The docs gate
+(`test_every_cross_document_section_citation_resolves`) refused, by name:
+
+> *these citations name a section that does not exist in the target:
+> audit-…md:541 -> generator.md § 2.3.1a … Either the section moved (repoint
+> the citation) or it was renumbered — do NOT just delete the number, which is
+> how a pointer becomes prose nobody can follow.*
+
+Recorded because it is evidence for two claims this report makes, and evidence
+against a third:
+
+- **For § 11's pattern 3** — I attributed a section to the document that *cites*
+  it rather than the one that *owns* it. That is the identical confusion the
+  ownership map (§ 0.1) exists to prevent, made by the person writing the
+  ownership map, ninety minutes later.
+- **For the value of executable gates.** No amount of care caught it; a test
+  did, immediately, with the fix named. Every finding in §§ 1–9 that a gate
+  would have caught is a finding that should never have needed a reviewer.
+- **Against treating this corpus as careless.** These documents cite each other
+  hundreds of times and the gate passes. One bad pointer in a fresh 550-line
+  file is the base rate; the drifted *content* in §§ 7–9 is what is unusual,
+  and it is unusual precisely because **content has no equivalent gate**.
+
+> **The actionable form:** the citation gate proves the pattern works. The
+> §§ 7–9 findings all describe facts that were restated and drifted — and a
+> restatement is exactly as checkable as a citation. A test that parses fenced
+> examples against the schema they illustrate, and one that compares a doc's
+> enumerated field list against the dataclass, would close that family the way
+> the citation gate closed this one.
+
