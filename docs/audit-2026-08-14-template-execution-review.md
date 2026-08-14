@@ -811,3 +811,57 @@ would resolve §§ 3, 7.1, 9.2 and part of 2 *mechanically*, and would keep them
 resolved. Running them first turns roughly a third of this report into a test
 run instead of a reading task.
 
+---
+
+## 17 · `jobset/prep.py` — two open findings resolved
+
+### 17.1 · Invariant 5's *"forced cold"* is CONFIRMED unimplemented (closes § 14.1)
+
+§ 14.1 recorded that `resolve.py` relabels a trial but never forces it cold, and
+left the second clause *unlocated* pending the deck-rendering path. That path is
+`prep_calculation` step 3, and it does this:
+
+```python
+if element.is_trial:
+    # The deck's OWN identity line carries the trial label -- this,
+    # not the filename, is what keys SIESTA's warm files away from
+    # the real run's (project-layout.md § 2.3.2).
+    cfg = seam.relabel(cfg, element.label)
+```
+
+So a trial is relabelled **twice, deliberately** — `resolve._label_for` sets the
+element's label, and `prep` writes it into the deck's identity line — and
+**nothing anywhere sets `restart` for a trial.** It inherits the description's
+value like any other item.
+
+**The code's own comment settles the design question:** the protection is
+attributed entirely to the relabel — *"this, not the filename, is what keys
+SIESTA's warm files away from the real run's"*. There is no second mechanism,
+and the comment does not think there is one.
+
+> **So `project-layout.md` § 7 invariant 5 overstates its own implementation.**
+> A trial cannot reach the run's warm files because it is looking for a
+> different `SystemLabel` — which is sufficient. *"and forced cold"* describes a
+> belt that was never fitted.
+>
+> **Core document: `execution/project-layout.md` § 7 (invariant 5) and § 3.2.**
+> The fix is one clause: either delete *"and forced cold"*, or implement it and
+> say where. Deleting is the honest default — the invariant is true and
+> load-bearing without it, and a rule listing a mechanism nobody wrote is how a
+> reader concludes the protection is doubled when it is single.
+
+### 17.2 · The five-steps numbering collision is narrower than § 12.2 said
+
+`prep_calculation` numbers its own sections **1 · 2 · 3 · "4 + 5"** — the
+canonical five, in the owner's numbers, matching `project-layout.md` § 2.3.1
+exactly. **It gets it right.**
+
+The collision § 12.2 reports is therefore specific to **`prep_jobset`**, which
+the module docstring calls *"steps 4–5 alone"* and which then numbers its own
+internals 1 · 2 · 3. One function in the file follows the contract's numbering
+and the other re-numbers inside it.
+
+That makes the fix smaller and more obvious than § 12.2 implied: `prep_jobset`'s
+three internal steps want naming rather than numbering (*render the launchers ·
+materialize · link them in*), leaving the digits to mean one thing in this file.
+
