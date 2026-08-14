@@ -1033,21 +1033,28 @@ class SiestaConfig:
                      "diagonalizer (GPU + ScaLAPACK is rejected) and an "
                      "NVIDIA GPU on the run machine.  Off = the chosen ELPA "
                      "solver runs on CPU (or ScaLAPACK if that's selected). "
-                     "Either ELPA choice routes the job to "
-                     "``molbuilder-siesta-gpu`` (the ELPA-linked build); "
-                     "the wrapper refuses to emit if that env is missing. "
+                     "This toggle is the ONLY thing that needs the "
+                     "source-built ``molbuilder-siesta-gpu`` env: the "
+                     "packaged SIESTA runs ELPA on CPU perfectly well, but "
+                     "its ELPA is built without the GPU entry.  The wrapper "
+                     "refuses to emit if that env is missing. "
                      "Affinity hint: GPU favors 1STAGE.",
     })
     diag_algorithm: str = field(default="ScaLAPACK", metadata={
         "category": ("execution",),
-        # § 6.1 / § 11.3: the WRAPPER derives from this value -- an
-        # ELPA deck must run in molbuilder-siesta-gpu, not the CPU env.
-        # Declaring it here is what lets the wrapper writer be TOLD
-        # which items it depends on instead of scanning the deck text
-        # for the string "ELPA", which is what it does today.  The
-        # wrapper reading it is T8; the declaration comes first so T8
-        # has data rather than a promise.
-        "read_by": ("wrapper",),
+        # NO ``read_by``, and that is the finding rather than an omission.
+        # It carried ``read_by = ("wrapper",)`` from 2026-08-11 until
+        # 2026-08-13, on the belief that an ELPA deck must run in
+        # molbuilder-siesta-gpu.  Measured: the packaged SIESTA runs both
+        # ELPA stages on CPU (ELPA is compiled in through ELSI), so the
+        # solver choice decides no environment and the wrapper derives
+        # NOTHING from this value.  ``enable_gpu`` is the one item the
+        # wrapper reads -- see its declaration above.
+        #
+        # Declaring ``read_by`` here anyway would be the same defect the
+        # key exists to remove, pointing the other way: a dependency
+        # asserted where none exists makes the wrapper look like it
+        # consults a value it never opens.
         "section": "Compute & budget",
         "workflow_group": "budget",
         "label":     "Diagonalizer",
@@ -1057,11 +1064,12 @@ class SiestaConfig:
         #   * ScaLAPACK -> emit NOTHING (SIESTA's built-in Divide-and-
         #     Conquer default); runs in the precompiled ``molbuilder-siesta``.
         #   * ELPA-1STAGE / ELPA-2STAGE (Src/diag_option.F90:264-273) ->
-        #     emit ``Diag.Algorithm`` + ``Diag.ELPA.GPU .true./.false.``;
-        #     routes to ``molbuilder-siesta-gpu`` (the only ELPA-linked
-        #     build) whether or not the GPU is used.
-        # Default ScaLAPACK = works out of the box on the precompiled
-        # CPU env; ELPA is a freely selectable upgrade (NOT GPU-gated).
+        #     emit ``Diag.Algorithm`` + ``Diag.ELPA.GPU .true./.false.``.
+        #     Runs in the PACKAGED env too: conda-forge's SIESTA carries
+        #     ELPA through ELSI and both stages work on CPU (measured
+        #     2026-08-13).  No environment follows from this choice.
+        # Default ScaLAPACK = SIESTA's own default; ELPA is a freely
+        # selectable upgrade, gated by neither GPU nor a source build.
         "engine_key":  'Diag.Algorithm',
         "id_suffix": "diag-algorithm",
         "choices":   ("ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"),
@@ -1079,12 +1087,13 @@ class SiestaConfig:
                      "  * ELPA-2STAGE: tridiagonalise via a banded form; "
                      "the band-reduction exposes more BLAS-3 work, so it "
                      "is typically faster on CPU.  Best for CPU.\n"
-                     "Both ELPA variants ship in the SAME library (ELPA "
-                     "2024.05.001) -- these are algorithmic strategies, "
-                     "not versions.  Selecting either ELPA routes the job "
-                     "to ``molbuilder-siesta-gpu`` (the ELPA-linked build); "
-                     "turn ``Use GPU`` on to run that ELPA solve on the GPU "
-                     "(GPU-only, no CPU fallback).",
+                     "Both ELPA variants are algorithmic strategies, not "
+                     "versions -- one library ships both.  Either runs on "
+                     "CPU in the packaged ``molbuilder-siesta`` env, so "
+                     "this choice needs no particular environment.  Turn "
+                     "``Use GPU`` on to run that ELPA solve on the GPU "
+                     "(GPU-only, no CPU fallback) -- THAT is what needs "
+                     "the source-built ``molbuilder-siesta-gpu``.",
     })
 
     # Pseudopotentials -- psml_lib uses click.Path() in the CLI so it's
