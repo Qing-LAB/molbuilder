@@ -832,7 +832,7 @@ block cites that schema rather than duplicating it.
 #   "schema_version": 7,
 #   "n_atoms_total":  212,
 #   "regions":     { "L-electrode": [11,12,…], "R-electrode": [200,…],
-#                    "bridge": [60,…], "frozen": [88, 89, …, 211] },
+#                    "bridge": [60,…], "frozen_atoms": [88, 89, …, 211] },
 #   "annotations": { … },              # optional
 #   "created_by":  "molbuilder modify",
 #   "created_at":  "2026-05-20T14:23:00Z"
@@ -865,6 +865,15 @@ upgraded.)*
   "`v4`, `schema_version: 4` … sidecar itself v6 … read-side accepts
   (3, 4, 5, 6)" — three version claims, all stale, ten lines under the
   amendment that corrected the example above it.)*
+- **The frozen label's NAME is `structure.FROZEN_LABEL`, not a string typed
+  here.** It is `"frozen_atoms"` today. The example above spelled it `"frozen"`
+  until 2026-08-14 — the SHAPE was right (frozen is an ordinary label *inside*
+  `regions`, per the amendment above) and the NAME was not, which matters
+  because this example is what a reader of these labels would be written from:
+  **transport** looks up electrode / bridge / frozen membership here, and a
+  reader built from the old example would find no frozen atoms and conclude the
+  run froze none. Same one-authority rule as the version number two bullets up
+  — cite the constant, never re-spell it.
 - **Emission is conditional.** The generator emits the block **only** when
   `regions` **or** `annotations` is non-empty — frozen atoms ARE a
   `regions` label now, not a trigger of their own.  A label-free

@@ -201,3 +201,32 @@ def test_every_template_example_item_carries_the_required_keys():
         + "\n(§ 3 lists the required keys; § 5 the type vocabulary.)"
     )
 
+
+def test_the_frozen_label_in_the_spec_matches_the_code_constant():
+    """`job-contracts.md` § 3.4's ATOM-METADATA example must spell the frozen
+    label the way the code writes it.
+
+    It said ``"frozen"`` until 2026-08-14 while ``structure.FROZEN_LABEL`` is
+    ``"frozen_atoms"``.  The SHAPE was right -- frozen is an ordinary label
+    inside ``regions`` -- and the NAME was not, which matters more than a typo:
+    that example is the specification a reader of these labels is written
+    from, and **transport** is the named consumer (electrode / bridge / frozen
+    membership).  A reader built from the old example looks up ``"frozen"``,
+    finds nothing, and concludes the run froze no atoms.
+
+    Guards the direction that actually drifts -- the doc spelling a constant
+    instead of citing it.
+    """
+    from molbuilder.structure import FROZEN_LABEL
+    text = (DOCS / "execution/job-contracts.md").read_text(encoding="utf-8")
+    block = text[text.index("### 3.4"):text.index("### 3.5")]
+    assert f'"{FROZEN_LABEL}"' in block, (
+        f"job-contracts.md § 3.4 never spells the frozen label "
+        f"{FROZEN_LABEL!r} as the code writes it.  Either the example drifted, "
+        f"or structure.FROZEN_LABEL changed and § 3.4 did not follow."
+    )
+    assert '"frozen":' not in block, (
+        'job-contracts.md § 3.4 still shows the retired label `"frozen":` -- '
+        f'the code writes {FROZEN_LABEL!r} inside `regions`.'
+    )
+
