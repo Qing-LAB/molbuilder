@@ -2335,3 +2335,57 @@ way to know that is correct.
 > through faithfully. What is missing is that **no document says this**, and a
 > user tuning a cutoff or reading a convergence study cannot infer it from
 > anything molbuilder writes.
+
+---
+
+## 39 - SS 38 closed: `tuning.md` SS 2.6's ADVICE is right, its REASON is unstated
+
+*(And my citation was wrong -- SS 2.5 is SCF tolerance; the mesh cutoff is
+SS 2.6. Corrected above.)*
+
+| tier | `MeshCutoff` |
+|---|---|
+| screening | 150 |
+| loose preopt | 200-250 |
+| publishable | **350** |
+| tight (vib/phonons) | 500 (600 first-row) |
+
+Plus: *"test by varying **+/-50 Ry**; the relative geometry should be stable
+within your tolerance"*, and the shipped default of 300 is called *"one notch
+below the 350 publishable recommendation"*.
+
+### 39.1 - The advice already survives the quantisation
+
+**The tiers are widely spaced** -- 150 / 200-250 / 350 / 500 -- so each tier is
+almost certainly a genuinely different grid rather than the same one relabelled.
+**And +/-50 Ry is a big enough step to cross snap points.** So a user following
+SS 2.6 literally will not fall into the trap SS 38 describes.
+
+**That is luck earned by good judgement, not by stating the mechanism.**
+
+### 39.2 - What is missing, and what it costs
+
+The section never says the value is a **request**, nor that SIESTA reports
+*"(required, used)"* with the used cutoff higher. Consequences a reader cannot
+derive from what is written:
+
+| | |
+|---|---|
+| **why +/-50 and not +/-10** | the number reads as arbitrary. A careful user economising on compute steps 300 -> 320 -> 340, sees three identical energies, and concludes *converged at 300* -- having measured **one grid three times** |
+| **the step is system-dependent** | snap points follow from the cell, so +/-50 is right for the systems the ladder was tuned on and may be too fine for a small box or too coarse for a large one. Without the mechanism a user cannot adapt it |
+| **deck vs output** | a user comparing `MeshCutoff 350` in the deck against `Mesh cutoff (required, used) = 350.0 / 393.4` in the output has nothing that says the difference is correct |
+
+### 39.3 - The fix, and it is two sentences
+
+Add to `tuning.md` SS 2.6: **the cutoff is a request; SIESTA builds an integer
+grid and reports the cutoff it actually used, which is higher. That is why the
+convergence step is +/-50 Ry rather than a few Ry -- a smaller step can land
+inside one grid and read as converged when nothing changed.**
+
+And in `engines/siesta.md`'s mesh material: **the deck carries what you asked
+for; the run reports what it used.**
+
+> **Recorded as documentation-incomplete, not wrong.** SS 2.6's numbers are
+> sound and its `+/-50` guidance is right *for the reason it does not give*.
+> The gap only bites a user who reasons about the parameter rather than
+> following the ladder -- which is exactly the user the tuning guide is for.
