@@ -660,3 +660,68 @@ next writer to pick by coin-flip.**
 > by `WarmFile.to_dict`, and by whatever writes `run.json` and
 > `bench-result.json` — none of which were compared against each other.
 
+---
+
+## 14 · `project-layout.md` § 7's invariants, cross-checked against everything read earlier
+
+**This is the check the reading order made possible**: § 7 states seventeen
+invariants, and four of them are about concepts whose *owners and
+implementations* were read earlier in this pass. Each is checked against those,
+not against itself.
+
+| # | invariant | cross-checked against | result |
+|---|---|---|---|
+| **9** | *"The description is the only source at ③. No produce and no run modifies it."* | `engines/template.md` § 2's dotted arrow — *"nothing a machine produced ever edits the description"* | **agree** — two documents, two vocabularies, one rule |
+| **3** | engine-named files (`<label>.XV/.DM/.CG`) are **bare**; molbuilder-named files carry `<label>_<NN>_<stage>` | `job-contracts.md` § 6.3's file table (read in § 9) | **agree, row for row** |
+| **10** | a calculation folder carries no machine knowledge; `environment.json` is the deliberate exception | `template.md` § 2 (floor 2 names no machine) · `generator.md` § 4.3 (neither sweep nor allocation enters the description) | **agree** — and § 10's *exception* is what § 6.4's valueless items are the template-side half of |
+| **5** | *"A trial never shares the calculation's identity. Its deck is **relabelled** and **forced cold**."* | `resolve.py` `_label_for` (read in § 6) | **half-verified — see below** |
+
+### 14.1 · Invariant 5 has two clauses and I could locate only one
+
+`_label_for` implements the relabel exactly as the invariant states — a
+production run keeps the label, a trial becomes `<label>-<point_token>`, with
+the reason attached (*SIESTA finds warm files by `SystemLabel`, so a trial
+carrying the real label could read or overwrite the run's `.DM` and `.XV`*).
+
+**The "forced cold" half is not in the resolver.** Nothing in `resolve.py` sets
+`restart` for a trial; a sweep point's values come from the point and the pins,
+and `restart` is an ordinary template item that a trial inherits from the
+description like any other. So either something downstream forces it, or the
+invariant's second clause is unimplemented and the first is doing all the work.
+
+> **Not asserted as a defect — asserted as unlocated.** The relabel alone
+> already prevents the failure the invariant exists for, so a trial cannot
+> *find* the run's warm files even if it asks for them. That makes "forced
+> cold" a belt beside a brace, and an unimplemented belt is easy to miss
+> precisely because nothing fails.
+>
+> **Core document: `execution/project-layout.md` § 3.2** (which owns what a
+> trial's deck is). What to look for: whoever renders a trial's deck — trace
+> `restart` from the description through `resolve` to the deck writer, and
+> either name the enforcing line in § 3.2 or drop the clause.
+
+### 14.2 · Two "invariants" are labelled *not held today*
+
+Invariants **16** (the archive covers only runs this calculation owns — *"the
+walk classifies by pattern and archives a trial's `.DM` like any other"*) and
+**17** (a save stores only what is new — *"every save copies every big file"*)
+both carry **Not held today**.
+
+The honesty is right and rare. The **naming** is what to fix: § 7 opens *"Each
+is written so a test can assert it"*, and a reader who asserts 16 or 17 gets a
+red suite for behaviour the document already knows about. An invariant that is
+known-false is a **requirement**; separating the two lists costs one heading
+and stops the next contributor discovering it the expensive way.
+
+### 14.3 · One invariant cites a test, and the citation holds
+
+Invariant **6a** — *"Every directory and every link in this tree is made by
+Python… Test: render a wrapper for each engine and assert its text contains no
+`cd` command (`tests/test_warm_file_inventory.py`)"*. The file exists and its
+wrapper tests pass.
+
+**This is the shape §§ 11 and 12.3 argue for**, found in the wild: an invariant
+that names the test that holds it. Of seventeen, it is the only one that does.
+The distance between invariant 6a and invariants 16–17 is the distance between
+a rule and a wish, and it is visible only because 6a wrote its test down.
+
