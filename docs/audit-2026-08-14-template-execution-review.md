@@ -15,6 +15,12 @@ matter are the ones nobody suspected. Suspicions raised by reading were then
 
 ---
 
+> **⏩ RESUMING AFTER A CONTEXT RESET? READ § 21 FIRST.** It is the cross-index:
+> every closed vocabulary with its members, every load-bearing rule with its
+> owner, and the measured facts — compressed so a **not-yet-read** document can
+> be checked against what has been read, without re-reading it. § 21.4 says how
+> to use it; § 22 proposes how to keep it from going stale.
+
 ## Coverage — what was read in full, and what was not
 
 | read in full | lines |
@@ -1061,4 +1067,149 @@ practice diverged — and is also the shape of the answer: the rule belongs to
 files that carry *declarations*, and `asdict` suits files that carry *records*.
 Both halves are then defensible and, more importantly, **statable in one
 sentence each**.
+
+---
+
+## 21 · CROSS-INDEX — read this first when resuming
+
+**What this section is for.** The findings above survive; what does not survive
+a context reset is *knowing what each document asserts*, which is what makes it
+possible to check a **not-yet-read** document against the ones already read.
+This is that knowledge, compressed: closed vocabularies with their members,
+load-bearing rules with their owners, and measured facts that are expensive to
+re-derive. **Check a new document against this table, not against memory.**
+
+### 21.1 · Closed vocabularies — a new document using one of these can be checked against it
+
+| vocabulary | members | owner | code |
+|---|---|---|---|
+| item `kind` | `engine` · `deck` · `wrapper` · `produce` · `monitor` — **5** | `template.md` § 6 | `template.KINDS` |
+| `category` | `system` · `method` · `accuracy` · `convergence` · `procedure` · `execution` — **6, in reading order**; a LIST per item, first = the panel | `template.md` § 6.2 | `template.CATEGORIES` |
+| item `type` | `int` `float` `str` `bool` `enum` `pow2` `int3` `strlist` `intlist` `text` — **10** (`strmap` **retired** 2026-08-13) | `template.md` § 5 | `template.TYPES` |
+| `resolver` | `rank_count` · `omp_threads` · `node_memory` · `block_size` — **4** | `template.md` § 6.4 | `template.RESOLVERS` |
+| allocation resolvers *(item may never carry a value)* | `rank_count` · `omp_threads` · `node_memory` — **3** (`block_size` deliberately absent) | `template.md` § 6.4 | `template.ALLOCATION_RESOLVERS` |
+| template top-level keys | `schema` · `engines` · `fingerprint` — **3, all required** | `template.md` § 3 | `read_template` |
+| required item keys | `kind` · `category` · `type` · `help` — **4** | `template.md` § 3 | `_REQUIRED_ITEM_KEYS` |
+| conditionally required | `anchor` (kind=engine) · `expands` (kind=deck) · `choices` (type=enum) · `value` (when answered) · `resolver` (when valueless-by-design) | `template.md` § 3 | `Item.__post_init__` |
+| reserved script blocks | HEADER *(reserved, emitted by nobody)* · PROVENANCE · BENCH-MARKS · ATOM-METADATA · USER-CUSTOM — **5**; order is **physics first**, record behind a banner | `job-contracts.md` § 3.1 | `script_emit` |
+| `Resources` | `domain` `time` `exclusive` `mem` `gres` `mpi_np` `cpus_per_task` `continue_retries` `max_memory_mb` — **9**; last two become **no SLURM flag** | `job-contracts.md` § 6.2 | `jobset.model.Resources` |
+| `Job` | `name` `script` `resources` `warm` `traits` — **5, no edges** | `job-system.md` § 3 | `jobset.model.Job` |
+| `WarmFile` | `name` · `requires_same` — **2** | `job-contracts.md` § 4.2 | `jobset.model.WarmFile` |
+| `Task` | `engine` `shape` `run` `structure` `varies` `stages` `schema_fingerprint` `calculation` — **8**; `engine` is a **string** | `stages.md` § 6 | `task.Task` |
+| `Stage` | `name` · `enabled` · `overrides` — **3** | `stages.md` § 4 | `task.Stage` |
+| the four separators | `_` joins parts of one name · `-` attaches a counter/qualifier · `.` introduces a type suffix · `/` separates path levels | `job-contracts.md` § 6.3 | — |
+| floors | 1 names+machine · 2 description · 3 plan · 4 layout · 5 launch · 6 observe · 7 surfaces — **imports go DOWN only** | `generator.md` § 6 | module layout |
+| `prep`'s steps | resolve the machine · resolve the parameters · render the deck · render the wrapper · build the run directory — **5, order forced** | `project-layout.md` § 2.3.1 | `prep_calculation` |
+
+### 21.2 · Load-bearing rules — the assertions to check a new document against
+
+| # | rule | owner | verified against |
+|---|---|---|---|
+| R1 | **Floor 2 names no machine.** The template declares the QUESTION and never asserts the ANSWER; a machine fact's *item* may exist, valueless, with a resolver | `template.md` §§ 2, 6.4, 7 | `declaration_for`, `read_template`'s allocation guard, `template_fields` |
+| R2 | **A run is a sweep of length one.** `ParameterSet` length is the whole difference; **no `if benchmark:` below floor 7** | `generator.md` § 2 | `resolve.ParameterSet`, `_points` returns `({},)` |
+| R3 | **Precedence is total:** template ⊕ stage overrides ⊕ sweep point ⊕ pin | `generator.md` § 5 | `resolve.resolve` — implemented in that order |
+| R4 | **capability ⊇ allocation ⊇ sweep**, and a sweep point exceeding the allocation is **refused, not clamped**, and never checked against capability | `generator.md` § 4.1 | `resolve._check_fits` *(inert when the allocation states no bound — § 6.3)* |
+| R5 | **Stages do not chain.** No `Job` names another; a person preps and submits each; what a stage continues from is a **file copied in at `prep`**, from a run named with `--from` | `project-layout.md` § 1.6 · `job-system.md` § 2 decision 6 | `jobset.model` has no edge field |
+| R6 | **`prep` rebuilds and renders; it never splices** — three engine behaviours make text substitution impossible | `template.md` § 8.1 (D4) | `config_from_template` → emitter |
+| R7 | **Each value is stored once** (D3); **membership is total** (D5) | `template.md` § 1.2 | `_item_payload`, `declaration_for` |
+| R8 | **Who names a file decides whether it carries the stage.** Engine-named (`.XV/.DM/.CG`) are **bare**; molbuilder-named carry `<label>_<NN>_<stage>` | `job-contracts.md` § 6.3 | `project-layout.md` § 7 invariant 3 — agree |
+| R9 | **The description is the only source at ③;** nothing a machine produced edits it | `project-layout.md` § 7 inv. 9 | `template.md` § 2's *never flows back* — agree |
+| R10 | **A trial is relabelled** so it cannot reach the run's warm files | `project-layout.md` § 3.2 | `resolve._label_for` + `prep`'s `seam.relabel` — **the "and forced cold" half is unimplemented, § 17.1** |
+| R11 | **The wrapper's env is decided by GPU alone** *(since 2026-08-13)*; CPU-ELPA runs in the packaged env | `engines/siesta.md` § 7.2 | measured — see 21.3 |
+| R12 | **A sweep coordinate is one qualifier:** axes in declaration order, concatenated, no inner separator, `.`→`p`, charset `[A-Za-z0-9_]`, **refused not escaped** | `job-contracts.md` § 6.3 | `resolve.point_token` — agrees clause for clause |
+| R13 | **The engine seam is a plugin:** adding an engine adds files and edits none. A change inside `resolve/`, `materialize` or `submit` means the seam leaked | `generator.md` § 7 | **violated** — `resolve._apply` imports from `siesta/` (§ 6.1) |
+| R14 | **Absence vs null is UNSETTLED** — 3 writers all-nulls, 2 omit, 1 both | *(no owner — that is the finding)* | § 20's tally |
+
+### 21.3 · Measured facts — expensive to re-derive, so do not
+
+| fact | measurement |
+|---|---|
+| **The packaged `molbuilder-siesta` runs ELPA on CPU** | H2 probe: `ELPA-2stage` and `ELPA-1stage` both exit 0 at **E = −30.136019 eV**, identical to `Divide-and-Conquer`. `ELPA-2stage` + `Diag.ELPA.GPU .true.` **exits 1** with `ELPA_ERROR_ENTRY_NOT_FOUND`. ELPA is compiled in via ELSI — 279 defined symbols, **zero undefined**, no external `libelpa` |
+| **Only GPU needs the source build** | which is why the two envs split on **provenance** (packaged-anywhere vs must-compile), not hardware |
+| **The `@2` refactor did not move the deck** | 57 decks (19 configs × 3 stage tokens, all 44 SIESTA fields off-default somewhere) byte-identical across `2e715088`→HEAD; harness mutation-tested |
+| **`engines` metadata: 0 fields**, both configs; `render_template` emits a one-element list | the multi-engine axis has no producer (§ 1.2), and `Task.engine` is a string (§ 15.1) |
+| **`Resources` has 9 fields** | probed; `job-contracts.md` § 6.2 correct and tested, `job-system.md` § 3 shows 7 |
+| **gcc 14.4 miscompiles SIESTA 5.4.2's `kpoint_t.F90`** | 14.3 compiles it; verified end-to-end on a clean machine 2026-08-14. Pin is keyed by SIESTA tag with a gate |
+
+### 21.4 · How to use this on the next document
+
+1. Read the new document.
+2. For every **enumeration** it gives, find the row in 21.1 and compare counts and members. *(That check alone found §§ 7.1 and 9.1.)*
+3. For every **rule** it states, find the row in 21.2 and compare wording — a restatement that answers the **same question in fewer words** is the drift signature (§ 0.1).
+4. For every **claim about behaviour**, check 21.3 before believing it. Three findings so far were documents asserting something the code does not do.
+5. Add what the new document **owns** to 21.1/21.2, so the index grows as the reading does.
+
+---
+
+## 22 · Proposal — how to keep validating holistically across context resets
+
+§ 21 is a snapshot. It goes stale the moment someone edits a document, and a
+stale index is worse than none because it is trusted. Three steps, smallest
+first, each useful alone.
+
+### 22.1 · Make § 21.1 executable — the one that pays for itself
+
+Every row of the vocabulary table is a **set of strings that must agree in three
+places**: the code's constant, the contract that owns it, and any document that
+enumerates it. That is a test, and the data is already collected.
+
+```python
+# tests/test_doc_claims.py  — sketch, not final
+VOCABULARIES = {
+    "kind":       (template.KINDS,      "engines/template.md"),
+    "category":   (template.CATEGORIES, "engines/template.md"),
+    "type":       (template.TYPES,      "engines/template.md"),
+    "resolver":   (template.RESOLVERS,  "engines/template.md"),
+    "Resources":  ([f.name for f in fields(Resources)],
+                   "execution/job-contracts.md"),
+}
+# for each: every member appears in the owning document, and the document
+# names no member the code does not have.
+```
+
+**What it would have caught in this review, mechanically:** § 7.1 (`Resources`
+7 vs 9, in two places), § 9.1's family, and any future retirement like
+`strmap`'s that leaves a doc naming a type the code dropped. **What it cannot
+catch:** prose rules — §§ 2, 6.1, 17.1 needed reading. That is the honest split,
+and it is roughly a third mechanical, two thirds not.
+
+> Pair it with **Gate A** (§ 18.5 — fenced TOML examples parse and satisfy
+> `_REQUIRED_ITEM_KEYS`). Together they cover §§ 3, 7.1, 9.2 and part of 2.
+
+### 22.2 · A reading ledger, so a reset resumes instead of restarting
+
+The coverage table says *what* was read. What a resumed session also needs is
+**what each file was checked against** — otherwise the same pair gets compared
+twice and a different pair never does.
+
+| file | read | checked against | still to check against |
+|---|---|---|---|
+| `template.md` | 2026-08-14 | `template.py`, `generator.md`, `task.py` | `stages.md`, `form-schema.md` |
+| `template.py` | 2026-08-14 | `template.md`, `resolve.py` | `cli.py`'s option bridge *(shares the annotation-walking idiom — § 1.1)* |
+| `generator.md` | 2026-08-14 | `template.md`, `resolve.py`, `project-layout.md` § 7 | `architecture.md` § 0's axes |
+| `resolve.py` | 2026-08-14 | `generator.md`, `template.py`, `prep.py` | `stages.md` § 4 (`effective_config`'s home) |
+| `job-system.md` | 2026-08-14 | `job-contracts.md` § 6.2, `model.py` | `running-a-job.md` |
+| `job-contracts.md` §§ 3.1–3.2, 6.2, 6.3 | 2026-08-14 | `job-system.md`, `resolve.py`, T10's decks | its own §§ 2, 4 |
+| `project-layout.md` § 7 | 2026-08-14 | `template.md`, `job-contracts.md`, `resolve.py`, `prep.py` | `checkpointing.md` S1–S4 (invariants 15–17) |
+| `model.py` · `prep.py` · `materialize.py` · `task.py` · `bench/result.py` · `environment.py` | 2026-08-14 | each other, on serialisation | `submit.py`, `runstatus.py` |
+
+**The last column is the work queue**, and it is more useful than a list of
+unread files because it names *pairs* — which is where the findings came from.
+
+### 22.3 · The rule that makes the index maintainable
+
+An index nobody updates rots. The cheap enforcement is the one this corpus
+already uses for citations: **when a document's enumeration changes, the test in
+22.1 fails and names it.** So 22.1 is not only a defect-catcher — it is what
+keeps § 21.1 honest without anyone remembering to.
+
+For 21.2's prose rules there is no such gate, and I would not invent one. The
+maintainable form is what § 0.1 found: **a guide may say why; the contract says
+what, and the guide must not enumerate it.** Applied as an editing rule, the
+number of places a rule is stated stops growing, and the index stops needing to
+track restatements it cannot check.
+
+> **If only one of these three happens, make it 22.1.** It converts the part of
+> this review that was mechanical into something that never needs a reviewer
+> again, and it is perhaps eighty lines of test.
 
