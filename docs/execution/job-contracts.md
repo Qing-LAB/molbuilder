@@ -811,8 +811,19 @@ what limits:
 > **Their `type` vocabularies are not the same size, and that is deliberate.**
 > This block's is `{int, float, str, pow2, enum}` — enough for the numeric knobs a
 > benchmark harness turns. A template must describe *every* parameter, so it adds
-> `bool`, `int3`, `strlist`, `intlist` and `text` (`template.md` § 5). The
-> narrower set is a subset of the wider one, never a competing definition.
+> `bool`, `int3`, `float3`, `strlist`, `intlist` and `text` (`template.md` § 5).
+> The narrower set is a subset of the wider one, never a competing definition.
+>
+> ⚠ **`script_emit.DECL_TYPES` is wider than the five named here**, found
+> 2026-08-14: it also carries `bool` and `int3`, added 2026-08-07 when § 3.7
+> reused this grammar for a template's **in-deck** item blocks. § 3.7 moved out
+> on 2026-08-11 and a template became its own TOML file, so those two are
+> residue of a sharing that has ended — no `field` line above declares either.
+>
+> **And *"emitted from ONE source"* was an intention, not a mechanism:**
+> `SIESTA_BENCH_FIELDS` is a hand-written list. It is now checked —
+> `tests/test_template_declarations.py` matches each `field` line to the config
+> item that anchors its keyword and refuses a disagreement on `type`.
 
 > **Gap:** the PySCF `.py` does not yet carry a BENCH-MARKS block. When it
 > lands, its `field` declarations get listed here.

@@ -352,3 +352,98 @@ def test_savehs_value_lands_in_fdf_echo(tmp_path):
         f"failure has returned.  SaveHS lines in echo:\n"
         + "\n".join(save_hs_lines)
     )
+
+
+# --------------------------------------------------------------------- #
+#  The k-grid displacement — SIESTA reads the block's fourth column     #
+#                                                                        #
+#  Added 2026-08-14 with the parameter itself.  molbuilder wrote a       #
+#  hard-coded 0.0 there for the life of the project, so the classic      #
+#  Monkhorst-Pack shift was unreachable                                  #
+#  (docs/audit-2026-08-14-template-execution-review.md § 53, § 54).      #
+#  The same silent-failure shape as the 2026-06-23 keyword incident:     #
+#  a number in the deck that nothing proves the engine acts on.          #
+# --------------------------------------------------------------------- #
+
+def _h2_kgrid_fdf(tmp_path: Path, label: str, displ) -> Path:
+    """A minimal H2 deck at 4x4x4 with the given displacement."""
+    from molbuilder.siesta import SiestaConfig, render_fdf
+    from molbuilder.structure import Structure
+
+    shutil.copy(_H_PSML_SOURCE, tmp_path / "H.psml")
+    struct = Structure(
+        elements=["H", "H"],
+        positions=np.array([[0.0, 0.0, 0.0], [0.74, 0.0, 0.0]]),
+        vacuum=(6.0, 6.0, 6.0))
+    cfg = SiestaConfig(
+        relax_type="none", mesh_cutoff=50.0, max_scf_iter=3,
+        dm_tolerance=1e-2, psml_lib=None, system_label=label,
+        kgrid=(4, 4, 4), kgrid_displacement=displ)
+    path = tmp_path / f"{label}.fdf"
+    path.write_text(render_fdf(struct, cfg))
+    return path
+
+
+def _kgrid_echo(stdout: str):
+    """SIESTA's own read-back: the three ``siesta: k-grid:`` rows and the
+    irreducible k-point count it derived from them."""
+    import re
+    rows = re.findall(
+        r"^siesta: k-grid:\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+([\d.]+)\s*$",
+        stdout, re.MULTILINE)
+    m = re.search(r"Number of k-points\s*=\s*(\d+)", stdout)
+    return rows, (int(m.group(1)) if m else None)
+
+
+def test_the_kgrid_displacement_reaches_siesta_and_changes_the_sampling(
+        tmp_path):
+    """Not "SIESTA echoed our number" — *SIESTA sampled differently*.
+
+    Two decks, identical but for the fourth column.  SIESTA prints the
+    supercell and displacements it will use, and then the number of
+    **irreducible** k-points it derived.  Measured on SIESTA 5.4.2,
+    2026-08-14:
+
+    ======================  ========  ==================
+    displacement            echo      irreducible k-pts
+    ======================  ========  ==================
+    ``[0, 0, 0]``           ``0.000``  44
+    ``[0.5, 0.5, 0.5]``     ``0.500``  32
+    ======================  ========  ==================
+
+    The count is the evidence that matters: an echo could be a
+    pass-through, but a different irreducible set means the shift entered
+    the symmetry reduction.  (The *effective cutoff* is 24.000 Ang for
+    both — it is a property of the supercell, not of where the mesh sits,
+    which is why the count and not the cutoff is what this asserts.)
+
+    Both runs abort at ``SCF convergence failure`` a few steps later, by
+    design: ``max_scf_iter=3`` keeps them to seconds, and the k-grid is
+    read and echoed long before.  The assertions never touch the exit code.
+    """
+    binary = _require_siesta_binary()
+
+    counts = {}
+    for label, displ in (("gamma", (0.0, 0.0, 0.0)),
+                         ("shift", (0.5, 0.5, 0.5))):
+        work = tmp_path / label
+        work.mkdir()
+        fdf = _h2_kgrid_fdf(work, label, displ)
+        proc = _run_siesta_on_fdf(binary, fdf, work_dir=work, timeout_s=300.0)
+        rows, n_k = _kgrid_echo(proc.stdout)
+        assert len(rows) == 3, (
+            f"SIESTA printed no k-grid read-back for {label}; it may have "
+            f"died before reading the block.  stdout tail:\n"
+            + "\n".join(proc.stdout.splitlines()[-15:]))
+        want = f"{displ[0]:.3f}"
+        assert [r[3] for r in rows] == [want] * 3, (
+            f"{label}: SIESTA used displacements {[r[3] for r in rows]}, "
+            f"not {want}.  The block's fourth column is not reaching the "
+            f"engine -- the shape of the 2026-06-23 silent-keyword failure.")
+        assert n_k, f"{label}: no k-point count in SIESTA's output"
+        counts[label] = n_k
+
+    assert counts["gamma"] != counts["shift"], (
+        f"Both displacements gave {counts['gamma']} irreducible k-points.  "
+        f"SIESTA echoed the shift but sampled the same set, so the "
+        f"parameter is decorative.")

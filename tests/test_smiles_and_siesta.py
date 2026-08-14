@@ -529,6 +529,86 @@ def test_paralleloverk_auto_from_kgrid(tmp_path):
     assert "Diag.ParallelOverK .true." in multi
 
 
+def _h2_in_a_box():
+    import numpy as np
+    from molbuilder.structure import Structure
+    return Structure(
+        elements=["H", "H"],
+        positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
+        title="h2", vacuum=(12.0, 12.0, 12.0))
+
+
+def _mp_rows(text):
+    """The three rows inside %block kgrid_Monkhorst_Pack, tokenised."""
+    lines = text.splitlines()
+    i = lines.index("%block kgrid_Monkhorst_Pack")
+    j = lines.index("%endblock kgrid_Monkhorst_Pack")
+    return [ln.split() for ln in lines[i + 1:j]]
+
+
+def test_kgrid_displacement_is_the_blocks_fourth_column():
+    """SIESTA's ``displ(3)`` -- the k-grid ORIGIN, one value per ROW.
+
+    ``kgridinit.F`` annotates the block line by line: row *i* is
+    ``(kscell(j,i), j=1..3)`` followed by ``displ(i)``.  So the shift is a
+    3-vector, not one number, and ``[0.5, 0.5, 0.0]`` is a legal and
+    meaningful answer -- two axes shifted, the third left on Gamma, which is
+    what a slab with a vacuum axis wants.
+
+    molbuilder hard-coded ``0.0`` in all three rows until 2026-08-14 and
+    could not express the shift SIESTA's own manual example uses
+    (`docs/audit-2026-08-14-template-execution-review.md` § 53, § 54).
+    """
+    text = render_fdf(_h2_in_a_box(), SiestaConfig(
+        system_label="h2", kgrid=(4, 4, 1),
+        kgrid_displacement=(0.5, 0.5, 0.0)))
+    assert _mp_rows(text) == [
+        ["4", "0", "0", "0.5"],
+        ["0", "4", "0", "0.5"],
+        ["0", "0", "1", "0.0"],
+    ]
+
+
+def test_the_default_deck_is_gamma_centred_and_unchanged():
+    """Default is ``[0, 0, 0]`` and the rows are byte-for-byte what molbuilder
+    wrote before the parameter existed.
+
+    0.5 must NOT be the default: on the shipped ``1x1x1`` mesh -- a molecule
+    in a box -- it moves the single k-point off Gamma to the zone boundary,
+    which is simply the wrong point (§ 54.2).  This pins the direction of that
+    decision, not merely the value.
+    """
+    text = render_fdf(_h2_in_a_box(), SiestaConfig(system_label="h2"))
+    assert _mp_rows(text) == [
+        ["1", "0", "0", "0.0"],
+        ["0", "1", "0", "0.0"],
+        ["0", "0", "1", "0.0"],
+    ]
+    assert SiestaConfig().kgrid_displacement == (0.0, 0.0, 0.0)
+
+
+def test_a_shift_on_a_single_k_point_axis_is_warned_about():
+    """The one case a person cannot see going wrong.
+
+    Shifting an axis sampled at ONE k-point moves that point to the zone
+    boundary; SIESTA runs it happily and the number is just wrong.  Warn,
+    do not refuse -- it is a legal input and the user may mean it.
+    """
+    from molbuilder.validation import validate
+    issues = validate(_h2_in_a_box(), SiestaConfig(
+        system_label="h2", kgrid=(4, 4, 1),
+        kgrid_displacement=(0.5, 0.5, 0.5)))
+    mine = [i for i in issues if i.where == "config.kgrid_displacement"]
+    assert len(mine) == 1, [i.message for i in mine]
+    assert mine[0].severity == "warn"
+    assert "kgrid[2] = 1" in mine[0].message
+    # The two shifted axes with 4 points each are a legitimate choice.
+    ok = validate(_h2_in_a_box(), SiestaConfig(
+        system_label="h2", kgrid=(4, 4, 1),
+        kgrid_displacement=(0.5, 0.5, 0.0)))
+    assert not [i for i in ok if i.where == "config.kgrid_displacement"]
+
+
 def test_convert_xyz_to_fdf(tmp_path):
     """End-to-end XYZ -> FDF round-trip."""
     dna = molbuilder.build_dna("ATGC")

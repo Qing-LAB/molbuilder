@@ -118,7 +118,7 @@ ALLOCATION_RESOLVERS = ("rank_count", "omp_threads", "node_memory")
 #: two, that ``enum`` is drawn from ``choices``, that ``text`` is verbatim engine
 #: text to be copied rather than interpreted.
 TYPES = ("int", "float", "str", "bool", "enum", "pow2",
-         "int3", "strlist", "intlist", "text")
+         "int3", "float3", "strlist", "intlist", "text")
 
 
 def _refuse(msg: str, *, where: str = "") -> NoReturn:
@@ -307,9 +307,17 @@ def _decl_type(ann, choices) -> Optional[str]:
     origin, args = typing.get_origin(ann), typing.get_args(ann)
     # Tuple[int, int, int] -- the k-grid.  Named rather than flattened to three
     # fields: it is ONE decision ("how finely is reciprocal space sampled"), and
-    # a stage overriding it overrides all three together.
-    if origin is tuple and args and all(a is int for a in args):
-        return "int3"
+    # a stage overriding it overrides all three together.  The same argument
+    # makes ``Tuple[float, float, float]`` one item: the k-grid DISPLACEMENT is
+    # one decision about where the mesh sits, per axis (audit § 54).
+    # The length is checked because the type NAME asserts it -- a two-tuple
+    # named ``int3`` would pass here and be refused later by a message naming
+    # the value rather than the field.
+    if origin is tuple and len(args) == 3:
+        if all(a is int for a in args):
+            return "int3"
+        if all(a is float for a in args):
+            return "float3"
     if origin is list and args:
         if args[0] is str:
             return "strlist"
@@ -846,6 +854,12 @@ _TYPE_CHECKS = {
     "pow2":    _is_int,
     "int3":    lambda v: (isinstance(v, (list, tuple)) and len(v) == 3
                           and all(_is_int(x) for x in v)),
+    # ``float3`` accepts an int per component: TOML's ``0`` and ``0.0`` are
+    # different types to a parser and the same displacement to SIESTA, and a
+    # hand-edited file will carry both.  ``_shape`` makes them one.
+    "float3":  lambda v: (isinstance(v, (list, tuple)) and len(v) == 3
+                          and all(_is_int(x) or isinstance(x, float)
+                                  for x in v)),
     "strlist": lambda v: (isinstance(v, list)
                           and all(isinstance(x, str) for x in v)),
     "intlist": lambda v: (isinstance(v, list) and all(_is_int(x) for x in v)),
@@ -905,6 +919,8 @@ def _shape(v: Any, type_: str) -> Any:
         return 1 << (n.bit_length() - 1)
     if type_ == "int3":
         return tuple(int(x) for x in v)
+    if type_ == "float3":
+        return tuple(float(x) for x in v)
     if type_ == "intlist":
         return [int(x) for x in v]
     if type_ == "strlist":

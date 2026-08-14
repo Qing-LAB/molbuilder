@@ -88,6 +88,66 @@ def _validate_kgrid(value):
     return out
 
 
+def _validate_kgrid_displacement(value, cfg=None):
+    """Per-component check for SiestaConfig.kgrid_displacement (SIESTA's
+    ``displ(3)``, the k-grid origin in grid-vector coordinates).
+
+    Two things are worth saying and one is not.  The shape is an error: a
+    two-tuple or a string cannot become the block's fourth column.  A
+    component outside [0, 1) is a *warn* -- the displacement is periodic in
+    one mesh spacing, so 1.5 names the same point as 0.5 and the user
+    probably meant something else.
+
+    The one that matters scientifically: **a shift on an axis sampled at a
+    single k-point moves that point off Gamma**, to the zone boundary.  For
+    the 1x1x1 default -- a molecule in a box, which is what molbuilder ships
+    -- that is simply the wrong point, and nothing downstream would say so.
+    See `docs/audit-2026-08-14-template-execution-review.md` § 54.2.
+
+    Not warned: 0.5 on an ODD mesh.  It is a legitimate (if unusual)
+    sampling choice, not a mistake, and the ``help`` text already says which
+    parity wants which value.
+    """
+    from ..issues import Issue
+    if not isinstance(value, (tuple, list)) or len(value) != 3:
+        return [Issue(
+            "error",
+            f"kgrid_displacement must be a 3-tuple of floats; got {value!r}",
+            "config.kgrid_displacement",
+        )]
+    out = []
+    # ``cfg`` is None only when a caller checks a value on its own; the
+    # cross-field warning below needs the mesh and is skipped without it.
+    kgrid = cfg.kgrid if cfg is not None else None
+    for i, v in enumerate(value):
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            out.append(Issue(
+                "error",
+                f"kgrid_displacement[{i}] = {v!r} must be a number",
+                "config.kgrid_displacement",
+            ))
+            continue
+        if v < 0.0 or v >= 1.0:
+            out.append(Issue(
+                "warn",
+                f"kgrid_displacement[{i}] = {v} is outside [0, 1); the "
+                f"displacement is in units of one mesh spacing and wraps, so "
+                f"this names the same k-point as {v % 1.0}",
+                "config.kgrid_displacement",
+            ))
+        if (v != 0.0 and isinstance(kgrid, (tuple, list))
+                and len(kgrid) == 3 and kgrid[i] == 1):
+            out.append(Issue(
+                "warn",
+                f"kgrid_displacement[{i}] = {v} shifts an axis sampled at a "
+                f"SINGLE k-point (kgrid[{i}] = 1), which moves that point "
+                f"off Gamma to the zone boundary.  For an isolated molecule "
+                f"only Gamma is meaningful -- set this component to 0.",
+                "config.kgrid_displacement",
+            ))
+    return out
+
+
 def _validate_basename(label: str):
     """Return a validate callable for SiestaConfig.system_label /
     PySCFConfig.job_name.  Used as ``metadata["validate"]`` -- the
@@ -450,10 +510,23 @@ class SiestaConfig:
         "id_suffix": "k",
         "triple_labels": ("x", "y", "z"),
         "tier":  "basic",
-        "help":  ("Monkhorst-Pack k-point mesh: the sampling resolution of "
-                  "reciprocal space for the DFT calculation. More k-points = "
-                  "finer Brillouin-zone sampling = better convergence at more "
-                  "cost. e.g. 4x4x1 in CLI or [4,4,1] in code."),
+        "help":  ("Monkhorst-Pack sampling of the Brillouin zone, one count "
+                  "per axis.\n"
+                  "  1x1x1          an isolated molecule -- only Gamma "
+                  "matters\n"
+                  "  4x4x4 - 8x8x8  a periodic 3D crystal\n"
+                  "  n x n x 1      a slab; no sampling along the vacuum "
+                  "axis\n"
+                  "\n"
+                  "Cost scales linearly with the number of k-points.  "
+                  "Converge by raising the density ~1.5x per axis: the total "
+                  "energy should move less than 1 meV/atom.\n"
+                  "\n"
+                  "SIESTA reports an EQUIVALENT CUTOFF for whatever mesh you "
+                  "give -- a length that says how dense the sampling really "
+                  "is.  That number, not the counts, is what makes two "
+                  "DIFFERENT cells comparable: the same 4x4x4 on a small and "
+                  "a large cell samples them differently."),
         "skip_cli": True,
         # 2026-06-14 G5: per-component validator so the metadata
         # range check actually runs on a Tuple-typed field.  Without
@@ -465,6 +538,56 @@ class SiestaConfig:
         # a real-space integration).
         "validate": (lambda value, cfg: _validate_kgrid(value)),
     })
+
+    # The FOURTH column of that same %block — SIESTA's ``displ(3)``, the
+    # k-grid ORIGIN in grid-vector coordinates (``kgridinit.F``: "origin(ix)
+    # = sum_j gridk(ix,j)*displ(j)").  Its own item rather than three more
+    # numbers on ``kgrid``: it is a separate scientific decision (WHERE the
+    # mesh sits, not how fine it is), and a stage may vary one without the
+    # other.  molbuilder wrote a hard-coded 0.0 here until 2026-08-14 and
+    # could not express the shift SIESTA's own manual example uses.
+    kgrid_displacement: Tuple[float, float, float] = field(
+        default=(0.0, 0.0, 0.0), metadata={
+            "category": ("accuracy",),
+            "workflow_group": "stage",
+            "label": "k-grid displacement",
+            # Same block as kgrid; the note says which column, and
+            # ``_bare_anchor`` keeps only the keyword.
+            "engine_key": '%block kgrid_Monkhorst_Pack  (displ column)',
+            # NO ``section`` / ``id_suffix`` / ``triple_labels`` / ``tier``.
+            # Those four are the OLD Build form's keys, and ``section`` is the
+            # opt-in that puts a field on it -- retired at `@2` in favour of
+            # ``category`` (`engines/template.md` § 5).  The UI is to be rebuilt
+            # FROM the template; a new field does not join the form that is
+            # being replaced (user, 2026-08-14).  ``category`` is what a surface
+            # groups by, and it is here.
+            # No scalar ``range``: ``_validate_config_metadata`` refuses one on
+            # a tuple-valued field (it cannot compare a 3-tuple against two
+            # numbers) and says so as a programmer bug.  ``kgrid`` has the same
+            # shape and the same omission.  The [0, 1) bound is per component,
+            # so it lives in the validator below.
+            "help": (
+                "Shifts the k-point mesh off Gamma, one value per axis, in "
+                "units of the mesh spacing.  [0,0,0] is Gamma-centred.\n"
+                "\n"
+                "  0.0    Gamma-centred.  Required for a 1x1x1 mesh (an "
+                "isolated molecule), and the safe choice for ODD meshes, "
+                "which already contain Gamma.\n"
+                "  0.5    The classic Monkhorst-Pack shift.  Use on EVEN "
+                "meshes -- it samples better than a Gamma-centred grid of "
+                "the same size, and matters most for metals.\n"
+                "\n"
+                "Axes are independent: [0.5, 0.5, 0.0] shifts two and leaves "
+                "the third on Gamma -- which is what a slab wants when the "
+                "third axis is vacuum.\n"
+                "\n"
+                "TRANSPORT: SIESTA forces this to 0 along the transport "
+                "direction, whatever you set, because that direction is "
+                "sampled at one k-point."),
+            "skip_cli": True,
+            "validate": (lambda value, cfg:
+                         _validate_kgrid_displacement(value, cfg)),
+        })
 
     # Relaxation; relax_type="none" disables the MD block entirely.
     # SIESTA 5.4.2 step-count + max-displacement mapping (see

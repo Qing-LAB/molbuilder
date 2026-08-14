@@ -311,7 +311,7 @@ never validated by molbuilder (§ 9.2)."""
 |---|---|
 | `kind` | which layer owns this item — § 6's closed vocabulary |
 | `value` | the value in force. Absent means **explicitly unset** |
-| `type` | the **validation** type — `int` · `float` · `str` · `bool` · `enum` · `pow2` · `int3` · `strlist` · `intlist` · `text` |
+| `type` | the **validation** type — `int` · `float` · `str` · `bool` · `enum` · `pow2` · `int3` · `float3` · `strlist` · `intlist` · `text` |
 | `default` | what untouched means. A surface compares it to `value` to show whether the user set this |
 | `anchor` | the engine keyword this becomes. A bare keyword, never a sentence |
 | `expands` | the engine keywords a `deck` item produces, as a list |
@@ -379,9 +379,20 @@ generated from one source and cannot drift apart.
 > the field metadata**, because two hand-maintained copies of `default` would
 > drift silently. Their `type` vocabularies differ in size on purpose: § 3.3's
 > `{int, float, str, pow2, enum}` is enough for the numeric knobs a benchmark
-> turns, and the template adds `bool`, `int3`, `strlist`, `intlist` and `text`
+> turns, and the template adds `bool`, `int3`, `float3`, `strlist`, `intlist`
+> and `text`
 > because it must describe everything. **The narrower set is a subset, never a
 > competing definition.**
+>
+> ⚠ **The code's benchmark-side constant is wider than § 3.3's five**, found
+> 2026-08-14: `script_emit.DECL_TYPES` carries `bool` and `int3` as well. They
+> were added on 2026-08-07 because § 3.7 then reused this grammar for a
+> template's **in-deck** item blocks — and § 3.7 moved out on 2026-08-11, when a
+> template became its own TOML file with the vocabulary above. So those two are
+> residue of a sharing that has ended, and no BENCH-MARKS field declares either.
+> Recorded rather than deleted here, because the constant's other reader is a
+> test that would need re-scoping with it
+> ([audit § 57](?doc=audit-2026-08-14-template-execution-review.md)).
 
 ---
 

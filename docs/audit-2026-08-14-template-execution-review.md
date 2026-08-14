@@ -3697,3 +3697,118 @@ and SS 6.4's `resolve(asked, env) -> (effective, reason)` is exactly this shape.
 **Recorded rather than fixed here**, because the right home is the resolver's
 reason channel and that is SS 25.1's territory -- one more thing that lands when
 the operator moves.
+
+---
+
+## 57 - SECOND CODE: `float3` and the k-grid displacement, end to end
+
+*(SS 55's work list, item 2. The parameter SS 53 and SS 54 specified.)*
+
+### 57.1 - What landed, by floor
+
+| | |
+|---|---|
+| `template.py` | **`float3` in `TYPES`** (eleven members), its check, and `_shape`'s coercion. `_decl_type` maps `Tuple[float, float, float]`; the LENGTH is now guarded on `int3` too, so the name is true |
+| `config/siesta.py` | **`kgrid_displacement`**, default `[0, 0, 0]`, SS 54.3's `help` verbatim, a validator. `kgrid`'s own `help` replaced with SS 54.4's |
+| `siesta/input.py` | the block's **fourth column** comes from the config; three verbose comment lines say what it is |
+| `engines/template.md` | SS 5's vocabulary, and the BENCH-MARKS split re-stated |
+
+### 57.2 - Verified against the SIESTA 5.4.2 BINARY, not against a reading
+
+Two decks, identical but for the fourth column, each piped through the
+`molbuilder-siesta` env's own binary:
+
+| displacement | SIESTA's read-back | **irreducible k-points** |
+|---|---|---:|
+| `[0, 0, 0]` | `siesta: k-grid: 4 0 0 0.000` | **44** |
+| `[0.5, 0.5, 0.5]` | `siesta: k-grid: 4 0 0 0.500` | **32** |
+
+> **The COUNT is the evidence, and the echo is not.** An echo could be a
+> pass-through of a number the engine then ignores -- which is exactly the
+> 2026-06-23 phantom-keyword shape. A **different irreducible set** means the
+> displacement entered the symmetry reduction.
+
+**And the effective cutoff is `24.000 Ang` for both**, which corrects a
+plausible guess before anyone makes it: the equivalent cutoff (SS 53.4) is a
+property of the SUPERCELL, not of where the mesh sits. It is the wrong thing to
+assert on, and the test asserts on the count instead.
+
+> **SIESTA has been suggesting this value all along.** The unshifted run prints
+> `k-point displ. along 1 input, could be: 0.00 0.50` -- the engine naming the
+> option molbuilder could not express.
+
+### 57.3 - A latent UI defect this field WOULD have hit -- recorded, not fixed
+
+*(The UI waits. This unit is backend + template; the note is here so the
+rebuild does not rediscover it.)*
+
+`_field_to_schema` dispatches **every** `Tuple` to `kind = "int-triple"`, and
+`form-schema.js`'s renderer hard-codes `step="1"` and reads back with
+`parseInt`. So any float triple on the old Build form would be:
+
+1. marked **invalid by the browser** for `0.5` before any JS runs, and
+2. read back as **`0`** if typed anyway -- **silently**.
+
+**The value that makes the parameter worth having is the one the control cannot
+carry.** The fix is the split the SCALARS already have (`int` steps by 1,
+`number` by any): one renderer parameterised by `isInt`, the same shape as
+`makeNumber(f, isInt)` sitting next to it. Five sites in two JS files dispatch
+on the string `"int-triple"`.
+
+**Nothing is broken today**, because `kgrid_displacement` carries no
+``section`` -- and ``section`` is the old form's opt-in, retired at `@2`
+(SS 5). The field is a template item and a deck line; it joins a surface when
+the surface is rebuilt from the template.
+
+> **The pattern, which outlives the incident.** A new member of a shared
+> vocabulary is not landed when the writer and the reader agree; it is landed
+> when every **surface** dispatching on the old vocabulary has been asked
+> whether the new member changes its answer.
+
+### 57.4 - A test pinned a premise that was false
+
+`test_every_declaration_has_a_named_type` required **every** engine-kind
+anchored item's type to be in `script_emit.DECL_TYPES`, reasoning that such an
+item could reach a BENCH-MARKS line.
+
+**It cannot.** That block declares five hand-listed fields
+(`SIESTA_BENCH_FIELDS`) and nothing else -- and `kgrid` has been engine-kind and
+anchored since it existed while appearing in no block. The false premise had a
+real cost: it made the **benchmark's** vocabulary the gate on the **template's**,
+so `float3` could not be added to one without widening the other for a type no
+benchmark will ever turn.
+
+**Replaced with the rule the contract actually states** -- `job-contracts.md`
+SS 3.3's *"emitted from ONE source, and that is a rule rather than a
+convenience"*. `SIESTA_BENCH_FIELDS` **is** hand-maintained, so that rule was an
+intention with no mechanism; the new test is the mechanism, matching by keyword
+and comparing the declared types. Writing it immediately found that
+`MD.NumCGsteps` arrives through `relax_steps`' **`expands`**, not an anchor --
+so a keyword reaches the deck two ways and only one of them had been considered.
+
+### 57.5 - And `DECL_TYPES` is carrying residue
+
+`bool` and `int3` joined it on 2026-08-07 because SS 3.7 then reused that
+grammar for a template's **in-deck** item blocks. SS 3.7 moved out on
+2026-08-11, when a template became its own TOML file with its own vocabulary.
+**No BENCH-MARKS field declares either.** Recorded in `template.md` SS 5 and
+here; not deleted, because the deletion belongs with SS 25's migrations rather
+than beside a new parameter.
+
+### 57.6 - Verified
+
+| | |
+|---|---|
+| round-trip | `render_template` -> `read_template` returns a `tuple` of floats; a hand-edited `[0, 1, 0]` comes back `(0.0, 1.0, 0.0)` |
+| deck | default rows are **byte-identical** to what molbuilder wrote before the parameter existed |
+| the binary | SS 57.2 |
+| the science | a shift on an axis sampled at ONE k-point is **warned** -- it moves that point to the zone boundary, which is meaningless for the 1x1x1 default |
+| mutation | five mutations, five dead tests; all mutated files restored to their pre-mutation checksums |
+| **not** verified | anything on a UI. No surface change is part of this unit |
+
+### 57.7 - OPEN, recorded not fixed
+
+| | |
+|---|---|
+| a scalar `range` on a tuple field | `_validate_config_metadata` refuses one as a programmer bug, so `kgrid` and `kgrid_displacement` both carry **no bounds a surface can read**. The bound is per component and lives in a validator, where a UI cannot see it. SS 5 calls `range` *"advisory bounds"* for a surface -- for the triples there are none |
+| `cli.KGridParam` | defined, assigned to `KGRID`, and referenced by nothing. Dead by every reading, but SS 32's rule (`[[feedback-module-provenance-header]]`) says a surface glance does not settle it -- so it is written down, not deleted |

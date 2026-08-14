@@ -115,16 +115,53 @@ def test_a_stage_ladder_is_not_a_template_item():
 
 @pytest.mark.parametrize("cls", ENGINES, ids=lambda c: c.__name__)
 def test_every_declaration_has_a_named_type(cls):
-    """Every item's type is in the TEMPLATE grammar; the subset that
-    script_emit renders into BENCH-MARKS (engine-kind, anchored) must
-    also be in ITS vocabulary -- the two share field metadata so they
-    cannot drift, but they are not the same set: a produce-kind item
-    (species_order's strlist) never reaches a BENCH-MARKS line."""
+    """Every item's type is in the TEMPLATE grammar (`template.md` § 5)."""
     from molbuilder.template import TYPES
     for d in declarations_for(cls):
         assert d.type in TYPES, f"{d.name}: {d.type}"
-        if d.kind == "engine" and d.anchor:
-            assert d.type in DECL_TYPES, f"{d.name}: {d.type}"
+
+
+def test_a_bench_marks_field_declares_the_same_type_as_its_template_item():
+    """The *one source* rule, checked where it can actually break.
+
+    `job-contracts.md` § 3.3: *"BENCH-MARKS and the template are emitted from
+    ONE source, and that is a rule rather than a convenience … two
+    hand-maintained copies of ``default=`` would drift, and the drift would be
+    silent."*  ``SIESTA_BENCH_FIELDS`` **is** hand-maintained, so the rule is
+    an intention there rather than a mechanism -- this test is the mechanism.
+    Matched by ANCHOR, which is what a BENCH-MARKS line and a template item
+    have in common.
+
+    **Replaces a rule whose premise was false** (2026-08-14).  It read *every*
+    engine-kind anchored item must have a type in ``DECL_TYPES``, on the
+    reasoning that such an item could reach a BENCH-MARKS line.  It cannot:
+    the block declares the five hand-listed fields below and nothing else --
+    ``kgrid`` has been engine-kind and anchored all along and appears in no
+    block.  The false premise had a cost: it made ``DECL_TYPES`` the gate on
+    the TEMPLATE's vocabulary, so ``float3`` (audit § 54) could not be added to
+    one without widening the other for a type no benchmark will ever turn.
+    """
+    from molbuilder.script_emit import SIESTA_BENCH_FIELDS
+    # A keyword reaches the deck two ways: an ``engine`` item's ``anchor``, or
+    # a ``deck`` item's ``expands`` -- ``MD.NumCGsteps`` is the second, one of
+    # the two keywords ``relax_steps`` becomes depending on ``relax_type``.
+    # Both are the keyword a BENCH-MARKS anchor greps for.
+    by_keyword = {}
+    for d in declarations_for(SiestaConfig):
+        for kw in ((d.anchor,) if d.anchor else ()) + tuple(d.expands or ()):
+            by_keyword.setdefault(kw, d)
+    for bf in SIESTA_BENCH_FIELDS:
+        item = by_keyword.get(bf.anchor)
+        assert item is not None, (
+            f"BENCH-MARKS declares {bf.anchor!r}, which no config field "
+            f"anchors -- so a tool may override a line the template cannot "
+            f"describe (job-contracts.md § 3.3).")
+        assert bf.type_ == item.type, (
+            f"{bf.anchor}: BENCH-MARKS says type={bf.type_!r}, the template "
+            f"item {item.name!r} says {item.type!r}.  These are emitted from "
+            f"ONE source by rule; a disagreement means a tool validates an "
+            f"override against a type the deck no longer honours.")
+        assert bf.type_ in DECL_TYPES, f"{bf.anchor}: {bf.type_}"
 
 
 @pytest.mark.parametrize("cls", ENGINES, ids=lambda c: c.__name__)
@@ -163,6 +200,28 @@ def test_the_kgrid_is_one_declaration_not_three():
     """It is one decision — how finely reciprocal space is sampled — and a
     stage overriding it overrides all three components together."""
     assert _decls(SiestaConfig)["kgrid"].type == "int3"
+
+
+def test_the_kgrid_displacement_is_its_own_item_and_a_float3():
+    """Two items, not one, and not a general ``matrix``.
+
+    The mesh (how finely) and the origin (where it sits) are separate
+    scientific decisions and a stage may vary one without the other, so they
+    are two items.  Neither is a matrix: `kgridinit.F` accepts a full
+    non-diagonal ``kscell``, but that serves supercells commensurate with a
+    sub-lattice and nothing in molbuilder builds one -- recorded as *not
+    offered* rather than half-offered
+    (`docs/audit-2026-08-14-template-execution-review.md` § 53.5).
+
+    ``float3`` is the type that leaves: the components are floats, they are
+    independent, and no other member of § 5's vocabulary can carry them.
+    """
+    from molbuilder.template import TYPES
+    assert "float3" in TYPES
+    d = _decls(SiestaConfig)["kgrid_displacement"]
+    assert d.type == "float3"
+    assert d.default == (0.0, 0.0, 0.0)
+    assert _decls(SiestaConfig)["kgrid"].type == "int3"   # still separate
 
 
 def test_range_unit_and_group_come_from_the_field_metadata():

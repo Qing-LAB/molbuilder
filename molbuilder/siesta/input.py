@@ -1120,9 +1120,15 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         out.append(f"NetCharge       {auto_charge:+d}")
     out.append("")
 
-    # k-grid
+    # k-grid.  The block's fourth column is SIESTA's ``displ(3)`` -- the grid
+    # ORIGIN, in units of one mesh spacing.  It was hard-coded 0.0 here until
+    # 2026-08-14; it is now a config item, so the classic Monkhorst-Pack shift
+    # (0.5 on an even mesh) is expressible.
     kx, ky, kz = cfg.kgrid
-    out.append(f"# --- k-points ({kx}x{ky}x{kz}) ---")
+    dx, dy, dz = cfg.kgrid_displacement
+    shifted = any(float(d) != 0.0 for d in (dx, dy, dz))
+    _shift_note = f", displaced {dx} {dy} {dz}" if shifted else ""
+    out.append(f"# --- k-points ({kx}x{ky}x{kz}{_shift_note}) ---")
     if v: out += [
         "# Monkhorst-Pack mesh.  Cost scales linearly with # of k-points.",
         "#   1x1x1               vacuum / molecule (only Gamma matters)",
@@ -1130,11 +1136,14 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "#   kx x ky x 1         2D slabs (no k along the vacuum direction)",
         "# Convergence test: rerun with 1.5x density on each axis -> total",
         "# energy should change < 1 meV/atom.",
+        "# Fourth column = grid origin (displ), in units of one mesh spacing:",
+        "#   0.0   Gamma-centred -- required for 1x1x1, safe for odd meshes",
+        "#   0.5   the classic Monkhorst-Pack shift, for EVEN meshes",
     ]
     out.append("%block kgrid_Monkhorst_Pack")
-    out.append(f"{kx} 0 0 0.0")
-    out.append(f"0 {ky} 0 0.0")
-    out.append(f"0 0 {kz} 0.0")
+    out.append(f"{kx} 0 0 {float(dx)}")
+    out.append(f"0 {ky} 0 {float(dy)}")
+    out.append(f"0 0 {kz} {float(dz)}")
     out.append("%endblock kgrid_Monkhorst_Pack")
     out.append("")
 
