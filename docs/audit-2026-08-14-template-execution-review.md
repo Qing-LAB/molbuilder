@@ -32,9 +32,14 @@ matter are the ones nobody suspected. Suspicions raised by reading were then
 | `molbuilder/jobset/*` · `task.py` | ~5,200 |
 | the test suites for the above | — |
 
-**Stated plainly because a partial review reported as a whole one is worse than
-no review.** The three files read are the tightest coupling in the system — the
-contract, its implementation, and the architecture doc that consumes both.
+**Stated plainly because a partial review reported as a whole one is worse
+than no review.**
+
+**Layout of this report:** findings per surface first (§§ 1–9), then the two
+cross-cutting sections — the repeating patterns, and the design assessment —
+**last** (§§ 10–11). A synthesis buried between findings is the same
+misplacement this report charges elsewhere; it was buried here until this
+pass, which is worth admitting rather than quietly fixing.
 
 ---
 
@@ -129,6 +134,8 @@ six must hard-code them or reach past the declared public surface.
 
 ---
 
+---
+
 ## 2 · The contract contradicts the code it governs
 
 All four are consequences of T8/T9 landing (2026-08-13) with four *downstream*
@@ -144,6 +151,8 @@ miss, since every other doc defers to this one.
 
 ---
 
+---
+
 ## 3 · The contract contradicts itself
 
 | # | where | what |
@@ -152,6 +161,8 @@ miss, since every other doc defers to this one.
 | 3.2 | § 12's `block_size` example | omits `category`, which § 3 lists as required on every item |
 | 3.3 | § 4.2 vs § 6.3 | the same item's value is `300.0` in one example and `300` in the other — int vs float, in a contract whose D3/G4 turn on values being carried faithfully |
 | 3.4 | § 5's key diagram | still has the node `group · section` after the table above it marks `section` **RETIRED at `@2`**; the ⭐ note below it reads as current |
+
+---
 
 ---
 
@@ -167,35 +178,9 @@ miss, since every other doc defers to this one.
 
 ---
 
-## 5 · Design assessment
-
-**Not over-engineered where it counts.** The two central decisions — one TOML
-file with each value stored once, and `prep` rebuilding a config rather than
-splicing text — are both argued from failure modes rather than taste, and § 8.1
-names three engine behaviours that make splicing impossible. That is design
-evidence, not preference.
-
-**The one real over-build is § 1.2** — a multi-engine file format with five
-supporting mechanisms and no producer.
-
-**Encapsulation is sound in direction, weak at the boundary.** The floor rule
-(a module may import downward, never upward) is stated in `generator.md` § 6 and
-holds in `template.py`, which imports only `persist` and the standard library.
-What is weak is the *declared* boundary: `__all__` omits the headline API and
-the closed vocabularies (§ 1.5), so the module's real interface and its
-advertised one differ.
-
-**One structural observation worth more than any single defect.** Five separate
-mechanisms in this system have now been found built reader-first, with the
-writer never landing. That is a pattern in how the work is sequenced, not five
-coincidences — and the cheapest guard against it is the one already used for
-`read_by` on 2026-08-13: a test that asserts *someone actually produces this*,
-written in the same commit that adds the reader.
-
-
 ---
 
-## 6 · `docs/execution/generator.md` — read in full, 594 lines
+## 5 · `docs/execution/generator.md` — read in full, 594 lines
 
 **6.1 · § 4's table still holds the `@1` position.** It classes `mpi_np`,
 `cpus_per_task` and `gpu_mode` as *"not a template item at all"*. At `@2` they
@@ -219,7 +204,9 @@ It is also checkable on ASU Sol (§ 4.4a), which is rare for a design claim.
 
 ---
 
-## 7 · `molbuilder/resolve.py` — read in full, 559 lines
+---
+
+## 6 · `molbuilder/resolve.py` — read in full, 559 lines
 
 **This is the best-built module reviewed.** Precedence is implemented in the
 order the contract states (template ⊕ stage ⊕ sweep ⊕ pin), every refusal names
@@ -269,24 +256,9 @@ the contract rather than leaving a reader to infer that the guard always fires.
 
 ---
 
-## 8 · The pattern, restated after four files
-
-Two habits show up in more than one place, and both are cheaper to fix as
-habits than as instances:
-
-1. **Reader built, writer never lands.** `engines`, `read_by`, `resolver`,
-   `RUNTIME_INFO_KEYS`, the execution panel. The guard that works is the one
-   used for `read_by` on 2026-08-13: in the same commit as the reader, a test
-   that asserts *something actually produces this*.
-2. **`__all__` drifts from the real API.** `template.py` omits `select`/`one`;
-   `resolve.py` omits `resolved_ladder`. A single test over the package —
-   *every public callable named in a module's contract docstring appears in
-   `__all__`* — would close both and stay closed.
-
-
 ---
 
-## 9 · `docs/execution/job-system.md` — read in full, 1322 lines
+## 7 · `docs/execution/job-system.md` — read in full, 1322 lines
 
 ### 9.1 · `Resources` is understated in two places and correct in a third
 
@@ -341,7 +313,9 @@ own kind of drift.
 
 ---
 
-## 10 · `job-contracts.md` § 6.2 — the authority, read against its own duplicate
+---
+
+## 8 · `job-contracts.md` § 6.2 — the authority, read against its own duplicate
 
 This section was read to check § 9.2's drift claim from the authority's side.
 What it shows is worse, and better evidenced, than the drift itself.
@@ -375,7 +349,9 @@ row here propagates by design.
 
 ---
 
-## 11 · `job-contracts.md` §§ 3.1–3.2 and 6.3
+---
+
+## 9 · `job-contracts.md` §§ 3.1–3.2 and 6.3
 
 ### 11.1 · VERIFIED CLEAN — recorded because a defect-only report misleads
 
@@ -423,3 +399,63 @@ the 57-deck sweep carries one. It is marked optional, so this is not a
 contradiction — it is recorded because it belongs to the family § 8 names:
 **a key defined before anything writes it.** HEADER (§ 3.1) is the same shape
 and is at least labelled *reserved-but-unemitted*; this one is not.
+
+---
+
+## 10 · Design assessment
+
+**Not over-engineered where it counts.** The two central decisions — one TOML
+file with each value stored once, and `prep` rebuilding a config rather than
+splicing text — are both argued from failure modes rather than taste, and § 8.1
+names three engine behaviours that make splicing impossible. That is design
+evidence, not preference.
+
+**The one real over-build is § 1.2** — a multi-engine file format with five
+supporting mechanisms and no producer.
+
+**Encapsulation is sound in direction, weak at the boundary.** The floor rule
+(a module may import downward, never upward) is stated in `generator.md` § 6 and
+holds in `template.py`, which imports only `persist` and the standard library.
+What is weak is the *declared* boundary: `__all__` omits the headline API and
+the closed vocabularies (§ 1.5), so the module's real interface and its
+advertised one differ.
+
+**One structural observation worth more than any single defect.** Five separate
+mechanisms in this system have now been found built reader-first, with the
+writer never landing. That is a pattern in how the work is sequenced, not five
+coincidences — and the cheapest guard against it is the one already used for
+`read_by` on 2026-08-13: a test that asserts *someone actually produces this*,
+written in the same commit that adds the reader.
+
+
+---
+
+---
+
+## 11 · The repeating patterns — worth more than any single defect
+
+**Three habits** show up in more than one place, and each is cheaper to fix as
+a habit than as its instances:
+
+1. **Reader built, writer never lands.** `engines`, `read_by`, `resolver`,
+   `RUNTIME_INFO_KEYS`, the execution panel. The guard that works is the one
+   used for `read_by` on 2026-08-13: in the same commit as the reader, a test
+   that asserts *something actually produces this*.
+2. **`__all__` drifts from the real API.** `template.py` omits `select`/`one`;
+   `resolve.py` omits `resolved_ladder`. **Two of two modules read.** A single
+   test over the package — *every public callable named in a module's contract
+   docstring appears in `__all__`* — would close both and stay closed.
+3. **A fix lands at one copy of a fact and not the other.** The clearest case
+   is § 8: `Resources` said *"seven"* in the contract and in the guide; the
+   contract's was corrected **and pinned with a test**, the guide's was not,
+   and nothing connects them. The same shape appears as an illustration left
+   behind when the rule beside it moved — § 3's `block_size` example, § 9.2's
+   `kgrid` line, § 2's four `read_by` passages. **The rule moves; its examples
+   stay.** A doc test that parses fenced TOML/JSON examples and checks them
+   against the schema they illustrate would catch most of this family, and
+   would have caught § 3.1's duplicate key outright.
+
+
+---
+
+---
