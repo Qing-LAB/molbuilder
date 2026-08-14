@@ -3029,3 +3029,52 @@ There was never a conflict.
 > only one that would have changed shipped output. It is also the reason SS 26's
 > contract-first rule earns its place -- had I *fixed* SS 44 instead of
 > recording it, every deck would now differ.
+
+### 47.3 - The one-line version: **the engine does not read comments**
+
+*(User, 2026-08-14.)* Every reserved block is `#`-prefixed. SIESTA skips
+comments; PySCF's are Python comments. **So they are not part of the
+calculation by construction, not by argument** -- and SS 44 did not need a
+nuanced case, it needed this sentence. Recorded because it is the shortest
+true statement of the rule and the one to reach for next time.
+
+---
+
+## 48 - `pow2` IS power-of-two, it IS meaningful, and nothing can emit it
+
+*(User, 2026-08-14: "is the pow2 'power of 2'?")*
+
+**Yes.** It exists for `BlockSize` -- the ScaLAPACK / ELPA distribution block
+-- where powers of two are the convention: `_auto_block_size` caps to one, and
+a generated deck's PROVENANCE prints *"auto -> 256 (n_orbitals_est 2120 /
+mpi_np, **capped pow2**)"*. `template.md` SS 5 gives it the right reason: `type`
+carries *"what a parser cannot know -- that `pow2` must be a power of two"*.
+
+**So the type is meaningful. The defect is that nothing produces it.**
+
+| | |
+|---|---|
+| `_decl_type` | maps annotations to `enum` / `bool` / `int` / `float` / `str` / `int3` / `strlist` / `intlist`. **No branch yields `pow2`** |
+| `parallel_block_size` | is `Optional[int]`, so it renders `type = "int"` |
+| `template.md` SS 12's example | declares `type = "pow2"` |
+
+**The contract shows a type the code cannot emit**, and Gate A does not catch
+it -- the example's type IS in `TYPES`, so it passes. It is valid and
+unproducible.
+
+### 48.1 - The fix is small and the choice is real
+
+| | |
+|---|---|
+| **make it reachable** | a field declares it in metadata -- e.g. `"decl_type": "pow2"` -- and `_decl_type` honours it. Then `parallel_block_size` carries `pow2`, a surface can refuse 96, and SS 12's example becomes true. **This is the option that matches what the value IS** |
+| **retire it** | drop `pow2` from `TYPES`, and SS 12's example becomes `int` with `range`. Loses the one thing SS 5 says `type` is for -- a constraint a parser cannot see |
+
+**Recommendation: make it reachable.** A power-of-two constraint is exactly
+SS 5's stated purpose for the `type` vocabulary, `BlockSize` is a real field
+that wants it, and the alternative is to delete a correct idea because the
+plumbing was never finished.
+
+> **And it is the same shape as `text` (SS 33): zero uses because the work is
+> not done, not because nobody wants it.** Two of the four "unused" vocabulary
+> members are now in that category -- which is the answer to SS 32's question
+> and leaves only `intlist` and the `monitor` kind genuinely open.
