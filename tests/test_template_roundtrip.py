@@ -476,3 +476,22 @@ def test_one_raises_for_a_name_the_template_never_had():
     t = _siesta_template()
     with pytest.raises(KeyError, match="no item 'not_a_parameter'"):
         T.one(t, "not_a_parameter")
+
+
+def test_an_item_claiming_an_unlisted_engine_is_refused():
+    """§ 6.3: an item's `engines` NARROWS the file's list; it cannot widen
+    it.
+
+    Found by reading the emitted file rather than the diff: a template
+    whose header said ``engines = ["siesta"]`` happily carried an item
+    declaring ``["siesta", "pyscf"]``.  Accepting that lets a surface
+    filter for pyscf and be handed items from a calculation that never
+    offered it — and which half is wrong is not the reader's to guess, so
+    it reports the disagreement and names both sides.
+    """
+    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\nfingerprint = ""\n\n'
+            '[item.x]\nkind = "engine"\ncategory = ["execution"]\n'
+            'engines = ["siesta", "pyscf"]\nanchor = "X"\n'
+            'type = "int"\nhelp = "x"\n')
+    with pytest.raises(ValueError, match=r"x: declares engines \['pyscf'\]"):
+        T.read_template(text)

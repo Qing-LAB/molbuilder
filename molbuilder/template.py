@@ -721,6 +721,20 @@ def read_template(text: str) -> Template:
     # message about anything but the edit that caused it.
     # (value checking moved INTO _item_from at R4 -- raw, pre-shape; a
     # loop here saw values _shape had already coerced.)
+    # § 6.3: an item's `engines` narrows the FILE's list -- it cannot widen
+    # it.  An item naming an engine this calculation does not run on is a
+    # contradiction between the two, and accepting it would let a surface
+    # filter for that engine and be handed items from a calculation that
+    # never offered it.  Which half is wrong is not ours to guess, so the
+    # reader reports the disagreement and names both sides.
+    for _it in items:
+        _stray = [e for e in _it.engines if e not in engines_t]
+        if _stray:
+            _refuse(
+                f"declares engines {_stray} that the template does not list "
+                f"(engines = {list(engines_t)}). An item's `engines` narrows "
+                f"the file's list; it cannot widen it (engines/template.md "
+                f"§ 6.3)", where=_it.name)
     return Template(engine=str(engine), fingerprint=fingerprint,
                     engines=engines_t, items=items)
 

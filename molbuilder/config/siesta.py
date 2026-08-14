@@ -1026,6 +1026,14 @@ class SiestaConfig:
     })
     diag_algorithm: str = field(default="ScaLAPACK", metadata={
         "category": ("execution",),
+        # § 6.1 / § 11.3: the WRAPPER derives from this value -- an
+        # ELPA deck must run in molbuilder-siesta-gpu, not the CPU env.
+        # Declaring it here is what lets the wrapper writer be TOLD
+        # which items it depends on instead of scanning the deck text
+        # for the string "ELPA", which is what it does today.  The
+        # wrapper reading it is T8; the declaration comes first so T8
+        # has data rather than a promise.
+        "read_by": ("wrapper",),
         "section": "Compute & budget",
         "workflow_group": "budget",
         "label":     "Diagonalizer",
