@@ -140,6 +140,11 @@ molbuilder = [
     # Fundamental-data tables loaded at import time.  See
     # molbuilder/data/README.md for citations + the override mechanism.
     "data/*.json", "data/*.md",
+    # The parameter catalogue (data/catalogue.template.toml) and the per-engine
+    # warm-file rules (siesta/, pyscf/) are TOML loaded at runtime.  No .toml
+    # pattern existed until 2026-08-14, so NEITHER shipped in a built wheel --
+    # it worked from the repo and would have failed on an installed copy.
+    "data/*.toml", "siesta/*.toml", "pyscf/*.toml",
 ]
 
 [tool.pytest.ini_options]

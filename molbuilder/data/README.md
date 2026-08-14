@@ -20,11 +20,41 @@ durable, see *§ Local overrides* at the bottom of this file.
 
 ---
 
+## `catalogue.template.toml` — the parameter catalogue
+
+**The master list of every parameter both engines declare**, in the template
+format ([`engines/template.md`](../../docs/engines/template.md)). 82 items:
+45 apply to SIESTA, 40 to PySCF, 3 to both.
+
+**It sits here because it is data, and because it is not one engine's.** The
+per-engine `warm-files.toml` files live inside `siesta/` and `pyscf/`; this one
+spans both, so it belongs in the shared directory beside the other tables a
+reviewer can check without reading code.
+
+**Why it exists.** The direction of flow is **template → per-engine config →
+that engine's input file** ([`template.md`](../../docs/engines/template.md)
+§ 2.1). A parameter is *defined* here; a config class only *carries* it on the
+way out. Until 2026-08-14 the catalogue lived as metadata on the dataclass
+fields and this file was generated *from* them — the inverted direction, which
+meant enriching the catalogue required editing Python and two engines' items
+could never share one file.
+
+**Values here are DEFAULTS.** A calculation carries its own template with its
+own values; this is what one starts from.
+
+**Editing it.** It is TOML precisely so a person can. `read_template` refuses a
+file that breaks § 3's required keys and names what is missing, so a bad edit
+fails loudly at the next `prep` rather than silently producing a different
+calculation.
+
+---
+
 ## Files
 
 | File | Schema | Read by | Status |
 |---|---|---|---|
 | `fcc_lattice.json` | v1 | `molbuilder.modify._load_fcc_lattice` | live |
+| `catalogue.template.toml` | `molbuilder/template@2` | `molbuilder.template.read_template` | **new 2026-08-14 — the parameter catalogue** |
 
 ---
 

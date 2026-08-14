@@ -1115,6 +1115,11 @@ class SiestaConfig:
         # parser can recover the cap via runtime_info.
         "engine_key":  '(molbuilder: .run.sh ulimit -v + .fdf runtime_info comment)',
         "unit":       "MB",
+        # Advisory bounds for a surface offering a cap.  Added 2026-08-14 to
+        # match PySCF's: the two engines declare ONE item (template.md § 6.3)
+        # and a merged item cannot carry two answers.  Advisory only -- the
+        # normal state is unset, which means the node's maximum.
+        "range":      (100, 1_000_000),
         "null_label": "(no cap)",
         "help":       "MB cap per MPI rank.  Emits a SystemMemory hint "
                       "into the .fdf when set; left blank, SIESTA uses "
