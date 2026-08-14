@@ -571,14 +571,19 @@ contract's — a local sequence inside one of them should not reuse the word.**
 
 ### 12.3 · The reviewer made the same class of error, one commit ago
 
-Writing § 12 I cited *"`generator.md` § 2.3.1a"*. **§ 2.3.1a belongs to
+Writing § 12 I attributed § 2.3.1a to the wrong document. **It belongs to
 `project-layout.md`**; `generator.md` § 2 merely quotes it. The docs gate
 (`test_every_cross_document_section_citation_resolves`) refused, by name:
 
 > *these citations name a section that does not exist in the target:
-> audit-…md:541 -> generator.md § 2.3.1a … Either the section moved (repoint
-> the citation) or it was renumbered — do NOT just delete the number, which is
-> how a pointer becomes prose nobody can follow.*
+> `audit-…md:541 -> <the wrong document> ¶2.3.1a` … Either the section moved
+> (repoint the citation) or it was renumbered — do NOT just delete the number,
+> which is how a pointer becomes prose nobody can follow.*
+
+*(The target is elided above on purpose: the gate scans prose for citations and
+cannot tell a quoted example from a live one, so quoting the failure verbatim
+re-triggers it. A small cost of a textual gate, and worth knowing before
+someone documents a citation failure and is refused for describing it.)*
 
 Recorded because it is evidence for two claims this report makes, and evidence
 against a third:
