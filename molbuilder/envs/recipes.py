@@ -220,6 +220,21 @@ def _spec(name: str, version_var: str = "") -> str:
 # be tested on a 14.3 toolchain, which does not reproduce the bug --
 # and would slow the whole build to work around one file.
 #
+# VERIFIED end-to-end on a clean machine 2026-08-14 (user): all ten
+# steps complete with the 14.3 pin.  Before that it was proven only in
+# parts -- the .comment section of a known-good object, and the failing
+# link on the other machine.
+#
+# ⚠ THIS PIN IS SPECIFIC TO THE SIESTA VERSION WE BUILD, and the pin
+# without that qualifier reads as "molbuilder needs gcc 14.3", which is
+# not the claim.  The claim is: *SIESTA_TAG's* kpoint_t.F90 miscompiles
+# under gcc 14.4.  A later SIESTA may restructure that optional dummy
+# procedure -- or fix it outright -- and then the pin is holding the
+# toolchain back for a defect that no longer exists.  So: WHEN SIESTA_TAG
+# MOVES, RE-TEST 14.4 (and whatever is current) BEFORE ASSUMING THIS
+# STILL APPLIES.  The test is cheap and mechanical -- build, then check
+# libsiesta.a for an undefined ``process_k_cell_``.
+#
 # Override per-install with ``--gcc <X.Y>`` or ``MOLBUILDER_GCC``.
 # CUDA pairing still applies and is checked in builds.py: CUDA
 # 12.0-12.7 wants gcc <= 13, CUDA 11.x wants gcc <= 11.

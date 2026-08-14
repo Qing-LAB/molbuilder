@@ -159,6 +159,18 @@ the GPU at run time.
 
 ### 6.1 Toolchain version — why 14.3, and how to change it
 
+> **⚠ This pin belongs to the SIESTA version we build, not to molbuilder.**
+> The claim is *"this SIESTA tag's `kpoint_t.F90` miscompiles under gcc 14.4"* —
+> not *"molbuilder needs gcc 14.3"*. **When the SIESTA tag moves, re-test 14.4
+> (and whatever is current) before assuming the pin still applies**; a later
+> SIESTA may restructure that optional dummy procedure or fix it outright, and
+> the pin would then be holding the toolchain back for a defect that no longer
+> exists. The test is mechanical: build, then check `libsiesta.a` for an
+> undefined `process_k_cell_`.
+
+**Verified end to end on a clean machine, 2026-08-14** — all ten install steps
+complete with the pin in place.
+
 The compiler is pinned to a **minor** version, `gcc/gxx/gfortran_linux-64=14.3`.
 `14` would not be a pin: conda reads it as `14.*`, so two machines installing the
 same recipe weeks apart can resolve to different compilers and only one of them
