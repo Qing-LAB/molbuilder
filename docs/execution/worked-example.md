@@ -502,7 +502,7 @@ table keeps the count.*
 |---|---|---|---|
 | 9 | ✅ **CLOSED 2026-08-11** (plan step 1): `describe` emits `<label>.template.toml` from the schema | `template.md` · plan P12 u6b | — |
 | 10 | ✅ **CLOSED 2026-08-11** (plan step 2, `b7ca09d7`): `jobset describe` writes template + `task.json` + data files | `job-system.md § 5.1`, § 5.3's grammar | — |
-| 11 | ✅ **CLOSED 2026-08-11** (with gap 9): the template writer computes `schema_fingerprint`, mutation-tested | `stages.md § 6.6` | — |
+| 11 | ⛔ **MOOT 2026-08-14**: the `schema_fingerprint` mechanism is **retired**, so the gap it named cannot be open. One writer, one reader, and a warning weaker than the per-field rows that ran right after it (`template.md` § 10, `stages.md` § 6.6) | `stages.md § 6.6` | — |
 | 12 | **`user_custom` has no schema field.** It must be an ordinary item for USER-CUSTOM text to survive `prep`; no engine config declares one | `template.md § 9.2`, § 12 | the reserved-block completeness claim (G6) |
 | 13 | **The `required` check is unbuilt.** A stage may declare what it cannot run without; nothing verifies it in the run directory | `job-contracts.md § 4.4` · `stages.md § 5` | a TranSIESTA ladder starting without its `.TSHS` |
 | 14 | ~~**Nothing offers a save before `prep` overwrites a folder.**~~ **Closed 2026-08-12** (A3/U14): `prep` now SAYS what is under way — launched attempts, launched trials, warm files — asks before re-rendering, and points at the snapshot verbs when a checkpoint repo exists | `checkpointing.md § 9` · `run-identity.md § 6` | — |
@@ -518,7 +518,6 @@ gap 9.
 ```mermaid
 flowchart LR
     G9["<b>9</b> nothing writes<br/>a template"] --> G10["<b>10</b> no<br/>describe verb"]
-    G9 --> G11["11 · fingerprint"]
     G9 --> G12["12 · user_custom"]
     G9 --> INV["S2 · S3 · S4 · S6 · L8<br/><i>five invariants,<br/>untestable until then</i>"]
     G9 --> G2["<b>2</b> produce/prep<br/>boundary"]

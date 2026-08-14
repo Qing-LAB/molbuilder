@@ -61,7 +61,6 @@ file, making the class the master and the file its printout — was **deleted
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import re
 import tomllib
 import types
@@ -198,9 +197,12 @@ class Item:
     resolver: str = ""
 
     #: Whether this item's value belongs to the ALLOCATION rather than to the
-    #: calculation (§ 2, G1).  Not written to the file: it is recoverable from
-    #: the schema, and it exists so the writer can refuse to assert a machine
-    #: fact -- such an item is emitted VALUELESS however the config is filled.
+    #: calculation (§ 2, G1).  **Not written to the file, and recoverable from
+    #: it**: the three allocation items are exactly those whose `resolver` is in
+    #: :data:`ALLOCATION_RESOLVERS` (§ 6.4), which is how
+    #: :func:`template_with_values` knows to emit them VALUELESS however the
+    #: config is filled.  Set from the schema on the WRITE side, so an item read
+    #: back from a file carries ``False`` -- ask the resolver, not this flag.
     allocation: bool = False
 
     #: Whether *unset* is a state this item has at all. Not written to the
