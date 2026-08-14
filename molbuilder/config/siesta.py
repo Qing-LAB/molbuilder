@@ -784,11 +784,13 @@ class SiestaConfig:
     # Output flags
     write_forces: bool = field(default=True, metadata={
         "category": ("procedure",),
+        "label": "Write forces (.FA)",
         "help": "write forces to the .FA file (required for relaxation)",
             "engine_key":  'WriteForces',
     })
     write_coor_step: bool = field(default=True, metadata={
         "category": ("procedure",),
+        "label": "Write coordinates each step",
         "help": "write coordinates at every MD step in the main .out",
             "engine_key":  'WriteCoorStep',
     })
@@ -818,6 +820,7 @@ class SiestaConfig:
     })
     write_molwatch_log: bool = field(default=True, metadata={
         "category": ("procedure",),
+        "label": "Write the molwatch trajectory log",
         "help": "write <job>.molwatch.log preview (lets molwatch render before SIESTA does)",
             "engine_key":  '(molbuilder: writes <basename>.molwatch.log preview)',
         # Consumed by the GENERATOR, not the deck: § 7's kind, stated
@@ -1115,6 +1118,7 @@ class SiestaConfig:
     })
     copy_psml: bool = field(default=True, metadata={
         "category": ("procedure",),
+        "label": "Stage pseudopotential files",
         "help": "copy psml files into the output directory (alongside the FDF)",
             "engine_key":  '(molbuilder: triggers .psml staging step)',
         "item_kind": "produce",
@@ -1126,6 +1130,7 @@ class SiestaConfig:
     # deck it claims to describe.
     species_order: Optional[List[str]] = field(default=None, metadata={
         "category": ("system",),
+        "label": "Species order",
         "help": "comma-separated species order (e.g. 'C,H,S,Au')",
         "skip_cli": True,
             "engine_key":  '(molbuilder: ChemicalSpeciesLabel block ordering)',

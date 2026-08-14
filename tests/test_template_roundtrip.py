@@ -134,7 +134,7 @@ def test_the_emitted_file_is_valid_toml_and_carries_the_three_top_keys(cfg):
     import tomllib
     raw = tomllib.loads(T.render_template(cfg))
     assert raw["schema"] == T.SCHEMA
-    assert raw["engine"] == "siesta"
+    assert raw["engines"] == ["siesta"]      # @2: a LIST -- a calculation may run on several
     assert raw["fingerprint"] == T.schema_fingerprint(SiestaConfig)
 
 
@@ -152,7 +152,8 @@ def test_the_writer_computes_the_fingerprint(cfg):
 @pytest.mark.parametrize("missing", ["kind", "type", "help"])
 def test_an_item_missing_a_required_key_is_refused_by_name(missing):
     text = (f'schema = "{T.SCHEMA}"\nengine = "siesta"\nfingerprint = ""\n\n'
-            '[item.mesh_cutoff]\nkind = "engine"\nanchor = "MeshCutoff"\n'
+            '[item.mesh_cutoff]\nkind = "engine"\ncategory = ["accuracy"]\n'
+            'anchor = "MeshCutoff"\n'
             'type = "float"\nhelp = "x"\n')
     text = "\n".join(l for l in text.splitlines()
                      if not l.startswith(f"{missing} ")) + "\n"
@@ -165,7 +166,8 @@ def test_an_unknown_kind_is_refused_not_skipped():
     it did not understand would produce a deck missing a parameter, and say
     nothing."*"""
     text = (f'schema = "{T.SCHEMA}"\nengine = "siesta"\nfingerprint = ""\n\n'
-            '[item.x]\nkind = "wishful"\ntype = "int"\nhelp = "x"\n')
+            '[item.x]\nkind = "wishful"\ncategory = ["method"]\n'
+            'type = "int"\nhelp = "x"\n')
     with pytest.raises(ValueError, match=r"kind 'wishful' is not one of"):
         T.read_template(text)
 
@@ -202,7 +204,7 @@ def test_every_item_carries_what_a_surface_needs_to_render_it():
         # only *where on the form*), so demanding them there would invent
         # UI for a field no surface renders.  What every item DOES owe
         # every reader is its help text.
-        if item.section:
+        if item.category:
             assert item.label, f"{item.name} has no human-readable label"
         assert item.help, f"{item.name} has no help text"
 
@@ -217,7 +219,7 @@ def test_an_optional_item_says_what_unset_is_called():
 def test_the_three_surface_keys_survive_the_round_trip():
     text = T.render_template(SiestaConfig(system_label="JOB"))
     item = T.read_template(text).get("mesh_cutoff")
-    assert item.label and item.section and item.unit == "Ry"
+    assert item.label and item.category and item.unit == "Ry"
 
 
 # --------------------------------------------------------------------- #
@@ -356,7 +358,7 @@ def test_a_hand_added_machine_fact_item_is_refused_with_the_story():
              'value = 8\n'
              'default = 8\n'
              'group = "budget"\n'
-             'section = "Compute & budget"\n'
+             'category = ["execution"]\n'
              'label = "MPI ranks (np)"\n'
              'help = "hand-added"\n')
     with pytest.raises(ValueError, match=r"machine fact"):

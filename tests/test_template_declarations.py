@@ -180,7 +180,7 @@ def test_an_unnameable_type_is_refused_by_name():
     every allowed item has a place in it."""
     odd = dataclasses.make_dataclass("Odd", [
         ("weird", complex, dc_field(default=0j,
-                                    metadata={"section": "S",
+                                    metadata={"category": ("method",),
                                               "workflow_group": "budget"}))])
     with pytest.raises(ValueError, match="weird"):
         declarations_for(odd)
@@ -194,15 +194,31 @@ def test_pyscfs_vocabulary_gaps_refuse_loudly():
     shrinking is progress; it growing is a new unclassified field."""
     import typing as _t
     hints = _t.get_type_hints(PySCFConfig)
-    gaps = []
+    from molbuilder.template import declaration_for
+    gaps, rendered = [], []
     for f in dataclasses.fields(PySCFConfig):
         try:
-            from molbuilder.template import declaration_for
-            declaration_for(f, hints[f.name])
+            # None is not a gap: § 7 EXCLUDES machine facts deliberately.
+            if declaration_for(f, hints[f.name]) is not None:
+                rendered.append(f.name)
         except ValueError:
             gaps.append(f.name)
-    assert gaps == ["ecp", "save_optimized_xyz", "save_initial_xyz",
-                    "write_trajectory", "write_molwatch_log", "stage"]
+    # At schema @2 EVERY PySCF field is a gap, because `category` is
+    # required (§ 6.2) and PySCF is not migrated yet -- that is T5/T6 of
+    # the template-unification plan.  The rule this test defends is
+    # unchanged: the gaps are NAMED, never skipped.  Asserting the whole
+    # list here would just re-list the schema and would have to be edited
+    # for every PySCF field added; what matters is that nothing renders
+    # silently and that the pre-@2 gaps are still among them.
+    assert rendered == [], (
+        f"PySCF fields rendered despite having no category: {rendered}. "
+        f"§ 6.2 is required, so anything that slips through is an item with "
+        f"no panel to appear on -- a silent omission, not a template")
+    for pre_at2 in ("ecp", "save_optimized_xyz", "save_initial_xyz",
+                    "write_trajectory", "write_molwatch_log", "stage"):
+        assert pre_at2 in gaps, (
+            f"{pre_at2} was a known vocabulary gap before @2 and must not "
+            f"disappear from the list without being fixed")
 
 
 def test_declarations_keep_the_configs_own_order():
@@ -237,7 +253,7 @@ def _variant(*, meta=None, ann=int, default=3):
     ``from __future__ import annotations``, so a class-body annotation is
     stored as a *string* and a computed one ("whatever ``ann`` holds") cannot
     be resolved back to a type at all."""
-    md = {"section": "S", "workflow_group": "stage",
+    md = {"category": ("method",), "workflow_group": "stage",
           "range": (1, 10), "help": "a", "label": "A", "unit": "Ry"}
     md.update(meta or {})
     return dataclasses.make_dataclass(
@@ -272,7 +288,7 @@ def test_the_fingerprint_ignores_presentation_and_defaults(what, kw):
 
 def test_adding_a_field_changes_the_fingerprint():
     before = schema_fingerprint(_variant())
-    md = {"section": "S", "workflow_group": "stage"}
+    md = {"category": ("method",), "workflow_group": "stage"}
     two = dataclasses.make_dataclass("C2", [
         ("x", int, dc_field(default=3, metadata={**md, "range": (1, 10)})),
         ("y", int, dc_field(default=1, metadata=md)),

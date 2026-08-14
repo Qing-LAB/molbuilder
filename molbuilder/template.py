@@ -62,7 +62,7 @@ from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple
 from .persist import check_schema
 
 
-SCHEMA = "molbuilder/template@1"
+SCHEMA = "molbuilder/template@2"
 
 #: The suffix of a template's filename; the stem is the ``SystemLabel``.
 #: ``<label>.template.toml`` (`job-contracts.md` § 6.3).  It was
@@ -74,6 +74,22 @@ SUFFIX = ".template.toml"
 #: that quietly dropped an item it did not understand would emit a deck missing
 #: a parameter and say nothing.
 KINDS = ("engine", "deck", "wrapper", "produce", "monitor")
+
+#: The closed CATEGORY vocabulary (`engines/template.md` § 6.2), in READING
+#: ORDER -- a surface presents panels top to bottom in this order, because it
+#: is the order a person decides in and a methods section is written in.
+#:
+#: A category has NO effect on the generated script: the deck writer filters on
+#: ``kind``.  It is a presentation-and-discovery key, which is why an item may
+#: carry SEVERAL -- the first is the panel it appears on, the rest make it
+#: findable where a user would look.
+#:
+#: ``execution`` is the exception and is a CLAIM rather than a hint: a benchmark
+#: takes it as the sweepable set -- knobs that change speed and not the answer.
+#: Tagging something ``execution`` that changes the answer means a sweep
+#: silently measures a different calculation at each point.
+CATEGORIES = ("system", "method", "accuracy", "convergence",
+              "procedure", "execution")
 
 #: § 5 — the validation vocabulary. TOML types the *storage*; this types what a
 #: reader must check, which a parser cannot know: that ``pow2`` is a power of
@@ -132,8 +148,21 @@ class Item:
     # it.  They cost nothing -- they are already in the field metadata -- and
     # adding them later would mean re-emitting every template written before.
     label:      str = ""                    # "MPI ranks (np)" -- the human name
-    section:    str = ""                    # "Compute & budget" -- the fieldset
     null_label: str = ""                    # "(auto)" -- what UNSET is called
+
+    # --- § 6.2 / § 6.3 / § 6.4 (schema @2) ---------------------------- #
+    #: Which questions this item answers.  FIRST is the panel; the rest make
+    #: it findable (§ 6.2).  Replaced ``section``, which held a free-text
+    #: fieldset name PER ENGINE ("SCF", "Compute & budget"), so two engines
+    #: expressing one idea disagreed on the label and no surface could group
+    #: across them.
+    category: Tuple[str, ...] = ()
+    #: Which engines this item applies to.  EMPTY MEANS ALL (§ 6.3).
+    engines:  Tuple[str, ...] = ()
+    #: Who computes this item's value when it is unset -- a NAME from a closed
+    #: registry, never code (§ 6.4).  A template carrying executable content
+    #: would be something you must trust rather than something you can read.
+    resolver: str = ""
 
     #: Whether *unset* is a state this item has at all. Not written to the
     #: file — it is recoverable from the schema and is carried here because
@@ -271,7 +300,6 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     grammar: that is a gap in the vocabulary, and the loud version of it is the
     only one that gets fixed.
     """
-    section = f.metadata.get("section")
     # NO section gate (U16, 2026-08-12).  ``section`` answers *where on
     # the form* -- a surface hint, legitimately absent for a field no tab
     # shows -- while membership is § 7's TOTAL rule: every parameter the
@@ -312,6 +340,23 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
             f"every parameter the schema declares is an item.")
 
     rng = f.metadata.get("range")
+    # § 6.2 -- REQUIRED, and validated here rather than at write time so the
+    # refusal names the field.  A category cannot change the deck, but an item
+    # without one has no panel to appear on, which is G2 ("enough on its own
+    # for a surface") failing quietly.
+    category = tuple(f.metadata.get("category", ()) or ())
+    if not category:
+        raise ValueError(
+            f"field {f.name!r}: no `category`. Every item declares which "
+            f"question about the calculation it answers "
+            f"(engines/template.md § 6.2); the vocabulary is {CATEGORIES}.")
+    for _c in category:
+        if _c not in CATEGORIES:
+            raise ValueError(
+                f"field {f.name!r}: unknown category {_c!r}. The vocabulary "
+                f"is closed: {CATEGORIES}.")
+    engines = tuple(f.metadata.get("engines", ()) or ())
+    resolver = str(f.metadata.get("resolver", "") or "")
     kind = f.metadata.get("item_kind") or _DEFAULT_KIND
     anchor = _bare_anchor(f.metadata.get("engine_key", "") or f.name)
     expands = tuple(f.metadata.get("expands", ()) or ())
@@ -345,9 +390,11 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
         unit=f.metadata.get("unit"),
         group=f.metadata.get("workflow_group"),
         label=str(f.metadata.get("label", "") or ""),
-        section=str(section or ""),
         null_label=str(f.metadata.get("null_label", "") or ""),
         optional=optional,
+        category=category,
+        engines=engines,
+        resolver=resolver,
     )
 
 
@@ -392,7 +439,7 @@ def schema_fingerprint(config_cls) -> str:
 
       * **the default** — a template records the value in use, so changing a
         default cannot invalidate a description that already carries values;
-      * **help text, labels, units, ``group``, ``section``** — presentation. A
+      * **help text, labels, units, ``group``, ``category``** — presentation. A
         reworded tooltip must not make every stored description suspect, and a
         fingerprint that cried wolf would be turned off.
 
@@ -470,9 +517,9 @@ def _toml_value(v: Any) -> str:
 #: The order keys appear inside an item.  Fixed so two templates of the same
 #: calculation diff cleanly, and so the file reads the way § 4.2's example does:
 #: what it is, then what it is worth, then what bounds it, then the prose.
-_ITEM_KEY_ORDER = ("kind", "anchor", "expands", "type", "choices", "value",
-                   "default", "unit", "range", "group", "section", "label",
-                   "null_label", "read_by", "help")
+_ITEM_KEY_ORDER = ("kind", "category", "engines", "anchor", "expands", "type",
+                   "choices", "value", "default", "resolver", "unit", "range",
+                   "group", "label", "null_label", "read_by", "help")
 
 
 def _item_payload(it: Item) -> Dict[str, Any]:
@@ -496,8 +543,12 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["range"] = list(it.range)
     if it.group:
         out["group"] = it.group
-    if it.section:
-        out["section"] = it.section
+    if it.category:
+        out["category"] = list(it.category)
+    if it.engines:
+        out["engines"] = list(it.engines)
+    if it.resolver:
+        out["resolver"] = it.resolver
     if it.label:
         out["label"] = it.label
     if it.null_label:
@@ -536,7 +587,7 @@ def render_template(config, *, config_cls=None, engine: str = "",
     # fired or always complained.
     payload = {
         "schema": SCHEMA,
-        "engine": eng,
+        "engines": [eng],
         "fingerprint": schema_fingerprint(cls),
         "item": {it.name: _item_payload(it) for it in items},
     }
@@ -546,7 +597,7 @@ def render_template(config, *, config_cls=None, engine: str = "",
         for ln in title.splitlines():
             lines.append(f"# {ln}".rstrip())
     lines.append(f"schema      = {_toml_value(SCHEMA)}")
-    lines.append(f"engine      = {_toml_value(eng)}")
+    lines.append(f"engines     = {_toml_value([eng])}")
     lines.append(f"fingerprint = {_toml_value(payload['fingerprint'])}")
     for it in items:
         body = _item_payload(it)
@@ -609,7 +660,7 @@ def _first_difference(want: Any, got: Any, path: str = "") -> str:
 #  Reading                                                              #
 # --------------------------------------------------------------------- #
 
-_REQUIRED_ITEM_KEYS = ("kind", "type", "help")
+_REQUIRED_ITEM_KEYS = ("kind", "category", "type", "help")
 
 _KNOWN_ITEM_KEYS = frozenset(_ITEM_KEY_ORDER)
 
@@ -631,11 +682,21 @@ def read_template(text: str) -> Template:
 
     check_schema(str(raw.get("schema") or ""), SCHEMA, label="template")
 
-    engine = raw.get("engine")
-    if not engine or not isinstance(engine, str):
-        _refuse("missing required key 'engine' -- without it a reader cannot "
-                "know which config class these items belong to, and would have "
-                "to infer it from their names (engines/template.md § 3)")
+    # § 3 at @2: `engines` is a LIST -- a template describes a CALCULATION and
+    # a calculation may run on more than one engine (§ 6.3).  A @1 file names
+    # one engine as a string; read it as a single-element list rather than
+    # refusing, since that is exactly what it meant.
+    engines = raw.get("engines")
+    if isinstance(engines, str):            # tolerated @1 spelling
+        engines = [engines]
+    if engines is None and isinstance(raw.get("engine"), str):
+        engines = [raw["engine"]]
+    if not engines or not isinstance(engines, list) or \
+            not all(isinstance(e, str) and e for e in engines):
+        _refuse("missing required key 'engines' -- without it a reader cannot "
+                "know which config classes these items belong to, and would "
+                "have to infer it from their names (engines/template.md § 3)")
+    engine = engines[0]
     if "fingerprint" not in raw:
         _refuse("missing required key 'fingerprint'. An EMPTY string is legal "
                 "and means 'makes no claim'; the key itself is required so "
@@ -766,7 +827,9 @@ def _item_from(name: str, body: Any) -> Item:
         unit=body.get("unit"),
         group=body.get("group"),
         label=str(body.get("label", "") or ""),
-        section=str(body.get("section", "") or ""),
+        category=tuple(body.get("category", ()) or ()),
+        engines=tuple(body.get("engines", ()) or ()),
+        resolver=str(body.get("resolver", "") or ""),
         null_label=str(body.get("null_label", "") or ""),
     )
 
