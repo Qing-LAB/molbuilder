@@ -118,7 +118,7 @@ ALLOCATION_RESOLVERS = ("rank_count", "omp_threads", "node_memory")
 #: two, that ``enum`` is drawn from ``choices``, that ``text`` is verbatim engine
 #: text to be copied rather than interpreted.
 TYPES = ("int", "float", "str", "bool", "enum", "pow2",
-         "int3", "strlist", "intlist", "text", "strmap")
+         "int3", "strlist", "intlist", "text")
 
 
 def _refuse(msg: str, *, where: str = "") -> NoReturn:
@@ -315,21 +315,14 @@ def _decl_type(ann, choices) -> Optional[str]:
             return "strlist"
         if args[0] is int:
             return "intlist"
-    # ``str | dict`` -- one setting with a scalar form and a per-element form.
-    # PySCF's ``ecp`` is the case: "lanl2dz" applies one ECP to every heavy
-    # atom, while {"Au": "lanl2dz"} names them per element.  Modelled rather
-    # than narrowed to the scalar, because § 7's answer to a keyword we do not
-    # model is to model it -- narrowing would make the per-element form
-    # unsettable from a template and silently drop it on a round trip.
-    # BOTH union spellings.  ``Optional[Union[str, dict]]`` gives
-    # typing.Union; the PEP 604 ``str | dict | None`` gives types.UnionType,
-    # and they are NOT the same object -- checking only the first silently
-    # left `ecp` unnameable, which is how it stayed a vocabulary gap.
-    import types as _types
-    if origin is typing.Union or origin is getattr(_types, "UnionType", ()):
-        non_none = [a for a in args if a is not type(None)]
-        if set(non_none) == {str, dict}:
-            return "strmap"
+    # NO ``strmap`` (``str | dict``).  It existed for exactly one field --
+    # PySCF's ``ecp``, where "lanl2dz" meant one ECP for every heavy atom and
+    # {"Au": "lanl2dz"} named them per element.  It modelled the SHAPE PySCF
+    # happens to accept rather than the question a person answers, and the
+    # question turned out to be two: which ECP, and which atoms.  ``ecp`` is
+    # now a plain ``str`` beside an ``ecp_atoms`` ``strlist``, so both halves
+    # are ordinary types, both render as controls a surface can validate, and
+    # the union case has no member left.  Retired with it 2026-08-13.
     return None
 
 

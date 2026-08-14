@@ -132,14 +132,14 @@ _ATOMIC_NUMBER = {
 def _resolve_ecp(struct: Structure, cfg: PySCFConfig):
     """Thin shim onto :func:`molbuilder.chemistry.resolve_pyscf_ecp`.
 
-    The decision logic is shared with the spectra generator (the
-    same rule -- def2 bundles its own ECP, lanl2dz auto-add for
-    heavy atoms outside def2 -- applies regardless of WHICH script
-    we're emitting; refactored to chemistry.py 2026-05-23 so the
-    two generators can't drift).
+    The rule is shared with the spectra generator regardless of WHICH
+    script we're emitting (refactored to chemistry.py 2026-05-23 so the
+    two generators can't drift).  Since 2026-08-13 the rule is simply
+    *which declared elements are present*: no basis is consulted and no
+    ECP is added that the user did not name.
     """
     from ..chemistry import resolve_pyscf_ecp
-    return resolve_pyscf_ecp(struct, cfg.ecp, cfg.basis)
+    return resolve_pyscf_ecp(struct, cfg.ecp, cfg.ecp_atoms)
 
 
 def _resolve_charge(struct: Structure, cfg: PySCFConfig) -> int:
@@ -387,19 +387,23 @@ def render_script(struct: Structure,
         out.append("# leave False unless you know your atoms sit on the symmetry")
         out.append("# elements exactly.")
         out.append("# max_memory is a soft hint to PySCF in MB; raise for big jobs.")
-    # Effective Core Potential resolution (gap #8).  Heavy atoms
-    # (Z > 36) on a non-def2 basis need an explicit ECP -- both for
-    # cost (Pt has 78 electrons; treating the inner 60 as a pseudo-
-    # potential is dramatic speedup) AND correctness (DFT without
-    # scalar-relativistic ECPs gets Pt-Pt bond lengths and Au gaps
-    # wrong by ~1 eV / ~0.1 A).  def2-* basis families bundle the
-    # SBKJC / def2-ECP automatically, so we skip auto-emit there.
+    # Effective Core Potential.  Why one is worth declaring: for an
+    # element like Pt (78 electrons) an ECP replaces the inner 60 with a
+    # pseudopotential -- a large speedup, and more importantly a
+    # correctness matter, since DFT without scalar-relativistic ECPs
+    # gets Pt-Pt bond lengths and Au gaps wrong by ~0.1 A / ~1 eV.
+    #
+    # WHICH atoms is the user's declaration (``ecp`` + ``ecp_atoms``),
+    # not a rule this generator applies.  The deck states what was
+    # asked for; ``validation`` is where a structure that looks like it
+    # wants an ECP gets said out loud, for a person to confirm.
     ecp_chosen = _resolve_ecp(struct, cfg)
     if ecp_chosen and v:
+        _named = ", ".join(sorted(ecp_chosen))
         out += [
-            "# Heavy atom(s) detected on a non-def2 basis -> using",
-            f'# `ecp = "{ecp_chosen}"` for scalar-relativistic core',
-            "# replacement.  Override via cfg.ecp = '<name>' or '' to disable.",
+            f"# ECP `{cfg.ecp}` applied to: {_named}",
+            f"# (from ecp_atoms = {list(cfg.ecp_atoms)!r}).  Empty either",
+            "# side = no ECP; nothing is added that you did not name.",
         ]
     # Geometry warm-restart hook (task #539).  The atom literal is
     # bound to ``_atom_block`` so the if-exists block below can
@@ -458,15 +462,13 @@ def render_script(struct: Structure,
     out.append("    atom       = _atom_block,")
     out.append(f'    basis      = "{cfg.basis}",')
     if ecp_chosen:
-        # ECP can be either a string ("lanl2dz") or a per-element dict
-        # ({"Pt": "lanl2dz", "Au": "stuttgart"}) -- both are valid PySCF
-        # gto.M() inputs.  String -> emit as quoted literal; dict ->
-        # emit as a Python dict-literal so PySCF sees it as a dict, not
-        # a string-with-braces (which it would reject as an unknown name).
-        if isinstance(ecp_chosen, dict):
-            out.append(f'    ecp        = {ecp_chosen!r},')
-        else:
-            out.append(f'    ecp        = "{ecp_chosen}",')
+        # ONE shape: ``resolve_pyscf_ecp`` returns ``{element: name}`` or
+        # None, so this is a Python dict-literal every time.  It must NOT
+        # be quoted -- a string-with-braces is what PySCF rejects as an
+        # unknown ECP name, and that was a real bug once.  The string
+        # branch that stood beside this went with the ``str | dict``
+        # field (2026-08-13).
+        out.append(f'    ecp        = {ecp_chosen!r},')
     out.append(f"    charge     = {charge},")
     out.append(f"    spin       = {cfg.spin},")
     out.append(f"    symmetry   = {cfg.symmetry},")

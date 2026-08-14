@@ -398,44 +398,63 @@ so the UI phase does not discover it as a surprise.
 
 ## 8. Open units (2026-08-13, end of session)
 
-### T9 · `ecp` becomes a name plus an atom selector (user design)
+### T9 · `ecp` becomes a name plus an atom selector — ✅ DONE 2026-08-13
 
-**Supersedes the `strmap` type added in T5, which should be DELETED with it.**
+**`strmap`, added in T5, was deleted with it.** It modelled the storage shape
+PySCF happens to accept (`str | dict`) rather than the question a person answers,
+and the question turned out to be two: **which ECP**, and **which atoms**.
 
-`strmap` modelled the storage shape PySCF happens to accept (`str | dict`)
-rather than the question a user answers. The question is two:
-**which ECP**, and **which atoms get it**. A dict conflates them and can express
-something nobody wants — different ECP families on different elements in one
-calculation.
-
-```toml
-[item.ecp]         type = "str"      value = "lanl2dz"
-[item.ecp_atoms]   type = "strlist"  value = ["Au", "Pt"]
+```python
+ecp:       str       = ""    # the name.  "" = no ECP
+ecp_atoms: List[str] = []    # []  none   ["*"] all   ["Au"] one
+                             # ["A*"] prefix   ["Au", "Pt"] several
 ```
 
-`[]` none · `["*"]` all · `["Au"]` one element · `["A*"]` a pattern.
+Both halves are ordinary types, so the closed type vocabulary **shrank** — one
+member fewer than before the programme started — and both render as controls a
+surface can validate instead of a raw table nobody can.
 
-**Both halves already have types**, so a new entry in the closed type vocabulary
-disappears — and it renders as two ordinary controls instead of a raw table
-nobody can validate, which is the point of the whole programme.
+#### What the user ruled, and what each ruling deleted
 
-**The scientific premise, to confirm before building:** nobody needs *different*
-ECP families per element in one run. def2 bases carry their own ECPs; LANL2DZ is
-what you reach for when you are *not* on def2. Mixing families across elements is
-legal in PySCF and almost never right — so the dict form is not a capability
-being lost, it is one that should not have been exposed.
+| ruling | what it removed |
+|---|---|
+| *"there is no point to limit matching to heavy — who defines heavy? there is no clear reasoning or standard"* | the `Z > 36` threshold, and with it the auto-add of `lanl2dz` |
+| *"empty means empty"* | `None`-means-auto. Empty is no ECP, never *pick one for me* |
+| *"do not invent too many options/alias"* · *"one choice, one explicit format"* | the `"none"` spelling, and the `dict` form |
+| *"explicit is better than implicit"* | the `def2` special case — see below |
 
-**Scope — larger than `strmap` was.** That was one serialization function; this
-changes `PySCFConfig`'s schema (one field becomes two), the emitter that builds
-`gto.M(ecp=...)`, the auto-detection that picks ECPs for heavy atoms on non-def2
-bases, and validation. The wildcard matcher needs writing and testing against
-real element symbols.
+#### The behaviour change worth naming
 
-**Two decisions needed first:**
-1. Does `["*"]` mean *all atoms* or *all heavy atoms*? The current auto-rule is
-   heavy-only.
-2. Is `ecp = ""` with a non-empty atom list an error, or *"auto-pick per
-   element"*?
+A `def2` basis used to **silently discard an ECP the user named**, across eight
+spellings of the basis name, on the reasoning that def2 brings its own. It no
+longer does. Silently dropping an explicit instruction is exactly the implicit
+behaviour this unit removes; whether naming one on def2 double-counts is a
+question for **validation to raise**, not for the emitter to settle by throwing
+the input away.
+
+The generator now adds **nothing** the user did not ask for. `validation` still
+*hints* when a structure looks like it wants an ECP and none is declared — a
+hint a person confirms, which is what the user asked for when they said the
+validation function should stay.
+
+#### Also fixed on the way
+
+`SpectraConfig` carries **its own** `ecp`, separately maintained — the sibling
+drift § 1 measures. Both were rewritten in the same commit so they cannot
+diverge on the one setting whose old shape was the reason `strmap` existed.
+
+And both emitters had a `str`-vs-`dict` branch. The resolver returns one shape
+now, so each collapsed to a single line — the dict-literal one, which is the
+half that carried a real bug: an ECP map stuffed into a **quoted string** is
+what PySCF rejects as an unknown ECP name.
+
+#### Tests: replaced, not patched
+
+Fourteen tests across three files pinned the retired rule — six in
+`test_chemistry.py`, six in `test_science_gaps.py` (one parametrized over eight
+`def2` spellings), two in `spectra/test_script.py` — plus three more that
+declared a name with no selector. The one guard carried forward is the
+dict-literal emission, which matters *more* now that every result is a map.
 
 ### T10 · The `.fdf` before/after comparison — ✅ DONE 2026-08-13
 

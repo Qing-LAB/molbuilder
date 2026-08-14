@@ -373,52 +373,68 @@ class TestResolvePyscfEcp:
                          positions=np.array([[0, 0, 0], [1, 0, 0],
                                              [-1, 0, 0], [0, 1, 0], [0, -1, 0]]))
 
-    def test_def2_bundles_own_ecp_returns_none(self):
-        from molbuilder.chemistry import resolve_pyscf_ecp
-        # def2-* auto-applies Stuttgart ECP for heavy atoms; emitting
-        # lanl2dz on top would double-count.  Return None to skip the
-        # ecp= kwarg.
-        assert resolve_pyscf_ecp(self._fe(), None, "def2-SVP")  is None
-        assert resolve_pyscf_ecp(self._pt(), None, "def2-SVP")  is None
-        assert resolve_pyscf_ecp(self._pt(), None, "def2-TZVP") is None
-        # def2 name spellings: hyphen, underscore, no-separator
-        # all need to be matched.
-        assert resolve_pyscf_ecp(self._pt(), None, "def2_SVP")  is None
-        assert resolve_pyscf_ecp(self._pt(), None, "def2svp")   is None
-        assert resolve_pyscf_ecp(self._pt(), None, "DEF2-SVP")  is None   # case-insensitive
+    # REDESIGNED 2026-08-13.  Six tests stood here pinning a rule that
+    # is retired: ``None`` meant *auto* -- add lanl2dz when any element
+    # had Z > 36 and the basis was not def2 -- and ``""`` / ``"none"``
+    # were two spellings of off, beside a dict form.  The user's ruling:
+    # *"there is no point to limit matching to heavy -- who defines
+    # heavy? there is no clear reasoning or standard"*, *"empty means
+    # empty"*, *"one choice, one explicit format"*.  Replaced rather
+    # than patched: a test pinning a retired rule makes it harder to
+    # remove and reads later as policy.
 
-    def test_non_def2_heavy_auto_picks_lanl2dz(self):
+    def test_a_name_and_a_selector_produce_a_per_element_map(self):
+        """The only output shape: ``{element: ecp}`` for what matched."""
         from molbuilder.chemistry import resolve_pyscf_ecp
-        assert resolve_pyscf_ecp(self._pt(), None, "cc-pVDZ") == "lanl2dz"
+        assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["Pt"]) == {
+            "Pt": "lanl2dz"}
 
-    def test_non_def2_light_returns_none(self):
-        """Fe (Z=26) is light enough that all-electron cc-pVDZ is
-        correct.  The threshold is Z > 36 (post-Kr)."""
+    def test_star_means_every_element_present_not_the_heavy_ones(self):
+        """``["*"]`` is ALL atoms.  No Z threshold survives -- the point
+        of the ruling is that nothing in the code decides what "heavy"
+        means, so Cl and H are selected exactly as readily as Pt."""
         from molbuilder.chemistry import resolve_pyscf_ecp
-        assert resolve_pyscf_ecp(self._fe(), None, "cc-pVDZ")     is None
-        assert resolve_pyscf_ecp(self._organic(), None, "cc-pVDZ") is None
-        assert resolve_pyscf_ecp(self._organic(), None, "6-31G*") is None
+        assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["*"]) == {
+            "Pt": "lanl2dz", "Cl": "lanl2dz"}
+        assert resolve_pyscf_ecp(self._organic(), "lanl2dz", ["*"]) == {
+            "C": "lanl2dz", "H": "lanl2dz"}
 
-    def test_explicit_string_wins(self):
+    def test_a_prefix_pattern_selects_by_symbol(self):
         from molbuilder.chemistry import resolve_pyscf_ecp
-        # User-set value bypasses both auto branches.
-        assert resolve_pyscf_ecp(self._pt(), "lanl2dz",  "def2-SVP") == "lanl2dz"
-        assert resolve_pyscf_ecp(self._pt(), "stuttgart", "cc-pVDZ") == "stuttgart"
-        assert resolve_pyscf_ecp(self._organic(), "lanl2dz", "cc-pVDZ") == "lanl2dz"
+        assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["C*"]) == {
+            "Cl": "lanl2dz"}          # Cl, and Pt is not a C-something
 
-    def test_explicit_empty_string_disables(self):
+    def test_several_patterns_union(self):
         from molbuilder.chemistry import resolve_pyscf_ecp
-        # Treating "" / "none" identically prevents the Python-API
-        # case ``ecp="none"`` from reaching gto.M(ecp="none") and
-        # raising "Unable to parse the input ECP data" at SCF time.
-        assert resolve_pyscf_ecp(self._pt(), "",      "cc-pVDZ") is None
-        assert resolve_pyscf_ecp(self._pt(), "none",  "cc-pVDZ") is None
-        assert resolve_pyscf_ecp(self._pt(), "NONE",  "cc-pVDZ") is None
-        assert resolve_pyscf_ecp(self._pt(), "  none ", "cc-pVDZ") is None
+        assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["Pt", "Cl"]) == {
+            "Pt": "lanl2dz", "Cl": "lanl2dz"}
 
-    def test_dict_per_element_passes_through(self):
-        """Per-element ECP dicts let the user mix-and-match across
-        heavy atoms (e.g. lanl2dz on Pt, stuttgart on Mo)."""
+    def test_case_is_not_a_second_format(self):
+        """``["au"]`` and ``["Au"]`` select the same atom -- one spelling
+        to remember, not two to keep in step."""
         from molbuilder.chemistry import resolve_pyscf_ecp
-        spec = {"Pt": "lanl2dz"}
-        assert resolve_pyscf_ecp(self._pt(), spec, "cc-pVDZ") == spec
+        assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["pt"]) == {
+            "Pt": "lanl2dz"}
+
+    def test_empty_means_empty_on_either_side(self):
+        """No ECP, and never "pick one for me"."""
+        from molbuilder.chemistry import resolve_pyscf_ecp
+        assert resolve_pyscf_ecp(self._pt(), "lanl2dz", [])      is None
+        assert resolve_pyscf_ecp(self._pt(), "",        ["*"])   is None
+        assert resolve_pyscf_ecp(self._pt(), "",        [])      is None
+        assert resolve_pyscf_ecp(self._pt(), "   ",     ["*"])   is None
+        assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["", " "]) is None
+
+    def test_a_pattern_matching_nothing_present_adds_nothing(self):
+        """Declaring Xe in a structure with no Xe emits no ECP -- the
+        deck says what is there.  ``validation`` is where a selector
+        that matched nothing gets pointed out."""
+        from molbuilder.chemistry import resolve_pyscf_ecp
+        assert resolve_pyscf_ecp(self._pt(), "lanl2dz", ["Xe"]) is None
+
+    def test_nothing_is_added_for_a_structure_that_declared_none(self):
+        """The retired auto-rule would have put lanl2dz on this Pt for
+        being Z > 36 on a non-def2 basis.  Now the user gets what they
+        asked for, which is nothing."""
+        from molbuilder.chemistry import resolve_pyscf_ecp
+        assert resolve_pyscf_ecp(self._pt(), "", []) is None

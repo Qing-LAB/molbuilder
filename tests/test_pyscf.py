@@ -847,16 +847,28 @@ def test_python_api_ecp_none_sentinel_disables_ecp(h2o, ecp_value):
     assert 'ecp = "None"'     not in text
 
 
-def test_python_api_ecp_explicit_lanl2dz_passes_through(h2o):
-    """An explicit ECP name still propagates verbatim -- as the gto.M
-    KWARG, matched as a line.  The fixed-width literal this replaces
-    (5-space / 1-space) never matched the 8-space emission and passed
-    via the verbose COMMENT (`# \\`ecp = "..."\\``): deleting the kwarg
-    block stayed green (B-4, 2026-08-13)."""
+def test_python_api_ecp_reaches_the_gto_kwarg(h2o):
+    """A declared ECP propagates as the gto.M KWARG, matched as a line.
+
+    The fixed-width literal this replaces (5-space / 1-space) never
+    matched the 8-space emission and passed via the verbose COMMENT
+    (`# \\`ecp = "..."\\``): deleting the kwarg block stayed green (B-4,
+    2026-08-13).  Kept, with the selector the field now requires.
+    """
+    import re as _re
+    text = render_script(h2o, PySCFConfig(
+        ecp="lanl2dz", ecp_atoms=["O"], basis="cc-pVDZ"))
+    assert _re.search(r"^\s*ecp\s+= \{'O': 'lanl2dz'\},$", text, _re.M), (
+        "the ecp kwarg line is missing from the emitted gto.M(...) call")
+
+
+def test_python_api_ecp_name_without_atoms_emits_nothing(h2o):
+    """The complement, and the point of the rewrite: a name alone
+    selects no atoms, so no ECP is emitted.  Empty means empty."""
     import re as _re
     text = render_script(h2o, PySCFConfig(ecp="lanl2dz", basis="cc-pVDZ"))
-    assert _re.search(r'^\s*ecp\s+= "lanl2dz",$', text, _re.M), (
-        "the ecp kwarg line is missing from the emitted gto.M(...) call")
+    assert not _re.search(r"^\s*ecp\s+=", text, _re.M), (
+        "an ECP name with no atoms selected must emit no kwarg")
 
 
 

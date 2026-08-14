@@ -141,9 +141,14 @@ class TestSpectraConfigSchema:
             #   8 (2026-05-23 ECP gap close): + ecp (spectra script
             #     was silently dropping ECP -- bites non-def2 basis on
             #     heavy atoms like Pt + cc-pVDZ).
-            ("Method",               8),   # method, charge, spin,
+            #   9 (2026-08-13): + ecp_atoms.  The ECP question is two --
+            #     WHICH potential and WHICH atoms -- and answering both
+            #     with one field is what made it a `str | dict` nobody
+            #     could render as a control.
+            ("Method",               9),   # method, charge, spin,
                                            # functional, basis, ecp,
-                                           # dispersion, density_fit
+                                           # ecp_atoms, dispersion,
+                                           # density_fit
             ("Frozen atoms",         3),   # elements, residue_names, indices
             ("Spectrum",             3),   # compute_raman, compute_ir,
                                            # displacement_amplitude_ang

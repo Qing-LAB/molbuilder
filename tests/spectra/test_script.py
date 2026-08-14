@@ -158,31 +158,53 @@ class TestPySCFScriptChargeAndSpin:
             f"def2 bundles its own ECP.  Block:\n{m_block}"
         )
 
-    def test_ecp_auto_emitted_for_heavy_atom_non_def2_basis(self):
-        """Non-def2 basis + Z>36 atom -> auto-add lanl2dz so the
-        SCF doesn't fall through to all-electron Pt (silent wrong
-        answer).  Mirrors Build's auto-ECP behavior."""
+    def test_nothing_is_added_for_a_structure_that_declared_no_ecp(self):
+        """REPLACES ``test_ecp_auto_emitted_for_heavy_atom_non_def2_basis``
+        (2026-08-13), which pinned the retired rule *"non-def2 basis +
+        Z > 36 -> auto-add lanl2dz"*.
+
+        The user's ruling retired the threshold: *"there is no point to
+        limit matching to heavy -- who defines heavy? there is no clear
+        reasoning or standard ... explicit is better than implicit."*
+        A bare Pt now emits no ``ecp`` kwarg at all, and ``validation``
+        is where that gets said out loud for a person to confirm.
+        """
         from molbuilder.spectra.pyscf_script import render_spectra_script
         import numpy as np
         from molbuilder.structure import Structure
         pt = Structure(elements=["Pt"], positions=np.array([[0, 0, 0]]))
         text = render_spectra_script(pt, SpectraConfig(basis="cc-pVDZ"))
-        # In the gto.M block, ecp = 'lanl2dz' should be present.
-        m_block = text[text.index("mol = gto.M("):text.index("mol = gto.M(") + 500]
-        assert "ecp        = 'lanl2dz'" in m_block, (
-            f"Pt + cc-pVDZ must auto-add ecp='lanl2dz'; block:\n{m_block}"
-        )
+        m_block = text[text.index("mol = gto.M("):
+                       text.index("mol = gto.M(") + 500]
+        assert "ecp" not in m_block, (
+            f"nothing was declared, so nothing may be emitted:\n{m_block}")
 
-    def test_explicit_ecp_passes_through(self):
+    def test_a_declared_ecp_reaches_gto_as_a_per_element_map(self):
+        """One output shape, whatever the selector: ``{element: name}``."""
         from molbuilder.spectra.pyscf_script import render_spectra_script
         import numpy as np
         from molbuilder.structure import Structure
         pt = Structure(elements=["Pt"], positions=np.array([[0, 0, 0]]))
-        # User picks stuttgart explicitly even with def2-SVP basis.
-        text = render_spectra_script(pt,
-            SpectraConfig(basis="def2-SVP", ecp="stuttgart"))
-        m_block = text[text.index("mol = gto.M("):text.index("mol = gto.M(") + 500]
-        assert "ecp        = 'stuttgart'" in m_block, m_block
+        text = render_spectra_script(pt, SpectraConfig(
+            basis="def2-SVP", ecp="stuttgart", ecp_atoms=["Pt"]))
+        m_block = text[text.index("mol = gto.M("):
+                       text.index("mol = gto.M(") + 500]
+        assert "'Pt': 'stuttgart'" in m_block, m_block
+
+    def test_star_selects_every_element_present(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        import numpy as np
+        from molbuilder.structure import Structure
+        # PtCl2, not PtCl: 78 + 2*17 = 112 electrons, so spin 0 is legal
+        # and the parity guard has nothing to say about the fixture.
+        s = Structure(elements=["Pt", "Cl", "Cl"],
+                      positions=np.array([[0, 0, 0], [2, 0, 0], [-2, 0, 0]]))
+        text = render_spectra_script(s, SpectraConfig(
+            basis="cc-pVDZ", ecp="lanl2dz", ecp_atoms=["*"]))
+        m_block = text[text.index("mol = gto.M("):
+                       text.index("mol = gto.M(") + 500]
+        assert "'Pt': 'lanl2dz'" in m_block and "'Cl': 'lanl2dz'" in m_block, \
+            m_block
 
     def test_spin_propagates_for_fe_high_spin(self):
         """Realistic case: Fe(II) high-spin needs spin=4 + UKS.  Pin

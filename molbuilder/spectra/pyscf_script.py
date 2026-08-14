@@ -555,24 +555,20 @@ def _emit_build_mol(struct: Structure, cfg: SpectraConfig) -> List[str]:
     out.append("]")
     out.append("")
     # ECP: shared resolver with Build's PySCF generator
-    # (chemistry.resolve_pyscf_ecp).  For Z > 36 + non-def2 basis,
-    # auto-picks "lanl2dz"; for def2-* basis, returns None because
-    # def2-* bundles its own Stuttgart ECP.  An explicit user value
-    # (cfg.ecp = "lanl2dz" / dict / "none") wins.  See chemistry.py
-    # for the full decision rule.
+    # (chemistry.resolve_pyscf_ecp).  ``cfg.ecp`` names the ECP and
+    # ``cfg.ecp_atoms`` names which elements get it; anything empty on
+    # either side means no ECP.  Nothing is auto-picked.
     from ..chemistry import resolve_pyscf_ecp
-    ecp_chosen = resolve_pyscf_ecp(struct, cfg.ecp, cfg.basis)
+    ecp_chosen = resolve_pyscf_ecp(struct, cfg.ecp, cfg.ecp_atoms)
     out.append("mol = gto.M(")
     out.append("    atom       = [[a[0], (a[1], a[2], a[3])] for a in ATOMS],")
     out.append("    basis      = BASIS,")
     if ecp_chosen is not None:
-        # str -> emit as quoted literal; dict -> emit as Python dict
-        # literal so PySCF sees the per-element mapping, not a string
-        # containing braces.
-        if isinstance(ecp_chosen, str):
-            out.append(f"    ecp        = {ecp_chosen!r},")
-        else:
-            out.append(f"    ecp        = {dict(ecp_chosen)!r},")
+        # ONE shape: the resolver returns ``{element: name}``, emitted as
+        # a Python dict-literal so PySCF sees a per-element mapping and
+        # not a string containing braces (which it rejects as an unknown
+        # ECP name).  The str branch retired with the field, 2026-08-13.
+        out.append(f"    ecp        = {dict(ecp_chosen)!r},")
     out.append("    verbose    = VERBOSE,")
     out.append("    max_memory = MAX_MEMORY_MB,")
     out.append("    unit       = 'Angstrom',")

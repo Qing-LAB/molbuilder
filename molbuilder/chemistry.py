@@ -46,9 +46,11 @@ are NOT counted.
 
 from __future__ import annotations
 
+import fnmatch
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple, Type
+from typing import (Any, Dict, List, Literal, Optional, Protocol, Sequence,
+                    Tuple, Type)
 
 import numpy as np
 
@@ -446,57 +448,58 @@ def suggest_spin_total(metals: "Iterable[str]") -> "tuple[float, list[tuple[floa
 
 
 def resolve_pyscf_ecp(struct: Structure,
-                      ecp: "Optional[Union[str, dict]]",
-                      basis: str) -> "Optional[Union[str, dict]]":
-    """Decide whether and which PySCF ECP (effective core potential) to
-    pass to ``gto.M()``.  Cross-engine helper -- called from BOTH Build
-    (``pyscf/input.py::_resolve_ecp``) and Spectra (``spectra/pyscf_
-    script.py::_emit_build_mol``) so the rule stays in one place and
-    can't drift between generators.
+                      ecp: str,
+                      ecp_atoms: "Sequence[str]") -> "Optional[Dict[str, str]]":
+    """Which elements get which ECP -- the ONE place the rule lives.
+
+    Called from BOTH Build (``pyscf/input.py::_resolve_ecp``) and Spectra
+    (``spectra/pyscf_script.py::_emit_build_mol``) so the two generators
+    cannot drift.
 
     Inputs:
-      * ``struct`` -- the Structure whose elements decide whether an
-        ECP is needed (Z > 36 = "heavy" enough that lanl2dz helps).
-      * ``ecp`` -- user choice from the config field.  Three forms:
-          str   -- explicit name ("lanl2dz", "stuttgart", ...), or
-                   "" / "none" / None for "no ECP"
-          dict  -- per-element dict ``{"Pt": "lanl2dz"}``
-          None  -- the AUTO default; we pick "lanl2dz" iff heavy
-                   atoms present AND basis is NOT def2-* (def2
-                   bundles its own ECP).
-      * ``basis`` -- the basis name; we skip the auto-add for the
-        def2 family because PySCF auto-applies the Stuttgart ECP
-        bundled with def2 itself.  Matches all three def2 name
-        spellings (def2-SVP / def2_SVP / def2svp) via the bare
-        "def2" prefix.
+      * ``ecp``        -- the ECP name, e.g. ``"lanl2dz"``.  Empty = no ECP.
+      * ``ecp_atoms``  -- element patterns naming which atoms get it:
+                          ``[]`` none · ``["*"]`` every element present ·
+                          ``["Au"]`` that element · ``["A*"]`` every symbol
+                          starting with A · ``["Au", "Pt"]`` several.
 
-    Returns the ECP value to pass to ``gto.M(ecp=...)`` or None to
-    omit the kwarg entirely.
+    Returns ``{element: ecp}`` for the elements actually present in
+    ``struct`` that match, or ``None`` when nothing does -- which is the
+    signal to omit the ``gto.M(ecp=...)`` kwarg entirely.
 
-    Why "lanl2dz" as the auto default: workhorse ECP for transition
-    metals on cc-pVDZ-class bases, textbook default since the 1980s,
-    shipped with PySCF (no extra basis-library install).  Stuttgart
-    RSC / SBKJC are alternatives the user picks via cfg.ecp.
+    **Empty means empty, and nothing is chosen for the user.**  Until
+    2026-08-13 this function had three branches: ``""``/``"none"`` meant
+    off, a str or dict passed through, and ``None`` meant *auto* -- add
+    ``lanl2dz`` when any element had Z > 36 and the basis was not def2.
+    Both halves of that heuristic were deleted on the user's ruling:
+    *"there is no point to limit matching to heavy -- who defines heavy?
+    there is no clear reasoning or standard ... explicit is better than
+    implicit."*  ``basis`` left the signature with the def2 special case;
+    a def2 basis brings its own ECP, and declaring another on top of it
+    is now a visible choice rather than something silently suppressed.
+
+    ``validation`` still HINTS when a structure looks like it wants an ECP
+    and none is declared.  A hint is confirmed by a person; it is not this
+    function quietly acting.
     """
-    # Normalise "explicitly disabled" -- treat "" / "none" /
-    # explicit-None identically.  Python-API users passing
-    # ``ecp="none"`` would otherwise reach gto.M(ecp="none") and PySCF
-    # raises "Unable to parse the input ECP data" at runtime.
-    if isinstance(ecp, str) and ecp.strip().lower() in ("", "none"):
+    name = (ecp or "").strip()
+    patterns = [p.strip() for p in (ecp_atoms or []) if p and p.strip()]
+    if not name or not patterns:
         return None
-    if ecp is not None:
-        return ecp                # explicit user choice (str or dict)
-    # AUTO branch.  def2-* bundles its own ECP -- emitting "lanl2dz"
-    # on top would double-count.
-    if (basis or "").lower().startswith("def2"):
-        return None
-    try:
-        from ase.data import atomic_numbers as _Z
-    except Exception:
-        return None               # ase missing -> can't check, no auto-add
-    has_heavy = any(_Z.get(el.capitalize(), 0) > 36
-                    for el in struct.elements)
-    return "lanl2dz" if has_heavy else None
+
+    # Element symbols are canonically capitalised ("AU" / "au" -> "Au"), and
+    # so are the patterns, so ``["au"]`` and ``["Au"]`` select the same atom
+    # without either spelling being a second format to remember.
+    present: List[str] = []
+    for el in struct.elements:
+        sym = str(el).capitalize()
+        if sym not in present:
+            present.append(sym)
+    pats = [p.capitalize() for p in patterns]
+
+    matched = {sym: name for sym in present
+               if any(fnmatch.fnmatchcase(sym, p) for p in pats)}
+    return matched or None
 
 
 def detect_open_shell_metals(struct: Structure) -> List[str]:

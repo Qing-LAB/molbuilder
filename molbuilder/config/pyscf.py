@@ -579,25 +579,49 @@ class PySCFConfig:
         "choices": ("d3", "d3bj", "d4", "none"),
         "help": "dispersion correction: d3 / d3bj / d4 / 'none' to disable",
     })
-    # Effective Core Potential (gap #8).  None = auto: emit
-    # ecp="lanl2dz" when heavy atoms (Z > 36) are present AND the
-    # basis is not in the def2 family (def2-SVP / def2_SVP / def2svp
-    # all bundle their own ECP).  Set to a name string ("lanl2dz",
-    # "stuttgart", "def2", ...) to force a specific ECP; pass a dict
-    # ({"Pt": "lanl2dz", "Au": "stuttgart"}) for per-element control.
-    # Set to "" to disable auto-emit.  Per-element dicts aren't
-    # accessible from the CLI; use the Python API for that.
-    ecp: "str | dict | None" = field(default=None, metadata={
+    # Effective Core Potential -- TWO plain fields, ONE format each.
+    #
+    # Rewritten 2026-08-13 (user).  It was ``str | dict | None`` where
+    # ``""``, ``"none"`` and ``None`` all meant different things: the
+    # first two disabled it, and ``None`` silently ADDED ``lanl2dz``
+    # whenever any element had Z > 36 and the basis was not def2.  Three
+    # spellings, a dict variant the CLI could not reach, and a hidden
+    # default.  The rulings that replaced it:
+    #
+    #   * *"there is no point to limit matching to heavy -- who defines
+    #     heavy? there is no clear reasoning or standard"* -- so no Z
+    #     threshold decides anything.  ``["*"]`` means ALL atoms.
+    #   * *"empty means empty"* -- an empty name or an empty list means
+    #     no ECP.  It never means "pick one for me".
+    #   * *"one choice, one explicit format"*, *"do not invent too many
+    #     options/alias"* -- ``"none"`` is gone; so is the dict.
+    #
+    # Nothing is added behind the user's back.  ``validation`` still
+    # HINTS when a structure looks like it wants an ECP and none was
+    # declared -- a hint the user confirms, never a choice made for them.
+    ecp: str = field(default="", metadata={
         "category": ("method",),
-        "help": ("effective core potential (e.g. 'lanl2dz'); default = auto "
-                 "for heavy atoms on non-def2 bases; pass 'none' to disable"),
-        # The dict variant is Python-API-only (per-element ECPs); the
-        # CLI surface is only the str case, plus the "none"/"" coercion
-        # to "" (= explicitly disable auto-emit).  add_dataclass_options
-        # would otherwise reject the str|dict|None union; cmd_pyscf
-        # hand-rolls --ecp instead.
-        "skip_cli": True,
-            "engine_key":  'gto.M(ecp=...)',
+        "label":      "Effective core potential",
+        "null_label": "(none)",
+        "engine_key": 'gto.M(ecp=...)',
+        "help": ("effective core potential name, e.g. 'lanl2dz'.  Empty = no "
+                 "ECP.  Applies to the atoms named by --ecp-atoms; with no "
+                 "atoms selected it does nothing."),
+    })
+    ecp_atoms: List[str] = field(default_factory=list, metadata={
+        "category": ("method",),
+        "label":      "ECP atoms",
+        "null_label": "(none)",
+        "engine_key": 'gto.M(ecp={<element>: ...})',
+        # ``List[str]`` is past what ``add_dataclass_options`` generates
+        # (P3 bails loudly rather than coercing), so ``cmd_pyscf`` rolls
+        # ``--ecp-atoms`` by hand -- the same comma-separated shape as
+        # ``--elements`` on ``pseudo check``, not a new spelling.
+        "skip_cli":   True,
+        "help": ("which elements get the ECP, as element patterns: empty = "
+                 "none; '*' = every element in the structure; 'Au' = that "
+                 "element; 'A*' = every element whose symbol starts with A. "
+                 "Several may be given."),
     })
 
     # ---------------- SCF ----------------

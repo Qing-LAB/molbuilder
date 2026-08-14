@@ -252,29 +252,41 @@ class SpectraConfig:
                    "def2-SVPD.  For Fe heme: def2-SVP is the production "
                    "minimum; def2-TZVP for publication-quality.",
     })
-    ecp: Optional[str] = field(default=None, metadata={
+    # ECP: the SAME two plain fields as PySCFConfig, rewritten together
+    # 2026-08-13 so the siblings cannot drift on the one setting whose
+    # old shape was the reason `strmap` existed.  Empty means empty; no
+    # Z threshold and no basis family decides anything.
+    ecp: str = field(default="", metadata={
         "section":    "Method",
         "workflow_group": "profile",
         "label":      "Pseudopotential (ECP)",
-        "null_label": "(auto)",
+        "null_label": "(none)",
         "engine_key": 'gto.M(ecp=...)',
-        "help":       "Effective core potential name -- PySCF replaces "
-                      "the core electrons of heavy atoms (typically Z > 36) "
-                      "with an analytic potential, so the SCF only treats "
-                      "the chemically-active valence shells.  PySCF ships "
-                      "the lookup data inside the package; no external "
-                      "files needed (unlike SIESTA's downloaded "
-                      "pseudopotentials).  Recommendations: blank (auto) "
-                      "lets molbuilder pick 'lanl2dz' when Z > 36 atoms "
-                      "are present AND the basis isn't def2-* (def2-* "
-                      "bundles its own Stuttgart ECP, so no separate "
-                      "ECP is needed -- works for Mo/W/Pt out of the "
-                      "box with def2-SVP).  Override with 'lanl2dz' / "
-                      "'stuttgart' / 'sbkjc' for explicit selection; "
-                      "set to 'none' or '' to disable.  Non-def2 basis "
-                      "+ heavy atoms WITHOUT this set silently does "
-                      "all-electron SCF on the heavy atoms -- usually "
-                      "wrong.",
+        "help":       "Effective core potential name -- PySCF replaces the "
+                      "core electrons of the named atoms with an analytic "
+                      "potential, so the SCF only treats the chemically "
+                      "active valence shells.  PySCF ships the lookup data "
+                      "inside the package; no external files needed (unlike "
+                      "SIESTA's downloaded pseudopotentials).  Common names: "
+                      "'lanl2dz', 'stuttgart', 'sbkjc'.  Empty = no ECP.  "
+                      "Note that the def2-* basis family brings its own "
+                      "Stuttgart ECP, so Mo/W/Pt work with def2-SVP without "
+                      "naming one here.",
+    })
+    ecp_atoms: List[str] = field(default_factory=list, metadata={
+        "section":    "Method",
+        "workflow_group": "profile",
+        "label":      "ECP atoms",
+        "null_label": "(none)",
+        "engine_key": 'gto.M(ecp={<element>: ...})',
+        "skip_cli":   True,
+        "help":       "Which elements get the ECP, as element patterns: "
+                      "empty = none; '*' = every element in the structure; "
+                      "'Au' = that element; 'A*' = every symbol starting "
+                      "with A.  Several may be given.  Running a heavy "
+                      "element all-electron on a non-def2 basis is usually "
+                      "wrong -- validation says so rather than choosing "
+                      "for you.",
     })
     dispersion: Optional[str] = field(default="d3bj", metadata={
         "section":    "Method",

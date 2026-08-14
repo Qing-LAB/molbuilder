@@ -221,6 +221,7 @@ def test_pyscf_cli_exposes_review_fix_l_options(monkeypatch, tmp_path):
         "--diis-space", "16",
         "--damp",       "0.4",
         "--ecp",        "lanl2dz",
+        "--ecp-atoms",  "H",
         "--no-write-molwatch-log",
         "--no-save-initial-xyz",
         "--no-save-optimized-xyz",
@@ -230,7 +231,10 @@ def test_pyscf_cli_exposes_review_fix_l_options(monkeypatch, tmp_path):
     # The mf.diis_space + mf.damp + ecp lines reflect the CLI values.
     assert "mf.diis_space = 16" in text
     assert "mf.damp = 0.4" in text
-    assert 'ecp = "lanl2dz"' in text or "ecp        = 'lanl2dz'" in text or "ecp=" in text
+    # ONE shape since 2026-08-13: {element: name}, never a bare string.
+    # The three-way ``or`` this replaces would have passed on the mere
+    # substring "ecp=" anywhere in the file, comments included.
+    assert "ecp        = {'H': 'lanl2dz'}," in text
     # molwatch / save toggles drop the corresponding code paths.
     assert "MolwatchEmitter" not in text
     assert "_initial.xyz" not in text

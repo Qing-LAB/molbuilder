@@ -166,8 +166,35 @@ the multiplicity 2S+1.) `render_script` raises `ValueError` at generation time
 **Charge.** The `gto.M(...)` charge matches `_resolve_charge(struct, cfg)`
 (`input.py:120`): `cfg.charge` wins if set (including `0`); otherwise
 `formal_charge_from_phosphates(struct)` (phosphate heuristic — charged side chains
-Asp/Glu/Lys/Arg/His are **not** counted, override via `cfg.charge`). `_resolve_ecp`
-(`:107`) picks an effective-core-potential for heavy atoms on non-def2 bases.
+Asp/Glu/Lys/Arg/His are **not** counted, override via `cfg.charge`).
+
+**ECP — two plain fields, and nothing is chosen for you.** `cfg.ecp` names the
+potential (`"lanl2dz"`); `cfg.ecp_atoms` names which elements get it, as element
+patterns:
+
+| `ecp_atoms` | selects |
+|---|---|
+| `[]` | nothing — **no ECP** |
+| `["*"]` | every element present in the structure |
+| `["Au"]` | that element |
+| `["A*"]` | every symbol beginning with `A` |
+| `["Au", "Pt"]` | both |
+
+`_resolve_ecp` (`input.py:107` → `chemistry.resolve_pyscf_ecp`) matches the
+patterns against the structure's own elements and returns `{element: ecp}`, or
+`None` when either half is empty. **Empty means empty** — it never means *pick
+one for me*.
+
+> **Rewritten 2026-08-13.** The field was `str | dict | None` where `""`,
+> `"none"` and `None` meant three different things, and `None` silently added
+> `lanl2dz` whenever any element had **Z > 36** and the basis was not `def2-*`.
+> That heuristic is gone: *"there is no point to limit matching to heavy — who
+> defines heavy? there is no clear reasoning or standard … explicit is better
+> than implicit."* The `def2` special case went with it, so an ECP you name on a
+> `def2` basis is now **emitted** rather than silently discarded.
+>
+> `validation` still **hints** when a structure looks like it wants an ECP and
+> none is declared — a hint a person confirms, not a choice the generator makes.
 
 ---
 

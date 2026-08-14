@@ -288,11 +288,21 @@ def test_gap_7_installation_documents_siesta_version():
 # --------------------------------------------------------------------- #
 
 
-def test_gap_8_pyscf_emits_ecp_for_heavy_atoms_with_non_def2():
-    """A structure containing transition metals (Pt here) on a basis
-    that's NOT def2-* must auto-emit an ECP definition; otherwise
-    PySCF crashes on missing core electrons / wrong basis."""
-    pt_complex = Structure(
+# REDESIGNED 2026-08-13 -- gap #8 was "auto-emit an ECP for heavy atoms on
+# a non-def2 basis", and six tests here pinned that rule plus its def2
+# escape hatch (one of them parametrized over eight basis spellings).  The
+# rule is retired on the user's ruling: *"there is no point to limit
+# matching to heavy -- who defines heavy? there is no clear reasoning or
+# standard"*, *"empty means empty"*, *"explicit is better than implicit"*.
+#
+# What was WORTH keeping out of that set is the emission bug the dict test
+# caught -- an ECP map stuffed into a quoted string, which PySCF reads as
+# an unknown ECP name.  Now that the resolver ALWAYS returns a map, that
+# guard matters more than it did, so it is the one carried forward.
+
+
+def _pt_complex():
+    return Structure(
         elements=["Pt", "C", "C", "C", "C"],
         positions=np.array([
             [0.0, 0.0, 0.0],
@@ -302,127 +312,81 @@ def test_gap_8_pyscf_emits_ecp_for_heavy_atoms_with_non_def2():
             [0.0, -2.0, 0.0],
         ]),
         title="pt_complex", vacuum=(12.0, 12.0, 12.0))
-    cfg = PySCFConfig(
-        job_name="pt",
-        basis="cc-pVDZ",            # NOT def2-* -- needs explicit ECP
-        density_fit=False,
-        dispersion=None,
-    )
-    script = render_script(pt_complex, cfg)
-    assert "ecp" in script.lower(), (
-        "Heavy-atom (Pt) calculation on cc-pVDZ needs an ECP block."
-    )
 
 
-def test_gap_8_ecp_skipped_for_def2_basis():
-    """def2-* basis families bundle their own ECP for Z > 36, so an
-    extra `ecp = "lanl2dz"` would double-count.  Auto-emit must be
-    suppressed when basis is def2-*."""
-    pt = Structure(
-        elements=["Pt", "C", "C"],
-        positions=np.array([[0.0,0,0],[2,0,0],[-2,0,0]]),
-        title="pt", vacuum=(12.0, 12.0, 12.0))
-    cfg = PySCFConfig(job_name="pt", basis="def2-SVP",
-                      density_fit=False, dispersion=None)
-    script = render_script(pt, cfg)
-    # The token "ecp" appears in user-facing comments / docstrings;
-    # what we want to suppress is the kwarg line `    ecp        = "..."`,
-    # which lives inside the gto.M(...) call.
-    assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), (
-        "def2-* basis bundles its own ECP; auto-emitting another "
-        "would double-count"
-    )
-
-
-def test_gap_8_ecp_skipped_for_light_atoms_only():
-    """No heavy atoms -> no ECP needed regardless of basis choice."""
-    h2o = Structure(
-        elements=["O", "H", "H"],
-        positions=np.array([[0,0,0],[0.96,0,0],[-0.24,0.93,0]]),
-        title="h2o", vacuum=(12.0, 12.0, 12.0))
-    cfg = PySCFConfig(job_name="h2o", basis="cc-pVDZ",
-                      density_fit=False, dispersion=None)
-    script = render_script(h2o, cfg)
-    assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), (
-        "Light-atom-only molecule on cc-pVDZ should not get an ECP"
-    )
-
-
-def test_gap_8_ecp_user_override_disables():
-    """`cfg.ecp = ""` is the explicit opt-out for power users who
-    want to provide their own ECP-and-basis block in a hand-edit
-    of the script."""
-    pt = Structure(
-        elements=["Pt"],
-        positions=np.array([[0.0,0,0]]),
-        title="pt", vacuum=(12.0, 12.0, 12.0))
-    cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ", ecp="",
-                      density_fit=False, dispersion=None)
-    script = render_script(pt, cfg)
-    assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), (
-        "cfg.ecp = '' must suppress the auto-emit"
-    )
-
-
-@pytest.mark.parametrize("basis", [
-    "def2-SVP", "def2_SVP", "def2svp",          # SVP variants
-    "def2-TZVP", "def2_TZVP", "def2tzvp",        # TZVP variants
-    "DEF2-SVP", "Def2-TZVP",                     # case variants
-])
-def test_gap_8_ecp_skipped_for_all_def2_spellings(basis):
-    """All three PySCF-equivalent def2 spellings (hyphen / underscore /
-    no separator) must skip the ECP auto-emit -- def2's own ECP is
-    bundled with the basis, an extra `ecp = "lanl2dz"` would double-
-    count.  Pre-fix the prefix check required the hyphen; the
-    underscore and no-separator forms slipped through and emitted
-    a spurious lanl2dz on top of def2's own ECP."""
-    pt = Structure(
-        elements=["Pt", "C", "C"],
-        positions=np.array([[0.0,0,0],[2,0,0],[-2,0,0]]), vacuum=(12.0, 12.0, 12.0))
-    cfg = PySCFConfig(job_name="pt", basis=basis,
-                      density_fit=False, dispersion=None)
-    script = render_script(pt, cfg)
-    assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), (
-        f"basis={basis!r} (a def2 family member) bundles its own ECP; "
-        f"emitting an additional ecp= would double-count"
-    )
-
-
-def test_gap_8_dict_ecp_emits_as_python_dict_literal():
-    """Per-element ECP control is a real use case for mixed light /
-    heavy systems: the user passes ``cfg.ecp = {"Pt": "lanl2dz",
-    "Au": "stuttgart"}``.  Pre-fix the f-string stuffed the dict's
-    repr inside a string literal, producing
-    ``ecp = "{'Pt': 'lanl2dz'}"`` -- which PySCF rejects as an
-    unknown ECP NAME.  Post-fix the dict is emitted as a real
-    Python dict literal so PySCF sees it as the per-element form."""
-    pt = Structure(
-        elements=["Pt", "Au", "C"],
-        positions=np.array([[0.0,0,0],[2,0,0],[-2,0,0]]), vacuum=(12.0, 12.0, 12.0))
+def test_ecp_absent_when_the_user_declared_none():
+    """A Pt complex on cc-pVDZ used to get ``lanl2dz`` added for it.  It
+    no longer does: nothing is emitted that was not asked for."""
     cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ",
                       density_fit=False, dispersion=None)
-    cfg.ecp = {"Pt": "lanl2dz", "Au": "stuttgart"}
-    script = render_script(pt, cfg)
+    script = render_script(_pt_complex(), cfg)
+    assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), (
+        "no ecp was declared, so no ecp= kwarg may appear")
 
-    # Find the ecp = ... line (only one).  Must open with `{`, not `"`.
+
+def test_ecp_emitted_as_a_dict_literal_not_a_quoted_string():
+    """The one guard worth carrying over from the retired dict test.
+
+    Pre-2026-05 the f-string stuffed the map's repr INSIDE a string
+    literal -- ``ecp = "{'Pt': 'lanl2dz'}"`` -- which PySCF rejects as an
+    unknown ECP name.  Every result is a map now, so every emission goes
+    through this path.
+    """
+    cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ",
+                      ecp="lanl2dz", ecp_atoms=["Pt"],
+                      density_fit=False, dispersion=None)
+    script = render_script(_pt_complex(), cfg)
+
     ecp_lines = [ln for ln in script.splitlines()
                  if re.match(r"\s*ecp\s*=", ln)]
-    assert len(ecp_lines) == 1, f"expected exactly one ecp= line, got {ecp_lines}"
-    ecp_line = ecp_lines[0]
+    assert len(ecp_lines) == 1, f"expected one ecp= line, got {ecp_lines}"
+    line = ecp_lines[0]
+    assert re.search(r"ecp\s*=\s*\{", line), (
+        f"must emit a Python dict literal; got: {line!r}")
+    assert not re.search(r'ecp\s*=\s*"', line), (
+        f"must NOT be wrapped in quotes; got: {line!r}")
+    assert "Pt" in line and "lanl2dz" in line
+    compile(script, "<gen>", "exec")       # the literal must parse
 
-    # Must be a dict literal: the value starts with `{` (Python dict),
-    # not `"` (string).  Pre-fix the line was: ecp = "{'Pt': 'lanl2dz'}",
-    assert re.search(r"ecp\s*=\s*\{", ecp_line), (
-        f"dict ecp must emit as a Python dict literal; got: {ecp_line!r}"
-    )
-    assert not re.search(r'ecp\s*=\s*"', ecp_line), (
-        f"dict ecp must NOT be wrapped in quotes; got: {ecp_line!r}"
-    )
-    # Both keys present, regardless of repr quote style.
-    assert "Pt" in ecp_line and "lanl2dz" in ecp_line
-    assert "Au" in ecp_line and "stuttgart" in ecp_line
-    # Round-trip: the script must compile cleanly with the dict literal.
-    compile(script, "<gen>", "exec")
+
+def test_ecp_selector_reaches_only_the_named_element():
+    """``["Pt"]`` in a Pt/C structure selects Pt and leaves C alone."""
+    cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ",
+                      ecp="lanl2dz", ecp_atoms=["Pt"],
+                      density_fit=False, dispersion=None)
+    line = [ln for ln in render_script(_pt_complex(), cfg).splitlines()
+            if re.match(r"\s*ecp\s*=", ln)][0]
+    assert "'Pt'" in line and "'C'" not in line, line
+
+
+def test_empty_means_empty():
+    """Either half empty means no ECP -- never "pick one for me"."""
+    for kw in ({"ecp": "", "ecp_atoms": ["*"]},
+               {"ecp": "lanl2dz", "ecp_atoms": []},
+               {"ecp": "", "ecp_atoms": []}):
+        cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ",
+                          density_fit=False, dispersion=None, **kw)
+        script = render_script(_pt_complex(), cfg)
+        assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), kw
+
+
+def test_a_def2_basis_no_longer_suppresses_a_declared_ecp():
+    """**A deliberate behaviour change.**  def2-* brings its own Stuttgart
+    ECP, and the retired rule silently dropped any ECP the user named on a
+    def2 basis -- across eight spellings of the basis name.  Silently
+    discarding an explicit instruction is the implicit behaviour the whole
+    rewrite removes: if you name one on def2, you get it, and whether that
+    double-counts is a question for validation to raise, not for the
+    emitter to decide by dropping your input.
+    """
+    cfg = PySCFConfig(job_name="pt", basis="def2-SVP",
+                      ecp="stuttgart", ecp_atoms=["Pt"],
+                      density_fit=False, dispersion=None)
+    script = render_script(_pt_complex(), cfg)
+    line = [ln for ln in script.splitlines()
+            if re.match(r"\s*ecp\s*=", ln)]
+    assert line and "stuttgart" in line[0], (
+        f"a declared ECP must survive a def2 basis; got {line}")
 
 
 # --------------------------------------------------------------------- #
