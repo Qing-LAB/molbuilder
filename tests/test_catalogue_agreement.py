@@ -137,3 +137,47 @@ def test_the_catalogue_carries_no_item_no_engine_can_hold():
             orphans.append(f"{item.name} (engines={list(engs)})")
     assert not orphans, (
         "catalogue items no config class can carry:\n  " + "\n  ".join(orphans))
+
+
+@pytest.mark.parametrize("engine,cls", ENGINES, ids=lambda x: getattr(x, "__name__", x))
+def test_the_declared_TYPE_agrees_with_the_annotation(engine, cls):
+    """The fact the mirrored-key guard could not see.
+
+    ``type`` is not metadata — it is derived from the annotation — so it is not
+    in :data:`MIRRORED`.  But the ⊕ operator asks the catalogue *"is this a
+    float?"* and the emitters act on the annotation, so a disagreement means
+    one of them coerces a value the other does not.
+
+    That is not hypothetical: until 2026-08-14 the operator string-matched the
+    annotation, and ``Optional[float]`` is not ``"float"``, so ``spin_total``
+    and ``md_target_temperature`` were silently never widened (audit § 25.3).
+    """
+    import typing
+    from molbuilder import template as _T
+    cat = _catalogue()
+    hints = typing.get_type_hints(cls)
+    bad = []
+    for f in dataclasses.fields(cls):
+        item = cat.get(f.name)
+        if item is None:
+            continue
+        inner, _opt = _T._unwrap_optional(hints[f.name])
+        expected = {float: "float", int: "int", str: "str", bool: "bool"}.get(inner)
+        if expected is None:
+            continue                      # tuples, lists, enums — typed by rule
+        if item.choices:
+            continue                      # an enum is typed by its choices
+        # A declared type may REFINE the annotation: `pow2` is an int that must
+        # be a power of two, and `text` is a str copied verbatim.  § 5's whole
+        # purpose is to carry what the annotation cannot, so a refinement is
+        # agreement, not drift.
+        REFINES = {"int": {"pow2"}, "str": {"text"}}
+        if item.type in REFINES.get(expected, ()):
+            continue
+        if item.type != expected:
+            bad.append(f"{f.name}: annotation={inner.__name__} "
+                       f"catalogue={item.type}")
+    assert not bad, (
+        "the catalogue and the annotation disagree about a value's TYPE:\n  "
+        + "\n  ".join(bad) +
+        "\nOne of them coerces where the other does not.")

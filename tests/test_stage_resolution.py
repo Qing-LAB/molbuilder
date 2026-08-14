@@ -419,3 +419,43 @@ def test_an_error_in_any_stage_blocks_the_whole_produce(h2, monkeypatch):
 
 
 from _ladder_helpers import _live_ladder_decks  # noqa: E402  (U20: the one renderer)
+
+
+def test_an_OPTIONAL_float_is_widened_like_any_other():
+    """§ 25.3: the DECLARED type decides, not the annotation.
+
+    JSON has one number, so a stage override arrives as an int where the field
+    wants a float — ``{"mesh_cutoff": 150}`` renders ``MeshCutoff 150 Ry``
+    where ``150.0`` renders ``MeshCutoff 150.0 Ry``: the same number, a
+    different deck.  The operator widens int → float to close that.
+
+    **It read the dataclass annotation and string-matched ``"float"``.** Under
+    ``from __future__ import annotations`` a field's ``type`` is the source
+    text, so ``Optional[float]`` is not ``"float"`` and two fields were
+    silently never widened — ``spin_total`` and ``md_target_temperature`` —
+    while ``mesh_cutoff`` beside them widened correctly.  The catalogue
+    declares all three ``float``, because a declared type is exactly *"what a
+    parser cannot know"* (`template.md` § 5).
+    """
+    cfg = _template()
+    assert isinstance(effective_config(cfg, {"mesh_cutoff": 300}).mesh_cutoff, float)
+    for name in ("spin_total", "md_target_temperature"):
+        got = getattr(effective_config(cfg, {name: 2}), name)
+        assert isinstance(got, float), (
+            f"{name} is declared float in the catalogue but an int override "
+            f"came back {type(got).__name__} -- the operator is reading the "
+            f"annotation again")
+
+
+def test_nothing_but_int_to_float_is_coerced():
+    """The other half, and the reason the widening is safe.
+
+    ``float → int`` would silently truncate ``relax_steps: 100.7`` to 100, and
+    a string would quietly parse.  Both are the caller's mistake and are
+    refused BY NAME in the preflight, which is where a wrong value belongs.
+    """
+    assert effective_config(_template(), {"relax_steps": 100}).relax_steps == 100
+    assert isinstance(
+        effective_config(_template(), {"relax_steps": 100}).relax_steps, int)
+    kept = effective_config(_template(), {"basis_size": "TZP"}).basis_size
+    assert kept == "TZP"

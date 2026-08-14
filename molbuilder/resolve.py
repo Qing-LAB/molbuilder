@@ -44,6 +44,7 @@ on the element, a call site cannot forget half of it.
 from __future__ import annotations
 
 import dataclasses
+import functools
 import re
 from dataclasses import dataclass, field
 from typing import (Any, Callable, List, Mapping, Optional, Sequence, Tuple,
@@ -488,6 +489,44 @@ def _stage_of(task, stage: Optional[str]):
         f"{', '.join(s.name for s in task.stages)}.")
 
 
+@functools.lru_cache(maxsize=1)
+def _catalogue_types() -> Mapping[str, str]:
+    """``{item name: declared type}`` from the catalogue, parsed ONCE.
+
+    Cached because the ⊕ operator asks per override and ``resolve`` applies it
+    four times per sweep element: parsing an 1100-line file each time measured
+    **24 ms per call**, which a sweep multiplies. The catalogue is a shipped
+    data file and does not change inside a process.
+    """
+    from . import template as _t
+    try:
+        return {i.name: i.type
+                for i in _t.read_template(_t.load_catalogue()).items}
+    except Exception:                       # pragma: no cover - defensive
+        return {}
+
+
+def _declares_float(config, name: str) -> bool:
+    """Whether the CATALOGUE declares *name* a float (`template.md` § 5).
+
+    Falls back to the dataclass annotation when the catalogue has no item for
+    it -- a config class used in a test fixture, or a field that is not a
+    template item.  The fallback resolves the annotation properly rather than
+    string-matching it, which is the bug this function replaced.
+    """
+    from . import template as _t
+    declared = _catalogue_types().get(name)
+    if declared is not None:
+        return declared == "float"
+    import typing
+    try:
+        ann = typing.get_type_hints(type(config)).get(name)
+    except Exception:
+        return False
+    inner, _ = _t._unwrap_optional(ann)
+    return inner is float
+
+
 def effective_config(template, overrides: Mapping[str, Any], *,
                      where: str = ""):
     """Resolve one stage against the backbone: **the one place this happens.**
@@ -569,9 +608,20 @@ def effective_config(template, overrides: Mapping[str, Any], *,
     # the caller's mistake and are refused BY NAME in the preflight
     # (``validation/task.py``), which is where a wrong value belongs.  Found by
     # the M2 seam walk, 2026-08-07.
-    declared = {f.name: f.type for f in dataclasses.fields(type(template))}
+    # **The DECLARED TYPE decides, not the annotation** (audit § 25.3, fixed
+    # 2026-08-14).  This read ``f.type`` from the dataclass and compared it
+    # against the string ``"float"`` -- and under ``from __future__ import
+    # annotations`` a field's ``type`` is the SOURCE TEXT, so ``Optional[float]``
+    # is not ``"float"`` and two fields were silently never widened:
+    # ``spin_total`` and ``md_target_temperature``.  A stage overriding
+    # ``spin_total: 2`` got an int where the deck wanted 2.0, while
+    # ``mesh_cutoff: 300`` next to it widened correctly.
+    #
+    # The catalogue says ``float`` for all three, because that is what a
+    # declared type is FOR (`template.md` § 5: what a parser cannot know).  So
+    # the authority is the item, and the annotation is not consulted at all.
     widened = {
-        k: (float(v) if declared.get(k) in ("float", float)
+        k: (float(v) if _declares_float(template, k)
             and isinstance(v, int) and not isinstance(v, bool) else v)
         for k, v in overrides.items()
     }
