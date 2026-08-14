@@ -339,6 +339,99 @@ def test_the_marker_rejects_what_is_not_a_block_marker(line):
 
 
 # --------------------------------------------------------------------- #
+#  read_by — every deck keyword the wrapper reads is declared            #
+# --------------------------------------------------------------------- #
+
+def _wrapper_deck_scanners():
+    """Every ``runwrap._fdf_requests_*`` — the wrapper's reads of the deck."""
+    from molbuilder import runwrap
+    return sorted(
+        (n, getattr(runwrap, n)) for n in dir(runwrap)
+        if n.startswith("_fdf_requests_")
+    )
+
+
+def _trigger_values(f):
+    """Deck values worth trying for a field: every choice, or bool truth."""
+    choices = list(f.metadata.get("choices") or ())
+    return choices or [".true."]
+
+
+def test_every_deck_keyword_the_wrapper_reads_is_declared_read_by(tmp_path):
+    """`template.md` § 6.1: ``read_by`` says **who else derives something from
+    the value**, so that the wrapper is *told* which items it depends on
+    instead of knowing the keywords itself.
+
+    A declaration nobody can be missing from is not a mechanism. This asserts
+    the direction that actually catches drift: **for every place the wrapper
+    reads the deck, some item declares that read.** Adding a scanner without
+    the declaration fails here.
+
+    The scanners are their own oracle — the test never restates a keyword. It
+    writes a one-line deck from a field's ``engine_key`` and asks the scanner
+    whether it sees it, which is exactly the question the wrapper asks.
+
+    Found the gap it now guards (2026-08-13, T8): the wrapper scanned TWO
+    keywords — ``Diag.Algorithm`` for the env route and ``Diag.ELPA.GPU`` for
+    the GPU runtime — and only ``diag_algorithm`` declared ``read_by``. An
+    implementation trusting the declarations would have dropped every GPU
+    runtime fact (gres, MPS, the NUMA pin) in silence.
+    """
+    declared = [f for f in dataclasses.fields(SiestaConfig)
+                if "wrapper" in (f.metadata.get("read_by") or ())]
+    assert declared, "no item declares read_by=wrapper — § 6.1 is hollow"
+
+    for name, scanner in _wrapper_deck_scanners():
+        seen_by = []
+        for f in declared:
+            key = f.metadata.get("engine_key")
+            if not key:
+                continue
+            for value in _trigger_values(f):
+                deck = tmp_path / f"{name}_{f.name}.fdf"
+                deck.write_text(f"{key} {value}\n")
+                if scanner(deck):
+                    seen_by.append(f.name)
+                    break
+        assert seen_by, (
+            f"runwrap.{name} reads a deck keyword that NO item declares "
+            f"read_by=('wrapper',). Declared today: "
+            f"{[f.name for f in declared]}. Either the field's metadata is "
+            f"missing the declaration, or the wrapper grew a read the "
+            f"template does not know about (template.md § 6.1)."
+        )
+
+
+def test_the_read_by_guard_fails_when_a_declaration_goes_missing(tmp_path):
+    """The guard above is only worth having if removing a declaration breaks
+    it. Drop ``enable_gpu``'s and the GPU-runtime scanner is left unclaimed."""
+    from molbuilder import runwrap
+    declared = [f for f in dataclasses.fields(SiestaConfig)
+                if "wrapper" in (f.metadata.get("read_by") or ())
+                and f.name != "enable_gpu"]
+    deck = tmp_path / "probe.fdf"
+    orphaned = []
+    for name, scanner in _wrapper_deck_scanners():
+        hits = []
+        for f in declared:
+            key = f.metadata.get("engine_key")
+            if not key:
+                continue
+            for value in _trigger_values(f):
+                deck.write_text(f"{key} {value}\n")
+                if scanner(deck):
+                    hits.append(f.name)
+                    break
+        if not hits:
+            orphaned.append(name)
+    assert orphaned == ["_fdf_requests_gpu"], (
+        "without enable_gpu's declaration exactly one scanner should be "
+        f"unclaimed; got {orphaned}. If this changed, the guard above may "
+        "have stopped testing anything.")
+    assert runwrap._fdf_requests_gpu is not None      # the scanner is live
+
+
+# --------------------------------------------------------------------- #
 #  RETIRED 2026-08-11 — the item-block template format                  #
 # --------------------------------------------------------------------- #
 #

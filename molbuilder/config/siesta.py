@@ -1013,6 +1013,16 @@ class SiestaConfig:
         # modern form).  Routing to ``molbuilder-siesta-gpu`` is driven by
         # the ELPA *algorithm* choice, not by this toggle (CPU-ELPA still
         # needs the ELPA build).
+        # § 6.1: the WRAPPER derives from this value too, and for a
+        # DIFFERENT question than ``diag_algorithm``'s.  That one decides
+        # which env to activate; this one decides the GPU RUNTIME -- the
+        # gres ask, MPS, the NUMA pin, and the rank/thread budget
+        # (``runwrap._fdf_requests_gpu`` has eight call sites, only one of
+        # them the env route).  Declared 2026-08-13, when T8's walk found
+        # the wrapper scanning TWO deck keywords while only one was
+        # declared: trusting the declarations alone would have dropped
+        # every GPU runtime fact silently.
+        "read_by": ("wrapper",),
         "engine_key":  'Diag.ELPA.GPU',
         "id_suffix": "enable-gpu",
         "help":      "OPTIONAL: run the ELPA diagonalization on an NVIDIA "
