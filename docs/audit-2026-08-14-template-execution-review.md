@@ -2027,3 +2027,76 @@ drops or lossily rewrites them breaks a consumer that does not exist yet.
 
 *(SS 9.1 already cited SS 3.4 once -- for the 0-based/1-based note -- which is
 why the gap survived: a citation existed, so nothing looked missing.)*
+
+---
+
+## 35 - C6: the STRUCTURAL-INFORMATION SEAM -- how a generator knows what to carry
+
+**User, 2026-08-14:**
+
+> *"this customized section is only known at the generator side because
+> template does not know anything structural specific and this information is
+> only available as input to the generator from the structural source. so
+> handling this would need some mechanism design so the generator knows what
+> to do."*
+
+### 35.1 - The contract already draws the line; it does not say how it is crossed
+
+`template.md` SS 9.1 states the principle exactly -- **"Labels ride with the
+atoms, not with the parameters"**: ATOM-METADATA is **not** a template item and
+must not become one, because a region label or a frozen flag is a fact about
+*which atoms*, and it already has a carrier (the structure plus its
+`.molstruct.json` sidecar).
+
+So the generator has **two inputs and one output**:
+
+| input | carries | floor |
+|---|---|---|
+| the resolved config, from the template | every **parameter** of the calculation | 2 -> 3 |
+| the structure + sidecar | every **structural fact** -- regions, frozen set, annotation channels | 2 |
+
+**What is missing is the rule for the second one.** The contract says where
+structural facts live and that they must reach the deck; it does not say how a
+generator is *told* which of them to emit, or in what form -- which is exactly
+the user's point.
+
+### 35.2 - What exists today, and how far it goes
+
+| | mechanism | engine-neutral? |
+|---|---|---|
+| **annotation channels** | `annotations_fdf` -- a **registry**: `register_fdf_strategy(name, fn)`, and `emit_channels(struct)` renders every channel that has a registered strategy. Channels with none are **carried, not emitted**, and `unregistered_channels()` names them | **yes, and this is the pattern** -- a channel declares its own emission, nothing shared learns channel names |
+| **regions / frozen** | hard-coded in each emitter: `siesta/input.py` calls `emit_atom_metadata(...)` and builds `%block Geometry.Constraints` inline | **no** -- the deck writer knows these two by name |
+| **USER-CUSTOM** | `emit_user_custom_placeholder()` today; SS 9.2 makes it a template item (`kind="deck"`, `type="text"`) once the schema field exists | **yes**, once it lands -- it is a parameter, not a structural fact |
+
+> **The registry half already passes `generator.md` SS 7's seam test** -- adding
+> an annotation channel adds a strategy and edits no shared file. The
+> hard-coded half does not: a new engine, or a new kind of structural fact,
+> means editing every deck writer.
+
+### 35.3 - What C6 has to decide
+
+1. **Is the structural seam a registry like `annotations_fdf`, extended to
+   cover regions and the frozen set** -- so *every* structural fact declares
+   its own emission and no deck writer carries a list of names? That is the
+   pattern already proven in the tree.
+2. **Or does the generator receive a structural payload** it renders wholesale
+   -- ATOM-METADATA as one blob (which is close to what `emit_atom_metadata`
+   already does) with only the ENGINE-BODY consequences (SIESTA's
+   `Geometry.Constraints`) per engine?
+3. **Either way: what is the read-back contract?** SS 3.6 says a tool may assume
+   ATOM-METADATA round-trips through `apply_to_structure`. **Transport is the
+   named consumer and is not written**, so the seam must be designed for a
+   reader that does not exist -- which is why it is a contract question and
+   not something to discover while writing transport.
+
+### 35.4 - Why this belongs beside C1-C5 and not after them
+
+C1-C4 settle what the **template** carries. C6 settles what reaches the deck
+**from the other input** -- and the two meet in one artifact. A generator
+built for C1's items and then retrofitted for structural facts is how
+`siesta/input.py` came to know `regions` and `frozen_atoms` by name in the
+first place.
+
+**Owner: `engines/template.md` SS 9.1** (which draws the line) **with**
+**`execution/job-contracts.md` SS 3.4** (which owns the format). Neither
+currently names the mechanism.
