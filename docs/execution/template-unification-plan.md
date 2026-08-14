@@ -151,19 +151,32 @@ Each unit lands with its own tests and commit. **Docs first within each unit.**
 | **T5+T6** | **PySCF renders at all** + its catalogue | ✅ `93403618` — 39 items, six categories |
 | **T7** | **`execution/` docs** catch up to `@2` — the version string was the smaller half (§ 5) | ✅ 6 edits across 5 files |
 | **T8** | **The wrapper reads `read_by`** instead of scanning deck text for `ELPA` | ✅ **closed by deleting the scan** (§ 9) — the premise under it was false |
-| **T9** | **`ecp` → name + atom selector**, deleting `strmap` (§ 8) | ⬜ open — user design, 2 decisions needed first |
+| **T9** | **`ecp` → name + atom selector**, deleting `strmap` (§ 8) | ✅ `e78e8ba3` + `78ac6068` — the type vocabulary **shrank** |
 | **T10** | **The `.fdf` before/after comparison** (§ 8) | ✅ **57 decks byte-identical**, harness mutation-tested |
 
-**What is true right now.** Both engines render a template at `@2`; every item
-carries a category from a closed six; execution items are declared valueless
-with named resolvers; `select`/`one` are the one read API; the refactor is
-**proven not to have moved the deck** (T10); and the wrapper's reads of the deck
-are declared and guarded (T8). **T9 is the only unit left**, and it needs two
-decisions before it can start.
+**T0–T10 are done.** Both engines render a template at `@2`; every item carries
+a category from a closed six; execution items are declared valueless with named
+resolvers; `select`/`one` are the one read API; the refactor is **proven not to
+have moved the deck** (T10); the wrapper's reads of the deck are declared and
+guarded (T8); and `ecp` is two ordinary fields, so the closed type vocabulary
+**ends the programme one member smaller than it started** (T9).
+
+**The size test, applied to the whole programme** (`staged-runs-implementation-plan.md`
+§ 9.4 — *a change that does not delete more than it adds is not this work*):
+
+| deleted | by |
+|---|---|
+| `section` as a template key | T2 — free-text per engine, so no surface could group across engines |
+| `strmap` from the type vocabulary | T9 — it modelled a storage shape, not a question |
+| `_fdf_requests_elpa`, and the wrapper's knowledge of what "ELPA" means | T8 — the premise under it was measured false |
+| the `Z > 36` auto-ECP, the `"none"` alias, `None`-means-auto, the `dict` form, the `def2` suppression | T9 — five ways to say something implicitly, replaced by two fields that say it out loud |
+| two `str`-vs-`dict` emitter branches | T9 — one resolver shape leaves nothing to branch on |
 
 **Not in scope, and deliberately:** the UI. It is the last consumer and it is
-built from this file; designing it now would fix panels against categories that
-T1 may still move.
+built from this file. What the programme settled *for* it: panels come from
+`category`, engine filtering from `engines`, and the environment list is
+**filtered by what the deck needs** with the user picking from what survives
+(§ 9.4).
 
 ---
 
