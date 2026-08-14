@@ -149,7 +149,7 @@ Each unit lands with its own tests and commit. **Docs first within each unit.**
 | **T3** | **`select` / `one`** — § 8.0's read API | ✅ `8f2e1ab6`; review fixes `1f723e51` |
 | **T4** | **Execution items valueless, with resolvers** | ✅ `d4d85418` |
 | **T5+T6** | **PySCF renders at all** + its catalogue | ✅ `93403618` — 39 items, six categories |
-| **T7** | **`execution/` docs** — `job-contracts.md` and `project-layout.md` still cite `template@1` | ⬜ open |
+| **T7** | **`execution/` docs** catch up to `@2` — the version string was the smaller half (§ 5) | ✅ 6 edits across 5 files |
 | **T8** | **The wrapper reads `read_by`** instead of scanning deck text for `ELPA` | ⬜ open — `diag_algorithm` declares it since `1f723e51`, so the data is waiting |
 | **T9** | **`ecp` → name + atom selector**, deleting `strmap` (§ 8) | ⬜ open — user design, 2 decisions needed first |
 | **T10** | **The `.fdf` before/after comparison** (§ 8) | ✅ **57 decks byte-identical**, harness mutation-tested |
@@ -272,12 +272,25 @@ discovered:
 | where | says | until |
 |---|---|---|
 | `engines/template.md` | `@2`, `engines`, `category`, `resolver` | — (it is the authority) |
-| `molbuilder/template.py` | emits `@1`, one `engine` key, `section` | **T2** |
-| `execution/job-contracts.md` § 6.1, `execution/project-layout.md` | reference `template@1` | **T7** |
+| `molbuilder/template.py` | emits `@1`, one `engine` key, `section` | ✅ **T2** |
+| `execution/job-contracts.md` § 6.1, `execution/project-layout.md` | reference `template@1` | ✅ **T7** |
 
 So a template on disk today is a valid `@1` file and every reader still works.
 Nothing is half-migrated; the contract simply landed first, which is what lets
 T1's catalogue be checked against a settled shape instead of a moving one.
+
+> **What T7 actually turned out to be** *(2026-08-13)*. The row above scoped it
+> as two stale version strings. Reading the two rows in full found the version
+> was the *smaller* half: both also described the file's **content** in `@1`
+> terms — `engine` singular, and *"every parameter, **with its value**"*, which
+> T4 made false when execution items became valueless. The same sentence had
+> propagated: `worked-example.md` said the template holds every parameter
+> *"minus what the hardware decides"* (at `@2` those parameters ARE in the file,
+> named and unanswered), `project-layout.md` § 3 and `engines/stages.md`'s
+> diagram repeated *"with its base value"*, and `generator.md` § 3.1a still
+> listed **`section`** as a carried template key with `template.md` § 5 named as
+> the authority that gains it — the retired key, citing the contract that
+> retired it. Six edits, one claim.
 
 ---
 

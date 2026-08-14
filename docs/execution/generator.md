@@ -161,7 +161,7 @@ template was losing all three until the TOML writer landed:**
 | key | what it is | status |
 |---|---|---|
 | **`label`** | the human name — *"MPI ranks (np)"*, *"Max memory (per rank)"* | ✅ carried (`template.py` Item; was lost — `BenchField.name` held the *field* name) |
-| **`section`** | which fieldset — *"Compute & budget"*, *"System"* | ✅ carried (was read once to decide exposure, then discarded) |
+| **`category`** | which panel — one of the closed six (`system` · `method` · `accuracy` · `convergence` · `procedure` · `execution`) | ✅ carried. **Was `section`** — a free-text fieldset name per engine (*"Compute & budget"*, *"SCF"*), read once to decide exposure and then discarded. `section` is **RETIRED at `@2`**: two engines expressing one idea disagreed on the label, so no surface could group across them ([`engines/template.md`](?doc=engines/template.md) § 6.2) |
 | **`null_label`** | what *unset* is called — *"(single-process)"*, *"(auto)"* | ✅ carried (was lost; `optional` said unset is a real state, nothing said how to show it) |
 
 **A template with these three missing produces a UI that cannot name its own
@@ -170,7 +170,7 @@ and round-trip losslessly with the rest.
 
 > **So the rule for the TOML key set is: carry what every reader needs, and
 > decide it once.** `template.md` § 5's key table is the authority and gains
-> `label`, `section` and `null_label`; this section is why.
+> `label`, `category` and `null_label`; this section is why.
 
 ---
 

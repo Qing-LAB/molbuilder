@@ -708,7 +708,7 @@ until you are standing on the machine.
 
 | Input | Comes from | Decides |
 |---|---|---|
-| `template.toml` | the browser | the physics: functional, basis, k-grid — **every parameter, with its base value** |
+| `template.toml` | the browser | the physics: functional, basis, k-grid — **every parameter of the calculation, with its base value.** The hardware's parameters are *named* here too, deliberately without values — the last two rows are what answer them |
 | `task.json` | the browser | this stage's overrides — mesh cutoff, force tolerance, relaxation type |
 | `molbuilder.json` | this machine, outside the tree | how to activate an environment, which queue, what a walltime looks like |
 | `bench-result.json` | measured on this machine, optional | rank count → `BlockSize`; solver → `Diag.Algorithm` **and** which conda env |
@@ -1544,7 +1544,7 @@ how a folder stops being trustworthy.
 |---|---|---|---|
 | `molbuilder.json` | outside the tree — cwd or `$XDG_CONFIG_HOME` | validated, no version | **the machine**: activation, module preamble, scheduler, env names |
 | `.molbuilder.json` | ① project | same, deep-merged over the above, project wins | machine settings for this project |
-| `<label>.template.toml` | ③ calculation | `molbuilder/template@1` (TOML) — [`engines/template.md`](?doc=engines/template.md) | **the science backbone** — every parameter with its value; nothing the hardware decides |
+| `<label>.template.toml` | ③ calculation | `molbuilder/template@2` (TOML) — [`engines/template.md`](?doc=engines/template.md) | **the science backbone** — every parameter of the calculation, grouped by `category` and tagged with the `engines` it applies to. It **names** the parameters the hardware decides (the `execution` category) but carries **no value** for them: the question is the calculation's, the answer is `prep`'s, from `environment.json` |
 | `task.json` | ③ calculation | `molbuilder/task@1` | **the science**: base settings, which vary, the stages, and the resource *intent* |
 | `<label>_<stage>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
 | `job-set.json` | ③ calculation (the RUN plan, merged per stage); a sweep's own record in the stage's `bench/` | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6) |
