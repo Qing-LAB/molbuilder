@@ -2805,3 +2805,70 @@ data, not settings"*.
 > with extra force: it is a one-line string whose change alters every deck
 > molbuilder has ever written, so it is a contract decision first and a commit
 > second.
+
+---
+
+## 45 - C2 RULED, and PySCF benchmarks too -- which the seam already allows
+
+**User, 2026-08-14:** *"Yes. And pySCF have similar bench to test these
+parameters too."*
+
+### 45.1 - The ruling
+
+> **A parameter is `allocation` when its VALUE is a machine fact, whatever
+> engine asks it.** Not when a particular engine's schema happens to tag it.
+
+| item | change |
+|---|---|
+| **PySCF `threads`** | **becomes `allocation = True`, `resolver = "omp_threads"`** -- the same question SIESTA's `omp_threads` asks, answered the same way |
+| SIESTA `mpi_np`, `omp_threads` | unchanged -- already correct |
+| `memory_cap_mb` (SIESTA) | allocation, **no resolver** -- unset means *do not cap* (SS 30.1) |
+| `working_memory_mb` (PySCF) | **not** allocation -- it selects in-core vs out-of-core, so it is science. `resolver = "node_memory"` (SS 30.1) |
+
+**The behavioural effect:** a PySCF template stops carrying a thread count and
+`prep` fills it from the node -- exactly as a SIESTA template already behaves.
+Floor 2's *never assert a machine fact's value* stops being enforced on one
+engine only (SS 31.2).
+
+### 45.2 - PySCF benchmarks too, and its axes are NOT the same axes
+
+The shipped sweep is **`(GPUs, ranks-per-GPU, cores-per-rank)`**
+(`bench/grid.py::sweep_grid`), rendered `G1K4C6` -- **MPI-shaped, and PySCF
+has no MPI ranks.** It is one process with threads, optionally on a GPU.
+
+So PySCF's sweep is a different set of axes over the same machinery:
+
+| engine | plausible axes | why |
+|---|---|---|
+| SIESTA | GPUs - ranks-per-GPU - cores-per-rank | MPI + OMP, and `BlockSize` on top |
+| **PySCF** | **threads** - **use_gpu** - and arguably **`working_memory_mb`** | one process; and working memory selects in-core vs out-of-core, which is **speed, not the answer** -- so it is legitimately `category = "execution"` and legitimately sweepable |
+
+### 45.3 - The seam already allows this, and that is the point
+
+`resolve.MachineTranslation` is **exactly this**: *the specialisation's
+coupling -- which axes are ours, and what machine ask each point implies* --
+declared as data:
+
+```
+MachineTranslation(axes=("G", "K", "C"),
+                   to_resources=lambda point, env: {...})
+```
+
+Its docstring already says the axes are **declared, not inferred**, *"so the
+resolver can refuse an axis nobody owns by name"*. **PySCF supplies its own
+instance and nothing in `resolve/` changes** -- which is `generator.md` SS 7's
+seam test passing on a case nobody has exercised yet.
+
+> **So this is a confirmation, not a new requirement.** The one thing to check
+> when PySCF's bench lands: that `bench/grid.py::sweep_grid` -- which
+> enumerates the G/K/C grid from probed topology -- is **the SIESTA
+> specialisation** and not shared code that a second engine has to bend around.
+> If it is shared, that is the leak, and it is findable before writing a line
+> of PySCF bench.
+
+### 45.4 - What this adds to the work list (SS 25)
+
+| # | item | blocked on |
+|---|---|---|
+| **25.7** | `bench/grid.py::sweep_grid` -- is it SIESTA's specialisation or shared? | nothing; it is a read, and it decides whether PySCF's bench adds a file or edits one |
+| **25.8** | PySCF's `MachineTranslation` -- its axes, and what each point implies for `Resources` | C2 (ruled here), since `threads` becomes the allocation field its points must land on |
