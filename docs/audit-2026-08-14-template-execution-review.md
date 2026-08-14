@@ -24,6 +24,7 @@ matter are the ones nobody suspected. Suspicions raised by reading were then
 | `docs/execution/generator.md` | 594 |
 | `molbuilder/resolve.py` | 559 |
 | `docs/execution/job-system.md` | 1322 |
+| `docs/execution/job-contracts.md` § 6.2 + section map | *(partial — § 6.2 in full)* |
 
 | not yet read | lines |
 |---|---|
@@ -336,3 +337,37 @@ not.** Every cell now reads ✅, with the `bench` column marked LANDED 2026-08-1
 and the retired `⛔` state preserved in a dated note below the table. Recorded
 here so a consolidation pass does not resurrect a fixed finding — which is its
 own kind of drift.
+
+
+---
+
+## 10 · `job-contracts.md` § 6.2 — the authority, read against its own duplicate
+
+This section was read to check § 9.2's drift claim from the authority's side.
+What it shows is worse, and better evidenced, than the drift itself.
+
+**The authority is right, is guarded, and records having had the same bug:**
+
+> *"The `jobset.Resources` dataclass holds exactly **nine** fields … (This
+> sentence said "exactly seven" while its own table already carried
+> `continue_retries` — amended U19, 2026-08-12, **and pinned by an equality test
+> in both directions**.)"*
+
+So the identical error — *"seven"* — was found in the contract, fixed, and
+**locked with a test**. The same error in `job-system.md`'s copy was not fixed,
+because **nothing connects the copy to the source**.
+
+> **This is the argument against the duplication, made by the duplication.**
+> A guide that repeats a contract does not merely risk drifting — it drifts
+> *past a fix that was already made and tested*, silently, and the reader who
+> lands on the guide gets the pre-fix answer with no way to know.
+
+### 10.1 · A stale row in the authority itself
+
+| row | says | truth since 2026-08-13 |
+|---|---|---|
+| **GPU request** | config-layer source is **`enable_gpu` + `diag_algorithm`**, exchange `gres` → `--gres`, *"derived from `.fdf` + GPU type"* | `diag_algorithm` no longer participates. The GPU ask is derived from `Diag.ELPA.GPU` alone (`_fdf_requests_gpu`, the one scanner left); the solver choice decides no resource and no environment |
+
+Same T8 residue family as § 2 — and this one is in **the cross-layer authority**,
+which § 6.3 declares wins over every other document when they disagree. A stale
+row here propagates by design.
