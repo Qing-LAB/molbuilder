@@ -230,3 +230,60 @@ def test_the_frozen_label_in_the_spec_matches_the_code_constant():
         f'the code writes {FROZEN_LABEL!r} inside `regions`.'
     )
 
+
+
+# --------------------------------------------------------------------- #
+#  pow2 is DECLARED, so the checker that was written for it can run      #
+#                                                                        #
+#  audit-2026-08-14 SS 48/50: `pow2` was in TYPES, documented in SS 5 and  #
+#  SS 12's example, had a correct entry in _TYPE_CHECKS -- and no code     #
+#  path could produce it, so a user-supplied 96 reached the deck while   #
+#  the AUTO path capped to a power of two.                               #
+# --------------------------------------------------------------------- #
+
+def test_block_size_declares_pow2_so_a_non_power_of_two_is_refused():
+    """The three states of ``parallel_block_size`` all behave.
+
+    ``None``/absent = auto (prep proposes) · ``0`` = omit the keyword, the
+    engine's own default (`template.md` § 12, decision 35) · ``N`` = use N,
+    **and N must be a power of two** -- which is what the declaration turns on.
+    """
+    from molbuilder.config.siesta import SiestaConfig
+
+    item = template.one(template.read_template(
+        template.render_template(SiestaConfig())), "parallel_block_size")
+    assert item.type == "pow2", (
+        "parallel_block_size must DECLARE pow2 -- otherwise the checker "
+        "written for it is unreachable and a user's 96 is emitted verbatim")
+
+    def _round_trip(v):
+        return template.one(template.read_template(template.render_template(
+            SiestaConfig(parallel_block_size=v))), "parallel_block_size").value
+
+    # A legal value is untouched.
+    for good in (1, 16, 64, 128):
+        assert _round_trip(good) == good
+
+    # An illegal one is COERCED, not refused (user, 2026-08-14).  DOWN, which
+    # is the direction ``_auto_block_size`` already takes -- the largest power
+    # of two that still leaves >= 2 blocks per rank -- so the snap can never
+    # hand the engine a bigger block than was asked for.
+    assert _round_trip(96) == 64
+    assert _round_trip(100) == 64
+    assert _round_trip(3) == 2
+
+    # 0 is the THIRD STATE -- *omit the keyword entirely* -- not a value, so
+    # the power-of-two constraint does not apply to it and it must survive.
+    assert _round_trip(0) == 0
+
+
+def test_a_declared_type_must_be_in_the_vocabulary():
+    """``metadata['decl_type']`` is checked against ``TYPES`` -- a typo there
+    would otherwise put an unknown type into every template."""
+    import dataclasses
+    fld = dataclasses.field(metadata={"decl_type": "not_a_type",
+                                      "category": ("execution",),
+                                      "help": "x"})
+    fld.name, fld.type = "x", int
+    with pytest.raises(ValueError, match="not in the type vocabulary"):
+        template.declaration_for(fld, int)

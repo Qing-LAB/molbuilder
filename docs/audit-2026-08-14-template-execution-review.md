@@ -3609,3 +3609,91 @@ worries about.
 
 **Nothing on paper now blocks the code.** SS 26's rule has been satisfied
 rather than suspended.
+
+---
+
+## 56 - FIRST CODE: `pow2` declared and enforced -- and the wrinkle it exposed
+
+*(SS 55.4 closed the contract phase; this is item 1 of the work list.)*
+
+### 56.1 - What landed
+
+| | |
+|---|---|
+| `template.declaration_for` | honours `metadata["decl_type"]`, validated against `TYPES` -- so a field can DECLARE a type its annotation cannot carry |
+| `parallel_block_size` | declares `decl_type = "pow2"` |
+| the effect | a template carrying `96` is now **coerced to 64 on read**. Before, it was emitted verbatim while the AUTO path capped to a power of two |
+
+### 56.1a - COERCE, not refuse (user, 2026-08-14)
+
+> *"instead of accepting and refusing, it should correctly coerce the value to
+> the allowed number, now?"*
+
+**Right, and it changes where the rule lives.** A refusal sends a person who
+typed 96 away to work out which numbers are legal; a snap tells them by doing
+it. So:
+
+| | |
+|---|---|
+| `_TYPE_CHECKS["pow2"]` | checks only that it is an **int** |
+| `_shape` | **snaps to the nearest power of two, DOWNWARD** |
+
+**Downward** because that is the direction `_auto_block_size` already takes --
+the largest power of two that still leaves >= 2 blocks per rank -- so the snap
+can never hand the engine a **bigger** block than was asked for.
+
+```
+asked  64 -> 64      asked 96 -> 64      asked 3 -> 2
+asked   1 ->  1      asked 100 -> 64     asked 0 -> 0   (the third state)
+```
+
+### 56.2 - The wrinkle: 0 is a legal value that is not a power of two
+
+`parallel_block_size` has **three** states, and the contract already says so
+(`template.md` SS 12, decision 35):
+
+| state | means |
+|---|---|
+| absent / `None` | **auto** -- `prep` proposes from the orbital and rank counts |
+| **`0`** | **omit the keyword entirely** -- SIESTA's own built-in default |
+| `N` | use N, **and N must be a power of two** |
+
+`_TYPE_CHECKS["pow2"]` required `v > 0`, so declaring the type would have
+**refused a legal state**. The checker now accepts `0`, with the reason
+attached: it is a **sentinel, not a value**, and the power-of-two constraint
+does not apply to a sentinel.
+
+> **Worth recording because it is the shape of thing that only appears when
+> the code is written.** SS 50 called this item *"nothing new is built"* and
+> that was true of the checker -- but not of the semantics. A type carrying a
+> sentinel is slightly muddier than a type that does not, and the alternative
+> (a fourth encoding for *omit*) is worse.
+
+### 56.3 - Verified
+
+Round-trip through `render_template` -> `read_template`, every state:
+
+```
+asked  1 -> 1     asked 16 -> 16    asked 64 -> 64    asked 128 -> 128
+asked  3 -> 2     asked 96 -> 64    asked 100 -> 64   asked   0 ->   0
+```
+
+Plus a guard that `decl_type` itself must be in `TYPES`, so a typo there
+cannot put an unknown type into every template. 192 tests pass across the
+template, doc-claims, resolve, describe, stage-resolution and milestone suites.
+
+### 56.4 - OPEN: a coercion nobody can see
+
+`template.md` SS 6.4 is explicit that a value the user did not type must be
+visible: *"a value the run obeys but nobody can see is the same problem as an
+undocumented one."* The snap currently happens inside `_shape` and **says
+nothing**.
+
+The deck's PROVENANCE does print `BlockSize  user-set -> 64`, so the *value*
+surfaces -- but not the fact that 96 was asked for. **The gap is small and
+real**, and the mechanism already exists: `jobset/ledger.py` records decisions,
+and SS 6.4's `resolve(asked, env) -> (effective, reason)` is exactly this shape.
+
+**Recorded rather than fixed here**, because the right home is the resolver's
+reason channel and that is SS 25.1's territory -- one more thing that lands when
+the operator moves.

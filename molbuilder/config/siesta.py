@@ -895,6 +895,12 @@ class SiestaConfig:
 
     parallel_block_size: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
+        # The annotation says ``int``; what a reader must CHECK is *a power of
+        # two* -- § 5's stated reason for ``type``.  Declared, so the check is
+        # data on the item rather than a comment inside one branch of
+        # ``_auto_block_size``: until 2026-08-14 a user-set 96 was emitted
+        # verbatim while the AUTO path capped to a power of two.
+        "decl_type": "pow2",
         "resolver": "block_size",
         "section": "Compute & budget",
         "workflow_group": "budget",

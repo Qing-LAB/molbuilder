@@ -377,7 +377,22 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
         return None
 
     choices = f.metadata.get("choices")
-    type_ = _decl_type(ann, choices)
+    # A field may DECLARE its type when the annotation cannot carry the
+    # constraint.  ``parallel_block_size`` is ``Optional[int]`` and the thing a
+    # reader must check is *is it a power of two* -- which is § 5's whole reason
+    # for ``type`` existing: "what a parser cannot know".  Without this the
+    # vocabulary had a member (`pow2`) that nothing could produce, and a
+    # user-supplied 96 reached the deck unchecked (audit § 50.1).
+    declared = f.metadata.get("decl_type")
+    if declared is not None:
+        if declared not in TYPES:
+            raise ValueError(
+                f"field {f.name!r}: metadata['decl_type'] = {declared!r} is not "
+                f"in the type vocabulary {TYPES} (engines/template.md § 5).")
+        return_type = declared
+    else:
+        return_type = None
+    type_ = return_type or _decl_type(ann, choices)
     if type_ is None:
         raise ValueError(
             f"field {f.name!r}: no declaration type for annotation {ann!r}. "
@@ -822,7 +837,13 @@ _TYPE_CHECKS = {
     "text":    lambda v: isinstance(v, str),
     "bool":    lambda v: isinstance(v, bool),
     "enum":    lambda v: isinstance(v, str),
-    "pow2":    lambda v: _is_int(v) and v > 0 and (v & (v - 1)) == 0,
+    # ``pow2`` CHECKS only that it is an int.  The power-of-two constraint is
+    # not a refusal, it is a COERCION -- ``_shape`` snaps the value (user,
+    # 2026-08-14: *"instead of accepting and refusing, it should correctly
+    # coerce the value to the allowed number"*).  Refusing would send a person
+    # who typed 96 away to work out which numbers are legal; snapping tells
+    # them, by doing it.
+    "pow2":    _is_int,
     "int3":    lambda v: (isinstance(v, (list, tuple)) and len(v) == 3
                           and all(_is_int(x) for x in v)),
     "strlist": lambda v: (isinstance(v, list)
@@ -871,6 +892,17 @@ def _shape(v: Any, type_: str) -> Any:
     """
     if v is None:
         return None
+    if type_ == "pow2":
+        # Snap DOWN to the nearest power of two, matching what the AUTO path
+        # already does -- ``_auto_block_size`` takes the LARGEST power of two
+        # that still leaves >= 2 blocks per rank, so rounding down is the
+        # direction that cannot make a block bigger than the caller asked for.
+        # 0 passes through: it is the THIRD STATE (*omit the keyword entirely*,
+        # `template.md` § 12), a sentinel rather than a value.
+        n = int(v)
+        if n <= 0:
+            return 0 if n == 0 else n
+        return 1 << (n.bit_length() - 1)
     if type_ == "int3":
         return tuple(int(x) for x in v)
     if type_ == "intlist":
