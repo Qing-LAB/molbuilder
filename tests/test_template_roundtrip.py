@@ -506,8 +506,12 @@ def test_read_by_filters_on_SEVERAL_layers_like_its_siblings():
     assert many == one, (
         "asking for two layers must return at least what asking for one "
         "returns; an empty list here is the scalar-only bug")
-    # And a layer nothing declares is an empty answer, which is the honest one.
-    assert T.select(t, read_by="produce") == []
+    # NO assertion here about a layer nothing declares.  ``engine`` REFUSES an
+    # unknown value (the test below says why: an empty list cannot tell
+    # *"nothing matched"* from *"you asked for something that does not exist"*),
+    # and ``read_by`` is validated against nothing at all -- so pinning its
+    # empty answer would freeze an unvalidated axis as if it were designed.
+    # Recorded as its own finding against § 6.1 instead.
 
 
 def test_an_engine_this_template_does_not_serve_is_REFUSED():

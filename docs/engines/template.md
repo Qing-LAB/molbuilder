@@ -787,6 +787,15 @@ in category order.** One function, one file, every reader. Each argument is a
 filter on an axis the item already declares; omitting one means *do not filter on
 it*. The § 8 table above is then a table of **calls**, not of bespoke code:
 
+> **Every filter takes one value or several, and several means ANY-OF.**
+> `kind=("engine", "deck")` is the deck writer asking for both in one question,
+> and the same is true of `category` and `read_by`. This is stated because it
+> was not: `read_by` accepted a single name only until 2026-08-14, so
+> `read_by=("wrapper",)` — the same request written as a sequence — matched
+> nothing and returned an **empty list rather than a refusal**. `engine` is the
+> one exception and stays scalar: a template either serves an engine or does
+> not, so asking about two at once is not a filter but a different question.
+
 | the reader | the call |
 |---|---|
 | a surface, one panel | `select(t, category="accuracy", engine="siesta")` |

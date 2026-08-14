@@ -1159,9 +1159,15 @@ def config_from_template(text: str, config_cls):
     return config_cls(**vals)
 
 
+#: The module's public surface.  It omitted `select` and `one` -- which § 8.0
+#: calls THE ONE READ API -- and the three closed vocabularies until
+#: 2026-08-14, so a surface wanting to order panels by the closed six had to
+#: hard-code them or reach past this line (audit § 1.5).
 __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "FINGERPRINT_VERSION",
+           "CATEGORIES", "RESOLVERS", "ALLOCATION_RESOLVERS",
            "Item", "Template",
            "declaration_for", "declarations_for",
+           "select", "one",
            "schema_fingerprint", "fingerprint_matches",
            "render_template", "read_template", "config_from_template",
            "template_fields"]
