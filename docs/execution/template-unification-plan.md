@@ -152,12 +152,13 @@ Each unit lands with its own tests and commit. **Docs first within each unit.**
 | **T7** | **`execution/` docs** — `job-contracts.md` and `project-layout.md` still cite `template@1` | ⬜ open |
 | **T8** | **The wrapper reads `read_by`** instead of scanning deck text for `ELPA` | ⬜ open — `diag_algorithm` declares it since `1f723e51`, so the data is waiting |
 | **T9** | **`ecp` → name + atom selector**, deleting `strmap` (§ 8) | ⬜ open — user design, 2 decisions needed first |
-| **T10** | **The `.fdf` before/after comparison** (§ 8) | ⬜ **OWED** — attempted and misreported |
+| **T10** | **The `.fdf` before/after comparison** (§ 8) | ✅ **57 decks byte-identical**, harness mutation-tested |
 
 **What is true right now.** Both engines render a template at `@2`; every item
 carries a category from a closed six; execution items are declared valueless
-with named resolvers; and `select`/`one` are the one read API. The code is
-*ahead* of `execution/`'s docs (T7) and *behind* on one verification (T10).
+with named resolvers; `select`/`one` are the one read API; and the refactor is
+**proven not to have moved the deck** (T10). The code is *ahead* of
+`execution/`'s docs, which is T7.
 
 **Not in scope, and deliberately:** the UI. It is the last consumer and it is
 built from this file; designing it now would fix panels against categories that
@@ -422,25 +423,52 @@ real element symbols.
 2. Is `ecp = ""` with a non-empty atom list an error, or *"auto-pick per
    element"*?
 
-### T10 · The `.fdf` before/after comparison — OWED, NOT DONE
+### T10 · The `.fdf` before/after comparison — ✅ DONE 2026-08-13
 
 G4 asks that the deck `prep` renders is the deck the surface would have
 rendered, and the template refactor changed `SiestaConfig`'s metadata (category,
-resolver, label, item_kind) without any intended change to deck output. **That
-has not been verified.**
+resolver, label, item_kind) with no intended change to deck output. **Verified:
+the decks are byte-identical.**
 
-An attempt on 2026-08-13 **reported "byte-identical" and was wrong**: both files
-were 0 bytes, because generation refused on an unrelated validation error
-(`spin_polarized` with metals wants `spin_total`) and `diff` compared two empty
-files. Recorded because the failure mode is the interesting part — *a comparison
-that produces no output looks exactly like a comparison that found no
-difference.*
+**Method** — `2e715088` (the last commit before T2a touched code) checked out as
+a worktree beside the tree under test, and one harness run against each:
 
-**Redo with:** a config that passes validation, a baseline worktree at
-`2e715088` (the last commit before T2a touched code), and an explicit
-non-empty-file assertion before the diff is believed.
+| | |
+|---|---|
+| matrix | **19 configs × 3 stage tokens = 57 decks**, built so every one of the 44 `SiestaConfig` fields is off its default in at least one case |
+| structures | a molecule with vacuum, a periodic Au cell with an explicit lattice, and a junction carrying `regions` + `frozen_atoms` + an annotation channel |
+| determinism | `generated_at_now` and `molbuilder_git_sha` frozen **before** `siesta.input` is imported, so the only thing that can differ is the deck |
+| result | `diff -r` exit **0** over **943,580 bytes**; 0 refusals; smallest deck 4,519 bytes |
 
-**Must also confirm § 9's reserved blocks survive** — `user_custom`
-(`siesta/input.py:1637`, `emit_user_custom_placeholder`), the crystal unit cell,
-and the atom labels that ride with the atoms (§ 9.1). A metadata refactor is
-exactly the kind of change that could drop one silently.
+**The assertions that make the result believable** — each one closes the exact
+hole the failed attempt fell through:
+
+- the harness **raises on any empty file** before writing the next one;
+- every run **prints the `molbuilder.__file__` it imported**, so "two trees" is
+  shown rather than assumed;
+- a **refusal is captured as file content** (`!! REFUSED: …`), so a config the
+  generator rejects can never masquerade as an empty deck;
+- and the comparison was **mutation-tested**: changing `mesh_cutoff`'s default
+  from `300.0` to `301.0` in the baseline tree alone produced a **614-line
+  diff**, proving the harness detects a one-value change. The baseline was then
+  restored and the restore re-verified by re-running the diff.
+
+**§ 9's reserved blocks — asserted PRESENT, not merely unchanged** (an absent
+block would diff clean in both trees):
+
+| block | decks | expected |
+|---|---|---|
+| `=== molbuilder user-custom ===` | 57/57 | always |
+| `=== molbuilder provenance ===` | 57/57 | always |
+| `=== molbuilder bench-marks ===` | 57/57 | always |
+| `=== molbuilder atom-metadata ===` | **6**/57 | only the junction cases — the contract's rule is that absence is the honest signal when `regions` and `frozen_atoms` are both empty |
+| `%block LatticeVectors` | 57/57 | the crystal's explicit lattice, and the derived vacuum box |
+| `%block Geometry.Constraints` | **6**/57 | `frozen_atoms=[0,1,2,3]` → `position 1 2 3 4`, 0-based to 1-based |
+
+The atom labels ride in the `atom-metadata` JSON (`regions`, `frozen_atoms`, and
+the annotation channels round-trip verbatim), not as inline comments on the
+coordinate lines — which is what § 9.1 specifies.
+
+**Harness:** `t10_render.py`, kept in the session scratchpad. It is deliberately
+NOT a test in the suite: it compares two *trees*, so it has no meaning once the
+baseline is old. The reproduction recipe is the table above.
