@@ -1962,3 +1962,68 @@ quietly damage, because **its consumer is not written yet.**
 > that drops, reorders or lossily rewrites those blocks breaks a consumer that
 > **does not exist yet**, so no test today would catch it.
 > *Owner: `execution/job-contracts.md` SS 3.1 / SS 3.4.*
+
+---
+
+## 34 - SSSS 3.4-3.6 read in full: the persistence format, and one label name that is wrong
+
+**User, 2026-08-14:** *"there is a whole section of document talking about
+persistent user comments with formats to carry essential structural
+information in generated scripts. you should be aware of that and cite that
+in the template design."*
+
+Correct -- I had discussed the persistence channel (SS 33) from SS 3.1 alone
+and had not read the sections that SPECIFY it.
+
+### 34.1 - The finding: the example's frozen label does not match the code
+
+SS 3.4's example writes the frozen set as a `regions` label named **`frozen`**:
+
+```
+"regions": { "L-electrode": [...], "R-electrode": [...],
+             "bridge": [...], "frozen": [88, 89, ...] }
+```
+
+**The code writes `frozen_atoms`.** `structure.FROZEN_LABEL = "frozen_atoms"`,
+and T10's measured junction deck confirms it:
+
+```
+"regions":{"electrode_left":[0,1],"electrode_right":[2,3],
+           "molecule":[4,5,6,7],"frozen_atoms":[0,1,2,3]}
+```
+
+The **shape** is right and the section's own 2026-08-12 amendment is correct
+-- frozen is a label INSIDE `regions`, not a key beside it. The **name in the
+example is not**.
+
+> **Why this one matters more than a typo.** SS 3.4's example is the
+> specification a transport reader would be written from, and transport is
+> exactly the consumer the user named: *"these labels are important to keep
+> track of frozen atoms, and bridges"*. A reader built from the example looks
+> up `"frozen"`, finds nothing, and concludes the run froze no atoms.
+> **Core document: `execution/job-contracts.md` SS 3.4.** Fix the example's
+> label to `frozen_atoms`, or state that the name is `structure.FROZEN_LABEL`
+> and cite it rather than spelling it -- the second is better, since it is the
+> same one-authority rule SS 3.4 already applies to the version number.
+
+### 34.2 - What SSSS 3.4-3.6 establish, now cited from `template.md` SS 9
+
+| | |
+|---|---|
+| **format** | `molstruct-json/v<SCHEMA_VERSION>` -- the number READ from `sidecars/molstruct.SCHEMA_VERSION` (7), never typed, so block and sidecar cannot drift |
+| **emission** | conditional: only when `regions` OR `annotations` is non-empty. Absence is the honest signal, so it cannot suppress a sidecar added later |
+| **indices** | ATOM-METADATA is **0-based**; SIESTA's `%block Geometry.Constraints` is **1-based**. Both in one file, deliberately |
+| **precedence** | **in-body wins over the sidecar** -- `apply_companion_labels_if_present` runs before the sidecar branch. The sidecar is the fallback for plain `.xyz` and pre-contract scripts |
+| **round trip** | SS 3.6: a tool may assume ATOM-METADATA round-trips (its dict feeds the same `apply_to_structure` path the sidecar uses) and USER-CUSTOM survives regeneration |
+| **versioning** | each block versions independently; **no autodetection, no silent upgrade, no translation** -- an old block is refused with the regenerate message |
+
+### 34.3 - Cited in the template design, as asked
+
+`engines/template.md` SS 9 previously pointed only at SS 3.1 (the block list).
+It now names **SSSS 3.4-3.6 as the format authority**, and states plainly that
+the deck is not write-only: the blocks are a persistence channel, transport
+reads electrode / bridge / frozen membership back out, and a change that
+drops or lossily rewrites them breaks a consumer that does not exist yet.
+
+*(SS 9.1 already cited SS 3.4 once -- for the 0-based/1-based note -- which is
+why the gap survived: a citation existed, so nothing looked missing.)*

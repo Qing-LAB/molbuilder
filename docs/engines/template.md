@@ -769,7 +769,22 @@ Nothing splices at it.
 ## 9. The reserved blocks — what reaches the final script, and from where
 
 A generated deck carries up to five reserved comment blocks
-([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1). The deck is
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1) — and **§§ 3.4-3.6
+are the format authority for what they carry and how it is read back.**
+
+> **The deck is not write-only, and that is why this section exists.** The
+> reserved blocks are a **persistence channel**: ATOM-METADATA carries the
+> structure's regions, frozen set and annotation channels forward so a
+> relaxation cannot lose which atom is which, and a later calculation —
+> **transport above all** — reads electrode / bridge / frozen membership back
+> out of it (§ 3.4's own example names those labels). USER-CUSTOM carries a
+> person's own engine text the same way (§ 3.5). § 3.6 states what a tool may
+> assume: **ATOM-METADATA round-trips** through the same `apply_to_structure`
+> path the sidecar uses, and **USER-CUSTOM survives regeneration** — with no
+> autodetection, no silent upgrade, and no translation.
+>
+> A change that drops, reorders or lossily rewrites either block breaks a
+> consumer that **is not written yet**, so no test today would catch it. The deck is
 rendered at `prep`, on a machine that may be seeing this calculation for the
 first time — so for each block there is one question: **where does its content
 come from, and does that source travel in the portable folder?** This is G6, and
