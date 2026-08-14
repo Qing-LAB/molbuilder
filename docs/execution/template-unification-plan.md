@@ -330,3 +330,45 @@ become is the surface's call.
 8. **A computed value carries its reason** (§ 5.2). Every resolver returns one,
    and it reaches the log and the ledger — a number the run obeyed that nobody
    can account for is the failure this whole session kept finding.
+
+---
+
+## 7. Fresh-eyes review of the emitted file (2026-08-13, after T3)
+
+Read the rendered `t.toml` and the API's output as a surface would receive
+them, rather than the diff. Three findings; none blocks T4, all belong in it or
+after it.
+
+**F1 · The `execution` panel is incomplete — it has 6 items, not 9.**
+`mpi_np`, `omp_threads` and `max_memory_mb` are tagged `allocation: True`, so
+`declaration_for` still excludes them outright — the pre-`@2` behaviour. But
+§ 6.4 now says they SHOULD be declared **valueless**, precisely so a surface can
+ask and the wrapper writer knows to look. Until T4 lands, a UI reading
+`select(t, category="execution")` has no way to ask for ranks, threads or
+memory. **This is T4's core work**, stated here so the gap is not mistaken for
+a design choice.
+
+**F2 · `resolver` carries no data — the hollow-mechanism pattern, third
+instance.** Every execution item reports `resolver=-`. `BlockSize` is `unset`
+with nobody declared to fill it, though § 6.4's own table names `block_size` as
+its resolver. Specified, implemented, emitted, parsed, declared nowhere.
+
+This is exactly what the T3 review warned about one commit earlier, and the
+third time today: `RUNTIME_INFO_KEYS` called itself the source of truth and was
+imported by nothing; `read_by` had a contract section and a worked example and
+was declared on zero fields. **T4's acceptance criterion should therefore be
+behavioural, not structural:** after T4, `select` for resolver-carrying items
+must return something AND something must call them.
+
+**F3 · 17 of 41 labels are the engine keyword, not a human name.** § 5 says
+`label` is *"the human name — 'MPI ranks (np)'. Not the field name; a surface
+shows this."* But the file carries `label = "PAO.EnergyShift"`,
+`label = "SystemLabel"`, `label = "kgrid_Monkhorst_Pack"`. A panel built from
+this shows the user SIESTA's vocabulary, which is the thing the category work
+exists to move past — the categories give good panels and the labels then fill
+them with jargon.
+
+Not a template-design defect: the format is right and the data is thin. It is
+config metadata to improve, engine by engine, and the natural moment is
+alongside each engine's catalogue (T1 for SIESTA, T6 for PySCF). Recorded here
+so the UI phase does not discover it as a surprise.
