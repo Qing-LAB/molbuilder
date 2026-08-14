@@ -1405,3 +1405,80 @@ So invariant 5 is correct as written and the implementation is incomplete.
 **Fix: force `restart = "clean"` on a trial's config**, next to the relabel in
 `prep_calculation`, where `element.is_trial` is already the branch.
 
+---
+
+## 25 · MIGRATION WORK LIST — functions to reposition in the template-driven model
+
+**What this is.** The project is moving from engine-specific script generation to
+one template-driven flow: prep → extract → generate → assemble → validate. Some
+functions are already in the right place; others are where they were written
+before the unification, or are shaped for the world before it. **This is the
+list of the second kind, with where each belongs and what has to change** — so
+the work is picked up as migration, not rediscovered as a puzzle.
+
+*(Recorded 2026-08-14 on user order, after I twice framed one of these as an
+open question instead of as pending migration work. The evaluation to make for
+each is the same: **where does it sit in the workflow, and what shape does the
+new model need it in** — not "should we move it".)*
+
+### 25.1 · `effective_config` — the ⊕ operator, still in the SIESTA package
+
+| | |
+|---|---|
+| **now** | `molbuilder/siesta/input.py` |
+| **what it is** | `effective config = template's values ⊕ this stage's overrides` — `stages.md` § 4's operator, *"the one place this happens"* |
+| **engine-specific?** | **No.** Reads `dataclasses.fields(type(template))`, widens `int`→`float` where the field declares one, returns a new object. Nothing SIESTA in it |
+| **production callers** | `resolve._apply` (floor 3) · `validation/stages.py`. Both engine-neutral |
+| **also** | 7 test files import it from `siesta.input` |
+| **belongs** | the shared resolution layer — `resolve.py` is floor 3's resolver and already wraps it |
+| **and changes how** | `resolve._apply` currently fabricates a `Stage(name="resolve")` to pass overrides into a function whose parameter is a stage. Once it moves, that disappears: the operator takes a config and a mapping |
+| **watch** | `runtime_config.read_effective_config` is a **different** function (config-file merging) that shares the name. Do not merge the two, and consider renaming one |
+
+### 25.2 · `render_template` / `declarations_for` — one config class in, one engine out
+
+| | |
+|---|---|
+| **now** | `molbuilder/template.py` |
+| **the gap** | both take **one** config class. `render_template` derives `engines` from it and emits a one-element list, so **nothing can build the multi-engine file § 6.3 describes** |
+| **belongs** | where it is — this is a **shape** change, not a placement one |
+| **changes how** | accept **N** config classes; merge their declarations into one item table; tag each item with the `engines` it came from; keep items **unmerged** across engines (`net_charge` and `charge` stay two items in one category) |
+| **then** | `Item.engines`, `select(engine=)`, `one(engine=)` and `_check_engine` stop being machinery for a file nothing writes — they are already correct, and they are waiting on this |
+
+### 25.3 · Type coercion happens in two places, by two mechanisms
+
+| | |
+|---|---|
+| **now** | `template._shape` + `_check_raw_value` coerce by the item's **declared `type`**; `effective_config` widens `int`→`float` by the **dataclass field's** annotation |
+| **why it matters** | in the new model the template's `type` vocabulary is the authority on what a value *is*. Two coercion paths with different inputs is how a stage override and a template value end up different types for one field |
+| **evaluate** | whether the override path should go through the template's declared type rather than the dataclass annotation — i.e. whether ⊕ belongs *beside* the type system rather than beside the config class |
+
+### 25.4 · The wrapper still reads the deck text for GPU
+
+| | |
+|---|---|
+| **now** | `runwrap._fdf_requests_gpu` parses `Diag.ELPA.GPU` out of the rendered `.fdf`; eight call sites |
+| **the state** | `enable_gpu` **declares** `read_by = ("wrapper",)` and a gate asserts every scanner is claimed by a declaration — but nothing yet *hands* the wrapper writer the resolved value |
+| **evaluate** | `project-layout.md` § 2.3.1 says the wrapper's environment is chosen by *a value the deck decides*, and the deck is what actually runs (a person may edit it). So the question is not "stop reading the deck" but **whether `prep`, which holds the resolved element, should pass the value and leave the scan as the standalone-use fallback** |
+| **note** | this is the honest remainder of T8. The declaration landed; the hand-off did not |
+
+### 25.5 · Already in the right shape — the pattern to copy
+
+`prep._engine_seam` / `EngineSeam` is what the others should look like: the
+engine supplies `config_cls`, `render_deck`, `relabel`, `label_of`,
+`sibling_artifacts`, `suffix` — and `prep` calls them without knowing which
+engine it holds. `generator.md` § 7's test (*"adding an engine adds files and
+edits none"*) passes here. **When repositioning 25.1–25.4, the target shape is
+this one: the engine declares, the shared flow calls.**
+
+### 25.6 · How to evaluate each
+
+For every function met during the remaining reading, ask in this order — the
+order that would have avoided today's mistakes:
+
+1. **What does the contract say this layer does?** *(not: what does the code do)*
+2. **Is the body engine-specific, or only its address?** — 25.1 is address-only.
+3. **Is it the right SHAPE for the new model,** or shaped for the one before it?
+   — 25.2 is a shape problem at the right address.
+4. **Who calls it, and are those callers on the layer the contract puts them on?**
+5. Only then: where does it move, and what changes with it.
+
