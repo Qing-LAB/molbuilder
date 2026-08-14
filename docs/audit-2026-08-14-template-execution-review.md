@@ -1554,7 +1554,7 @@ it defers to the template for**.
 
 | document | how it still reads pre-template | what alignment needs |
 |---|---|---|
-| **`web/form-schema.md`** | describes the form as built from **dataclass field metadata** (`section`, `workflow_group`, `help`, …) — `dataclass_to_form_schema` | `generator.md` § 3.1 changed the direction to **schema → template → UI**. Two mechanisms for one job now exist on paper. This is the biggest gap, because the UI is the last consumer and it is being designed off whichever of the two a reader lands on |
+| **`web/form-schema.md`** | describes the form built from **dataclass field metadata** — `dataclass_to_form_schema` | **NOT a live conflict** *(user, 2026-08-14)*: this is the **old UI design**, and that work has not started. **The template is not associated with a UI yet** — it is being designed to *carry* the information a UI will need. So form-schema.md is superseded-in-waiting, not contradictory, and it is **out of the C5 queue** until the UI work begins |
 | **`engines/stages.md`** | owns `task.json`, `⊕`, and the stage vocabulary — written before `prep` rebuilt the config from a template | must say the ladder's overrides apply **to template items**, and hand `⊕`'s definition to whatever C3 decides |
 | **`execution/job-system.md`** § 4.1 | the SIESTA ladder described through `siesta/stages.py` and per-stage config | say which parts are template items now |
 | **`execution/running-a-job.md`** § 3 | the wrapper's own resolution chain | reconcile with `template.md` § 6.4's `omp_threads` resolver — the same chain is stated in both, and C4 decides who owns it |
@@ -1647,4 +1647,100 @@ tells you they are different things.
 
 > **Nothing here is code.** § 26's rule holds: this is C1's content, and
 > `render_template` does not change until it is ruled on.
+
+---
+
+## 30 · C1 RULED — the four items, and the finding the ruling exposed
+
+**User, 2026-08-14:** agreed with § 29.3's recommendation — name each for what
+it is, merge the two genuine shares — plus a fact that changes one of them:
+
+> *"`max_memory_mb` is only explicitly set when user requested, the typical
+> memory limit is unlimited — meaning all physical memory is allowed."*
+
+### 30.1 · The resolver is on the wrong item today
+
+| | today | correct |
+|---|---|---|
+| **SIESTA's cap** | `resolver = "node_memory"` | **no resolver.** Unset means *do not cap*. "Cap at the node's maximum" is still a cap, and is not what unset means |
+| **PySCF's budget** | no resolver, `default = 4000` | **`resolver = "node_memory"`.** Unset should mean *use what this node has*; 4000 is an arbitrary 4 GB that silently forces out-of-core algorithms on a machine with far more |
+
+**The two items want opposite unset behaviour**, which is the strongest evidence
+yet that they were never one parameter. A merged item could not express it: one
+control, and `unset` would have to mean *no cap* and *use the whole node* at the
+same time.
+
+### 30.2 · Final shapes
+
+```toml
+[item.memory_cap_mb]                    # was SIESTA's max_memory_mb
+kind       = "wrapper"                  # becomes `ulimit -v`; no engine keyword
+category   = "execution"
+engines    = ["siesta"]
+type       = "int"
+unit       = "MB"
+# NO value and NO resolver -- unset means DO NOT CAP.
+label      = "Memory cap (per rank)"
+null_label = "(no cap -- all physical memory)"
+help       = """
+A hard ceiling the run wrapper applies with `ulimit -v`.  Left unset the process
+is uncapped and may use all physical memory, which is the normal case -- set one
+only when you want the job killed rather than allowed to grow."""
+
+[item.working_memory_mb]                # was PySCF's max_memory_mb
+kind       = "engine"
+category   = "execution"
+engines    = ["pyscf"]
+anchor     = "mol.max_memory"
+type       = "int"
+unit       = "MB"
+range      = [100, 1000000]
+resolver   = "node_memory"              # unset -> what this node actually has
+label      = "Working memory"
+null_label = "(auto -- this node's memory)"
+help       = """
+How much memory PySCF believes it may use.  It is NOT a cap: it selects in-core
+versus out-of-core algorithms, so too small a value silently makes the run
+slower rather than failing.  Left unset, `prep` resolves it from the
+machine."""
+
+[item.verbose_comments]                 # ONE item, both engines
+kind     = "produce"
+category = "procedure"
+engines  = ["siesta", "pyscf"]
+type     = "bool"
+value    = true
+default  = true
+label    = "Verbose inline comments"
+help     = "Explain each setting in the generated file, inline."
+
+[item.write_molwatch_log]               # ONE item, both engines
+kind     = "produce"
+category = "procedure"
+engines  = ["siesta", "pyscf"]
+type     = "bool"
+value    = true
+default  = true
+label    = "Write the molwatch trajectory log"
+help     = "Emit `<basename>.molwatch.log` for the live viewer."
+```
+
+### 30.3 · What this settles, and what it opens
+
+**Settled:** the file is one `[item.*]` table; two engines share an item only
+when it is the same question with the same answer; a name collision that is not
+a share is resolved by **naming each for what it is**; a combined file holds
+**83 items** (85 fields − 2 merged).
+
+**Opened, and it is a schema change rather than a template one:** the rename
+touches `SiestaConfig.max_memory_mb` → `memory_cap_mb` and
+`PySCFConfig.max_memory_mb` → `working_memory_mb`, plus the resolver move and
+the removal of PySCF's `4000` default. Under § 26 that is **still not code
+yet** — it is C2's territory (where the machine/exchange parameters sit), and
+C2 should be settled with this ruling in hand rather than beside it.
+
+> **Note for C2:** `Resources.max_memory_mb` is the *exchange* name that carries
+> the wrapper's cap to `prep`. If the config field becomes `memory_cap_mb`, C2
+> decides whether the exchange name follows — `job-contracts.md` § 6.2 is the
+> owner of the config ↔ exchange mapping, and its table has a row for this.
 
