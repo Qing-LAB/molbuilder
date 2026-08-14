@@ -1744,3 +1744,74 @@ C2 should be settled with this ruling in hand rather than beside it.
 > decides whether the exchange name follows — `job-contracts.md` § 6.2 is the
 > owner of the config ↔ exchange mapping, and its table has a row for this.
 
+---
+
+## 31 · C2 PREPARED — where the machine parameters sit *(measured; one ruling needed)*
+
+### 31.1 · The same question is answered two ways, per engine
+
+| the question | SIESTA | PySCF |
+|---|---|---|
+| **how many threads per process?** | `omp_threads` — **`allocation=True`** (excluded from template values), `resolver="omp_threads"` | `threads` — **`allocation=False`** (an ordinary item with a value), **no resolver** |
+| **how much memory?** | `max_memory_mb` — `allocation=True`, `resolver="node_memory"` | `max_memory_mb` — `allocation=False`, no resolver, `default=4000` |
+| **use a GPU?** | `enable_gpu` | `use_gpu` |
+| **how many MPI ranks?** | `mpi_np` — `allocation=True`, `resolver="rank_count"` | *(none — PySCF is single-process)* |
+
+### 31.2 · The finding: floor 2's rule is enforced on one engine only
+
+```
+allocation-tagged fields:  SiestaConfig -> mpi_np, omp_threads, max_memory_mb
+                           PySCFConfig  -> (none)
+```
+
+`template_fields` strips allocation-tagged names on the rebuild path, so **a
+`threads` value can be written into a PySCF template and cannot into a SIESTA
+one.** § 2's *"floor 2 must never assert a machine fact's value"* is a rule about
+the **calculation**, not about SIESTA — and today it is enforced for one engine
+and not the other.
+
+This is the same defect class the whole unification exists to remove: *the same
+physics, treated differently because it arrived through a different engine's
+schema.* It is not a PySCF bug — PySCF's fields were never audited against the
+rule, because until T5 PySCF had no template at all.
+
+### 31.3 · Proposal — the allocation set is a property of the QUESTION
+
+> **A parameter is `allocation` when its VALUE is a machine fact, whatever
+> engine asks it.** Not when a particular engine's schema happens to tag it.
+
+| item | `allocation` | `resolver` | why |
+|---|:--:|---|---|
+| `mpi_np` (SIESTA) | **yes** *(unchanged)* | `rank_count` | ranks are granted, not chosen in a portable description |
+| `omp_threads` (SIESTA) | **yes** *(unchanged)* | `omp_threads` | same |
+| **`threads` (PySCF)** | **yes — CHANGE** | **`omp_threads` — CHANGE** | the same question SIESTA's `omp_threads` asks. A thread count is what the node granted |
+| **`memory_cap_mb`** (was SIESTA's `max_memory_mb`) | **yes** *(unchanged)* | **none — CHANGE**, per § 30.1 | unset means *do not cap* |
+| **`working_memory_mb`** (was PySCF's `max_memory_mb`) | **no — it is science** | **`node_memory` — CHANGE** | it selects in-core vs out-of-core, so it changes the algorithm, not just the launch. A user may legitimately pin it |
+| `continue_retries` | **no** *(unchanged)* | none | a retry **policy** — portable, names no machine. It rides `Resources` only because that is the road to the wrapper |
+| `parallel_block_size` | **no** *(unchanged)* | `block_size` | a tunable a person may set or benchmark (§ 12) |
+| `enable_gpu` / `use_gpu` | **no** *(unchanged)* | none | asking for a GPU is a choice; *getting* one is the allocation's `gres` |
+
+**The one behavioural consequence:** PySCF's `threads` stops carrying a value in
+a template and is resolved at `prep`, exactly as SIESTA's already is.
+
+### 31.4 · The open question — one item, two engine keywords?
+
+`enable_gpu` (SIESTA → `Diag.ELPA.GPU`) and `use_gpu` (PySCF) are **the same
+question with the same answer** — C1's test for merging — but each engine
+renders it to a **different keyword**, and `Item` carries a single `anchor`.
+
+| | |
+|---|---|
+| **(a)** two items, as today | keeps the *"same physics, two names"* defect § 1 measured — the thing the unification set out to end |
+| **(b)** one item, `anchor` becomes per-engine | the model change that makes merging general; costs a shape change to `Item` |
+| **(c)** one item, `kind="produce"`, each engine's deck writer renders it | no `anchor` needed, but it moves an engine keyword out of `kind="engine"`, which § 6 uses to decide who emits it |
+
+**This is C1's unfinished business, surfacing where it bites.** The same choice
+governs `net_charge`/`charge` and `spin_polarized`+`spin_total`/`spin` — the
+examples § 6.3 uses to argue *"items are never merged"*. If (b) or (c), that
+paragraph is what changes.
+
+> **Recommendation: decide (a) vs (b) before C2 lands**, because the allocation
+> table above is stable under either, but the *item count* of a combined file is
+> not — § 29.4's "83 items" assumes (a).
+
