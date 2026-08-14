@@ -1482,3 +1482,46 @@ order that would have avoided today's mistakes:
 4. **Who calls it, and are those callers on the layer the contract puts them on?**
 5. Only then: where does it move, and what changes with it.
 
+---
+
+## 26 · ⛔ THE ORDER OF WORK — contract first, then code (user, 2026-08-14)
+
+> *"You need to get your document contract done before you do any coding. You
+> can keep notes persistent about what discovery of which code need to be
+> investigated, but don't code until you have your contract all sorted out."*
+
+**This governs everything below § 25.** No code lands against a finding until
+the contract the finding belongs to says what the answer is. Discoveries about
+code stay **notes** — § 25 is where they live — and become work only after the
+document settles.
+
+### 26.1 · What I did that earned the rule
+
+Mid-review I began fixing code while contract questions were open: a
+`restart="clean"` for trials, then the start of moving `effective_config` out of
+`siesta/`. The second left the tree broken and was reverted. And I framed
+**settled** design as open questions, which is the same error inverted — the
+code becomes the de facto answer either way.
+
+### 26.2 · The contract queue — in order, and none of it is code
+
+| # | contract | what must be settled | affects |
+|---|---|---|---|
+| **C1** | `engines/template.md` § 6.3 | **What a multi-engine template file looks like** — one `[item.*]` table with per-item `engines`, or per-engine sections? How does one *item* carry a different representation per engine while staying one item? Which items are engine-specific and which are shared-question-different-spelling? | § 25.2's writer shape; `select`/`one`; the UI's panel filtering |
+| **C2** | `engines/template.md` § 5 + § 6.2 | **Where the machine/exchange parameters sit in the model** — `mpi_np`, `cpus_per_task`, `mem`, `gres`, `continue_retries`, `max_memory_mb`: which category, which `kind`, which resolver, which engines. Their on-disk encoding (§§ 13/19/20's null-vs-omit) **follows from this** and is not its own question | `Resources`' relationship to the template; the three serialisation policies |
+| **C3** | `engines/stages.md` § 4 | **Where `⊕` lives in the unified flow** and what it operates on — the config class's annotations, or the template's declared `type`? § 25.3 is the same question from the coercion side | § 25.1's move; § 25.3 |
+| **C4** | `execution/project-layout.md` § 2.3.1 + `engines/template.md` § 6.1 | **What `prep` hands the wrapper writer** — the resolved item values, or does the wrapper keep reading the deck? § 2.3.1 says the deck decides; the deck is also hand-editable | § 25.4, the remainder of T8 |
+
+**C1 is first** because § 25.2's writer shape follows from it, and because the
+UI is built from this file — a panel set decided before C1 would be built on a
+guess.
+
+### 26.3 · What is already settled and needs no contract work
+
+Recorded so it is not re-opened: the six categories · `kind`'s five members ·
+the resolver registry (§ 6.4, now documented) · that the template is ONE file
+serving every engine while the generator emits one engine's deck (§ 24.0) ·
+that a trial is relabelled **and** forced cold (invariant 5 — the contract was
+right, the code was behind, and that gap is closed) · the two SIESTA
+environments splitting on provenance · routing on GPU alone.
+
