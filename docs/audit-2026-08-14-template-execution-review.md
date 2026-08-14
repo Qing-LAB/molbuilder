@@ -3381,3 +3381,89 @@ rather than inventing a second one.
 SS 51's k-grid read, which is a **science** question rather than a contract
 one -- and it decides what the k-grid item's `type` must be, so it comes
 before the writer.
+
+---
+
+## 53 - THE K-GRID READ -- done, from SIESTA 5.4.2's own source
+
+*(SS 51 step 1. Source read from `.../siesta-gpu-stack/src/siesta/Src/` --
+our own build's tree, so it is the version we ship: `kgridinit.F` (293 lines),
+`find_kgrid.F` (370), `kgrid.F` (194).)*
+
+### 53.1 - What the parameter actually is
+
+From `kgridinit.F`'s own header, verbatim:
+
+| | |
+|---|---|
+| `kscell(3,3)` | *"**Supercell** reciprocal of k-grid unit cell: `scell(ix,i) = sum_j cell(ix,j)*kscell(j,i)`"* -- the matrix defines a **supercell**, and the k-grid is the reciprocal of it |
+| `displ(3)` | *"Grid **origin** in k-grid-vector coordinates: `origin(ix) = sum_j gridk(ix,j)*displ(j)`"* |
+| `cutoff` | *"Minimum k-grid cutoff required. **Not used unless det(kscell)=0**"* |
+
+**Refs it cites:** Monkhorst & Pack, *Phys Rev B* **13**, 5188 (1976); Moreno
+& Soler, *Phys Rev B* **45**, 13891 (1992) -- the second is where the
+*equivalent cutoff* idea comes from.
+
+### 53.2 - The precedence, which nothing in molbuilder's docs states
+
+From the same header's BEHAVIOUR block:
+
+```
+det(kscell) != 0            -> the input cutoff is NOT used
+det(kscell) == 0            -> kscell and displ are GENERATED from the cutoff
+det(kscell) == 0 & cutoff<=0 -> both read from fdf
+both keywords present        -> kgrid_Monkhorst_Pack has PRIORITY
+neither present              -> cutoff defaults to zero, giving GAMMA ONLY
+```
+
+### 53.3 - SIESTA's own example uses a 0.5 displacement
+
+The example in `kgridinit.F`'s header:
+
+```
+kgrid_cutoff  50. Bohr
+
+%block kgrid_Monkhorst_Pack   # Defines kscell and displ
+4  0  0   0.50                # (kscell(i,1),i=1,3), displ(1)
+0  4  0   0.50
+0  0  4   0.50
+%endblock kgrid_Monkhorst_Pack
+```
+
+**`displ = 0.5` on an even mesh is the classic Monkhorst-Pack shift** -- it
+samples better than the Gamma-centred grid of the same size for most systems.
+**molbuilder writes `0.0` always and cannot express this.**
+
+### 53.4 - And SIESTA reports the EFFECTIVE cutoff back
+
+`find_kgrid` returns **`eff_kgrid_cutoff`** -- *"actual equivalent kgrid
+cutoff"*. So the k-grid has the **same asked-vs-effective shape as the mesh
+cutoff** (SS 38): you ask for a mesh, SIESTA tells you the sampling density it
+amounts to, in a length.
+
+> **That is the number that makes sampling comparable across systems**, and it
+> is what `kgrid_cutoff` lets you *specify* directly. A user comparing a small
+> cell and a large one at a fixed `4x4x4` is sampling them **differently**; the
+> same `kgrid_cutoff` samples them **equivalently**. Nothing in molbuilder
+> surfaces either the effective cutoff or the option to specify one.
+
+### 53.5 - So what molbuilder should offer
+
+| | recommendation |
+|---|---|
+| **the displacement** | **offer it.** One 3-vector, default `[0,0,0]`. It is a real scientific choice, SIESTA's own example uses `0.5`, and today it is silently fixed. Cheapest of the three and the biggest gap |
+| **`kgrid_cutoff`** | **offer it, as the alternative form.** It is the cell-aware interface and the one that makes studies comparable. Note the precedence: if both are given, the MP block wins -- so the template must not let a user set both and silently ignore one |
+| **the non-diagonal matrix** | **defer.** It serves supercells commensurate with a sub-lattice -- real, but specialised, and nothing in molbuilder builds such supercells today. Recording it as *not offered* is honest; `int3` + displacement is not |
+
+**The type follows from that**, answering SS 49.4: **not** a general `matrix`.
+A diagonal mesh plus a displacement is `int3` + a `float3` -- and `float3`
+does not exist in `TYPES` today. Either add it, or carry the displacement as
+its own item beside `kgrid`, which is **the same flag-plus-number shape spin
+settled into** (SS 43) and needs no new type at all.
+
+> **Recommendation: two items, no new type.** `kgrid` (`int3`) and
+> `kgrid_displacement` (`int3` will not do -- it is float; so `strlist` is
+> wrong too). **This is the one place a `float3` earns its place**, and it
+> costs one member in a closed vocabulary that just lost `strmap` and is
+> keeping `pow2` for one field. `intlist`'s zero uses (SS 32) should be
+> weighed against it in the same decision.
