@@ -248,18 +248,19 @@ The real-space integration grid, in Ry.  Higher is finer and slower;
 convergence is checked, not assumed.
 Tier ladder: 150 screening · 300 publishable · 500 tight."""
 
-[item.diag_algorithm]
+[item.enable_gpu]
 kind    = "engine"
 category = "execution"
-anchor  = "Diag.Algorithm"
-type    = "enum"
-choices = ["ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
-value   = "ScaLAPACK"
-default = "ScaLAPACK"
+anchor  = "Diag.ELPA.GPU"
+type    = "bool"
+value   = false
+default = false
 read_by = ["wrapper"]
 help    = """
-Which eigensolver SIESTA uses.  An ELPA choice also decides WHICH ENVIRONMENT
-the wrapper activates, so this value leaves the deck and reaches the launch."""
+Run the ELPA diagonalization on a GPU.  The wrapper reads this: it decides the
+environment (only the source build has GPU-capable ELPA) AND the GPU runtime --
+the gres ask, MPS, the NUMA pin.  So the value leaves the deck and reaches the
+launch, which is what read_by records."""
 
 [item.species_order]
 kind    = "deck"
@@ -413,16 +414,26 @@ different layer, and the item says so on its own face.
 `kind` says who owns the item. `read_by` says **who else derives something from
 its value.** They are different questions and one key cannot answer both.
 
-`diag_algorithm` is unambiguously the engine's — a SIESTA keyword with a SIESTA
-value — *and* the wrapper acts on it, because an ELPA solver needs a different
-conda environment. So it is `kind="engine"` with `read_by = ["wrapper"]`.
+`enable_gpu` is unambiguously the engine's — it becomes the SIESTA keyword
+`Diag.ELPA.GPU` — *and* the wrapper acts on it, because a GPU deck needs the
+source-built environment **and** a GPU runtime: the `gres` ask, MPS, the NUMA
+pin, the rank/thread budget. So it is `kind="engine"` with
+`read_by = ["wrapper"]`.
 
-**Why that key earns its place.** Today the wrapper finds this out by **reading
-the deck text and looking for ELPA**. That is a layer re-deriving an answer
-another layer already holds — the one habit
-[`execution/architecture.md`](?doc=execution/architecture.md) § 1 exists to
-remove. With `read_by`, the wrapper is *told* which items it depends on, and a
-new engine declares its own without anyone editing the wrapper writer.
+**Why that key earns its place.** The wrapper finds this out by **reading the
+deck text**, which is a layer re-deriving an answer another layer already holds
+— the habit [`execution/architecture.md`](?doc=execution/architecture.md) § 1
+exists to remove. With `read_by`, the wrapper is *told* which items it depends
+on, and a new engine declares its own without anyone editing the wrapper writer.
+
+> **⚠ This section argued from `diag_algorithm` until 2026-08-14, and the
+> premise was measured false.** The claim was that any ELPA solver needs a
+> different conda environment. It does not: conda-forge's SIESTA carries ELPA
+> through ELSI and runs both stages on CPU (measured — `engines/siesta.md`
+> § 7.2). `diag_algorithm` therefore decides **no** environment and declares no
+> `read_by`; the deck-text scan it justified was deleted rather than replaced.
+> `enable_gpu` is the one live case, and it is a better one — it is read in
+> eight places, only one of which is the environment.
 
 **It also explains an ordering the contract already forces.**
 [`project-layout.md`](?doc=execution/project-layout.md) § 2.3.1 renders the deck
@@ -947,14 +958,23 @@ stage at any time and get the same deck.
 
 ### 11.3 The wrapper needs to know the eigensolver
 
-An ELPA deck must run in `molbuilder-siesta-gpu`, not the CPU environment
-([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6). The wrapper writer
-asks for every item whose `read_by` names it, gets `diag_algorithm`, and picks
-the environment from the value — instead of scanning the deck text for the
-string `ELPA`, which is what it does today.
+A **GPU** deck must run in `molbuilder-siesta-gpu` — the source build is the
+only one whose ELPA was compiled with GPU support. The wrapper writer asks for
+every item whose `read_by` names it, gets `enable_gpu`, and picks both the
+environment and the GPU runtime from the value.
+
+**A CPU-ELPA deck needs neither**, which is the correction that made this
+example honest: the packaged SIESTA runs both ELPA stages on CPU
+([`siesta.md`](?doc=engines/siesta.md) § 7.2, measured). The two environments
+split on **provenance** — one installs from packages anywhere, the other must be
+compiled, which some sites forbid — so routing CPU-ELPA to the source build once
+refused a runnable calculation for a solver the baseline already had.
 
 **A new engine needs no change to the wrapper writer.** It declares
 `read_by = ["wrapper"]` on its own item and is served by the same code.
+`tests/test_template_declarations.py` asserts the other direction — that every
+place the wrapper reads the deck is claimed by some item's `read_by` — so a
+scanner added without a declaration fails by name.
 
 ### 11.4 A benchmark measures this calculation
 

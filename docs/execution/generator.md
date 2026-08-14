@@ -182,16 +182,21 @@ families, and they differ in *who is allowed to bound them*:
 | family | example | candidate values declared by | bounded by | why that source |
 |---|---|---|---|---|
 | **parameter** | `BlockSize` · `mesh_cutoff` · `energy_shift` | the template item's own `range` · `choices` · `type` | **the schema** | it is a parameter, and § 7 of `template.md` makes every schema parameter an item |
-| **machine** | `mpi_np` · `cpus_per_task` · `gpu_mode` (including *none*) | not a template item at all | **the allocation** — see § 4.1 | floor 2 must never name a machine (`template.md` § 7; `project-layout.md` M1) |
+| **machine** | `mpi_np` · `cpus_per_task` · `gpu_mode` (including *none*) | **the item is declared, valueless**, naming its `resolver` (`template.md` § 6.4) | **the allocation** — see § 4.1 | floor 2 must never assert a machine's VALUE (`template.md` § 7; `project-layout.md` M1) |
 
 **Both bounds already exist as data.** The template carries `range` and `choices`
 for every parameter; the allocation is stated for this run and is itself bounded
 by what the cluster has. So *"is this sweep point legal?"* is answered by reading
 data that was declared for other reasons — never by a table inside the generator.
 
-> **⚠ This table said machine axes were bounded by *capability* until 2026-08-11.
-> That was wrong, and the correction is § 4.1's whole point:** a sweep is bounded
-> by **what you asked for**, not by what the machine has.
+> **⚠ Two corrections to this table, both recorded rather than silently
+> applied.** (1) It said machine axes were bounded by *capability* until
+> 2026-08-11 — a sweep is bounded by **what you asked for**, not by what the
+> machine has, which is § 4.1's whole point. (2) It said a machine axis is
+> *"not a template item at all"* until 2026-08-14, which `@2` changed: the
+> **item** is declared and stays **valueless**, naming the resolver that will
+> answer it (`template.md` § 6.4). The VALUE is still forbidden on floor 2 —
+> that never moved — and a reader refuses one.
 
 > **The worked case, because it is the one that goes wrong.** `BlockSize` is a
 > parameter axis whose legal ceiling is **orbitals ÷ ranks** — and ranks are a
@@ -476,7 +481,7 @@ removes the places where two things can disagree:**
 | the second lifecycle in `bench/` — build, lay out, name | it is `prep` steps 2–5 with a list of length N |
 | every `if` on *"is this a benchmark"* below floor 7 | length is data |
 | the trial-name format string | `point`, rendered by one function |
-| the wrapper reading the **deck text** to find ELPA | `read_by` tells it (`template.md` § 6.1) |
+| the wrapper knowing which keyword means what | `read_by` names the items it depends on (`template.md` § 6.1). *(The ELPA half of this row was deleted outright in 2026-08-13 rather than replaced — the premise that only the source build has ELPA was measured false, so there was no read left to move. `enable_gpu` is the live case.)* |
 | a second copy of every bound | the schema generates both the template and BENCH-MARKS |
 
 **The size test** (`staged-runs-implementation-plan.md` § 9.4): a change made

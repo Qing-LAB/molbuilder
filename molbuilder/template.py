@@ -329,11 +329,8 @@ def _decl_type(ann, choices) -> Optional[str]:
 def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     """The § 3 item for one config field, or ``None`` if it has no place here.
 
-    ``None`` means **excluded by § 7's named rows** (a machine fact, or the
-    ladder) — never by a missing ``section``: since U16 membership is total
-    and ``section`` answers only *where on the form* (empty = no tab shows
-    it, and the item still travels).  *(R8: this paragraph taught the
-    retired section gate ten lines above the U16 comment that deleted it.)*
+    ``None`` means **excluded by § 7's named rows** — a machine fact, or the
+    ladder. Nothing else excludes an item: membership is total (D5).
 
     Raises ``ValueError`` for an exposed field whose type has no name in the
     grammar: that is a gap in the vocabulary, and the loud version of it is the
@@ -564,11 +561,6 @@ def _toml_value(v: Any) -> str:
         return repr(v)
     if isinstance(v, str):
         return (_toml_multiline(v) if "\n" in v else _toml_basic(v))
-    if isinstance(v, dict):
-        # An inline table: ``{ Au = "lanl2dz", Pt = "lanl2dz" }``.  Keys are
-        # element symbols, so the bare-key form is always legal.
-        inner = ", ".join(f"{k} = {_toml_value(x)}" for k, x in v.items())
-        return "{ " + inner + " }"
     if isinstance(v, (list, tuple)):
         return "[" + ", ".join(_toml_value(x) for x in v) + "]"
     raise TypeError(f"template: cannot write {type(v).__name__} to TOML")
@@ -1050,7 +1042,7 @@ def one(t: "Template", name: str, *, engine: str = None) -> Optional[Item]:
             return None                      # declared, but not for this engine
         return it
     raise KeyError(
-        f"no item {name!r} in this template (engines={t.engine!r}). If the "
+        f"no item {name!r} in this template (engines={list(t.engines)}). If the "
         f"parameter exists for another engine it would still be listed, so "
         f"this is a name this template never carried -- not an item that "
         f"does not apply here (engines/template.md § 8.0).")
@@ -1080,8 +1072,8 @@ def config_from_template(text: str, config_cls):
                      and any(f.name == k
                              for f in dataclasses.fields(config_cls)))
     if machine:
-        # The WRITE side never emits these (declaration_for returns None
-        # for an allocation-tagged field), so one in a template is a hand
+        # The write side emits these VALUELESS (since @2 ``declaration_for``
+        # returns an item, not None -- § 6.4), so a VALUE on one is a hand
         # edit -- refused with the § 7 story rather than the typo story.
         raise ValueError(
             f"template names machine fact(s) "
