@@ -2617,3 +2617,58 @@ Not *"pass it or parse it"* but: **does the config -> wrapper road get built?**
 consistency with the eleven -- they are a different kind -- but because a
 **user's decision** should reach the layer that acts on it by being *handed
 over*, not by being *recovered from a rendered file*.
+
+---
+
+## 42 - `engines/stages.md` SS 4 read: clean, except one claim that touches C4
+
+**Clean, and cross-checked against what was read earlier:**
+
+| SS 4 says | agrees with |
+|---|---|
+| `effective config = the template's values (+) that stage's overrides` | `resolve.resolve`'s precedence, implemented in that order |
+| the format is `template.md`'s -- one `tomllib.load`, an ordinary `SiestaConfig` out | `config_from_template` |
+| **`base` is removed from `task.json`** -- the file carries what CHANGES | measured: `Task` has `varies` and `stages`, no `base` |
+| R1 one object validated and rendered - R2 a stage validated as a resolved whole - R3 the sequence checked too | `resolved_ladder` exists for R3's caller |
+
+**It does NOT say where the (+) operator LIVES** -- only what it computes. So
+C3 is genuinely open rather than already answered somewhere I had not read.
+
+### 42.1 - The claim: *"nothing has to parse an `.fdf` -- which nothing in molbuilder can do"*
+
+SS 4 makes that the argument for the template being TOML: `prep` reads values
+with one `tomllib.load` **because molbuilder cannot read a deck**.
+
+**Two places in molbuilder parse a deck today:**
+
+| | reads |
+|---|---|
+| `runwrap._fdf_requests_gpu` | `Diag.ELPA.GPU`, by regex -- eight call sites |
+| `runwrap._parse_fdf_n_atoms` | `NumberOfAtoms`, to clamp `mpi_np <= n_atoms` |
+
+And `job-contracts.md` SS 3.1 **designs the reserved blocks to be parsed** --
+*"parsers find blocks by MARKERS"* -- with SS 3.6 promising ATOM-METADATA
+round-trips.
+
+### 42.2 - Both are true, and the wording hides which
+
+| reading | true? |
+|---|---|
+| *molbuilder has no GENERAL FDF parser -- it cannot reconstruct a config from a deck* | **yes**, and this is SS 4's actual argument. A regex for one keyword is not a parser |
+| *nothing in molbuilder reads anything out of a deck* | **no** -- two targeted readers, plus a whole block format designed for reading |
+
+**Why it matters for C4.** Read absolutely, SS 4 forbids the deck scan C4 is
+deciding about. Read as intended -- *no general parser* -- it forbids nothing
+and the scan is a targeted read like `NumberOfAtoms`. **A contract that
+settles a live design question by accident, through wording rather than
+intent, is worth one clause of repair:**
+
+> *nothing has to parse an `.fdf` for its PARAMETERS -- molbuilder has no
+> general FDF reader, and never will. Targeted reads of a named keyword or a
+> reserved block are a different thing (`job-contracts.md` SS 3.1).*
+
+**Core document: `engines/stages.md` SS 4.** What to look for beyond the line:
+whether the same absolute phrasing recurs anywhere the deck's readability is
+argued -- SS 9.2 of `template.md` makes a related argument about `prep` not
+harvesting from disk, and that one IS about reproducibility rather than
+capability.
