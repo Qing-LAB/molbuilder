@@ -1085,7 +1085,7 @@ re-derive. **Check a new document against this table, not against memory.**
 |---|---|---|---|
 | item `kind` | `engine` · `deck` · `wrapper` · `produce` · `monitor` — **5** | `template.md` § 6 | `template.KINDS` |
 | `category` | `system` · `method` · `accuracy` · `convergence` · `procedure` · `execution` — **6, in reading order**; a LIST per item, first = the panel | `template.md` § 6.2 | `template.CATEGORIES` |
-| item `type` | `int` `float` `str` `bool` `enum` `pow2` `int3` `strlist` `intlist` `text` — **10** (`strmap` **retired** 2026-08-13) | `template.md` § 5 | `template.TYPES` |
+| item `type` | `int` `float` `str` `bool` `enum` `pow2` `int3` `float3` `strlist` `intlist` `text` — **11** (`strmap` **retired** 2026-08-13; `float3` **added** 2026-08-14 for the k-grid displacement, § 54) | `template.md` § 5 | `template.TYPES` |
 | `resolver` | `rank_count` · `omp_threads` · `node_memory` · `block_size` — **4** | `template.md` § 6.4 | `template.RESOLVERS` |
 | allocation resolvers *(item may never carry a value)* | `rank_count` · `omp_threads` · `node_memory` — **3** (`block_size` deliberately absent) | `template.md` § 6.4 | `template.ALLOCATION_RESOLVERS` |
 | template top-level keys | `schema` · `engines` · `fingerprint` — **3, all required** | `template.md` § 3 | `read_template` |
@@ -3910,10 +3910,40 @@ this exercise surfaced rather than a merge problem.
   on it the moment it merges two engines. Per the user's ruling: unlimited.
 - A test that the merged halves agree, and that a disagreement names both.
 
-### 58.5 - The question that is NOT settled here
+### 58.5 - RETRACTED - `use_gpu` was never an open question
 
-Whether `use_gpu` merging is even wanted, given SS 41.1: `enable_gpu` is an
-allocation-kind decision on SIESTA (a benchmark axis) while PySCF's is a backend
-selection. **Same question, same answer -- or two questions wearing one word?**
-SS 6.3's table asserts the merge; SS 41.1's reasoning is the case against it.
-**One of the two is wrong and this section does not decide which.**
+*(This section asked whether `use_gpu` should merge at all, citing SS 41.1
+against SS 6.3's table. **It was already ruled and I re-opened it.**)*
+
+> **`use_gpu` is a USER DECISION.** Whether a run uses the GPU is chosen by the
+> person -- not derived, not inferred from the machine, not decided by a
+> resolver. It is **one flag**; how each engine's generator turns it into script
+> text is that generator's job and is engine-specific. *(User, ruled 2026-08-13
+> and again 2026-08-14.)*
+
+So SS 6.3's table is right and the merge stands. SS 41.1's reasoning was about
+which ROAD the value travels -- allocation versus config -- and that is a
+different question from whether the two engines are answering the same one.
+**They are.**
+
+**Recorded in the persistent memory this time**, not only here, because the
+failure was not the analysis -- it was that a settled ruling did not survive
+into the next session's plan.
+
+### 58.6 - And `max_memory_mb` is not a disagreement to resolve
+
+SS 58.3 listed it as a merge conflict needing a decision. **It needs none.**
+
+> **The default is UNLIMITED** -- the typical memory limit is all physical
+> memory, and a value is set only when the user explicitly asks for one.
+> **PySCF's `default=4000` is obsolete history**, not a competing default.
+> *(User, ruled 2026-08-13, repeated 2026-08-14.)*
+
+SIESTA's declaration is already the right shape: `Optional[int] = None`,
+`allocation = True`, `resolver = "node_memory"`, `kind = "wrapper"`. **PySCF's
+never got that fix** -- it is still `int = 4000` with an `mol.max_memory` anchor,
+which asserts a machine fact's value in a portable description, the one thing
+SS 7 forbids floor 2 to do.
+
+So the six-attribute disagreement SS 58.3 measured is **one defect on one side**,
+and the repair is to give PySCF the declaration SIESTA already has.

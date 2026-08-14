@@ -277,7 +277,7 @@ def render_script(struct: Structure,
     out += emit_threading_setup_lines(cfg.threads)
     out += emit_runtime_info_capture_lines(
         use_gpu=bool(getattr(cfg, "use_gpu", False)),
-        max_memory_mb=int(getattr(cfg, "max_memory_mb", 0)) or None,
+        max_memory_mb=(int(cfg.max_memory_mb) if cfg.max_memory_mb else None),
     )
     out.append("import time")
     # ``_os`` is used by the warm-restart blocks (geometry override
@@ -475,7 +475,11 @@ def render_script(struct: Structure,
     out.append(f"    verbose    = {cfg.verbose},")
     if cfg.log_file:
         out.append('    output     = _mb_outfile(JOB + ".log"),')
-    out.append(f"    max_memory = {cfg.max_memory_mb},   # MB")
+    # UNSET means no cap (`template-unification-plan.md` § 5.1): the line is
+    # OMITTED rather than emitted as None, so PySCF uses its own default --
+    # which reads the machine -- instead of being handed a Python None.
+    if cfg.max_memory_mb:
+        out.append(f"    max_memory = {cfg.max_memory_mb},   # MB")
     out.append("    unit       = 'Ang',")
     out.append(")")
     out.append('print(f"Built mol: {mol.natm} atoms, {mol.nelectron} electrons, '
@@ -867,7 +871,8 @@ def render_script(struct: Structure,
                 "auto" if getattr(cfg, "threads", None) is None
                 else str(cfg.threads)
             ),
-            "max_memory_mb": str(int(getattr(cfg, "max_memory_mb", 4000))),
+            "max_memory_mb": ("no cap" if not cfg.max_memory_mb
+                              else str(int(cfg.max_memory_mb))),
         },
     )
     _atom_metadata = _sc.emit_atom_metadata(

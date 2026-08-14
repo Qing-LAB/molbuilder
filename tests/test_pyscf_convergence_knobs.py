@@ -197,3 +197,74 @@ def test_the_solver_is_reported_by_class_not_by_flag():
     density-fitted.  A boolean we set ourselves could not."""
     t = _script(scf_soscf=True)
     assert "_RUNTIME_INFO['scf_solver_class'] = type(mf).__name__" in t
+
+
+# --------------------------------------------------------------------- #
+#  max_memory: UNSET means no cap, and the DEFAULT config must render    #
+#                                                                        #
+#  `template-unification-plan.md` § 5.1 / § 5.5a.  T4 made SIESTA's      #
+#  max_memory_mb a valueless allocation item and left PySCF's at a       #
+#  static ``int = 4000`` -- a machine fact asserted in a portable         #
+#  description, which § 7 forbids floor 2 to do.  Closed 2026-08-14.      #
+#                                                                        #
+#  These tests exist because the whole PySCF suite was GREEN while        #
+#  ``render_script(struct, PySCFConfig())`` raised TypeError: no test     #
+#  rendered a script from the DEFAULT config, so the one configuration    #
+#  every user starts from was the one nothing covered.                    #
+# --------------------------------------------------------------------- #
+
+def _h2():
+    from molbuilder.structure import Structure
+    return Structure(elements=["H", "H"],
+                     positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]))
+
+
+def test_the_default_config_renders_at_all():
+    """The configuration a user gets by typing nothing."""
+    from molbuilder.pyscf.input import render_script
+    text = render_script(_h2(), PySCFConfig())
+    assert "gto.M(" in text and "mol.natm" in text
+
+
+def test_unset_memory_omits_the_keyword_rather_than_passing_none():
+    """No cap = PySCF's own default, which reads the machine.
+
+    Emitting ``max_memory = None`` would hand the engine a Python None where
+    it expects megabytes; omitting the line lets PySCF decide, which is what
+    *"the maximum available"* means (§ 5.1).  PROVENANCE still records the
+    state, because a run must be able to say what it was given.
+    """
+    from molbuilder.pyscf.input import render_script
+    cfg = PySCFConfig()
+    assert cfg.max_memory_mb is None, "the default is UNSET -- no cap"
+    text = render_script(_h2(), cfg)
+    assert "max_memory =" not in text
+    assert "max_memory_mb  no cap" in text
+
+
+def test_an_explicit_cap_is_emitted_and_recorded():
+    """A ceiling the user asked for is honoured verbatim and shown."""
+    from molbuilder.pyscf.input import render_script
+    text = render_script(_h2(), PySCFConfig(max_memory_mb=8000))
+    assert "max_memory = 8000,   # MB" in text
+    assert "max_memory_mb  8000" in text
+
+
+def test_memory_is_one_item_across_both_engines():
+    """§ 6.3's merge, and the reason PySCF's declaration had to change.
+
+    Both engines answer *"how much memory may this run use"* the same way --
+    unset means the machine's maximum, resolved at prep.  Under § 5.6's
+    mechanism they are one item by being spelled the same, so their
+    declarations must agree; they disagreed on six attributes until this fix.
+    """
+    from molbuilder.template import declarations_for
+    from molbuilder.config.siesta import SiestaConfig
+    s = {d.name: d for d in declarations_for(SiestaConfig)}["max_memory_mb"]
+    p = {d.name: d for d in declarations_for(PySCFConfig)}["max_memory_mb"]
+    for attr in ("kind", "type", "default", "category",
+                 "allocation", "resolver", "optional", "unit"):
+        assert getattr(s, attr) == getattr(p, attr), (
+            f"max_memory_mb.{attr}: siesta={getattr(s, attr)!r} "
+            f"pyscf={getattr(p, attr)!r} -- the two halves of ONE item "
+            f"disagree (template.md § 6.3)")

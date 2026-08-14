@@ -861,16 +861,32 @@ class PySCFConfig:
     })
 
     # ---------------- Runtime ----------------
-    max_memory_mb: int = field(default=4000, metadata={
+    # UNLIMITED unless the user asks for a cap -- the typical memory limit is
+    # all physical memory (user, ruled 2026-08-13 and again 2026-08-14).
+    # ``default = 4000`` stood here until 2026-08-14 and was obsolete history,
+    # not a competing default: it asserted a MACHINE FACT's value inside a
+    # portable description, which is the one thing `engines/template.md` § 7
+    # forbids floor 2 to do.  SIESTA's declaration had the right shape all
+    # along -- Optional, valueless, resolved on the machine that runs it --
+    # and this one never got the fix.  Now they are ONE item (§ 6.3).
+    max_memory_mb: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
+        "resolver": "node_memory",
+        "allocation": True,
+        "item_kind": "wrapper",
         "workflow_group": "budget",
         "section": "Compute & budget",
         "label": "max_memory", "unit": "MB",
-        "engine_key":  'mol.max_memory',
+        # NOT an engine keyword any more.  ``mol.max_memory`` is how PySCF
+        # spells the answer, and § 6.3 is explicit that a merged item keeps no
+        # anchor -- each engine's generator renders it its own way.
+        "engine_key":  '(molbuilder: mol.max_memory when a cap is set)',
         "id_suffix": "max-memory",
         "range": (100, 1_000_000),
         "tier":  "advanced",
-        "help":  "MB hint for PySCF's max_memory",
+        "null_label": "(no cap)",
+        "help":  "MB cap for this run.  Left blank, PySCF uses whatever the "
+                 "OS allows; set it only when you need a ceiling.",
     })
     threads: Optional[int] = field(default=None, metadata={
         "category": ("execution",),

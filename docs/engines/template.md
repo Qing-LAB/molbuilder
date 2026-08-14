@@ -569,6 +569,39 @@ permits the rest.
 > `SpinPolarized` without `Spin.Fix`; PySCF UKS at `spin = 0`). A shared flag
 > beside a shared number expresses all three; one merged number does not.
 
+#### How a merge is DECLARED — the field name is the item name
+
+The test above is a judgement a person makes. **What a person then does about it
+is spell the field the same in both engines**, because the item's name *is* the
+field's name and always has been. Two configs contributing a field of one name
+contribute one item.
+
+> **There is no `item =` key and there will not be one.** A key would let a
+> merge be *forgotten* — the two halves ship as two items and nothing says so,
+> which is the silent direction. Naming does the opposite: the moment two
+> engines spell a field alike the writer compares them, and a pair that is not
+> in fact one item **is refused, naming both fields**. The loud failure is the
+> one worth having *(settled 2026-08-14, user)*.
+
+**So the writer's rule, in full:**
+
+1. Collect the declarations of every config class it was given.
+2. Group by item name.
+3. A name from **one** class → an item carrying `engines = [that engine]`.
+4. A name from **several** → **one** item carrying every contributing engine —
+   *only if the declarations agree*. `kind`, `type`, `default`, `category`,
+   `allocation`, `resolver`, `optional` and `unit` must match.
+5. **Any disagreement is an error naming both fields and the attribute.** Not a
+   warning and not a first-wins: two engines answering one question differently
+   is either a defect in one of them or evidence they were never one question,
+   and both need a person.
+
+**`anchor` is exempt from 4, and it is the only exemption.** It is the engine's
+own spelling — `NetCharge` against `gto.M(charge=)` — and § 6.3's whole point is
+that the template never learns either. A merged item keeps no anchor; each
+engine's deck writer renders the answer its own way, which is what `kind =
+"deck"` means.
+
 *(Rewritten 2026-08-14. This paragraph read **"items are never merged across
 engines"** — a rule whose own justification was the risk of fusing things that
 merely sound alike. The test does that job directly, and the flat refusal was

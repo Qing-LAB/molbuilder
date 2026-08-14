@@ -147,7 +147,7 @@ Each unit lands with its own tests and commit. **Docs first within each unit.**
 | **T1** | **The SIESTA catalogue** — 44 fields, six categories | ✅ `2e715088` |
 | **T2** | **`category`/`engines`/`resolver` in emitter + reader**; `section` retired | ✅ `5d1abbfa` (data), `bba4960c` (code), `07f9763e` (guards) |
 | **T3** | **`select` / `one`** — § 8.0's read API | ✅ `8f2e1ab6`; review fixes `1f723e51` |
-| **T4** | **Execution items valueless, with resolvers** | ✅ `d4d85418` |
+| **T4** | **Execution items valueless, with resolvers** | ✅ `d4d85418` — ⚠ **SIESTA only**; PySCF's `max_memory_mb` still defaulted to `4000` until 2026-08-14 (§ 5.5a) |
 | **T5+T6** | **PySCF renders at all** + its catalogue | ✅ `93403618` — 39 items, six categories |
 | **T7** | **`execution/` docs** catch up to `@2` — the version string was the smaller half (§ 5) | ✅ 6 edits across 5 files |
 | **T8** | **The wrapper reads `read_by`** instead of scanning deck text for `ELPA` | ✅ **closed by deleting the scan** (§ 9) — the premise under it was false |
@@ -189,6 +189,8 @@ built from this file. What the programme settled *for* it: panels come from
 | **Q3** | Should a 7th category split out of `outputs`? | ~~T2~~ | **ANSWERED 2026-08-13 (user): no split — RENAMED to `procedure`.** The three groups (what job, which files, how written) are all *the job in general*, and the group is engine-specific bookkeeping rather than science. `procedure` was the only candidate with zero collisions: `task` appears in 18 contract docs and names a first-class file, `job` has three doc files named after it, `run` is the sweep unit |
 | **Q4** | ~~Does `max_memory_mb` split into two items?~~ | ~~T1, U-C~~ | **ANSWERED 2026-08-13 (user): no split — it becomes a valueless item.** See § 5.1 |
 | **Q5** | Do items needing a computed value declare a *resolver*? | T4 | **ANSWERED 2026-08-13 (user): yes — a named resolver.** See § 5.2 |
+| **Q6** | Is `use_gpu` a decision or a derivation? | T4, U-C | **⛔ ANSWERED — and it is NOT open. `use_gpu` is a USER DECISION** (user, 2026-08-13, restated 2026-08-14). See § 5.5 |
+| **Q7** | How does a writer learn two engines' fields are ONE item? | § 25.2 | **ANSWERED 2026-08-14 (user): mechanism A — the field NAME is the item name.** See § 5.6 |
 
 ---
 
@@ -344,14 +346,85 @@ become is the surface's call.
 
 ---
 
+### 5.5 `use_gpu` is a USER DECISION — ⛔ closed, do not re-open (answers Q6)
+
+**User ruling, 2026-08-13, restated 2026-08-14 after I re-opened it twice.**
+
+> Whether a run uses the GPU is chosen by **the person**. It is not derived, not
+> inferred from the machine, not decided by a resolver, and not a thing the
+> template computes. **One flag** — and how each engine's generator turns that
+> flag into script text is that generator's job and is engine-specific.
+
+**So it is NOT an allocation item** and does not join `max_memory_mb`,
+`block_size`, the rank count and `threads` in § 5.2's registry. Those four have
+a value the machine knows and the user may override; this one has a value only
+the user knows.
+
+**And it merges across engines** (§ 6.3's table): SIESTA's `enable_gpu` and
+PySCF's `use_gpu` are the same question with the same answer, so under Q7's
+mechanism they become one item by being spelled the same. *(The rename is its
+own unit — see § 5.6.)*
+
+> **Why this is written here and not in a review note.** It was ruled, then
+> re-opened as an "open question" in a later session, twice. A decision that
+> does not survive into the plan is a decision the user pays for again.
+
+### 5.5a T4 was incomplete, found 2026-08-14
+
+§ 5.1 said *"the config default changes from `4000` to unset in the same unit"*.
+T4 shipped that for SIESTA — `Optional[int] = None`, `allocation = True`,
+`resolver = "node_memory"`, `kind = "wrapper"` — and **left
+`PySCFConfig.max_memory_mb` at `int = 4000` with an `mol.max_memory` anchor**,
+which asserts a machine fact's value inside a portable description: the one
+thing `template.md` § 7 forbids floor 2 to do.
+
+Found by measuring what would collide when the writer merges two engines: of the
+three field names the two configs share, `verbose_comments` and
+`write_molwatch_log` agree on all nine compared attributes, and this one
+disagreed on **six**. Closed by giving PySCF the declaration SIESTA already had.
+
+### 5.6 A merge is declared by SPELLING — mechanism A (answers Q7)
+
+**User ruling, 2026-08-14.** § 6.3 says two engines share an item when it is the
+same question *and* the same answer — a judgement a person makes. **What a
+person then does about it is spell the field the same in both configs.** The
+item's name IS the field's name, so two configs contributing a field of one name
+contribute one item.
+
+**No `item =` metadata key, now or later.** The two mechanisms fail in opposite
+directions and only one failure is survivable:
+
+| | name-is-the-item (**chosen**) | a metadata key |
+|---|---|---|
+| a merge that should not happen | **refused**, naming both fields | impossible |
+| a merge that should happen but nobody declared | impossible | **silent** — ships as two items |
+
+Absent things are what this programme's reviews keep finding, so the mechanism
+that cannot lose a merge wins.
+
+**What it forces**, and none of it is done: `SiestaConfig.net_charge` → `charge`
+and `enable_gpu` → `use_gpu`, plus every reader of those names — **117 sites for
+`net_charge` alone**, three of them in the web blueprint. That is its own unit,
+proposed separately; the writer does not wait on it, because an un-renamed pair
+simply stays two items until the rename lands.
+
+---
+
 ## 6. What must stay true — the invariants a review checks
 
 1. **Membership is total** (§ 7, D5). Every schema parameter is an item. *"Is it
    in the file?"* is never a judgement call.
 2. **No item asserts a machine fact's value** (§ 2, G1). Declaring the question
    is portable; answering it on the wrong machine is not.
-3. **Items are never merged across engines** (§ 6.3). Two spellings stay two
-   items in one category.
+3. **Items merge across engines exactly when § 6.3's two-part test passes** —
+   the same question *and* the same answer — and a merge is declared by the two
+   configs **spelling the field the same** (§ 5.6). Halves that disagree are
+   refused, naming both.
+   > ⚠ **This invariant read *"items are never merged across engines"* until
+   > 2026-08-14.** `template.md` § 6.3 was rewritten to the two-part test
+   > earlier that day and this list was not, so the plan forbade what the
+   > contract had just started requiring. Found by reading the plan before
+   > writing against it.
 4. **A reader never asks a second source** (§ 8). `select` is a convenience over
    data in hand, never a service.
 5. **Each value is stored once** (D3). A category is a label on an item, not a
