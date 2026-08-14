@@ -169,6 +169,7 @@ class SiestaConfig:
     # ``SystemName {cfg.system_label}`` in the FDF.  No alias kept --
     # per project "no backwards compatibility" mandate.
     system_label: str = field(default="siesta", metadata={
+        "category": ("procedure", "system"),
         "section":  "System",
         # Run-profile identity — what the run IS named.  Lives in the
         # Run profile workflow-group card alongside the system-character
@@ -192,6 +193,7 @@ class SiestaConfig:
 
     # Basis
     basis_size: str = field(default="DZP", metadata={
+        "category": ("method", "accuracy"),
         "section": "Basis & grid",
         # Workflow-group tag (2026-06-15): joined the Stage card so it
         # sits alongside ``mesh_cutoff``, ``pao_energy_shift``, and
@@ -216,6 +218,7 @@ class SiestaConfig:
         "help": "PAO basis size: SZ / DZ / SZP / DZP / TZP (rough -> tight)",
     })
     pao_energy_shift: float = field(default=0.01, metadata={
+        "category": ("method", "accuracy"),
         "section": "Basis & grid",
         "workflow_group": "stage",
         "label": "PAO.EnergyShift", "unit": "Ry",
@@ -242,6 +245,7 @@ class SiestaConfig:
     # real-space-grid parameter; SIESTA users think of "basis + grid"
     # together when sizing their run.
     mesh_cutoff: float = field(default=300.0, metadata={
+        "category": ("accuracy",),
         "section": "Basis & grid",
         # Workflow-group tag (2026-06-13): "stage" means switching the
         # relaxation-stage preset MAY rewrite this field.  Three
@@ -279,6 +283,7 @@ class SiestaConfig:
 
     # XC
     xc_functional: str = field(default="GGA", metadata={
+        "category": ("method",),
         "section": "Exchange-correlation",
         "workflow_group": "profile",
         "label":   "XC.Functional",
@@ -297,6 +302,7 @@ class SiestaConfig:
                    "for PBE / PBEsol / LDA -- pick the matching set.",
     })
     xc_authors: str = field(default="PBE", metadata={
+        "category": ("method",),
         "section": "Exchange-correlation",
         "workflow_group": "profile",
         "label":   "XC.Authors",
@@ -323,6 +329,7 @@ class SiestaConfig:
 
     # SCF
     solution_method: str = field(default="diagon", metadata={
+        "category": ("method", "convergence"),
         "section": "SCF",
         # Profile-level: SCF solver family is a system-level
         # decision (diagon / OMM / TranSIESTA), set once with XC +
@@ -334,6 +341,7 @@ class SiestaConfig:
         "help": "diagon / OMM / transiesta (transiesta requires the TranSIESTA build)",
     })
     mixing_weight: float = field(default=0.02, metadata={
+        "category": ("convergence",),
         "section": "SCF",
         # System characteristic — depends on what the system IS
         # (metallic / organic / open-shell), NOT on the stage.
@@ -346,6 +354,7 @@ class SiestaConfig:
         "help":  "DM mixing weight; smaller = more conservative SCF, lower if oscillating",
     })
     pulay_history: int = field(default=3, metadata={
+        "category": ("convergence",),
         "section": "SCF",
         # Profile-level: DIIS history depth pairs with mixing_weight
         # (also profile) — both are SCF-stability tuning that
@@ -358,6 +367,7 @@ class SiestaConfig:
         "help":  "Pulay history depth; 3 is SIESTA-tutorial default for relaxation",
     })
     dm_tolerance: float = field(default=1e-5, metadata={
+        "category": ("accuracy",),
         "section": "SCF",
         "workflow_group": "stage",
         "label": "DM.Tolerance",
@@ -377,6 +387,7 @@ class SiestaConfig:
         ),
     })
     dm_energy_tolerance: float = field(default=1e-4, metadata={
+        "category": ("accuracy",),
         "section": "SCF",
         "workflow_group": "stage",
         "label": "DM.Energy.Tolerance", "unit": "eV",
@@ -386,6 +397,7 @@ class SiestaConfig:
         "help":  "redundant SCF energy guard (eV)",
     })
     max_scf_iter: int = field(default=500, metadata={
+        "category": ("convergence",),
         "section": "SCF",
         # Resource-budget cap — "how long am I willing to wait" — NOT
         # part of the convergence-target staging.  Switching stages
@@ -403,6 +415,7 @@ class SiestaConfig:
                  "generous; bump higher if SCF is oscillating.",
     })
     electronic_temperature: float = field(default=300.0, metadata={
+        "category": ("accuracy", "system"),
         "section": "SCF",
         # System characteristic — high for metallic surfaces (Fermi
         # smearing helps), low for insulators / organics.  Not stage-
@@ -421,6 +434,7 @@ class SiestaConfig:
     # In the schema-driven form this renders as three side-by-side int
     # inputs (kx / ky / kz) under id sub-suffixes "x", "y", "z".
     kgrid: Tuple[int, int, int] = field(default=(1, 1, 1), metadata={
+        "category": ("accuracy",),
         # 2026-06-13 fold: k-grid (Monkhorst-Pack) is reciprocal-space
         # sampling; basis_size / mesh_cutoff / pao_energy_shift are
         # real-space sampling.  Same conceptual family — all are
@@ -464,6 +478,7 @@ class SiestaConfig:
     # The labels below are generic; per-engine help text lives in the
     # FDF's verbose comments.
     relax_type: str = field(default="CG", metadata={
+        "category": ("procedure",),
         "section": "Compute & budget",
         # 2026-08-07: was ``workflow_group="profile"``, on the reasoning that
         # the relax/MD algorithm family is a run-shape identity choice.  It is
@@ -496,6 +511,7 @@ class SiestaConfig:
         ),
     })
     relax_steps: int = field(default=200, metadata={
+        "category": ("procedure",),
         "section": "Compute & budget",
         "item_kind":  "deck",
         "expands":    ['MD.NumCGsteps', 'MD.FinalTimeStep'],
@@ -522,6 +538,7 @@ class SiestaConfig:
         ),
     })
     relax_force_tol: float = field(default=0.02, metadata={
+        "category": ("accuracy",),
         "section": "Compute & budget",
         "workflow_group": "stage",
         "label": "MD.MaxForceTol", "unit": "eV/Å",
@@ -542,6 +559,7 @@ class SiestaConfig:
         ),
     })
     relax_max_displ: float = field(default=0.05, metadata={
+        "category": ("procedure", "convergence"),
         "section": "Compute & budget",
         "workflow_group": "stage",
         "label": "MD.MaxCGDispl", "unit": "Å",
@@ -577,6 +595,7 @@ class SiestaConfig:
     # second hand-maintained mapping from a stage to its wrapper.  Unlike
     # those two it becomes NO sbatch flag -- it is baked in at install time.
     continue_retries: int = field(default=1, metadata={
+        "category": ("execution",),
         "section":        "Compute & budget",
         "item_kind":  "wrapper",
         # A retry budget is compute you are agreeing to spend, so it sits in
@@ -612,6 +631,7 @@ class SiestaConfig:
     # the user at least SEES them on the page; their help text marks
     # them as ignored-for-CG so the form doesn't mislead non-MD users.
     md_initial_temperature: float = field(default=300.0, metadata={
+        "category": ("procedure",),
         "section": "Compute & budget",
         # Profile-level: MD ensemble identity (initial-velocity-
         # seed temperature for Verlet/Nose); set with the run, not
@@ -627,6 +647,7 @@ class SiestaConfig:
                   "velocities to seed."),
     })
     md_target_temperature: Optional[float] = field(default=None, metadata={
+        "category": ("procedure",),
         "section": "Compute & budget",
         # Profile-level: NVT target temperature is MD ensemble
         # identity (Nose-Hoover thermostat target).
@@ -642,6 +663,7 @@ class SiestaConfig:
                   "when unset."),
     })
     md_length_timestep: float = field(default=1.0, metadata={
+        "category": ("procedure",),
         "section": "Compute & budget",
         # Profile-level: MD integration timestep depends on system
         # composition (bonded H needs ~0.5 fs, heavier systems 1
@@ -670,6 +692,7 @@ class SiestaConfig:
     # it like any other field, and the stage table draws it as the
     # "start from" row (web/task-setup-plan.md § 6).
     restart: str = field(default="clean", metadata={
+        "category": ("convergence", "execution"),
         "section": "Compute & budget",
         "item_kind":  "deck",
         "expands":    ['DM.UseSaveDM', 'MD.UseSaveXV', 'MD.UseSaveCG'],
@@ -723,6 +746,7 @@ class SiestaConfig:
     # positioning" section as a separate untagged surface (the user
     # was hunting for these knobs at the bottom of the form).
     wrap_into_cell: bool = field(default=True, metadata={
+        "category": ("procedure",),
         "section": "Output & positioning",
         "item_kind":  "produce",
         "workflow_group": "profile",
@@ -737,6 +761,7 @@ class SiestaConfig:
     # hints (parameter ranges, what to change when SCF / CG misbehave,
     # etc.) plus a "Troubleshooting" block at the end.
     verbose_comments: bool = field(default=True, metadata={
+        "category": ("procedure",),
         "section": "Output & positioning",
         "item_kind":  "produce",
         "workflow_group": "profile",
@@ -758,14 +783,17 @@ class SiestaConfig:
 
     # Output flags
     write_forces: bool = field(default=True, metadata={
+        "category": ("procedure",),
         "help": "write forces to the .FA file (required for relaxation)",
             "engine_key":  'WriteForces',
     })
     write_coor_step: bool = field(default=True, metadata={
+        "category": ("procedure",),
         "help": "write coordinates at every MD step in the main .out",
             "engine_key":  'WriteCoorStep',
     })
     write_coor_xmol: bool = field(default=True, metadata={
+        "category": ("procedure",),
         "section": "Output & positioning",
         "workflow_group": "profile",
         "label": "Write XMOL .xyz per step",
@@ -773,6 +801,7 @@ class SiestaConfig:
         "help": "write .xyz of every relaxation step (movie viewer)",
     })
     write_md_history: bool = field(default=True, metadata={
+        "category": ("procedure",),
         "section": "Output & positioning",
         "workflow_group": "profile",
         "label": "Write .ANI trajectory",
@@ -780,6 +809,7 @@ class SiestaConfig:
         "help": "write the .ANI trajectory file (xcrysden / vmd / OVITO)",
     })
     write_hs: bool = field(default=False, metadata={
+        "category": ("procedure",),
         "section": "Output & positioning",
         "workflow_group": "profile",
         "label": "Write H+S matrices",
@@ -787,6 +817,7 @@ class SiestaConfig:
         "help": "write H + S matrices (TranSIESTA / DOS / transport)",
     })
     write_molwatch_log: bool = field(default=True, metadata={
+        "category": ("procedure",),
         "help": "write <job>.molwatch.log preview (lets molwatch render before SIESTA does)",
             "engine_key":  '(molbuilder: writes <basename>.molwatch.log preview)',
         # Consumed by the GENERATOR, not the deck: § 7's kind, stated
@@ -819,6 +850,7 @@ class SiestaConfig:
     # MD.NumCGsteps.  Folds the Parallel-execution section into the
     # Compute & budget workflow-group card.
     mpi_np: Optional[int] = field(default=None, metadata={
+        "category": ("execution",),
         "section": "Compute & budget",
         # NOT a template item: a machine fact, which floor 2 must never
         # name (engines/template.md 7).  It arrives as the ALLOCATION at
@@ -858,6 +890,7 @@ class SiestaConfig:
     })
 
     parallel_block_size: Optional[int] = field(default=None, metadata={
+        "category": ("execution",),
         "section": "Compute & budget",
         "workflow_group": "budget",
         "label": "BlockSize",
@@ -882,6 +915,7 @@ class SiestaConfig:
         "skip_cli": True,
     })
     parallel_over_k: Optional[bool] = field(default=None, metadata={
+        "category": ("execution",),
         "section": "Compute & budget",
         "workflow_group": "budget",
         "label": "ParallelOverK",
@@ -897,6 +931,7 @@ class SiestaConfig:
     # oversubscribe -- canonical anti-oversubscription recipe shared
     # with the PySCF / spectra scripts.
     omp_threads: Optional[int] = field(default=None, metadata={
+        "category": ("execution",),
         "section": "Compute & budget",
         # NOT a template item: a machine fact, which floor 2 must never
         # name (engines/template.md 7).  It arrives as the ALLOCATION at
@@ -927,6 +962,7 @@ class SiestaConfig:
     # set.  Not auto-set in the .fdf today; if set here, runtime_info
     # records it so the /results trajectory inspector shows the cap.
     max_memory_mb: Optional[int] = field(default=None, metadata={
+        "category": ("execution",),
         "section": "Compute & budget",
         # NOT a template item: a machine fact, which floor 2 must never
         # name (engines/template.md 7).  It arrives as the ALLOCATION at
@@ -951,6 +987,7 @@ class SiestaConfig:
         "skip_cli":   True,
     })
     enable_gpu: bool = field(default=False, metadata={
+        "category": ("execution",),
         "section": "Compute & budget",
         "workflow_group": "budget",
         "label":     "Use GPU (NVIDIA, via ELPA-CUDA)",
@@ -985,6 +1022,7 @@ class SiestaConfig:
                      "Affinity hint: GPU favors 1STAGE.",
     })
     diag_algorithm: str = field(default="ScaLAPACK", metadata={
+        "category": ("execution",),
         "section": "Compute & budget",
         "workflow_group": "budget",
         "label":     "Diagonalizer",
@@ -1028,6 +1066,7 @@ class SiestaConfig:
     # hand-rolled there; species_order needs comma-string parsing on
     # the CLI side, also hand-rolled.
     psml_lib: Optional[str] = field(default=None, metadata={
+        "category": ("method",),
         "section":    "System",
         "item_kind":  "produce",
         # Run-profile identity — which pseudopotential library this
@@ -1075,6 +1114,7 @@ class SiestaConfig:
         "skip_cli":   True,
     })
     copy_psml: bool = field(default=True, metadata={
+        "category": ("procedure",),
         "help": "copy psml files into the output directory (alongside the FDF)",
             "engine_key":  '(molbuilder: triggers .psml staging step)',
         "item_kind": "produce",
@@ -1085,6 +1125,7 @@ class SiestaConfig:
     # identity-sensitive, so a template that omitted it did not pin the
     # deck it claims to describe.
     species_order: Optional[List[str]] = field(default=None, metadata={
+        "category": ("system",),
         "help": "comma-separated species order (e.g. 'C,H,S,Au')",
         "skip_cli": True,
             "engine_key":  '(molbuilder: ChemicalSpeciesLabel block ordering)',
@@ -1094,6 +1135,7 @@ class SiestaConfig:
     # Net charge.  When None (default), render_fdf auto-detects from the
     # phosphate protonation state via formal_charge_from_phosphates.
     net_charge: Optional[int] = field(default=None, metadata={
+        "category": ("system",),
         "section": "System",
         # Run-profile identity — molecule's charge state is a
         # fundamental property of WHAT you're computing.
@@ -1114,6 +1156,7 @@ class SiestaConfig:
 
     # Spin polarisation.  Default off (closed-shell DFT).
     spin_polarized: bool = field(default=False, metadata={
+        "category": ("system",),
         "section":     "Spin",
         # System characteristic — depends on chemistry (open-shell
         # metals / radicals require it), not on stage.
@@ -1130,6 +1173,7 @@ class SiestaConfig:
                           "in the .fdf."),
     })
     spin_total: Optional[float] = field(default=None, metadata={
+        "category": ("system",),
         "section":     "Spin",
         "item_kind":  "deck",
         "expands":    ['Spin.Fix', 'Spin.Total'],
