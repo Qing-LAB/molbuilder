@@ -87,7 +87,7 @@ that is what drifts (§ 11, pattern 3).
 | which parameters are machine facts | `engines/template.md` §§ 2, 7 | `generator.md` § 4 · § 10 class 3 · `resolve.py`'s gates | **§ 4 has DRIFTED** — it still says "not a template item at all" |
 | the resource vocabulary (the nine fields, config ↔ SLURM) | `execution/job-contracts.md` § 6.2 | `job-system.md` § 3 + § 3.1's example · `Resources`' docstring | **§ 3 has DRIFTED** (7 vs 9). The docstring restatement is *deliberate and argued* — and is the one that stayed correct, because it sits beside the code |
 | every name in the system | `execution/job-contracts.md` § 6.3 | `resolve.point_token` · `identity.stage_token` | **clean** — and the model for the rest: a rule, the one function that implements it, and they agree |
-| the five `prep` steps | `execution/project-layout.md` § 2.3.1 | `template.md` § 11.1 · `generator.md` § 3 · `job-system.md` § 5 | **not yet checked** — three restatements of one sequence is the highest-risk drift left unread |
+| the five `prep` steps | `execution/project-layout.md` § 2.3.1 | `template.md` § 11.1 · `generator.md` § 3 · `jobset/prep.py` | **checked — the prose agrees; the NUMBER collides** (§ 12) |
 | the reserved blocks | `execution/job-contracts.md` § 3.1 | `engines/template.md` § 9 | **clean** — § 9 asks a different question (*where does each block's content come from*), which is complement, not copy |
 | what a stage is, and overrides | `engines/stages.md` § 4 | `template.md` § 1 · `resolve.py` `_apply` | **not yet read** |
 
@@ -516,3 +516,55 @@ a habit than as its instances:
 ---
 
 ---
+
+---
+
+## 12 · Cross-boundary: "the five steps" — the prose agrees, the numeral collides
+
+The ownership map named this the highest-risk unchecked restatement. **The
+substance is clean.** `project-layout.md` § 2.3.1 owns the sequence — resolve
+the machine · resolve the parameters · render the deck · render the wrapper ·
+build the run directory — and both restatements agree with it:
+
+| restatement | says | verdict |
+|---|---|---|
+| `template.md` § 11.1's sequence diagram | step 1 resolve this machine → step 2 template ⊕ overrides → deck writer → wrapper writer | agrees (abbreviated; omits step 5, which is not its subject) |
+| `generator.md` § 3's spine | `ParameterSet` → step 3 render deck → step 4 render wrapper → JobSet → *"then floor 4 lays it out"* | agrees, and names the steps by their owner's numbers |
+
+**What is not clean is the numeral itself, in two ways.**
+
+### 12.1 · Two different "fives", one system
+
+`project-layout.md` § 2.3.1: *"the same **five steps** in the same order"* — of
+`prep`. `job-system.md` § 5: *"**one verb** on the host and **five** on the
+target"* — `prep`, `plan`, `submit`, `summarize`, `status`. Different sets, same
+count, adjacent documents, and `generator.md` § 2.3.1a leans on the phrase *"the
+five steps are general"* to make its framework/specialisation argument.
+
+Nothing here is factually wrong. But *"the five"* is now ambiguous across the
+execution domain, and the two sets are one word apart in the same sentence
+shape. **This is the cheapest kind of confusion to remove** — name the steps
+*"`prep`'s five steps"* wherever the phrase travels outside § 2.3.1.
+
+### 12.2 · A function that calls itself steps 4–5 and then numbers its own 1–3
+
+`molbuilder/jobset/prep.py`, module docstring:
+
+> *"`prep_calculation` is the five entire … `prep_jobset` is **steps 4–5**
+> alone"*
+
+`prep_jobset`'s own docstring, immediately below:
+
+> *"**Steps, in order:** 1. render each distinct `job.script`'s `.run.sh` …
+> 2. `materialize` … 3. symlink each job's wrappers"*
+
+A reader tracing *"step 4"* from the contract arrives at a docstring whose first
+line is *"1."*. Both numberings are internally consistent and neither is wrong;
+they simply collide in one file, ten lines apart. **The canonical five are the
+contract's — a local sequence inside one of them should not reuse the word.**
+
+> **Why this belongs in a cross-boundary section rather than as a nitpick.**
+> Neither half is visible on its own: reading `project-layout.md` shows one
+> five, reading `job-system.md` shows another, and reading `prep.py` shows a
+> third numbering of the same work. It is only visible with all three open —
+> which is the whole argument for reading this way.
