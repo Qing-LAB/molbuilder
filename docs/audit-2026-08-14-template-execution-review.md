@@ -3812,3 +3812,108 @@ than beside a new parameter.
 |---|---|
 | a scalar `range` on a tuple field | `_validate_config_metadata` refuses one as a programmer bug, so `kgrid` and `kgrid_displacement` both carry **no bounds a surface can read**. The bound is per component and lives in a validator, where a UI cannot see it. SS 5 calls `range` *"advisory bounds"* for a surface -- for the triples there are none |
 | `cli.KGridParam` | defined, assigned to `KGRID`, and referenced by nothing. Dead by every reading, but SS 32's rule (`[[feedback-module-provenance-header]]`) says a surface glance does not settle it -- so it is written down, not deleted |
+
+---
+
+## 58 - C1's MECHANISM: how does the writer know two fields are one item?
+
+*(SS 25.2 is the next unit, and it cannot be written until this is answered.
+Contract work, per SS 26. **No code has been written for it.**)*
+
+### 58.1 - SS 25.2's own note is now stale
+
+It says *"keep items **unmerged** across engines (`net_charge` and `charge` stay
+two items in one category)"*. That was written against the OLD SS 6.3, which
+read *"items are never merged across engines"*. **SS 6.3 was rewritten later the
+same day** to the two-part test -- two engines share an item when it is **the
+same question** *and* **the same answer** -- so the flat refusal is gone and
+`net_charge`/`charge` is now the contract's own worked example of a merge.
+
+**The stale line is struck here rather than in SS 25.2**, so the record shows
+the contract moved under the work list rather than the work list being wrong
+when written.
+
+### 58.2 - The gap, stated exactly
+
+SS 6.3 names four merges. **Three of them are between fields with DIFFERENT
+names:**
+
+| the merged item | SIESTA's field | PySCF's field | same name? |
+|---|---|---|:--:|
+| `charge` | `net_charge` | `charge` | ✗ |
+| `use_gpu` | `enable_gpu` | `use_gpu` | ✗ |
+| `verbose_comments` | `verbose_comments` | `verbose_comments` | ✓ |
+| `write_molwatch_log` | `write_molwatch_log` | `write_molwatch_log` | ✓ |
+
+> **So a writer that merges by field name finds two of the four and misses two**
+> -- and SS 6.3 explicitly warns the other way too: *"A shared **name** is
+> evidence of neither."* The mechanism has to be something a field DECLARES.
+
+### 58.3 - What the collision surface actually is -- measured, not assumed
+
+`declarations_for(SiestaConfig)` vs `declarations_for(PySCFConfig)`, 2026-08-14:
+
+| | |
+|---|---|
+| SIESTA items | **45** |
+| PySCF items | **40** |
+| **shared names** | **3** |
+
+| shared name | kind | type | SIESTA default | PySCF default | agree? |
+|---|---|---|---|---|:--:|
+| `verbose_comments` | `produce` | `bool` | `True` | `True` | ✅ |
+| `write_molwatch_log` | `produce` | `bool` | `True` | `True` | ✅ |
+| `max_memory_mb` | `wrapper` | `int` | `None` | `4000` | ❌ **default** |
+
+**Two of the three collisions are merges the contract already asks for, and the
+third is a real disagreement** -- and one the user has already ruled on:
+*"max_memory_mb is only explicitly set when user requested, the typical memory
+limit is unlimited - meaning all physical memory is allowed."* By that ruling
+SIESTA's `None` is right and PySCF's `4000` is the outlier, which is a defect
+this exercise surfaced rather than a merge problem.
+
+> **The accidental-collision risk SS 6.3 warns about is, in the measured
+> present, ZERO.** Every shared name is either a merge the contract wants or a
+> bug. That does not make name-matching *correct* -- it makes the cost of the
+> simpler mechanism small and checkable.
+
+### 58.4 - The two candidate mechanisms
+
+| | **A -- the field name IS the item name** | **B -- a metadata key names the item** |
+|---|---|---|
+| how a merge is declared | by the two engines **spelling the field the same** | `metadata["item"] = "charge"` on each half |
+| what it costs | renaming `net_charge` -> `charge` and `enable_gpu` -> `use_gpu` in `SiestaConfig`, and everything that reads those names | a fifth thing every field may declare, and a name that is not the field's name |
+| accidental collision | **refused loudly**: two fields with one name that disagree on `kind`/`type`/`default` is an error naming both | impossible by construction -- but a *missed* merge is silent, because nothing was declared |
+| which failure is louder | a wrong merge **stops the writer** | a missing merge **ships as two items** and nobody sees it |
+| new vocabulary | none | one key |
+
+**Recommendation: A.** Three reasons, in the project's own order of preference
+(*delete > one home > parameter > abstraction*):
+
+1. It adds **no** mechanism. The item name is the field name, which is already
+   true for all 85 items.
+2. It makes the dangerous direction the LOUD one. Under A a merge that should
+   not have happened is a refusal with both fields named; under B a merge that
+   should have happened is simply absent, and absent things are what this whole
+   review keeps finding.
+3. The renames it forces are ones the unification wanted anyway -- SS 1 of the
+   unification plan measured *"two names for one question"* as the defect, and
+   `net_charge`/`charge` is that defect with a name.
+
+**What A forces, in full** *(nothing here is done)*:
+
+- `SiestaConfig.net_charge` -> `charge`; `SiestaConfig.enable_gpu` -> `use_gpu`.
+- Every reader of those two names moves with them -- no shim, per the project's
+  rename rule. **This has not been counted yet**; counting it is the first step
+  of the unit, not of this section.
+- `max_memory_mb`'s two defaults must be reconciled first, or the writer refuses
+  on it the moment it merges two engines. Per the user's ruling: unlimited.
+- A test that the merged halves agree, and that a disagreement names both.
+
+### 58.5 - The question that is NOT settled here
+
+Whether `use_gpu` merging is even wanted, given SS 41.1: `enable_gpu` is an
+allocation-kind decision on SIESTA (a benchmark axis) while PySCF's is a backend
+selection. **Same question, same answer -- or two questions wearing one word?**
+SS 6.3's table asserts the merge; SS 41.1's reasoning is the case against it.
+**One of the two is wrong and this section does not decide which.**
