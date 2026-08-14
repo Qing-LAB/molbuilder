@@ -36,15 +36,72 @@ server, draws the form, and reads the filled-in values back.
 > `task.json`. PySCF still has a `stages` field and is a deliberate exception
 > until the SIESTA path works.
 
-## 1. The one idea: the config is the source of truth
+## 1. The one idea: the CATALOGUE is the source of truth
 
-There is a Python dataclass for each engine's settings — `SiestaConfig`,
-`PySCFConfig`, and so on. Those classes already define every option: its name,
-its type, its default, and (through a bit of field metadata) which section of
-the form it belongs in. **The form is built from that class.** Add a field to
-`SiestaConfig`, mark which section it goes in, and it shows up in the Build tab's
-SIESTA form automatically — nobody edits any HTML. Remove it, and it's gone.
-There is no second copy of the option list to keep in sync.
+**Every parameter both engines have is defined in one file** —
+`molbuilder/data/catalogue.template.toml`, in the template format
+([`engines/template.md`](?doc=engines/template.md) § 4.3). It carries the name,
+the type, the default, the bounds, the prose, and the two things that decide
+where a control appears. **The form is built from that file.** Add an item to
+the catalogue and it shows up in the Build tab automatically — nobody edits any
+HTML, and nobody edits Python. Remove it and it is gone. There is no second copy
+of the option list to keep in sync.
+
+> ⚠ **This section said the opposite until 2026-08-14** — *"there is a Python
+> dataclass for each engine's settings … the form is built from that class."*
+> That was the direction [`template.md`](?doc=engines/template.md) § 2.1
+> retired: it made the config classes the master, so enriching the parameter
+> list meant editing Python, and two engines' parameters could never share one
+> file. The classes are **translators** now — they carry a value on its way to
+> an engine, and nothing else.
+
+### 1.1 What the form takes from an item, and what it derives
+
+**The presentation does not change.** The CSS, the card layout, the help
+disclosure, the engine-key badge — all of it stays exactly as it is. What moves
+is where the *data* comes from.
+
+| the schema needs | from the item |
+|---|---|
+| `name` | the item's own name |
+| `label` · `help` · `default` · `unit` · `choices` | the keys of the same name |
+| `min` / `max` | `range` |
+| `engine_key` | `anchor`, or `expands` for a `deck` item |
+| `workflow_group` | `group` |
+| `id` | derived: the container's prefix + the name |
+| `kind` (which control) | derived from `type` — `enum`→select, `bool`→checkbox, `int3`/`float3`→a triple, … |
+| `step` | derived from `type`: `int` steps by 1, `float` by any |
+| `labels` (a triple's x/y/z) | derived from `type` |
+| `null_option` | derived: the item is optional |
+| `tier` · `pattern` · `optional` | **item keys added for this** — § 1.2 |
+
+### 1.2 Three keys the catalogue gained for the form
+
+| key | why the form cannot derive it |
+|---|---|
+| `optional` | *unset* is a real state and the control must offer it. It is **not** inferable from `null_label`: of 17 optional items only 12 carry one, so five would silently lose their *(auto)* option |
+| `tier` | `basic` / `advanced`. A judgement about the parameter, not about the widget — the form dims advanced fields |
+| `pattern` | a regex the value must match. Two items have one (`system_label`, `job_name`) and nothing else can express it |
+
+### 1.3 The two grouping axes, and why both survive
+
+They are orthogonal, every item carries both, and the form uses each for a
+different job:
+
+| axis | answers | the form uses it for |
+|---|---|---|
+| **`group`** — `profile` · `stage` · `budget` | *when do I set this?* | the **outer card**, unchanged |
+| **`category`** — the six of § 6.2 | *what question about the calculation is this?* | the **legend inside** the card |
+
+**`category` replaces `section`** in the inner legend, and that is the whole
+visible change: `section` was free text chosen per engine, so SIESTA's *"Basis &
+grid"* and PySCF's *"Method"* were unrelated words. The six categories are
+shared, so the same card shows the same inner headings for both engines — which
+is what [`template.md`](?doc=engines/template.md) § 6.2 exists for.
+
+**The outer cards are load-bearing and are not touched.** They were introduced
+2026-06-13 to fix a reported bug — the stage selector silently rewrote budget
+and system fields. Keeping `group` as the outer axis keeps that fix.
 
 ## 1a. The field-metadata vocabulary — every tag, and the rule for adding one
 
