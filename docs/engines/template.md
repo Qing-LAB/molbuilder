@@ -167,7 +167,7 @@ fingerprint = "8f3a1c2d5e6b7a90"        # REQUIRED (may be "") — see § 10
 | key | required because |
 |---|---|
 | `kind` | without it no layer can tell whose item this is, and G3 collapses to a field list |
-| `value` | the template's whole job is to carry the values. **A missing `value` means explicitly unset** — a real state, distinct from the default, and not the same as an absent key elsewhere |
+| `category` | without it a surface has no panel to put the item on, and G2 fails — a file *"enough on its own for a surface"* cannot leave the presentation to the reader's guess (§ 6.2) |
 | `type` | what the value is *validated* as, which TOML's own types cannot express (§ 5) |
 | `help` | G5. An item nobody can read makes the file a serialised blob with extra steps |
 
@@ -176,6 +176,8 @@ fingerprint = "8f3a1c2d5e6b7a90"        # REQUIRED (may be "") — see § 10
 | key | required when |
 |---|---|
 | `anchor` | `kind = "engine"` — an engine item that names no keyword cannot reach the deck |
+| `value` | **when the item has been answered.** Its absence is a real state — *explicitly unset* — distinct from the default and from an absent key elsewhere. It was listed as unconditionally required until 2026-08-13, which read as though a valueless item were malformed; § 6.4 makes valueless the **normal** state for anything resolved at `prep` (memory, `block_size`, rank count, threads) |
+| `resolver` | when the item is normally valueless and something must compute it — § 6.4. An unset item with no resolver is simply unanswered; an unset item WITH one names who answers it |
 | `expands` | `kind = "deck"` — it is how a reader learns which keywords this item produces |
 | `choices` | `type = "enum"` — an enum with no members cannot be validated or rendered as a control |
 
@@ -315,6 +317,7 @@ never validated by molbuilder (§ 9.2)."""
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
 | `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
+| `resolver` | who computes this item's value when it is unset — a **name** from a closed registry, never code (§ 6.4) |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
@@ -519,6 +522,33 @@ generalised.
 A valueless item still carries `choices`, `range`, `unit` and `help`, so a
 surface can offer the *right* options before any value exists — `diag_algorithm`
 has a handful of legal eigensolvers whether or not one has been picked.
+
+**`resolver` names who fills an unset one.** Some values cannot be constants:
+they depend on the machine, on an explicit ask, or on both. The item names its
+resolver and `prep` calls it — `prep` never carries a list of which fields are
+special, which is the same argument `read_by` won in § 6.1.
+
+| item | unset → | explicitly set → |
+|---|---|---|
+| `max_memory_mb` | the node's maximum, from `environment.json` or detection | clamped to the allocation, and the clamp logged |
+| `block_size` | proposed from the orbital and rank counts | honoured verbatim |
+| rank count | the allocation | an ask, resolved against what was granted |
+| `threads` | `OMP_NUM_THREADS` → `SLURM_CPUS_PER_TASK` → `PBS_NCPUS` → `NSLOTS` → physical cores | honoured; it outranks the chain |
+
+```
+resolve(asked: value | None, env: Environment) -> (effective, reason)
+```
+
+**A NAME from a closed registry — never code in the file.** A template is data:
+hand-editable, and it travels between machines. Executable content would end both
+properties and make a description something you must *trust* rather than
+something you can *read*. An unknown resolver name is an error a reader
+**reports** (§ 3), like any closed vocabulary here.
+
+**`reason` is not decoration.** Every resolver produces a number the user did not
+type, and a value the run obeys but nobody can see is the same problem as an
+undocumented one. It reaches the run log and the decision ledger, so *"64 GB,
+clamped from a 96 GB ask"* is readable after the fact.
 
 **This is how `execution` items live here without § 7's machine-fact rule being
 broken.** The template may say *"rank count is a parameter of this calculation"*;

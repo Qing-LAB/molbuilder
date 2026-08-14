@@ -254,6 +254,24 @@ computed where the answer is knowable.
 
 ---
 
+## 5.3 The interim state — the contract is ahead of the code, on purpose
+
+**Until T2 lands, `engines/template.md` describes `@2` and the code emits `@1`.**
+That is the intended order (docs first), but it must be visible rather than
+discovered:
+
+| where | says | until |
+|---|---|---|
+| `engines/template.md` | `@2`, `engines`, `category`, `resolver` | — (it is the authority) |
+| `molbuilder/template.py` | emits `@1`, one `engine` key, `section` | **T2** |
+| `execution/job-contracts.md` § 6.1, `execution/project-layout.md` | reference `template@1` | **T7** |
+
+So a template on disk today is a valid `@1` file and every reader still works.
+Nothing is half-migrated; the contract simply landed first, which is what lets
+T1's catalogue be checked against a settled shape instead of a moving one.
+
+---
+
 ## 6. What must stay true — the invariants a review checks
 
 1. **Membership is total** (§ 7, D5). Every schema parameter is an item. *"Is it
@@ -266,5 +284,11 @@ computed where the answer is knowable.
    data in hand, never a service.
 5. **Each value is stored once** (D3). A category is a label on an item, not a
    second copy of it.
-6. **The vocabularies are closed** (`kind`, `category`). An unknown value is an
-   error a reader reports, never something it drops.
+6. **The vocabularies are closed** (`kind`, `category`, `resolver`). An unknown
+   value is an error a reader reports, never something it drops.
+7. **A template contains no executable content** (§ 6.4). `resolver` is a name
+   from a registry molbuilder ships. A description you must *trust* rather than
+   *read* is not a description.
+8. **A computed value carries its reason** (§ 5.2). Every resolver returns one,
+   and it reaches the log and the ledger — a number the run obeyed that nobody
+   can account for is the failure this whole session kept finding.
