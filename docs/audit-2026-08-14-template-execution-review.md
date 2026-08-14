@@ -1815,3 +1815,88 @@ paragraph is what changes.
 > table above is stable under either, but the *item count* of a combined file is
 > not — § 29.4's "83 items" assumes (a).
 
+---
+
+## 32 - RULED: one item per question, and the GENERATOR renders it
+
+**User, 2026-08-14:** *"unify them. there is no point of having two questions
+about the same answer."* And, on how the merged item reaches each engine:
+*"enable_gpu is one flag, how this emits script is entirely the generator's
+job and engine specific, right?"*
+
+**Yes -- and that makes SS 31.4 resolve to (c), not (b).**
+
+### 32.1 - No new mechanism. `kind` already says this
+
+I was about to propose per-engine `anchor` sub-tables. That invents machinery
+for a case the vocabulary already covers:
+
+> **`kind = "deck"`** -- *"molbuilder's own, but it shapes the deck -- by
+> expanding to keywords, ordering a block, or supplying verbatim text ... the
+> deck writer, through **molbuilder's rule rather than one keyword**"*
+> (`template.md` SS 6)
+
+A unified `use_gpu` **is** that. The item carries the answer; each engine's
+deck writer renders it however that engine needs -- `Diag.ELPA.GPU` for SIESTA,
+a backend selection for PySCF. The template never learns either spelling.
+
+| | |
+|---|---|
+| **`kind = "engine"`** | the item IS one engine keyword. `anchor` names it. Single-engine by nature |
+| **`kind = "deck"`** | one question, and **the generator knows how to express it**. No `anchor`. This is what a unified cross-engine item is |
+
+**So the merge costs nothing structural.** `Item` does not change,
+`_item_payload` does not change, `_ITEM_KEY_ORDER` does not change. What
+changes is which `kind` these items declare, and that `engines` lists both.
+
+### 32.2 - What merges
+
+| one item | kind | each generator emits |
+|---|---|---|
+| `use_gpu` | `deck` | SIESTA: `Diag.ELPA.GPU` (+ the ELPA solver gate). PySCF: the GPU backend |
+| `charge` | `deck` | SIESTA: `NetCharge`. PySCF: `gto.M(charge=)` |
+| `verbose_comments`, `write_molwatch_log` | `produce` | already engine-neutral |
+
+### 32.3 - What does NOT merge, and why the rule still holds
+
+**`dm_tolerance` vs `scf_conv_tol`** stay two items. Same English phrase
+(*"SCF convergence"*), two questions -- a density-matrix criterion and an
+energy criterion -- and **neither can take the other's value**. That is SS 6.3's
+own example and it survives unchanged.
+
+**spin needs its own ruling.** SIESTA carries `spin_polarized` (bool) **and**
+`spin_total` (float); PySCF carries `spin` (2S). Same question, but the
+**answer is decomposed differently**, so it fails the test *(same question AND
+same answer)*. One item holds one value; SIESTA needs two.
+
+| | |
+|---|---|
+| **derive** | one item `spin` (2S). SIESTA's writer emits `Spin.Fix` + `Spin.Total`, and `spin_polarized` becomes `spin != 0` rather than a stored field -- deleting a field that can disagree with its sibling |
+| **keep two** | honest to each engine's shape, but keeps *the same physics unrecognisable across engines* for this case |
+
+*(Deriving is the same move SS 8.1 already relies on -- one parameter writing
+two keywords, which it names as a reason splicing cannot work.)*
+
+### 32.4 - The contract change this makes
+
+SS 6.3's *"items are never merged across engines"* is the paragraph that
+changes. The rule becomes:
+
+> **Items merge when they are the same question with the same answer. The
+> engine's spelling is the GENERATOR's, not the template's -- which is what
+> `kind = "deck"` has always meant.**
+
+The old rule's stated worry -- *inventing a shared vocabulary and deriving each
+engine's spelling from it* -- was aimed at merging things that only sound
+alike. That worry is answered by the test, not by refusing to merge: `charge`
+and `net_charge` are one question; `dm_tolerance` and `scf_conv_tol` are two.
+
+### 32.5 - Still no code
+
+SS 26 holds. Open, and each is one sentence to rule:
+
+1. **spin** -- derive, or keep two? (SS 32.3)
+2. Do merged items keep `expands`? It lists *which keywords this item
+   produces*, which now differs per engine. It documents rather than steers
+   (SS 8.1), so: union, omit, or per-engine.
+
