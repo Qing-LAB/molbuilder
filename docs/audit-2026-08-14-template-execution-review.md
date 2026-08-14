@@ -26,11 +26,14 @@ matter are the ones nobody suspected. Suspicions raised by reading were then
 | `docs/execution/job-system.md` | 1322 |
 | `docs/execution/job-contracts.md` §§ 3.1–3.2, 6.2, 6.3 | *(partial — those sections in full)* |
 
-| not yet read | lines |
-|---|---|
-| `docs/execution/job-contracts.md` · `project-layout.md` · `checkpointing.md` · `architecture.md` · `run-identity.md` · `running-a-job.md` · the staged-runs plan | ~12,400 |
-| `molbuilder/jobset/*` · `task.py` | ~5,200 |
-| the test suites for the above | — |
+| `docs/execution/project-layout.md` § 7 (the invariants) | 110 |
+| `molbuilder/jobset/model.py` — the serialisation surface | 140 |
+| `molbuilder/task.py` — the model | — |
+
+**Total read in full: ~5,400 lines.** What remains (~17,000) is listed in § 16
+with the order the next pass should take and what each file cross-checks
+against — because the value here came from reading later files against earlier
+ones, and that is what a continuation has to preserve.
 
 **Stated plainly because a partial review reported as a whole one is worse
 than no review.**
@@ -724,4 +727,88 @@ wrapper tests pass.
 that names the test that holds it. Of seventeen, it is the only one that does.
 The distance between invariant 6a and invariants 16–17 is the distance between
 a rule and a wish, and it is visible only because 6a wrote its test down.
+
+---
+
+## 15 · `task.py` × `template.md` § 1 — the description's other half
+
+`template.md` § 1 states the split: the template holds *"every parameter, with
+a value — **what the calculation is**"*; `task.json` holds *"which parameters
+vary, and each stage's overrides — **what the mission is**"*, and **"they do not
+overlap"**. Checked against the shipped model:
+
+```
+Task:  engine · shape · run · structure · varies · stages · schema_fingerprint · calculation
+Stage: name · enabled · overrides
+```
+
+**The split holds.** `varies` and `stages[].overrides` are exactly the two
+things § 1 assigns to `task.json`, `schema_fingerprint` is § 10's claim-carrier,
+and `shape` belongs to `project-layout.md`. The apparent overlap —
+`Stage.overrides` carries parameter *values* — is the one § 1 already licenses
+(*"a stage's override replaces an item's value"*), so it is by design.
+
+### 15.1 · `Task.engine` is singular — finding 1.2, confirmed from the other side
+
+`Task` carries **`engine: str`**, not a list.
+
+Finding 1.2 established that the multi-engine template has no producer: zero
+fields declare `engines`, and `render_template` hard-codes a one-element list.
+This is the same claim reached from a different file: **the description's other
+half cannot express a multi-engine calculation either.**
+
+That changes what 1.2 *is*. It is not one unimplemented writer — it is a
+capability `engines/template.md` § 6.3 asserts and **two shipped models
+independently contradict**, in the two files that together *are* the
+description. A calculation that "runs on more than one engine" cannot say so in
+`task.json`, cannot be written by `render_template`, and has no field anywhere
+to hang the second engine's items on.
+
+> **Core document: `engines/template.md` § 6.3, and now also
+> `engines/stages.md` § 6** (which owns `task.json`). What to look for: the
+> decision is one sentence, but it lands in two contracts. If multi-engine is
+> real, `Task.engine` becomes a list on the same day `render_template` learns
+> to emit one; if it is reserved, both contracts say so and `select(engine=)`
+> keeps working for the single-engine case it actually serves.
+
+---
+
+## 16 · Closing this pass — what remains, and why it needs a fresh reading
+
+**Read in full, front to back:** `engines/template.md` · `molbuilder/template.py`
+· `execution/generator.md` · `molbuilder/resolve.py` · `execution/job-system.md`
+· `execution/project-layout.md` § 7 · `job-contracts.md` §§ 3.1–3.2, 6.2, 6.3 ·
+`jobset/model.py`'s serialisation surface · `task.py`'s model — **~5,400 lines**,
+with every finding cross-checked against the files read before it.
+
+**Not read** (~17,000 lines): the rest of `job-contracts.md` and
+`project-layout.md`, `checkpointing.md`, `architecture.md`, `run-identity.md`,
+`running-a-job.md`, `staged-runs-implementation-plan.md`, the rest of
+`jobset/`, and the test suites.
+
+**Why this pass stops here rather than continuing.** The value of §§ 12–15 came
+entirely from holding the earlier files in memory while reading the later ones —
+invariant 5 is half-verified only because `resolve.py` was still in mind;
+finding 1.2 doubled in weight only because `template.py` was. Reading the
+remaining 17,000 lines in this same session would displace exactly the material
+that makes those checks possible, and the result would be a longer list of
+*local* observations — which is the kind of review § 0 exists to argue against.
+
+**The next pass, ordered by what it can cross-check:**
+
+| # | read | because it cross-checks against |
+|---|---|---|
+| 1 | `execution/project-layout.md` §§ 1–2 (the shapes, `prep` as hub) | § 7's invariants, already checked here — the rules are read, the mechanisms are not |
+| 2 | `molbuilder/jobset/prep.py` + `materialize.py` | the five steps (§ 12), invariant 5's missing "forced cold" (§ 14.1), and `Resources`' nulls (§ 13) |
+| 3 | `execution/running-a-job.md` § 3 | the wrapper chain that `template.md` § 6.4's `threads` resolver and `runwrap`'s scanners both point at |
+| 4 | `execution/checkpointing.md` S1–S4 | invariants 15–17, and the *absent vs null* rule § 13 traces to S3 |
+| 5 | `engines/stages.md` §§ 4, 6 | `_apply`'s seam (§ 6.1), `Task.engine` (§ 15.1), and the fingerprint |
+| 6 | the test suites | every "would a gate have caught this" claim in § 11 |
+
+**One thing to do before that pass, because it changes what it finds:** the two
+gates § 11 proposes — fenced examples validated against the schema they
+illustrate, and a doc's enumerated field list compared against the dataclass —
+would resolve §§ 3, 7.1, 9.2 and part of 2 *mechanically*, and would keep them
+resolved. Running them first turns roughly a third of this report into a test
+run instead of a reading task.
 
