@@ -2490,3 +2490,67 @@ and read as converged when nothing changed."""
 
 Readable in a terminal, readable in the file, and a UI can style it. **No key
 was added and no reader needs to change.**
+
+---
+
+## 41 - C4 PREPARED: prep already hands the wrapper eleven values. GPU is the exception
+
+SS 25.4 framed C4 as *"should `prep` pass the resolved value, or should the
+wrapper keep reading the deck?"* Measured, that is the wrong question --
+**`prep` already passes almost everything.**
+
+`write_run_wrapper` takes **eleven** named parameters, every one a value
+resolved upstream and handed in:
+
+```
+env - mpi_np - omp_threads - max_memory_mb - time - gres - mem
+cpus_per_task - exclusive - emit_sbatch - continue_retries
+```
+
+**Two things it does not receive, and re-derives from the deck instead:**
+
+| read from the deck | by | why it is there |
+|---|---|---|
+| `Diag.ELPA.GPU` | `_fdf_requests_gpu` -- **eight call sites** | env routing, the gres ask, MPS, the NUMA pin, the rank/thread budget |
+| `NumberOfAtoms` | `_parse_fdf_n_atoms` | clamps `mpi_np <= n_atoms` -- the propor IMAX=0 lower bound |
+
+### 41.1 - So C4's real question
+
+> **Why does this one value take a different road than the other eleven?**
+
+And the answer is not *"because the deck is the truth"*, because that argument
+is **already not applied consistently**: `mpi_np` is in the deck too --
+BENCH-MARKS records it, and `render_config` puts it there precisely so the deck
+*"records the rank count it actually assumed"* -- and it is **passed**, not
+parsed.
+
+`n_atoms` is a genuinely different case and worth separating: it is a fact
+about the **structure**, not a resolved parameter, and the wrapper needs it at
+install time. Reading it from the deck is the structural seam (C6), not this.
+
+### 41.2 - What the contract says, and it points both ways
+
+| | |
+|---|---|
+| `project-layout.md` SS 2.3.1 | *"the wrapper's environment is chosen by **a value the deck decides**"* -- and calls step 4 following step 3 **forced** |
+| `template.md` SS 6.1 | `read_by` exists so the wrapper is **told** which items it depends on, rather than re-deriving |
+| the code | `check_launch_matches_deck` exists **because the deck and the launch can disagree** -- a reconciliation nobody would need if one of them were simply authoritative |
+
+**The deck-is-truth reading has one real argument behind it:** a person may
+hand-edit the deck, and the deck is what runs. But that argument applies to
+`mpi_np` identically, and `mpi_np` is passed.
+
+### 41.3 - The options, and what each costs
+
+| | |
+|---|---|
+| **(a) pass it, like the other eleven** | one road for every resolved value. `_fdf_requests_gpu` survives as the **standalone** fallback (`write_run_wrapper` is called directly on a bare deck outside `prep`, which is why the parameters are all Optional). Consistent -- and it makes `enable_gpu`'s `read_by` declaration mean something, which today it does not |
+| **(b) keep parsing, and parse `mpi_np` too** | *deck is truth*, applied consistently. Reverses eleven parameters and re-derives what `prep` already resolved -- the habit `architecture.md` SS 1 exists to remove |
+| **(c) leave it** | the asymmetry stays undocumented, which is how it survived this long |
+
+**Recommendation: (a).** It is the smaller change, it matches what the other
+eleven values already do, and it is the only option under which SS 6.1's
+`read_by` is a mechanism rather than a declaration nothing reads.
+
+*(No code. SS 26 holds -- and note this is the honest remainder of T8: the
+declaration landed, the hand-off did not.)*
