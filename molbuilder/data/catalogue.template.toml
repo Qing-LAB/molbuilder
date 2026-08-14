@@ -3,7 +3,7 @@
 # Values are DEFAULTS; a calculation carries its own.
 schema      = "molbuilder/template@2"
 engines     = ["siesta", "pyscf"]
-fingerprint = "6586458a1cb4892a"
+fingerprint = ""
 
 [item.system_label]
 kind = "engine"

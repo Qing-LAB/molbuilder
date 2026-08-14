@@ -324,40 +324,80 @@ def _variant(*, meta=None, ann=int, default=3):
         "C", [("x", ann, dc_field(default=default, metadata=md))])
 
 
-@pytest.mark.parametrize("what,kw", [
-    ("a re-bound",   {"meta": {"range": (1, 20)}}),
-    ("a retype",     {"ann": float}),
-    ("new choices",  {"meta": {"choices": ("a", "b")}}),
+#: A catalogue edit, as text.  The digest is computed FROM THE CATALOGUE since
+#: 2026-08-14 (§ 10), so these exercise it the way a maintainer changes a
+#: parameter: by editing the TOML.  They edit a COPY -- the shipped file is
+#: never touched.
+def _catalogue_with(old: str, new: str) -> str:
+    from molbuilder.template import load_catalogue
+    text = load_catalogue()
+    assert old in text, f"fixture is stale: {old!r} not in the catalogue"
+    return text.replace(old, new, 1)
+
+
+@pytest.mark.parametrize("what,old,new", [
+    ("a re-bound",  "range = [100.0, 1000.0]", "range = [300.0, 800.0]"),
+    # int -> float, which the § 5 type check accepts for the existing
+    # integer value.  The reverse (float -> int on a 300.0) is REFUSED at read
+    # time -- correctly: a retype that strands the value is a broken edit, not
+    # a shape change to fingerprint.
+    ("a retype",    'anchor = "MaxSCFIterations"\ntype = "int"',
+                    'anchor = "MaxSCFIterations"\ntype = "float"'),
+    ("new choices", '["SZ", "DZ", "SZP", "DZP", "TZP"]', '["SZ", "DZ", "DZP"]'),
 ])
-def test_the_fingerprint_changes_when_the_shape_changes(what, kw):
-    """A description written against the old shape names a field that still
+def test_the_fingerprint_changes_when_the_shape_changes(what, old, new):
+    """A description written against the old shape names a parameter that still
     exists and a value that may no longer be legal — worth saying out loud
-    rather than discovering at the engine."""
-    assert schema_fingerprint(_variant()) != schema_fingerprint(_variant(**kw))
+    rather than discovering at the engine.
+
+    **These edit the CATALOGUE**, because that is now where a parameter's shape
+    is defined.  Until 2026-08-14 the digest came from the config class, so
+    exactly these edits — the ones that actually happen — moved nothing and
+    every stored fingerprint kept matching while the shape underneath changed.
+    """
+    # No skip path: a fixture the catalogue no longer contains is a STALE
+    # TEST, and _catalogue_with fails naming the string.  Skipping would hide
+    # it and leave the property unguarded.
+    edited = _catalogue_with(old, new)
+    assert schema_fingerprint("siesta") != schema_fingerprint("siesta", edited)
 
 
-@pytest.mark.parametrize("what,kw", [
-    ("a new default", {"default": 7}),
-    ("reworded help", {"meta": {"help": "something else entirely"}}),
-    ("a new label",   {"meta": {"label": "Renamed"}}),
+@pytest.mark.parametrize("what,old,new", [
+    ("a new default", "default = 300.0", "default = 450.0"),
+    ("reworded help", "Real-space integration grid (Ry).",
+                      "The real-space grid, in Ry."),
+    ("a new label",   'label = "Real-space grid cutoff"',
+                      'label = "Mesh cutoff"'),
 ])
-def test_the_fingerprint_ignores_presentation_and_defaults(what, kw):
-    """**The half that matters more.**  A template records the value in use,
-    so changing a default cannot invalidate a description that already
-    carries values; and a reworded tooltip must not make every stored
-    description suspect.  A fingerprint that cried wolf would be turned off,
-    and then the row it guards would be worth nothing."""
-    assert schema_fingerprint(_variant()) == schema_fingerprint(_variant(**kw))
+def test_the_fingerprint_ignores_presentation_and_defaults(what, old, new):
+    """**The half that matters more.**  A template records the value in use, so
+    changing a default cannot invalidate a description that already carries
+    values; and a reworded tooltip must not make every stored description
+    suspect.  A fingerprint that cried wolf would be turned off, and then the
+    row it guards would be worth nothing."""
+    edited = _catalogue_with(old, new)
+    assert schema_fingerprint("siesta") == schema_fingerprint("siesta", edited)
 
 
-def test_adding_a_field_changes_the_fingerprint():
-    before = schema_fingerprint(_variant())
-    md = {"category": ("method",), "workflow_group": "stage"}
-    two = dataclasses.make_dataclass("C2", [
-        ("x", int, dc_field(default=3, metadata={**md, "range": (1, 10)})),
-        ("y", int, dc_field(default=1, metadata=md)),
-    ])
-    assert schema_fingerprint(two) != before
+def test_a_change_to_ONE_engine_leaves_the_other_alone():
+    """Per engine, not per file (§ 10).  A task names one engine, so a digest
+    over all 82 catalogue items would make a PySCF change invalidate every
+    SIESTA description — and a check that cries wolf gets ignored."""
+    edited = _catalogue_with("default = 300.0", "default = 450.0")
+    edited = edited.replace('choices = ["RKS", "UKS", "RHF", "UHF"]',
+                            'choices = ["RKS", "UKS"]', 1)
+    assert schema_fingerprint("pyscf") != schema_fingerprint("pyscf", edited)
+    assert schema_fingerprint("siesta") == schema_fingerprint("siesta", edited)
+
+
+def test_removing_an_item_changes_the_fingerprint():
+    """A parameter that left the catalogue is the loudest shape change there
+    is: a stored description names something that no longer exists."""
+    from molbuilder.template import load_catalogue
+    text = load_catalogue()
+    head, _, rest = text.partition("[item.mesh_cutoff]")
+    trimmed = head + rest[rest.index("[item."):]
+    assert schema_fingerprint("siesta") != schema_fingerprint("siesta", trimmed)
 
 
 def test_an_absent_fingerprint_matches_anything():

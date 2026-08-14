@@ -151,13 +151,14 @@ def _fingerprint_row(task, cls) -> List[Issue]:
     """
     from ..template import fingerprint_matches, schema_fingerprint
 
-    if fingerprint_matches(cls, task.schema_fingerprint):
+    if fingerprint_matches(task.engine, task.schema_fingerprint):
         return []
     return [Issue(
         "warn",
         f"this description was written against a different {task.engine} "
         f"schema (it records {task.schema_fingerprint!r}; this backend's is "
-        f"{schema_fingerprint(cls)!r}). The per-field checks below still run, "
+        f"{schema_fingerprint(task.engine)!r}). The per-field checks below "
+        f"still run, "
         f"so a field that moved will be named -- this only says the shape is "
         f"not the one it was written for",
         where="task.schema_fingerprint")]

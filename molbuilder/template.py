@@ -519,7 +519,19 @@ def declarations_for(config_cls) -> List[Item]:
 FINGERPRINT_VERSION = "1"
 
 
-def schema_fingerprint(config_cls) -> str:
+def _schema_items(engine, catalogue: str = "") -> List["Item"]:
+    """The catalogue's items for *engine* — the schema, as § 4.3 defines it.
+
+    Accepts an engine name or a config class, so callers holding either can ask
+    without first working out the other.  *catalogue* overrides the shipped
+    file, which is the seam a test uses to ask *"does editing the catalogue move
+    the digest?"* without editing the shipped one.
+    """
+    name = engine if isinstance(engine, str) else _engine_name(engine)
+    return select(read_template(catalogue or load_catalogue()), engine=name)
+
+
+def schema_fingerprint(engine, catalogue: str = "") -> str:
     """A short, stable digest of the shape a description was written against.
 
     ``task.json`` carries one (`engines/stages.md` § 6.6), and the preflight's
@@ -545,9 +557,21 @@ def schema_fingerprint(config_cls) -> str:
     **The recipe is unchanged from the item-block era on purpose.** Every
     fingerprint already stored in a ``task.json`` was computed by it, and
     altering the recipe would invalidate all of them at once for no gain.
+
+    *engine* is an engine NAME, or a config class (whose engine is taken from
+    it). **What changed on 2026-08-14 is the SOURCE, not the recipe**: the
+    digest is computed from the CATALOGUE's items for that engine, because the
+    catalogue is the schema (§ 4.3). It read the config class until then — the
+    inverted direction surviving inside one function — so editing the
+    catalogue, which is how a parameter changes now, moved nothing and every
+    stored fingerprint kept matching while the shape underneath it changed.
+
+    **Per engine, not per file.** A task names one engine; a digest over the
+    whole catalogue would make a PySCF change invalidate every SIESTA
+    description, and a check that cries wolf gets ignored.
     """
     parts: List[str] = [f"v{FINGERPRINT_VERSION}"]
-    for d in sorted(declarations_for(config_cls), key=lambda d: d.name):
+    for d in sorted(_schema_items(engine, catalogue), key=lambda d: d.name):
         rng = f"{d.range[0]},{d.range[1]}" if d.range else ""
         choices = "|".join(d.choices) if d.choices else ""
         parts.append(f"{d.name}:{d.type}:{rng}:{choices}:{int(d.optional)}")
@@ -555,7 +579,7 @@ def schema_fingerprint(config_cls) -> str:
     return digest[:16]
 
 
-def fingerprint_matches(config_cls, recorded: str) -> bool:
+def fingerprint_matches(engine, recorded: str) -> bool:
     """Whether *recorded* is this schema's fingerprint.
 
     An **empty** recorded fingerprint matches anything: a description written
@@ -564,7 +588,7 @@ def fingerprint_matches(config_cls, recorded: str) -> bool:
     """
     if not recorded:
         return True
-    return recorded == schema_fingerprint(config_cls)
+    return recorded == schema_fingerprint(engine)
 
 
 # --------------------------------------------------------------------- #
@@ -701,8 +725,11 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
         )
         for it in select(parsed, engine=eng)
     ]
-    return _emit(items, engines=(eng,), fingerprint=parsed.fingerprint,
-                 title=title)
+    # § 10: stamped with the CATALOGUE's digest for this engine.  The
+    # catalogue's own `fingerprint` is empty -- it IS the schema, so it
+    # makes no claim about having been written against one.
+    return _emit(items, engines=(eng,),
+                 fingerprint=schema_fingerprint(eng), title=title)
 
 
 def _emit(items, *, engines, fingerprint: str, title: str = "") -> str:

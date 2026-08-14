@@ -171,7 +171,7 @@ def build_description(
     # copy, and so would every field added after it.
     import dataclasses as _dc
     stamped = _dc.replace(task,
-                          schema_fingerprint=schema_fingerprint(type(cfg)))
+                          schema_fingerprint=schema_fingerprint(engine))
     return Description(task=stamped, template=text,
                        pseudo_species=tuple(pseudo_species))
 

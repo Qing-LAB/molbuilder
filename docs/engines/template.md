@@ -1121,8 +1121,19 @@ takes it from there.
 
 > **`fingerprint` is what says the schema has moved.** It is a short digest of
 > the *shape* a description was written against — each parameter's name, type,
-> bounds and enum members — and it is computed by whatever writes the template,
-> because that is the moment the schema is in hand. It deliberately excludes
+> bounds and enum members — **computed from the CATALOGUE's items for that
+> engine** (§ 4.3), because the catalogue is the schema. A calculation's
+> template carries the digest of the catalogue it was written from, so a
+> template written before a parameter was retyped, re-bounded or removed says so.
+>
+> ⚠ **It was computed from the CONFIG CLASS until 2026-08-14** — the inverted
+> direction surviving inside one function. That made the digest an assertion
+> about Python rather than about the parameter catalogue, so editing the
+> catalogue (which is how a parameter changes now) moved nothing, and every
+> stored fingerprint kept matching while the shape underneath it changed.
+>
+> **Per engine, not per file.** A task names one engine, so a digest over all 82
+> catalogue items would make a PySCF change invalidate every SIESTA description. It deliberately excludes
 > defaults and all presentation, so a reworded help line does not make every
 > stored description suspect. A template whose fingerprint no longer matches is
 > **reported, not refused** ([`stages.md`](?doc=engines/stages.md) § 6.6): it
