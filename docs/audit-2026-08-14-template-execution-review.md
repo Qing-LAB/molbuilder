@@ -865,3 +865,93 @@ That makes the fix smaller and more obvious than § 12.2 implied: `prep_jobset`'
 three internal steps want naming rather than numbering (*render the launchers ·
 materialize · link them in*), leaving the digits to mean one thing in this file.
 
+---
+
+## 18 · Fix-ready detail — the exact text, for the findings recorded as table rows
+
+**Why this section exists.** §§ 3 and 4 are tables, and a table row is enough to
+*remember* a finding and not enough to *act* on one — whoever picks it up would
+re-read a thousand lines to find the string. Each entry below carries the exact
+text as it stands, what it should say, and the check that proves the fix.
+Everything here was read this pass; nothing needs re-deriving.
+
+### 18.1 · `engines/template.md` § 6.3 — the example that does not parse (§ 3.1)
+
+**As it stands**, inside the `[item.mesh_cutoff]` block of § 6.3's TOML example:
+
+```toml
+[item.mesh_cutoff]
+kind     = "engine"
+category = "accuracy"
+category = "accuracy"        # <- the duplicate; TOML forbids it
+engines  = ["siesta"]
+anchor   = "MeshCutoff"
+value    = 300
+unit     = "Ry"
+```
+
+**Fix:** delete one `category` line. **Also fix in the same block:** `value =
+300` is an int, while § 4.2's example of the *same item* writes `300.0`
+(§ 3.3) — make it `300.0`, since the field is a float and `_shape` does not
+widen ints for a `float` type.
+
+**Check:** `tomllib.loads()` the fenced block. It currently raises; it should
+parse, and `parsed["item"]["mesh_cutoff"]["value"]` should be a `float`.
+
+### 18.2 · `engines/template.md` § 12 — the `block_size` example (§ 3.2)
+
+**As it stands**, the example carries `kind`, `anchor`, `type`, `range`,
+`group`, `help` — and **no `category`**, which § 3 lists among the four keys
+required on every item.
+
+**Fix:** add `category = "execution"` — the value § 6.2's own table assigns to
+`block_size` in its SIESTA column.
+
+**Check:** the same fenced-example test as 18.1, asserting `_REQUIRED_ITEM_KEYS`
+⊆ the parsed keys.
+
+### 18.3 · `engines/template.md` § 5 — `section` residue (§ 3.4)
+
+Two places, after the key table already marks `section` **RETIRED at `@2`**:
+
+1. the mermaid node `G["group · section"]` — should be `G["group"]`;
+2. the ⭐ note beginning *"`label`, `section` and `null_label` were added
+   2026-08-11"* — historically true, reads as current. Suggest: *"…`label`,
+   `category` (then `section`) and `null_label`…"*, or leave the history and
+   add *"(`section` was retired at `@2` — § 6.2)"*.
+
+> **⚠ Do not sweep `section` globally.** It is retired in the **template** and
+> **live in the FORM** (`web/form-schema.md` § 1a drives `dataclass_to_form_
+> schema` off it, and every config field still carries one). Same word, two
+> mechanisms — § 0's index flags this and it is the easiest thing here to get
+> wrong.
+
+### 18.4 · `molbuilder/template.py` — the residue list (§ 4), with exact anchors
+
+| what | the text as it stands | what to do |
+|---|---|---|
+| dead `dict` branch | in `_toml_value`: `if isinstance(v, dict):` with the comment *"An inline table … Keys are element symbols"* | delete both. No member of `TYPES` yields a dict since `strmap` retired; the comment describes the retired `ecp` map |
+| stale claim | in `config_from_template`: *"The WRITE side never emits these (`declaration_for` returns None for an allocation-tagged field)"* | false since `@2` — it returns a **valueless item**. The check below it is still correct; rewrite the reason as *"the write side emits these valueless, so a VALUE here is a hand edit"* |
+| doubled explanation | `declaration_for`'s docstring paragraph beginning *"`None` means excluded by § 7's named rows … never by a missing `section`"*, plus the comment ten lines below beginning *"NO section gate (U16, 2026-08-12)"* | keep one. The comment is the better home (it sits where the gate was); the docstring should say only what `None` means |
+| compat shim | `Template.engine: str` with *"engines[0] — the @1 spelling, kept for callers"* | governed by the project's *rename = delete old everywhere, pre-1.0 break cleanly* rule, **not** by the template contract. Removing it means updating `one()`'s KeyError message and any caller reading `t.engine` |
+| wrong field in a message | `one()`'s `KeyError`: `f"no item {name!r} in this template (engines={t.engine!r})"` | says `engines=`, interpolates the singular. Either `t.engines` or relabel to `engine=` |
+
+### 18.5 · The two gates § 11 proposes, specified enough to write
+
+**Gate A — fenced examples parse and satisfy their own schema.** Walk every
+```` ```toml ```` block in `engines/template.md`; `tomllib.loads` it; for each
+`[item.*]` table assert `_REQUIRED_ITEM_KEYS` ⊆ its keys and `type` ∈ `TYPES`.
+Catches 18.1, 18.2, and anything of that shape added later. *(Scope it to
+`template.md` first — other docs' fenced TOML is not all templates.)*
+
+**Gate B — an enumerated field list in prose matches the dataclass.** The
+instances found: `job-contracts.md` § 6.2 names the nine `Resources` fields
+(already tested — this is the model), `job-system.md` § 3's class diagram and
+§ 3.1's example do not. A general form is hard; a specific one is not — assert
+that every field of `Resources` appears in `job-system.md` § 3.1's example
+block, which is the copy that drifted.
+
+> **Order matters:** Gate A and B resolve §§ 3, 7.1, 9.2 and part of § 2
+> mechanically. Running them before the next reading pass turns roughly a third
+> of this report into a test run.
+
