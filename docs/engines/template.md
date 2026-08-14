@@ -74,13 +74,23 @@ The template is a **floor 2 — description** object
 
 **Floor 2's *must never* is: name a machine.** So:
 
-- **No item may be a machine fact.** A rank count, a GPU count, a queue, a
-  partition, a wall-time — none of these is a parameter of the calculation. They
-  are resolved at `prep` step 1 on the machine that will run the job (floor 1),
-  and a description carrying one would not be portable **(G1)**.
+- **No item may carry a machine fact's VALUE.** How many ranks this job got,
+  which queue it landed in, what wall-time it was granted — none of those is a
+  parameter of the calculation. They are resolved at `prep` step 1 on the machine
+  that will run the job (floor 1), and a description asserting one would not be
+  portable **(G1)**.
+
+  **The item may still be declared, valueless** (§ 6.4), because a person *may*
+  ask for 8 ranks or prefer a GPU — and by the test recorded at the bottom of
+  this section, *"may a person?"* is the criterion. A surface needs to know the
+  question exists in order to ask it; the wrapper writer needs to know to look.
+  What a reader **refuses** is a `value` on such an item: that is the failure
+  this rule was written against — a hand-edited `mpi_np` once passed and a deck
+  rendered for a rank count the allocation never granted. Declaring the question
+  is portable; answering it on the wrong machine is not.
 - **But a parameter molbuilder can *propose* a value for is still an item.**
-  `BlockSize` is the case that makes the distinction sharp: a rank count is a
-  machine fact and never an item, while `BlockSize` is an ordinary SIESTA keyword
+  `BlockSize` is the case that makes the distinction sharp: a rank count's VALUE
+  is a machine fact, while `BlockSize` is an ordinary SIESTA keyword
   a person may set, benchmark, or leave to the engine
   ([`tuning.md § 2.11`](?doc=engines/tuning.md)). It is an item with **no
   `value`** until somebody supplies one — which is exactly what *"a missing
@@ -217,12 +227,13 @@ does.** A template is a few hundred lines read once per `prep`.
 
 ```toml
 # BDT on Au(111) — geometry relaxation.
-schema      = "molbuilder/template@1"
-engine      = "siesta"
+schema      = "molbuilder/template@2"
+engines     = ["siesta"]
 fingerprint = "8f3a1c2d5e6b7a90"
 
 [item.mesh_cutoff]
 kind    = "engine"
+category = "accuracy"
 anchor  = "MeshCutoff"
 type    = "float"
 value   = 300.0
@@ -237,6 +248,7 @@ Tier ladder: 150 screening · 300 publishable · 500 tight."""
 
 [item.diag_algorithm]
 kind    = "engine"
+category = "execution"
 anchor  = "Diag.Algorithm"
 type    = "enum"
 choices = ["ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
@@ -249,6 +261,7 @@ the wrapper activates, so this value leaves the deck and reaches the launch."""
 
 [item.species_order]
 kind    = "deck"
+category = "system"
 expands = ["ChemicalSpeciesLabel"]
 type    = "strlist"
 value   = ["C", "H", "S", "Au"]
@@ -258,6 +271,7 @@ every coordinate on the wrong atom (run-identity.md § 4)."""
 
 [item.frozen_indices]
 kind    = "deck"
+category = "system"
 expands = ["Geometry.Constraints"]
 type    = "intlist"
 value   = [88, 89, 90, 91]
@@ -268,6 +282,7 @@ is authoritative (engines/overview.md § 3, stage 1)."""
 
 [item.continue_retries]
 kind    = "wrapper"
+category = "execution"
 type    = "int"
 value   = 1
 default = 1
@@ -276,6 +291,7 @@ help    = "How many times the run wrapper retries a stage that did not converge.
 
 [item.user_custom]
 kind  = "deck"
+category = "method"
 type  = "text"
 value = """
 SaveElectrostaticPotential   .true."""
@@ -300,7 +316,7 @@ never validated by molbuilder (§ 9.2)."""
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
 | `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
-| `section` | which **fieldset** it belongs to — *"Compute & budget"*. A UI groups by it; a section-less item is still an item (§ 7's membership is TOTAL — *"also what makes a field exposed at all"* stood here against § 7 until 2026-08-12; `species_order` is section-less and shipped) |
+| ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
 | `range` · `unit` · `choices` · `group` | bounds, label, enum members, and whether *vary per stage* starts ticked |
 | `help` | what this is, in prose. Multi-line is ordinary TOML |
@@ -474,6 +490,7 @@ the other's value.
 [item.mesh_cutoff]
 kind     = "engine"
 category = "accuracy"
+category = "accuracy"
 engines  = ["siesta"]        # SIESTA only; a PySCF surface never shows it
 anchor   = "MeshCutoff"
 value    = 300
@@ -553,7 +570,7 @@ Three things are **not** items, each excluded by a rule that already exists:
 
 | not an item | why | where it lives instead |
 |---|---|---|
-| **a machine fact** — ranks, GPUs, queue, partition, wall time | floor 2 must never name a machine (§ 2, G1) | resolved at `prep`, from `environment.json` and `molbuilder.json` |
+| **a machine fact's VALUE** — how many ranks this job got, which queue, what wall time | floor 2 must never *assert* a machine (§ 2, G1) | resolved at `prep`, from `environment.json` and `molbuilder.json`. The **item** may be declared (§ 6.4) so a surface can ask and the wrapper writer knows to look; writing a `value` to one is what a reader **refuses** |
 | **the ladder** — the list of stages | an item is a parameter; a list of stages is the mission | `task.json` ([`stages.md`](?doc=engines/stages.md) § 1.1) |
 | **the structure** — which atoms exist, and their labels | an input to the calculation, never edited by the generator, and it travels as its own file (§ 9.1) | the data files ([`project-layout.md`](?doc=execution/project-layout.md) § 2.1) |
 
@@ -865,9 +882,15 @@ string `ELPA`, which is what it does today.
 *"prep whose parameters are a set rather than a point"* — several rank counts
 over the same science.
 
-**The template does not change and does not know.** A rank count is a machine
-fact (§ 7), so the sweep varies an input to `prep`, never an item. That is why a
-benchmark needs no new file: the science is already written down once.
+**The template does not change and carries no rank count.** A rank count's
+*value* is a machine fact (§ 7), so the sweep varies an input to `prep`; the
+item itself may be declared but stays valueless (§ 6.4), and a sweep never
+writes one. That is why a benchmark needs no new file: the science is already
+written down once, and the axis being swept was never part of it.
+
+**What the benchmark DOES read from the template is `category="execution"`** —
+the knobs that change speed and not the answer (§ 6.2). That is the sweepable
+set, and it is a filter rather than a maintained list.
 
 ### 11.5 You open the file before submitting a week of compute
 
