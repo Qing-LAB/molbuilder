@@ -3306,3 +3306,78 @@ diagonal molbuilder stores, not the parameter SIESTA takes.
 > **Step 1 is a READ, and it is the one nobody has done** -- this section is
 > the first time the four forms have been listed together. Everything after it
 > is a decision that needs that reading first.
+
+---
+
+## 52 - CONTRACT QUEUE CLOSED -- C3, C4 and C6 ruled on the recommendations
+
+**User, 2026-08-14: "go ahead"** -- taken as agreement to the recommendations
+in SS 37.4, SS 41.6 and SS 35.5. Each is recorded with the reasoning that
+earned it, so a later reader can overturn it on the argument rather than on
+memory. **Where my confidence differs, SS 52.4 says so.**
+
+### 52.1 - C3 RULED: the template's declared `type` is the authority
+
+`_shape` widens for `type = "float"`, exactly as `effective_config` widens
+from the dataclass annotation today. **One rule, one implementation.**
+
+Chosen not for the deck text -- SIESTA reads `300` and `300.0` identically
+(measured, SS 37.3) -- but because **one rule with two implementations is the
+cost**, and this puts it where the vocabulary already lives. It also makes
+SS 25.1's move of `effective_config` a *simplification* rather than a
+relocation.
+
+### 52.2 - C4 RULED: build the config -> wrapper road
+
+`prep` passes the items whose `read_by` names the wrapper, from
+`element.values`, beside the allocation it already passes from
+`element.resources`. `_fdf_requests_gpu` survives as the **standalone**
+fallback -- `write_run_wrapper` is called directly on a bare deck outside
+`prep`, which is why every parameter is Optional.
+
+Chosen because **a user's decision should reach the layer that acts on it by
+being handed over, not recovered from a rendered file** (SS 41.4) -- and
+because it is the only option under which `read_by` is a mechanism rather than
+a declaration nothing reads.
+
+**Also part of C4:** `stages.md` SS 4's *"nothing in molbuilder can parse an
+`.fdf`"* gains the qualifier SS 42.2 drafted -- *no general FDF reader; targeted
+reads of a named keyword or a reserved block are a different thing.* Without
+it, the contract forbids by wording the thing C4 just permitted by intent.
+
+### 52.3 - C6 RULED: FORMAT is the template's, CONTENT comes by registry
+
+| half | ruling |
+|---|---|
+| **C6a -- format** | the **template** carries the block format: markers, comment prefix, how a payload line is quoted (SS 35.5, user). It is engine-specific and structure-independent, which are the two properties that make something an item |
+| **C6b -- content** | the **registry** pattern, extended from `annotations_fdf` to cover regions and the frozen set, so no deck writer carries those names |
+
+C6b is chosen because that half **already passes `generator.md` SS 7's seam
+test** -- adding an annotation channel adds a strategy and edits no shared
+file -- while the hard-coded half does not. It extends a proven mechanism
+rather than inventing a second one.
+
+### 52.4 - Where my confidence differs, stated plainly
+
+| | confidence |
+|---|---|
+| **C3** | **high.** Measured, and the alternative duplicates existing logic |
+| **C4** | **high.** `prep` already passes eleven values; this is the twelfth, and the fallback keeps standalone use working |
+| **C6a** | **high.** The user stated it directly |
+| **C6b** | **medium -- the one to revisit.** The registry is proven for annotation *channels*, which are optional and self-describing. Regions and the frozen set are neither: they are always present and the deck writer must place them in a *specific* block. Extending the registry may be the right shape, or it may be that ATOM-METADATA is one payload rendered wholesale (SS 35.3's option 2). **Decide it against the real emitter when C6 is built, not now** |
+
+### 52.5 - The queue after this
+
+| | |
+|---|---|
+| C1 | ✅ ruled + landed. Two cosmetic leftovers: `expands` on merged items *(recommend: drop)*, `engines` explicit *(recommend: keep)* |
+| C2 | ✅ ruled |
+| **C3** | ✅ **ruled here** |
+| **C4** | ✅ **ruled here** |
+| C5 | in progress -- `stages.md` SS 4's clause is now part of C4 |
+| **C6** | ✅ **ruled here**, with C6b flagged for revisit at build time |
+
+**No contract question now blocks the work.** What remains before code is
+SS 51's k-grid read, which is a **science** question rather than a contract
+one -- and it decides what the k-grid item's `type` must be, so it comes
+before the writer.
