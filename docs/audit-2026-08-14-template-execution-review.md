@@ -3078,3 +3078,87 @@ plumbing was never finished.
 > not done, not because nobody wants it.** Two of the four "unused" vocabulary
 > members are now in that category -- which is the answer to SS 32's question
 > and leaves only `intlist` and the `monitor` kind genuinely open.
+
+---
+
+## 49 - `pow2`'s only parameter, and the `int3` / matrix question
+
+### 49.1 - Which parameters need the pow2 rule: **one**
+
+Measured across both schemas. Two fields mention powers of two:
+
+| | |
+|---|---|
+| **`parallel_block_size`** | the genuine case -- ScaLAPACK's distribution block, `_auto_block_size` caps to a power of two, PROVENANCE prints *"capped pow2"* |
+| `mpi_np` | its help mentions base-2, but it is **allocation-tagged and valueless in the template**, and rank counts are not strictly powers of two -- they follow the core count's divisors |
+
+**So `pow2` exists for exactly one field.** That is `strmap`'s shape -- and
+this time it is *correct*: SS 5's stated purpose for `type` is a constraint
+**a parser cannot see**, and *"is a power of two"* is precisely that. A
+one-field type is not automatically wrong; a one-field type that models
+**storage** (`strmap`) is.
+
+### 49.2 - `int3` models MOLBUILDER's simplification, not SIESTA's parameter
+
+*(User: "for kgrid and unit_cell ... can we just make a matrix?")*
+
+**SIESTA's k-grid is a matrix.** The emitted block, from a real deck:
+
+```
+%block kgrid_Monkhorst_Pack
+1 0 0 0.0
+0 1 0 0.0
+0 0 1 0.0
+%endblock kgrid_Monkhorst_Pack
+```
+
+A **3x3 integer matrix plus a displacement column** -- the general
+Monkhorst-Pack form, which allows non-diagonal supercell sampling. molbuilder
+exposes **only the three diagonal entries**, as `int3`.
+
+> **So `int3` is the same defect shape as `strmap`:** a type that models what
+> molbuilder happens to store rather than the question the engine asks. The
+> difference is that `strmap` narrowed a question into a storage blob, while
+> `int3` narrows a matrix into its diagonal -- **a capability silently not
+> offered**, which SS 7's *"a keyword molbuilder does not model is work not
+> done yet"* names exactly.
+
+### 49.3 - Is the cell a parameter? Today: **no, and by an explicit rule**
+
+Measured: neither config has a cell field. It lives on `Structure` --
+`cell`, `pbc`, `axis_kind`, `vacuum`, `cell_origin` -- and
+`generator.md` SS 10.2 makes that a **class-2 structure fact**: *"the cell, the
+vacuum, frozen atoms and regions live on the structure, not in any engine's
+config -- one structure, every surface seeing the same facts."*
+
+**The user's instinct that it should be a parameter is not obviously wrong,
+and it is a contract decision:**
+
+| | |
+|---|---|
+| **stays a structure fact** *(today)* | one home, travels with the structure + sidecar, `cell.py` resolves it once. A template item would put the same fact in two files -- the duplication SS 4.1 rejects |
+| **becomes a parameter** | a user could set or override it per calculation -- strain, a different vacuum, a fixed lattice -- without editing the structure. But then which wins when they disagree, and does a relaxed cell flow back? |
+
+**The question underneath is whether the cell is *geometry* or a *setting*.**
+Atom positions are unambiguously geometry and nobody proposes templating them.
+The cell is geometry too -- but unlike positions it can be **unset and
+resolved** (vacuum -> box), and a resolution is a decision, which is what
+makes it feel parameter-like.
+
+### 49.4 - What a `matrix` type would need, if it lands
+
+| use | shape | element |
+|---|---|---|
+| k-grid | 3x3 **+ a 3-vector displacement** | int (matrix), float (displacement) |
+| cell | 3x3 | float |
+
+**They are not the same shape**, so one `matrix` type needs shape and element
+declared per item -- more machinery than `int3`. Worth it **only if the
+general k-grid form is actually offered**; if molbuilder stays diagonal-only,
+`int3` is honest and `matrix` is speculative.
+
+> **So SS 49.2 is the question to answer first, and it is a science one:**
+> does molbuilder want to offer non-diagonal Monkhorst-Pack sampling? If yes,
+> `int3` must go and `matrix` earns its place. If no, `int3` is correct and
+> the contract should **say** that only the diagonal form is offered -- which
+> today it does not.
