@@ -155,7 +155,6 @@ def build_description(
         varies=(varies_for(s.overrides for s in ladder) if ladder else None),
         stages=(ladder or None),
         calculation=calculation,
-        schema_fingerprint="",
     )
 
     _check(task, cfg, generators=generators)
@@ -164,15 +163,7 @@ def build_description(
     # engine, carrying the values `cfg` holds.  The questions were asked by the
     # catalogue; `describe` supplies the answers, exactly as a surface does.
     text = template_with_values(cfg, engine=engine)
-    from .template import schema_fingerprint
-    # dataclasses.replace, NOT a re-listed constructor (U0, 2026-08-13):
-    # the re-listing that stood here silently DROPPED any field it did not
-    # name -- the `calculation` key would have been lost on the stamped
-    # copy, and so would every field added after it.
-    import dataclasses as _dc
-    stamped = _dc.replace(task,
-                          schema_fingerprint=schema_fingerprint(engine))
-    return Description(task=stamped, template=text,
+    return Description(task=task, template=text,
                        pseudo_species=tuple(pseudo_species))
 
 

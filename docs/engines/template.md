@@ -177,7 +177,7 @@ and the template is not.
 
 ## 3. Must-haves — what makes a file a valid template
 
-**Three keys at the top, and four on every item.** A reader that finds one
+**Two keys at the top, and four on every item.** A reader that finds one
 missing **refuses and says which**; it never guesses, and it never silently
 drops the item.
 
@@ -185,7 +185,6 @@ drops the item.
 schema      = "molbuilder/template@2"   # REQUIRED — what this file is
 engines     = ["siesta"]                # REQUIRED — which engines this
                                         #   calculation can run on (§ 6.3)
-fingerprint = "8f3a1c2d5e6b7a90"        # REQUIRED (may be "") — see § 10
 ```
 
 > **`engines` replaced the single `engine` key at `@2`.** A template describes a
@@ -199,7 +198,6 @@ fingerprint = "8f3a1c2d5e6b7a90"        # REQUIRED (may be "") — see § 10
 |---|---|
 | `schema` | the `@major` convention ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6): a higher major makes an old reader **refuse rather than guess** |
 | `engines` | which schemas the items belong to. Without it a reader cannot know which config class to rebuild, and would have to infer it from the item names. A reader given an engine not in this list refuses rather than returning an empty catalogue — *"this calculation does not run on that engine"* and *"no items matched"* are different answers |
-| `fingerprint` | the shape the values were written against. **An empty string is legal** and means *makes no claim* — a hand-written template is not wrong, it simply asserts nothing (§ 10) |
 
 **On every item — four required keys**, and each earns *required* by a goal:
 
@@ -270,7 +268,6 @@ does.** A template is a few hundred lines read once per `prep`.
 # BDT on Au(111) — geometry relaxation.
 schema      = "molbuilder/template@2"
 engines     = ["siesta"]
-fingerprint = "8f3a1c2d5e6b7a90"
 
 [item.mesh_cutoff]
 kind    = "engine"
@@ -1119,27 +1116,33 @@ file is what once made *"is the template lossless?"* unanswerable.
 value is stored once, in the vocabulary the schema defines, and every reader
 takes it from there.
 
-> **`fingerprint` is what says the schema has moved.** It is a short digest of
-> the *shape* a description was written against — each parameter's name, type,
-> bounds and enum members — **computed from the CATALOGUE's items for that
-> engine** (§ 4.3), because the catalogue is the schema. A calculation's
-> template carries the digest of the catalogue it was written from, so a
-> template written before a parameter was retyped, re-bounded or removed says so.
+> ### ⛔ `fingerprint` is RETIRED — deleted 2026-08-14
 >
-> ⚠ **It was computed from the CONFIG CLASS until 2026-08-14** — the inverted
-> direction surviving inside one function. That made the digest an assertion
-> about Python rather than about the parameter catalogue, so editing the
-> catalogue (which is how a parameter changes now) moved nothing, and every
-> stored fingerprint kept matching while the shape underneath it changed.
+> A template used to carry a digest of the *shape* it was written against, and
+> the preflight compared it. **It is gone, and the file has two top-level keys
+> rather than three.**
 >
-> **Per engine, not per file.** A task names one engine, so a digest over all 82
-> catalogue items would make a PySCF change invalidate every SIESTA description. It deliberately excludes
-> defaults and all presentation, so a reworded help line does not make every
-> stored description suspect. A template whose fingerprint no longer matches is
-> **reported, not refused** ([`stages.md`](?doc=engines/stages.md) § 6.6): it
-> names parameters that still exist, with values that may no longer be legal.
-> An **empty** fingerprint matches anything — a template written by hand makes
-> no claim, and that is not an error.
+> **What it was worth, measured:** one writer (`describe`), one reader (the
+> preflight), and the reader emitted a **warning that never blocked anything**.
+> [`stages.md`](?doc=engines/stages.md) § 6.6 said as much in its own words —
+> *"the fingerprint's claim is deliberately weak. One string can say* this was
+> written against a different schema*; it cannot say which fields moved. The
+> per-field rows do that work."*
+>
+> **So it announced that something had changed, less usefully than the checks
+> that ran immediately after it and named the parameter.** The only case it
+> could catch alone was a shape change to a parameter the description does not
+> set — which cannot affect that description, because it does not set it.
+>
+> **The family it belonged to** (audit § 11, pattern 1): a reader built without
+> a writer, or a mechanism kept because it exists rather than because something
+> depends on it. `RUNTIME_INFO_KEYS` imported by nothing, `read_by` declared on
+> zero fields, `resolver` declared on zero fields. This one had both halves and
+> still earned nothing.
+>
+> *(A version of it was moved onto the catalogue earlier the same day — the
+> right source for a measurement worth taking. Asking whether it was worth
+> taking came second, which is the wrong order.)*
 
 ---
 

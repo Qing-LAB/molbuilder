@@ -205,7 +205,7 @@ class Item:
 
     #: Whether *unset* is a state this item has at all. Not written to the
     #: file — it is recoverable from the schema and is carried here because
-    #: :func:`schema_fingerprint` has always included it.
+    #: a surface needs it to know whether *unset* is offerable.
     optional: bool = False
 
     def __post_init__(self) -> None:
@@ -239,7 +239,6 @@ class Item:
 class Template:
     """A parsed template: the three top-level keys, and the items in order."""
     engine: str                     # engines[0] -- the @1 spelling, kept for callers
-    fingerprint: str
     #: Every engine this calculation can run on (§ 6.3).  ``engine`` above is
     #: its first element; a @1 file yields a one-element list.
     engines: Tuple[str, ...] = ()
@@ -511,87 +510,6 @@ def declarations_for(config_cls) -> List[Item]:
 
 
 # --------------------------------------------------------------------- #
-#  The schema fingerprint                                               #
-# --------------------------------------------------------------------- #
-
-#: Bumped when the fingerprint's *recipe* changes, so an old fingerprint is
-#: recognisably old rather than merely different.
-FINGERPRINT_VERSION = "1"
-
-
-def _schema_items(engine, catalogue: str = "") -> List["Item"]:
-    """The catalogue's items for *engine* — the schema, as § 4.3 defines it.
-
-    Accepts an engine name or a config class, so callers holding either can ask
-    without first working out the other.  *catalogue* overrides the shipped
-    file, which is the seam a test uses to ask *"does editing the catalogue move
-    the digest?"* without editing the shipped one.
-    """
-    name = engine if isinstance(engine, str) else _engine_name(engine)
-    return select(read_template(catalogue or load_catalogue()), engine=name)
-
-
-def schema_fingerprint(engine, catalogue: str = "") -> str:
-    """A short, stable digest of the shape a description was written against.
-
-    ``task.json`` carries one (`engines/stages.md` § 6.6), and the preflight's
-    only **non-refusal** row is *"the schema fingerprint matches"* — a
-    description written when ``mesh_cutoff`` was bounded [50, 2000] and read
-    after it became [50, 800] names a field that still exists and a value that
-    is no longer legal, which is worth saying out loud rather than discovering
-    at the engine.
-
-    What goes in is what a *description* can depend on: the field's name, its
-    declaration type, its bounds, its enum members, and whether unset is a state
-    it has. Deliberately NOT included:
-
-      * **the default** — a template records the value in use, so changing a
-        default cannot invalidate a description that already carries values;
-      * **help text, labels, units, ``group``, ``category``** — presentation. A
-        reworded tooltip must not make every stored description suspect, and a
-        fingerprint that cried wolf would be turned off.
-
-    So it changes when a field is added, removed, retyped, re-bounded, or has
-    its choices changed — and not otherwise.
-
-    **The recipe is unchanged from the item-block era on purpose.** Every
-    fingerprint already stored in a ``task.json`` was computed by it, and
-    altering the recipe would invalidate all of them at once for no gain.
-
-    *engine* is an engine NAME, or a config class (whose engine is taken from
-    it). **What changed on 2026-08-14 is the SOURCE, not the recipe**: the
-    digest is computed from the CATALOGUE's items for that engine, because the
-    catalogue is the schema (§ 4.3). It read the config class until then — the
-    inverted direction surviving inside one function — so editing the
-    catalogue, which is how a parameter changes now, moved nothing and every
-    stored fingerprint kept matching while the shape underneath it changed.
-
-    **Per engine, not per file.** A task names one engine; a digest over the
-    whole catalogue would make a PySCF change invalidate every SIESTA
-    description, and a check that cries wolf gets ignored.
-    """
-    parts: List[str] = [f"v{FINGERPRINT_VERSION}"]
-    for d in sorted(_schema_items(engine, catalogue), key=lambda d: d.name):
-        rng = f"{d.range[0]},{d.range[1]}" if d.range else ""
-        choices = "|".join(d.choices) if d.choices else ""
-        parts.append(f"{d.name}:{d.type}:{rng}:{choices}:{int(d.optional)}")
-    digest = hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
-    return digest[:16]
-
-
-def fingerprint_matches(engine, recorded: str) -> bool:
-    """Whether *recorded* is this schema's fingerprint.
-
-    An **empty** recorded fingerprint matches anything: a description written
-    before this existed, or by hand, is not wrong — it simply makes no claim,
-    and § 6.6 lists this as the one row that does not refuse.
-    """
-    if not recorded:
-        return True
-    return recorded == schema_fingerprint(engine)
-
-
-# --------------------------------------------------------------------- #
 #  Writing                                                              #
 # --------------------------------------------------------------------- #
 
@@ -725,14 +643,10 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
         )
         for it in select(parsed, engine=eng)
     ]
-    # § 10: stamped with the CATALOGUE's digest for this engine.  The
-    # catalogue's own `fingerprint` is empty -- it IS the schema, so it
-    # makes no claim about having been written against one.
-    return _emit(items, engines=(eng,),
-                 fingerprint=schema_fingerprint(eng), title=title)
+    return _emit(items, engines=(eng,), title=title)
 
 
-def _emit(items, *, engines, fingerprint: str, title: str = "") -> str:
+def _emit(items, *, engines, title: str = "") -> str:
     """Serialise items as a template file, and read the result back (§ 4.1).
 
     ``tomllib`` reads TOML and does not write it, so this is the only thing
@@ -742,7 +656,6 @@ def _emit(items, *, engines, fingerprint: str, title: str = "") -> str:
     payload = {
         "schema": SCHEMA,
         "engines": list(engines),
-        "fingerprint": fingerprint,
         "item": {it.name: _item_payload(it) for it in items},
     }
 
@@ -752,7 +665,6 @@ def _emit(items, *, engines, fingerprint: str, title: str = "") -> str:
             lines.append(f"# {ln}".rstrip())
     lines.append(f"schema      = {_toml_value(SCHEMA)}")
     lines.append(f"engines     = {_toml_value(list(engines))}")
-    lines.append(f"fingerprint = {_toml_value(fingerprint)}")
     for it in items:
         body = _item_payload(it)
         lines.append("")
@@ -848,12 +760,6 @@ def read_template(text: str) -> Template:
                 "have to infer it from their names (engines/template.md § 3)")
     engine = engines[0]
     engines_t = tuple(engines)
-    if "fingerprint" not in raw:
-        _refuse("missing required key 'fingerprint'. An EMPTY string is legal "
-                "and means 'makes no claim'; the key itself is required so "
-                "that silence is deliberate (engines/template.md § 3)")
-    fingerprint = str(raw.get("fingerprint") or "")
-
     table = raw.get("item") or {}
     if not isinstance(table, Mapping):
         _refuse(f"'item' must be a table of items, got "
@@ -898,8 +804,7 @@ def read_template(text: str) -> Template:
                 f"(engines = {list(engines_t)}). An item's `engines` narrows "
                 f"the file's list; it cannot widen it (engines/template.md "
                 f"§ 6.3)", where=_it.name)
-    return Template(engine=str(engine), fingerprint=fingerprint,
-                    engines=engines_t, items=items)
+    return Template(engine=str(engine), engines=engines_t, items=items)
 
 
 def _is_int(v) -> bool:
@@ -1185,7 +1090,7 @@ def config_from_template(text: str, config_cls):
 
     A field the template does not carry keeps the class default too: a template
     written against an older schema is **missing** fields, not wrong about them,
-    and the fingerprint is what says so.
+    and the per-field checks are what name the ones that moved.
     """
     known = template_fields(config_cls)
     # § 6.3: ONE file carries every engine the calculation can run on, so the
@@ -1231,12 +1136,10 @@ def config_from_template(text: str, config_cls):
 #: calls THE ONE READ API -- and the three closed vocabularies until
 #: 2026-08-14, so a surface wanting to order panels by the closed six had to
 #: hard-code them or reach past this line (audit § 1.5).
-__all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "FINGERPRINT_VERSION",
-           "CATEGORIES", "RESOLVERS", "ALLOCATION_RESOLVERS",
+__all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES", "RESOLVERS", "ALLOCATION_RESOLVERS",
            "Item", "Template",
            "declaration_for", "declarations_for",
            "select", "one",
-           "schema_fingerprint", "fingerprint_matches",
            "CATALOGUE", "load_catalogue", "template_with_values",
            "read_template", "config_from_template",
            "template_fields"]

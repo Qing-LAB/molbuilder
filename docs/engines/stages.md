@@ -621,9 +621,6 @@ rather than inventing a second mechanism.
            "id":   "BDT_Au_relax_Au38C6H4S2",         // = run_id(name, formula)
            "created": "2026-08-06T22:14:03-07:00" },  // for tracing, not identity
 
-  // Which schema the values were entered against — a witness, not a definition.
-  "schema_fingerprint": "sha256:1f0c9a3b7e2d4c5f6081a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
-
   // What this is a calculation OF: a reference into the tree, plus a witness of
   // what was there when it was written (§ 6.3).
   "structure": { "source": "projects/BDT-Au/structure/bdt_au.xyz",
@@ -797,7 +794,6 @@ In order, and all of it before anything is written:
 |---|---|
 | the schema string is `molbuilder/task@<known major>` | refuse — not a description, or not one this reader knows |
 | the engine is one this backend has a generator for | refuse, naming what it has |
-| the schema fingerprint matches | proceed, and say plainly it was written against a different schema |
 | every named field exists in the shared schema | refuse, naming the field |
 | no `overrides` key names a stage field (§ 2) | refuse, naming the field |
 | every stage `name` matches `[A-Za-z0-9_]+` | refuse, naming the stage and the rule |
@@ -817,25 +813,20 @@ In order, and all of it before anything is written:
   (`running-a-job.md § 2.2`). A third, hand-maintained list would only drift from
   what the deck actually asks for.
 
-**The fingerprint's claim is deliberately weak.** One string can say *this was
-written against a different schema*; it cannot say which fields moved. The
-per-field rows do that work.
-
-> **And it needs a writer, not only a reader** (noted 2026-08-07). Nothing in the
-> tree computes a schema fingerprint today, so a check with no producer either
-> never fires or always complains. **Whatever writes the template computes it** —
-> the template is the rendering of the schema's values, so the schema is in hand
-> at exactly that moment. A description whose
-> `schema_fingerprint` is absent is read without the warning rather than refused:
-> the row above is the only non-refusal in the preflight, and it stays that way.
+> ### ⛔ The schema-fingerprint row is RETIRED — deleted 2026-08-14
 >
-> **The browser cannot compute it**, which decides where it comes from: the
-> fingerprint is over a *Python* dataclass, and the tab has only the schema JSON.
-> So **the server sends it with the schema** (`GET /api/build/schema/<engine>`)
-> and the browser echoes it back into the description unchanged. That keeps one
-> producer for both surfaces — the CLI computes it directly, the browser is
-> handed the same value — rather than a second implementation in JavaScript that
-> would have to agree byte-for-byte with the first.
+> It was the preflight's only non-refusal: it reported that a description had
+> been written against a different schema, and proceeded. **The argument for
+> deleting it is the sentence that used to stand here** — *"the fingerprint's
+> claim is deliberately weak. One string can say* this was written against a
+> different schema*; it cannot say which fields moved. The per-field rows do
+> that work."*
+>
+> Every row below it names the parameter and the problem. The fingerprint
+> announced that something had moved, more vaguely, immediately before the
+> checks that said what. One writer, one reader, no refusal.
+> [`template.md`](?doc=engines/template.md) § 10 records the deletion, and
+> `task.json` no longer carries `schema_fingerprint`.
 
 **Why two of those rows are about names.** A stage name becomes a filename
 (§ 2), so a name outside the set or repeated between stages produces two decks

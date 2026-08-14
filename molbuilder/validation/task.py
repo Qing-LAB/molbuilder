@@ -97,7 +97,6 @@ def preflight(task, config_cls=None, *,
             where="task.shape"))
 
     # -- 2. the schema fingerprint -- the ONE non-refusal ------------------
-    out.extend(_fingerprint_row(task, cls))
 
     # -- 3. every named field exists in the schema ------------------------
     fields = {f.name: f for f in dataclasses.fields(cls)}
@@ -136,32 +135,6 @@ def _shipped() -> Dict[str, Any]:
     from ..config.pyscf import PySCFConfig
     from ..config.siesta import SiestaConfig
     return {"siesta": SiestaConfig, "pyscf": PySCFConfig}
-
-
-def _fingerprint_row(task, cls) -> List[Issue]:
-    """§ 6.6's only non-refusal: *proceed, and say plainly*.
-
-    **The claim is deliberately weak.** One string can say *this was written
-    against a different schema*; it cannot say which fields moved. The
-    per-field rows below do that work, and they run either way — so a stale
-    fingerprint is information, never a gate.
-
-    An **absent** fingerprint is read without the warning: a description
-    written by hand, or before this existed, makes no claim.
-    """
-    from ..template import fingerprint_matches, schema_fingerprint
-
-    if fingerprint_matches(task.engine, task.schema_fingerprint):
-        return []
-    return [Issue(
-        "warn",
-        f"this description was written against a different {task.engine} "
-        f"schema (it records {task.schema_fingerprint!r}; this backend's is "
-        f"{schema_fingerprint(task.engine)!r}). The per-field checks below "
-        f"still run, "
-        f"so a field that moved will be named -- this only says the shape is "
-        f"not the one it was written for",
-        where="task.schema_fingerprint")]
 
 
 def _names_exist(task, cls, fields) -> List[Issue]:

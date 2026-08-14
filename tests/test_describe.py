@@ -23,7 +23,7 @@ from molbuilder.config.siesta import SiestaConfig
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 from molbuilder.task import read_task
-from molbuilder.template import read_template, schema_fingerprint
+from molbuilder.template import read_template
 
 
 @pytest.fixture
@@ -218,18 +218,6 @@ def test_no_ladder_omits_both_keys_entirely(struct, cfg, tmp_path):
     D.write_description(_describe(struct, cfg, ()), tmp_path / "calc")
     raw = json.loads((tmp_path / "calc" / "task.json").read_text())
     assert "stages" not in raw and "varies" not in raw
-
-
-def test_the_fingerprint_is_stamped_and_matches_the_template(struct, cfg,
-                                                             tmp_path):
-    """Unit 4a's rule: whatever writes the template computes it.  The
-    description and the catalogue must agree, or the preflight's one
-    non-refusal row is comparing a number with nothing."""
-    D.write_description(_describe(struct, cfg), tmp_path / "calc")
-    task = read_task(tmp_path / "calc" / "task.json")
-    tpl = read_template((tmp_path / "calc" / "relax.template.toml").read_text())
-    assert task.schema_fingerprint == tpl.fingerprint == \
-        schema_fingerprint(SiestaConfig)
 
 
 def test_the_label_and_the_id_derive_from_the_name(struct, cfg):

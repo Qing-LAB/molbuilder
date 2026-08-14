@@ -16,7 +16,6 @@ from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.issues import ValidationError
 from molbuilder.task import Stage, StructureRef, Task, derive_run
-from molbuilder.template import schema_fingerprint
 from molbuilder.validation.task import preflight, refuse_on_error
 
 
@@ -65,7 +64,7 @@ def test_a_clean_description_produces_nothing():
     """The half that stops every other test here being vacuous."""
     assert preflight(_staged(
         {"mesh_cutoff": 300.0},
-        schema_fingerprint=schema_fingerprint(SiestaConfig))) == []
+        )) == []
 
 
 # --------------------------------------------------------------------- #
@@ -116,42 +115,8 @@ def test_flat_is_fine_on_a_one_process_engine():
 
 
 # --------------------------------------------------------------------- #
-#  Row 2 — the fingerprint, the ONE non-refusal                         #
 # --------------------------------------------------------------------- #
 
-def test_a_stale_fingerprint_warns_and_never_blocks():
-    """§ 6.6's only non-refusal: *proceed, and say plainly it was written
-    against a different schema*."""
-    [issue] = preflight(_task(schema_fingerprint="deadbeefdeadbeef"))
-    assert issue.severity == "warn"
-    assert issue.where == "task.schema_fingerprint"
-
-
-def test_a_matching_fingerprint_says_nothing():
-    assert preflight(_task(
-        schema_fingerprint=schema_fingerprint(SiestaConfig))) == []
-
-
-def test_an_absent_fingerprint_says_nothing():
-    """A description written by hand, or before this existed, makes no claim —
-    and hand-editing is supported (the plan's decision 3)."""
-    assert preflight(_task(schema_fingerprint="")) == []
-
-
-def test_the_per_field_rows_still_run_under_a_stale_fingerprint():
-    """**The fingerprint's claim is deliberately weak.**  One string can say
-    the shape moved; it cannot say which field.  If a stale fingerprint
-    short-circuited the per-field rows, the weak claim would be the only one a
-    user got."""
-    issues = preflight(_staged({"mesh_cutoff": 99999.0},
-                               schema_fingerprint="deadbeefdeadbeef"))
-    assert "task.schema_fingerprint" in _wheres(issues)
-    assert "config.mesh_cutoff" in _wheres(issues)
-
-
-# --------------------------------------------------------------------- #
-#  Row 3 — every named field exists in the schema                       #
-# --------------------------------------------------------------------- #
 
 def test_an_overrides_key_that_is_no_field_is_refused_by_name():
     [issue] = _override_findings(preflight(_staged({"mesh_cutof": 300.0})))
@@ -249,9 +214,9 @@ def test_refuse_on_error_raises_for_an_error():
 
 
 def test_refuse_on_error_passes_warnings_through():
-    """A stale fingerprint must not stop a produce — it is the one row that
+    """The preflight reports; it does not stop a produce — the one row that
     proceeds."""
-    issues = preflight(_task(schema_fingerprint="deadbeefdeadbeef"))
+    issues = preflight(_task())
     assert refuse_on_error(issues) == issues
 
 
@@ -288,7 +253,7 @@ def test_both_halves_of_the_split_are_written_down_in_task_py():
     # The docstring is hard-wrapped, so compare on collapsed whitespace --
     # otherwise this passes or fails on where a line happened to break.
     doc = " ".join((t.__doc__ or "").split())
-    for row in ("the engine has a generator", "the schema fingerprint matches",
+    for row in ("the engine has a generator",
                 "every named field exists in the schema",
                 "every value is inside its bounds"):
         assert row in doc, row

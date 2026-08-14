@@ -74,7 +74,7 @@ STAGE_FIELDS = ("name", "enabled", "overrides")
 #: § 6.6 — a stage name becomes a filename, so the set is the narrow one.
 STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
-_TOP_KEYS = ("schema", "engine", "shape", "run", "schema_fingerprint",
+_TOP_KEYS = ("schema", "engine", "shape", "run",
              "structure", "varies", "stages", "calculation")
 _RUN_KEYS = ("name", "id", "created")
 _STRUCTURE_KEYS = ("source", "formula", "atoms")
@@ -162,7 +162,6 @@ class Task:
     structure: StructureRef
     varies: Optional[Tuple[str, ...]] = None
     stages: Optional[Tuple[Stage, ...]] = None
-    schema_fingerprint: str = ""
     #: WHICH KIND of calculation this describes -- the key into the
     #: engine's warm-file vocabulary (`job-contracts.md` § 4.2a: [base] +
     #: one section per type).  Absent-is-a-state, like ``stages``: the
@@ -408,7 +407,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     if not has_stages:
         return Task(engine=engine, shape=shape, run=run, structure=structure,
                     calculation=calc,
-                    schema_fingerprint=str(obj.get("schema_fingerprint", "")))
+)
 
     raw_stages = obj["stages"]
     if not isinstance(raw_stages, (list, tuple)) or not raw_stages:
@@ -428,7 +427,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # no-stages case above, which § 6.5 spells by omitting both keys.)
     return Task(engine=engine, shape=shape, run=run, structure=structure,
                 varies=varies, stages=stages, calculation=calc,
-                schema_fingerprint=str(obj.get("schema_fingerprint", "")))
+)
 
 
 def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
@@ -560,8 +559,6 @@ def _task_to_dict(task: Task) -> dict:
     }
     if task.run.created:
         out["run"]["created"] = task.run.created
-    if task.schema_fingerprint:
-        out["schema_fingerprint"] = task.schema_fingerprint
     # absent-is-a-state: an optimization writes no key (§ 4.2a)
     if task.calculation != "optimization":
         out["calculation"] = task.calculation

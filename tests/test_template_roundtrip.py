@@ -104,7 +104,7 @@ def test_unset_is_encoded_as_an_absent_key_not_an_empty_one():
 
 def test_a_template_missing_an_item_keeps_the_class_default():
     """A template written against an older schema is **missing** items, not
-    wrong about them.  The fingerprint is what says the shape moved; the
+    wrong about them.  The per-field checks name the ones that moved; the
     reader's job is to not invent values."""
     text = T.template_with_values(SiestaConfig(system_label="JOB"))
     head, _, rest = text.partition("[item.mesh_cutoff]")
@@ -140,19 +140,14 @@ def test_the_writer_refuses_output_that_does_not_read_back(monkeypatch, cfg):
 
 
 def test_the_emitted_file_is_valid_toml_and_carries_the_three_top_keys(cfg):
-    """§ 3: ``schema``, ``engine`` and ``fingerprint``, all required."""
+    """§ 3: ``schema`` and ``engines`` — the two required top-level keys.
+
+    ``fingerprint`` was a third until 2026-08-14; it is retired (§ 10)."""
     import tomllib
     raw = tomllib.loads(T.template_with_values(cfg))
     assert raw["schema"] == T.SCHEMA
     assert raw["engines"] == ["siesta"]      # @2: a LIST -- a calculation may run on several
-    assert raw["fingerprint"] == T.schema_fingerprint(SiestaConfig)
-
-
-def test_the_writer_computes_the_fingerprint(cfg):
-    """Unit 4a's rule: whatever writes the template computes it, because that
-    is the moment the schema is in hand.  Nothing wrote one until 2026-08-11,
-    so ``validation/task``'s check either never fired or always complained."""
-    assert T.read_template(T.template_with_values(cfg)).fingerprint != ""
+    assert "fingerprint" not in raw     # retired 2026-08-14, § 10
 
 
 # --------------------------------------------------------------------- #
@@ -161,7 +156,7 @@ def test_the_writer_computes_the_fingerprint(cfg):
 
 @pytest.mark.parametrize("missing", ["kind", "type", "help"])
 def test_an_item_missing_a_required_key_is_refused_by_name(missing):
-    text = (f'schema = "{T.SCHEMA}"\nengine = "siesta"\nfingerprint = ""\n\n'
+    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\n\n'
             '[item.mesh_cutoff]\nkind = "engine"\ncategory = ["accuracy"]\n'
             'anchor = "MeshCutoff"\n'
             'type = "float"\nhelp = "x"\n')
@@ -175,7 +170,7 @@ def test_an_unknown_kind_is_refused_not_skipped():
     """§ 6: the vocabulary is closed.  *"A reader that quietly ignored an item
     it did not understand would produce a deck missing a parameter, and say
     nothing."*"""
-    text = (f'schema = "{T.SCHEMA}"\nengine = "siesta"\nfingerprint = ""\n\n'
+    text = (f'schema = "{T.SCHEMA}"\nengine = "siesta"\n\n'
             '[item.x]\nkind = "wishful"\ncategory = ["method"]\n'
             'type = "int"\nhelp = "x"\n')
     with pytest.raises(ValueError, match=r"kind 'wishful' is not one of"):
@@ -185,7 +180,7 @@ def test_an_unknown_kind_is_refused_not_skipped():
 def test_an_unknown_item_key_is_refused_not_ignored():
     """An ignored key is a calculation quietly different from the one asked
     for — the same rule ``task.json`` holds itself to."""
-    text = (f'schema = "{T.SCHEMA}"\nengine = "siesta"\nfingerprint = ""\n\n'
+    text = (f'schema = "{T.SCHEMA}"\nengine = "siesta"\n\n'
             '[item.x]\nkind = "wrapper"\ntype = "int"\nhelp = "x"\n'
             'trailing_semicolon = true\n')
     with pytest.raises(ValueError, match=r"unknown key"):
@@ -194,7 +189,7 @@ def test_an_unknown_item_key_is_refused_not_ignored():
 
 def test_a_future_major_refuses_rather_than_guessing():
     text = ('schema = "molbuilder/template@9"\nengine = "siesta"\n'
-            'fingerprint = ""\n')
+            )
     with pytest.raises(Exception):
         T.read_template(text)
 
@@ -373,7 +368,7 @@ def test_a_hand_added_machine_fact_VALUE_is_refused_with_the_story():
     """
     from molbuilder.config.siesta import SiestaConfig
     import molbuilder.template as T
-    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\nfingerprint = ""\n\n'
+    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\n\n'
             '[item.mpi_np]\nkind = "wrapper"\ncategory = ["execution"]\n'
             'resolver = "rank_count"\ntype = "int"\nvalue = 8\n'
             'help = "hand-added"\n')
@@ -386,7 +381,7 @@ def test_the_item_itself_is_legitimate_only_its_value_is_not():
     same file WITHOUT a value must be accepted, or a surface could never
     ask the question."""
     import molbuilder.template as T
-    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\nfingerprint = ""\n\n'
+    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\n\n'
             '[item.mpi_np]\nkind = "wrapper"\ncategory = ["execution"]\n'
             'resolver = "rank_count"\ntype = "int"\nhelp = "ask me"\n')
     t = T.read_template(text)
@@ -441,7 +436,7 @@ def test_a_template_file_missing_category_is_refused_on_READ():
     """The write side validating is not enough: a template is a file a
     person is invited to edit (§ 4.1), so a hand-deleted `category` must
     be caught when the file is read, not only when it is generated."""
-    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\nfingerprint = ""\n\n'
+    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\n\n'
             '[item.x]\nkind = "engine"\nanchor = "X"\n'
             'type = "int"\nhelp = "x"\n')
     with pytest.raises(ValueError, match=r"missing required key 'category'"):
@@ -542,7 +537,7 @@ def test_an_item_claiming_an_unlisted_engine_is_refused():
     offered it — and which half is wrong is not the reader's to guess, so
     it reports the disagreement and names both sides.
     """
-    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\nfingerprint = ""\n\n'
+    text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\n\n'
             '[item.x]\nkind = "engine"\ncategory = ["execution"]\n'
             'engines = ["siesta", "pyscf"]\nanchor = "X"\n'
             'type = "int"\nhelp = "x"\n')
