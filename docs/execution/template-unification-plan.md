@@ -71,7 +71,7 @@ written in.
 | 2 | `method` | at what level of theory? | no |
 | 3 | `accuracy` | how precisely are the equations solved? | no |
 | 4 | `convergence` | how do I reach it when it fights? | — |
-| 5 | `outputs` | what do I want produced? | — |
+| 5 | `procedure` | what does the run carry out, and what does it leave behind? | — |
 | 6 | `execution` | how does it run on this machine? | **yes** |
 
 **`accuracy` ≠ `convergence`.** Accuracy is what answer you will *accept*;
@@ -165,7 +165,7 @@ T1 may still move.
 |---|---|---|---|
 | **Q1** | Is `basis` `method` or `accuracy`? | ~~T1~~ | **MOOT (2026-08-13).** `category` is a list — it is `["method", "accuracy"]`. See § 5.4 |
 | **Q2** | Is `electronic_temperature` `accuracy` or `system`? | ~~T1~~ | **MOOT (2026-08-13).** *"May need both"* was the answer; it is `["accuracy", "system"]`. See § 5.4 |
-| **Q3** | Should a 7th `task` category split out of `outputs`? | T2 | **REOPENED — T1 found the evidence.** `outputs` holds 16 of 44 and absorbs three questions. Still open; multi-tagging reduces the urgency but does not answer it |
+| **Q3** | Should a 7th category split out of `outputs`? | ~~T2~~ | **ANSWERED 2026-08-13 (user): no split — RENAMED to `procedure`.** The three groups (what job, which files, how written) are all *the job in general*, and the group is engine-specific bookkeeping rather than science. `procedure` was the only candidate with zero collisions: `task` appears in 18 contract docs and names a first-class file, `job` has three doc files named after it, `run` is the sweep unit |
 | **Q4** | ~~Does `max_memory_mb` split into two items?~~ | ~~T1, U-C~~ | **ANSWERED 2026-08-13 (user): no split — it becomes a valueless item.** See § 5.1 |
 | **Q5** | Do items needing a computed value declare a *resolver*? | T4 | **ANSWERED 2026-08-13 (user): yes — a named resolver.** See § 5.2 |
 

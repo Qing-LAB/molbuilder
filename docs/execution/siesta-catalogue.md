@@ -60,7 +60,7 @@ having both.
 | `solution_method` | `SolutionMethod` | profile | ⚠ **M3** — see § 2 |
 | `restart` | *(expands to `DM.UseSaveDM`)* | stage | ⚠ **M4** — see § 2 |
 
-### 5 · `outputs` — what do I want produced? (16)
+### 5 · `procedure` — what does the run carry out, and what does it leave behind? (16)
 
 | field | keyword | wf | note |
 |---|---|---|---|
@@ -112,8 +112,8 @@ was a symptom of forcing one answer where the parameter genuinely has two.
 | **M2** `electronic_temperature` | `["accuracy", "system"]` | smearing for a molecule; a real temperature for a finite-T run |
 | **M3** `solution_method` | `["method", "convergence"]` | **the one I called wrong.** `OrderN` is approximate, so it panels under `method`; a user hunting a stubborn SCF still finds it under `convergence` |
 | **M4** `restart` | `["convergence", "execution"]` | an initial-guess choice that reads as run plumbing |
-| **M5** `relax_max_displ` | `["outputs", "convergence"]` | a geometry convergence aid, shown with its siblings |
-| **M6** `system_label` | `["outputs", "system"]` | names the system; prefixes every output file |
+| **M5** `relax_max_displ` | `["procedure", "convergence"]` | a geometry convergence aid, shown with its siblings |
+| **M6** `system_label` | `["procedure", "system"]` | names the system; prefixes every output file |
 
 **M3 was the load-bearing one and it is now simply correct.** I had placed it in
 `convergence` while arguing it belonged in `method` — the multi-tag gives both,
@@ -133,16 +133,18 @@ also costs time.
 
 ## 3. What the placement exposes
 
-**`outputs` holds 16 of 44 — over a third, and the largest by far.** That is a
-signal, not a coincidence: it is currently absorbing three different questions.
+**`procedure` holds 16 of 44 — over a third, and the largest by far.** It spans
+three questions:
 
 1. *what run is this?* — `relax_type`, `relax_steps`, the three `md_*`
 2. *what files do I want?* — the six `write_*`, `copy_psml`
 3. *how should results be presented?* — `wrap_into_cell`, `verbose_comments`
 
-**This is the strongest argument for Q3's seventh category.** If `task`
-(what run) splits out, `outputs` falls to ~10 and each panel answers one question.
-Deferred in the plan; the count is the evidence for reopening it.
+**Decided 2026-08-13 (user): no split — RENAMED.** All three are *the job in
+general*, and the group is engine-specific bookkeeping rather than science, so a
+seventh entry in a closed vocabulary would buy nothing a heading inside one panel
+cannot. The name changed from `outputs` (which described only groups 2 and 3) to
+`procedure` — what the run carries out and what it leaves behind.
 
 **`workflow_group` and `category` genuinely disagree**, which confirms both axes
 are needed: `execution` spans `budget` (`mpi_np`) and unset (`diag_algorithm`);

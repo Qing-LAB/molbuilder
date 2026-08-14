@@ -477,7 +477,7 @@ is the semantics; how many panels they become is the surface's call.
 | 2 | `method` | *at what level of theory?* | `xc_functional`, `xc_authors`, `basis_size` | `method`, `functional`, `basis`, `ecp`, `dispersion` |
 | 3 | `accuracy` | *how precisely are the equations solved?* | `mesh_cutoff`, `kgrid`, `dm_tolerance` | `grid_level`, `scf_conv_tol`, `scf_conv_tol_grad` |
 | 4 | `convergence` | *how do I reach it when it fights?* | `max_scf_iter` | `scf_max_cycle`, `level_shift`, `damp`, `diis_space`, `scf_soscf` |
-| 5 | `outputs` | *what do I want produced?* | `write_molwatch_log` | `optimize`, `compute_frequencies`, `chkfile`, `save_*` |
+| 5 | `procedure` | *what does the run carry out, and what does it leave behind?* | `relax_type`, `relax_steps`, the `write_*` set | `optimize`, `compute_frequencies`, `chkfile`, `save_*` |
 | 6 | `execution` | *how does it run on this machine?* | `diag_algorithm`, `block_size`, `continue_retries` | `threads`, `use_gpu` |
 
 **Why `accuracy` and `convergence` are two categories and not one.** Accuracy is
@@ -531,7 +531,7 @@ unit     = "Ry"
 
 [item.job_name]
 kind     = "produce"
-category = "outputs"
+category = "procedure"
 # no `engines` key -- applies to every engine
 value    = "run1"
 ```
