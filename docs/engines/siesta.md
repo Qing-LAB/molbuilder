@@ -327,8 +327,8 @@ flowchart TD
     A{"Diag.Algorithm?"}
     A -->|ScaLAPACK| S["emit NOTHING<br/>(SIESTA's built-in default)<br/>env → molbuilder-siesta"]
     A -->|"ELPA-1STAGE / ELPA-2STAGE"| G{"enable_gpu?"}
-    G -->|"true"| GPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .true.<br/>env → molbuilder-siesta-gpu"]
-    G -->|"false"| CPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .false.<br/>env → molbuilder-siesta-gpu (ELPA build)"]
+    G -->|"true"| GPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .true.<br/>env → molbuilder-siesta-gpu<br/><i>the only ask needing a source build</i>"]
+    G -->|"false"| CPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .false.<br/>env → molbuilder-siesta<br/><i>CPU-ELPA runs in the packaged env</i>"]
     A -.->|"ScaLAPACK + enable_gpu"| ERR["render_fdf raises ValueError<br/>(input.py:1038)"]
 ```
 
@@ -360,15 +360,46 @@ GPU codepath, so an *omitted* flag makes a CPU-ELPA job initialise CUDA and cras
 (`cudaGetLastError: unknown error`; Sol job 57852378). `Diag.ELPA.GPU` alone (no
 ELPA `Diag.Algorithm`) is silently ignored — both keywords are required.
 
-**Env routing keys on "needs ELPA", not on GPU.** ScaLAPACK → `molbuilder-siesta`
-(precompiled, no ELPA); ELPA (CPU *or* GPU) → `molbuilder-siesta-gpu`, the only
-ELPA-linked build. The `runwrap` router bumps `siesta → siesta-gpu` when it sees an
-ELPA algorithm or `Diag.ELPA.GPU true`; `molbuilder.json` `envs.*` overrides the
-concrete env name. The `enable_gpu` toggle is a *script-input* contract — it never
-queries env presence; `runwrap` gates env presence at generation time with a clear
-install hint. (How that `molbuilder-siesta-gpu` env is *built* — the CUDA/ELPA
-source build, CMake flags, toolchain pinning — is a deployment concern documented
-under `ops/`, not here.)
+### 7.2 Env routing keys on **GPU**, and on nothing else
+
+**The two SIESTA envs split on provenance, not on hardware.**
+`molbuilder-siesta` installs from packages on any machine.
+`molbuilder-siesta-gpu` must be **built from source**, which some HPC sites do
+not permit — that is the whole reason there are two of them.
+
+**CPU-ELPA needs neither.** Measured 2026-08-13, an H2 probe in the packaged env:
+
+| deck | result |
+|---|---|
+| `Diag.Algorithm ELPA-2stage` | exit 0 — E = −30.136019 eV |
+| `Diag.Algorithm ELPA-1stage` | exit 0 — E = −30.136019 eV |
+| `Divide-and-Conquer` | exit 0 — E = −30.136019 eV, identical |
+| `ELPA-2stage` + `Diag.ELPA.GPU .true.` | **exit 1** — `ELPA_ERROR_ENTRY_NOT_FOUND`, *"diag: ELPA error on gpu set"* |
+
+conda-forge's SIESTA links no external `libelpa`, but ELPA is compiled **into**
+the binary through ELSI (279 defined ELPA symbols, zero undefined — the full
+`elpa_api` / `elpa1_compute` / `elpa2_compute` set). Only the GPU entry is
+absent, which is a **missing build option, not a missing device**.
+
+So: `runwrap` bumps `siesta → siesta-gpu` **only** for `Diag.ELPA.GPU true`.
+`molbuilder.json` `envs.*` overrides the concrete env name, and an env the user
+names always wins — the route is the fallback for *no choice given*, never an
+override. What is *available* is filtered by what is *needed*, and the user
+picks from what survives.
+
+> **Until 2026-08-13 this routed every ELPA deck to the source build**, on the
+> premise that the packaged SIESTA has no ELPA. On a site that cannot compile,
+> that refused a runnable calculation — telling the user to install an
+> environment they cannot build, for a solver the installed baseline already
+> has. **Knowing a keyword is not providing the capability:** the packaged
+> binary carries `ELPA-1stage`, `ELPA-2stage` and `Diag.ELPA.GPU` as strings
+> either way.
+
+The `enable_gpu` toggle is a *script-input* contract — it never queries env
+presence; `runwrap` gates env presence at generation time with a clear install
+hint. (How the `molbuilder-siesta-gpu` env is *built* — the CUDA/ELPA source
+build, CMake flags, toolchain pinning — is a deployment concern documented under
+`ops/`, not here.)
 
 ### 7.1 GPU is just a different setting — best performance & what to look for
 

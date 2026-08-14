@@ -174,11 +174,15 @@ generate time (`molbuilder/diagnostics.py`, `molbuilder/runwrap.py`):
 
 - **`.fdf` → `molbuilder-siesta`**, launched with `mpirun -np N siesta`.
 - **`.py` → `molbuilder-pySCF`**, launched with `python`.
-- **`.fdf` that requests ELPA or GPU → `molbuilder-siesta-gpu`.** This is finer
-  than "GPU jobs use the GPU env": **any** `Diag.Algorithm elpa*` (even
-  CPU-ELPA) routes to `molbuilder-siesta-gpu`, because ELPA is linked only in
-  that build. If the `.fdf` opts into GPU but that env is not installed,
-  generation raises with an install hint.
+- **`.fdf` that requests GPU → `molbuilder-siesta-gpu`.** Only
+  `Diag.ELPA.GPU true` re-routes. **CPU-ELPA does not** — the packaged SIESTA
+  carries ELPA through ELSI and runs both stages on CPU (measured; see
+  [`engines/siesta.md`](?doc=engines/siesta.md) § 7.2). The two envs differ by
+  **provenance** — one installs from packages anywhere, the other must be built
+  from source — so routing CPU-ELPA to the source build used to refuse a
+  runnable calculation wherever compiling is not allowed. If the `.fdf` opts
+  into GPU but that env is not installed, generation raises with an install
+  hint. An env named explicitly always wins over the route.
 
 The env **names** are overridable per category in `molbuilder.json` (`envs`,
 § 5.4); the four defaults are `molbuilder-siesta`, `molbuilder-siesta-gpu`,

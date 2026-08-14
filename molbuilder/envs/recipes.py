@@ -707,16 +707,34 @@ _SIESTA = Recipe(
     # full policy + cross-check against the host advisor's
     # HostProbe.can_numa_pin.
     #
-    # Diagonalizer: this env is intentionally ScaLAPACK-only.  The
-    # conda-forge ``siesta=5.4.2=mpi_openmpi_*`` build is NOT linked
-    # against ELPA (declared deps: libblas/liblapack/scalapack/netcdf/
-    # libxc/lua/openmpi; no elpa).  Bundling ``elpa`` here would be
-    # cosmetic: SIESTA would still diagonalize via ScaLAPACK because
-    # the binary has no ELPA symbols.  ELPA lives only in
-    # ``molbuilder-siesta-gpu`` (source build, ``--enable-nvidia-gpu``).
-    # The web UI's ``enable_gpu`` toggle is the script-input contract;
-    # ``runwrap.write_run_wrapper`` gates env presence at script-
-    # generation time so a missing GPU env is caught before run time.
+    # Diagonalizer: ScaLAPACK **and ELPA on CPU**.  The conda-forge
+    # ``siesta=5.4.2=mpi_openmpi_*`` build declares no ``elpa`` dependency
+    # and links no external ``libelpa`` -- which is what this comment used
+    # to observe, and then drew the wrong conclusion from.  ELPA is
+    # compiled INTO the binary through ELSI: 279 defined ELPA symbols,
+    # zero undefined, the whole ``elpa_api`` / ``elpa1_compute`` /
+    # ``elpa2_compute`` set.
+    #
+    # Measured 2026-08-13 rather than inferred, an H2 probe in this env:
+    #     Diag.Algorithm ELPA-2stage  -> exit 0, E = -30.136019 eV
+    #     Diag.Algorithm ELPA-1stage  -> exit 0, E = -30.136019 eV
+    #     Divide-and-Conquer          -> exit 0, E = -30.136019 eV
+    #     ELPA-2stage + Diag.ELPA.GPU .true. -> EXIT 1,
+    #         "diag: ELPA error on gpu set" / ELPA_ERROR_ENTRY_NOT_FOUND
+    #
+    # So GPU is the ONE thing this env cannot do, and it is a missing
+    # BUILD OPTION (that ELPA was compiled without the GPU entry), not a
+    # missing device.  Adding an ``elpa`` conda package here would still
+    # be pointless, but for the opposite reason to the one recorded
+    # before: the solver is already here.
+    #
+    # This env exists to be installable ANYWHERE -- packages only, no
+    # toolchain.  ``molbuilder-siesta-gpu`` must be built from source,
+    # which some HPC sites do not permit.  That, not hardware, is why
+    # there are two.  The web UI's ``enable_gpu`` toggle is the
+    # script-input contract; ``runwrap.write_run_wrapper`` gates env
+    # presence at script-generation time so a missing GPU env is caught
+    # before run time.
     conda_packages=("siesta=5.4.2=mpi_openmpi_*", "numactl",
                     # git: uniform across every env -- see _HOST.
                     "git"),

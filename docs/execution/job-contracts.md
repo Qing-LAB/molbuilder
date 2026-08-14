@@ -463,8 +463,10 @@ extension:
 > deprecated**: a second way in is a second way to lose your results.
 
 - **`.fdf` → `molbuilder-siesta`**, run as `mpirun -np N siesta …` (or serial
-  if `N < 2`). A `.fdf` that requests **ELPA or GPU** eigensolving is re-routed
-  to a third env, **`molbuilder-siesta-gpu`**.
+  if `N < 2`). A `.fdf` that requests **GPU** eigensolving (`Diag.ELPA.GPU
+  true`) is re-routed to a third env, **`molbuilder-siesta-gpu`** — the one
+  built from source. CPU-ELPA stays on the packaged build, which has ELPA
+  ([`engines/siesta.md`](?doc=engines/siesta.md) § 7.2).
 - **`.py` → `molbuilder-pySCF`**, run as `python my-job.py` (OMP-only; the
   script writes its own `.molwatch.log` / `.pyscf.log`).
 
