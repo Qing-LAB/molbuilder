@@ -280,8 +280,8 @@ def test_pyscf_renders_a_template_at_all():
     """The thing T5 existed to make true.  Three of four engines could
     not produce a template; a plan that called the template the single
     source of truth had no source for PySCF at all."""
-    from molbuilder.template import render_template, read_template
-    t = read_template(render_template(PySCFConfig(), engine="pyscf"))
+    from molbuilder.template import template_with_values, read_template
+    t = read_template(template_with_values(PySCFConfig(), engine="pyscf"))
     assert len(t.items) > 30
     assert all(i.category for i in t.items)
 

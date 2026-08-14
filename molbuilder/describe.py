@@ -54,7 +54,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from .task import FILENAME as TASK_FILENAME
 from .task import Stage, StructureRef, Task, derive_run, varies_for
 from .template import SUFFIX as TEMPLATE_SUFFIX
-from .template import render_template
+from .template import template_with_values
 from .workingcopy_structure import StructureCodec
 
 
@@ -160,10 +160,10 @@ def build_description(
 
     _check(task, cfg, generators=generators)
 
-    # The fingerprint is written by whatever writes the template, because that
-    # is the moment the schema is in hand -- so it is stamped onto the task
-    # AFTER the checks, from the same call that renders the catalogue.
-    text = render_template(cfg, engine=engine)
+    # § 4.3: this calculation's template is the CATALOGUE, narrowed to this
+    # engine, carrying the values `cfg` holds.  The questions were asked by the
+    # catalogue; `describe` supplies the answers, exactly as a surface does.
+    text = template_with_values(cfg, engine=engine)
     from .template import schema_fingerprint
     # dataclasses.replace, NOT a re-listed constructor (U0, 2026-08-13):
     # the re-listing that stood here silently DROPPED any field it did not

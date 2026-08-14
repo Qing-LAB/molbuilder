@@ -20,12 +20,12 @@ from molbuilder.resolve import (ALLOCATION_FIELDS, MachineTranslation,
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 from molbuilder.task import Stage, StructureRef, Task, derive_run
-from molbuilder.template import render_template
+from molbuilder.template import template_with_values
 
 
 @pytest.fixture
 def template() -> str:
-    return render_template(SiestaConfig(system_label="relax", mesh_cutoff=300.0,
+    return template_with_values(SiestaConfig(system_label="relax", mesh_cutoff=300.0,
                                         basis_size="DZP"))
 
 

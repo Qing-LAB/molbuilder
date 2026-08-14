@@ -251,13 +251,13 @@ def test_block_size_declares_pow2_so_a_non_power_of_two_is_refused():
     from molbuilder.config.siesta import SiestaConfig
 
     item = template.one(template.read_template(
-        template.render_template(SiestaConfig())), "parallel_block_size")
+        template.template_with_values(SiestaConfig())), "parallel_block_size")
     assert item.type == "pow2", (
         "parallel_block_size must DECLARE pow2 -- otherwise the checker "
         "written for it is unreachable and a user's 96 is emitted verbatim")
 
     def _round_trip(v):
-        return template.one(template.read_template(template.render_template(
+        return template.one(template.read_template(template.template_with_values(
             SiestaConfig(parallel_block_size=v))), "parallel_block_size").value
 
     # A legal value is untouched.

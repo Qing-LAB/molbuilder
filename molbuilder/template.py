@@ -38,16 +38,25 @@ wrong with it and both are structural:
   * **the payload was a second copy of every value**, which is exactly the
     self-disagreement § 4.1 rejects.
 
-TOML has no payload key, so ``render_template`` needs no deck and the whole
-lifting apparatus — ``_anchor_token``, ``_payload_for``, ``_DECL_RE``,
-``_coerce`` — is gone rather than ported.
+TOML has no payload key, so nothing needs a deck and the whole lifting
+apparatus — ``_anchor_token``, ``_payload_for``, ``_DECL_RE``, ``_coerce`` —
+is gone rather than ported.
 
 THE WRITER CHECKS ITSELF.  ``tomllib`` reads TOML and does not write it, so the
 emitter here is hand-rolled — and § 4.1 requires that whatever emits a template
 **read its own output back and compare it to what it meant to write**.
-:func:`render_template` builds the payload as a plain object, serialises it,
-parses the result, and refuses if the two differ.  That turns *"we emitted TOML
-correctly"* from an assumption into a property checked on every call.
+:func:`_emit` builds the payload as a plain object, serialises it, parses the
+result, and refuses if the two differ.  That turns *"we emitted TOML correctly"*
+from an assumption into a property checked on every call.
+
+**THE CATALOGUE IS THE MASTER** (§ 2.1, § 4.3).  ``molbuilder/data/
+catalogue.template.toml`` is authored as TOML and holds every parameter both
+engines declare; :func:`template_with_values` narrows it to one engine and fills
+in what a config holds, which is what a surface produces once a person has
+answered.  ``render_template(config)`` — which reflected a Python class into a
+file, making the class the master and the file its printout — was **deleted
+2026-08-14**.  A config class is a translator on the way OUT: template → config
+→ deck.
 """
 from __future__ import annotations
 
@@ -57,6 +66,7 @@ import re
 import tomllib
 import types
 import typing
+from pathlib import Path as _Path
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple
 
@@ -645,42 +655,67 @@ def _item_payload(it: Item) -> Dict[str, Any]:
     return out
 
 
-def render_template(config, *, config_cls=None, engine: str = "",
-                    title: str = "") -> str:
-    """The template for *config*, as TOML.
+#: The MASTER file — every parameter both engines declare (§ 4.3).  Shipped
+#: with the package; authored as TOML, never generated.
+CATALOGUE = _Path(__file__).resolve().parent / "data" / "catalogue.template.toml"
 
-    **It takes no deck.** The catalogue comes from the schema and the values
-    from *config*; a deck is what ``prep`` renders *from* this, later and on the
-    machine that will run it. Until 2026-08-11 this function took the rendered
-    deck and lifted payloads out of it, which inverted the contract's direction
-    and stored every value twice.
 
-    *engine* names whose schema these items belong to (§ 3); it defaults to the
-    config class's own ``ENGINE`` attribute or its lower-cased class-name stem.
+def load_catalogue() -> str:
+    """The catalogue's text (§ 4.3).
+
+    One master file, authored rather than generated: *"where is this parameter
+    defined?"* has one answer for every parameter in every engine.
+    """
+    return CATALOGUE.read_text(encoding="utf-8")
+
+
+def template_with_values(config, *, engine: str = "", catalogue: str = "",
+                         title: str = "") -> str:
+    """**This calculation's** template: the catalogue, narrowed to one engine,
+    carrying the values *config* holds (§ 4.3).
+
+    This is what a surface produces once a person has answered — the questions
+    were already asked by the catalogue, so nothing here invents an item. It
+    replaced ``render_template(config)``, which reflected a Python class into a
+    file and thereby made the class the master (§ 2.1).
+
+    **Allocation items stay valueless whatever the config holds** (§ 2, G1, and
+    § 6.4): their resolver names who answers them, and the answer belongs to the
+    machine that granted it. The config may legitimately carry a rank count — it
+    was resolved somewhere — but writing it here would make the description
+    assert a machine fact and stop being portable.
 
     Raises ``ValueError`` if the emitted text does not parse back to what it
-    meant to write — see the module docstring; § 4.1 asks for exactly this.
+    meant to write — § 4.1 asks for exactly this.
     """
-    cls = config_cls or type(config)
-    eng = engine or _engine_name(cls)
-    # An allocation item is emitted VALUELESS whatever the config holds
-    # (§ 2, G1).  The config may legitimately carry a rank count -- it was
-    # resolved on some machine -- but writing it here would make the
-    # description assert a machine fact and stop being portable, which is the
-    # failure a hand-edited mpi_np once caused.
+    parsed = read_template(catalogue or load_catalogue())
+    eng = engine or _engine_name(type(config))
     items = [
-        dataclasses.replace(d, value=(None if d.allocation
-                                      else getattr(config, d.name, None)))
-        for d in declarations_for(cls)
+        dataclasses.replace(
+            it,
+            # A per-calculation template serves ONE engine, so no item narrows
+            # anything and none carries `engines` (§ 6.3's writer rule).
+            engines=(),
+            value=(None if it.resolver in ALLOCATION_RESOLVERS
+                   else getattr(config, it.name, it.value)),
+        )
+        for it in select(parsed, engine=eng)
     ]
-    # Unit 4a's rule: the fingerprint is computed by whatever writes the
-    # template, because that is the moment the schema is in hand.  Nothing
-    # wrote one until 2026-08-11, so `validation/task.py`'s check either never
-    # fired or always complained.
+    return _emit(items, engines=(eng,), fingerprint=parsed.fingerprint,
+                 title=title)
+
+
+def _emit(items, *, engines, fingerprint: str, title: str = "") -> str:
+    """Serialise items as a template file, and read the result back (§ 4.1).
+
+    ``tomllib`` reads TOML and does not write it, so this is the only thing
+    standing between a quoting bug and a file that parses cleanly and says
+    something else.
+    """
     payload = {
         "schema": SCHEMA,
-        "engines": [eng],
-        "fingerprint": schema_fingerprint(cls),
+        "engines": list(engines),
+        "fingerprint": fingerprint,
         "item": {it.name: _item_payload(it) for it in items},
     }
 
@@ -689,8 +724,8 @@ def render_template(config, *, config_cls=None, engine: str = "",
         for ln in title.splitlines():
             lines.append(f"# {ln}".rstrip())
     lines.append(f"schema      = {_toml_value(SCHEMA)}")
-    lines.append(f"engines     = {_toml_value([eng])}")
-    lines.append(f"fingerprint = {_toml_value(payload['fingerprint'])}")
+    lines.append(f"engines     = {_toml_value(list(engines))}")
+    lines.append(f"fingerprint = {_toml_value(fingerprint)}")
     for it in items:
         body = _item_payload(it)
         lines.append("")
@@ -700,21 +735,17 @@ def render_template(config, *, config_cls=None, engine: str = "",
                 lines.append(f"{key} = {_toml_value(body[key])}")
     text = "\n".join(lines) + "\n"
 
-    # § 4.1 -- read our own output back and compare it with what we meant.
-    # tomllib does not write TOML, so this is the only thing standing between a
-    # quoting bug and a template that parses cleanly and says something else.
     try:
-        parsed = tomllib.loads(text)
+        got = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:      # pragma: no cover - defensive
         raise ValueError(
             f"template: emitted TOML does not parse ({exc}). This is a bug in "
-            f"the writer, not in the config.") from exc
-    if parsed != payload:
-        diff = _first_difference(payload, parsed)
+            f"the writer, not in the data.") from exc
+    if got != payload:
         raise ValueError(
-            f"template: emitted TOML does not read back as written -- {diff}. "
-            f"This is a bug in the writer (engines/template.md § 4.1 asks for "
-            f"exactly this check).")
+            f"template: emitted TOML does not read back as written -- "
+            f"{_first_difference(payload, got)}. This is a bug in the writer "
+            f"(engines/template.md § 4.1 asks for exactly this check).")
     return text
 
 
@@ -1179,5 +1210,6 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "FINGERPRINT_VERSION",
            "declaration_for", "declarations_for",
            "select", "one",
            "schema_fingerprint", "fingerprint_matches",
-           "render_template", "read_template", "config_from_template",
+           "CATALOGUE", "load_catalogue", "template_with_values",
+           "read_template", "config_from_template",
            "template_fields"]
