@@ -1306,3 +1306,102 @@ a `category` fails naming the block and item.
 > keys. That is the honest boundary between the two methods, and the reason to
 > run the gates before the next reading pass rather than after.
 
+---
+
+## 24 · CORRECTIONS — four findings I framed wrongly (user, 2026-08-14)
+
+Four of the Tier 2 questions were badly posed, and three of the findings behind
+them were wrong or wrongly scoped. Corrected here rather than quietly amended,
+because the wrong version is committed above.
+
+### 24.0 · What the template IS — stated plainly, because I lost it
+
+**One file. The single source of truth for a calculation's parameters — every
+parameter, across every engine that calculation could run on.** Floor 2:
+portable, names no machine.
+
+**Why it exists.** Before it, each engine carried its own schema and its own
+script generator. The same physics was unrecognisable across them —
+`SiestaConfig ∩ PySCFConfig` is **three** field names, all molbuilder-internal
+(§ 1 of the plan measured it). A form had to be written per engine, and *"what
+charge did this run use?"* could not be answered without first knowing which
+engine. So: **one file**, items grouped by `category` — six closed questions
+about the calculation — each item declaring which `engines` it applies to.
+Items are **never merged**: `net_charge` (SIESTA) and `charge` (PySCF) stay two
+items in one category, so a surface builds the same six panels for any engine
+and filters the contents by engine.
+
+**The template is the DATA; each consumer pulls its slice.** The generator
+emits one engine's deck at a time. That is not a tension with the file serving
+several — it is the design: one source, many readers, each taking what applies
+to it. `prep` takes them all, the deck writer takes `kind ∈ engine, deck`, the
+wrapper takes `kind = wrapper` plus whatever `read_by` names, a surface takes a
+category.
+
+> **The conflation, named so it is not repeated.** I saw `render_template` emit
+> a single engine and concluded the multi-engine design was hollow. That reads
+> **a writer's current limitation as a statement about the design**. The design
+> is settled and right; the writer is behind it. `render_template(config,
+> config_cls=…)` takes **one** config class and derives `engines` from it, so it
+> cannot yet gather two engines' items into one file. Making it accept N classes
+> is a step in the unification — the same unification that moves script
+> generation from engine-specific to template-driven — and not a contract to
+> water down.
+
+### 24.1 · § 1.2 was scoped wrong; § 15.1 was simply wrong — STRUCK
+
+I treated *"the template serves several engines"* and *"the generator emits one
+engine's script"* as a contradiction. **They are not.** The template is the one
+file every engine's items live in; the generator produces one deck for one
+engine. That is the design working as intended, and § 6.3 is not overselling.
+
+**The real gap is narrower:** `render_template(config, …)` accepts **one config
+object**, so nothing can *build* a file carrying two engines' items. The work is
+a writer that accepts N config classes — part of the unification, **not** a
+docs disclaimer. *(My recommendation, "say it is reserved", would have written
+the limitation into the contract instead of removing it.)*
+
+**§ 15.1 is struck.** `Task.engine` being a string is **correct**: a task names
+which engine *this run* uses. It is not evidence about the template at all, and
+citing it as confirmation was wrong.
+
+### 24.2 · § 13 / § 19 / § 20 asked a serialisation question about a modelling problem
+
+*"null or omit"* is not the question. `mem`, `gres`, `mpi_np`,
+`continue_retries` and the rest are **parameters whose place in the unified
+template has not been settled** — and in that model one item may have a
+different representation per engine while remaining the same item, and some
+items exist for one engine only. That is what the single template exists to
+carry.
+
+So the open work is: **map each of these into the template model** (which
+category, which engines, which `kind`, which resolver), and the on-disk
+encoding follows from what each one *is*. Re-scoped accordingly; the tally in
+§ 20 stands as a fact, but it is a symptom, not the question.
+
+### 24.3 · § 6.1's seam leak is a migration step, not a placement choice
+
+`effective_config` living in `siesta/` is not *"move it or annotate it"*. The
+project is mid-migration from engine-specific script generation to a
+template-driven one, so engine-specific functions being translated into the
+shared framework **is the work**, not a tidy-up beside it. It belongs on the
+unification's list with the rest — prep, extraction, script generation,
+assembly and validation as one flow.
+
+### 24.4 · § 17.1 — I had it backwards. The doc is right; the CODE is missing it
+
+I recommended deleting *"and forced cold"* on the grounds that the relabel
+suffices. **It does not, and a benchmark starting warm makes no sense in the
+first place.**
+
+**The failure the relabel does not cover:** prep the same trial twice. The
+second render carries the *same* trial label, so SIESTA finds the **first
+attempt's** `.XV` / `.DM` under that label and warm-starts from them. The trial
+then measures a continued run against other points measuring cold ones — the
+timings are not comparable, which is the one thing a benchmark exists to
+produce.
+
+So invariant 5 is correct as written and the implementation is incomplete.
+**Fix: force `restart = "clean"` on a trial's config**, next to the relabel in
+`prep_calculation`, where `element.is_trial` is already the branch.
+

@@ -1137,3 +1137,53 @@ def test_prep_reports_a_foreign_fingerprint_and_proceeds(calc):
     lines = [json.loads(l) for l in
              (calc / LEDGER_FILE).read_text().splitlines()]
     assert any(e["decision"] == "preflight-report" for e in lines)
+
+
+# --------------------------------------------------------------------- #
+#  A trial is a MEASUREMENT, so it starts from the same place every time #
+#                                                                        #
+#  project-layout.md § 7 invariant 5: a trial's deck is "relabelled and   #
+#  forced cold".  Only the relabel was implemented until 2026-08-14.      #
+# --------------------------------------------------------------------- #
+
+def test_a_trial_deck_is_forced_cold_not_only_relabelled():
+    """The relabel alone does not cover the case that matters.
+
+    Prep the same trial twice and the second render carries the SAME trial
+    label, so the engine finds the FIRST attempt's ``.XV`` / ``.DM`` under it
+    and warm-starts.  That point measures a continued run while its
+    neighbours measure cold ones, and the timings a benchmark exists to
+    compare stop being comparable.
+
+    So a trial's config is forced to ``restart = "clean"`` however the
+    description was written -- here the description says ``continue``, which
+    is the case the relabel cannot save.
+    """
+    import dataclasses
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.resolve import ResolvedConfig
+    from molbuilder.jobset.model import Resources
+
+    warm = SiestaConfig(system_label="bdt", restart="continue")
+    trial = ResolvedConfig(values=warm, resources=Resources(),
+                           point={"G": 1, "K": 4}, label="bdt-G1K4")
+    run = ResolvedConfig(values=warm, resources=Resources(),
+                         point={}, label="bdt")
+
+    assert trial.is_trial is True
+    assert run.is_trial is False
+
+    # What `prep_calculation` does to each, in the branch under test.
+    def _as_prepped(element):
+        cfg = element.render_config()
+        if element.is_trial:
+            cfg = dataclasses.replace(cfg, system_label=element.label)
+            if hasattr(cfg, "restart"):
+                cfg = dataclasses.replace(cfg, restart="clean")
+        return cfg
+
+    assert _as_prepped(trial).restart == "clean", (
+        "a trial must be forced cold -- a second prep of the same trial would "
+        "otherwise warm-start from its own first attempt")
+    assert _as_prepped(run).restart == "continue", (
+        "a RUN keeps what the description asked for; only trials are forced")

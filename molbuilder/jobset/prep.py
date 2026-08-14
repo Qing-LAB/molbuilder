@@ -482,6 +482,18 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             # not the filename, is what keys SIESTA's warm files away from
             # the real run's (project-layout.md § 2.3.2).
             cfg = seam.relabel(cfg, element.label)
+            # AND forced cold -- `project-layout.md` § 7 invariant 5 states
+            # both halves and only the relabel was implemented (found
+            # 2026-08-14).  The relabel alone does NOT cover the case that
+            # matters: prep the same trial TWICE and the second render carries
+            # the SAME trial label, so the engine finds the FIRST attempt's
+            # .XV/.DM under it and warm-starts.  That point then measures a
+            # continued run while its neighbours measure cold ones, and the
+            # timings a benchmark exists to compare are not comparable.
+            # A trial is a measurement; a measurement starts from the same
+            # place every time.
+            if hasattr(cfg, "restart"):
+                cfg = dataclasses.replace(cfg, restart="clean")
         # The stage's artifact token is a RENDER ARGUMENT (C7, 2026-08-12):
         # `prep` holds the StageRef, so `prep` says it, per call -- the
         # config field that used to carry it is gone, and the emitter never
