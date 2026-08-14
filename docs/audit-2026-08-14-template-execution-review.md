@@ -1572,3 +1572,79 @@ it defers to the template for**.
 `running-a-job.md`, `stages.md`, `form-schema.md`, the staged-runs plan.
 § 16 orders them; § 21 is what to check each against.
 
+---
+
+## 29 · C1 PREPARED — what a multi-engine template file looks like *(proposal, awaiting ruling)*
+
+Measured first, so the decision rests on the schemas rather than on taste.
+
+| | |
+|---|---|
+| `SiestaConfig` | **44** fields |
+| `PySCFConfig` | **41** fields |
+| **names appearing in both** | **3** |
+
+### 29.1 · The file shape is already forced — one item table
+
+**One `[item.*]` table, each item declaring its `engines`.** Not a proposal, a
+consequence:
+
+- **Per-engine sections would break the point.** `category` groups *across*
+  engines so a surface builds six panels for any engine (§ 6.3). Sections would
+  re-split by engine — the arrangement the template exists to replace.
+- **`select(category=…, engine=…)` already reads a flat table.** It filters
+  `it.engines`; there is nothing for it to filter if items live under engine
+  headings.
+- **TOML keys are unique within a table**, which is what makes the *next*
+  question real rather than cosmetic.
+
+### 29.2 · The real question: when are two engines' parameters ONE item?
+
+The three shared names split cleanly, and not the way the name suggests:
+
+| name | SIESTA | PySCF | same question? |
+|---|---|---|---|
+| `verbose_comments` | default `True`, `procedure`, molbuilder's own comment-block control | identical in all three | **yes** — one item, `engines = ["siesta", "pyscf"]` |
+| `write_molwatch_log` | default `True`, `procedure`, writes `.molwatch.log` | identical | **yes** — one item |
+| `max_memory_mb` | default **`None`**, a `.run.sh` **`ulimit -v`** — a process cap | default **`4000`**, **`mol.max_memory`** — the in-core budget that decides in-core vs out-of-core algorithms | **NO** |
+
+**`max_memory_mb` is one name over two different parameters** — which the
+unification plan's § 1 already lists as a measured defect, not a discovery here.
+One is a hard ceiling the wrapper enforces; the other is a *scientific* choice
+that changes which algorithm PySCF runs.
+
+### 29.3 · The rule this yields, and it is the user's own principle applied
+
+> **Two engines share an item when it is the same question with the same
+> answer. A shared *name* is not evidence of either.**
+
+Which is *"items are never merged across engines"* (§ 6.3) extended to the case
+the contract has not faced: what happens when the names collide anyway. And
+since TOML forbids duplicate keys, a non-shared collision **must** be resolved —
+the file cannot express it otherwise.
+
+**Two ways to resolve it, and they are not equal:**
+
+| | |
+|---|---|
+| **(a) qualify by engine** — `siesta_max_memory_mb` / `pyscf_max_memory_mb` | encodes the collision. The engine is already on the item as `engines`, so the prefix repeats what the data says |
+| **(b) name each for what it IS** — e.g. SIESTA's process cap vs PySCF's in-core working-memory budget | **fixes** the defect § 1 measured instead of encoding it, and the names become self-explaining in a file a person reads (**G5**) |
+
+**Recommendation: (b).** It closes a known finding rather than carrying it into
+the new format, and it is the only option under which reading the two item names
+tells you they are different things.
+
+### 29.4 · What the ruling decides, concretely
+
+1. **(b) or (a)** for the collision — and if (b), the two new names.
+2. Whether `verbose_comments` and `write_molwatch_log` become **one item each
+   with `engines = ["siesta","pyscf"]`** *(recommended — same question, same
+   answer, same default)*, or stay two items apiece.
+3. That settled, a combined file holds **83 items** (85 fields − 2 merged), and
+   § 25.2's writer has its target: take N config classes, emit one table,
+   tag each item with the engines it came from, refuse a collision that is not
+   a declared share.
+
+> **Nothing here is code.** § 26's rule holds: this is C1's content, and
+> `render_template` does not change until it is ruled on.
+
