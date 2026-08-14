@@ -24,7 +24,7 @@ matter are the ones nobody suspected. Suspicions raised by reading were then
 | `docs/execution/generator.md` | 594 |
 | `molbuilder/resolve.py` | 559 |
 | `docs/execution/job-system.md` | 1322 |
-| `docs/execution/job-contracts.md` § 6.2 + section map | *(partial — § 6.2 in full)* |
+| `docs/execution/job-contracts.md` §§ 3.1–3.2, 6.2, 6.3 | *(partial — those sections in full)* |
 
 | not yet read | lines |
 |---|---|
@@ -371,3 +371,55 @@ because **nothing connects the copy to the source**.
 Same T8 residue family as § 2 — and this one is in **the cross-layer authority**,
 which § 6.3 declares wins over every other document when they disagree. A stale
 row here propagates by design.
+
+
+---
+
+## 11 · `job-contracts.md` §§ 3.1–3.2 and 6.3
+
+### 11.1 · VERIFIED CLEAN — recorded because a defect-only report misleads
+
+Two parts of the authority were checked against measurements already in hand
+and **agree exactly**:
+
+| checked | against | result |
+|---|---|---|
+| § 3.1's per-engine block-emission table (PROVENANCE / BENCH-MARKS ✅ SIESTA, ATOM-METADATA conditional, HEADER unemitted) | T10's 57-deck sweep — provenance 57/57, bench-marks 57/57, user-custom 57/57, atom-metadata **6**/57 (only the structures carrying regions/frozen) | **agrees**, including the conditional |
+| § 6.3's sweep-token rule — axes in declaration order, concatenated with no separator, `.` spelled `p`, charset `[A-Za-z0-9_]`, refused rather than escaped | `resolve.point_token` + `_TOKEN_RE` read in full | **agrees, clause for clause** |
+
+§ 6.3 is the strongest section reviewed: it states a rule, names the one
+function that implements it, and the implementation matches. That is what the
+rest of the corpus should look like.
+
+### 11.2 · § 3.2's PROVENANCE example contradicts its own prose, and the emitter
+
+The example block lists a `resolved-defaults` entry:
+
+```
+#     kgrid             1x1x1 (auto-from-cell-vacuum)
+```
+
+Two paragraphs below, the prose names the fixed set: *"`mpi_np`, `omp_threads`,
+`BlockSize`, `enable_gpu` (and the PySCF equivalents)"*. **`kgrid` is not in
+it.** And T10's measurement of a real deck shows exactly the four the prose
+names, no `kgrid`:
+
+```
+#   resolved-defaults:
+#     BlockSize    auto -> 1
+#     enable_gpu   false
+#     mpi_np       auto
+#     omp_threads  auto
+```
+
+So the example shows a key the prose excludes and the emitter never writes —
+the same shape as § 3 of this report: an illustration left behind when the rule
+beside it moved.
+
+### 11.3 · `form-config-hash` — reserved, emitted by nobody
+
+The same example carries `form-config-hash  sha256:…  # optional`. No deck in
+the 57-deck sweep carries one. It is marked optional, so this is not a
+contradiction — it is recorded because it belongs to the family § 8 names:
+**a key defined before anything writes it.** HEADER (§ 3.1) is the same shape
+and is at least labelled *reserved-but-unemitted*; this one is not.
