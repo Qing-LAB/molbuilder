@@ -2237,3 +2237,42 @@ hand-editing forgiving. It is also the option that makes SS 25.1's move a
 simplification rather than a relocation.
 
 *(No code. This is C3's content, and SS 26 holds.)*
+
+### 37.3 - MEASURED: SIESTA does not care, which re-weights the whole finding
+
+*(User asked the right question -- "is siesta expect a float type though?" --
+and SS 37.1 answered it from reasoning. Measured now.)*
+
+```
+MeshCutoff 300 Ry    ->  redata: Mesh Cutoff = 300.0000 Ry | Total = -30.136693
+MeshCutoff 300.0 Ry  ->  redata: Mesh Cutoff = 300.0000 Ry | Total = -30.136693
+```
+
+Both exit 0, both parse to the same real, **identical total energy**. SIESTA's
+FDF reader takes a physical quantity as a real number and the literal's form is
+nothing to it.
+
+### 37.4 - So the argument for C3 is NOT the deck text
+
+Ranked the way the project ranks fixes -- **science, then clarity, then
+duplication**:
+
+| | verdict |
+|---|---|
+| **science** | **no impact, measured.** Same cutoff, same energy |
+| **clarity** | minor. Two decks for one calculation is confusing to a person diffing them, and it fails G4's *textual* identity test -- but G4 exists to catch a **different calculation**, and this is not one |
+| **duplication** | **this is the real cost.** One rule -- *what type is this value* -- has **two implementations**, answering to two authorities. That is SS 25.1's problem exactly, and it is why the two paths disagree at all |
+
+> **The corrected framing.** The differing deck is a **symptom that revealed**
+> the duplication; it is not the reason to fix it. A fix aimed at the deck text
+> would add widening to `config_from_template` and leave two implementations
+> standing -- the tempting move, and the wrong one.
+
+**C3's recommendation is unchanged and its justification is stronger:** put the
+rule where the vocabulary already is (the item's declared `type`), so there is
+**one** implementation. That is a simplification whether or not any deck ever
+differed.
+
+*(And it lowers C3's priority relative to C1/C2/C6, which change what the
+format can express. C3 makes one rule one implementation -- worth doing, not
+urgent.)*
