@@ -188,39 +188,43 @@ def test_an_unnameable_type_is_refused_by_name():
         declarations_for(odd)
 
 
-def test_pyscfs_vocabulary_gaps_refuse_loudly():
-    """§ 7: *"a parameter that cannot be given a kind is a gap in this
-    vocabulary, and the loud version of that is the only one that gets
-    fixed."*  PySCF has no template producer yet; what the total rule
-    owes it TODAY is that the gaps are named, not skipped.  This list
-    shrinking is progress; it growing is a new unclassified field."""
+def test_pyscf_has_no_vocabulary_gaps_left():
+    """§ 7's total rule, now SATISFIED for PySCF (T5, 2026-08-13).
+
+    This test used to assert the gaps were NAMED rather than skipped,
+    and listed six: ecp, save_optimized_xyz, save_initial_xyz,
+    write_trajectory, write_molwatch_log, stage.  Its own docstring said
+    *"this list shrinking is progress"*.  It shrank to zero, so the test
+    now guards the state that replaced it -- every PySCF field either
+    renders or is a machine fact § 7 deliberately excludes, and nothing
+    falls through unnamed.
+
+    A field added later without a category, an item_kind, or a type the
+    grammar knows fails HERE rather than the first time somebody tries
+    to describe a PySCF calculation.
+    """
     import typing as _t
-    hints = _t.get_type_hints(PySCFConfig)
     from molbuilder.template import declaration_for
-    gaps, rendered = [], []
+    hints = _t.get_type_hints(PySCFConfig)
+    gaps = []
     for f in dataclasses.fields(PySCFConfig):
         try:
-            # None is not a gap: § 7 EXCLUDES machine facts deliberately.
-            if declaration_for(f, hints[f.name]) is not None:
-                rendered.append(f.name)
-        except ValueError:
-            gaps.append(f.name)
-    # At schema @2 EVERY PySCF field is a gap, because `category` is
-    # required (§ 6.2) and PySCF is not migrated yet -- that is T5/T6 of
-    # the template-unification plan.  The rule this test defends is
-    # unchanged: the gaps are NAMED, never skipped.  Asserting the whole
-    # list here would just re-list the schema and would have to be edited
-    # for every PySCF field added; what matters is that nothing renders
-    # silently and that the pre-@2 gaps are still among them.
-    assert rendered == [], (
-        f"PySCF fields rendered despite having no category: {rendered}. "
-        f"§ 6.2 is required, so anything that slips through is an item with "
-        f"no panel to appear on -- a silent omission, not a template")
-    for pre_at2 in ("ecp", "save_optimized_xyz", "save_initial_xyz",
-                    "write_trajectory", "write_molwatch_log", "stage"):
-        assert pre_at2 in gaps, (
-            f"{pre_at2} was a known vocabulary gap before @2 and must not "
-            f"disappear from the list without being fixed")
+            declaration_for(f, hints[f.name])
+        except ValueError as exc:
+            gaps.append(f"{f.name}: {exc}")
+    assert gaps == [], (
+        "PySCF fields cannot be placed in the template vocabulary:\n  "
+        + "\n  ".join(gaps))
+
+
+def test_pyscf_renders_a_template_at_all():
+    """The thing T5 existed to make true.  Three of four engines could
+    not produce a template; a plan that called the template the single
+    source of truth had no source for PySCF at all."""
+    from molbuilder.template import render_template, read_template
+    t = read_template(render_template(PySCFConfig(), engine="pyscf"))
+    assert len(t.items) > 30
+    assert all(i.category for i in t.items)
 
 
 def test_declarations_keep_the_configs_own_order():
@@ -240,10 +244,10 @@ def test_the_fingerprint_is_stable_and_short():
     assert a == b and len(a) == 16
 
 
-@pytest.mark.skip(reason="PySCF's fingerprint cannot compute until its "
-                  "§ 7 vocabulary gaps close (see test_pyscfs_vocabulary_"
-                  "gaps_refuse_loudly); re-enable with its template")
 def test_two_engines_do_not_share_a_fingerprint():
+    # Un-skipped 2026-08-13 (T5): it was waiting on PySCF's § 7 vocabulary
+    # gaps closing, and they have.  A skip that outlives its reason is a
+    # test nobody is running and everybody assumes passes.
     assert schema_fingerprint(SiestaConfig) != schema_fingerprint(PySCFConfig)
 
 

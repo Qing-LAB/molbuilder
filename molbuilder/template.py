@@ -118,7 +118,7 @@ ALLOCATION_RESOLVERS = ("rank_count", "omp_threads", "node_memory")
 #: two, that ``enum`` is drawn from ``choices``, that ``text`` is verbatim engine
 #: text to be copied rather than interpreted.
 TYPES = ("int", "float", "str", "bool", "enum", "pow2",
-         "int3", "strlist", "intlist", "text")
+         "int3", "strlist", "intlist", "text", "strmap")
 
 
 def _refuse(msg: str, *, where: str = "") -> NoReturn:
@@ -315,6 +315,21 @@ def _decl_type(ann, choices) -> Optional[str]:
             return "strlist"
         if args[0] is int:
             return "intlist"
+    # ``str | dict`` -- one setting with a scalar form and a per-element form.
+    # PySCF's ``ecp`` is the case: "lanl2dz" applies one ECP to every heavy
+    # atom, while {"Au": "lanl2dz"} names them per element.  Modelled rather
+    # than narrowed to the scalar, because § 7's answer to a keyword we do not
+    # model is to model it -- narrowing would make the per-element form
+    # unsettable from a template and silently drop it on a round trip.
+    # BOTH union spellings.  ``Optional[Union[str, dict]]`` gives
+    # typing.Union; the PEP 604 ``str | dict | None`` gives types.UnionType,
+    # and they are NOT the same object -- checking only the first silently
+    # left `ecp` unnameable, which is how it stayed a vocabulary gap.
+    import types as _types
+    if origin is typing.Union or origin is getattr(_types, "UnionType", ()):
+        non_none = [a for a in args if a is not type(None)]
+        if set(non_none) == {str, dict}:
+            return "strmap"
     return None
 
 
@@ -556,6 +571,11 @@ def _toml_value(v: Any) -> str:
         return repr(v)
     if isinstance(v, str):
         return (_toml_multiline(v) if "\n" in v else _toml_basic(v))
+    if isinstance(v, dict):
+        # An inline table: ``{ Au = "lanl2dz", Pt = "lanl2dz" }``.  Keys are
+        # element symbols, so the bare-key form is always legal.
+        inner = ", ".join(f"{k} = {_toml_value(x)}" for k, x in v.items())
+        return "{ " + inner + " }"
     if isinstance(v, (list, tuple)):
         return "[" + ", ".join(_toml_value(x) for x in v) + "]"
     raise TypeError(f"template: cannot write {type(v).__name__} to TOML")

@@ -461,6 +461,7 @@ class PySCFConfig:
 
     # ---------------- System ----------------
     job_name: str = field(default="pyscf_relax", metadata={
+        "category": ("procedure", "system"),
         "workflow_group": "profile",
         "section":  "System",
         "item_kind":  "produce",
@@ -475,6 +476,7 @@ class PySCFConfig:
         "validate": _validate_basename("job_name"),
     })
     charge: Optional[int] = field(default=None, metadata={
+        "category": ("system",),
         "section": "System",
         # Run-profile identity — molecule's charge state.
         "workflow_group": "profile",
@@ -488,6 +490,7 @@ class PySCFConfig:
                  "when working with a charged species."),
     })
     spin: int = field(default=0, metadata={
+        "category": ("system",),
         "section": "System",
         # System characteristic — open-shell chemistry, not stage.
         "workflow_group": "profile",
@@ -497,6 +500,7 @@ class PySCFConfig:
         "help": "2S (NOT 2S+1); 0=closed shell, 1=doublet, 2=triplet, ...",
     })
     symmetry: bool = field(default=False, metadata={
+        "category": ("system",),
         "workflow_group": "profile",
         "section": "System",
         "label":   "Use point-group symmetry",
@@ -507,6 +511,7 @@ class PySCFConfig:
 
     # ---------------- Method (main run) ----------------
     method: str = field(default="RKS", metadata={
+        "category": ("method",),
         "section": "Method",
         "workflow_group": "profile",
         "label":   "SCF method",
@@ -515,6 +520,7 @@ class PySCFConfig:
         "help": "RKS / UKS / RHF / UHF",
     })
     functional: str = field(default="B3LYP", metadata={
+        "category": ("method",),
         "section": "Method",
         "workflow_group": "profile",
         "label":   "Functional",
@@ -522,6 +528,7 @@ class PySCFConfig:
         "help": "XC functional (e.g. B3LYP / PBE / PBE0 / M06-2X / wB97X-D)",
     })
     basis: str = field(default="def2-SVP", metadata={
+        "category": ("method", "accuracy"),
         "section": "Method",
         "workflow_group": "profile",
         "label":   "Basis set",
@@ -543,10 +550,12 @@ class PySCFConfig:
     # auxbasis: Python-API knob; rarely set from the form (auto-pick
     # from density_fit() is the right default).  No section -> not on form.
     auxbasis: Optional[str] = field(default=None, metadata={
+        "category": ("method",),
         "help": "auxiliary fitting basis; None lets density_fit() auto-pick",
             "engine_key":  'df.auxbasis = ...',
     })
     density_fit: bool = field(default=True, metadata={
+        "category": ("method", "execution"),
         "section": "Method",
         # Profile-level: method-family identity choice; SpectraConfig's
         # density_fit (config/spectra.py) is also profile.
@@ -556,6 +565,7 @@ class PySCFConfig:
         "help": "use density fitting (faster Coulomb/exchange evaluation)",
     })
     dispersion: Optional[str] = field(default="d3bj", metadata={
+        "category": ("method",),
         "section": "Method",
         # Profile-level: method-family choice; SpectraConfig's
         # dispersion is also profile.  Setting once per project.
@@ -578,6 +588,7 @@ class PySCFConfig:
     # Set to "" to disable auto-emit.  Per-element dicts aren't
     # accessible from the CLI; use the Python API for that.
     ecp: "str | dict | None" = field(default=None, metadata={
+        "category": ("method",),
         "help": ("effective core potential (e.g. 'lanl2dz'); default = auto "
                  "for heavy atoms on non-def2 bases; pass 'none' to disable"),
         # The dict variant is Python-API-only (per-element ECPs); the
@@ -591,6 +602,7 @@ class PySCFConfig:
 
     # ---------------- SCF ----------------
     scf_conv_tol: float = field(default=1e-9, metadata={
+        "category": ("accuracy",),
         "section": "SCF",
         # Convergence target — tightens stage-to-stage.
         "workflow_group": "stage",
@@ -601,6 +613,7 @@ class PySCFConfig:
         "help":  "SCF convergence tolerance on the energy (Hartree)",
     })
     scf_conv_tol_grad: float = field(default=0.0, metadata={
+        "category": ("accuracy",),
         "section": "SCF",
         # Tightens stage-to-stage alongside scf_conv_tol: same reason,
         # a different (and for forces, the decisive) quantity.
@@ -631,6 +644,7 @@ class PySCFConfig:
                   "this (1e-6, 1e-7) when forces look noisy"),
     })
     scf_soscf: bool = field(default=False, metadata={
+        "category": ("convergence",),
         "section": "SCF",
         # Profile-level: an SCF-algorithm choice made with the system,
         # like level_shift -- not a per-stage tightening.
@@ -646,6 +660,7 @@ class PySCFConfig:
                   "level shift / damping -> SOSCF"),
     })
     scf_max_cycle: int = field(default=100, metadata={
+        "category": ("convergence",),
         "section": "SCF",
         # Resource-budget cap — patience, not convergence definition.
         "workflow_group": "budget",
@@ -656,6 +671,7 @@ class PySCFConfig:
         "help":  "max SCF cycles per single-point",
     })
     scf_init_guess: str = field(default="minao", metadata={
+        "category": ("convergence",),
         "section": "SCF",
         # Profile-level: SCF initial-guess algorithm is a system-
         # character choice (chosen with the system, not tightened).
@@ -667,6 +683,7 @@ class PySCFConfig:
         "help": "SCF initial guess: minao / atom / 1e / huckel",
     })
     grid_level: int = field(default=4, metadata={
+        "category": ("accuracy",),
         "section": "SCF",
         "workflow_group": "stage",
         "label": "DFT grid level",
@@ -682,6 +699,7 @@ class PySCFConfig:
         "help":  "0=coarse, 3=screening, 4=default (hybrid-friendly), 5=tight, 9=ultra",
     })
     level_shift: float = field(default=0.0, metadata={
+        "category": ("convergence",),
         "section": "SCF",
         # Profile-level: SCF stability knob (mirrors SIESTA's
         # mixing_weight which is also profile) — set with the
@@ -697,6 +715,7 @@ class PySCFConfig:
     # power users tweak via Python API.  Defaults preserve PySCF
     # behaviour for the easy-converge case.
     diis_space: int = field(default=8, metadata={
+        "category": ("convergence",),
         "label": "mf.diis_space",
         "engine_key":  'mf.diis_space',
         "range": (4, 20),
@@ -704,6 +723,7 @@ class PySCFConfig:
         "help":  "DIIS subspace size; bump to 12-20 for oscillating SCFs",
     })
     damp: float = field(default=0.0, metadata={
+        "category": ("convergence",),
         "label": "mf.damp",
         "engine_key":  'mf.damp',
         "range": (0.0, 0.9),
@@ -713,6 +733,7 @@ class PySCFConfig:
 
     # ---------------- Main optimization ----------------
     optimize: bool = field(default=True, metadata={
+        "category": ("procedure",),
         "section": "Compute & budget",
         "item_kind":  "produce",
         # Profile-level: gates whether a relax happens at all --
@@ -723,6 +744,7 @@ class PySCFConfig:
         "help": "run geometry optimization; --no-optimize for single-point only",
     })
     optimizer: str = field(default="geometric", metadata={
+        "category": ("procedure",),
         "section": "Compute & budget",
         # Profile-level: optimizer family choice; parallel to SIESTA's
         # relax_type (also profile).
@@ -796,6 +818,7 @@ class PySCFConfig:
 
     # ---------------- Solvent (optional) ----------------
     solvent: Optional[str] = field(default=None, metadata={
+        "category": ("system",),
         "workflow_group": "profile",
         "section": "Solvent (optional)",
         "label":   "Solvent",
@@ -804,6 +827,7 @@ class PySCFConfig:
         "help": "solvent (water / methanol / dmso / chloroform / ...)",
     })
     solvent_method: str = field(default="IEF-PCM", metadata={
+        "category": ("system",),
         "workflow_group": "profile",
         "section": "Solvent (optional)",
         "label":   "PCM model",
@@ -814,6 +838,7 @@ class PySCFConfig:
 
     # ---------------- Runtime ----------------
     max_memory_mb: int = field(default=4000, metadata={
+        "category": ("execution",),
         "workflow_group": "budget",
         "section": "Compute & budget",
         "label": "max_memory", "unit": "MB",
@@ -824,6 +849,7 @@ class PySCFConfig:
         "help":  "MB hint for PySCF's max_memory",
     })
     threads: Optional[int] = field(default=None, metadata={
+        "category": ("execution",),
         "workflow_group": "budget",
         "section": "Compute & budget",
         "label":      "CPU threads",
@@ -848,6 +874,7 @@ class PySCFConfig:
                       "to bench, or to leave cores free for other jobs.",
     })
     use_gpu: bool = field(default=False, metadata={
+        "category": ("execution",),
         "workflow_group": "budget",
         "section": "Compute & budget",
         "label":     "Use GPU (NVIDIA, via gpu4pyscf)",
@@ -872,6 +899,7 @@ class PySCFConfig:
                      "(compute capability < 7.0).",
     })
     verbose: int = field(default=4, metadata={
+        "category": ("procedure",),
         "workflow_group": "profile",
         "section": "Compute & budget",
         "label": "PySCF verbose",
@@ -881,6 +909,7 @@ class PySCFConfig:
         "help":  "PySCF verbosity: 0 silent, 4 info, 5 debug",
     })
     chkfile: bool = field(default=True, metadata={
+        "category": ("procedure",),
         "workflow_group": "profile",
         "section": "Compute & budget",
         "label":   "Write checkpoint (.chk)",
@@ -888,6 +917,7 @@ class PySCFConfig:
         "help": "write <job>.chk (DM, mol, energies for restart)",
     })
     log_file: bool = field(default=True, metadata={
+        "category": ("procedure",),
         "workflow_group": "profile",
         "section": "Compute & budget",
         "label":   "Write PySCF log",
@@ -896,14 +926,26 @@ class PySCFConfig:
     })
     # Always-on output knobs; unsectioned (no good reason to expose).
     save_optimized_xyz: bool = field(default=True, metadata={
+        # molbuilder's own doing, not a PySCF keyword: it shapes
+        # what the PRODUCER writes, so it is kind="produce" (§ 6).
+        "item_kind": "produce",
+        "category": ("procedure",),
         "help": "snapshot the relaxed geometry to <job>_optimized.xyz",
             "engine_key":  '(molbuilder: writes <job>_opt.xyz post-relax)',
     })
     save_initial_xyz: bool = field(default=True, metadata={
+        # molbuilder's own doing, not a PySCF keyword: it shapes
+        # what the PRODUCER writes, so it is kind="produce" (§ 6).
+        "item_kind": "produce",
+        "category": ("procedure",),
         "help": "snapshot the input geometry to <job>_initial.xyz",
             "engine_key":  '(molbuilder: writes <job>_init.xyz pre-relax)',
     })
     write_trajectory: bool = field(default=True, metadata={
+        # molbuilder's own doing, not a PySCF keyword: it shapes
+        # what the PRODUCER writes, so it is kind="produce" (§ 6).
+        "item_kind": "produce",
+        "category": ("procedure",),
         "help": ("stream geomeTRIC's <job>_geom_optim.xyz so molwatch can "
                  "watch it live"),
             "engine_key":  '(molbuilder: per-step .xyz from geomopt callback)',
@@ -917,6 +959,10 @@ class PySCFConfig:
     # berny run has nowhere to attach.  See spec
     # docs/engines/pyscf.md L33 for the exact gate.
     write_molwatch_log: bool = field(default=True, metadata={
+        # molbuilder's own doing, not a PySCF keyword: it shapes
+        # what the PRODUCER writes, so it is kind="produce" (§ 6).
+        "item_kind": "produce",
+        "category": ("procedure",),
         "help": ("write the additive <job>.molwatch.log (self-contained "
                  "per-step coords / energy / forces; the Watch tab's "
                  "preferred input).  Requires --optimize and "
@@ -939,6 +985,7 @@ class PySCFConfig:
     # script does not auto-perturb; the user decides whether to
     # restart the optimization along the imaginary coordinate.
     compute_frequencies: bool = field(default=False, metadata={
+        "category": ("procedure",),
         "workflow_group": "profile",
         "section": "Frequencies / thermochemistry",
         "label": "Post-relax frequencies + thermochemistry",
@@ -948,6 +995,7 @@ class PySCFConfig:
                  "(ZPE, H, G, S, Cv, Cp) at temperature_K / pressure_atm",
     })
     temperature_K: float = field(default=298.15, metadata={
+        "category": ("procedure",),
         "section": "Frequencies / thermochemistry",
         # Profile-level: standard-state thermochemistry condition;
         # paired with ``pressure_atm`` (also profile).
@@ -960,6 +1008,7 @@ class PySCFConfig:
         "help":  "RRHO temperature for thermo.thermo() (standard: 298.15 K)",
     })
     pressure_atm: float = field(default=1.0, metadata={
+        "category": ("procedure",),
         "workflow_group": "profile",
         "section": "Frequencies / thermochemistry",
         "label": "Thermochemistry pressure", "unit": "atm",
@@ -972,6 +1021,7 @@ class PySCFConfig:
 
     # ---------------- Comments ----------------
     verbose_comments: bool = field(default=True, metadata={
+        "category": ("procedure",),
         "workflow_group": "profile",
         "section": "Compute & budget",
         "item_kind":  "produce",
@@ -994,6 +1044,10 @@ class PySCFConfig:
     # the two engines cannot spell one rule two ways.  Held an int (1/2/3) and
     # produced ``-stage<N>`` until 2026-08-10 (decision 27).
     stage: Optional[str] = field(default=None, metadata={
+        # molbuilder's own doing, not a PySCF keyword: it shapes
+        # what the PRODUCER writes, so it is kind="produce" (§ 6).
+        "item_kind": "produce",
+        "category": ("procedure",),
         "label": "Relaxation stage",
         "engine_key":  '(molbuilder: filename token + log naming)',
         "help":  "stage token <NN>_<name> (e.g. 01_coarse) for the "
