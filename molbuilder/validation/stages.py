@@ -215,18 +215,21 @@ def validate_ladder(
     then check the order — and only the two functions are SIESTA's.
     """
     # Imported here, not at module scope: ``validation`` is imported by the
-    # emitters, and reaching back up to ``siesta.input`` at import time would
-    # close a cycle.  Bound to local names that shadow the parameters, which
+    # emitters, and reaching back up at import time would close a cycle.
+    # The operator moved out of ``siesta/`` on 2026-08-14 (audit § 6.1): it is
+    # floor 3's, and resolving a stage is not something an engine owns.  Bound to local names that shadow the parameters, which
     # is the point -- the rest of the body does not care which it got.
     if resolve is None:
-        from ..siesta.input import effective_config as _resolve
+        from ..resolve import effective_config as _resolve
         resolve = _resolve
     if validate is None:
         from . import validate as _validate
         validate = _validate
 
     enabled = [s for s in stages if getattr(s, "enabled", True)]
-    resolved = [(s.name, resolve(template, s)) for s in enabled]
+    resolved = [(s.name, resolve(template, getattr(s, 'overrides', None),
+                                where=f"stage {s.name!r}"))
+                for s in enabled]
 
     out: List[Issue] = []
     for name, cfg in resolved:

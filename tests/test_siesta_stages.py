@@ -124,11 +124,13 @@ def test_each_stages_overrides_are_exactly_that_tiers_preset(tier):
 def test_the_one_shot_overlay_and_the_ladder_agree_field_for_field():
     """The same claim from the other side, through both real code paths
     rather than through the table they share."""
-    from molbuilder.siesta.input import effective_config
+    from molbuilder.resolve import effective_config
     template = SiestaConfig(system_label="JOB")
     for tier, stage in enumerate(default_siesta_stages("vib-quality"), 1):
         overlaid = dataclasses.asdict(apply_siesta_stage(template, tier))
-        resolved = dataclasses.asdict(effective_config(template, stage))
+        resolved = dataclasses.asdict(effective_config(
+            template, getattr(stage, "overrides", None),
+            where=f"stage {stage.name!r}"))
         # `restart` is the ONE field they may differ in, and the difference is
         # the point rather than a leak: `--stage 2` is a single run with
         # nothing before it, so it stays on the template's value, while

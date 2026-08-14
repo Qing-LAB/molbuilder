@@ -528,6 +528,17 @@ different layer, and the item says so on its own face.
 `kind` says who owns the item. `read_by` says **who else derives something from
 its value.** They are different questions and one key cannot answer both.
 
+> **Both name LAYERS, so both draw from the same closed vocabulary** — § 6's
+> five: `engine` · `deck` · `wrapper` · `produce` · `monitor`. `read_by` is a
+> list because more than one layer may depend on a value, and it is checked on
+> read like every other closed set: an unknown layer is an error naming the
+> item, never something a reader drops.
+>
+> *(Stated 2026-08-14. It had never been said, so `read_by` accepted any string
+> on write and on read — while `engines` next to it is refused when unknown, on
+> the ground that an empty result cannot tell "nothing matched" from "you asked
+> for something that does not exist". Audit § 1.3a.)*
+
 `enable_gpu` is unambiguously the engine's — it becomes the SIESTA keyword
 `Diag.ELPA.GPU` — *and* the wrapper acts on it, because a GPU deck needs the
 source-built environment **and** a GPU runtime: the `gres` ask, MPS, the NUMA

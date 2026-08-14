@@ -645,14 +645,16 @@ def measure_chaining_producers() -> list[str]:
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.identity import stage_token
     from molbuilder.jobset.model import Job, JobSet, Resources
-    from molbuilder.siesta.input import effective_config
+    from molbuilder.resolve import effective_config
     from molbuilder.siesta.stages import (_traits, _warm_declaration,
                                           default_siesta_stages)
     jobs = []
     for i, st in enumerate(default_siesta_stages(), start=1):
         if not st.enabled:
             continue
-        eff = effective_config(SiestaConfig(system_label="JOB"), st)
+        eff = effective_config(SiestaConfig(system_label="JOB"),
+                               getattr(st, "overrides", None),
+                               where=f"stage {st.name!r}")
         jobs.append(Job(name=st.name,
                         script=f"JOB_{stage_token(i, st.name)}.fdf",
                         resources=Resources(),

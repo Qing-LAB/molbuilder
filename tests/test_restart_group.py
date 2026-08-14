@@ -183,11 +183,10 @@ def test_a_missing_restart_field_reads_as_clean():
 def test_a_stage_sets_restart_like_any_other_field():
     """§ 4 rule 3. *"A first stage is normally clean and everything after it
     continue. Nothing special is needed to say so."*"""
-    from molbuilder.siesta.input import effective_config
+    from molbuilder.resolve import effective_config
     from molbuilder.task import Stage
     tpl = SiestaConfig(system_label="job", restart="clean")
-    later = effective_config(tpl, Stage(name="tight",
-                                        overrides={"restart": "continue"}))
+    later = effective_config(tpl, {"restart": "continue"})
     assert later.restart == "continue"
     assert tpl.restart == "clean", "the template must not be mutated"
 
@@ -201,13 +200,13 @@ def test_prep_carries_state_only_into_a_stage_that_will_read_it():
     # Repointed 2026-08-12 (u5): the producer this drove is deleted; the
     # declaration is built the LIVE way -- the resolved stage through the
     # one seam, exactly what `prep`'s `_job_for` hands each Job.
-    from molbuilder.siesta.input import effective_config
+    from molbuilder.resolve import effective_config
     from molbuilder.siesta.stages import _warm_declaration
     from molbuilder.task import Stage
     tpl = SiestaConfig(system_label="job", relax_type="CG")
 
     def warm(overrides):
-        eff = effective_config(tpl, Stage(name="s", overrides=overrides))
+        eff = effective_config(tpl, overrides)
         return _warm_declaration("job", eff)
 
     assert warm({"restart": "clean"}) == []   # told to start clean
@@ -234,7 +233,7 @@ def test_the_group_reaches_prep_as_a_declaration_not_as_engine_knowledge():
     """
     import importlib
 
-    from molbuilder.siesta.input import effective_config
+    from molbuilder.resolve import effective_config
     from molbuilder.siesta.stages import _warm_declaration
     from molbuilder.task import Stage
 
@@ -249,7 +248,7 @@ def test_the_group_reaches_prep_as_a_declaration_not_as_engine_knowledge():
 
     eff = effective_config(
         SiestaConfig(system_label="job", relax_type="CG"),
-        Stage(name="tight", overrides={"restart": "continue"}))
+        {"restart": "continue"})
     assert [w.name for w in _warm_declaration("job", eff)] == [
         "job.XV", "job.DM", "job.CG"]
 
@@ -271,12 +270,12 @@ def test_only_the_optimizer_history_is_conditional():
     condition — and a condition on the geometry would make a continuation
     silently lose the very thing it exists to move forward.
     """
-    from molbuilder.siesta.input import effective_config
+    from molbuilder.resolve import effective_config
     from molbuilder.siesta.stages import _warm_declaration
     from molbuilder.task import Stage
     eff = effective_config(
         SiestaConfig(system_label="job", relax_type="CG"),
-        Stage(name="b", overrides={"restart": "continue"}))
+        {"restart": "continue"})
     warm = {w.name: w.requires_same for w in _warm_declaration("job", eff)}
     assert warm == {"job.XV": None, "job.DM": None, "job.CG": "optimizer"}
 

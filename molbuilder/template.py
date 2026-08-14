@@ -143,8 +143,10 @@ def _refuse(msg: str, *, where: str = "") -> NoReturn:
 class Item:
     """One parameter, with everything all four readers need from it.
 
-    The four required keys (§ 3) are the ones without defaults here:
-    :attr:`name`, :attr:`kind`, :attr:`type`, :attr:`help`. Everything else is
+    **The four § 3 requires are `kind`, `category`, `type` and `help`** —
+    matching :data:`_REQUIRED_ITEM_KEYS`.  ``name`` is not among them because it
+    is not a key at all: it is the table header, ``[item.<name>]``.  Everything
+    else is
     present when it applies and absent when it does not — *"absent is not a
     failure; it is the honest statement that the parameter has no default, no
     bounds, no unit, or no other reader."*
@@ -230,6 +232,29 @@ class Item:
             _refuse("type='enum' needs 'choices' -- an enum with no members "
                     "cannot be validated or rendered as a control",
                     where=self.name)
+        # § 3's fourth REQUIRED key, enforced here for the same reason as the
+        # conditional three above: a producer building Items by hand must get
+        # the same refusal the parser gives.  It was missing until 2026-08-14
+        # (audit § 1.4) -- so the contract, the parser and `Item` disagreed
+        # about how many keys are required, and the object was the lenient one.
+        if not self.category:
+            _refuse("no 'category' -- § 3 requires one on every item, and "
+                    "without it a surface has no panel to put this on "
+                    f"(the vocabulary is {', '.join(CATEGORIES)})",
+                    where=self.name)
+        for _c in self.category:
+            if _c not in CATEGORIES:
+                _refuse(f"category {_c!r} is not one of "
+                        f"{', '.join(CATEGORIES)}", where=self.name)
+        # § 6.1: `read_by` names LAYERS, so it draws from the same closed
+        # vocabulary `kind` does.  Unchecked until 2026-08-14 (audit § 1.3a) --
+        # any string passed, on write and on read, while `engines` beside it is
+        # refused when unknown.
+        for _r in self.read_by:
+            if _r not in KINDS:
+                _refuse(f"read_by names {_r!r}, which is not a layer -- the "
+                        f"vocabulary is {', '.join(KINDS)} (§ 6.1)",
+                        where=self.name)
 
     @property
     def is_set(self) -> bool:

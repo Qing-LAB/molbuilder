@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.siesta.input import effective_config
+from molbuilder.resolve import effective_config
 from molbuilder.structure import Structure
 from molbuilder.task import Stage
 from molbuilder import template as T
@@ -117,8 +117,7 @@ def test_a_stage_resolves_against_the_template_read_back(cfg):
     """What ``prep`` actually does: rebuild the config, then land the stage's
     ``overrides`` on it (`stages.md` § 4)."""
     base = T.config_from_template(T.template_with_values(cfg), SiestaConfig)
-    eff = effective_config(base, Stage(name="tight",
-                                       overrides={"mesh_cutoff": 500.0}))
+    eff = effective_config(base, {"mesh_cutoff": 500.0})
     assert eff.mesh_cutoff == 500.0
     assert eff.basis_size == "TZP"          # untouched by the stage
 

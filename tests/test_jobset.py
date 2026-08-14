@@ -1413,7 +1413,7 @@ def _shipped_ladder():
     # engine's own declarations.
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.identity import stage_token
-    from molbuilder.siesta.input import effective_config
+    from molbuilder.resolve import effective_config
     from molbuilder.siesta.stages import (_traits, _warm_declaration,
                                           default_siesta_stages)
     label = "bdt"
@@ -1421,7 +1421,9 @@ def _shipped_ladder():
     for i, st in enumerate(default_siesta_stages("vib-quality"), start=1):
         if not st.enabled:
             continue
-        eff = effective_config(SiestaConfig(system_label=label), st)
+        eff = effective_config(SiestaConfig(system_label=label),
+                               getattr(st, "overrides", None),
+                               where=f"stage {st.name!r}")
         jobs.append(Job(name=st.name,
                         script=f"{label}_{stage_token(i, st.name)}.fdf",
                         resources=Resources(),

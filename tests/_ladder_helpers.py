@@ -14,13 +14,15 @@ def _live_ladder_decks(struct, template, stages):
     2026-08-12, u5, from the deleted ``render_siesta_stage_fdfs``).  The
     ordinal comes from the stage's place in the FULL ladder."""
     from molbuilder.identity import stage_token
-    from molbuilder.siesta.input import effective_config, render_fdf
+    from molbuilder.resolve import effective_config
+    from molbuilder.siesta.input import render_fdf
     label = template.system_label
     out = {}
     for i, st in enumerate(stages, start=1):
         if not getattr(st, "enabled", True):
             continue
-        eff = effective_config(template, st)
+        eff = effective_config(template, getattr(st, "overrides", None),
+                               where=f"stage {st.name!r}")
         tok = stage_token(i, st.name)
         out[f"{label}_{tok}.fdf"] = render_fdf(struct, eff, stage_token=tok)
     return out

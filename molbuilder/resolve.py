@@ -308,7 +308,7 @@ def resolve(template_text: str, task, config_cls, *,
                 f"description must never carry (engines/template.md § 7): "
                 f"they arrive as the ALLOCATION at prep, on the machine "
                 f"that runs the job.")
-        base = _apply(base, stage_obj.overrides)
+        base = effective_config(base, stage_obj.overrides)
         provenance.update({k: "stage" for k in stage_obj.overrides})
 
     pins = dict(pins or {})
@@ -390,10 +390,10 @@ def resolve(template_text: str, task, config_cls, *,
 
         values = base
         if params:
-            values = _apply(values, params)
+            values = effective_config(values, params)
             prov.update({k: "sweep" for k in params})
         if pins:
-            values = _apply(values, pins)
+            values = effective_config(values, pins)
             prov.update({k: "pin" for k in pins})
 
         resources = dataclasses.replace(allocation, **machine)
@@ -449,7 +449,7 @@ def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any
         if not getattr(s, "enabled", True):
             continue
         out.append((s.name,
-                    _apply(base, s.overrides) if s.overrides else base))
+                    effective_config(base, s.overrides) if s.overrides else base))
     return out
 
 
@@ -488,18 +488,97 @@ def _stage_of(task, stage: Optional[str]):
         f"{', '.join(s.name for s in task.stages)}.")
 
 
-def _apply(cfg, overrides: Mapping[str, Any]):
-    """The template ⊕ overrides seam — ``engines/stages.md`` § 4's one place.
+def effective_config(template, overrides: Mapping[str, Any], *,
+                     where: str = ""):
+    """Resolve one stage against the backbone: **the one place this happens.**
 
-    ``effective_config`` lives under ``siesta/`` for historical reasons and its
-    body is **entirely engine-agnostic**: it checks each key against the
-    dataclass's own fields, widens ``int`` to ``float`` where the field declares
-    one, and returns a new object. Calling it here keeps *"the one place this
-    happens"* true rather than growing a second implementation beside it.
+    ``engines/stages.md`` § 4::
+
+        effective config = the template's values ⊕ that stage's ``overrides``
+
+    ``template`` is the science backbone — every field, with the value the
+    user set or the default they did not touch.  ``overrides`` is the mapping
+    of cells that differ.
+
+    ``where`` names whoever supplied the overrides — a stage's name, usually.
+    It is used **only** in the refusal, because *"stage 'tight' overrides a
+    field that does not exist"* is findable and *"an override does not exist"*
+    is not.  It is deliberately not a parameter of the operation: the operator
+    needs the cells, and the label is for the person reading the error.
+
+    **It takes a MAPPING, not a Stage** *(2026-08-14)*.  A stage is where
+    overrides usually come from, but the operator needs only the cells: a sweep
+    point and a pin are the same shape and neither is a stage.  ``resolve``
+    used to fabricate a ``Stage(name="resolve")`` purely to satisfy the old
+    signature — packaging invented to fit the parameter rather than the other
+    way round.
+
+    **It lives HERE, in floor 3, and not in an engine package** *(moved
+    2026-08-14, audit § 6.1 / § 25.1)*.  The body is entirely engine-agnostic —
+    it reads the dataclass's own fields — and while it sat under ``siesta/``,
+    floor 3 and the validation layer both imported from one engine to do
+    something neither engine owns: PySCF had to import SIESTA's module to
+    resolve its own stages.  ``generator.md`` § 7's test is that adding an
+    engine adds files and edits none.
+
+    Two rules from § 4 shape what this returns, and both are about keeping a
+    stage from becoming a special case:
+
+    **R1 — one object is validated and rendered.**  What comes back is an
+    ordinary ``SiestaConfig``, so the shipped validator (``validation.validate``)
+    and the shipped emitter (``render_fdf``) both take it unchanged.  Nothing
+    downstream learns the word "stage".
+
+    **R2 — a stage is validated as a resolved whole, never as a diff.**  Two
+    overrides can each be reasonable and jointly wrong, so the caller hands
+    the validator *this object*, with the stage's name only as a label.
+
+    **A stage may name ANY field of the shared schema** (§ 1.2).  It is not a
+    privileged four: ``mesh_cutoff``, ``basis_size`` and ``kgrid`` were
+    unreachable before this function existed, and nothing about them is
+    special now.  An override naming a field the schema does not have is
+    refused **by name**, which is the half of § 6.6's preflight that
+    ``molbuilder/task.py`` could not reach — it has no schema.
+
+    A varied field the stage does *not* name keeps the template's value
+    (§ 6.2's subset rule): omitting a key means "this stage is at the
+    backbone value", which is what the table draws as a quiet cell.
     """
-    from .siesta.input import effective_config
-    from .task import Stage
-    return effective_config(cfg, Stage(name="resolve", overrides=dict(overrides)))
+    known = {f.name for f in dataclasses.fields(type(template))}
+    overrides = dict(overrides or {})
+
+    unknown = sorted(k for k in overrides if k not in known)
+    if unknown:
+        raise ValueError(
+            f"{where + ': ' if where else ''}override(s) "
+            f"{', '.join(repr(k) for k in unknown)} name no field of "
+            f"{type(template).__name__}. A stage may override any field of "
+            f"the shared schema, but only a field of it "
+            f"(engines/stages.md 1.2, 6.6)."
+        )
+
+    # An override that arrived from JSON carries JSON's types, and JSON has
+    # one number.  ``{"mesh_cutoff": 150}`` is an int where the field declares
+    # float, which renders ``MeshCutoff 150 Ry`` where the same value written
+    # ``150.0`` renders ``MeshCutoff 150.0 Ry`` -- the same number, a different
+    # deck.  Widening int -> float is lossless, so it is done here and the deck
+    # reads the same however the description spelled it.
+    #
+    # NOTHING ELSE is coerced.  ``float -> int`` would silently truncate
+    # ``relax_steps: 100.7`` to 100, and a string would quietly parse; both are
+    # the caller's mistake and are refused BY NAME in the preflight
+    # (``validation/task.py``), which is where a wrong value belongs.  Found by
+    # the M2 seam walk, 2026-08-07.
+    declared = {f.name: f.type for f in dataclasses.fields(type(template))}
+    widened = {
+        k: (float(v) if declared.get(k) in ("float", float)
+            and isinstance(v, int) and not isinstance(v, bool) else v)
+        for k, v in overrides.items()
+    }
+
+    # ``replace`` builds a NEW object, so the template is untouched and every
+    # stage resolves against the same backbone regardless of order.
+    return dataclasses.replace(template, **widened)
 
 
 def _label_for(base: str, point: Mapping[str, Any]) -> str:
