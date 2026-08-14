@@ -684,39 +684,74 @@ def test_cpu_mode_wrapper_falls_back_to_safe_gpu_default_if_toggled(
 
 
 # --------------------------------------------------------------------- #
-#  ELPA decoupled from GPU: CPU-ELPA routing (engines/siesta.md § 7)    #
+#  What actually decides the env: GPU, and nothing else                 #
+#                                                                       #
+#  REDESIGNED 2026-08-13.  The three tests that stood here pinned the    #
+#  rule "any ELPA deck routes to the source build", including one        #
+#  calling it "the crux of the fix".  The premise under all three was    #
+#  that the packaged SIESTA has no ELPA.  It was measured and is false:  #
+#  ELPA is compiled into conda-forge's binary through ELSI, and both     #
+#  stages run on CPU there.  They are replaced rather than patched --    #
+#  a test asserting what the contract now says must NOT be true makes    #
+#  the correction harder and reads later as policy.                      #
+#                                                                       #
+#  The two envs split on PROVENANCE: one installs from packages on any   #
+#  machine, the other must be built from source (not permitted at every  #
+#  HPC site).  GPU is the one capability only the source build has.      #
 # --------------------------------------------------------------------- #
 
 
-def test_fdf_requests_elpa_detects_cpu_elpa(tmp_path):
-    """An ELPA Diag.Algorithm (even with GPU off) must be detected so the
-    job routes to the ELPA-linked build."""
-    p = _write_fdf(tmp_path,
-                   "Diag.Algorithm ELPA-2STAGE\nDiag.ELPA.GPU .false.\n")
-    assert _runwrap._fdf_requests_elpa(p) is True
-    assert _runwrap._fdf_requests_gpu(p) is False        # not a GPU job
+def test_cpu_elpa_stays_on_the_packaged_build(tmp_path, caps_with_gpu_env):
+    """CPU-ELPA must NOT demand the source build.
 
-
-def test_fdf_requests_elpa_false_for_scalapack(tmp_path):
-    p = _write_fdf(tmp_path, "SystemLabel siesta\nMeshCutoff 300.0 Ry\n")
-    assert _runwrap._fdf_requests_elpa(p) is False
-
-
-def test_cpu_elpa_routes_to_elpa_build(tmp_path, caps_with_gpu_env):
-    """The crux of the fix: CPU-ELPA (no GPU) must still route to
-    ``molbuilder-siesta-gpu`` -- the only build linked against ELPA --
-    NOT the precompiled ``molbuilder-siesta`` (which has no ELPA)."""
+    Measured in ``molbuilder-siesta`` on 2026-08-13: ``Diag.Algorithm
+    ELPA-2stage`` and ``ELPA-1stage`` both exit 0 and give the same energy
+    as Divide-and-Conquer (-30.136019 eV on an H2 probe).  Routing them to
+    the source build refused a runnable calculation on any site that
+    cannot compile -- for a solver the installed baseline already has.
+    """
     cfg = SiestaConfig(enable_gpu=False, diag_algorithm="ELPA-2STAGE")
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    assert "molbuilder-siesta-gpu" not in wrapper_text
+    assert "molbuilder-siesta" in wrapper_text
+
+
+def test_gpu_is_what_routes_to_the_source_build(tmp_path, caps_with_gpu_env):
+    """GPU diagonalization is the one ask the packaged env cannot serve.
+
+    Its ELPA is built without the GPU entry: the same deck with
+    ``Diag.ELPA.GPU .true.`` exits 1 there with ELPA_ERROR_ENTRY_NOT_FOUND
+    (*"diag: ELPA error on gpu set"*), which is a missing build option and
+    not a missing device.
+    """
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-2STAGE")
     fdf = tmp_path / "job.fdf"
     fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
     wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
     assert "molbuilder-siesta-gpu" in wrapper_text
 
 
-def test_scalapack_routes_to_cpu_build(tmp_path, caps_with_gpu_env):
-    """ScaLAPACK (default) stays on the precompiled CPU env."""
+def test_scalapack_routes_to_the_packaged_build(tmp_path, caps_with_gpu_env):
+    """ScaLAPACK (default) stays on the packaged env."""
     fdf = tmp_path / "job.fdf"
     fdf.write_text(render_fdf(_mk_struct(), SiestaConfig()), encoding="utf-8")
     wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
     assert "molbuilder-siesta-gpu" not in wrapper_text
     assert "molbuilder-siesta" in wrapper_text
+
+
+def test_a_named_env_always_wins_over_the_route(tmp_path, caps_with_gpu_env):
+    """The route is a fallback for *no choice given*, never an override.
+
+    What is AVAILABLE gets filtered by what is NEEDED and the user picks;
+    molbuilder only fills in when nobody picked.  A GPU deck with an
+    explicit env must honour the name it was handed.
+    """
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-2STAGE")
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(
+        fdf, env="molbuilder-siesta").read_text(encoding="utf-8")
+    assert "molbuilder-siesta-gpu" not in wrapper_text

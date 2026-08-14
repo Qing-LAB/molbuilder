@@ -1539,28 +1539,16 @@ def _fdf_requests_gpu(fdf_path: Path) -> bool:
     return last_value in truthy if last_value is not None else False
 
 
-def _fdf_requests_elpa(fdf_path: Path) -> bool:
-    """Whether the .fdf selects an ELPA eigensolver via ``Diag.Algorithm``.
-
-    ELPA (1- or 2-stage, CPU *or* GPU) is linked only into the
-    ``molbuilder-siesta-gpu`` build, so ANY ELPA choice -- even CPU-ELPA
-    (``Diag.ELPA.GPU .false.``) -- must route there, not just the GPU case
-    (engines/siesta.md § 13).  ScaLAPACK / Divide-and-Conquer is the SIESTA
-    default and stays on the precompiled ``molbuilder-siesta``.
-
-    Matches SIESTA's whitespace-/case-insensitive FDF label parsing; last
-    occurrence wins.  Returns False on any read error (safe CPU fall-through).
-    """
-    import re
-    try:
-        text = fdf_path.read_text()
-    except OSError:
-        return False
-    pat = re.compile(r"(?im)^\s*Diag\.Algorithm\b\s+(\S+)")
-    last_value: Optional[str] = None
-    for m in pat.finditer(text):
-        last_value = m.group(1).strip().lower()
-    return last_value.startswith("elpa") if last_value is not None else False
+# DELETED 2026-08-13: ``_fdf_requests_elpa``.  It read ``Diag.Algorithm``
+# to route any ELPA deck to the source build, on the premise that the
+# packaged SIESTA has no ELPA.  The premise was false -- ELPA is compiled
+# into conda-forge's binary through ELSI and both stages run on CPU
+# (measured; see the routing comment in ``write_run_wrapper``).  With the
+# premise gone the function had no caller, and a scanner nothing routes on
+# is a keyword the wrapper claims to care about and does not.
+#
+# The choice of solver stays entirely the user's: ``Diag.Algorithm`` is a
+# deck keyword like any other, and it no longer decides an environment.
 
 
 def _parse_fdf_n_atoms(fdf_path: Path) -> Optional[int]:
@@ -1637,15 +1625,33 @@ def render_run_wrapper(script_path: Path, *,
         )
 
     # SIESTA env routing: the .fdf is the ground truth for which env
-    # to run in.  The ELPA-linked build lives ONLY in
-    # ``molbuilder-siesta-gpu`` (engines/siesta.md § 13), so a job needs
-    # that env whenever it uses ELPA AT ALL -- whether on GPU
-    # (``Diag.ELPA.GPU .true.``) or on CPU (``Diag.Algorithm ELPA-*`` with
-    # ``Diag.ELPA.GPU .false.``).  Keying on the GPU flag ALONE (the old
-    # bug) sent CPU-ELPA jobs to ``molbuilder-siesta``, which has no ELPA
-    # and would error / silently fall back.  ScaLAPACK stays on the
-    # precompiled ``molbuilder-siesta``.  Inspecting the fdf here keeps the
-    # config -> runwrap path stateless.
+    # to run in, and the ONE thing that decides it is whether the deck
+    # asks for GPU diagonalization.
+    #
+    # THE TWO ENVS SPLIT ON PROVENANCE, NOT ON HARDWARE (2026-08-13).
+    # ``molbuilder-siesta`` is installable from packages on ANY machine;
+    # ``molbuilder-siesta-gpu`` must be BUILT FROM SOURCE, which some HPC
+    # sites do not permit.  That is the whole reason there are two.
+    #
+    # CPU-ELPA needs NEITHER.  Measured, not assumed -- an H2 deck run in
+    # the packaged env:
+    #     Diag.Algorithm ELPA-2stage  -> exit 0, E = -30.136019 eV
+    #     Diag.Algorithm ELPA-1stage  -> exit 0, E = -30.136019 eV
+    #     Divide-and-Conquer          -> exit 0, E = -30.136019 eV
+    #     ELPA-2stage + Diag.ELPA.GPU .true. -> EXIT 1,
+    #         "diag: ELPA error on gpu set" / ELPA_ERROR_ENTRY_NOT_FOUND
+    # conda-forge's SIESTA links no external ``libelpa``, but ELPA is
+    # compiled INTO the binary through ELSI (279 defined ELPA symbols,
+    # zero undefined), so both stages run on CPU.  Only the GPU entry is
+    # absent from that build -- which is a build capability, not a
+    # missing device.
+    #
+    # Until 2026-08-13 this routed EVERY ELPA deck to the source build.
+    # On a site that cannot compile, that refused a CPU-ELPA run --
+    # telling the user to install an env they cannot build -- for a
+    # solver the installed baseline already runs.  Knowing a keyword is
+    # not providing the capability, and the two are now kept apart.
+    # Inspecting the fdf here keeps the config -> runwrap path stateless.
     #
     # IMPORTANT: ``category`` drives every downstream ``if category ==
     # "siesta":`` branch in this module (MPI launch, .out filename,
@@ -1654,10 +1660,11 @@ def render_run_wrapper(script_path: Path, *,
     # of this fix mutated ``category`` to ``"siesta-gpu"`` and silently
     # disabled the entire SIESTA branch, which leaked a ``.pyscf.log``
     # filename and an unbalanced-quote template into the wrapper.
+    # ``env is None`` guards this: an env the USER named always wins, so
+    # choosing the source build for its external ELPA stays available
+    # without molbuilder guessing on their behalf.
     env_lookup_category = category
-    if (category == "siesta" and env is None
-            and (_fdf_requests_gpu(script_path)
-                 or _fdf_requests_elpa(script_path))):
+    if category == "siesta" and env is None and _fdf_requests_gpu(script_path):
         env_lookup_category = "siesta-gpu"
 
     caps = get_capabilities()
@@ -1683,26 +1690,23 @@ def render_run_wrapper(script_path: Path, *,
             and env_lookup_category == "siesta-gpu"
             and caps.conda_envs
             and not caps.env_available(target_env)):
-        # The category fires for GPU decks AND CPU-ELPA decks (any ELPA
-        # variant needs the source build) -- until D14 (2026-08-12) the
-        # message diagnosed only the GPU case, telling a Diag.Algorithm
-        # elpa* + GPU-false user to turn off a toggle that was already
-        # off.  Name the ask the deck actually makes.
-        _wants_gpu = _fdf_requests_gpu(script_path)
-        _ask = ("GPU diagonalization (``Diag.ELPA.GPU .true.``)"
-                if _wants_gpu else
-                "the ELPA eigensolver (``Diag.Algorithm elpa*``)")
-        _way_out = ("turn off the SIESTA ``Use GPU`` toggle"
-                    if _wants_gpu else
-                    "set ``Diag.Algorithm`` back to ScaLAPACK")
+        # Only ONE ask reaches here now: GPU diagonalization.  The
+        # message used to branch on GPU-vs-CPU-ELPA and tell a CPU-ELPA
+        # user to install a source build for a solver the packaged env
+        # already runs.  Name what is actually missing, and the way out
+        # that does not require compiling anything.
         raise WrapperError(
-            f"`{script_path.name}` requests {_ask} but the "
-            f"``{target_env}`` env is not installed (every ELPA "
-            f"variant, CPU or GPU, lives in that source build).  "
-            f"Install it with "
-            f"``python -m molbuilder envs install {target_env}`` "
-            f"(source build, takes ~10 minutes), or {_way_out} and "
-            f"regenerate the .fdf to run on the precompiled CPU SIESTA."
+            f"`{script_path.name}` requests GPU diagonalization "
+            f"(``Diag.ELPA.GPU .true.``) but the ``{target_env}`` env is "
+            f"not installed.  GPU support is the one thing the packaged "
+            f"SIESTA does not have -- its ELPA is built without the GPU "
+            f"entry -- so it lives only in that source build.  Either "
+            f"install it with ``python -m molbuilder envs install "
+            f"{target_env}`` (source build, ~10 minutes; some HPC sites "
+            f"do not allow it), or turn off the SIESTA ``Use GPU`` "
+            f"toggle and regenerate the .fdf.  Keeping ``Diag.Algorithm "
+            f"ELPA-1stage/ELPA-2stage`` is fine either way: the packaged "
+            f"env runs both on CPU."
         )
 
     basename = script_path.stem
