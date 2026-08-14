@@ -133,15 +133,23 @@ missing **refuses and says which**; it never guesses, and it never silently
 drops the item.
 
 ```toml
-schema      = "molbuilder/template@1"   # REQUIRED — what this file is
-engine      = "siesta"                  # REQUIRED — whose parameters these are
+schema      = "molbuilder/template@2"   # REQUIRED — what this file is
+engines     = ["siesta"]                # REQUIRED — which engines this
+                                        #   calculation can run on (§ 6.3)
 fingerprint = "8f3a1c2d5e6b7a90"        # REQUIRED (may be "") — see § 10
 ```
+
+> **`engines` replaced the single `engine` key at `@2`.** A template describes a
+> calculation, and a calculation may be runnable on more than one engine, so the
+> file lists them and each item says which it applies to (§ 6.3). A `@1` file
+> names one engine and an `@2` reader treats it as `engines = [<that one>]`; a
+> `@1` reader meeting an `@2` file **refuses**, which is what the `@major`
+> convention is for.
 
 | top-level key | why it must be there |
 |---|---|
 | `schema` | the `@major` convention ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6): a higher major makes an old reader **refuse rather than guess** |
-| `engine` | which schema the items belong to. Without it a reader cannot know which config class to rebuild, and would have to infer it from the item names |
+| `engines` | which schemas the items belong to. Without it a reader cannot know which config class to rebuild, and would have to infer it from the item names. A reader given an engine not in this list refuses rather than returning an empty catalogue — *"this calculation does not run on that engine"* and *"no items matched"* are different answers |
 | `fingerprint` | the shape the values were written against. **An empty string is legal** and means *makes no claim* — a hand-written template is not wrong, it simply asserts nothing (§ 10) |
 
 **On every item — four required keys**, and each earns *required* by a goal:
@@ -289,6 +297,8 @@ never validated by molbuilder (§ 9.2)."""
 | `anchor` | the engine keyword this becomes. A bare keyword, never a sentence |
 | `expands` | the engine keywords a `deck` item produces, as a list |
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
+| `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
+| `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | `section` | which **fieldset** it belongs to — *"Compute & budget"*. A UI groups by it; a section-less item is still an item (§ 7's membership is TOTAL — *"also what makes a field exposed at all"* stood here against § 7 until 2026-08-12; `species_order` is section-less and shipped) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
@@ -401,6 +411,138 @@ creates it: the wrapper cannot be written until every value it reads is fixed.
 
 ---
 
+### 6.2 `category` — which question about the calculation
+
+`kind` says which layer *owns* an item. `category` says which **question about
+the calculation** it answers. They are different axes and neither implies the
+other: `diag_algorithm` is `kind="engine"` (a SIESTA keyword) and
+`category="execution"` (it changes speed, not the answer).
+
+**The vocabulary is closed, and the order below is the reading order** — a
+surface presents the categories top to bottom, because that is the order a
+person decides things in and the order a methods section is written in.
+
+| # | `category` | the question | SIESTA | PySCF |
+|---|---|---|---|---|
+| 1 | `system` | *what am I calculating?* | `net_charge`, `spin_polarized`, `spin_total` | `charge`, `spin`, `symmetry`, `solvent` |
+| 2 | `method` | *at what level of theory?* | `xc_functional`, `xc_authors`, `basis_size` | `method`, `functional`, `basis`, `ecp`, `dispersion` |
+| 3 | `accuracy` | *how precisely are the equations solved?* | `mesh_cutoff`, `kgrid`, `dm_tolerance` | `grid_level`, `scf_conv_tol`, `scf_conv_tol_grad` |
+| 4 | `convergence` | *how do I reach it when it fights?* | `max_scf_iter` | `scf_max_cycle`, `level_shift`, `damp`, `diis_space`, `scf_soscf` |
+| 5 | `outputs` | *what do I want produced?* | `write_molwatch_log` | `optimize`, `compute_frequencies`, `chkfile`, `save_*` |
+| 6 | `execution` | *how does it run on this machine?* | `diag_algorithm`, `block_size`, `continue_retries` | `threads`, `use_gpu` |
+
+**Why `accuracy` and `convergence` are two categories and not one.** Accuracy is
+*what answer you will accept*; convergence is *how to reach it*. A user whose SCF
+oscillates should reach for `level_shift` or `soscf` — and must not be tempted
+to loosen `scf_conv_tol` instead, which "fixes" the symptom by accepting a worse
+answer. One panel holding both invites exactly that substitution. The escalation
+ladder in [`pyscf.md § 7.2`](?doc=engines/pyscf.md) is category 4, top to bottom.
+
+**Why `execution` is the benchmarkable set.** `diag_algorithm` and `block_size`
+change **speed, not the answer**; that is what makes a knob safe to sweep for
+performance. `mesh_cutoff` also changes speed, but it changes the answer too, so
+sweeping it measures a different calculation each time. So the rule a benchmark
+can rely on: **category 6 is sweepable; categories 1–3 are not.**
+
+**Why this replaces `section`.** `section` carried a free-text fieldset name per
+engine — `"SCF"`, `"Compute & budget"`, `"System"` — so two engines expressing the
+same idea disagreed on the label and no surface could group across them.
+`category` is closed and engine-independent, which is what lets ONE panel set
+serve every engine.
+
+### 6.3 `engines` — one file, every engine
+
+**A template describes a calculation, not an engine.** One file carries the items
+for every engine the calculation can run on; `engines` on an item says which
+ones it applies to, and its absence means all of them.
+
+This is what makes the panel set engine-independent. Every engine has a *system*,
+a *method*, an *accuracy* — so a surface builds the same six panels in the same
+order and filters the contents by engine. A SIESTA user sees `mesh_cutoff` under
+*Accuracy*; a PySCF user sees `grid_level`. Same panel, same position, same
+mental model.
+
+**Items are never merged across engines.** `net_charge` (SIESTA) and `charge`
+(PySCF) are two items in `category="system"`, not one shared item. Merging them
+would mean inventing a shared vocabulary and deriving each engine's spelling from
+it — which buys nothing a category does not, and risks fusing things that merely
+sound alike. `dm_tolerance` is a density-matrix criterion and `scf_conv_tol` is
+an energy criterion; both are *"SCF convergence"* in English and neither can take
+the other's value.
+
+```toml
+[item.mesh_cutoff]
+kind     = "engine"
+category = "accuracy"
+engines  = ["siesta"]        # SIESTA only; a PySCF surface never shows it
+anchor   = "MeshCutoff"
+value    = 300
+unit     = "Ry"
+
+[item.job_name]
+kind     = "produce"
+category = "outputs"
+# no `engines` key -- applies to every engine
+value    = "run1"
+```
+
+### 6.4 An item may be declared without a value
+
+**Presence declares the parameter; a value answers it.** An item with no `value`
+says *this calculation has such a parameter and nobody has chosen yet* — and a
+later step in the workflow fills it. This is the `BlockSize` pattern (§ 12),
+generalised.
+
+| state | means | who acts |
+|---|---|---|
+| no `value` | declared, unresolved | a surface asks for it, or `prep` proposes one |
+| `value` set | chosen | honoured verbatim, everywhere |
+| absent from the file | not a parameter of this calculation | nobody; the engine's own default applies |
+
+A valueless item still carries `choices`, `range`, `unit` and `help`, so a
+surface can offer the *right* options before any value exists — `diag_algorithm`
+has a handful of legal eigensolvers whether or not one has been picked.
+
+**This is how `execution` items live here without § 7's machine-fact rule being
+broken.** The template may say *"rank count is a parameter of this calculation"*;
+it may not say *"this job has 8 ranks"*. The rule's failure case was a
+hand-edited `mpi_np` **with a value** rendering a deck for ranks the allocation
+never granted — which stays impossible, because the value still arrives at `prep`
+from `environment.json`. The template carries the **ask**; `prep` resolves it.
+Same distinction `bench/result.py` draws between `asked` and `effective`, and for
+the same reason.
+
+### 6.5 One source, six readers — the whole workflow
+
+Every consumer loads the same file and filters on the axes it owns. Nobody asks a
+second source, and nobody carries a field list.
+
+```mermaid
+flowchart TB
+    T["<b>template.toml</b><br/>one calculation · every engine<br/>six categories"]
+    UI["<b>surface</b><br/>builds panels"]
+    PREP["<b>prep step 2</b><br/>resolve → ParameterSet"]
+    DECK["<b>deck writer</b><br/>prep step 3"]
+    WRAP["<b>wrapper writer</b><br/>prep step 4"]
+    BENCH["<b>bench</b><br/>sweeps a set"]
+    MON["<b>monitor</b>"]
+    T -->|"category ordered<br/>engines ∋ this engine"| UI
+    UI -->|"values the user chose"| T
+    T -->|"no filter — wants them all"| PREP
+    PREP --> DECK
+    PREP --> WRAP
+    T -->|"kind ∈ engine, deck"| DECK
+    T -->|"kind = wrapper<br/>+ read_by ∋ wrapper"| WRAP
+    T -->|"category = execution"| BENCH
+    T -->|"kind = monitor"| MON
+```
+
+Read the loop at the top as the design cycle: a surface shows what the file
+declares, the person answers, and the answers become values in the same file.
+Nothing downstream needs to know a surface was involved.
+
+---
+
 ## 7. What is an item, and what is not
 
 **The rule (D5): every parameter the engine's schema declares is an item, and
@@ -453,6 +595,35 @@ no layer carries a field list — this is G3 in operation.
 **A reader never asks a second source.** That is what makes the folder portable
 in the sense that matters: the surface does not call an API to learn what a field
 is, and the wrapper does not read someone else's artifact to learn what it needs.
+
+### 8.0 The one read API
+
+**`select(t, *, category=None, engine=None, kind=None, read_by=None)` → items,
+in category order.** One function, one file, every reader. Each argument is a
+filter on an axis the item already declares; omitting one means *do not filter on
+it*. The § 8 table above is then a table of **calls**, not of bespoke code:
+
+| the reader | the call |
+|---|---|
+| a surface, one panel | `select(t, category="accuracy", engine="siesta")` |
+| `prep` step 2 | `select(t)` |
+| the deck writer | `select(t, kind=("engine", "deck"), engine=e)` |
+| the wrapper writer | `select(t, kind="wrapper", engine=e)` + `select(t, read_by="wrapper", engine=e)` |
+| a benchmark | `select(t, category="execution", engine=e)` |
+| the monitor | `select(t, kind="monitor")` |
+
+**Asking for one item is the same function.** `one(t, "mesh_cutoff",
+engine="pyscf")` returns `None` — the item declares `engines = ["siesta"]`, so
+its absence here is an answer, not a fault. It **raises** only when the item is
+required for that engine and missing, because *"does not apply"* and *"should be
+here and is not"* must never read the same. That is Law A applied to a lookup.
+
+**Why a filter API and not a query language.** The axes are closed vocabularies
+declared on the item, so a filter is a dict comparison — no expression to parse,
+no index to build, and a reader in another language can do the same thing with
+`tomllib.load` and a comprehension. § 8's *"a reader never asks a second source"*
+still holds: `select` is a convenience over data the caller already has in hand,
+never a service it must call.
 
 ### 8.1 `prep` rebuilds and renders — it does not splice (D4)
 
