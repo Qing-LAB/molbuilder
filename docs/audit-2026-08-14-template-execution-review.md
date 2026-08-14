@@ -23,10 +23,11 @@ matter are the ones nobody suspected. Suspicions raised by reading were then
 | `molbuilder/template.py` | 1111 |
 | `docs/execution/generator.md` | 594 |
 | `molbuilder/resolve.py` | 559 |
+| `docs/execution/job-system.md` | 1322 |
 
 | not yet read | lines |
 |---|---|
-| `docs/execution/job-contracts.md` · `job-system.md` · `project-layout.md` · `checkpointing.md` · `architecture.md` · `run-identity.md` · `running-a-job.md` · the staged-runs plan | ~12,400 |
+| `docs/execution/job-contracts.md` · `project-layout.md` · `checkpointing.md` · `architecture.md` · `run-identity.md` · `running-a-job.md` · the staged-runs plan | ~12,400 |
 | `molbuilder/jobset/*` · `task.py` | ~5,200 |
 | the test suites for the above | — |
 
@@ -280,3 +281,58 @@ habits than as instances:
    `resolve.py` omits `resolved_ladder`. A single test over the package —
    *every public callable named in a module's contract docstring appears in
    `__all__`* — would close both and stay closed.
+
+
+---
+
+## 9 · `docs/execution/job-system.md` — read in full, 1322 lines
+
+### 9.1 · `Resources` is understated in two places and correct in a third
+
+Probed: `Resources` has **nine** fields — `domain`, `time`, `exclusive`, `mem`,
+`gres`, `mpi_np`, `cpus_per_task`, `continue_retries`, `max_memory_mb`.
+
+| where | shows | |
+|---|---|---|
+| § 3's `classDiagram` | **7** | missing `continue_retries`, `max_memory_mb` |
+| § 3.1's annotated `job-set.json` | **7** | same two missing |
+| § 3.1's annotation, two lines above the example | *"ALL NINE fields are always written"* | correct |
+
+**The example contradicts its own caption two lines apart** — in the section
+that opens *"Descriptions of a format are easy to nod along to and hard to
+check. Here is an actual … with every field annotated."* The annotation was
+corrected at some point (it carries its own correction note about having said
+"seven"); the JSON beside it was not.
+
+`WarmFile` (2 fields) and `Job` (5) in the same diagram are correct.
+
+### 9.2 · MISPLACEMENT — a guide re-states a contract, and the copy has drifted
+
+`job-system.md` is **Role: guide**. `job-contracts.md` § 6.2 is the **authority**
+for the resource vocabulary, and this document says so explicitly: *"the full
+mapping is pinned in `job-contracts.md` § 6.2"*. It then re-states that mapping
+inline — field names, their SLURM flags, and which have none.
+
+**§ 9.1 is the proof that this is not harmless duplication:** the restatement is
+already wrong by two fields while the authority is right. This is the *"a value
+stated twice is a value that drifts"* rule the docs themselves argue (generator
+§ 10's preamble), violated by the document that cites it.
+
+The fix is not to sync the copy — it is for the guide to *point* where it now
+*repeats*. A guide's job is the shape and the why; the field list is the
+contract's.
+
+### 9.3 · Duplication INSIDE the document — one heading, twice
+
+*"How a ladder advances"* appears twice: as a blockquote in § 1 (lines 99–116,
+with its own table) and as **§ 5.4** (line 1040). Two passes at one idea in one
+document, and a reader who finds the first has no way to know the second is
+where the detail lives.
+
+### 9.4 · CLEARED — a prior finding that no longer applies
+
+An earlier review recorded *"job-system § 5.3's table still ⛔-dead"*. **It is
+not.** Every cell now reads ✅, with the `bench` column marked LANDED 2026-08-12
+and the retired `⛔` state preserved in a dated note below the table. Recorded
+here so a consolidation pass does not resurrect a fixed finding — which is its
+own kind of drift.
