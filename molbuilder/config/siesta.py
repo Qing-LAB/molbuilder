@@ -237,7 +237,7 @@ class SiestaConfig:
         # the user sets these together at the start of a run and
         # rarely revisits.
         "workflow_group": "profile",
-        "label":    "SystemLabel",
+        "label":    "System label (output prefix)",
         "engine_key":  'SystemLabel',
         "id_suffix": "system-label",
         "help":     "FDF SystemLabel; output files get this prefix.  "
@@ -272,7 +272,7 @@ class SiestaConfig:
         # what people expect: basis is part of the run's identity, not
         # part of the stage refinement schedule).
         "workflow_group": "stage",
-        "label": "PAO.BasisSize",
+        "label": "Basis size",
         "engine_key":  'PAO.BasisSize',
         "choices": ("SZ", "DZ", "SZP", "DZP", "TZP"),
         "help": "PAO basis size: SZ / DZ / SZP / DZP / TZP (rough -> tight)",
@@ -281,7 +281,7 @@ class SiestaConfig:
         "category": ("method", "accuracy"),
         "section": "Basis & grid",
         "workflow_group": "stage",
-        "label": "PAO.EnergyShift", "unit": "Ry",
+        "label": "Orbital confinement (energy shift)", "unit": "Ry",
         "engine_key":  'PAO.EnergyShift',
         # Upper bound tightened to 0.05 (SP4): 0.1 Ry contracts PAO
         # cutoff radii to ~3 Bohr, putting bond energies hundreds of
@@ -314,7 +314,7 @@ class SiestaConfig:
         # design rationale.  Untagged fields render bare (outside any
         # workflow-group card) and STAGE_PRESETS never touches them.
         "workflow_group": "stage",
-        "label": "MeshCutoff", "unit": "Ry",
+        "label": "Real-space grid cutoff", "unit": "Ry",
         "engine_key":  'MeshCutoff',
         # 2026-05-28 tightening: slider lower bound raised from 50
         # to 100 Ry.  50 Ry is a screening-grade value that produces
@@ -395,7 +395,7 @@ class SiestaConfig:
         # decision (diagon / OMM / TranSIESTA), set once with XC +
         # basis.  Switching stages MUST NOT rewrite this.
         "workflow_group": "profile",
-        "label": "SolutionMethod",
+        "label": "Solution method",
         "engine_key":  'SolutionMethod',
         "choices": ("diagon", "OMM", "transiesta"),
         "help": "diagon / OMM / transiesta (transiesta requires the TranSIESTA build)",
@@ -407,7 +407,7 @@ class SiestaConfig:
         # (metallic / organic / open-shell), NOT on the stage.
         # Switching stages MUST NOT rewrite this.
         "workflow_group": "profile",
-        "label": "DM.MixingWeight",
+        "label": "SCF mixing weight",
         "engine_key":  'DM.MixingWeight',
         "range": (0.001, 0.5),
         "tier":  "advanced",
@@ -420,7 +420,7 @@ class SiestaConfig:
         # (also profile) — both are SCF-stability tuning that
         # depends on what the system IS, not on the stage.
         "workflow_group": "profile",
-        "label": "DM.NumberPulay",
+        "label": "Pulay history depth",
         "engine_key":  'DM.NumberPulay',
         "range": (0, 20),
         "tier":  "advanced",
@@ -430,7 +430,7 @@ class SiestaConfig:
         "category": ("accuracy",),
         "section": "SCF",
         "workflow_group": "stage",
-        "label": "DM.Tolerance",
+        "label": "Density-matrix tolerance",
         "engine_key":  'DM.Tolerance',
         "range": (1e-8, 1e-3),
         "tier":  "advanced",
@@ -450,7 +450,7 @@ class SiestaConfig:
         "category": ("accuracy",),
         "section": "SCF",
         "workflow_group": "stage",
-        "label": "DM.Energy.Tolerance", "unit": "eV",
+        "label": "SCF energy tolerance", "unit": "eV",
         "engine_key":  'DM.Energy.Tolerance',
         "range": (1e-8, 1e-1),
         "tier":  "advanced",
@@ -481,7 +481,7 @@ class SiestaConfig:
         # smearing helps), low for insulators / organics.  Not stage-
         # dependent.
         "workflow_group": "profile",
-        "label": "ElectronicTemperature", "unit": "K",
+        "label": "Electronic temperature", "unit": "K",
         "engine_key":  'ElectronicTemperature',
         "id_suffix": "temperature",
         "range": (0.0, 5000.0),
@@ -611,7 +611,7 @@ class SiestaConfig:
         # Retagged `stage`, which also puts its "vary per stage" box among the
         # ones ticked by default (engines/stages.md § 1.3).
         "workflow_group": "stage",
-        "label": "MD.TypeOfRun",
+        "label": "Relaxation / MD algorithm",
         "engine_key":  'MD.TypeOfRun',
         "id_suffix": "relax",
         "choices": ("CG", "Broyden", "FIRE", "Verlet", "Nose", "none"),
@@ -664,7 +664,7 @@ class SiestaConfig:
         "category": ("accuracy",),
         "section": "Compute & budget",
         "workflow_group": "stage",
-        "label": "MD.MaxForceTol", "unit": "eV/Å",
+        "label": "Force convergence threshold", "unit": "eV/Å",
         "engine_key":  'MD.MaxForceTol',
         "id_suffix": "force-tol",
         "range": (0.001, 0.5),
@@ -685,7 +685,7 @@ class SiestaConfig:
         "category": ("procedure", "convergence"),
         "section": "Compute & budget",
         "workflow_group": "stage",
-        "label": "MD.MaxCGDispl", "unit": "Å",
+        "label": "Max displacement per step", "unit": "Å",
         "engine_key":  'MD.MaxCGDispl (universal for CG / Broyden / FIRE)',
         "id_suffix": "max-displ",
         "range": (0.001, 0.5),
@@ -760,7 +760,7 @@ class SiestaConfig:
         # seed temperature for Verlet/Nose); set with the run, not
         # tightened stage-to-stage.
         "workflow_group": "profile",
-        "label": "MD.InitialTemperature", "unit": "K",
+        "label": "Initial temperature", "unit": "K",
         "engine_key":  'MD.InitialTemperature',
         "range": (0.0, 5000.0),
         "tier":  "advanced",
@@ -775,7 +775,7 @@ class SiestaConfig:
         # Profile-level: NVT target temperature is MD ensemble
         # identity (Nose-Hoover thermostat target).
         "workflow_group": "profile",
-        "label": "MD.TargetTemperature", "unit": "K",
+        "label": "Target temperature (NVT)", "unit": "K",
         "engine_key":  'MD.TargetTemperature',
         "null_label": "(use MD.InitialTemperature)",
         "range":      (0.0, 5000.0),       # mirror md_initial_temperature
@@ -792,7 +792,7 @@ class SiestaConfig:
         # composition (bonded H needs ~0.5 fs, heavier systems 1
         # fs); chosen with the run, not tightened stage-to-stage.
         "workflow_group": "profile",
-        "label": "MD.LengthTimeStep", "unit": "fs",
+        "label": "MD timestep", "unit": "fs",
         "engine_key":  'MD.LengthTimeStep',
         "range": (0.1, 5.0),
         "tier":  "advanced",
@@ -890,7 +890,9 @@ class SiestaConfig:
         "workflow_group": "profile",
         "label": "Verbose inline comments",
         "engine_key":  '(molbuilder: .fdf comment-block control)',
-        "help": "emit inline tuning hints and a Troubleshooting block in the FDF",
+        "help": (
+        "Emit inline tuning hints and a Troubleshooting block in the "
+        "generated script, in whatever comment syntax that engine uses."),
     })
 
     # The ``stage`` FIELD left this schema 2026-08-12 (C7): a stage's
@@ -944,7 +946,11 @@ class SiestaConfig:
     write_molwatch_log: bool = field(default=True, metadata={
         "category": ("procedure",),
         "label": "Write the molwatch trajectory log",
-        "help": "write <job>.molwatch.log preview (lets molwatch render before SIESTA does)",
+        "help": (
+        "Write <job>.molwatch.log alongside the run: per-step "
+        "coordinates, energy and forces, in one additive file the Watch "
+        "tab reads. It exists so a trajectory can be followed while the "
+        "engine is still running."),
             "engine_key":  '(molbuilder: writes <basename>.molwatch.log preview)',
         # Consumed by the GENERATOR, not the deck: § 7's kind, stated
         # because the engine_key is a molbuilder note (U16).
@@ -1027,7 +1033,7 @@ class SiestaConfig:
         "resolver": "block_size",
         "section": "Compute & budget",
         "workflow_group": "budget",
-        "label": "BlockSize",
+        "label": "ScaLAPACK block size",
         "engine_key":  'BlockSize',
         "id_suffix": "block-size",
         "null_label": "(auto)",
@@ -1109,7 +1115,7 @@ class SiestaConfig:
         "allocation": True,
         "item_kind":  "wrapper",
         "workflow_group": "budget",
-        "label":      "Max memory (per rank)",
+        "label":      "Max memory",
         # Not a SIESTA fdf keyword.  Emits ``ulimit -v`` into .run.sh
         # AND ``# runtime.max_memory_mb: N`` into the .fdf so the .out
         # parser can recover the cap via runtime_info.
@@ -1121,10 +1127,14 @@ class SiestaConfig:
         # normal state is unset, which means the node's maximum.
         "range":      (100, 1_000_000),
         "null_label": "(no cap)",
-        "help":       "MB cap per MPI rank.  Emits a SystemMemory hint "
-                      "into the .fdf when set; left blank, SIESTA uses "
-                      "whatever the OS allows.  Recorded in the run's "
-                      "runtime_info so the /results display shows it.",
+        "help":       (
+        "How much memory this run may use. Left blank -- the normal "
+        "state -- it is the machine's maximum, resolved at prep on the "
+        "node that granted it; set a number only when you need a "
+        "ceiling. Each engine applies it its own way: SIESTA emits a "
+        "SystemMemory hint into the deck and caps the wrapper, PySCF "
+        "passes it to mol.max_memory, which is what it consults to "
+        "choose in-core versus out-of-core."),
         "skip_cli":   True,
     })
     enable_gpu: bool = field(default=False, metadata={

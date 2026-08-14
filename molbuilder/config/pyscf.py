@@ -740,7 +740,7 @@ class PySCFConfig:
     # behaviour for the easy-converge case.
     diis_space: int = field(default=8, metadata={
         "category": ("convergence",),
-        "label": "mf.diis_space",
+        "label": "DIIS subspace size",
         "engine_key":  'mf.diis_space',
         "range": (4, 20),
         "tier":  "advanced",
@@ -748,7 +748,7 @@ class PySCFConfig:
     })
     damp: float = field(default=0.0, metadata={
         "category": ("convergence",),
-        "label": "mf.damp",
+        "label": "SCF damping factor",
         "engine_key":  'mf.damp',
         "range": (0.0, 0.9),
         "tier":  "advanced",
@@ -876,7 +876,7 @@ class PySCFConfig:
         "item_kind": "wrapper",
         "workflow_group": "budget",
         "section": "Compute & budget",
-        "label": "max_memory", "unit": "MB",
+        "label": "Max memory", "unit": "MB",
         # NOT an engine keyword any more.  ``mol.max_memory`` is how PySCF
         # spells the answer, and § 6.3 is explicit that a merged item keeps no
         # anchor -- each engine's generator renders it its own way.
@@ -885,8 +885,14 @@ class PySCFConfig:
         "range": (100, 1_000_000),
         "tier":  "advanced",
         "null_label": "(no cap)",
-        "help":  "MB cap for this run.  Left blank, PySCF uses whatever the "
-                 "OS allows; set it only when you need a ceiling.",
+        "help":  (
+        "How much memory this run may use. Left blank -- the normal "
+        "state -- it is the machine's maximum, resolved at prep on the "
+        "node that granted it; set a number only when you need a "
+        "ceiling. Each engine applies it its own way: SIESTA emits a "
+        "SystemMemory hint into the deck and caps the wrapper, PySCF "
+        "passes it to mol.max_memory, which is what it consults to "
+        "choose in-core versus out-of-core."),
     })
     threads: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
@@ -1003,10 +1009,10 @@ class PySCFConfig:
         # what the PRODUCER writes, so it is kind="produce" (§ 6).
         "item_kind": "produce",
         "category": ("procedure",),
-        "help": ("write the additive <job>.molwatch.log (self-contained "
-                 "per-step coords / energy / forces; the Watch tab's "
-                 "preferred input).  Requires --optimize and "
-                 "--optimizer geometric"),
+        "help": ("Write <job>.molwatch.log alongside the run: per-step "
+                 "coordinates, energy and forces, in one additive file the "
+                 "Watch tab reads. It exists so a trajectory can be followed "
+                 "while the engine is still running."),
             "engine_key":  '(molbuilder: writes .molwatch.log for live viewer)',
     })
 
@@ -1065,9 +1071,11 @@ class PySCFConfig:
         "workflow_group": "profile",
         "section": "Compute & budget",
         "item_kind":  "produce",
-        "label":   "Verbose comments in script",
+        "label":   "Verbose inline comments",
         "engine_key":  '(molbuilder: script comment-block control)',
-        "help": "emit inline tuning hints + troubleshooting block in the script",
+        "help": (
+        "Emit inline tuning hints and a Troubleshooting block in the "
+        "generated script, in whatever comment syntax that engine uses."),
     })
 
     # ---------------- Staged relaxation (job-layout v1) ----------------

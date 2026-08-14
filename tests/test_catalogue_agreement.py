@@ -1,0 +1,139 @@
+"""The two homes agree — the mechanism that lets the duplication exist.
+
+**The catalogue is the master** (`template.md` § 2.1, § 4.3). A parameter is
+defined there, and a config class carries a name, a type and its validators.
+
+**But the live Build form still reads the facts off the dataclass fields** —
+`label`, `help`, `unit`, `range`, `choices` (`web/blueprints/_shared.py`). Until
+the UI is rebuilt from the catalogue (deferred, `template-unification-plan.md`
+§ 4), those facts live in **two** homes: 307 of them, measured 2026-08-14.
+
+That breaks D3 (*each value is stored once*), and D3's own reasoning says what
+happens next: *"then a hand edit of one is silently ignored — the file
+disagreeing with itself."*
+
+**So this file is the interim contract.** It cannot make the duplication go
+away; it makes it impossible for the two to drift apart without a red test
+naming the item and the key. When the form moves onto the catalogue, the
+metadata is deleted and this file goes with it.
+"""
+from __future__ import annotations
+
+import dataclasses
+
+import pytest
+
+from molbuilder import template as T
+from molbuilder.config.pyscf import PySCFConfig
+from molbuilder.config.siesta import SiestaConfig
+
+ENGINES = [("siesta", SiestaConfig), ("pyscf", PySCFConfig)]
+
+#: The facts the catalogue owns that a dataclass field also spells today.
+#: ``category`` is compared as a set — the catalogue writes a list and the
+#: metadata a tuple, and the ORDER is meaningful (first = the panel), so it is
+#: compared as a sequence rather than a set.
+MIRRORED = ("help", "range", "unit", "choices", "label")
+
+
+def _catalogue():
+    return {i.name: i for i in T.read_template(T.load_catalogue()).items}
+
+
+@pytest.mark.parametrize("engine,cls", ENGINES, ids=lambda x: getattr(x, "__name__", x))
+def test_every_mirrored_fact_agrees(engine, cls):
+    """The guard.  A drift here means a surface and a deck disagree about the
+    same parameter — one showing bounds the other does not honour."""
+    cat = _catalogue()
+    bad = []
+    for f in dataclasses.fields(cls):
+        item = cat.get(f.name)
+        if item is None:
+            continue                      # not a catalogue item; § 7 exclusions
+        for key in MIRRORED:
+            meta = f.metadata.get(key)
+            if meta is None:
+                continue                  # the field says nothing; nothing to disagree with
+            mine = getattr(item, key)
+            if key in ("range", "choices") and mine is not None:
+                meta, mine = tuple(meta), tuple(mine)
+            if key == "help":
+                # Compared with whitespace NORMALISED.  The catalogue's prose
+                # carries meaningful line structure (§ 40.5: structure, not
+                # markup); the class's copy is a mirror wrapped to fit Python
+                # source, so the two legitimately differ in line breaks.  What
+                # this guard is for is a different FACT -- a stale sentence,
+                # other bounds, another engine's wording -- and normalising
+                # keeps it pointed at that instead of at re-wrapping.
+                meta, mine = " ".join(meta.split()), " ".join(mine.split())
+            if meta != mine:
+                bad.append(f"{f.name}.{key}: class={meta!r} catalogue={mine!r}")
+    assert not bad, (
+        f"{cls.__name__} and the catalogue disagree about "
+        f"{len(bad)} fact(s):\n  " + "\n  ".join(bad) +
+        "\n\nThe CATALOGUE is the master (template.md § 2.1).  Fix the class, "
+        "or -- if the catalogue is the one that is wrong -- fix the catalogue "
+        "and say so.  They are two homes for one fact until the form is "
+        "rebuilt from the catalogue, and this test is the only thing keeping "
+        "them in step.")
+
+
+@pytest.mark.parametrize("engine,cls", ENGINES, ids=lambda x: getattr(x, "__name__", x))
+def test_the_category_agrees_in_ORDER_not_only_in_membership(engine, cls):
+    """`category` is a LIST and the first entry is the panel the item appears
+    on (§ 6.2).  Two homes agreeing on the set but not the order would put a
+    parameter on a different panel depending on which one a surface read."""
+    cat = _catalogue()
+    bad = []
+    for f in dataclasses.fields(cls):
+        item = cat.get(f.name)
+        if item is None or not f.metadata.get("category"):
+            continue
+        if tuple(f.metadata["category"]) != tuple(item.category):
+            bad.append(f"{f.name}: class={tuple(f.metadata['category'])} "
+                       f"catalogue={tuple(item.category)}")
+    assert not bad, "category order disagrees:\n  " + "\n  ".join(bad)
+
+
+@pytest.mark.parametrize("engine,cls", ENGINES, ids=lambda x: getattr(x, "__name__", x))
+def test_every_field_the_translator_needs_is_in_the_catalogue(engine, cls):
+    """The direction that actually matters: **template → config**.
+
+    A config field with no catalogue item is a parameter the translator can
+    never be given a value for — the calculation cannot express it.  The
+    exclusions are § 7's own: a machine fact carries no value but IS an item,
+    and a stage ladder is not a parameter at all.
+    """
+    cat = _catalogue()
+    hints = __import__("typing").get_type_hints(cls)
+    missing = []
+    for f in dataclasses.fields(cls):
+        ann = hints[f.name]
+        args = __import__("typing").get_args(ann)
+        is_ladder = (__import__("typing").get_origin(ann) in (list, tuple)
+                     and args and dataclasses.is_dataclass(args[0]))
+        if is_ladder:
+            continue
+        if f.name not in cat:
+            missing.append(f.name)
+    assert not missing, (
+        f"{cls.__name__} has field(s) with no catalogue item: {missing}.  "
+        f"Membership is TOTAL (template.md § 7) -- a parameter the catalogue "
+        f"does not carry is one no surface can offer and no calculation can "
+        f"record.")
+
+
+def test_the_catalogue_carries_no_item_no_engine_can_hold():
+    """The reverse: an item nothing can translate is a dead entry.
+
+    It would show on a panel, take a value, and be dropped on the way to the
+    engine -- the quietest way to lose a setting a person believes they set.
+    """
+    fields = {e: {f.name for f in dataclasses.fields(c)} for e, c in ENGINES}
+    orphans = []
+    for item in T.read_template(T.load_catalogue()).items:
+        engs = item.engines or tuple(fields)
+        if not any(item.name in fields[e] for e in engs if e in fields):
+            orphans.append(f"{item.name} (engines={list(engs)})")
+    assert not orphans, (
+        "catalogue items no config class can carry:\n  " + "\n  ".join(orphans))

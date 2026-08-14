@@ -56,7 +56,23 @@ ENGINES = [SiestaConfig]
 
 
 def _decls(cls):
+    """Items as the CONFIG CLASS declares them.
+
+    ⚠ **This is the direction the catalogue replaced** (`template.md` § 2.1).
+    It survives because ``declarations_for`` is how the catalogue was built and
+    how the live Build form is still fed; the tests that ask about a
+    PARAMETER's facts use :func:`_cat` instead, because the catalogue is where
+    a parameter is defined.  ``tests/test_catalogue_agreement.py`` proves the
+    two agree until the form moves and this one can go.
+    """
     return {d.name: d for d in declarations_for(cls)}
+
+
+def _cat(engine="siesta"):
+    """Items as the CATALOGUE declares them — the master (§ 4.3)."""
+    from molbuilder import template as _T
+    return {i.name: i for i in _T.select(
+        _T.read_template(_T.load_catalogue()), engine=engine)}
 
 
 # --------------------------------------------------------------------- #
@@ -111,11 +127,15 @@ def test_a_stage_ladder_is_not_a_template_item():
 #  The declaration grammar                                              #
 # --------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("cls", ENGINES, ids=lambda c: c.__name__)
-def test_every_declaration_has_a_named_type(cls):
-    """Every item's type is in the TEMPLATE grammar (`template.md` § 5)."""
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_every_declaration_has_a_named_type(engine):
+    """Every item's type is in the TEMPLATE grammar (`template.md` § 5).
+
+    Asked of the CATALOGUE: it is the file a person edits, so it is the one
+    that can carry a type no reader knows.
+    """
     from molbuilder.template import TYPES
-    for d in declarations_for(cls):
+    for d in _cat(engine).values():
         assert d.type in TYPES, f"{d.name}: {d.type}"
 
 
@@ -145,7 +165,7 @@ def test_a_bench_marks_field_declares_the_same_type_as_its_template_item():
     # the two keywords ``relax_steps`` becomes depending on ``relax_type``.
     # Both are the keyword a BENCH-MARKS anchor greps for.
     by_keyword = {}
-    for d in declarations_for(SiestaConfig):
+    for d in _cat().values():
         for kw in ((d.anchor,) if d.anchor else ()) + tuple(d.expands or ()):
             by_keyword.setdefault(kw, d)
     for bf in SIESTA_BENCH_FIELDS:
@@ -162,12 +182,12 @@ def test_a_bench_marks_field_declares_the_same_type_as_its_template_item():
         assert bf.type_ in DECL_TYPES, f"{bf.anchor}: {bf.type_}"
 
 
-@pytest.mark.parametrize("cls", ENGINES, ids=lambda c: c.__name__)
-def test_an_enum_declaration_carries_its_members(cls):
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_an_enum_declaration_carries_its_members(engine):
     """§ 3.7 adds ``choices=`` precisely so a surface can build the dropdown
     and a reader can validate what was typed.  An enum without them declares
     a constraint nobody can check."""
-    for d in declarations_for(cls):
+    for d in _cat(engine).values():
         if d.type == "enum":
             assert d.choices, d.name
 
@@ -189,7 +209,7 @@ def test_a_bool_is_typed_bool_and_not_int():
     """``bool`` is a subclass of ``int`` in Python, so a dict lookup in the
     wrong order types every checkbox as an integer — and a surface would draw
     seven number boxes where the form draws seven checkboxes."""
-    d = _decls(SiestaConfig)
+    d = _cat()
     assert d["spin_polarized"].type == "bool"
     assert d["relax_steps"].type == "int"
 
@@ -197,7 +217,7 @@ def test_a_bool_is_typed_bool_and_not_int():
 def test_the_kgrid_is_one_declaration_not_three():
     """It is one decision — how finely reciprocal space is sampled — and a
     stage overriding it overrides all three components together."""
-    assert _decls(SiestaConfig)["kgrid"].type == "int3"
+    assert _cat()["kgrid"].type == "int3"
 
 
 def test_the_kgrid_displacement_is_its_own_item_and_a_float3():
@@ -216,18 +236,22 @@ def test_the_kgrid_displacement_is_its_own_item_and_a_float3():
     """
     from molbuilder.template import TYPES
     assert "float3" in TYPES
-    d = _decls(SiestaConfig)["kgrid_displacement"]
+    d = _cat()["kgrid_displacement"]
     assert d.type == "float3"
     assert d.default == (0.0, 0.0, 0.0)
-    assert _decls(SiestaConfig)["kgrid"].type == "int3"   # still separate
+    assert _cat()["kgrid"].type == "int3"   # still separate
 
 
-def test_range_unit_and_group_come_from_the_field_metadata():
-    """§ 3.7's table: the declaration is what makes the template enough on
-    its own, so a surface holding the file needs nothing else to bound the
+def test_range_unit_and_group_come_from_the_CATALOGUE():
+    """§ 4.3: a surface holding the file needs nothing else to bound the
     control, label it, and decide whether its *vary per stage* box starts
-    ticked."""
-    d = _decls(SiestaConfig)["mesh_cutoff"]
+    ticked — and it reads all three from the catalogue.
+
+    **Renamed 2026-08-14.** It was ``..._come_from_the_field_metadata``, which
+    stated the direction § 2.1 retired: the config classes were the master and
+    the file their printout.  The property is unchanged; the source is not.
+    """
+    d = _cat()["mesh_cutoff"]
     assert d.range == (100.0, 1000.0)
     assert d.unit == "Ry"
     assert d.group == "stage"

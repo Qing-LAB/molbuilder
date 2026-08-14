@@ -498,6 +498,23 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
 def declarations_for(config_cls) -> List[Item]:
     """Every exposed field of *config_cls*, in declaration order.
 
+    ⚠ **This is the direction § 2.1 retired, and it has NO production caller.**
+    A parameter is defined in the catalogue (§ 4.3); a config class is a
+    translator. This function survives for exactly two reasons, and both end:
+
+    * it is how ``data/catalogue.template.toml`` was extracted from the classes
+      on 2026-08-14 — a one-off that will not be repeated;
+    * the live Build form still reads ``label`` / ``help`` / ``range`` /
+      ``unit`` / ``choices`` off the dataclass fields
+      (``web/blueprints/_shared.py``), so that metadata cannot be deleted until
+      the form is rebuilt from the catalogue — **deferred**
+      (`template-unification-plan.md` § 4, § 2.1a(b)).
+
+    **Until then 307 facts live in two homes**, which is D3 broken, and
+    ``tests/test_catalogue_agreement.py`` is the only thing keeping them in
+    step. When the form moves, the metadata goes, and this function goes with
+    it.
+
     Declaration order, not alphabetical: the config's field order is the form's
     order and the deck's order, and a template a person reads should not be a
     third arrangement of the same things.

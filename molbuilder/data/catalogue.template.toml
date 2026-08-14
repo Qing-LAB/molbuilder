@@ -380,8 +380,9 @@ value = true
 default = true
 group = "profile"
 label = "Verbose inline comments"
-help = "emit inline tuning hints and a Troubleshooting block in the FDF"
-
+help = """
+Emit inline tuning hints and a Troubleshooting block in the generated
+script, in whatever comment syntax that engine uses."""
 [item.write_forces]
 kind = "engine"
 category = ["procedure"]
@@ -447,8 +448,10 @@ type = "bool"
 value = true
 default = true
 label = "Write the molwatch trajectory log"
-help = "write <job>.molwatch.log preview (lets molwatch render before SIESTA does)"
-
+help = """
+Write <job>.molwatch.log alongside the run: per-step coordinates, energy
+and forces, in one additive file the Watch tab reads.  It exists so a
+trajectory can be followed while the engine is still running."""
 [item.mpi_np]
 kind = "wrapper"
 category = ["execution"]
@@ -505,10 +508,16 @@ resolver = "node_memory"
 unit = "MB"
 range = [100, 1000000]
 group = "budget"
-label = "Max memory (per rank)"
+label = "Max memory"
 null_label = "(no cap)"
-help = "MB cap per MPI rank.  Emits a SystemMemory hint into the .fdf when set; left blank, SIESTA uses whatever the OS allows.  Recorded in the run's runtime_info so the /results display shows it."
+help = """
+How much memory this run may use.  Left blank -- the normal state -- it is
+the machine's maximum, resolved at prep on the node that granted it; set a
+number only when you need a ceiling.
 
+Each engine applies it its own way: SIESTA emits a SystemMemory hint into
+the deck and caps the wrapper, PySCF passes it to mol.max_memory, which is
+what it consults to choose in-core versus out-of-core."""
 [item.enable_gpu]
 kind = "engine"
 category = ["execution"]
