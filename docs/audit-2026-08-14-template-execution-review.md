@@ -2168,9 +2168,7 @@ free* -- that a single count cannot express.
 
 ### 36.2 - Still open on C1
 
-1. **spin** -- shared flag + shared number (SS 32.3's finding), or leave the
-   engines' decompositions alone?
-2. **`expands` on a merged item** -- union, omit, or per-engine? It documents
+1. **`expands` on a merged item** -- union, omit, or per-engine? It documents
    rather than steers (SS 8.1), so this is a readability call, not a mechanism
    one.
 3. **`engines` explicit or derived** once items list several.
@@ -2672,3 +2670,79 @@ whether the same absolute phrasing recurs anywhere the deck's readability is
 argued -- SS 9.2 of `template.md` makes a related argument about `prep` not
 harvesting from disk, and that one IS about reproducibility rather than
 capability.
+
+---
+
+## 43 - SPIN: RULED, and it was ruled earlier than the record said
+
+**User, 2026-08-14:** *"i thought we are done with spin. what's wrong with
+it?"* -- **nothing. It was settled and I did not write it down**, then kept
+listing it as open in SS 32.3 and SS 36.2. Corrected here; those entries are
+struck.
+
+### 43.1 - How it was settled
+
+The user asked: *"you can have a spin flag and an engine-specific spin_param
+both in the template?"* Checking the two engines' help text answered it
+better than the question expected:
+
+| | says |
+|---|---|
+| SIESTA `spin_total` | *"target total spin moment in mu_B (= **number of unpaired electrons**)"* |
+| PySCF `spin` | *"2S (NOT 2S+1); 0=closed shell, 1=doublet, 2=triplet"* -- also the **number of unpaired electrons** |
+
+**Same quantity, same units, same number** -- not two conventions.
+
+**And there are THREE states, not two**, which is why the flag is not
+derivable from the number:
+
+| state | SIESTA | PySCF |
+|---|---|---|
+| closed shell | *(nothing emitted)* | `spin=0`, RKS |
+| **open shell, moment FREE** | `SpinPolarized .true.`, **no** `Spin.Fix` | `spin=0`, **UKS** (broken symmetry) |
+| open shell, moment FIXED | `SpinPolarized` + `Spin.Fix` + `Spin.Total <v>` | `spin=<v>` |
+
+`spin != 0` expresses only two of them. The middle -- *let it polarise and
+find its own moment* -- is a real and common choice, and it disappears if the
+flag is derived from the count.
+
+### 43.2 - The ruling
+
+**Two items, both SHARED across engines.** The flag and the number are each
+the same question with the same answer for both engines, so both merge under
+SS 6.3's test; what differs is only the rendering, which is the generator's
+(`kind = "deck"`).
+
+```toml
+[item.spin_polarized]        # the shared QUESTION -- is this open-shell?
+kind     = "deck"
+category = "system"
+engines  = ["siesta", "pyscf"]
+type     = "bool"
+value    = false
+
+[item.spin_moment]           # the shared NUMBER -- unpaired electrons, when fixed
+kind     = "deck"
+category = "system"
+engines  = ["siesta", "pyscf"]
+type     = "float"
+# NO value = polarised but UNCONSTRAINED -- the third state
+```
+
+**Each generator renders it:** SIESTA emits `SpinPolarized` / `Spin.Fix` /
+`Spin.Total`; PySCF picks `RKS` vs `UKS` and sets `gto.M(spin=)`.
+
+**And it uses `unset` the way the template already defines it** -- *explicitly
+unset* is the third state, not a missing value (SS 3). No new mechanism.
+
+### 43.3 - What this deletes
+
+`spin_polarized` **stays** (it is the flag), and **SIESTA's `spin_total` and
+PySCF's `spin` become one item.** Two names for one quantity -- exactly the
+*"same physics unrecognisable across engines"* defect SS 1 of the unification
+plan measured.
+
+> **The real lesson is the record-keeping.** The design was settled in
+> conversation and left open in the document, so it read as unresolved for
+> two more sections. That is the same failure this report charges elsewhere --
+> a decision made once and not written where the next reader looks.
