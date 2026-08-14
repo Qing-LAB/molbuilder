@@ -1213,3 +1213,58 @@ track restatements it cannot check.
 > this review that was mechanical into something that never needs a reviewer
 > again, and it is perhaps eighty lines of test.
 
+---
+
+## 23 · FIXES LANDED — and what the gate found on its first run
+
+> **Status key for the sections above:** a finding marked here is **closed**;
+> everything not listed is still open. Fix commits are named so the change can
+> be read rather than re-derived.
+
+### 23.1 · § 22.1's gate is built, and it earned its place immediately
+
+`tests/test_doc_claims.py` — eight closed vocabularies checked against the
+contracts that own them, in both directions, plus the `Resources` count in
+prose, the retired-`strmap` check, and the required-keys agreement.
+
+**It failed on its first run, on two drifts nobody had found by reading:**
+
+| gap | what it means |
+|---|---|
+| `engines/template.md` names **none of** `rank_count`, `omp_threads`, `node_memory` | the `resolver` vocabulary is **closed and enforced** — `read_template` refuses an unknown name — and three of its four legal values appeared **nowhere a template author could read them**. § 6.4 described the *items* in prose and never spelled the names the code requires |
+| `job-contracts.md` never names `Job.resources` | § 6.2 covers `Resources` at length, and § 6.2's closing sentence enumerated *"`warm` and `traits`"* as *"everything else a `Job` carries"* — omitting the third |
+
+**Both fixed in their owning contracts** *(this commit)*: § 6.4 gains a
+four-row table keyed by resolver name, plus the rule that three of the four
+answer from the allocation and may never carry a value; § 6.2's sentence now
+names all three fields.
+
+> **This is the argument for 22.1, made by 22.1.** A five-pass human reading
+> found the *`Resources` seven-vs-nine* drift. It did not find that a closed,
+> enforced vocabulary was undocumented — because reading checks what is *there*,
+> and this was an absence. Mutation-tested: renaming a member to `BROKEN` fails
+> the gate by name.
+
+### 23.2 · Fixes landed this pass
+
+| finding | fix |
+|---|---|
+| **§ 22.1** | `tests/test_doc_claims.py` — built, mutation-tested |
+| **new (23.1)** | `template.md` § 6.4 gains the resolver registry; `job-contracts.md` § 6.2 names `Job.resources` |
+
+### 23.3 · Still open, and why
+
+**Mechanical, no decision needed** — §§ 18.1–18.4 (the duplicate TOML key, the
+missing `category`, the int/float, `section` residue, `template.py`'s dead
+branch and stale comments), and § 2's four passages describing the retired ELPA
+routing.
+
+**Needs a decision, because each changes design rather than text:**
+
+| # | question | recommendation |
+|---|---|---|
+| **1** | Multi-engine (§§ 1.2, 15.1) — real, or reserved? | say **reserved** unless a producer is planned; the axis costs five mechanisms and serves nothing today |
+| **2** | Absent vs null (§ 20) — which policy does the registry require? | **declarations omit, records use `asdict`** — the template needs three states, no other artifact needs more than two |
+| **3** | The seam leak (§ 6.1) — `resolve._apply` imports from `siesta/` | **move** `effective_config` to a shared module; it is already engine-agnostic |
+| **4** | Invariant 5's *"forced cold"* (§ 17.1) | **delete the clause** — the relabel is sufficient and the code's own comment says so |
+

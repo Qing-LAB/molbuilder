@@ -558,12 +558,27 @@ they depend on the machine, on an explicit ask, or on both. The item names its
 resolver and `prep` calls it — `prep` never carries a list of which fields are
 special, which is the same argument `read_by` won in § 6.1.
 
-| item | unset → | explicitly set → |
-|---|---|---|
-| `max_memory_mb` | the node's maximum, from `environment.json` or detection | clamped to the allocation, and the clamp logged |
-| `block_size` | proposed from the orbital and rank counts | honoured verbatim |
-| rank count | the allocation | an ask, resolved against what was granted |
-| `threads` | `OMP_NUM_THREADS` → `SLURM_CPUS_PER_TASK` → `PBS_NCPUS` → `NSLOTS` → physical cores | honoured; it outranks the chain |
+**The registry is four names, and they are the only legal values of
+`resolver`** — a reader refuses any other (§ 3), so this list is what a template
+author needs and the code enforces it:
+
+| `resolver` | the item it answers | unset → | explicitly set → |
+|---|---|---|---|
+| `node_memory` | `max_memory_mb` | the node's maximum, from `environment.json` or detection | clamped to the allocation, and the clamp logged |
+| `block_size` | `block_size` | proposed from the orbital and rank counts | honoured verbatim |
+| `rank_count` | the MPI rank count | the allocation | an ask, resolved against what was granted |
+| `omp_threads` | `threads` | `OMP_NUM_THREADS` → `SLURM_CPUS_PER_TASK` → `PBS_NCPUS` → `NSLOTS` → physical cores | honoured; it outranks the chain |
+
+**Three of the four answer from the ALLOCATION** — `rank_count`, `omp_threads`
+and `node_memory` — and an item naming one of those **may never carry a value**:
+that is § 2's rule checked on read, because a template is a file a person is
+invited to edit. `block_size` is deliberately not in that set: `prep` *proposes*
+it, and a person or a benchmark may also set it (§ 12).
+
+*(The four names were absent from this document until 2026-08-14 — the table
+above described the items in prose while the closed vocabulary a reader must
+spell lived only in `template.py`. Found by the doc-claims gate,
+`tests/test_doc_claims.py`, on its first run.)*
 
 ```
 resolve(asked: value | None, env: Environment) -> (effective, reason)

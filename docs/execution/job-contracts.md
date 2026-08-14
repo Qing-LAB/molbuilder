@@ -1489,7 +1489,7 @@ test in both directions.)*  `partition` and `qos` are **not** `Resources`
 fields; they are config `directives.*` resolved from `domain` by the
 submit engine.
 
-**Everything else a `Job` carries is `warm` and `traits`** — which files it
+**Everything else a `Job` carries is `resources`, `warm` and `traits`** — which files it
 would take from a run it is continued from, and the values a condition on one is
 compared against. Neither is a resource, and neither names another job: which
 run this one continues is named by a person at `prep`.
