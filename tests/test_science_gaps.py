@@ -72,7 +72,7 @@ def test_gap_1_siesta_emits_spin_total_with_dot(h2):
     not the bogus single-token `SpinTotal`."""
     cfg = SiestaConfig(
         system_label="h2",
-        spin_polarized=True,
+        spin_treatment="polarized",
         spin_total=1.0,
     )
     fdf = render_fdf(h2, cfg)
@@ -96,38 +96,36 @@ def test_gap_1_siesta_emits_spin_total_with_dot(h2):
 # --------------------------------------------------------------------- #
 
 
-def test_gap_2_siesta_emits_v4_spinpolarized_for_aux_compat(h2):
-    """Originally pinned the v5 single-line ``Spin polarized``; the
-    rationale ("modern SIESTA prefers v5") turned out to be wrong
-    in practice for SIESTA 5.4.2.
+def test_gap_2_the_spin_mode_and_its_total_pin_reach_the_deck_together(h2):
+    """The property, freed from a mechanism that turned out not to hold.
 
-    2026-05-24 hemeC-dithiol incident: with the v5 form the user's
-    ``Spin.Fix .true.`` + ``Spin.Total 4.0`` were silently ignored
-    (the v5 parser path doesn't read those auxiliary keys), the
-    initial-DM constructor couldn't find a zero-spin split on Fe's
-    d-shell, SIESTA aborted with ``propor: ERROR: IMAX = 0``.
-    Empirically verified by diffing fdf.<timestamp>.log under each
-    form: v4 -> Spin.Fix=T, Spin.Total=4.0 honored; v5 -> both at
-    default.  Test inverted to pin the v4 form so a regression to
-    v5 fails here loudly."""
-    cfg = SiestaConfig(system_label="h2", spin_polarized=True)
+    HISTORY, because it is the whole point. This test was inverted on
+    2026-05-24 to pin the v4 ``SpinPolarized .true.`` form, on the finding
+    that the v5 ``Spin polarized`` path "does not read Spin.Fix / Spin.Total"
+    and so aborted a hemeC-dithiol run at ``propor: ERROR: IMAX = 0``.
+
+    That mechanism is NOT in SIESTA 5.4.2, verified against its source
+    2026-08-15. ``spin_subs.F90`` reads the deprecated flags into ``opt_old``
+    and then does ``opt = fdf_get('Spin', opt_old)`` — one variable, the new
+    spelling merely winning. ``Spin.Fix`` / ``Spin.Total`` are read in a
+    DIFFERENT file (``read_options.F90``), gated only on ``nspin == 2``, which
+    both spellings produce identically. Whatever aborted that run in May, it
+    was not this.
+
+    So the mechanism is retired and the PROPERTY is kept, which is what the
+    incident was really about: **asking for a fixed total spin must produce a
+    deck that carries the mode AND the pin.** Losing either is what made that
+    job fail, and this fails if either goes missing however it is spelled.
+    """
+    cfg = SiestaConfig(system_label="h2", spin_treatment="polarized",
+                       spin_total=4.0)
     fdf = render_fdf(h2, cfg)
-    assert "SpinPolarized .true." in fdf, (
-        "FDF must emit v4 ``SpinPolarized .true.`` (NOT v5 single-line "
-        "``Spin polarized``) so SIESTA 5.4.2's parser also reads "
-        "Spin.Fix + Spin.Total -- see siesta/input.py emission site."
-    )
-    # And the broken v5 form must not be on a line of its own.
-    assert not re.search(r"^Spin\s+polarized\s*$", fdf, re.MULTILINE), (
-        "regression: emitting v5 ``Spin polarized`` causes SIESTA 5.4.2 "
-        "to silently drop Spin.Fix / Spin.Total"
-    )
-
-
-# --------------------------------------------------------------------- #
-#  Gap 3: no SIESTA dispersion-correction template emitted              #
-# --------------------------------------------------------------------- #
-
+    assert re.search(r"^Spin\s+polarized\s*$", fdf, re.M), fdf
+    assert re.search(r"^Spin\.Fix\s+\.true\.", fdf, re.M), fdf
+    assert re.search(r"^Spin\.Total\s+4\.0", fdf, re.M), fdf
+    # And the deprecated spelling is gone (SIESTA 5.4.2 deprecates all three
+    # of SpinPolarized / NonCollinearSpin / SpinOrbit in favour of `Spin`).
+    assert not re.search(r"^SpinPolarized\b", fdf, re.M), fdf
 
 def test_gap_3_siesta_emits_dispersion_template_for_pbe(h2):
     """When the chosen XC is non-dispersive (default PBE), the

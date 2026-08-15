@@ -937,11 +937,11 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
 
     if v: out += [
         "",
-        "# DM.Energy.Tolerance: redundant energy-based SCF check (eV).",
+        "# DM.EnergyTolerance: redundant energy-based SCF check (eV).",
         "# Catches the rare case where DM is converged but energy keeps",
         "# drifting -- usually triggered by ill-conditioned mixing.",
     ]
-    out.append(f"DM.Energy.Tolerance {cfg.dm_energy_tolerance:.0e} eV")
+    out.append(f"DM.EnergyTolerance {cfg.dm_energy_tolerance:.0e} eV")
 
     if v: out += [
         "",
@@ -1001,26 +1001,25 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # which is NOT a real SIESTA keyword -- the parser silently
     # ignored it and the user got the spin-unrestricted ground state
     # despite asking for a constrained multiplicity.
-    if cfg.spin_polarized:
+    if cfg.spin_treatment != "non-polarized":
         if v: out += [
             "",
-            "# Spin polarized: open-shell DFT (collinear).  Required for",
-            "# any system with unpaired electrons.  SIESTA's default is",
-            "# closed-shell -- omitting this for a radical / transition-",
-            "# metal / triplet system gives the wrong electronic state.",
+            "# Spin treatment.  SIESTA 5.4.2 folded SpinPolarized /",
+            "# NonCollinearSpin / SpinOrbit into ONE keyword taking one of",
+            "# four words, and deprecated all three (spin_subs.F90).  Three",
+            "# independent booleans could contradict each other; one enum",
+            "# cannot.",
             "#",
-            "# We use the v4 ``SpinPolarized .true.`` form (not the v5",
-            "# ``Spin polarized`` single-line form) on purpose: as of",
-            "# SIESTA 5.4.2 (verified 2026-05-24) the v5 unified parser",
-            "# DOES NOT read the auxiliary ``Spin.Fix`` / ``Spin.Total``",
-            "# keys below -- so open-shell metals like Fe abort at",
-            "# initial-DM construction with ``propor: ERROR: IMAX = 0``",
-            "# because no spin target reaches the constructor.  v4",
-            "# syntax is marked deprecated in the manual but is still",
-            "# fully honored AND triggers the auxiliary spin reads.",
+            "#   polarized     collinear open-shell -- radicals, transition",
+            "#                 metals, triplets.  The only mode that can",
+            "#                 carry a fixed total spin (Spin.Fix below).",
+            "#   non-colinear  moments may point in any direction.",
+            "#   spin-orbit    spin coupled to orbital motion; matters for",
+            "#                 heavy elements and NEEDS fully-relativistic",
+            "#                 pseudopotentials.",
         ]
-        out.append("SpinPolarized .true.")
-        if cfg.spin_total is not None:
+        out.append(f"Spin              {cfg.spin_treatment}")
+        if cfg.spin_total is not None and cfg.spin_treatment == "polarized":
             if v: out += [
                 "# Spin.Fix + Spin.Total: target total spin moment in mu_B",
                 "# (= number of unpaired electrons).  Spin.Fix true MUST",
@@ -1031,14 +1030,14 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             ]
             if v and cfg.spin_total == 0.0:
                 # SP-A: a constrained singlet ON TOP of open-shell DFT
-                # is unusual -- the cheaper path is spin_polarized=False
+                # is unusual -- the cheaper path is Spin non-polarized
                 # (spin-restricted Kohn-Sham).  Surface this so a user
                 # who landed here by accident sees the contradiction.
                 out += [
-                    "# NOTE: spin_total = 0.0 with spin_polarized=True asks",
+                    "# NOTE: spin_total = 0.0 with Spin polarized asks",
                     "# for a constrained singlet via open-shell DFT (broken-",
                     "# symmetry capable).  Most users wanting a singlet are",
-                    "# better served by spin_polarized=False -- the",
+                    "# better served by Spin non-polarized -- the",
                     "# spin-restricted formalism is cheaper and gives the",
                     "# same answer.  Keep this if you specifically want",
                     "# anti-ferromagnetic / broken-symmetry singlet.",
@@ -1282,7 +1281,25 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "VERLET":  "MD.FinalTimeStep",
             "NOSE":    "MD.FinalTimeStep",
         }
-        step_kw = _STEP_KW.get(relax_kind, "MD.Steps")
+        # REFUSED, never defaulted.  This fell back to ``MD.Steps`` for any
+        # unrecognised type, and SIESTA's geometry loop is bounded by a
+        # DIFFERENT keyword depending on the run type (siesta_init.F: idyn 0
+        # bounds on MD.Steps, idyn 1-5 on MD.InitialTimeStep..FinalTimeStep).
+        # So adding any of SIESTA's other MD ensembles -- ParrinelloRahman,
+        # NoseParrinelloRahman, Anneal, all idyn 3-5 -- to the choice list
+        # without touching this map would emit a keyword the run ignores,
+        # leaving MD.FinalTimeStep at its default of 1: a one-step MD that
+        # looks like it ran.  A loud refusal here costs one line; that bug
+        # costs a wasted allocation and is invisible in the output.
+        if relax_kind not in _STEP_KW:
+            raise ValueError(
+                f"relax_type {cfg.relax_type!r} has no step-count keyword "
+                f"mapping. SIESTA bounds a relaxation with MD.Steps and an MD "
+                f"run with MD.FinalTimeStep, and guessing wrong gives a "
+                f"one-step run that reports success. Add it to _STEP_KW in "
+                f"siesta/input.py with the keyword its MD.TypeOfRun family "
+                f"uses (known: {', '.join(sorted(_STEP_KW))}).")
+        step_kw = _STEP_KW[relax_kind]
         # Universal displacement-cap keyword for CG / Broyden / FIRE;
         # Verlet / Nose have no per-step displacement cap (forces +
         # masses drive the timestep instead).
@@ -1480,7 +1497,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "# Energy fluctuates during SCF:",
             "#   * lower SCF.Mixer.Weight to 0.005",
             "#   * raise SCF.Mixer.History to 6",
-            "#   * tighten DM.Energy.Tolerance to 1e-5 eV",
+            "#   * tighten DM.EnergyTolerance to 1e-5 eV",
             "#",
             "# 'propor: ERROR: IMAX = 0' on parallel run:",
             "#   * too many MPI ranks for this molecule's radial-",

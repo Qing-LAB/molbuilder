@@ -716,9 +716,13 @@ and the findings contract (facts in, findings out; `where` is the stable id).
    does not vary lives in the template, once (`stages.md § 4`). What P2 actually
    needs is the *other* direction: `prep` holds a template and a stage's
    `overrides`, and must produce one ordinary config to validate and render.
-   **`schema_fingerprint` is computed by whatever writes the template**, since
+   ~~**`schema_fingerprint` is computed by whatever writes the template**, since
    that is the moment the schema is in hand; the preflight's only non-refusal row
-   has had a reader and no writer since it was written.
+   has had a reader and no writer since it was written.~~
+   ⛔ **The fingerprint was RETIRED 2026-08-14** — one writer, one reader, and a
+   claim weaker than the per-field checks that ran immediately after it
+   ([`engines/template.md`](?doc=engines/template.md) § 10). The rest of this
+   unit stands; only the fingerprint sentence is withdrawn.
 
 5. `effective_config(template, stage) -> SiestaConfig` — **one function, one
    place**, and the object it returns is the object that gets validated *and*

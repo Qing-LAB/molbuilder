@@ -76,7 +76,7 @@ from .sidecar import _check_frozen_atoms_consumed
 from .siesta import (_check_siesta_charged_makov_payne_notice,
                      _check_siesta_mesh_cutoff,
                      _check_siesta_pseudo_coverage,
-                     _check_siesta_spin_polarized_needs_spin_total,
+                     _check_siesta_spin_treatment_needs_spin_total,
                      _validate_siesta)
 
 

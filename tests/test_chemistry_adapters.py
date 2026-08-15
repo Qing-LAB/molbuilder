@@ -113,22 +113,22 @@ def test_siesta_adapter_returns_frozen_dataclass():
 
 
 def test_siesta_adapter_open_shell_metal_path():
-    """Fe → spin_polarized=True + spin_total=2.0 + rationale carries
+    """Fe → spin_treatment="polarized" + spin_total=2.0 + rationale carries
     'Fe' in the engine-agnostic explanation."""
     a = analyze_structure(_mk(["Fe"]))
     p = SiestaAdapter.to_params(a)
     assert p.net_charge     == 0
-    assert p.spin_polarized is True
+    assert p.spin_treatment == "polarized"
     assert p.spin_total     == 2.0
     assert "Fe" in p.rationale
 
 
 def test_siesta_adapter_closed_shell_path():
-    """Pure organic, even electrons → spin_polarized=False,
+    """Pure organic, even electrons → spin_treatment="non-polarized",
     spin_total=0."""
     a = analyze_structure(_mk(["C", "H", "H", "H", "H"]))
     p = SiestaAdapter.to_params(a)
-    assert p.spin_polarized is False
+    assert p.spin_treatment == "non-polarized"
     assert p.spin_total     == 0.0
 
 
@@ -139,11 +139,11 @@ def test_siesta_field_names_match_siesta_config():
     Config renames a field, the adapter must follow."""
     from molbuilder.siesta.input import SiestaConfig
     cfg_fields = {f.name for f in SiestaConfig.__dataclass_fields__.values()}
-    # net_charge + spin_polarized + spin_total must all be present
+    # net_charge + spin_treatment + spin_total must all be present
     # on SiestaConfig.  rationale is meta — exempt.
-    assert {"net_charge", "spin_polarized", "spin_total"} <= cfg_fields, (
+    assert {"net_charge", "spin_treatment", "spin_total"} <= cfg_fields, (
         f"SIESTA adapter exports fields not in SiestaConfig: "
-        f"{{'net_charge','spin_polarized','spin_total'}} − {cfg_fields}"
+        f"{{'net_charge','spin_treatment','spin_total'}} − {cfg_fields}"
     )
 
 
@@ -202,7 +202,7 @@ def test_pyscf_field_names_match_pyscf_config():
 def test_all_adapters_agree_on_treatment(elements):
     """For any structure, every registered adapter's output carries
     the same treatment-equivalent decision.  Spelled differently
-    per engine (SIESTA spin_polarized=True, PySCF method='UKS'),
+    per engine (SIESTA spin_treatment="polarized", PySCF method='UKS'),
     but the conclusion is identical.
 
     This is the structural realisation of the cross-engine
@@ -216,12 +216,14 @@ def test_all_adapters_agree_on_treatment(elements):
     si = reg["siesta"].to_params(analysis)
     py = reg["pyscf"].to_params(analysis)
 
-    # Open-shell agreement: SIESTA spin_polarized iff PySCF method UKS
-    si_open = si.spin_polarized
+    # Open-shell agreement: SIESTA spin_treatment iff PySCF method UKS
+    # A MODE, not a flag, since 2026-08-15: anything but "non-polarized"
+    # means the calculation carries separate spin channels.
+    si_open = si.spin_treatment != "non-polarized"
     py_open = py.method == "UKS"
     assert si_open == py_open, (
         f"SIESTA and PySCF disagree on open/closed for elements "
-        f"{elements}: SIESTA spin_polarized={si_open}, "
+        f"{elements}: SIESTA spin_treatment={si_open}, "
         f"PySCF method={py.method!r}"
     )
 
@@ -248,7 +250,7 @@ def test_asdict_round_trip_for_each_adapter():
     py_d = asdict(PyscfAdapter.to_params(a))
     assert si_d == {
         "net_charge":     0,
-        "spin_polarized": True,
+        "spin_treatment": "polarized",
         "spin_total":     2.0,
         "rationale":      si_d["rationale"],   # value-agnostic
     }

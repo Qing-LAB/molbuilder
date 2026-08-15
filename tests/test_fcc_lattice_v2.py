@@ -80,7 +80,7 @@ def test_pbe_within_3pct_of_experimental():
             f"({a_exp}); likely a typo")
 
 
-def test_ni_pbe_is_spin_polarized():
+def test_ni_pbe_is_spin_treatment():
     """Ni a_pbe must reflect the ferromagnetic ground state (>= 3.50 A).
 
     The non-spin-polarized PBE value is ~3.43 A.  Using it for a

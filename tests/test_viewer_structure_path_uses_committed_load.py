@@ -45,89 +45,39 @@ def viewer_src() -> str:
 # --------------------------------------------------------------------- #
 
 
-def test_siesta_generate_uses_sidebar_last_file(viewer_src):
-    """The block that constructs the /api/build/fdf POST body must
-    assign ``_structPath`` from ``_sidebarLastFile``, not from
-    ``_proj.getCurrentFile()``."""
-    # Locate the SIESTA POST.
-    post_ix = viewer_src.find('fetch("/api/build/fdf"')
-    assert post_ix > 0, "SIESTA POST not found in viewer.js"
+def test_the_committed_file_is_what_the_tab_records(viewer_src):
+    """``_sidebarLastFile`` is still the tab's record of what was COMMITTED.
 
-    # Search backwards in a reasonable window for the structPath
-    # assignment.  100 lines is comfortably more than the prelude
-    # but tight enough that a refactor moving the var out of scope
-    # would fail this anchor.
-    window = viewer_src[max(0, post_ix - 4000):post_ix]
-    assigns = re.findall(
-        r"const\s+_structPath\s*=\s*([^;]+);",
-        window,
-    )
-    assert assigns, (
-        "Could not find ``const _structPath = ...;`` before the "
-        "/api/build/fdf POST.  Did you rename the variable?  "
-        "Update this test along with the rename."
-    )
-    rhs = assigns[-1]
-    assert "_sidebarLastFile" in rhs, (
-        f"_structPath must be derived from _sidebarLastFile (the "
-        f"committed Load file).  Got: ``{rhs.strip()}``.  See module "
-        f"docstring for the BLOCKER this guards against."
-    )
-    assert "getCurrentFile" not in rhs, (
-        f"_structPath must NOT read ``getCurrentFile()`` (the live "
-        f"sidebar pick).  Got: ``{rhs.strip()}``."
-    )
+    This file pinned the two Generate POSTs until 2026-08-15.  Those are gone
+    -- the tab collects parameters and hands them on rather than producing a
+    deck -- so ``_structPath`` has no subject.  The INCIDENT the module
+    docstring describes is not gone, though: it was never really about
+    Generate, it was about which file the tab believes it is holding.  So the
+    guard is restated on that, endpoint-independently.
+    """
+    assert "_sidebarLastFile" in viewer_src, (
+        "viewer.js no longer tracks _sidebarLastFile.  Something has to hold "
+        "'the file the user committed', distinct from 'the file highlighted "
+        "in the sidebar right now' -- conflating them is the 2026-06-14 BDT "
+        "frozen-atoms incident in the module docstring.")
 
 
-# --------------------------------------------------------------------- #
-#  PySCF: /api/build/pyscf handler                                       #
-# --------------------------------------------------------------------- #
+def test_the_live_sidebar_pick_never_identifies_the_structure(viewer_src):
+    """``getCurrentFile()`` is the LIVE pick and must not identify the
+    structure being worked on.
 
-
-def test_pyscf_generate_uses_sidebar_last_file(viewer_src):
-    """Mirror of the SIESTA assertion for the PySCF generate handler.
-    Same bug class -- the PySCF POST also needs the committed-load
-    path so the sidecar applies."""
-    post_ix = viewer_src.find('fetch("/api/build/pyscf"')
-    assert post_ix > 0, "PySCF POST not found in viewer.js"
-
-    window = viewer_src[max(0, post_ix - 4000):post_ix]
-    assigns = re.findall(
-        r"const\s+_structPathPy\s*=\s*([^;]+);",
-        window,
-    )
-    assert assigns, (
-        "Could not find ``const _structPathPy = ...;`` before the "
-        "/api/build/pyscf POST.  Did you rename the variable?"
-    )
-    rhs = assigns[-1]
-    assert "_sidebarLastFile" in rhs, (
-        f"_structPathPy must be derived from _sidebarLastFile.  "
-        f"Got: ``{rhs.strip()}``."
-    )
-    assert "getCurrentFile" not in rhs, (
-        f"_structPathPy must NOT read ``getCurrentFile()``.  "
-        f"Got: ``{rhs.strip()}``."
-    )
-
-
-# --------------------------------------------------------------------- #
-#  Sanity: the variable being read is actually declared in scope         #
-# --------------------------------------------------------------------- #
-
-
-def test_sidebar_last_file_declared_at_module_scope(viewer_src):
-    """``_sidebarLastFile`` must be declared inside the single
-    top-level IIFE the file wraps.  If a future refactor moves it
-    into an inner function (or deletes it), the generate handlers
-    would silently get ``undefined`` -> falsy ``|| ""`` fallback
-    -> empty structure_path -> sidecar never applied (the exact
-    pre-fix symptom).  The test verifies the declaration is
-    present at module-ish scope and not inside a nested function."""
-    assert re.search(
-        r"^    let\s+_sidebarLastFile\s*=", viewer_src, re.MULTILINE
-    ) is not None, (
-        "``let _sidebarLastFile = …`` declaration not found at "
-        "single-IIFE scope (4-space indent).  The optimization-tab "
-        "generate handlers depend on this variable being in scope."
-    )
+    Exactly one use survives and it is the opposite case: seeding an EMPTY
+    canvas at mount, where "what is highlighted" is the only thing there is to
+    go on.  Any use inside a request body, or to decide which file's sidecar
+    to read, is the incident again.
+    """
+    uses = [ln.strip() for ln in viewer_src.splitlines() if "getCurrentFile" in ln]
+    assert len(uses) <= 2, (
+        f"{len(uses)} uses of getCurrentFile() in viewer.js; expected only the "
+        f"mount-time empty-canvas seed:\n  " + "\n  ".join(uses))
+    joined = " ".join(uses)
+    assert "_initialFile" in joined, (
+        "the surviving getCurrentFile() call is no longer the mount-time seed "
+        "(`_initialFile`).  If it moved into a request path, that is the "
+        "2026-06-14 BDT frozen-atoms incident returning -- see the module "
+        "docstring.")

@@ -631,9 +631,9 @@ class TestPseudosEndpoint:
         # The UKS / RKS choice is pinned by the assert on
         # ``sug["method"]`` two lines up.
         assert "open-shell" in sug["rationale"]
-        # SIESTA equivalent: spin_polarized=True + spin_total=2.0
+        # SIESTA equivalent: spin_treatment="polarized" + spin_total=2.0
         ssug = body["suggested"]["siesta"]
-        assert ssug["spin_polarized"]   is True
+        assert ssug["spin_treatment"]   == "polarized"
         assert ssug["spin_total"]       == 2.0
 
 
@@ -689,7 +689,7 @@ class TestMetalAwareScriptTemplates:
         from molbuilder.siesta import render_fdf
         from molbuilder.config.siesta import SiestaConfig
         fdf = render_fdf(self._fe(), SiestaConfig(
-            net_charge=0, spin_polarized=True, spin_total=2.0,
+            net_charge=0, spin_treatment="polarized", spin_total=2.0,
         ))
         assert "Spin-state sweep template" in fdf
         assert "Fe(II) candidates" in fdf
@@ -701,7 +701,7 @@ class TestMetalAwareScriptTemplates:
         from molbuilder.siesta import render_fdf
         from molbuilder.config.siesta import SiestaConfig
         fdf = render_fdf(self._water(), SiestaConfig(
-            net_charge=0, spin_polarized=True, spin_total=0.0,
+            net_charge=0, spin_treatment="polarized", spin_total=0.0,
         ))
         assert "Spin-state sweep template" not in fdf
 

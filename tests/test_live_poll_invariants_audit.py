@@ -401,6 +401,16 @@ class TestWorkflowGroupSchemaConsistency:
        in the preset but is a budget cap; mixing-weight was in the
        preset but is a system characteristic)."""
 
+    @pytest.mark.skip(reason=
+        "The Relaxation-stage preset left the Structure-optimization tab on "
+        "2026-08-15: staging is a SEPARATE shared surface, because a stage "
+        "table living in this tab would have to be copied into Transport and "
+        "into Spectra (web/task-setup-plan.md 1). STAGE_PRESETS and "
+        "_STAGE_PRESET_KEYS_SIESTA were deleted with it, so this invariant "
+        "has no subject. Kept rather than removed: when the staging surface "
+        "is built it will need exactly this guard -- that the values a preset "
+        "writes and the ids it is allowed to write agree -- and re-deriving "
+        "it from scratch is how the 2026-06-13 bug came back the first time.")
     def test_stage_preset_keys_match_stage_tagged_fields(self):
         """For every ``p-<id>`` in STAGE_PRESETS, the matching
         SiestaConfig field MUST carry
@@ -453,6 +463,16 @@ class TestWorkflowGroupSchemaConsistency:
             "field 'stage' in molbuilder/config/siesta.py or drop "
             f"it from STAGE_PRESETS: {wrong_tag}")
 
+    @pytest.mark.skip(reason=
+        "The Relaxation-stage preset left the Structure-optimization tab on "
+        "2026-08-15: staging is a SEPARATE shared surface, because a stage "
+        "table living in this tab would have to be copied into Transport and "
+        "into Spectra (web/task-setup-plan.md 1). STAGE_PRESETS and "
+        "_STAGE_PRESET_KEYS_SIESTA were deleted with it, so this invariant "
+        "has no subject. Kept rather than removed: when the staging surface "
+        "is built it will need exactly this guard -- that the values a preset "
+        "writes and the ids it is allowed to write agree -- and re-deriving "
+        "it from scratch is how the 2026-06-13 bug came back the first time.")
     def test_stage_preset_allowlist_matches_dict_keys(self):
         """The defensive allowlist (``_STAGE_PRESET_KEYS_SIESTA``)
         in viewer.js MUST match the union of stage-preset dict
@@ -495,7 +515,9 @@ class TestWorkflowGroupSchemaConsistency:
         """Smoke check across ALL FOUR engine configs (Siesta, PySCF,
         Transport, Spectra): no field ever ends up tagged with a
         contradictory or unknown workflow_group.  Only the three
-        documented values (profile/stage/budget) are valid.  The
+        documented values are valid -- the vocabulary is
+        ``template.GROUPS``, which gained ``output`` and ``staging``
+        on 2026-08-15.  The
         old "system" value was renamed to "profile" on 2026-06-13
         to avoid the collision with the existing "System" schema
         section name + the OS/file-system + physics-system
@@ -510,7 +532,13 @@ class TestWorkflowGroupSchemaConsistency:
         from molbuilder.config.pyscf     import PySCFConfig
         from molbuilder.config.transport import TransportConfig
         from molbuilder.config.spectra   import SpectraConfig
-        valid = {"profile", "stage", "budget"}
+        # Read from the vocabulary itself rather than copied here.  A copy is
+        # a second answer to a question with one owner, and it is what made
+        # this test fail on 2026-08-15 for `output` and `staging` -- two
+        # legitimate additions that the ONLY thing wrong with was that this
+        # list had not heard of them.
+        from molbuilder.template import GROUPS
+        valid = set(GROUPS)
         bad = []
         for cls in (SiestaConfig, PySCFConfig, TransportConfig, SpectraConfig):
             for f in dataclasses.fields(cls):

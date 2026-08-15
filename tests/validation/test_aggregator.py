@@ -128,10 +128,10 @@ def test_render_fdf_raises_on_overlapping_atoms():
 
 
 def test_render_fdf_emits_warnings_to_stderr(capsys, water_struct):
-    """A spin_total without spin_polarized warning surfaces on stderr;
+    """A spin_total without spin_treatment warning surfaces on stderr;
     the FDF still gets emitted (warnings don't block)."""
     from molbuilder.siesta import render_fdf
-    cfg = SiestaConfig(spin_polarized=False, spin_total=1.0)
+    cfg = SiestaConfig(spin_treatment="non-polarized", spin_total=1.0)
     fdf = render_fdf(water_struct, cfg)
     err = capsys.readouterr().err
     assert "spin_total" in err

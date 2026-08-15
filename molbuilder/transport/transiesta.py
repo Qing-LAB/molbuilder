@@ -463,8 +463,8 @@ def _emit_basis_and_xc(cfg: TransportConfig) -> List[str]:
         "",
         "PAO.BasisSize          DZP",
         "PAO.EnergyShift        0.01 Ry",
-        "XC.Functional          GGA",
-        "XC.Authors             PBE",
+        "XC.functional          GGA",
+        "XC.authors             PBE",
         f"MeshCutoff             {cfg.siesta_mesh_cutoff_ry} Ry",
         f"ElectronicTemperature  {cfg.electronic_temperature_k:.1f} K",
         "",
@@ -913,7 +913,7 @@ class TransiestaEngine:
             ))
 
         # Cross-engine chemistry: shared open-shell-metal check.
-        # TransportConfig doesn't carry spin_polarized today;
+        # TransportConfig doesn't carry a spin treatment today;
         # treat the run as closed-shell unless future config adds
         # spin handling.  The check returns [] when there's no
         # open-shell metal present, so it's harmless on organics.

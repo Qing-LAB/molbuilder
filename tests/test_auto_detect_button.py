@@ -160,7 +160,7 @@ def test_auto_detect_button_populates_both_engine_forms(
     )
 
     # SIESTA sub-form populated.  The schema field names are
-    # ``net_charge`` / ``spin_polarized`` / ``spin_total`` (matching
+    # ``net_charge`` / ``spin_treatment`` / ``spin_total`` (matching
     # the SiestaSuggestedParams dataclass field names).  The schema's
     # ``f.id`` is the DOM input id; we look up by name via the
     # form-container so the test doesn't depend on the id naming
@@ -241,9 +241,9 @@ def test_auto_detect_button_populates_both_engine_forms(
     assert pyscf_vals.get("spin")   == 2
     assert pyscf_vals.get("method") == "UKS"
 
-    # SIESTA: net_charge=0, spin_polarized=True, spin_total=2.0
+    # SIESTA: net_charge=0, spin_treatment="polarized", spin_total=2.0
     assert siesta_vals.get("net_charge")     == 0
-    assert siesta_vals.get("spin_polarized") is True
+    assert siesta_vals.get("spin_treatment") == "polarized"
     assert siesta_vals.get("spin_total")     == 2.0
 
     # Rationale panel: visible (not hidden) and carries

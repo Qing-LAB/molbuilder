@@ -39,7 +39,7 @@ def cfg() -> SiestaConfig:
     return SiestaConfig(system_label="JOB", mesh_cutoff=275.0,
                         basis_size="TZP", kgrid=(3, 3, 1),
                         relax_type="Broyden", relax_steps=123,
-                        spin_polarized=True, net_charge=-2,
+                        spin_treatment="polarized", net_charge=-2,
                         restart="continue", continue_retries=4,
                         mpi_np=8, verbose_comments=False)
 
@@ -76,7 +76,8 @@ def test_the_round_trip_preserves_types_not_just_content(cfg):
     decides the shape.  This caught a real bug on the day it was written.
     """
     back = T.config_from_template(T.template_with_values(cfg), SiestaConfig)
-    assert back.spin_polarized is True
+    assert back.copy_psml is True                 # a real bool stays a bool
+    assert back.spin_treatment == "polarized"     # an enum stays its own string
     assert isinstance(back.relax_steps, int)
     assert isinstance(back.mesh_cutoff, float)
     assert isinstance(back.kgrid, tuple) and back.kgrid == (3, 3, 1)

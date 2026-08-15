@@ -64,7 +64,7 @@ def test_frozen_unions_explicit_with_electrodes():
 def test_relax_fdf_has_cg_and_frozen_constraints():
     fdf = render_relax_fdf(_au_device(), _cfg(), relax_steps=50)
     assert "MD.TypeOfRun           CG" in fdf
-    assert "MD.NumCGsteps          50" in fdf
+    assert "MD.Steps          50" in fdf
     assert "%block Geometry.Constraints" in fdf
     # 1-based electrode indices appear in a position line
     assert "position 1 2 3 4 7 8 9 10" in fdf

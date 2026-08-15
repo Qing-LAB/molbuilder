@@ -132,13 +132,13 @@ def test_job_type_classification_sniff_fallback(tmp_path):
 
 
 def test_job_type_ambiguous_raises(tmp_path):
-    """A synthetic .fdf with BOTH MD.NumCGsteps > 0 AND a TS.Elec.*
+    """A synthetic .fdf with BOTH MD.Steps > 0 AND a TS.Elec.*
     block raises JobTypeAmbiguousError."""
     from molbuilder.parse.dirs.job import _classify_job_type
     text = (
         "SystemLabel test\n"
         "MD.TypeOfRun CG\n"
-        "MD.NumCGsteps 200\n"
+        "MD.Steps 200\n"
         "%block TS.Elec.L\n"
         "  HS.files left.TSHS\n"
         "%endblock TS.Elec.L\n"

@@ -23,6 +23,46 @@ its name) · [`execution/architecture.md`](?doc=execution/architecture.md) § 2
 
 ## 1. What it is, and what it must achieve
 
+### 1.0 In plain terms, before any of the vocabulary
+
+**A template is one file that says what calculation you are running.** Every
+setting, the value each one has, and enough explanation that a person who did
+not set them up can read it and understand what was asked for.
+
+It is easiest to see by what came before it. A calculation used to be described
+by the engine's own input file — a `.fdf` for SIESTA, a Python script for
+PySCF — and that file is a poor record of intent for three reasons:
+
+- **You cannot read it without knowing the engine.** `DM.Tolerance 1e-4` means
+  nothing unless you already know SIESTA. There is nowhere in the file to say
+  what it is, what it is measured in, or what a sensible value looks like.
+- **You cannot tell a choice from a default.** A number sitting in the file
+  could be something the scientist thought hard about or something a form
+  filled in and nobody looked at. Six months later nobody can tell which.
+- **You cannot move it.** Input files carry values that only make sense on the
+  machine that produced them — how many processors, how much memory. Copy the
+  folder to a colleague's cluster and those numbers are quietly wrong.
+
+The template fixes all three by keeping the *question* and the *answer*
+together, in a format meant for reading, with the machine-specific values
+deliberately left out. From it, molbuilder can rebuild the engine's input file
+on whatever machine is actually going to run it.
+
+**So one file serves four different readers**, and each takes a different slice
+of the same entries:
+
+| who | what they take from it |
+|---|---|
+| a person | the prose, the units, the sensible ranges — what was asked for and why |
+| the web form | which control to draw, what to call it, what bounds to enforce, which card it belongs on |
+| the thing that writes the engine's input | which engine keyword each setting becomes, and its value |
+| the checker | the declared type and range, so a bad value is caught before a job is queued |
+
+That is the whole idea. The rest of this document is what it takes to make it
+true and keep it true.
+
+### 1.1 What it is, said once more with the surrounding pieces
+
 **A template is the calculation's own catalogue: every parameter the engine's
 schema declares, each with the value in force and everything we know about it.**
 
@@ -37,7 +77,7 @@ It is one of two files a generating surface writes, and they do not overlap:
 > ([`stages.md`](?doc=engines/stages.md) § 4). A stage's override *replaces an
 > item's value*. It never adds an item and never removes one.
 
-### 1.1 The six goals, and what breaks without each
+### 1.2 The six goals, and what breaks without each
 
 Every rule in this document exists to hold one of these. When a later section
 looks arbitrary, it is serving a row here.
@@ -51,7 +91,7 @@ looks arbitrary, it is serving a row here.
 | **G5** | **Readable and editable by a person** | the "reference" half of *one file that is both the reference and the source* is a claim nobody can check | § 4 — one value per parameter, prose beside it, a format that survives hand editing |
 | **G6** | **Complete** — everything the run needs that is not the structure and not the machine | text or labels stranded in a file that was never copied — the defect § 9 was written to close | § 7 total membership, § 9 the reserved blocks |
 
-### 1.2 The five decisions, and the alternative each one rejected
+### 1.3 The five decisions, and the alternative each one rejected
 
 **Design considerations, stated once so later sections can point here** rather
 than re-arguing.
@@ -127,22 +167,41 @@ template* would mean editing Python, two engines' catalogues could never live in
 one file, and the thing a surface and the generator are supposed to **share**
 would be a view rather than the source.
 
-> ⚠ **This reverses what § 5 and § 6.1's registry row have said.** § 5: *"every
-> key comes from the field's own metadata … the template and the form are
-> generated from one source"*. The registry row: written by `template.py`. Both
-> describe **how the file is produced today**, and today's producer runs the
-> inverted direction — `render_template(config)` prints one engine's dataclass
-> into a file. **Recorded 2026-08-14 (user): that is the implementation's
-> limitation, not the design.** The migration is § 2.1a.
+> **This reversed what § 5 and § 6.1's registry row used to say**, and the
+> reversal is now finished rather than pending. Those sections described the
+> file as *generated from the field metadata* — `render_template(config)`
+> printed one engine's dataclass into a file, which made the Python class the
+> master and the file its printout. **`render_template` was deleted
+> 2026-08-14.** The catalogue is authored directly as TOML, and
+> `template_with_values(config)` narrows it to one engine and fills in what a
+> person answered.
 
-### 2.1a What this migration still has to settle
+### 2.1a What the migration settled, and the one debt it left
 
-Stated here rather than discovered later. Neither is answered by the rule above.
+Both questions this section used to pose are now answered.
 
-| | question |
-|---|---|
-| **a** | **What does a config class still carry?** If `range`, `unit`, `category`, `choices` and `help` belong to the template, a dataclass needs only enough to hold a value on its way to the engine. That decision sizes the whole migration |
-| **b** | **The form reads the same metadata.** `web/form-schema.md` § 1a builds controls from `range` / `unit` / `choices` / `help` on the fields. Moving the catalogue moves the form's source with it — **UI, deferred by the plan** (`template-unification-plan.md` § 4). Known, not forgotten |
+**What a config class still carries.** In principle: a name, a Python type, and
+its validators — enough to hold a value on the way to the engine. In practice it
+still carries copies of the template's facts (`label`, `help`, `range`, `unit`,
+`choices`, `engine_key`, `workflow_group`), because two consumers still read
+them off the class rather than off the catalogue: the legacy form builder that
+Spectra and Transport use, and the code that decides which card a validator
+finding lands on.
+
+**That duplication is the debt, and it is measured and guarded rather than
+tolerated quietly.** 307 facts live in two places.
+`tests/test_catalogue_agreement.py` compares every one of them on every run, so
+the two cannot drift apart without a red test naming the item and the key. It
+has already earned its place several times — it caught 23 stale labels when the
+catalogue landed, and three merged items whose prose still described only
+SIESTA. When the remaining two consumers move onto the catalogue, the metadata
+is deleted and that test file goes with it.
+
+**The form question is closed.** `web/form-schema.md` § 1 now builds the SIESTA
+and PySCF forms from the catalogue: cards from `group`, legends from `category`,
+controls from `type` with bounds from `range` and `choices`, badges from
+`engine_key`. `section` — the old per-engine fieldset name — is retired for
+those two engines and survives only for Spectra and Transport.
 
 **And the template is not a deck.** A deck is a **floor 3 (plan)** product,
 written by the engine's deck writer at `prep` step 3, on the target machine.
@@ -172,6 +231,54 @@ produced ever edits the description
 ([`architecture.md`](?doc=execution/architecture.md) § 5: *each step decides
 within what the steps above it already fixed*). It is why a deck is disposable
 and the template is not.
+
+### 2.2 The module, what it may depend on, and what is built on it
+
+The file format is one half of the contract; the code that reads and writes it
+is the other, and its **dependencies are part of the design rather than an
+accident of imports.**
+
+**`molbuilder/template.py` imports the standard library and one internal
+module** — `persist.check_schema`, which checks the schema string at the top of
+the file. Nothing else. In particular it imports no engine, no web code, no
+filesystem walker and no scheduler.
+
+That is not minimalism for its own sake. It is what lets the same reader run in
+three places that could not otherwise share code: in a browser-facing server
+that must not import SIESTA, in `prep` on a compute node, and in a test with no
+engine installed at all. **The day `template.py` imports an engine, a template
+stops being something any layer can read** — and the layer that suffers first is
+the one furthest from the engine, which is the person opening the file.
+
+**What is built on top of it**, and what each one takes:
+
+| module | what it does with a template |
+|---|---|
+| `describe.py` | writes the file for a calculation — the surface's output |
+| `resolve.py` | rebuilds a config from it, then applies stage overrides, sweep points and pins (§ 10a.2) |
+| `jobset/prep.py` · `jobset/_cli.py` | reads the file that travelled with the folder, and renders the run |
+| `validation/metadata.py` | takes the declared type and range to check a value, and the engine keyword to name it in the message |
+| `web/blueprints/_shared.py` | turns the catalogue into the form schema — cards, controls, bounds, badges |
+
+**Imports run one way only.** Everything in that table imports `template`;
+`template` imports none of them. So a change to the format is felt by its
+readers, and a change in a reader cannot reach back into the format — which is
+the same rule the deck-never-flows-back arrow states for the data (§ 2.1).
+
+**The two objects a reader gets back**, so the shape is stated once rather than
+inferred from call sites:
+
+- **`Item`** — one parameter. Frozen: reading a template cannot modify it. It
+  carries the keys § 5 lists, and one property, `is_set`, which answers *did
+  anybody give this a value* — distinct from *is it at its default*.
+- **`Template`** — the parsed file: the engines it serves, and its items in
+  order. `select(...)` filters them by engine, category, kind or reader;
+  `one(name)` fetches a single item.
+
+`select` and `one` are the **only** read API (§ 8.0). That matters because a
+second way to read the file is a second answer to *what does this template say*,
+and the two will differ eventually — usually about the case nobody tested, which
+is the item that does not apply to the engine being asked about.
 
 ---
 
@@ -353,7 +460,7 @@ never validated by molbuilder (§ 9.2)."""
 ```mermaid
 flowchart TD
     CAT["<b>catalogue.template.toml</b><br/>authored · every parameter · defaults<br/><i>82 items — 45 siesta, 40 pyscf, 3 both</i>"]
-    UI["a surface<br/><i>panels from category,<br/>contents filtered by engine</i>"]
+    UI["a surface<br/><i>cards from group, legends from category,<br/>contents filtered by engine</i>"]
     TPL["<b>&lt;label&gt;.template.toml</b><br/>this calculation — same items, with values"]
     RD["read + narrow to one engine<br/><code>config_from_template</code>"]
     CFG["the engine's config object<br/><i>a name, a type, its validators</i>"]
@@ -414,7 +521,8 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `value` | the value in force. Absent means **explicitly unset** |
 | `type` | the **validation** type — `int` · `float` · `str` · `bool` · `enum` · `pow2` · `int3` · `float3` · `strlist` · `intlist` · `text` |
 | `default` | what untouched means. A surface compares it to `value` to show whether the user set this |
-| `anchor` | the engine keyword this becomes. A bare keyword, never a sentence |
+| `anchor` | the engine keyword this becomes. A bare keyword, never a sentence — it is what a **deck writer** matches on |
+| `engine_key` | how the engine **spells** this, in full — `gto.M(basis=...)`, `mf = mf.density_fit()`, or a `(molbuilder: …)` note when the setting never reaches the deck. A different fact from `anchor`, and a **surface** shows this one. Collapsing the two lost it on 29 items (2026-08-14→15): four PySCF controls all read `gto.M`, three read `mf`, and every molbuilder note vanished — and the note is the only way a reader learns the setting is not an engine keyword at all |
 | `expands` | the engine keywords a `deck` item produces, as a list |
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
@@ -423,8 +531,9 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
-| `range` · `unit` · `choices` · `group` | bounds, label, enum members, and whether *vary per stage* starts ticked |
-| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 17 optional items only 12 carry one, so five would silently lose the option (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
+| `range` · `unit` · `choices` | bounds, unit label, enum members |
+| `group` | **which card**, from the closed vocabulary `template.GROUPS`: `profile` (what you're computing) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
+| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 16 optional items only 11 carry one, so five would silently lose the option (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
 | `tier` | `basic` or `advanced`. A judgement about the **parameter**, not about the widget: a surface dims the advanced ones so a first-time reader is not asked to weigh every knob at once |
 | `pattern` | a regex the value must match. Two items have one — `system_label`, `job_name` — and nothing else in the vocabulary can express *"letters, digits, hyphens, underscores; no dots"* |
 | `help` | what this is, in prose. Multi-line is ordinary TOML |
@@ -445,7 +554,7 @@ flowchart LR
       NL["null_label"]
     end
     NL --> UI
-    T --> UI["a surface<br/><i>picks the control,<br/>names it, groups it</i>"]
+    T --> UI["a surface<br/><i>picks the control, names it,<br/>cards it by group, badges it by engine_key</i>"]
     R --> UI
     D --> UI
     G --> UI
@@ -614,7 +723,7 @@ is the semantics; how many panels they become is the surface's call.
 
 | # | `category` | the question | SIESTA | PySCF |
 |---|---|---|---|---|
-| 1 | `system` | *what am I calculating?* | `net_charge`, `spin_polarized`, `spin_total` | `charge`, `spin`, `symmetry`, `solvent` |
+| 1 | `system` | *what am I calculating?* | `net_charge`, `spin_treatment`, `spin_total` | `charge`, `spin`, `symmetry`, `solvent` |
 | 2 | `method` | *at what level of theory?* | `xc_functional`, `xc_authors`, `basis_size` | `method`, `functional`, `basis`, `ecp`, `dispersion` |
 | 3 | `accuracy` | *how precisely are the equations solved?* | `mesh_cutoff`, `kgrid`, `dm_tolerance` | `grid_level`, `scf_conv_tol`, `scf_conv_tol_grad` |
 | 4 | `convergence` | *how do I reach it when it fights?* | `max_scf_iter` | `scf_max_cycle`, `level_shift`, `damp`, `diis_space`, `scf_soscf` |
@@ -695,8 +804,18 @@ are two questions and stay two items. The old rule refused every merge to avoid
 fusing things that merely sound alike; the test refuses exactly those and
 permits the rest.
 
-> **Spin is the case that needs care, and it is not merged today.** SIESTA
-> carries `spin_polarized` (bool) **and** `spin_total`; PySCF carries `spin`.
+> **Spin is the case that needs care, and it is not merged — now for a
+> sharper reason than when this was written.** SIESTA carries
+> `spin_treatment` (a four-valued enum: `non-polarized` / `polarized` /
+> `non-colinear` / `spin-orbit`, since 2026-08-15) **and** `spin_total`;
+> PySCF carries `spin`.
+>
+> The rename is what made the answer obvious. SIESTA's field was briefly
+> called `spin`, and the catalogue **refused to parse** — TOML cannot declare
+> `[item.spin]` twice, and PySCF already had one. That refusal was correct and
+> is the merge rule doing its job: PySCF's `spin` is *2S, a count of unpaired
+> electrons*; SIESTA's is *which formalism to use*. Same word, different
+> question, so they cannot be one item.
 > Both numbers are *the count of unpaired electrons* — the same quantity — but
 > the answer is **decomposed differently**, and there is a third state the
 > count alone cannot express: *polarized, moment free* (SIESTA
@@ -1162,6 +1281,24 @@ takes it from there.
 
 ## 10a. THE CHAIN, traced — every call from the catalogue to the deck
 
+> ### Four views of one flow, and which to read
+>
+> The same journey is drawn four times in this document, deliberately, because
+> four different questions get asked about it and one diagram answering all of
+> them would answer none well. They do not disagree; each hides what the others
+> are for.
+>
+> | § | the question it answers | what it leaves out |
+> |---|---|---|
+> | **4.3** | *where does a template come from?* — the authored catalogue narrowing to one calculation | everything downstream of the file |
+> | **6.5** | *who reads it, and what does each take?* — six consumers, each filtering on the axes it owns | the order they run in |
+> | **10a** (here) | *what actually happens, call by call, and on which floor?* | what any single parameter looks like |
+> | **10a.4** | *what becomes of ONE parameter?* — nine lines of TOML into a control, a warning and a deck line | the rest of the file |
+>
+> If you read only one, read **10a.4**: it is the whole contract at the scale of
+> a single setting, and every rule in this document is visible in it.
+
+
 **What this section is for.** *"One file describes the calculation"* is a claim
 about a chain of calls, and a chain nobody has written down is a chain nobody
 can judge. This is that chain, function by function, with **where each one
@@ -1199,7 +1336,7 @@ flowchart TD
     end
 
     CAT --> LOAD --> READ --> SEL
-    SEL --> UI["a surface: panels from category,<br/>filtered by engines"]
+    SEL --> UI["a surface<br/><i>CARDS from group · legends from category<br/>badge from engine_key · bounds from range/choices</i>"]
     UI --> TWV --> TPL
     TWV -.->|"describe.describe()"| TPL
     TPL --> CFT --> RES
@@ -1260,6 +1397,144 @@ that differ*. They differ in where they come from and in nothing else — which 
 why the operator takes a mapping, and why `resolve` fabricating a
 `Stage(name="resolve")` to pass a plain dict was packaging invented to fit a
 signature.
+
+### 10a.4 ONE parameter, end to end — the same nine lines becoming three things
+
+The chain above is the shape. This is the substance: `mesh_cutoff`, from its
+entry in the catalogue to everything a user ever sees of it. **Nothing below is
+written twice.** Each artefact reads a different subset of the same item.
+
+```toml
+[item.mesh_cutoff]
+kind = "engine"                 # reaches the deck as a keyword
+category = ["accuracy"]         # -> which legend inside the card
+engines = ["siesta"]            # -> narrowed away for PySCF
+anchor = "MeshCutoff"           # -> what the DECK WRITER matches on
+engine_key = "MeshCutoff"       # -> what a SURFACE shows
+type = "float"                  # -> a number control; widens ints on ⊕
+unit = "Ry"
+range = [100.0, 1000.0]
+group = "stage"                 # -> which CARD
+tier = "basic"                  # -> not dimmed
+label = "Real-space grid cutoff"
+help = "Real-space integration grid (Ry).  Sets the mesh spacing ..."
+```
+
+```mermaid
+flowchart LR
+    IT["<b>[item.mesh_cutoff]</b><br/>one entry, authored once"]
+
+    subgraph S1["the FORM · catalogue_to_form_schema"]
+      C1["card: <b>group</b> = stage"]
+      C2["legend: <b>category</b> = accuracy"]
+      C3["control: <b>type</b> float -> number<br/>bounds from <b>range</b>, suffix from <b>unit</b>"]
+      C4["badge: <b>engine_key</b> = MeshCutoff"]
+      C5["name: <b>label</b> · dimming: <b>tier</b>"]
+    end
+
+    subgraph S2["the WARNING · validation/metadata"]
+      W["<b>label</b> + (<b>engine_key</b>) + value + <b>unit</b><br/>checked against <b>range</b>"]
+    end
+
+    subgraph S3["the DECK · siesta.render_fdf"]
+      D["<b>anchor</b> + value + <b>unit</b>"]
+    end
+
+    IT --> S1 & S2 & S3
+```
+
+What each one actually produces:
+
+| artefact | result |
+|---|---|
+| form control | `id=p-mesh-cutoff` · `kind=number` · `min=100.0` `max=1000.0` · `unit=Ry` · card `stage` · badge `MeshCutoff` |
+| warning, at 5 Ry | `Real-space grid cutoff (MeshCutoff) = 5.0 Ry is outside the recommended range [100.0, 1000.0] Ry` |
+| deck line | `MeshCutoff 300.0 Ry` |
+
+**Read the warning against the deck line and the reason for `anchor` *and*
+`engine_key` becomes concrete.** The warning needs a word the user can search
+their `.fdf` for; the deck needs the keyword the engine parses; the badge needs
+the full spelling, which for PySCF is `gto.M(basis=...)` and for `mpi_np` is
+`(molbuilder: .run.sh mpirun -np N only; not in .fdf)` — a *note*, because that
+item never reaches a deck at all. One field cannot carry all three, and the day
+it was made to try, eleven items lost their badge and seventeen warnings lost
+their keyword (2026-08-14, fixed the next day).
+
+---
+
+## 10b. Why the design is this shape — findings that earned each rule
+
+Every rule below was written after something broke. They are recorded here
+rather than in commit messages because a rule with no reason attached is a rule
+someone will "simplify" away.
+
+> **Where the SIESTA citations come from, so they can be re-checked rather than
+> believed.** Everything below cites **SIESTA 5.4.2** — the tag this project
+> pins and the version the packaged environment runs. The tree is verified to be
+> that tag rather than assumed: `git describe --tags` reports `5.4.2` at commit
+> `e486d120`. Two sources are used and they are not interchangeable:
+>
+> - **the manual**, `Docs/tex/sections/**.tex` in that tag — the only place
+>   deprecation is recorded, via the `\fdfdeprecates` macro. It is also
+>   published at [docs.siesta-project.org](https://docs.siesta-project.org/projects/siesta/en/latest/reference/);
+> - **the source**, `Src/*.F90` — the only place the *behaviour* is recorded,
+>   including which keyword a run type actually bounds on and what a default
+>   really resolves to.
+>
+> **Both are needed and each is wrong alone**, which is the lesson of the second
+> and third rules below. To re-derive the deprecation list after a version bump:
+> `grep -rhoP '\\fdfdeprecates\{[^}]+\}' <siesta>/Docs/tex` — that is exactly
+> how the five we were emitting were found.
+
+**The manual is a source the code is not.** SIESTA's parser accepts
+`MD.NumCGsteps`, `DM.MixingWeight`, `MD.MaxCGDispl` and `SpinPolarized`
+happily — they are *deprecated*, and deprecation is a fact only the manual
+carries (`\fdfdeprecates`). Reading code alone found nothing; grepping that
+one macro over the manual found five keywords we were writing (2026-08-15).
+**Check emissions against the manual, not against whether the run succeeds.**
+
+**But the manual is not the operative spelling.** After aligning seven keywords
+to the manual's typography, a binary-in-the-loop test failed: SIESTA queries
+`fdf_get('SaveHS', ...)`, so `SaveHS` — not the manual's `Save.HS` — is what
+appears in the fdf echo log a user greps when debugging. Six of seven were
+reverted. **`fdf` ignores case and `._-` (`utils.F90::labeleq`), so spelling is
+free; pick the one the ENGINE ECHOES.**
+
+**A run-time symptom is not a mechanism.** Two tests pinned the deprecated
+`SpinPolarized .true.` form on a 2026-05-24 finding that the newer `Spin`
+keyword "does not read `Spin.Fix`/`Spin.Total`". The source says otherwise:
+`spin_subs.F90` reads the old flags into `opt_old` then does
+`opt = fdf_get('Spin', opt_old)` — one variable — while the auxiliary keys are
+read in `read_options.F90`, gated only on `nspin == 2`, which both spellings
+produce. **Diagnose from the source; a deck edit that "fixed" a symptom proves
+correlation.**
+
+**One item, one question.** SIESTA's spin field was briefly named `spin`, and
+the catalogue *refused to parse* — TOML cannot declare `[item.spin]` twice and
+PySCF already had one. PySCF's is *2S, a count*; SIESTA's is *which formalism*.
+**The flat item table is what makes a bad merge impossible rather than merely
+discouraged** (§ 6.3's merge rule, enforced by the format itself).
+
+**A presentation tag must never become a gate.** `section` decided *which
+fieldset* and was quietly read as *whether to render at all*. Fifteen ordinary
+parameters — `write_forces`, `species_order`, `copy_psml`, PySCF's `ecp`,
+`auxbasis`, `diis_space`, `damp` — reached the generated file while being
+invisible on the form, and a review finding that named them was **withdrawn**
+on the grounds that their missing `section` proved intent. It proved only that
+nobody had typed it. **Membership is § 7's total rule; presentation decides
+WHERE, never WHETHER.**
+
+**A default with no source is a liability.** `pulay_history` shipped at 3 —
+inside the band SIESTA's manual calls *"too low (say 2–6)"*, against its own
+advice of *"around 6 or above"* — with no rationale anywhere in this project.
+**A scientific default cites the source that justifies it, in `help`, where the
+form shows it.**
+
+**A silent fallback is worse than a refusal.** The step-count map defaulted an
+unrecognised `relax_type` to `MD.Steps`; SIESTA bounds MD runs on
+`MD.FinalTimeStep` instead, whose default is 1. Adding an ensemble without
+touching that map would have given a one-step MD that reports success.
+**Where guessing wrong is invisible, refuse.**
 
 ---
 

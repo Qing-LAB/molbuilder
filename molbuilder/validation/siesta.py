@@ -314,9 +314,9 @@ def _check_siesta_vacuum_adequacy(struct: Structure, cfg) -> List[Issue]:
     )]
 
 
-def _check_siesta_spin_polarized_needs_spin_total(struct: Structure,
+def _check_siesta_spin_treatment_needs_spin_total(struct: Structure,
                                                     cfg) -> List[Issue]:
-    """SIESTA-specific: spin_polarized=True + spin_total=None + open-
+    """SIESTA-specific: spin_treatment=True + spin_total=None + open-
     shell metal -> ERROR.
 
     The propor: ERROR: IMAX = 0 failure mode (2026-05-24 hemeC-dithiol
@@ -338,7 +338,7 @@ def _check_siesta_spin_polarized_needs_spin_total(struct: Structure,
     in molbuilder saves the user a 30-second SIESTA startup just to
     be told ``propor: ERROR: IMAX = 0``.
     """
-    if not bool(getattr(cfg, "spin_polarized", False)):
+    if not (getattr(cfg, "spin_treatment", "non-polarized") != "non-polarized"):
         return []
     # The check ALSO fires when the user explicitly set spin_total=0.0:
     # that's the exact propor IMAX=0 trigger we're trying to catch
@@ -430,8 +430,8 @@ def _validate_siesta(struct: Structure, cfg,
     # Open-shell metal + closed-shell SCF: shared rule with PySCF.
     issues += check_open_shell_metal(
         struct,
-        is_closed_shell=not bool(getattr(cfg, "spin_polarized", False)),
-        engine_label="SIESTA (spin_polarized = False)",
+        is_closed_shell=not (getattr(cfg, "spin_treatment", "non-polarized") != "non-polarized"),
+        engine_label="SIESTA (Spin non-polarized)",
     )
 
     # Frozen-atom carrier (three-stage contract).  SIESTA honors
@@ -468,7 +468,7 @@ def _validate_siesta(struct: Structure, cfg,
     # ``_enabled_stages`` died with its producers, step 6 u5).  Cross-stage findings -- a ladder that loosens -- are
     # P2 unit 6 and carry no stage label (§ 4).
 
-    # SIESTA-specific: spin_polarized + no spin_total + open-shell metal
+    # SIESTA-specific: spin_treatment + no spin_total + open-shell metal
     # -> propor: ERROR: IMAX = 0 (initial-DM constructor abort).  See
     # the 2026-05-24 hemeC-dithiol incident for the failure mode
     # walk-through: SIESTA tries to find a zero-net-spin split for
@@ -477,10 +477,10 @@ def _validate_siesta(struct: Structure, cfg,
     # this proactively at preflight so the user fixes the .fdf in
     # the form (or sees the recipe) instead of paying a 30-second
     # SIESTA startup just to be told "IMAX = 0".
-    issues += _check_siesta_spin_polarized_needs_spin_total(struct, cfg)
+    issues += _check_siesta_spin_treatment_needs_spin_total(struct, cfg)
 
     # Electron-count parity (cross-engine).  SIESTA's "spin" is
-    # expressed as spin_total (μ_B); when spin_polarized=False it's
+    # expressed as spin_total (μ_B); when spin_treatment=False it's
     # implicitly 0.  We need an integer 2S to call the shared parity
     # helper, so derive: round(spin_total) -> 2S.  Skip when
     # net_charge is unset (auto-detect path handles it inside
@@ -491,7 +491,7 @@ def _validate_siesta(struct: Structure, cfg,
     #     user-asserted contradiction with the electron count.
     #   * WARN when spin_total is None (dataclass default) -- the user
     #     didn't actually claim spin=0; the default did.  For odd-
-    #     electron systems we nudge them toward spin_polarized=True
+    #     electron systems we nudge them toward spin_treatment=True
     #     without blocking the render.  Avoids surprising failures
     #     when callers pass net_charge=0 to a synthetic / fictitious
     #     state (e.g. test fixtures, charge-override sweeps).
@@ -500,8 +500,8 @@ def _validate_siesta(struct: Structure, cfg,
         spin_explicit = getattr(cfg, "spin_total", None) is not None
         spin_total = getattr(cfg, "spin_total", None) or 0.0
         spin_2s = int(round(spin_total))
-        if not cfg.spin_polarized and spin_2s != 0:
-            # User asked for non-zero spin without spin_polarized;
+        if cfg.spin_treatment == "non-polarized" and spin_2s != 0:
+            # User asked for non-zero spin without spin_treatment;
             # already handled by the warning above + the existing
             # spin_total-without-polarized warning.  Skip parity
             # (SIESTA will accept it but won't use it).
@@ -513,11 +513,34 @@ def _validate_siesta(struct: Structure, cfg,
                 issues.append(Issue(severity, err, "config.spin_total"))
 
     # Spin.Total set without spin polarised: SIESTA silently ignores it.
-    if cfg.spin_total is not None and not cfg.spin_polarized:
+    # THE TOTAL-SPIN PIN IS COLLINEAR-ONLY, and the two ways of getting that
+    # wrong fail differently -- so they are two findings, not one.
+    if cfg.spin_total is not None and cfg.spin_treatment == "non-polarized":
         issues.append(Issue(
             "warn",
-            f"spin_total = {cfg.spin_total} is set but spin_polarized "
-            f"is False; SIESTA will silently ignore the total-spin pin",
+            f"Fixed total spin (Spin.Total) = {cfg.spin_total} is set but the "
+            f"spin treatment (Spin) is non-polarized, so there are no separate "
+            f"spin channels to pin; SIESTA reads the value and ignores it. "
+            f"Set the spin treatment to 'polarized' or clear the total spin",
+            "config.spin_total",
+        ))
+    elif (cfg.spin_total is not None
+            and cfg.spin_treatment in ("non-colinear", "spin-orbit")):
+        # NOT a warning.  SIESTA does not ignore this one -- ``read_options.F90``
+        # calls die(): *"You can only fix the spin of the system for collinear
+        # spin polarized calculations"*.  A warning would let the job reach the
+        # queue and abort there, which is the failure this preflight exists to
+        # move earlier.  The emitter drops the pin rather than writing a deck
+        # that cannot start, so without this the setting would vanish in
+        # silence -- and a setting that disappears without a word is the thing
+        # this project refuses.
+        issues.append(Issue(
+            "error",
+            f"Fixed total spin (Spin.Total) = {cfg.spin_total} cannot be "
+            f"combined with the '{cfg.spin_treatment}' spin treatment: SIESTA "
+            f"accepts Spin.Fix only for collinear ('polarized') calculations "
+            f"and aborts at start-up otherwise. Either use 'polarized', or "
+            f"clear the total spin and let the moment relax",
             "config.spin_total",
         ))
 

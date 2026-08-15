@@ -51,11 +51,11 @@ class TestResolveWorkflowGroup:
         assert resolve_workflow_group(
             "config.mesh_cutoff", cfg) == "stage"
 
-    def test_siesta_spin_polarized_resolves_to_profile(self):
-        """spin_polarized is a Run-profile decision."""
+    def test_siesta_spin_treatment_resolves_to_profile(self):
+        """spin_treatment is a Run-profile decision."""
         cfg = SiestaConfig()
         assert resolve_workflow_group(
-            "config.spin_polarized", cfg) == "profile"
+            "config.spin_treatment", cfg) == "profile"
 
     def test_siesta_max_scf_iter_resolves_to_budget(self):
         """max_scf_iter is a compute-budget knob."""
@@ -149,7 +149,7 @@ class TestIssuesToJsonEnrichment:
         cfg = SiestaConfig()
         issues = [
             Issue("warn", "mesh_cutoff too low", "config.mesh_cutoff"),
-            Issue("warn", "spin needs setting", "config.spin_polarized"),
+            Issue("warn", "spin needs setting", "config.spin_treatment"),
             Issue("warn", "iteration cap low", "config.max_scf_iter"),
         ]
         out = issues_to_json(issues, cfg=cfg)

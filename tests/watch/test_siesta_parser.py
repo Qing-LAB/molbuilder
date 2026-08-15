@@ -357,7 +357,7 @@ def test_stray_max_line_outside_force_block_ignored(tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_scf_header_drives_column_mapping_spin_polarized(tmp_path):
+def test_scf_header_drives_column_mapping_spin_treatment(tmp_path):
     """v5 spin-polarized SIESTA emits an 8-column SCF block.  The
     parser's header line tells us where dHmax lives; the data row's
     LAST column is dHmax (not 7th column).  Pin this so we never

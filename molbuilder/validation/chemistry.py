@@ -182,7 +182,7 @@ def check_open_shell_metal(struct: Structure, *,
                               engine_label: str) -> List[Issue]:
     """Shared chemistry rule: structure whose ANALYZER recommends
     open-shell DFT requires an open-shell SCF (PySCF UKS/UHF + spin>0;
-    SIESTA spin_polarized=True).  A closed-shell SCF on a true
+    SIESTA Spin polarized).  A closed-shell SCF on a true
     open-shell complex converges to a fictitious electronic state
     with garbage forces (hemeC-dithiol 2026-05-22 incident).
 
@@ -224,7 +224,7 @@ def check_open_shell_metal(struct: Structure, *,
              f"true open-shell complex converges to a fictitious "
              f"state with unphysical forces.  Switch to open-shell "
              f"SCF and set a sensible spin (see config-field help "
-             f"for the spin / spin_polarized field).  "
+             f"for the spin / spin_treatment field).  "
              f"{analysis.rationale}"),
             "config.spin",
         )]

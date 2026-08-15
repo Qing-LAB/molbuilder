@@ -79,9 +79,11 @@ def test_suggested_siesta_shape(web):
     _, body = _post_analyze(web, {"structure_text": xyz})
     si = body["suggested"]["siesta"]
     assert set(si.keys()) == {
-        "net_charge", "spin_polarized", "spin_total", "rationale"
+        "net_charge", "spin_treatment", "spin_total", "rationale"
     }
-    assert isinstance(si["spin_polarized"], bool)
+    # A four-state MODE since 2026-08-15, not a boolean.
+    assert si["spin_treatment"] in (
+        "non-polarized", "polarized", "non-colinear", "spin-orbit")
     assert isinstance(si["spin_total"], float)
 
 

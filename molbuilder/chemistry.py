@@ -322,7 +322,7 @@ def explain_metal_spin(element: str, spin: int) -> Optional[str]:
 
 
 # Per-element "starting value" recommendation for Spin.Total.  Used by
-# the SIESTA preflight when spin_polarized=True + spin_total=None +
+# the SIESTA preflight when Spin polarized + spin_total=None +
 # the structure contains an open-shell metal.  Without a starting
 # value SIESTA's initial-DM constructor (propor) can't find a
 # zero-net-spin split for d/f shells and aborts with
@@ -587,7 +587,7 @@ class MetalHint:
 # values for the same element:
 #
 #   * ``_SPIN_TOTAL_DEFAULTS`` is the SIESTA propor STARTING-VALUE
-#     table.  When the user enables spin_polarized without setting
+#     table.  When the user selects Spin polarized without setting
 #     spin_total, propor needs a non-zero guess to split d/f shells.
 #     Picks HIGH-SPIN-leaning values so the optimizer can ramp DOWN
 #     to a lower-spin state if that's the true ground state —

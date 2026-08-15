@@ -104,7 +104,7 @@ def test_the_pins_land_as_rendered_schema_values_not_splices(calc):
     assert re.search(r"^MaxSCFIterations\s+5\s*$", deck, re.M)
     assert re.search(r"^Diag\.Algorithm\s+ELPA-1STAGE\s*$", deck, re.M)
     assert re.search(r"^Diag\.ELPA\.GPU\s+\.true\.\s*$", deck, re.M)
-    assert re.search(r"^MD\.NumCGsteps\s+0\s*$", deck, re.M)
+    assert re.search(r"^MD\.Steps\s+0\s*$", deck, re.M)
 
 
 def test_each_trials_resources_carry_its_own_coordinate(calc):

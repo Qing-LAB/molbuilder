@@ -210,7 +210,12 @@ def test_a_bool_is_typed_bool_and_not_int():
     wrong order types every checkbox as an integer — and a surface would draw
     seven number boxes where the form draws seven checkboxes."""
     d = _cat()
-    assert d["spin_polarized"].type == "bool"
+    # ``spin_treatment`` was the exemplar here until 2026-08-15, when it stopped
+    # being a boolean: SIESTA 5.4.2 folded three spin booleans into one
+    # four-valued keyword, so it is an `enum` now.  ``copy_psml`` is a real
+    # two-state switch and carries the property this test is about.
+    assert d["copy_psml"].type == "bool"
+    assert d["spin_treatment"].type == "enum"
     assert d["relax_steps"].type == "int"
 
 

@@ -25,12 +25,15 @@ engines = ["siesta"]
 anchor = "PAO.BasisSize"
 engine_key = "PAO.BasisSize"
 type = "enum"
-choices = ["SZ", "DZ", "SZP", "DZP", "TZP"]
+choices = ["SZ", "SZP", "DZ", "DZP", "DZDP", "TZ", "TZP", "TZDP", "TZTP"]
 value = "DZP"
 default = "DZP"
 group = "stage"
 label = "Basis size"
-help = "PAO basis size: SZ / DZ / SZP / DZP / TZP (rough -> tight)"
+help = """
+Size of the numerical-orbital basis, roughest to tightest.  S/D/T = single / double / triple zeta (radial functions per valence orbital); P/DP/TP = one / two / three polarisation shells.
+DZP is the production default and what most published SIESTA work uses.  SZ and SZP are screening-grade only.  Go to TZP or beyond for vibrational frequencies, weak interactions and anything where basis-set superposition error matters.
+Cost grows steeply -- each step up roughly multiplies the orbital count, and diagonalisation scales as its cube.  All nine are accepted by SIESTA 5.4.2 (basis_specs.f::size_name); the manual's option list mentions only four, which is why four of these were missing here until 2026-08-15."""
 
 [item.pao_energy_shift]
 kind = "engine"
@@ -78,7 +81,7 @@ choices = ["LDA", "GGA", "VDW"]
 value = "GGA"
 default = "GGA"
 group = "profile"
-label = "XC.Functional"
+label = "XC functional family"
 help = "XC functional family.  GGA (default) is the safe production choice for organic / biomolecule work + metals; LDA over-binds (bond lengths ~2-3% too short, energies ~10 kcal/mol off); VDW adds a non-local dispersion kernel and matters for non-covalent / vdW-stacked systems (DNA bases, MOFs).  IMPORTANT: the pseudopotential MUST match the functional family -- a PBE pseudo on an LDA calculation (or vice versa) silently gives wrong bond lengths.  PseudoDojo ships separate families for PBE / PBEsol / LDA -- pick the matching set."
 
 [item.xc_authors]
@@ -92,7 +95,7 @@ choices = ["PBE", "PBEsol", "revPBE", "RPBE", "BLYP", "CA", "PZ", "PW", "DRSLL",
 value = "PBE"
 default = "PBE"
 group = "profile"
-label = "XC.Authors"
+label = "XC parameterisation"
 help = "XC parameterisation within the family.  GGA: PBE (default, all-purpose), PBEsol (better lattice constants for solids), revPBE / RPBE (better thermochemistry, slightly different binding), BLYP (rare but accepted).  VDW: DRSLL (vdW-DF1) / LMKLL (vdW-DF2-C09).  LDA: CA (Ceperley-Alder, default), PZ, PW.  This name MUST match what your pseudopotential was generated for -- mismatched XC + pseudo gives silently-wrong bond lengths.  PseudoDojo organises downloads by this name."
 
 [item.solution_method]
@@ -122,7 +125,10 @@ range = [0.001, 0.5]
 group = "profile"
 label = "SCF mixing weight"
 tier = "advanced"
-help = "DM mixing weight; smaller = more conservative SCF, lower if oscillating"
+help = """
+How much of each new SCF solution is mixed in.  SIESTA's own default is 0.25; this project ships 0.02 deliberately, because the systems it targets (metal junctions, open-shell metals) leave the convergence basin at high weights.  The manual backs the direction: "a low value ... is more likely to converge", at the cost of more SCF steps, and the value is "heavily system dependent".
+FIRST THING TO TRY when the SCF oscillates -- lower this before touching anything else (manual: "experimentation with the mixing weight is preferred as a first resort").
+Organic molecules with no metal converge happily at 0.1-0.25 and will run in far fewer steps; raise it if your system is well-behaved."""
 
 [item.pulay_history]
 kind = "engine"
@@ -131,13 +137,16 @@ engines = ["siesta"]
 anchor = "SCF.Mixer.History"
 engine_key = "SCF.Mixer.History"
 type = "int"
-value = 3
-default = 3
+value = 8
+default = 8
 range = [0, 20]
 group = "profile"
 label = "Pulay history depth"
 tier = "advanced"
-help = "Pulay history depth; 3 is SIESTA-tutorial default for relaxation"
+help = """
+How many previous SCF steps the mixer uses to predict the next one.  Higher = steadier convergence, at a few vectors of memory.
+RAISED 3 -> 8 on 2026-08-15.  SIESTA 5.4.2's manual is explicit that the old value was in the wrong band: "a too low value (say 2-6) might change the convergence properties a lot", and "around 6 or above may be advised".  It also says two different HIGH values barely differ -- so there is no cost to sitting clear of the band rather than on its edge.  3 was an undocumented choice with no source in this project.
+Raise further (12-20) only if the SCF still oscillates after lowering the mixing weight; the weight is the first thing to try (manual: "experimentation with the mixing weight is preferred as a first resort")."""
 
 [item.dm_tolerance]
 kind = "engine"
@@ -161,8 +170,8 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
 kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
-anchor = "DM.Energy.Tolerance"
-engine_key = "DM.Energy.Tolerance"
+anchor = "DM.EnergyTolerance"
+engine_key = "DM.EnergyTolerance"
 type = "float"
 value = 0.0001
 default = 0.0001
@@ -184,7 +193,7 @@ value = 500
 default = 500
 range = [10, 5000]
 group = "budget"
-label = "MaxSCFIterations (SCF cycles per geometry step)"
+label = "Max SCF cycles per geometry step"
 tier = "advanced"
 help = "INNER loop: max self-consistency cycles SIESTA runs inside each geometry step.  A geometry optimisation runs at most relax_steps OUTER steps, and each outer step runs at most max_scf_iter inner SCF cycles (until DM.Tolerance is met).  500 is generous; bump higher if SCF is oscillating."
 
@@ -674,18 +683,19 @@ optional = true
 tier = "basic"
 help = "Net charge of the system, in units of |e|.  Default (blank) auto-detects from phosphate protonation -- fine for DNA/RNA from tleap.  Set EXPLICITLY for charged side chains the heuristic doesn't see: carboxylates (Asp/Glu), protonated amines (Lys/Arg/His+), sulfonates.  Sign convention: -1 = one extra electron; +1 = one missing electron."
 
-[item.spin_polarized]
+[item.spin_treatment]
 kind = "engine"
 category = ["system"]
 engines = ["siesta"]
-anchor = "SpinPolarized"
-engine_key = "SpinPolarized"
-type = "bool"
-value = false
-default = false
+anchor = "Spin"
+engine_key = "Spin"
+type = "enum"
+choices = ["non-polarized", "polarized", "non-colinear", "spin-orbit"]
+value = "non-polarized"
+default = "non-polarized"
 group = "profile"
-label = "Spin polarized"
-help = "open-shell DFT (collinear); required for radicals / transition metals / triplet systems.  Emits ``SpinPolarized .true.`` in the .fdf."
+label = "Spin treatment"
+help = "How spin is treated.  non-polarized: spin-degenerate, the cheap default.  polarized: collinear open-shell, required for radicals / transition metals / triplets.  non-colinear: moments may point in any direction (canted or spiral magnetic order).  spin-orbit: couples spin to orbital motion -- matters for heavy elements (Au, Bi, Pt) and REQUIRES fully-relativistic pseudopotentials.  Only 'polarized' can carry a fixed total spin."
 
 [item.spin_total]
 kind = "deck"

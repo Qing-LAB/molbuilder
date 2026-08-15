@@ -31,8 +31,8 @@ def _device(kx=4, ky=4, kz=1, mesh=400, eshift=0.01, xc=("GGA", "PBE"),
 SolutionMethod transiesta
 MeshCutoff {mesh} Ry
 PAO.EnergyShift {eshift} Ry
-XC.Functional {xc[0]}
-XC.Authors {xc[1]}
+XC.functional {xc[0]}
+XC.authors {xc[1]}
 PAO.BasisSize {basis}
 %block kgrid_Monkhorst_Pack
 {kx} 0 0 0.0
@@ -49,8 +49,8 @@ def _electrode(kx=4, ky=4, kz=80, mesh=400, eshift=0.01, xc=("GGA", "PBE"),
 SolutionMethod diagon
 MeshCutoff {mesh} Ry
 PAO.EnergyShift {eshift} Ry
-XC.Functional {xc[0]}
-XC.Authors {xc[1]}
+XC.functional {xc[0]}
+XC.authors {xc[1]}
 PAO.BasisSize {basis}
 %block kgrid_Monkhorst_Pack
 {kx} 0 0 0.0
@@ -194,7 +194,7 @@ def test_transport_help_carries_worked_examples():
 
 def test_parser_matches_transiesta_emitter_keys():
     # The fixtures mirror the ACTUAL keys molbuilder's transiesta emitter
-    # writes (PAO.BasisSize/EnergyShift, XC.Functional/Authors, MeshCutoff,
+    # writes (PAO.BasisSize/EnergyShift, XC.functional/Authors, MeshCutoff,
     # kgrid block, SolutionMethod transiesta) -- a parse must recover them.
     p = parse_fdf_params(_device())
     assert None not in (p.kgrid, p.mesh_cutoff_ry, p.energy_shift_ry,

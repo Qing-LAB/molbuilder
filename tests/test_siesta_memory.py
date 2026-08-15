@@ -94,10 +94,10 @@ def test_meshcutoff_hartree_word(tmp_path):
 
 
 def test_key_separator_insensitivity(tmp_path):
-    # PAO-Basis_Size and Mesh.Cutoff use the alternate separators.
+    # PAO-Basis_Size and MeshCutoff use the alternate separators.
     fdf = """\
         Number_Of_Atoms 3
-        Mesh.Cutoff 250 Ry
+        MeshCutoff 250 Ry
         PAO-BasisSize DZP
     """
     inp = parse_fdf_mem_inputs(_write(tmp_path, fdf))
@@ -109,11 +109,11 @@ def test_key_separator_insensitivity(tmp_path):
 def test_kgrid_dotted_block_name(tmp_path):
     fdf = """\
         NumberOfAtoms 1
-        %block kgrid.MonkhorstPack
+        %block kgrid_Monkhorst_Pack
         2 0 0 0.0
         0 3 0 0.0
         0 0 5 0.0
-        %endblock kgrid.MonkhorstPack
+        %endblock kgrid_Monkhorst_Pack
     """
     inp = parse_fdf_mem_inputs(_write(tmp_path, fdf))
     assert inp.n_kpoints == 30  # 2*3*5

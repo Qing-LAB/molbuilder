@@ -163,30 +163,36 @@ form):
 > structural — and it does not need to be.** Its jobs are real and one of them is
 > pinned by a wire-contract test.
 >
-> **A field is in the form or it is not, and two pieces of metadata must agree
-> on which** (user rule, 2026-08-07):
+> ### ⛔ The `section` half of this rule is RETIRED for the two engine configs
 >
-> | | |
-> |---|---|
-> | `section` | *is this field in the form at all?* A field without one is deliberately internal — `species_order`, `copy_psml` — and never rendered |
-> | `workflow_group` | *which card*, and therefore where a finding about it appears |
+> **Superseded 2026-08-15.** The SIESTA and PySCF forms are built from
+> `data/catalogue.template.toml`, which has no `section`
+> ([`engines/template.md`](?doc=engines/template.md) § 5). An item is on the
+> form because the catalogue carries it, and § 7 makes that *every parameter
+> the schema declares*.
 >
-> **They move together.** A field with a `section` and no `workflow_group` renders
-> bare after the three cards and its findings fall to a residual panel instead of
-> beside the field they concern — a **half-integrated field**, the signature of
-> someone adding a field and not finishing. The reverse, a tag with no `section`,
-> is a tag nothing can read.
+> **The passage that stood here got the facts backwards, and it is worth
+> recording why rather than deleting it.** It said a field without a `section`
+> is *"deliberately internal — `species_order`, `copy_psml` — and never
+> rendered"*, and it withdrew an earlier finding on that basis: the untagged
+> fields *"are not in the form and there are no findings to route"*.
 >
-> **It already holds, on both engines, in both directions — zero offenders**
-> (checked 2026-08-07). It had simply never been written down or guarded, so a new
-> field could break it silently. Now pinned:
-> `tests/test_issues_workflow_group.py::TestEveryExposedFieldIsTagged`.
+> Both of those are now false, and the second was never a safe inference.
+> `species_order` and `copy_psml` are on the form today, along with thirteen
+> others that `section` had been hiding — ordinary parameters that reach the
+> generated file, invisible because a presentation tag had become an opt-in
+> gate. The original finding was right: they were half-integrated. It was
+> withdrawn because `section` was read as evidence of intent, when all it
+> recorded was that nobody had typed it.
 >
-> > **This withdraws a finding of mine.** I had called the nine untagged fields
-> > per engine "the genuine gap — their findings fall to a residual panel". They
-> > carry no `section` either, so they are not in the form and there are no
-> > findings to route. Nothing was wrong; I had counted `workflow_group` without
-> > checking `section` beside it.
+> **What replaces it**, and it is not weaker: every catalogue item must declare
+> a `group` from the closed vocabulary `template.GROUPS`, guarded by
+> `tests/test_catalogue_agreement.py::test_every_catalogue_item_declares_a_panel`,
+> with a second guard that the renderer knows every card the form asks for.
+>
+> `section` remains live for `SpectraConfig` and `TransportConfig`, whose tabs
+> still call `dataclass_to_form_schema`; `tests/test_issues_workflow_group.py::TestEveryExposedFieldIsTagged`
+> now covers exactly those two ([`web/form-schema.md`](?doc=web/form-schema.md) § 1a).
 >
 > **And the selection is made in place, one checkbox per parameter** (user,
 > 2026-08-07) — **not** a separate list of stage-able settings anywhere. The form

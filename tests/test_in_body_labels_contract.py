@@ -102,20 +102,22 @@ def transport_src() -> str:
 
 
 class TestOptimizationTabContract:
-    """viewer.js drives /api/build/fdf and /api/build/pyscf.
+    """The tab's POST body is ONE read of the viewer.
 
     Symmetric with the Spectrum + Transport contracts below: labels are read
-    FRESH off the model (``getFrozen`` / ``getRegions``) at Generate time -- there
-    is NO ``state.*`` mirror to desync (unified-API access; the 2026-07 audit
-    removed the load-time mirror this tab alone still kept)."""
+    FRESH off the model (``getFrozen`` / ``getRegions``) at request time --
+    there is NO ``state.*`` mirror to desync (unified-API access; the 2026-07
+    audit removed the load-time mirror this tab alone still kept).
 
-    def test_siesta_post_body_is_one_read_of_the_viewer(self, viewer_src):
-        _assert_one_read(_post_body_around(viewer_src, 'fetch("/api/build/fdf"'),
-                         "SIESTA Generate")
-
-    def test_pyscf_post_body_is_one_read_of_the_viewer(self, viewer_src):
-        _assert_one_read(_post_body_around(viewer_src, 'fetch("/api/build/pyscf"'),
-                         "PySCF Generate")
+    **The two Generate POSTs are gone** (2026-08-15): the tab collects
+    parameters and hands them on rather than producing a deck
+    (``web/task-setup-plan.md`` 2 -- *the browser describes and observes, the
+    terminal acts*).  ``/api/build/preflight`` is the surviving POST and it
+    carries the same property, so the guard moved onto it rather than being
+    parked.  That matters: the property is about how the body is ASSEMBLED,
+    not about which endpoint receives it, and the next surface this tab posts
+    to will need it just as much.
+    """
 
     def test_preflight_body_is_one_read_of_the_viewer(self, viewer_src):
         """The live panel must judge the structure on screen, not a cell

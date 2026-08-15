@@ -14,7 +14,7 @@ organic-or-inorganic system that's about to be relaxed:
       recommend these for relaxation; the older default of 0.01 is
       stable but slow, the v5 default of 0.25 is too aggressive
       without the v5 mixing scheme).
-    * DM tolerance 1e-5 plus a redundant DM.Energy.Tolerance 1e-4 eV
+    * DM tolerance 1e-5 plus a redundant DM.EnergyTolerance 1e-4 eV
       guard.
     * MaxSCFIterations 500 -- typical relaxation runs need < 100
       per geometry, but a generous limit avoids stalls on the first
@@ -274,8 +274,9 @@ class SiestaConfig:
         "workflow_group": "stage",
         "label": "Basis size",
         "engine_key":  'PAO.BasisSize',
-        "choices": ("SZ", "DZ", "SZP", "DZP", "TZP"),
-        "help": "PAO basis size: SZ / DZ / SZP / DZP / TZP (rough -> tight)",
+        "choices": ("SZ", "SZP", "DZ", "DZP", "DZDP",
+                    "TZ", "TZP", "TZDP", "TZTP"),
+        "help": "Size of the numerical-orbital basis, roughest to tightest.  S/D/T = single / double / triple zeta (radial functions per valence orbital); P/DP/TP = one / two / three polarisation shells.\nDZP is the production default and what most published SIESTA work uses.  SZ and SZP are screening-grade only.  Go to TZP or beyond for vibrational frequencies, weak interactions and anything where basis-set superposition error matters.\nCost grows steeply -- each step up roughly multiplies the orbital count, and diagonalisation scales as its cube.  All nine are accepted by SIESTA 5.4.2 (basis_specs.f::size_name); the manual's option list mentions only four, which is why four of these were missing here until 2026-08-15.",
     })
     pao_energy_shift: float = field(default=0.01, metadata={
         "category": ("method", "accuracy"),
@@ -346,7 +347,7 @@ class SiestaConfig:
         "category": ("method",),
         "section": "Exchange-correlation",
         "workflow_group": "profile",
-        "label":   "XC.Functional",
+        "label":   "XC functional family",
         "engine_key":  'XC.functional',
         "choices": ("LDA", "GGA", "VDW"),
         "help":    "XC functional family.  GGA (default) is the safe "
@@ -365,7 +366,7 @@ class SiestaConfig:
         "category": ("method",),
         "section": "Exchange-correlation",
         "workflow_group": "profile",
-        "label":   "XC.Authors",
+        "label":   "XC parameterisation",
         "engine_key":  'XC.authors',
         # Choices feed the validator's authors->family map for the
         # pseudopotential coverage check (see
@@ -411,9 +412,9 @@ class SiestaConfig:
         "engine_key":  'SCF.Mixer.Weight',
         "range": (0.001, 0.5),
         "tier":  "advanced",
-        "help":  "DM mixing weight; smaller = more conservative SCF, lower if oscillating",
+        "help":  'How much of each new SCF solution is mixed in.  SIESTA\'s own default is 0.25; this project ships 0.02 deliberately, because the systems it targets (metal junctions, open-shell metals) leave the convergence basin at high weights.  The manual backs the direction: "a low value ... is more likely to converge", at the cost of more SCF steps, and the value is "heavily system dependent".\nFIRST THING TO TRY when the SCF oscillates -- lower this before touching anything else (manual: "experimentation with the mixing weight is preferred as a first resort").\nOrganic molecules with no metal converge happily at 0.1-0.25 and will run in far fewer steps; raise it if your system is well-behaved.',
     })
-    pulay_history: int = field(default=3, metadata={
+    pulay_history: int = field(default=8, metadata={
         "category": ("convergence",),
         "section": "SCF",
         # Profile-level: DIIS history depth pairs with mixing_weight
@@ -424,7 +425,7 @@ class SiestaConfig:
         "engine_key":  'SCF.Mixer.History',
         "range": (0, 20),
         "tier":  "advanced",
-        "help":  "Pulay history depth; 3 is SIESTA-tutorial default for relaxation",
+        "help":  'How many previous SCF steps the mixer uses to predict the next one.  Higher = steadier convergence, at a few vectors of memory.\nRAISED 3 -> 8 on 2026-08-15.  SIESTA 5.4.2\'s manual is explicit that the old value was in the wrong band: "a too low value (say 2-6) might change the convergence properties a lot", and "around 6 or above may be advised".  It also says two different HIGH values barely differ -- so there is no cost to sitting clear of the band rather than on its edge.  3 was an undocumented choice with no source in this project.\nRaise further (12-20) only if the SCF still oscillates after lowering the mixing weight; the weight is the first thing to try (manual: "experimentation with the mixing weight is preferred as a first resort").',
     })
     dm_tolerance: float = field(default=1e-5, metadata={
         "category": ("accuracy",),
@@ -451,7 +452,7 @@ class SiestaConfig:
         "section": "SCF",
         "workflow_group": "stage",
         "label": "SCF energy tolerance", "unit": "eV",
-        "engine_key":  'DM.Energy.Tolerance',
+        "engine_key":  'DM.EnergyTolerance',
         "range": (1e-8, 1e-1),
         "tier":  "advanced",
         "help":  "redundant SCF energy guard (eV)",
@@ -463,7 +464,7 @@ class SiestaConfig:
         # part of the convergence-target staging.  Switching stages
         # MUST NOT halve / double this value silently.
         "workflow_group": "budget",
-        "label": "MaxSCFIterations (SCF cycles per geometry step)",
+        "label": "Max SCF cycles per geometry step",
         "engine_key":  'MaxSCFIterations',
         "range": (10, 5000),
         "tier":  "advanced",
@@ -1344,23 +1345,55 @@ class SiestaConfig:
                   "electron; +1 = one missing electron."),
     })
 
-    # Spin polarisation.  Default off (closed-shell DFT).
-    spin_polarized: bool = field(default=False, metadata={
+    # HOW SPIN IS TREATED.  Four states, not a boolean (2026-08-15).
+    #
+    # SIESTA 5.4.2 consolidated three booleans -- ``SpinPolarized``,
+    # ``NonCollinearSpin`` and ``SpinOrbit`` -- into ONE keyword taking one
+    # of four words, and deprecated all three (``spin_subs.F90``:
+    # ``fdf_deprecated('SpinPolarized','Spin')``).  Three independent
+    # booleans could contradict each other; one enum cannot.
+    #
+    # WHY WE NO LONGER EMIT THE v4 FORM.  This field carried a comment
+    # saying SIESTA 5.4.2's ``Spin`` path "does not subsequently read
+    # Spin.Fix / Spin.Total, so open-shell metals abort at propor"
+    # (2026-05-24).  That is NOT true of 5.4.2 and the source says so
+    # plainly: ``spin_subs.F90`` reads the deprecated flags into ``opt_old``
+    # and then does ``opt = fdf_get('Spin', opt_old)`` -- one variable, the
+    # new spelling merely winning -- while ``Spin.Fix`` / ``Spin.Total`` are
+    # read in a DIFFERENT file (``read_options.F90``) gated only on
+    # ``nspin == 2``, which both spellings produce identically.  Whatever
+    # caused ``propor: ERROR: IMAX = 0`` in May, this mechanism is not it
+    # here.  Re-verified against the 5.4.2 source 2026-08-15.
+    #
+    # ``spin_total`` is only meaningful for ``polarized``: SIESTA DIES with
+    # *"You can only fix the spin of the system for collinear spin
+    # polarized calculations"* if ``Spin.Fix`` is set under non-colinear or
+    # spin-orbit.  The validator refuses that combination rather than
+    # letting the run reach the queue and abort.
+    spin_treatment: str = field(default="non-polarized", metadata={
         "category": ("system",),
+        # Still carried for `dataclass_to_form_schema`, which Spectra and
+        # Transport still use and which gates visibility on `section`
+        # (`web/form-schema.md` 1a).  The Build tab reads the catalogue and
+        # ignores this.
         "section":     "Spin",
         # System characteristic — depends on chemistry (open-shell
         # metals / radicals require it), not on stage.
         "workflow_group": "profile",
-        "label":       "Spin polarized",
-        # Emits ``SpinPolarized .true.`` (v4 form) NOT the v5 single-
-        # line ``Spin polarized``: SIESTA 5.4.2's v5 parser path does
-        # not subsequently read Spin.Fix / Spin.Total, so open-shell
-        # metals abort at propor.  See siesta/input.py emission site.
-        "engine_key":  "SpinPolarized",
-        "help":        ("open-shell DFT (collinear); required for "
-                          "radicals / transition metals / triplet "
-                          "systems.  Emits ``SpinPolarized .true.`` "
-                          "in the .fdf."),
+        "label":       "Spin treatment",
+        "choices":     ("non-polarized", "polarized",
+                        "non-colinear", "spin-orbit"),
+        "engine_key":  "Spin",
+        "help":        ("How spin is treated.  non-polarized: spin-"
+                        "degenerate, the cheap default.  polarized: "
+                        "collinear open-shell, required for radicals / "
+                        "transition metals / triplets.  non-colinear: "
+                        "moments may point in any direction (canted or "
+                        "spiral magnetic order).  spin-orbit: couples spin "
+                        "to orbital motion -- matters for heavy elements "
+                        "(Au, Bi, Pt) and REQUIRES fully-relativistic "
+                        "pseudopotentials.  Only 'polarized' can carry a "
+                        "fixed total spin."),
     })
     spin_total: Optional[float] = field(default=None, metadata={
         "category": ("system",),

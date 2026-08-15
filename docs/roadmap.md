@@ -546,8 +546,11 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
 
 - **The code against the contracts, measured 2026-08-11 — twelve conformance
   debts (C1–C13); most CLOSED by the plan-ladder steps 1–5 (2026-08-11/12):**
-  `molbuilder run` and `molbuilder fdf` are deleted, the template is TOML with
-  a computed fingerprint, `jobset describe` exists, `--mode` falls back to
+  `molbuilder run` and `molbuilder fdf` are deleted, the template is TOML
+  (its fingerprint was added and then **retired 2026-08-14** — one writer, one
+  reader, and a claim weaker than the per-field checks that ran right after
+  it; [`engines/template.md`](?doc=engines/template.md) § 10), `jobset describe`
+  exists, `--mode` falls back to
   `execution.mode`, and the deleted-flag print is gone. Still open, scheduled
   with steps 6–7: trial directories still `point-` (C6), `cfg.stage` still the
   emitter's channel for the stage token (C7), `BlockSize`'s third state (C8),

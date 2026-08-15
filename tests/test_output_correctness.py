@@ -86,27 +86,22 @@ def test_c2_default_no_spin_block(small_struct):
     assert "SpinTotal " not in fdf
 
 
-def test_c2_spin_polarized_emits_v4_form_for_aux_compat(small_struct):
-    """Open-shell: emit ``SpinPolarized .true.`` (v4 form), NOT the
-    v5 single-line ``Spin polarized``.
+def test_c2_open_shell_emits_the_current_spin_keyword(small_struct):
+    """``Spin polarized``, not the deprecated ``SpinPolarized .true.``.
 
-    Reversed 2026-05-24 against SIESTA 5.4.2: the v5 unified parser
-    path does NOT subsequently read auxiliary ``Spin.Fix`` /
-    ``Spin.Total`` keys -- a user's hemeC-dithiol run with
-    ``Spin.Total 4.0`` aborted at ``propor: ERROR: IMAX = 0`` because
-    Spin.Total never reached the initial-DM constructor.  Empirically
-    diffed fdf.<timestamp>.log: v4 form -> aux keys honored;
-    v5 form -> aux keys default.  See decisions log + the comment
-    block above the emission in siesta/input.py."""
+    Pinned the v4 form from 2026-05-24 on the finding that the v5 path did not
+    read ``Spin.Fix`` / ``Spin.Total``.  That mechanism is absent from SIESTA
+    5.4.2 — the two spellings converge on one variable in ``spin_subs.F90``
+    and the auxiliary keys are read elsewhere, gated only on ``nspin == 2``
+    (verified against the source 2026-08-15).  The manual deprecates all
+    three old spin booleans in favour of ``Spin``.
+    """
     fdf = render_fdf(small_struct,
-                     SiestaConfig(spin_polarized=True, verbose_comments=False))
-    assert "SpinPolarized .true." in fdf
-    # The broken-in-5.4.2 v5 form must NOT be emitted.  Search at
-    # line-start to avoid hitting verbose-comment mentions inside
-    # the .fdf body.
+                     SiestaConfig(spin_treatment="polarized",
+                                  verbose_comments=False))
     import re
-    assert not re.search(r"^Spin\s+polarized\s*$", fdf, re.MULTILINE)
-
+    assert re.search(r"^Spin\s+polarized\s*$", fdf, re.MULTILINE), fdf
+    assert not re.search(r"^SpinPolarized\b", fdf, re.MULTILINE), fdf
 
 def test_c2_spin_total_emits_dotted_form_with_fix(small_struct):
     """SIESTA's total-spin pin is a TWO-line block (gap #1):
@@ -117,7 +112,7 @@ def test_c2_spin_total_emits_dotted_form_with_fix(small_struct):
     SIESTA ignores the constraint."""
     import re
 
-    # spin_total set but spin_polarized off -> no Spin.Total emitted
+    # spin_total set but spin_treatment off -> no Spin.Total emitted
     fdf = render_fdf(small_struct,
                      SiestaConfig(spin_total=1.0, verbose_comments=False))
     assert "Spin.Total" not in fdf
@@ -127,7 +122,7 @@ def test_c2_spin_total_emits_dotted_form_with_fix(small_struct):
     # SIESTA boolean form (.true./.false.); the bare `true` synonym
     # was retired so the file matches the rest of the FDF.
     fdf = render_fdf(small_struct,
-                     SiestaConfig(spin_polarized=True,
+                     SiestaConfig(spin_treatment="polarized",
                                   spin_total=2.0,
                                   verbose_comments=False))
     assert re.search(r"^\s*Spin\.Fix\s+\.true\.\s*$", fdf, re.MULTILINE)

@@ -107,7 +107,7 @@ emits the same `List[Issue]` as **JSON to stdout** for shell-driven pre-flight c
 
 **What may carry `error` severity** is deliberately narrow — only "physically
 impossible or wrong" (atoms overlapping, a degenerate cell, a missing
-pseudopotential, or `spin_polarized` on with no `spin_total` on an open-shell
+pseudopotential, or an open-shell spin treatment with no `spin_total` on an open-shell
 metal — the `propor: IMAX=0` abort). Everything advisory stays `warn` — including
 an open-shell metal paired with a *closed*-shell SCF, which is a strong warning,
 not a hard block. Pattern-B "noticed-but-unused" notes are `info`.
@@ -150,8 +150,9 @@ states the *why* so the thresholds don't drift silently.
 ### Spin & charge (`siesta.py` + the shared chemistry helpers)
 | Check | Severity | Why |
 |---|---|---|
-| `spin_polarized=True` but `spin_total` unset, open-shell metal present | **error** | SIESTA's initial-density-matrix constructor (`propor`) can't find a zero-net-spin split for a semicore-rich metal pseudo (inner shells kept explicit alongside the valence) and aborts with `propor: ERROR: IMAX = 0` **before the SCF loop starts**; the fix (preferred + alternatives) comes from `chemistry.suggest_spin_total` |
-| `spin_total` set but `spin_polarized=False` | warn | SIESTA silently ignores the pin |
+| spin treatment other than `non-polarized` but `spin_total` unset, open-shell metal present | **error** | SIESTA's initial-density-matrix constructor (`propor`) can't find a zero-net-spin split for a semicore-rich metal pseudo (inner shells kept explicit alongside the valence) and aborts with `propor: ERROR: IMAX = 0` **before the SCF loop starts**; the fix (preferred + alternatives) comes from `chemistry.suggest_spin_total` |
+| `spin_total` set with `Spin non-polarized` | warn | there are no separate spin channels to pin; SIESTA reads the value and ignores it |
+| `spin_total` set with `Spin non-colinear` or `spin-orbit` | **error** | SIESTA does NOT ignore this one — `read_options.F90` calls `die()`: *"You can only fix the spin of the system for collinear spin polarized calculations"*. A warning would let the job reach the queue and abort there, which is the failure this preflight exists to move earlier |
 | open-shell metal paired with a *closed*-shell SCF | warn | closed-shell SCF on a true open-shell complex converges to a fictitious state — a strong warning, not a block → [`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) (`check_open_shell_metal`) |
 | `(charge, spin)` parity mismatch | (engine) | caught pre-emission for a clearer message than PySCF's runtime error |
 

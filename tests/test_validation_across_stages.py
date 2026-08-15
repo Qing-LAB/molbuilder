@@ -74,7 +74,7 @@ def test_each_stage_is_judged_on_its_OWN_resolved_values(h2):
     any stage anywhere and be told nothing.
 
     The perturbation is ``mesh_cutoff`` because it fires for **this**
-    structure.  The first version of this test used ``spin_polarized``, which
+    structure.  The first version of this test used ``spin_treatment``, which
     keys on open-shell metals and produces nothing at all for H₂ — a test that
     could only ever have failed, and did."""
     tpl = SiestaConfig(system_label="JOB", mesh_cutoff=300.0)

@@ -24,15 +24,15 @@ from ._helpers import _peptide_struct, _vacuum_cell
 
 
 # --------------------------------------------------------------------- #
-#  SIESTA: spin_total without spin_polarized                            #
+#  SIESTA: spin_total without spin_treatment                            #
 # --------------------------------------------------------------------- #
 
 
-def test_spin_total_without_spin_polarized_is_warn(water_struct):
-    """Setting spin_total without spin_polarized makes SIESTA silently
+def test_spin_total_without_spin_treatment_is_warn(water_struct):
+    """Setting spin_total without spin_treatment makes SIESTA silently
     ignore the total-spin pin -- exactly the kind of bug this gap-list
     item is meant to surface."""
-    cfg = SiestaConfig(spin_polarized=False, spin_total=1.0)
+    cfg = SiestaConfig(spin_treatment="non-polarized", spin_total=1.0)
     issues = validate(water_struct, cfg)
     spin = [i for i in issues if i.where == "config.spin_total"]
     assert len(spin) == 1
@@ -40,8 +40,8 @@ def test_spin_total_without_spin_polarized_is_warn(water_struct):
 
 
 
-def test_spin_total_with_spin_polarized_no_warn(water_struct):
-    cfg = SiestaConfig(spin_polarized=True, spin_total=1.0)
+def test_spin_total_with_spin_treatment_no_warn(water_struct):
+    cfg = SiestaConfig(spin_treatment="polarized", spin_total=1.0)
     issues = validate(water_struct, cfg)
     assert [i for i in issues if i.where == "config.spin_total"] == []
 
@@ -397,7 +397,7 @@ class TestSiestaPseudoCoverageInPreflight:
 
 class TestSpinPolarizedNeedsSpinTotal:
     """The validator should ERROR (not WARN) when the propor IMAX=0
-    failure mode is loaded: spin_polarized=True + spin_total=None +
+    failure mode is loaded: spin_treatment="polarized" + spin_total=None +
     structure contains an open-shell first-row TM.  And it should
     propose a starting value the user can plug into the form."""
 
@@ -422,17 +422,17 @@ class TestSpinPolarizedNeedsSpinTotal:
 
     def test_metal_plus_spinpol_no_spin_total_emits_error(self):
         """The actual hemeC-dithiol failure mode -- Fe present,
-        spin_polarized=True, no spin_total.  Validator must produce
+        spin_treatment="polarized", no spin_total.  Validator must produce
         an ERROR Issue."""
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._hemeC_like(),
-                           SiestaConfig(spin_polarized=True))
+                           SiestaConfig(spin_treatment="polarized"))
         errs = [i for i in issues
                 if i.where == "config.spin_total" and i.severity == "error"]
         assert errs, (
             "Validator failed to flag the propor IMAX=0 failure mode "
-            "(spin_polarized=True + Fe + no spin_total)"
+            "(Spin polarized + Fe + no spin_total)"
         )
 
     def test_error_message_names_the_failure(self):
@@ -443,7 +443,7 @@ class TestSpinPolarizedNeedsSpinTotal:
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._hemeC_like(),
-                           SiestaConfig(spin_polarized=True))
+                           SiestaConfig(spin_treatment="polarized"))
         err = next(i for i in issues
                    if i.where == "config.spin_total" and i.severity == "error")
         # Names the SIESTA error string the user would otherwise see.
@@ -457,7 +457,7 @@ class TestSpinPolarizedNeedsSpinTotal:
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._hemeC_like(),
-                           SiestaConfig(spin_polarized=True))
+                           SiestaConfig(spin_treatment="polarized"))
         err = next(i for i in issues
                    if i.where == "config.spin_total" and i.severity == "error")
         # The "START HERE: ..." line is the load-bearing UX bit.
@@ -473,7 +473,7 @@ class TestSpinPolarizedNeedsSpinTotal:
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._hemeC_like(),
-                           SiestaConfig(spin_polarized=True))
+                           SiestaConfig(spin_treatment="polarized"))
         err = next(i for i in issues
                    if i.where == "config.spin_total" and i.severity == "error")
         # All six registered Fe entries (S=0/1/2/3/4/5) should appear.
@@ -489,7 +489,7 @@ class TestSpinPolarizedNeedsSpinTotal:
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._hemeC_like(),
-                           SiestaConfig(spin_polarized=True, spin_total=4.0))
+                           SiestaConfig(spin_treatment="polarized", spin_total=4.0))
         errs = [i for i in issues
                 if i.where == "config.spin_total" and i.severity == "error"
                 and "propor" in i.message]
@@ -498,13 +498,13 @@ class TestSpinPolarizedNeedsSpinTotal:
             "the user set spin_total explicitly"
         )
 
-    def test_no_spin_polarized_no_check(self):
-        """spin_polarized=False -> no propor invocation at SIESTA setup
+    def test_no_spin_treatment_no_check(self):
+        """spin_treatment="non-polarized" -> no propor invocation at SIESTA setup
         time, so the check shouldn't fire (the open-shell-metal WARN
         from check_open_shell_metal is the right complaint there)."""
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
-        issues = validate(self._hemeC_like(), SiestaConfig())  # spin_polarized default = False
+        issues = validate(self._hemeC_like(), SiestaConfig())  # spin_treatment default = False
         propor_errs = [i for i in issues
                         if i.where == "config.spin_total"
                         and "propor" in i.message]
@@ -517,7 +517,7 @@ class TestSpinPolarizedNeedsSpinTotal:
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._organic_only(),
-                           SiestaConfig(spin_polarized=True))
+                           SiestaConfig(spin_treatment="polarized"))
         propor_errs = [i for i in issues
                         if i.where == "config.spin_total"
                         and "propor" in i.message]
@@ -563,14 +563,12 @@ SIESTA_542_DEPRECATED = {
     "SpinOrbit":       "Spin",
 }
 
-#: The one we still write, and why it is not a simple swap.  ``Spin`` is not a
-#: rename of ``SpinPolarized``: it consolidated THREE booleans into one
-#: four-valued enum (non-polarized / polarized / non-colinear / spin-orbit).
-#: Migrating changes the parameter's TYPE in the template and would expose two
-#: states molbuilder cannot currently express, so it is a design decision and
-#: not a sweep.  Listed here so the guard below still catches every OTHER
-#: deprecated keyword, and so removing this entry is what closes it.
-KNOWN_DEPRECATED_STILL_EMITTED = {"SpinPolarized"}
+#: Empty, and that is the point.  ``SpinPolarized`` sat here between the two
+#: halves of this migration: ``Spin`` is not a rename of it but a consolidation
+#: of THREE booleans into one four-valued enum, so it needed a type change in
+#: the template rather than a sweep.  That landed 2026-08-15 and the exception
+#: went with it.  An entry here is a debt, not a policy.
+KNOWN_DEPRECATED_STILL_EMITTED: set = set()
 
 
 def test_no_deprecated_siesta_keyword_reaches_the_deck(water_struct):
@@ -588,7 +586,7 @@ def test_no_deprecated_siesta_keyword_reaches_the_deck(water_struct):
     import dataclasses
     seen = set()
     for relax in ("cg", "broyden", "fire", "verlet", "nose"):
-        for extra in ({}, {"spin_polarized": True}, {"enable_gpu": True}):
+        for extra in ({}, {"spin_treatment": True}, {"enable_gpu": True}):
             try:
                 cfg = dataclasses.replace(SiestaConfig(), relax_type=relax, **extra)
                 deck = render_fdf(water_struct, cfg)

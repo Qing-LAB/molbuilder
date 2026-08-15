@@ -50,7 +50,7 @@ def resolve_workflow_group(where: str, cfg) -> Optional[str]:
     Per docs/web/ui-contract.md Rule 2, validator findings
     should attach to the workflow-group card whose fields they
     concern: a ``config.mesh_cutoff`` finding belongs in the Stage
-    card; ``config.spin_polarized`` belongs in the Run profile card;
+    card; ``config.spin_treatment`` belongs in the Run profile card;
     ``config.max_scf_iter`` belongs in the Compute & budget card.
     The mapping is the SAME single source of truth that drives the
     form-schema render: each dataclass field's

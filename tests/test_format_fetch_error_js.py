@@ -158,18 +158,26 @@ def test_generic_error_preserves_network_error_label():
 
 
 def test_user_visible_catches_route_through_formatter():
-    """Pin that the 4 known user-visible status banners that
-    formerly surfaced 'Network error: ' directly now route through
-    ``_formatFetchError``.  A refactor that drops the call from any
-    of these sites fails this loudly.
+    """Every user-visible status banner routes its errors through
+    ``_formatFetchError``, so a 5xx-with-HTML response is not reported to the
+    user as a bare "Network error:".
+
+    The ids are DERIVED from viewer.js rather than listed here.  A hard-coded
+    list is wrong in both directions: it went stale on 2026-08-15 when
+    ``fdf-status`` and ``pyscf-status`` left with the Generate buttons, and it
+    would silently skip any banner added later — which is the regression this
+    test exists to catch.
     """
+    import re as _re
     src = _VIEWER.read_text(encoding="utf-8")
-    for status_id in [
-        "load-status",
-        "fdf-status",
-        "pyscf-status",
-        "auto-detect-status",
-    ]:
+    status_ids = sorted(set(_re.findall(r'setStatus\("([a-z0-9-]+)"', src)))
+    assert status_ids, "no setStatus() call sites found in viewer.js"
+    for status_id in status_ids:
+        # A banner that never reports a failure has nothing to route.
+        if not _re.search(rf'setStatus\("{status_id}",[^)]*(?:err|exc|e\b|catch)',
+                          src) and "_formatFetchError" not in src.split(
+                              f'setStatus("{status_id}"')[-1][:400]:
+            continue
         # Look for the setStatus call carrying this status id
         # somewhere within ~200 chars of a _formatFetchError call.
         # Cheap heuristic: every setStatus(<id>, _formatFetchError(...

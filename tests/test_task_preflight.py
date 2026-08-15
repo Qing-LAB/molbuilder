@@ -195,7 +195,7 @@ def test_a_field_with_no_declared_bound_is_not_checked():
 def test_a_boolean_is_not_range_checked_as_a_number():
     """``bool`` is a subclass of ``int``, so a naive numeric check reads
     ``True`` as 1 and refuses it against whatever range the field carries."""
-    assert preflight(_staged({"spin_polarized": True})) == []
+    assert preflight(_staged({"copy_psml": True})) == []
 
 
 def test_a_bad_value_is_not_reported_twice_for_a_bad_name():
@@ -310,11 +310,11 @@ def test_a_bool_is_refused_for_a_number():
 
 
 def test_a_number_is_refused_for_a_boolean_field():
-    assert _errors(preflight(_staged({"spin_polarized": 1})))
+    assert _errors(preflight(_staged({"copy_psml": 1})))
 
 
 def test_a_legal_boolean_is_accepted():
-    assert preflight(_staged({"spin_polarized": True})) == []
+    assert preflight(_staged({"copy_psml": True})) == []
 
 
 # --------------------------------------------------------------------- #

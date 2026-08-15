@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import os
 
 import pytest
@@ -640,8 +642,8 @@ def _h2_struct():
         title="h2", vacuum=(12.0, 12.0, 12.0))
 
 
-def test_spin_polarized_emits_v4_keyword_for_aux_compat():
-    """``cfg.spin_polarized=True`` emits ``SpinPolarized .true.`` (v4
+def test_spin_treatment_emits_v4_keyword_for_aux_compat():
+    """``cfg.spin_treatment="polarized"`` emits ``Spin polarized`` (the
     form), NOT the v5 single-line ``Spin polarized``.  Reason: SIESTA
     5.4.2's v5 unified parser path does NOT subsequently read the
     auxiliary ``Spin.Fix`` / ``Spin.Total`` keys we depend on for
@@ -650,8 +652,8 @@ def test_spin_polarized_emits_v4_keyword_for_aux_compat():
     ignored and propor aborts; with ``SpinPolarized .true.`` both are
     honored).  The v4 form is marked deprecated in the v5 manual but
     is fully accepted in the parser."""
-    fdf = render_fdf(_h2_struct(), SiestaConfig(spin_polarized=True))
-    assert "SpinPolarized .true." in fdf
+    fdf = render_fdf(_h2_struct(), SiestaConfig(spin_treatment="polarized"))
+    assert re.search(r"^Spin\s+polarized\s*$", fdf, re.M), fdf
     # When spin_total is unset, neither constraint LINE is emitted
     # (the keywords may still appear in verbose-comments / template
     # banners; we only check the actual key-value emissions).
@@ -663,38 +665,38 @@ def test_spin_total_emits_constraint_pair():
     """``cfg.spin_total`` requires BOTH ``Spin.Fix .true.`` AND
     ``Spin.Total <v>`` -- without ``Spin.Fix`` the constraint is
     silently ignored by SIESTA, leaving multiplicity unconstrained.
-    The leading ``SpinPolarized .true.`` is what TRIGGERS the parser
+    The leading ``Spin polarized`` is what gives the run two spin channels
     to read the auxiliary keys at all (see preceding test)."""
     fdf = render_fdf(
         _h2_struct(),
-        SiestaConfig(spin_polarized=True, spin_total=2.0),
+        SiestaConfig(spin_treatment="polarized", spin_total=2.0),
     )
-    assert "SpinPolarized .true." in fdf
+    assert re.search(r"^Spin\s+polarized\s*$", fdf, re.M), fdf
     assert "Spin.Fix          .true." in fdf
     assert "Spin.Total        2.0" in fdf
 
 
 def test_spin_total_ignored_without_polarization():
-    """``spin_total`` set but ``spin_polarized=False`` -> nothing
+    """``spin_total`` set but ``spin_treatment="non-polarized"`` -> nothing
     spin-related lands in the FDF."""
     fdf = render_fdf(
         _h2_struct(),
-        SiestaConfig(spin_polarized=False, spin_total=2.0),
+        SiestaConfig(spin_treatment="non-polarized", spin_total=2.0),
     )
-    assert "SpinPolarized" not in fdf
+    assert not re.search(r"^Spin\s+\S", fdf, re.M), fdf
     assert "Spin.Fix" not in fdf
     assert "Spin.Total" not in fdf
 
 
 def test_spin_total_zero_with_polarization_emits_constrained_singlet_note():
-    """SP-A: ``spin_polarized=True`` AND ``spin_total=0.0`` produces a
+    """SP-A: ``spin_treatment="polarized"`` AND ``spin_total=0.0`` produces a
     constrained singlet ON TOP of open-shell DFT.  This is unusual
     (the cheaper path is spin-restricted KS) and the verbose-mode FDF
     must surface a comment so a user who landed here by accident sees
     the contradiction."""
     fdf = render_fdf(
         _h2_struct(),
-        SiestaConfig(spin_polarized=True, spin_total=0.0,
+        SiestaConfig(spin_treatment="polarized", spin_total=0.0,
                      verbose_comments=True),
     )
     assert "constrained singlet" in fdf
@@ -708,7 +710,7 @@ def test_spin_total_nonzero_does_not_emit_constrained_singlet_note():
     for the unusual zero case."""
     fdf = render_fdf(
         _h2_struct(),
-        SiestaConfig(spin_polarized=True, spin_total=2.0,
+        SiestaConfig(spin_treatment="polarized", spin_total=2.0,
                      verbose_comments=True),
     )
     assert "constrained singlet" not in fdf
@@ -718,7 +720,7 @@ def test_default_fdf_has_no_spin_block():
     """Default (closed-shell) FDF must not mention Spin at all -- the
     presence of any ``Spin`` keyword would force open-shell DFT."""
     fdf = render_fdf(_h2_struct(), SiestaConfig())
-    assert "SpinPolarized"       not in fdf
+    assert not re.search(r"^SpinPolarized\b", fdf, re.M), fdf
     assert "Spin polarized"      not in fdf
     assert "Spin.Fix"            not in fdf
     assert "Spin.Total"          not in fdf
@@ -959,7 +961,7 @@ def test_pyscf_frozen_atoms_with_non_geometric_optimizer_emits_warning_comment()
 # wasting CPU on a 444-atom Au-junction run.
 #
 # Empirical proof (against SIESTA 5.4.2):
-#   MD.TypeOfRun Broyden + MD.NumCGsteps N + MD.MaxCGDispl X Ang
+#   MD.TypeOfRun Broyden + MD.Steps N + MD.MaxDispl X Ang
 #     -> redata: Dynamics option = Broyden coord. optimization
 #     -> redata: Maximum number of optimization moves = N
 #
@@ -974,7 +976,7 @@ import pytest as _pytest_md
 
 @_pytest_md.mark.parametrize("relax_type", ["CG", "Broyden", "FIRE"])
 def test_relaxation_emits_universal_md_step_count(relax_type):
-    """``MD.NumCGsteps`` is the universal SIESTA 5.4.2 step-count
+    """``MD.Steps`` is the universal SIESTA 5.4.2 step-count
     keyword across CG, Broyden, AND FIRE despite the CG-prefixed
     name.  The generator must emit it for every relax type; the
     phantom per-algorithm aliases must never be emitted (SIESTA
@@ -989,9 +991,9 @@ def test_relaxation_emits_universal_md_step_count(relax_type):
                        psml_lib=None)
     text = render_fdf(s, cfg)
     # The recognized keyword IS emitted with the user value.
-    assert "MD.NumCGsteps 42" in text, (
+    assert "MD.Steps 42" in text, (
         f"relax_type={relax_type}: generator must emit "
-        f"MD.NumCGsteps (universal in SIESTA 5.4.2 -- silent "
+        f"MD.Steps (universal in SIESTA 5.4.2 -- silent "
         f"single-point fallback if missing)")
     # The phantom per-algorithm aliases are NOT emitted.  If either
     # of these reappears, SIESTA 5.4.2 will silently drop it and
@@ -1000,21 +1002,33 @@ def test_relaxation_emits_universal_md_step_count(relax_type):
     assert "MD.NumBroydenSteps" not in text, (
         f"relax_type={relax_type}: MD.NumBroydenSteps is a phantom "
         f"keyword in SIESTA 5.4.2 (not recognized, silently dropped). "
-        f"Use MD.NumCGsteps universally.")
+        f"Use MD.Steps universally.")
     assert "MD.NumFIRESteps" not in text, (
         f"relax_type={relax_type}: MD.NumFIRESteps is a phantom "
         f"keyword in SIESTA 5.4.2 (not recognized, silently dropped). "
-        f"Use MD.NumCGsteps universally.")
+        f"Use MD.Steps universally.")
 
 
 @_pytest_md.mark.parametrize("relax_type", ["CG", "Broyden", "FIRE"])
 def test_relaxation_emits_universal_md_displ_cap(relax_type):
-    """``MD.MaxCGDispl`` is the universal SIESTA 5.4.2 displacement-
-    cap keyword across CG, Broyden, AND FIRE.  ``MD.MaxDispl`` is a
-    real SIESTA keyword too BUT it does NOT control the Broyden
-    integrator's per-step displacement -- it's silently misapplied
-    (recognized + parsed but never used by Broyden).  Emit the
-    universal MD.MaxCGDispl form only."""
+    """One displacement cap serves CG, Broyden AND FIRE, spelled
+    ``MD.MaxDispl``.
+
+    This test used to pin ``MD.MaxCGDispl`` and assert that ``MD.MaxDispl``
+    must NEVER appear, on the belief that the latter is "recognized + parsed
+    but never used by Broyden".  The two are not rivals — they are the same
+    variable, and ``read_options.F90`` says so in two lines:
+
+        dxmax = fdf_get('MD.MaxCGDispl', 0.2_dp, 'Bohr')
+        dxmax = fdf_get('MD.MaxDispl',   dxmax,  'Bohr')
+
+    The second merely lets the current spelling win.  The manual agrees and
+    goes further: ``MD.MaxDispl`` formally DEPRECATES ``MD.MaxCGDispl``, and
+    what it says about Broyden is that an ADDITIONAL indirect control exists
+    (``MD.Broyden.Initial.Inverse.Jacobian``) — not that this one is ignored.
+
+    So the direction is inverted 2026-08-15: emit the current keyword, and
+    assert the deprecated one is gone."""
     from molbuilder.siesta import render_fdf, SiestaConfig
     from molbuilder.structure import Structure
     import numpy as _np_md
@@ -1024,16 +1038,13 @@ def test_relaxation_emits_universal_md_displ_cap(relax_type):
     cfg = SiestaConfig(relax_type=relax_type, relax_max_displ=0.07,
                        psml_lib=None)
     text = render_fdf(s, cfg)
-    assert "MD.MaxCGDispl 0.07 Ang" in text, (
-        f"relax_type={relax_type}: generator must emit "
-        f"MD.MaxCGDispl (universal in SIESTA 5.4.2; the only key "
-        f"Broyden's integrator actually honors)")
-    # Phantom keyword check: MD.MaxDispl is recognized by SIESTA but
-    # silently mis-applied for Broyden; never emit it.
-    assert "MD.MaxDispl" not in text, (
-        f"relax_type={relax_type}: MD.MaxDispl is silently "
-        f"mis-applied by Broyden in SIESTA 5.4.2 (recognized + "
-        f"parsed but never used).  Emit MD.MaxCGDispl only.")
+    assert "MD.MaxDispl 0.07 Ang" in text, (
+        f"relax_type={relax_type}: generator must emit MD.MaxDispl, the "
+        f"current spelling of the per-step displacement cap")
+    assert "MD.MaxCGDispl" not in text, (
+        f"relax_type={relax_type}: MD.MaxCGDispl is DEPRECATED by SIESTA "
+        f"5.4.2 in favour of MD.MaxDispl; both set the same variable, so "
+        f"there is nothing to gain by writing the retired one.")
 
 
 def test_savehs_keyword_emitted_always():
@@ -1138,13 +1149,13 @@ class TestSiestaStageOverlay:
             basis_size="DZP",
             mesh_cutoff=500,
             kgrid=(4, 4, 1),
-            spin_polarized=True,
+            spin_treatment="polarized",
         )
         out = apply_siesta_stage(cfg, 3)
         assert out.basis_size == "DZP"
         assert out.mesh_cutoff == 500
         assert out.kgrid == (4, 4, 1)
-        assert out.spin_polarized is True
+        assert out.spin_treatment == "polarized"
         # Stage 3 values overlaid as expected.
         assert out.relax_type == "Broyden"
         assert out.relax_force_tol == 0.01

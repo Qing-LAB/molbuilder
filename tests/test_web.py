@@ -71,7 +71,9 @@ def test_the_tab_neither_generates_nor_saves(web_client):
     absent, and a future edit that re-adds one fails here rather than
     quietly reintroducing the split.
     """
-    body = web_client.get("/structure-optimization").data.decode()
+    r = web_client.get("/structure-optimization")
+    assert r.status_code == 200
+    body = r.data.decode()
     for gone in ('id="generate-fdf"', 'id="generate-pyscf"',
                  'id="save-fdf"', 'id="save-pyscf"',
                  'id="dl-fdf"', 'id="dl-pyscf"',
@@ -88,7 +90,7 @@ def test_the_tab_neither_generates_nor_saves(web_client):
 
 
 def test_siesta_schema_exposes_spin_fields(web_client):
-    """Spec: SIESTA tab must expose spin_polarized + spin_total.
+    """Spec: SIESTA tab must expose spin_treatment + spin_total.
     Post schema-driven cutover the fields live in the dataclass
     metadata, not in the served index.html, so the check moves to
     the /api/build/schema/siesta endpoint where the contract now
@@ -97,11 +99,14 @@ def test_siesta_schema_exposes_spin_fields(web_client):
     by_name = {f["name"]: f
                for s in sch["sections"]
                for f in s["fields"]}
-    assert "spin_polarized" in by_name, list(by_name)
+    assert "spin_treatment" in by_name, list(by_name)
     assert "spin_total"     in by_name, list(by_name)
     # The renderer-emitted ids must match what the compatibility
     # engine in viewer.js references by string.
-    assert by_name["spin_polarized"]["id"] == "p-spin-polarized"
+    # The id follows the FIELD NAME, and the field was renamed 2026-08-15
+    # (`spin_polarized` bool -> `spin_treatment` four-state enum) because
+    # SIESTA 5.4.2 folded three spin booleans into one keyword.
+    assert by_name["spin_treatment"]["id"] == "p-spin-treatment"
     assert by_name["spin_total"]["id"]     == "p-spin-total"
     # The panel is one of the SIX SHARED CATEGORIES since 2026-08-14
     # (`web/form-schema.md` § 1.3).  It was "Spin" -- a free-text `section`
@@ -111,7 +116,7 @@ def test_siesta_schema_exposes_spin_fields(web_client):
     section_names = [s["name"] for s in sch["sections"]]
     assert section_names == [c for c in _T.CATEGORIES if c in section_names]
     spin_panel = next(s["name"] for s in sch["sections"]
-                      if any(f["name"] == "spin_polarized" for f in s["fields"]))
+                      if any(f["name"] == "spin_treatment" for f in s["fields"]))
     assert spin_panel in _T.CATEGORIES
 
 
@@ -497,7 +502,7 @@ def test_pyscf_surfaces_info_when_structure_carries_regions(
 
 def test_preflight_returns_issues_for_siesta(web_client, peptide_xyz):
     """Validation-only endpoint runs validate(struct, cfg) without
-    rendering FDF text.  Setting spin_total without spin_polarized
+    rendering FDF text.  Setting spin_total without spin_treatment
     is the canonical SIESTA-side validator trigger -- SIESTA would
     silently ignore the total-spin pin -- and the validator emits a
     warn that should round-trip through the preflight endpoint."""
@@ -2468,7 +2473,9 @@ def test_engine_key_pins_load_bearing_siesta_keywords():
     expected = {
         # The 2026-05-24 SpinPolarized v4-vs-v5 incident hangs on
         # this exact spelling.  Don't drift back to v5 "Spin polarized".
-        "spin_polarized": "SpinPolarized",
+        # `Spin`, not `SpinPolarized`: the manual deprecates all three old
+        # spin booleans in favour of the one four-valued keyword.
+        "spin_treatment": "Spin",
         # The "two keys, either alone is silently ignored" warning
         # depends on the badge text mentioning BOTH.
         "spin_total":     "Spin.Fix + Spin.Total",

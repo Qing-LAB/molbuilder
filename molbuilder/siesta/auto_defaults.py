@@ -35,7 +35,7 @@ class SiestaSuggestedParams:
     will eventually receive.
     """
     net_charge:     int
-    spin_polarized: bool
+    spin_treatment: str
     spin_total:     float
     rationale:      str
 
@@ -56,7 +56,9 @@ class SiestaAdapter:
     def to_params(cls, analysis: ChemistryAnalysis) -> SiestaSuggestedParams:
         return SiestaSuggestedParams(
             net_charge     = analysis.suggested_charge,
-            spin_polarized = analysis.suggested_treatment == "open",
+            spin_treatment = ("polarized"
+                              if analysis.suggested_treatment == "open"
+                              else "non-polarized"),
             spin_total     = float(analysis.suggested_spin),
             rationale      = analysis.rationale,
         )

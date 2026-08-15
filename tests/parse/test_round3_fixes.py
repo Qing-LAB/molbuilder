@@ -103,12 +103,12 @@ def test_i4_last_wins_on_duplicated_fdf_keys():
 def test_i4_last_wins_three_overrides():
     """Three overrides — last still wins."""
     fdf_text = (
-        "DM.MixingWeight 0.05\n"
-        "DM.MixingWeight 0.02\n"
-        "DM.MixingWeight 0.01\n"
+        "SCF.Mixer.Weight 0.05\n"
+        "SCF.Mixer.Weight 0.02\n"
+        "SCF.Mixer.Weight 0.01\n"
     )
     summary = _parse_engine_body_summary(fdf_text)
-    assert summary["DM.MixingWeight"] == "0.01"
+    assert summary["SCF.Mixer.Weight"] == "0.01"
 
 
 def test_i4_single_occurrence_still_works():
