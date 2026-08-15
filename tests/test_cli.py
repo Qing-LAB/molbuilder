@@ -620,7 +620,7 @@ def test_pyscf_cli_bool_flags_round_trip(
     "SCF.Mixer.History    8",
     "DM.Tolerance      1e-05",
     "DM.EnergyTolerance 1e-04 eV",
-    "MaxSCFIterations  500",
+    "MaxSCFIterations  1000",
     "ElectronicTemperature 300.0 K",
     "SolutionMethod    diagon",
     "MD.TypeOfRun CG",

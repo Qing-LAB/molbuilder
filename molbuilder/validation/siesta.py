@@ -544,6 +544,26 @@ def _validate_siesta(struct: Structure, cfg,
             "config.spin_total",
         ))
 
+    # A VALUE THAT CANNOT MATTER, said out loud.  The free-energy tolerance is
+    # loaded by SIESTA either way and installed as a criterion only when
+    # `SCF.FreeE.Converge` is on (read_options.F90 / siesta_forces.F90).  A user
+    # who tightens the tolerance to chase a convergence problem, with the switch
+    # off, changes nothing and has no way to discover that from the run.
+    _tol_default = 1e-4
+    if (not getattr(cfg, "scf_energy_converge", False)
+            and cfg.dm_energy_tolerance is not None
+            and abs(float(cfg.dm_energy_tolerance) - _tol_default) > 1e-12):
+        issues.append(Issue(
+            "warn",
+            f"SCF free-energy tolerance (DM.EnergyTolerance) is set to "
+            f"{cfg.dm_energy_tolerance:g} eV, away from its default, but "
+            f"free-energy convergence is switched off -- so SIESTA reads the "
+            f"value and never uses it. Turn on 'Also require the free energy "
+            f"to settle' (SCF.FreeE.Converge) to make this tolerance apply, or "
+            f"leave it at its default",
+            "config.dm_energy_tolerance",
+        ))
+
     if cell is None:
         return issues
 

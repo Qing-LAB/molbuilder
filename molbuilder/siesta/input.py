@@ -935,17 +935,43 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     ]
     out.append(f"DM.Tolerance      {cfg.dm_tolerance:.0e}")
 
+    # THE PAIR.  The tolerance alone does nothing: SIESTA loads it either way
+    # (read_options.F90) and installs it as a criterion only when the switch
+    # below is true (siesta_forces.F90: `if (converge_FreeE)`).  molbuilder
+    # wrote the tolerance and never the switch until 2026-08-15, so the value
+    # was inert in every deck.  BOTH lines are emitted now -- including the
+    # `.false.` -- so a person reading this .fdf without the form sees the
+    # gate as well as the number.
     if v: out += [
         "",
-        "# DM.EnergyTolerance: redundant energy-based SCF check (eV).",
-        "# Catches the rare case where DM is converged but energy keeps",
-        "# drifting -- usually triggered by ill-conditioned mixing.",
+        "# --- SCF free-energy convergence (a PAIR: the value + its switch) ---",
+        "#",
+        "# SIESTA checks several things each SCF cycle and requires ALL the",
+        "# ENABLED ones to pass -- a plain AND (scfconvergence_test.F).  On by",
+        "# default: density-matrix change, Hamiltonian change, energy-density-",
+        "# matrix change.  OFF by default: free-energy and Harris-energy.",
+        "#",
+        "# So turning the switch on can only make the SCF stop LATER.  It never",
+        "# makes a result wrong -- it refuses to accept one early.",
+        "#",
+        "# WORTH IT for systems with many states near the Fermi level: metals,",
+        "# metal-molecule junctions, large periodic cells with a dense",
+        "# spectrum -- especially at a raised ELECTRONIC temperature (the",
+        "# ElectronicTemperature smearing above, NOT the MD temperature),",
+        "# where the free energy's entropy term (F = E - TS) is big enough",
+        "# that the density-matrix test can go quiet while the energy drifts.",
+        "# For a molecule with a clear HOMO-LUMO gap it changes only runtime.",
+        "#",
+        "# The cost lands where the benefit does -- those are the priciest SCF",
+        "# cycles -- so check MaxSCFIterations before switching it on.",
     ]
     out.append(f"DM.EnergyTolerance {cfg.dm_energy_tolerance:.0e} eV")
+    out.append("SCF.FreeE.Converge "
+               + (".true." if cfg.scf_energy_converge else ".false."))
 
     if v: out += [
         "",
-        "# MaxSCFIterations: SCF iteration cap.  500 is generous for the",
+        "# MaxSCFIterations: SCF iteration cap.  1000 matches SIESTA's own",
         "# first geometry; well-mixed systems converge in 30-100.",
     ]
     out.append(f"MaxSCFIterations  {cfg.max_scf_iter}")

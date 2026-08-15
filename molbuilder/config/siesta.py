@@ -451,13 +451,27 @@ class SiestaConfig:
         "category": ("accuracy",),
         "section": "SCF",
         "workflow_group": "stage",
-        "label": "SCF energy tolerance", "unit": "eV",
+        "label": "SCF free-energy tolerance", "unit": "eV",
         "engine_key":  'DM.EnergyTolerance',
         "range": (1e-8, 1e-1),
         "tier":  "advanced",
-        "help":  "redundant SCF energy guard (eV)",
+        "help": "How little the total FREE energy must change between SCF cycles before that cycle counts as settled.\nONLY HAS AN EFFECT WHEN THE SWITCH BELOW IS ON.  SIESTA reads this value either way and then ignores it: read_options.F90 loads it into tolerance_FreeE, and siesta_forces.F90 installs it as a criterion only `if (converge_FreeE)`.  Until 2026-08-15 molbuilder wrote this line and never wrote the switch, so the control looked live and could not change any result.\n1e-4 eV is SIESTA's own default, and pairs sensibly with a 1e-5 density-matrix tolerance -- the intent is that the energy test is not the thing that stops you first.",
     })
-    max_scf_iter: int = field(default=500, metadata={
+    # PAIRED WITH THE TOLERANCE ABOVE, and adjacent on purpose: the tolerance
+    # does nothing without this switch, and a user meeting one without the
+    # other cannot tell that (user, 2026-08-15 -- "placed next to each other
+    # and their relation explained").  Same `category` and `group`, declared
+    # here, so the form renders them side by side without special-casing.
+    scf_energy_converge: bool = field(default=False, metadata={
+        "category": ("accuracy",),
+        "section": "SCF",
+        "workflow_group": "stage",
+        "label": 'Also require the free energy to settle',
+        "engine_key":  'SCF.FreeE.Converge',
+        "tier":  "advanced",
+        "help": 'Whether the SCF must ALSO see the free energy settle, not just the density matrix.  Off by default, as in SIESTA.\nHOW SIESTA DECIDES AN SCF IS CONVERGED: it checks several things each cycle and requires ALL THE ENABLED ONES to pass -- a plain AND (scfconvergence_test.F).  Density-matrix change, Hamiltonian change and energy-density-matrix change are ON by default; free-energy and Harris-energy convergence are OFF.  So turning this on can only make the SCF stop LATER.  It never makes a result wrong; it refuses to accept one early.\nWHEN IT EARNS ITS COST: systems with many electronic states near the Fermi level -- metals, metal-molecule junctions, and large periodic cells where the spectrum is dense -- especially at a raised ELECTRONIC temperature (the ElectronicTemperature smearing, not the MD temperature).  There the free energy carries an entropy term (F = E - TS) large enough that the density-matrix criterion can go quiet while the energy is still drifting.  For a molecule with a clear HOMO-LUMO gap this changes nothing but the runtime.\nTHE COST LANDS WHERE THE BENEFIT DOES: those are the same systems with the most expensive SCF cycles, so budget for more of them and check max_scf_iter before turning this on.\nSOURCES: the AND-combination, the per-criterion defaults and the gating are from SIESTA 5.4.2\'s source and manual (see engines/template.md 10b).  The F = E - TS argument and the dense-spectrum reasoning are standard DFT, not statements the manual makes; the manual says only that the smearing temperature is "useful specially for metals".',
+    })
+    max_scf_iter: int = field(default=1000, metadata={
         "category": ("convergence",),
         "section": "SCF",
         # Resource-budget cap — "how long am I willing to wait" — NOT
@@ -468,12 +482,7 @@ class SiestaConfig:
         "engine_key":  'MaxSCFIterations',
         "range": (10, 5000),
         "tier":  "advanced",
-        "help":  "INNER loop: max self-consistency cycles SIESTA "
-                 "runs inside each geometry step.  A geometry "
-                 "optimisation runs at most relax_steps OUTER steps, "
-                 "and each outer step runs at most max_scf_iter inner "
-                 "SCF cycles (until DM.Tolerance is met).  500 is "
-                 "generous; bump higher if SCF is oscillating.",
+        "help": 'INNER loop: the most self-consistency cycles SIESTA will run inside ONE geometry step.  A relaxation runs at most relax_steps outer steps, and each of those runs at most this many inner cycles (or until DM.Tolerance is met).\nRAISED 500 -> 1000 on 2026-08-15, to SIESTA\'s own default.  500 had no source in this project and contradicted our own mixing choice: this catalogue ships mixing_weight 0.02 against SIESTA\'s 0.25, and the manual is explicit that a low weight "may result in high number of SCF steps but is more likely to converge".  We chose to spend iterations for safety and then capped iterations below the engine\'s default.\nThis is a RUNAWAY GUARD, not a budget -- the budget is wall time and continue_retries.  The two failure modes are not symmetric: too high wastes some CPU on a run that was going to fail anyway, while too low KILLS A CONVERGING RUN at the cap and throws away that whole geometry step, which compounds over 200 outer steps.  With a 0.02 mixing weight, several hundred cycles is normal for a metal junction -- do not read this number as a target.',
     })
     electronic_temperature: float = field(default=300.0, metadata={
         "category": ("accuracy", "system"),
@@ -943,13 +952,13 @@ class SiestaConfig:
         "engine_key":  'WriteMDhistory',
         "help": "write the .ANI trajectory file (xcrysden / vmd / OVITO)",
     })
-    write_hs: bool = field(default=False, metadata={
+    write_hs: bool = field(default=True, metadata={
         "category": ("procedure",),
         "section": "Output & positioning",
         "workflow_group": "output",
         "label": "Write H+S matrices",
         "engine_key":  'SaveHS',
-        "help": "write H + S matrices (TranSIESTA / DOS / transport)",
+        "help": 'Write the Hamiltonian and overlap matrices to <label>.HSX.  The manual: it "contains all relevant information to construct the Brillouin zone Hamiltonian and can thus be used for subsequent density of states calculations" -- and it is what TranSIESTA / TBtrans read for transport.\nDEFAULT CHANGED false -> true on 2026-08-15, to match SIESTA\'s own default (read_options.F90: fdf_get(\'SaveHS\', .true.)).  Shipping it off meant a finished relaxation had no .HSX, so wanting bands, DOS or transport afterwards meant re-running the SCF.  The cost of having it is disk; the cost of not having it is a repeat run.',
     })
     write_molwatch_log: bool = field(default=True, metadata={
         "workflow_group": "output",

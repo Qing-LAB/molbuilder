@@ -2162,7 +2162,7 @@ def test_siesta_form_schema_matches_documented_layout():
         # space).  Basis & grid: 3 + 1 = 4 fields now.
         ("Basis & grid",             4),
         ("Exchange-correlation",     2),
-        ("SCF",                      7),
+        ("SCF",                      8),
         ("Spin",                     2),
         ("Output & positioning",     5),
         # Compute & budget: 14 fields after the 2026-06-15 merge.
