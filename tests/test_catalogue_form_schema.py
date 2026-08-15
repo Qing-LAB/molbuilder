@@ -105,3 +105,32 @@ def test_an_optional_item_offers_its_unset_state():
     assert f["mpi_np"]["null_option"] is True
     assert f["mpi_np"]["null_label"]
     assert f["mesh_cutoff"]["optional"] is False
+
+
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_a_tri_select_carries_the_three_states_it_walks(engine):
+    """An ``Optional[bool]`` renders as auto / true / false, and the renderer
+    walks ``f.choices`` to build them.
+
+    **They are the CONTROL's vocabulary, not the item's** — § 5's `choices` is
+    an enum's members, and a bool has none — so the catalogue does not carry
+    them and the schema must supply them.  It did not, and the form died on
+    arrival with ``TypeError: f.choices is not iterable``.  Nine passing tests
+    missed it because none of them RENDERED the schema; found by drawing the
+    form through the real form-schema.js (2026-08-14).
+    """
+    for s in catalogue_to_form_schema(engine)["sections"]:
+        for f in s["fields"]:
+            if f["kind"] == "tri-select":
+                assert f.get("choices") == ["auto", "true", "false"], f["name"]
+
+
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_every_select_has_something_to_select_from(engine):
+    """The general form of the same defect: any control the renderer builds by
+    walking ``choices`` must have them, or it throws and the whole form is
+    blank rather than one field being wrong."""
+    for s in catalogue_to_form_schema(engine)["sections"]:
+        for f in s["fields"]:
+            if f["kind"] in ("select", "tri-select"):
+                assert f.get("choices"), f"{f['name']}: {f['kind']} with no choices"

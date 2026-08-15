@@ -1097,6 +1097,12 @@ def _item_to_field(item, id_prefix: str) -> Dict[str, Any]:
         out["engine_key"] = " + ".join(item.expands)
     if item.choices:
         out["choices"] = list(item.choices)
+    elif out["kind"] == "tri-select":
+        # An Optional[bool] has three states and the renderer walks
+        # ``f.choices`` to build them; they are the CONTROL's vocabulary, not
+        # the item's, so the catalogue does not carry them (§ 5's `choices` is
+        # an enum's members).  Today only `parallel_over_k` is one.
+        out["choices"] = ["auto", "true", "false"]
     if item.range:
         out["min"], out["max"] = item.range
     if out["kind"] in ("int", "number"):
