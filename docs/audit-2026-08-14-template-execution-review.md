@@ -3951,47 +3951,54 @@ and the repair is to give PySCF the declaration SIESTA already has.
 
 ---
 
-## 59 - § 25.4: HALF the road is built, and the other half has no channel
+## 59 - § 25.4 is DOWNSTREAM of this work - recorded, not built
 
-### 59.1 - What landed
+*(User, 2026-08-14: **the work stops at template → config.** Everything from
+the config onward — prep, the wrapper, submission — is a different layer and
+not this programme's to touch.)*
 
-| | |
+**§ 25.4 is past that line.** It is about `prep` handing a resolved value to the
+wrapper writer, which is two steps below where template → config ends. It
+appeared on the remaining-issues list because the 2026-08-14 reading covered
+**job, execution and template**, so its findings span three layers — and a list
+of findings is not a list of *this* programme's findings.
+
+**Built and then reverted the same day** *(`8f728b41`, reverted)*. The work was
+harmless and changed no behaviour, but it was not ours to do, and a test of the
+wrapper's GPU routing has nothing to say about template → config.
+
+### 59.1 - What the investigation found, which is worth keeping
+
+**One fact, derived four times.** `Diag.ELPA.GPU` is read out of the deck text
+independently by the env choice, the rank/thread budget, the memory audit and
+the sbatch header. Four derivations of one fact are four chances to disagree.
+
+**And § 25.4's framing assumed a channel that does not exist.** It asked
+*"whether `prep`, which holds the resolved element, should pass the value"* —
+but `prep` renders wrappers by walking `jobset.jobs`, and by then the config is
+gone. A `Job` carries a **closed five**: `resources` is a closed nine whose
+`gres` is the SLURM *ask* (`None` on a workstation that still uses its GPU),
+and `traits` is **opaque by design** — *"the jobset layer compares it as a
+string and never learns what it means"*, which a wrapper interpreting one would
+violate.
+
+> **So the finding is bigger than it was written as:** there is no channel from
+> the resolved config to the wrapper writer for a per-job value that is not a
+> Resource, and `enable_gpu`'s `read_by = ("wrapper",)` describes a road across
+> a gap nothing spans.
+
+**Three ways out, unranked, for whenever the execution layer is the subject:**
+a tenth `Resources` field · a sixth `Job` field (e.g. the items whose `read_by`
+names the wrapper, which would make the road general rather than GPU-shaped) ·
+`prep` writing wrappers from the **element** rather than the job — which widens
+no contract but reorders `prep`'s steps 4 and 5, an order
+`project-layout.md` § 2.3.1 calls *forced rather than chosen*.
+
+### 59.2 - The scope line, stated so the next session does not cross it
+
+| in | out |
 |---|---|
-| `runwrap._wants_gpu(script_path, use_gpu, env)` | **one** function decides. `use_gpu` when given, the deck scan when not, and a named `env` still wins over both |
-| `use_gpu` | threaded through `write_run_wrapper` → `render_run_wrapper` → `_build_mem_audit` → `_maybe_write_sbatch` |
-| the four derivations | the env choice, the rank/thread budget, the memory audit and the sbatch header each called the scanner **themselves**. Four derivations of one fact are four chances to disagree; now they share one |
-
-**So the receiving end exists**: any caller that knows can now tell the wrapper,
-and `enable_gpu`'s `read_by = ("wrapper",)` names a road that has a lane.
-
-### 59.2 - The other half cannot be built without a contract decision
-
-§ 25.4 asked *"whether `prep`, which holds the resolved element, should pass the
-value"*. **It assumed a channel exists. There is none.**
-
-`prep` renders wrappers by walking `jobset.jobs`, and by then the config is gone.
-What a `Job` carries is a **closed five** (`job-system.md` § 3):
-
-| field | can it carry a resolved config value? |
-|---|---|
-| `name` · `script` | no |
-| `resources` | a **closed nine**. `gres` is the SLURM GPU *ask* — and it is `None` on a workstation with no scheduler, where a run may still use the GPU. Not a reliable carrier |
-| `warm` | warm files |
-| `traits` | **opaque by design** — *"the jobset layer compares it as a string and never learns what it means"*. A wrapper writer interpreting a trait is exactly what that sentence forbids |
-
-> **So the finding is bigger than it was written as.** It is not *"pass the
-> value"*; it is **there is no channel from the resolved config to the wrapper
-> writer for a per-job value that is not a Resource** — and `read_by` describes
-> a road across a gap nothing spans.
-
-### 59.3 - The three ways out, unranked
-
-| | what it costs |
-|---|---|
-| **a tenth `Resources` field** | says a GPU decision is a resource, which `gres` half-says already. Widens a closed nine that `job-contracts.md` § 6.2 pins and tests count |
-| **a sixth `Job` field** — e.g. `reads: Dict[str, Any]`, the items whose `read_by` names the wrapper | makes the road general instead of GPU-shaped, which is what `read_by` claims to be. Widens a closed five |
-| **`prep` writes wrappers from the ELEMENT, not from the job** | no contract widens; the element has everything. But it reorders `prep`'s steps 4 and 5, and `project-layout.md` § 2.3.1 calls that order *forced rather than chosen* |
-
-**Not chosen here.** Each changes a contract that something else counts, and the
-third touches an order another document calls forced. That is a user decision,
-and the road is now half-built rather than described-and-absent.
+| the catalogue · `read_template` · `select` / `one` | `prep` |
+| `config_from_template` | the wrapper writer |
+| `effective_config` (⊕) and `resolve` — they produce the **resolved config**, which is where this work ends | `materialize` · `submit` |
+| the surface built **from** the template | the scheduler |
