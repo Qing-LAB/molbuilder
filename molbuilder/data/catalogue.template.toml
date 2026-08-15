@@ -14,6 +14,7 @@ value = "siesta"
 default = "siesta"
 group = "profile"
 label = "System label (output prefix)"
+pattern = "^[A-Za-z0-9_\\-]+$"
 help = "FDF SystemLabel; output files get this prefix.  Must match [A-Za-z0-9_-]+ (job-layout v1; no dots)."
 
 [item.basis_size]
@@ -41,6 +42,7 @@ unit = "Ry"
 range = [0.001, 0.05]
 group = "stage"
 label = "Orbital confinement (energy shift)"
+tier = "advanced"
 help = "smaller = more diffuse / more accurate; production work uses 0.005-0.01 Ry"
 
 [item.mesh_cutoff]
@@ -55,6 +57,7 @@ unit = "Ry"
 range = [100.0, 1000.0]
 group = "stage"
 label = "Real-space grid cutoff"
+tier = "basic"
 help = """
 Real-space integration grid (Ry).  Sets the spacing of the 3D mesh SIESTA uses for Hartree + XC potentials, via the plane-wave-equivalent kinetic-energy cutoff.
 Per-tier: screening 150, loose preopt 200-250, publishable 350, tight (vib/phonons) 500 (600 for first-row elements).
@@ -110,6 +113,7 @@ default = 0.02
 range = [0.001, 0.5]
 group = "profile"
 label = "SCF mixing weight"
+tier = "advanced"
 help = "DM mixing weight; smaller = more conservative SCF, lower if oscillating"
 
 [item.pulay_history]
@@ -123,6 +127,7 @@ default = 3
 range = [0, 20]
 group = "profile"
 label = "Pulay history depth"
+tier = "advanced"
 help = "Pulay history depth; 3 is SIESTA-tutorial default for relaxation"
 
 [item.dm_tolerance]
@@ -136,6 +141,7 @@ default = 1e-05
 range = [1e-08, 0.001]
 group = "stage"
 label = "Density-matrix tolerance"
+tier = "advanced"
 help = """
 Density-matrix element convergence threshold for the inner SCF loop.  Forces are derived from the converged density -- sloppy SCF -> noisy forces -> optimizer thrashes.
 Per-tier (dimensionless): screening 1e-3, loose preopt 1e-4, publishable 1e-4, tight (vib/IR) 1e-5.
@@ -153,6 +159,7 @@ unit = "eV"
 range = [1e-08, 0.1]
 group = "stage"
 label = "SCF energy tolerance"
+tier = "advanced"
 help = "redundant SCF energy guard (eV)"
 
 [item.max_scf_iter]
@@ -166,6 +173,7 @@ default = 500
 range = [10, 5000]
 group = "budget"
 label = "MaxSCFIterations (SCF cycles per geometry step)"
+tier = "advanced"
 help = "INNER loop: max self-consistency cycles SIESTA runs inside each geometry step.  A geometry optimisation runs at most relax_steps OUTER steps, and each outer step runs at most max_scf_iter inner SCF cycles (until DM.Tolerance is met).  500 is generous; bump higher if SCF is oscillating."
 
 [item.electronic_temperature]
@@ -180,6 +188,7 @@ unit = "K"
 range = [0.0, 5000.0]
 group = "profile"
 label = "Electronic temperature"
+tier = "advanced"
 help = "electronic temperature for Fermi-Dirac smearing (K)"
 
 [item.kgrid]
@@ -191,7 +200,8 @@ type = "int3"
 value = [1, 1, 1]
 default = [1, 1, 1]
 group = "stage"
-label = "kgrid_Monkhorst_Pack"
+label = "k-point mesh"
+tier = "basic"
 help = """
 Monkhorst-Pack sampling of the Brillouin zone, one count per axis.
   1x1x1          an isolated molecule -- only Gamma matters
@@ -253,6 +263,7 @@ default = 200
 range = [1, 10000]
 group = "budget"
 label = "MD.NumCGsteps (max geometry-optimisation steps)"
+tier = "advanced"
 help = """
 OUTER loop: max geometry steps the optimiser is allowed (each step = full SCF + forces + atom move).  In SIESTA 5.4.2 ``MD.NumCGsteps`` is the universal step-count keyword for CG, Broyden, AND FIRE despite the CG-prefixed name; Verlet/Nose use MD.FinalTimeStep instead.
 Per-tier: loose warm-up ~50, publishable ~200, tight (vib/IR) ~100 (small displacement cap = slow but few steps from a publishable-converged starting geometry).  See docs/engines/tuning.md § 2.10."""
@@ -269,6 +280,7 @@ unit = "eV/Å"
 range = [0.001, 0.5]
 group = "stage"
 label = "Force convergence threshold"
+tier = "advanced"
 help = """
 Force-tol stop criterion: max unconstrained atomic force below which the relaxation declares success.  Ignored by Verlet/Nose (those are MD, not relax).
 Per-tier (eV/Å): screening 0.10, loose preopt 0.05, publishable 0.04 (Gaussian-OPT default), tight (vib/IR) 0.01, very-tight (NEB barrier) 0.001.
@@ -286,6 +298,7 @@ unit = "Å"
 range = [0.001, 0.5]
 group = "stage"
 label = "Max displacement per step"
+tier = "advanced"
 help = """
 Displacement cap per optimiser step (Å).  In SIESTA 5.4.2 ``MD.MaxCGDispl`` is the universal displacement-cap keyword across CG, Broyden, AND FIRE despite the CG-prefixed name.  Hard ceiling that catches line-search over-shoot.
 Per-tier (Å): screening 0.30, loose preopt 0.20, publishable 0.05, tight (vib/IR) 0.02.
@@ -301,6 +314,7 @@ default = 1
 range = [1, 5]
 group = "budget"
 label = "Warm-retry budget"
+tier = "advanced"
 help = "How many extra relaxation batches the wrapper may run when a job hits its step cap without converging: it re-enters SIESTA with --continue from the current .XV.  Total step budget = relax_steps x (1 + continue_retries)."
 
 [item.md_initial_temperature]
@@ -315,6 +329,7 @@ unit = "K"
 range = [0.0, 5000.0]
 group = "profile"
 label = "Initial temperature"
+tier = "advanced"
 help = "initial-velocity-seed temperature for Verlet/Nose molecular dynamics (K).  IGNORED by CG / Broyden / FIRE geometry relaxation -- those don't have velocities to seed."
 
 [item.md_target_temperature]
@@ -328,6 +343,8 @@ range = [0.0, 5000.0]
 group = "profile"
 label = "Target temperature (NVT)"
 null_label = "(use MD.InitialTemperature)"
+optional = true
+tier = "advanced"
 help = "Nose-Hoover NVT target temperature (K).  Used ONLY by Nose dynamics; CG / Broyden / FIRE / Verlet ignore this.  Defaults to md_initial_temperature when unset."
 
 [item.md_length_timestep]
@@ -342,6 +359,7 @@ unit = "fs"
 range = [0.1, 5.0]
 group = "profile"
 label = "MD timestep"
+tier = "advanced"
 help = "integration timestep for Verlet/Nose dynamics (fs).  1.0 fs is SIESTA's default and works for systems without H; bonded H typically needs 0.5 fs for stable energy conservation.  IGNORED by CG / Broyden / FIRE geometry relaxation."
 
 [item.restart]
@@ -355,6 +373,7 @@ value = "clean"
 default = "clean"
 group = "stage"
 label = "Start from"
+tier = "advanced"
 help = """
 Whether this run starts from what is already in the folder.
   clean     -- ignore any .XV/.DM/.CG left there and start over.
@@ -462,6 +481,7 @@ range = [1, 1024]
 group = "budget"
 label = "MPI ranks (np)"
 null_label = "(single-process)"
+optional = true
 help = """
 MPI rank count baked into ``mpirun -np N siesta`` in the generated run-wrapper.  Pick based on your host: typically N = physical cores; for memory-bound jobs N = sockets x cores_per_socket / 2 is a common rule of thumb.  Cluster schedulers (Slurm / PBS) usually set this for you; on a workstation you pick it manually.  Leave blank for the auto default (physical_cores).
 
@@ -477,6 +497,7 @@ resolver = "block_size"
 group = "budget"
 label = "ScaLAPACK block size"
 null_label = "(auto)"
+optional = true
 help = "ScaLAPACK BlockSize for the diagonaliser's orbital distribution; affects cache efficiency at moderate rank counts.  None = auto: largest power of 2 that leaves >= 2 blocks per rank.  0 = OMIT the keyword entirely -- SIESTA's own built-in default, the third state (tuning.md 2.11, decision 35).  NOTE: BlockSize does NOT fix the ``propor: ERROR: IMAX = 0`` crash -- that was the previous (incorrect) claim and is contradicted by direct empirical sweep (BS = 1, 2, 4 all crash at the same mpi_np).  Propor is a vector-proportionality check in matel_table's MPI-deduplication step; lower mpi_np (use the wrapper's ``-np`` override) to clear that crash.  Set BlockSize explicitly only for the rare ScaLAPACK perf-tuning case (>1000 atoms on >= 16 ranks, where 16 or 32 helps)."
 
 [item.parallel_over_k]
@@ -487,6 +508,7 @@ anchor = "Diag.ParallelOverK"
 type = "bool"
 group = "budget"
 label = "ParallelOverK"
+optional = true
 help = "MPI parallelise over k-points; None=auto from kgrid"
 
 [item.omp_threads]
@@ -498,6 +520,7 @@ resolver = "omp_threads"
 group = "budget"
 label = "OMP threads per rank"
 null_label = "(auto: physical cores)"
+optional = true
 help = "OpenMP threads per MPI process.  Default (blank) auto-detects physical cores at run time (divided by N_MPI when applicable).  Set explicitly to bench or leave cores free for other jobs.  The emitted run-wrapper pins BLAS to 1 thread per rank so OMP*BLAS doesn't oversubscribe -- the canonical recipe shared with /spectra + Build PySCF."
 
 [item.max_memory_mb]
@@ -510,6 +533,8 @@ range = [100, 1000000]
 group = "budget"
 label = "Max memory"
 null_label = "(no cap)"
+optional = true
+tier = "advanced"
 help = """
 How much memory this run may use.  Left blank -- the normal state -- it is
 the machine's maximum, resolved at prep on the node that granted it; set a
@@ -542,6 +567,7 @@ value = "ScaLAPACK"
 default = "ScaLAPACK"
 group = "budget"
 label = "Diagonalizer"
+tier = "advanced"
 help = """
 Eigensolver for the SCF diagonalization.  ELPA works on CPU AND GPU -- it is NOT GPU-only.  Hardware affinity (a performance hint, not a restriction): GPU favors 1STAGE, CPU favors 2STAGE.
   * ScaLAPACK: SIESTA's built-in Divide-and-Conquer. Runs in the precompiled ``molbuilder-siesta`` env (no ELPA needed).  The safe default.
@@ -557,6 +583,7 @@ type = "str"
 group = "profile"
 label = "Pseudopotential directory (.psml)"
 null_label = "(none)"
+optional = true
 help = """
 Path to a directory of .psml pseudopotential files (one per element).  Accepts an absolute path, ``~/...``, OR a path relative to ``projects/`` (so just ``pseudopotential`` resolves to ``projects/pseudopotential/`` -- the conventional shared location).  Tip: use the file-picker button next to this field to browse and avoid typing the path by hand.  SIESTA pseudos are NOT bundled with molbuilder -- you have to download them.  RECOMMENDED SOURCE: PseudoDojo (http://www.pseudo-dojo.org) -- well-tested, peer-reviewed, free.  WHICH SET TO PICK from PseudoDojo:
  * Format = PSML (NOT PSP8 -- that's for ABINIT only; PSML is SIESTA's native format).
@@ -582,6 +609,7 @@ category = ["system"]
 engines = ["siesta"]
 type = "strlist"
 label = "Species order"
+optional = true
 help = "comma-separated species order (e.g. 'C,H,S,Au')"
 
 [item.net_charge]
@@ -594,6 +622,8 @@ range = [-10, 10]
 group = "profile"
 label = "Net charge"
 null_label = "(auto-detect from phosphates)"
+optional = true
+tier = "basic"
 help = "Net charge of the system, in units of |e|.  Default (blank) auto-detects from phosphate protonation -- fine for DNA/RNA from tleap.  Set EXPLICITLY for charged side chains the heuristic doesn't see: carboxylates (Asp/Glu), protonated amines (Lys/Arg/His+), sulfonates.  Sign convention: -1 = one extra electron; +1 = one missing electron."
 
 [item.spin_polarized]
@@ -617,6 +647,7 @@ type = "float"
 group = "profile"
 label = "Target spin moment"
 null_label = "(default)"
+optional = true
 help = "target total spin moment in mu_B (= number of unpaired electrons).  Emits BOTH ``Spin.Fix .true.`` and ``Spin.Total <v>`` in the .fdf.  Only emitted when --spin-polarized."
 
 [item.job_name]
@@ -628,6 +659,7 @@ value = "pyscf_relax"
 default = "pyscf_relax"
 group = "profile"
 label = "Job name"
+pattern = "^[A-Za-z0-9_\\-]+$"
 help = "job name; output files get this prefix.  Must match [A-Za-z0-9_-]+ (job-layout v1; no dots)."
 
 [item.charge]
@@ -639,6 +671,7 @@ type = "int"
 group = "profile"
 label = "Net charge"
 null_label = "(auto)"
+optional = true
 help = "net charge.  Default (auto) only deduces a value for DNA / RNA — one negative charge per backbone phosphate.  For everything else (peptide, SMILES, PDB load) auto resolves to 0; set this explicitly when working with a charged species."
 
 [item.spin]
@@ -716,6 +749,7 @@ engines = ["pyscf"]
 anchor = "df.auxbasis"
 type = "str"
 label = "Auxiliary fitting basis"
+optional = true
 help = "auxiliary fitting basis; None lets density_fit() auto-pick"
 
 [item.density_fit]
@@ -741,6 +775,7 @@ value = "d3bj"
 default = "d3bj"
 group = "profile"
 label = "Dispersion"
+optional = true
 help = "dispersion correction: d3 / d3bj / d4 / 'none' to disable"
 
 [item.ecp]
@@ -778,6 +813,7 @@ unit = "Hartree"
 range = [1e-12, 0.0001]
 group = "stage"
 label = "scf.conv_tol"
+tier = "advanced"
 help = "SCF convergence tolerance on the energy (Hartree)"
 
 [item.scf_conv_tol_grad]
@@ -791,6 +827,7 @@ default = 0.0
 range = [0.0, 0.01]
 group = "stage"
 label = "scf.conv_tol_grad"
+tier = "advanced"
 help = "orbital-gradient convergence threshold; 0 = PySCF's own sqrt(conv_tol) (~3e-5 at conv_tol=1e-9).  The gradient is what the forces come from -- tighten this (1e-6, 1e-7) when forces look noisy"
 
 [item.scf_soscf]
@@ -803,6 +840,7 @@ value = false
 default = false
 group = "profile"
 label = "Second-order SCF (SOSCF)"
+tier = "advanced"
 help = "switch the SCF to a second-order Newton solver.  Slower per iteration and needs more memory, but converges cases where DIIS oscillates forever (open-shell metals, near-degenerate frontier orbitals).  The usual escalation order is DIIS -> level shift / damping -> SOSCF"
 
 [item.scf_max_cycle]
@@ -816,6 +854,7 @@ default = 100
 range = [10, 1000]
 group = "budget"
 label = "scf.max_cycle"
+tier = "advanced"
 help = "max SCF cycles per single-point"
 
 [item.scf_init_guess]
@@ -842,6 +881,7 @@ default = 4
 range = [0, 9]
 group = "stage"
 label = "DFT grid level"
+tier = "advanced"
 help = "0=coarse, 3=screening, 4=default (hybrid-friendly), 5=tight, 9=ultra"
 
 [item.level_shift]
@@ -856,6 +896,7 @@ unit = "Hartree"
 range = [0.0, 1.0]
 group = "profile"
 label = "Level shift"
+tier = "advanced"
 help = "0.1-0.3 helps hard SCFs; 0 if SCF converges cleanly"
 
 [item.diis_space]
@@ -868,6 +909,7 @@ value = 8
 default = 8
 range = [4, 20]
 label = "DIIS subspace size"
+tier = "advanced"
 help = "DIIS subspace size; bump to 12-20 for oscillating SCFs"
 
 [item.damp]
@@ -880,6 +922,7 @@ value = 0.0
 default = 0.0
 range = [0.0, 0.9]
 label = "SCF damping factor"
+tier = "advanced"
 help = "Roothaan damping factor; 0.3-0.5 helps when DIIS alone isn't enough"
 
 [item.optimize]
@@ -919,6 +962,7 @@ type = "str"
 group = "profile"
 label = "Solvent"
 null_label = "(gas phase)"
+optional = true
 help = "solvent (water / methanol / dmso / chloroform / ...)"
 
 [item.solvent_method]
@@ -943,6 +987,7 @@ type = "int"
 group = "budget"
 label = "CPU threads"
 null_label = "(auto: physical cores)"
+optional = true
 help = "how many CPU threads PySCF uses.  Default (blank) asks what this job was GIVEN before it asks how big the machine is: OMP_NUM_THREADS, then the scheduler's allocation (SLURM_CPUS_PER_TASK / PBS_NCPUS / NSLOTS), and only as a last resort this node's PHYSICAL cores (not logical/HT) -- hyperthreading rarely helps QC kernels and can hurt cache locality.  Asking the node first is how a job holding 8 cores of a 128-core machine started 128 threads and had them time-sliced onto its 8.  The emitted script pins BLAS to 1 thread per worker (OPENBLAS_NUM_THREADS=1, MKL_NUM_THREADS=1) so PySCF threads * BLAS threads don't multiply -- the canonical anti-oversubscription recipe.  Set explicitly to bench, or to leave cores free for other jobs."
 
 [item.use_gpu]
@@ -968,6 +1013,7 @@ default = 4
 range = [0, 9]
 group = "profile"
 label = "PySCF verbose"
+tier = "advanced"
 help = "PySCF verbosity: 0 silent, 4 info, 5 debug"
 
 [item.chkfile]
@@ -1034,6 +1080,7 @@ value = false
 default = false
 group = "profile"
 label = "Post-relax frequencies + thermochemistry"
+tier = "advanced"
 help = "compute analytic Hessian + RRHO thermochemistry (ZPE, H, G, S, Cv, Cp) at temperature_K / pressure_atm"
 
 [item.temperature_K]
@@ -1048,6 +1095,7 @@ unit = "K"
 range = [0.0, 5000.0]
 group = "profile"
 label = "Thermochemistry temperature"
+tier = "advanced"
 help = "RRHO temperature for thermo.thermo() (standard: 298.15 K)"
 
 [item.pressure_atm]
@@ -1062,6 +1110,7 @@ unit = "atm"
 range = [1e-06, 1000.0]
 group = "profile"
 label = "Thermochemistry pressure"
+tier = "advanced"
 help = "RRHO pressure for thermo.thermo() (standard: 1 atm = 101325 Pa)"
 
 [item.stage]
@@ -1070,4 +1119,5 @@ category = ["procedure"]
 engines = ["pyscf"]
 type = "str"
 label = "Relaxation stage"
+optional = true
 help = "stage token <NN>_<name> (e.g. 01_coarse) for the .molwatch.log filename; None keeps the unsuffixed name"

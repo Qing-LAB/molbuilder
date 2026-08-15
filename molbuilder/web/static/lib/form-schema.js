@@ -35,6 +35,8 @@
  *                 (with null option if optional)
  *   tri-select  : <select> auto / true / false        (Optional[bool])
  *   int-triple  : three <input type=number step=1>    (Tuple[int,int,int], e.g. kgrid)
+ *   float-triple : three <input type=number step=any> (Tuple[float,float,float],
+ *                  e.g. kgrid_displacement — 0.5 must survive)
  *   stage-table  : per-stage rows table + preset dropdown
  *                  (List[<dataclass>], e.g. PySCFConfig.stages)
  *   comma-floats : comma-separated list of floats
@@ -405,12 +407,21 @@
         return wrap;
     }
 
-    function makeIntTriple(f) {
+    // The two triple kinds, so the places that special-case a triple ask one
+    // question instead of listing both.
+    const TRIPLE_KINDS = ["int-triple", "float-triple"];
+    function isTriple(kind) { return TRIPLE_KINDS.indexOf(kind) !== -1; }
+
+    function makeTriple(f, isInt) {
         // Three labelled number inputs sharing one id prefix.  Each
         // cell carries its own sub-label so kgrid (Tuple[int,int,int])
         // reads as "kx 1  ky 1  kz 1" instead of three anonymous boxes.
         // Sub-ids: f.id + "-" + label, e.g. "p-k-x" / "p-k-y" / "p-k-z";
         // collectForm reassembles into [int, int, int].
+        // ``isInt`` splits the step exactly as makeNumber does for the
+        // scalars.  A float triple stepping by 1 makes the browser call 0.5
+        // invalid before any JS runs, and parseInt then reads it back as 0 --
+        // which is the Gamma-centred grid the user was moving off.
         const wrap = el("span", { class: "schema-int-triple" });
         const defaults = Array.isArray(f.default) ? f.default : [0, 0, 0];
         f.labels.forEach((lab, i) => {
@@ -419,7 +430,8 @@
                 class: "schema-int-triple-label",
             }, lab));
             cell.appendChild(el("input", {
-                id: `${f.id}-${lab}`, type: "number", step: "1",
+                id: `${f.id}-${lab}`, type: "number",
+                step: isInt ? "1" : "any",
                 value: defaults[i] != null ? defaults[i] : "",
             }));
             wrap.appendChild(cell);
@@ -512,7 +524,8 @@
             case "text":       input = makeText(f);      break;
             case "select":     input = makeSelect(f);    break;
             case "tri-select": input = makeTriSelect(f); break;
-            case "int-triple": input = makeIntTriple(f); break;
+            case "int-triple":   input = makeTriple(f, true);  break;
+            case "float-triple": input = makeTriple(f, false); break;
             case "stage-table":
                 // Per-stage row table (List[<dataclass>]).  The
                 // table includes its own label ("Stage strategy")
@@ -749,7 +762,7 @@
         // matching element.  Warn once, fall back to the schema's
         // declared default so the rest of the form still submits
         // sensibly.  int-triple handles this per-sub-input below.
-        if (!elx && f.kind !== "int-triple") {
+        if (!elx && !isTriple(f.kind)) {
             _warnStale(f.name, "has id '" + f.id + "' but no DOM element");
             return f.default !== undefined ? f.default : null;
         }
@@ -843,7 +856,12 @@
                 }
                 return rows;
             }
-            case "int-triple": {
+            case "int-triple":
+            case "float-triple": {
+                // Read each component back with the parser its type asks for.
+                // parseInt on a float triple truncates silently.
+                const isInt = f.kind === "int-triple";
+                const parse = isInt ? (s) => parseInt(s, 10) : parseFloat;
                 const labs = f.labels || ["x", "y", "z"];
                 const defaults = Array.isArray(f.default)
                     ? f.default : [0, 0, 0];
@@ -859,7 +877,7 @@
                         return;
                     }
                     const v = subEl.value.trim();
-                    const n = v === "" ? null : parseInt(v, 10);
+                    const n = v === "" ? null : parse(v);
                     out.push(Number.isFinite(n) ? n
                              : (defaults[i] != null ? defaults[i] : 0));
                 });
@@ -958,7 +976,7 @@
                 // <span>), so the standard ``#f.id`` lookup below
                 // would return null and silently skip the field.
                 // Handle int-triple via its own sub-id loop.
-                if (f.kind === "int-triple") {
+                if (isTriple(f.kind)) {
                     if (!Array.isArray(v) || v.length !== 3) continue;
                     const labs = (Array.isArray(f.labels)
                         && f.labels.length === 3)

@@ -993,6 +993,117 @@ def _stagespec_to_field_schemas(elem_cls) -> List[Dict[str, Any]]:
     return out
 
 
+# --------------------------------------------------------------------- #
+#  The form schema, built from the CATALOGUE                            #
+#                                                                       #
+#  `web/form-schema.md` § 1: the catalogue is the source of truth.  The  #
+#  presentation does not change -- the JS renderer already takes         #
+#  whatever schema it is handed -- so this is one function pointed at a  #
+#  different source, not a new UI.                                       #
+# --------------------------------------------------------------------- #
+
+#: How a template `type` becomes a control (§ 1.1's derived column).
+_CONTROL_FOR_TYPE = {
+    "bool":    "checkbox",
+    "int":     "int",
+    "pow2":    "int",          # an int with a constraint the validator holds
+    "float":   "number",
+    "str":     "text",
+    "text":    "text",
+    "int3":    "int-triple",
+    "float3":  "float-triple",
+    # A list renders as a TEXT input holding a comma-separated value, which
+    # is what `comma-floats` already is and what ``coerce_to_field_type``
+    # already parses back (`Sequence[str]`, `Sequence[float]`).  No new
+    # control kind: the renderer has one for this shape already.
+    "strlist": "text",
+    "intlist": "text",
+}
+
+
+def _control_for(item) -> str:
+    """Which widget renders this item.  `choices` wins: an enum is a select
+    whatever its underlying type, and a tri-select is an OPTIONAL bool."""
+    if item.choices:
+        return "select"
+    if item.type == "bool" and item.optional:
+        return "tri-select"
+    return _CONTROL_FOR_TYPE.get(item.type, "text")
+
+
+def catalogue_to_form_schema(engine: str, id_prefix: str = "p") -> Dict[str, Any]:
+    """The Build form's schema for *engine*, from the catalogue.
+
+    **The two grouping axes** (`form-schema.md` § 1.3), both carried by every
+    item and answering different questions:
+
+    * ``group`` -- *when do I set this?* -- is the OUTER card, unchanged since
+      2026-06-13, and load-bearing: it exists because the stage selector once
+      silently rewrote budget and system fields.
+    * ``category`` -- *what question about the calculation is this?* -- is the
+      legend INSIDE the card, and it replaces the per-engine free-text
+      ``section``.  The six are shared, so SIESTA and PySCF show the same inner
+      headings for the first time.
+
+    Sections come out in § 6.2's reading order, which is the order the closed
+    vocabulary is declared in -- not alphabetical, and not the order the items
+    happen to sit in the file.
+    """
+    from molbuilder import template as _T
+
+    parsed = _T.read_template(_T.load_catalogue())
+    items = _T.select(parsed, engine=engine)
+
+    by_category: Dict[str, List[Dict[str, Any]]] = {}
+    for it in items:
+        panel = it.category[0] if it.category else "procedure"
+        by_category.setdefault(panel, []).append(_item_to_field(it, id_prefix))
+
+    sections = [{"name": cat, "title": cat.capitalize(),
+                 "fields": by_category[cat]}
+                for cat in _T.CATEGORIES if cat in by_category]
+    return {"config": engine, "id_prefix": id_prefix, "sections": sections}
+
+
+def _item_to_field(item, id_prefix: str) -> Dict[str, Any]:
+    """One catalogue item as one form field (`form-schema.md` § 1.1)."""
+    out: Dict[str, Any] = {
+        "name":     item.name,
+        "id":       f"{id_prefix}-{item.name.replace('_', '-')}",
+        "label":    item.label or item.name.replace("_", " ").capitalize(),
+        "help":     item.help,
+        "default":  (list(item.default) if isinstance(item.default, tuple)
+                     else item.default),
+        "optional": item.optional,
+        "tier":     item.tier or "basic",
+        "kind":     _control_for(item),
+    }
+    if item.unit:
+        out["unit"] = item.unit
+    if item.pattern:
+        out["pattern"] = item.pattern
+    if item.group:
+        out["workflow_group"] = item.group
+    # The engine keyword badge: an `engine` item's anchor, or what a `deck`
+    # item expands to.  A produce/wrapper item names no keyword and shows none.
+    if item.anchor:
+        out["engine_key"] = item.anchor
+    elif item.expands:
+        out["engine_key"] = " + ".join(item.expands)
+    if item.choices:
+        out["choices"] = list(item.choices)
+    if item.range:
+        out["min"], out["max"] = item.range
+    if out["kind"] in ("int", "number"):
+        out["step"] = "1" if item.type in ("int", "pow2") else "any"
+    if out["kind"] in ("int-triple", "float-triple"):
+        out["labels"] = ["x", "y", "z"]
+    if item.optional:
+        out["null_option"] = True
+        out["null_label"] = item.null_label or "(auto)"
+    return out
+
+
 def coerce_to_field_type(field: dataclasses.Field, value: Any,
                          resolved_hints: Dict[str, Any]) -> Any:
     """Convert a JSON-arriving value to the field's declared type.
@@ -1569,6 +1680,7 @@ __all__ = [
     "workspace_payload",
     "err",
     "finite_float",
+    "catalogue_to_form_schema",
     "coerce_to_field_type",
     "config_from_params",
     "apply_sidecar_if_possible",

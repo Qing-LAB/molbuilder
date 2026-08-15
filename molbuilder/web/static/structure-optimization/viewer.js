@@ -2156,7 +2156,8 @@ import { mount as mvMount, formula as mvFormula }
             if (!sch) continue;
             for (const sect of sch.sections) {
                 for (const f of sect.fields) {
-                    if (f.kind === "int-triple") {
+                    if (f.kind === "int-triple"
+                            || f.kind === "float-triple") {
                         // Tuple field renders as three sub-inputs;
                         // each has its own id and needs persistence.
                         for (const lab of f.labels) {

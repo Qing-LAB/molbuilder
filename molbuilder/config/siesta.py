@@ -505,7 +505,7 @@ class SiestaConfig:
         # k-points → tighter sampling → more cost) per the
         # web-ui-coherence Rule 2 attachment pass on 2026-06-13.
         "workflow_group": "stage",
-        "label": "kgrid_Monkhorst_Pack",
+        "label": "k-point mesh",
         "engine_key":  '%block kgrid_Monkhorst_Pack',
         "id_suffix": "k",
         "triple_labels": ("x", "y", "z"),

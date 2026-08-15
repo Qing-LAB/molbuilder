@@ -207,10 +207,21 @@ class Item:
     #: back from a file carries ``False`` -- ask the resolver, not this flag.
     allocation: bool = False
 
-    #: Whether *unset* is a state this item has at all. Not written to the
-    #: file — it is recoverable from the schema and is carried here because
-    #: a surface needs it to know whether *unset* is offerable.
+    #: Whether *unset* is a state this item has at all — and since 2026-08-14
+    #: it IS written to the file.  A surface must offer *(auto)* / *(no cap)*,
+    #: and it cannot be inferred from ``null_label``: 17 items are optional and
+    #: only 12 carry one, so five would silently lose the option.
     optional: bool = False
+
+    #: ``basic`` or ``advanced`` — a judgement about the PARAMETER, so a
+    #: surface can dim the advanced ones rather than asking a first-time reader
+    #: to weigh every knob at once.  Empty means unclassified.
+    tier: str = ""
+
+    #: A regex the value must match.  Two items have one (``system_label``,
+    #: ``job_name``); nothing else in § 5's vocabulary can say *"letters,
+    #: digits, hyphens, underscores; no dots"*.
+    pattern: str = ""
 
     def __post_init__(self) -> None:
         if self.kind not in KINDS:
@@ -514,6 +525,8 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
         label=str(f.metadata.get("label", "") or ""),
         null_label=str(f.metadata.get("null_label", "") or ""),
         optional=optional,
+        tier=str(f.metadata.get('tier', '') or ''),
+        pattern=str(f.metadata.get('pattern', '') or ''),
         category=category,
         engines=engines,
         resolver=resolver,
@@ -600,7 +613,8 @@ def _toml_value(v: Any) -> str:
 #: calculation diff cleanly, and so the file reads the way § 4.2's example does:
 #: what it is, then what it is worth, then what bounds it, then the prose.
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "anchor", "expands", "type",
-                   "choices", "value", "default", "resolver", "unit", "range",
+                   "choices", "value", "default", "optional", "resolver",
+                   "unit", "range", "tier", "pattern",
                    "group", "label", "null_label", "read_by", "help")
 
 
@@ -619,6 +633,12 @@ def _item_payload(it: Item) -> Dict[str, Any]:
     if it.default is not None:
         out["default"] = (list(it.default) if isinstance(it.default, tuple)
                           else it.default)
+    if it.optional:
+        out["optional"] = True
+    if it.tier:
+        out["tier"] = it.tier
+    if it.pattern:
+        out["pattern"] = it.pattern
     if it.unit:
         out["unit"] = it.unit
     if it.range:
@@ -977,6 +997,9 @@ def _item_from(name: str, body: Any) -> Item:
         default=_shape(body.get("default"), type_),
         anchor=str(body.get("anchor", "") or ""),
         expands=tuple(body.get("expands", ()) or ()),
+        optional=bool(body.get("optional", False)),
+        tier=str(body.get("tier", "") or ""),
+        pattern=str(body.get("pattern", "") or ""),
         read_by=tuple(body.get("read_by", ()) or ()),
         choices=(tuple(body["choices"]) if body.get("choices") else None),
         range=(tuple(rng) if rng else None),

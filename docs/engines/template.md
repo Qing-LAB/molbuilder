@@ -424,6 +424,9 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
 | `range` · `unit` · `choices` · `group` | bounds, label, enum members, and whether *vary per stage* starts ticked |
+| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 17 optional items only 12 carry one, so five would silently lose the option (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
+| `tier` | `basic` or `advanced`. A judgement about the **parameter**, not about the widget: a surface dims the advanced ones so a first-time reader is not asked to weigh every knob at once |
+| `pattern` | a regex the value must match. Two items have one — `system_label`, `job_name` — and nothing else in the vocabulary can express *"letters, digits, hyphens, underscores; no dots"* |
 | `help` | what this is, in prose. Multi-line is ordinary TOML |
 
 **TOML types the storage; `type` types the validation.** `300.0` is already a
