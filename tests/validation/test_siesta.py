@@ -57,14 +57,68 @@ def test_spin_total_with_spin_polarized_no_warn(water_struct):
 
 
 def test_siesta_mesh_cutoff_below_range_warns(water_struct):
-    """mesh_cutoff has metadata range (50, 1000) Ry.  A value of 5
-    Ry must emit a config.mesh_cutoff warn."""
+    """mesh_cutoff has a metadata range in Ry.  A value of 5 Ry must emit a
+    config.mesh_cutoff warn, and it must name BOTH the meaning and the
+    keyword — see the sweep below for why that is a rule and not a taste."""
     cfg = SiestaConfig(mesh_cutoff=5.0)
     issues = validate(water_struct, cfg)
     out_of_range = [i for i in issues if i.where == "config.mesh_cutoff"]
     assert len(out_of_range) == 1
     assert "MeshCutoff" in out_of_range[0].message
+    assert "Real-space grid cutoff" in out_of_range[0].message
     assert "Ry" in out_of_range[0].message
+
+
+def test_every_range_warning_names_the_engine_keyword(water_struct):
+    """The rule, swept over every field rather than pinned on one.
+
+    A warning has two jobs. *"Real-space grid cutoff is too low"* says what is
+    wrong and cannot be found in the input file; *"MeshCutoff"* can be searched
+    for and says nothing. It must carry both (user, 2026-08-15).
+
+    **This is a regression guard.** The labels used to BE the keywords, and
+    were replaced with prose on 2026-08-14 when the catalogue became the
+    master — silently taking the keyword out of seventeen warnings, because
+    the range warning is built from the label. One test noticed, on one field.
+    This asks the whole schema.
+
+    A field whose ``engine_key`` is a molbuilder note rather than a keyword is
+    exempt and asserted to be exempt: there is no word to offer, and inventing
+    one would make a search fail rather than merely not help.
+    """
+    import dataclasses
+    from molbuilder.template import _bare_anchor
+
+    missing, invented = [], []
+    for f in dataclasses.fields(SiestaConfig):
+        rng = f.metadata.get("range")
+        if not rng:
+            continue
+        lo, hi = rng
+        try:                                  # push it past the top of the range
+            cfg = dataclasses.replace(SiestaConfig(), **{f.name: type(lo)(hi) * 10 + 1})
+        except (TypeError, ValueError):
+            continue                          # non-scalar; its own validator owns it
+        hits = [i for i in validate(water_struct, cfg)
+                if i.where == f"config.{f.name}" and "outside" in i.message]
+        if not hits:
+            continue
+        kw = _bare_anchor(str(f.metadata.get("engine_key", "") or ""))
+        label = f.metadata.get("label", f.name)
+        msg = hits[0].message
+        # Matched against the EXACT opening, not by searching for a bracket:
+        # ``mpi_np``'s own label is "MPI ranks (np)", so a field's label may
+        # legitimately carry parentheses of its own and a substring test
+        # cannot tell those from a keyword this code added.
+        want = f"{label} ({kw}) = " if kw else f"{label} = "
+        if not msg.startswith(want):
+            (missing if kw else invented).append(
+                f"{f.name}: {msg!r} does not open with {want!r}")
+
+    assert not missing, ("range warning(s) with no keyword to search for:\n  "
+                         + "\n  ".join(missing))
+    assert not invented, ("range warning(s) citing a keyword the engine does "
+                          "not have:\n  " + "\n  ".join(invented))
 
 
 

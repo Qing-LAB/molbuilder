@@ -18,6 +18,35 @@ from typing import List
 from ..issues import Issue
 
 
+def _keyword_suffix(meta) -> str:
+    """`` (MeshCutoff)`` — the engine's own spelling, beside the human name.
+
+    **Both, always** (user, 2026-08-15: *"always include the keyword relevant
+    to it in addition to the meaning of that, such that it is easy to detect,
+    and meaning is still clear"*).  A warning has two jobs and one word cannot
+    do them: *"Real-space grid cutoff"* says what is wrong and cannot be found
+    in the input file; *"MeshCutoff"* can be searched for and says nothing.
+
+    This is a REGRESSION FIX, not a new idea.  The labels used to BE the
+    keywords — ``MeshCutoff``, ``DM.Tolerance``, ``MD.MaxForceTol`` — and were
+    replaced with prose on 2026-08-14 when the catalogue became the master.
+    That was right for a form control and silently wrong here: seventeen
+    warnings lost the only word in them a person could act on.
+
+    The BARE keyword, not the full ``engine_key``: a warning is scanned, and
+    ``MD.MaxCGDispl (universal for CG / Broyden / FIRE)`` is a sentence.  The
+    full spelling belongs on the form's badge, where there is room for it.
+
+    **Nothing is added for a setting that is not an engine keyword** — the
+    molbuilder-side ones (``psml_lib``, ``copy_psml``, ``mpi_np``) whose
+    ``engine_key`` is a parenthesised note.  There is no word to offer, and
+    inventing one would make a search fail rather than merely not help.
+    """
+    from ..template import _bare_anchor
+    kw = _bare_anchor(str(meta.get("engine_key", "") or ""))
+    return f" ({kw})" if kw else ""
+
+
 def _validate_config_metadata(cfg) -> List[Issue]:
     issues: List[Issue] = []
     if not is_dataclass(cfg):
@@ -35,8 +64,8 @@ def _validate_config_metadata(cfg) -> List[Issue]:
                     unit = f" {meta['unit']}" if meta.get("unit") else ""
                     issues.append(Issue(
                         "warn",
-                        f"{label} = {value}{unit} is outside the "
-                        f"recommended range [{lo}, {hi}]{unit}",
+                        f"{label}{_keyword_suffix(meta)} = {value}{unit} is "
+                        f"outside the recommended range [{lo}, {hi}]{unit}",
                         f"config.{f.name}",
                     ))
             except TypeError:

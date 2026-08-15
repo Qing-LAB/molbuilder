@@ -33,7 +33,7 @@ ENGINES = [("siesta", SiestaConfig), ("pyscf", PySCFConfig)]
 #: ``category`` is compared as a set — the catalogue writes a list and the
 #: metadata a tuple, and the ORDER is meaningful (first = the panel), so it is
 #: compared as a sequence rather than a set.
-MIRRORED = ("help", "range", "unit", "choices", "label")
+MIRRORED = ("help", "range", "unit", "choices", "label", "engine_key")
 
 
 def _catalogue():

@@ -880,7 +880,7 @@ class PySCFConfig:
         # NOT an engine keyword any more.  ``mol.max_memory`` is how PySCF
         # spells the answer, and § 6.3 is explicit that a merged item keeps no
         # anchor -- each engine's generator renders it its own way.
-        "engine_key":  '(molbuilder: mol.max_memory when a cap is set)',
+        "engine_key":  '(molbuilder: memory cap for the run -- ulimit -v in .run.sh / mol.max_memory)',
         "id_suffix": "max-memory",
         "range": (100, 1_000_000),
         "tier":  "advanced",
@@ -1013,7 +1013,7 @@ class PySCFConfig:
                  "coordinates, energy and forces, in one additive file the "
                  "Watch tab reads. It exists so a trajectory can be followed "
                  "while the engine is still running."),
-            "engine_key":  '(molbuilder: writes .molwatch.log for live viewer)',
+            "engine_key":  '(molbuilder: writes <basename>.molwatch.log for the live viewer)',
     })
 
     # ---------------- Frequencies / thermochemistry (post-relax) ----------------
@@ -1072,7 +1072,7 @@ class PySCFConfig:
         "section": "Compute & budget",
         "item_kind":  "produce",
         "label":   "Verbose inline comments",
-        "engine_key":  '(molbuilder: script comment-block control)',
+        "engine_key":  '(molbuilder: comment-block control in the generated input)',
         "help": (
         "Emit inline tuning hints and a Troubleshooting block in the "
         "generated script, in whatever comment syntax that engine uses."),

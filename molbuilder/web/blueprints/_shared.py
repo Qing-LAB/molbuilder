@@ -1097,12 +1097,22 @@ def _item_to_field(item, id_prefix: str) -> Dict[str, Any]:
         out["pattern"] = item.pattern
     if item.group:
         out["workflow_group"] = item.group
-    # The engine keyword badge: an `engine` item's anchor, or what a `deck`
-    # item expands to.  A produce/wrapper item names no keyword and shows none.
-    if item.anchor:
-        out["engine_key"] = item.anchor
+    # The engine-keyword badge.  **The FULL spelling, not the anchor.**
+    #
+    # This read `item.anchor` from 2026-08-14 until 2026-08-15, and an anchor
+    # is deliberately the bare leading keyword (`template.md` § 5) -- so the
+    # badge said `gto.M` on four different controls, `mf` on three more, and
+    # nothing at all on the eleven whose engine_key is a molbuilder note
+    # rather than a keyword.  That note is the only way a reader learns the
+    # setting never reaches the deck, which `web/form-schema.md` § 1a requires
+    # always be present.  `expands` remains the fallback for a `deck` item
+    # whose several keywords are the honest answer.
+    if item.engine_key:
+        out["engine_key"] = item.engine_key
     elif item.expands:
         out["engine_key"] = " + ".join(item.expands)
+    elif item.anchor:
+        out["engine_key"] = item.anchor
     if item.choices:
         out["choices"] = list(item.choices)
     elif out["kind"] == "tri-select":

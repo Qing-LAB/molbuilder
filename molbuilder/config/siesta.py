@@ -889,7 +889,7 @@ class SiestaConfig:
         "item_kind":  "produce",
         "workflow_group": "profile",
         "label": "Verbose inline comments",
-        "engine_key":  '(molbuilder: .fdf comment-block control)',
+        "engine_key":  '(molbuilder: comment-block control in the generated input)',
         "help": (
         "Emit inline tuning hints and a Troubleshooting block in the "
         "generated script, in whatever comment syntax that engine uses."),
@@ -951,7 +951,7 @@ class SiestaConfig:
         "coordinates, energy and forces, in one additive file the Watch "
         "tab reads. It exists so a trajectory can be followed while the "
         "engine is still running."),
-            "engine_key":  '(molbuilder: writes <basename>.molwatch.log preview)',
+            "engine_key":  '(molbuilder: writes <basename>.molwatch.log for the live viewer)',
         # Consumed by the GENERATOR, not the deck: § 7's kind, stated
         # because the engine_key is a molbuilder note (U16).
         "item_kind": "produce",
@@ -1119,7 +1119,7 @@ class SiestaConfig:
         # Not a SIESTA fdf keyword.  Emits ``ulimit -v`` into .run.sh
         # AND ``# runtime.max_memory_mb: N`` into the .fdf so the .out
         # parser can recover the cap via runtime_info.
-        "engine_key":  '(molbuilder: .run.sh ulimit -v + .fdf runtime_info comment)',
+        "engine_key":  '(molbuilder: memory cap for the run -- ulimit -v in .run.sh / mol.max_memory)',
         "unit":       "MB",
         # Advisory bounds for a surface offering a cap.  Added 2026-08-14 to
         # match PySCF's: the two engines declare ONE item (template.md § 6.3)

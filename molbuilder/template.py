@@ -192,6 +192,29 @@ class Item:
     expands: Tuple[str, ...] = ()           # required when kind == "deck"
     read_by: Tuple[str, ...] = ()           # § 6.1 — who ELSE derives from it
 
+    #: **How the engine SPELLS this**, in full — and a different fact from
+    #: :attr:`anchor`, which is the bare leading keyword the deck writer
+    #: matches on (§ 5: *"an anchor is a bare keyword, never a sentence"*).
+    #:
+    #: The two are not interchangeable and collapsing them lost information
+    #: twice over on 2026-08-14, when the catalogue kept only the anchor:
+    #:
+    #:   * ``gto.M(basis=...)``, ``(charge=...)``, ``(spin=...)`` and
+    #:     ``(symmetry=...)`` all reduce to ``gto.M`` — four controls showing
+    #:     one useless badge;
+    #:   * ``mf = mf.density_fit()`` / ``.PCM()`` / ``.add_dispersion(...)``
+    #:     all reduce to ``mf``;
+    #:   * and a **molbuilder note** — ``(molbuilder: .run.sh ``mpirun -np N``
+    #:     only; not in .fdf)`` — leads with no keyword at all, so eleven
+    #:     items lost their badge entirely. That note is the ONLY way a
+    #:     reader learns the setting never reaches the deck, which is why
+    #:     `web/form-schema.md` § 1a requires it always be present.
+    #:
+    #: A surface shows this. The deck writer never reads it — it takes
+    #: ``anchor`` and ``expands``, which is why truncating the anchor was
+    #: right and keeping only the anchor was not.
+    engine_key: str = ""
+
     # --- bounds and presentation ---
     choices: Optional[Tuple[str, ...]] = None   # required when type == "enum"
     range:   Optional[Tuple[float, float]] = None
@@ -561,6 +584,9 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
         help=str(f.metadata.get("help", "") or ""),
         default=(f.default if f.default is not dataclasses.MISSING else None),
         anchor=(anchor if kind == "engine" else ""),
+        # The FULL spelling, whatever the kind -- a wrapper or produce item
+        # names no deck keyword and its note is exactly what says so.
+        engine_key=str(f.metadata.get("engine_key", "") or ""),
         expands=expands,
         read_by=tuple(f.metadata.get("read_by", ()) or ()),
         choices=(tuple(choices) if choices else None),
@@ -657,7 +683,8 @@ def _toml_value(v: Any) -> str:
 #: The order keys appear inside an item.  Fixed so two templates of the same
 #: calculation diff cleanly, and so the file reads the way § 4.2's example does:
 #: what it is, then what it is worth, then what bounds it, then the prose.
-_ITEM_KEY_ORDER = ("kind", "category", "engines", "anchor", "expands", "type",
+_ITEM_KEY_ORDER = ("kind", "category", "engines", "anchor", "engine_key",
+                   "expands", "type",
                    "choices", "value", "default", "optional", "resolver",
                    "unit", "range", "tier", "pattern",
                    "group", "label", "null_label", "read_by", "help")
@@ -668,6 +695,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
     out: Dict[str, Any] = {"kind": it.kind, "type": it.type}
     if it.anchor:
         out["anchor"] = it.anchor
+    if it.engine_key:
+        out["engine_key"] = it.engine_key
     if it.expands:
         out["expands"] = list(it.expands)
     if it.choices:
@@ -1041,6 +1070,7 @@ def _item_from(name: str, body: Any) -> Item:
         value=_shape(body.get("value"), type_),
         default=_shape(body.get("default"), type_),
         anchor=str(body.get("anchor", "") or ""),
+        engine_key=str(body.get("engine_key", "") or ""),
         expands=tuple(body.get("expands", ()) or ()),
         optional=bool(body.get("optional", False)),
         tier=str(body.get("tier", "") or ""),
