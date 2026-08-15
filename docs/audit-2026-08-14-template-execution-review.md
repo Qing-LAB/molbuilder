@@ -3948,3 +3948,50 @@ SS 7 forbids floor 2 to do.
 
 So the six-attribute disagreement SS 58.3 measured is **one defect on one side**,
 and the repair is to give PySCF the declaration SIESTA already has.
+
+---
+
+## 59 - § 25.4: HALF the road is built, and the other half has no channel
+
+### 59.1 - What landed
+
+| | |
+|---|---|
+| `runwrap._wants_gpu(script_path, use_gpu, env)` | **one** function decides. `use_gpu` when given, the deck scan when not, and a named `env` still wins over both |
+| `use_gpu` | threaded through `write_run_wrapper` → `render_run_wrapper` → `_build_mem_audit` → `_maybe_write_sbatch` |
+| the four derivations | the env choice, the rank/thread budget, the memory audit and the sbatch header each called the scanner **themselves**. Four derivations of one fact are four chances to disagree; now they share one |
+
+**So the receiving end exists**: any caller that knows can now tell the wrapper,
+and `enable_gpu`'s `read_by = ("wrapper",)` names a road that has a lane.
+
+### 59.2 - The other half cannot be built without a contract decision
+
+§ 25.4 asked *"whether `prep`, which holds the resolved element, should pass the
+value"*. **It assumed a channel exists. There is none.**
+
+`prep` renders wrappers by walking `jobset.jobs`, and by then the config is gone.
+What a `Job` carries is a **closed five** (`job-system.md` § 3):
+
+| field | can it carry a resolved config value? |
+|---|---|
+| `name` · `script` | no |
+| `resources` | a **closed nine**. `gres` is the SLURM GPU *ask* — and it is `None` on a workstation with no scheduler, where a run may still use the GPU. Not a reliable carrier |
+| `warm` | warm files |
+| `traits` | **opaque by design** — *"the jobset layer compares it as a string and never learns what it means"*. A wrapper writer interpreting a trait is exactly what that sentence forbids |
+
+> **So the finding is bigger than it was written as.** It is not *"pass the
+> value"*; it is **there is no channel from the resolved config to the wrapper
+> writer for a per-job value that is not a Resource** — and `read_by` describes
+> a road across a gap nothing spans.
+
+### 59.3 - The three ways out, unranked
+
+| | what it costs |
+|---|---|
+| **a tenth `Resources` field** | says a GPU decision is a resource, which `gres` half-says already. Widens a closed nine that `job-contracts.md` § 6.2 pins and tests count |
+| **a sixth `Job` field** — e.g. `reads: Dict[str, Any]`, the items whose `read_by` names the wrapper | makes the road general instead of GPU-shaped, which is what `read_by` claims to be. Widens a closed five |
+| **`prep` writes wrappers from the ELEMENT, not from the job** | no contract widens; the element has everything. But it reorders `prep`'s steps 4 and 5, and `project-layout.md` § 2.3.1 calls that order *forced rather than chosen* |
+
+**Not chosen here.** Each changes a contract that something else counts, and the
+third touches an order another document calls forced. That is a user decision,
+and the road is now half-built rather than described-and-absent.

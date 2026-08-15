@@ -1504,6 +1504,31 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
 _GPU_TRUTHY = (".true.", "true", "yes", "t", "y", "1")
 
 
+def _wants_gpu(script_path: Path, use_gpu: Optional[bool],
+               env: Optional[str]) -> bool:
+    """Does this run use the GPU?
+
+    **Prefers the value ``prep`` resolved** and falls back to reading the deck.
+    ``enable_gpu`` declares ``read_by = ("wrapper",)`` (`template.md` § 6.1) —
+    which says the wrapper depends on it — and until 2026-08-14 nothing handed
+    the value over, so the wrapper re-derived a **user decision** by grepping
+    the artifact that decision produced (audit § 25.4).  Eleven other resolved
+    values are passed; this was the one that was not.
+
+    **The scan stays as the fallback, deliberately.** ``write_run_wrapper`` is
+    called directly on a bare deck outside ``prep`` — which is why every one of
+    its parameters is Optional — and a person may edit the deck, which is what
+    actually runs (`project-layout.md` § 2.3.1).  So: told if told, read if not.
+
+    ``env`` pointing away from GPU wins over both, unchanged.
+    """
+    if env is not None:
+        return False
+    if use_gpu is not None:
+        return bool(use_gpu)
+    return _fdf_requests_gpu(script_path)
+
+
 def _fdf_requests_gpu(fdf_path: Path) -> bool:
     """Whether the .fdf has ``Diag.ELPA.GPU`` set true.
 
@@ -1576,6 +1601,7 @@ def _parse_fdf_n_atoms(fdf_path: Path) -> Optional[int]:
 
 def render_run_wrapper(script_path: Path, *,
                         env: Optional[str] = None,
+                        use_gpu: Optional[bool] = None,
                         mpi_np: Optional[int] = None,
                         omp_threads: Optional[int] = None,
                         max_memory_mb: Optional[int] = None,
@@ -1664,7 +1690,7 @@ def render_run_wrapper(script_path: Path, *,
     # choosing the source build for its external ELPA stays available
     # without molbuilder guessing on their behalf.
     env_lookup_category = category
-    if category == "siesta" and env is None and _fdf_requests_gpu(script_path):
+    if category == "siesta" and _wants_gpu(script_path, use_gpu, env):
         env_lookup_category = "siesta-gpu"
 
     caps = get_capabilities()
@@ -1775,7 +1801,7 @@ def render_run_wrapper(script_path: Path, *,
         # so we sit firmly in the "multi-rank-per-GPU" regime; the
         # 1-rank-per-GPU best case only applies when NCCL is on.
         gpu_mode = (script_path.suffix.lower() == ".fdf"
-                    and _fdf_requests_gpu(script_path))
+                    and _wants_gpu(script_path, use_gpu, env))
         # Resolve MPI rank count.  SIESTA is fundamentally an MPI
         # code; even single-host execution is launched via mpirun.
         # When the user leaves mpi_np blank we default to ALL physical
@@ -3316,7 +3342,8 @@ def _ship_monitor_script(dest_dir: Path) -> Path:
 
 def _build_mem_audit(script_path: Path, *,
                      gres: Optional[str],
-                     env: Optional[str]) -> Optional[dict]:
+                     env: Optional[str],
+                     use_gpu: Optional[bool] = None) -> Optional[dict]:
     """Build the baked memory-model coefficients for the runtime
     estimate-vs-allocation audit (:func:`_siesta_mem_audit_block`).
 
@@ -3332,8 +3359,8 @@ def _build_mem_audit(script_path: Path, *,
     if gres is not None:
         return None  # GPU job (explicit --gres)
     try:
-        if env is None and _fdf_requests_gpu(script_path):
-            return None  # GPU job (fdf requests ELPA-CUDA)
+        if _wants_gpu(script_path, use_gpu, env):
+            return None  # GPU job (told by prep, or the fdf requests ELPA-CUDA)
         from . import runtime_config as _rc
         project_dir = script_path.parent if script_path.parent.exists() else None
         scheduler = _rc.get_scheduler(project_dir=project_dir)
@@ -3358,6 +3385,7 @@ def _build_mem_audit(script_path: Path, *,
 
 def write_run_wrapper(script_path: Path, *,
                        env: Optional[str] = None,
+                       use_gpu: Optional[bool] = None,
                        mpi_np: Optional[int] = None,
                        omp_threads: Optional[int] = None,
                        max_memory_mb: Optional[int] = None,
@@ -3401,7 +3429,9 @@ def write_run_wrapper(script_path: Path, *,
         omp_threads=omp_threads,
         max_memory_mb=max_memory_mb,
         n_atoms=n_atoms,
-        mem_audit=_build_mem_audit(script_path, gres=gres, env=env),
+        use_gpu=use_gpu,
+        mem_audit=_build_mem_audit(script_path, gres=gres, env=env,
+                                   use_gpu=use_gpu),
         continue_retries=continue_retries,
     )
     # Defense-in-depth: every rendered wrapper goes through ``bash -n``
@@ -3440,7 +3470,7 @@ def write_run_wrapper(script_path: Path, *,
             script_path, wrapper_path,
             mpi_np=mpi_np, time=time, gres=gres, mem=mem,
             cpus_per_task=cpus_per_task, exclusive=exclusive,
-            env=env,
+            env=env, use_gpu=use_gpu,
         )
     return wrapper_path
 
@@ -3454,7 +3484,8 @@ def _maybe_write_sbatch(script_path: Path,
                         mem: Optional[str],
                         cpus_per_task: Optional[int],
                         exclusive: Optional[bool],
-                        env: Optional[str]) -> Optional[Path]:
+                        env: Optional[str],
+                        use_gpu: Optional[bool] = None) -> Optional[Path]:
     """Resolve the per-job header values and write ``<basename>.sbatch``
     when a ``scheduler`` block is configured; else return None.
 
@@ -3479,7 +3510,7 @@ def _maybe_write_sbatch(script_path: Path,
     # Is this a GPU job?  Only SIESTA .fdf can be; honour an explicit
     # --env override that points away from GPU (mirrors the run-wrapper's
     # env_lookup_category logic).
-    gpu = bool(is_siesta and env is None and _fdf_requests_gpu(script_path))
+    gpu = bool(is_siesta and _wants_gpu(script_path, use_gpu, env))
     gpu_type: Optional[str] = None
     gpu_count: Optional[int] = None
     if gres is not None:
