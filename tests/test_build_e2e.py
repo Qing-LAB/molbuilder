@@ -384,15 +384,27 @@ class TestPeptideBuild:
         count = page.locator(".molviewer-selection-count").inner_text()
         assert count.split(" of ")[1].split()[0] == "3"   # water
 
-    def test_generate_buttons_enable_after_sidebar_load(
+    def test_the_form_learns_the_structure_after_sidebar_load(
             self, page, flask_server, water_xyz_file):
-        """Pre-load, Generate.fdf + Generate.py are disabled
-        (no structure to emit).  Post sidebar commit they must
-        enable so the user can hand off to /api/build/{fdf,pyscf}."""
+        """A sidebar commit must reach the PARAMETER FORM, not just the viewer.
+
+        This asserted *"the Generate buttons enable"* until 2026-08-15.  The
+        tab no longer generates anything — it collects parameters and hands
+        them on (`web/task-setup-plan.md` § 2) — so that proof is gone, and
+        the property it stood for needs a different witness.
+
+        The witness is the block-size hint: it is the one control whose
+        DISPLAY depends on the loaded structure, showing ``auto (<N>, n=<atoms>)``
+        once a structure is in hand.  It is also exactly what regressed when
+        the form moved onto the catalogue — the field's DOM id changed and the
+        hint quietly stopped appearing, with nothing red, because the lookup
+        returned null and the code guarded.  A shape-only test cannot see
+        that; this can.
+        """
         _open_build(page, flask_server)
-        # Pre-load sanity: both buttons disabled.
-        assert page.locator("#generate-fdf").is_disabled()
-        assert page.locator("#generate-pyscf").is_disabled()
+        # Pre-load: the hint has nothing to say yet.
+        assert not (page.locator("#p-parallel-block-size")
+                    .get_attribute("placeholder") or "").startswith("auto (")
 
         page.wait_for_function(
             "() => window.molbuilder "
@@ -415,13 +427,14 @@ class TestPeptideBuild:
             "document.querySelector('#info-atoms').textContent.trim())",
             timeout=_BOOT_TIMEOUT_MS,
         )
-        # Generate buttons should be live now.
+        # The form has the structure now: the hint names the atom count.
         page.wait_for_function(
-            "() => !document.querySelector('#generate-fdf').disabled",
+            "() => { const e = document.querySelector('#p-parallel-block-size');"
+            "  return !!e && /^auto \\(\\d+, n=\\d+\\)$/.test(e.placeholder); }",
             timeout=_BOOT_TIMEOUT_MS,
         )
-        assert not page.locator("#generate-fdf").is_disabled()
-        assert not page.locator("#generate-pyscf").is_disabled()
+        hint = page.locator("#p-parallel-block-size").get_attribute("placeholder")
+        assert hint.endswith("n=3)"), hint      # water
 
 
 # --------------------------------------------------------------------- #
@@ -608,7 +621,14 @@ class TestSidebarPickLoad:
         siesta_input = page.locator(
             "#siesta-form-container input").first
         siesta_input.focus()
-        siesta_input.press("a")
+        # A DIGIT, not a letter.  This pressed "a" until 2026-08-15, which
+        # worked only because the first control happened to be a text input.
+        # The form is now ordered by the shared category vocabulary
+        # (`web/form-schema.md` § 1), so the first control is a NUMBER input --
+        # and a number input silently swallows a letter, firing no `input`
+        # event, leaving the form not-dirty and this test waiting on a modal
+        # that was never going to open.  A digit is a real edit in either.
+        siesta_input.press("9")
         # Commit a DIFFERENT structure (methane).  Form-dirty gate
         # fires the warning before discarding the parameter edits.
         page.evaluate(
@@ -760,3 +780,4 @@ class TestBuildSecondVisitExternalChange:
             ".trim() === '5'",
             timeout=_BOOT_TIMEOUT_MS,
         )
+

@@ -131,9 +131,9 @@
   </section>
 
   <section class="card" id="generate-card">
-      <h2>3. Generate input</h2>
+      <h2>3. Calculation parameters</h2>
 
-      <div class="tabs" role="tablist" aria-label="Generate-input engine">
+      <div class="tabs" role="tablist" aria-label="Calculation engine">
         <button class="tab-btn active" role="tab"
                 aria-selected="true" data-tab="siesta">
           SIESTA <code>.fdf</code>
@@ -205,32 +205,6 @@
         </details>
       </fieldset>
 
-      <!-- Relaxation-stage preset selector — a UI shortcut, NOT a
-           SiestaConfig field.  Lives in the same band as the
-           generate-card actions so the user reads "switch stage →
-           it mutates the Stage convergence target workflow-group
-           card below" linearly.  2026-06-13 restructure: the
-           selector ONLY writes to fields tagged
-           ``workflow_group: "stage"`` in molbuilder/config/siesta.py
-           (mesh-cutoff, pao-energy-shift, dm-tolerance,
-           dm-energy-tolerance, force-tol, max-displ).  Switching the
-           stage never touches the Resource budget card (max-scf-iter,
-           relax-steps) or the System characteristics card (mixing-
-           weight, electronic-temperature, spin-*) — those are the
-           user's call, not the stage's call. -->
-      <fieldset class="param-grid-pre">
-        <legend>Relaxation stage preset</legend>
-        <label title="Bulk-fill the CONVERGENCE TARGET fields for a coarse-to-fine staged relaxation.&#10;Coarse: get into the basin fast (loose tols, big steps).&#10;Medium: refine to publication tolerance.&#10;Tight: final production geometry.&#10;Run all three stages in sequence with the SAME SystemLabel in the SAME directory; SIESTA reuses .XV (coords) and .DM (density matrix) automatically.&#10;Switching stages ONLY rewrites the Stage convergence target card below — your Resource budget (max-scf-iter, relax-steps) and System characteristics (mixing-weight, electronic-temperature, spin) stay as you set them.&#10;Custom keeps every value untouched.">
-          <strong>Stage</strong>
-          <select id="p-stage-preset">
-            <option value="custom" selected>Custom (no auto-fill)</option>
-            <option value="coarse">Stage 1 — Coarse (fast descent)</option>
-            <option value="medium">Stage 2 — Medium (refine)</option>
-            <option value="tight">Stage 3 — Tight (production)</option>
-          </select>
-        </label>
-      </fieldset>
-
       <!-- Schema-driven form: filled by form-schema.js using the
            SiestaConfig schema from GET /api/build/schema/siesta.
            Field IDs match the legacy ones (p-system-label,
@@ -246,44 +220,21 @@
       <div id="siesta-form-container" class="param-grid"
            data-form-schema="siesta"></div>
 
-      <div class="fdf-actions">
-        <button id="generate-fdf" disabled>Generate .fdf</button>
-        <button class="dl-btn" id="dl-fdf" disabled>Download .fdf</button>
-        <!-- Wrap disabled buttons in a span so browsers actually
-             show ``title`` on hover.  Bug: disabled <button> does
-             not fire mouseenter/mouseleave events in any browser, so
-             a ``title`` attribute on the button itself never produces
-             a tooltip when the user most needs to read it (i.e. when
-             the button is disabled and they want to know why).  The
-             wrapper span receives events normally and surfaces the
-             same title text.  Pattern reused for all three Save
-             buttons (SIESTA / PySCF / Spectra). -->
-        <span class="disabled-tip"
-              title="Saves .fdf + .run.sh + .psml files into the Projects sidebar's selected directory.  Requires both Generate to have run AND a project subdir to be selected (the button enables once both conditions hold).">
-          <button id="save-fdf" disabled>Save to current dir</button>
-        </span>
-        <span id="fdf-status" class="status"></span>
-      </div>
       <!-- Validation issues panel (live preflight + post-Generate).
            Hidden when there are no issues; populated by viewer.js's
            renderIssues() helper.  Each <li> carries a `data-severity`
            attribute that drives the colour + icon. -->
       <ul id="fdf-issues" class="issues-panel" hidden
           aria-label="SIESTA configuration validation issues"></ul>
-      <p class="hint">After generating, switch to the <strong>Results</strong> tab (top nav) to load and monitor the run live &mdash; pick the resulting <code>.molwatch.log</code> or SIESTA <code>.out</code> in the Projects sidebar and the trajectory inspector mounts automatically.</p>
-
-      <pre id="fdf-output" class="fdf-output" hidden></pre>
       </div><!-- /#tab-siesta -->
 
       <!-- ============ PySCF tab panel ============ -->
       <div class="tab-panel" id="tab-pyscf" role="tabpanel"
            aria-labelledby="tab-pyscf-btn" hidden>
       <p class="hint">
-        Generates a self-contained Python script that builds the molecule
-        with PySCF, runs SCF, and (by default) optimises the geometry.
-        Defaults: B3LYP+D3BJ / def2-SVP with density fitting and the
-        geomeTRIC optimizer &mdash; the modern hybrid-DFT default for
-        organics and biomolecules.
+        Parameters for a PySCF calculation.  Defaults: B3LYP+D3BJ /
+        def2-SVP with density fitting and the geomeTRIC optimizer &mdash;
+        the modern hybrid-DFT default for organics and biomolecules.
       </p>
 
       <!-- Schema-driven form for PySCF.  Filled by form-schema.js
@@ -294,23 +245,8 @@
       <div id="pyscf-form-container" class="param-grid"
            data-form-schema="pyscf"></div>
 
-      <div class="fdf-actions">
-        <button id="generate-pyscf" disabled>Generate .py</button>
-        <button class="dl-btn" id="dl-pyscf" disabled>Download .py</button>
-        <!-- Span wrapper so the title= surfaces on hover even when
-             the button is disabled (see save-fdf above for the
-             cross-browser rationale). -->
-        <span class="disabled-tip"
-              title="Saves .py + .run.sh into the Projects sidebar's selected directory.  Requires both Generate to have run AND a project subdir to be selected (the button enables once both conditions hold).">
-          <button id="save-pyscf" disabled>Save to current dir</button>
-        </span>
-        <span id="pyscf-status" class="status"></span>
-      </div>
       <ul id="pyscf-issues" class="issues-panel" hidden
           aria-label="PySCF configuration validation issues"></ul>
-      <p class="hint">After generating, switch to the <strong>Results</strong> tab (top nav) to load and monitor the run live &mdash; pick the resulting <code>.molwatch.log</code> or SIESTA <code>.out</code> in the Projects sidebar and the trajectory inspector mounts automatically.</p>
-
-      <pre id="pyscf-output" class="fdf-output" hidden></pre>
       </div><!-- /#tab-pyscf -->
     </section>
 

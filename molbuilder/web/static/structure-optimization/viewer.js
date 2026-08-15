@@ -346,31 +346,18 @@ import { mount as mvMount, formula as mvFormula }
             ? (d.getElements() || []) : [];
         const n_atoms = elements.length;
         state.title = filename;
-        state.fdf = null;
-        state.pyscf = null;
-        // Labels (regions / frozen) are NOT mirrored into state -- the Generate POST
-        // reads them FRESH off the model (getRegions / getFrozen) at emit time so they
-        // can never desync from the live model (unified-API access, no state.* copy).
+        // Labels (regions / frozen) are NOT mirrored into state -- whatever
+        // consumes them reads them FRESH off the model (getRegions / getFrozen)
+        // so they can never desync (unified-API access, no state.* copy).
         $("info-title").textContent     = filename;
         $("info-atoms").textContent     = n_atoms;
         $("info-residues").textContent  = "—";
         $("info-formula").textContent   = formula(elements);
-        const bs = $("p-block-size");
+        const bs = $("p-parallel-block-size");
         if (bs) {
             bs.placeholder =
                 "auto (" + autoBlockSize(n_atoms) + ", n=" + n_atoms + ")";
         }
-        $("generate-fdf").disabled = false;
-        $("generate-pyscf").disabled = false;
-        // Stale outputs / status / download buttons -> reset
-        $("dl-fdf").disabled = true;
-        $("dl-pyscf").disabled = true;
-        $("fdf-output").hidden = true;
-        $("fdf-output").textContent = "";
-        $("pyscf-output").hidden = true;
-        $("pyscf-output").textContent = "";
-        setStatus("fdf-status", "");
-        setStatus("pyscf-status", "");
         // A new structure invalidates the previous run's issue panels;
         // refresh both with a preflight tick so the user sees only
         // issues against the new geometry + current params.
@@ -478,12 +465,12 @@ import { mount as mvMount, formula as mvFormula }
                           + "ignored without spin polarisation.");
 
         // Relaxation type "none" -> per-step relaxation params moot.
-        const relax = $("p-relax") && $("p-relax").value;
+        const relax = $("p-relax-type") && $("p-relax-type").value;
         const noneReason =
             (relax === "none")
                 ? "Single-point only (no MD block emitted in the FDF)."
                 : null;
-        ["p-relax-steps", "p-force-tol", "p-max-displ"]
+        ["p-relax-steps", "p-relax-force-tol", "p-relax-max-displ"]
             .forEach(id => setLock(id, noneReason));
 
         // GPU acceleration applies ONLY to an ELPA diagonalizer
@@ -515,7 +502,7 @@ import { mount as mvMount, formula as mvFormula }
     function wireCompatibilityListeners() {
         [
             "py-method", "py-optimize", "py-solvent",
-            "p-spin-polarized", "p-relax", "p-enable-gpu", "p-diag-algorithm",
+            "p-spin-polarized", "p-relax-type", "p-enable-gpu", "p-diag-algorithm",
         ].forEach(id => {
             const el = $(id);
             if (el) el.addEventListener("change", applyCompatibility);
@@ -629,17 +616,6 @@ import { mount as mvMount, formula as mvFormula }
         }
     }
     document.addEventListener("DOMContentLoaded", _wireFormDirtyTracking);
-
-    function _resetFormDirty() { _formDirty = false; }
-    // Generate buttons consume the form values — clear dirty so the
-    // next sidebar commit doesn't warn for params the user already
-    // emitted into a script.
-    document.addEventListener("DOMContentLoaded", () => {
-        for (const id of ["generate-fdf", "generate-pyscf"]) {
-            const b = document.getElementById(id);
-            if (b) b.addEventListener("click", _resetFormDirty);
-        }
-    });
 
     if (window.molbuilder && window.molbuilder.runtime
         && typeof window.molbuilder.runtime.whenReady === "function") {
@@ -1242,69 +1218,6 @@ import { mount as mvMount, formula as mvFormula }
             });
     }
 
-    // ----- Downloads --------------------------------------------------
-    function downloadAs(text, filename, mime = "text/plain") {
-        const blob = new Blob([text], { type: mime });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 0);
-    }
-
-    // Phase 6: #dl-xyz / #dl-pdb retired — the embed's Export menu
-    // (View / Export → Download → .xyz | .pdb) owns structure
-    // download now.  ``downloadAs`` is still used below for .fdf
-    // and .py generator outputs.
-
-    function safeName(s) {
-        return (s || "molecule").replace(/[^A-Za-z0-9._-]+/g, "_");
-    }
-
-    // Save-to-current-dir bookkeeping (Round 1 of the 2026-05-24
-    // Generate/Save split).  Generate is now PURELY render-for-preview;
-    // a separate "Save to current dir" button commits the rendered
-    // artifact + the .run.sh wrapper + pseudo copies.  We cache the
-    // most-recent-render's filename + the params used so the Save
-    // handler can post them without re-rendering.  Cleared on Generate
-    // failure (so a stale fdf doesn't pretend to be savable).
-    state.lastFdfSave  = null;     // { filename, params, systemLabel }
-    state.lastPyscfSave = null;    // { filename, params, jobName }
-
-    /**
-     * Enable / disable the Save buttons based on:
-     *   (a) state.fdf / state.pyscf has been Generate-d, AND
-     *   (b) the Projects sidebar has a non-root subdir selected.
-     * Subscribed to projects.onChange below so a sidebar pick toggles
-     * the buttons live.
-     */
-    function refreshSaveButtonAvailability() {
-        const proj = (window.molbuilder || {}).projects;
-        // hasDir = "the sidebar points at a non-root subdir where
-        // saveToWorkspace can actually land a file".  Uses
-        // projects.atRoot() (added 2026-05-26) instead of the raw
-        // ``!!dir`` truthy check that incorrectly enabled Save at
-        // the projects root -- the click would then fall through
-        // saveToWorkspace's atProjectsRoot()->null path and show a
-        // confusing "no current_dir" error.
-        const hasDir = proj && typeof proj.atRoot === "function"
-            ? !proj.atRoot()
-            : !!(proj && proj.getCurrentDir());
-        const sfdf = $("save-fdf");
-        if (sfdf) sfdf.disabled = !(state.fdf  && hasDir);
-        const spy = $("save-pyscf");
-        if (spy)  spy.disabled  = !(state.pyscf && hasDir);
-    }
-    // Live re-evaluate the buttons when the sidebar selection changes.
-    (function () {
-        const proj = (window.molbuilder || {}).projects;
-        if (proj && typeof proj.onChange === "function") {
-            proj.onChange(refreshSaveButtonAvailability);
-        }
-    }());
-
     /**
      * Live caption for the SIESTA psml_lib field.  Drops a small
      * one-liner directly below the input that shows the user the
@@ -1384,456 +1297,6 @@ import { mount as mvMount, formula as mvFormula }
         }
     }(40));   // ~6s budget
 
-    // ----- 3. Generate FDF (render-only preview) ---------------------
-    // Pure render: validate + render + populate the preview pane +
-    // enable Download/Save.  Does NOT touch disk.  The user clicks
-    // "Save to current dir" once they're happy with the preview.
-    $("generate-fdf").addEventListener("click", async () => {
-        if (!_structureForRequest()) {
-            setStatus("fdf-status", "Build a structure first.", "error");
-            return;
-        }
-        setStatus("fdf-status", "Rendering FDF…");
-        const params = collectFdfParams();
-        // Send the sidebar dir as a dest hint so the server's
-        // validator can resolve dest-relative ``cfg.psml_lib`` paths
-        // (the form holds dest-relative strings after a prior Save).
-        // Optional: validator falls back to projects/-relative when
-        // omitted; the file-existence check downgrades to WARN in
-        // that case so render proceeds.
-        const _proj = (window.molbuilder || {}).projects;
-        const _destDir = (_proj && _proj.getCurrentDir()) || "";
-        // structure_path lets the server apply the .molstruct.json sidecar
-        // next to the LOADED XYZ/PDB.  Without this hop /modify's
-        // frozen_atoms list NEVER reaches render_fdf and SIESTA relaxes
-        // every atom even when the user explicitly froze some.  Mirrors
-        // /spectra; was the silent gap that prompted the 2026-05-25 fix.
-        //
-        // MUST read ``_sidebarLastFile`` (the file the user actually
-        // committed into the viewer), NOT ``_proj.getCurrentFile()``
-        // (the LIVE sidebar pick, which changes on every click while
-        // the user navigates to pick a dest_dir or browse).  The
-        // 2026-06-14 BDT-stage-2 incident: user loaded an .xyz with a
-        // sidecar carrying 50 frozen atoms, then clicked into a
-        // sibling directory to set dest_dir, then Generate.  Pre-fix
-        // ``getCurrentFile()`` returned the LAST-CLICKED-IN-SIDEBAR
-        // path (the dest dir's stage-1 .fdf), the server looked for a
-        // sidecar next to that file, found none, emitted a
-        // constraints-free stage-2 .fdf.  ``_sidebarLastFile`` stays
-        // pinned to the committed load, so the server reads the
-        // correct sidecar regardless of subsequent sidebar navigation.
-        const _structPath = _sidebarLastFile || "";
-        // Abort any in-flight Generate so two rapid clicks don't
-        // race -- the LATER click should win, but without
-        // AbortController the response that arrives LAST writes
-        // state.fdf / state.lastFdfSave (which might be the OLDER
-        // click's response if its render took longer).  Pattern
-        // mirrors lib/spectra/core.js's renderAbort / loadAbort.
-        if (state.fdfAbort) state.fdfAbort.abort();
-        state.fdfAbort = new AbortController();
-        const _signal = state.fdfAbort.signal;
-        try {
-            const r = await fetch("/api/build/fdf", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    structure:      _structureForRequest(),
-                    params,
-                    dest_dir:       _destDir || null,
-                    /* `structure_path` says WHERE THE FILE LIVES -- it anchors the
-                     * dest dir and pseudopotential resolution.  It is not a second
-                     * source for the structure: no sidecar is read for an emitted
-                     * deck. */
-                    structure_path: _structPath || null,
-                    /* THE LABELS AND THE CELL ARE ALREADY IN `structure`, and
-                     * they are not sent again.
-                     *
-                     * `exportFile()` returns the atoms, their positions at the
-                     * displayed frame, the labels and the cell -- assembled by
-                     * the viewer in ONE read (molview.md § 9.3: "the facts a
-                     * request carries were read together; no piece can be older
-                     * than another").
-                     *
-                     * This body used to carry all of it TWICE MORE, from two
-                     * further reads: `frozen_atoms` and `regions` off
-                     * `getFrozen`/`getRegions`, and the cell off a third call.
-                     * Four reads at four moments -- and the server overwrote the
-                     * envelope's copy with the later ones, so the envelope was
-                     * dead weight and "read together" was false in the one place
-                     * it is load-bearing.  Each read WAS fresh; that was never
-                     * the problem.  Four fresh reads are still four. */
-                }),
-                signal: _signal,
-            }).then(x => x.json());
-            if (!r.ok) {
-                setStatus("fdf-status", r.error || "FDF render failed.", "error");
-                // Surface the validation issues the server returned on a
-                // hard-fail (build/fdf sends {ok:false, error, issues} with
-                // HTTP 200).  Without this the user saw only the one-line
-                // error and lost the actionable per-issue list -- the
-                // failing checks that explain WHY the generate was rejected.
-                renderIssues("fdf-issues", r.issues || [], "siesta-form-container");
-                state.fdf = null;
-                state.lastFdfSave = null;
-                // Clear the Save-in-flight flag too: if the user clicked
-                // Generate WHILE a Save was running, the Save's finally
-                // would otherwise re-enable the button against a now-
-                // null state.fdf.  Caught by the 2026-05-26 review.
-                state.savingFdf = false;
-                refreshSaveButtonAvailability();
-                return;
-            }
-            state.fdf = r.fdf;
-            $("fdf-output").textContent = r.fdf;
-            $("fdf-output").hidden = false;
-            $("dl-fdf").disabled = false;
-            // Cache what Save needs: filename basename (label + stage
-            // suffix), the params dict (mpi/omp/psml_lib live here),
-            // and the system_label for downstream display.
-            const fdfLabel = (r.system_label || "siesta").replace(
-                /[^A-Za-z0-9._-]+/g, "_");
-            const _stage = stageTokenFromPreset();
-            const _stageSuffix = _stage ? `_${_stage}` : "";
-            state.lastFdfSave = {
-                filename:    fdfLabel + _stageSuffix + ".fdf",
-                params:      params,
-                systemLabel: r.system_label,
-            };
-            refreshSaveButtonAvailability();
-            const fdfMsg = `OK — ${r.fdf.split("\n").length} lines, label "${r.system_label}".`;
-            const issues = r.issues || [];
-            renderIssues("fdf-issues", issues, "siesta-form-container");
-            setStatus("fdf-status", fdfMsg,
-                      issues.some(i => i.severity === "warn") ? "warn" : "ok");
-        } catch (e) {
-            // AbortError = a newer Generate click superseded this one;
-            // the newer click's handler owns state -- don't clobber.
-            if (e && e.name === "AbortError") return;
-            setStatus("fdf-status", _formatFetchError(e), "error");
-            state.fdf = null;
-            state.lastFdfSave = null;
-            state.savingFdf = false;
-            refreshSaveButtonAvailability();
-        }
-    });
-
-    // ----- 3b. Save FDF + .run.sh + .psml files to current dir ------
-    // Commit step.  Requires (a) state.fdf populated by a prior
-    // Generate, (b) Projects sidebar pointing at a non-root subdir.
-    // Writes the .fdf, copies the matching .psml files (if psml_lib
-    // is set), drops the .run.sh wrapper, then rewrites the
-    // ``psml_lib`` form field to a path RELATIVE TO dest_dir.  The
-    // rewrite is the portability-+-privacy fix: avoids storing the
-    // absolute /home/<user>/... path in form state / future sidecars,
-    // and survives copying the whole project tree elsewhere.
-    // Reentrancy guard for both Save buttons.  A 4-step async pipeline
-    // (write .fdf / .py, install pseudos, install wrapper, refresh
-    // sidebar) can be 100s of ms; a double-click triggers TWO
-    // pipelines into the same dest with the same content.  Set the
-    // flag at click-time, disable the button, restore in finally so
-    // an exception path doesn't lock the button permanently.
-    state.savingFdf   = false;
-    state.savingPyscf = false;
-
-    $("save-fdf").addEventListener("click", async () => {
-        if (state.savingFdf) return;          // ignore double-click
-        state.savingFdf = true;
-        const _btn = $("save-fdf");
-        const _origText = _btn.textContent;
-        _btn.disabled = true;
-        _btn.textContent = "Saving…";
-        // Sidebar lock: prevents the user from changing current_dir
-        // mid-pipeline (which would retarget step 2's pseudo install
-        // to a different directory than where step 1 wrote the .fdf).
-        // The AbortController collects every fetch's signal so the
-        // lock banner's Cancel can abort an in-flight request and
-        // unwind through the finally below.
-        const proj = (window.molbuilder || {}).projects;
-        state.saveFdfAbort = new AbortController();
-        const _signal = state.saveFdfAbort.signal;
-        const _hasLock = !!proj && typeof proj.lock === "function";
-        if (_hasLock) {
-            try {
-                proj.lock("Saving FDF + pseudos + wrapper…",
-                          [() => state.saveFdfAbort.abort()]);
-            } catch (_) { /* if already locked (shouldn't happen
-                            without overlapping handlers), proceed
-                            without acquiring */ }
-        }
-        try {
-            return await _runSaveFdfPipeline(_signal);
-        } finally {
-            state.savingFdf = false;
-            _btn.disabled = false;
-            _btn.textContent = _origText;
-            refreshSaveButtonAvailability();
-            if (_hasLock) proj.unlock();
-        }
-    });
-
-    async function _runSaveFdfPipeline(abortSignal) {
-        const meta = state.lastFdfSave;
-        const proj = (window.molbuilder || {}).projects;
-        if (!state.fdf || !meta) {
-            setStatus("fdf-status", "Click Generate first.", "error");
-            return;
-        }
-        if (!proj) {
-            setStatus("fdf-status", "Projects sidebar not loaded.", "error");
-            return;
-        }
-        const destDir = proj.getCurrentDir() || "";
-        if (!destDir) {
-            setStatus("fdf-status",
-                "Pick a project subdir in the sidebar first.",
-                "error");
-            return;
-        }
-        setStatus("fdf-status", "Saving to " + destDir + " …");
-        const { filename, params } = meta;
-        // Step 1: write the .fdf.  2026-05-30: thread the lock's
-        // AbortSignal so the Cancel button can interrupt this fetch
-        // (#174 sidebar gap M1 -- writeFile now honours opts.signal).
-        let written;
-        try {
-            const w = await proj.safeSave(
-                state.fdf, filename,
-                { overwrite: true, signal: abortSignal });
-            // safeSave contract: branch on r.cancelled BEFORE
-            // !r.ok so user-initiated Cancel doesn't render as a
-            // red "Save failed: …" banner.  See state.js safeSave.
-            if (w && w.cancelled) {
-                setStatus("fdf-status", "Save cancelled.", "muted");
-                return;
-            }
-            if (!w || !w.ok) {
-                setStatus("fdf-status",
-                    "Save failed: " + (w && w.error || "no current_dir"),
-                    "error");
-                return;
-            }
-            const dir = (w.path || "").replace(/\/[^/]*$/, "");
-            written = { path: w.path, dir, relPath: w.relPath };
-        } catch (e) {
-            setStatus("fdf-status",
-                "Save network error: " + e.message, "error");
-            return;
-        }
-        // Step 2: copy .psml files into dest dir.
-        const psmlLib = (params || {}).psml_lib;
-        let installedOk = true;
-        let psmlMsg = "";
-        if (psmlLib) {
-            try {
-                const ip = await fetch("/api/siesta/install-pseudos", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        psml_lib:        psmlLib,
-                        dest_dir:        written.dir,
-                        structure:       _structureForRequest(),
-                    }),
-                    signal: abortSignal,
-                }).then(x => x.json());
-                if (ip.ok) {
-                    const nNew  = (ip.copied || []).length;
-                    const nOver = (ip.overwritten || []).length;
-                    const nSkip = (ip.skipped || []).length;
-                    const missing = ip.missing || [];
-                    const parts = [];
-                    if (nNew)  parts.push(`copied ${nNew} new`);
-                    if (nOver) parts.push(`overwrote ${nOver}`);
-                    if (nSkip) parts.push(`${nSkip} already present`);
-                    psmlMsg = ".psml: " + (parts.join(", ") || "no-op");
-                    if (missing.length) {
-                        psmlMsg += " · MISSING: " + missing.join(", ")
-                                + " — SIESTA will refuse to start";
-                        installedOk = false;
-                    }
-                } else {
-                    psmlMsg = "pseudo install failed: " + (ip.error || "?");
-                    installedOk = false;
-                }
-            } catch (e) {
-                // Phase 6e fifth-review BOMB-B: user-initiated
-                // Cancel reaches this catch as AbortError.  Bail
-                // the whole pipeline rather than continue into
-                // the wrapper-install step under a cancelled
-                // intent.  proj.isCancelError centralises the
-                // predicate (sixth-review follow-up).
-                if (proj.isCancelError(e)) {
-                    setStatus("fdf-status",
-                        "Save cancelled. (Wrote " + written.relPath
-                      + " before cancel; pseudos and .run.sh not "
-                      + "installed.)",
-                        "muted");
-                    try {
-                        if (proj.refresh) await proj.refresh();
-                    } catch (_) {}
-                    return;
-                }
-                psmlMsg = "pseudo install network error: " + e.message;
-                installedOk = false;
-            }
-        }
-        // Step 3: drop the .run.sh next to the .fdf -- BUT ONLY IF the
-        // pseudo install succeeded.  If install-pseudos missed elements
-        // (installedOk = false), a wrapper that references the (still-
-        // missing) pseudos would launch SIESTA which aborts at startup
-        // with an opaque "pseudo_read: ERROR: Pseudopotential file not
-        // found" -- the user sees a green "wrote .run.sh" and only
-        // discovers the breakage after running the wrapper.  Skip the
-        // wrapper write when pseudos are incomplete; surface the gap
-        // in the status text instead.  Caught by the 2026-05-26 review.
-        const _n = (k) => {
-            const v = (params || {})[k];
-            const n = Number(v);
-            return Number.isFinite(n) && n > 0 ? n : null;
-        };
-        let wrapperMsg = "";
-        let wrapperCancelled = false;
-        // Tracked separately from installedOk: a failed wrapper step must
-        // drive the status line to ERROR severity on its own.  (The
-        // qlabsrv regression hid for weeks because the composite line
-        // rendered GREEN when pseudos succeeded but install-wrapper
-        // failed -- the failure text was buried mid-line.)
-        let wrapperOk = true;
-        if (!installedOk) {
-            wrapperMsg = "skipped .run.sh (pseudos incomplete; "
-                       + "fix the install-pseudos errors above and "
-                       + "click Save again)";
-        } else {
-            try {
-                const wr = await fetch("/api/run/install-wrapper", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        script_path:      written.path,
-                        mpi_np:           _n("mpi_np"),
-                        omp_threads:      _n("omp_threads"),
-                        max_memory_mb:    _n("max_memory_mb"),
-                        continue_retries: _n("continue_retries"),
-                    }),
-                    signal: abortSignal,
-                }).then(x => x.json());
-                if (wr.ok) {
-                    const verb = wr.overwritten ? "overwrote" : "wrote";
-                    wrapperMsg = `${verb} ${wr.wrapper_name}`;
-                } else {
-                    wrapperOk = false;
-                    wrapperMsg = ".run.sh FAILED: " + (wr.error || "unknown");
-                }
-            } catch (e) {
-                if (proj.isCancelError(e)) {
-                    wrapperCancelled = true;
-                } else {
-                    wrapperOk = false;
-                    wrapperMsg = ".run.sh network error: " + (e && e.message || String(e));
-                }
-            }
-        }
-        if (!wrapperOk) {
-            // App-wide notification too (persists until cleared): the
-            // inline status alone let this failure go unread.  Stable id
-            // so repeat saves update one banner instead of stacking.
-            const notify = (window.molbuilder || {}).notify;
-            if (notify && notify.show) notify.show({
-                id: "install-wrapper-fdf", level: "error",
-                message: "Save wrote the .fdf but the .run.sh wrapper "
-                       + "was NOT installed — " + wrapperMsg,
-            });
-        }
-        if (wrapperCancelled) {
-            setStatus("fdf-status",
-                "Save cancelled after writing " + written.relPath
-              + " (.run.sh not installed).", "muted");
-            try {
-                if (proj.refresh) await proj.refresh();
-            } catch (_) {}
-            return;
-        }
-
-        // Step 4: rewrite the psml_lib form field to relative-to-dest
-        // (the portability fix).  Only when the field currently holds
-        // an absolute path AND we actually copied pseudos -- otherwise
-        // we'd silently corrupt a form the user is still editing.
-        if (psmlLib && installedOk && psmlLib.charAt(0) === "/") {
-            const pathLib = ((window.molbuilder || {}).path) || {};
-            const rel = (typeof pathLib.relativeFromDir === "function")
-                ? pathLib.relativeFromDir(psmlLib, written.dir)
-                : psmlLib;
-            // Field's DOM id comes from id_prefix "p" + id from the
-            // schema ("p-psml-lib").  Find it + update.  We don't go
-            // through form-schema.collectForm/dispatch -- a direct
-            // DOM write is fine because the field is a plain text input.
-            const input = $("p-psml-lib");
-            if (input && rel !== psmlLib) {
-                input.value = rel;
-                // Fire input + change so any listeners (live preflight
-                // / dirty-flag tracking) see the new value.
-                input.dispatchEvent(new Event("input",  { bubbles: true }));
-                input.dispatchEvent(new Event("change", { bubbles: true }));
-            }
-        }
-
-        // Compose final status: write target + psml + wrapper line.
-        // ANY failed step drives the whole line to error severity --
-        // never render green with a failure buried mid-string.
-        const segs = ["Wrote " + written.relPath];
-        if (psmlMsg)    segs.push(psmlMsg);
-        if (wrapperMsg) segs.push(wrapperMsg);
-        setStatus("fdf-status", segs.join(" · "),
-            (!installedOk || !wrapperOk) ? "error" : "ok");
-
-        // Refresh the sidebar so the newly-dropped .fdf + .psml + .run.sh
-        // all appear in the directory listing.  saveToWorkspace's
-        // writeFile triggers ONE refresh (for the .fdf only) -- the
-        // /api/siesta/install-pseudos + /api/run/install-wrapper
-        // endpoints write files directly via shutil/write_run_wrapper
-        // without going through writeFile, so they don't auto-refresh.
-        // One explicit refresh at the end covers all three steps.
-        try { if (proj.refresh) await proj.refresh(); } catch (_) { /* non-fatal */ }
-    }
-    // (close of _runSaveFdfPipeline)
-
-    $("dl-fdf").addEventListener("click", () => {
-        if (!state.fdf) return;
-        const label = ($("p-system-label").value.trim() || "siesta").replace(
-            /[^A-Za-z0-9._-]+/g, "_");
-        // Stage-aware filename: <name>-stage<N>.fdf when the user
-        // picked a non-Custom preset, so saving each stage's FDF
-        // alongside the previous ones in one directory doesn't
-        // overwrite (and matches the "Run with: ... <name>-stage<N>.fdf"
-        // line emitted in the FDF body).
-        const stage = stageTokenFromPreset();
-        const suffix = stage ? `_${stage}` : "";
-        downloadAs(state.fdf, label + suffix + ".fdf");
-    });
-
-    // Map the Generate-input form's stage-preset selector to the
-    // SiestaConfig / PySCFConfig ``stage`` field, which since 2026-08-10
-    // carries a stage's ARTIFACT TOKEN -- ``<NN>_<name>`` -- rather than an
-    // integer.  Custom and single-run modes pass null so the unsuffixed
-    // filenames are used.
-    //
-    // This function used to be ``stageNumberFromPreset`` and read:
-    //     if (v === "coarse") return 1;
-    // It threw the name away one line before the number became a filename,
-    // and nothing downstream could get it back -- the deck said ``-stage1``
-    // while a ladder's deck for the same tier said ``coarse``.  The dropdown
-    // held the answer the whole time; it just was not asked for it.
-    //
-    // Keep the ordinals aligned with SIESTA_STAGE_NAMES in
-    // molbuilder/config/siesta.py -- that table is the authority and this is
-    // the one place the browser restates it.
-    const STAGE_TOKENS = { coarse: "01_coarse",
-                           medium: "02_medium",
-                           tight:  "03_tight" };
-    function stageTokenFromPreset() {
-        const v = ($("p-stage-preset") || {}).value || "custom";
-        return STAGE_TOKENS[v] || null;
-    }
-
     function collectFdfParams() {
         // The schema-driven collector returns one entry per dataclass
         // field with a "section": metadata key.  The "Relaxation
@@ -1847,7 +1310,6 @@ import { mount as mvMount, formula as mvFormula }
         const params = fs.collectForm(
             $("siesta-form-container"), formSchemas.siesta
         );
-        params.stage = stageTokenFromPreset();
         // `continue_retries` needs NO lifting: it is an ordinary SiestaConfig
         // field (section "Compute & budget"), so `collectForm` above already
         // returned it, and `engines/stages.md § 3` is explicit that it is "an
@@ -1864,247 +1326,6 @@ import { mount as mvMount, formula as mvFormula }
         // that always failed.
         return params;
     }
-
-    // ----- 4. Generate PySCF script (render-only preview) -----------
-    $("generate-pyscf").addEventListener("click", async () => {
-        if (!_structureForRequest()) {
-            setStatus("pyscf-status", "Build a structure first.", "error");
-            return;
-        }
-        setStatus("pyscf-status", "Rendering PySCF script…");
-        const params = collectPyscfParams();
-        // structure_path: see /api/build/fdf handler for rationale --
-        // lets the server apply /modify's .molstruct.json sidecar
-        // (frozen_atoms + regions) before render_script runs.
-        //
-        // Reads ``_sidebarLastFile`` (committed-load path), NOT
-        // ``_proj.getCurrentFile()`` (live sidebar pick).  Same bug
-        // class as the SIESTA path above: the live pick changes
-        // every time the user clicks ANYWHERE in the sidebar, so by
-        // the time Generate fires the path may point at whatever
-        // file the user last browsed -- breaking sidecar discovery.
-        const _structPathPy = _sidebarLastFile || "";
-        // Abort any in-flight Generate -- see /api/build/fdf above
-        // for the rationale.  Two rapid clicks otherwise race.
-        if (state.pyscfAbort) state.pyscfAbort.abort();
-        state.pyscfAbort = new AbortController();
-        const _signalPy = state.pyscfAbort.signal;
-        try {
-            const r = await fetch("/api/build/pyscf", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    structure:      _structureForRequest(),
-                    params,
-                    /* `structure_path` says WHERE THE FILE LIVES -- it anchors the
-                     * dest dir and pseudopotential resolution.  It is not a second
-                     * source for the structure: no sidecar is read for an emitted
-                     * deck. */
-                    structure_path: _structPathPy || null,
-                    /* THE LABELS AND THE CELL ARE ALREADY IN `structure`, and
-                     * they are not sent again.
-                     *
-                     * `exportFile()` returns the atoms, their positions at the
-                     * displayed frame, the labels and the cell -- assembled by
-                     * the viewer in ONE read (molview.md § 9.3: "the facts a
-                     * request carries were read together; no piece can be older
-                     * than another").
-                     *
-                     * This body used to carry all of it TWICE MORE, from two
-                     * further reads: `frozen_atoms` and `regions` off
-                     * `getFrozen`/`getRegions`, and the cell off a third call.
-                     * Four reads at four moments -- and the server overwrote the
-                     * envelope's copy with the later ones, so the envelope was
-                     * dead weight and "read together" was false in the one place
-                     * it is load-bearing.  Each read WAS fresh; that was never
-                     * the problem.  Four fresh reads are still four. */
-                }),
-                signal: _signalPy,
-            }).then(x => x.json());
-            if (!r.ok) {
-                setStatus("pyscf-status",
-                    r.error || "PySCF render failed.", "error");
-                state.pyscf = null;
-                state.lastPyscfSave = null;
-                state.savingPyscf = false;
-                refreshSaveButtonAvailability();
-                return;
-            }
-            state.pyscf = r.script;
-            $("pyscf-output").textContent = r.script;
-            $("pyscf-output").hidden = false;
-            $("dl-pyscf").disabled = false;
-            const jobName = (r.job_name || "pyscf").replace(
-                /[^A-Za-z0-9._-]+/g, "_");
-            state.lastPyscfSave = {
-                filename: jobName + ".py",
-                params:   params,
-                jobName:  r.job_name,
-            };
-            refreshSaveButtonAvailability();
-            const pyMsg = `OK — ${r.script.split("\n").length} lines, job "${r.job_name}".`;
-            const issues = r.issues || [];
-            renderIssues("pyscf-issues", issues, "pyscf-form-container");
-            setStatus("pyscf-status", pyMsg,
-                      issues.some(i => i.severity === "warn") ? "warn" : "ok");
-        } catch (e) {
-            if (e && e.name === "AbortError") return;  // superseded
-            setStatus("pyscf-status", _formatFetchError(e), "error");
-            state.pyscf = null;
-            state.lastPyscfSave = null;
-            state.savingPyscf = false;
-            refreshSaveButtonAvailability();
-        }
-    });
-
-    // ----- 4b. Save PySCF .py + .run.sh to current dir --------------
-    $("save-pyscf").addEventListener("click", async () => {
-        if (state.savingPyscf) return;
-        state.savingPyscf = true;
-        const _btnPy = $("save-pyscf");
-        const _origTextPy = _btnPy.textContent;
-        _btnPy.disabled = true;
-        _btnPy.textContent = "Saving…";
-        // Sidebar lock: same rationale as the SIESTA Save handler -- a
-        // mid-pipeline current_dir change would retarget the wrapper
-        // install to the wrong directory.
-        const _projPyL = (window.molbuilder || {}).projects;
-        state.savePyscfAbort = new AbortController();
-        const _signalPy = state.savePyscfAbort.signal;
-        const _hasLockPy = !!_projPyL && typeof _projPyL.lock === "function";
-        if (_hasLockPy) {
-            try {
-                _projPyL.lock("Saving PySCF + wrapper…",
-                              [() => state.savePyscfAbort.abort()]);
-            } catch (_) { /* already locked: continue without */ }
-        }
-        try {
-            return await _runSavePyscfPipeline(_signalPy);
-        } finally {
-            state.savingPyscf = false;
-            _btnPy.disabled = false;
-            _btnPy.textContent = _origTextPy;
-            refreshSaveButtonAvailability();
-            if (_hasLockPy) _projPyL.unlock();
-        }
-    });
-
-    async function _runSavePyscfPipeline(abortSignal) {
-        const meta = state.lastPyscfSave;
-        const proj = (window.molbuilder || {}).projects;
-        if (!state.pyscf || !meta) {
-            setStatus("pyscf-status", "Click Generate first.", "error");
-            return;
-        }
-        if (!proj) {
-            setStatus("pyscf-status", "Projects sidebar not loaded.", "error");
-            return;
-        }
-        const destDir = proj.getCurrentDir() || "";
-        if (!destDir) {
-            setStatus("pyscf-status",
-                "Pick a project subdir in the sidebar first.",
-                "error");
-            return;
-        }
-        setStatus("pyscf-status", "Saving to " + destDir + " …");
-        // 2026-05-30: thread the lock's AbortSignal so the Cancel
-        // button can interrupt this fetch (#174 sidebar gap M1).
-        let written;
-        try {
-            const w = await proj.safeSave(
-                state.pyscf, meta.filename,
-                { overwrite: true, signal: abortSignal });
-            // safeSave contract: see SIESTA mirror above + state.js.
-            if (w && w.cancelled) {
-                setStatus("pyscf-status", "Save cancelled.", "muted");
-                return;
-            }
-            if (!w || !w.ok) {
-                setStatus("pyscf-status",
-                    "Save failed: " + (w && w.error || "no current_dir"),
-                    "error");
-                return;
-            }
-            const dir = (w.path || "").replace(/\/[^/]*$/, "");
-            written = { path: w.path, dir, relPath: w.relPath };
-        } catch (e) {
-            setStatus("pyscf-status",
-                "Save network error: " + e.message, "error");
-            return;
-        }
-        // PySCF wrapper: no mpi_np / no omp / no memory cap (the
-        // in-script runtime block handles those).
-        // wrapperOk mirrors the SIESTA path: a failed install-wrapper
-        // MUST surface at error severity.  (The original code had no
-        // else branch at all -- a failed wrapper produced an empty
-        // message and a green "Wrote <file>", which is exactly how the
-        // missing-.run.sh regression stayed invisible.)
-        let wrapperMsg = "";
-        let wrapperCancelled = false;
-        let wrapperOk = true;
-        try {
-            const wr = await fetch("/api/run/install-wrapper", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    script_path:   written.path,
-                    mpi_np:        null,
-                    omp_threads:   null,
-                    max_memory_mb: null,
-                }),
-                signal: abortSignal,
-            }).then(x => x.json());
-            if (wr.ok) {
-                const verb = wr.overwritten ? "overwrote" : "wrote";
-                wrapperMsg = `${verb} ${wr.wrapper_name}`;
-            } else {
-                wrapperOk = false;
-                wrapperMsg = ".run.sh FAILED: " + (wr.error || "unknown");
-            }
-        } catch (e) {
-            if (proj.isCancelError(e)) {
-                wrapperCancelled = true;
-            } else {
-                wrapperOk = false;
-                wrapperMsg = ".run.sh network error: "
-                           + (e && e.message || String(e));
-            }
-        }
-        if (wrapperCancelled) {
-            setStatus("pyscf-status",
-                "Save cancelled after writing " + written.relPath
-              + " (.run.sh not installed).", "muted");
-            return;
-        }
-        if (!wrapperOk) {
-            const notify = (window.molbuilder || {}).notify;
-            if (notify && notify.show) notify.show({
-                id: "install-wrapper-pyscf", level: "error",
-                message: "Save wrote the .py but the .run.sh wrapper "
-                       + "was NOT installed — " + wrapperMsg,
-            });
-        }
-        const segs = ["Wrote " + written.relPath];
-        if (wrapperMsg) segs.push(wrapperMsg);
-        setStatus("pyscf-status", segs.join(" · "),
-            wrapperOk ? "ok" : "error");
-        // Refresh sidebar so the freshly-dropped .py + .run.sh show
-        // up in the listing.  install-wrapper writes outside the
-        // writeFile path, so a manual refresh is needed.
-        try { if (proj.refresh) await proj.refresh(); } catch (_) { /* non-fatal */ }
-    }
-    // (close of _runSavePyscfPipeline)
-
-    $("dl-pyscf").addEventListener("click", () => {
-        if (!state.pyscf) return;
-        const label = ($("py-job-name").value.trim() || "pyscf_relax")
-            .replace(/[^A-Za-z0-9._-]+/g, "_");
-        // Stage-aware filename for the same reason as dl-fdf above.
-        const stage = stageTokenFromPreset();
-        const suffix = stage ? `_${stage}` : "";
-        downloadAs(state.pyscf, label + suffix + ".py", "text/x-python");
-    });
 
     function collectPyscfParams() {
         // Schema-driven collector + three post-processing tweaks:
@@ -2125,7 +1346,6 @@ import { mount as mvMount, formula as mvFormula }
         const params = fs.collectForm(
             $("pyscf-form-container"), formSchemas.pyscf
         );
-        params.stage = stageTokenFromPreset();
         if (params.dispersion === "none") params.dispersion = null;
         // Drop nulls.
         Object.keys(params).forEach(k => {
@@ -2147,7 +1367,6 @@ import { mount as mvMount, formula as mvFormula }
     // derived at save/restore time by walking the rendered
     // schemas.
     const STATIC_FORM_IDS = [
-        "p-stage-preset",
     ];
 
     function getFormIds() {
@@ -2163,26 +1382,6 @@ import { mount as mvMount, formula as mvFormula }
                         for (const lab of f.labels) {
                             ids.push(f.id + "-" + lab);
                         }
-                    } else if (f.kind === "stage-table") {
-                        // Stage-table renders one input per cell
-                        // (stages × stage_fields) plus the preset
-                        // dropdown.  Each has its own id; without
-                        // listing them here ``saveFormState`` /
-                        // ``restoreFormState`` would skip the
-                        // user's per-stage edits and they'd revert
-                        // to schema defaults on page reload.
-                        const stages = Array.isArray(f.default)
-                            ? f.default : [];
-                        const stageFields = Array.isArray(f.stage_fields)
-                            ? f.stage_fields : [];
-                        ids.push(f.id + "-preset");
-                        stages.forEach(function (_, stageIdx) {
-                            stageFields.forEach(function (sf) {
-                                ids.push(
-                                    f.id + "-stage" + stageIdx
-                                    + "-" + sf.name);
-                            });
-                        });
                     } else {
                         ids.push(f.id);
                     }
@@ -2241,115 +1440,6 @@ import { mount as mvMount, formula as mvFormula }
     // redundant and a quota-pressure liability on large structures.
     // No saveStructureState / pagehide listener is needed any more.
 
-    // ----- Staged-relaxation presets ----------------------------- //
-    // The Watch tab carries the full workflow guide; the Build tab's
-    // job is to make it one-click to fill the SIESTA convergence
-    // params for each stage.  Same SystemLabel + same directory ->
-    // SIESTA reads the previous stage's .XV and .DM automatically.
-    //
-    // Values are the ones documented in the Watch tab's recipe table.
-    // The ``custom`` option does NOT reset anything -- it just stops
-    // auto-filling so the user can fine-tune individual fields.
-    // STAGE_PRESETS restructured 2026-06-13.  PRE-FIX the preset
-    // wrote to mixing-weight (a SYSTEM characteristic — depends on
-    // metallic / organic chemistry, not stage) and to relax-steps
-    // (a BUDGET cap — depends on system size, not stage).  Switching
-    // stages silently mutated those values away from the user's
-    // intent — the Au-BDT-Au bug class.
-    //
-    // After 2026-06-13: only fields tagged ``workflow_group:
-    // "stage"`` in the schema are written.  Budget (max_scf_iter,
-    // relax_steps) and system characteristics (mixing_weight,
-    // electronic_temperature, spin_*) are NEVER touched by a stage
-    // switch; the user manages those via the dedicated Resource
-    // budget + System characteristics workflow-group cards.
-    //
-    // The presets are the same convergence-target values that
-    // appear in the published staged-relaxation literature:
-    // coarse = fast descent (loose tols, big steps), medium =
-    // refine, tight = production-grade.  Each successive stage
-    // tightens; none of them touches "how much patience I'm
-    // willing to spend on this run."
-    const STAGE_PRESETS = {
-        coarse: {
-            "p-mesh-cutoff":         200,
-            "p-pao-energy-shift":    0.02,
-            "p-dm-tolerance":        1e-3,
-            "p-dm-energy-tolerance": 1e-3,
-            "p-force-tol":           0.04,
-            "p-max-displ":           0.20,
-        },
-        medium: {
-            "p-mesh-cutoff":         300,
-            "p-pao-energy-shift":    0.01,
-            "p-dm-tolerance":        1e-4,
-            "p-dm-energy-tolerance": 1e-4,
-            "p-force-tol":           0.02,
-            "p-max-displ":           0.10,
-        },
-        tight: {
-            "p-mesh-cutoff":         400,
-            "p-pao-energy-shift":    0.005,
-            "p-dm-tolerance":        1e-5,
-            "p-dm-energy-tolerance": 1e-5,
-            "p-force-tol":           0.01,
-            "p-max-displ":           0.05,
-        },
-    };
-
-    // Document the IDs we KNOW are stage-tagged on the SIESTA side.
-    // viewer.js doesn't have direct access to the schema metadata
-    // (the form-schema renderer holds it), so we maintain an
-    // explicit list here AND a test in
-    // tests/test_live_poll_invariants_audit.py pins that every ID
-    // in this list corresponds to a field tagged
-    // ``workflow_group: "stage"`` in molbuilder/config/siesta.py.
-    // Add a new stage field → tag in siesta.py AND add the ID here;
-    // the test catches the half-done case.
-    const _STAGE_PRESET_KEYS_SIESTA = new Set([
-        "p-mesh-cutoff", "p-pao-energy-shift",
-        "p-dm-tolerance", "p-dm-energy-tolerance",
-        "p-force-tol",   "p-max-displ",
-    ]);
-
-    function applyStagePreset(stage) {
-        const preset = STAGE_PRESETS[stage];
-        if (!preset) return;
-        Object.entries(preset).forEach(([id, value]) => {
-            // Defense in depth: only write to IDs that the
-            // _STAGE_PRESET_KEYS_SIESTA allowlist confirms are
-            // stage-tagged.  A typo / drift between the preset dict
-            // and the schema metadata gets caught here at runtime
-            // rather than silently mutating a budget / system field.
-            if (!_STAGE_PRESET_KEYS_SIESTA.has(id)) {
-                if (console && console.warn) {
-                    console.warn(
-                        "[stage-preset] refusing to write " + id
-                        + " — not in stage-key allowlist.  Update "
-                        + "_STAGE_PRESET_KEYS_SIESTA in viewer.js AND "
-                        + "tag the field workflow_group: \"stage\" in "
-                        + "molbuilder/config/siesta.py."
-                    );
-                }
-                return;
-            }
-            const el = $(id);
-            if (!el) return;
-            el.value = String(value);
-            // Fire 'change' so the preflight + sessionStorage handlers
-            // see the new value as if the user had typed it.
-            el.dispatchEvent(new Event("change", { bubbles: true }));
-            el.dispatchEvent(new Event("input", { bubbles: true }));
-        });
-    }
-
-    const stageSel = $("p-stage-preset");
-    if (stageSel) {
-        stageSel.addEventListener("change", () => {
-            applyStagePreset(stageSel.value);
-        });
-    }
-
     // Wire each engine-scoped form input to the debounced preflight
     // refresh so the issues panel updates live as the user adjusts
     // settings.  p-* IDs feed SIESTA's panel; py-* IDs feed PySCF's.
@@ -2373,7 +1463,6 @@ import { mount as mvMount, formula as mvFormula }
             // change handler that bulk-fills sibling inputs (each of
             // which fires their own change event and gets caught
             // below).
-            if (id === "p-stage-preset") return;
             const event = (el.type === "checkbox" || el.tagName === "SELECT")
                 ? "change" : "input";
             el.addEventListener(event, () => refreshPreflightDebounced[which]());

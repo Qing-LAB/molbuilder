@@ -47,9 +47,37 @@ def test_index_page_has_tab_markup(web_client):
         'data-tab="pyscf"',
         'id="tab-siesta"',
         'id="tab-pyscf"',
-        'id="generate-pyscf"',
+        # The two engine panels are each a schema-driven form container.
+        # ``id="generate-pyscf"`` stood here until 2026-08-15: the tab
+        # generated the script itself, so the Generate button was the
+        # thing that proved the PySCF panel was wired.  The tab now
+        # COLLECTS PARAMETERS and hands them on -- the browser describes,
+        # the terminal acts (`web/task-setup-plan.md` § 2) -- so the
+        # container is what proves it, and asserting a button that is
+        # deliberately gone would pin the retired shape.
+        'id="pyscf-form-container"',
+        'id="siesta-form-container"',
     ):
         assert needle in body, f"missing {needle!r} in index.html"
+
+
+def test_the_tab_neither_generates_nor_saves(web_client):
+    """The tab collects parameters; it does not produce artefacts.
+
+    `web/task-setup-plan.md` § 2 — *the browser describes and observes,
+    the terminal acts*.  A deck carries values that depend on how it will
+    be launched, so a browser that "finished" one would be guessing.  This
+    is the guard on that: the buttons are not merely unwired, they are
+    absent, and a future edit that re-adds one fails here rather than
+    quietly reintroducing the split.
+    """
+    body = web_client.get("/structure-optimization").data.decode()
+    for gone in ('id="generate-fdf"', 'id="generate-pyscf"',
+                 'id="save-fdf"', 'id="save-pyscf"',
+                 'id="dl-fdf"', 'id="dl-pyscf"',
+                 'id="fdf-output"', 'id="pyscf-output"',
+                 'id="p-stage-preset"'):
+        assert gone not in body, f"{gone} is back in index.html"
 
 
 # test_build_load_source_mode_toggle_present + test_viewer_js_applies_source_mode
