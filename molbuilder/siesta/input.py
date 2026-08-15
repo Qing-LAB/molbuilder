@@ -899,7 +899,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
 
     if v: out += [
         "",
-        "# DM.MixingWeight: density-matrix mixing weight (0.001 - 0.5).",
+        "# SCF.Mixer.Weight: density-matrix mixing weight (0.001 - 0.5).",
         "#   Smaller = more conservative, stable, slower.",
         "#   Larger  = aggressive, may oscillate.",
         "# Tuning hints:",
@@ -908,16 +908,16 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "#   - Metals:              0.005 - 0.02",
         "#   - Insulators:          0.05 - 0.10 is often fine",
     ]
-    out.append(f"DM.MixingWeight   {cfg.mixing_weight}")
+    out.append(f"SCF.Mixer.Weight   {cfg.mixing_weight}")
 
     if v: out += [
         "",
-        "# DM.NumberPulay: # of past SCF iterations kept for Pulay mixing.",
+        "# SCF.Mixer.History: # of past SCF iterations kept for Pulay mixing.",
         "# Range 2-10.  More = better convergence + more memory.",
         "#   3      fine for most cases",
         "#   5-8    hard cases (metals, magnetic systems)",
     ]
-    out.append(f"DM.NumberPulay    {cfg.pulay_history}")
+    out.append(f"SCF.Mixer.History    {cfg.pulay_history}")
 
     if v: out += [
         "",
@@ -1243,8 +1243,8 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
 
     # Relaxation / dynamics.  In SIESTA 5.4.2 the step-count and
     # displacement-cap fdf keywords are UNIVERSAL across relax types
-    # despite the CG-prefixed names -- ``MD.NumCGsteps`` and
-    # ``MD.MaxCGDispl`` are recognized for CG, Broyden, AND FIRE.
+    # despite the CG-prefixed names -- ``MD.Steps`` and
+    # ``MD.MaxDispl`` are recognized for CG, Broyden, AND FIRE.
     #
     # HISTORY: pre-2026-06-23, this branch emitted made-up per-
     # algorithm keywords (``MD.NumBroydenSteps``, ``MD.MaxDispl``)
@@ -1256,8 +1256,8 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # 2026-06-23 in design.md for the full failure analysis.
     #
     # Empirical proof of the universal mapping (small H2 against
-    # SIESTA 5.4.2 with ``MD.TypeOfRun Broyden`` + ``MD.NumCGsteps 5``
-    # + ``MD.MaxCGDispl 0.1 Ang``):
+    # SIESTA 5.4.2 with ``MD.TypeOfRun Broyden`` + ``MD.Steps 5``
+    # + ``MD.MaxDispl 0.1 Ang``):
     #   redata: Dynamics option        = Broyden coord. optimization
     #   redata: Maximum number of optimization moves = 5
     #   redata: Max atomic displ per move = 0.1000 Ang
@@ -1267,7 +1267,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # step-control keywords -- ``MD.FinalTimeStep`` + the temperature
     # block.  They never reached this branch with the broken mapping
     # because no test ever ran them; today they're handled below too
-    # for completeness, with the universal MD.NumCGsteps NOT emitted
+    # for completeness, with the universal MD.Steps NOT emitted
     # (it would be a no-op + visual noise in the fdf).
     if cfg.relax_type and cfg.relax_type.lower() != "none":
         relax_kind = cfg.relax_type.strip().upper()
@@ -1276,17 +1276,17 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         # Verlet / Nose use MD.FinalTimeStep instead (the loop is
         # time-based, not step-count-based) -- handled below.
         _STEP_KW = {
-            "CG":      "MD.NumCGsteps",
-            "BROYDEN": "MD.NumCGsteps",
-            "FIRE":    "MD.NumCGsteps",
+            "CG":      "MD.Steps",
+            "BROYDEN": "MD.Steps",
+            "FIRE":    "MD.Steps",
             "VERLET":  "MD.FinalTimeStep",
             "NOSE":    "MD.FinalTimeStep",
         }
-        step_kw = _STEP_KW.get(relax_kind, "MD.NumCGsteps")
+        step_kw = _STEP_KW.get(relax_kind, "MD.Steps")
         # Universal displacement-cap keyword for CG / Broyden / FIRE;
         # Verlet / Nose have no per-step displacement cap (forces +
         # masses drive the timestep instead).
-        displ_kw = "MD.MaxCGDispl" if not is_md else None
+        displ_kw = "MD.MaxDispl" if not is_md else None
 
         out.append("# --- Geometry optimisation / dynamics ---")
         if v: out += [
@@ -1461,8 +1461,8 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "# ============================================================",
             "#",
             "# SCF doesn't converge:",
-            "#   * lower DM.MixingWeight to 0.005",
-            "#   * increase DM.NumberPulay to 5-8",
+            "#   * lower SCF.Mixer.Weight to 0.005",
+            "#   * increase SCF.Mixer.History to 5-8",
             "#   * raise ElectronicTemperature to 1000-2000 K (metals)",
             "#   * verify all .psml pseudopotentials are in this directory",
             "#",
@@ -1478,8 +1478,8 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "#   * SolutionMethod OMM for >500 atoms",
             "#",
             "# Energy fluctuates during SCF:",
-            "#   * lower DM.MixingWeight to 0.005",
-            "#   * raise DM.NumberPulay to 6",
+            "#   * lower SCF.Mixer.Weight to 0.005",
+            "#   * raise SCF.Mixer.History to 6",
             "#   * tighten DM.Energy.Tolerance to 1e-5 eV",
             "#",
             "# 'propor: ERROR: IMAX = 0' on parallel run:",
@@ -1504,7 +1504,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             out += [
                 "#",
                 "# Relaxation oscillates near minimum:",
-                "#   * shrink MD.MaxCGDispl to 0.02 Ang",
+                "#   * shrink MD.MaxDispl to 0.02 Ang",
                 "#   * loosen MD.MaxForceTol to 0.04 eV/Ang",
                 "#   * switch MD.TypeOfRun to Broyden (often robust on",
                 "#     flat regions) or FIRE (better for >100 atoms)",
@@ -1550,7 +1550,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # ----- Wrap engine body with script-contract blocks -----
     # See docs/execution/job-contracts.md.  Per-emission rules:
     #   - PROVENANCE: always emitted (cheap, always meaningful).
-    #   - BENCH-MARKS: always emitted for .fdf.  The MD.NumCGsteps
+    #   - BENCH-MARKS: always emitted for .fdf.  The MD.Steps
     #     anchor is UNIVERSAL across CG / Broyden / FIRE (post
     #     2026-06-23 SIESTA keyword fix); the bench picks it up
     #     regardless of cfg.relax_type.
@@ -1624,10 +1624,10 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "MaxSCFIterations":  cfg.max_scf_iter,
             # only when the DECK carries the line (CG/Broyden/FIRE):
             # relax "none" and the Verlet/Nose dynamics emit no
-            # MD.NumCGsteps, and a defaults row for an absent keyword is
+            # MD.Steps, and a defaults row for an absent keyword is
             # the block lying -- the same rule as BlockSize's state
             # three one entry up (R11, 2026-08-12)
-            **({"MD.NumCGsteps": cfg.relax_steps}
+            **({"MD.Steps": cfg.relax_steps}
                if (cfg.relax_type
                    and cfg.relax_type.strip().upper()
                    in ("CG", "BROYDEN", "FIRE"))

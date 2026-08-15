@@ -113,8 +113,8 @@ help = "diagon / OMM / transiesta (transiesta requires the TranSIESTA build)"
 kind = "engine"
 category = ["convergence"]
 engines = ["siesta"]
-anchor = "DM.MixingWeight"
-engine_key = "DM.MixingWeight"
+anchor = "SCF.Mixer.Weight"
+engine_key = "SCF.Mixer.Weight"
 type = "float"
 value = 0.02
 default = 0.02
@@ -128,8 +128,8 @@ help = "DM mixing weight; smaller = more conservative SCF, lower if oscillating"
 kind = "engine"
 category = ["convergence"]
 engines = ["siesta"]
-anchor = "DM.NumberPulay"
-engine_key = "DM.NumberPulay"
+anchor = "SCF.Mixer.History"
+engine_key = "SCF.Mixer.History"
 type = "int"
 value = 3
 default = 3
@@ -272,17 +272,17 @@ Recommended workflow: stage 1 CG (warm-up) → stage 2 Broyden (refine).  See do
 kind = "deck"
 category = ["procedure"]
 engines = ["siesta"]
-expands = ["MD.NumCGsteps", "MD.FinalTimeStep"]
-engine_key = "MD.NumCGsteps (universal for CG / Broyden / FIRE) | MD.FinalTimeStep (Verlet / Nose)"
+expands = ["MD.Steps", "MD.FinalTimeStep"]
+engine_key = "MD.Steps (CG / Broyden / FIRE) | MD.FinalTimeStep (Verlet / Nose)"
 type = "int"
 value = 200
 default = 200
 range = [1, 10000]
 group = "budget"
-label = "MD.NumCGsteps (max geometry-optimisation steps)"
+label = "Max geometry-optimisation steps"
 tier = "advanced"
 help = """
-OUTER loop: max geometry steps the optimiser is allowed (each step = full SCF + forces + atom move).  In SIESTA 5.4.2 ``MD.NumCGsteps`` is the universal step-count keyword for CG, Broyden, AND FIRE despite the CG-prefixed name; Verlet/Nose use MD.FinalTimeStep instead.
+OUTER loop: max geometry steps the optimiser is allowed (each step = full SCF + forces + atom move).  Which keyword carries it is decided by MD.TypeOfRun: CG / Broyden / FIRE relax and bound the loop with ``MD.Steps``; Verlet / Nose integrate and bound it with ``MD.FinalTimeStep`` instead (SIESTA 5.4.2, siesta_init.F -- idyn 0 uses MD.Steps, idyn 1-5 use MD.InitialTimeStep..MD.FinalTimeStep).  ``MD.Steps`` DEPRECATES the older ``MD.NumCGsteps``, whose CG-prefixed name hid that it was never CG-only.
 Per-tier: loose warm-up ~50, publishable ~200, tight (vib/IR) ~100 (small displacement cap = slow but few steps from a publishable-converged starting geometry).  See docs/engines/tuning.md § 2.10."""
 
 [item.relax_force_tol]
@@ -308,8 +308,8 @@ SIESTA only checks max force.  See docs/engines/tuning.md § 2.3 for the 5-crite
 kind = "engine"
 category = ["procedure", "convergence"]
 engines = ["siesta"]
-anchor = "MD.MaxCGDispl"
-engine_key = "MD.MaxCGDispl (universal for CG / Broyden / FIRE)"
+anchor = "MD.MaxDispl"
+engine_key = "MD.MaxDispl (CG / Broyden / FIRE)"
 type = "float"
 value = 0.05
 default = 0.05
@@ -319,7 +319,7 @@ group = "stage"
 label = "Max displacement per step"
 tier = "advanced"
 help = """
-Displacement cap per optimiser step (Å).  In SIESTA 5.4.2 ``MD.MaxCGDispl`` is the universal displacement-cap keyword across CG, Broyden, AND FIRE despite the CG-prefixed name.  Hard ceiling that catches line-search over-shoot.
+Displacement cap per optimiser step (Å).  Applies across CG, Broyden AND FIRE.  Hard ceiling that catches line-search over-shoot.  ``MD.MaxDispl`` DEPRECATES the older ``MD.MaxCGDispl`` (SIESTA 5.4.2); same meaning, same 0.2 Bohr default, and the CG-prefixed name was never CG-only.
 Per-tier (Å): screening 0.30, loose preopt 0.20, publishable 0.05, tight (vib/IR) 0.02.
 Symptom of too-large cap: max-force oscillates rather than descends (e.g. 0.09 → 0.44 → 0.13 → 0.31 → ...).  Halve the cap.  See docs/engines/tuning.md § 2.2 + the BDT/Au worked example in § 6."""
 

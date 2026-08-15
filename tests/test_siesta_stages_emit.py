@@ -96,14 +96,14 @@ def test_fdfs_per_stage_md_block_uses_stage_values(h2, cfg, stages):
     s2 = fdfs["JOB_02_medium.fdf"]
 
     assert "MD.TypeOfRun CG" in s1
-    assert "MD.NumCGsteps 600" in s1
+    assert "MD.Steps 600" in s1
     assert "MD.MaxForceTol 0.05 eV/Ang" in s1
-    assert "MD.MaxCGDispl 0.2" in s1
+    assert "MD.MaxDispl 0.2" in s1
 
     assert "MD.TypeOfRun Broyden" in s2
-    assert "MD.NumCGsteps 200" in s2
+    assert "MD.Steps 200" in s2
     assert "MD.MaxForceTol 0.04 eV/Ang" in s2
-    assert "MD.MaxCGDispl 0.05" in s2
+    assert "MD.MaxDispl 0.05" in s2
 
 
 def test_fdfs_disabled_stages_drop_out(h2, cfg, stages):

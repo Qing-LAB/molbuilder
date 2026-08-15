@@ -583,7 +583,7 @@ other: `diag_algorithm` is `kind="engine"` (a SIESTA keyword) and
 **presentation and discovery** key, and that is what licenses the next rule.
 
 **`category` is a LIST, and an item may carry several** — because parameters
-genuinely belong to more than one question. `DM.MixingWeight` is how you *reach*
+genuinely belong to more than one question. `SCF.Mixer.Weight` is how you *reach*
 convergence; `MeshCutoff` decides accuracy *and* costs time; `SolutionMethod`
 is a method choice that a user hunting a stubborn SCF will look for under
 convergence.
@@ -963,7 +963,7 @@ a fact about the engine, not about our code:
 
 | the shape | the example | why splicing fails |
 |---|---|---|
-| **one parameter decides where another lands** | a stage moving `relax_type` from `CG` to `Verlet` moves the step budget from `MD.NumCGsteps` to `MD.FinalTimeStep` | the site itself is chosen by another value, so there is no fixed place to aim at |
+| **one parameter decides where another lands** | a stage moving `relax_type` from `CG` to `Verlet` moves the step budget from `MD.Steps` to `MD.FinalTimeStep` | the site itself is chosen by another value, so there is no fixed place to aim at |
 | **one parameter writes two keywords** | `spin_total` writes `Spin.Fix` *and* `Spin.Total`, and the first is required or the second is silently ignored | substituting one keyword writes one line |
 | **a parameter writes no line at all** | ten SIESTA fields emit nothing at their defaults | there is nothing to substitute into — it would have to *insert*, and where to insert is the emitter's knowledge |
 
@@ -1306,7 +1306,7 @@ over the description, not a mutation of it, which is what lets you re-prep any
 stage at any time and get the same deck.
 
 > **This is also why D4 matters.** A stage overriding `relax_type` from `CG` to
-> `Verlet` moves the step budget from `MD.NumCGsteps` to `MD.FinalTimeStep` —
+> `Verlet` moves the step budget from `MD.Steps` to `MD.FinalTimeStep` —
 > the *site itself* is chosen by another value. Rebuilding and rendering handles
 > that; splicing at anchors has nothing to aim at.
 

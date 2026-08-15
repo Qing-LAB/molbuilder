@@ -701,7 +701,7 @@ what limits:
 #
 #   field BlockSize        anchor=BlockSize        type=pow2  range=[8,256]  default=256
 #   field MaxSCFIterations anchor=MaxSCFIterations type=int   default=500
-#   field MD.NumCGsteps    anchor=MD.NumCGsteps    type=int   default=200
+#   field MD.Steps    anchor=MD.Steps    type=int   default=200
 #   field MeshCutoff       anchor=MeshCutoff       type=float unit=Ry  default=400.0
 #   field Diag.Algorithm   anchor=Diag.Algorithm   type=enum
 # === molbuilder bench-marks END ===

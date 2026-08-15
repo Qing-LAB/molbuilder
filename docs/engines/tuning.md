@@ -102,7 +102,7 @@ oscillation dominates the cost — don't switch back to CG).
 **Worked example.** On the 2026-06-23 BDT/Au(111) junction (444 atoms, organic-on-
 metal, vdW interface, `MD.MaxForceTol 0.04 eV/Å`), CG bounced between 0.087 and
 0.54 eV/Å for 20+ moves over 12 h with no monotonic trend. Broyden with
-`MD.MaxCGDispl 0.02 Å` converges the same system in ≤ 30 moves — the fix was the
+`MD.MaxDispl 0.02 Å` converges the same system in ≤ 30 moves — the fix was the
 optimizer + step cap, not the threshold. [Johnson 1988; Bitzek 2006]
 
 ### 2.2 Step displacement cap
@@ -120,7 +120,7 @@ catches line-search over-shoot and keeps the optimizer in the basin it started i
 For calibration, Gaussian's `OPT` defaults its step cap to 0.30 Bohr (≈ 0.16 Å) and
 `Tight` tightens it to 0.02 Bohr (≈ 0.011 Å).
 
-- **SIESTA** `MD.MaxCGDispl` — **universal across CG / Broyden / FIRE** in SIESTA 5.4.2
+- **SIESTA** `MD.MaxDispl` — **universal across CG / Broyden / FIRE** in SIESTA 5.4.2
   despite the CG-prefixed name (`siesta/input.py` emits it for all three). The
   per-type aliases `MD.MaxDispl` some references list are *not* applied to Broyden's
   cap — recognized as an fdf key but silently mis-applied.
@@ -293,7 +293,7 @@ conventional form in prose ("ωB97M-V"); the spelling traps are in
 | Loop | Engine | Shipped default | Rationale |
 |---|---|---|---|
 | **Geometry (outer)** | PySCF `max_steps` | stage1 **50**, stage2 **200**, stage3 **100** | a warm-up needing > 50 has a wrong starting geometry — stop and inspect; 200 is the publishable safety margin |
-| | SIESTA `MD.NumCGsteps` | stage1 **600**, stage2 **200**, stage3 **100** | universal across CG / Broyden / FIRE (the per-type aliases aren't recognized); SIESTA's stage-1 budget is more generous than PySCF's |
+| | SIESTA `MD.Steps` | stage1 **600**, stage2 **200**, stage3 **100** | universal across CG / Broyden / FIRE (the per-type aliases aren't recognized); SIESTA's stage-1 budget is more generous than PySCF's |
 | **SCF (inner)** | PySCF `mf.max_cycle` | **100** | plenty for a well-conditioned SCF; hitting 100 means the *system* is the problem (broken-symmetry open shell, level-shift needed) — 500 won't help |
 | | SIESTA `MaxSCFIterations` | **500** | SIESTA's generous default; each outer step runs at most this many inner cycles until `DM.Tolerance` is met |
 
@@ -429,11 +429,11 @@ For users who know one engine and want the other's equivalent.
 | Geometry algorithm | `MD.TypeOfRun` | `cfg.optimizer` (`"geometric"` ≈ BFGS) | enum |
 | Force convergence | `MD.MaxForceTol` | `convergence_gmax` (`StageSpec.gmax`) | SIESTA eV/Å; PySCF Ha/Bohr |
 | RMS-grad convergence | *(not checked)* | `convergence_grms` (`grms`) | Ha/Bohr |
-| Displacement convergence | *(implicit via `MD.MaxCGDispl`)* | `convergence_dmax`/`_drms` (`dmax`/`drms`) | Å |
+| Displacement convergence | *(implicit via `MD.MaxDispl`)* | `convergence_dmax`/`_drms` (`dmax`/`drms`) | Å |
 | Energy-step convergence | *(implicit via SCF tol)* | `convergence_energy` (`etol`) | Hartree |
-| Step cap | `MD.MaxCGDispl` (universal) | *(geomeTRIC-internal line search)* | Å |
+| Step cap | `MD.MaxDispl` (universal) | *(geomeTRIC-internal line search)* | Å |
 | SCF tolerance | `DM.Tolerance` | `mf.conv_tol` | dimensionless / Hartree |
-| Max geometry steps | `MD.NumCGsteps` (universal) | `StageSpec.max_steps` | integer |
+| Max geometry steps | `MD.Steps` (universal) | `StageSpec.max_steps` | integer |
 | Max SCF cycles | `MaxSCFIterations` | `mf.max_cycle` | integer |
 | Discretisation | `MeshCutoff` (Ry) | *(basis-determined)* | Ry / — |
 | Basis | NAO via `PAO.Basis` (default DZP) | `cfg.basis` (Gaussian, default def2-SVP) | string |
@@ -509,9 +509,9 @@ STAGES = [
 ```fdf
 # SIESTA: the stage-2 (publishable) MD block
 MD.TypeOfRun      Broyden
-MD.NumCGsteps     200
+MD.Steps     200
 MD.MaxForceTol    0.04 eV/Ang
-MD.MaxCGDispl     0.05 Ang
+MD.MaxDispl     0.05 Ang
 ```
 
 Global knobs (not per-stage) carry their own shipped defaults: SIESTA
@@ -530,7 +530,7 @@ Global knobs (not per-stage) carry their own shipped defaults: SIESTA
 
 **Why keep CG history on a resume but reset on a tier switch.** CG's conjugate basis
 builds up over moves; discarding it wastes ~5–10 moves of warm-up. But when you
-tighten `MD.MaxCGDispl` or switch CG → Broyden, the old basis is *poisoned* by the
+tighten `MD.MaxDispl` or switch CG → Broyden, the old basis is *poisoned* by the
 over-shoot pattern that triggered the switch — keeping it re-creates the same
 oscillation.
 
@@ -546,7 +546,7 @@ Walking the 2026-06-23 case through the framework:
 | Material class? | organic-on-metal interface, vdW | **Broyden**, not CG (§ 2.1) |
 | Cell? | 4×4×1 surface supercell | 6×6×1 k-grid (§ 2.7) |
 | Current state? | CG oscillating 0.09–0.5 eV/Å for 20+ moves | the *optimizer + step cap* are wrong, not the threshold |
-| Stage-2 `.fdf` | `MD.TypeOfRun Broyden`, `MD.MaxCGDispl 0.02`, `MD.MaxForceTol 0.04`, `DM.Tolerance 1e-4`, `MeshCutoff 350 Ry` | publishable tier, **but the step cap is tightened to 0.02 Å** (the § 2.1 fix that kills the CG oscillation — the rest is the publishable column) |
+| Stage-2 `.fdf` | `MD.TypeOfRun Broyden`, `MD.MaxDispl 0.02`, `MD.MaxForceTol 0.04`, `DM.Tolerance 1e-4`, `MeshCutoff 350 Ry` | publishable tier, **but the step cap is tightened to 0.02 Å** (the § 2.1 fix that kills the CG oscillation — the rest is the publishable column) |
 
 ---
 

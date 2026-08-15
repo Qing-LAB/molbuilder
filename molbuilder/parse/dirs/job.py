@@ -49,7 +49,13 @@ ENGINE_BODY_KEYS: Tuple[str, ...] = (
     "SystemLabel", "SystemName", "NumberOfAtoms", "NumberOfSpecies",
     # SCF
     "MeshCutoff", "PAO.BasisSize", "PAO.EnergyShift",
+    # BOTH spellings, and both stay.  SIESTA 5.4.2 deprecated the DM.* pair in
+    # favour of SCF.Mixer.*, and molbuilder emits the new ones since
+    # 2026-08-15 -- but this list is what a deck ON DISK is read with, and
+    # every run before that date wrote the old ones.  Dropping them would
+    # make an existing job's summary silently lose its mixing parameters.
     "DM.Tolerance", "DM.MixingWeight", "DM.NumberPulay",
+    "SCF.Mixer.Weight", "SCF.Mixer.History",
     "MaxSCFIterations", "ElectronicTemperature",
     # XC
     "XC.functional", "XC.authors", "SpinPolarized",
@@ -58,6 +64,7 @@ ENGINE_BODY_KEYS: Tuple[str, ...] = (
     "Diag.ELPA.GPU", "Diag.ParallelOverK",
     # MD / relax
     "MD.TypeOfRun", "MD.NumCGsteps", "MD.MaxForceTol", "MD.MaxCGDispl",
+    "MD.Steps", "MD.MaxDispl",
     # k-mesh (block-valued; reduced to "AxBxC" form)
     "kgrid_Monkhorst_Pack",
 )
@@ -246,12 +253,16 @@ def _classify_job_type(fdf_text: str) -> str:
     bench_field_names = {f["name"] for f in bench.get("fields", []) if isinstance(f, dict)}
 
     # Step 1b: inference from BENCH-MARKS field list when block present.
-    has_md = ("MD.NumCGsteps" in bench_field_names)
+    # Either spelling counts: new decks say MD.Steps, decks written before
+    # 2026-08-15 say MD.NumCGsteps, and "is this a relaxation" is the same
+    # question either way.
+    has_md = bool({"MD.Steps", "MD.NumCGsteps"} & bench_field_names)
 
     # Step 2: sniff engine body.  All patterns are start-of-line
     # anchored (re.M) so commented-out post-processing templates
     # (`# %block ProjectedDensityOfStates`) don't false-match.
-    has_md_engine = re.search(r"^\s*MD\.NumCGsteps\s+(\d+)", fdf_text, re.M)
+    has_md_engine = re.search(
+        r"^\s*MD\.(?:Steps|NumCGsteps)\s+(\d+)", fdf_text, re.M)
     has_md_typeofrun = re.search(r"^\s*MD\.TypeOfRun\s+\S+", fdf_text, re.M)
     has_pdos = bool(re.search(
         r"^\s*%block\s+ProjectedDensityOfStates\b", fdf_text, re.M | re.I))
@@ -720,7 +731,11 @@ def _build_progress(plots: Dict[str, Dict[str, List[List[float]]]],
             key=lambda n: (_detect_stage(n) or 0, n),
         )[-1]
         ebs = engine_inputs[last_fdf].get("engine_body_summary", {})
-        raw = ebs.get("MD.NumCGsteps")
+        # MD.Steps first -- it is what we write now; MD.NumCGsteps is the
+        # deprecated spelling every pre-2026-08-15 deck on disk carries.
+        raw = ebs.get("MD.Steps")
+        if raw is None:
+            raw = ebs.get("MD.NumCGsteps")
         if raw is not None:
             try:
                 target_cg_steps = int(raw)

@@ -413,7 +413,7 @@ directory, with these fields:
 
 - **`job_type`** — `optimization` / `spectrum` / `transport`, inferred from the
   script-contract BENCH-MARKS block or by sniffing the engine body
-  (`MD.NumCGsteps` → optimization; `%block ProjectedDensityOfStates` → spectrum;
+  (`MD.Steps` → optimization; `%block ProjectedDensityOfStates` → spectrum;
   `%block TS.Elec.*` → transport; conflicting matches raise
   `JobTypeAmbiguousError`).
 - **`status`** — `running` / `stale` / `failed` / `finished`, derived from the

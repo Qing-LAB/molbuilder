@@ -27,6 +27,8 @@ import dataclasses
 
 import pytest
 
+from molbuilder.config.spectra import SpectraConfig
+from molbuilder.config.transport import TransportConfig
 from molbuilder.issues import Issue
 from molbuilder.pyscf import PySCFConfig
 from molbuilder.siesta import SiestaConfig
@@ -275,24 +277,40 @@ class TestEveryExposedFieldIsTagged:
     answer different questions:
 
       ``section``         is this field in the form at all?  A field without
-                          one is deliberately internal (``species_order``,
-                          ``copy_psml``) and the form never shows it.
+                          one is deliberately internal and the form never
+                          shows it.
       ``workflow_group``  WHICH card, and therefore where a finding about it
                           appears (``web/ui-contract.md`` Rule 2).
 
     **So they must move together.**  A field with a ``section`` and no
-    ``workflow_group`` renders bare after the three cards and its findings
-    fall to a residual panel instead of sitting beside the field they
-    concern — a half-integrated field, which is exactly the state this test
-    exists to catch.  The reverse, a tagged field with no ``section``, is a
-    tag nothing can ever read.
+    ``workflow_group`` renders bare after the cards and its findings fall to a
+    residual panel instead of sitting beside the field they concern — a
+    half-integrated field, which is exactly the state this test exists to
+    catch.  The reverse, a tagged field with no ``section``, is a tag nothing
+    can ever read.
 
-    **It holds today, on both engines** — checked 2026-08-07, zero offenders
-    in either direction.  It has simply never been written down or guarded,
-    which is why a new field can quietly break it.
+    ⚠ **SiestaConfig and PySCFConfig left this rule on 2026-08-15**, and the
+    parametrize list below is the whole change.  Their form is built from
+    ``data/catalogue.template.toml``, which has no ``section``: an item is on
+    the form because the catalogue carries it, so a field without one is no
+    longer internal.  That was the POINT — ``section`` was an opt-in and
+    fifteen ordinary parameters never got one, so `write_forces`,
+    `species_order`, `copy_psml`, PySCF's `ecp` / `auxbasis` / `diis_space`
+    and the rest were invisible while reaching the generated file all along.
+    Keeping them here would pin the very gate that hid them
+    (`web/form-schema.md` § 1a).
+
+    What replaces it for those two is not weaker: the catalogue must give
+    EVERY item a card, guarded by
+    ``test_catalogue_agreement.py::test_every_catalogue_item_declares_a_panel``,
+    and the class's ``workflow_group`` must agree with the catalogue's
+    ``group`` — the form reads one and finding-placement reads the other.
+
+    **Spectra and Transport still call ``dataclass_to_form_schema``**, so for
+    them the rule is unchanged and still guarded here.
     """
 
-    @pytest.mark.parametrize("cfg_cls", [SiestaConfig, PySCFConfig])
+    @pytest.mark.parametrize("cfg_cls", [SpectraConfig, TransportConfig])
     def test_section_and_workflow_group_move_together(self, cfg_cls):
         exposed_untagged, tagged_hidden = [], []
         for f in dataclasses.fields(cfg_cls):

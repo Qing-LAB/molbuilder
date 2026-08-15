@@ -522,3 +522,102 @@ class TestSpinPolarizedNeedsSpinTotal:
                         if i.where == "config.spin_total"
                         and "propor" in i.message]
         assert not propor_errs
+
+
+# --------------------------------------------------------------------- #
+#  Deck keyword CURRENCY -- we must not write options SIESTA retired.   #
+# --------------------------------------------------------------------- #
+
+#: Every keyword the SIESTA 5.4.2 manual formally retires, with what replaced
+#: it.  Not prose-derived: the manual marks each one with ``\fdfdeprecates``,
+#: and this table is that markup, read out of the manual source at tag 5.4.2
+#: (``Docs/tex/sections/**.tex``; ``!`` in the markup means a dotted prefix).
+#:
+#: Carried as DATA rather than parsed at test time on purpose — the manual
+#: lives in an optional source checkout, and a test that silently skips when
+#: it is absent is a test that never runs. To refresh after a SIESTA bump:
+#:
+#:     grep -rhoP '\\fdfdeprecates\{[^}]+\}' <siesta>/Docs/tex | ...
+SIESTA_542_DEPRECATED = {
+    "MD.NumCGsteps":   "MD.Steps",
+    "MD.MaxCGDispl":   "MD.MaxDispl",
+    "DM.MixingWeight": "SCF.Mixer.Weight",
+    "DM.NumberPulay":  "SCF.Mixer.History",
+    "DM.NumberBroyden": "SCF.Mixer.History",
+    "DM.MixSCF1":      "SCF.Mix.Spin",
+    "MD.TargetPressure": "Target.Pressure",
+    "MD.TargetStress": "Target.Stress.Voigt",
+    "MD.FCDispl":      "FC.Displacement",
+    "MD.FCFirst":      "FC.First",
+    "MD.FCLast":       "FC.Last",
+    "UseNewDiagk":     "Diag.WFS.Cache",
+    "WriteMullikenPop": "Charge.Mulliken",
+    "Write.HirshfeldPop": "Charge.Hirshfeld",
+    "Write.VoronoiPop": "Charge.Voronoi",
+    "Diag.DivideAndConquer": "Diag.Algorithm",
+    "Diag.MRRR":       "Diag.Algorithm",
+    "Diag.ELPA":       "Diag.Algorithm",
+    "Diag.NoExpert":   "Diag.Algorithm",
+    "SpinPolarized":   "Spin",
+    "NonCollinearSpin": "Spin",
+    "SpinOrbit":       "Spin",
+}
+
+#: The one we still write, and why it is not a simple swap.  ``Spin`` is not a
+#: rename of ``SpinPolarized``: it consolidated THREE booleans into one
+#: four-valued enum (non-polarized / polarized / non-colinear / spin-orbit).
+#: Migrating changes the parameter's TYPE in the template and would expose two
+#: states molbuilder cannot currently express, so it is a design decision and
+#: not a sweep.  Listed here so the guard below still catches every OTHER
+#: deprecated keyword, and so removing this entry is what closes it.
+KNOWN_DEPRECATED_STILL_EMITTED = {"SpinPolarized"}
+
+
+def test_no_deprecated_siesta_keyword_reaches_the_deck(water_struct):
+    """We must not write options the engine has retired.
+
+    Five were being written until 2026-08-15 — ``MD.NumCGsteps``,
+    ``MD.MaxCGDispl``, ``DM.MixingWeight``, ``DM.NumberPulay`` and
+    ``SpinPolarized`` — and none of them was noticed by reading the code,
+    because deprecation is a fact about the MANUAL, not about the source. The
+    code accepts them happily; the manual is where they are marked retired.
+
+    Swept across optimiser types and the switches that open conditional
+    blocks, because a deprecated keyword can hide behind a branch.
+    """
+    import dataclasses
+    seen = set()
+    for relax in ("cg", "broyden", "fire", "verlet", "nose"):
+        for extra in ({}, {"spin_polarized": True}, {"enable_gpu": True}):
+            try:
+                cfg = dataclasses.replace(SiestaConfig(), relax_type=relax, **extra)
+                deck = render_fdf(water_struct, cfg)
+            except Exception:
+                continue                     # a combination this build refuses
+            for line in deck.splitlines():
+                line = line.strip()
+                if line and not line.startswith(("#", "%")):
+                    seen.add(line.split()[0])
+
+    bad = sorted((seen & set(SIESTA_542_DEPRECATED)) - KNOWN_DEPRECATED_STILL_EMITTED)
+    assert not bad, (
+        "deck writes keyword(s) SIESTA 5.4.2 deprecates:\n  "
+        + "\n  ".join(f"{k} -> use {SIESTA_542_DEPRECATED[k]}" for k in bad))
+
+
+def test_the_catalogue_declares_no_deprecated_keyword():
+    """Same rule one level up — at the SOURCE rather than at the output.
+
+    The deck is generated; the catalogue is authored. A deprecated keyword
+    that reaches a deck got there because an item declares it, so this is the
+    check that names the item to fix rather than the line to grep for.
+    """
+    from molbuilder import template as T
+    cat = T.read_template(T.load_catalogue())
+    bad = []
+    for it in T.select(cat, engine="siesta", kind=("engine", "deck")):
+        for kw in (list(it.expands) or ([it.anchor] if it.anchor else [])):
+            if kw in SIESTA_542_DEPRECATED and kw not in KNOWN_DEPRECATED_STILL_EMITTED:
+                bad.append(f"{it.name} declares {kw} -> use "
+                           f"{SIESTA_542_DEPRECATED[kw]}")
+    assert not bad, "catalogue declares deprecated keyword(s):\n  " + "\n  ".join(bad)

@@ -54,8 +54,8 @@ having both.
 
 | field | keyword | wf | note |
 |---|---|---|---|
-| `mixing_weight` | `DM.MixingWeight` | profile | the classic SCF knob |
-| `pulay_history` | `DM.NumberPulay` | profile | SIESTA's `diis_space` |
+| `mixing_weight` | `SCF.Mixer.Weight` | profile | the classic SCF knob |
+| `pulay_history` | `SCF.Mixer.History` | profile | SIESTA's `diis_space` |
 | `max_scf_iter` | `MaxSCFIterations` | budget | patience, not the criterion |
 | `solution_method` | `SolutionMethod` | profile | ⚠ **M3** — see § 2 |
 | `restart` | *(expands to `DM.UseSaveDM`)* | stage | ⚠ **M4** — see § 2 |
@@ -65,8 +65,8 @@ having both.
 | field | keyword | wf | note |
 |---|---|---|---|
 | `relax_type` | `MD.TypeOfRun` | stage | decides **what runs** — CG / Verlet / MD |
-| `relax_steps` | `MD.NumCGsteps` | budget | |
-| `relax_max_displ` | `MD.MaxCGDispl` | stage | ⚠ **M5** — see § 2 |
+| `relax_steps` | `MD.Steps` | budget | |
+| `relax_max_displ` | `MD.MaxDispl` | stage | ⚠ **M5** — see § 2 |
 | `md_initial_temperature` | `MD.InitialTemperature` | profile | |
 | `md_target_temperature` | `MD.TargetTemperature` | profile | |
 | `md_length_timestep` | `MD.LengthTimeStep` | profile | |

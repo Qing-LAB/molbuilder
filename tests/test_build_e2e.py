@@ -781,3 +781,98 @@ class TestBuildSecondVisitExternalChange:
             timeout=_BOOT_TIMEOUT_MS,
         )
 
+
+
+class TestFindingsSitBesideTheirField:
+    """A finding belongs next to the control it is about (user, 2026-08-15).
+
+    It landed in the CARD's list until then — the right neighbourhood and the
+    wrong address, since a card holds twenty controls — and a finding whose
+    field had no card fell all the way to the residual panel at the bottom of
+    the page. That is where the ECP warning was: as far from the ECP box as
+    the layout allows.
+
+    Asserted in a browser because nothing below one can see it. The placement
+    depends on the rendered DOM (the ``.schema-field`` wrapper), on the schema
+    the page fetched (which supplies the field's id), and on the live preflight
+    round-trip. A unit test can check any one of those and still be looking at
+    a page where the warning is somewhere else.
+    """
+
+    def test_an_out_of_range_value_warns_beside_its_own_control(
+            self, page, flask_server, water_xyz_file):
+        _open_build(page, flask_server)
+        page.wait_for_function(
+            "() => window.molbuilder && window.molbuilder.projects"
+            "   && typeof window.molbuilder.projects.publishCommit === 'function'",
+            timeout=_BOOT_TIMEOUT_MS)
+        from pathlib import Path
+        p = str(Path(water_xyz_file).resolve())
+        page.evaluate(
+            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
+            {"dir": str(Path(p).parent), "file": p})
+        page.wait_for_function(
+            "() => document.querySelector('#info-atoms').textContent.trim() === '3'",
+            timeout=_BOOT_TIMEOUT_MS)
+
+        # 5 Ry is far below the recommended floor -> one warn on mesh_cutoff.
+        page.fill("#p-mesh-cutoff", "5")
+        page.dispatch_event("#p-mesh-cutoff", "change")
+
+        # The warning must appear INSIDE the mesh-cutoff control's own wrapper.
+        page.wait_for_function(
+            "() => { const i = document.querySelector('#p-mesh-cutoff');"
+            "  const w = i && i.closest('.schema-field');"
+            "  const u = w && w.querySelector('.field-issues .issue-item');"
+            "  return !!u; }",
+            timeout=10_000)
+        text = page.evaluate(
+            "() => document.querySelector('#p-mesh-cutoff')"
+            "        .closest('.schema-field')"
+            "        .querySelector('.field-issues .issue-item').textContent")
+        # Both halves: the meaning, and the keyword you can grep the .fdf for.
+        assert "Real-space grid cutoff" in text, text
+        assert "MeshCutoff" in text, text
+
+        # And it is not ALSO duplicated into the card list.
+        in_card = page.evaluate(
+            "() => document.querySelectorAll("
+            "  '.card-issues[data-workflow-group] .issue-item').length")
+        assert in_card == 0, f"{in_card} finding(s) also sitting in a card list"
+
+    def test_the_warning_clears_from_the_field_when_the_value_is_fixed(
+            self, page, flask_server, water_xyz_file):
+        """The half a placement change breaks quietest.
+
+        Per-field lists are created on demand, so clearing has to REMOVE them,
+        not empty them — an emptied one leaves a gap under every field that
+        ever had a finding, and a list that is never cleared shows a warning
+        about a value the user already corrected.
+        """
+        _open_build(page, flask_server)
+        page.wait_for_function(
+            "() => window.molbuilder && window.molbuilder.projects"
+            "   && typeof window.molbuilder.projects.publishCommit === 'function'",
+            timeout=_BOOT_TIMEOUT_MS)
+        from pathlib import Path
+        p = str(Path(water_xyz_file).resolve())
+        page.evaluate(
+            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
+            {"dir": str(Path(p).parent), "file": p})
+        page.wait_for_function(
+            "() => document.querySelector('#info-atoms').textContent.trim() === '3'",
+            timeout=_BOOT_TIMEOUT_MS)
+
+        page.fill("#p-mesh-cutoff", "5")
+        page.dispatch_event("#p-mesh-cutoff", "change")
+        page.wait_for_function(
+            "() => !!document.querySelector('#p-mesh-cutoff')"
+            "        .closest('.schema-field').querySelector('.field-issues')",
+            timeout=10_000)
+
+        page.fill("#p-mesh-cutoff", "300")
+        page.dispatch_event("#p-mesh-cutoff", "change")
+        page.wait_for_function(
+            "() => !document.querySelector('#p-mesh-cutoff')"
+            "        .closest('.schema-field').querySelector('.field-issues')",
+            timeout=10_000)

@@ -134,7 +134,7 @@ def render_relax_fdf(device: Structure, cfg: TransportConfig,
     L += [
         "# --- Geometry relaxation ---",
         "MD.TypeOfRun           CG",
-        f"MD.NumCGsteps          {int(relax_steps)}",
+        f"MD.Steps          {int(relax_steps)}",
         "MD.MaxForceTol         0.02 eV/Ang",
         "",
     ]

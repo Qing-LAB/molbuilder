@@ -195,13 +195,13 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | 5 | **Frozen atoms** | `%block Geometry.Constraints` (1-based indices) | only if `struct.frozen_atoms`; the 3-stage boundary carrier (see [`model/structure-annotations.md`](?doc=model/structure-annotations.md)) |
 | 6 | Basis & grid | `MeshCutoff`, `PAO.BasisSize`, `PAO.EnergyShift` | |
 | 7 | XC (+ dispersion template) | `XC.functional`, `XC.authors` | commented DFT-D template for non-vdW XC |
-| 8 | SCF | `SolutionMethod`, `DM.MixingWeight`, `DM.NumberPulay`, `DM.Tolerance`, … | Pulay = the DM-mixing scheme using past iterations |
+| 8 | SCF | `SolutionMethod`, `SCF.Mixer.Weight`, `SCF.Mixer.History`, `DM.Tolerance`, … | Pulay = the DM-mixing scheme using past iterations |
 | 9 | Spin | `SpinPolarized .true.` + optional `Spin.Fix`/`Spin.Total` | only if `spin_polarized` — § 5 |
 | 10 | NetCharge | `NetCharge ±N` | only if resolved charge ≠ 0 — § 4 |
 | 11 | k-grid | `%block kgrid_Monkhorst_Pack` from `cfg.kgrid` | § 6 |
 | 12 | **Parallel (MPI)** | `BlockSize`, `Diag.ParallelOverK` | the ScaLAPACK/ELPA orbital-distribution block. **Tunable, and omitted entirely when you want SIESTA's own default** — the three states and the guidance are [`tuning.md § 2.11`](?doc=engines/tuning.md) |
 | 13 | Diagonalizer | `Diag.Algorithm` / `Diag.ELPA.GPU` | § 7 |
-| 14 | Geometry opt / dynamics | relax: `MD.TypeOfRun` + `MD.NumCGsteps` + `MD.MaxForceTol`; dynamics (Verlet/Nose): `MD.LengthTimeStep`, `MD.InitialTemperature`, `MD.TargetTemperature` (Nosé) | skipped if `relax_type == "none"` |
+| 14 | Geometry opt / dynamics | relax: `MD.TypeOfRun` + `MD.Steps` + `MD.MaxForceTol`; dynamics (Verlet/Nose): `MD.LengthTimeStep`, `MD.InitialTemperature`, `MD.TargetTemperature` (Nosé) | skipped if `relax_type == "none"` |
 | 15 | Output flags | `WriteForces`, `WriteCoorXmol`, `SaveHS`, … | |
 | 16 | Troubleshooting block | inline tuning hints | only if `verbose_comments` |
 
@@ -211,7 +211,7 @@ it misbehaves. Removing/changing one of those comments is a spec change and
 triggers a test update.
 
 **Two `MD` keyword traps (SIESTA 5.4.2)** — pinned by decision-log 2026-06-23:
-`MD.NumCGsteps` is the **universal** step count for *every* relaxation mode
+`MD.Steps` is the **universal** step count for *every* relaxation mode
 (CG, Broyden, **and** FIRE); the `MD.NumBroydenSteps`/`MD.NumFIRESteps` aliases in
 older references are silently dropped by 5.4.2. Likewise `SaveHS` replaced the
 dropped `WriteHS`.

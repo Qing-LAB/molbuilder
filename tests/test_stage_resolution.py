@@ -98,9 +98,9 @@ def _same(emitted: str, expected) -> bool:
 
 @pytest.mark.parametrize("engine_key,coarse,tight", [
     ("MD.TypeOfRun",   "CG",   "Broyden"),
-    ("MD.NumCGsteps",  100,    900),
+    ("MD.Steps",       100,    900),
     ("MD.MaxForceTol", 0.05,   0.01),
-    ("MD.MaxCGDispl",  0.30,   0.10),
+    ("MD.MaxDispl",    0.30,   0.10),
 ])
 def test_the_stages_value_beats_the_shared_one(h2, engine_key, coarse, tight):
     """The four values that used to live in two places: each stage's deck

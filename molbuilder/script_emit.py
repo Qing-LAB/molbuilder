@@ -162,15 +162,19 @@ class BenchField:
 # Static field list for SIESTA .fdf.  PySCF and future engines get
 # their own list when their bench subcommands land.
 #
-# Anchor (post-2026-06-23 SIESTA keyword fix): the generator
-# emits ``MD.NumCGsteps`` UNIVERSALLY (CG / Broyden / FIRE) because
-# it's the only step-count keyword SIESTA 5.4.2 recognizes -- the
-# per-type aliases ``MD.NumBroydenSteps`` / ``MD.NumFIRESteps``
-# don't exist in 5.4.2 and were silently dropped pre-fix.  So the
+# Anchor (post-2026-06-23 SIESTA keyword fix): ONE step-count keyword serves
+# CG / Broyden / FIRE -- the per-type aliases ``MD.NumBroydenSteps`` /
+# ``MD.NumFIRESteps`` do not exist and were silently dropped pre-fix.  So the
 # bench anchor is the same regardless of cfg.relax_type and Step 4
 # (molbuilder bench siesta-gpu) needs no per-type dispatch.  See
 # decision-log 2026-06-23 in design.md.  Task #486 is closed by
 # this realization.
+#
+# The keyword is ``MD.Steps`` since 2026-08-15.  The 5.4.2 manual marks
+# ``MD.NumCGsteps`` deprecated (``\fdfdeprecates``, Docs/tex/sections/
+# Relaxation_phonons_md/Structural_relaxation.tex) and keeps it only "for
+# historical reasons".  A BENCH-MARKS block written before that date names
+# the old one; ``parse/dirs/job.py`` reads either.
 SIESTA_BENCH_FIELDS: List[BenchField] = [
     # NO range here, and that is the declaration.  BlockSize is the one field
     # in this list derived from a LAUNCH quantity (``engines/stages.md``
@@ -186,7 +190,7 @@ SIESTA_BENCH_FIELDS: List[BenchField] = [
     # range rather than a wrong one.
     BenchField("BlockSize",        "BlockSize",        "pow2"),
     BenchField("MaxSCFIterations", "MaxSCFIterations", "int"),
-    BenchField("MD.NumCGsteps",    "MD.NumCGsteps",    "int"),
+    BenchField("MD.Steps",         "MD.Steps",         "int"),
     BenchField("MeshCutoff",       "MeshCutoff",       "float", None, "Ry"),
     # ELPA solver variant.  ELPA-1STAGE: direct dense.
     # ELPA-2STAGE: tridiagonalises through a banded form; typically

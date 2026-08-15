@@ -120,7 +120,7 @@ configs; this is all of them.
 |---|---|---|
 | **`label`** | the field's display name | the form builder; falls back to the field name |
 | **`help`** | one sentence of guidance, shown beside the control | the form builder, and the CLI's `--help` |
-| **`section`** | which fieldset it belongs to — **and whether it is exposed at all.** A field with no `section` is internal and no surface renders it | `dataclass_to_form_schema`; the CLI option generator |
+| **`section`** | which fieldset it belongs to — **and whether it is exposed at all.** A field with no `section` is internal and no surface renders it. ⚠ **Only for `SpectraConfig` and `TransportConfig` since 2026-08-15** — see the note below | `dataclass_to_form_schema`; the CLI option generator |
 | **`workflow_group`** | which of the three cards — `profile` / `stage` / `budget` — and therefore **where a finding about it appears** | `form-schema.js` (card order), `validation-findings.js` (finding placement), `_shared.py::resolve_workflow_group` (wire enrichment) |
 | **`engine_key`** | the deck keyword it becomes (`MeshCutoff`) — **or a parenthesised note when the field is not a deck line at all**, e.g. `mpi_np`'s *"(molbuilder: .run.sh `mpirun -np N` only; not in .fdf)"* | the emitters; BENCH-MARKS; anything tracing a value to the file it lands in |
 | **`tier`** | CLI exposure level — a `--tier` filter shows only matching fields | `cli.py`'s option generator |
@@ -134,13 +134,47 @@ configs; this is all of them.
 | **`id_suffix`** | overrides the DOM id derived from the field name, where the derived one would collide or read badly | `_shared.py`'s schema emitter |
 | **`triple_labels`** | the three labels of an `int-triple` (`kx`/`ky`/`kz`) | the form builder |
 
+> ### ⚠ `section` no longer decides visibility on the two engine forms
+>
+> **Changed 2026-08-15.** The SIESTA and PySCF forms are built from the
+> **catalogue** (§ 1), which has no `section` — an item is on the form because
+> the catalogue carries it, and § 7's membership rule makes that *every
+> parameter the schema declares*. So for those two classes `section` is read by
+> nothing, and a field without one is **not** internal.
+>
+> That is not a technicality. `section` was an **opt-in**, and fifteen real
+> parameters never got one — `write_forces`, `species_order`, `copy_psml`,
+> PySCF's `ecp` / `auxbasis` / `diis_space` / `damp` and the rest. They were
+> invisible on the form while being perfectly ordinary settings that reach the
+> generated file. Building from the catalogue is what surfaced them.
+>
+> `section` is still live for **`SpectraConfig` and `TransportConfig`**, whose
+> tabs still call `dataclass_to_form_schema`. Until those move, the tag means
+> two different things depending on which class carries it, and the rules below
+> say which.
+
 ### The rules a new field must satisfy
 
-1. **`section` and `workflow_group` move together.** A field exposed in the form
-   with no group renders bare after the three cards and its findings fall to a
-   residual panel instead of beside the field — a half-integrated field. A group
-   with no `section` is a tag nothing can read. **Guarded:**
-   `tests/test_issues_workflow_group.py::TestEveryExposedFieldIsTagged`.
+1. **Every field must be placeable, and how you say so depends on the class.**
+   * **`SiestaConfig` / `PySCFConfig`** — the parameter belongs in
+     `data/catalogue.template.toml`, and its item must declare a `group` from
+     the closed vocabulary (`template.GROUPS`). An item with no group renders
+     loose below the cards and its findings fall to the residual panel instead
+     of beside the field. **Guarded:**
+     `tests/test_catalogue_agreement.py::test_every_catalogue_item_declares_a_panel`,
+     plus `test_the_renderer_knows_every_card_the_form_actually_asks_for` —
+     because a card the renderer does not draw looks exactly like no card.
+   * **`SpectraConfig` / `TransportConfig`** — `section` and `workflow_group`
+     still move together, for the reason that rule always had: a field exposed
+     with no group renders bare after the cards, and a group with no `section`
+     is a tag nothing can read. **Guarded:**
+     `tests/test_issues_workflow_group.py::TestEveryExposedFieldIsTagged`.
+   * The two engine classes still carry `workflow_group` **as well as** the
+     catalogue's `group`, and the two must agree: the form reads the
+     catalogue's, while finding-placement reads the class's
+     (`_shared.resolve_workflow_group`). A disagreement puts a control on one
+     card and its warnings on another. **Guarded:**
+     `test_every_mirrored_fact_agrees`.
 2. **`workflow_group` is a default and a placement, never a restriction.** It
    decides which card a field is drawn in, where its advice lands, and — for
    `stage` — whether its *vary per stage* box starts ticked. It does **not**

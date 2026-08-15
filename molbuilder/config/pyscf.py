@@ -550,6 +550,7 @@ class PySCFConfig:
     # auxbasis: Python-API knob; rarely set from the form (auto-pick
     # from density_fit() is the right default).  No section -> not on form.
     auxbasis: Optional[str] = field(default=None, metadata={
+        "workflow_group": "profile",
         "category": ("method",),
         "help": "auxiliary fitting basis; None lets density_fit() auto-pick",
             "engine_key":  'df.auxbasis = ...',
@@ -600,6 +601,7 @@ class PySCFConfig:
     # HINTS when a structure looks like it wants an ECP and none was
     # declared -- a hint the user confirms, never a choice made for them.
     ecp: str = field(default="", metadata={
+        "workflow_group": "profile",
         "category": ("method",),
         "label":      "Effective core potential",
         "null_label": "(none)",
@@ -609,6 +611,7 @@ class PySCFConfig:
                  "atoms selected it does nothing."),
     })
     ecp_atoms: List[str] = field(default_factory=list, metadata={
+        "workflow_group": "profile",
         "category": ("method",),
         "label":      "ECP atoms",
         "null_label": "(none)",
@@ -739,6 +742,7 @@ class PySCFConfig:
     # power users tweak via Python API.  Defaults preserve PySCF
     # behaviour for the easy-converge case.
     diis_space: int = field(default=8, metadata={
+        "workflow_group": "profile",
         "category": ("convergence",),
         "label": "DIIS subspace size",
         "engine_key":  'mf.diis_space',
@@ -747,6 +751,7 @@ class PySCFConfig:
         "help":  "DIIS subspace size; bump to 12-20 for oscillating SCFs",
     })
     damp: float = field(default=0.0, metadata={
+        "workflow_group": "profile",
         "category": ("convergence",),
         "label": "SCF damping factor",
         "engine_key":  'mf.damp',
@@ -946,7 +951,7 @@ class PySCFConfig:
     })
     verbose: int = field(default=4, metadata={
         "category": ("procedure",),
-        "workflow_group": "profile",
+        "workflow_group": "output",
         "section": "Compute & budget",
         "label": "PySCF verbose",
         "engine_key":  'mol.verbose',
@@ -956,7 +961,7 @@ class PySCFConfig:
     })
     chkfile: bool = field(default=True, metadata={
         "category": ("procedure",),
-        "workflow_group": "profile",
+        "workflow_group": "output",
         "section": "Compute & budget",
         "label":   "Write checkpoint (.chk)",
         "engine_key":  "mf.chkfile = '<path>'",
@@ -964,7 +969,7 @@ class PySCFConfig:
     })
     log_file: bool = field(default=True, metadata={
         "category": ("procedure",),
-        "workflow_group": "profile",
+        "workflow_group": "output",
         "section": "Compute & budget",
         "label":   "Write PySCF log",
         "engine_key":  "mol.stdout = open('<path>','w')",
@@ -975,6 +980,7 @@ class PySCFConfig:
         # molbuilder's own doing, not a PySCF keyword: it shapes
         # what the PRODUCER writes, so it is kind="produce" (§ 6).
         "item_kind": "produce",
+        "workflow_group": "output",
         "category": ("procedure",),
         "help": "snapshot the relaxed geometry to <job>_optimized.xyz",
             "engine_key":  '(molbuilder: writes <job>_opt.xyz post-relax)',
@@ -983,6 +989,7 @@ class PySCFConfig:
         # molbuilder's own doing, not a PySCF keyword: it shapes
         # what the PRODUCER writes, so it is kind="produce" (§ 6).
         "item_kind": "produce",
+        "workflow_group": "output",
         "category": ("procedure",),
         "help": "snapshot the input geometry to <job>_initial.xyz",
             "engine_key":  '(molbuilder: writes <job>_init.xyz pre-relax)',
@@ -991,6 +998,7 @@ class PySCFConfig:
         # molbuilder's own doing, not a PySCF keyword: it shapes
         # what the PRODUCER writes, so it is kind="produce" (§ 6).
         "item_kind": "produce",
+        "workflow_group": "output",
         "category": ("procedure",),
         "help": ("stream geomeTRIC's <job>_geom_optim.xyz so molwatch can "
                  "watch it live"),
@@ -1008,6 +1016,7 @@ class PySCFConfig:
         # molbuilder's own doing, not a PySCF keyword: it shapes
         # what the PRODUCER writes, so it is kind="produce" (§ 6).
         "item_kind": "produce",
+        "workflow_group": "output",
         "category": ("procedure",),
         "help": ("Write <job>.molwatch.log alongside the run: per-step "
                  "coordinates, energy and forces, in one additive file the "
@@ -1068,7 +1077,7 @@ class PySCFConfig:
     # ---------------- Comments ----------------
     verbose_comments: bool = field(default=True, metadata={
         "category": ("procedure",),
-        "workflow_group": "profile",
+        "workflow_group": "output",
         "section": "Compute & budget",
         "item_kind":  "produce",
         "label":   "Verbose inline comments",
@@ -1095,6 +1104,7 @@ class PySCFConfig:
         # molbuilder's own doing, not a PySCF keyword: it shapes
         # what the PRODUCER writes, so it is kind="produce" (§ 6).
         "item_kind": "produce",
+        "workflow_group": "staging",
         "category": ("procedure",),
         "label": "Relaxation stage",
         "engine_key":  '(molbuilder: filename token + log naming)',

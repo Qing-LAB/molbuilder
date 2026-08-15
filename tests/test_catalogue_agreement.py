@@ -35,6 +35,15 @@ ENGINES = [("siesta", SiestaConfig), ("pyscf", PySCFConfig)]
 #: compared as a sequence rather than a set.
 MIRRORED = ("help", "range", "unit", "choices", "label", "engine_key")
 
+#: Facts the catalogue spells one way and a dataclass field spells another.
+#: ``group`` is the CARD, and the two homes are read by different consumers:
+#: the FORM takes it from the catalogue, while finding-placement takes it from
+#: the class (``_shared.resolve_workflow_group``). A disagreement puts a
+#: control on one card and its warnings on another — which is exactly the
+#: state twenty-three fields were in on 2026-08-15, when the panels were
+#: filled in on the catalogue side only.
+RENAMED = {"group": "workflow_group"}
+
 
 def _catalogue():
     return {i.name: i for i in T.read_template(T.load_catalogue()).items}
@@ -50,8 +59,8 @@ def test_every_mirrored_fact_agrees(engine, cls):
         item = cat.get(f.name)
         if item is None:
             continue                      # not a catalogue item; § 7 exclusions
-        for key in MIRRORED:
-            meta = f.metadata.get(key)
+        for key in MIRRORED + tuple(RENAMED):
+            meta = f.metadata.get(RENAMED.get(key, key))
             if meta is None:
                 continue                  # the field says nothing; nothing to disagree with
             mine = getattr(item, key)

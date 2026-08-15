@@ -97,11 +97,11 @@ def test_emit_bench_marks_uses_anchors_not_line_numbers():
         metadata={"n_atoms": 212, "gpu_mode": "true"},
         fields=sc.SIESTA_BENCH_FIELDS,
         defaults={"BlockSize": 256, "MaxSCFIterations": 500,
-                  "MD.NumCGsteps": 200, "MeshCutoff": 400.0},
+                  "MD.Steps": 200, "MeshCutoff": 400.0},
     )
     assert "anchor=BlockSize"        in block
     assert "anchor=MaxSCFIterations" in block
-    assert "anchor=MD.NumCGsteps"    in block
+    assert "anchor=MD.Steps"         in block
     assert "anchor=MeshCutoff"       in block
     # No regression to line-number form.
     assert "line=" not in block
@@ -112,7 +112,7 @@ def test_emit_bench_marks_default_value_appears_per_field():
         metadata={"n_atoms": 212},
         fields=sc.SIESTA_BENCH_FIELDS,
         defaults={"BlockSize": 256, "MaxSCFIterations": 500,
-                  "MD.NumCGsteps": 200, "MeshCutoff": 400.0},
+                  "MD.Steps": 200, "MeshCutoff": 400.0},
     )
     assert "default=256"   in block
     assert "default=500"   in block
@@ -449,7 +449,7 @@ def test_user_custom_placeholder_is_well_formed():
 
 def test_siesta_bench_fields_cover_the_four_bench_knobs():
     names = {f.name for f in sc.SIESTA_BENCH_FIELDS}
-    assert {"BlockSize", "MaxSCFIterations", "MD.NumCGsteps", "MeshCutoff"} <= names
+    assert {"BlockSize", "MaxSCFIterations", "MD.Steps", "MeshCutoff"} <= names
 
 
 def test_blocksize_field_constrains_pow2_and_leaves_the_range_to_the_deck():

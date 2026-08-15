@@ -149,6 +149,12 @@
         },
         {
           "path": "execution/asu-sol.md"
+        },
+        {
+          "path": "execution/siesta-catalogue.md"
+        },
+        {
+          "path": "execution/template-unification-plan.md"
         }
       ]
     },

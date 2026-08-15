@@ -209,13 +209,31 @@ import { mount as mvMount, formula as mvFormula }
     // shared module iterates the FINDINGS instead of the panels, so
     // an unroutable one lands in the residual panel (R3).  These two
     // thin wrappers keep the existing call sites readable.
+    /* {field name -> the DOM id the form gave it}, from the schema this page
+     * actually rendered.  Read from the schema rather than derived, because
+     * the schema is where that rule lives; a copy of it here would be a
+     * second answer to a question with one. */
+    function _fieldIds(engine) {
+        const sch = formSchemas[engine];
+        if (!sch || !Array.isArray(sch.sections)) return null;
+        const out = {};
+        for (const sect of sch.sections) {
+            for (const fld of sect.fields) out[fld.name] = fld.id;
+        }
+        return out;
+    }
+
     function renderIssues(panelId, issues, formContainerId) {
         const f = (window.molbuilder || {}).validationFindings;
-        if (!f) return { total: 0, residual: 0, byGroup: {},
+        if (!f) return { total: 0, residual: 0, byGroup: {}, byField: {},
                          counts: { error: 0, warn: 0, info: 0 } };
+        // The engine is the container's own name -- the two are one choice.
+        const engine = (formContainerId || "").startsWith("pyscf")
+            ? "pyscf" : "siesta";
         return f.render(issues, {
             panel:     $(panelId),
             formScope: formContainerId ? $(formContainerId) : null,
+            fieldIds:  _fieldIds(engine),
         });
     }
 

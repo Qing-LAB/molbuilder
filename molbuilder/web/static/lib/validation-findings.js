@@ -41,9 +41,17 @@
  *   const summary = molbuilder.validationFindings.render(issues, {
  *       panel:     <element>,   // the row parent AND visibility owner
  *       formScope: <element>,   // optional: searched for .card-issues panels
+ *       fieldIds:  {mesh_cutoff: "p-mesh-cutoff", ...},  // optional
  *       emptyText: "No issues yet.",  // optional: shown instead of hiding
  *   });
- *   // summary = {total, residual, byGroup: {<role>: n}, counts: {error, warn, info}}
+ *   // summary = {total, residual, byGroup: {<role>: n},
+ *   //            byField: {<where>: n}, counts: {error, warn, info}}
+ *
+ * PLACEMENT, most specific first (2026-08-15): beside the CONTROL when
+ * ``fieldIds`` names it and the form rendered it; else on its CARD; else the
+ * residual panel.  Each step is strictly less specific than the last, so a
+ * finding never sits further from its field than it has to.  Omit ``fieldIds``
+ * and the behaviour is exactly what it was — card, then residual.
  *
  *   molbuilder.validationFindings.clear({panel, formScope});
  *
@@ -97,6 +105,51 @@
         while (el.firstChild) el.removeChild(el.firstChild);
     }
 
+    /* The control a finding is ABOUT, when we can name it (2026-08-15).
+     *
+     * A card is the right neighbourhood and the wrong address.  "Effective
+     * core potential is ignored without ECP atoms" sitting in a list at the
+     * bottom of a card with twenty controls makes the reader hunt for the one
+     * it means -- and a finding about a field whose card is unknown falls all
+     * the way to the residual panel, which is how the ECP warning ended up
+     * nowhere near the ECP box.
+     *
+     * ``fieldIds`` maps a config field NAME to the DOM id the form gave it,
+     * and the caller builds it from THE SAME SCHEMA IT RENDERED FROM.  That
+     * matters: deriving the id here by rewriting ``config.mesh_cutoff`` into
+     * ``p-mesh-cutoff`` would be a second implementation of a rule the schema
+     * already answers, and it would have been wrong for every field whose id
+     * is not its dashed name.
+     *
+     * Returns the ``.schema-field`` wrapper, not the input: a finding belongs
+     * beside the whole control -- label, unit, help -- not inside its box.
+     */
+    function _fieldAnchor(formScope, issue, fieldIds) {
+        if (!formScope || !fieldIds) return null;
+        var where = (issue && issue.where) || "";
+        if (where.indexOf("config.") !== 0) return null;
+        // `config.frozen_atoms` and friends can carry a sub-path; the FIELD is
+        // the first segment, which is what the schema names.
+        var name = where.slice("config.".length).split(".")[0];
+        var id = fieldIds[name];
+        if (!id) return null;
+        var input = formScope.querySelector("#" + (root.CSS && root.CSS.escape
+                                                   ? root.CSS.escape(id) : id));
+        if (!input) return null;
+        return input.closest ? input.closest(".schema-field") : null;
+    }
+
+    /* The <ul> beside one control, created on demand. */
+    function _fieldPanel(doc, anchor) {
+        var ul = anchor.querySelector(":scope > .field-issues");
+        if (!ul) {
+            ul = doc.createElement("ul");
+            ul.className = "issues-panel field-issues";
+            anchor.appendChild(ul);
+        }
+        return ul;
+    }
+
     function clear(opts) {
         opts = opts || {};
         var panels = _cardPanels(opts.formScope);
@@ -106,6 +159,25 @@
             _emptyPanel(panels[role]);
             panels[role].hidden = true;
         });
+        // Per-field lists are REMOVED, not emptied: they are created on demand
+        // beside a control, so an empty one left behind is a gap in the layout
+        // under every field that ever had a finding.
+        if (opts.formScope && opts.formScope.querySelectorAll) {
+            var stale = opts.formScope.querySelectorAll(".field-issues") || [];
+            for (var s = 0; s < stale.length; s++) {
+                // Detach when the node knows its parent, empty it when it does
+                // not.  Both leave no stale row, and the second is what a DOM
+                // that implements only part of the interface can do -- the
+                // module already refuses to reach for `document` for the same
+                // reason (the spectra inspector mounts inside a subtree).
+                var node = stale[s];
+                if (node.parentNode && node.parentNode.removeChild) {
+                    node.parentNode.removeChild(node);
+                } else {
+                    _emptyPanel(node);
+                }
+            }
+        }
         if (opts.panel) {
             _emptyPanel(opts.panel);
             opts.panel.hidden = true;
@@ -118,7 +190,7 @@
         var list = (issues || []).filter(Boolean);
         var doc = (panel && panel.ownerDocument) || root.document;
         var summary = {
-            total: list.length, residual: 0, byGroup: {},
+            total: list.length, residual: 0, byGroup: {}, byField: {},
             counts: { error: 0, warn: 0, info: 0 },
         };
 
@@ -142,6 +214,22 @@
         list.forEach(function (issue) {
             summary.counts[_severityOf(issue)] += 1;
             var group = issue && issue.workflow_group;
+            // BESIDE THE CONTROL first, the card second, the residual panel
+            // last.  Each fallback is strictly less specific than the one
+            // before it, so a finding never moves further from its field than
+            // it has to -- and one whose field is not on the page still lands
+            // on the right card rather than at the bottom.
+            var anchor = _fieldAnchor(opts.formScope, issue, opts.fieldIds);
+            if (anchor) {
+                _fieldPanel(doc, anchor).appendChild(_row(doc, issue));
+                summary.byField[String(issue.where)] =
+                    (summary.byField[String(issue.where)] || 0) + 1;
+                if (group) {
+                    summary.byGroup[String(group)] =
+                        (summary.byGroup[String(group)] || 0) + 1;
+                }
+                return;
+            }
             var target = (group && panels[String(group)]) || null;
             if (target) {
                 target.appendChild(_row(doc, issue));

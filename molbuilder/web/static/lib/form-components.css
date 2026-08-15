@@ -156,6 +156,26 @@ button.primary:disabled {
     gap: 8px;
     align-items: baseline;
 }
+/* A finding sitting BESIDE its control rather than in a card list
+   (2026-08-15).  The wrapper is a <label class="schema-field">, which lays its
+   children out for "Label: <input>", so the list has to break that flow or it
+   lands on the same line as the box it is about.  Tighter type and a flush
+   left edge keep it reading as an annotation ON the field, not as a second
+   panel inside it. */
+.schema-field > .field-issues {
+    flex-basis: 100%;
+    width: 100%;
+    margin-top: 4px;
+    font-size: 0.82rem;
+}
+.schema-field > .field-issues .issue-item {
+    padding: 4px 8px 4px 10px;
+}
+/* The stable id is worth showing in a card list, where a row has to say what
+   it is about.  Beside the field it IS the field -- the label is right there
+   -- so repeating it is noise. */
+.schema-field > .field-issues .issue-where { display: none; }
+
 .issues-panel .issue-item::before {
     flex: 0 0 auto;
     font-weight: 700;

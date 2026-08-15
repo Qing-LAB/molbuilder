@@ -408,7 +408,7 @@ class SiestaConfig:
         # Switching stages MUST NOT rewrite this.
         "workflow_group": "profile",
         "label": "SCF mixing weight",
-        "engine_key":  'DM.MixingWeight',
+        "engine_key":  'SCF.Mixer.Weight',
         "range": (0.001, 0.5),
         "tier":  "advanced",
         "help":  "DM mixing weight; smaller = more conservative SCF, lower if oscillating",
@@ -421,7 +421,7 @@ class SiestaConfig:
         # depends on what the system IS, not on the stage.
         "workflow_group": "profile",
         "label": "Pulay history depth",
-        "engine_key":  'DM.NumberPulay',
+        "engine_key":  'SCF.Mixer.History',
         "range": (0, 20),
         "tier":  "advanced",
         "help":  "Pulay history depth; 3 is SIESTA-tutorial default for relaxation",
@@ -592,7 +592,7 @@ class SiestaConfig:
     # Relaxation; relax_type="none" disables the MD block entirely.
     # SIESTA 5.4.2 step-count + max-displacement mapping (see
     # siesta/input.py:render_fdf for the full emission code):
-    #   CG / Broyden / FIRE -> MD.NumCGsteps + MD.MaxCGDispl
+    #   CG / Broyden / FIRE -> MD.Steps + MD.MaxDispl
     #     (UNIVERSAL despite CG-prefixed names -- pre-2026-06-23 we
     #      wrongly emitted MD.NumBroydenSteps + MD.MaxDispl, which
     #      SIESTA silently dropped + ran as Single-point; see
@@ -637,23 +637,27 @@ class SiestaConfig:
         "category": ("procedure",),
         "section": "Compute & budget",
         "item_kind":  "deck",
-        "expands":    ['MD.NumCGsteps', 'MD.FinalTimeStep'],
+        "expands":    ['MD.Steps', 'MD.FinalTimeStep'],
         # Resource-budget cap — same as max_scf_iter, this is "how
         # many outer steps am I willing to wait for", not a
         # convergence target.  Scales with system size, not stage.
         # For ~230-atom Au junctions bump to 500+; the cluster-context
         # closed-shell argument doesn't help convergence speed.
         "workflow_group": "budget",
-        "label": "MD.NumCGsteps (max geometry-optimisation steps)",
-        "engine_key":  'MD.NumCGsteps (universal for CG / Broyden / FIRE) | MD.FinalTimeStep (Verlet / Nose)',
+        "label": "Max geometry-optimisation steps",
+        "engine_key":  'MD.Steps (CG / Broyden / FIRE) | MD.FinalTimeStep (Verlet / Nose)',
         "range": (1, 10000),
         "tier":  "advanced",
         "help":  (
             "OUTER loop: max geometry steps the optimiser is allowed "
-            "(each step = full SCF + forces + atom move).  In SIESTA "
-            "5.4.2 ``MD.NumCGsteps`` is the universal step-count "
-            "keyword for CG, Broyden, AND FIRE despite the CG-prefixed "
-            "name; Verlet/Nose use MD.FinalTimeStep instead.\n"
+            "(each step = full SCF + forces + atom move).  Which "
+            "keyword carries it is decided by MD.TypeOfRun: CG / Broyden "
+            "/ FIRE relax and bound the loop with ``MD.Steps``; Verlet / "
+            "Nose integrate and bound it with ``MD.FinalTimeStep`` "
+            "instead (SIESTA 5.4.2, siesta_init.F -- idyn 0 uses "
+            "MD.Steps, idyn 1-5 use MD.InitialTimeStep..MD.FinalTimeStep)"
+            ".  ``MD.Steps`` DEPRECATES the older ``MD.NumCGsteps``, "
+            "whose CG-prefixed name hid that it was never CG-only.\n"
             "Per-tier: loose warm-up ~50, publishable ~200, tight "
             "(vib/IR) ~100 (small displacement cap = slow but few "
             "steps from a publishable-converged starting geometry).  "
@@ -686,15 +690,16 @@ class SiestaConfig:
         "section": "Compute & budget",
         "workflow_group": "stage",
         "label": "Max displacement per step", "unit": "Å",
-        "engine_key":  'MD.MaxCGDispl (universal for CG / Broyden / FIRE)',
+        "engine_key":  'MD.MaxDispl (CG / Broyden / FIRE)',
         "id_suffix": "max-displ",
         "range": (0.001, 0.5),
         "tier":  "advanced",
         "help":  (
-            "Displacement cap per optimiser step (Å).  In SIESTA 5.4.2 "
-            "``MD.MaxCGDispl`` is the universal displacement-cap keyword "
-            "across CG, Broyden, AND FIRE despite the CG-prefixed name.  "
-            "Hard ceiling that catches line-search over-shoot.\n"
+            "Displacement cap per optimiser step (Å).  Applies across "
+            "CG, Broyden AND FIRE.  Hard ceiling that catches line-search "
+            "over-shoot.  ``MD.MaxDispl`` DEPRECATES the older "
+            "``MD.MaxCGDispl`` (SIESTA 5.4.2); same meaning, same 0.2 "
+            "Bohr default, and the CG-prefixed name was never CG-only.\n"
             "Per-tier (Å): screening 0.30, loose preopt 0.20, "
             "publishable 0.05, tight (vib/IR) 0.02.\n"
             "Symptom of too-large cap: max-force oscillates rather "
@@ -887,7 +892,7 @@ class SiestaConfig:
         "category": ("procedure",),
         "section": "Output & positioning",
         "item_kind":  "produce",
-        "workflow_group": "profile",
+        "workflow_group": "output",
         "label": "Verbose inline comments",
         "engine_key":  '(molbuilder: comment-block control in the generated input)',
         "help": (
@@ -908,12 +913,14 @@ class SiestaConfig:
 
     # Output flags
     write_forces: bool = field(default=True, metadata={
+        "workflow_group": "output",
         "category": ("procedure",),
         "label": "Write forces (.FA)",
         "help": "write forces to the .FA file (required for relaxation)",
             "engine_key":  'WriteForces',
     })
     write_coor_step: bool = field(default=True, metadata={
+        "workflow_group": "output",
         "category": ("procedure",),
         "label": "Write coordinates each step",
         "help": "write coordinates at every MD step in the main .out",
@@ -922,7 +929,7 @@ class SiestaConfig:
     write_coor_xmol: bool = field(default=True, metadata={
         "category": ("procedure",),
         "section": "Output & positioning",
-        "workflow_group": "profile",
+        "workflow_group": "output",
         "label": "Write XMOL .xyz per step",
         "engine_key":  'WriteCoorXmol',
         "help": "write .xyz of every relaxation step (movie viewer)",
@@ -930,7 +937,7 @@ class SiestaConfig:
     write_md_history: bool = field(default=True, metadata={
         "category": ("procedure",),
         "section": "Output & positioning",
-        "workflow_group": "profile",
+        "workflow_group": "output",
         "label": "Write .ANI trajectory",
         "engine_key":  'WriteMDhistory',
         "help": "write the .ANI trajectory file (xcrysden / vmd / OVITO)",
@@ -938,12 +945,13 @@ class SiestaConfig:
     write_hs: bool = field(default=False, metadata={
         "category": ("procedure",),
         "section": "Output & positioning",
-        "workflow_group": "profile",
+        "workflow_group": "output",
         "label": "Write H+S matrices",
         "engine_key":  'SaveHS',
         "help": "write H + S matrices (TranSIESTA / DOS / transport)",
     })
     write_molwatch_log: bool = field(default=True, metadata={
+        "workflow_group": "output",
         "category": ("procedure",),
         "label": "Write the molwatch trajectory log",
         "help": (
@@ -979,7 +987,7 @@ class SiestaConfig:
     # (2026-06-13).  Compute layout (MPI ranks, OMP threads, BlockSize,
     # parallel-over-k, memory cap) is "how much compute am I willing
     # to spend on this run" — same category as MaxSCFIterations and
-    # MD.NumCGsteps.  Folds the Parallel-execution section into the
+    # MD.Steps.  Folds the Parallel-execution section into the
     # Compute & budget workflow-group card.
     mpi_np: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
@@ -1292,6 +1300,7 @@ class SiestaConfig:
         "skip_cli":   True,
     })
     copy_psml: bool = field(default=True, metadata={
+        "workflow_group": "output",
         "category": ("procedure",),
         "label": "Stage pseudopotential files",
         "help": "copy psml files into the output directory (alongside the FDF)",
@@ -1304,6 +1313,7 @@ class SiestaConfig:
     # identity-sensitive, so a template that omitted it did not pin the
     # deck it claims to describe.
     species_order: Optional[List[str]] = field(default=None, metadata={
+        "workflow_group": "profile",
         "category": ("system",),
         "label": "Species order",
         "help": "comma-separated species order (e.g. 'C,H,S,Au')",
