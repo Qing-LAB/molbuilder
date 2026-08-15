@@ -75,9 +75,16 @@ def test_siesta_schema_exposes_spin_fields(web_client):
     # engine in viewer.js references by string.
     assert by_name["spin_polarized"]["id"] == "p-spin-polarized"
     assert by_name["spin_total"]["id"]     == "p-spin-total"
-    # The Spin section is the legend the rendered fieldset carries.
+    # The panel is one of the SIX SHARED CATEGORIES since 2026-08-14
+    # (`web/form-schema.md` § 1.3).  It was "Spin" -- a free-text `section`
+    # chosen per engine, so SIESTA's panel names and PySCF's were unrelated
+    # words and no surface could group across them.
+    from molbuilder import template as _T
     section_names = [s["name"] for s in sch["sections"]]
-    assert "Spin" in section_names
+    assert section_names == [c for c in _T.CATEGORIES if c in section_names]
+    spin_panel = next(s["name"] for s in sch["sections"]
+                      if any(f["name"] == "spin_polarized" for f in s["fields"]))
+    assert spin_panel in _T.CATEGORIES
 
 
 def test_health_endpoint(web_client):
@@ -2166,39 +2173,43 @@ def test_siesta_form_schema_matches_documented_layout():
 
 
 def test_api_build_schema_returns_siesta_schema(web_client):
-    """GET /api/build/schema/siesta returns the SiestaConfig schema
-    via the shared dataclass_to_form_schema helper.  The wire shape
-    is ``{"ok": True, "schema": {...}}``; the schema's id_prefix
-    field is the canonical "p" used by the form-field IDs."""
+    """GET /api/build/schema/siesta returns the schema built from the
+    CATALOGUE (`web/form-schema.md` § 1).  The wire shape is
+    ``{"ok": True, "schema": {...}}``; the schema's id_prefix field is the
+    canonical "p" used by the form-field IDs."""
     r = web_client.get("/api/build/schema/siesta")
     assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is True
     sch = body["schema"]
-    assert sch["config"] == "SiestaConfig"
+    assert sch["config"] == "siesta"
     assert sch["id_prefix"] == "p"
-    # Smoke: the first section is "System" and it carries the
-    # SystemLabel field that maps to the existing #p-system-label id.
-    assert sch["sections"][0]["name"] == "System"
-    sysfields = sch["sections"][0]["fields"]
-    sysl = next(f for f in sysfields if f["name"] == "system_label")
+    # The first panel is `system` -- § 6.2's reading order starts there -- and
+    # it carries SystemLabel, whose id the compatibility engine in viewer.js
+    # references by string.
+    assert sch["sections"][0]["name"] == "system"
+    sysl = next(f for s in sch["sections"] for f in s["fields"]
+                if f["name"] == "system_label")
     assert sysl["id"] == "p-system-label"
 
 
 def test_api_build_schema_returns_pyscf_schema(web_client):
-    """GET /api/build/schema/pyscf returns the PySCFConfig schema
-    with id_prefix='py'.  The Frequencies section MUST be present
-    so the post-relax Hessian / thermo block is reachable from the
-    schema-driven form."""
+    """GET /api/build/schema/pyscf returns the catalogue schema with
+    id_prefix='py'.  The frequency / thermochemistry knobs MUST be reachable,
+    which was the point of the section this test used to name -- they are now
+    on one of the six shared panels rather than in a PySCF-only fieldset."""
     r = web_client.get("/api/build/schema/pyscf")
     assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is True
     sch = body["schema"]
-    assert sch["config"] == "PySCFConfig"
+    assert sch["config"] == "pyscf"
     assert sch["id_prefix"] == "py"
+    from molbuilder import template as _T
     section_names = [s["name"] for s in sch["sections"]]
-    assert "Frequencies / thermochemistry" in section_names
+    assert section_names == [c for c in _T.CATEGORIES if c in section_names]
+    names = {f["name"] for s in sch["sections"] for f in s["fields"]}
+    assert "compute_frequencies" in names, sorted(names)
 
 
 def test_form_schema_js_is_served(web_client):
@@ -2243,7 +2254,11 @@ def test_pyscf_form_schema_matches_documented_layout():
     expected = [
         ("System",                       4),
         ("Method",                       5),
-        ("SCF",                          5),
+        # SCF: 7 since 2026-08-13 (e21fec86) -- `scf_conv_tol_grad` and
+        # `scf_soscf` became fields and this pin was not updated with them,
+        # so the test was RED on this branch from that day.  The two fields
+        # are correct; the number was stale.
+        ("SCF",                          7),
         ("Solvent (optional)",           2),
         ("Frequencies / thermochemistry", 3),
         # Compute & budget after #534 commit 4b:

@@ -1062,6 +1062,11 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p") -> Dict[str, Any
     sections = [{"name": cat, "title": cat.capitalize(),
                  "fields": by_category[cat]}
                 for cat in _T.CATEGORIES if cat in by_category]
+
+    # A stage ladder is NOT here, and that is correct: `stages.md` § 1.1 makes
+    # it the user's decision about what VARIES, and it lives in ``task.json``.
+    # The catalogue carries parameters; how a ladder is set up is its own
+    # design conversation (user, 2026-08-14).
     return {"config": engine, "id_prefix": id_prefix, "sections": sections}
 
 

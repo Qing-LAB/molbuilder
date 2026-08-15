@@ -73,6 +73,7 @@ from flask import Blueprint, jsonify, request
 from ._shared import (
     config_from_params as _config_from_params,
     dataclass_to_form_schema as _dataclass_to_form_schema,
+    catalogue_to_form_schema as _catalogue_to_form_schema,
     issues_to_json as _issues_to_json,
     ok_structure_response,
     struct_from_body as _struct_from_body,
@@ -1287,10 +1288,14 @@ def api_build_schema(engine: str):
                 f"expected one of {sorted(cls_map)}"
             ),
         }), 404
-    cls, id_prefix = cls_map[engine]
+    _cls, id_prefix = cls_map[engine]
+    # Built from the CATALOGUE (`web/form-schema.md` § 1), not from the config
+    # class: a parameter is defined in molbuilder/data/catalogue.template.toml,
+    # and the class is a translator on the way OUT to an engine.  The renderer
+    # is unchanged -- it takes whatever schema it is handed.
     return jsonify({
         "ok": True,
-        "schema": _dataclass_to_form_schema(cls, id_prefix),
+        "schema": _catalogue_to_form_schema(engine, id_prefix),
     })
 
 
