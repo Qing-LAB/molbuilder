@@ -589,9 +589,10 @@
                     + "Set once per run; doesn't change between stages.",
         },
         "stage": {
-            title:    "Stage convergence target",
-            subtitle: "These TIGHTEN as you go 1 → 2 → 3.  Switching "
-                    + "the stage selector mutates ONLY this card.",
+            title:    "Convergence targets",
+            subtitle: "What counts as converged — the knobs a staged "
+                    + "sequence TIGHTENS as it goes.  This is the set the "
+                    + "staging surface steps; nothing on this page steps it.",
         },
         "budget": {
             title:    "Compute & budget",
@@ -599,6 +600,19 @@
                     + "Iteration caps + parallel layout (MPI ranks, "
                     + "OMP threads, memory).  Scales with system size; "
                     + "does NOT change what counts as converged.",
+        },
+        // Added 2026-08-15.  Not a home for leftovers: FOUR of these were
+        // already on the form, mis-filed under "what you're computing"
+        // (write-coor-xmol, write-md-history, write-hs, verbose-comments on
+        // SIESTA; chkfile, log-file, verbose on PySCF), and seven more had no
+        // card at all and rendered loose below the three.  The three cards
+        // answer *what am I computing*, *how tight*, and *how much compute* —
+        // there were always four questions and only three cards.
+        "output": {
+            title:    "Output files",
+            subtitle: "What the run WRITES — trajectories, logs, geometry "
+                    + "snapshots, and which files are staged beside the "
+                    + "input.  Changes what you get back, never the answer.",
         },
     };
 
@@ -611,7 +625,9 @@
     // the foundation that the other two iterate against.  Untagged
     // sections render in their original schema order AFTER the
     // three cards.
-    const WORKFLOW_GROUP_ORDER = ["profile", "stage", "budget"];
+    //   4. Output      — "what do I get back?"  Last because it is the
+    //                    only one you can decide after the physics.
+    const WORKFLOW_GROUP_ORDER = ["profile", "stage", "budget", "output"];
 
     function renderForm(container, schema) {
         if (!container || !schema || !Array.isArray(schema.sections)) {

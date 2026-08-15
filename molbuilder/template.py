@@ -130,6 +130,30 @@ ALLOCATION_RESOLVERS = ("rank_count", "omp_threads", "node_memory")
 TYPES = ("int", "float", "str", "bool", "enum", "pow2",
          "int3", "float3", "strlist", "intlist", "text")
 
+#: The closed GROUP vocabulary -- *when, and on which surface, do I set this?*
+#: It is the OUTER card of a form, load-bearing since 2026-06-13 (the stage
+#: selector once silently rewrote budget and system fields), and it is a
+#: different axis from :data:`CATEGORIES`, which asks what QUESTION about the
+#: calculation an item answers.
+#:
+#: ``output`` was added 2026-08-15.  The three cards answered *what am I
+#: computing*, *how tight*, and *how much compute* -- and there were always
+#: FOUR questions: eleven items answer *what do I get back*, of which four sat
+#: mis-filed under ``profile`` and seven carried no group at all and rendered
+#: loose beneath the cards.
+#:
+#: ``staging`` names a parameter set by the STAGING surface rather than by the
+#: tab that collects the physics (user, 2026-08-15). The item is a real
+#: parameter and the template carries it; the parameter form simply is not
+#: where it is answered.
+#:
+#: **Unlike `category` this is not required on every item** -- it is
+#: presentation, and a template read headlessly by ``prep`` never asks. It is
+#: required on every item of the CATALOGUE, which is a different claim and is
+#: guarded by ``tests/test_catalogue_agreement.py``: an item there with no
+#: group is a parameter no surface can place.
+GROUPS = ("profile", "stage", "budget", "output", "staging")
+
 
 def _refuse(msg: str, *, where: str = "") -> NoReturn:
     raise ValueError(f"template{': ' + where if where else ''}: {msg}")
@@ -266,6 +290,27 @@ class Item:
                 _refuse(f"read_by names {_r!r}, which is not a layer -- the "
                         f"vocabulary is {', '.join(KINDS)} (§ 6.1)",
                         where=self.name)
+        # `group` is OPTIONAL (presentation), but when present it is closed --
+        # a typo would put the item on no card at all, which renders it loose
+        # below the form and sends every finding about it to the residual
+        # panel.  Silent, and indistinguishable from "deliberately untagged".
+        if self.group is not None and self.group not in GROUPS:
+            _refuse(f"group {self.group!r} is not one of "
+                    f"{', '.join(GROUPS)}", where=self.name)
+        # Same argument, one axis over: `resolver` names WHO ANSWERS an item
+        # that carries no value, and three of the four names make the item
+        # allocation-backed -- which is what the § 2 / G1 check on READ keys
+        # off.  It was unchecked until 2026-08-15, so a hand-edited
+        # ``resolver = "rank_kount"`` silently turned that protection OFF and
+        # let a template assert a machine fact.  `read_by` beside it was given
+        # this check on 2026-08-14 and this one was not swept with it.
+        if self.resolver and self.resolver not in RESOLVERS:
+            _refuse(f"resolver {self.resolver!r} is not one of "
+                    f"{', '.join(RESOLVERS)} -- a resolver is a NAME "
+                    f"molbuilder ships, never code in the file (§ 6.4). An "
+                    f"unknown one would silently disable the check that keeps "
+                    f"a machine fact out of a portable template (§ 2)",
+                    where=self.name)
 
     @property
     def is_set(self) -> bool:

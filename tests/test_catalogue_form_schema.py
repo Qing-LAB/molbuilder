@@ -11,6 +11,9 @@ same order for the first time. `section` — free text chosen per engine, so
 """
 from __future__ import annotations
 
+import pathlib
+import re
+
 import pytest
 
 from molbuilder import template as T
@@ -45,12 +48,36 @@ def test_every_item_this_engine_has_reaches_the_form(engine):
     This is what makes the six previously-unreachable SIESTA parameters appear
     — `species_order`, `write_forces`, `write_coor_step`, `write_molwatch_log`,
     `copy_psml`, `kgrid_displacement` — none of which had a `section`.
+
+    **The one exclusion is declared by the item, not listed here** (2026-08-15):
+    ``group = "staging"`` says *this parameter is answered by the staging
+    surface*. The stage token is the only one today — it is derived from which
+    stage is running, so it is not something a person types into the physics
+    form at all. Filtering on the declaration rather than on a name means a
+    second such parameter needs no edit to this test.
     """
     items = {i.name for i in T.select(T.read_template(T.load_catalogue()),
-                                      engine=engine)}
+                                      engine=engine) if i.group != "staging"}
     fields = {f["name"] for s in catalogue_to_form_schema(engine)["sections"]
               for f in s["fields"]}
     assert fields == items
+
+
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_a_staging_parameter_is_not_on_the_physics_form(engine):
+    """The other half, asserted rather than implied.
+
+    A test that only checks *"everything except staging is present"* passes
+    just as happily if the filter stops working and staging appears too — the
+    two sets would simply both grow. This asks the question directly.
+    """
+    fields = {f["name"] for s in catalogue_to_form_schema(engine)["sections"]
+              for f in s["fields"]}
+    staged = {i.name for i in T.select(T.read_template(T.load_catalogue()),
+                                       engine=engine) if i.group == "staging"}
+    assert not (fields & staged), (
+        f"{sorted(fields & staged)} is set by the staging surface and must "
+        f"not appear on the parameter form (user, 2026-08-15).")
 
 
 def test_the_displacement_gets_a_control_that_can_carry_its_value():
@@ -93,7 +120,42 @@ def test_the_two_grouping_axes_both_survive():
               for f in s["fields"]]
     grouped = [f for f in fields if f.get("workflow_group")]
     assert grouped, "no field carries a workflow_group — the outer cards would vanish"
-    assert {f["workflow_group"] for f in grouped} <= {"profile", "stage", "budget"}
+    # EVERY field, not merely every field that happens to have one: an item
+    # with no card renders loose below the form and its findings fall to the
+    # residual panel.  Fifteen were in that state until 2026-08-15.
+    assert len(grouped) == len(fields), (
+        f"field(s) with no card: "
+        f"{sorted(f['name'] for f in fields if not f.get('workflow_group'))}")
+    # The renderer draws a card per name here; a value it does not know
+    # renders nothing, so the vocabulary is asserted against the renderer's
+    # own list rather than a copy of it.
+    assert {f["workflow_group"] for f in grouped} <= set(T.GROUPS)
+
+
+def test_the_renderer_knows_every_card_the_form_actually_asks_for():
+    """The half of the card contract that lives in JavaScript.
+
+    ``form-schema.js`` draws one card per name in its own ``WORKFLOW_GROUP_ORDER``
+    and renders a field whose group is not in that list **bare, below the
+    cards** — the same invisible outcome as no group at all. So adding a group
+    to the catalogue without adding it to the renderer looks exactly like the
+    bug it was meant to fix, and only a browser would show it.
+
+    Asserted against the renderer's real source, not a copy of the list here:
+    a copy would agree with itself while the page disagreed with both.
+    """
+    src = (pathlib.Path(__file__).resolve().parents[1] / "molbuilder" / "web"
+           / "static" / "lib" / "form-schema.js").read_text()
+    m = re.search(r"WORKFLOW_GROUP_ORDER\s*=\s*\[([^\]]*)\]", src)
+    assert m, "WORKFLOW_GROUP_ORDER not found in form-schema.js"
+    drawn = set(re.findall(r'"([a-z]+)"', m.group(1)))
+    asked = {f.get("workflow_group")
+             for e in ("siesta", "pyscf")
+             for s in catalogue_to_form_schema(e)["sections"]
+             for f in s["fields"]}
+    assert asked <= drawn, (
+        f"the form asks for card(s) {sorted(asked - drawn)} that "
+        f"form-schema.js does not draw; those fields render loose.")
 
 
 def test_an_optional_item_offers_its_unset_state():

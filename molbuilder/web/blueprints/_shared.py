@@ -1054,6 +1054,14 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p") -> Dict[str, Any
     parsed = _T.read_template(_T.load_catalogue())
     items = _T.select(parsed, engine=engine)
 
+    # ``staging`` is a PANEL THIS SURFACE DOES NOT HAVE.  The stage token is a
+    # real parameter -- it reaches the generated script, and the template
+    # carries it -- but it is answered by the staging surface, not typed here
+    # (user, 2026-08-15: *"no staging related setup at all"*).  Filtered by the
+    # item's own declaration rather than by a name this file would have to
+    # keep: a second such parameter needs no edit here.
+    items = [it for it in items if it.group != "staging"]
+
     by_category: Dict[str, List[Dict[str, Any]]] = {}
     for it in items:
         panel = it.category[0] if it.category else "procedure"

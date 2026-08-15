@@ -139,6 +139,38 @@ def test_the_catalogue_carries_no_item_no_engine_can_hold():
         "catalogue items no config class can carry:\n  " + "\n  ".join(orphans))
 
 
+def test_every_catalogue_item_declares_a_panel():
+    """A parameter the catalogue carries is a parameter a surface must be able
+    to PLACE.
+
+    ``group`` is optional on a template item — it is presentation, and ``prep``
+    reading a template headlessly never asks. It is **not** optional here: the
+    catalogue is what a form is built from (`web/form-schema.md` § 1), so an
+    item with no group renders loose beneath the cards and every finding about
+    it falls to the residual panel instead of sitting beside the field.
+
+    That is not hypothetical. Fifteen items were in exactly that state until
+    2026-08-15 — inherited when the catalogue was extracted from the config
+    classes, where the old form's opt-in ``section`` tag meant a field nothing
+    rendered also carried no group. The new form renders every item, so the
+    hole became visible all at once.
+    """
+    missing = sorted(i.name for i in T.read_template(T.load_catalogue()).items
+                     if not i.group)
+    assert not missing, (
+        f"catalogue item(s) with no panel: {missing}.\n"
+        f"Give each a `group` from {T.GROUPS}. An item with none renders "
+        f"below the cards and its warnings land in the residual panel.")
+
+
+def test_the_group_vocabulary_is_closed_and_the_catalogue_stays_inside_it():
+    """The typo guard. A misspelt group is indistinguishable from an absent
+    one on the page — the field renders loose either way — so the refusal has
+    to come from the reader, not from a person noticing."""
+    used = {i.group for i in T.read_template(T.load_catalogue()).items}
+    assert used <= set(T.GROUPS), f"unknown group(s): {used - set(T.GROUPS)}"
+
+
 @pytest.mark.parametrize("engine,cls", ENGINES, ids=lambda x: getattr(x, "__name__", x))
 def test_the_declared_TYPE_agrees_with_the_annotation(engine, cls):
     """The fact the mirrored-key guard could not see.
