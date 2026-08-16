@@ -1,4 +1,4 @@
-/* job-prep/style.css — the Job Prep tab's OWN sheet.
+/* task-setup/style.css — the Task Setup tab's OWN sheet.
  *
  * Layer 5 of `docs/web/ui-contract.md` § 1: **composition only.**  The shell
  * (`body`, `header`, `.card`, form controls, `.status` severities) is
@@ -8,24 +8,24 @@
  * EVERY value is a token.  § 2 of the same contract: components reference
  * `var(--token)` and never write a raw palette colour, and the rhythm comes
  * from the `--space-*` / `--text-*` / `--radius*` scales.  The tab's own
- * semantics live in the `--jp-*` block of `lib/tokens.css` — retuning this tab
+ * semantics live in the `--ts-*` block of `lib/tokens.css` — retuning this tab
  * is editing those thirteen lines, not hunting literals in here.
  *
  * The one thing this sheet is really for: making the tab's central idea
  * visible.  A setting with ONE point is a choice you made; with SEVERAL it is
- * a measurement you asked for (`web/job-prep.md` § 6).  `--jp-chosen` and
- * `--jp-measured` are different hues so that reads down a column at a glance,
- * and a machine-answered setting is muted with `--jp-machine-fg` because it is
+ * a measurement you asked for (`web/task-setup.md` § 6).  `--ts-chosen` and
+ * `--ts-measured` are different hues so that reads down a column at a glance,
+ * and a machine-answered setting is muted with `--ts-machine-fg` because it is
  * not disabled — it is *not yours to state*.
  *
- * Class prefix `jp-` throughout, so nothing here can collide with a shared
+ * Class prefix `ts-` throughout, so nothing here can collide with a shared
  * sheet or another module.
  */
 
 /* ---- Page composition ---- */
 
-.jp-wrap {
-    max-width: var(--jp-page-max);
+.ts-wrap {
+    max-width: var(--ts-page-max);
     margin: 0 auto;
     padding: var(--space-lg) var(--space-lg) var(--space-xl);
 }
@@ -34,17 +34,17 @@
  * (page-shell) already solves "wrap at the content minimum with no media
  * query", but this page wants a fixed-ish aside rather than weighted tracks,
  * so it is a grid with a clamp on the second track instead. */
-.jp-cols {
+.ts-cols {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) var(--jp-aside-w);
+    grid-template-columns: minmax(0, 1fr) var(--ts-aside-w);
     gap: var(--space-lg);
     align-items: start;
 }
 @media (max-width: 960px) {
-    .jp-cols { grid-template-columns: minmax(0, 1fr); }
+    .ts-cols { grid-template-columns: minmax(0, 1fr); }
 }
 
-.jp-aside {
+.ts-aside {
     position: sticky;
     top: var(--space-md);
     display: flex;
@@ -54,7 +54,7 @@
 
 /* ---- Destination ---- */
 
-.jp-path {
+.ts-path {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -66,20 +66,20 @@
     font-family: var(--font-mono);
     font-size: var(--text-sm);
 }
-.jp-path-seg { color: var(--text-secondary); }
-.jp-path-sep { color: var(--text-muted); padding: 0 var(--space-xs); }
-.jp-path-here {
+.ts-path-seg { color: var(--text-secondary); }
+.ts-path-sep { color: var(--text-muted); padding: 0 var(--space-xs); }
+.ts-path-here {
     color: var(--accent-hover);
-    background: var(--jp-here-bg);
+    background: var(--ts-here-bg);
     border-radius: var(--radius-sm);
     padding: 0 var(--space-sm);
     font-weight: var(--weight-semibold);
 }
 
 /* The folder-state answer.  Three states, and the third is a refusal
- * (`job-prep.md` § 2) — it uses the error token because it IS one: the page
+ * (`task-setup.md` § 2) — it uses the error token because it IS one: the page
  * cannot save there. */
-.jp-state {
+.ts-state {
     display: flex;
     gap: var(--space-sm);
     align-items: flex-start;
@@ -90,21 +90,21 @@
     background: var(--surface-deep);
     font-size: var(--text-sm);
 }
-.jp-state[data-state="refuse"] {
-    border-color: var(--jp-refuse-fg);
-    background: var(--jp-refuse-bg);
+.ts-state[data-state="refuse"] {
+    border-color: var(--ts-refuse-fg);
+    background: var(--ts-refuse-bg);
 }
-.jp-state[data-state="loaded"] { border-color: var(--accent); }
-.jp-state-title {
+.ts-state[data-state="loaded"] { border-color: var(--accent); }
+.ts-state-title {
     font-weight: var(--weight-semibold);
     color: var(--text-primary);
 }
-.jp-state-body { margin: var(--space-xs) 0 0; color: var(--text-secondary); }
+.ts-state-body { margin: var(--space-xs) 0 0; color: var(--text-secondary); }
 
 /* ---- What will be written ---- */
 
-.jp-files { list-style: none; margin: 0; padding: 0; }
-.jp-files li {
+.ts-files { list-style: none; margin: 0; padding: 0; }
+.ts-files li {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
@@ -112,27 +112,27 @@
     padding: var(--space-sm) 0;
     border-bottom: 1px solid var(--border-subtle);
 }
-.jp-files li:last-child { border-bottom: 0; }
-.jp-file-name {
+.ts-files li:last-child { border-bottom: 0; }
+.ts-file-name {
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     color: var(--text-mono);
 }
-.jp-file-what {
+.ts-file-what {
     color: var(--text-muted);
     font-size: var(--text-xs);
     text-align: right;
 }
-.jp-file-state { font-size: var(--text-xs); }
-.jp-file-state[data-exists="yes"] { color: var(--warn-soft); }
-.jp-file-state[data-exists="no"]  { color: var(--text-muted); }
+.ts-file-state { font-size: var(--text-xs); }
+.ts-file-state[data-exists="yes"] { color: var(--warn-soft); }
+.ts-file-state[data-exists="no"]  { color: var(--text-muted); }
 
 /* ---- Settings rows: one point is a choice, several is a measurement ---- */
 
-.jp-rows { display: flex; flex-direction: column; gap: var(--space-sm); }
-.jp-row {
+.ts-rows { display: flex; flex-direction: column; gap: var(--space-sm); }
+.ts-row {
     display: grid;
-    grid-template-columns: var(--jp-label-w) minmax(0, 1fr) auto;
+    grid-template-columns: var(--ts-label-w) minmax(0, 1fr) auto;
     gap: var(--space-md);
     align-items: center;
     padding: var(--space-sm) var(--space-md);
@@ -141,21 +141,21 @@
     background: var(--surface-deep);
 }
 @media (max-width: 720px) {
-    .jp-row { grid-template-columns: minmax(0, 1fr); }
+    .ts-row { grid-template-columns: minmax(0, 1fr); }
 }
-.jp-row-name {
+.ts-row-name {
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     color: var(--text-primary);
 }
-.jp-row-name small {
+.ts-row-name small {
     display: block;
     font-family: var(--font-sans);
     font-size: var(--text-xs);
     color: var(--text-muted);
 }
-.jp-points { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
-.jp-pt {
+.ts-points { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.ts-pt {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
@@ -166,87 +166,87 @@
     color: var(--text-secondary);
 }
 /* The two states the tab exists to distinguish. */
-.jp-row[data-kind="chosen"]   .jp-pt {
-    border-color: var(--jp-chosen);
-    background: var(--jp-chosen-bg);
+.ts-row[data-kind="chosen"]   .ts-pt {
+    border-color: var(--ts-chosen);
+    background: var(--ts-chosen-bg);
     color: var(--accent-hover);
 }
-.jp-row[data-kind="measured"] .jp-pt {
-    border-color: var(--jp-measured);
-    background: var(--jp-measured-bg);
-    color: var(--jp-measured);
+.ts-row[data-kind="measured"] .ts-pt {
+    border-color: var(--ts-measured);
+    background: var(--ts-measured-bg);
+    color: var(--ts-measured);
 }
 /* A machine-answered setting: muted, because a description may never assert
  * a value for it (`template.md` § 6.4). */
-.jp-row[data-kind="machine"] { background: var(--jp-machine-bg); }
-.jp-row[data-kind="machine"] .jp-row-name { color: var(--jp-machine-fg); }
+.ts-row[data-kind="machine"] { background: var(--ts-machine-bg); }
+.ts-row[data-kind="machine"] .ts-row-name { color: var(--ts-machine-fg); }
 
-.jp-verdict { font-size: var(--text-xs); white-space: nowrap; }
-.jp-row[data-kind="chosen"]   .jp-verdict { color: var(--jp-chosen); }
-.jp-row[data-kind="measured"] .jp-verdict { color: var(--jp-measured); }
-.jp-row[data-kind="machine"]  .jp-verdict { color: var(--jp-machine-fg); }
+.ts-verdict { font-size: var(--text-xs); white-space: nowrap; }
+.ts-row[data-kind="chosen"]   .ts-verdict { color: var(--ts-chosen); }
+.ts-row[data-kind="measured"] .ts-verdict { color: var(--ts-measured); }
+.ts-row[data-kind="machine"]  .ts-verdict { color: var(--ts-machine-fg); }
 
 /* ---- Stage table ---- */
 
-.jp-tablewrap {
+.ts-tablewrap {
     overflow-x: auto;                 /* wide content scrolls in its own box */
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm);
 }
-.jp-table { border-collapse: collapse; width: 100%; font-size: var(--text-sm); }
-.jp-table th,
-.jp-table td {
+.ts-table { border-collapse: collapse; width: 100%; font-size: var(--text-sm); }
+.ts-table th,
+.ts-table td {
     padding: var(--space-sm) var(--space-md);
     text-align: left;
     border-bottom: 1px solid var(--border-subtle);
     white-space: nowrap;
 }
-.jp-table thead th {
+.ts-table thead th {
     background: var(--bg-fieldset);
     color: var(--text-secondary);
     font-size: var(--text-xs);
     font-weight: var(--weight-semibold);
     font-family: var(--font-mono);
 }
-.jp-table tbody td {
+.ts-table tbody td {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     color: var(--text-mono);
 }
-.jp-table tbody td:first-child {
+.ts-table tbody td:first-child {
     font-family: var(--font-sans);
     font-weight: var(--weight-semibold);
     color: var(--text-primary);
 }
-.jp-table tbody tr:last-child td { border-bottom: 0; }
-.jp-table td[data-template="yes"] { color: var(--text-muted); }
+.ts-table tbody tr:last-child td { border-bottom: 0; }
+.ts-table td[data-template="yes"] { color: var(--text-muted); }
 
 /* ---- The editor ---- */
 
-.jp-editor {
+.ts-editor {
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm);
     overflow: hidden;                 /* clip CM's own corners to ours */
 }
 /* CodeMirror sets its own height; give the pane a floor so an empty or
  * one-line document does not collapse the card. */
-.jp-editor .CodeMirror {
+.ts-editor .CodeMirror {
     height: auto;
-    min-height: var(--jp-editor-min-h);
+    min-height: var(--ts-editor-min-h);
     background: var(--bg-code);
     color: var(--text-mono);
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     line-height: var(--line-normal);
 }
-.jp-editor .CodeMirror-gutters {
+.ts-editor .CodeMirror-gutters {
     background: var(--bg-code);
     border-right: 1px solid var(--border-subtle);
 }
-.jp-editor .CodeMirror-linenumber { color: var(--text-muted); }
-.jp-editor .CodeMirror-cursor { border-left-color: var(--accent); }
+.ts-editor .CodeMirror-linenumber { color: var(--text-muted); }
+.ts-editor .CodeMirror-cursor { border-left-color: var(--accent); }
 
-.jp-editor-bar {
+.ts-editor-bar {
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
@@ -254,8 +254,8 @@
     gap: var(--space-sm);
     margin-top: var(--space-sm);
 }
-.jp-dirty {
+.ts-dirty {
     font-size: var(--text-xs);
     color: var(--warn-soft);
 }
-.jp-dirty[hidden] { display: none; }
+.ts-dirty[hidden] { display: none; }

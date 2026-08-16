@@ -217,9 +217,9 @@
     --warn:              var(--warning);
     --bad:               var(--error);
 
-    /* --- Job Prep tab (job-prep/style.css) ---------------------------
+    /* --- Task Setup tab (task-setup/style.css) ---------------------------
      * The tab writes a description: stages, and the machine settings you
-     * either choose or measure (`web/job-prep.md`).  Everything here is an
+     * either choose or measure (`web/task-setup.md`).  Everything here is an
      * ALIAS of a global token or a step of the shared scales — the prefix
      * keeps the semantics readable from the CSS, it does not introduce a
      * second palette.  Retuning the tab is editing these lines, not hunting
@@ -227,26 +227,26 @@
      *
      * The two point-state colours carry the tab's one real idea: ONE point
      * is a choice you made, SEVERAL is a measurement you asked for
-     * (`job-prep.md` § 6).  They are deliberately different hues so the
+     * (`task-setup.md` § 6).  They are deliberately different hues so the
      * distinction survives a glance down the column. */
-    --jp-chosen:        var(--accent);      /* one point — your decision */
-    --jp-chosen-bg:     var(--accent-bg);
-    --jp-measured:      var(--warn-soft);   /* several points — a sweep */
-    --jp-measured-bg:   rgba(216, 166, 75, 0.12);
+    --ts-chosen:        var(--accent);      /* one point — your decision */
+    --ts-chosen-bg:     var(--accent-bg);
+    --ts-measured:      var(--warn-soft);   /* several points — a sweep */
+    --ts-measured-bg:   rgba(216, 166, 75, 0.12);
     /* A setting the machine answers and a description may never assert a
      * value for — mpi_np, omp_threads, max_memory_mb (`template.md` § 6.4).
      * Muted on purpose: it is not disabled, it is *not yours to state*. */
-    --jp-machine-fg:    var(--text-muted);
-    --jp-machine-bg:    var(--surface-deep);
+    --ts-machine-fg:    var(--text-muted);
+    --ts-machine-bg:    var(--surface-deep);
 
     /* Layout — the two-column page and the editor pane. */
-    --jp-page-max:      1240px;
-    --jp-aside-w:       clamp(20rem, 30vw, 25rem);
-    --jp-editor-min-h:  22rem;   /* the CodeMirror pane's floor */
-    --jp-label-w:       11.5rem; /* the settings-row name column */
+    --ts-page-max:      1240px;
+    --ts-aside-w:       clamp(20rem, 30vw, 25rem);
+    --ts-editor-min-h:  22rem;   /* the CodeMirror pane's floor */
+    --ts-label-w:       11.5rem; /* the settings-row name column */
 
     /* The destination path + folder-state rows. */
-    --jp-here-bg:       var(--accent-bg);
-    --jp-refuse-bg:     rgba(248, 113, 113, 0.10);
-    --jp-refuse-fg:     var(--error);
+    --ts-here-bg:       var(--accent-bg);
+    --ts-refuse-bg:     rgba(248, 113, 113, 0.10);
+    --ts-refuse-fg:     var(--error);
 }

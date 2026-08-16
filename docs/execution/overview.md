@@ -60,7 +60,7 @@ you are reading tells you how much to trust it and what to do when two disagree.
 | You want to know… | Open |
 |---|---|
 | **What gets built first, and how each step is checked** — the milestones, the gates, and the three reviews at each one | **[`staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)** |
-| The tab that **writes** a description — the stages, and the machine settings you choose or measure | **[`web/job-prep.md`](?doc=web/job-prep.md)** |
+| The tab that **writes** a description — the stages, and the machine settings you choose or measure | **[`web/task-setup.md`](?doc=web/task-setup.md)** |
 
 **Where the design itself lives has changed.** It is
 [`architecture.md`](?doc=execution/architecture.md), a contract, because it says
@@ -83,7 +83,7 @@ reaches past it. Arrows point from a document to the ones it depends on.
 flowchart TB
     subgraph plans["Plans — not built yet"]
       IMP["staged-runs-implementation-plan.md<br/>the order + the gates"]
-      TSP["job-prep.md<br/>writes a description"]
+      TSP["task-setup.md<br/>writes a description"]
     end
     subgraph guides["Guides — how to do it today"]
       RAJ["running-a-job.md<br/>ONE job"]

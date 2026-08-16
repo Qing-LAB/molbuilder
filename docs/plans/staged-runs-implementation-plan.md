@@ -2006,7 +2006,7 @@ invisible to stubs.
 **The one every later engine inherits**, which is why it is built against the
 contract rather than against whatever Structure optimization happens to need.
 
-**Re-anchor:** [`task-setup-plan.md`](?doc=web/job-prep.md) **entire** ·
+**Re-anchor:** [`task-setup-plan.md`](?doc=web/task-setup.md) **entire** ·
 `engines/stages.md § 6.2` (`varies` is the column set) and § 6.5 (one stage is no
 stages) · [`web/form-schema.md`](?doc=web/form-schema.md) (**where the columns
 come from**) · `checkpointing.md` L1 (what makes a directory a calculation root).

@@ -28,23 +28,33 @@ There are **seven tabs**, and their order is defined in exactly one place — th
 | **Structure optimization** | `/structure-optimization` | generate a SIESTA/PySCF relaxation script | this doc § 3 |
 | **Spectrum** | `/spectrum-calculation` | compute a Raman spectrum | [`spectra.md`](?doc=web/spectra.md) |
 | **Transport** | `/transport-calculation` | generate a TranSIESTA device script | this doc § 4 |
-| **Job prep** | `/job-prep` | read a calculation folder's description — its stages, and the machine settings you chose or measured — and edit `task.json` | [`job-prep.md`](?doc=web/job-prep.md) |
+| **Task setup** | `/task-setup` | read a calculation folder's description — its stages, and the machine settings you chose or measured — and edit `task.json` | [`task-setup.md`](?doc=web/task-setup.md) |
 | **Results** | `/results` | open a finished calculation | [`results.md`](?doc=web/results.md) |
 | **Documents** | `/documents` | read the in-app docs (this page!) | this doc § 5 |
 
-> **The seventh tab is PARTLY built** — Job Prep is a **shared** surface that
+> **The seventh tab is PARTLY built** — Task Setup is a **shared** surface that
 > starts from a calculation folder rather than from a form, so every generating
 > tab above feeds one implementation instead of each growing its own stage
-> table. Its design is [`job-prep.md`](?doc=web/job-prep.md).
+> table. Its design is [`task-setup.md`](?doc=web/task-setup.md).
 >
 > **What ships today is read-only.** It follows the projects sidebar's selected
 > folder, reads that folder's `task.json` through the shipped `/api/files/*`
 > API, shows the stages and the machine settings, and puts the file itself in
 > the vendored CodeMirror so you can read and edit it. **It writes nothing** —
 > Save is disabled and says so, and `molbuilder jobset describe` is what writes
-> a description. Pinned by `tests/test_job_prep_tab.py`, which fails if the
+> a description. Pinned by `tests/test_task_setup_tab.py`, which fails if the
 > button is ever enabled without the write path landing with it.
-> *(The working name was *Task Setup* until 2026-08-16.)*
+>
+> **Why it is not called "prep".** `prep` is the CLI verb that resolves the
+> machine and renders the deck — *exactly what this tab does not do* — so a user
+> standing in a tab called "Job Prep" would reasonably expect it to prep. *Job*
+> is taken twice over besides: a `Job` is a member of a `JobSet`, and it is the
+> scheduler's word. **Task** is the file the tab edits (`task.json`,
+> `molbuilder/task@1`), chosen for the same reason: it describes one task, and
+> the stage list is *how* that task is broken up. The reasoning is
+> `archive/2026-08-16-task-setup-plan.md` § 8. *(The tab shipped as "Job Prep"
+> for one commit on 2026-08-16 and was renamed the same day — the name was taken
+> off a mock-up's title without checking that record.)*
 
 **Molbuilder is the landing tab** — a bare `/` redirects to whatever is first in
 `TABS`. The tab nav bar itself is injected into every page from that one list (a

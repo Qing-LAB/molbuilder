@@ -1,4 +1,4 @@
-# Job Prep — the tab that writes a description
+# Task Setup — the tab that writes a description
 
 **Role:** contract
 **Domain:** web
@@ -319,6 +319,33 @@ Every one of these can silently destroy a value if its rule is not stated.
 | **apply a stage preset** | fills a row from a tier | a preset knows several fields. If some are not columns yet it **adds them first** — a preset that half-applied would be worse than one that refused |
 | **add a measurement point** | turns a value into an axis | the value becomes the first point, so measuring never discards what you chose |
 | **open a folder** | replaces the whole page from that folder's description | a **load, not a merge**: values, columns, stages and order all come from the file, because a half-loaded description is one nobody can reason about. The id is read, never recomputed |
+
+---
+
+## 9a. The file itself, in an editor
+
+**`task.json` is shown in a real editor, not a read-only pane**, because the
+last thing between a description and a week of compute is a person reading it.
+The editor is the **vendored CodeMirror 5.65.16**
+(`static/vendor/README.md` — served locally, for offline use and a strict CSP;
+there is no CDN path).
+
+**Highlighting is chosen by the file's suffix**, and the mode file is fetched
+only when a file of that kind is first opened. The map and the loader are
+`static/lib/codemirror-load.js`, and the projects-sidebar preview modal reads
+the same one — so *"how is this file highlighted"* has one answer, and adding a
+language is one row there rather than a second copy per surface.
+
+| | |
+|---|---|
+| `.json` | the JSON dialect — CodeMirror ships no separate json mode, so the spec is `{name: "javascript", json: true}` |
+| `.toml` | which is what `<label>.template.toml` gets |
+| `.py` · `.sh`/`.sbatch` · `.md` · `.xml` · `.css` · `.yaml` | the matching vendored mode |
+| `.fdf` · `.xyz` · `.out` · `.log` | **plain text, deliberately** — CodeMirror has no upstream mode for molbuilder's own formats, and `mode: null` is a real mode: line numbers, editing, undo and search all work |
+
+**Editing here is not saving.** The editor is where you check and correct the
+description before it is written; § 8 is what writes it. An edited buffer that
+has not been saved says so.
 
 ---
 

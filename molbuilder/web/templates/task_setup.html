@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>molbuilder &mdash; Job prep</title>
+<title>molbuilder &mdash; Task setup</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
@@ -10,91 +10,91 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-components.css') }}">
 {# Layer 5 last: the tab's own sheet composes, and every value in it is a
    token from lib/tokens.css (ui-contract.md § 1). #}
-<link rel="stylesheet" href="{{ url_for('static', filename='job-prep/style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='task-setup/style.css') }}">
 {# molbuilder-runtime.js MUST load before any other molbuilder script. #}
 <script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
 </head>
 <body data-sidebars="projects">
 
-{% set active_tab = "job-prep" %}
+{% set active_tab = "task-setup" %}
 {% include "_app_header.html" %}
 <div class="app-body">
 {% include "_projects_sidebar.html" %}
 <div class="app-content">
 
 <!-- ============================================================ -->
-<!--  Job Prep — the tab that writes a description.                -->
+<!--  Task Setup — the tab that writes a description.                -->
 <!--                                                               -->
 <!--  READ-ONLY today.  It opens whatever the projects sidebar has  -->
 <!--  selected, shows what that folder already says, and lets you   -->
 <!--  read and edit `task.json` in the vendored CodeMirror editor.  -->
 <!--  Saving is NOT wired: the button is disabled and says why.     -->
 <!--                                                               -->
-<!--  The design is docs/web/job-prep.md; where the two disagree,   -->
+<!--  The design is docs/web/task-setup.md; where the two disagree,   -->
 <!--  that document wins.                                           -->
 <!-- ============================================================ -->
 
-<main class="jp-wrap">
+<main class="ts-wrap">
 
-  <div class="jp-cols">
+  <div class="ts-cols">
     <div>
 
-      <section class="card" id="jp-dest-card">
+      <section class="card" id="ts-dest-card">
         <h2>Where this saves</h2>
         <p class="hint">The folder selected in the projects sidebar. This page
           creates no folders &mdash; make or pick the one you want there first.</p>
-        <div class="jp-path" id="jp-path" aria-live="polite">
-          <span class="jp-path-seg">no folder selected</span>
+        <div class="ts-path" id="ts-path" aria-live="polite">
+          <span class="ts-path-seg">no folder selected</span>
         </div>
-        <div class="jp-state" id="jp-state" data-state="empty">
+        <div class="ts-state" id="ts-state" data-state="empty">
           <div>
-            <span class="jp-state-title" id="jp-state-title">Nothing selected</span>
-            <p class="jp-state-body" id="jp-state-body">Pick a calculation folder
+            <span class="ts-state-title" id="ts-state-title">Nothing selected</span>
+            <p class="ts-state-body" id="ts-state-body">Pick a calculation folder
               in the sidebar to read its description.</p>
           </div>
         </div>
       </section>
 
-      <section class="card" id="jp-stages-card" hidden>
+      <section class="card" id="ts-stages-card" hidden>
         <h2>Stages</h2>
         <p class="hint">Rows are stages, columns are the parameters that vary.
           A cell shown muted is <em>this stage uses the template's value</em>
           &mdash; a real state, not a blank.</p>
-        <div class="jp-tablewrap">
-          <table class="jp-table" id="jp-stage-table">
+        <div class="ts-tablewrap">
+          <table class="ts-table" id="ts-stage-table">
             <thead><tr><th>Stage</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
       </section>
 
-      <section class="card" id="jp-machine-card" hidden>
+      <section class="card" id="ts-machine-card" hidden>
         <h2>The machine, and what to try on it</h2>
         <p class="hint"><strong>One point is your choice; several is a
           measurement</strong> &mdash; the same row does both, because a run is a
           sweep of length one.</p>
-        <div class="jp-rows" id="jp-machine-rows"></div>
+        <div class="ts-rows" id="ts-machine-rows"></div>
       </section>
 
     </div>
 
-    <aside class="jp-aside">
+    <aside class="ts-aside">
 
       <section class="card">
         <h2>What gets written</h2>
         <p class="hint">Two files, into the folder above.</p>
-        <ul class="jp-files" id="jp-file-list">
+        <ul class="ts-files" id="ts-file-list">
           <li>
-            <span class="jp-file-name">task.json</span>
-            <span class="jp-file-what">what varies, the stages,
+            <span class="ts-file-name">task.json</span>
+            <span class="ts-file-what">what varies, the stages,
               what to measure<br>
-              <span class="jp-file-state" data-exists="no" id="jp-f-task">not there yet</span></span>
+              <span class="ts-file-state" data-exists="no" id="ts-f-task">not there yet</span></span>
           </li>
           <li>
-            <span class="jp-file-name" id="jp-f-tmpl-name">&lt;label&gt;.template.toml</span>
-            <span class="jp-file-what">every parameter, with its value<br>
-              <span class="jp-file-state" data-exists="no" id="jp-f-tmpl">not there yet</span></span>
+            <span class="ts-file-name" id="ts-f-tmpl-name">&lt;label&gt;.template.toml</span>
+            <span class="ts-file-what">every parameter, with its value<br>
+              <span class="ts-file-state" data-exists="no" id="ts-f-tmpl">not there yet</span></span>
           </li>
         </ul>
       </section>
@@ -103,16 +103,16 @@
         <h2>task.json</h2>
         <p class="hint">The file itself &mdash; edit it here and check it before
           it is written.</p>
-        <div class="jp-editor" id="jp-editor"></div>
-        <div class="jp-editor-bar">
-          <span class="jp-dirty" id="jp-dirty" hidden>edited &mdash; not saved</span>
-          <button type="button" class="primary" id="jp-save" disabled
+        <div class="ts-editor" id="ts-editor"></div>
+        <div class="ts-editor-bar">
+          <span class="ts-dirty" id="ts-dirty" hidden>edited &mdash; not saved</span>
+          <button type="button" class="primary" id="ts-save" disabled
                   title="Saving is not wired yet — the description is written by
                          `molbuilder jobset describe` today.">
             Save to this folder
           </button>
         </div>
-        <p class="hint" id="jp-save-why">Saving is not built yet. This page reads
+        <p class="hint" id="ts-save-why">Saving is not built yet. This page reads
           and edits; <code>molbuilder jobset describe</code> is what writes a
           description today.</p>
       </section>
@@ -125,6 +125,6 @@
 </div><!-- /app-content -->
 </div><!-- /app-body -->
 
-<script type="module" src="{{ url_for('static', filename='job-prep/viewer.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='task-setup/viewer.js') }}"></script>
 </body>
 </html>

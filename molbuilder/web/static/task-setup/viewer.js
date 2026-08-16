@@ -1,4 +1,4 @@
-/* job-prep/viewer.js — the Job Prep tab's page controller.
+/* task-setup/viewer.js — the Task Setup tab's page controller.
  *
  * WHAT THIS TAB DOES TODAY, and it is deliberately less than the design:
  *   1. Follow the projects sidebar's selected DIRECTORY.
@@ -12,7 +12,7 @@
  * path against a design neither of us has seen running is how you get a page
  * that is confidently wrong.
  *
- * The contract is `docs/web/job-prep.md`; where this disagrees, that wins.
+ * The contract is `docs/web/task-setup.md`; where this disagrees, that wins.
  *
  * NO NEW ENDPOINT.  Reading a folder is `/api/files/list` + `/api/files/read`,
  * both already shipped and both already inside the roots guard.  `missing_ok`
@@ -20,7 +20,7 @@
  * normal empty answer costs no failed-resource console error.
  */
 
-import { loadCodeMirror } from "../lib/codemirror-load.js";
+import { loadCodeMirror, modeFor } from "../lib/codemirror-load.js";
 
 const TASK_JSON = "task.json";
 
@@ -63,24 +63,24 @@ function el(tag, attrs, ...kids) {
 }
 
 function setState(kind, title, body) {
-    $("jp-state").setAttribute("data-state", kind);
-    $("jp-state-title").textContent = title;
-    $("jp-state-body").textContent  = body;
+    $("ts-state").setAttribute("data-state", kind);
+    $("ts-state-title").textContent = title;
+    $("ts-state-body").textContent  = body;
 }
 
 function showPath(dir) {
-    const host = $("jp-path");
+    const host = $("ts-path");
     host.textContent = "";
     if (!dir) {
-        host.appendChild(el("span", { class: "jp-path-seg" }, "no folder selected"));
+        host.appendChild(el("span", { class: "ts-path-seg" }, "no folder selected"));
         return;
     }
     const parts = String(dir).split("/").filter(Boolean);
     parts.forEach((seg, i) => {
         const last = i === parts.length - 1;
         host.appendChild(el("span",
-            { class: last ? "jp-path-here" : "jp-path-seg" }, seg));
-        if (!last) host.appendChild(el("span", { class: "jp-path-sep" }, "/"));
+            { class: last ? "ts-path-here" : "ts-path-seg" }, seg));
+        if (!last) host.appendChild(el("span", { class: "ts-path-sep" }, "/"));
     });
 }
 
@@ -93,12 +93,12 @@ function markFile(id, exists, presentText) {
 /* ---------- rendering the description ---------- */
 
 function renderStages(task) {
-    const card = $("jp-stages-card");
+    const card = $("ts-stages-card");
     const stages = Array.isArray(task && task.stages) ? task.stages : [];
     const varies = Array.isArray(task && task.varies) ? task.varies : [];
     if (!stages.length) { card.hidden = true; return; }
 
-    const table = $("jp-stage-table");
+    const table = $("ts-stage-table");
     const thead = table.querySelector("thead");
     const tbody = table.querySelector("tbody");
     thead.textContent = "";
@@ -128,8 +128,8 @@ function renderStages(task) {
 }
 
 function renderMachine(task) {
-    const card = $("jp-machine-card");
-    const host = $("jp-machine-rows");
+    const card = $("ts-machine-card");
+    const host = $("ts-machine-rows");
     host.textContent = "";
 
     const bench = (task && task.bench) || {};
@@ -146,12 +146,12 @@ function renderMachine(task) {
             ? "chosen · 1 point"
             : `measured · ${pts.length} trial${pts.length === 1 ? "" : "s"}`;
 
-        const pointEls = pts.map((p) => el("span", { class: "jp-pt" }, String(p)));
-        host.appendChild(el("div", { class: "jp-row", "data-kind": kind },
-            el("div", { class: "jp-row-name" }, name,
+        const pointEls = pts.map((p) => el("span", { class: "ts-pt" }, String(p)));
+        host.appendChild(el("div", { class: "ts-row", "data-kind": kind },
+            el("div", { class: "ts-row-name" }, name,
                 el("small", null, ROW_NOTE[name] || "")),
-            el("div", { class: "jp-points" }, ...pointEls),
-            el("div", { class: "jp-verdict" }, verdict)));
+            el("div", { class: "ts-points" }, ...pointEls),
+            el("div", { class: "ts-verdict" }, verdict)));
     }
     card.hidden = false;
 }
@@ -161,21 +161,21 @@ function renderMachine(task) {
 async function ensureEditor() {
     if (_cm) return _cm;
     const CM = await loadCodeMirror();
-    // `mode: null` is plain text and is deliberate: the vendored 5.65.16
-    // bundle ships the markdown mode and no javascript/json one, and adding
-    // one is a vendor-inventory decision (`static/vendor/README.md`), not a
-    // convenience.  Line numbers, editing, undo and the search addons all
-    // work without it.
-    _cm = CM($("jp-editor"), {
+    // Highlighting comes from the SUFFIX, and the mode file is fetched only
+    // when a file of that kind is first opened (`lib/codemirror-load.js`).
+    // `task.json` resolves to the javascript mode with `json: true` — the
+    // JSON dialect, since CodeMirror ships no separate json mode.
+    const mode = await modeFor(TASK_JSON);
+    _cm = CM($("ts-editor"), {
         value:       "",
-        mode:        null,
+        mode:        mode,
         lineNumbers: true,
         lineWrapping: true,
         readOnly:    false,
     });
     _cm.on("change", () => {
         const dirty = _cm.getValue() !== _loadedText;
-        $("jp-dirty").hidden = !dirty;
+        $("ts-dirty").hidden = !dirty;
     });
     return _cm;
 }
@@ -185,7 +185,7 @@ async function setEditorText(text) {
     _loadedText = text;
     cm.setValue(text);
     cm.clearHistory();          // a fresh file is not an undo step of the last
-    $("jp-dirty").hidden = true;
+    $("ts-dirty").hidden = true;
     cm.refresh();               // it mounted inside a card that may have been
                                 // hidden or resized since
 }
@@ -228,16 +228,16 @@ async function loadFolder(projects, dir) {
         if (tmpl) templateName = tmpl.name;
     } catch (_) { /* listing is a nicety here */ }
 
-    markFile("jp-f-task", !!taskText, "already here — saving would update it");
-    markFile("jp-f-tmpl", !!templateName, "already here — saving would update it");
-    if (templateName) $("jp-f-tmpl-name").textContent = templateName;
+    markFile("ts-f-task", !!taskText, "already here — saving would update it");
+    markFile("ts-f-tmpl", !!templateName, "already here — saving would update it");
+    if (templateName) $("ts-f-tmpl-name").textContent = templateName;
 
     if (!taskText) {
         setState("empty", "No description here yet",
                  "This folder carries no task.json. Saving would write a new "
                  + "one — once saving is built.");
-        $("jp-stages-card").hidden = true;
-        $("jp-machine-card").hidden = true;
+        $("ts-stages-card").hidden = true;
+        $("ts-machine-card").hidden = true;
         await setEditorText("");
         return;
     }
@@ -250,8 +250,8 @@ async function loadFolder(projects, dir) {
         // you want to look at.
         setState("refuse", "task.json is here but does not parse",
                  String(e && e.message ? e.message : e));
-        $("jp-stages-card").hidden = true;
-        $("jp-machine-card").hidden = true;
+        $("ts-stages-card").hidden = true;
+        $("ts-machine-card").hidden = true;
         await setEditorText(taskText);
         return;
     }

@@ -52,7 +52,7 @@ def test_index_page_has_tab_markup(web_client):
         # generated the script itself, so the Generate button was the
         # thing that proved the PySCF panel was wired.  The tab now
         # COLLECTS PARAMETERS and hands them on -- the browser describes,
-        # the terminal acts (`web/job-prep.md` § 1) -- so the
+        # the terminal acts (`web/task-setup.md` § 1) -- so the
         # container is what proves it, and asserting a button that is
         # deliberately gone would pin the retired shape.
         'id="pyscf-form-container"',
@@ -64,7 +64,7 @@ def test_index_page_has_tab_markup(web_client):
 def test_the_tab_neither_generates_nor_saves(web_client):
     """The tab collects parameters; it does not produce artefacts.
 
-    `web/job-prep.md` § 1 — *the browser describes and observes,
+    `web/task-setup.md` § 1 — *the browser describes and observes,
     the terminal acts*.  A deck carries values that depend on how it will
     be launched, so a browser that "finished" one would be guessing.  This
     is the guard on that: the buttons are not merely unwired, they are

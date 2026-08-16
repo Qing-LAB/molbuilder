@@ -41,7 +41,7 @@
  */
 
 import { projects } from "./state.js";
-import { loadCodeMirror } from "../codemirror-load.js";
+import { loadCodeMirror, modeFor } from "../codemirror-load.js";
 import { apiWrite, apiStat, apiRead, apiReadRange } from "./api.js";
 
 // Modal DOM handles, populated by initPreview().
@@ -572,6 +572,16 @@ async function _loadBulk(path) {
             "[preview] _loadBulk: _cm is null when about to setValue. "
             + "The modal was likely closed during the read.");
         return;
+    }
+    // Highlight by suffix.  The modal previews .md / .py / .json / .toml as
+    // readily as an .fdf, and until 2026-08-16 every one of them rendered as
+    // plain text because no mode was ever set.  `modeFor` loads the vendored
+    // mode for this path on first use and answers null for the formats
+    // CodeMirror has none for, which is the plain-text we already had.
+    try {
+        _cm.setOption("mode", await modeFor(path || ""));
+    } catch (e) {
+        console.error("[preview] mode selection failed:", e);   // plain text
     }
     try {
         _cm.setValue(body.text);

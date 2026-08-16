@@ -301,7 +301,7 @@ JS_LEDGER: dict[str, tuple[int | None, str]] = {
     "lib/form-schema.js": (
         10, "the generic stage-table field kind -- rows are the per-stage "
             "parameters, columns are the stages, which is the panel "
-            "job-prep.md § 5 describes"),
+            "task-setup.md § 5 describes"),
     # structure-optimization/viewer.js was attributed here until 2026-08-16,
     # for a `p-stage-preset` that turned a stage NUMBER into a filename.  The
     # tab's cleanup deleted that path (the panel no longer names decks), so

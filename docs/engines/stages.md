@@ -216,7 +216,7 @@ the three items that declare no `engines` list and therefore apply everywhere
 > already lists every parameter; each one carries a *vary per stage* checkbox
 > beside it, and what is ticked **is** `varies`. A second list would be a second
 > copy of the field set, drifting from the first — the same duplication this whole
-> correction removed. [`web/job-prep.md`](?doc=web/job-prep.md) § 5 and
+> correction removed. [`web/task-setup.md`](?doc=web/task-setup.md) § 5 and
 > [`web/form-schema.md`](?doc=web/form-schema.md) § 1.3 carry the surface detail.
 >
 > **`relax_type` was tagged `profile`, that tag was wrong, and it is now
@@ -747,7 +747,7 @@ any `@1` artifact parsed as any other `@1` artifact.)*
 ### 6.2 `varies` declares the columns; `overrides` fills the cells it chooses to
 
 `varies` is the set of fields the user chose to tune — the **columns** of the
-table ([`web/job-prep.md`](?doc=web/job-prep.md) § 5). It is intent, and no artefact downstream
+table ([`web/task-setup.md`](?doc=web/task-setup.md) § 5). It is intent, and no artefact downstream
 records it: a mesh cutoff that happens to be equal in every stage is
 indistinguishable, in the decks, from one that was never promoted.
 

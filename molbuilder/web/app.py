@@ -473,14 +473,14 @@ def create_app(*, config=None) -> Flask:
         # generator (index.html template).
         return render_template("index.html")
 
-    @app.route("/job-prep")
-    def job_prep_page():
-        # Job Prep tab: reads the selected folder's description and shows it
+    @app.route("/task-setup")
+    def task_setup_page():
+        # Task Setup tab: reads the selected folder's description and shows it
         # -- stages, and the machine settings you either chose or asked to
         # have measured -- with `task.json` in the vendored CodeMirror.
         # READ-ONLY today: it writes nothing, and the Save button says so.
-        # The contract is docs/web/job-prep.md.
-        return render_template("job_prep.html")
+        # The contract is docs/web/task-setup.md.
+        return render_template("task_setup.html")
 
     @app.route("/transport-calculation")
     def transport_calculation_page():
