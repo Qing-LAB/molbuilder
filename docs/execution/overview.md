@@ -60,8 +60,7 @@ you are reading tells you how much to trust it and what to do when two disagree.
 | You want to know… | Open |
 |---|---|
 | **What gets built first, and how each step is checked** — the milestones, the gates, and the three reviews at each one | **[`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)** |
-| What the Structure-optimization tab will look like — the page that **writes** a description | **[`web/structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)** |
-| The shared tab that **finishes** one — starts from a folder, fills in the per-stage values | **[`web/task-setup-plan.md`](?doc=web/task-setup-plan.md)** |
+| The tab that **writes** a description — the stages, and the machine settings you choose or measure | **[`web/job-prep.md`](?doc=web/job-prep.md)** |
 
 **Where the design itself lives has changed.** It is
 [`architecture.md`](?doc=execution/architecture.md), a contract, because it says
@@ -84,8 +83,7 @@ reaches past it. Arrows point from a document to the ones it depends on.
 flowchart TB
     subgraph plans["Plans — not built yet"]
       IMP["staged-runs-implementation-plan.md<br/>the order + the gates"]
-      UIP["structure-optimization-ui-plan.md<br/>writes a description"]
-      TSP["task-setup-plan.md<br/>finishes one — shared"]
+      TSP["job-prep.md<br/>writes a description"]
     end
     subgraph guides["Guides — how to do it today"]
       RAJ["running-a-job.md<br/>ONE job"]

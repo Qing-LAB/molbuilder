@@ -31,7 +31,7 @@ server, draws the form, and reads the filled-in values back.
 > **An engine config carries no stage list**, so the generator never meets a
 > stage and the `stage-table` field kind is not reachable from an engine schema.
 > The per-stage grid is the shared Task Setup tab's
-> ([`task-setup-plan.md`](?doc=web/task-setup-plan.md) § 6), fed by two inputs
+> ([`job-prep.md`](?doc=web/job-prep.md) § 5), fed by two inputs
 > from two sources: the **catalogue** from here, the **selection** from
 > `task.json`. PySCF still has a `stages` field and is a deliberate exception
 > until the SIESTA path works.
@@ -225,7 +225,7 @@ stated nowhere else:
 > fieldsets, so **switching the stage preset silently rewrote budget and system
 > fields too**. The cards made *"the stage selector touches the stage card
 > only"* visible. The per-parameter checkbox
-> ([`web/structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)
+> ([`web/job-prep.md`](?doc=web/job-prep.md)
 > § 7.6) removes the preset that caused it, so the grouping now stands on its two
 > remaining jobs: reading the form, and placing advice.
 

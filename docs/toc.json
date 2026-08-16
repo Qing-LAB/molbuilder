@@ -151,9 +151,6 @@
           "path": "execution/asu-sol.md"
         },
         {
-          "path": "execution/siesta-catalogue.md"
-        },
-        {
           "path": "execution/template-unification-plan.md"
         }
       ]
@@ -172,16 +169,7 @@
           "path": "web/molview.md",
           "children": [
             {
-              "path": "web/molview-corrections-plan.md"
-            },
-            {
-              "path": "web/molview-rework-plan.md"
-            },
-            {
               "path": "web/molview-css-namespace-plan.md"
-            },
-            {
-              "path": "web/molview-integration-plan.md"
             }
           ]
         },
@@ -205,6 +193,9 @@
         },
         {
           "path": "web/form-schema.md"
+        },
+        {
+          "path": "web/job-prep.md"
         },
         {
           "path": "web/web-api.md"
@@ -232,12 +223,6 @@
         },
         {
           "path": "web/spectrumchart.md"
-        },
-        {
-          "path": "web/structure-optimization-ui-plan.md"
-        },
-        {
-          "path": "web/task-setup-plan.md"
         }
       ]
     },
