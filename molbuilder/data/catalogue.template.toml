@@ -631,7 +631,7 @@ engine_key = "(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)"
 type = "int"
 resolver = "rank_count"
 range = [1, 1024]
-group = "budget"
+group = "staging"
 label = "MPI ranks (np)"
 null_label = "(single-process)"
 optional = true
@@ -647,13 +647,19 @@ engines = ["siesta"]
 anchor = "BlockSize"
 engine_key = "BlockSize"
 manual = "SIESTA 5.4.2 §6.27 'Parallel options'"
-type = "pow2"
 resolver = "block_size"
+type = "int"
 group = "budget"
 label = "ScaLAPACK block size"
 null_label = "(auto)"
 optional = true
-help = "ScaLAPACK BlockSize for the diagonaliser's orbital distribution; affects cache efficiency at moderate rank counts.  None = auto: largest power of 2 that leaves >= 2 blocks per rank.  0 = OMIT the keyword entirely -- SIESTA's own built-in default, the third state (tuning.md 2.11, decision 35).  NOTE: BlockSize does NOT fix the ``propor: ERROR: IMAX = 0`` crash -- that was the previous (incorrect) claim and is contradicted by direct empirical sweep (BS = 1, 2, 4 all crash at the same mpi_np).  Propor is a vector-proportionality check in matel_table's MPI-deduplication step; lower mpi_np (use the wrapper's ``-np`` override) to clear that crash.  Set BlockSize explicitly only for the rare ScaLAPACK perf-tuning case (>1000 atoms on >= 16 ranks, where 16 or 32 helps)."
+help = """
+How many consecutive orbitals go to one MPI rank before the distribution moves to the next -- the ScaLAPACK block.  It cannot change the answer, only how evenly the ranks are fed and therefore how long the run takes.
+TWO STATES.  Left as (auto) the keyword is NOT WRITTEN and SIESTA uses its own automatic, which is what its manual declares as the default.  Set to a number, that number is written verbatim -- which is what you want after benchmarking, and a benchmark is the only thing that really answers this: the best block depends on the matrix size, the rank count, the interconnect and the node's memory layout at once.
+molbuilder DERIVED a value here until 2026-08-15, and it should not have: the guess went into the deck as if it were a decision, and below four atoms it wrote BlockSize 1 -- legal, and the opposite of the cache blocking the parameter exists for.
+GUIDANCE if you set one by hand: powers of two (16, 32, 64, 128); smaller for few orbitals, larger for thousands. Stay under n_orbitals / ranks or some rank gets no block at all.
+GPU: with an ELPA diagonaliser on the GPU the block must be a power of two or ELPA silently runs on the CPU. `prep` realigns it there -- that is the layer that knows the GPU flag and the rank count (tuning.md 2.11).
+It does NOT fix ``propor: ERROR: IMAX = 0``.  That claim was disproved by direct sweep (BS = 1, 2, 4 all crash at the same mpi_np); propor is a vector-proportionality check in matel_table's MPI-deduplication step.  Lower the rank count to clear it."""
 
 [item.parallel_over_k]
 kind = "engine"
@@ -675,7 +681,7 @@ engines = ["siesta"]
 engine_key = "(molbuilder: .run.sh OMP_NUM_THREADS + .fdf runtime_info comment)"
 type = "int"
 resolver = "omp_threads"
-group = "budget"
+group = "staging"
 label = "OMP threads per rank"
 null_label = "(auto: physical cores)"
 optional = true
@@ -689,7 +695,7 @@ type = "int"
 resolver = "node_memory"
 unit = "MB"
 range = [100, 1000000]
-group = "budget"
+group = "staging"
 label = "Max memory"
 null_label = "(no cap)"
 optional = true
@@ -712,7 +718,7 @@ manual = "SIESTA 5.4.2 §6.12.1 'Diagonalization options'"
 type = "bool"
 value = false
 default = false
-group = "budget"
+group = "staging"
 label = "Use GPU (NVIDIA, via ELPA-CUDA)"
 read_by = ["wrapper"]
 help = "OPTIONAL: run the ELPA diagonalization on an NVIDIA CUDA GPU.  This does NOT turn ELPA on -- pick the solver in ``Diagonalizer`` (ELPA-1STAGE / -2STAGE). This toggle only moves that ELPA solve onto the GPU (GPU-only, no CPU fallback).  Requires an ELPA diagonalizer (GPU + ScaLAPACK is rejected) and an NVIDIA GPU on the run machine.  Off = the chosen ELPA solver runs on CPU (or ScaLAPACK if that's selected). This toggle is the ONLY thing that needs the source-built ``molbuilder-siesta-gpu`` env: the packaged SIESTA runs ELPA on CPU perfectly well, but its ELPA is built without the GPU entry.  The wrapper refuses to emit if that env is missing. Affinity hint: GPU favors 1STAGE."
@@ -826,13 +832,13 @@ help = "target total spin moment in mu_B (= number of unpaired electrons).  Emit
 
 [item.job_name]
 kind = "produce"
-category = ["procedure", "system"]
+category = ["system", "procedure"]
 engines = ["pyscf"]
 engine_key = "(molbuilder: filename + log-name basename)"
 type = "str"
 value = "pyscf_relax"
 default = "pyscf_relax"
-group = "profile"
+group = "setup"
 label = "Job name"
 pattern = "^[A-Za-z0-9_\\-]+$"
 help = "job name; output files get this prefix.  Must match [A-Za-z0-9_-]+ (job-layout v1; no dots)."
@@ -1231,7 +1237,7 @@ anchor = "lib.num_threads"
 engine_key = "lib.num_threads(N) + os.environ['OMP_NUM_THREADS']"
 manual = "PySCF 2.13 pyscf.lib.misc 'num_threads()'"
 type = "int"
-group = "budget"
+group = "staging"
 label = "CPU threads"
 null_label = "(auto: physical cores)"
 optional = true
@@ -1247,7 +1253,7 @@ manual = "PySCF 2.13 pyscf.dft.rks.RKS 'to_gpu()'"
 type = "bool"
 value = false
 default = false
-group = "budget"
+group = "staging"
 label = "Use GPU (NVIDIA, via gpu4pyscf)"
 help = "run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf extension.  The recipe for ``molbuilder-pySCF`` installs the matching ``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` wheels for the project's pinned CUDA toolkit (see ``molbuilder envs doctor molbuilder-pySCF``); the script probes gpu4pyscf at runtime and falls back to CPU if the package isn't importable or the GPU is missing / too old (compute capability < 7.0)."
 

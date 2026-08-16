@@ -461,8 +461,8 @@ class PySCFConfig:
 
     # ---------------- System ----------------
     job_name: str = field(default="pyscf_relax", metadata={
-        "category": ("procedure", "system"),
-        "workflow_group": "profile",
+        "category": ("system", "procedure"),
+        "workflow_group": "setup",
         "section":  "System",
         "item_kind":  "produce",
         "label":    "Job name",
@@ -979,7 +979,7 @@ class PySCFConfig:
         "resolver": "node_memory",
         "allocation": True,
         "item_kind": "wrapper",
-        "workflow_group": "budget",
+        "workflow_group": "staging",
         "section": "Compute & budget",
         "label": "Max memory", "unit": "MB",
         # NOT an engine keyword any more.  ``mol.max_memory`` is how PySCF
@@ -1001,7 +1001,7 @@ class PySCFConfig:
     })
     threads: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
-        "workflow_group": "budget",
+        "workflow_group": "staging",
         "section": "Compute & budget",
         "label":      "CPU threads",
         "engine_key":  "lib.num_threads(N) + os.environ['OMP_NUM_THREADS']",
@@ -1026,7 +1026,7 @@ class PySCFConfig:
     })
     use_gpu: bool = field(default=False, metadata={
         "category": ("execution",),
-        "workflow_group": "budget",
+        "workflow_group": "staging",
         "section": "Compute & budget",
         "label":     "Use GPU (NVIDIA, via gpu4pyscf)",
         "engine_key":  'gpu4pyscf: mf = mf.to_gpu()',

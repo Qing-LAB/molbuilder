@@ -67,20 +67,14 @@ import { mount as mvMount, formula as mvFormula }
         // viewer was not showing.  There is no mirror to desync now.
     };
 
-    /* THE STRUCTURE, READ LIVE, IN ONE READ (F1, docs/science/validation.md § 4.1).
-     *
-     * `getStructure()` is the whole master copy — the elements, the per-atom
-     * facts, the cell block, every frame — so the facts that leave together were
-     * read together. That property is the shape of the read, not a promise about
-     * how callers behave: this used to be `factsForRequest()`, a second door
-     * whose only job was to hand back the same facts in a different shape.
-     *
-     * Null when nothing is loaded, which is different from a structure with no
-     * atoms — callers must not invent a payload out of it. */
-    function _facts() {
-        const d = _data();
-        return d ? d.getStructure() : null;
-    }
+    /* (`_facts()` was deleted 2026-08-15.)  A one-line wrapper over
+     * `_data().getStructure()` with no callers left.  Its own comment records
+     * how it got here: it replaced `factsForRequest()`, *"a second door whose
+     * only job was to hand back the same facts in a different shape"* — and
+     * then `_structureForRequest()` below became the one door, leaving this
+     * as a third.  The rule it stated is worth keeping and now lives where it
+     * is used: read the structure ONCE, so the facts that leave together were
+     * read together (F1, docs/science/validation.md § 4.1). */
 
     /* THE STRUCTURE AS THE SERVER TAKES IT — ASKED FOR, NOT ASSEMBLED.
      *
@@ -318,12 +312,14 @@ import { mount as mvMount, formula as mvFormula }
        the other must follow.  Used only to label the BlockSize
        textbox's placeholder; the actual value still comes from the
        backend, which also knows mpi_np and the GPU toggle. */
-    function autoBlockSize(n) {
-        if (n >= 16) return 8;
-        if (n >= 8)  return 4;
-        if (n >= 4)  return 2;
-        return 1;
-    }
+    /* (autoBlockSize deleted 2026-08-15.)  It hand-copied the size-only
+       branch of `_auto_block_size` in molbuilder/siesta/input.py to label
+       the BlockSize placeholder, and its own comment conceded the cost:
+       "if either side changes the rule, the other must follow."  It never
+       knew the rank count -- and since the rank count moved to the staging
+       surface it never could -- so the number it showed was not the one the
+       backend would pick.  The placeholder is the catalogue's "(auto)" now,
+       and the rule has one home again. */
 
     function clearStructureInfo(reason) {
         // Wipe the info readout when a load attempt FAILS or when
@@ -371,11 +367,15 @@ import { mount as mvMount, formula as mvFormula }
         $("info-atoms").textContent     = n_atoms;
         $("info-residues").textContent  = "—";
         $("info-formula").textContent   = formula(elements);
-        const bs = $("p-parallel-block-size");
-        if (bs) {
-            bs.placeholder =
-                "auto (" + autoBlockSize(n_atoms) + ", n=" + n_atoms + ")";
-        }
+        // The BlockSize placeholder is left as the catalogue's own
+        // ``null_label`` -- "(auto)".  It read
+        // ``auto (<size>, n=<atoms>)`` until 2026-08-15, and the parenthesis
+        // told the user nothing they could act on: ``n`` was the ATOM COUNT,
+        // which in a parallel-execution field reads as a rank count, and the
+        // size shown was only the no-ranks branch of the backend rule -- so
+        // on any real run it was not the number that would be used.  A
+        // prediction that is usually wrong is worse than no prediction
+        // (user, 2026-08-15).
         // A new structure invalidates the previous run's issue panels;
         // refresh both with a preflight tick so the user sees only
         // issues against the new geometry + current params.
@@ -474,13 +474,23 @@ import { mount as mvMount, formula as mvFormula }
 
     // ---- SIESTA rules ------------------------------------------------
     function applySiestaCompatibility() {
-        // SpinTotal only meaningful when SpinPolarized is on.
-        const spinPol = $("p-spin-polarized")
-            && $("p-spin-polarized").checked;
+        // SpinTotal is only meaningful once the spin treatment is something
+        // other than non-polarized.
+        //
+        // THIS GATE WAS BROKEN, not merely stale (found 2026-08-15).  It read
+        // ``$("p-spin-polarized").checked`` -- a CHECKBOX that stopped
+        // existing when `spin_polarized` became the four-state
+        // `spin_treatment` enum.  ``$()`` returned null, the `&&` made the
+        // gate permanently false, and so `p-spin-total` was locked FOREVER
+        // with a message telling the user to tick a control that is not on
+        // the page.  A dead id does not throw; it quietly answers "no".
+        const spinSel = $("p-spin-treatment");
+        const polarised = !!spinSel && spinSel.value !== "non-polarized";
         setLock("p-spin-total",
-                spinPol ? null
-                        : "Tick 'Spin polarized' first; SpinTotal is "
-                          + "ignored without spin polarisation.");
+                polarised ? null
+                          : "Set 'Spin treatment' to something other than "
+                            + "non-polarized; SpinTotal is ignored without "
+                            + "spin polarisation.");
 
         // Relaxation type "none" -> per-step relaxation params moot.
         const relax = $("p-relax-type") && $("p-relax-type").value;
@@ -491,18 +501,23 @@ import { mount as mvMount, formula as mvFormula }
         ["p-relax-steps", "p-relax-force-tol", "p-relax-max-displ"]
             .forEach(id => setLock(id, noneReason));
 
-        // GPU acceleration applies ONLY to an ELPA diagonalizer
-        // (ScaLAPACK has no GPU path; engines/siesta.md § 13).  When the
-        // user turns GPU on while ScaLAPACK is selected, switch to the
-        // GPU-preferred ELPA-1STAGE -- same auto-set pattern as
-        // method->spin above, and it keeps render_fdf from rejecting the
-        // GPU+ScaLAPACK combo.  GPU off leaves the algorithm alone (ELPA
-        // and ScaLAPACK both run on CPU).
-        const gpu = $("p-enable-gpu") && $("p-enable-gpu").checked;
-        const diag = $("p-diag-algorithm");
-        if (gpu && diag && diag.value === "ScaLAPACK") {
-            diag.value = "ELPA-1STAGE";
-        }
+        // (The GPU/diagonaliser auto-switch was deleted 2026-08-15.)
+        //
+        // It read ``$("p-enable-gpu").checked`` and, if ScaLAPACK was
+        // selected, silently rewrote the user's diagonaliser to
+        // ELPA-1STAGE.  Three things were wrong with keeping it:
+        //
+        //   * ``p-enable-gpu`` is not on this form any more -- the GPU flag
+        //     is a bench axis answered on the staging surface -- so the gate
+        //     was dead code that could never fire;
+        //   * its stated reason, "ScaLAPACK has no GPU path (siesta.md
+        //     § 13)", is an obsolete citation.  ELPA runs on CPU *and* GPU,
+        //     and ScaLAPACK here is SIESTA's built-in Divide-and-Conquer;
+        //     the corrected account is in the `diag_algorithm` help;
+        //   * it silently changed a value the user chose.  Reconciling a
+        //     solver with the hardware belongs to `prep`, which is the layer
+        //     that knows the hardware -- and which records what it changed
+        //     (tuning.md § 2.11's realignment rule).
     }
 
     function applyCompatibility() {
@@ -520,7 +535,12 @@ import { mount as mvMount, formula as mvFormula }
     function wireCompatibilityListeners() {
         [
             "py-method", "py-optimize", "py-solvent",
-            "p-spin-polarized", "p-relax-type", "p-enable-gpu", "p-diag-algorithm",
+            // ``p-spin-polarized`` -> ``p-spin-treatment`` (the checkbox
+            // became a four-state enum) and ``p-enable-gpu`` is gone from
+            // this form entirely.  Listening on a dead id is silent: the
+            // listener simply never attaches, so the gate it drives stops
+            // updating and nothing says so.
+            "p-spin-treatment", "p-relax-type", "p-diag-algorithm",
         ].forEach(id => {
             const el = $(id);
             if (el) el.addEventListener("change", applyCompatibility);

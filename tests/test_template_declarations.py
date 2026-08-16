@@ -174,11 +174,28 @@ def test_a_bench_marks_field_declares_the_same_type_as_its_template_item():
             f"BENCH-MARKS declares {bf.anchor!r}, which no config field "
             f"anchors -- so a tool may override a line the template cannot "
             f"describe (job-contracts.md § 3.3).")
-        assert bf.type_ == item.type, (
+        # THE BENCH MAY BE NARROWER THAN THE DECK, NEVER WIDER.
+        #
+        # Exact equality was the rule until 2026-08-15, when ``BlockSize``
+        # became a plain ``int`` on the template while BENCH-MARKS kept
+        # ``pow2``.  That is deliberate and the asymmetry is the point: the
+        # DECK honours any positive integer (SIESTA's own manual gives no
+        # power-of-two rule for ``BlockSize``), while the BENCHMARK sweeps
+        # powers of two because that is a sensible sweep, not a validity
+        # constraint (`engines/tuning.md` § 2.11).
+        #
+        # Narrower is safe -- the bench simply never proposes a value the
+        # deck would refuse.  WIDER is the dangerous direction, and it is
+        # what this assertion is really for: a bench that could hand back
+        # something the deck rejects.
+        _NARROWINGS = {("pow2", "int")}
+        assert (bf.type_ == item.type
+                or (bf.type_, item.type) in _NARROWINGS), (
             f"{bf.anchor}: BENCH-MARKS says type={bf.type_!r}, the template "
-            f"item {item.name!r} says {item.type!r}.  These are emitted from "
-            f"ONE source by rule; a disagreement means a tool validates an "
-            f"override against a type the deck no longer honours.")
+            f"item {item.name!r} says {item.type!r}.  A bench type may be a "
+            f"NARROWING of the template's (it sweeps a subset); anything "
+            f"else means a tool could propose an override the deck refuses "
+            f"(job-contracts.md § 3.3).")
         assert bf.type_ in DECL_TYPES, f"{bf.anchor}: {bf.type_}"
 
 

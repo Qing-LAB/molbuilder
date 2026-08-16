@@ -33,11 +33,32 @@ def test_the_panels_are_the_shared_six_in_reading_order(engine):
     assert names, "no panels at all"
 
 
-def test_both_engines_show_the_same_panels():
-    """The claim that could not be made while `section` was per-engine."""
-    a = [s["name"] for s in catalogue_to_form_schema("siesta")["sections"]]
-    b = [s["name"] for s in catalogue_to_form_schema("pyscf")["sections"]]
-    assert a == b
+def test_both_engines_draw_their_panels_from_the_same_vocabulary():
+    """The claim that could not be made while `section` was per-engine.
+
+    THE CLAIM IS THE VOCABULARY, NOT AN IDENTICAL LIST.  This asserted
+    ``a == b`` until 2026-08-15, which held only while both engines happened
+    to carry an item in all six categories.  It stopped holding the moment
+    PySCF's ``threads`` and ``use_gpu`` moved to the staging surface: they
+    were its only ``execution`` items, so PySCF draws five panels and SIESTA
+    six.  Neither is wrong -- a panel exists because the engine HAS a
+    parameter answering that question, and an engine with none should not be
+    shown an empty heading.
+
+    What `template.md` § 6.2 actually buys is that the words are shared and
+    ordered, so *"accuracy"* means the same thing and sits in the same place
+    on both forms.  That is what is asserted here.
+    """
+    from molbuilder.template import CATEGORIES
+    panels = {e: [s["name"] for s in catalogue_to_form_schema(e)["sections"]]
+              for e in ("siesta", "pyscf")}
+    for engine, names in panels.items():
+        assert set(names) <= set(CATEGORIES), (engine, names)
+        # Same relative order as the shared vocabulary -- a panel may be
+        # absent, never out of sequence.
+        assert names == [c for c in CATEGORIES if c in names], (engine, names)
+    # And they are not two disjoint worlds: the engines share most panels.
+    assert set(panels["siesta"]) & set(panels["pyscf"])
 
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
@@ -163,9 +184,14 @@ def test_an_optional_item_offers_its_unset_state():
     offer *(auto)* / *(no cap)*.  It cannot be inferred from `null_label`."""
     f = {x["name"]: x for s in catalogue_to_form_schema("siesta")["sections"]
          for x in s["fields"]}
-    assert f["mpi_np"]["optional"] is True
-    assert f["mpi_np"]["null_option"] is True
-    assert f["mpi_np"]["null_label"]
+    # ``parallel_block_size``, not ``mpi_np``: the rank count moved to the
+    # staging surface on 2026-08-15 (it is a bench axis prep measures, not a
+    # parameter typed here), so it is no longer on this form to check.  The
+    # block size is the same shape of claim -- optional, auto-resolved, and
+    # its *(auto)* state is the whole reason `optional` is written down.
+    assert f["parallel_block_size"]["optional"] is True
+    assert f["parallel_block_size"]["null_option"] is True
+    assert f["parallel_block_size"]["null_label"]
     assert f["mesh_cutoff"]["optional"] is False
 
 

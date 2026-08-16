@@ -113,6 +113,15 @@ CATEGORIES = ("system", "method", "accuracy", "convergence",
 #: ``allocation`` resolvers answer from what the scheduler GRANTED and their
 #: items are always valueless; ``block_size`` proposes a value a person may
 #: also set or measure.
+#:
+#: ``block_size`` names PREP AND THE BENCHMARK, not the deck writer.  That
+#: distinction was blurred on 2026-08-15 and is worth stating: ``render_fdf``
+#: used to derive a block size at deck-render time and stopped, because unset
+#: means SIESTA's own automatic (`engines/tuning.md` § 2.11).  The RESOLVER is
+#: a different question -- *who answers when the user has not* -- and the
+#: answer is the bench, which sweeps this axis, and `prep`, which realigns it
+#: against the GPU target.  A value measured on the machine is exactly what a
+#: resolver is for.
 RESOLVERS = ("rank_count", "omp_threads", "node_memory", "block_size")
 
 #: The resolvers that answer from what the scheduler GRANTED.  An item naming
@@ -542,11 +551,9 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
 
     choices = f.metadata.get("choices")
     # A field may DECLARE its type when the annotation cannot carry the
-    # constraint.  ``parallel_block_size`` is ``Optional[int]`` and the thing a
-    # reader must check is *is it a power of two* -- which is § 5's whole reason
-    # for ``type`` existing: "what a parser cannot know".  Without this the
-    # vocabulary had a member (`pow2`) that nothing could produce, and a
-    # user-supplied 96 reached the deck unchecked (audit § 50.1).
+    # constraint -- § 5's reason for ``type`` existing: "what a parser cannot
+    # know".  No field declares one today; ``parallel_block_size`` was the
+    # example and became a plain ``int`` on 2026-08-15.
     declared = f.metadata.get("decl_type")
     if declared is not None:
         if declared not in TYPES:
@@ -1051,12 +1058,11 @@ def _shape(v: Any, type_: str) -> Any:
     if v is None:
         return None
     if type_ == "pow2":
-        # Snap DOWN to the nearest power of two, matching what the AUTO path
-        # already does -- ``_auto_block_size`` takes the LARGEST power of two
-        # that still leaves >= 2 blocks per rank, so rounding down is the
-        # direction that cannot make a block bigger than the caller asked for.
-        # 0 passes through: it is the THIRD STATE (*omit the keyword entirely*,
-        # `template.md` § 12), a sentinel rather than a value.
+        # Snap DOWN to the nearest power of two, so a snap can never hand an
+        # engine a BIGGER block than was asked for.  No catalogue item is
+        # ``pow2`` since 2026-08-15 -- BENCH-MARKS keeps the constraint, for
+        # its own sweep (`script_emit.DECL_TYPES`) -- so this runs only for a
+        # hand-written template that declares one.
         n = int(v)
         if n <= 0:
             return 0 if n == 0 else n

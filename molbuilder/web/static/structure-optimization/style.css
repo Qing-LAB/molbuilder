@@ -79,26 +79,13 @@ header code {
     #generate-card { padding: 0.9rem 1rem; }
 }
 
-/* ---- Primary generate buttons (index IDs; the shared .primary base is in
- *      form-components.css) ---- */
-#generate-fdf,
-#generate-pyscf {
-    background: var(--accent-strong);
-    border-color: var(--accent-strong);
-    color: var(--text-on-accent);
-    font-weight: 500;
-}
-#generate-fdf:hover:not(:disabled),
-#generate-pyscf:hover:not(:disabled) {
-    background: var(--accent);
-    border-color: var(--accent);
-}
-#generate-fdf:disabled,
-#generate-pyscf:disabled {
-    background: var(--bg-input);
-    border-color: var(--border-strong);
-    color: var(--text-muted);
-}
+/* (The #generate-fdf / #generate-pyscf button styling was deleted
+ * 2026-08-15.)  Three rules -- base, :hover and :disabled -- for two buttons
+ * that no longer exist in the markup or the script: this tab collects
+ * parameters and hands them to the staging surface, so it has no
+ * "generate the script" action to style.  CSS for an absent element is the
+ * quietest kind of dead code, because nothing renders differently and no
+ * test looks at it. */
 
 /* ---- Status base (index variant; severity modifiers live in page-shell) ---- */
 /* Structure-opt layout tweak ONLY.  The base .status (color / font-size /

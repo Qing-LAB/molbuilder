@@ -2168,7 +2168,10 @@ def test_siesta_form_schema_matches_documented_layout():
         ("accuracy",    7),
         ("convergence", 3),
         ("procedure",  16),
-        ("execution",   7),
+        # 7 -> 3 on 2026-08-15: mpi_np, omp_threads, max_memory_mb and
+        # enable_gpu moved to the staging surface.  They are bench axes
+        # measured on the machine, not parameters typed beside the physics.
+        ("execution",   3),
     ], got
 
     # `staging` items are declared parameters this surface does not ask
@@ -2257,12 +2260,14 @@ def test_pyscf_form_schema_matches_documented_layout():
 
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
     assert got == [
-        ("system",      5),
+        # `system` gained job_name (it leads the Setup card now, the
+        # same treatment system_label got); `execution` is gone entirely --
+        # threads and use_gpu were its only members and both are bench axes.
+        ("system",      6),
         ("method",      8),
         ("accuracy",    3),
         ("convergence", 6),
-        ("procedure",  14),
-        ("execution",   3),
+        ("procedure",  13),
     ], got
 
     # The stage table is NOT here.  PySCFConfig still has a `stages`
@@ -2366,26 +2371,33 @@ def test_engine_key_marks_molbuilder_only_fields_with_paren_prefix():
     user might search the SIESTA / PySCF manual for a keyword
     molbuilder invented (e.g. verbose_comments, wrap_into_cell)."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    from molbuilder.config.siesta import SiestaConfig
-    sch = catalogue_to_form_schema("siesta", "p")
-    # Fields that ARE molbuilder-only (curated list -- if you flip
-    # one of these to a real engine keyword, update the list).
-    molbuilder_only = {
-        "psml_lib",         # stages .psml files
-        "mpi_np",           # .run.sh launcher only
-        "omp_threads",      # .run.sh + .fdf runtime_info comment
-        "max_memory_mb",    # .run.sh ulimit + .fdf comment
-        "wrap_into_cell",   # pre-emission positioning
-        "verbose_comments", # .fdf comment-block control
-    }
-    fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
-    for name in molbuilder_only:
-        f = fields_by_name.get(name)
-        assert f is not None, f"missing field {name} in schema"
-        assert f["engine_key"].startswith("(molbuilder"), (
-            f"{name}: engine_key={f['engine_key']!r} should start with "
-            f"``(molbuilder`` so the UI dims the badge"
-        )
+    from molbuilder import template as T
+
+    # WHICH fields are molbuilder-only is DERIVED, not curated.  The
+    # curated set here listed six names and three of them -- mpi_np,
+    # omp_threads, max_memory_mb -- left this form on 2026-08-15 for the
+    # staging surface, so the test failed for a move it should not have
+    # had an opinion about.  A `kind` of `wrapper` or `produce` IS the
+    # statement "this never becomes an engine keyword" (template.md § 6),
+    # so ask the catalogue and the list cannot go stale.
+    items = {i.name: i for i in T.read_template(T.load_catalogue()).items}
+    for engine, prefix in (("siesta", "p"), ("pyscf", "py")):
+        sch = catalogue_to_form_schema(engine, prefix)
+        checked = 0
+        for f in _flatten_schema_fields(sch):
+            item = items.get(f["name"])
+            if item is None or item.kind not in ("wrapper", "produce"):
+                continue
+            checked += 1
+            assert f["engine_key"].startswith("(molbuilder"), (
+                f"{engine}:{f['name']}: kind={item.kind!r} never reaches the "
+                f"deck, but engine_key={f['engine_key']!r} does not start "
+                f"with ``(molbuilder`` -- the UI cannot dim a badge that "
+                f"looks like a real keyword, and a user will search the "
+                f"manual for a word molbuilder invented")
+        assert checked >= 3, (
+            f"{engine}: only {checked} molbuilder-only field(s) on the form -- "
+            f"too few for this to be proving anything")
 
 
 def test_engine_key_pins_load_bearing_siesta_keywords():

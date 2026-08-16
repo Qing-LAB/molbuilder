@@ -614,3 +614,9 @@ def test_the_items_that_need_a_resolver_have_one():
         assert got is not None and got.resolver == res, (
             f"{name} should declare resolver {res!r}; § 6.4 names it and "
             f"nothing else will fill the value")
+    # ``block_size`` is the one resolver that is NOT an allocation fact: the
+    # scheduler does not grant it, the BENCHMARK measures it and `prep`
+    # realigns it against the GPU target.  So its item may legitimately carry
+    # a value, which is why the two tuples differ.
+    assert "block_size" in T.RESOLVERS
+    assert "block_size" not in T.ALLOCATION_RESOLVERS

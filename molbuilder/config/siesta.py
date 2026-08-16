@@ -88,6 +88,37 @@ def _validate_kgrid(value):
     return out
 
 
+def _validate_block_size(value):
+    """``BlockSize`` is a COUNT of orbitals, so it starts at 1.
+
+    Two states (tuning.md § 2.11): unset is *auto* -- the keyword is not
+    emitted and SIESTA uses its own automatic -- or a positive integer,
+    honoured verbatim.  ``0`` used to be a third state meaning *"omit the
+    keyword"*, which auto now covers; left unrefused it would be written
+    into the deck as ``BlockSize 0``, a distribution block holding no
+    orbitals.  Refused rather than quietly re-read as auto, because the two
+    asks are different and only the user knows which was meant.
+    """
+    from ..issues import Issue
+    if value is None:
+        return []                       # auto -- the keyword is omitted
+    if not isinstance(value, int) or isinstance(value, bool):
+        return [Issue("error",
+                      f"parallel_block_size = {value!r} must be an integer "
+                      f"number of orbitals, or unset for (auto)",
+                      "config.parallel_block_size")]
+    if value < 1:
+        return [Issue(
+            "error",
+            f"parallel_block_size = {value} is not a block size -- it is a "
+            f"count of orbitals per rank, so the smallest meaningful value "
+            f"is 1.  Leave it unset for (auto), which omits the keyword and "
+            f"lets SIESTA choose; 0 used to mean that and no longer does "
+            f"(tuning.md 2.11)",
+            "config.parallel_block_size")]
+    return []
+
+
 def _validate_kgrid_displacement(value, cfg=None):
     """Per-component check for SiestaConfig.kgrid_displacement (SIESTA's
     ``displ(3)``, the k-grid origin in grid-vector coordinates).
@@ -1210,7 +1241,7 @@ class SiestaConfig:
         # surface and membership of the template are different questions.
         "allocation": True,
         "item_kind":  "wrapper",
-        "workflow_group": "budget",
+        "workflow_group": "staging",
         "label":      "MPI ranks (np)",
         "engine_key":  '(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)',
         "null_label": "(single-process)",
@@ -1241,34 +1272,52 @@ class SiestaConfig:
 
     parallel_block_size: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
-        # The annotation says ``int``; what a reader must CHECK is *a power of
-        # two* -- § 5's stated reason for ``type``.  Declared, so the check is
-        # data on the item rather than a comment inside one branch of
-        # ``_auto_block_size``: until 2026-08-14 a user-set 96 was emitted
-        # verbatim while the AUTO path capped to a power of two.
-        "decl_type": "pow2",
+        # A PLAIN INT.  It was ``decl_type: "pow2"`` until 2026-08-15, and
+        # `pow2` does not merely check -- ``template._shape`` SNAPS the value
+        # down to the nearest power of two, so a benchmarked 24 silently
+        # became 16.  The power-of-two rule is real but it is not this
+        # keyword's: the manual states it for ``Diag.BlockSize``, only under
+        # a GPU-enabled ELPA, and breaking it is not an error there either
+        # (ELPA falls back to the CPU).  `pow2` survives where it belongs --
+        # BENCH-MARKS, a constraint the benchmark puts on its own sweep.
         "resolver": "block_size",
+        "validate": (lambda value, cfg: _validate_block_size(value)),
         "section": "Compute & budget",
         "workflow_group": "budget",
         "label": "ScaLAPACK block size",
         "engine_key":  'BlockSize',
         "id_suffix": "block-size",
         "null_label": "(auto)",
-        "help": "ScaLAPACK BlockSize for the diagonaliser's orbital "
-                "distribution; affects cache efficiency at moderate "
-                "rank counts.  None = auto: largest power of 2 that "
-                "leaves >= 2 blocks per rank.  0 = OMIT the keyword "
-                "entirely -- SIESTA's own built-in default, the third "
-                "state (tuning.md 2.11, decision 35).  NOTE: BlockSize does "
-                "NOT fix the ``propor: ERROR: IMAX = 0`` crash -- that "
-                "was the previous (incorrect) claim and is contradicted "
-                "by direct empirical sweep (BS = 1, 2, 4 all crash at "
-                "the same mpi_np).  Propor is a vector-proportionality "
-                "check in matel_table's MPI-deduplication step; lower "
-                "mpi_np (use the wrapper's ``-np`` override) to clear "
-                "that crash.  Set BlockSize explicitly only for the "
-                "rare ScaLAPACK perf-tuning case (>1000 atoms on "
-                ">= 16 ranks, where 16 or 32 helps).",
+        "help": "How many consecutive orbitals go to one MPI rank before "
+                "the distribution moves to the next -- the ScaLAPACK "
+                "block.  It cannot change the answer, only how evenly the "
+                "ranks are fed and therefore how long the run takes.\n"
+                "TWO STATES.  Left as (auto) the keyword is NOT WRITTEN and "
+                "SIESTA uses its own automatic, which is what its manual "
+                "declares as the default.  Set to a number, that number is "
+                "written verbatim -- which is what you want after "
+                "benchmarking, and a benchmark is the only thing that "
+                "really answers this: the best block depends on the matrix "
+                "size, the rank count, the interconnect and the node's "
+                "memory layout at once.\n"
+                "molbuilder DERIVED a value here until 2026-08-15, and it "
+                "should not have: the guess went into the deck as if it "
+                "were a decision, and below four atoms it wrote "
+                "BlockSize 1 -- legal, and the opposite of the cache "
+                "blocking the parameter exists for.\n"
+                "GUIDANCE if you set one by hand: powers of two (16, 32, "
+                "64, 128); smaller for few orbitals, larger for thousands. "
+                "Stay under n_orbitals / ranks or some rank gets no block "
+                "at all.\n"
+                "GPU: with an ELPA diagonaliser on the GPU the block must "
+                "be a power of two or ELPA silently runs on the CPU. `prep` "
+                "realigns it there -- that is the layer that knows the GPU "
+                "flag and the rank count (tuning.md 2.11).\n"
+                "It does NOT fix ``propor: ERROR: IMAX = 0``.  That claim "
+                "was disproved by direct sweep (BS = 1, 2, 4 all crash at "
+                "the same mpi_np); propor is a vector-proportionality check "
+                "in matel_table's MPI-deduplication step.  Lower the rank "
+                "count to clear it.",
         "skip_cli": True,
     })
     parallel_over_k: Optional[bool] = field(default=None, metadata={
@@ -1299,7 +1348,7 @@ class SiestaConfig:
         # surface and membership of the template are different questions.
         "allocation": True,
         "item_kind":  "wrapper",
-        "workflow_group": "budget",
+        "workflow_group": "staging",
         "label":      "OMP threads per rank",
         # Not a SIESTA fdf keyword.  Emits ``export OMP_NUM_THREADS=N``
         # into .run.sh AND ``# runtime.omp_threads_requested: N`` comment
@@ -1331,7 +1380,7 @@ class SiestaConfig:
         # surface and membership of the template are different questions.
         "allocation": True,
         "item_kind":  "wrapper",
-        "workflow_group": "budget",
+        "workflow_group": "staging",
         "label":      "Max memory",
         # Not a SIESTA fdf keyword.  Emits ``ulimit -v`` into .run.sh
         # AND ``# runtime.max_memory_mb: N`` into the .fdf so the .out
@@ -1357,7 +1406,7 @@ class SiestaConfig:
     enable_gpu: bool = field(default=False, metadata={
         "category": ("execution",),
         "section": "Compute & budget",
-        "workflow_group": "budget",
+        "workflow_group": "staging",
         "label":     "Use GPU (NVIDIA, via ELPA-CUDA)",
         # OPTIONAL accelerator on top of an ELPA ``diag_algorithm``
         # (engines/siesta.md § 13).  It does NOT select ELPA -- that's

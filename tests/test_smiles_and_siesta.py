@@ -148,22 +148,36 @@ def test_block_size_honours_orbital_rank_constraint():
                 )
 
 
-def test_blocksize_zero_omits_the_keyword_entirely():
-    """tuning.md § 2.11's THIRD state (decision 35 — C8, 2026-08-12): ``0``
-    asks for SIESTA's own built-in default, and the answer is that the
-    keyword is not emitted at all — omitting a line is a real answer.  The
-    BENCH-MARKS block omits its row too (a claim the deck does not carry
-    would be the block lying), and PROVENANCE records the ask."""
+def test_blocksize_auto_omits_the_keyword_and_zero_is_refused():
+    """tuning.md § 2.11, revised 2026-08-15: TWO states.
+
+    Unset is *auto*, and auto means SIESTA's own automatic -- the keyword is
+    simply not emitted, which its manual declares as the default
+    (``BlockSize [integer] <automatic>``).  Omitting a line is a real answer.
+
+    ``0`` was the THIRD state and meant exactly that; auto covers it now, so
+    a 0 is a mistake rather than an instruction.  It is refused rather than
+    re-read as auto -- left alone it would reach the deck as ``BlockSize 0``,
+    a distribution block holding no orbitals.
+    """
     import re
+    from molbuilder.validation import validate
+
     fdf = render_fdf(_h2_struct(),
-                     SiestaConfig(system_label="j", parallel_block_size=0,
-                                  relax_type="none"))
-    assert not re.search(r"^BlockSize", fdf, re.M)
-    assert "omitted (SIESTA's own)" in fdf
-    # R11: § 3.3's state three is "no `field BlockSize` line AT ALL" --
-    # until 2026-08-12 only the defaults row was dropped, so BENCH-MARKS
-    # declared an override window for a keyword the deck refuses to carry
+                     SiestaConfig(system_label="j", relax_type="none"))
+    assert not re.search(r"^BlockSize", fdf, re.M), (
+        "auto must not write the keyword -- SIESTA's own automatic is the "
+        "answer, and a written value would override it")
+    # BENCH-MARKS omits its row too: a window declared for a keyword the
+    # deck refuses to carry would be the block lying (§ 3.3 state three).
     assert "field BlockSize" not in fdf
+
+    issues = validate(_h2_struct(),
+                      SiestaConfig(system_label="j", relax_type="none",
+                                   parallel_block_size=0))
+    assert any(i.severity == "error" and "block_size" in (i.where or "")
+               for i in issues), (
+        f"0 must be refused, not silently treated as auto: {issues}")
 
 
 def test_block_size_cap_derives_from_orbitals_not_atoms():
@@ -456,52 +470,58 @@ def test_wrap_into_cell_boundary_handling():
     assert np.allclose(new, p)
 
 
-def test_fdf_picks_orbital_blocksize_for_hemec_case():
-    """End-to-end: render an FDF for 81 atoms with mpi_np=15 (the
-    2026-05-28 hemeC-dithiol geometry) and assert the emitted
-    BlockSize follows the orbital derivation of job-contracts.md
-    § 3.2/§ 3.3: 810 orb-est / 15 ranks -> pow2 32 (U18,
-    2026-08-12; the retired atoms-based rule gave 4).  The propor
-    IMAX=0 crash of that run was a matel_table/mpi_np issue, not a
-    BlockSize one -- the wrapper's ``-np`` flag is the fix."""
+def test_ranks_alone_do_not_put_a_blocksize_in_the_deck():
+    """The retired derivation, pinned by its absence.
+
+    This asserted the opposite until 2026-08-15: with 81 atoms and
+    ``mpi_np=15`` and no block size set, molbuilder DERIVED 32 (810 orbital
+    estimate / 15 ranks, rounded down to a power of two) and wrote it into
+    the deck.  tuning.md § 2.11 now has two states -- unset is *auto*, and
+    auto means SIESTA's own automatic, so nothing is written.  A rank count
+    is not an instruction about the block.
+
+    The orbital derivation itself is NOT lost and is still worth having: it
+    is the upper bound of the BENCH-MARKS window (``_block_size_bounds``),
+    where a power-of-two constraint belongs because the benchmark sweeps
+    them.  ``test_block_size_cap_derives_from_orbitals_not_atoms`` covers it
+    directly.
+    """
     import re
     import numpy as np
     from molbuilder.structure import Structure
-    # 81 atoms on a coarse 1.5-Å lattice so geometry preflight doesn't
-    # complain about atom overlaps (BlockSize math is independent of
-    # the positions; we only need n_atoms to be 81).
-    side = int(np.ceil(81 ** (1 / 3)))      # 5 -> 5^3 = 125 cells, 81 used
+    side = int(np.ceil(81 ** (1 / 3)))
     coords = np.array([
         [i * 1.5, j * 1.5, k * 1.5]
         for i in range(side) for j in range(side) for k in range(side)
     ])[:81]
-    s = Structure(
-        elements=["C"] * 81,
-        positions=coords,
-        title="hemeC-shaped", vacuum=(12.0, 12.0, 12.0))
-    cfg = SiestaConfig(mpi_np=15, relax_type="none")
-    fdf = render_fdf(s, cfg)
-    m = re.search(r"^BlockSize\s+(\d+)", fdf, re.MULTILINE)
-    assert m, "FDF must carry an explicit BlockSize line"
-    bs = int(m.group(1))
-    # Strict: must be 32 (largest pow2 <= 810 orb-est / 15 ranks);
-    # a regression to the retired atoms-based pick (4) fails here.
-    assert bs == 32, (
-        f"expected BlockSize=32 for 81 atoms x 15 ranks "
-        f"(orbital derivation), got {bs}"
-    )
-    # And the orbital invariant: every rank gets >= 1 orbital block.
-    assert bs * 15 <= 10 * 81, (
-        f"emitted BlockSize={bs} would leave trailing ranks with no "
-        f"orbital block"
-    )
+    s_ = Structure(elements=["C"] * 81, positions=coords,
+                   title="hemeC-shaped", vacuum=(12.0, 12.0, 12.0))
+    fdf = render_fdf(s_, SiestaConfig(mpi_np=15, relax_type="none"))
+    assert not re.search(r"^BlockSize", fdf, re.MULTILINE), (
+        "a rank count must not conjure a BlockSize line -- unset is auto, "
+        "and auto is SIESTA's own automatic")
+    # An explicit value still reaches the deck untouched, ranks or no ranks.
+    fdf2 = render_fdf(s_, SiestaConfig(mpi_np=15, relax_type="none",
+                                       parallel_block_size=64))
+    assert re.search(r"^BlockSize\s+64", fdf2, re.MULTILINE)
 
 
-def test_fdf_emits_explicit_blocksize_and_paralleloverk(tmp_path):
-    """Generated FDF must always carry an explicit BlockSize and
-    Diag.ParallelOverK -- relying on SIESTA defaults is non-portable
-    (the defaults differ between 4.0 / 4.1 / MaX-1.x builds and have
-    caused real `propor: IMAX = 0` failures)."""
+def test_fdf_always_emits_paralleloverk_but_not_an_unasked_blocksize(tmp_path):
+    """``Diag.ParallelOverK`` is always written; ``BlockSize`` is not.
+
+    They were asserted together until 2026-08-15, on the rationale that
+    "relying on SIESTA defaults is non-portable ... and [has] caused real
+    `propor: IMAX = 0` failures".  The propor half of that was disproved by
+    the 2026-05-28 sweep recorded elsewhere in this file -- BS = 1, 2, 4 all
+    crash at the same rank count, because propor is a matel_table check and
+    not a BLACS one -- so it never argued for emitting BlockSize.
+
+    The two keywords also differ in kind.  ``Diag.ParallelOverK`` is DERIVED
+    by molbuilder from the k-grid (1x1x1 -> .false.), so it is a decision we
+    make and must therefore state.  ``BlockSize`` unset is a decision we
+    explicitly do NOT make (tuning.md § 2.11): auto means SIESTA's own
+    automatic, and writing a number would override the thing being asked
+    for."""
     import numpy as np
     from molbuilder.structure import Structure
     s = Structure(
@@ -509,11 +529,12 @@ def test_fdf_emits_explicit_blocksize_and_paralleloverk(tmp_path):
         positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
         title="h2", vacuum=(12.0, 12.0, 12.0))
     text = render_fdf(s, SiestaConfig(system_label="h2"))
-    # Both lines must appear, regardless of system size.
     import re
-    assert re.search(r"^BlockSize\s+\d+", text, re.MULTILINE)
     assert re.search(r"^Diag\.ParallelOverK\s+\.(true|false)\.",
-                     text, re.MULTILINE)
+                     text, re.MULTILINE), "a derived decision must be stated"
+    assert not re.search(r"^BlockSize", text, re.MULTILINE), (
+        "unset BlockSize must leave the keyword out so SIESTA's own "
+        "automatic applies")
 
 
 def test_paralleloverk_auto_from_kgrid(tmp_path):

@@ -1212,29 +1212,36 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "# slabs the .false. (orbital) split usually wins on GPU --",
         "# if you hand-tune one, benchmark it (jobset prep bench).",
     ]
-    if cfg.parallel_block_size == 0:
-        # THE THIRD STATE (tuning.md § 2.11, decision 35 -- C8,
-        # 2026-08-12): the keyword is NOT EMITTED AT ALL.  ``0`` is how a
-        # description says "SIESTA's own built-in default" -- omitting a
-        # keyword is a real answer, the same shape as
-        # ``Diag.Algorithm ScaLAPACK`` emitting nothing (siesta.md § 7).
+    # TWO STATES (tuning.md § 2.11, revised 2026-08-15).  Unset means
+    # AUTO, and auto means SIESTA'S OWN automatic -- the keyword is simply
+    # not emitted.  The manual declares it: ``BlockSize [integer]
+    # <automatic>``.  Omitting a keyword is a real answer, the same shape
+    # as ``Diag.Algorithm ScaLAPACK`` emitting nothing (siesta.md § 7).
+    #
+    # A THIRD state stood here until 2026-08-15: unset made molbuilder
+    # DERIVE a value (``_auto_block_size``) and write it into the deck,
+    # while SIESTA's own automatic hid behind the sentinel ``0``.  So the
+    # ordinary user got a guess and the engine's answer needed a magic
+    # number to request -- and the guess contradicted § 2.11's own opening
+    # decision (2026-08-11): *"not a value molbuilder derives and hands
+    # you"*.  It also produced ``BlockSize 1`` below four atoms, which is
+    # legal and the exact opposite of the cache blocking the parameter
+    # exists for.
+    #
+    # ``_auto_block_size`` itself is NOT deleted -- it is still the upper
+    # bound of the BENCH-MARKS window (``_block_size_bounds``), which is
+    # where a power-of-two constraint belongs: the benchmark sweeps them.
+    if cfg.parallel_block_size is None:
         block_size = None
-    elif cfg.parallel_block_size is None:
-        # Both modes derive the cap from n_orbitals_est = 10 *
-        # n_atoms (job-contracts.md § 3.2/§ 3.3; atoms-based cap
-        # retired U18, 2026-08-12); GPU differs in floor (8) and in
-        # the mpi_np=None default.  Branch the picker via
-        # ``gpu_mode`` rather than hand-rolling it here.
-        block_size = _auto_block_size(
-            struct.n_atoms, cfg.mpi_np, gpu_mode=bool(cfg.enable_gpu),
-        )
     else:
-        # User-set BlockSize is honored verbatim.  Earlier code
-        # auto-downgraded when ``BlockSize * mpi_np > n_atoms`` on
-        # the theory that it caused propor IMAX=0; empirical sweep
-        # (2026-05-28) disproved that theory -- propor is a
-        # matel_table issue, not a BlockSize issue.  The auto-
-        # downgrade is gone; user's value passes through.
+        # Honoured verbatim -- hand-set, or a benched result.  Earlier code
+        # auto-downgraded when ``BlockSize * mpi_np > n_atoms`` on the
+        # theory that it caused propor IMAX=0; an empirical sweep
+        # (2026-05-28) disproved that -- propor is a matel_table issue, not
+        # a BlockSize issue.  Under a GPU-ELPA target a non-power-of-two
+        # value is realigned by `prep`, which is the layer that knows the
+        # GPU flag and the rank count (§ 2.11); it is not second-guessed
+        # here, and never silently.
         block_size = int(cfg.parallel_block_size)
     if block_size is not None:
         out.append(f"BlockSize          {block_size}")

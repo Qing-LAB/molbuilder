@@ -347,21 +347,100 @@ Same hardware, same rank count, a tenfold difference in the answer — and
 upgrading the basis on one system moves it again. That is why § 2.11 opens with
 *match the problem scale* and why a measurement beats a default.
 
-#### The three states, and the third one is new
+#### Two states, because the engine already has an "auto"
 
-**`BlockSize` has three legitimate answers, and a design that can only express
-two is why this section exists.**
+> **Revised 2026-08-15 (user): *"SIESTA allows `auto` to be the value, so that's
+> what it should be as default. Otherwise, it is a manual explicit value and/or
+> benched result."*** This section previously defined THREE states; the middle
+> one is retired, and the paragraphs above explain why it should never have
+> existed.
+
+**`BlockSize` has two answers.**
 
 | state | what the deck says | when |
 |---|---|---|
-| **you set it** | `BlockSize <your value>` | you benchmarked it, or you know this machine. **Honoured verbatim** — nothing overrides an explicit setting |
-| **you did not, and molbuilder proposes one** | `BlockSize <derived>` | the ordinary case: `prep` picks a power of two from the orbital count, the rank count and whether there is a GPU, and PROVENANCE records what it derived it *from* |
-| **you asked for SIESTA's own** | *the keyword is not emitted at all* | SIESTA's built-in default (traditionally ~32–64, version-dependent) is **safe for routine runs**, and omitting the line is how you say *"the engine knows better than a guess"* |
+| **auto** — the default | *the keyword is not emitted at all* | SIESTA's own built-in automatic. The manual declares it: `BlockSize [integer] <automatic>` |
+| **a number** | `BlockSize <your value>` | you benchmarked it, or you know this machine. **Honoured verbatim** |
 
-The third state is the one no earlier draft could express, because `BlockSize` was
-treated as a value molbuilder always computes. **Omitting a keyword is a real
-answer** — the same shape as `Diag.Algorithm ScaLAPACK`, which
-[`siesta.md § 7`](?doc=engines/siesta.md) also emits as *nothing*.
+**What the retired middle state was.** molbuilder computed a value — a power of
+two from the orbital count, the rank count and the GPU flag — and wrote *that*
+into the deck. It contradicted this section's own opening decision (*"not a value
+molbuilder derives and hands you"*, 2026-08-11) and it was reachable as the
+DEFAULT, while SIESTA's own automatic hid behind the sentinel `0`. So the
+ordinary user got a guess, and the engine's answer needed a magic number to
+request.
+
+Three things followed from it, all found 2026-08-15:
+
+- **It produced meaningless values.** Below four atoms the ladder returned
+  `BlockSize 1` — legal, and the exact opposite of the cache blocking the
+  parameter exists for.
+- **It forced a wrong type.** The item was declared `pow2`, which SNAPS a value
+  down to the nearest power of two — so a benchmarked 24 silently became 16. The
+  power-of-two rule is real but belongs elsewhere; see below.
+- **It needed a mirror in the browser.** The form previewed the guess by
+  hand-copying the rule into JavaScript, where it could only ever reproduce the
+  no-ranks branch — so the number shown was not the number that would be used.
+
+**Omitting a keyword is still a real answer** — the same shape as
+`Diag.Algorithm ScaLAPACK`, which [`siesta.md § 7`](?doc=engines/siesta.md) also
+emits as *nothing*. What changed is that it is now the DEFAULT answer rather than
+a third option behind a sentinel.
+
+#### The power-of-two rule, and what it actually applies to
+
+The manual states it **twice, and only inside the ELPA solver options**:
+
+> *"when using a **GPU-enabled version of ELPA** it is important to verify that
+> **`Diag.BlockSize`** is a power of 2; if not, ELPA will only run on CPU."*
+
+Three qualifiers the `pow2` type dropped:
+
+1. it is **`Diag.BlockSize`** — a different keyword, which merely *defaults* to
+   `BlockSize`;
+2. it applies **only to GPU-enabled ELPA**, not to ScaLAPACK and not to CPU ELPA;
+3. breaking it is **not an error** — ELPA silently falls back to the CPU.
+
+> **Decided 2026-08-15 (user): *"we don't want silent CPU fallback. If GPU is
+> enabled, we should align parameter with that target."*** So this is **not**
+> softened into advice. Asking for a GPU and being given a CPU run that reports
+> success is the silent-wrong-answer class this project refuses everywhere else.
+
+**When the GPU is on AND the diagonaliser is ELPA, `BlockSize` must be a power of
+two — and it is `bench` / `prep` that makes it one.**
+
+> **Decided 2026-08-15 (user): *"that's why this blocksize, if explicit set,
+> needs to be realigned at bench/prep stage."***
+
+**The alignment happens where the target is known, and that is not this form.**
+`enable_gpu` and `mpi_np` are answered on the staging surface — they are machine
+facts and bench axes, not parameters typed beside the physics. A form that no
+longer holds the GPU flag cannot check a rule about the GPU, and a rule checked
+in the wrong place is a rule that will be wrong. So:
+
+| where | what happens to `BlockSize` |
+|---|---|
+| **the parameter form** | auto by default; an explicit value taken at face value. The rule is not enforced here because the hardware is not chosen here |
+| **`bench`** | sweeps powers of two anyway, so what it hands back is already aligned. `script_emit.py`'s BENCH-MARKS declares `BlockSize` as `pow2` — a constraint the *benchmark* puts on its own sweep, which is where that type belongs and where it stays |
+| **`prep`** | knows the GPU flag, the rank count and the value. If GPU-ELPA is the target and the value is not a power of two, **prep realigns it and records that it did** |
+
+**Realigned, not silently coerced — the difference is the record.** The retired
+`pow2` type rewrote a value inside the form with nothing to show for it, so a
+benchmarked 24 became 16 and no artifact said why. `prep` writes what it
+resolved and what it resolved it *from* (PROVENANCE), so an aligned block is a
+visible decision that can be read back off the run months later.
+
+**Why realign rather than refuse.** Refusing would make the user carry a rule
+that only exists because of a hardware choice made on another surface — they set
+a good value, then a later GPU selection invalidates it. Realignment keeps the
+two surfaces independent: the physics form says what you want, the staging
+surface says what you are running on, and prep reconciles them where both are
+finally in hand.
+
+The plain guidance in the table above (16 · 32 · 64 · 128) remains *guidance* for
+CPU runs: powers of two align with cache lines whatever the solver. Advice and
+enforcement are different things, and only one of them may edit a value — under
+GPU-ELPA neither does, because the request is refused instead.
 
 #### Why it is worth benchmarking rather than deriving
 
