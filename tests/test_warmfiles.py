@@ -24,7 +24,13 @@ from molbuilder import warmfiles as W
 
 #: siesta/warm-files.toml, every section, in row order (order is
 #: load-bearing: Job.warm order, the banner order).
-_SIESTA_INVENTORY = (".XV", ".DM", ".LWF", ".ZM", ".Bonds", ".PARTIAL",
+_SIESTA_INVENTORY = (".XV", ".DM",
+                     # The accumulative records (2026-08-15,
+                     # project-layout.md § 2.3.4): appended by the engine,
+                     # never read back, carried so `hierarchical` ends up
+                     # with the same file `flat` would have.
+                     ".MD.nc", ".MD", ".MDE", ".ANI",
+                     ".LWF", ".ZM", ".Bonds", ".PARTIAL",
                      ".EIG", ".HSX", ".WFSX", ".STRUCT_NEXT_ITER",
                      ".CG", ".TSHS", ".TSDE")
 
@@ -50,15 +56,40 @@ def test_runwrap_banner_tuples_are_the_loader_alias():
     assert _PYSCF_WARM_SUFFIXES == _PYSCF_INVENTORY
 
 
-def test_siesta_optimization_carries_exactly_the_declared_trio():
-    """The carry rows are § 2.3.4's three, in its row order, with the
-    pair condition on the history — the exact declaration U2 renders."""
+def test_siesta_optimization_carries_exactly_what_the_table_declares():
+    """The carry rows are § 2.3.4's table, in its row order, with the pair
+    condition on the optimiser history.
+
+    Two KINDS of row, and the difference is `honoured_by`.  The three with
+    one are warm-start inputs: SIESTA reads them, and the keyword named is
+    what reads it.  The four without are the accumulative records (added
+    2026-08-15) -- the engine opens and APPENDS to them and never reads
+    them, so there is no keyword to name.  They carry so that `hierarchical`
+    ends up with the same file `flat` would have, rather than a record
+    truncated at the attempt boundary."""
     rows = [r for r in W.rules_for("siesta", "optimization") if r.carry]
     assert [(r.suffix, r.requires_same, r.honoured_by) for r in rows] == [
         (".XV", None, "MD.UseSaveXV"),
         (".DM", None, "DM.UseSaveDM"),
+        (".MD.nc", None, None),
+        (".MD", None, None),
+        (".MDE", None, None),
+        (".ANI", None, None),
         (".CG", "optimizer", "MD.UseSaveCG"),
     ]
+
+
+def test_the_accumulative_records_name_no_deck_keyword():
+    """The property that separates the two kinds, asserted directly: a file
+    the engine only appends to must NOT claim a keyword that reads it.  A
+    stray `honoured_by` here would put these into the "present but not
+    honoured" check (run-identity.md § 4) and have a stage refuse to
+    continue because a record it appends to was not readable."""
+    rows = {r.suffix: r for r in W.rules_for("siesta", "optimization")}
+    for suffix in (".MD.nc", ".MD", ".MDE", ".ANI"):
+        assert rows[suffix].carry == "when-continuing", suffix
+        assert rows[suffix].honoured_by is None, suffix
+        assert rows[suffix].requires_same is None, suffix
 
 
 def test_transport_has_its_own_vocabulary_and_no_optimizer_history():

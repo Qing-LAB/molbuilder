@@ -76,11 +76,21 @@ def test_no_field_of_the_config_is_a_list_of_dataclasses():
 def test_the_siesta_form_schema_emits_no_stage_table():
     """The consequence, at the surface that had the bug.  The generator
     answers *what settings exist and how is each drawn*; it must never
-    meet a stage (web/form-schema.md § 1's callout)."""
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    sch = dataclass_to_form_schema(SiestaConfig, id_prefix="p")
-    kinds = [f["kind"] for s in sch["sections"] for f in s["fields"]]
-    assert "stage-table" not in kinds
+    meet a stage (web/form-schema.md § 1's callout).
+
+    Repointed 2026-08-15 onto ``catalogue_to_form_schema`` -- the builder
+    the tab is actually served by.  Asked ``dataclass_to_form_schema``,
+    this asserted an absence in a schema no surface renders, which is an
+    absence that proves nothing.  Both engines are checked here now,
+    because the rule is the tab's and not SIESTA's: PySCF's three
+    stage-table tests were retired the same day for asserting the
+    opposite against the same stale builder.
+    """
+    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
+    for engine, prefix in (("siesta", "p"), ("pyscf", "py")):
+        sch = catalogue_to_form_schema(engine, prefix)
+        kinds = [f["kind"] for s in sch["sections"] for f in s["fields"]]
+        assert "stage-table" not in kinds, engine
 
 
 # --------------------------------------------------------------------- #

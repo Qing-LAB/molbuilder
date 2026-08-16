@@ -209,9 +209,20 @@ def test_prep_carries_state_only_into_a_stage_that_will_read_it():
         eff = effective_config(tpl, overrides)
         return _warm_declaration("job", eff)
 
+    # THE PROPERTY IS THE GATE, not the membership.  `clean` carries
+    # nothing; `continue` carries whatever the rules file declares --
+    # DERIVED here rather than listed, because a literal list is a fourth
+    # copy of `siesta/warm-files.toml` and goes stale the moment the
+    # vocabulary grows.  It did: the four accumulative records (.MD.nc,
+    # .MD, .MDE, .ANI) were added 2026-08-15 and this line still said
+    # [.XV, .DM, .CG].
+    from molbuilder.warmfiles import rules_for
+    declared = [f"job{r.suffix}"
+                for r in rules_for("siesta", "optimization") if r.carry]
     assert warm({"restart": "clean"}) == []   # told to start clean
-    assert [w.name for w in warm({"restart": "continue"})] == [
-        "job.XV", "job.DM", "job.CG"]
+    assert [w.name for w in warm({"restart": "continue"})] == declared
+    # ...and the gate is the whole point: the two answers differ.
+    assert declared, "the rules file declares no carry rows at all"
 
 
 # --------------------------------------------------------------------- #
@@ -249,13 +260,19 @@ def test_the_group_reaches_prep_as_a_declaration_not_as_engine_knowledge():
     eff = effective_config(
         SiestaConfig(system_label="job", relax_type="CG"),
         {"restart": "continue"})
+    from molbuilder.warmfiles import rules_for
+    declared = [r.suffix for r in rules_for("siesta", "optimization")
+                if r.carry]
     assert [w.name for w in _warm_declaration("job", eff)] == [
-        "job.XV", "job.DM", "job.CG"]
+        f"job{s}" for s in declared]
 
-    # ...and the framework that consumes it builds none of them.
+    # ...and the framework that consumes it builds none of them.  Swept
+    # over the DECLARED suffixes rather than a literal trio, so a suffix
+    # added to the rules file is automatically checked for the same leak
+    # instead of being exempt from the rule by omission.
     for mod in (_materialize, _model, _prep):
         for text, where in _string_literals(mod):
-            for suffix in (".XV", ".DM", ".CG"):
+            for suffix in declared:
                 assert suffix not in text, (
                     f"{mod.__name__}:{where} builds {suffix!r} -- the engine's "
                     f"group leaked back into the agnostic layer")
@@ -277,7 +294,19 @@ def test_only_the_optimizer_history_is_conditional():
         SiestaConfig(system_label="job", relax_type="CG"),
         {"restart": "continue"})
     warm = {w.name: w.requires_same for w in _warm_declaration("job", eff)}
-    assert warm == {"job.XV": None, "job.DM": None, "job.CG": "optimizer"}
+    # THE PROPERTY: exactly one row is conditional, and it is the optimiser
+    # history.  Asserted as a property rather than as a full dict, because
+    # the membership grew on 2026-08-15 (the accumulative records) while
+    # this rule did not change at all -- a dict literal made an unrelated
+    # addition look like a violation of a rule about conditionality.
+    conditional = {n: c for n, c in warm.items() if c is not None}
+    assert conditional == {"job.CG": "optimizer"}, (
+        f"expected only the optimiser history to be conditional, got "
+        f"{conditional}")
+    # And the geometry is unconditional -- a condition here would make a
+    # continuation silently lose the very thing it exists to move forward.
+    assert warm["job.XV"] is None
+    assert warm["job.DM"] is None
 
 
 # --------------------------------------------------------------------- #

@@ -523,6 +523,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `default` | what untouched means. A surface compares it to `value` to show whether the user set this |
 | `anchor` | the engine keyword this becomes. A bare keyword, never a sentence — it is what a **deck writer** matches on |
 | `engine_key` | how the engine **spells** this, in full — `gto.M(basis=...)`, `mf = mf.density_fit()`, or a `(molbuilder: …)` note when the setting never reaches the deck. A different fact from `anchor`, and a **surface** shows this one. Collapsing the two lost it on 29 items (2026-08-14→15): four PySCF controls all read `gto.M`, three read `mf`, and every molbuilder note vanished — and the note is the only way a reader learns the setting is not an engine keyword at all |
+| `manual` | **where the engine's own documentation defines this keyword** — `SIESTA 5.4.2 §6.9.2 'Mixing options'`. Catalogue-only, and read by nobody but a person reviewing the catalogue — § 5.1 |
 | `expands` | the engine keywords a `deck` item produces, as a list |
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
@@ -532,7 +533,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
 | `range` · `unit` · `choices` | bounds, unit label, enum members |
-| `group` | **which card**, from the closed vocabulary `template.GROUPS`: `profile` (what you're computing) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
+| `group` | **which card**, from the closed vocabulary `template.GROUPS`, in render order: `setup` (what the run is called and where its pseudopotentials come from — nothing can be built without these, so they come first) · `profile` (what you're computing) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
 | `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 16 optional items only 11 carry one, so five would silently lose the option (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
 | `tier` | `basic` or `advanced`. A judgement about the **parameter**, not about the widget: a surface dims the advanced ones so a first-time reader is not asked to weigh every knob at once |
 | `pattern` | a regex the value must match. Two items have one — `system_label`, `job_name` — and nothing else in the vocabulary can express *"letters, digits, hyphens, underscores; no dots"* |
@@ -608,6 +609,95 @@ flowchart LR
 > Recorded rather than deleted here, because the constant's other reader is a
 > test that would need re-scoping with it
 > ([audit § 57](?doc=audit-2026-08-14-template-execution-review.md)).
+
+### 5.1 `manual` — the citation, and why only the catalogue carries it
+
+Every item whose `kind` is `engine` names **where the engine's own
+documentation defines that keyword**:
+
+```toml
+[item.mixing_weight]
+kind = "engine"
+category = ["convergence"]
+engines = ["siesta"]
+anchor = "SCF.Mixer.Weight"
+engine_key = "SCF.Mixer.Weight"
+manual = "SIESTA 5.4.2 §6.9.2 'Mixing options'"
+type = "float"
+value = 0.02
+default = 0.02
+help = "How much of each new SCF solution is mixed in.  DEVIATION: SIESTA's own default is 0.25 -- see § 5.2."
+```
+
+**Nothing renders it.** No surface shows it, no deck carries it, no generated
+script mentions it. It exists for one reader: the person opening the catalogue
+to ask *"is this value still right?"* — and that person's first move is to open
+the engine's documentation at the place that answers it.
+
+**The version is part of the citation, not decoration.** A bare `§6.9.2` is
+worse than useless once the manual renumbers: it points somewhere confidently
+and wrongly, with nothing in the file to reveal that it moved. Naming the
+release the citation was taken against makes a stale pointer *visible* — the
+same reasoning as § 3's schema string.
+
+**It is the one key the config classes do NOT mirror.** `help`, `label`,
+`unit`, `range` and `choices` live in two homes until the form is rebuilt from
+the catalogue (§ 2.1a), and
+[`tests/test_catalogue_agreement.py`](?doc=engines/template.md) exists to keep
+those two in step. `manual` is deliberately outside that set: its entire job is
+to let a reviewer **check the catalogue**, and a fact duplicated into the thing
+it is meant to check is a fact that can disagree with itself. One home, and the
+home is the master.
+
+**The citations were derived, not recalled.** The 5.4.2 manual sources were
+parsed for every `\begin{fdfentry}{…}` and its enclosing numbered heading, then
+matched against our anchors through **fdf's own `labeleq` normalisation** —
+case-insensitive, and `_`, `.`, `-` are not significant (`utils.F90`). That
+last part is not a nicety: two of our anchors appear nowhere in the 5.4.2
+manual under the spelling we use, because the manual now writes `Mesh.Cutoff`
+and `Save.HS`. They are the same keyword to the engine, and matching the way
+the engine matches is what found them.
+
+> **Deprecated is a different question from renamed, and the manual says
+> which.** A keyword the manual marks with `\fdfdeprecates` is one SIESTA
+> intends to stop reading — those four were migrated on 2026-08-15
+> (`MD.NumCGsteps` → `MD.Steps`, `MD.MaxCGDispl` → `MD.MaxDispl`,
+> `DM.MixingWeight` → `SCF.Mixer.Weight`, `DM.NumberPulay` →
+> `SCF.Mixer.History`). A keyword the manual merely cross-indexes under a newer
+> name (`DM.Tolerance` under `SCF.DM.Tolerance`, `DM.EnergyTolerance` under
+> `SCF.FreeE.Tolerance`) is a living alias, and migrating it would be churn
+> with a behaviour risk and no gain. **The rule is the manual's own marking, not
+> our taste** — and after the sweep no anchor we emit is a `\fdfdeprecates`
+> target.
+
+**PySCF has no numbered manual, so its citation names the class that owns the
+attribute** — `PySCF 2.13 pyscf.scf.hf.SCF 'conv_tol'` — found by walking a
+live object's MRO under the installed release, not read off a documentation
+page that may describe a different version.
+
+---
+
+## 5.2 Where a default differs from the engine's own, the help says so
+
+A default that disagrees with the engine's own default is a **claim**, and an
+unexplained claim is indistinguishable from an oversight. So the rule:
+
+> **Where this project ships a value the engine would not, the item's `help`
+> states that it is a deviation, what the engine's own value is, and why ours
+> is different.**
+
+This is not documentation for its own sake. It is what makes the value
+reviewable: a reader who disagrees needs to know they are overriding a
+considered decision rather than correcting a typo, and a reviewer checking the
+catalogue against a new engine release needs to know which values were chosen
+and which were merely inherited.
+
+The sweep on 2026-08-15 found the rule was being kept nowhere. Eleven SIESTA
+items and six PySCF items shipped a non-default value with no mention of it —
+including `SCF.Mixer.Weight` at 0.02 against the engine's 0.25, a twelve-fold
+difference and the single most consequential knob in the file. It also found
+three help texts that were not merely silent but **wrong**, described in
+§ 10b's finding 8.
 
 ---
 
@@ -1535,6 +1625,38 @@ unrecognised `relax_type` to `MD.Steps`; SIESTA bounds MD runs on
 `MD.FinalTimeStep` instead, whose default is 1. Adding an ensemble without
 touching that map would have given a one-step MD that reports success.
 **Where guessing wrong is invisible, refuse.**
+
+**A `help` string is a claim about the engine, and it decays silently.** The
+deviation sweep (§ 5.2) set out to add missing *why* notes and found three help
+texts that were not silent but **false** — each describing a file the keyword
+does not write:
+
+| item | what it promised | what the keyword does |
+|---|---|---|
+| `write_forces` | *"write forces to the .FA file (required for relaxation)"* | writes forces into the **`.out`** each step. `.FA` holds the last step's forces **regardless of this flag**, and a relaxation runs fine without either |
+| `write_coor_xmol` | *".xyz of every relaxation step (movie viewer)"* | writes **one** `.xyz`, holding the **final** coordinates |
+| `write_md_history` | *"the .ANI trajectory file (xcrysden / vmd / OVITO)"* | writes `.MD` (**unformatted**) and `.MDE`. **`.ANI` comes from a different keyword** |
+
+The third is not only a wrong sentence; it is a **capability the product
+advertises and does not deliver**, and the mechanism is worth stating because
+it is the kind that no test catches:
+
+```fortran
+! Src/read_options.F90
+writmd = fdf_get( 'WriteMDhistory', .false. )      ! -> iomd    -> .MD + .MDE
+writpx = fdf_get( 'WriteMDXmol',    .not. writec ) ! -> pixmol  -> .ANI
+```
+
+`WriteMDXmol`'s default is **the negation of `WriteCoorStep`** — and this
+project ships `WriteCoorStep .true.`. So turning on the per-step coordinate log
+turns the `.ANI` animation file *off*, molbuilder never writes `WriteMDXmol` to
+say otherwise, and `parse/dirs/job.py` indexes `.ANI` files that our decks
+cannot produce. **Three correct-looking decisions composed into a missing
+file.** Nothing failed; the artefact simply was not there.
+
+**So: a `help` that names a FILE or an EFFECT is checked against the engine,
+not against plausibility** — and where one keyword's default is written in
+terms of another's value, the help says so, because no reader will guess it.
 
 ---
 

@@ -58,40 +58,72 @@ def _validate_config_metadata(cfg) -> List[Issue]:
         rng = meta.get("range")
         if rng is not None and value is not None:
             lo, hi = rng
-            try:
-                if value < lo or value > hi:
-                    label = meta.get("label", f.name)
-                    unit = f" {meta['unit']}" if meta.get("unit") else ""
+            # A TRIPLE'S RANGE BOUNDS EACH COMPONENT (engines/template.md
+            # § 5).  That is the only reading that means anything for
+            # `kgrid` -- (1, 64) bounds each axis count, never their
+            # product -- and it is what the form now puts on each of the
+            # three inputs.
+            #
+            # This branch replaces the error the TypeError handler below
+            # used to raise for exactly this shape (G5, 2026-06-14: *"drop
+            # the scalar range and add a per-component validate callable"*).
+            # G5's reasoning was right about the bug -- a tuple field with a
+            # scalar range went UNENFORCED -- but the remedy left the field
+            # unable to declare bounds at all, and a bound that cannot be
+            # declared cannot reach the form: `kgrid` and
+            # `kgrid_displacement` therefore rendered as three unbounded
+            # boxes, accepting 0, -4 or 7.5 and complaining only afterwards.
+            # Checking per component enforces it AND lets it be declared.
+            label = meta.get("label", f.name)
+            unit = f" {meta['unit']}" if meta.get("unit") else ""
+            if isinstance(value, (tuple, list)):
+                # A `validate` callable owns the exact rule when the field
+                # has one -- kgrid_displacement's is half-open [0, 1) and
+                # also knows about a 1-point axis, neither of which a pair
+                # of bounds can express.  Standing aside keeps one value
+                # from drawing two warnings that say almost the same thing.
+                if not callable(meta.get("validate")):
+                    for i, v in enumerate(value):
+                        try:
+                            outside = v < lo or v > hi
+                        except TypeError:
+                            continue          # a non-numeric component is
+                        if outside:           # the type check's business
+                            issues.append(Issue(
+                                "warn",
+                                f"{label}{_keyword_suffix(meta)}[{i}] = "
+                                f"{v}{unit} is outside the recommended "
+                                f"range [{lo}, {hi}]{unit}",
+                                f"config.{f.name}",
+                            ))
+            else:
+                try:
+                    if value < lo or value > hi:
+                        issues.append(Issue(
+                            "warn",
+                            f"{label}{_keyword_suffix(meta)} = {value}{unit} "
+                            f"is outside the recommended range "
+                            f"[{lo}, {hi}]{unit}",
+                            f"config.{f.name}",
+                        ))
+                except TypeError:
+                    # A SCALAR that will not compare -- a string where a
+                    # number belongs, say.  The sequence case above is no
+                    # longer routed here (2026-08-15); G5's error text told
+                    # the reader to "drop the scalar range and add a
+                    # per-component validate callable", which enforced the
+                    # bound but left it UNDECLARABLE, and an undeclared
+                    # bound never reaches the form.  Triples now declare
+                    # their bounds and get them checked per component.
                     issues.append(Issue(
-                        "warn",
-                        f"{label}{_keyword_suffix(meta)} = {value}{unit} is "
-                        f"outside the recommended range [{lo}, {hi}]{unit}",
+                        "error",
+                        (f"Field metadata for ``{f.name}`` declares "
+                         f"``range = {rng}`` but the value "
+                         f"{value!r} is not comparable with it.  "
+                         f"This is a programmer bug: either the range or "
+                         f"the field's type is wrong."),
                         f"config.{f.name}",
                     ))
-            except TypeError:
-                # 2026-06-14 G5: pre-fix this branch silently
-                # swallowed every TypeError, which hid a real bug
-                # class -- a Tuple-typed field (e.g. SIESTA's
-                # ``kgrid: Tuple[int,int,int]``) with a scalar
-                # ``range = (lo, hi)`` metadata is uncomparable and
-                # the field's range goes unenforced.  Surfacing
-                # this as an error-severity Issue makes the metadata
-                # bug visible at preflight time instead of leaving
-                # the user with a silently-permissive validator.
-                # Use a ``validate`` callable on the field metadata
-                # to range-check each component (see the kgrid
-                # field's ``validate`` callable in config/siesta.py
-                # for the pattern).
-                issues.append(Issue(
-                    "error",
-                    (f"Field metadata for ``{f.name}`` declares "
-                     f"``range = {rng}`` but the value "
-                     f"{value!r} is not scalar-comparable.  "
-                     f"This is a programmer bug: drop the scalar "
-                     f"``range`` and add a per-component "
-                     f"``validate`` callable instead."),
-                    f"config.{f.name}",
-                ))
         # Optional callable: meta["validate"] -> Issue or None
         validator = meta.get("validate")
         if validator is not None:

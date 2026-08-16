@@ -6,14 +6,15 @@ engines     = ["siesta", "pyscf"]
 
 [item.system_label]
 kind = "engine"
-category = ["procedure", "system"]
+category = ["system", "procedure"]
 engines = ["siesta"]
 anchor = "SystemLabel"
 engine_key = "SystemLabel"
+manual = "SIESTA 5.4.2 §6.1 'General system descriptors'"
 type = "str"
 value = "siesta"
 default = "siesta"
-group = "profile"
+group = "setup"
 label = "System label (output prefix)"
 pattern = "^[A-Za-z0-9_\\-]+$"
 help = "FDF SystemLabel; output files get this prefix.  Must match [A-Za-z0-9_-]+ (job-layout v1; no dots)."
@@ -24,6 +25,7 @@ category = ["method", "accuracy"]
 engines = ["siesta"]
 anchor = "PAO.BasisSize"
 engine_key = "PAO.BasisSize"
+manual = "SIESTA 5.4.2 §6.3.3 'Size of the basis set'"
 type = "enum"
 choices = ["SZ", "SZP", "DZ", "DZP", "DZDP", "TZ", "TZP", "TZDP", "TZTP"]
 value = "DZP"
@@ -41,6 +43,7 @@ category = ["method", "accuracy"]
 engines = ["siesta"]
 anchor = "PAO.EnergyShift"
 engine_key = "PAO.EnergyShift"
+manual = "SIESTA 5.4.2 §6.3.4 'Range of the orbitals'"
 type = "float"
 value = 0.01
 default = 0.01
@@ -57,6 +60,7 @@ category = ["accuracy"]
 engines = ["siesta"]
 anchor = "MeshCutoff"
 engine_key = "MeshCutoff"
+manual = "SIESTA 5.4.2 §6.10 'The real-space grid and the eggbox-effect'"
 type = "float"
 value = 300.0
 default = 300.0
@@ -76,13 +80,16 @@ category = ["method"]
 engines = ["siesta"]
 anchor = "XC.functional"
 engine_key = "XC.functional"
+manual = "SIESTA 5.4.2 §6.6 'Exchange-correlation functionals'"
 type = "enum"
 choices = ["LDA", "GGA", "VDW"]
 value = "GGA"
 default = "GGA"
 group = "profile"
 label = "XC functional family"
-help = "XC functional family.  GGA (default) is the safe production choice for organic / biomolecule work + metals; LDA over-binds (bond lengths ~2-3% too short, energies ~10 kcal/mol off); VDW adds a non-local dispersion kernel and matters for non-covalent / vdW-stacked systems (DNA bases, MOFs).  IMPORTANT: the pseudopotential MUST match the functional family -- a PBE pseudo on an LDA calculation (or vice versa) silently gives wrong bond lengths.  PseudoDojo ships separate families for PBE / PBEsol / LDA -- pick the matching set."
+help = """
+XC functional family.  GGA (default) is the safe production choice for organic / biomolecule work + metals; LDA over-binds (bond lengths ~2-3% too short, energies ~10 kcal/mol off); VDW adds a non-local dispersion kernel and matters for non-covalent / vdW-stacked systems (DNA bases, MOFs).  IMPORTANT: the pseudopotential MUST match the functional family -- a PBE pseudo on an LDA calculation (or vice versa) silently gives wrong bond lengths.  PseudoDojo ships separate families for PBE / PBEsol / LDA -- pick the matching set.
+DEVIATION: SIESTA's own default is LDA; this project ships GGA.  The reason is the over-binding above -- LDA's systematic error is large enough that essentially no current published work on molecules or biomolecules uses it for production geometries.  GGA/PBE has been the baseline since Perdew, Burke & Ernzerhof, Phys. Rev. Lett. 77, 3865 (1996).  LDA remains here because it is cheap and legitimate for screening."""
 
 [item.xc_authors]
 kind = "engine"
@@ -90,13 +97,16 @@ category = ["method"]
 engines = ["siesta"]
 anchor = "XC.authors"
 engine_key = "XC.authors"
+manual = "SIESTA 5.4.2 §6.6 'Exchange-correlation functionals'"
 type = "enum"
 choices = ["PBE", "PBEsol", "revPBE", "RPBE", "BLYP", "CA", "PZ", "PW", "DRSLL", "LMKLL"]
 value = "PBE"
 default = "PBE"
 group = "profile"
 label = "XC parameterisation"
-help = "XC parameterisation within the family.  GGA: PBE (default, all-purpose), PBEsol (better lattice constants for solids), revPBE / RPBE (better thermochemistry, slightly different binding), BLYP (rare but accepted).  VDW: DRSLL (vdW-DF1) / LMKLL (vdW-DF2-C09).  LDA: CA (Ceperley-Alder, default), PZ, PW.  This name MUST match what your pseudopotential was generated for -- mismatched XC + pseudo gives silently-wrong bond lengths.  PseudoDojo organises downloads by this name."
+help = """
+XC parameterisation within the family.  GGA: PBE (default, all-purpose), PBEsol (better lattice constants for solids), revPBE / RPBE (better thermochemistry, slightly different binding), BLYP (rare but accepted).  VDW: DRSLL (vdW-DF1) / LMKLL (vdW-DF2-C09).  LDA: CA (Ceperley-Alder, default), PZ, PW.  This name MUST match what your pseudopotential was generated for -- mismatched XC + pseudo gives silently-wrong bond lengths.  PseudoDojo organises downloads by this name.
+DEVIATION: SIESTA's own default is PZ, which is the LDA parameterisation that goes with its LDA default family.  This project ships PBE because it ships GGA -- the two move together, and a family and a parameterisation that do not belong to each other is not a configuration SIESTA implements.  Change one and check the other."""
 
 [item.solution_method]
 kind = "engine"
@@ -104,6 +114,7 @@ category = ["method", "convergence"]
 engines = ["siesta"]
 anchor = "SolutionMethod"
 engine_key = "SolutionMethod"
+manual = "SIESTA 5.4.2 §6.12 'Calculation of the electronic structure'"
 type = "enum"
 choices = ["diagon", "OMM", "transiesta"]
 value = "diagon"
@@ -118,6 +129,7 @@ category = ["convergence"]
 engines = ["siesta"]
 anchor = "SCF.Mixer.Weight"
 engine_key = "SCF.Mixer.Weight"
+manual = "SIESTA 5.4.2 §6.9.2 'Mixing options'"
 type = "float"
 value = 0.02
 default = 0.02
@@ -136,6 +148,7 @@ category = ["convergence"]
 engines = ["siesta"]
 anchor = "SCF.Mixer.History"
 engine_key = "SCF.Mixer.History"
+manual = "SIESTA 5.4.2 §6.9.2 'Mixing options'"
 type = "int"
 value = 8
 default = 8
@@ -145,7 +158,7 @@ label = "Pulay history depth"
 tier = "advanced"
 help = """
 How many previous SCF steps the mixer uses to predict the next one.  Higher = steadier convergence, at a few vectors of memory.
-RAISED 3 -> 8 on 2026-08-15.  SIESTA 5.4.2's manual is explicit that the old value was in the wrong band: "a too low value (say 2-6) might change the convergence properties a lot", and "around 6 or above may be advised".  It also says two different HIGH values barely differ -- so there is no cost to sitting clear of the band rather than on its edge.  3 was an undocumented choice with no source in this project.
+DEVIATION: SIESTA's own default is 2 -- inside the band its own manual warns about.  RAISED 3 -> 8 here on 2026-08-15: the manual is explicit that "a too low value (say 2-6) might change the convergence properties a lot", and "around 6 or above may be advised".  It also says two different HIGH values barely differ -- so there is no cost to sitting clear of the band rather than on its edge.  3 was an undocumented choice with no source in this project.
 Raise further (12-20) only if the SCF still oscillates after lowering the mixing weight; the weight is the first thing to try (manual: "experimentation with the mixing weight is preferred as a first resort")."""
 
 [item.dm_tolerance]
@@ -154,6 +167,7 @@ category = ["accuracy"]
 engines = ["siesta"]
 anchor = "DM.Tolerance"
 engine_key = "DM.Tolerance"
+manual = "SIESTA 5.4.2 §6.9.8 'Convergence criteria'"
 type = "float"
 value = 1e-05
 default = 1e-05
@@ -164,6 +178,7 @@ tier = "advanced"
 help = """
 Density-matrix element convergence threshold for the inner SCF loop.  Forces are derived from the converged density -- sloppy SCF -> noisy forces -> optimizer thrashes.
 Per-tier (dimensionless): screening 1e-3, loose preopt 1e-4, publishable 1e-4, tight (vib/IR) 1e-5.
+DEVIATION: SIESTA's own default is 1e-4; this project ships 1e-5, one decade tighter.  The work this project is built for is relaxations and vibrational analysis, where the forces come out of the converged density and a loose SCF shows up as force noise the optimiser then chases -- which costs more geometry steps than the extra SCF cycles cost.  For single-point screening, 1e-4 is the engine's own answer and is enough.
 Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you want at convergence.  See docs/engines/tuning.md § 2.5."""
 
 [item.dm_energy_tolerance]
@@ -172,6 +187,7 @@ category = ["accuracy"]
 engines = ["siesta"]
 anchor = "DM.EnergyTolerance"
 engine_key = "DM.EnergyTolerance"
+manual = "SIESTA 5.4.2 §6.9.8 'Convergence criteria'"
 type = "float"
 value = 0.0001
 default = 0.0001
@@ -191,6 +207,7 @@ category = ["accuracy"]
 engines = ["siesta"]
 anchor = "SCF.FreeE.Converge"
 engine_key = "SCF.FreeE.Converge"
+manual = "SIESTA 5.4.2 §6.9.8 'Convergence criteria'"
 type = "bool"
 value = false
 default = false
@@ -211,6 +228,7 @@ category = ["convergence"]
 engines = ["siesta"]
 anchor = "MaxSCFIterations"
 engine_key = "MaxSCFIterations"
+manual = "SIESTA 5.4.2 §6.9 'The self-consistent-field loop'"
 type = "int"
 value = 1000
 default = 1000
@@ -225,19 +243,25 @@ This is a RUNAWAY GUARD, not a budget -- the budget is wall time and continue_re
 
 [item.electronic_temperature]
 kind = "engine"
-category = ["accuracy", "system"]
+category = ["system", "accuracy"]
 engines = ["siesta"]
 anchor = "ElectronicTemperature"
 engine_key = "ElectronicTemperature"
+manual = "SIESTA 5.4.2 §6.12.3 'Occupation of electronic states and Fermi level'"
 type = "float"
 value = 300.0
 default = 300.0
 unit = "K"
 range = [0.0, 5000.0]
 group = "profile"
-label = "Electronic temperature"
+label = "Electronic temperature (smearing)"
 tier = "advanced"
-help = "electronic temperature for Fermi-Dirac smearing (K)"
+help = """
+How sharply the electronic states fill at the Fermi level -- the width of the Fermi-Dirac smearing.
+THIS IS NOT THE TEMPERATURE OF YOUR SIMULATION.  It is a property of the ELECTRONS and it applies to every run type, including a 0 K geometry relaxation with no atomic motion at all.  Do not confuse it with 'Initial temperature' / 'Target temperature', which are about how fast the ATOMS move and are read only by Verlet / Nose molecular dynamics.  The two are independent: a metal needs smearing whether or not its atoms are moving.
+WHY IT EXISTS: in a metal, states sit right at the Fermi level and swap occupancy between SCF cycles, so the density oscillates and never settles.  Smearing lets states be partially occupied, which damps that.  A molecule with a clear HOMO-LUMO gap does not need it, and for such a system the value barely matters.
+RAISE IT (1000-2000 K) for a metal or a metal-molecule junction whose SCF will not converge -- after lowering the mixing weight, which is the first thing to try.  LOWER IT toward 0 only for an insulator where you want strictly integer occupations.
+COST: a raised smearing temperature adds an entropy term to the free energy (F = E - TS), which is what makes the free-energy convergence criterion worth turning on for exactly these systems -- see 'Also require the free energy to settle'.  300 K is SIESTA's own default."""
 
 [item.kgrid]
 kind = "engine"
@@ -245,9 +269,11 @@ category = ["accuracy"]
 engines = ["siesta"]
 anchor = "%block kgrid_Monkhorst_Pack"
 engine_key = "%block kgrid_Monkhorst_Pack"
+manual = "SIESTA 5.4.2 §6.5 'k-point sampling'"
 type = "int3"
 value = [1, 1, 1]
 default = [1, 1, 1]
+range = [1, 64]
 group = "stage"
 label = "k-point mesh"
 tier = "basic"
@@ -267,9 +293,11 @@ category = ["accuracy"]
 engines = ["siesta"]
 anchor = "%block kgrid_Monkhorst_Pack"
 engine_key = "%block kgrid_Monkhorst_Pack  (displ column)"
+manual = "SIESTA 5.4.2 §6.5 'k-point sampling'"
 type = "float3"
 value = [0.0, 0.0, 0.0]
 default = [0.0, 0.0, 0.0]
+range = [0.0, 1.0]
 group = "stage"
 label = "k-grid displacement"
 help = """
@@ -288,6 +316,7 @@ category = ["procedure"]
 engines = ["siesta"]
 anchor = "MD.TypeOfRun"
 engine_key = "MD.TypeOfRun"
+manual = "SIESTA 5.4.2 §7 'STRUCTURAL RELAXATION, PHONONS, AND MOLECULAR DYNAMICS'"
 type = "enum"
 choices = ["CG", "Broyden", "FIRE", "Verlet", "Nose", "none"]
 value = "CG"
@@ -309,6 +338,7 @@ category = ["procedure"]
 engines = ["siesta"]
 expands = ["MD.Steps", "MD.FinalTimeStep"]
 engine_key = "MD.Steps (CG / Broyden / FIRE) | MD.FinalTimeStep (Verlet / Nose)"
+manual = "SIESTA 5.4.2 §7.2 'Structural relaxation' + §7.4 'Molecular dynamics'"
 type = "int"
 value = 200
 default = 200
@@ -326,6 +356,7 @@ category = ["accuracy"]
 engines = ["siesta"]
 anchor = "MD.MaxForceTol"
 engine_key = "MD.MaxForceTol"
+manual = "SIESTA 5.4.2 §7.2 'Structural relaxation'"
 type = "float"
 value = 0.02
 default = 0.02
@@ -337,6 +368,7 @@ tier = "advanced"
 help = """
 Force-tol stop criterion: max unconstrained atomic force below which the relaxation declares success.  Ignored by Verlet/Nose (those are MD, not relax).
 Per-tier (eV/Å): screening 0.10, loose preopt 0.05, publishable 0.04 (Gaussian-OPT default), tight (vib/IR) 0.01, very-tight (NEB barrier) 0.001.
+DEVIATION: SIESTA's own default is 0.04 eV/Å -- the 'publishable' row above.  This project ships 0.02, twice as tight, because a relaxation that stops at the loose end leaves residual forces big enough to contaminate a frequency calculation run on top of it, and re-relaxing afterwards costs more than the extra steps did.  For a single-point or a screening pass, 0.04 is the engine's own answer.
 SIESTA only checks max force.  See docs/engines/tuning.md § 2.3 for the 5-criteria geomeTRIC/Gaussian convention + citations."""
 
 [item.relax_max_displ]
@@ -345,6 +377,7 @@ category = ["procedure", "convergence"]
 engines = ["siesta"]
 anchor = "MD.MaxDispl"
 engine_key = "MD.MaxDispl (CG / Broyden / FIRE)"
+manual = "SIESTA 5.4.2 §7.2 'Structural relaxation'"
 type = "float"
 value = 0.05
 default = 0.05
@@ -355,6 +388,7 @@ label = "Max displacement per step"
 tier = "advanced"
 help = """
 Displacement cap per optimiser step (Å).  Applies across CG, Broyden AND FIRE.  Hard ceiling that catches line-search over-shoot.  ``MD.MaxDispl`` DEPRECATES the older ``MD.MaxCGDispl`` (SIESTA 5.4.2); same meaning, same 0.2 Bohr default, and the CG-prefixed name was never CG-only.
+DEVIATION: that engine default of 0.2 Bohr is 0.106 Å; this project ships 0.05 Å, about half.  The cap only ever LIMITS a step, so a smaller one costs steps and never accuracy -- and the oscillation below is what a too-large cap looks like.  Raise it back toward 0.2 Å for a cheap first pass on a structure that starts far from its minimum.
 Per-tier (Å): screening 0.30, loose preopt 0.20, publishable 0.05, tight (vib/IR) 0.02.
 Symptom of too-large cap: max-force oscillates rather than descends (e.g. 0.09 → 0.44 → 0.13 → 0.31 → ...).  Halve the cap.  See docs/engines/tuning.md § 2.2 + the BDT/Au worked example in § 6."""
 
@@ -367,7 +401,7 @@ type = "int"
 value = 1
 default = 1
 range = [1, 5]
-group = "budget"
+group = "staging"
 label = "Warm-retry budget"
 tier = "advanced"
 help = "How many extra relaxation batches the wrapper may run when a job hits its step cap without converging: it re-enters SIESTA with --continue from the current .XV.  Total step budget = relax_steps x (1 + continue_retries)."
@@ -378,6 +412,7 @@ category = ["procedure"]
 engines = ["siesta"]
 anchor = "MD.InitialTemperature"
 engine_key = "MD.InitialTemperature"
+manual = "SIESTA 5.4.2 §7.4 'Molecular dynamics'"
 type = "float"
 value = 300.0
 default = 300.0
@@ -386,7 +421,10 @@ range = [0.0, 5000.0]
 group = "profile"
 label = "Initial temperature"
 tier = "advanced"
-help = "initial-velocity-seed temperature for Verlet/Nose molecular dynamics (K).  IGNORED by CG / Broyden / FIRE geometry relaxation -- those don't have velocities to seed."
+help = """
+Temperature the initial atomic velocities are drawn for, in Verlet / Nose molecular dynamics.  IGNORED by CG / Broyden / FIRE geometry relaxation -- those don't have velocities to seed.
+THIS IS ABOUT THE ATOMS, not the electrons.  It is a different quantity from 'Electronic temperature (smearing)', which shares the word and the unit and nothing else: that one sets how sharply electronic states fill at the Fermi level and applies to every run type, including this one.  Setting them to match means nothing -- an MD at 0 K still needs electronic smearing if the system is metallic.
+DEVIATION: SIESTA's own default is 0 K, i.e. start from rest.  This project ships 300 K because a run seeded at 0 K spends its opening picoseconds simply acquiring thermal motion, and 300 K is both room temperature and the condition most reported simulations are run at.  Set it to 0 deliberately if you want the cold start."""
 
 [item.md_target_temperature]
 kind = "engine"
@@ -394,6 +432,7 @@ category = ["procedure"]
 engines = ["siesta"]
 anchor = "MD.TargetTemperature"
 engine_key = "MD.TargetTemperature"
+manual = "SIESTA 5.4.2 §7.4 'Molecular dynamics'"
 type = "float"
 unit = "K"
 range = [0.0, 5000.0]
@@ -410,6 +449,7 @@ category = ["procedure"]
 engines = ["siesta"]
 anchor = "MD.LengthTimeStep"
 engine_key = "MD.LengthTimeStep"
+manual = "SIESTA 5.4.2 §7.4 'Molecular dynamics'"
 type = "float"
 value = 1.0
 default = 1.0
@@ -426,11 +466,12 @@ category = ["convergence", "execution"]
 engines = ["siesta"]
 expands = ["DM.UseSaveDM", "MD.UseSaveXV", "MD.UseSaveCG"]
 engine_key = "(molbuilder: expands to DM.UseSaveDM / MD.UseSaveXV / MD.UseSaveCG; not a single .fdf key)"
+manual = "SIESTA 5.4.2 §6.9.5 'Initialization of the density-matrix' + §6.4.4 'Input of structural information from external files' + §7.2.1 'Conjugate-gradients optimization'"
 type = "enum"
 choices = ["clean", "continue"]
 value = "clean"
 default = "clean"
-group = "stage"
+group = "staging"
 label = "Start from"
 tier = "advanced"
 help = """
@@ -449,7 +490,11 @@ value = true
 default = true
 group = "profile"
 label = "Wrap atoms into cell"
-help = "fold atoms with fractional coords outside [0,1) back into the cell"
+help = """
+Move any atom that sits outside the cell box back inside it, by shifting it a whole number of cell vectors.
+MOLBUILDER DOES THIS, NOT SIESTA.  It rewrites the coordinates that get written into the .fdf, so what you see in the deck is what ran.  In a periodic crystal it changes nothing physical: shifting an atom by a whole lattice vector lands it on an identical position, so the energy and forces are the same.  It just keeps the numbers tidy and comparable between runs.
+WHEN TO TURN IT OFF: a MOLECULE that straddles a cell face.  Wrapping moves only the atoms that stuck out, so the molecule is split -- half at one edge of the box, half at the opposite edge.  The physics is still right for a periodic calculation, but the structure LOOKS torn in the viewer, and anything that measures geometry directly from the coordinates (bond lengths, a centre of mass, an RMSD against another frame) reads the box-crossing distance instead of the real one.  If your system is one molecule in a vacuum box, or a slab with an adsorbate near an edge, turn this off.
+It has no effect when the cell was built from the structure itself: that path already centres the atoms in the box, so nothing is outside to fold back."""
 
 [item.verbose_comments]
 kind = "produce"
@@ -469,12 +514,16 @@ category = ["procedure"]
 engines = ["siesta"]
 anchor = "WriteForces"
 engine_key = "WriteForces"
+manual = "SIESTA 5.4.2 §7.5 'Output options for dynamics'"
 type = "bool"
 value = true
 default = true
 group = "output"
-label = "Write forces (.FA)"
-help = "write forces to the .FA file (required for relaxation)"
+label = "Write forces each step"
+help = """
+Write the atomic forces into the main .out at every relaxation or MD step, so the force history can be read back from the log.
+DEVIATION: SIESTA ships this off; we ship it on.  A relaxation whose force history was not recorded cannot be diagnosed afterwards -- "did it descend or oscillate?" is the first question about any run that did not converge, and the answer costs a few lines of text per step.
+It does NOT control the .FA file.  This help said "write forces to the .FA file (required for relaxation)" until 2026-08-15 and both halves were wrong: the manual says the last step's forces "can be found in the file .FA" whatever this flag is set to, and a relaxation runs perfectly well without either."""
 
 [item.write_coor_step]
 kind = "engine"
@@ -482,12 +531,16 @@ category = ["procedure"]
 engines = ["siesta"]
 anchor = "WriteCoorStep"
 engine_key = "WriteCoorStep"
+manual = "SIESTA 5.4.2 §7.5 'Output options for dynamics'"
 type = "bool"
 value = true
 default = true
 group = "output"
 label = "Write coordinates each step"
-help = "write coordinates at every MD step in the main .out"
+help = """
+Write the atomic coordinates into the main .out at every relaxation or MD step.
+DEVIATION: SIESTA defaults this to LongOutput (off unless you asked for verbose output); we ship it on, for the same reason as the force history -- the .out is the one file that always survives, so the trajectory should be recoverable from it alone.
+CAUTION -- IT HAS A SIDE EFFECT ON ANOTHER KEYWORD: WriteMDXmol (the .ANI animation file) defaults to `.not. WriteCoorStep` (read_options.F90), so turning this ON turns .ANI OFF unless WriteMDXmol is set explicitly."""
 
 [item.write_coor_xmol]
 kind = "engine"
@@ -495,12 +548,16 @@ category = ["procedure"]
 engines = ["siesta"]
 anchor = "WriteCoorXmol"
 engine_key = "WriteCoorXmol"
+manual = "SIESTA 5.4.2 §6.4.3 'Output of structural information'"
 type = "bool"
 value = true
 default = true
 group = "output"
-label = "Write XMOL .xyz per step"
-help = "write .xyz of every relaxation step (movie viewer)"
+label = "Write XMOL .xyz"
+help = """
+Write an extra <label>.xyz holding the FINAL atomic coordinates, in Angstrom whatever input format was used, readable by XMol / JMol / Molden.
+DEVIATION: SIESTA ships this off; we ship it on, because a finished relaxation whose result is only inside the .out has to be re-extracted before anything else can open it.
+ONE STRUCTURE, NOT A MOVIE.  This help promised ".xyz of every relaxation step (movie viewer)" until 2026-08-15; the manual is explicit that the file holds the final coordinates.  The per-step animation file is .ANI, and it comes from a different keyword (WriteMDXmol)."""
 
 [item.write_md_history]
 kind = "engine"
@@ -508,12 +565,34 @@ category = ["procedure"]
 engines = ["siesta"]
 anchor = "WriteMDhistory"
 engine_key = "WriteMDhistory"
+manual = "SIESTA 5.4.2 §7.5 'Output options for dynamics'"
 type = "bool"
 value = true
 default = true
 group = "output"
-label = "Write .ANI trajectory"
-help = "write the .ANI trajectory file (xcrysden / vmd / OVITO)"
+label = "Write MD history (.MD/.MDE)"
+help = """
+Accumulate the trajectory into <label>.MD -- positions and velocities (and cell, for a variable cell) at every step, written UNFORMATTED for post-processing -- plus <label>.MDE, a short per-step line of energy, temperature and the like.  Both are appended across runs, so a restarted job extends them rather than replacing them.
+DEVIATION: SIESTA ships this off; we ship it on, because it is the only complete record of what the trajectory did.
+IT DOES NOT WRITE .ANI.  The label and this help said "Write .ANI trajectory ... (xcrysden / vmd / OVITO)" until 2026-08-15 and that was wrong: read_options.F90 binds this keyword to `writmd`, which write_md_record.F routes to `iomd` (the .MD file).  .ANI is written by `pixmol` under `writpx`, which is the separate WriteMDXmol keyword.
+NOTE the .MD file is unformatted, so it is not something a viewer opens directly."""
+
+[item.write_md_xmol]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+anchor = "WriteMDXmol"
+engine_key = "WriteMDXmol"
+manual = "SIESTA 5.4.2 §6.4.3 'Output of structural information'"
+type = "bool"
+value = true
+default = true
+group = "output"
+label = "Write XMOL animation (.ANI)"
+help = """
+Accumulate every step's coordinates into <label>.ANI, a plain-text multi-frame .xyz in Angstrom that xcrysden, VMD and OVITO open directly as an animation.  Appended across runs, so a restart extends it.
+WHY THIS IS A SWITCH AND NOT JUST ON: SIESTA defaults it to `.not. WriteCoorStep` (read_options.F90) -- the two keywords are coupled, and nothing in the form said so.  Because this project ships WriteCoorStep on, that default resolved to OFF and no molbuilder run ever wrote a .ANI, while the form advertised one on a different control (fixed the same day).  Setting it explicitly is the only way to stop one keyword silently deciding another.
+MOLBUILDER DOES NOT READ THIS FILE.  Trajectory coordinates come from <label>.MD.nc, which carries full double precision rather than text; .ANI is listed among a run's files but never parsed.  So it is purely for opening the trajectory in an external viewer -- turn it off if disk matters and you do not need that, and nothing inside molbuilder changes."""
 
 [item.write_hs]
 kind = "engine"
@@ -521,6 +600,7 @@ category = ["procedure"]
 engines = ["siesta"]
 anchor = "SaveHS"
 engine_key = "SaveHS"
+manual = "SIESTA 5.4.2 §6.11 'Matrix elements of the Hamiltonian and overlap'"
 type = "bool"
 value = true
 default = true
@@ -566,6 +646,7 @@ category = ["execution"]
 engines = ["siesta"]
 anchor = "BlockSize"
 engine_key = "BlockSize"
+manual = "SIESTA 5.4.2 §6.27 'Parallel options'"
 type = "pow2"
 resolver = "block_size"
 group = "budget"
@@ -580,6 +661,7 @@ category = ["execution"]
 engines = ["siesta"]
 anchor = "Diag.ParallelOverK"
 engine_key = "Diag.ParallelOverK"
+manual = "SIESTA 5.4.2 §6.12.1 'Diagonalization options'"
 type = "bool"
 group = "budget"
 label = "ParallelOverK"
@@ -626,6 +708,7 @@ category = ["execution"]
 engines = ["siesta"]
 anchor = "Diag.ELPA.GPU"
 engine_key = "Diag.ELPA.GPU"
+manual = "SIESTA 5.4.2 §6.12.1 'Diagonalization options'"
 type = "bool"
 value = false
 default = false
@@ -640,6 +723,7 @@ category = ["execution"]
 engines = ["siesta"]
 anchor = "Diag.Algorithm"
 engine_key = "Diag.Algorithm"
+manual = "SIESTA 5.4.2 §6.12.1 'Diagonalization options'"
 type = "enum"
 choices = ["ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
 value = "ScaLAPACK"
@@ -660,7 +744,7 @@ category = ["method"]
 engines = ["siesta"]
 engine_key = "(molbuilder: stages .psml files next to .fdf; SIESTA reads them by element basename)"
 type = "str"
-group = "profile"
+group = "setup"
 label = "Pseudopotential directory (.psml)"
 null_label = "(none)"
 optional = true
@@ -702,6 +786,7 @@ category = ["system"]
 engines = ["siesta"]
 anchor = "NetCharge"
 engine_key = "NetCharge"
+manual = "SIESTA 5.4.2 §6.23 'Systems with net charge or dipole, and electric fields'"
 type = "int"
 range = [-10, 10]
 group = "profile"
@@ -717,6 +802,7 @@ category = ["system"]
 engines = ["siesta"]
 anchor = "Spin"
 engine_key = "Spin"
+manual = "SIESTA 5.4.2 §6.7 'Spin polarization'"
 type = "enum"
 choices = ["non-polarized", "polarized", "non-colinear", "spin-orbit"]
 value = "non-polarized"
@@ -757,6 +843,7 @@ category = ["system"]
 engines = ["pyscf"]
 anchor = "gto.M"
 engine_key = "gto.M(charge=...)"
+manual = "PySCF 2.13 pyscf.gto.mole.MoleBase 'charge'"
 type = "int"
 group = "profile"
 label = "Net charge"
@@ -770,6 +857,7 @@ category = ["system"]
 engines = ["pyscf"]
 anchor = "gto.M"
 engine_key = "gto.M(spin=...)  # 2S, # of unpaired electrons"
+manual = "PySCF 2.13 pyscf.gto.mole.MoleBase 'spin'"
 type = "int"
 value = 0
 default = 0
@@ -784,6 +872,7 @@ category = ["system"]
 engines = ["pyscf"]
 anchor = "gto.M"
 engine_key = "gto.M(symmetry=...)"
+manual = "PySCF 2.13 pyscf.gto.mole.MoleBase 'symmetry'"
 type = "bool"
 value = false
 default = false
@@ -797,6 +886,7 @@ category = ["method"]
 engines = ["pyscf"]
 anchor = "RKS"
 engine_key = "RKS / UKS / RHF / UHF  (PySCF class selection)"
+manual = "PySCF 2.13 pyscf.dft.rks 'RKS / UKS / RHF / UHF'"
 type = "enum"
 choices = ["RKS", "UKS", "RHF", "UHF"]
 value = "RKS"
@@ -811,12 +901,15 @@ category = ["method"]
 engines = ["pyscf"]
 anchor = "mf.xc"
 engine_key = "mf.xc = ..."
+manual = "PySCF 2.13 pyscf.dft.rks.KohnShamDFT 'xc'"
 type = "str"
 value = "B3LYP"
 default = "B3LYP"
 group = "profile"
 label = "Functional"
-help = "XC functional (e.g. B3LYP / PBE / PBE0 / M06-2X / wB97X-D)"
+help = """
+XC functional, written as ``mf.xc`` (B3LYP / PBE / PBE0 / M06-2X / wB97X-D / ...).
+DEVIATION: PySCF's own default is 'LDA,VWN'.  That is the fallback ``dft.RKS`` carries when nothing has been set, not a recommendation -- setting mf.xc is expected of every real calculation.  We ship B3LYP, the most widely used hybrid in molecular chemistry (Becke, J. Chem. Phys. 98, 5648 (1993); Lee, Yang & Parr, Phys. Rev. B 37, 785 (1988)), and it pairs with the D3(BJ) dispersion this project also defaults to -- which is what repairs B3LYP's known weakness on non-covalent interactions."""
 
 [item.basis]
 kind = "engine"
@@ -824,6 +917,7 @@ category = ["method", "accuracy"]
 engines = ["pyscf"]
 anchor = "gto.M"
 engine_key = "gto.M(basis=...)"
+manual = "PySCF 2.13 pyscf.gto.mole.MoleBase 'basis'"
 type = "str"
 value = "def2-SVP"
 default = "def2-SVP"
@@ -832,10 +926,13 @@ label = "Basis set"
 help = """
 Gaussian basis set.  This is NOT a per-stage knob -- the convergence ladder (cfg.stages) varies tolerances, not the level of theory.  Pick once based on the chemistry.
 Per-tier:
-  • screening / loose preopt: def2-SVP (current default; 30% bond-length error in conjugated systems -- NEVER publish)
+  • screening / loose preopt: def2-SVP (current default)
   • publishable:               def2-TZVP (modern standard for organic chemistry; ECPs bundled to Rn)
   • tight (vib/IR/energy):    def2-TZVPP or def2-QZVP
-Reference: Weigend & Ahlrichs PCCP 2005.  See docs/engines/tuning.md § 2.8."""
+WHAT def2-SVP IS AND IS NOT GOOD FOR.  It is a double-zeta set: fine for screening and preoptimisation, and usable for structures when paired with a dispersion correction (this project defaults to D3BJ).  Its real weakness is BASIS-SET SUPERPOSITION ERROR -- for double-zeta sets that can exceed 40% of a binding energy, and it artificially SHORTENS intermolecular distances.  So treat def2-SVP interaction energies and complex geometries as unconverged, and move to def2-TZVP for anything published.  Covalent bond lengths are much less affected: DFT bond-length errors are typically 0.01-0.07 A and are driven more by the functional than by the basis.
+NOTE ON WHAT THIS PROJECT CORRECTS: D3BJ repairs the missing dispersion, not the superposition error -- PySCF applies no geometric counterpoise (gCP).  The composite methods built for exactly this (PBEh-3c, r2SCAN-3c) pair a small basis with BOTH corrections.
+This help claimed a "30% bond-length error in conjugated systems -- NEVER publish" until 2026-08-15.  No source supports it; the figure appears to be a garbled import of the 40%-of-binding-energy BSSE result, which is about noncovalent interactions rather than covalent bonds, and is not specific to conjugation.
+Sources: Weigend & Ahlrichs, Phys. Chem. Chem. Phys. 7, 3297 (2005) for the basis sets themselves; Sure & Grimme, J. Comput. Chem. 34, 1672 (2013) for the small-basis error analysis; Bursch et al., Angew. Chem. Int. Ed. 61, e202205735 (2022) for the best-practice recommendation.  See docs/engines/tuning.md § 2.8."""
 
 [item.auxbasis]
 kind = "engine"
@@ -843,6 +940,7 @@ category = ["method"]
 engines = ["pyscf"]
 anchor = "df.auxbasis"
 engine_key = "df.auxbasis = ..."
+manual = "PySCF 2.13 pyscf.df.df.DF 'auxbasis'"
 type = "str"
 group = "profile"
 label = "Auxiliary fitting basis"
@@ -855,27 +953,35 @@ category = ["method", "execution"]
 engines = ["pyscf"]
 anchor = "mf"
 engine_key = "mf = mf.density_fit()"
+manual = "PySCF 2.13 pyscf.scf.hf.SCF 'density_fit()'"
 type = "bool"
 value = true
 default = true
 group = "profile"
 label = "Density fitting"
-help = "use density fitting (faster Coulomb/exchange evaluation)"
+help = """
+Approximate the four-centre electron-repulsion integrals by three-centre ones over an auxiliary basis (also called resolution of the identity), which is what makes the Coulomb and exchange build cheap.
+DEVIATION: PySCF applies NO density fitting unless ``mf.density_fit()`` is called; we default it on.  The speed-up is large and the error it introduces sits well below the error of the orbital basis itself when the auxiliary set matches the basis -- which is why it is standard practice rather than a shortcut.  Turn it off when you need exact-integral reference numbers, or when comparing against a published value that did not use it."""
 
 [item.dispersion]
 kind = "engine"
 category = ["method"]
 engines = ["pyscf"]
-anchor = "mf"
-engine_key = "mf = mf.add_dispersion(...)"
+anchor = "mf.disp"
+engine_key = "mf.disp = ..."
+manual = "PySCF 2.13 pyscf.scf.dispersion 'mf.disp'"
 type = "enum"
-choices = ["d3", "d3bj", "d4", "none"]
+choices = ["d3bj", "d3zero", "d4", "none"]
 value = "d3bj"
 default = "d3bj"
 group = "profile"
 label = "Dispersion"
 optional = true
-help = "dispersion correction: d3 / d3bj / d4 / 'none' to disable"
+help = """
+Grimme dispersion correction, written as ``mf.disp``.
+d3bj (default) is D3 with Becke-Johnson damping; d3zero is D3 with the original zero damping; d4 is the newer, charge-dependent D4.  'none' disables the correction.
+BJ damping is the usual recommendation for D3 -- it does not go to zero at short range, which is where zero damping tends to under-bind.  Use d3zero only to reproduce a published number that used it.
+SOURCE: the accepted spellings are PySCF 2.13's own (pyscf/scf/dispersion.py); a value outside that set raises NotImplementedError at run time, not at setup."""
 
 [item.ecp]
 kind = "engine"
@@ -883,6 +989,7 @@ category = ["method"]
 engines = ["pyscf"]
 anchor = "gto.M"
 engine_key = "gto.M(ecp=...)"
+manual = "PySCF 2.13 pyscf.gto.mole.MoleBase 'ecp'"
 type = "str"
 value = ""
 default = ""
@@ -897,6 +1004,7 @@ category = ["method"]
 engines = ["pyscf"]
 anchor = "gto.M"
 engine_key = "gto.M(ecp={<element>: ...})"
+manual = "PySCF 2.13 pyscf.gto.mole.MoleBase 'ecp'"
 type = "strlist"
 value = []
 group = "profile"
@@ -910,6 +1018,7 @@ category = ["accuracy"]
 engines = ["pyscf"]
 anchor = "mf.conv_tol"
 engine_key = "mf.conv_tol"
+manual = "PySCF 2.13 pyscf.scf.hf.SCF 'conv_tol'"
 type = "float"
 value = 1e-09
 default = 1e-09
@@ -926,6 +1035,7 @@ category = ["accuracy"]
 engines = ["pyscf"]
 anchor = "mf.conv_tol_grad"
 engine_key = "mf.conv_tol_grad"
+manual = "PySCF 2.13 pyscf.scf.hf.SCF 'conv_tol_grad'"
 type = "float"
 value = 0.0
 default = 0.0
@@ -941,6 +1051,7 @@ category = ["convergence"]
 engines = ["pyscf"]
 anchor = "mf.newton"
 engine_key = "mf.newton()"
+manual = "PySCF 2.13 pyscf.scf.hf.SCF 'newton()'"
 type = "bool"
 value = false
 default = false
@@ -955,6 +1066,7 @@ category = ["convergence"]
 engines = ["pyscf"]
 anchor = "mf.max_cycle"
 engine_key = "mf.max_cycle"
+manual = "PySCF 2.13 pyscf.scf.hf.SCF 'max_cycle'"
 type = "int"
 value = 100
 default = 100
@@ -962,7 +1074,9 @@ range = [10, 1000]
 group = "budget"
 label = "scf.max_cycle"
 tier = "advanced"
-help = "max SCF cycles per single-point"
+help = """
+The most SCF cycles PySCF will run for one single-point before giving up.
+DEVIATION: PySCF's own default is 50; we ship 100.  This is a RUNAWAY GUARD, not a target -- the two failure modes are not symmetric.  Too high wastes some CPU on a run that was not going to converge anyway; too low stops a converging SCF at the cap and throws away that geometry step, which then repeats at every step of a relaxation.  A well-behaved closed-shell molecule converges in 10-30."""
 
 [item.scf_init_guess]
 kind = "engine"
@@ -970,6 +1084,7 @@ category = ["convergence"]
 engines = ["pyscf"]
 anchor = "mf.init_guess"
 engine_key = "mf.init_guess"
+manual = "PySCF 2.13 pyscf.scf.hf.SCF 'init_guess'"
 type = "enum"
 choices = ["minao", "atom", "1e", "huckel"]
 value = "minao"
@@ -984,6 +1099,7 @@ category = ["accuracy"]
 engines = ["pyscf"]
 anchor = "mf.grids.level"
 engine_key = "mf.grids.level"
+manual = "PySCF 2.13 pyscf.dft.gen_grid.Grids 'level'"
 type = "int"
 value = 4
 default = 4
@@ -991,7 +1107,9 @@ range = [0, 9]
 group = "stage"
 label = "DFT grid level"
 tier = "advanced"
-help = "0=coarse, 3=screening, 4=default (hybrid-friendly), 5=tight, 9=ultra"
+help = """
+Density of the numerical grid the exchange-correlation energy is integrated on: 0 = coarse, 3 = screening, 4 = production, 5 = tight, 9 = ultra.
+DEVIATION: PySCF's own default is 3; we ship 4.  Level 3 is fine for an energy, but the quadrature error does not cancel in derivatives -- it shows up in forces and, most visibly, in vibrational frequencies, where grid noise produces spurious low-frequency modes.  Since this project exists to run geometry optimisations and Hessians, the grid that supports them is the right default.  Drop to 3 for single-point screening."""
 
 [item.level_shift]
 kind = "engine"
@@ -999,6 +1117,7 @@ category = ["convergence"]
 engines = ["pyscf"]
 anchor = "mf.level_shift"
 engine_key = "mf.level_shift"
+manual = "PySCF 2.13 pyscf.scf.hf.SCF 'level_shift'"
 type = "float"
 value = 0.0
 default = 0.0
@@ -1015,6 +1134,7 @@ category = ["convergence"]
 engines = ["pyscf"]
 anchor = "mf.diis_space"
 engine_key = "mf.diis_space"
+manual = "PySCF 2.13 pyscf.scf.hf.SCF 'diis_space'"
 type = "int"
 value = 8
 default = 8
@@ -1030,6 +1150,7 @@ category = ["convergence"]
 engines = ["pyscf"]
 anchor = "mf.damp"
 engine_key = "mf.damp"
+manual = "PySCF 2.13 pyscf.scf.hf.SCF 'damp'"
 type = "float"
 value = 0.0
 default = 0.0
@@ -1057,6 +1178,7 @@ category = ["procedure"]
 engines = ["pyscf"]
 anchor = "geomeTRIC"
 engine_key = "geomeTRIC / berny  (driver selection)"
+manual = "PySCF 2.13 pyscf.geomopt.geometric_solver 'optimize()'"
 type = "enum"
 choices = ["geometric", "berny"]
 value = "geometric"
@@ -1075,6 +1197,7 @@ category = ["system"]
 engines = ["pyscf"]
 anchor = "mf"
 engine_key = "mf = mf.PCM() / mf.SMD()"
+manual = "PySCF 2.13 pyscf.solvent.pcm 'PCM() / SMD()'"
 type = "str"
 group = "profile"
 label = "Solvent"
@@ -1086,15 +1209,19 @@ help = "solvent (water / methanol / dmso / chloroform / ...)"
 kind = "engine"
 category = ["system"]
 engines = ["pyscf"]
-anchor = "pcm.method"
-engine_key = "pcm.method"
+anchor = "mf.with_solvent.method"
+engine_key = "mf.with_solvent.method"
+manual = "PySCF 2.13 pyscf.solvent.pcm.PCM 'method'"
 type = "enum"
 choices = ["IEF-PCM", "C-PCM", "COSMO"]
 value = "IEF-PCM"
 default = "IEF-PCM"
 group = "profile"
 label = "PCM model"
-help = "PCM model: IEF-PCM / C-PCM / COSMO"
+help = """
+Which polarisable-continuum model represents the solvent.
+DEVIATION: PySCF's own default is C-PCM (pyscf.solvent.pcm.PCM.method); we ship IEF-PCM.  IEF-PCM solves the full integral-equation formalism, so it is the more general of the two and is what most quantum-chemistry packages default to; C-PCM is the conductor-like approximation, cheaper and very close to IEF-PCM for polar solvents but less reliable as the dielectric constant falls.  COSMO is the original conductor-like model.
+For water the three agree closely; the choice matters in low-dielectric solvents."""
 
 [item.threads]
 kind = "engine"
@@ -1102,6 +1229,7 @@ category = ["execution"]
 engines = ["pyscf"]
 anchor = "lib.num_threads"
 engine_key = "lib.num_threads(N) + os.environ['OMP_NUM_THREADS']"
+manual = "PySCF 2.13 pyscf.lib.misc 'num_threads()'"
 type = "int"
 group = "budget"
 label = "CPU threads"
@@ -1115,6 +1243,7 @@ category = ["execution"]
 engines = ["pyscf"]
 anchor = "gpu4pyscf"
 engine_key = "gpu4pyscf: mf = mf.to_gpu()"
+manual = "PySCF 2.13 pyscf.dft.rks.RKS 'to_gpu()'"
 type = "bool"
 value = false
 default = false
@@ -1128,6 +1257,7 @@ category = ["procedure"]
 engines = ["pyscf"]
 anchor = "mol.verbose"
 engine_key = "mol.verbose"
+manual = "PySCF 2.13 pyscf.gto.mole.MoleBase 'verbose'"
 type = "int"
 value = 4
 default = 4
@@ -1135,7 +1265,9 @@ range = [0, 9]
 group = "output"
 label = "PySCF verbose"
 tier = "advanced"
-help = "PySCF verbosity: 0 silent, 4 info, 5 debug"
+help = """
+How much PySCF writes to the log: 0 silent, 3 note, 4 info, 5 debug.
+DEVIATION: PySCF's own default is 3; we ship 4, because level 4 is where the per-cycle SCF convergence table appears -- and that table is what makes a run that failed diagnosable from the log alone, without repeating it."""
 
 [item.chkfile]
 kind = "engine"
@@ -1143,6 +1275,7 @@ category = ["procedure"]
 engines = ["pyscf"]
 anchor = "mf.chkfile"
 engine_key = "mf.chkfile = '<path>'"
+manual = "PySCF 2.13 pyscf.scf.hf.SCF 'chkfile'"
 type = "bool"
 value = true
 default = true
@@ -1156,6 +1289,7 @@ category = ["procedure"]
 engines = ["pyscf"]
 anchor = "mol.stdout"
 engine_key = "mol.stdout = open('<path>','w')"
+manual = "PySCF 2.13 pyscf.lib.misc.StreamObject 'stdout'"
 type = "bool"
 value = true
 default = true
@@ -1205,6 +1339,7 @@ category = ["procedure"]
 engines = ["pyscf"]
 anchor = "pyscf.hessian"
 engine_key = "pyscf.hessian + thermo.thermo()"
+manual = "PySCF 2.13 pyscf.hessian.thermo 'harmonic_analysis()'"
 type = "bool"
 value = false
 default = false
@@ -1219,6 +1354,7 @@ category = ["procedure"]
 engines = ["pyscf"]
 anchor = "thermo.thermo"
 engine_key = "thermo.thermo(temperature=...)"
+manual = "PySCF 2.13 pyscf.hessian.thermo 'thermo(temperature=)'"
 type = "float"
 value = 298.15
 default = 298.15
@@ -1235,6 +1371,7 @@ category = ["procedure"]
 engines = ["pyscf"]
 anchor = "thermo.thermo"
 engine_key = "thermo.thermo(pressure=...)"
+manual = "PySCF 2.13 pyscf.hessian.thermo 'thermo(pressure=)'"
 type = "float"
 value = 1.0
 default = 1.0

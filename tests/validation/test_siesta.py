@@ -95,10 +95,22 @@ def test_every_range_warning_names_the_engine_keyword(water_struct):
         if not rng:
             continue
         lo, hi = rng
-        try:                                  # push it past the top of the range
-            cfg = dataclasses.replace(SiestaConfig(), **{f.name: type(lo)(hi) * 10 + 1})
-        except (TypeError, ValueError):
-            continue                          # non-scalar; its own validator owns it
+        # NON-SCALAR FIELDS ARE SKIPPED, and the skip has to be explicit.
+        # This asked ``dataclasses.replace`` to raise for them -- but
+        # ``replace`` does no type checking, so it happily stored the scalar
+        # and the TypeError surfaced later, inside validate(), as a crash
+        # rather than a skip.  Nothing noticed until `kgrid` and
+        # `kgrid_displacement` gained a per-component ``range`` on
+        # 2026-08-15 and became the first ranged tuples in the schema.
+        #
+        # They are genuinely out of scope for THIS rule: their warnings come
+        # from their own ``validate`` callables and name a component
+        # (``kgrid[0] = 641 ...``), which is a different sentence shape from
+        # the ``label (KEYWORD) = value`` this test governs.
+        if isinstance(getattr(SiestaConfig(), f.name), (tuple, list)):
+            continue
+        cfg = dataclasses.replace(
+            SiestaConfig(), **{f.name: type(lo)(hi) * 10 + 1})
         hits = [i for i in validate(water_struct, cfg)
                 if i.where == f"config.{f.name}" and "outside" in i.message]
         if not hits:

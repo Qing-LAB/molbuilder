@@ -66,7 +66,7 @@ is where the *data* comes from.
 | `name` | the item's own name |
 | `label` · `help` · `default` · `unit` · `choices` | the keys of the same name |
 | `min` / `max` | `range` |
-| `engine_key` | `anchor`, or `expands` for a `deck` item |
+| `engine_key` | the item's **`engine_key`** — the full spelling. `expands` is the fallback for a `deck` item whose several keywords are the honest answer, and `anchor` the last resort. *(This said `anchor` first until 2026-08-15, and an anchor is deliberately the bare leading keyword — so the badge read `gto.M` on four different PySCF controls, `mf` on three more, and nothing at all on the eleven whose key is a molbuilder note.)* |
 | `workflow_group` | `group` |
 | `id` | derived: the container's prefix + the name |
 | `kind` (which control) | derived from `type` — `enum`→select, `bool`→checkbox, `int3`/`float3`→a triple, … |
@@ -90,8 +90,12 @@ different job:
 
 | axis | answers | the form uses it for |
 |---|---|---|
-| **`group`** — `profile` · `stage` · `budget` | *when do I set this?* | the **outer card**, unchanged |
+| **`group`** — the closed vocabulary of [`template.md`](?doc=engines/template.md) § 5 | *when do I set this?* | the **outer card**, in that vocabulary's declared order |
 | **`category`** — the six of § 6.2 | *what question about the calculation is this?* | the **legend inside** the card |
+
+*The `group` row named `profile · stage · budget` until 2026-08-15 and had been
+wrong since `output` landed. Naming the members in two documents is what made
+that possible; § 5 owns them now.*
 
 **`category` replaces `section`** in the inner legend, and that is the whole
 visible change: `section` was free text chosen per engine, so SIESTA's *"Basis &
@@ -99,9 +103,16 @@ grid"* and PySCF's *"Method"* were unrelated words. The six categories are
 shared, so the same card shows the same inner headings for both engines — which
 is what [`template.md`](?doc=engines/template.md) § 6.2 exists for.
 
-**The outer cards are load-bearing and are not touched.** They were introduced
-2026-06-13 to fix a reported bug — the stage selector silently rewrote budget
-and system fields. Keeping `group` as the outer axis keeps that fix.
+**The outer cards are load-bearing.** They were introduced 2026-06-13 to fix a
+reported bug — the stage selector silently rewrote budget and system fields.
+Keeping `group` as the outer axis keeps that fix.
+
+This said *"and are not touched"* until 2026-08-15, by which point three had
+been added: `output`, `staging` and `setup`. The sentence meant *the mechanism
+is not changed*, and that is still true — cards are still chosen by `group`,
+still drawn in the renderer's declared order. But read as *the set is closed in
+practice* it was simply false, and it is the reason two tables below it went
+stale unnoticed. **The vocabulary grows; the axis does not.**
 
 ## 1a. The field-metadata vocabulary — every tag, and the rule for adding one
 
@@ -121,7 +132,7 @@ configs; this is all of them.
 | **`label`** | the field's display name | the form builder; falls back to the field name |
 | **`help`** | one sentence of guidance, shown beside the control | the form builder, and the CLI's `--help` |
 | **`section`** | which fieldset it belongs to — **and whether it is exposed at all.** A field with no `section` is internal and no surface renders it. ⚠ **Only for `SpectraConfig` and `TransportConfig` since 2026-08-15** — see the note below | `dataclass_to_form_schema`; the CLI option generator |
-| **`workflow_group`** | which of the three cards — `profile` / `stage` / `budget` — and therefore **where a finding about it appears** | `form-schema.js` (card order), `validation-findings.js` (finding placement), `_shared.py::resolve_workflow_group` (wire enrichment) |
+| **`workflow_group`** | which card — one of [`template.md`](?doc=engines/template.md) § 5's closed vocabulary, **not** restated here — and therefore **where a finding about it appears** | `form-schema.js` (card order), `validation-findings.js` (finding placement), `_shared.py::resolve_workflow_group` (wire enrichment) |
 | **`engine_key`** | the deck keyword it becomes (`MeshCutoff`) — **or a parenthesised note when the field is not a deck line at all**, e.g. `mpi_np`'s *"(molbuilder: .run.sh `mpirun -np N` only; not in .fdf)"* | the emitters; BENCH-MARKS; anything tracing a value to the file it lands in |
 | **`tier`** | CLI exposure level — a `--tier` filter shows only matching fields | `cli.py`'s option generator |
 | **`skip_cli`** | this field has no command-line option | `cli.py` |
@@ -189,17 +200,31 @@ configs; this is all of them.
 
 ### What each `workflow_group` means
 
-| | | |
-|---|---|---|
-| **`profile`** | *what you are computing* — identity and physical character: label, functional, charge, spin, pseudopotentials | set once for a run **in the ordinary case**. That is a claim about typical use, not a rule: a user may still vary any of it |
-| **`stage`** | *the convergence targets a sequence tightens* — cutoffs, tolerances, k-grid | **the default `varies` selection**: these boxes start ticked |
-| **`budget`** | *how much compute you are willing to spend* — ranks, threads, memory, iteration caps, GPU | — |
+**The members and their meanings live in
+[`template.md`](?doc=engines/template.md) § 5's `group` row, and are not
+restated here.** They were, until 2026-08-15 — a three-row table naming
+`profile`, `stage` and `budget`. It went stale twice in one day without anyone
+noticing: `output` and `staging` were added earlier that day and never reached
+it, and `setup` followed the same afternoon. A restated closed vocabulary is a
+copy that only *looks* authoritative, and this document has no way to know when
+the vocabulary grows.
 
-> **Where the three cards came from.** They were introduced 2026-06-13 to fix a
+What belongs here is the part `template.md` does not say — **how a form USES
+the axis**, which is § 1.3's table: `group` chooses the outer card, `category`
+the legend inside it. Two additional consequences are the form's own and are
+stated nowhere else:
+
+- **`stage` seeds the *vary per stage* checkboxes** — those boxes start ticked
+  for a `stage` item and clear for everything else.
+- **`staging` is not drawn at all.** `catalogue_to_form_schema` filters it,
+  because the item is answered by the staging surface rather than by a
+  parameter form. It is a real parameter that this page does not ask.
+
+> **Where the cards came from.** They were introduced 2026-06-13 to fix a
 > reported bug: the form mixed stage, budget and system fields inside the same
 > fieldsets, so **switching the stage preset silently rewrote budget and system
-> fields too**. The cards made *"the stage selector touches the stage card only"*
-> visible. The per-parameter checkbox
+> fields too**. The cards made *"the stage selector touches the stage card
+> only"* visible. The per-parameter checkbox
 > ([`web/structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)
 > § 7.6) removes the preset that caused it, so the grouping now stands on its two
 > remaining jobs: reading the form, and placing advice.

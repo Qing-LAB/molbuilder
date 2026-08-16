@@ -200,16 +200,24 @@ def _token_ladder(*scripts, optimizers=None):
     disagree; by default they all match, which is the case that carries `.CG`.
     """
     from molbuilder.jobset.model import Job, JobSet, WarmFile
+    from molbuilder.warmfiles import rules_for
     names = [s.split("_", 2)[2].rsplit(".", 1)[0] for s in scripts]
     opt = dict(optimizers or {})
+    # DERIVED from the rules file, exactly as `siesta/stages.py`'s
+    # ``_warm_declaration`` derives it.  It was a hard-coded
+    # [.XV, .DM, .CG] until 2026-08-15, which made the docstring's claim
+    # ("mirrors the shipped rule") false the moment the rules file grew --
+    # and a test asserting the copy behaviour then tested the fixture's own
+    # list rather than the system's.  § 4.2a's history is exactly this kind
+    # of copy drifting; the fixture was the fourth one.
+    declared = [WarmFile(f"JOB{r.suffix}", requires_same=r.requires_same)
+                for r in rules_for("siesta", "optimization") if r.carry]
     jobs = []
     for i, (name, script) in enumerate(zip(names, scripts)):
         jobs.append(Job(
             name=name, script=script,
             traits={"optimizer": opt.get(name, "CG")},
-            warm=([] if i == 0 else
-                  [WarmFile("JOB.XV"), WarmFile("JOB.DM"),
-                   WarmFile("JOB.CG", requires_same="optimizer")]),
+            warm=([] if i == 0 else list(declared)),
         ))
     return JobSet(name="JOB", engine="siesta", kind="ladder", jobs=jobs)
 
@@ -1174,6 +1182,52 @@ def test_a_launched_attempt_with_no_output_is_queued_not_not_started(tmp_path):
     after = jobset_status(js, tmp_path).stages[0]
     assert after.state == "queued"
     assert "481923" in after.detail              # the contract's own sentence
+
+
+def test_a_continue_carries_the_accumulative_records_too(tmp_path):
+    """§ 2.3.4's last row: the layout must not change the data.
+
+    SIESTA opens .MD.nc / .MD / .MDE / .ANI and APPENDS.  In `flat` every
+    attempt shares one directory, so those files end up holding the whole
+    calculation.  In `hierarchical` each attempt is its own directory -- so
+    unless they are carried, a continued stage starts with empty records and
+    the earlier frames survive only in the previous attempt.  Same run, same
+    continue, different record depending on a layout flag.
+
+    .MD.nc is the one molbuilder READS (the trajectory source), so a
+    truncated one silently shortens a continued stage's history."""
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    coarse = prepare_attempt(js, tmp_path, "coarse").dir
+    (coarse / "JOB.XV").write_text("geometry from coarse\n")
+    (coarse / "JOB.MD.nc").write_bytes(b"CDF\x01 pretend netcdf")
+    (coarse / "JOB.MDE").write_text("# Step T E_KS\n     0  0.0  -1.0\n")
+    (coarse / "JOB.ANI").write_text("2\nframe 0\nH 0 0 0\nH 0 0 0.74\n")
+
+    warm = prepare_attempt(js, tmp_path, "tight",
+                           continue_from="01_coarse/run-0")
+    for name in ("JOB.XV", "JOB.MD.nc", "JOB.MDE", "JOB.ANI"):
+        assert (warm.dir / name).is_file(), f"{name} was not carried"
+        assert name in warm.copied
+    # A real copy, never a link -- the engine appends to it, and appending
+    # through a link would rewrite the attempt we decided to build on.
+    assert not (warm.dir / "JOB.MD.nc").is_symlink()
+    assert (warm.dir / "JOB.MD.nc").read_bytes() == b"CDF\x01 pretend netcdf"
+
+
+def test_an_absent_accumulative_record_is_not_an_error(tmp_path):
+    """write_md_history / write_md_xmol off means the files were never
+    written.  Declaring them must not make a continue fail for a run that
+    legitimately has none of them."""
+    from molbuilder.jobset.materialize import prepare_attempt
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    coarse = prepare_attempt(js, tmp_path, "coarse").dir
+    (coarse / "JOB.XV").write_text("geometry from coarse\n")   # and nothing else
+
+    warm = prepare_attempt(js, tmp_path, "tight",
+                           continue_from="01_coarse/run-0")
+    assert warm.copied == ["JOB.XV"]
+    assert not (warm.dir / "JOB.MD.nc").exists()
 
 
 def test_re_prepping_cold_removes_what_the_previous_prep_carried_in(tmp_path):

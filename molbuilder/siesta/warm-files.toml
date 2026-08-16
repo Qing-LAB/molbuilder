@@ -19,6 +19,41 @@ suffix      = ".DM"             # converged density matrix
 carry       = "when-continuing"
 honoured_by = "DM.UseSaveDM"
 
+# ---- the accumulative records ---------------------------------------
+# SIESTA OPENS THESE AND APPENDS; it never reads them back.  So they carry
+# for a different reason than .XV / .DM / .CG do, and they have no
+# `honoured_by` -- there is no deck keyword that reads them.
+#
+# They carry because THE SHAPE MUST NOT CHANGE THE DATA (2026-08-15).  In
+# `flat` all attempts and stages share one directory, so SIESTA appends and
+# these files hold the whole calculation.  In `hierarchical` each attempt is
+# its own directory, so without carrying them a continued stage's records
+# start empty and the earlier frames are only in the previous attempt's
+# copy -- the same run yielding a different record depending on a layout
+# flag.  Carrying restores parity: the engine appends to what came before,
+# exactly as it would have in flat.
+#
+# `.MD.nc` is the one molbuilder itself reads (parse/engines/siesta_mdnc.py);
+# the other three are for external tools.  A run that did not write them --
+# write_md_history / write_md_xmol off -- simply has nothing to copy, and
+# `materialize` skips a file that is not there.
+
+[[base.file]]
+suffix      = ".MD.nc"          # netCDF MD history: the trajectory we parse
+carry       = "when-continuing"
+
+[[base.file]]
+suffix      = ".MD"             # the same, unformatted Fortran
+carry       = "when-continuing"
+
+[[base.file]]
+suffix      = ".MDE"            # per-step energy / temperature summary
+carry       = "when-continuing"
+
+[[base.file]]
+suffix      = ".ANI"            # XMol animation, for xcrysden / VMD / OVITO
+carry       = "when-continuing"
+
 [[base.file]]
 suffix = ".LWF"                 # localized Wannier functions
 [[base.file]]

@@ -147,31 +147,99 @@ fieldset select:disabled {
  */
 .param-grid {
     display: grid;
-    /* ``min(<N>px, 100%)`` floor lets the column shrink below
-     * <N>px when the container itself is narrower (e.g. a workspace
-     * panel rendered into a 280px slot).  See docs/web/
-     * ui-contract.md.  The 720px breakpoint below force-flattens
-     * to single column on phones; this floor is for the in-between
-     * 720-1100px range where a narrow parent could still overflow. */
-    grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
-    gap: 18px;
+    /* ``min(<N>, 100%)`` floor lets a track shrink below <N> when the
+     * container itself is narrower (a workspace panel in a 280px slot).
+     * Required by tests/test_css_responsive_grid_lint.py, and the reason
+     * is the container -- which is also why the breakpoints that used to
+     * sit here are gone: they asked the VIEWPORT a question about a
+     * parent.  ``container-type`` lets the children ask the parent. */
+    container-type: inline-size;
+    grid-template-columns:
+        repeat(auto-fit, minmax(min(var(--param-col-min), 100%), 1fr));
+    gap: var(--space-md);
+
+    /* THE TWO FLOORS, in typographic units and owned by this module.
+     *
+     * They were 340px / 300px / 280px across three breakpoints, and the
+     * comment derived 340 from "a label (min-width: 8em -> ~128px) + the
+     * input + a badge" -- a SIDE-BY-SIDE label.  The label has been
+     * stacked above its input since the long-label overflow fix, and that
+     * 8em rule is gone; only the comment still cited it.  So the number
+     * was arithmetic for a layout that no longer existed, and the two
+     * breakpoints existed to walk it back down.
+     *
+     * In rem they track the user's font size and zoom, which pixels never
+     * did.  Re-derive them from the controls, not by taste:
+     *   --param-col-min    a FIELDSET: its widest field plus padding.
+     *   --param-field-min  a FIELD: stacked label over input, so the
+     *                      wider of the label text and the input. */
+    --param-col-min:   20rem;
+    --param-field-min: 12rem;
 }
 
-@media (max-width: 1100px) {
-    .param-grid {
-        grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
-        gap: 14px;
-    }
+/* ---- Cards span; their FIELDS tile ----------------------------------
+ *
+ * Until 2026-08-15 the ``.workflow-group`` cards were the grid items, so
+ * each card was ~1/3 wide and every field inside it stacked -- a card
+ * with 16 fields was 16 rows tall in a narrow column.  The grid was
+ * tiling CARDS when the thing worth tiling is FIELDS.
+ *
+ * So a card takes the full row and becomes a grid of its own; its header,
+ * subtitle and issues panel span every track, and its fieldsets tile.
+ * "SCF" then reads as its fields in 3 columns rather than 8 stacked rows,
+ * and each legend still owns a visible block.
+ */
+.param-grid > .workflow-group {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns:
+        repeat(auto-fit, minmax(min(var(--param-col-min), 100%), 1fr));
+    gap: var(--space-md);
+    align-items: start;
 }
 
-@media (max-width: 720px) {
-    /* On phones / narrow tablets, force single column so labels +
-     * inputs don't share rows.  Below this width the 280px min
-     * would only fit one column anyway, but the explicit
-     * ``1fr`` rule makes the intent obvious to a maintainer. */
-    .param-grid {
-        grid-template-columns: 1fr;
-        gap: 8px;
+.workflow-group > .workflow-group-header,
+.workflow-group > .workflow-group-subtitle,
+.workflow-group > .issues-panel {
+    grid-column: 1 / -1;
+}
+
+/* A fieldset inside a card tiles its own fields, for the same reason one
+ * level up: a legend group of 8 short numbers is 8 rows otherwise. */
+.workflow-group > fieldset.schema-section {
+    /* Its own query container, so the span rule below asks about THIS
+     * fieldset rather than the whole form: a fieldset can be one narrow
+     * track while the form is wide, and a span-2 field would overflow it. */
+    container-type: inline-size;
+    display: grid;
+    grid-template-columns:
+        repeat(auto-fit, minmax(min(var(--param-field-min), 100%), 1fr));
+    gap: 0 var(--space-md);
+    align-content: start;
+}
+.workflow-group > fieldset.schema-section > legend,
+.workflow-group > fieldset.schema-section > .schema-section-desc {
+    grid-column: 1 / -1;
+}
+
+/* ---- How wide a field wants to be, from the CONTROL it holds --------
+ *
+ * A checkbox and a filesystem path do not want the same width.  Rather
+ * than a per-item declaration in the catalogue -- presentation config
+ * the template deliberately does not carry -- the demand is read off the
+ * control that is actually there, the same way `kind`, `step` and
+ * `labels` are already derived from `type` (web/form-schema.md § 1.1).
+ * ``:has()`` is already this file's idiom for exactly that.
+ */
+.schema-section > label:has(> .schema-int-triple),
+.schema-section > label:has(> input[type="text"]),
+.schema-section > label:has(> textarea) {
+    grid-column: span 2;
+}
+@container (max-width: 34rem) {
+    /* One track: a span-2 item would overflow it. */
+    .schema-section > label {
+        grid-column: auto !important;
     }
 }
 

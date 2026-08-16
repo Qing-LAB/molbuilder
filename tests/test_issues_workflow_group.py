@@ -110,10 +110,17 @@ class TestResolveWorkflowGroup:
 
     def test_psml_lib_per_element_subfield(self):
         """``config.psml_lib.Au`` (one-per-element pseudo coverage
-        finding) resolves via root ``psml_lib``'s metadata."""
+        finding) resolves via root ``psml_lib``'s metadata.
+
+        ``setup`` since 2026-08-15, when the pseudopotential directory moved
+        into the first card with the system label.  The VALUE is incidental;
+        what this pins is that a per-element sub-path still resolves through
+        its ROOT field, so a coverage finding about one element lands on the
+        card holding the control -- wherever that control has been moved to.
+        """
         cfg = SiestaConfig()
         assert resolve_workflow_group(
-            "config.psml_lib.Au", cfg) == "profile"
+            "config.psml_lib.Au", cfg) == "setup"
 
     def test_empty_where_returns_none(self):
         cfg = SiestaConfig()

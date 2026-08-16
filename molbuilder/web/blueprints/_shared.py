@@ -1127,6 +1127,13 @@ def _item_to_field(item, id_prefix: str) -> Dict[str, Any]:
         out["step"] = "1" if item.type in ("int", "pow2") else "any"
     if out["kind"] in ("int-triple", "float-triple"):
         out["labels"] = ["x", "y", "z"]
+        # A triple gets a step too (2026-08-15).  It was emitted only for the
+        # SCALAR kinds, so the renderer had to pick one itself -- and a bound
+        # or a step chosen in the renderer is a second place for the rule to
+        # live.  `min`/`max` are already set above from `item.range` and
+        # apply PER COMPONENT for a triple: `kgrid` bounds each axis count,
+        # not their product.
+        out["step"] = "1" if item.type == "int3" else "any"
     if item.optional:
         out["null_option"] = True
         out["null_label"] = item.null_label or "(auto)"

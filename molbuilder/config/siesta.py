@@ -229,14 +229,19 @@ class SiestaConfig:
     # ``SystemName {cfg.system_label}`` in the FDF.  No alias kept --
     # per project "no backwards compatibility" mandate.
     system_label: str = field(default="siesta", metadata={
-        "category": ("procedure", "system"),
+        "category": ("system", "procedure"),
+        # `system` FIRST (2026-08-15): the label is the identity of the
+        # calculation, and within the Setup card the primary category is
+        # what orders the fields -- filed under `procedure` it rendered
+        # BELOW the pseudopotential directory, which reads backwards for
+        # the first thing a user types.
         "section":  "System",
         # Run-profile identity — what the run IS named.  Lives in the
         # Run profile workflow-group card alongside the system-character
         # knobs (mixing weight, electronic temperature, spin) because
         # the user sets these together at the start of a run and
         # rarely revisits.
-        "workflow_group": "profile",
+        "workflow_group": "setup",
         "label":    "System label (output prefix)",
         "engine_key":  'SystemLabel',
         "id_suffix": "system-label",
@@ -360,7 +365,15 @@ class SiestaConfig:
                    "the functional family -- a PBE pseudo on an LDA "
                    "calculation (or vice versa) silently gives wrong "
                    "bond lengths.  PseudoDojo ships separate families "
-                   "for PBE / PBEsol / LDA -- pick the matching set.",
+                   "for PBE / PBEsol / LDA -- pick the matching set.\n"
+                   "DEVIATION: SIESTA's own default is LDA; this project "
+                   "ships GGA.  The reason is the over-binding above -- "
+                   "LDA's systematic error is large enough that essentially "
+                   "no current published work on molecules or biomolecules "
+                   "uses it for production geometries.  GGA/PBE has been the "
+                   "baseline since Perdew, Burke & Ernzerhof, Phys. Rev. "
+                   "Lett. 77, 3865 (1996).  LDA remains here because it is "
+                   "cheap and legitimate for screening.",
     })
     xc_authors: str = field(default="PBE", metadata={
         "category": ("method",),
@@ -385,7 +398,13 @@ class SiestaConfig:
                    "default), PZ, PW.  This name MUST match what your "
                    "pseudopotential was generated for -- mismatched "
                    "XC + pseudo gives silently-wrong bond lengths.  "
-                   "PseudoDojo organises downloads by this name.",
+                   "PseudoDojo organises downloads by this name.\n"
+                   "DEVIATION: SIESTA's own default is PZ, which is the LDA "
+                   "parameterisation that goes with its LDA default family.  "
+                   "This project ships PBE because it ships GGA -- the two "
+                   "move together, and a family and a parameterisation that "
+                   "do not belong to each other is not a configuration "
+                   "SIESTA implements.  Change one and check the other.",
     })
 
     # SCF
@@ -425,7 +444,7 @@ class SiestaConfig:
         "engine_key":  'SCF.Mixer.History',
         "range": (0, 20),
         "tier":  "advanced",
-        "help":  'How many previous SCF steps the mixer uses to predict the next one.  Higher = steadier convergence, at a few vectors of memory.\nRAISED 3 -> 8 on 2026-08-15.  SIESTA 5.4.2\'s manual is explicit that the old value was in the wrong band: "a too low value (say 2-6) might change the convergence properties a lot", and "around 6 or above may be advised".  It also says two different HIGH values barely differ -- so there is no cost to sitting clear of the band rather than on its edge.  3 was an undocumented choice with no source in this project.\nRaise further (12-20) only if the SCF still oscillates after lowering the mixing weight; the weight is the first thing to try (manual: "experimentation with the mixing weight is preferred as a first resort").',
+        "help":  'How many previous SCF steps the mixer uses to predict the next one.  Higher = steadier convergence, at a few vectors of memory.\nDEVIATION: SIESTA\'s own default is 2 -- inside the band its own manual warns about.  RAISED 3 -> 8 here on 2026-08-15: the manual is explicit that "a too low value (say 2-6) might change the convergence properties a lot", and "around 6 or above may be advised".  It also says two different HIGH values barely differ -- so there is no cost to sitting clear of the band rather than on its edge.  3 was an undocumented choice with no source in this project.\nRaise further (12-20) only if the SCF still oscillates after lowering the mixing weight; the weight is the first thing to try (manual: "experimentation with the mixing weight is preferred as a first resort").',
     })
     dm_tolerance: float = field(default=1e-5, metadata={
         "category": ("accuracy",),
@@ -442,6 +461,13 @@ class SiestaConfig:
             "thrashes.\n"
             "Per-tier (dimensionless): screening 1e-3, loose preopt "
             "1e-4, publishable 1e-4, tight (vib/IR) 1e-5.\n"
+            "DEVIATION: SIESTA's own default is 1e-4; this project ships "
+            "1e-5, one decade tighter.  The work this project is built for "
+            "is relaxations and vibrational analysis, where the forces come "
+            "out of the converged density and a loose SCF shows up as force "
+            "noise the optimiser then chases -- which costs more geometry "
+            "steps than the extra SCF cycles cost.  For single-point "
+            "screening, 1e-4 is the engine's own answer and is enough.\n"
             "Rule of thumb: keep SCF tol ~10x tighter than the "
             "force-precision target you want at convergence.  See "
             "docs/engines/tuning.md § 2.5."
@@ -485,18 +511,48 @@ class SiestaConfig:
         "help": 'INNER loop: the most self-consistency cycles SIESTA will run inside ONE geometry step.  A relaxation runs at most relax_steps outer steps, and each of those runs at most this many inner cycles (or until DM.Tolerance is met).\nRAISED 500 -> 1000 on 2026-08-15, to SIESTA\'s own default.  500 had no source in this project and contradicted our own mixing choice: this catalogue ships mixing_weight 0.02 against SIESTA\'s 0.25, and the manual is explicit that a low weight "may result in high number of SCF steps but is more likely to converge".  We chose to spend iterations for safety and then capped iterations below the engine\'s default.\nThis is a RUNAWAY GUARD, not a budget -- the budget is wall time and continue_retries.  The two failure modes are not symmetric: too high wastes some CPU on a run that was going to fail anyway, while too low KILLS A CONVERGING RUN at the cap and throws away that whole geometry step, which compounds over 200 outer steps.  With a 0.02 mixing weight, several hundred cycles is normal for a metal junction -- do not read this number as a target.',
     })
     electronic_temperature: float = field(default=300.0, metadata={
-        "category": ("accuracy", "system"),
+        # PRIMARY category `system`, not `accuracy` (2026-08-15, user).  The
+        # smearing width answers *what kind of system is this* -- does it
+        # have a gap? -- which is the same question as net_charge and
+        # spin_treatment, and it is set once from the chemistry rather than
+        # tightened by a ladder.  Filed under `accuracy` it also put a
+        # SECOND "accuracy" legend inside the Run profile card while the
+        # real one lived in Convergence targets, so the same word named two
+        # different places.
+        "category": ("system", "accuracy"),
         "section": "SCF",
-        # System characteristic — high for metallic surfaces (Fermi
-        # smearing helps), low for insulators / organics.  Not stage-
-        # dependent.
         "workflow_group": "profile",
-        "label": "Electronic temperature", "unit": "K",
+        "label": "Electronic temperature (smearing)", "unit": "K",
         "engine_key":  'ElectronicTemperature',
         "id_suffix": "temperature",
         "range": (0.0, 5000.0),
         "tier":  "advanced",
-        "help":  "electronic temperature for Fermi-Dirac smearing (K)",
+        "help":  "How sharply the electronic states fill at the Fermi "
+                 "level -- the width of the Fermi-Dirac smearing.\n"
+                 "THIS IS NOT THE TEMPERATURE OF YOUR SIMULATION.  It is a "
+                 "property of the ELECTRONS and it applies to every run "
+                 "type, including a 0 K geometry relaxation with no atomic "
+                 "motion at all.  Do not confuse it with 'Initial "
+                 "temperature' / 'Target temperature', which are about how "
+                 "fast the ATOMS move and are read only by Verlet / Nose "
+                 "molecular dynamics.  The two are independent: a metal "
+                 "needs smearing whether or not its atoms are moving.\n"
+                 "WHY IT EXISTS: in a metal, states sit right at the Fermi "
+                 "level and swap occupancy between SCF cycles, so the "
+                 "density oscillates and never settles.  Smearing lets "
+                 "states be partially occupied, which damps that.  A "
+                 "molecule with a clear HOMO-LUMO gap does not need it, "
+                 "and for such a system the value barely matters.\n"
+                 "RAISE IT (1000-2000 K) for a metal or a metal-molecule "
+                 "junction whose SCF will not converge -- after lowering "
+                 "the mixing weight, which is the first thing to try.  "
+                 "LOWER IT toward 0 only for an insulator where you want "
+                 "strictly integer occupations.\n"
+                 "COST: a raised smearing temperature adds an entropy term "
+                 "to the free energy (F = E - TS), which is what makes the "
+                 "free-energy convergence criterion worth turning on for "
+                 "exactly these systems -- see 'Also require the free "
+                 "energy to settle'.  300 K is SIESTA's own default.",
     })
 
     # k-grid -- Tuple field with custom CLI parsing; not auto-generated
@@ -538,6 +594,9 @@ class SiestaConfig:
                   "DIFFERENT cells comparable: the same 4x4x4 on a small and "
                   "a large cell samples them differently."),
         "skip_cli": True,
+        # Bounds PER COMPONENT (validation/metadata.py); the form puts
+        # them on each of the three inputs so 0 or -4 cannot be typed.
+        "range": (1, 64),
         # 2026-06-14 G5: per-component validator so the metadata
         # range check actually runs on a Tuple-typed field.  Without
         # this, ``_validate_config_metadata`` would TypeError on the
@@ -595,6 +654,10 @@ class SiestaConfig:
                 "direction, whatever you set, because that direction is "
                 "sampled at one k-point."),
             "skip_cli": True,
+            # Per component.  ADVISORY and inclusive, so the browser box is
+            # [0, 1]; the exact half-open rule ([0, 1) and the 1-point-axis
+            # case) stays in the callable, which is where refusals live.
+            "range": (0.0, 1.0),
             "validate": (lambda value, cfg:
                          _validate_kgrid_displacement(value, cfg)),
         })
@@ -690,6 +753,13 @@ class SiestaConfig:
             "Per-tier (eV/Å): screening 0.10, loose preopt 0.05, "
             "publishable 0.04 (Gaussian-OPT default), tight (vib/IR) "
             "0.01, very-tight (NEB barrier) 0.001.\n"
+            "DEVIATION: SIESTA's own default is 0.04 eV/Å -- the "
+            "'publishable' row above.  This project ships 0.02, twice as "
+            "tight, because a relaxation that stops at the loose end leaves "
+            "residual forces big enough to contaminate a frequency "
+            "calculation run on top of it, and re-relaxing afterwards costs "
+            "more than the extra steps did.  For a single-point or a "
+            "screening pass, 0.04 is the engine's own answer.\n"
             "SIESTA only checks max force.  See docs/engines/"
             "tuning.md § 2.3 for the 5-criteria "
             "geomeTRIC/Gaussian convention + citations."
@@ -710,6 +780,12 @@ class SiestaConfig:
             "over-shoot.  ``MD.MaxDispl`` DEPRECATES the older "
             "``MD.MaxCGDispl`` (SIESTA 5.4.2); same meaning, same 0.2 "
             "Bohr default, and the CG-prefixed name was never CG-only.\n"
+            "DEVIATION: that engine default of 0.2 Bohr is 0.106 Å; this "
+            "project ships 0.05 Å, about half.  The cap only ever LIMITS a "
+            "step, so a smaller one costs steps and never accuracy -- and "
+            "the oscillation below is what a too-large cap looks like.  "
+            "Raise it back toward 0.2 Å for a cheap first pass on a "
+            "structure that starts far from its minimum.\n"
             "Per-tier (Å): screening 0.30, loose preopt 0.20, "
             "publishable 0.05, tight (vib/IR) 0.02.\n"
             "Symptom of too-large cap: max-force oscillates rather "
@@ -736,11 +812,13 @@ class SiestaConfig:
         "category": ("execution",),
         "section":        "Compute & budget",
         "item_kind":  "wrapper",
-        # A retry budget is compute you are agreeing to spend, so it sits in
-        # the budget card with the other resource asks.  It restricts
-        # nothing: like any field it can be ticked to vary per stage
-        # (engines/stages.md § 1.3).
-        "workflow_group": "budget",
+        # MOVED to the staging surface 2026-08-15 (user): it is spent OUTSIDE
+        # the engine call.  Nothing here reaches the .fdf -- the wrapper
+        # decides, after SIESTA has exited, whether to launch it again from
+        # the geometry it reached.  That is a property of how the stage is
+        # RUN, which is the staging surface's question, and it sat in the
+        # budget card only because a retry costs compute.
+        "workflow_group": "staging",
         "label":          "Warm-retry budget",
         "range":          (1, 5),
         "engine_key":     "(molbuilder: baked into the run wrapper at "
@@ -779,10 +857,24 @@ class SiestaConfig:
         "engine_key":  'MD.InitialTemperature',
         "range": (0.0, 5000.0),
         "tier":  "advanced",
-        "help":  ("initial-velocity-seed temperature for Verlet/Nose "
-                  "molecular dynamics (K).  IGNORED by CG / Broyden / "
-                  "FIRE geometry relaxation -- those don't have "
-                  "velocities to seed."),
+        "help":  ("Temperature the initial atomic velocities are drawn "
+                  "for, in Verlet / Nose molecular dynamics.  IGNORED by "
+                  "CG / Broyden / FIRE geometry relaxation -- those don't "
+                  "have velocities to seed.\n"
+                  "THIS IS ABOUT THE ATOMS, not the electrons.  It is a "
+                  "different quantity from 'Electronic temperature "
+                  "(smearing)', which shares the word and the unit and "
+                  "nothing else: that one sets how sharply electronic "
+                  "states fill at the Fermi level and applies to every "
+                  "run type, including this one.  Setting them to match "
+                  "means nothing -- an MD at 0 K still needs electronic "
+                  "smearing if the system is metallic.\n"
+                  "DEVIATION: SIESTA's own default is 0 K, i.e. start from "
+                  "rest.  This project ships 300 K because a run seeded at "
+                  "0 K spends its opening picoseconds simply acquiring "
+                  "thermal motion, and 300 K is both room temperature and "
+                  "the condition most reported simulations are run at.  Set "
+                  "it to 0 deliberately if you want the cold start."),
     })
     md_target_temperature: Optional[float] = field(default=None, metadata={
         "category": ("procedure",),
@@ -834,7 +926,14 @@ class SiestaConfig:
         "section": "Compute & budget",
         "item_kind":  "deck",
         "expands":    ['DM.UseSaveDM', 'MD.UseSaveXV', 'MD.UseSaveCG'],
-        "workflow_group": "stage",
+        # MOVED to the staging surface 2026-08-15 (user).  It is not a
+        # convergence target -- it is a LINK between two runs, and the other
+        # half of that link (`prep --from <attempt>`) is named on the staging
+        # side.  Set here, the two could disagree: 'continue' with no --from
+        # copies nothing, and --from onto a 'clean' stage places files whose
+        # deck omits MD.UseSave* and leaves them unread (run-identity.md § 4,
+        # "present but not honoured").  One surface owns both halves.
+        "workflow_group": "staging",
         "label": "Start from",
         "choices": ("clean", "continue"),
         "id_suffix": "restart",
@@ -890,7 +989,29 @@ class SiestaConfig:
         "workflow_group": "profile",
         "label": "Wrap atoms into cell",
         "engine_key":  '(molbuilder: pre-emission positioning)',
-        "help": "fold atoms with fractional coords outside [0,1) back into the cell",
+        "help": "Move any atom that sits outside the cell box back inside "
+                "it, by shifting it a whole number of cell vectors.\n"
+                "MOLBUILDER DOES THIS, NOT SIESTA.  It rewrites the "
+                "coordinates that get written into the .fdf, so what you "
+                "see in the deck is what ran.  In a periodic crystal it "
+                "changes nothing physical: shifting an atom by a whole "
+                "lattice vector lands it on an identical position, so the "
+                "energy and forces are the same.  It just keeps the "
+                "numbers tidy and comparable between runs.\n"
+                "WHEN TO TURN IT OFF: a MOLECULE that straddles a cell "
+                "face.  Wrapping moves only the atoms that stuck out, so "
+                "the molecule is split -- half at one edge of the box, "
+                "half at the opposite edge.  The physics is still right "
+                "for a periodic calculation, but the structure LOOKS torn "
+                "in the viewer, and anything that measures geometry "
+                "directly from the coordinates (bond lengths, a centre of "
+                "mass, an RMSD against another frame) reads the "
+                "box-crossing distance instead of the real one.  If your "
+                "system is one molecule in a vacuum box, or a slab with an "
+                "adsorbate near an edge, turn this off.\n"
+                "It has no effect when the cell was built from the "
+                "structure itself: that path already centres the atoms in "
+                "the box, so nothing is outside to fold back.",
     })
     # (center_in_vacuum removed: centring is intrinsic to the structure-derived
     # vacuum box -- render_fdf centres the molecule via resolve_cell_origin.)
@@ -925,32 +1046,110 @@ class SiestaConfig:
     write_forces: bool = field(default=True, metadata={
         "workflow_group": "output",
         "category": ("procedure",),
-        "label": "Write forces (.FA)",
-        "help": "write forces to the .FA file (required for relaxation)",
+        "label": "Write forces each step",
+        "help": 'Write the atomic forces into the main .out at every '
+                'relaxation or MD step, so the force history can be read '
+                'back from the log.\n'
+                'DEVIATION: SIESTA ships this off; we ship it on.  A '
+                'relaxation whose force history was not recorded cannot be '
+                'diagnosed afterwards -- "did it descend or oscillate?" is '
+                'the first question about any run that did not converge, and '
+                'the answer costs a few lines of text per step.\n'
+                'It does NOT control the .FA file.  This help said "write '
+                'forces to the .FA file (required for relaxation)" until '
+                '2026-08-15 and both halves were wrong: the manual says the '
+                'last step\'s forces "can be found in the file .FA" whatever '
+                'this flag is set to, and a relaxation runs perfectly well '
+                'without either.',
             "engine_key":  'WriteForces',
     })
     write_coor_step: bool = field(default=True, metadata={
         "workflow_group": "output",
         "category": ("procedure",),
         "label": "Write coordinates each step",
-        "help": "write coordinates at every MD step in the main .out",
+        "help": 'Write the atomic coordinates into the main .out at every '
+                'relaxation or MD step.\n'
+                'DEVIATION: SIESTA defaults this to LongOutput (off unless '
+                'you asked for verbose output); we ship it on, for the same '
+                'reason as the force history -- the .out is the one file that '
+                'always survives, so the trajectory should be recoverable '
+                'from it alone.\n'
+                'CAUTION -- IT HAS A SIDE EFFECT ON ANOTHER KEYWORD: '
+                'WriteMDXmol (the .ANI animation file) defaults to '
+                '`.not. WriteCoorStep` (read_options.F90), so turning this ON '
+                'turns .ANI OFF unless WriteMDXmol is set explicitly.',
             "engine_key":  'WriteCoorStep',
     })
     write_coor_xmol: bool = field(default=True, metadata={
         "category": ("procedure",),
         "section": "Output & positioning",
         "workflow_group": "output",
-        "label": "Write XMOL .xyz per step",
+        "label": "Write XMOL .xyz",
         "engine_key":  'WriteCoorXmol',
-        "help": "write .xyz of every relaxation step (movie viewer)",
+        "help": 'Write an extra <label>.xyz holding the FINAL atomic '
+                'coordinates, in Angstrom whatever input format was used, '
+                'readable by XMol / JMol / Molden.\n'
+                'DEVIATION: SIESTA ships this off; we ship it on, because a '
+                'finished relaxation whose result is only inside the .out '
+                'has to be re-extracted before anything else can open it.\n'
+                'ONE STRUCTURE, NOT A MOVIE.  This help promised ".xyz of '
+                'every relaxation step (movie viewer)" until 2026-08-15; the '
+                'manual is explicit that the file holds the final '
+                'coordinates.  The per-step animation file is .ANI, and it '
+                'comes from a different keyword (WriteMDXmol).',
     })
     write_md_history: bool = field(default=True, metadata={
         "category": ("procedure",),
         "section": "Output & positioning",
         "workflow_group": "output",
-        "label": "Write .ANI trajectory",
+        "label": "Write MD history (.MD/.MDE)",
         "engine_key":  'WriteMDhistory',
-        "help": "write the .ANI trajectory file (xcrysden / vmd / OVITO)",
+        "help": 'Accumulate the trajectory into <label>.MD -- positions and '
+                'velocities (and cell, for a variable cell) at every step, '
+                'written UNFORMATTED for post-processing -- plus <label>.MDE, '
+                'a short per-step line of energy, temperature and the like.  '
+                'Both are appended across runs, so a restarted job extends '
+                'them rather than replacing them.\n'
+                'DEVIATION: SIESTA ships this off; we ship it on, because it '
+                'is the only complete record of what the trajectory did.\n'
+                'IT DOES NOT WRITE .ANI.  The label and this help said '
+                '"Write .ANI trajectory ... (xcrysden / vmd / OVITO)" until '
+                '2026-08-15 and that was wrong: read_options.F90 binds this '
+                'keyword to `writmd`, which write_md_record.F routes to '
+                '`iomd` (the .MD file).  .ANI is written by `pixmol` under '
+                '`writpx`, which is the separate WriteMDXmol keyword.\n'
+                'NOTE the .MD file is unformatted, so it is not something a '
+                'viewer opens directly.',
+    })
+    # THE .ANI FILE, which molbuilder silently switched off for two years.
+    # Added 2026-08-15 (user) after the deviation sweep traced why no run
+    # ever produced one.  Declared next to write_md_history because a reader
+    # who wants "the trajectory file" lands on that one first and needs to
+    # see, in the same place, that the animation file is a different switch.
+    write_md_xmol: bool = field(default=True, metadata={
+        "category": ("procedure",),
+        "section": "Output & positioning",
+        "workflow_group": "output",
+        "label": "Write XMOL animation (.ANI)",
+        "engine_key":  'WriteMDXmol',
+        "help": 'Accumulate every step\'s coordinates into <label>.ANI, a '
+                'plain-text multi-frame .xyz in Angstrom that xcrysden, VMD '
+                'and OVITO open directly as an animation.  Appended across '
+                'runs, so a restart extends it.\n'
+                'WHY THIS IS A SWITCH AND NOT JUST ON: SIESTA defaults it to '
+                '`.not. WriteCoorStep` (read_options.F90) -- the two keywords '
+                'are coupled, and nothing in the form said so.  Because this '
+                'project ships WriteCoorStep on, that default resolved to OFF '
+                'and no molbuilder run ever wrote a .ANI, while the form '
+                'advertised one on a different control (fixed the same day).  '
+                'Setting it explicitly is the only way to stop one keyword '
+                'silently deciding another.\n'
+                'MOLBUILDER DOES NOT READ THIS FILE.  Trajectory coordinates '
+                'come from <label>.MD.nc, which carries full double precision '
+                'rather than text; .ANI is listed among a run\'s files but '
+                'never parsed.  So it is purely for opening the trajectory in '
+                'an external viewer -- turn it off if disk matters and you do '
+                'not need that, and nothing inside molbuilder changes.',
     })
     write_hs: bool = field(default=True, metadata={
         "category": ("procedure",),
@@ -1268,7 +1467,7 @@ class SiestaConfig:
         # Run-profile identity — which pseudopotential library this
         # run uses is fixed per-project, set alongside SystemLabel
         # and the spin/charge knobs.
-        "workflow_group": "profile",
+        "workflow_group": "setup",
         "label":      "Pseudopotential directory (.psml)",
         "engine_key":  '(molbuilder: stages .psml files next to .fdf; SIESTA reads them by element basename)',
         "null_label": "(none)",

@@ -1018,6 +1018,27 @@ new attempt, for real, right then:
 | `bdt_au.XV` | the **relaxed coordinates** (and the cell) | always — this is the point of continuing |
 | `bdt_au.DM` | the converged **density matrix**, so the first SCF starts warm | when the description says to reuse it |
 | `bdt_au.CG` | the optimiser's own history | **only if both stages use the same algorithm** — CG history means nothing to Broyden |
+| `bdt_au.MD.nc` `.MD` `.MDE` `.ANI` | the **accumulated record** of every step so far | always — see below; these are appended to, not read |
+
+**The last row carries for a different reason than the first three, and the
+reason is the shape.** SIESTA *opens and appends* to those four; it never reads
+them back, so none of them has an `honoured_by` keyword and none of them warms
+anything. They are copied so that **the layout cannot change the data**.
+
+In `flat`, every attempt and every stage of a calculation shares one directory,
+so the engine appends and one `bdt_au.MD.nc` ends up holding the whole thing.
+In `hierarchical`, each attempt is its own directory — so without carrying them
+a continued stage starts with empty records, and the earlier frames exist only
+in the previous attempt's copy. The same calculation, continued the same way,
+would yield a different record depending on a layout flag. Carrying them
+restores parity: the engine appends to what came before, exactly as it would
+have in flat.
+
+`.MD.nc` is the one molbuilder itself reads — it is the trajectory source
+(`model/parse.md` § 5a), and reading a truncated one would silently shorten a
+continued stage's history. The other three are for external tools. A run that
+wrote none of them (`write_md_history` / `write_md_xmol` off) simply has nothing
+to copy, and `materialize` skips a file that is not there.
 
 ```mermaid
 flowchart LR

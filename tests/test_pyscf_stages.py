@@ -236,83 +236,28 @@ def test_pyscfconfig_stages_is_per_instance_not_shared():
     assert b.stages[0].enabled is True
 
 
-def test_pyscfconfig_stages_visible_in_form_schema():
-    """The ``stages`` field IS in the form schema now, with
-    ``kind: "stage-table"`` so the JS renderer emits a per-stage
-    row table.  Lives in the ``Compute & budget`` section -- post-
-    #534 commit 4b the flat ``geom_conv_*`` + ``preopt_*`` knobs
-    that used to share this section are gone, so the stage-table
-    is the canonical convergence-ladder control."""
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    schema = dataclass_to_form_schema(PySCFConfig, id_prefix="test")
-    found = None
-    for section in schema["sections"]:
-        for f in section["fields"]:
-            if f["name"] == "stages":
-                found = (section["name"], f)
-                break
-        if found:
-            break
-    assert found, "stages field is missing from PySCFConfig schema"
-    section_name, f = found
-    assert section_name == "Compute & budget"
-    assert f["kind"] == "stage-table"
-    assert f["workflow_group"] == "stage"
-    assert f["id"] == "test-stages"
-    assert f["tier"] == "advanced"
-
-
-def test_stages_schema_carries_default_three_stage_list_of_dicts():
-    """``default`` is the asdict-serialised publication-guide
-    default — JSON-friendly so the form can pre-populate without a
-    second round-trip."""
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    schema = dataclass_to_form_schema(PySCFConfig, id_prefix="test")
-    f = _find_field(schema, "stages")
-    default = f["default"]
-    assert isinstance(default, list) and len(default) == 3
-    assert default[0]["name"]    == "stage1"
-    assert default[0]["enabled"] is True
-    assert default[0]["conv_tol"] == pytest.approx(1.0e-7)
-    assert default[1]["name"]    == "stage2"
-    assert default[1]["conv_tol"] == pytest.approx(1.0e-9)
-    assert default[2]["name"]    == "stage3"
-    assert default[2]["enabled"] is False
-
-
-def test_stages_schema_carries_per_row_field_descriptors():
-    """``stage_fields`` is the per-column shape the JS table
-    renderer uses to label columns + pick widgets per cell.  11
-    fields in declaration order (9 numeric/text + the 2 added in
-    #534 commit 6a for the per-stage non-convergence policy)."""
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    schema = dataclass_to_form_schema(PySCFConfig, id_prefix="test")
-    f = _find_field(schema, "stages")
-    stage_fields = f["stage_fields"]
-    assert [sf["name"] for sf in stage_fields] == [
-        "name", "enabled", "conv_tol", "gmax", "grms",
-        "dmax", "drms", "etol", "max_steps",
-        # #534 6a: per-stage non-convergence policy
-        "on_nonconvergence", "continue_retries",
-    ]
-    kinds = {sf["name"]: sf["kind"] for sf in stage_fields}
-    assert kinds["name"]              == "text"
-    assert kinds["enabled"]           == "checkbox"
-    assert kinds["conv_tol"]          == "number"
-    assert kinds["gmax"]              == "number"
-    assert kinds["max_steps"]         == "int"
-    assert kinds["on_nonconvergence"] == "choice"
-    assert kinds["continue_retries"]  == "int"
-    units = {sf["name"]: sf.get("unit") for sf in stage_fields}
-    assert units["conv_tol"] == "Hartree"
-    assert units["gmax"]     == "Ha/Bohr"
-    assert units["dmax"]     == "Å"
-    # 6a: on_nonconvergence must carry the 3-value enum the JS
-    # dropdown renders.
-    by_name = {sf["name"]: sf for sf in stage_fields}
-    assert tuple(by_name["on_nonconvergence"]["choices"]) == (
-        "proceed", "continue", "halt",
-    )
+# ---- RETIRED 2026-08-15: three stage-table form-schema tests -------- #
+#
+# ``test_pyscfconfig_stages_visible_in_form_schema``,
+# ``test_stages_schema_carries_default_three_stage_list_of_dicts`` and
+# ``test_stages_schema_carries_per_row_field_descriptors`` asserted that a
+# STAGE TABLE is rendered in the structure-optimization form.  It is not,
+# and by decision rather than by accident: the tab collects parameters and
+# the staging surface owns the ladder (user, 2026-08-15 -- *"no staging
+# related setup at all"*).
+#
+# They kept passing only because they asked ``dataclass_to_form_schema``,
+# the pre-catalogue builder.  The tab is served by
+# ``catalogue_to_form_schema``, which exposes no ``stages`` field at all --
+# so the three were describing a control no user could see, on a code path
+# no surface calls for this engine.  A test that outlives the thing it
+# tests does not fail; it quietly certifies the past.
+#
+# What survives is elsewhere and is not lost: PySCFConfig still HAS
+# ``stages`` (the ladder is real, it is just not asked here), its defaults
+# and round-trip are covered by the neighbouring tests in this file, and
+# the emitted per-stage script is covered by tests/test_pyscf_stages.py's
+# emission tests.
 
 
 def test_stages_coerce_round_trips_list_of_dicts_back_to_stagespec():

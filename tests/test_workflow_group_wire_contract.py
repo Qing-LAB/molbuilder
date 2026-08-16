@@ -116,7 +116,15 @@ Au   1.443   0.833   2.357
 """
 
 
-_VALID_ROLES = {"profile", "stage", "budget"}
+#: DERIVED from the closed vocabulary, never listed.  This was the literal
+#: {"profile", "stage", "budget"} until 2026-08-15 and had been wrong since
+#: `output` landed: a finding whose card was a newer group failed the wire
+#: contract for naming a card that is perfectly valid.  The contract here is
+#: *"a role on the wire is one the vocabulary knows"*, and the vocabulary is
+#: `template.GROUPS` -- so ask it.
+from molbuilder.template import GROUPS as _GROUPS      # noqa: E402
+
+_VALID_ROLES = set(_GROUPS)
 
 
 # --------------------------------------------------------------------- #

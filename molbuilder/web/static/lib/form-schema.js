@@ -429,11 +429,21 @@
             cell.appendChild(el("span", {
                 class: "schema-int-triple-label",
             }, lab));
-            cell.appendChild(el("input", {
+            const cellInput = el("input", {
                 id: `${f.id}-${lab}`, type: "number",
                 step: isInt ? "1" : "any",
                 value: defaults[i] != null ? defaults[i] : "",
-            }));
+            });
+            // Bounds apply PER COMPONENT -- a triple's ``range`` bounds each
+            // axis, not their sum.  Missing until 2026-08-15: makeNumber
+            // honoured f.min/f.max and this did not, so kgrid accepted 0 and
+            // -4 (a Monkhorst-Pack count is a COUNT) and the displacement
+            // accepted anything at all, while both declared no range to
+            // honour either.  Same two lines as the scalar path, so the two
+            // controls cannot drift on what a bound means.
+            if (f.min !== undefined) cellInput.min = f.min;
+            if (f.max !== undefined) cellInput.max = f.max;
+            cell.appendChild(cellInput);
             wrap.appendChild(cell);
         });
         return wrap;
@@ -581,12 +591,26 @@
     // section contains only UNTAGGED fields render bare (no workflow-
     // group wrapper).
     const WORKFLOW_GROUP_META = {
+        // Added 2026-08-15 (user).  These two are what a calculation cannot
+        // be built without -- it needs a name for its output files and a
+        // directory to find pseudopotentials in -- and they were the two
+        // hardest things on the page to find: a card orders its contents by
+        // `category`, so the label sorted under *procedure* near the bottom
+        // of Run profile and the pseudopotential directory under *method* in
+        // the middle, while Run profile's own subtitle promised both.
+        "setup": {
+            title:    "Setup",
+            subtitle: "Start here.  What this run is CALLED, and where its "
+                    + "pseudopotentials come from.  Nothing can be built "
+                    + "until both are answered, and every output file is "
+                    + "named after the first.",
+        },
         "profile": {
             title:    "Run profile",
-            subtitle: "WHAT you're computing — identity (label, "
-                    + "pseudopotentials, charge) and physical character "
-                    + "(metallic vs organic, open-shell, smearing).  "
-                    + "Set once per run; doesn't change between stages.",
+            subtitle: "WHAT you're computing — the physical character of "
+                    + "the system: charge, spin, metallic vs organic, "
+                    + "smearing, and the functional.  Set once per run; "
+                    + "doesn't change between stages.",
         },
         "stage": {
             title:    "Convergence targets",
@@ -627,7 +651,11 @@
     // three cards.
     //   4. Output      — "what do I get back?"  Last because it is the
     //                    only one you can decide after the physics.
-    const WORKFLOW_GROUP_ORDER = ["profile", "stage", "budget", "output"];
+    //   0. Setup       — "what is it called, and where are the pseudos?"
+    //                    First because nothing downstream can be answered
+    //                    without it (2026-08-15).
+    const WORKFLOW_GROUP_ORDER = ["setup", "profile", "stage", "budget",
+                                  "output"];
 
     function renderForm(container, schema) {
         if (!container || !schema || !Array.isArray(schema.sections)) {

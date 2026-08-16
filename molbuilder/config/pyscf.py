@@ -525,7 +525,17 @@ class PySCFConfig:
         "workflow_group": "profile",
         "label":   "Functional",
         "engine_key":  'mf.xc = ...',
-        "help": "XC functional (e.g. B3LYP / PBE / PBE0 / M06-2X / wB97X-D)",
+        "help": "XC functional, written as ``mf.xc`` (B3LYP / PBE / PBE0 / "
+                "M06-2X / wB97X-D / ...).\n"
+                "DEVIATION: PySCF's own default is 'LDA,VWN'.  That is the "
+                "fallback ``dft.RKS`` carries when nothing has been set, not "
+                "a recommendation -- setting mf.xc is expected of every real "
+                "calculation.  We ship B3LYP, the most widely used hybrid in "
+                "molecular chemistry (Becke, J. Chem. Phys. 98, 5648 (1993); "
+                "Lee, Yang & Parr, Phys. Rev. B 37, 785 (1988)), and it pairs "
+                "with the D3(BJ) dispersion this project also defaults to -- "
+                "which is what repairs B3LYP's known weakness on non-covalent "
+                "interactions.",
     })
     basis: str = field(default="def2-SVP", metadata={
         "category": ("method", "accuracy"),
@@ -538,12 +548,38 @@ class PySCFConfig:
             "the convergence ladder (cfg.stages) varies tolerances, "
             "not the level of theory.  Pick once based on the chemistry.\n"
             "Per-tier:\n"
-            "  • screening / loose preopt: def2-SVP (current default; "
-            "30% bond-length error in conjugated systems -- NEVER publish)\n"
+            "  • screening / loose preopt: def2-SVP (current default)\n"
             "  • publishable:               def2-TZVP "
             "(modern standard for organic chemistry; ECPs bundled to Rn)\n"
             "  • tight (vib/IR/energy):    def2-TZVPP or def2-QZVP\n"
-            "Reference: Weigend & Ahlrichs PCCP 2005.  See "
+            "WHAT def2-SVP IS AND IS NOT GOOD FOR.  It is a double-zeta "
+            "set: fine for screening and preoptimisation, and usable for "
+            "structures when paired with a dispersion correction (this "
+            "project defaults to D3BJ).  Its real weakness is BASIS-SET "
+            "SUPERPOSITION ERROR -- for double-zeta sets that can exceed "
+            "40% of a binding energy, and it artificially SHORTENS "
+            "intermolecular distances.  So treat def2-SVP interaction "
+            "energies and complex geometries as unconverged, and move to "
+            "def2-TZVP for anything published.  Covalent bond lengths are "
+            "much less affected: DFT bond-length errors are typically "
+            "0.01-0.07 A and are driven more by the functional than by the "
+            "basis.\n"
+            "NOTE ON WHAT THIS PROJECT CORRECTS: D3BJ repairs the missing "
+            "dispersion, not the superposition error -- PySCF applies no "
+            "geometric counterpoise (gCP).  The composite methods built "
+            "for exactly this (PBEh-3c, r2SCAN-3c) pair a small basis with "
+            "BOTH corrections.\n"
+            "This help claimed a \"30% bond-length error in conjugated "
+            "systems -- NEVER publish\" until 2026-08-15.  No source "
+            "supports it; the figure appears to be a garbled import of the "
+            "40%-of-binding-energy BSSE result, which is about noncovalent "
+            "interactions rather than covalent bonds, and is not specific "
+            "to conjugation.\n"
+            "Sources: Weigend & Ahlrichs, Phys. Chem. Chem. Phys. 7, 3297 "
+            "(2005) for the basis sets themselves; Sure & Grimme, J. "
+            "Comput. Chem. 34, 1672 (2013) for the small-basis error "
+            "analysis; Bursch et al., Angew. Chem. Int. Ed. 61, e202205735 "
+            "(2022) for the best-practice recommendation.  See "
             "docs/engines/tuning.md § 2.8."
         ),
     })
@@ -563,7 +599,18 @@ class PySCFConfig:
         "workflow_group": "profile",
         "label":   "Density fitting",
         "engine_key":  'mf = mf.density_fit()',
-        "help": "use density fitting (faster Coulomb/exchange evaluation)",
+        "help": "Approximate the four-centre electron-repulsion integrals by "
+                "three-centre ones over an auxiliary basis (also called "
+                "resolution of the identity), which is what makes the "
+                "Coulomb and exchange build cheap.\n"
+                "DEVIATION: PySCF applies NO density fitting unless "
+                "``mf.density_fit()`` is called; we default it on.  The "
+                "speed-up is large and the error it introduces sits well "
+                "below the error of the orbital basis itself when the "
+                "auxiliary set matches the basis -- which is why it is "
+                "standard practice rather than a shortcut.  Turn it off when "
+                "you need exact-integral reference numbers, or when "
+                "comparing against a published value that did not use it.",
     })
     dispersion: Optional[str] = field(default="d3bj", metadata={
         "category": ("method",),
@@ -572,13 +619,35 @@ class PySCFConfig:
         # dispersion is also profile.  Setting once per project.
         "workflow_group": "profile",
         "label":   "Dispersion",
-        "engine_key":  'mf = mf.add_dispersion(...)',
+        # ``mf.disp = "d3bj"`` -- which is what the emitter has always
+        # written.  The badge said ``mf = mf.add_dispersion(...)`` until
+        # 2026-08-15, and PySCF has no such method: anyone who trusted the
+        # badge and searched the docs for it found nothing.
+        "engine_key":  'mf.disp = ...',
         # ``none`` is in the choices list so that the case-insensitive
         # click.Choice still accepts the disable spelling; cmd_pyscf
         # then normalises ``none`` -> None before constructing the
         # config.  (R4)
-        "choices": ("d3", "d3bj", "d4", "none"),
-        "help": "dispersion correction: d3 / d3bj / d4 / 'none' to disable",
+        #
+        # ``d3`` WAS offered here and always crashed.  PySCF's own
+        # ``pyscf/scf/dispersion.py`` accepts exactly d3bj, d3bjm, d3op,
+        # d3zero, d3zerom and d4; anything else reaches
+        # ``raise NotImplementedError(f'{method_lower} is not supported
+        # yet.')``.  Confirmed against B3LYP, PBE and PBE0 on PySCF 2.13.
+        # The zero-damping variant a user picking "d3" means is spelled
+        # ``d3zero``, so the choice is renamed rather than dropped.
+        "choices": ("d3bj", "d3zero", "d4", "none"),
+        "help": 'Grimme dispersion correction, written as ``mf.disp``.\n'
+                "d3bj (default) is D3 with Becke-Johnson damping; d3zero is "
+                "D3 with the original zero damping; d4 is the newer, "
+                "charge-dependent D4.  'none' disables the correction.\n"
+                "BJ damping is the usual recommendation for D3 -- it does not "
+                "go to zero at short range, which is where zero damping tends "
+                "to under-bind.  Use d3zero only to reproduce a published "
+                "number that used it.\n"
+                "SOURCE: the accepted spellings are PySCF 2.13's own "
+                "(pyscf/scf/dispersion.py); a value outside that set raises "
+                "NotImplementedError at run time, not at setup.",
     })
     # Effective Core Potential -- TWO plain fields, ONE format each.
     #
@@ -695,7 +764,15 @@ class PySCFConfig:
         "engine_key":  'mf.max_cycle',
         "range": (10, 1000),
         "tier":  "advanced",
-        "help":  "max SCF cycles per single-point",
+        "help":  "The most SCF cycles PySCF will run for one single-point "
+                 "before giving up.\n"
+                 "DEVIATION: PySCF's own default is 50; we ship 100.  This "
+                 "is a RUNAWAY GUARD, not a target -- the two failure modes "
+                 "are not symmetric.  Too high wastes some CPU on a run that "
+                 "was not going to converge anyway; too low stops a "
+                 "converging SCF at the cap and throws away that geometry "
+                 "step, which then repeats at every step of a relaxation.  A "
+                 "well-behaved closed-shell molecule converges in 10-30.",
     })
     scf_init_guess: str = field(default="minao", metadata={
         "category": ("convergence",),
@@ -723,7 +800,17 @@ class PySCFConfig:
         # noise floor low enough for tight geometry optimisation.
         # Loosen back to 3 for screening; tighten to 5 for vibrational
         # / phonon work.  Validator warns when level < 4 with hybrid.
-        "help":  "0=coarse, 3=screening, 4=default (hybrid-friendly), 5=tight, 9=ultra",
+        "help":  "Density of the numerical grid the exchange-correlation "
+                 "energy is integrated on: 0 = coarse, 3 = screening, "
+                 "4 = production, 5 = tight, 9 = ultra.\n"
+                 "DEVIATION: PySCF's own default is 3; we ship 4.  Level 3 "
+                 "is fine for an energy, but the quadrature error does not "
+                 "cancel in derivatives -- it shows up in forces and, most "
+                 "visibly, in vibrational frequencies, where grid noise "
+                 "produces spurious low-frequency modes.  Since this project "
+                 "exists to run geometry optimisations and Hessians, the "
+                 "grid that supports them is the right default.  Drop to 3 "
+                 "for single-point screening.",
     })
     level_shift: float = field(default=0.0, metadata={
         "category": ("convergence",),
@@ -860,9 +947,22 @@ class PySCFConfig:
         "workflow_group": "profile",
         "section": "Solvent (optional)",
         "label":   "PCM model",
-        "engine_key":  'pcm.method',
+        # The real attribute, and what the emitter writes.  ``pcm.method``
+        # named no object that exists: the solvent handle only appears once
+        # ``mf = mf.PCM()`` has run, and it is called ``with_solvent``.
+        "engine_key":  'mf.with_solvent.method',
         "choices": ("IEF-PCM", "C-PCM", "COSMO"),
-        "help": "PCM model: IEF-PCM / C-PCM / COSMO",
+        "help": "Which polarisable-continuum model represents the solvent.\n"
+                "DEVIATION: PySCF's own default is C-PCM "
+                "(pyscf.solvent.pcm.PCM.method); we ship IEF-PCM.  IEF-PCM "
+                "solves the full integral-equation formalism, so it is the "
+                "more general of the two and is what most quantum-chemistry "
+                "packages default to; C-PCM is the conductor-like "
+                "approximation, cheaper and very close to IEF-PCM for polar "
+                "solvents but less reliable as the dielectric constant falls.  "
+                "COSMO is the original conductor-like model.\n"
+                "For water the three agree closely; the choice matters in "
+                "low-dielectric solvents.",
     })
 
     # ---------------- Runtime ----------------
@@ -957,7 +1057,12 @@ class PySCFConfig:
         "engine_key":  'mol.verbose',
         "range": (0, 9),
         "tier":  "advanced",
-        "help":  "PySCF verbosity: 0 silent, 4 info, 5 debug",
+        "help":  "How much PySCF writes to the log: 0 silent, 3 note, "
+                 "4 info, 5 debug.\n"
+                 "DEVIATION: PySCF's own default is 3; we ship 4, because "
+                 "level 4 is where the per-cycle SCF convergence table "
+                 "appears -- and that table is what makes a run that failed "
+                 "diagnosable from the log alone, without repeating it.",
     })
     chkfile: bool = field(default=True, metadata={
         "category": ("procedure",),

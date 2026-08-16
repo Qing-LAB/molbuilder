@@ -152,7 +152,16 @@ TYPES = ("int", "float", "str", "bool", "enum", "pow2",
 #: required on every item of the CATALOGUE, which is a different claim and is
 #: guarded by ``tests/test_catalogue_agreement.py``: an item there with no
 #: group is a parameter no surface can place.
-GROUPS = ("profile", "stage", "budget", "output", "staging")
+#: ``setup`` is FIRST because its members are the answers a calculation
+#: cannot be built without: what the run is called, and where its
+#: pseudopotentials come from (user, 2026-08-15). They lived in ``profile``,
+#: whose own subtitle promised "identity (label, pseudopotentials, charge)" --
+#: but a card is ordered by `category`, so the label sorted under *procedure*
+#: near the bottom and the pseudopotential directory under *method* in the
+#: middle. The two things a user must decide first were the two hardest to
+#: find. A card is the only fix: re-ordering within one card would have to
+#: break the shared legend order that every other card depends on.
+GROUPS = ("setup", "profile", "stage", "budget", "output", "staging")
 
 
 def _refuse(msg: str, *, where: str = "") -> NoReturn:
@@ -214,6 +223,27 @@ class Item:
     #: ``anchor`` and ``expands``, which is why truncating the anchor was
     #: right and keeping only the anchor was not.
     engine_key: str = ""
+
+    #: **Where the engine's own documentation defines this keyword** — one
+    #: string, naming the version so a citation that goes stale is visible
+    #: rather than silently wrong: ``SIESTA 5.4.2 §6.9.2 'Mixing options'``.
+    #:
+    #: A REVIEWER'S field, and deliberately the only one that lives in the
+    #: catalogue alone.  Nothing renders it: no surface shows it, no deck
+    #: carries it, and no config class mirrors it (user, 2026-08-15: *"this
+    #: does not have to show up in the UI or generated config, but serve as a
+    #: reference point when review of template or revision of it could
+    #: benefit from"*).  Mirroring it into the dataclass the way ``help`` and
+    #: ``label`` are mirrored would give a SECOND home to the one fact whose
+    #: entire job is to let someone check the first — so ``declaration_for``
+    #: never sets it, and ``MIRRORED`` in `tests/test_catalogue_agreement.py`
+    #: leaves it out on purpose.
+    #:
+    #: The citations were DERIVED, not recalled: the 5.4.2 manual sources
+    #: were parsed for every ``\begin{fdfentry}{...}`` and matched to our
+    #: anchors through fdf's own ``labeleq`` normalisation, which is how
+    #: ``SaveHS`` finds the entry the manual spells ``Save.HS``.
+    manual: str = ""
 
     # --- bounds and presentation ---
     choices: Optional[Tuple[str, ...]] = None   # required when type == "enum"
@@ -684,7 +714,7 @@ def _toml_value(v: Any) -> str:
 #: calculation diff cleanly, and so the file reads the way § 4.2's example does:
 #: what it is, then what it is worth, then what bounds it, then the prose.
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "anchor", "engine_key",
-                   "expands", "type",
+                   "manual", "expands", "type",
                    "choices", "value", "default", "optional", "resolver",
                    "unit", "range", "tier", "pattern",
                    "group", "label", "null_label", "read_by", "help")
@@ -697,6 +727,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["anchor"] = it.anchor
     if it.engine_key:
         out["engine_key"] = it.engine_key
+    if it.manual:
+        out["manual"] = it.manual
     if it.expands:
         out["expands"] = list(it.expands)
     if it.choices:
@@ -1071,6 +1103,7 @@ def _item_from(name: str, body: Any) -> Item:
         default=_shape(body.get("default"), type_),
         anchor=str(body.get("anchor", "") or ""),
         engine_key=str(body.get("engine_key", "") or ""),
+        manual=str(body.get("manual", "") or ""),
         expands=tuple(body.get("expands", ()) or ()),
         optional=bool(body.get("optional", False)),
         tier=str(body.get("tier", "") or ""),

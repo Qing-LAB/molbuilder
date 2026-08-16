@@ -1467,10 +1467,27 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # Output
     out.append("# --- Output ---")
     if v: out += [
-        "# WriteForces      forces in .FA (required for relaxation)",
-        "# WriteCoorStep    coords at every MD step in main .out",
-        "# WriteCoorXmol    .xyz at every step (movie viewer)",
-        "# WriteMDhistory   trajectory to .ANI (xcrysden / vmd / OVITO)",
+        "# WriteForces      forces into the main .out at every step.  It does",
+        "#                  NOT control .FA -- the last step's forces land",
+        "#                  there either way (manual 5.4.2 § 7.5).",
+        "# WriteCoorStep    coords into the main .out at every step.  NOTE it",
+        "#                  also flips another default: WriteMDXmol (the .ANI",
+        "#                  animation file) defaults to `.not. WriteCoorStep`",
+        "#                  in read_options.F90, so .true. here means no .ANI",
+        "#                  unless WriteMDXmol is written explicitly.",
+        "# WriteCoorXmol    <label>.xyz with the FINAL coordinates -- one",
+        "#                  structure, not a movie.",
+        "# WriteMDhistory   trajectory to .MD (unformatted) + .MDE.  NOT .ANI:",
+        "#                  read_options.F90 binds this to `writmd` -> `iomd`,",
+        "#                  while .ANI comes from `writpx` -> `pixmol`, i.e.",
+        "#                  the separate WriteMDXmol keyword.",
+        "# WriteMDXmol      the .ANI animation (multi-frame .xyz for xcrysden",
+        "#                  / VMD / OVITO).  WRITTEN EXPLICITLY because its",
+        "#                  SIESTA default is `.not. WriteCoorStep` -- with",
+        "#                  WriteCoorStep .true. above, leaving it out means",
+        "#                  no .ANI at all.  molbuilder does not read this",
+        "#                  file (trajectory coordinates come from .MD.nc);",
+        "#                  it is for opening the run in an external viewer.",
         "# SaveHS           H + S matrices to .HSX (needed for TranSIESTA",
         "#                  electrode reuse + DOS post-processing).  In",
         "#                  SIESTA 5.4.2 the keyword is SaveHS; the older",
@@ -1483,6 +1500,10 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     out.append(f"WriteCoorStep      {'.true.' if cfg.write_coor_step else '.false.'}")
     out.append(f"WriteCoorXmol      {'.true.' if cfg.write_coor_xmol else '.false.'}")
     out.append(f"WriteMDhistory     {'.true.' if cfg.write_md_history else '.false.'}")
+    # ALWAYS emitted, both states.  Omitting it hands the decision to
+    # `.not. WriteCoorStep`, which is how every deck this project wrote
+    # before 2026-08-15 ended up with no .ANI while the form said otherwise.
+    out.append(f"WriteMDXmol        {'.true.' if cfg.write_md_xmol else '.false.'}")
     # Always emit SaveHS so user choice (T or F) is explicit + auditable.
     # Pre-2026-06-23: only emitted when cfg.write_hs=True (and as the
     # wrong keyword ``WriteHS``).  The default-T behavior masked the bug

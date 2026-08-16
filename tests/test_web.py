@@ -2130,79 +2130,52 @@ def test_dataclass_schema_honors_form_section_order_override():
 
 
 def test_siesta_form_schema_matches_documented_layout():
-    """The production SiestaConfig schema -- both the section order
-    and the count of fields per section -- is itself part of the
-    Build-tab contract.  Pin it here so a stray field-reorder or a
-    forgotten metadata addition doesn't silently rearrange the UI."""
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    from molbuilder.config.siesta import SiestaConfig
+    """The layout the STRUCTURE-OPTIMIZATION TAB actually renders.
 
-    sch = dataclass_to_form_schema(SiestaConfig, id_prefix="p")
-    assert sch["config"] == "SiestaConfig"
+    Repointed 2026-08-15 from ``dataclass_to_form_schema`` to
+    ``catalogue_to_form_schema``.  The tab is served by the catalogue
+    builder (``build.py`` /api/build/schema); the dataclass builder now
+    serves only spectra and transport, whose configs are not in the
+    catalogue.  Asked the old builder, this test could not see the tab:
+    it passed UNCHANGED on the day ``restart`` and ``continue_retries``
+    left the form, which is precisely the regression a layout test exists
+    to catch.
+
+    THE SECTIONS ARE THE SIX SHARED CATEGORIES, not per-engine fieldset
+    names.  ``category`` replaced ``section`` for exactly this reason
+    (`engines/template.md` § 6.2): ``section`` was free text chosen per
+    engine, so SIESTA's *"Basis & grid"* and PySCF's *"Method"* were
+    unrelated words and no surface could group across engines.  The six
+    are shared, in `template.CATEGORIES` order, so both engines show the
+    same inner headings.
+
+    The counts are a fact about the catalogue, and they move when a
+    parameter is added or re-filed -- which is the point: a diff here is
+    a prompt to check the form still reads well, not a nuisance.
+    """
+    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
+    sch = catalogue_to_form_schema("siesta", "p")
+    # The catalogue builder names the ENGINE, not the translator class --
+    # which is the point: the form is built from the catalogue, and the
+    # config class is a translator on the way out to that engine.
+    assert sch["config"] == "siesta"
     assert sch["id_prefix"] == "p"
 
-    # 2026-06-15 second restructure: merged "Relaxation" + "Parallel
-    # execution" into a single "Compute & budget" section so the
-    # physics axis (System -> Basis -> XC -> SCF -> Spin -> Output)
-    # stays compact and the "how the run executes" knobs are
-    # gathered in one place at the end of the form.  See the
-    # SiestaConfig._form_section_order comment block for the full
-    # design rationale + the workflow-group card split (profile /
-    # stage / budget) inside the merged section.
-    expected = [
-        # System: 2 -> 3 fields after the 2026-05-26 review added
-        # section="System" to ``net_charge`` so users with charged
-        # side-chains (carboxylates, lysines, sulfonates -- not seen
-        # by the phosphate auto-detect heuristic) have a form input.
-        ("System",                   3),
-        # 2026-06-13 fold: kgrid (Monkhorst-Pack) moved from its own
-        # one-field section into "Basis & grid" so the form stops
-        # having a one-field-only section.  Both are about how
-        # finely we sample the calculation (real space + reciprocal
-        # space).  Basis & grid: 3 + 1 = 4 fields now.
-        ("Basis & grid",             4),
-        ("Exchange-correlation",     2),
-        ("SCF",                      8),
-        ("Spin",                     2),
-        ("Output & positioning",     5),
-        # Compute & budget: 14 fields after the 2026-06-15 merge.
-        #   Relaxation contributed 7 (relax_type, relax_steps,
-        #   relax_force_tol, relax_max_displ, md_initial_temperature,
-        #   md_target_temperature, md_length_timestep).
-        #   Parallel execution contributed 7 (mpi_np,
-        #   parallel_block_size, parallel_over_k, omp_threads,
-        #   max_memory_mb, enable_gpu, diag_algorithm).
-        # 2026-08-07 (P2 unit 2/2b/3) -- three changes, net +2 on the 14:
-        #   * the staged-opt STAGE-TABLE WIDGET IS GONE.  It came from
-        #     ``cfg.stages: List[SiestaStageSpec]``, and the generator turned
-        #     that into a per-stage grid automatically -- which is exactly
-        #     the bug: it answered "which settings may a user vary" by
-        #     listing a Python class's fields.  An engine config carries no
-        #     stage list (engines/stages.md § 1.1), so the field, the type
-        #     and the widget went together.  The per-stage grid belongs to
-        #     the shared Task Setup tab, fed by this schema + task.json.
-        #   * ``restart`` (clean | continue) arrived -- the shared-schema
-        #     field § 3 asks for and nobody had added, so § 6's own worked
-        #     example named a field the schema did not have.  It is the ONE
-        #     field a user sets for warm restart; the three use_save_* flags
-        #     are what it expands into.
-        #   * ``continue_retries`` arrived -- it had lived on the deleted
-        #     stage type, and § 3 puts it in the shared schema: a SINGLE
-        #     run's wrapper honours it, so it passes § 3's two questions.
-        # Compute & budget: 16 = the 14 + restart + continue_retries.
-        ("Compute & budget",        16),
-    ]
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
-    assert got == expected, got
+    assert got == [
+        ("system",      6),
+        ("method",      6),
+        ("accuracy",    7),
+        ("convergence", 3),
+        ("procedure",  16),
+        ("execution",   7),
+    ], got
 
-    # The kgrid Tuple field MUST render as the "int-triple" kind so
-    # the JS renderer knows to emit three side-by-side inputs.
-    kgrid = next(
-        f for s in sch["sections"] for f in s["fields"]
-        if f["name"] == "kgrid"
-    )
-    assert kgrid["kind"] == "int-triple"
-    assert kgrid["labels"] == ["x", "y", "z"]
+    # `staging` items are declared parameters this surface does not ask
+    # (user, 2026-08-15).  `restart` and `continue_retries` are the two
+    # today; a regression that put them back would land here.
+    ids = [f["id"] for s in sch["sections"] for f in s["fields"]]
+    assert not [i for i in ids if "restart" in i or "retr" in i], ids
 
 
 def test_api_build_schema_returns_siesta_schema(web_client):
@@ -2274,75 +2247,30 @@ def test_api_build_schema_rejects_unknown_engine(web_client):
 
 
 def test_pyscf_form_schema_matches_documented_layout():
-    """Same pin for PySCFConfig.  The post-relax frequencies /
-    thermochemistry section (added in v1.1) is the rightmost
-    semantic group, after Solvent."""
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    from molbuilder.config.pyscf import PySCFConfig
-
-    sch = dataclass_to_form_schema(PySCFConfig, id_prefix="py")
-    assert sch["config"] == "PySCFConfig"
+    """PySCF's half of the same contract -- the six shared categories,
+    from the same builder the tab uses.  See the SIESTA test above for
+    why this moved off ``dataclass_to_form_schema``."""
+    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
+    sch = catalogue_to_form_schema("pyscf", "py")
+    assert sch["config"] == "pyscf"
     assert sch["id_prefix"] == "py"
 
-    expected = [
-        ("System",                       4),
-        ("Method",                       5),
-        # SCF: 7 since 2026-08-13 (e21fec86) -- `scf_conv_tol_grad` and
-        # `scf_soscf` became fields and this pin was not updated with them,
-        # so the test was RED on this branch from that day.  The two fields
-        # are correct; the number was stale.
-        ("SCF",                          7),
-        ("Solvent (optional)",           2),
-        ("Frequencies / thermochemistry", 3),
-        # Compute & budget after #534 commit 4b:
-        #   * 2 optimization knobs left (optimize, optimizer); the
-        #     four flat geom_conv_* / geom_max_steps scalars + the
-        #     5 preopt_* knobs they used to share this section with
-        #     are gone -- PySCFConfig.stages' stage-table is the
-        #     canonical convergence-ladder control.  (PySCF is the ONLY
-        #     engine with one now; SIESTA's was deleted 2026-08-07 --
-        #     its ladder runs inside one process, so its stage list is
-        #     also engine behaviour, which SIESTA's never was.)
-        #   * 1 stage-table widget (``stages``).
-        #   * 7 runtime + output knobs (max_memory_mb, threads,
-        #     use_gpu, verbose, chkfile, log_file, verbose_comments).
-        ("Compute & budget",            10),
-    ]
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
-    assert got == expected, got
+    assert got == [
+        ("system",      5),
+        ("method",      8),
+        ("accuracy",    3),
+        ("convergence", 6),
+        ("procedure",  14),
+        ("execution",   3),
+    ], got
 
-    # Spin uses range metadata that must propagate so the JS renderer
-    # can emit min/max attributes (UX hint, not a server-side check).
-    spin = next(
-        f for s in sch["sections"] for f in s["fields"]
-        if f["name"] == "spin"
-    )
-    assert spin["kind"] == "int"
-    assert spin["min"] == 0 and spin["max"] == 10
-
-    # The job-name pattern carries through so the renderer can apply
-    # the HTML5 pattern= attribute, matching the existing static form.
-    jn = next(
-        f for s in sch["sections"] for f in s["fields"]
-        if f["name"] == "job_name"
-    )
-    assert jn["pattern"] == r"^[A-Za-z0-9_\-]+$"
-
-
-# --------------------------------------------------------------------- #
-#  engine_key metadata round-trip                                       #
-#                                                                       #
-#  2026-05-26: engine_key was added to all 47 SIESTA + 48 PySCF         #
-#  fields so the UI can render a "writes-this-keyword" badge next       #
-#  to each form label, BUT the metadata had zero tests.  A field        #
-#  whose engine_key got dropped or mistyped would be invisible to       #
-#  regression detection.  These tests pin: (a) every dataclass field    #
-#  carries engine_key in the schema endpoint output, (b) molbuilder-    #
-#  only fields are tagged with the ``(molbuilder`` marker so the        #
-#  UI knows to dim them, (c) representative SIESTA/PySCF keywords      #
-#  the rest of the codebase relies on (SpinPolarized, MeshCutoff,       #
-#  PAO.BasisSize on the SIESTA side; gto.M(charge=...) etc on PySCF).   #
-# --------------------------------------------------------------------- #
+    # The stage table is NOT here.  PySCFConfig still has a `stages`
+    # field -- the ladder is real -- but the staging surface owns it, so
+    # this form never asks.  Three tests asserting the opposite were
+    # retired the same day (tests/test_pyscf_stages.py).
+    ids = [f["id"] for s in sch["sections"] for f in s["fields"]]
+    assert not [i for i in ids if "stage" in i], ids
 
 
 def _flatten_schema_fields(sch):
@@ -2353,9 +2281,9 @@ def test_engine_key_present_on_every_siesta_form_field():
     """Every SIESTA field that lands in the form (has ``section``)
     MUST carry an ``engine_key`` metadata.  Without it the UI's
     source-of-truth badge is silently missing for that field."""
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
     from molbuilder.config.siesta import SiestaConfig
-    sch = dataclass_to_form_schema(SiestaConfig, id_prefix="p")
+    sch = catalogue_to_form_schema("siesta", "p")
     missing = [f["name"] for f in _flatten_schema_fields(sch)
                if "engine_key" not in f]
     assert not missing, (
@@ -2366,9 +2294,9 @@ def test_engine_key_present_on_every_siesta_form_field():
 
 def test_engine_key_present_on_every_pyscf_form_field():
     """Same contract for PySCF."""
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
     from molbuilder.config.pyscf import PySCFConfig
-    sch = dataclass_to_form_schema(PySCFConfig, id_prefix="py")
+    sch = catalogue_to_form_schema("pyscf", "py")
     missing = [f["name"] for f in _flatten_schema_fields(sch)
                if "engine_key" not in f]
     assert not missing, (
@@ -2437,9 +2365,9 @@ def test_engine_key_marks_molbuilder_only_fields_with_paren_prefix():
     the dashed-border italic visual variant.  Without this the
     user might search the SIESTA / PySCF manual for a keyword
     molbuilder invented (e.g. verbose_comments, wrap_into_cell)."""
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
     from molbuilder.config.siesta import SiestaConfig
-    sch = dataclass_to_form_schema(SiestaConfig, id_prefix="p")
+    sch = catalogue_to_form_schema("siesta", "p")
     # Fields that ARE molbuilder-only (curated list -- if you flip
     # one of these to a real engine keyword, update the list).
     molbuilder_only = {
@@ -2466,9 +2394,9 @@ def test_engine_key_pins_load_bearing_siesta_keywords():
     cross-references against the SIESTA manual) carry the exact
     expected engine_key text.  If any of these changes, downstream
     text searches + the .fdf grep workflow break."""
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
     from molbuilder.config.siesta import SiestaConfig
-    sch = dataclass_to_form_schema(SiestaConfig, id_prefix="p")
+    sch = catalogue_to_form_schema("siesta", "p")
     fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
     expected = {
         # The 2026-05-24 SpinPolarized v4-vs-v5 incident hangs on
@@ -2502,9 +2430,9 @@ def test_engine_key_pins_load_bearing_pyscf_keywords():
     """Same for PySCF.  The 2026-05-24 review surfaced that PySCF's
     method= is a CLASS switch (RKS / UKS / RHF / UHF) not a string
     kwarg -- the engine_key text should explain this."""
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
     from molbuilder.config.pyscf import PySCFConfig
-    sch = dataclass_to_form_schema(PySCFConfig, id_prefix="py")
+    sch = catalogue_to_form_schema("pyscf", "py")
     fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
     expected = {
         "charge":   "gto.M(charge=...)",
