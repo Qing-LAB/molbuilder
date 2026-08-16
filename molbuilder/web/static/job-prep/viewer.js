@@ -194,7 +194,11 @@ async function setEditorText(text) {
 
 async function readOptional(projects, path) {
     try {
-        const r = await projects.readFile(path, { missing_ok: true });
+        // `missingOk` is camelCase HERE and `missing_ok` on the wire —
+        // `lib/projects/api.js` maps it.  Passing the wire spelling is
+        // silently ignored, and the 404 it then takes logs a failed-resource
+        // console error for the perfectly normal "no description yet" case.
+        const r = await projects.readFile(path, { missingOk: true });
         if (r && r.ok === false) return null;
         if (r && r.exists === false) return null;
         return (r && typeof r.text === "string") ? r.text : null;
@@ -275,12 +279,12 @@ function start() {
         return;
     }
 
-    const currentDir = () => {
-        try { return sessionStorage.getItem("molbuilder.current_dir") || ""; }
-        catch (_) { return ""; }
-    };
-
-    loadFolder(projects, currentDir());
+    // `getCurrentDir` is the public accessor; reading sessionStorage directly
+    // would duplicate the sidebar's own key name in a second place.
+    const startDir = typeof projects.getCurrentDir === "function"
+        ? projects.getCurrentDir()
+        : "";
+    loadFolder(projects, startDir);
 
     // Directory changes arrive on onChange; a dblclick commit also lands on
     // onCommit.  Both carry `dir`, and this page cares about the folder only.

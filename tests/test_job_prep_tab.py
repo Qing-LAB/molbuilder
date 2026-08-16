@@ -172,6 +172,31 @@ def test_the_editor_asks_for_no_mode_the_bundle_lacks():
             "an inventory decision (static/vendor/README.md)")
 
 
+def test_the_optional_read_uses_the_camelCase_option():
+    """`lib/projects/api.js` takes `missingOk` and maps it to the wire's
+    `missing_ok`.  Passing the wire spelling is silently ignored — the read
+    then takes the 404 path and logs a failed-resource console error for the
+    perfectly normal "this folder has no description yet" case.
+
+    Caught by reading api.js after the tab was already written and green.
+    """
+    src = VIEWER.read_text()
+    assert "missingOk" in src, "the optional read does not pass missingOk"
+    assert not re.search(r"missing_ok\s*:", src), (
+        "job-prep/viewer.js passes the WIRE spelling to the projects API; "
+        "api.js expects `missingOk` and silently drops the other")
+
+
+def test_the_page_reads_the_current_dir_through_the_public_accessor():
+    """`projects.getCurrentDir()` exists; reaching into sessionStorage for the
+    sidebar's own key would put that key name in a second place."""
+    src = VIEWER.read_text()
+    assert "getCurrentDir" in src
+    assert "molbuilder.current_dir" not in src, (
+        "the tab duplicates the sidebar's sessionStorage key — call "
+        "projects.getCurrentDir() instead")
+
+
 def test_the_machine_answered_settings_are_named():
     """mpi_np / omp_threads / max_memory_mb may never carry a value in a
     description (`engines/template.md` § 6.4), so the page must not show them
