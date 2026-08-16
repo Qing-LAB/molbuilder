@@ -128,6 +128,8 @@ def describe_cmd(structure: str, dest: str, shape: str,
     from ..identity import normalise_id
     from ..siesta.input import _detect_species
     from ..siesta.stages import default_siesta_stages
+    from ..config.siesta import SIESTA_STAGE_NAMES
+    from ..task import Stage
 
     out_dir = _P(dest)
     run_name = name or out_dir.name
@@ -140,8 +142,16 @@ def describe_cmd(structure: str, dest: str, shape: str,
             # reads this structure sees the same isolation.
             struct = _dc.replace(struct, vacuum=(vacuum, vacuum, vacuum))
 
+        # § 6.5 (2026-08-16): a job always has at least one stage.  Without
+        # ``--stage-strategy`` the ladder is ONE stage carrying no overrides
+        # -- the calculation that is just the template -- rather than the
+        # stage-less shape that used to mean the same thing.  One shape, so
+        # the artifact names, the tokens and the directories are the same
+        # whether a job has one rung or three.
         stages = (tuple(default_siesta_stages(stage_strategy))
-                  if stage_strategy else ())
+                  if stage_strategy
+                  else (Stage(name=SIESTA_STAGE_NAMES[1], enabled=True,
+                              overrides={}),))
         # The label goes through the SAME normaliser Task.label uses, so the
         # template's SystemLabel and the description's id cannot disagree
         # about what this calculation is called.
@@ -249,8 +259,9 @@ def _stage_bench_dir(base, stage):
     """The stage's bench container (job-contracts.md § 6.3), resolved
     through the description — where its trials, its job-set and its verdict
     all live.  Returns ``(container_path, token)``; refuses an unknown
-    stage with the ladder listed, and a NAMED stage on a stageless
-    calculation (which has none to name)."""
+    stage with the ladder listed, and a bare invocation the same way —
+    § 6.5 gives every description a ladder, so there is always a stage to
+    name and never a bare form to fall back to."""
     from ..task import FILENAME, read_task
     from .materialize import bench_container
     from .prep import token_for
@@ -260,13 +271,6 @@ def _stage_bench_dir(base, stage):
         return None, None                    # hand-built set: no container
     task = read_task(desc)
     sh = Shape.named(task.shape)
-    if not task.stages:
-        if stage is not None:
-            raise click.ClickException(
-                f"this calculation is stageless (engines/stages.md § 6.5) "
-                f"-- it has no stage named {stage!r}.  Its one benchmark "
-                f"lives in bench/; drop the name.")
-        return Path(base) / bench_container(sh, ""), ""
     if stage is None:
         raise click.ClickException(
             "which stage's benchmark? name it: "
@@ -280,23 +284,11 @@ def _stage_bench_dir(base, stage):
         f"{', '.join(s.name for s in task.stages)}.")
 
 
-def _bench_positionals(bundle, stage, trial):
-    """The grammar gives ``bench`` two optional names after it — (stage,
-    trial) — but a STAGELESS calculation owns no stage, so a lone name
-    there IS the trial: exactly the form prep's own hint prints
-    (``submit bench <trial>``).  Until 2026-08-13 that name bound to the
-    stage positional, was silently ignored, and the NEXT unlaunched trial
-    launched instead of the one named (final review A-4)."""
-    from ..task import FILENAME, read_task
-    desc = Path(bundle) / FILENAME
-    if stage is None or not desc.is_file() or read_task(desc).stages:
-        return stage, trial
-    if trial is not None:
-        raise click.ClickException(
-            f"this calculation is stageless (engines/stages.md § 6.5): "
-            f"after `bench` name at most the trial, but got both "
-            f"{stage!r} and {trial!r}.")
-    return None, stage
+# ``_bench_positionals`` lived here until 2026-08-16.  It re-bound a lone
+# name after ``bench`` to the TRIAL, because a stage-less calculation owned
+# no stage to name (final review A-4).  With § 6.5's rule that every
+# description has at least one stage, the two positionals after ``bench``
+# always mean (stage, trial) and the re-binding can never fire.
 
 
 def _pick_trial(js, base, trial, mode):
@@ -394,13 +386,10 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
                     evidence.append(
                         f"{a.relative_to(Path(base))}/ was launched "
                         f"(its run.json)")
-    elif not task.stages:
-        # § 6.5 STAGELESS: the calculation's attempts sit at the ROOT --
-        # the stage gate above cannot see them (A7, 2026-08-12).
-        for n in attempts(Path(base)):
-            a = Path(base) / f"run-{n}"
-            if was_launched(a):
-                evidence.append(f"{a.name}/ was launched (its run.json)")
+    # (A7, 2026-08-12 added a second arm here for a STAGELESS calculation,
+    # whose attempts sat at the ROOT where the stage gate above could not
+    # see them.  § 6.5 retired that shape on 2026-08-16: every attempt now
+    # lives under its stage, so the gate above sees all of them.)
     if bench_container is not None:
         launched = [p.parent.name for p in
                     sorted(Path(bench_container)
@@ -603,21 +592,13 @@ def _resolve_stage_name(js, stage: str) -> str:
         raise click.ClickException(str(e))
 
 
-def _lone_stageless_job(js):
-    """The single job of a STAGELESS calculation (`engines/stages.md`
-    § 6.5), or ``None``.  A ladder-kind set with ONE job whose deck
-    carries no stage token IS the calculation itself — the bare verbs act
-    on it, because there is no stage name a user could type (R1,
-    2026-08-12: until then the bare forms refused with a list of stages
-    that did not exist)."""
-    from .materialize import stage_refs
-    if js.kind != "ladder" or len(js.jobs) != 1:
-        return None
-    job = js.jobs[0]
-    if job.name != js.name:
-        return None            # hand-built lone job, not § 6.5's form
-    ref = stage_refs(js)[job.name]
-    return None if ref.token else job.name
+# ``_lone_stageless_job`` lived here until 2026-08-16: the door's answer
+# when there was no stage name to type.  `engines/stages.md` § 6.5 now says
+# every description carries at least one stage, and one stage is named and
+# tokened like any other, so there is always a name to type and the bare
+# verbs have nothing to fall back to.  Deleted rather than left inert --
+# a helper whose docstring cites a rule that now says the opposite is worse
+# than no helper.
 
 
 def _resolve_stage(js, stage, verb: str):
@@ -650,9 +631,6 @@ def _resolve_stage(js, stage, verb: str):
     from .materialize import stage_refs
     if stage is not None:
         return _resolve_stage_name(js, stage)
-    lone = _lone_stageless_job(js)
-    if lone is not None:
-        return lone            # § 6.5: the calculation is its own stage
     refs = stage_refs(js)
     ordered = [refs[j.name] for j in js.jobs]
     if js.kind == "ladder":
@@ -745,15 +723,15 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             "first.  (Hand-built job-sets remain launchable: `submit` and "
             "`status` read job-set.json directly.)")
     if (from_attempt or cold) and stage is None:
-        # A stageless calculation (§ 6.5) has exactly one attempt line, so
-        # the bare flags are unambiguous there (R1); a LADDER must name it.
-        from ..task import read_task as _read_task_for_gate
-        if _read_task_for_gate(base / _TASK).stages:
-            raise click.ClickException(
-                "--from / --cold describe ONE stage's attempt; name the "
-                "stage:\n"
-                "    molbuilder jobset prep run <stage> --from "
-                "01_coarse/run-0")
+        # Every description has a ladder (§ 6.5), so an attempt always
+        # belongs to a named stage.  Until 2026-08-16 this was conditional:
+        # a stage-LESS calculation had exactly one attempt line, so the bare
+        # flags were unambiguous there (R1).  That shape is gone.
+        raise click.ClickException(
+            "--from / --cold describe ONE stage's attempt; name the "
+            "stage:\n"
+            "    molbuilder jobset prep run <stage> --from "
+            "01_coarse/run-0")
     try:
         # The ALLOCATION -- what you ask the scheduler for on THIS prep.
         # Assembled here and nowhere else, so a value cannot reach the wrapper
@@ -804,17 +782,14 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         sweep = pins = translation = None
         if kind == "bench":
             if stage is None:
-                from ..task import read_task as _rt_bench
-                if _rt_bench(base / _TASK).stages:
-                    raise click.ClickException(
-                        "prep bench measures ONE stage's configuration; "
-                        "name it:\n    molbuilder jobset prep bench <stage>")
-                # § 6.5 STAGELESS (A4, 2026-08-12): the calculation IS its
-                # one rung, so the bare bench measures the one parameter
-                # set -- record and verdict in the root bench/ container.
-                # Refusing here left that container WRITERLESS and made
-                # the stageless verdict offer (below, "here or never")
-                # dead code: no stage name exists for the user to type.
+                # A benchmark measures ONE stage's configuration, and there
+                # is always a stage to name (§ 6.5).  Until 2026-08-16 this
+                # refusal was conditional, because a stage-LESS calculation
+                # had no name to give and its bare bench measured the one
+                # parameter set (A4, 2026-08-12).
+                raise click.ClickException(
+                    "prep bench measures ONE stage's configuration; "
+                    "name it:\n    molbuilder jobset prep bench <stage>")
             sweep, pins, translation = _bench_inputs(base)
         elif stage is not None:
             # § 2.3.2's other half: a run prepped where a verdict sits
@@ -822,15 +797,6 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             allocation, verdict_pins = _offer_bench_verdict(
                 base, allocation, stage=stage)
             pins = verdict_pins or None
-        else:
-            from ..task import read_task as _rt
-            if not _rt(base / _TASK).stages:
-                # § 6.5 stageless: ONE parameter set, its verdict in the
-                # root bench/ container -- the bare prep is its only prep,
-                # so the offer happens here or never (R1, 2026-08-12).
-                allocation, verdict_pins = _offer_bench_verdict(
-                    base, allocation, stage=None)
-                pins = verdict_pins or None
         if kind == "run":
             # § 6's say-what-is-there, and the A3 ask when a run already
             # happened here (U14).
@@ -891,10 +857,9 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                    "-- one trial per invocation")
         return
 
-    # § 6.5 (R1): a stageless calculation's bare prep IS its stage prep --
-    # the attempt machinery runs on the one job.  Only a LADDER's bare
-    # prep stops at the listing, because there the user still owes a name.
-    attempt_target = stage if stage is not None else _lone_stageless_job(js)
+    # A bare prep stops at the listing: every description has a ladder
+    # (§ 6.5), so the user always still owes a stage name.
+    attempt_target = stage
     if attempt_target is None:
         click.echo(f"prepped {len(dirs)} job dir(s) under {base}:")
         for d in dirs:
@@ -1136,10 +1101,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         domain = _execn["domain"]
         domain_source = "execution.domain (config)"
     if kind == "bench":
-        # § 6.5: on a stageless calculation the lone name after `bench`
-        # IS the trial (A-4) -- then the stage's own sweep record, from
-        # its bench container (§ 6.3).
-        stage, trial = _bench_positionals(bundle, stage, trial)
+        # the stage's own sweep record, from its bench container (§ 6.3)
         js, base = _load_bench_set(bundle, stage)
     else:
         if trial is not None:

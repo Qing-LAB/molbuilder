@@ -264,21 +264,30 @@ def _one_stage(example: dict) -> dict:
     return example
 
 
-def test_absent_stages_means_one(example):
-    task = Task.from_dict(_one_stage(example))
-    assert task.stages is None
-    assert task.varies is None
+def test_absent_stages_is_refused(example):
+    """§ 6.5 (2026-08-16): a job always has at least one stage, so there is no
+    stage-less form to read. It used to mean "one parameter set"; now the one
+    parameter set is spelled as the one stage it is."""
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="at least one stage"):
+        Task.from_dict(_one_stage(example))
 
 
-def test_a_one_stage_description_round_trips_without_the_keys(
-        example, tmp_path):
-    """'an empty list would be a second way to spell the same state' --
-    so neither key may reappear on write."""
+def test_a_one_stage_description_round_trips_with_both_keys(example, tmp_path):
+    """§ 6.5 (2026-08-16): one stage is an ordinary stage, so both keys are
+    written for it exactly as they are for three.
+
+    This asserted that neither key may reappear on write — the stage-less
+    spelling. Uniformity replaced it: one shape whatever the rung count, so
+    nothing downstream needs to know which case it is looking at."""
     p = tmp_path / FILENAME
-    write_task(p, Task.from_dict(_one_stage(example)))
+    one = dict(example)
+    one["stages"] = [{"name": "coarse", "enabled": True, "overrides": {}}]
+    one["varies"] = []
+    write_task(p, Task.from_dict(one))
     written = json.loads(p.read_text())
-    assert "stages" not in written
-    assert "varies" not in written
+    assert [s["name"] for s in written["stages"]] == ["coarse"]
+    assert written["varies"] == []
 
 
 def test_varies_without_stages_is_refused(example):

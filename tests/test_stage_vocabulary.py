@@ -195,13 +195,6 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "name.  Split out because `status <stage>` must resolve a name "
         "without inheriting the whole-set refusal: a whole-ladder status is "
         "a legitimate thing to ask for, unlike a whole-ladder submit"),
-    "_lone_stageless_job": (
-        None, "molbuilder/jobset/_cli.py",
-        "the door's answer when there is NO stage name to type: a "
-        "ladder-kind set with ONE tokenless job named as its set IS the "
-        "calculation (`engines/stages.md` § 6.5), so the bare verbs act on "
-        "it (R1, 2026-08-12 -- until then they refused with a list of "
-        "stages that did not exist)"),
     "_stage_bench_dir": (
         None, "molbuilder/jobset/_cli.py",
         "where a stage's benchmark lives -- the `bench/` container "
@@ -309,9 +302,11 @@ JS_LEDGER: dict[str, tuple[int | None, str]] = {
         10, "the generic stage-table field kind -- rows are the per-stage "
             "parameters, columns are the stages, which is the panel "
             "task-setup-plan.md § 6 describes"),
-    "structure-optimization/viewer.js": (
-        9, "p-stage-preset: a stage NUMBER, into a filename.  (Its "
-           "ELPA-1STAGE is the diagonaliser, a different sense)"),
+    # structure-optimization/viewer.js was attributed here until 2026-08-16,
+    # for a `p-stage-preset` that turned a stage NUMBER into a filename.  The
+    # tab's cleanup deleted that path (the panel no longer names decks), so
+    # the file carries no stage vocabulary at all and an entry for it would
+    # be exactly the obsolete truth this map exists to prevent.
     "lib/molview/mount.js": (
         None, "molviewer-window-stage is a CSS layer -- unrelated role"),
 }
@@ -335,7 +330,13 @@ JS_LEDGER: dict[str, tuple[int | None, str]] = {
 #: ``stages_to_jobset`` -- are DELETED with the second lifecycle.  The deck
 #: is rendered by `prep` per resolved element, which carries no stage-named
 #: symbol of its own: the ladder is data, not a mechanism.
-MECHANISM_COUNT = 7
+#:
+#: SIX since 2026-08-16: mechanism 9 -- the structure-optimization tab's
+#: ``p-stage-preset``, which turned a stage NUMBER into a deck filename --
+#: went with that tab's cleanup.  The panel names no decks now, so the last
+#: place a stage was spelled in the browser is gone and every remaining
+#: mechanism is Python.
+MECHANISM_COUNT = 6
 
 
 def _py_sources() -> list[Path]:
@@ -432,8 +433,11 @@ def test_mechanism_count_is_the_agreed_number():
     assert len(mechs) == MECHANISM_COUNT, (
         f"{len(mechs)} mechanisms, expected {MECHANISM_COUNT}:\n  "
         + "\n  ".join(mechs)
-        + "\n\nP5 is where this number comes down.  Moving it means updating "
-          "architecture § 8b and the plan's § 6 baseline in the same commit.")
+        + "\n\nMECHANISM_COUNT above is the authority, and the comment over "
+          "it is the ledger: a phase that retires a mechanism moves the "
+          "number and says which one, in the same commit.  The plan's § 6 "
+          "table and archive § 8b are DATED measurements of this same count "
+          "-- history, not restatements; do not edit them to match.")
 
 
 # ===================================================================== #

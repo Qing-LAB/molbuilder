@@ -22,7 +22,7 @@ from molbuilder import describe as D
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
-from molbuilder.task import read_task
+from molbuilder.task import Stage, read_task
 from molbuilder.template import read_template
 
 
@@ -39,7 +39,14 @@ def cfg() -> SiestaConfig:
     return SiestaConfig(system_label="relax", mesh_cutoff=300.0)
 
 
-def _describe(struct, cfg, stages=(), *, shape="hierarchical",
+#: § 6.5 (2026-08-16): a job always has at least one stage, so the helper's
+#: default is ONE stage carrying no overrides -- the calculation that is just
+#: the template.  It defaulted to ``()`` while a stage-less description was a
+#: legal shape; that shape is gone, and an empty ladder is now refused.
+_ONE_STAGE = (Stage(name="coarse", enabled=True, overrides={}),)
+
+
+def _describe(struct, cfg, stages=_ONE_STAGE, *, shape="hierarchical",
               name="relax", source="structures/bdt.xyz"):
     return D.build_description(struct, cfg, stages, engine="siesta",
                                shape=shape, name=name, source=source)
@@ -187,7 +194,7 @@ def test_the_calculation_key_is_absent_is_a_state(struct, cfg, tmp_path):
     assert "calculation" not in raw
     assert read_task(tmp_path / "calc" / "task.json").calculation == \
         "optimization"
-    desc = D.build_description(struct, cfg, (), engine="siesta",
+    desc = D.build_description(struct, cfg, _ONE_STAGE, engine="siesta",
                                shape="hierarchical", name="relax",
                                source="structures/bdt.xyz",
                                calculation="transport")
@@ -197,7 +204,7 @@ def test_the_calculation_key_is_absent_is_a_state(struct, cfg, tmp_path):
     assert read_task(tmp_path / "calc2" / "task.json").calculation == \
         "transport"
     with pytest.raises(Exception, match=r"calculation.*A-Za-z0-9_"):
-        D.build_description(struct, cfg, (), engine="siesta",
+        D.build_description(struct, cfg, _ONE_STAGE, engine="siesta",
                             shape="hierarchical", name="relax",
                             source="structures/bdt.xyz",
                             calculation="no-hyphens!")
@@ -212,12 +219,17 @@ def test_a_ladder_becomes_stages_and_varies(struct, cfg, tmp_path):
     assert "relax_type" in task.varies
 
 
-def test_no_ladder_omits_both_keys_entirely(struct, cfg, tmp_path):
-    """§ 6.5: *a description with no stages IS a single-parameter-set
-    calculation*, and an empty ``stages`` would be a second way to spell it."""
-    D.write_description(_describe(struct, cfg, ()), tmp_path / "calc")
-    raw = json.loads((tmp_path / "calc" / "task.json").read_text())
-    assert "stages" not in raw and "varies" not in raw
+def test_an_empty_ladder_is_refused(struct, cfg):
+    """§ 6.5 (2026-08-16): a job always has at least one stage.
+
+    This asserted the opposite until then — that an empty ladder wrote a
+    description with neither key, a stage-less shape meaning "just the
+    template". That shape produced artifacts with NO stage token, and adding a
+    second stage later left the first run belonging to no token at all. One
+    shape removes the transition; an empty ladder is now refused, and the
+    refusal names the fix."""
+    with pytest.raises(D.DescribeError, match="at least one stage"):
+        _describe(struct, cfg, ())
 
 
 def test_the_label_and_the_id_derive_from_the_name(struct, cfg):

@@ -565,8 +565,12 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   including the derivation order.  **Planned 2026-08-13, seven units in
   the contract's own order** (each done-when is an artifact-identity
   proof until behavior is MEANT to change):
-  **U0** `task.json` gains `calculation` (absent = `optimization`, the
-  stageless absent-is-a-state pattern; codec + describe + § 6.6
+  **U0** `task.json` gains `calculation` (absent = `optimization` — an
+  absent-is-a-state key.  This cited `stages` as its precedent until
+  2026-08-16, when `engines/stages.md` § 6.5 deleted exactly that pattern
+  for `stages`: absent now REFUSES.  `calculation` keeps the pattern on its
+  own merits — a default that names the ordinary case, not a shape whose
+  artifacts differ — so the two keys diverge deliberately; codec + describe + § 6.6
   preflight land TOGETHER — a half-landed key refuses every fresh
   bundle) · **U1** loader `molbuilder/warmfiles.py` (L1, `tomllib`) +
   `molbuilder/warm-files@1` + the two seed files carrying EXACTLY

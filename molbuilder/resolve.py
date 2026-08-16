@@ -469,14 +469,12 @@ def _axes_of(sweep, points: Tuple[Mapping, ...]) -> Tuple[str, ...]:
 
 
 def _stage_of(task, stage: Optional[str]):
-    """The rung this prep is for, refusing rather than picking one."""
-    if not task.stages:
-        if stage:
-            raise ResolveError(
-                f"this description has no ladder, so there is no stage "
-                f"{stage!r} to resolve. A calculation with a single parameter "
-                f"set is prepped without naming one (engines/stages.md 6.5).")
-        return None
+    """The rung this prep is for, refusing rather than picking one.
+
+    Never picks the lone stage of a one-rung ladder either: § 6.5 makes one
+    stage an ordinary stage, so it is named like any other and guessing it
+    would be the implicit rule that rule exists to delete.
+    """
     if not stage:
         raise ResolveError(
             f"this description has a ladder, so a stage has to be named. "

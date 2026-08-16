@@ -55,7 +55,7 @@ import contextvars
 import difflib
 import re
 from dataclasses import dataclass, field
-from typing import Any, Mapping, NoReturn, Optional, Tuple
+from typing import Any, Dict, Mapping, NoReturn, Optional, Tuple
 
 from .identity import normalise_id, run_id
 from .persist import check_schema, read_json, write_json
@@ -74,8 +74,9 @@ STAGE_FIELDS = ("name", "enabled", "overrides")
 #: § 6.6 — a stage name becomes a filename, so the set is the narrow one.
 STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
+
 _TOP_KEYS = ("schema", "engine", "shape", "run",
-             "structure", "varies", "stages", "calculation")
+             "structure", "varies", "stages", "calculation", "bench")
 _RUN_KEYS = ("name", "id", "created")
 _STRUCTURE_KEYS = ("source", "formula", "atoms")
 
@@ -170,6 +171,22 @@ class Task:
     #: rules file's question, answered where the file is read -- this
     #: codec checks only the SHAPE (U0, 2026-08-13).
     calculation: str = "optimization"
+
+    #: § 6.8 -- WHAT TO MEASURE before committing: field name -> the points to
+    #: try.  Empty means no benchmark is planned, which is what every
+    #: description written before 2026-08-15 says by omitting the key.
+    #:
+    #: POINTS TO TRY, NEVER AN ANSWER.  ``{"mpi_np": (4, 8, 16)}`` is true on
+    #: every machine; ``mpi_np = 16`` is true on one, and would make this file
+    #: a machine's opinion rather than a calculation's description.  The
+    #: measurement lands in ``bench-result.json`` on the target, whose
+    #: ``choice`` carries it (`job-system.md` § 7).
+    #:
+    #: It is also why a field may appear HERE that may never appear as a
+    #: template item value (`template.md` § 7): as a point to try it is a
+    #: question; as an item value it would be an assertion about a machine
+    #: this description has not met.
+    bench: Dict[str, Tuple[Any, ...]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """§ 6.5 holds for the object too, not only for the file.
@@ -404,10 +421,25 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 "one parameter set, and there is nothing to vary across "
                 "(engines/stages.md 6.5)")
 
+    bench = _bench_from_obj(obj)
+
     if not has_stages:
-        return Task(engine=engine, shape=shape, run=run, structure=structure,
-                    calculation=calc,
-)
+        # § 6.5 (2026-08-16): A JOB ALWAYS HAS AT LEAST ONE STAGE.  One stage
+        # is the ordinary starting point, not a special shape -- it is named,
+        # it gets the ordinal token, its artifacts are named like any other
+        # stage's.  So there is no stage-less form to accept.
+        #
+        # The rule replaced one that let ``stages`` be absent, and the reason
+        # is a transition nobody had specified: a stage-less run wrote
+        # artifacts with NO token, and adding a second stage then left that
+        # run belonging to no token at all -- with `.XV` / `.DM` unsuffixed
+        # and shared in `flat`, so the new stage would warm-start from it
+        # silently.
+        _refuse("no 'stages'. A job has at least one stage -- one is the "
+                "ordinary case, not a special shape (engines/stages.md 6.5). "
+                "Give it a single entry: "
+                '"stages": [{"name": "coarse", "enabled": true, '
+                '"overrides": {}}]')
 
     raw_stages = obj["stages"]
     if not isinstance(raw_stages, (list, tuple)) or not raw_stages:
@@ -426,8 +458,41 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # differ in nothing but their name.  (``None`` is reserved for the
     # no-stages case above, which § 6.5 spells by omitting both keys.)
     return Task(engine=engine, shape=shape, run=run, structure=structure,
-                varies=varies, stages=stages, calculation=calc,
+                varies=varies, stages=stages, calculation=calc, bench=bench,
 )
+
+
+def _bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
+    """§ 6.8's ``bench`` -- field name -> the points to try.
+
+    Absent is a real state and the common one: no benchmark planned.  Present
+    and empty is refused, because an empty plan and no plan are the same thing
+    said two ways and a reader should not have to know they are.
+
+    SHAPE ONLY, and deliberately.  Whether a name is a field the engine
+    declares SWEEPABLE -- `template.md` § 6.2's ``execution`` category, *"knobs
+    that change speed and not the answer"* -- is a MEMBERSHIP question, and
+    answering it means reading the catalogue, which is L2.  This module is L1
+    (`test_layering`), and the same split already applies to ``calculation``
+    just above: shape here, membership where the vocabulary is read.  The
+    membership check lives in ``validation/task.py``.
+    """
+    raw = obj.get("bench")
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping) or not raw:
+        _refuse("'bench' is present but not a non-empty object. Omit the key "
+                "entirely when no benchmark is planned -- absent and empty "
+                "would be two spellings of one state (engines/stages.md 6.8)")
+    out: Dict[str, Tuple[Any, ...]] = {}
+    for name, points in raw.items():
+        if not isinstance(points, (list, tuple)) or not points:
+            _refuse(f"bench[{name!r}] must be a non-empty list of points to "
+                    f"try, got {points!r}")
+        if any(isinstance(p, (list, tuple, dict)) for p in points):
+            _refuse(f"bench[{name!r}] takes scalar points; got a nested value")
+        out[str(name)] = tuple(points)
+    return out
 
 
 def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
@@ -567,6 +632,11 @@ def _task_to_dict(task: Task) -> dict:
                         "atoms": task.structure.atoms}
     # Absent together, never empty -- an empty list would be a second way to
     # spell "one stage" (§ 6.5).
+    # § 6.8: omitted when empty, so "no benchmark planned" has ONE spelling
+    # on disk and every description written before the key existed still says
+    # exactly what it always said.
+    if task.bench:
+        out["bench"] = {k: list(v) for k, v in task.bench.items()}
     if task.stages:
         out["varies"] = list(task.varies or ())
         out["stages"] = [{"name": s.name, "enabled": s.enabled,

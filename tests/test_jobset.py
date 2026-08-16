@@ -244,8 +244,13 @@ def test_job_dir_names_ladder_keeps_a_gap_a_gap():
 def test_job_dir_names_sweep_keeps_the_point_convention():
     """The benchmark is untouched by the ladder's rule -- and its tokenless
     trials live in the bare ``bench/`` container beside their own record
-    (job-contracts.md § 6.3's stageless row; until 2026-08-13 they fell to
-    the root while the record sat in ``bench/``, final review A-2)."""
+    (until 2026-08-13 they fell to the root while the record sat in
+    ``bench/``, final review A-2).
+
+    Only a HAND-BUILT set arrives here tokenless now: § 6.5 gave every
+    description a ladder on 2026-08-16, so every described deck carries a
+    token.  The naming authority still owes those an answer, which is why
+    the row -- and this test -- stay."""
     from molbuilder.jobset.materialize import job_dir_names
     from molbuilder.jobset.model import Job, JobSet
     js = JobSet(name="JOB", engine="siesta", kind="sweep",

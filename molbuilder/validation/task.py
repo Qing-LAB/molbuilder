@@ -96,6 +96,19 @@ def preflight(task, config_cls=None, *,
             f"shape 'flat'",
             where="task.shape"))
 
+    # -- 1b. § 6.8 -- only a SPEED knob may be swept -----------------------
+    #
+    # The codec checked the shape of ``bench`` and stopped there: deciding
+    # whether a name is sweepable means reading the catalogue, and `task.py`
+    # is L1.  Here we can.
+    #
+    # The rule is `template.md` § 6.2's own definition of ``execution``:
+    # *"knobs that change speed and not the answer"*.  Sweep something
+    # outside it and each point measures a DIFFERENT calculation -- so the
+    # comparison the benchmark exists to make says nothing, and it says
+    # nothing silently, which is why this is an error rather than a warning.
+    out.extend(_bench_names_a_speed_knob(task, cls))
+
     # -- 2. the schema fingerprint -- the ONE non-refusal ------------------
 
     # -- 3. every named field exists in the schema ------------------------
@@ -123,6 +136,34 @@ def preflight(task, config_cls=None, *,
             ladder = []
         out.extend(check_ladder_does_not_loosen(ladder))
         out.extend(check_identical_stages(ladder))
+    return out
+
+
+
+def _bench_names_a_speed_knob(task, cls) -> List[Issue]:
+    """§ 6.8: every ``bench`` key is an ``execution``-category field.
+
+    Read off the CONFIG CLASS's own metadata rather than a list kept here --
+    a second list of which parameters are sweepable is the copy that goes
+    stale, and this codebase has four documented cases of exactly that.
+    """
+    plan = getattr(task, "bench", None)
+    if not plan:
+        return []
+    sweepable = {f.name for f in dataclasses.fields(cls)
+                 if "execution" in (f.metadata.get("category") or ())}
+    out: List[Issue] = []
+    for name in sorted(plan):
+        if name in sweepable:
+            continue
+        known = ", ".join(sorted(sweepable)) or "(none)"
+        out.append(Issue(
+            "error",
+            f"bench names {name!r}, which {task.engine} does not declare as "
+            f"an `execution` parameter -- so sweeping it would measure a "
+            f"different calculation at each point and the comparison would "
+            f"mean nothing. Sweepable here: {known}",
+            where=f"task.bench.{name}"))
     return out
 
 

@@ -21,6 +21,19 @@ from molbuilder.jobset.model import Resources
 from molbuilder.jobset.prep import prep_calculation
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
+from molbuilder.task import Stage
+
+
+def _one_stage():
+    """The ordinary starting ladder: ONE stage (`engines/stages.md` § 6.5).
+
+    Until 2026-08-16 these cases were written stage-LESS -- ``stages=()``,
+    artifacts at the folder root, bare verbs.  That shape is gone: a single
+    stage is still a stage, so it is named, tokened (``01_coarse``) and
+    prepped exactly like a rung of a three-stage ladder.  The tests below
+    kept their subjects and moved onto this shape.
+    """
+    return (Stage(name="coarse", enabled=True, overrides={}),)
 
 
 @pytest.fixture(autouse=True)
@@ -645,14 +658,13 @@ def test_the_cg_pair_rule_holds_both_ways_on_a_live_bundle(calc):
         "the pair verification broke on the live path")
 
 
-def test_a_stageless_calculation_runs_end_to_end(tmp_path):
-    """R1 (review-4 keystone): `engines/stages.md` § 6.5's single-
-    parameter-set calculation is a FIRST-CLASS run.  Until 2026-08-12 the
-    tokenless fallback filed it under ``bench-<label>/`` (a directory
-    named for a benchmark), the hint said "prep run <stage>" over a
-    ladder with no stages, and submit was unreachable -- the whole form
-    was dead end-to-end.  The calculation IS its own one rung: deck,
-    wrapper and attempts at the bundle root, bare verbs acting on it."""
+def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
+    """R1 (review-4 keystone), rewritten 2026-08-16: the single-parameter-
+    set calculation is a FIRST-CLASS run.  Its shape changed -- § 6.5 now
+    gives that one parameter set a NAMED, tokened stage instead of the
+    tokenless root form -- but the property under test did not: prep,
+    submit and status all reach it, one rung deep, with no dangling link
+    anywhere in the attempt."""
     from click.testing import CliRunner
     from molbuilder import describe as D
     from molbuilder.config.siesta import SiestaConfig
@@ -665,7 +677,8 @@ def test_a_stageless_calculation_runs_end_to_end(tmp_path):
     (tmp_path / "h2.xyz").write_text(struct.to_xyz())
     dest = tmp_path / "calc"
     D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB"), (),
+        D.build_description(struct, SiestaConfig(system_label="JOB"),
+                            _one_stage(),
                             engine="siesta", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
@@ -673,27 +686,38 @@ def test_a_stageless_calculation_runs_end_to_end(tmp_path):
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))
     r = CliRunner()
+    # § 6.5: the bare verb does NOT guess the lone stage.  A rule that held
+    # only at length one would stop holding the moment a second stage was
+    # added -- so one rung refuses exactly as three do, listing the ladder.
     res = r.invoke(jobset_group, ["prep", "run", "--bundle", str(dest),
                                   "--no-sbatch"])
+    assert res.exit_code != 0, res.output
+    assert "coarse" in res.output, res.output
+    assert not (dest / "01_coarse").exists(), \
+        "the bare verb guessed the lone stage and prepped it"
+
+    res = r.invoke(jobset_group, ["prep", "run", "coarse", "--bundle",
+                                  str(dest), "--no-sbatch"])
     assert res.exit_code == 0, res.output
-    assert (dest / "run-0").is_dir()          # the attempt, at the root
-    assert not (dest / "bench-JOB").exists()  # the old misfiling
-    assert "prep run <stage>" not in res.output   # no circular hint
-    assert "submit run --mode" in res.output
+    rung = dest / "01_coarse"                 # the one rung, tokened
+    assert (rung / "run-0").is_dir()          # its attempt
+    assert not (dest / "run-0").exists()      # never at the root
+    assert not (dest / "bench-JOB").exists()  # nor named for a benchmark
+    assert "submit run coarse --mode" in res.output
     # Every link in the attempt RESOLVES.  The 2026-08-12 redo found the
     # first version of this test asserting existence only, over links that
     # all dangled (prepare_attempt hopped a hardcoded "../.." over a
     # depth-1 attempt): prep exited 0, submit was dead.  Existence of a
     # symlink proves nothing -- resolve it.
-    links = [p for p in (dest / "run-0").iterdir() if p.is_symlink()]
+    links = [p for p in (rung / "run-0").iterdir() if p.is_symlink()]
     assert links, "the attempt holds no links -- prep changed shape"
     for link in links:
         assert link.resolve().is_file(), \
             f"{link.name} -> {os.readlink(link)} dangles"
     js = json.loads((dest / "job-set.json").read_text())
     assert js["kind"] == "ladder" and len(js["jobs"]) == 1
-    res = r.invoke(jobset_group, ["submit", "run", "--bundle", str(dest),
-                                  "--mode", "direct", "--dry-run"])
+    res = r.invoke(jobset_group, ["submit", "run", "coarse", "--bundle",
+                                  str(dest), "--mode", "direct", "--dry-run"])
     assert res.exit_code == 0, res.output
     assert res.output.count("WOULD run") == 1
     # A REAL direct launch, not --dry-run: the launcher stats the wrapper
@@ -701,15 +725,17 @@ def test_a_stageless_calculation_runs_end_to_end(tmp_path):
     # "run prep_jobset first" refusal), and run.json is written at start,
     # so the record proves the launch began no matter how the engine's
     # process exits in this environment.
-    res = r.invoke(jobset_group, ["submit", "run", "--bundle", str(dest),
-                                  "--mode", "direct"])
+    res = r.invoke(jobset_group, ["submit", "run", "coarse", "--bundle",
+                                  str(dest), "--mode", "direct"])
     assert "run prep_jobset first" not in res.output
-    assert (dest / "run-0" / "run.json").is_file(), res.output
+    assert (rung / "run-0" / "run.json").is_file(), res.output
     res = r.invoke(jobset_group, ["status", "--bundle", str(dest)])
     assert res.exit_code == 0, res.output
-    # a SWEEP's tokenless jobs live in the bare bench/ container beside
-    # their own record (§ 6.3's stageless row; A-2, 2026-08-13) -- never
-    # at the root where R1's misfiling put the stageless RUN
+    # A hand-built SWEEP whose jobs carry no token still files them in the
+    # bare bench/ container beside their own record (§ 6.3; A-2,
+    # 2026-08-13).  No DESCRIPTION reaches this row any more -- every one
+    # of them has a stage, so every deck has a token -- but the naming
+    # authority is still asked it directly, so it is still pinned.
     from molbuilder.jobset.materialize import job_dir_names
     from molbuilder.jobset.model import Job, JobSet, Resources
     sweep = JobSet(name="X", engine="siesta", kind="sweep",
@@ -718,15 +744,14 @@ def test_a_stageless_calculation_runs_end_to_end(tmp_path):
     assert job_dir_names(sweep)["G1K1C4"] == "bench/bench-G1K1C4"
 
 
-def test_a_stageless_calculation_continues_from_its_own_attempt(tmp_path):
-    """A-3 (final review, 2026-08-13): ``--from run-0`` on a § 6.5
-    stageless calculation names the ROOT job, whose directory is ``.`` --
-    and matching the path's HEAD component could never equal ``.``, so
-    the pair read as UNVERIFIED and `warm_carry` silently withheld the
-    conditional ``.CG`` while prep reported success.  The source is the
-    attempt's PARENT read back through the naming authority, and a job
-    continuing from its own attempt is the one pair that cannot disagree
-    with itself."""
+def test_a_one_stage_calculation_continues_from_its_own_attempt(tmp_path):
+    """A-3 (final review, 2026-08-13), rewritten 2026-08-16: a job
+    continuing from its OWN attempt is the one pair that cannot disagree
+    with itself, so `warm_carry` must hand it the conditional ``.CG``.
+    The original bug needed the stage-less root directory ``.`` to bite (a
+    head-component match could never equal it) and § 6.5 has since deleted
+    that shape -- but the invariant is about the self-pair, not the
+    spelling, so it is re-pinned here on the one-stage form."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     from molbuilder.jobset.materialize import write_run_launch
@@ -737,16 +762,17 @@ def test_a_stageless_calculation_continues_from_its_own_attempt(tmp_path):
     (tmp_path / "h2.xyz").write_text(struct.to_xyz())
     dest = tmp_path / "calc"
     D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB"), (),
+        D.build_description(struct, SiestaConfig(system_label="JOB"),
+                            _one_stage(),
                             engine="siesta", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
     (dest / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))
-    # a stageless calculation that CONTINUES: `restart` is the ONE field
-    # that says so (run-identity.md § 4 rule 2), set where a user sets it
-    # -- the template.
+    # a calculation that CONTINUES: `restart` is the ONE field that says
+    # so (run-identity.md § 4 rule 2), set where a user sets it -- the
+    # template.
     tpl = dest / "JOB.template.toml"
     head, sep, tail = tpl.read_text().partition("[item.restart]")
     assert sep, "the template lost its restart item"
@@ -754,23 +780,25 @@ def test_a_stageless_calculation_continues_from_its_own_attempt(tmp_path):
     tpl.write_text(head + sep + tail.replace('value = "clean"',
                                              'value = "continue"', 1))
     r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "run", "--bundle", str(dest),
-                                  "--no-sbatch"])
+    res = r.invoke(jobset_group, ["prep", "run", "coarse", "--bundle",
+                                  str(dest), "--no-sbatch"])
     assert res.exit_code == 0, res.output
-    # the attempt ran (hit its step cap, say): warm files in the root
-    # attempt, launch on record
-    (dest / "run-0" / "JOB.XV").write_text("relaxed coords")
-    (dest / "run-0" / "JOB.CG").write_text("cg history")
-    write_run_launch(dest / "run-0", mode="direct", command=["bash"])
-    res = r.invoke(jobset_group, ["prep", "run", "--bundle", str(dest),
-                                  "--no-sbatch", "--from", "run-0"])
+    # the attempt ran (hit its step cap, say): warm files in it, launch on
+    # record
+    rung = dest / "01_coarse"
+    (rung / "run-0" / "JOB.XV").write_text("relaxed coords")
+    (rung / "run-0" / "JOB.CG").write_text("cg history")
+    write_run_launch(rung / "run-0", mode="direct", command=["bash"])
+    res = r.invoke(jobset_group, ["prep", "run", "coarse", "--bundle",
+                                  str(dest), "--no-sbatch",
+                                  "--from", "01_coarse/run-0"])
     assert res.exit_code == 0, res.output
-    carried = {p.name for p in (dest / "run-1").glob("JOB.*")
+    carried = {p.name for p in (rung / "run-1").glob("JOB.*")
                if not p.is_symlink()}
     assert "JOB.XV" in carried
     assert "JOB.CG" in carried, (
-        "continuing a stageless calculation from its own attempt withheld "
-        "the optimizer history -- the self-pair read as unverified (A-3)")
+        "continuing from its own attempt withheld the optimizer history "
+        "-- the self-pair read as unverified (A-3)")
 
 
 def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
@@ -789,7 +817,7 @@ def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
     dest = tmp_path / "calc"
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB",
-                                                 net_charge=1), (),
+                                                 net_charge=1), _one_stage(),
                             engine="siesta", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest, struct=struct)
@@ -797,7 +825,7 @@ def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))
     res = CliRunner().invoke(jobset_group,
-                             ["prep", "run", "--bundle", str(dest),
+                             ["prep", "run", "coarse", "--bundle", str(dest),
                               "--no-sbatch"])
     assert res.exit_code == 0, res.output
     deck = next(dest.glob("*.fdf")).read_text()
@@ -806,13 +834,18 @@ def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
             "the deck instructs running a script prep did not write")
 
 
-def test_a_stageless_calculation_can_be_benchmarked(tmp_path):
-    """A4 (redo 2026-08-12): R1 wired the stageless verdict offer, but no
-    code path could CREATE a stageless benchmark -- the bare `prep bench`
-    refused asking for a stage name that does not exist, and the
-    summarize hint interpolated the None ("prep bench None").  The bare
-    bench now measures the one parameter set, mirroring bare `prep run`;
-    its record lives in the root bench/ container."""
+def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
+    """A4 (redo 2026-08-12), rewritten 2026-08-16: a one-stage calculation
+    can be benchmarked, and it is benchmarked the way every rung is --
+    ``prep bench <stage>``, trials in THAT stage's container.
+
+    A4's own subject was the bare-verb bench grammar for a stage-less
+    calculation (a lone name after ``bench`` bound to the trial, two names
+    refused, and the hint printed "prep bench None").  § 6.5 deleted the
+    shape that grammar served, so those assertions are retired rather than
+    translated -- there is no longer a calculation that owns no stage.
+    What survives is the part that was never about stage-less-ness: the
+    verdict offer, and one trial per invocation naming exactly its own."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     struct = Structure(elements=["H", "H"],
@@ -822,7 +855,8 @@ def test_a_stageless_calculation_can_be_benchmarked(tmp_path):
     (tmp_path / "h2.xyz").write_text(struct.to_xyz())
     dest = tmp_path / "calc"
     D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB"), (),
+        D.build_description(struct, SiestaConfig(system_label="JOB"),
+                            _one_stage(),
                             engine="siesta", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
@@ -835,43 +869,42 @@ def test_a_stageless_calculation_can_be_benchmarked(tmp_path):
                                       gpus_per_node=1,
                                       gpu_type="a100")).to_json() + "\n")
     r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(dest),
-                                  "--no-sbatch"])
+    res = r.invoke(jobset_group, ["prep", "bench", "coarse", "--bundle",
+                                  str(dest), "--no-sbatch"])
     assert res.exit_code == 0, res.output
-    assert "prep bench None" not in res.output
-    js = json.loads((dest / "bench" / "job-set.json").read_text())
+    assert "None" not in res.output, res.output
+    bench = dest / "01_coarse" / "bench"
+    js = json.loads((bench / "job-set.json").read_text())
     assert js["kind"] == "sweep" and len(js["jobs"]) >= 2
-    # trial decks carry NO stage token: the calculation is its one rung
+    # trial decks carry the rung's token like any other stage's trials
     for j in js["jobs"]:
         assert (dest / j["script"]).is_file()
-        assert "_0" not in j["script"], j["script"]
-    # A-2 (2026-08-13): the trials live IN the bare bench/ container,
+        assert "01_coarse" in j["script"], j["script"]
+    # A-2 (2026-08-13): the trials live IN their stage's bench container,
     # beside the record just read -- not at the root, where the
     # underway-ask never looked and a re-prep silently re-rendered the
     # decks a queued trial's links point at.
     for j in js["jobs"]:
-        assert (dest / "bench" / f"bench-{j['name']}").is_dir()
+        assert (bench / f"bench-{j['name']}").is_dir()
         assert not (dest / f"bench-{j['name']}").exists()
-    # A-4 (2026-08-13): a stageless calculation owns no stage, so the lone
-    # name after `bench` binds to the TRIAL -- the exact form prep's own
-    # hint prints.  Until the fix it bound to the ignored stage positional
-    # and the NEXT unlaunched trial launched instead of the one named.
+    # one trial per invocation, and it is the one NAMED -- not the next
+    # unlaunched (A-4, 2026-08-13).
     t0, t1 = js["jobs"][0]["name"], js["jobs"][1]["name"]
-    res = r.invoke(jobset_group, ["submit", "bench", t1, "--bundle",
+    res = r.invoke(jobset_group, ["submit", "bench", "coarse", t1, "--bundle",
                                   str(dest), "--mode", "direct", "--dry-run"])
     assert res.exit_code == 0, res.output
     would = [l for l in res.output.splitlines() if "WOULD run" in l]
     assert len(would) == 1, res.output
     assert t1 in would[0] and t0 not in would[0], res.output
-    # two names on a stageless calculation contradict its own form: refuse
-    res = r.invoke(jobset_group, ["submit", "bench", t0, t1, "--bundle",
-                                  str(dest), "--mode", "direct", "--dry-run"])
-    assert res.exit_code != 0 and "stageless" in res.output
-    # and summarize with a name refuses rather than silently ignoring it
+    # an unknown stage is refused with the ladder listed, not ignored
     res = r.invoke(jobset_group, ["summarize", "bench", "not-a-stage",
                                   "--bundle", str(dest)])
-    assert res.exit_code != 0 and "stageless" in res.output
-    # a laddered calculation's bare bench still owes a name
+    assert res.exit_code != 0 and "not-a-stage" in res.output
+    # and a bare bench owes a name here exactly as it does on three rungs
+    res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(dest),
+                                  "--no-sbatch"])
+    assert res.exit_code != 0 and "name it" in res.output
+    # the same on a longer ladder -- one rule, not a per-length one
     ladder = tmp_path / "laddered"
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"),
@@ -946,13 +979,13 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
     assert not (dest / "bench").exists()
 
 
-def test_a_flat_stageless_calculation_preps_to_completion(tmp_path):
-    """A2 (redo 2026-08-12): `_lone_stageless_job` is shape-blind, so a
-    FLAT stageless calculation's bare prep ran the attempt tail the CLI
-    itself added -- and prepare_attempt's flat refusal turned a
-    SUCCESSFUL prep into exit 1.  Flat prep is complete without an
-    attempt; only an explicit --from/--cold (attempt asks flat cannot
-    serve) reaches the refusal."""
+def test_a_flat_one_stage_calculation_preps_to_completion(tmp_path):
+    """A2 (redo 2026-08-12), rewritten 2026-08-16: FLAT prep is COMPLETE
+    without an attempt -- only an explicit ``--from``/``--cold`` (an
+    attempt ask flat cannot serve) reaches prepare_attempt's refusal.  The
+    original bug rode the stage-less bare-verb path § 6.5 has since
+    deleted; the shape-blindness it exposed is still worth pinning, so the
+    case moved onto the one-stage form."""
     from click.testing import CliRunner
     from molbuilder import describe as D
     from molbuilder.config.siesta import SiestaConfig
@@ -965,7 +998,8 @@ def test_a_flat_stageless_calculation_preps_to_completion(tmp_path):
     (tmp_path / "h2.xyz").write_text(struct.to_xyz())
     dest = tmp_path / "calc"
     D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB"), (),
+        D.build_description(struct, SiestaConfig(system_label="JOB"),
+                            _one_stage(),
                             engine="siesta", shape="flat",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
@@ -973,15 +1007,15 @@ def test_a_flat_stageless_calculation_preps_to_completion(tmp_path):
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))
     r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "run", "--bundle", str(dest),
-                                  "--no-sbatch"])
+    res = r.invoke(jobset_group, ["prep", "run", "coarse", "--bundle",
+                                  str(dest), "--no-sbatch"])
     assert res.exit_code == 0, res.output
     assert "no attempt to open" in res.output
     assert "submit run" in res.output
     assert not (dest / "run-0").exists()
     # an attempt ASK on flat is still the one refusal, with its story
-    res = r.invoke(jobset_group, ["prep", "run", "--bundle", str(dest),
-                                  "--no-sbatch", "--cold"])
+    res = r.invoke(jobset_group, ["prep", "run", "coarse", "--bundle",
+                                  str(dest), "--no-sbatch", "--cold"])
     assert res.exit_code != 0
     assert "flat" in res.output
 
@@ -1012,13 +1046,14 @@ def test_a_config_refusal_is_a_refusal_not_a_traceback(tmp_path, monkeypatch):
     (tmp_path / "h2.xyz").write_text(struct.to_xyz())
     dest = tmp_path / "calc"
     D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB"), (),
+        D.build_description(struct, SiestaConfig(system_label="JOB"),
+                            _one_stage(),
                             engine="siesta", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
     (dest / ".molbuilder.json").write_text("{}")   # no activation anywhere
     res = CliRunner().invoke(jobset_group,
-                             ["prep", "run", "--bundle", str(dest),
+                             ["prep", "run", "coarse", "--bundle", str(dest),
                               "--no-sbatch"])
     assert res.exit_code != 0
     assert "activation" in res.output, res.output

@@ -137,9 +137,19 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     |---|---|---|
     | a stage token, job named for the stage | — | ``<NN>_<name>`` — the rung itself |
     | a stage token, job named by coordinate | — | a trial, in the stage's bench CONTAINER (:func:`bench_container`): ``<NN>_<name>/bench/bench-<point>`` hierarchical, ``bench_<NN>_<name>/bench-<point>`` flat |
-    | no token | ``kind="ladder"``, job named AS the set | ``.`` — the bundle root: a STAGELESS calculation (`engines/stages.md` § 6.5) IS its own one rung, and runs where its deck already sits.  In § 6.5's form the job and the set share the calculation's one label (`run-identity.md` § 2) — an identity that survives submit's only-narrowing, where a length test flipped the answer mid-flight (found by this row's first cut, R1) |
-    | no token | ``kind="sweep"`` | ``bench/bench-<name>`` — a STAGELESS calculation's trial, in the bare container where its sweep's record already sits (§ 6.3's stageless row; until 2026-08-13 these fell to the root, final review A-2) |
-    | no token | ``kind="ladder"``, job named its own way | ``bench-<name>`` at the root — hand-built tokenless ladders (tests), told apart by name alone |
+    | no token | ``kind="ladder"``, job named AS the set | ``.`` — the bundle root |
+    | no token | ``kind="sweep"`` | ``bench/bench-<name>`` — the trial, in the bare container where its sweep's record already sits (until 2026-08-13 these fell to the root, final review A-2) |
+    | no token | ``kind="ladder"``, job named its own way | ``bench-<name>`` at the root — told apart by name alone |
+
+    **No DESCRIPTION reaches the three tokenless rows any more.**  They were
+    written for `engines/stages.md` § 6.5's stage-LESS calculation, which
+    that section retired on 2026-08-16: every description now carries at
+    least one stage, one stage is named and tokened like any other, so every
+    described deck carries a token and takes one of the first two rows.
+    What still arrives here tokenless is a HAND-BUILT :class:`JobSet` — one
+    assembled in code with no description behind it — and the rows stay
+    because the naming authority must answer for those too.  They are no
+    longer a statement about what a calculation can be.
 
     Until 2026-08-10 every kind got the trial prefix, so a staged run's
     directories came out ``point-coarse/`` (`worked-example.md` gap 6); until

@@ -126,10 +126,10 @@ def build_description(
     """Build and **check** a description. Nothing is written.
 
     ``cfg`` carries the values the template records — the science that holds
-    unless a stage says otherwise. ``stages`` is the ladder; pass an empty
-    sequence for a calculation with a single parameter set, which
-    `stages.md` § 6.5 spells by omitting both keys rather than by an empty
-    list.
+    unless a stage says otherwise. ``stages`` is the ladder, and it needs at
+    least one entry: § 6.5 (2026-08-16) makes ONE stage the ordinary starting
+    point rather than a special shape, so there is no stage-less form to pass
+    an empty sequence for. An empty one is refused, naming the fix.
 
     ``source`` is where the structure lives, recorded as a **reference**
     (§ 6.3). ``name`` is what the user called this calculation; the label and
@@ -140,6 +140,12 @@ def build_description(
     a file people edit by hand.
     """
     ladder = tuple(stages)
+    if not ladder:
+        raise DescribeError(
+            "no stages. A job has at least one stage -- one is the ordinary "
+            "case, not a special shape (engines/stages.md 6.5). Pass a single "
+            "Stage carrying no overrides for a calculation that is just the "
+            "template.")
     stage_names = tuple(s.name for s in ladder)
 
     task = Task(
@@ -150,10 +156,11 @@ def build_description(
         structure=StructureRef(source=source,
                                formula=struct.formula,
                                atoms=struct.n_atoms),
-        # § 6.5 -- absent together. An empty ``stages`` would be a second way
-        # to spell "one parameter set", so the no-ladder case passes neither.
-        varies=(varies_for(s.overrides for s in ladder) if ladder else None),
-        stages=(ladder or None),
+        # § 6.5: a job always has at least one stage, so these travel
+        # together and both are always present.  ``varies`` may be empty --
+        # several stages differing in nothing but their name is a real state.
+        varies=varies_for(s.overrides for s in ladder),
+        stages=ladder,
         calculation=calculation,
     )
 

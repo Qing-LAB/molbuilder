@@ -644,8 +644,8 @@ def token_for(task, stage_name: Optional[str]) -> str:
     same answer, and reaching in for a private name was the re-derivation
     habit the final review's C-c row names.
     """
-    if not task.stages or not stage_name:
-        return ""
+    if not stage_name:
+        return ""       # asked without naming a rung; every ladder has one
     from ..identity import stage_token
     for i, s in enumerate(task.stages, start=1):
         if s.name == stage_name:

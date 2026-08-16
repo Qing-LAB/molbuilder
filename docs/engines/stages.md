@@ -645,9 +645,55 @@ rather than inventing a second mechanism.
     { "name": "tight",  "enabled": true,
       "overrides": { "mesh_cutoff": 300, "relax_force_tol": 0.01,
                      "relax_type": "Broyden", "restart": "continue" } }
-  ]
+  ],
+
+  // WHAT TO MEASURE before committing (§ 6.8).  Optional; absent means
+  // no benchmark is planned.  Points to TRY, never an answer.
+  "bench": { "mpi_np": [4, 8, 16], "omp_threads": [1, 2] }
 }
 ```
+
+### 6.8 `bench` — a plan to measure, never a measurement
+
+**The problem it solves.** A calculation's resource settings — ranks, threads,
+memory, the GPU — cannot be chosen in a browser, because they depend on the
+machine. But *which of them are worth measuring, and over what points* is a
+decision about this calculation, and it is made by the person who set it up. So
+it belongs in the description, and nothing else in `task.json` could hold it:
+`varies` names per-stage physics columns, and `overrides` fills them.
+
+**The rule, and it is the same one § 6 already rests on:**
+
+> `task.json` records **points to try**. It never records what was found.
+
+That keeps the description portable in exactly the way `template.md` § 7
+requires. *"Measure ranks at 4, 8, 16"* is true on every machine. *"Use 16"* is
+true on one, and writing it here would make the file a machine's opinion rather
+than a calculation's description — the same reason an allocation item is
+declared **valueless** and `read_template` refuses a hand-edited `mpi_np`.
+
+**Where the answer goes instead.** `bench` runs on the target and writes
+`bench-result.json`, whose `choice` carries the measured value alongside the
+rank and GPU counts; `prep` reads it there
+([`job-system.md § 7`](?doc=execution/job-system.md)). Two files, two jobs: the
+description says what to ask, the result says what the machine said.
+
+**A field may appear here that may never appear in the template**, and that is
+not a contradiction. `mpi_np` as a *point to try* is a question; `mpi_np` as an
+item value would be an assertion about a machine the description has not met.
+The two are different claims and only one of them travels.
+
+**What may be swept is not a free list.** A key must name a field the engine
+already declares sweepable — the `execution` category, which
+[`template.md` § 6.2](?doc=engines/template.md) defines as *"knobs that change
+speed and not the answer"*. Sweeping something outside it means each point
+silently measures a different calculation, and the comparison is meaningless.
+
+> **Why this is `@1` and not a new major.** The key is optional, and absent is
+> the correct reading of every `task.json` written before it existed: no bench
+> was planned. A major bump would invalidate every description on disk to add
+> something none of them says. Readers that predate the key are not a concern —
+> they ship together with the writer.
 
 ### 6.1 Four rules
 
@@ -778,19 +824,47 @@ description living only in a browser tab.
   — one file against one file — rather than by reading two directories of decks
   and inferring what was deliberate.
 
-### 6.5 One stage is no stages
+### 6.5 A job always has at least one stage
 
-**`stages` may be absent, and absent means one.** A description with no `stages`
-key is a calculation with a single parameter set — **the template, exactly** —
-and it produces one deck named `<label>.fdf`, with no stage suffix. Nothing about stages
-has to be understood to read or write it.
+> **Decided 2026-08-16 (user): *"Consistency and uniformity is better than all
+> these implicit rules. A single stage is still a stage. You start with one, and
+> that's it."*** This section said the opposite until then — that `stages` could
+> be absent and absent meant one — and the paragraph below records what that
+> cost.
 
-Three things follow, and they are one fact seen three times: the deck takes no
-suffix, findings carry no stage label (§ 4 R2), and `varies` is **absent** —
-there is nothing to vary across, and an empty list would be a second way to spell
-the same state.
+**Every description carries `stages`, with at least one entry.** One stage is the
+ordinary starting point, not a special shape: it gets a name, it gets the ordinal
+token like any other (`01_coarse`), and its artifacts are named the way every
+other stage's are. Adding a second stage later is adding a row.
 
-A description *with* `stages` has at least one; removing the last is refused.
+**What the old rule cost, and why it is gone.** A stage-less description produced
+artifacts with *no* token — `<label>.fdf`, `<label>.XV`, `<label>.out`, all at the
+folder root. That is fine while it stays stage-less. The moment a second stage is
+added, the ladder needs `01_` / `02_` tokens and **the existing run belongs to no
+token at all**: nothing says whether it *is* stage one or is simply orphaned.
+In `flat` the hazard is worse than cosmetic, because `.XV` and `.DM` are
+unsuffixed and shared by design — so a newly added `01_coarse` would warm-start
+from the stage-less run's geometry with nothing recording that it had. The fix
+for a transition nobody had specified is to make the transition impossible.
+
+**A description with no `stages` is refused, not repaired.** There is no
+migration and no tolerated older form — accepting one would reintroduce the
+second path this rule exists to delete, and the refusal names the fix.
+
+`varies` travels with `stages` and is therefore always present too; empty is a
+real state — several stages differing in nothing but their name.
+
+Removing the last stage is refused.
+
+**Every verb that acts on a stage is given the stage's name — including when
+there is only one.** `prep run coarse`, not `prep run`; `prep bench coarse`,
+not `prep bench`; `--from 01_coarse/run-0`, not `--from run-0`. A bare verb
+lists the ladder and stops, on one rung exactly as on three. Guessing the lone
+stage would be a rule that holds only at length one and silently stops holding
+when a second stage is added — the implicit kind this section exists to
+delete. The cost is one word typed; what it buys is that the command a user
+learns on their first calculation is the command that still works on their
+tenth.
 
 ### 6.6 The preflight
 

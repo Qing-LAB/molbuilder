@@ -1,10 +1,23 @@
 /* molbuilder web UI client — the structure-optimization tab page controller.
  *
- * Three concerns:
- *   1. POST /api/build/molecule with the user's input -> get back XYZ + meta.
- *   2. Mount the concealed MolView component to render + inspect the structure.
- *   3. POST /api/build/fdf with the XYZ + form values -> get back FDF text,
- *      offer it as a Blob download.
+ * WHAT THIS TAB DOES, and it is less than it used to:
+ *   1. Show the structure the sidebar loaded, through the MolView component.
+ *   2. Render the parameter form from the CATALOGUE (`/api/build/schema`,
+ *      fetched by the shared form library) and collect what the user sets.
+ *   3. Validate it live — POST /api/build/preflight — and place each finding
+ *      beside the control it is about.
+ *   4. Offer the auto-detected charge / spin — POST /api/structure/analyze.
+ *
+ * IT PRODUCES NO ARTIFACT.  It renders no deck, writes no file and hands
+ * nothing to `prep`.  Those two POSTs are the only calls it makes.
+ *
+ * This header described a third concern until 2026-08-15 — *"POST
+ * /api/build/fdf with the XYZ + form values -> get back FDF text, offer it as
+ * a Blob download"* — and that flow was removed when script generation and
+ * staging left this tab (user: the tab collects parameters, the staging
+ * surface owns the rest).  The route still exists in `build.py`; this UI no
+ * longer exposes it.  A file header that describes a removed feature is the
+ * worst kind of stale, because it is the first thing a reader trusts.
  *
  * MolView is consumed through its ONE public door (molview-esm-finalization.md): the ES-module
  * import below.  No `window.molbuilder.molview` / `.fmt` global reads — those are the transitional
