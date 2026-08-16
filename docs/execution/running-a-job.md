@@ -258,7 +258,7 @@ sets `mpi_np > n_atoms` is honoured and warned.
 > **What is not settled**, and is recorded rather than guessed: whether the auto
 > clamp should become a species-aware bound, and what the wrapper's post-run
 > `propor` hint should say instead of *"too many MPI ranks"*
-> ([`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+> ([`staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
 > § 5g, C12). The `.fdf` carries `NumberOfSpecies`, so the input exists.
 >
 > **And `propor: IMAX = 0` has at least three causes, only one of which is

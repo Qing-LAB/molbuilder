@@ -55,7 +55,7 @@
           "path": "model/parse.md"
         },
         {
-          "path": "model/cell-plan.md"
+          "path": "plans/cell-plan.md"
         }
       ]
     },
@@ -136,7 +136,7 @@
           "path": "execution/job-system.md"
         },
         {
-          "path": "execution/staged-runs-implementation-plan.md"
+          "path": "plans/staged-runs-implementation-plan.md"
         },
         {
           "path": "execution/architecture.md"
@@ -151,7 +151,7 @@
           "path": "execution/asu-sol.md"
         },
         {
-          "path": "execution/template-unification-plan.md"
+          "path": "plans/template-unification-plan.md"
         }
       ]
     },
@@ -169,7 +169,7 @@
           "path": "web/molview.md",
           "children": [
             {
-              "path": "web/molview-css-namespace-plan.md"
+              "path": "plans/molview-css-namespace-plan.md"
             }
           ]
         },
@@ -213,7 +213,7 @@
           "path": "web/spectra.md"
         },
         {
-          "path": "web/css-system-plan.md"
+          "path": "plans/css-system-plan.md"
         },
         {
           "path": "web/modify-persistency-investigation.md"
@@ -240,7 +240,7 @@
           "path": "ops/access-control.md"
         },
         {
-          "path": "ops/server-reload-plan.md"
+          "path": "plans/server-reload-plan.md"
         }
       ]
     },

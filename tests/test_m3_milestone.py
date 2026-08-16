@@ -1,6 +1,6 @@
 """M3 — P3's milestone, asserted as the plan states it.
 
-``docs/execution/staged-runs-implementation-plan.md`` P3:
+``docs/plans/staged-runs-implementation-plan.md`` P3:
 
   > A two-stage description whose second stage continues renders **every**
   > bound parameter set, and a stage set to `clean` renders **none** —

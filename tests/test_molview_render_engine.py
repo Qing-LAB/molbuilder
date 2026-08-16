@@ -1,7 +1,7 @@
 """The renderEngine — every test derived from ``docs/web/molview.md``, never from
 the source it checks (§ 13).
 
-Step F of the rebuild (``docs/web/molview-rework-plan.md``). The rows of § 13.3
+Step F of the rebuild (``docs/web/molview.md``). The rows of § 13.3
 guarded here:
 
     § 10.5  the cost matches what changed

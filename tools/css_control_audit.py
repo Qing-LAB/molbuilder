@@ -5,7 +5,7 @@ WHY THIS IS A TOOL AND NOT A MEMORY.  The panel's controls were inconsistent
 (three type sizes, three font families, four heights) because browsers do not
 inherit fonts into `button` / `input` / `select`.  That was fixed with tokens and
 one rule scoped to `.molview-panel` -- and the scoping class is renamed by phase
-2 of docs/web/molview-css-namespace-plan.md.  Rename it, miss those rules, and
+2 of docs/plans/molview-css-namespace-plan.md.  Rename it, miss those rules, and
 every control reverts to browser defaults with NOTHING failing: the suite cannot
 see a computed style.
 

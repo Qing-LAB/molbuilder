@@ -130,7 +130,7 @@ spin contract (§ 5), the lattice and k-grid (§ 6), and the eigensolver rules
 which is exactly why the config object is the right seam to keep.
 
 The work item is
-[`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+[`staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
 P12 unit 6b (R3 — the contract holds the rule, the plan holds the order).
 
 ---

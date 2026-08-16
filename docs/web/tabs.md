@@ -32,12 +32,13 @@ There are **six tabs**, and their order is defined in exactly one place — the
 | **Documents** | `/documents` | read the in-app docs (this page!) | this doc § 5 |
 
 > **A seventh is planned and not built** — a **shared** tab that starts from a
-> calculation folder and fills in each stage's values, so that every generating
-> tab above feeds one implementation rather than each growing its own stage
-> table. Its working name is *Task Setup*, and the design is
-> [`task-setup-plan.md`](?doc=web/task-setup-plan.md). It is named here because
-> the roster is a contract and a reader deserves to know one more row is coming;
-> nothing in this document describes it as shipped.
+> calculation folder and turns it into a description: the stages, and the machine
+> settings you either choose or measure. Every generating tab above feeds that
+> one implementation rather than each growing its own stage table. It is called
+> **Job Prep** and its design is [`job-prep.md`](?doc=web/job-prep.md). It is
+> named here because the roster is a contract and a reader deserves to know one
+> more row is coming; nothing in this document describes it as shipped.
+> *(The working name was *Task Setup* until 2026-08-16.)*
 
 **Molbuilder is the landing tab** — a bare `/` redirects to whatever is first in
 `TABS`. The tab nav bar itself is injected into every page from that one list (a

@@ -181,7 +181,7 @@ def measure_bare_archived_citations() -> list[str]:
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "OPEN — decision 32 in docs/execution/staged-runs-implementation-plan.md "
+    "OPEN — decision 32 in docs/plans/staged-runs-implementation-plan.md "
     "§ 8.  277 bare citations of 31 archived-only documents; the biggest are "
     "parse-module.md (46) and job-execution.md (41).  slurm-integration.md was "
     "the largest and is now CLOSED — all 51 repointed to running-a-job.md and "

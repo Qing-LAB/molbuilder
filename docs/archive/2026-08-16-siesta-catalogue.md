@@ -2,7 +2,7 @@
 
 **Role:** plan
 **Domain:** execution
-**Companions:** [`execution/template-unification-plan.md`](?doc=execution/template-unification-plan.md)
+**Companions:** [`plans/template-unification-plan.md`](?doc=plans/template-unification-plan.md)
 (the plan this unit serves) · [`engines/template.md`](?doc=engines/template.md)
 § 6.2 (the category vocabulary — **the authority**) ·
 [`engines/siesta.md`](?doc=engines/siesta.md).

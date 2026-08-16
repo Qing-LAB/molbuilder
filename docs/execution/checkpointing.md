@@ -1650,5 +1650,5 @@ the rows above it as well, naming three test files that no longer exist —
 - **The folder being saved, and the two moments a save is offered** —
   [`engines/stages.md`](?doc=engines/stages.md) § 7.
 - **Phasing and what is built when** —
-  [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md) and
+  [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md) and
   [`roadmap.md`](?doc=roadmap.md) (R3).

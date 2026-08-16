@@ -1,6 +1,6 @@
 """Every class MolView's stylesheet defines is namespaced.
 
-Phase 5 of docs/web/molview-css-namespace-plan.md, and the reason the other
+Phase 5 of docs/plans/molview-css-namespace-plan.md, and the reason the other
 four phases stay done.
 
 MolView's doctrine is concealment: one entry point, 3Dmol named in exactly one
@@ -51,7 +51,7 @@ def test_every_class_molview_defines_is_namespaced():
         + "\n\nEvery class this stylesheet defines belongs to MolView and says so."
         "\nA bare name (`.card`, `.is-active`, `.viewer`) is one another page can"
         "\ndefine too, and then load order decides which one wins."
-        "\nSee docs/web/molview-css-namespace-plan.md."
+        "\nSee docs/plans/molview-css-namespace-plan.md."
     )
 
 

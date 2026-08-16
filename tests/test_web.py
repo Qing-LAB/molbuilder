@@ -52,7 +52,7 @@ def test_index_page_has_tab_markup(web_client):
         # generated the script itself, so the Generate button was the
         # thing that proved the PySCF panel was wired.  The tab now
         # COLLECTS PARAMETERS and hands them on -- the browser describes,
-        # the terminal acts (`web/task-setup-plan.md` § 2) -- so the
+        # the terminal acts (`web/job-prep.md` § 1) -- so the
         # container is what proves it, and asserting a button that is
         # deliberately gone would pin the retired shape.
         'id="pyscf-form-container"',
@@ -64,7 +64,7 @@ def test_index_page_has_tab_markup(web_client):
 def test_the_tab_neither_generates_nor_saves(web_client):
     """The tab collects parameters; it does not produce artefacts.
 
-    `web/task-setup-plan.md` § 2 — *the browser describes and observes,
+    `web/job-prep.md` § 1 — *the browser describes and observes,
     the terminal acts*.  A deck carries values that depend on how it will
     be launched, so a browser that "finished" one would be guessing.  This
     is the guard on that: the buttons are not merely unwired, they are
@@ -892,7 +892,7 @@ def test_molbuilder_page_loads(web_client):
         # THE PAGE'S OWNER, and the only modify/ module with a <script> tag.
         # `viewer.js` and `periodicity.js` are IMPORTED by it -- they used to
         # load before the file that mounts, so nothing could have handed them a
-        # viewer even if one had existed (molview-integration-plan.md § 6.3).
+        # viewer even if one had existed (molview.md § 8 — making and tearing down a viewer).
         # Asserting a tag for viewer.js pinned that broken load order.
         "modify/selection-bootstrap.js",
         # Scaffolding the JS targets by id.  Post-Track-B the template

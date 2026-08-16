@@ -482,5 +482,5 @@ wrapper, and propose a `BlockSize` for that stage when the description leaves
 it unset. Those are
 `engines/stages.md` and `execution/run-identity.md`, and they come before any of
 this is drawn — milestone **M2** of
-[`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md),
+[`staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md),
 which is the gate that plan puts in front of every UI item.

@@ -12,7 +12,7 @@ whether a stage continues; [`execution/job-contracts.md`](?doc=execution/job-con
 — the run directory the decks land in and the persisted-artifact registry;
 [`engines/template.md`](?doc=engines/template.md) — the file the effective config
 is resolved *from*, and the format every engine's parameters share;
-[`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+[`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
 — the plan that motivates this contract and schedules the work.
 
 **Status: landed.** This document was written first and the code built to it,
@@ -1089,7 +1089,7 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
 
 - **the cell, explicit** — the description holds cell *parameters*; the generator
   computes the vectors and shifts the atoms into the frame the deck must carry
-  (`model/cell-plan.md`).
+  (`plans/cell-plan.md`).
 - **pseudopotentials resolved** per species, through the path that already
   refuses on `xc_family_mismatch`, and written into the folder. (`job-contracts.md
   § 2.7` says the layout does not *require* co-location; putting them there is
@@ -1559,5 +1559,5 @@ were written for a flat directory and would silently have lost data in a tree.
   says *when* a checkpoint is taken and *what it is called*; that one says what
   must be true of it afterwards, in a form a test can assert.
 - **Phasing, status, and what is built when** —
-  [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md) and
+  [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md) and
   [`roadmap.md`](?doc=roadmap.md) (R3).

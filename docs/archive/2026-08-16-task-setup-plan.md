@@ -13,7 +13,7 @@ does and why the browser cannot do it;
 from;
 [`web/structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)
 — the tab that writes the description this one edits;
-[`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+[`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
 — when it gets built.
 
 **Status: a proposal** (2026-08-07). Nothing here is built. The name *Task
@@ -385,7 +385,7 @@ introduces no new persisted format: it edits the description
 
 It is **not** free of backend work. The tab is only worth building once a stage
 can override a parameter the stage type never carried — which is milestone **M2**
-of [`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md),
+of [`staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md),
 and the gate that plan puts before any UI work for a reason: draw first, and the
 page gets designed around what the model happens to allow rather than what a user
 needs.

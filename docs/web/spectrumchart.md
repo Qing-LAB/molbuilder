@@ -883,7 +883,7 @@ Five rules, and they are the ones peculiar to *this* module:
 **The repository's CSS conventions apply here as they do everywhere else** — one
 class per rule, no ids, no `!important`, no value written twice — and they are
 *not* restated in this contract. They live in
-[`css-system-plan.md`](?doc=web/css-system-plan.md), which is also where the
+[`css-system-plan.md`](?doc=plans/css-system-plan.md), which is also where the
 page-versus-module boundary is argued. A rule that would be true of any stylesheet
 in this repository does not belong in the design of a spectrum chart.
 

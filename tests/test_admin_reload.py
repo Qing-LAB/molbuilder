@@ -1,6 +1,6 @@
 """The admin Reload route, and the two locks on it.
 
-Contract: docs/ops/server-reload-plan.md § 3.3 and § 4.
+Contract: docs/plans/server-reload-plan.md § 3.3 and § 4.
 
 WHAT THIS ROUTE DOES: exits the process with a code the supervisor is waiting
 for, so a fresh server starts with every module imported again.  There is no

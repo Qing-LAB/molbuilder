@@ -497,7 +497,7 @@ class Structure:
         # NOTHING -- the same "unset" its three siblings (cell, cell_origin,
         # axis_kind) have always had, and the state the whole regime model
         # needs in order to tell "I want no gap" from "I never said" (see
-        # docs/model/cell-plan.md § 3a).  Until 2026-08-03 this field defaulted
+        # docs/plans/cell-plan.md § 3a).  Until 2026-08-03 this field defaulted
         # to (0, 0, 0) and those two were one value, so no rule could branch on
         # the difference.
         if self.vacuum is not None:

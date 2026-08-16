@@ -8,7 +8,7 @@ restart banner (§ 4), all of which this document builds on and none of which it
 changes; [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — how a
 run is actually launched and what the wrapper does with the files;
 [`engines/stages.md`](?doc=engines/stages.md) — the description this id is
-derived from; [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+derived from; [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
 — the plan that motivates this contract and schedules the work.
 
 **Status: landed.** Written first, then built to: `task.json` stores the id
@@ -565,7 +565,7 @@ the answer to each is a message, not a wider pin.
 
 | Case | Why the id cannot fix it | Who says it, and what |
 |---|---|---|
-| **changed cell parameters** | the cell in the deck is *derived* from the parameters and the structure (`model/cell-plan.md`), and derived values cannot be in the id (§ 2). And the hazard is not a mismatch — a `.XV` carries its own cell and its own frame, so on a continue it **wins**: widening the vacuum changes the deck and changes nothing about the run | the surface, at check time: *state found, written under different cell parameters — a continue will keep the saved cell* |
+| **changed cell parameters** | the cell in the deck is *derived* from the parameters and the structure (`plans/cell-plan.md`), and derived values cannot be in the id (§ 2). And the hazard is not a mismatch — a `.XV` carries its own cell and its own frame, so on a continue it **wins**: widening the vacuum changes the deck and changes nothing about the run | the surface, at check time: *state found, written under different cell parameters — a continue will keep the saved cell* |
 | **the structure moved under a saved description** | the description holds a reference plus a witness (`engines/stages.md § 6.3`), so the mismatch is detectable | the **reader**, as a finding at preflight: *this description was written against a different structure* |
 | **prior state from another calculation, different label** | different stem, so the engine will not load it — but the user should know it is there | the **surface** at check time, and the **wrapper banner** at run time: *prior state found, but from a different calculation* |
 | **prior state from another calculation, same label** | **the engine will load it.** Since § 2.0a the formula is not in the stem, so two molecules under one label in one folder share warm files. A differing atom count the engine refuses loudly; an isomer or a substitution it cannot see | the **surface** at check time, by comparing the formula in `task.json` against the structure being generated: *state found, but written for a different molecule*. This row is the price of decision 26 and the reason the formula stays in the id |
@@ -659,6 +659,6 @@ owns it.*
 - **What a stage is, and the description the id is derived from** —
   [`engines/stages.md`](?doc=engines/stages.md).
 - **Phasing and what is built when** —
-  [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md) and
+  [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md) and
   [`roadmap.md`](?doc=roadmap.md) (R3). *(Open questions about the **id** are
   § 6a above, because they are this contract's to answer.)*

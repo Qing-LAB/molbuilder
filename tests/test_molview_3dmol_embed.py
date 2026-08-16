@@ -1,7 +1,7 @@
 """The sealed layer — every test derived from ``docs/web/molview.md``, never from
 the source it checks (§ 13).
 
-Step B of the rebuild (``docs/web/molview-rework-plan.md``). The rows of § 13.3
+Step B of the rebuild (``docs/web/molview.md``). The rows of § 13.3
 guarded here:
 
     § 9.9  the sealed layer faces downward only

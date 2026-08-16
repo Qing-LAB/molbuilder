@@ -1,7 +1,7 @@
 """Mounting, and the handle — every test derived from ``docs/web/molview.md``,
 never from the source it checks (§ 13).
 
-Step G of the rebuild (``docs/web/molview-rework-plan.md``). The rows of § 13.3
+Step G of the rebuild (``docs/web/molview.md``). The rows of § 13.3
 guarded here:
 
     § 4    the module is self-contained

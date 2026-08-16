@@ -21,7 +21,7 @@ frozen at its template state, and 139 passing tests said nothing.
 
 So every assertion below is something a user can see: DOM in, DOM out.  The
 tests are the six steps of the browser walk in
-``docs/web/molview-integration-plan.md`` § 6.5, and each one would have caught
+``docs/web/molview.md`` § 6.5, and each one would have caught
 at least one of those seven.
 
 WHAT IS DELIBERATELY NOT HERE

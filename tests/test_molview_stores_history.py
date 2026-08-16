@@ -1,7 +1,7 @@
 """The stores and the session history — every test derived from
 ``docs/web/molview.md``, never from the source it checks (§ 13).
 
-Step E of the rebuild (``docs/web/molview-rework-plan.md``). The rows of § 13.3
+Step E of the rebuild (``docs/web/molview.md``). The rows of § 13.3
 guarded here:
 
     § 9.5  the selection survives an editor switch

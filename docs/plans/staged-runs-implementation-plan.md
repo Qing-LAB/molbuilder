@@ -1950,7 +1950,7 @@ because other producers are cheap to add and expensive to debug remotely.
 `job-system.md`'s lifecycle names between prep and submit.
 
 **Re-anchor:** `engines/stages.md § 6.4` (**one reader for both surfaces**) ·
-[`structure-optimization-ui-plan.md`](?doc=web/structure-optimization-ui-plan.md)
+[`structure-optimization-ui-plan.md`](?doc=archive/2026-08-16-structure-optimization-ui-plan.md)
 — § 7.1 (what this page decides: the **column set**, promote and demote) and
 § 7.5 (**two `budget` fields reach the deck**, so a field that changes the file
 is not a preference) · [`web/overview.md`](?doc=web/overview.md) (the module
@@ -2006,7 +2006,7 @@ invisible to stubs.
 **The one every later engine inherits**, which is why it is built against the
 contract rather than against whatever Structure optimization happens to need.
 
-**Re-anchor:** [`task-setup-plan.md`](?doc=web/task-setup-plan.md) **entire** ·
+**Re-anchor:** [`task-setup-plan.md`](?doc=web/job-prep.md) **entire** ·
 `engines/stages.md § 6.2` (`varies` is the column set) and § 6.5 (one stage is no
 stages) · [`web/form-schema.md`](?doc=web/form-schema.md) (**where the columns
 come from**) · `checkpointing.md` L1 (what makes a directory a calculation root).

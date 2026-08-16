@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Rename MolView CSS classes across every file that names them.
 
-WHY A TOOL.  docs/web/molview-css-namespace-plan.md moves 167 class names in
+WHY A TOOL.  docs/plans/molview-css-namespace-plan.md moves 167 class names in
 eight passes, and the two ways this goes wrong are both mechanical:
 
   * a PREFIX is not a namespace. `cell-` also matches `cell-detail` and

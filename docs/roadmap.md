@@ -86,9 +86,9 @@ authoritative.
 > is), [`execution/run-identity.md`](?doc=execution/run-identity.md) (the id) and
 > [`execution/checkpointing.md`](?doc=execution/checkpointing.md) (the history)
 > before building any of this. The design and each item's *"done when"* is
-> [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md);
+> [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md);
 > **the order, the milestones and the reviews are
-> [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)**,
+> [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)**,
 > which is the one build order for this workstream.
 
 ### Vocabulary (defined once, used throughout)
@@ -110,12 +110,12 @@ authoritative.
   authority** — for anything still open, the live owners are
   [`engines/stages.md`](?doc=engines/stages.md),
   [`execution/project-layout.md`](?doc=execution/project-layout.md) and
-  [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md).
+  [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md).
 
 ### Phasing
 
 **The SIESTA half of this workstream is planned in one place:**
-[`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+[`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
 — thirteen milestones bottom-up, from `task.json` to the two web tabs. What this
 workstream still owns *beyond* that plan is the two other engines and the gate
 between:
@@ -555,7 +555,7 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   with steps 6–7: trial directories still `point-` (C6), `cfg.stage` still the
   emitter's channel for the stage token (C7), `BlockSize`'s third state (C8),
   and the rank-clamp message (C12, needs a call). The order is argued in
-  [`execution/staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)
+  [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
   § 5g. They sit *behind* the front rather than blocking it, which is why none
   earns a milestone.
 

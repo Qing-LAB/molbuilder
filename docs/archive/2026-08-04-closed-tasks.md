@@ -91,7 +91,7 @@ writes into the developer's real project tree → **#46**.
 
 ## #48 — server reload without a manual restart (A–E)
 
-Closed by `d01e2d7`. Plan kept at `docs/ops/server-reload-plan.md` as the record
+Closed by `d01e2d7`. Plan kept at `docs/plans/server-reload-plan.md` as the record
 of what was decided **and rejected**.
 
 - **A** static revalidation. *The URL-version scheme was rejected:* it reaches

@@ -59,7 +59,7 @@ you are reading tells you how much to trust it and what to do when two disagree.
 
 | You want to know… | Open |
 |---|---|
-| **What gets built first, and how each step is checked** — the milestones, the gates, and the three reviews at each one | **[`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md)** |
+| **What gets built first, and how each step is checked** — the milestones, the gates, and the three reviews at each one | **[`staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)** |
 | The tab that **writes** a description — the stages, and the machine settings you choose or measure | **[`web/job-prep.md`](?doc=web/job-prep.md)** |
 
 **Where the design itself lives has changed.** It is
