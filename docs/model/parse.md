@@ -201,6 +201,7 @@ molbuilder/parse/
 │
 ├── engines/       # engine .out / .log → TrajectoryResult (FileParsers)
 │   ├── siesta.py · pyscf.py · molwatch.py
+│   ├── siesta_mdnc.py         # <label>.MD.nc (netCDF) — sibling upgrade, § 5a
 │   ├── _helpers.py            # Trajectory → TrajectoryResult adapters
 │   └── _section_rules.py · _sidecar.py   # shared extraction helpers
 │
@@ -254,6 +255,81 @@ isn't path-driven), **compose** the per-file results, and **apply cross-file
 invariants** no single FileParser can see (atom-count consistency, lattice
 handedness, stage ordering, status state machine). It must **never re-parse**
 what a registered FileParser can produce — add the missing FileParser instead.
+
+---
+
+## 5a. Sibling upgrade — when a second file sharpens the first
+
+Some engines write the *same* physics twice: once into the human-readable log,
+once into a structured sidecar. When they do, the parser for the log reads the
+sidecar and **replaces values in frames it already built** — it does not build
+a second trajectory.
+
+Three parsers do this today:
+
+| primary | sibling | what the sibling supplies |
+|---|---|---|
+| `engines/pyscf.py` | `<prefix>.qdata.txt` | per-step max force |
+| `engines/pyscf.py` | `<base>.molwatch.log` | convergence targets, run state |
+| `engines/siesta.py` | `<label>.MD.nc` | coordinates + per-step energy, in full precision |
+
+**The rules, which are what keep this from becoming a second source of truth:**
+
+1. **The primary file owns the frame list.** Count, order and indexing come
+   from the log and are never re-shaped. The sibling only swaps values into
+   frames that already exist.
+2. **Absence is ordinary.** No sibling, an unreadable one, or one that matches
+   nothing must parse *exactly* as the primary alone. A sidecar is an
+   improvement, never a dependency — so a run from a build that doesn't emit
+   it loses nothing.
+3. **Never invent.** A field the sibling lacks stays as the primary had it
+   (or stays `None`); it is never back-filled from a neighbouring step.
+4. **Say what happened.** Record the upgrade in `runtime_info` — which file,
+   how many frames changed — so a surprising number in the UI can be traced to
+   a file rather than to a guess.
+
+### The SIESTA case, and the trap in it
+
+`<label>.MD.nc` is netCDF, written whenever `WriteMDhistory` is on and the
+binary was built with `-DCDF` (both true for the packaged `molbuilder-siesta`).
+It matters because the `.out` is a Fortran-formatted text file: it prints
+`E_KS(eV) = -30.4405` — **four decimals**, coarser than the step-to-step energy
+change near convergence — and its fixed-width columns collide when values grow
+(`-1.929956131.029438`) or overflow to `**********`, which is why
+`engines/siesta.py` carries both a separator-inserting regex and a structural
+column slicer. Typed netCDF arrays have neither failure mode.
+
+**But a `.MD.nc` row is not a step.** Measured on a real relaxation
+(2026-08-15):
+
+```
+row k :  xa   = the geometry AFTER move k+1   ("predicted", per the manual)
+         etot = the energy OF geometry k      (the one just evaluated)
+```
+
+Pairing them by row index — the obvious implementation — attaches every
+geometry to the previous geometry's energy. Nothing raises, the frame count is
+right, and on a converging run the plot still looks reasonable. The correct
+pairing is `xa[k]` with `etot[k+1]`, and the last row has no energy yet.
+
+Two more properties shape the reader:
+
+- **There is no row for the input geometry.** So the merged trajectory keeps
+  the `.out`'s own frame 0 — the structure the user submitted, and the frame
+  every other one is read against.
+- **The file accumulates across runs** (SIESTA appends on restart). Frame index
+  is therefore not run-local, which is why `align_to_reference` matches on
+  **coordinates** rather than doing index arithmetic: a hardcoded lag is right
+  on a fresh run and wrong on every warm one.
+
+Units come from each variable's own `unit` attribute (`xa` is Bohr while
+`volume` is `Ang**3` *in the same file*), and an unrecognised unit is refused
+rather than assumed — a wrong factor is invisible in the result and wrong by a
+fixed ratio in every number downstream.
+
+Reading uses `netCDF4` when present and falls back to `scipy.io.netcdf_file`;
+both are exercised by the tests, because `molbuilder-pySCF` has scipy and no
+netCDF4.
 
 ---
 

@@ -74,30 +74,12 @@ _VALENCE_L_BY_ELEMENT: Dict[str, List[int]] = {
     "Au": [0, 1, 2],      # 5d 6s (treat as s,p,d)
 }
 
-# Minimal symbol -> Z table, enough to drive the block-based fallback
-# for elements not in _VALENCE_L_BY_ELEMENT.  Index = Z, so position 0
-# is a placeholder.
-_PERIODIC = [
-    "",
-    "H", "He",
-    "Li", "Be", "B", "C", "N", "O", "F", "Ne",
-    "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar",
-    "K", "Ca",
-    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
-    "Ga", "Ge", "As", "Se", "Br", "Kr",
-    "Rb", "Sr",
-    "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd",
-    "In", "Sn", "Sb", "Te", "I", "Xe",
-    "Cs", "Ba",
-    "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy",
-    "Ho", "Er", "Tm", "Yb", "Lu",
-    "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
-    "Tl", "Pb", "Bi", "Po", "At", "Rn",
-    "Fr", "Ra",
-    "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf",
-    "Es", "Fm", "Md", "No", "Lr",
-]
-_SYMBOL_Z = {sym: z for z, sym in enumerate(_PERIODIC) if sym}
+# Symbol -> Z, for the block-based fallback that covers elements absent
+# from _VALENCE_L_BY_ELEMENT.  The table itself moved to
+# ``molbuilder.chemistry`` on 2026-08-15, when the .MD.nc reader needed
+# the opposite direction (Z -> symbol) and a second copy would have been
+# two tables to keep in step.
+from ..chemistry import SYMBOL_TO_Z as _SYMBOL_Z          # noqa: E402
 
 
 # --------------------------------------------------------------------- #

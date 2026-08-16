@@ -48,6 +48,14 @@ htmlcov/
 # And keep frozen SIESTA .out fixtures for the parser dispatch tests.
 # These are checked-in COPIES of historical runs, not active output.
 !tests/watch/fixtures/**
+# Same for tests/parse/: the .MD.nc reader is checked against the .out
+# written by the SAME run, so the pair only proves anything together --
+# committing one half would leave a test that cannot run.
+!tests/parse/fixtures/**
+# ...but a .parse.log is a BYPRODUCT the parser writes next to whatever it
+# reads, not a fixture.  It regenerates on every run and would show up as a
+# spurious diff.
+tests/parse/fixtures/**/*.parse.log
 
 # 3DNA archive / extracted tree if a user drops it next to the package
 # during local install.  3DNA is distributed under a non-commercial-use

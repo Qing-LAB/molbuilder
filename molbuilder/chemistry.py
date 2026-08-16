@@ -57,6 +57,67 @@ import numpy as np
 from .structure import Structure
 
 
+# --------------------------------------------------------------------- #
+#  The periodic table, Z-indexed                                        #
+# --------------------------------------------------------------------- #
+#
+# ONE home, here, because two callers now need it and they sit in
+# different packages: ``siesta/memory.py`` maps a symbol to Z for its
+# per-species orbital estimate, and ``parse/engines/siesta_mdnc.py``
+# maps the OTHER way -- SIESTA's netCDF MD history stores ``iza``
+# (atomic numbers), never symbols, so a reader must name the elements
+# itself.  It lived privately in ``siesta/memory.py`` until 2026-08-15;
+# leaving it there would have meant either a duplicate table or a new
+# ``parse -> siesta`` import edge that this package has never had.
+#
+# ``chemistry`` is the right layer for it: it imports only
+# ``structure``, so nothing gains a dependency by reaching for this.
+#
+# Index IS the atomic number -- position 0 is the placeholder that
+# makes that true.
+PERIODIC_TABLE: List[str] = [
+    "",
+    "H", "He",
+    "Li", "Be", "B", "C", "N", "O", "F", "Ne",
+    "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar",
+    "K", "Ca",
+    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+    "Ga", "Ge", "As", "Se", "Br", "Kr",
+    "Rb", "Sr",
+    "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd",
+    "In", "Sn", "Sb", "Te", "I", "Xe",
+    "Cs", "Ba",
+    "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy",
+    "Ho", "Er", "Tm", "Yb", "Lu",
+    "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
+    "Tl", "Pb", "Bi", "Po", "At", "Rn",
+    "Fr", "Ra",
+    "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf",
+    "Es", "Fm", "Md", "No", "Lr",
+]
+
+#: Symbol -> atomic number, derived so the two directions cannot disagree.
+SYMBOL_TO_Z: Dict[str, int] = {
+    sym: z for z, sym in enumerate(PERIODIC_TABLE) if sym}
+
+
+def symbol_for_z(z: int) -> str:
+    """The element symbol for atomic number *z*.
+
+    Raises rather than returning a placeholder: a Z this table does not
+    cover means the file names an element molbuilder cannot represent,
+    and a silent ``"X"`` would flow into a Structure and be drawn,
+    measured and written out as if it were real.
+    """
+    if not isinstance(z, (int, np.integer)) or z < 1 or z >= len(PERIODIC_TABLE):
+        raise ValueError(
+            f"atomic number {z!r} is outside the table this build carries "
+            f"(1..{len(PERIODIC_TABLE) - 1}).  A file naming it describes an "
+            f"element molbuilder has no symbol for; extend PERIODIC_TABLE "
+            f"rather than letting an unnamed atom through.")
+    return PERIODIC_TABLE[int(z)]
+
+
 # Charged amino-acid side chains at physiological pH (7.4).  Used by
 # `expected_pH7_peptide_charge()` to estimate the net charge of a
 # peptide for the validator's "you built a neutral peptide but it

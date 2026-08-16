@@ -12,16 +12,23 @@ engine-native format.
 
 from molbuilder.parse.registry import register
 from .molwatch import MolwatchLogFileParser
+from .siesta_mdnc import SiestaMdNcFileParser
 from .siesta import SiestaOutFileParser
 from .pyscf import PySCFOutFileParser
 
 
 register(MolwatchLogFileParser)
+# Ahead of the text parsers: it claims a file by EXTENSION plus a netCDF
+# magic number, so it decides in a few bytes and can never false-match a
+# text .out.  Putting it after would cost every .MD.nc a content scan by
+# parsers that were always going to decline it.
+register(SiestaMdNcFileParser)
 register(SiestaOutFileParser)
 register(PySCFOutFileParser)
 
 __all__ = [
     "MolwatchLogFileParser",
+    "SiestaMdNcFileParser",
     "SiestaOutFileParser",
     "PySCFOutFileParser",
 ]

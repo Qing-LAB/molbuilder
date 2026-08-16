@@ -1906,4 +1906,26 @@ class SiestaOutFileParser(FileParser):
     @classmethod
     def parse(cls, path: Path) -> TrajectoryResult:
         traj = SiestaParser.parse(str(path))
+        # THE .out STAYS THE TRAJECTORY; the netCDF only sharpens it.
+        #
+        # SIESTA writes <label>.MD.nc beside the .out whenever
+        # WriteMDhistory is on and the binary was built with -DCDF (both
+        # true for the packaged env).  It holds the same geometries and
+        # energies WITHOUT having gone through a Fortran text formatter --
+        # full double precision instead of the .out's four decimals, and
+        # none of the fixed-width column collisions this module carries a
+        # regex and a structural slicer to survive.
+        #
+        # Everything the netCDF does NOT have -- run state, errors, forces,
+        # per-SCF-cycle history -- still comes from the text above, because
+        # SIESTA writes no structured equivalent for any of it.  So this is
+        # an upgrade of two fields on frames that already exist, never a
+        # second source of truth: `upgrade_frames` returns the same frames
+        # in the same order when there is no sibling, when it is
+        # unreadable, or when nothing matches.
+        from .siesta_mdnc import upgrade_frames
+        traj.frames, _mdnc_info = upgrade_frames(traj.frames, Path(path))
+        if _mdnc_info:
+            traj.runtime_info = dict(traj.runtime_info or {})
+            traj.runtime_info.update(_mdnc_info)
         return wrap_trajectory(traj, cls.name, path)
