@@ -384,71 +384,19 @@ class TestPeptideBuild:
         count = page.locator(".molviewer-selection-count").inner_text()
         assert count.split(" of ")[1].split()[0] == "3"   # water
 
-    def test_the_form_learns_the_structure_after_sidebar_load(
-            self, page, flask_server, water_xyz_file):
-        """A sidebar commit must reach the PARAMETER FORM, not just the viewer.
-
-        This asserted *"the Generate buttons enable"* until 2026-08-15.  The
-        tab no longer generates anything — it collects parameters and hands
-        them on (`web/task-setup-plan.md` § 2) — so that proof is gone, and
-        the property it stood for needs a different witness.
-
-        The witness is the block-size hint: it is the one control whose
-        DISPLAY depends on the loaded structure, showing ``auto (<N>, n=<atoms>)``
-        once a structure is in hand.  It is also exactly what regressed when
-        the form moved onto the catalogue — the field's DOM id changed and the
-        hint quietly stopped appearing, with nothing red, because the lookup
-        returned null and the code guarded.  A shape-only test cannot see
-        that; this can.
-        """
-        _open_build(page, flask_server)
-        # Pre-load: the hint has nothing to say yet.
-        assert not (page.locator("#p-parallel-block-size")
-                    .get_attribute("placeholder") or "").startswith("auto (")
-
-        page.wait_for_function(
-            "() => window.molbuilder "
-            "&& window.molbuilder.projects "
-            "&& typeof window.molbuilder.projects.publishCommit "
-            "       === 'function'",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        from pathlib import Path
-        p = str(Path(water_xyz_file).resolve())
-        parent = str(Path(p).parent)
-        page.evaluate(
-            """(ctx) => window.molbuilder.projects.publishCommit(
-                ctx.dir, ctx.file)""",
-            {"dir": parent, "file": p},
-        )
-        # Wait for the structure to mount.
-        page.wait_for_function(
-            "() => /^\\d+$/.test("
-            "document.querySelector('#info-atoms').textContent.trim())",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        # The form has the structure now: the hint names the atom count.
-        page.wait_for_function(
-            "() => { const e = document.querySelector('#p-parallel-block-size');"
-            "  return !!e && /^auto \\(\\d+, n=\\d+\\)$/.test(e.placeholder); }",
-            timeout=_BOOT_TIMEOUT_MS,
-        )
-        hint = page.locator("#p-parallel-block-size").get_attribute("placeholder")
-        assert hint.endswith("n=3)"), hint      # water
-
-
-# --------------------------------------------------------------------- #
-#  Sidebar-driven load: the canonical "user clicks a project file"     #
-#  workflow renders into the Build viewer.                              #
-# --------------------------------------------------------------------- #
-
-
-class TestSidebarPickLoad:
-    """Universal sidebar interaction model (B.5.3): sidebar
-    single-click (``setShared``) = preview only; a dblclick
-    commit (``publishCommit``) is what actually rebuilds Build's
-    structure section.  The form-dirty gate then warns if the
-    user has typed parameter edits since the last commit."""
+    # ``test_the_form_learns_the_structure_after_sidebar_load`` was retired
+    # 2026-08-16.  Its witness was the block-size placeholder rendering
+    # ``auto (<N>, n=<atoms>)`` once a structure was loaded -- and the user
+    # deleted exactly that display: "nobody knows what this means and nobody
+    # can predict what the auto value would be ... i'd rather just leave it as
+    # 'auto'".  ``autoBlockSize()`` went with it, so the test pinned an
+    # interaction the tab no longer has.
+    #
+    # The property it stood for -- the form REACTS to a structure arriving --
+    # still deserves a witness, and it needs a control whose display depends
+    # on the structure.  There is no such control today; when one exists, the
+    # test comes back pointed at that instead of at a hint that was removed
+    # on purpose.
 
     def test_setShared_alone_does_NOT_load_structure(
             self, page, flask_server, water_xyz_file):

@@ -255,7 +255,7 @@ def _block_size_bounds(n_atoms: int,
     branch never goes below 8.
 
     ``emitted`` is the value the deck actually carries.  It differs from the
-    derived one only when the user set ``parallel_block_size``, which
+    derived one only when the user set ``block_size``, which
     :func:`render_fdf` honours verbatim; the window is widened to contain it,
     because a block whose range excludes its own default is the defect this
     function exists to end — the user's number is a *decision*, not an error
@@ -1182,7 +1182,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # pre-sweep theory ("an explicit smaller BlockSize keeps every
     # distribution step well-conditioned") -- the OPPOSITE of the deck
     # text emitted ten lines below, in the same function.  Nor is the
-    # keyword always emitted: parallel_block_size == 0 is the third
+    # keyword always emitted: block_size == 0 is the third
     # state, no BlockSize line at all (tuning.md § 2.11, decision 35).
     out.append("# --- Parallel execution (MPI) ---")
     if v: out += [
@@ -1231,7 +1231,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # ``_auto_block_size`` itself is NOT deleted -- it is still the upper
     # bound of the BENCH-MARKS window (``_block_size_bounds``), which is
     # where a power-of-two constraint belongs: the benchmark sweeps them.
-    if cfg.parallel_block_size is None:
+    if cfg.block_size is None:
         block_size = None
     else:
         # Honoured verbatim -- hand-set, or a benched result.  Earlier code
@@ -1242,7 +1242,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         # value is realigned by `prep`, which is the layer that knows the
         # GPU flag and the rank count (§ 2.11); it is not second-guessed
         # here, and never silently.
-        block_size = int(cfg.parallel_block_size)
+        block_size = int(cfg.block_size)
     if block_size is not None:
         out.append(f"BlockSize          {block_size}")
     if cfg.parallel_over_k is None:
@@ -1637,9 +1637,9 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         resolved_defaults={
             "enable_gpu": str(bool(cfg.enable_gpu)).lower(),
             "BlockSize": (
-                "omitted (SIESTA's own)" if cfg.parallel_block_size == 0
+                "omitted (SIESTA's own)" if cfg.block_size == 0
                 else f"auto -> {block_size}"
-                if cfg.parallel_block_size is None
+                if cfg.block_size is None
                 else f"user-set -> {block_size}"
             ),
             "mpi_np": (

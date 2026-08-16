@@ -812,7 +812,7 @@ over different parameters (`project-layout.md § 2.3.1a`).
 >
 > | | `run` | `bench` | no kind |
 > |---|:--:|:--:|:--:|
-> | `prep` | ✅ — with no stage it lays out every container | ✅ **LANDED 2026-08-12** (step 6) — `prep bench <stage>`: probe the machine, enumerate the grid, render the trials into the stage's `bench/` | — the kind is required |
+> | `prep` | ✅ `prep run <stage>` — the stage is **required** ([`engines/stages.md`](?doc=engines/stages.md) § 6.5); with no stage it lists the ladder and refuses | ✅ **LANDED 2026-08-12** (step 6) — `prep bench <stage>`: probe the machine, enumerate the grid, render the trials into the stage's `bench/` | — the kind is required |
 > | `submit` | ✅ | ✅ **LANDED 2026-08-12** (step 6) — `submit bench <stage> [<trial>]`: the named trial, or the next unlaunched, ONE per invocation | — |
 > | `summarize` | — refuses: a run's outputs *are* the results, read by `status` and the Watch tab | ✅ **LANDED 2026-08-12** (step 6 u4) — discovery keyed by `job-set.json`, results through the ordinary artifacts, async | — |
 > | `describe` | — | — | ✅ **LANDED 2026-08-11** (plan step 2). Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once |
@@ -823,8 +823,13 @@ over different parameters (`project-layout.md § 2.3.1a`).
 > bench generate` / `bench prep` / `bench siesta-gpu`, and this note called
 > the grammar "the target, not built". `bench generate` and `bench prep`
 > were deleted with the fold — the pointers would now name commands that do
-> not exist — and the bare-`prep` cell moved: laying out every container is
-> `prep run` with no stage, because the kind positional is required. The
+> not exist. The bare-`prep` cell then read "laying out every container is
+> `prep run` with no stage"; that was corrected on 2026-08-16, when
+> [`engines/stages.md`](?doc=engines/stages.md) § 6.5 made every description
+> carry a ladder. It described a form that did not run —
+> `resolve` refused a stage-less `prep` before the listing was reached, so a
+> three-rung bare `prep run` exited 1 and created nothing. The unreachable
+> branch is deleted and the stage is simply required. The
 > standalone `bench siesta-gpu` np/omp/BlockSize sweep and `bench
 > probe-scheduler` remain as companions outside this grammar.)*
 >

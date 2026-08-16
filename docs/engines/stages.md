@@ -96,7 +96,7 @@ is what limited a stage to four values.**
 
 | | Question | Who answers |
 |---|---|---|
-| the **catalogue** | *What settings exist? What type, unit, range and label does each carry?* | **the engine's config class**, through the generated form schema (`web/form-schema.md`) — it writes the deck, so it defines what is legal |
+| the **catalogue** | *What settings exist? What type, unit, range and label does each carry?* | **the catalogue itself** — `molbuilder/data/catalogue.template.toml`, authored as TOML ([`template.md`](?doc=engines/template.md) § 4.3). *(This row said "the engine's config class, through the generated form schema" until 2026-08-16. That is the direction `template.md` § 2.1 forbids: it makes the Python class the master and the file its printout. The reversal landed 2026-08-14 when `render_template` was deleted; a config class now **translates** the catalogue on the way out and defines nothing.)* |
 | the **selection** | *Which of those settings vary per stage?* | **the user**, in the UI, recorded as `varies` in `task.json` (§ 6.2) |
 
 Today's four relaxation values are a **default selection** over that catalogue —
@@ -105,15 +105,24 @@ selected.
 
 ### 1.3 The default selection is a group each engine declares, not a list in code
 
-**Every engine's config already tags its fields**, and the tag is exactly this
-question (`metadata["workflow_group"]`, read by the form builder to order the
-form):
+**Every item in the catalogue carries a `group`**, and the tag is exactly this
+question. The vocabulary is closed and lives in `template.GROUPS`
+([`template.md`](?doc=engines/template.md) § 5), in render order:
 
 | group | meaning | SIESTA | PySCF |
 |---|---|---|---|
+| `setup` | what the run is called, and where its pseudopotentials come from — nothing can be built without these | `system_label`, `psml_lib` | `job_name` |
 | `profile` | set once for the calculation | `xc_functional`, `solution_method`, `relax_type`, … | `method`, `basis`, `functional`, … |
 | **`stage`** | **the settings that typically vary across a sequence** | `basis_size`, `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`, `kgrid`, `relax_force_tol`, `relax_max_displ` | `scf_conv_tol`, `grid_level` |
-| `budget` | what it is allowed to spend | `max_scf_iter`, `relax_steps`, `mpi_np`, `omp_threads`, … | `scf_max_cycle`, `threads`, … |
+| `budget` | what it is allowed to spend | `max_scf_iter`, `relax_steps`, `block_size`, `diag_algorithm`, `parallel_over_k` | `scf_max_cycle` |
+| `output` | what the run writes | the `write_*` set | `save_*`, `chkfile` |
+| `staging` | answered by the staging surface, not by a parameter form — the machine asks, the GPU flag, and how a run resumes | `mpi_np`, `omp_threads`, `max_memory_mb`, `enable_gpu`, `restart`, `continue_retries` | `threads`, `use_gpu` |
+
+> *(This table read three groups until 2026-08-16, sourced them from the config
+> classes' `metadata["workflow_group"]`, and put `mpi_np` and `omp_threads`
+> under `budget`. All three are stale: the vocabulary is six and lives in the
+> catalogue, and the machine asks moved to `staging` — a form does not ask a
+> person how many ranks the scheduler granted.)*
 
 > **So `varies` defaults to the engine's `stage` group**, and the user adds to or
 > removes from it. That is the whole of "which parameters may vary" — declared by

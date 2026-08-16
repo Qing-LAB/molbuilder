@@ -242,7 +242,7 @@ def test_the_frozen_label_in_the_spec_matches_the_code_constant():
 # --------------------------------------------------------------------- #
 
 def test_block_size_is_a_plain_int_and_survives_the_round_trip():
-    """The two states of ``parallel_block_size`` (tuning.md § 2.11, revised
+    """The two states of ``block_size`` (tuning.md § 2.11, revised
     2026-08-15): absent = *auto*, the keyword is not emitted and SIESTA uses
     its own automatic; ``N`` = use N, verbatim.
 
@@ -259,14 +259,14 @@ def test_block_size_is_a_plain_int_and_survives_the_round_trip():
     from molbuilder.config.siesta import SiestaConfig
 
     item = template.one(template.read_template(
-        template.template_with_values(SiestaConfig())), "parallel_block_size")
+        template.template_with_values(SiestaConfig())), "block_size")
     assert item.type == "int", (
-        "parallel_block_size must be a plain int -- `pow2` silently rewrites "
+        "block_size must be a plain int -- `pow2` silently rewrites "
         "a measured value, which is the opposite of honouring a benchmark")
 
     def _round_trip(v):
         return template.one(template.read_template(template.template_with_values(
-            SiestaConfig(parallel_block_size=v))), "parallel_block_size").value
+            SiestaConfig(block_size=v))), "block_size").value
 
     # Every value a user may set survives untouched, power of two or not.
     for v in (1, 16, 24, 64, 96, 100, 128):

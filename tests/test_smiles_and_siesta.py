@@ -174,7 +174,7 @@ def test_blocksize_auto_omits_the_keyword_and_zero_is_refused():
 
     issues = validate(_h2_struct(),
                       SiestaConfig(system_label="j", relax_type="none",
-                                   parallel_block_size=0))
+                                   block_size=0))
     assert any(i.severity == "error" and "block_size" in (i.where or "")
                for i in issues), (
         f"0 must be refused, not silently treated as auto: {issues}")
@@ -226,7 +226,7 @@ def test_explicit_blocksize_override_passes_through_verbatim():
         for i in range(side) for j in range(side) for k in range(side)
     ])[:50]
     s = Structure(elements=["C"] * 50, positions=coords, title="x", vacuum=(12.0, 12.0, 12.0))
-    cfg = SiestaConfig(parallel_block_size=32, mpi_np=4, relax_type="none")
+    cfg = SiestaConfig(block_size=32, mpi_np=4, relax_type="none")
     fdf = render_fdf(s, cfg)
     m = re.search(r"^BlockSize\s+(\d+)", fdf, re.MULTILINE)
     assert m, "FDF must carry an explicit BlockSize line"
@@ -251,7 +251,7 @@ def test_explicit_blocksize_override_safe_value_passes_through():
         for i in range(side) for j in range(side) for k in range(side)
     ])[:50]
     s = Structure(elements=["C"] * 50, positions=coords, title="x", vacuum=(12.0, 12.0, 12.0))
-    cfg = SiestaConfig(parallel_block_size=4, mpi_np=4, relax_type="none")
+    cfg = SiestaConfig(block_size=4, mpi_np=4, relax_type="none")
     fdf = render_fdf(s, cfg)
     m = re.search(r"^BlockSize\s+(\d+)", fdf, re.MULTILINE)
     assert int(m.group(1)) == 4, "safe user override must be honored"
@@ -502,7 +502,7 @@ def test_ranks_alone_do_not_put_a_blocksize_in_the_deck():
         "and auto is SIESTA's own automatic")
     # An explicit value still reaches the deck untouched, ranks or no ranks.
     fdf2 = render_fdf(s_, SiestaConfig(mpi_np=15, relax_type="none",
-                                       parallel_block_size=64))
+                                       block_size=64))
     assert re.search(r"^BlockSize\s+64", fdf2, re.MULTILINE)
 
 

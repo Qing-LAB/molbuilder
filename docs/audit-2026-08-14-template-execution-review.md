@@ -1789,7 +1789,7 @@ rule, because until T5 PySCF had no template at all.
 | **`memory_cap_mb`** (was SIESTA's `max_memory_mb`) | **yes** *(unchanged)* | **none — CHANGE**, per § 30.1 | unset means *do not cap* |
 | **`working_memory_mb`** (was PySCF's `max_memory_mb`) | **no — it is science** | **`node_memory` — CHANGE** | it selects in-core vs out-of-core, so it changes the algorithm, not just the launch. A user may legitimately pin it |
 | `continue_retries` | **no** *(unchanged)* | none | a retry **policy** — portable, names no machine. It rides `Resources` only because that is the road to the wrapper |
-| `parallel_block_size` | **no** *(unchanged)* | `block_size` | a tunable a person may set or benchmark (§ 12) |
+| `block_size` | **no** *(unchanged)* | `block_size` | a tunable a person may set or benchmark (§ 12) |
 | `enable_gpu` / `use_gpu` | **no** *(unchanged)* | none | asking for a GPU is a choice; *getting* one is the allocation's `gres` |
 
 **The one behavioural consequence:** PySCF's `threads` stops carrying a value in
@@ -3056,7 +3056,7 @@ carries *"what a parser cannot know -- that `pow2` must be a power of two"*.
 | | |
 |---|---|
 | `_decl_type` | maps annotations to `enum` / `bool` / `int` / `float` / `str` / `int3` / `strlist` / `intlist`. **No branch yields `pow2`** |
-| `parallel_block_size` | is `Optional[int]`, so it renders `type = "int"` |
+| `block_size` | is `Optional[int]`, so it renders `type = "int"` |
 | `template.md` SS 12's example | declares `type = "pow2"` |
 
 **The contract shows a type the code cannot emit**, and Gate A does not catch
@@ -3067,7 +3067,7 @@ unproducible.
 
 | | |
 |---|---|
-| **make it reachable** | a field declares it in metadata -- e.g. `"decl_type": "pow2"` -- and `_decl_type` honours it. Then `parallel_block_size` carries `pow2`, a surface can refuse 96, and SS 12's example becomes true. **This is the option that matches what the value IS** |
+| **make it reachable** | a field declares it in metadata -- e.g. `"decl_type": "pow2"` -- and `_decl_type` honours it. Then `block_size` carries `pow2`, a surface can refuse 96, and SS 12's example becomes true. **This is the option that matches what the value IS** |
 | **retire it** | drop `pow2` from `TYPES`, and SS 12's example becomes `int` with `range`. Loses the one thing SS 5 says `type` is for -- a constraint a parser cannot see |
 
 **Recommendation: make it reachable.** A power-of-two constraint is exactly
@@ -3090,7 +3090,7 @@ Measured across both schemas. Two fields mention powers of two:
 
 | | |
 |---|---|
-| **`parallel_block_size`** | the genuine case -- ScaLAPACK's distribution block, `_auto_block_size` caps to a power of two, PROVENANCE prints *"capped pow2"* |
+| **`block_size`** | the genuine case -- ScaLAPACK's distribution block, `_auto_block_size` caps to a power of two, PROVENANCE prints *"capped pow2"* |
 | `mpi_np` | its help mentions base-2, but it is **allocation-tagged and valueless in the template**, and rank counts are not strictly powers of two -- they follow the core count's divisors |
 
 **So `pow2` exists for exactly one field.** That is `strmap`'s shape -- and
@@ -3178,9 +3178,9 @@ special requirement.")*
 **The code does not take care of it.**
 
 ```
-parallel_block_size = 64   ->  BlockSize 64
-parallel_block_size = 96   ->  BlockSize 96      NOT a power of two
-parallel_block_size = 100  ->  BlockSize 100     NOT a power of two
+block_size = 64   ->  BlockSize 64
+block_size = 96   ->  BlockSize 96      NOT a power of two
+block_size = 100  ->  BlockSize 100     NOT a power of two
 ```
 
 `_auto_block_size` caps **its own proposal** to a power of two -- PROVENANCE
@@ -3565,7 +3565,7 @@ contract item before code.)*
 |---|:--:|---|
 | `int` `float` `str` `bool` `enum` | 81 | **keep** -- the ordinary five |
 | `strlist` | 2 | **keep** -- `species_order`, `ecp_atoms` |
-| **`pow2`** | 0 | **KEEP and MAKE REACHABLE.** One field wants it (`parallel_block_size`), the checker is already written and correct, and a user's 96 is emitted unchecked today (SS 50.1). SS 5's stated purpose for `type` is *a constraint a parser cannot see*, and this is the only member that is one |
+| **`pow2`** | 0 | **KEEP and MAKE REACHABLE.** One field wants it (`block_size`), the checker is already written and correct, and a user's 96 is emitted unchecked today (SS 50.1). SS 5's stated purpose for `type` is *a constraint a parser cannot see*, and this is the only member that is one |
 | **`text`** | 0 | **KEEP, reserved.** For `user_custom`, which the user named load-bearing (SS 33) |
 | **`int3`** | 1 | **KEEP** -- `kgrid`. SS 53.5 ruled the non-diagonal matrix deferred, so a diagonal mesh IS three ints |
 | **`float3`** | -- | **ADD.** The k-grid displacement (SS 54): three floats, one per axis, independent. Nothing else in `TYPES` can carry it |
@@ -3622,7 +3622,7 @@ rather than suspended.
 | | |
 |---|---|
 | `template.declaration_for` | honours `metadata["decl_type"]`, validated against `TYPES` -- so a field can DECLARE a type its annotation cannot carry |
-| `parallel_block_size` | declares `decl_type = "pow2"` |
+| `block_size` | declares `decl_type = "pow2"` |
 | the effect | a template carrying `96` is now **coerced to 64 on read**. Before, it was emitted verbatim while the AUTO path capped to a power of two |
 
 ### 56.1a - COERCE, not refuse (user, 2026-08-14)
@@ -3650,7 +3650,7 @@ asked   1 ->  1      asked 100 -> 64     asked 0 -> 0   (the third state)
 
 ### 56.2 - The wrinkle: 0 is a legal value that is not a power of two
 
-`parallel_block_size` has **three** states, and the contract already says so
+`block_size` has **three** states, and the contract already says so
 (`template.md` SS 12, decision 35):
 
 | state | means |

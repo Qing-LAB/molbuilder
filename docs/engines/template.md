@@ -391,6 +391,9 @@ The real-space integration grid, in Ry.  Higher is finer and slower;
 convergence is checked, not assumed.
 Tier ladder: 150 screening · 300 publishable · 500 tight."""
 
+# `enable_gpu` is SIESTA's spelling TODAY.  The item is a settled merge with
+# PySCF's `use_gpu` (§ 6.3), and the rename that effects it has not landed --
+# so this example shows the file as it is, not as § 6.3's table states it.
 [item.enable_gpu]
 kind    = "engine"
 category = "execution"
@@ -459,7 +462,7 @@ never validated by molbuilder (§ 9.2)."""
 
 ```mermaid
 flowchart TD
-    CAT["<b>catalogue.template.toml</b><br/>authored · every parameter · defaults<br/><i>82 items — 45 siesta, 40 pyscf, 3 both</i>"]
+    CAT["<b>catalogue.template.toml</b><br/>authored · every parameter · defaults<br/><i>84 items — 47 siesta, 40 pyscf, 3 both</i>"]
     UI["a surface<br/><i>cards from group, legends from category,<br/>contents filtered by engine</i>"]
     TPL["<b>&lt;label&gt;.template.toml</b><br/>this calculation — same items, with values"]
     RD["read + narrow to one engine<br/><code>config_from_template</code>"]
@@ -886,6 +889,23 @@ nothing is derived.
 | `use_gpu` | `Diag.ELPA.GPU` (with the ELPA solver gate) | the GPU backend selection |
 | `charge` | `NetCharge` | `gto.M(charge=)` |
 | `verbose_comments`, `write_molwatch_log` | *(no keyword — `kind="produce"`)* | same |
+
+> **Two of those three are RULED but not yet RENAMED, and the file still shows
+> the pair.** `use_gpu` and `charge` are settled merges — `use_gpu` by a user
+> ruling of 2026-08-13, restated 2026-08-14 and marked *do not re-open*
+> ([`template-unification-plan.md`](?doc=execution/template-unification-plan.md)
+> § 5.5); `charge` by § 1 of the same plan. The merge is **declared by spelling
+> the field alike in both engines** (§ 6.3 below, plan § 5.6), and that rename
+> is a separate unit that has not landed: `enable_gpu` → `use_gpu` and
+> `net_charge` → `charge`, plus every reader of those names — 117 sites for
+> `net_charge` alone.
+>
+> So today's catalogue carries `enable_gpu` (SIESTA) and `use_gpu` (PySCF) as
+> **two items**, and that is the mechanism behaving as designed rather than a
+> defect: *"an un-renamed pair simply stays two items until the rename lands."*
+> The table above states the settled answer; the file states today. **Read a
+> difference between them as work queued, not as a disagreement** — and do not
+> re-open the ruling, which is what this note exists to prevent.
 
 **What does NOT merge, and the rule is what says so.** `dm_tolerance` is a
 density-matrix criterion and `scf_conv_tol` is an energy criterion. Both are
@@ -1398,7 +1418,7 @@ lives** — because the floor a function sits on is half of whether it is right
 ```mermaid
 flowchart TD
     subgraph F0["the master — authored, edited as TOML"]
-      CAT["<b>data/catalogue.template.toml</b><br/>82 items · both engines"]
+      CAT["<b>data/catalogue.template.toml</b><br/>84 items · both engines"]
     end
 
     subgraph F2["floor 2 · description — names no machine"]
@@ -1779,13 +1799,16 @@ description.
   ([`tuning.md § 2.11`](?doc=engines/tuning.md)).
 
   ```toml
+  # The ITEM is `block_size`; `block_size` is the RESOLVER that
+  # answers it (§ 6.4).  Two different names for two different things --
+  # there is no item called `block_size`.
   [item.block_size]
   kind     = "engine"
   category = "execution"
   anchor   = "BlockSize"
-  type    = "pow2"
-  # no `value` — unset, so prep proposes one from the orbital and rank counts
-  range   = [16, 128]
+  type    = "int"
+  # no `value`, and no `range` -- both settled in tuning.md § 2.11, which owns
+  # this knob.  Read it there rather than here.
   group   = "budget"
   help    = """
   The ScaLAPACK/ELPA distribution block, in orbitals.  Powers of two only.

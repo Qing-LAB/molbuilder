@@ -174,7 +174,8 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     while a hand-built SWEEP's points are siblings told apart by name.
     Until R1 both fell to ``bench-<name>``, which put a stageless
     calculation's RUN in a directory named for a benchmark, made its
-    attempt unreachable, and broke § 6.5's single-parameter-set form
+    attempt unreachable, and broke `engines/stages.md` § 6.5's
+    single-parameter-set form
     end-to-end.  Inventing a seq for either would still be guessing at the
     one number that must never be guessed.
 
@@ -613,7 +614,7 @@ def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
     calculation from its own attempt read as *unverified* and silently
     withheld every conditional carry (``.CG``) — prep still reported
     success.  ``Path("run-0").parent`` is ``"."``, exactly the naming
-    authority's answer for the § 6.5 root job.
+    authority's answer for the `engines/stages.md` § 6.5 root job.
     """
     if not continue_from:
         return None

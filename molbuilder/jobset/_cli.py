@@ -11,6 +11,13 @@ route, and it narrows with every fold.
 The verbs own no policy: ``submit`` PRINTS what it will do and the user
 picks the mode and domain explicitly (assistant, not nanny; never a silent
 auto-submit).
+
+STAGE CONTRACT: ``docs/engines/stages.md`` § 6 — a bare ``§ 6.x`` below means
+that document, because this module has no numbered sections of its own and
+its grammar reference (``job-system.md``) has no § 6.  Stated here once rather
+than repeated at each citation, the way ``task.py`` anchors the same contract.
+The rule those citations lean on hardest is § 6.5: **a job always has at least
+one stage**, so every verb that acts on a stage is given the stage's name.
 """
 
 from __future__ import annotations
@@ -81,8 +88,9 @@ _bundle_option = click.option(
                    "ask for (engines/stages.md 6.7).")
 @click.option("--stage-strategy", default=None,
               help="which shipped ladder to describe (e.g. publishable). Omit "
-                   "for a calculation with a SINGLE parameter set, which is a "
-                   "description with no stages at all (6.5).")
+                   "for a calculation with a SINGLE parameter set, which is "
+                   "described as ONE stage named 'coarse' -- named and "
+                   "tokened like any other (6.5).")
 @click.option("--name", default=None, metavar="NAME",
               help="what you call this calculation; the label and the run id "
                    "derive from it. Default: the destination folder's name.")
@@ -569,7 +577,7 @@ def _bench_inputs(base):
     # is a recorded vocabulary gap (template.md § 7), not this unit's scope.
     pins = {"max_scf_iter": 5, "relax_steps": 0, "restart": "clean",
             "diag_algorithm": "ELPA-1STAGE", "enable_gpu": True,
-            "parallel_block_size": 256}
+            "block_size": 256}
     return points, pins, translation
 
 
@@ -857,16 +865,13 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                    "-- one trial per invocation")
         return
 
-    # A bare prep stops at the listing: every description has a ladder
-    # (§ 6.5), so the user always still owes a stage name.
+    # `stage` is not None here: § 6.5 gives every description a ladder, so a
+    # bare `prep run` is refused by `resolve` -- with the ladder listed --
+    # long before this point.  A listing branch stood here until 2026-08-16,
+    # printing "prepped N job dir(s)" and pointing at `prep run <stage>`; it
+    # was unreachable (prep_calculation raises first), and `job-system.md`'s
+    # grammar table advertised it as a shipped form.  Both are gone.
     attempt_target = stage
-    if attempt_target is None:
-        click.echo(f"prepped {len(dirs)} job dir(s) under {base}:")
-        for d in dirs:
-            click.echo(f"  {d.name}")
-        click.echo("next: molbuilder jobset prep run <stage>   "
-                   "(open its attempt)")
-        return
 
     from .materialize import prepare_attempt, shape_of
     sh = shape_of(js, base)

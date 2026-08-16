@@ -89,7 +89,7 @@ therefore **valueless with a resolver** (§ 6.4).
 | field | keyword | value | resolver |
 |---|---|---|---|
 | `diag_algorithm` | `Diag.Algorithm` | set | — (`read_by = ["wrapper"]`, § 6.1) |
-| `parallel_block_size` | `BlockSize` | **unset** | `block_size` |
+| `block_size` | `BlockSize` | **unset** | `block_size` |
 | `parallel_over_k` | `Diag.ParallelOverK` | set | — |
 | `enable_gpu` | `Diag.ELPA.GPU` | set | — |
 | `continue_retries` | *(baked into the wrapper)* | set | — |

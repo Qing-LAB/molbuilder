@@ -218,7 +218,7 @@ def test_an_optional_item_says_what_unset_is_called():
     """``optional`` says *unset* is a real state; ``null_label`` is what says
     how to show it.  Without it a tri-select has no third label."""
     text = T.template_with_values(SiestaConfig(system_label="JOB"))
-    assert T.read_template(text).get("parallel_block_size").null_label
+    assert T.read_template(text).get("block_size").null_label
 
 
 def test_the_three_surface_keys_survive_the_round_trip():
@@ -608,7 +608,7 @@ def test_the_items_that_need_a_resolver_have_one():
     t = _siesta_template()
     expected = {"mpi_np": "rank_count", "omp_threads": "omp_threads",
                 "max_memory_mb": "node_memory",
-                "parallel_block_size": "block_size"}
+                "block_size": "block_size"}
     for name, res in expected.items():
         got = T.one(t, name)
         assert got is not None and got.resolver == res, (

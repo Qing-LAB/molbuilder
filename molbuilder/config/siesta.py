@@ -104,18 +104,18 @@ def _validate_block_size(value):
         return []                       # auto -- the keyword is omitted
     if not isinstance(value, int) or isinstance(value, bool):
         return [Issue("error",
-                      f"parallel_block_size = {value!r} must be an integer "
+                      f"block_size = {value!r} must be an integer "
                       f"number of orbitals, or unset for (auto)",
-                      "config.parallel_block_size")]
+                      "config.block_size")]
     if value < 1:
         return [Issue(
             "error",
-            f"parallel_block_size = {value} is not a block size -- it is a "
+            f"block_size = {value} is not a block size -- it is a "
             f"count of orbitals per rank, so the smallest meaningful value "
             f"is 1.  Leave it unset for (auto), which omits the keyword and "
             f"lets SIESTA choose; 0 used to mean that and no longer does "
             f"(tuning.md 2.11)",
-            "config.parallel_block_size")]
+            "config.block_size")]
     return []
 
 
@@ -1221,7 +1221,7 @@ class SiestaConfig:
     # form so the user can pick the rank count alongside the other
     # parallel-execution knobs.  The run.sh wrapper reads this from
     # the form params.  None / 0 / 1 -> single-process (no mpirun).
-    # Don't confuse with parallel_block_size (BlockSize for ScaLAPACK
+    # Don't confuse with block_size (BlockSize for ScaLAPACK
     # within a rank); rank count is the OUTER parallelism.
     # All five Parallel-execution fields tagged workflow_group="budget"
     # (2026-06-13).  Compute layout (MPI ranks, OMP threads, BlockSize,
@@ -1270,7 +1270,7 @@ class SiestaConfig:
         "skip_cli":   True,
     })
 
-    parallel_block_size: Optional[int] = field(default=None, metadata={
+    block_size: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
         # A PLAIN INT.  It was ``decl_type: "pow2"`` until 2026-08-15, and
         # `pow2` does not merely check -- ``template._shape`` SNAPS the value

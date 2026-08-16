@@ -640,7 +640,7 @@ MPI rank count baked into ``mpirun -np N siesta`` in the generated run-wrapper. 
 
 RUNTIME OVERRIDE: this value bakes a DEFAULT into the wrapper but is not final.  The wrapper accepts ``bash run.sh -np N`` and ``MB_NP=N bash run.sh``, so you can experiment with different rank counts WITHOUT regenerating.  This matters because SIESTA can crash with ``propor: ERROR: IMAX = 0`` for certain mpi_np / molecule combinations -- the crash depends on the ProcessorY x ProcessorX grid SIESTA auto-picks for that rank count, which is hard to predict.  If you hit propor, retry with smaller -np (powers of 2 are usually safe).  The wrapper prints a focused diagnostic on the propor crash with specific suggestions."""
 
-[item.parallel_block_size]
+[item.block_size]
 kind = "engine"
 category = ["execution"]
 engines = ["siesta"]

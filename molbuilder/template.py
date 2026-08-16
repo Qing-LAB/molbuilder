@@ -552,7 +552,7 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     choices = f.metadata.get("choices")
     # A field may DECLARE its type when the annotation cannot carry the
     # constraint -- § 5's reason for ``type`` existing: "what a parser cannot
-    # know".  No field declares one today; ``parallel_block_size`` was the
+    # know".  No field declares one today; ``block_size`` was the
     # example and became a plain ``int`` on 2026-08-15.
     declared = f.metadata.get("decl_type")
     if declared is not None:

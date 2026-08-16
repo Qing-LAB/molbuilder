@@ -202,7 +202,13 @@ def _staged(xyz, tmp_path, strategy):
     from molbuilder.siesta.stages import default_siesta_stages
 
     struct = _load(xyz)
-    stages = default_siesta_stages(strategy) if strategy else []
+    # No strategy -> the ordinary ONE-stage ladder.  `engines/stages.md` § 6.5
+    # (2026-08-16): a job always has at least one stage, so "no ladder" is not
+    # a shape a description can have -- the single parameter set IS one stage,
+    # named and tokened like any other.
+    from molbuilder.task import Stage
+    stages = (default_siesta_stages(strategy) if strategy
+              else [Stage(name="coarse", enabled=True, overrides={})])
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"), stages,
                             engine="siesta", shape="flat", name="JOB",
@@ -216,8 +222,6 @@ def _staged(xyz, tmp_path, strategy):
     (tmp_path / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "source /opt/conda/etc/profile.d/conda.sh"}}))
-    if not stages:
-        prep_calculation(tmp_path, None, allocation=Resources(mpi_np=4))
     for s in stages:
         if s.enabled:
             prep_calculation(tmp_path, s.name, allocation=Resources(mpi_np=4))

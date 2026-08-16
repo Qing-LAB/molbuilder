@@ -184,14 +184,14 @@ def test_an_optional_item_offers_its_unset_state():
     offer *(auto)* / *(no cap)*.  It cannot be inferred from `null_label`."""
     f = {x["name"]: x for s in catalogue_to_form_schema("siesta")["sections"]
          for x in s["fields"]}
-    # ``parallel_block_size``, not ``mpi_np``: the rank count moved to the
+    # ``block_size``, not ``mpi_np``: the rank count moved to the
     # staging surface on 2026-08-15 (it is a bench axis prep measures, not a
     # parameter typed here), so it is no longer on this form to check.  The
     # block size is the same shape of claim -- optional, auto-resolved, and
     # its *(auto)* state is the whole reason `optional` is written down.
-    assert f["parallel_block_size"]["optional"] is True
-    assert f["parallel_block_size"]["null_option"] is True
-    assert f["parallel_block_size"]["null_label"]
+    assert f["block_size"]["optional"] is True
+    assert f["block_size"]["null_option"] is True
+    assert f["block_size"]["null_label"]
     assert f["mesh_cutoff"]["optional"] is False
 
 

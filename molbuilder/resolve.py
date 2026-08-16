@@ -471,7 +471,8 @@ def _axes_of(sweep, points: Tuple[Mapping, ...]) -> Tuple[str, ...]:
 def _stage_of(task, stage: Optional[str]):
     """The rung this prep is for, refusing rather than picking one.
 
-    Never picks the lone stage of a one-rung ladder either: § 6.5 makes one
+    Never picks the lone stage of a one-rung ladder either:
+    `engines/stages.md` § 6.5 makes one
     stage an ordinary stage, so it is named like any other and guessing it
     would be the implicit rule that rule exists to delete.
     """
