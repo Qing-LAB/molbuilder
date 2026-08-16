@@ -19,7 +19,7 @@ three protocols that cut across all of them**.
 
 ## 1. The tab roster and the shared shell
 
-There are **six tabs**, and their order is defined in exactly one place — the
+There are **seven tabs**, and their order is defined in exactly one place — the
 `TABS` list in `tabs.py`. In canonical order:
 
 | Tab | Path | What it's for | Own doc |
@@ -28,16 +28,22 @@ There are **six tabs**, and their order is defined in exactly one place — the
 | **Structure optimization** | `/structure-optimization` | generate a SIESTA/PySCF relaxation script | this doc § 3 |
 | **Spectrum** | `/spectrum-calculation` | compute a Raman spectrum | [`spectra.md`](?doc=web/spectra.md) |
 | **Transport** | `/transport-calculation` | generate a TranSIESTA device script | this doc § 4 |
+| **Job prep** | `/job-prep` | read a calculation folder's description — its stages, and the machine settings you chose or measured — and edit `task.json` | [`job-prep.md`](?doc=web/job-prep.md) |
 | **Results** | `/results` | open a finished calculation | [`results.md`](?doc=web/results.md) |
 | **Documents** | `/documents` | read the in-app docs (this page!) | this doc § 5 |
 
-> **A seventh is planned and not built** — a **shared** tab that starts from a
-> calculation folder and turns it into a description: the stages, and the machine
-> settings you either choose or measure. Every generating tab above feeds that
-> one implementation rather than each growing its own stage table. It is called
-> **Job Prep** and its design is [`job-prep.md`](?doc=web/job-prep.md). It is
-> named here because the roster is a contract and a reader deserves to know one
-> more row is coming; nothing in this document describes it as shipped.
+> **The seventh tab is PARTLY built** — Job Prep is a **shared** surface that
+> starts from a calculation folder rather than from a form, so every generating
+> tab above feeds one implementation instead of each growing its own stage
+> table. Its design is [`job-prep.md`](?doc=web/job-prep.md).
+>
+> **What ships today is read-only.** It follows the projects sidebar's selected
+> folder, reads that folder's `task.json` through the shipped `/api/files/*`
+> API, shows the stages and the machine settings, and puts the file itself in
+> the vendored CodeMirror so you can read and edit it. **It writes nothing** —
+> Save is disabled and says so, and `molbuilder jobset describe` is what writes
+> a description. Pinned by `tests/test_job_prep_tab.py`, which fails if the
+> button is ever enabled without the write path landing with it.
 > *(The working name was *Task Setup* until 2026-08-16.)*
 
 **Molbuilder is the landing tab** — a bare `/` redirects to whatever is first in

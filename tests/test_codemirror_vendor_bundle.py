@@ -39,11 +39,11 @@ pytestmark = pytest.mark.module
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "molbuilder/web/static"
 VENDOR = STATIC / "vendor/codemirror"
-PREVIEW_JS = STATIC / "lib/projects/preview.js"
+LOADER_JS = STATIC / "lib/codemirror-load.js"
 
 
 _INJECT_RE = re.compile(
-    r'_injectS(?:cript|tylesheet)\(\s*CM_VENDOR_BASE\s*\+\s*"([^"]+)"'
+    r'injectS(?:cript|tylesheet)\(\s*CM_VENDOR_BASE\s*\+\s*"([^"]+)"'
 )
 
 
@@ -59,23 +59,28 @@ _ADDON_COMMANDS: dict[str, list[str]] = {
 
 
 def _expected_assets() -> list[str]:
-    """Parse preview.js's ``_loadCodeMirror`` for every vendor file
-    it injects.  The asset list is the source of truth — adding a
-    bundle file in preview.js automatically extends this test's
-    coverage."""
-    src = PREVIEW_JS.read_text()
+    """Parse the shared loader's ``loadCodeMirror`` for every vendor
+    file it injects.  The asset list is the source of truth — adding a
+    bundle file there automatically extends this test's coverage.
+
+    The loader moved out of ``lib/projects/preview.js`` into
+    ``lib/codemirror-load.js`` on 2026-08-16, when the Job Prep tab
+    needed the same editor: two lazy-loaders would be two places for
+    this list to drift, which is the drift this test exists to catch.
+    """
+    src = LOADER_JS.read_text()
     assets = _INJECT_RE.findall(src)
     if not assets:
         pytest.fail(
-            "preview.js no longer matches the _injectScript / "
-            "_injectStylesheet(CM_VENDOR_BASE + ...) pattern; "
+            "codemirror-load.js no longer matches the injectScript / "
+            "injectStylesheet(CM_VENDOR_BASE + ...) pattern; "
             "update this test's parser."
         )
     return assets
 
 
 def test_every_injected_asset_exists_and_is_nonempty():
-    """preview.js's _loadCodeMirror lists six vendor files.  Each
+    """the shared loader lists six vendor files.  Each
     one must be on disk under ``static/vendor/codemirror/`` AND
     non-empty (a 0-byte file would silently break the bundle)."""
     missing: list[str] = []
@@ -88,7 +93,7 @@ def test_every_injected_asset_exists_and_is_nonempty():
         if path.stat().st_size == 0:
             empty.append(asset)
     assert not missing, (
-        f"Vendor files referenced by preview.js are missing from "
+        f"Vendor files referenced by codemirror-load.js are missing from "
         f"{VENDOR}: {missing}.  The CodeMirror bundle update either "
         f"dropped them or the path/filename changed."
     )
@@ -114,7 +119,7 @@ def test_addon_registers_expected_commands(addon, commands):
     for cmd in commands:
         assert cmd in src, (
             f"Vendor addon {addon} does not contain the literal "
-            f"{cmd!r} — preview.js wiring that depends on this "
+            f"{cmd!r} — preview.js / job-prep wiring that depends on this "
             f"command will silently no-op.  Either restore the "
             f"addon's command registration or update preview.js + "
             f"this test's _ADDON_COMMANDS mapping."

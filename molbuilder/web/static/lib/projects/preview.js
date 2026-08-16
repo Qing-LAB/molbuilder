@@ -41,6 +41,7 @@
  */
 
 import { projects } from "./state.js";
+import { loadCodeMirror } from "../codemirror-load.js";
 import { apiWrite, apiStat, apiRead, apiReadRange } from "./api.js";
 
 // Modal DOM handles, populated by initPreview().
@@ -59,7 +60,6 @@ let _state = _emptyState();
 // ``window.CodeMirror`` once the vendored bundle (core + addons +
 // dialog + search + jump-to-line) is fully loaded.  Concurrent
 // callers receive the same promise.
-let _cmLoaderPromise = null;
 
 // Edit budget — files this size or smaller load wholesale via
 // /api/files/read into the editor and are editable.  Files
@@ -96,7 +96,6 @@ const PAGE_BYTES = 256 * 1024;
 
 // Vendored bundle root.  Files committed under
 // molbuilder/web/static/vendor/codemirror/ — LICENSE included.
-const CM_VENDOR_BASE = "/static/vendor/codemirror/";
 
 function _emptyState() {
     return {
@@ -185,73 +184,7 @@ function _setStatus(message, kind /* "ok" | "dirty" | null */) {
         + (kind === "dirty" ? " is-dirty" : "");
 }
 
-/* ---------- CodeMirror loading + mount ---------- */
-
-function _injectStylesheet(href) {
-    return new Promise((resolve, reject) => {
-        const link = document.createElement("link");
-        link.rel  = "stylesheet";
-        link.href = href;
-        link.onload  = () => resolve();
-        link.onerror = () => reject(
-            new Error("Could not load stylesheet: " + href));
-        document.head.appendChild(link);
-    });
-}
-
-function _injectScript(src) {
-    return new Promise((resolve, reject) => {
-        const s = document.createElement("script");
-        s.src = src;
-        s.async = false;  // preserve evaluation order vs. previous calls
-        s.onload  = () => resolve();
-        s.onerror = () => reject(
-            new Error("Could not load script: " + src));
-        document.head.appendChild(s);
-    });
-}
-
-/**
- * Lazy-load the vendored CodeMirror 5 bundle + addons.  Cached
- * promise so concurrent showPreview() calls don't trigger
- * duplicate fetches.  Returns ``window.CodeMirror`` once
- * everything is parsed.
- *
- * Load order matters:
- *   1. CSS (parallel)
- *   2. CM core (must finish before addons execute — addons
- *      register themselves on ``CodeMirror.commands`` /
- *      ``CodeMirror.defineOption`` at parse time)
- *   3. dialog addon (search + jumpToLine both need its
- *      ``cm.openDialog`` method)
- *   4. searchcursor addon (search needs it)
- *   5. search + jumpToLine (both depend on the above)
- */
-async function _loadCodeMirror() {
-    if (window.CodeMirror) return window.CodeMirror;
-    if (_cmLoaderPromise)  return _cmLoaderPromise;
-    _cmLoaderPromise = (async () => {
-        await Promise.all([
-            _injectStylesheet(CM_VENDOR_BASE + "codemirror.min.css"),
-            _injectStylesheet(CM_VENDOR_BASE + "dialog.min.css"),
-            _injectScript(CM_VENDOR_BASE + "codemirror.min.js"),
-        ]);
-        await _injectScript(CM_VENDOR_BASE + "dialog.min.js");
-        await _injectScript(CM_VENDOR_BASE + "searchcursor.min.js");
-        await Promise.all([
-            _injectScript(CM_VENDOR_BASE + "search.min.js"),
-            _injectScript(CM_VENDOR_BASE + "jump-to-line.min.js"),
-        ]);
-        if (!window.CodeMirror) {
-            throw new Error(
-                "CodeMirror bundle loaded but the global is missing — "
-                + "vendored bundle may be corrupt"
-            );
-        }
-        return window.CodeMirror;
-    })();
-    return _cmLoaderPromise;
-}
+/* ---------- CodeMirror mount ---------- */
 
 /**
  * Create the editor instance on first need.  Mounted into
@@ -335,7 +268,7 @@ function _ignoreSelectAll(cm) {
 
 async function _ensureCmMounted() {
     if (_cm) return _cm;
-    const CM = await _loadCodeMirror();
+    const CM = await loadCodeMirror();
     elCmView.textContent = "";  // drop any placeholder text
     _cm = CM(elCmView, {
         value:        "",
@@ -752,7 +685,7 @@ export function initPreview() {
 /**
  * Open CodeMirror's vendored search dialog.  The ``search.js`` +
  * ``searchcursor.js`` + ``dialog.js`` addons (loaded by
- * ``_loadCodeMirror``) register the ``find`` / ``findNext`` /
+ * ``loadCodeMirror`` in `lib/codemirror-load.js`) register the ``find`` / ``findNext`` /
  * ``findPrev`` commands; this just dispatches the user-facing button
  * to the same command Ctrl-F binds to.
  *
