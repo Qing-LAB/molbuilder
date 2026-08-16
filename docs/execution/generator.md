@@ -36,7 +36,7 @@ formats it writes;
 
 | owns | does not own |
 |---|---|
-| the **data spine** — schema → template → description → parameter set → jobs | what a project directory *is* (`project-layout.md`) |
+| the **data spine** — catalogue → template → description → parameter set → jobs | what a project directory *is* (`project-layout.md`) |
 | **`ParameterSet`**, and why it is a list | the item format (`template.md`) |
 | **what bounds a sweep**, and from which source | the deck's block syntax (`job-contracts.md` § 3) |
 | the **engine seam** — what an engine supplies, and what it may not | the ladder and its overrides (`stages.md`) |
@@ -86,10 +86,11 @@ decided by data.
 
 ```mermaid
 flowchart TB
-    S["<b>engine field metadata</b> — the SCHEMA<br/><i>every parameter molbuilder models,<br/>with its type, range, unit, default</i>"]
+    S["<b>the catalogue</b> · <code>molbuilder/data/catalogue.template.toml</code><br/><i>authored TOML — every parameter both engines declare,<br/>with its type, range, unit, default</i>"]
 
-    S -->|generates| T["<b>template</b> · <code>&lt;label&gt;.template.toml</code><br/>floor 2 · every item, each with <code>kind</code> · <code>read_by</code>"]
-    S -->|generates| BM["<b>BENCH-MARKS</b> block in a deck<br/><i>the same bounds, narrower subset</i>"]
+    S -->|"<b>narrowed to one engine,<br/>values filled in</b>"| T["<b>template</b> · <code>&lt;label&gt;.template.toml</code><br/>floor 2 · this calculation's items, each with <code>kind</code> · <code>read_by</code>"]
+    S -->|"renders"| UIF["<b>the Build form</b><br/><i>cards by <code>group</code>, legends by <code>category</code></i>"]
+    S -.->|"<b>checked against</b>, not generated from"| BM["<b>BENCH-MARKS</b> block in a deck<br/><i>a hand-written subset — <code>SIESTA_BENCH_FIELDS</code></i>"]
 
     T --> D
     TK["<b>task.json</b><br/>floor 2 · the mission:<br/>ladder · shape · structure ref"] --> D
@@ -115,42 +116,56 @@ flowchart TB
     WRAP --> JS
 ```
 
-**Read the two `generates` edges as the load-bearing ones.** The schema is the
-single source of every bound in the system, and both the template and a deck's
-BENCH-MARKS block are emitted from it —
-[`template.md`](?doc=engines/template.md) § 5 already makes that a rule, *"because
-two hand-maintained copies of `default` would drift silently."* This document
-adds the consequence: **a sweep needs no bounds of its own**, because the bounds
-it needs are already declared upstream of it.
+**Read the edges out of the catalogue as the load-bearing ones.** The catalogue
+is the single source of every bound in the system —
+[`template.md`](?doc=engines/template.md) § 2.1 makes it the master and the
+config classes translators on the way out. This document adds the consequence:
+**a sweep needs no bounds of its own**, because the bounds it needs are already
+declared upstream of it.
+
+> **The two solid edges and the dashed one are three different relationships,
+> and the difference is worth keeping straight.**
+>
+> | edge | what actually happens |
+> |---|---|
+> | catalogue → **template** | `template.template_with_values(config, engine=…)` narrows the file to one engine and writes in the values a person answered. One file in, one file out; nothing is invented on the way |
+> | catalogue → **the form** | `_shared.catalogue_to_form_schema(engine)` reads the same file and emits the Build form's sections — so the form and the template cannot describe different parameters |
+> | catalogue ⇢ **BENCH-MARKS** | **not a generator.** `script_emit.SIESTA_BENCH_FIELDS` is a hand-written list of five fields, and `tests/test_template_declarations.py` matches each `field` line to the catalogue item that anchors its keyword, refusing a disagreement on `type`. `job-contracts.md` § 3.3 states it in those words: *"emitted from ONE source" was an intention, not a mechanism* |
+>
+> *(All three edges read `schema` — the engine's own dataclass — until
+> 2026-08-16. That is the direction `template.md` § 2.1 forbids: it makes the
+> Python class the master and the file its printout. `render_template(config)`,
+> which did exactly that, was deleted on 2026-08-14.)*
 
 ### 3.1 ⭐ The template's other reader — the UI is built *from* it
 
-*Raised by the user, 2026-08-11: the UI is static today, and it should be
-constructed from the template instead. **That is a future plan — but it changes
-what the template must carry now**, which is why it is in this contract and not
-deferred with the work.*
+*Raised by the user, 2026-08-11: the UI was static then, and should be
+constructed from the file instead. **✅ It is, since 2026-08-15** — the SIESTA
+and PySCF Build forms are emitted by `catalogue_to_form_schema`, and a
+parameter is on the form because the catalogue carries it. The paragraph below
+described this as a future plan until 2026-08-16.*
 
-**The shift is small to state and large in consequence.**
-[`template.md`](?doc=engines/template.md) § 5 already says the template and the
-form *"are generated from one source and cannot drift apart"* — schema → template
-and schema → form, two siblings. **The direction the user wants is
-schema → template → UI:** the template is what the UI reads, so editing a
-template changes the interface.
+**The shift is small to state and large in consequence.** The template and the
+form are *"generated from one source and cannot drift apart"* — but the source
+is the **catalogue**, not an engine's Python class, so the chain is
+**catalogue → template → UI**. Editing the catalogue changes the interface, and
+that is a file a person can open.
 
 ```mermaid
 flowchart LR
-    S["schema"] --> T["<b>template</b><br/><i>the catalogue, with values</i>"]
-    T --> UI["<b>the UI</b><br/><i>renders the items</i>"]
+    S["<b>the catalogue</b><br/><i>authored TOML, every engine</i>"] --> T["<b>template</b><br/><i>this calculation, with values</i>"]
+    S --> UI["<b>the UI</b><br/><i>renders the items</i>"]
+    T --> UI
     T --> PR["<b>prep</b><br/><i>resolves and renders</i>"]
     T --> P["<b>a person</b><br/><i>reads the calculation</i>"]
     T --> V["<b>validation</b>"]
 ```
 
-> **Why a UI can read a template at all, when a new calculation has none.** The
-> blank form is the **schema-emitted default template** — every item at its
-> default, no values chosen. Opening an existing calculation renders *its*
-> template. **One format, one renderer, two states.** There is no separate "form
-> schema" to keep in step.
+> **Why a UI can render a form at all, when a new calculation has no template.**
+> A blank form is the **catalogue itself** — every item at its default, no
+> values chosen. Opening an existing calculation renders *its* template. **One
+> format, one renderer, two states.** There is no separate "form schema" to keep
+> in step.
 
 #### 3.1a ✅ Three keys the template must carry for its UI reader — CARRIED
 since 2026-08-11 (plan step 1, `4aeba915`)
@@ -181,7 +196,7 @@ families, and they differ in *who is allowed to bound them*:
 
 | family | example | candidate values declared by | bounded by | why that source |
 |---|---|---|---|---|
-| **parameter** | `BlockSize` · `mesh_cutoff` · `energy_shift` | the template item's own `range` · `choices` · `type` | **the schema** | it is a parameter, and § 7 of `template.md` makes every schema parameter an item |
+| **parameter** | `block_size` · `mesh_cutoff` · `pao_energy_shift` | the template item's own `range` · `choices` · `type` | **the catalogue** | it is a parameter, and § 7 of `template.md` makes every parameter of the calculation an item |
 | **machine** | `mpi_np` · `cpus_per_task` · `gpu_mode` (including *none*) | **the item is declared, valueless**, naming its `resolver` (`template.md` § 6.4) | **the allocation** — see § 4.1 | floor 2 must never assert a machine's VALUE (`template.md` § 7; `project-layout.md` M1) |
 
 **Both bounds already exist as data.** The template carries `range` and `choices`
@@ -198,9 +213,10 @@ data that was declared for other reasons — never by a table inside the generat
 > answer it (`template.md` § 6.4). The VALUE is still forbidden on floor 2 —
 > that never moved — and a reader refuses one.
 
-> **The worked case, because it is the one that goes wrong.** `BlockSize` is a
+> **The worked case, because it is the one that goes wrong.** `block_size` (the
+> item; `BlockSize` is the SIESTA keyword it anchors) is a
 > parameter axis whose legal ceiling is **orbitals ÷ ranks** — and ranks are a
-> *machine* fact. So a sweep over `BlockSize` × `mpi_np` has a bound that spans
+> *machine* fact. So a sweep over `block_size` × `mpi_np` has a bound that spans
 > both families. **This is not a special case and must not become one:** the
 > ceiling is computed once, where both values are in hand, which is inside the
 > resolver at step 2. It is not the sweep's job, not the deck writer's, and not
@@ -260,11 +276,11 @@ configuration the real run asks for, knowing both the speed and the queue cost.
 
 **`prep` takes three inputs, not two** — an allocation, a sweep, and a set of
 **pins**: template parameters given a value for *this* prep, overriding what the
-description carries. **`BlockSize` is the only member today**, and it is a member
+description carries. **`block_size` is the only member today**, and it is a member
 by rule rather than by exception:
 
 > **A parameter belongs in the pin channel when its right value depends on the
-> allocation.** `BlockSize`'s ceiling is orbitals ÷ ranks, and ranks are an
+> allocation.** `block_size`'s ceiling is orbitals ÷ ranks, and ranks are an
 > allocation — so it cannot be finally decided in a description that names no
 > machine. **Anything else that varies belongs in a stage's `overrides`**, where
 > the description can carry it.
@@ -369,7 +385,7 @@ renderable on its own, and no downstream reader ever re-derives a value or asks
 *"was this a benchmark?"*
 
 > **An element carries its allocation as well as its parameters, and that is the
-> point.** The deck writer needs the rank count (`BlockSize`'s ceiling is orbitals
+> point.** The deck writer needs the rank count (`block_size`'s ceiling is orbitals
 > ÷ ranks) and the wrapper writer needs the whole of it. **Both read one object**,
 > resolved once, instead of one reading a config and the other re-deriving.
 
@@ -429,7 +445,7 @@ flowchart TB
 
 | module | floor | what it owns | what it replaced |
 |---|:--:|---|---|
-| **`template.py`** | 2 | read and write `<label>.template.toml`; the `Item` type; emit from schema | a template that was written by a CLI command and read back by nothing — `prep` now rebuilds the config from it |
+| **`template.py`** | 2 | read and write `<label>.template.toml`; the `Item` type; narrow the catalogue to one engine and fill in values (`template_with_values`) | a template that was written by a CLI command and read back by nothing — `prep` now rebuilds the config from it |
 | **`resolve.py`** | 3 | template + task + `Environment` + **allocation** + sweep + pins (+ the specialisation's `MachineTranslation`) → **`ParameterSet`** | the missing floor-2 → floor-3 edge, and `bench/`'s parallel grid builder (folding at step 6) |
 
 **`resolve/` is the hinge, and it is where the duplication dies.** Everything
@@ -453,9 +469,11 @@ left to implement.
 
 **An engine supplies exactly two things**, and adding one touches no shared file:
 
-1. **its schema** — every parameter it models, with `type`, `range`, `unit`,
-   `default`, `anchor`, `kind`, `read_by`. This generates its template and its
-   BENCH-MARKS block.
+1. **its rows in the catalogue** — every parameter it models, each declaring
+   `type`, `range`, `unit`, `default`, `anchor`, `kind`, `read_by`, and an
+   `engines` list naming itself. It adds rows to the one shared file; it does
+   not bring a file of its own ([`template.md`](?doc=engines/template.md)
+   § 6.3).
 2. **a deck writer** — a function from `ResolvedConfig` to deck text, which maps
    `kind="engine"` items through `anchor` and `kind="deck"` items through
    molbuilder's own rule.
@@ -482,7 +500,7 @@ removes the places where two things can disagree:**
 | every `if` on *"is this a benchmark"* below floor 7 | length is data |
 | the trial-name format string | `point`, rendered by one function |
 | the wrapper knowing which keyword means what | `read_by` names the items it depends on (`template.md` § 6.1). *(The ELPA half of this row was deleted outright in 2026-08-13 rather than replaced — the premise that only the source build has ELPA was measured false, so there was no read left to move. `enable_gpu` is the live case.)* |
-| a second copy of every bound | the schema generates both the template and BENCH-MARKS |
+| a second copy of every bound | the catalogue is the one place a bound is stated; the template is it narrowed and answered, and BENCH-MARKS is checked against it (§ 3) |
 
 **The size test** (`staged-runs-implementation-plan.md` § 9.4): a change made
 under this document that does not delete more than it adds, or remove a place
@@ -516,29 +534,38 @@ floors.
 
 | class | examples | decided at | by | default comes from |
 |---|---|---|---|---|
-| **1 · physics** | `mesh_cutoff`, k-grid, XC functional, basis, `restart` | **describe** (floor 2) | the user, per stage | the **engine field schema** — the single source § 3 draws; the template carries it |
+| **1 · physics** | `mesh_cutoff`, k-grid, XC functional, basis, `restart` | **describe** (floor 2) | the user, per stage | the **catalogue** — the single source § 3 draws; the template carries the answer |
 | **2 · structure facts** | cell, **vacuum**, frozen atoms, regions | before describe (the structure file), or **at describe** (`--vacuum`) | whoever built the structure | *unset* — a cell is resolved from the structure at render, with a named default and a warning when nobody chose |
 | **3 · machine / allocation** | `mpi_np`, `omp_threads`, `max_memory_mb`, domain, partition, time | **prep** (floor 3), on the machine that runs it | the resolver, from Environment + config + what you asked for | the detected **Environment** and the scheduler config — never floor 2 ([`engines/template.md`](?doc=engines/template.md) § 7 forbids it) |
 | **4 · runtime overrides** | `-np` / `-omp` flags, `MB_NP`, `OMP_NUM_THREADS`, `--mps` / `--no-mps` | **launch**, inside the wrapper | the person or scheduler launching | the values class 3 baked; see the chain below |
-| **5 · policy** | `continue_retries`, stage `restart` policy | **describe** (floor 2) | the user | the schema, like class 1 — a policy is portable, which is why it is *not* class 3 |
+| **5 · policy** | `continue_retries`, stage `restart` policy | **describe** (floor 2) | the user | the catalogue, like class 1 — a policy is portable, which is why it is *not* class 3 |
 
-### 10.1 Class 1 — physics: the schema is the only default table
+### 10.1 Class 1 — physics: the catalogue is the only default table
 
-The engine field schema declares every parameter molbuilder models, **with its
-type, range, unit and default** — § 3's two `generates` edges make it the
-single source, and [`engines/template.md`](?doc=engines/template.md) § 5's rule
-(*"two hand-maintained copies of `default` would drift silently"*) is why no
-other list of defaults exists anywhere in this design, this section included.
-To read the defaults, read the template a describe writes: every item at its
-default IS the blank form (§ 3.1).  A stage changes a value by **override**
-(`task.json`, [`engines/stages.md`](?doc=engines/stages.md) § 2) — the ladder
-is differences against the template, never a second copy of it.
+The catalogue declares every parameter molbuilder models, **with its type,
+range, unit and default** — § 3's edges make it the single source, and
+[`engines/template.md`](?doc=engines/template.md) § 5's rule (*"two
+hand-maintained copies of `default` would drift silently"*) is why no other list
+of defaults exists anywhere in this design, this section included.  To read the
+defaults, read the catalogue, or the template a describe writes from it: every
+item at its default IS the blank form (§ 3.1).  A stage changes a value by
+**override** (`task.json`, [`engines/stages.md`](?doc=engines/stages.md) § 2) —
+the ladder is differences against the template, never a second copy of it.
 
-**Engine scope is the schema itself.**  Each engine has its own field schema,
-so *"is this parameter meaningful for this engine?"* is answered by membership:
-SIESTA's `mesh_cutoff` simply does not exist in PySCF's schema, and no shared
-name is resolved through a branch (see § 7 — the engine seam is a plugin, not
-an `if`).
+**Engine scope is a column, not a file.**  There is ONE catalogue and every
+engine's parameters live in it, so *"is this parameter meaningful for this
+engine?"* is answered by the item's own `engines` list: `mesh_cutoff` declares
+`engines = ["siesta"]` and so does not apply to PySCF, while an item that
+declares no list — `max_memory_mb` is one of three — applies to every engine.
+No shared name is resolved through a branch (see § 7 — the engine seam is a
+plugin, not an `if`), and `select(t, engine=…)` is the one read that answers
+the question ([`template.md`](?doc=engines/template.md) §§ 6.3, 8.0).
+
+*(This section said each engine had **its own field schema** until 2026-08-16.
+That was true before the unification and is the reason the sentence survived —
+it describes a real past arrangement, not a misreading. One file serving every
+engine is the whole point of `§ 6.3`, and it is what makes a merged item like
+the GPU flag expressible at all.)*
 
 ### 10.2 Class 2 — structure facts: they ride the structure, and engines read what they read
 
@@ -569,7 +596,9 @@ bounds the **allocation** (asked: ranks, cores, GPUs, time, domain), and both
 enter resolution at **prep, on the machine that will run it** — which is the
 whole reason describe and prep are two verbs
 ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 2.3.1).
-There is no schema default for `mpi_np`: the default is **derived from the
+There is no catalogue default for `mpi_np` — its item is declared **valueless**,
+naming the `rank_count` resolver ([`template.md`](?doc=engines/template.md)
+§ 6.4) — so the default is **derived from the
 machine standing under the command** (physical cores, clamped — see
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.1), which
 is why it may not appear in a floor-2 template at all.
