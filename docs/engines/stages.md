@@ -111,12 +111,17 @@ question. The vocabulary is closed and lives in `template.GROUPS`
 
 | group | meaning | SIESTA | PySCF |
 |---|---|---|---|
-| `setup` | what the run is called, and where its pseudopotentials come from — nothing can be built without these | `system_label`, `psml_lib` | `job_name` |
-| `profile` | set once for the calculation | `xc_functional`, `solution_method`, `relax_type`, … | `method`, `basis`, `functional`, … |
-| **`stage`** | **the settings that typically vary across a sequence** | `basis_size`, `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`, `kgrid`, `relax_force_tol`, `relax_max_displ` | `scf_conv_tol`, `grid_level` |
-| `budget` | what it is allowed to spend | `max_scf_iter`, `relax_steps`, `block_size`, `diag_algorithm`, `parallel_over_k` | `scf_max_cycle` |
-| `output` | what the run writes | the `write_*` set | `save_*`, `chkfile` |
-| `staging` | answered by the staging surface, not by a parameter form — the machine asks, the GPU flag, and how a run resumes | `mpi_np`, `omp_threads`, `max_memory_mb`, `enable_gpu`, `restart`, `continue_retries` | `threads`, `use_gpu` |
+| `setup` | what the run is called, and where its pseudopotentials come from — nothing can be built without these | *(2)* `system_label`, `psml_lib` | *(1)* `job_name` |
+| `profile` | set once for the calculation | *(14)* `xc_functional`, `solution_method`, `spin_treatment`, `net_charge`, `species_order`, … | *(23)* `method`, `basis`, `functional`, `optimizer`, `solvent`, … |
+| **`stage`** | **the settings that typically vary across a sequence** | *(11)* `basis_size`, `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`, `scf_energy_converge`, `kgrid`, `kgrid_displacement`, `relax_type`, `relax_force_tol`, `relax_max_displ` | *(3)* `scf_conv_tol`, `scf_conv_tol_grad`, `grid_level` |
+| `budget` | what it is allowed to spend | *(5)* `max_scf_iter`, `relax_steps`, `block_size`, `diag_algorithm`, `parallel_over_k` | *(1)* `scf_max_cycle` |
+| `output` | what the run writes | *(7)* the `write_*` set, plus `copy_psml` | *(6)* `verbose`, `chkfile`, `log_file`, `save_*`, `write_trajectory` |
+| `staging` | answered by the staging surface, not by a parameter form — the machine asks, the GPU flag, and how a run resumes | *(5)* `mpi_np`, `omp_threads`, `enable_gpu`, `restart`, `continue_retries` | *(3)* `threads`, `use_gpu`, `stage` |
+
+The counts are the whole group, the names a readable sample where the group is
+long; `max_memory_mb` is in `staging` for **both** engines, because it is one of
+the three items that declare no `engines` list and therefore apply everywhere
+([`template.md`](?doc=engines/template.md) § 4.2).
 
 > *(This table read three groups until 2026-08-16, sourced them from the config
 > classes' `metadata["workflow_group"]`, and put `mpi_np` and `omp_threads`
@@ -138,7 +143,7 @@ question. The vocabulary is closed and lives in `template.GROUPS`
 > **UI grouping**, added 2026-06-13 to fix a reported bug: the form used to mix
 > stage, budget and system fields inside the same fieldsets, *so switching the
 > stage preset silently rewrote budget and system fields too*. Two consumers, both
-> in the surface — `form-schema.js` renders three cards in a fixed order so
+> in the surface — `form-schema.js` renders the cards in a fixed order so
 > "switching the stage selector touches the stage card only" is visible at a
 > glance, and `_shared.py::resolve_workflow_group` routes a validation finding to
 > the card whose fields it concerns (`web/ui-contract.md` Rule 2). **It has never
@@ -147,8 +152,11 @@ question. The vocabulary is closed and lives in `template.GROUPS`
 > boxes start ticked.
 >
 > `profile`'s own subtitle reads *"Set once per run; doesn't change between
-> stages"* — a claim about typical use, and **false for `relax_type`**, which is
-> why that field is mis-tagged rather than the rule being wrong.
+> stages"*, and that is a claim about **typical use, not a constraint** — which
+> matters, because the subtitle is the sentence a user reads before deciding
+> whether to tick the box beside a field. When a `profile` field turns out to
+> vary in practice, the honest answer is to fix the tag, not to weaken the
+> subtitle; `relax_type` was exactly that case and is now `stage` (below).
 >
 > **The groups may overlap, and that is not a defect** (user, 2026-08-07). They
 > serve **user clarity and where a validation finding appears** — not a partition
@@ -211,31 +219,41 @@ question. The vocabulary is closed and lives in `template.GROUPS`
 > correction removed. `web/task-setup-plan.md § 3.2` and
 > `web/structure-optimization-ui-plan.md` carry the surface detail.
 >
-> **`relax_type` is tagged `profile` and that tag is wrong** (user, 2026-08-07,
-> and it is a scientific call, not a naming one): a ladder deliberately changes
-> the optimizer between stages — CG to warm up, Broyden once the geometry is
-> close — so it belongs in the `stage` group. Correcting the tag is a one-line
-> change with `engines/tuning.md`'s reasoning behind it. It also demonstrates the
-> rule above: even had the tag stayed wrong, a user could tick the box.
+> **`relax_type` was tagged `profile`, that tag was wrong, and it is now
+> `stage`** — ✅ corrected, verified against the catalogue 2026-08-16. The call
+> was scientific rather than a naming preference (user, 2026-08-07): a ladder
+> deliberately changes the optimizer between stages — CG to warm up, Broyden
+> once the geometry is close — so it belongs in the `stage` group, with
+> `engines/tuning.md`'s reasoning behind it. It also demonstrated the rule
+> above: even while the tag was wrong, a user could tick the box.
 
 **The four hard-coded values are historical residue, and the tagging proves it**
 (2026-08-07). Of the four that `render_siesta_stage_fdfs` could vary *(the
 shipped renderer this critique was written against; deleted 2026-08-12 with the
 pre-resolve producers — `varies` + `overrides` through `prep` is the mechanism
-now)*, **two are not even tagged as stage settings**:
+now)*, **two were not even tagged as stage settings**:
 
-| hard-coded as varying | what the config actually tags it |
-|---|---|
-| `relax_force_tol` | `stage` ✓ |
-| `relax_max_displ` | `stage` ✓ |
-| `relax_type` | **`profile`** — a set-once choice |
-| `relax_steps` | **`budget`** — a resource |
+| hard-coded as varying | tagged, when this was written | tagged today |
+|---|---|---|
+| `relax_force_tol` | `stage` ✓ | `stage` |
+| `relax_max_displ` | `stage` ✓ | `stage` |
+| `relax_type` | **`profile`** — read as a set-once choice | **`stage`** — the tag was the thing that was wrong, and it was corrected |
+| `relax_steps` | **`budget`** — a resource | `budget` — still a resource, and correctly so: it caps how long you are willing to relax, not how well |
 
-And **six fields tagged `stage` cannot be varied at all**: `basis_size`,
+And **eight fields tagged `stage` could not be varied at all**: `basis_size`,
 `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`,
-`kgrid`. So the shipped set simultaneously admits two fields the config says are
-not stage settings and excludes six it says are. **The code already knew the
-right answer; the stage mechanism never read it.**
+`scf_energy_converge`, `kgrid`, `kgrid_displacement`. So the shipped set
+simultaneously admitted two fields the tags said were not stage settings and
+excluded eight they said were. **The tagging already knew the right answer; the
+stage mechanism never read it.**
+
+*(The right-hand column is the 2026-08-16 recheck. One of the two mismatches was
+a genuine mis-tag and is fixed; the other was never a mismatch, which is why the
+count of stage-tagged-but-unvarying fields grew from six to eight rather than
+shrinking — `scf_energy_converge` and `kgrid_displacement` joined the `stage`
+group and the deleted renderer would not have varied them either. The argument
+this passage makes does not depend on the arithmetic: a hard-coded list of four
+names cannot track a catalogue that gains items.)*
 
 ### 1.4 One mechanism, engine-specific only where the science is
 
@@ -245,10 +263,9 @@ engine's own:
 | | Shared, written once | The engine's |
 |---|---|---|
 | the description | `task.json` + its reader | — |
-| the catalogue | the form-schema generator | **its config class and its `workflow_group` tags** |
+| the catalogue | **the file itself** — one authored TOML serving every engine, its schema, and the form-schema generator that reads it ([`template.md`](?doc=engines/template.md)) | **which items apply to it** — each item's `engines` list — and, per item, its `anchor` and `engine_key` |
 | resolution | template ⊕ `overrides` → one config | — |
 | the per-stage table | one tab, driven by `varies` | — |
-| the backbone | **the template's format** — one TOML file, the same for every engine ([`template.md`](?doc=engines/template.md)) | **which items are in it**, and what each one's `anchor` is |
 | the deck | — | **the file the engine reads** (`.fdf` for SIESTA, `.py` for PySCF) |
 | correctness | the *structural* preflight (§ 6.6) | **the science** — is this basis adequate for that cutoff, does this ladder loosen |
 
@@ -459,22 +476,36 @@ decks that are subtly wrong for the machine they run on.
 
 | Kind | Examples | Lands |
 |---|---|---|
-| an ordinary deck line | `mesh_cutoff` → `MeshCutoff` | the stage's deck, and nowhere else |
-| **a deck line that is also a resource decision** | `diag_algorithm` → `Diag.Algorithm`; `enable_gpu` | the deck **and** the wrapper's env routing **and** a scheduler's `--gres` |
+| an ordinary deck line | `mesh_cutoff` → `MeshCutoff`; `diag_algorithm` → `Diag.Algorithm` | the stage's deck, and nowhere else |
+| **a deck line that is also a resource decision** | `enable_gpu` → `Diag.ELPA.GPU` | the deck **and** the wrapper's env routing **and** a scheduler's `--gres` |
 | a field the deck never carries | `mpi_np`, `omp_threads`, `continue_retries` | the **wrapper** — baked at prep (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
 | **a field that is a claim about the run directory** | `required` | **the check the wrapper runs in the directory the job runs in**, immediately before the engine starts — and nowhere else (`job-contracts.md § 2.1`, § 4.4) |
 
 > **The second row is about where a value *lands*, not about who *chooses* it**
 > (clarified 2026-08-07, because the wording invited the other reading).
-> `diag_algorithm` is an **ordinary explicit option** — the user picks it, and
+> `enable_gpu` is an **ordinary explicit option** — the user ticks it, and
 > nothing derives it from the machine. What makes it a resource decision is only
-> that the choice is *read* in three places downstream, which is exactly what
-> [`template.md`](?doc=engines/template.md) § 6.1's `read_by` records on the item
-> itself. **And whether the engine can honour it is the engine's business**: a
-> deck asking for an ELPA solver a build does not have fails when SIESTA runs,
+> that the choice is *read* downstream as well as written into the deck, which
+> is exactly what [`template.md`](?doc=engines/template.md) § 6.1's `read_by`
+> records on the item itself. It is the **only** item in the catalogue that
+> carries one, and the list is `["wrapper"]`.
+>
+> > ⚠ **This note argued from `diag_algorithm` until 2026-08-16, and the premise
+> > had already been measured false on 2026-08-14** — one contract was corrected
+> > and this one was not. Any ELPA solver does *not* need a different
+> > environment: conda-forge's SIESTA carries ELPA through ELSI and runs it on
+> > CPU (`engines/siesta.md` § 7.2, `running-a-job.md` § 2.3). So
+> > `diag_algorithm` decides nothing outside its own deck, declares no `read_by`,
+> > and belongs in the first row. `enable_gpu` is the live case and the better
+> > one: the GPU build, the `gres` ask, MPS, the NUMA pin and the rank/thread
+> > budget all turn on it. [`template.md`](?doc=engines/template.md) § 6.1
+> > carries the same correction.
+>
+> **And whether the engine can honour a solver choice is the engine's business**:
+> a deck asking for an ELPA solver a build does not have fails when SIESTA runs,
 > which is the right place to fail. The generator does not check.
 >
-> **A genuinely derived value is a different case** — `BlockSize` from the rank
+> **A genuinely derived value is a different case** — `block_size` from the rank
 > count. There the default is computed at `prep`, an explicit user setting wins,
 > and both are available at that moment
 > ([`template.md`](?doc=engines/template.md) § 12).
@@ -531,14 +562,18 @@ inside the folder this very paragraph says must name no machine.)*
 
 `job-contracts.md § 6.2` lists the eigensolver as a config value that becomes a
 `.fdf` keyword and the GPU request as one *derived from* the `.fdf`.
-`running-a-job.md § 2.3` says what follows: **any** `Diag.Algorithm elpa*` — even
-CPU-ELPA — routes the wrapper to the GPU-build environment, because ELPA is
-linked only in that build.
+`running-a-job.md § 2.3` says which of the two actually moves the wrapper:
+**only `Diag.ELPA.GPU true` re-routes**, to `molbuilder-siesta-gpu`. CPU-ELPA
+does not, because the packaged SIESTA carries ELPA through ELSI and runs it on
+CPU. The two environments differ by **provenance** — one installs from packages
+anywhere, the other has to be built from source — so this is not a hardware
+split, and sending CPU-ELPA to the source build used to refuse a perfectly
+runnable calculation on any machine where compiling is not allowed.
 
 Two consequences:
 
 - **Two stages in one folder may need two different environments.** A coarse
-  stage on ScaLAPACK and a tight stage on ELPA-GPU is an ordinary thing to want,
+  stage on CPU and a tight stage on ELPA-GPU is an ordinary thing to want,
   and it works: routing is per script, so each deck's own wrapper activates its
   own environment. Nothing about the folder has to change.
 - **It is a correctness gate, and it fires late.** If a stage opts into a build
@@ -661,48 +696,6 @@ rather than inventing a second mechanism.
   "bench": { "mpi_np": [4, 8, 16], "omp_threads": [1, 2] }
 }
 ```
-
-### 6.8 `bench` — a plan to measure, never a measurement
-
-**The problem it solves.** A calculation's resource settings — ranks, threads,
-memory, the GPU — cannot be chosen in a browser, because they depend on the
-machine. But *which of them are worth measuring, and over what points* is a
-decision about this calculation, and it is made by the person who set it up. So
-it belongs in the description, and nothing else in `task.json` could hold it:
-`varies` names per-stage physics columns, and `overrides` fills them.
-
-**The rule, and it is the same one § 6 already rests on:**
-
-> `task.json` records **points to try**. It never records what was found.
-
-That keeps the description portable in exactly the way `template.md` § 7
-requires. *"Measure ranks at 4, 8, 16"* is true on every machine. *"Use 16"* is
-true on one, and writing it here would make the file a machine's opinion rather
-than a calculation's description — the same reason an allocation item is
-declared **valueless** and `read_template` refuses a hand-edited `mpi_np`.
-
-**Where the answer goes instead.** `bench` runs on the target and writes
-`bench-result.json`, whose `choice` carries the measured value alongside the
-rank and GPU counts; `prep` reads it there
-([`job-system.md § 7`](?doc=execution/job-system.md)). Two files, two jobs: the
-description says what to ask, the result says what the machine said.
-
-**A field may appear here that may never appear in the template**, and that is
-not a contradiction. `mpi_np` as a *point to try* is a question; `mpi_np` as an
-item value would be an assertion about a machine the description has not met.
-The two are different claims and only one of them travels.
-
-**What may be swept is not a free list.** A key must name a field the engine
-already declares sweepable — the `execution` category, which
-[`template.md` § 6.2](?doc=engines/template.md) defines as *"knobs that change
-speed and not the answer"*. Sweeping something outside it means each point
-silently measures a different calculation, and the comparison is meaningless.
-
-> **Why this is `@1` and not a new major.** The key is optional, and absent is
-> the correct reading of every `task.json` written before it existed: no bench
-> was planned. A major bump would invalidate every description on disk to add
-> something none of them says. Readers that predate the key are not a concern —
-> they ship together with the writer.
 
 ### 6.1 Four rules
 
@@ -1014,6 +1007,48 @@ all of them. Before the first produce it is free to change; after, it is a
 different calculation. Whether an existing folder can be *converted* is a
 separate question and still open (`project-layout.md § 8`).
 
+### 6.8 `bench` — a plan to measure, never a measurement
+
+**The problem it solves.** A calculation's resource settings — ranks, threads,
+memory, the GPU — cannot be chosen in a browser, because they depend on the
+machine. But *which of them are worth measuring, and over what points* is a
+decision about this calculation, and it is made by the person who set it up. So
+it belongs in the description, and nothing else in `task.json` could hold it:
+`varies` names per-stage physics columns, and `overrides` fills them.
+
+**The rule, and it is the same one § 6 already rests on:**
+
+> `task.json` records **points to try**. It never records what was found.
+
+That keeps the description portable in exactly the way `template.md` § 7
+requires. *"Measure ranks at 4, 8, 16"* is true on every machine. *"Use 16"* is
+true on one, and writing it here would make the file a machine's opinion rather
+than a calculation's description — the same reason an allocation item is
+declared **valueless** and `read_template` refuses a hand-edited `mpi_np`.
+
+**Where the answer goes instead.** `bench` runs on the target and writes
+`bench-result.json`, whose `choice` carries the measured value alongside the
+rank and GPU counts; `prep` reads it there
+([`job-system.md § 7`](?doc=execution/job-system.md)). Two files, two jobs: the
+description says what to ask, the result says what the machine said.
+
+**A field may appear here that may never appear in the template**, and that is
+not a contradiction. `mpi_np` as a *point to try* is a question; `mpi_np` as an
+item value would be an assertion about a machine the description has not met.
+The two are different claims and only one of them travels.
+
+**What may be swept is not a free list.** A key must name a field the engine
+already declares sweepable — the `execution` category, which
+[`template.md` § 6.2](?doc=engines/template.md) defines as *"knobs that change
+speed and not the answer"*. Sweeping something outside it means each point
+silently measures a different calculation, and the comparison is meaningless.
+
+> **Why this is `@1` and not a new major.** The key is optional, and absent is
+> the correct reading of every `task.json` written before it existed: no bench
+> was planned. A major bump would invalidate every description on disk to add
+> something none of them says. Readers that predate the key are not a concern —
+> they ship together with the writer.
+
 ---
 
 ## 6b. Open questions about the description
@@ -1088,11 +1123,17 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   | | |
   |---|---|
   | **In the hierarchical shape it does not bite at all** | the log sits in `01_coarse/run-0/`, so the path says which stage it is. Nothing needs to be looked up |
-  | **With default stage names it barely bites** | the defaults are `stage1` / `stage2` / `stage3`, so the deck is `<label>_stage1.fdf` and the log `<label>-stage1.molwatch.log` — the same information, differing by one character |
-  | **It bites when a user names their stages** | call them `coarse` and `tight` and the deck says `coarse` while the log says `stage1`. That is the case worth fixing |
+  | **In the flat shape it bites, and on the default names already** | the defaults are the words `coarse` / `medium` / `tight` (`config/siesta.py::SIESTA_STAGE_NAMES`), so the deck said `<label>_01_coarse.fdf` while the log said `<label>-stage1.molwatch.log`. Nothing in either name says they are the same run |
+  | **A user naming their own stages only widens it** | `warmup` and `production` against `stage1` and `stage2` — the same mismatch, with no ordinal left to guess from |
 
-  So the rule is worth adopting for consistency and for the third row, not
-  because anything is currently unreadable.
+  So the rule is worth adopting for consistency and for the flat shape, where
+  the filename is the only thing that says which stage a log belongs to.
+
+  *(Corrected 2026-08-16. The middle row used to read "with default stage names
+  it barely bites", on the premise that the defaults were `stage1` / `stage2` /
+  `stage3` and so differed from the log name by one character. They are words
+  and have been for as long as the presets have existed, so the mismatch was
+  never the mild case this table filed it under.)*
 
   **Cost, stated rather than hidden:** the run decoder's stage regex keyed on
   the `-stage<N>` form, so it changed with this. That is code following a
@@ -1172,7 +1213,7 @@ its own stage directory, on the machine that will run it.
 **The deck is rendered where the machine is known, and that is not deferral for
 its own sake.** Some of what goes *inside* a `.fdf` is a fact about the hardware:
 `_auto_block_size(n_atoms, mpi_np, gpu_mode)` derives `BlockSize` from the rank
-count and whether there is a GPU, and `Diag.Algorithm` picks both the numerics
+count and whether there is a GPU, and `Diag.ELPA.GPU` picks both the numerics
 and the conda environment the wrapper activates (§ 5). A deck finished on a
 laptop is either wrong for the cluster or guessing. So the parent carries a
 **template** and `prep` completes it — the same shape `bench prep` already ships,
