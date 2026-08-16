@@ -234,7 +234,7 @@ bdt-relax/                            the CALCULATION — the user typed this na
 │   ├── run-0/                        an ATTEMPT
 │   │   ├── run.json                  how it was launched, what it continued from
 │   │   ├── <label>.XV  <label>.DM    SIESTA named these: bare
-│   │   └── <label>_01_coarse.out        molbuilder named this: it says the stage
+│   │   └── <label>_01_coarse-run0.out   molbuilder named this: stage + attempt
 │   ├── run-1/                        a redo — run-0 is untouched
 │   └── bench/                        a BENCHMARK — its own little world
 │
@@ -249,6 +249,14 @@ it every stage directory holds an identically-named deck, and two swapped by a
 bad copy or a resumed `prep` disagree with nothing; with it,
 `01_coarse/<label>_02_tight.fdf` is wrong on sight (`run-identity.md § 3.2`,
 decision 21).
+
+**And the stdout keeps its `-run<N>` counter here too**, even though `run-0/`
+already says which attempt it is — for the same self-check reason, and because
+there is only one wrapper: `runwrap.py` writes `<basename>-run${_run_n}.out`
+with no branch on shape. `job-contracts.md` § 6.3's Files table is the authority
+and says so in those words. *(This tree drew a counterless `<label>_01_coarse.out`
+until 2026-08-16 — the exact reading § 6.3 records itself correcting, surviving
+in the document that draws the picture people copy from.)*
 
 ```mermaid
 flowchart TB
@@ -670,9 +678,17 @@ Because some of what goes *inside* the deck is a fact about the machine.
 a benchmark may measure it ([`tuning.md § 2.11`](?doc=engines/tuning.md)) — but
 when you have not set one, `prep` proposes a value from **the orbital count, the
 rank count and whether there is a GPU**, and that number is written into the
-`.fdf`. The eigensolver is another: ScaLAPACK or ELPA changes both the deck *and*
-which conda environment the wrapper activates. A deck rendered on a laptop is
-either wrong for the cluster or a guess.
+`.fdf`. The GPU flag is another: `enable_gpu` writes `Diag.ELPA.GPU` into the
+deck *and* sends the wrapper to a different conda environment, and whether this
+machine has a GPU at all is not a laptop's to know. A deck rendered on a laptop
+is either wrong for the cluster or a guess.
+
+> *(This paragraph argued from **the eigensolver** — "ScaLAPACK or ELPA changes
+> both the deck and which environment" — until 2026-08-16. That premise was
+> measured false on 2026-08-14: the packaged SIESTA carries ELPA through ELSI
+> and runs it on CPU, so only `Diag.ELPA.GPU true` re-routes
+> (`running-a-job.md` § 2.3, `engines/siesta.md` § 7.2). The argument is
+> unchanged and the example is now one that holds.)*
 
 > **Note which half of that makes the argument.** It is not that molbuilder
 > *derives* `BlockSize` — it is that **the inputs to any sensible value only
@@ -711,18 +727,24 @@ until you are standing on the machine.
 | `template.toml` | the browser | the physics: functional, basis, k-grid — **every parameter of the calculation, with its base value.** The hardware's parameters are *named* here too, deliberately without values — the last two rows are what answer them |
 | `task.json` | the browser | this stage's overrides — mesh cutoff, force tolerance, relaxation type |
 | `molbuilder.json` | this machine, outside the tree | how to activate an environment, which queue, what a walltime looks like |
-| `bench-result.json` | measured on this machine, optional | rank count → `BlockSize`; solver → `Diag.Algorithm` **and** which conda env |
+| `bench-result.json` | measured on this machine, optional | rank count → `BlockSize`; whether a GPU was worth it → `Diag.ELPA.GPU` **and** which conda env |
 
 **A worked instance.** The same description, prepped on two machines:
 
-| | workstation | cluster |
+| | workstation | GPU node on the cluster |
 |---|---|---|
 | ranks | 8 | 64 |
 | `BlockSize` in the deck | 8 | 256 |
-| `Diag.Algorithm` | ScaLAPACK | ELPA |
+| `Diag.Algorithm` | `ELPA-2STAGE` | `ELPA-2STAGE` — **the same**, and it decides no environment |
+| `Diag.ELPA.GPU` | absent | `true` |
 | env the wrapper activates | `molbuilder-siesta` | `molbuilder-siesta-gpu` |
-| the wrapper | `mpirun -np 8` | `#SBATCH` header + `srun` |
+| the wrapper | `mpirun -np 8` | `#SBATCH` header with `--gres` + `srun`, MPS, the NUMA pin |
 | **`template.toml` and `task.json`** | **byte-identical** | **byte-identical** |
+
+*(The solver row read `ScaLAPACK` against `ELPA` with the environments split
+along it until 2026-08-16. It is kept as a row, with the same value on both
+sides, because that is what makes the point visible: the solver is free to be
+identical while the environment differs, and it is the GPU line that moved.)*
 
 The last row is the point. The portable half did not move; only what the machine
 decided did.
@@ -805,14 +827,16 @@ flowchart TB
 
 **Why the order is forced, not chosen.** Step 3 cannot precede step 1, because a
 deck carries values that *depend on how it will be launched* — a block size
-derived from the rank count, an eigensolver that also decides which environment
+derived from the rank count, and a GPU line that also decides which environment
 the wrapper must activate. **A parameter that depends on the launch cannot be
 decided before the launch is known.** Any deck written before step 1 has guessed
 at them. That is § 2.2 restated as a sequencing rule, and it is the whole reason
 `prep` is a step of its own rather than something the browser finishes.
 
 Step 4 follows step 3 for the same reason one level up: the wrapper's environment
-is chosen by a value the deck decides.
+is chosen by a value the deck decides — `Diag.ELPA.GPU`, the one item in the
+catalogue carrying `read_by = ["wrapper"]`
+([`template.md`](?doc=engines/template.md) § 6.1).
 
 #### 2.3.1b Capability and allocation — two different things called "resources"
 
@@ -846,7 +870,7 @@ Naming them apart is what makes step 1 answerable.
 | **M2** | **Detection and declaration cover different facts, and each owns its own.** *Detected:* cores, GPUs and their type, the scheduler, the default partition — things a machine can be asked. *Declared:* the QoS, the account, the activation command, the partition you are entitled to — **site policy, which a machine cannot report.** | `environment.py::detect_site` states it: *"`qos`/`account` are intentionally left `None` — they are site policy, not reliably derivable from `sinfo`, so they come from the user's config"*. A node reports what it *has*; only your config knows what you may *use* |
 | **M2a** | **Where the two overlap, the declaration wins, and the disagreement is recorded rather than silently resolved.** The **partition** is the one fact both can supply | A detected default partition and a declared one that differ is a real situation — a cluster's default is rarely the one you are entitled to — and picking one without saying so produces a job that bounces with no trace of why |
 | **M3** | **What was detected and what was declared must both be recoverable from the run directory.** | *"the numbers were wrong"* is unanswerable if you cannot tell a probe from a setting |
-| **M4** | **Allocation is an input to `prep`, not a field of the description and not a decision at submit.** | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *derived from the rank count* (block size, and which eigensolver — which in turn picks the environment the wrapper activates). A deck written before the allocation is known has guessed |
+| **M4** | **Allocation is an input to `prep`, not a field of the description and not a decision at submit.** | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *derived from the rank count* (block size), plus the GPU line that picks the environment the wrapper activates. A deck written before the allocation is known has guessed |
 | **M5** | **`submit` decides nothing. It checks that the deck and the launch still agree, refuses if they do not, and starts one job.** | The check already exists (`LaunchAgreement`). A launch that quietly disagrees with its deck is the failure M4 exists to prevent, arriving one step later |
 | **M6** | **A workstation needs no config file.** Detection alone is a complete capability there, and asking for a file would be the nanny behaviour § 0 forbids | There is one machine, you are on it, and nothing is rationed |
 
@@ -977,11 +1001,17 @@ time.
 
 Say yes and step 2 has a third input, which wins over the defaults. The measured
 rank count flows into step 3, where it changes `BlockSize`; the measured
-eigensolver changes `Diag.Algorithm`, which in step 4 changes **which environment
-the wrapper activates**. One measurement, three destinations — the deck twice
-and the wrapper once — which is why resources are not "just scheduler flags"
-here. That is the **second** row of `engines/stages.md § 5`'s four (*a deck line
-that is also a resource decision*), not its section title.
+eigensolver changes `Diag.Algorithm`; and whether the GPU was worth it changes
+`Diag.ELPA.GPU`, which in step 4 changes **which environment the wrapper
+activates** and adds the `--gres` ask. One measurement, several destinations —
+the deck three times and the wrapper once — which is why resources are not "just
+scheduler flags" here. Only the last of the three is the **second** row of
+`engines/stages.md § 5`'s four (*a deck line that is also a resource
+decision*); the block size and the solver are ordinary deck lines.
+
+*(Until 2026-08-16 this paragraph gave the solver as what changes the
+environment. It does not — the packaged SIESTA runs ELPA on CPU, so
+`Diag.Algorithm` never leaves its own deck.)*
 
 `prep` prints what it resolved, and that report is the point:
 
@@ -1089,13 +1119,13 @@ right name.
 | the deck template | the browser | everything about the system that does not depend on the machine |
 | **which stage** | you, on the command line | which overrides apply |
 | **the machine** | detected, here, now | ranks, GPUs, scheduler, activation → `environment.json` |
-| a benchmark verdict *(optional)* | `jobset summarize bench <stage>` | rank count, eigensolver, memory → the deck **and** the wrapper's env |
+| a benchmark verdict *(optional)* | `jobset summarize bench <stage>` | rank count, eigensolver and memory → the deck; whether a GPU was worth it → the deck **and** the wrapper's env |
 | a finished run *(optional)* | you name it | which coordinates and density matrix the run starts from |
 
 | Output | What it is |
 |---|---|
-| `<NN>_<stage>/<label>_<stage>.fdf` | the deck, finally real — every value resolved |
-| `<NN>_<stage>/<label>_<stage>.run.sh` (+ `.sbatch`) | the wrapper, activation baked in |
+| `<NN>_<stage>/<label>_<NN>_<stage>.fdf` | the deck, finally real — every value resolved |
+| `<NN>_<stage>/<label>_<NN>_<stage>.run.sh` (+ `.sbatch`) | the wrapper, activation baked in |
 | `<NN>_<stage>/run-<n>/` | a fresh attempt, inputs linked, warm files copied in |
 | `run.json` | what this attempt is: its mode, its command, and **what it continued from** |
 | the printed report | what was resolved, measured and copied — the thing you check before submitting |
@@ -1170,7 +1200,7 @@ on the science.
 |---|---|---|---|
 | ① **project** | the user | nobody — it is a folder | topics, nothing else |
 | ② **topic** | a **fixed set of nine** (`job-contracts.md § 2.5`) | nobody | calculations (run topics) or files (storage topics) |
-| ③ **calculation** | the run id (`run-identity.md § 3`) | **the browser** (step 3), in one transaction | the template, `task.json`, the shared package, the history |
+| ③ **calculation** | **the user** — whatever they type, `[A-Za-z0-9_-]+`. *(This row said "the run id" until 2026-08-16, contradicting § 1.1's own tree and `job-contracts.md` § 6.3, which is the cross-layer authority: the folder is not derived, and what makes it a calculation is the `task.json` inside it — `run-identity.md § 3.0`.)* | **the browser** (step 3), in one transaction | the template, `task.json`, the shared package, the history |
 | ④ **stage** | `<seq>_<name>` (§ 4) | **`prep`** — the rendered deck and wrapper land here | its deck, its wrapper, its attempts — **a container** |
 | ⑤ **attempt** | `run-<n>`, unpadded (§ 4.3) | **`prep`** creates and arranges it; the engine then fills it | everything one invocation produced — **a run, immutable** |
 | — **benchmark** | `bench`, inside the stage it measures | `prep bench <stage>` | its trials, the sweep's own `job-set.json`, and `bench-result.json` — a **container** |
@@ -1301,15 +1331,20 @@ twenty.
 But **not all of it**, and the exceptions below are exactly why the deck cannot
 be finished before the machine is known (§ 2.2).
 
-Three settings are both, and they are the reason neither mechanism is *the*
-mechanism:
+Four settings sit across the line, and they are the reason neither mechanism is
+*the* mechanism:
 
 | Setting | In the deck | Also decides |
 |---|---|---|
-| `Diag.Algorithm` (ScaLAPACK / ELPA) | yes | which conda environment the wrapper activates — any ELPA variant needs the GPU build (`running-a-job.md § 2.3`) |
-| GPU on/off | yes (`Diag.ELPA.GPU`) | the scheduler's `--gres` |
+| **GPU on/off** | yes (`Diag.ELPA.GPU`) | **the most of any item here**: the scheduler's `--gres`, which conda environment the wrapper activates (`molbuilder-siesta-gpu`, the source build), MPS, the NUMA pin and the rank/thread budget. The one item declaring `read_by = ["wrapper"]` |
 | MPI ranks | **no**, but an unset `BlockSize` is proposed from them | the scheduler's `-n`, and the launch |
+| `Diag.Algorithm` (ScaLAPACK / ELPA-1STAGE / ELPA-2STAGE) | yes | **nothing else.** It is numerics, and the packaged SIESTA carries ELPA through ELSI, so no ELPA variant needs a different build unless it is the GPU one |
 | `BlockSize` | **yes** — a tunable knob, set by you or measured by a benchmark ([`tuning.md § 2.11`](?doc=engines/tuning.md)) | nothing else; it is pure parallel efficiency |
+
+*(The solver row read *"any ELPA variant needs the GPU build"* until 2026-08-16,
+citing `running-a-job.md` § 2.3 — which had said the opposite since 2026-08-14.
+It is kept in the table with an empty second column, because knowing that it
+decides nothing outside its deck is exactly what a reader of this table needs.)*
 
 ### 3.2 A trial's deck is the stage's science, made measurable
 
@@ -1447,6 +1482,14 @@ table to specify.
 > > and is small — a user who names stages `coarse` and `tight` gets a deck saying
 > > `coarse` and a log saying `stage1` — but it is a separator and a default, not
 > > the three-way problem I described.
+>
+> > ⚠ *And the premise of that second paragraph was false as well, found
+> > 2026-08-16.* The default stage names are the words `coarse` / `medium` /
+> > `tight` (`config/siesta.py::SIESTA_STAGE_NAMES`), not `stage1` / `stage2` /
+> > `stage3` — so the *"same information, differing by one character"* case never
+> > existed, and the mismatch it was minimising was the ordinary one. The
+> > conclusion the note reached is unaffected; the reason it gave for calling it
+> > small was not. `engines/stages.md` § 7 carries the same correction.
 
 **The deck carries the number too** — *decided 2026-08-10 (user)*: *"we may
 have many stages connected so I'd rather use names with index number."*
@@ -1546,18 +1589,28 @@ how a folder stops being trustworthy.
 
 | File | Kind | Written by | If you delete it |
 |---|---|---|---|
+| `<label>.template.toml` | **source** | the user's surface | **every value the calculation ever set is gone.** `task.json` cannot supply them: it carries only what *varies* |
 | `task.json` | **source** | the user's surface | the calculation cannot be regenerated or reopened |
 | `<label>_<NN>_<name>.fdf` | derived | `prep` step 3, from the template ⊕ the allocation | re-prep |
-| `<label>_<name>.run.sh` / `.sbatch` | derived | prep, from the deck + the machine's config | re-prep |
+| `<label>_<NN>_<name>.run.sh` / `.sbatch` | derived | prep, from the deck + the machine's config | re-prep |
 | `job-set.json`, `STAGE-PLAN.md` | derived | the producer / prep | regenerate |
 | `*.psml`, `mb_monitor.py` | **input**, copied in | the producer | re-resolve from the project's cache |
 | stage outputs (④) | **result** | the engine | gone — this is what the history is for |
 | trial outputs (the stage's `bench/`) | **scratch** | the engine | nothing lost; `bench-result.json` is the answer |
 
-> **One source, everything else derived.** `task.json` is the only file at the
-> calculation level that cannot be reconstructed from the others. That is what
-> makes reopening a calculation possible, and why no produce and no run may write
-> to it (`checkpointing.md`, S4).
+> **Two sources, everything else derived.** The **template** and **`task.json`**
+> are the files at the calculation level that cannot be reconstructed from the
+> others, and they are two because they answer two questions: the template says
+> *what every parameter is*, the description says *which of them step, and to
+> what* (`stages.md` § 6.2). Neither derives the other — a template holds values
+> `task.json` never mentions, and `task.json` holds intent no deck records. That
+> pair is what makes reopening a calculation possible, and why no produce and no
+> run may write to either (`checkpointing.md`, S4).
+>
+> *(This box said "one source" and named only `task.json` until 2026-08-16, and
+> the table above it omitted the template altogether — in the document whose job
+> is to say what lives where. It dates from before the template was a file of
+> its own: § 3.7 of `job-contracts.md` moved it out on 2026-08-11.)*
 
 ### 5.1 The config files, by level
 
@@ -1566,8 +1619,8 @@ how a folder stops being trustworthy.
 | `molbuilder.json` | outside the tree — cwd or `$XDG_CONFIG_HOME` | validated, no version | **the machine**: activation, module preamble, scheduler, env names |
 | `.molbuilder.json` | ① project | same, deep-merged over the above, project wins | machine settings for this project |
 | `<label>.template.toml` | ③ calculation | `molbuilder/template@2` (TOML) — [`engines/template.md`](?doc=engines/template.md) | **the science backbone** — every parameter of the calculation, grouped by `category` and tagged with the `engines` it applies to. It **names** the parameters the hardware decides (the `execution` category) but carries **no value** for them: the question is the calculation's, the answer is `prep`'s, from `environment.json` |
-| `task.json` | ③ calculation | `molbuilder/task@1` | **the science**: base settings, which vary, the stages, and the resource *intent* |
-| `<label>_<stage>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
+| `task.json` | ③ calculation | `molbuilder/task@1` | **what changes**: which parameters vary, the stages and their overrides, the shape, the structure reference, and an optional `bench` plan. **No `base` key** — what does not change is in the template, once (`stages.md` § 4; this row said "base settings" until 2026-08-16, naming a key removed on 2026-08-07) |
+| `<label>_<NN>_<stage>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
 | `job-set.json` | ③ calculation (the RUN plan, merged per stage); a sweep's own record in the stage's `bench/` | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6) |
 | ~~`.molbuilder.json`~~ | ~~⑤ benchmark bundle~~ | *(retired — note below)* | ~~the activation the bundle carries to the target~~ |
 | `environment.json` | ③ calculation | `molbuilder/environment@1` | the machine as `prep` step 1 detected it |
@@ -1810,8 +1863,11 @@ than no invariant, because it fails a directory that is working correctly.
     until 2026-08-12 — one of the three numberings § 2.6's note records.)*
 11. **A parameter difference is a different deck; a resource difference is a
     different launch.** Neither mechanism is used for the other's job.
-12. **Derived files can be deleted and regenerated** from `task.json` plus the
-    machine's config, byte-identical except for the provenance timestamp.
+12. **Derived files can be deleted and regenerated** from **the template plus
+    `task.json`** plus the machine's config, byte-identical except for the
+    provenance timestamp. *(Named only `task.json` until 2026-08-16 — the
+    template is the other source, and a deck cannot be rebuilt without it:
+    § 5.)*
 13. **[hierarchical] Warm restart flows down the stage axis only, and never on its own.** A
     stage continues from an earlier stage's run that the **user named**, never
     from a trial, and never because something finished (§ 1.6).
