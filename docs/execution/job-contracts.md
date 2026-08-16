@@ -111,10 +111,24 @@ pseudopotential across stages is invisible to it, and legitimate.
 something else: a TranSIESTA scattering calculation cannot start without the
 `.TSHS` an electrode run produced, and nothing about `restart: continue` says so.
 
-**`required` is an ordinary config field**, so a stage sets it through
+**`required` is to be an ordinary config field**, so a stage sets it through
 `overrides` like `mesh_cutoff`, and `stages.md § 2`'s *"a stage is a name, an
 enabled flag, and the cells that differ — and no others"* stays exactly as it
 was. No new stage mechanism, no fourth key in the description.
+
+> ⚠ **Neither half of this is built, and the design is stated here in full so
+> the two halves land together** *(recorded 2026-08-16)*. § 4.4 has said since
+> 2026-08-11 that the **check** is unbuilt. The **field** is unbuilt too, which
+> is the more basic gap and was nowhere stated: the catalogue carries no
+> `required` item, so `resolve` refuses the example below — *"override(s)
+> 'required' name no field of `SiestaConfig`. A stage may override any field of
+> the shared schema, but only a field of it."* That refusal is correct
+> behaviour (`stages.md` § 6.1: a description names fields, it never defines
+> them), which is exactly why the field has to be **added to the catalogue**
+> before a stage can carry one — a stage cannot introduce it. Building the
+> check without the item would give the wrapper a list nothing can produce;
+> building the item without the check would let a description declare a
+> requirement nobody verifies.
 
 ```jsonc
 { "name": "scattering",
