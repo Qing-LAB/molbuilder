@@ -46,13 +46,13 @@ flowchart LR
         C["SiestaConfig<br/>(config/siesta.py:114)"]
     end
     CLI["CLI: molbuilder jobset prep<br/>(via the template)"]
-    WEB["web Structure-optimization tab<br/>→ /api/build/fdf"]
+    WEB["web Structure-optimization tab<br/><i>collects parameters only —<br/>renders no deck</i>"]
     R["render_fdf(struct, config, *, cell=None)<br/>siesta/input.py:329"]
     OUT["JOB.fdf<br/>(+ sibling JOB.molwatch.log,<br/> + copied &lt;Element&gt;.psml)"]
     S --> R
     C --> R
     CLI --> R
-    WEB --> R
+    WEB -.->|"the parameters it collected,<br/>via the template"| CLI
     R --> OUT
 ```
 
@@ -66,14 +66,29 @@ flowchart LR
   > a person render a finished deck straight from flags, skipping the description
   > and guessing at values only the target machine knows. A deck now comes from
   > `molbuilder jobset prep`, which calls exactly these functions.
-- **Frontend (web).** The Structure-optimization tab posts to `/api/build/fdf`,
-  which runs the validation preflight ([`science/validation.md`](?doc=science/validation.md))
-  and then `render_fdf`. `SiestaConfig`'s field metadata drives the form (no
-  SIESTA-specific form code — see § 7).
+- **Frontend (web).** The Structure-optimization tab **collects parameters and
+  produces no artifact.** It makes two calls: `/api/build/schema/siesta`, which
+  renders the form **from the catalogue** (`_shared.catalogue_to_form_schema`),
+  and `/api/build/preflight`, which validates live and places each finding
+  beside the control it is about
+  ([`science/validation.md`](?doc=science/validation.md)). It renders no deck
+  and writes no file; a deck comes from `prep`.
+
+  > *(This bullet said the tab posts to `/api/build/fdf` and gets `.fdf` text
+  > back, and that **`SiestaConfig`'s field metadata drives the form**, until
+  > 2026-08-16. Both are stale and for different reasons: script generation left
+  > this tab on 2026-08-15, and the form has been catalogue-driven since — a
+  > parameter is on the page because the catalogue carries it, not because a
+  > Python class declares it ([`template.md`](?doc=engines/template.md) § 2.1).
+  > The `/api/build/fdf` route still exists in `build.py`; this UI no longer
+  > calls it, and the file's own header records the same correction.)*
 
 ### 1.1 Where the config comes from — the emitter starts from the template
 
-*Stated 2026-08-11 (user), as the design the backend is built to. Not yet code.*
+*Stated 2026-08-11 (user). **✅ It is code**: `jobset/prep.py` takes the
+description plus its template and emits one deck per element of the resolved
+`ParameterSet`, through `EngineSeam(config_cls=SiestaConfig,
+render_deck=render_fdf)`. This line read "Not yet code" until 2026-08-16.*
 
 > **`render_fdf` no longer starts from a config somebody typed. It starts from
 > the layered description** — the template's items, resolved through this stage
@@ -105,7 +120,7 @@ flowchart LR
 
 | | what the emitter must stop doing | why |
 |---|---|---|
-| **1** | **reading anything outside the config.** `cfg.stage` and its five read sites go ([`stages.md § 1.1`](?doc=engines/stages.md): the emitter never learns the word), and the USER-CUSTOM read-back merge cannot run at all — at `prep` there is no previous deck to harvest from, so the text arrives as an **item** ([`template.md § 9.2`](?doc=engines/template.md)) | the template is meant to be complete. Anything the emitter fetches for itself is a value the description does not record, and therefore a deck nothing can reproduce |
+| **1** ✅ | **reading anything outside the config.** `cfg.stage` and its five read sites are gone — `molbuilder/siesta/` reads no `.stage` at all today ([`stages.md § 1.1`](?doc=engines/stages.md): the emitter never learns the word) — and the USER-CUSTOM read-back merge cannot run at `prep` at all, since there is no previous deck to harvest from, so the text arrives as an **item** ([`template.md § 9.2`](?doc=engines/template.md)) | the template is meant to be complete. Anything the emitter fetches for itself is a value the description does not record, and therefore a deck nothing can reproduce |
 | **2** | **always computing, always emitting.** A keyword like `BlockSize` now has **three** states — set by you, unset so `prep` proposes one, or **omitted entirely** so SIESTA uses its own default ([`tuning.md § 2.11`](?doc=engines/tuning.md)) | an emitter that always writes a line cannot express the third, and the third is a legitimate scientific answer |
 | **3** | **seeing items that are not its own.** Only `kind` in `{engine, deck}` reaches the deck writer; `wrapper`, `produce` and `monitor` items belong to other layers ([`template.md § 6`](?doc=engines/template.md)) | *"a SIESTA producer must not try to emit a `wrapper` item as a keyword — SIESTA would not understand it"* |
 
@@ -360,6 +375,39 @@ GPU codepath, so an *omitted* flag makes a CPU-ELPA job initialise CUDA and cras
 (`cudaGetLastError: unknown error`; Sol job 57852378). `Diag.ELPA.GPU` alone (no
 ELPA `Diag.Algorithm`) is silently ignored — both keywords are required.
 
+### 7.1 GPU is just a different setting — best performance & what to look for
+
+Turning on the GPU changes *where the eigensolve runs*, nothing about the chemistry.
+The practical guidance:
+
+- **When it pays off.** GPU-ELPA wins when the **diagonalization dominates** — a
+  large, dense Hamiltonian — because ELPA is *one* call per SCF iteration; the rest
+  (mesh integration, density-matrix mix, H rebuild) stays on the host. For small
+  systems the GPU launch overhead isn't worth it — stay on ScaLAPACK or CPU-ELPA.
+- **Sharing the GPU across ranks (MPS).** On GPU, molbuilder uses NVIDIA **MPS**
+  (Multi-Process Service) so several MPI ranks share one GPU concurrently — via the
+  GPU's **Hyper-Q** hardware queues — needed because the ELPA build doesn't link
+  **NCCL** (NVIDIA's multi-GPU collective library), so without MPS the ranks serialise
+  on the GPU's driver context. MPS auto-enables when `Diag.ELPA.GPU .true.` is emitted,
+  `nvidia-cuda-mps-control` is on the host PATH (it ships with the NVIDIA driver, not
+  conda), *and* the run will use ≥ 2 ranks (single-rank MPS is pure overhead). The
+  default rank count follows MPS: typically **4 with MPS** (capped by core count),
+  **2 without** (override with `MOLBUILDER_MPI_NP` / `-np`).
+- **Numerical equivalence.** ELPA-GPU and ELPA-CPU on the same `Diag.Algorithm` give
+  the same eigenvalues to ~1e-6 eV and the same converged total energy to ~1e-5 eV
+  across the build matrix — so develop and test on CPU-ELPA and run production on GPU
+  with confidence the physics is unchanged [ELPA GPU eigensolver, arXiv 2002.10991].
+
+**What to look for.** The dangerous failure is a **silent CPU fallback**: ELPA can
+quietly run every SCF step on the CPU while `nvidia-smi` still shows a clean, busy
+GPU. The canary is `molbuilder envs validate molbuilder-siesta-gpu`'s
+`elpa gpu codepath` probe — it runs a small ELPA solve and greps stderr for ELPA's
+own "GPU requested but kernel is non-GPU" warning; no other probe catches this.
+Also: the `cudaGetLastError: unknown error` crash on a CPU-ELPA job means the
+load-bearing `Diag.ELPA.GPU .false.` above was dropped; and old ELPA releases had a
+multi-rank GPU-finalize deadlock (jobs hang after SCF iter 1), so if you rebuild the
+env, keep ELPA recent.
+
 ### 7.2 Env routing keys on **GPU**, and on nothing else
 
 **The two SIESTA envs split on provenance, not on hardware.**
@@ -401,48 +449,17 @@ hint. (How the `molbuilder-siesta-gpu` env is *built* — the CUDA/ELPA source
 build, CMake flags, toolchain pinning — is a deployment concern documented under
 `ops/`, not here.)
 
-### 7.1 GPU is just a different setting — best performance & what to look for
-
-Turning on the GPU changes *where the eigensolve runs*, nothing about the chemistry.
-The practical guidance:
-
-- **When it pays off.** GPU-ELPA wins when the **diagonalization dominates** — a
-  large, dense Hamiltonian — because ELPA is *one* call per SCF iteration; the rest
-  (mesh integration, density-matrix mix, H rebuild) stays on the host. For small
-  systems the GPU launch overhead isn't worth it — stay on ScaLAPACK or CPU-ELPA.
-- **Sharing the GPU across ranks (MPS).** On GPU, molbuilder uses NVIDIA **MPS**
-  (Multi-Process Service) so several MPI ranks share one GPU concurrently — via the
-  GPU's **Hyper-Q** hardware queues — needed because the ELPA build doesn't link
-  **NCCL** (NVIDIA's multi-GPU collective library), so without MPS the ranks serialise
-  on the GPU's driver context. MPS auto-enables when `Diag.ELPA.GPU .true.` is emitted,
-  `nvidia-cuda-mps-control` is on the host PATH (it ships with the NVIDIA driver, not
-  conda), *and* the run will use ≥ 2 ranks (single-rank MPS is pure overhead). The
-  default rank count follows MPS: typically **4 with MPS** (capped by core count),
-  **2 without** (override with `MOLBUILDER_MPI_NP` / `-np`).
-- **Numerical equivalence.** ELPA-GPU and ELPA-CPU on the same `Diag.Algorithm` give
-  the same eigenvalues to ~1e-6 eV and the same converged total energy to ~1e-5 eV
-  across the build matrix — so develop and test on CPU-ELPA and run production on GPU
-  with confidence the physics is unchanged [ELPA GPU eigensolver, arXiv 2002.10991].
-
-**What to look for.** The dangerous failure is a **silent CPU fallback**: ELPA can
-quietly run every SCF step on the CPU while `nvidia-smi` still shows a clean, busy
-GPU. The canary is `molbuilder envs validate molbuilder-siesta-gpu`'s
-`elpa gpu codepath` probe — it runs a small ELPA solve and greps stderr for ELPA's
-own "GPU requested but kernel is non-GPU" warning; no other probe catches this.
-Also: the `cudaGetLastError: unknown error` crash on a CPU-ELPA job means the
-load-bearing `Diag.ELPA.GPU .false.` above was dropped; and old ELPA releases had a
-multi-rank GPU-finalize deadlock (jobs hang after SCF iter 1), so if you rebuild the
-env, keep ELPA recent.
-
 ---
 
 ## 8. Staged optimization
 
-A single CLI call can emit one `.fdf` per relaxation **stage**. Each is an
+`prep` emits one `.fdf` per relaxation **stage**. Each is an
 ordinary complete deck; **nothing walks the ladder for you**, and that is the
 design rather than a missing piece — you prepare and submit one stage, look at
 what it produced, and then prepare the next
-([`project-layout.md § 1.6`](?doc=execution/project-layout.md)).
+([`project-layout.md § 1.6`](?doc=execution/project-layout.md)). And every
+verb names its stage, on a one-rung ladder exactly as on three
+([`stages.md § 6.5`](?doc=engines/stages.md)).
 
 > **The `<basename>.run.sh` stage runner is gone** — `render_siesta_stages_runner`
 > and its `_warm_check` were deleted on 2026-08-10 with the rest of the chaining
@@ -460,26 +477,31 @@ what it produced, and then prepare the next
 > so its stage list is also engine behaviour.
 
 - **Data model.** A stage is `molbuilder/task.py::Stage`: **`name`** (→ the
-  `<basename>_<name>.fdf` suffix), **`enabled`**, and **`overrides`** — a map
+  `<label>_<NN>_<name>.fdf` stem, ordinal and name together —
+  `identity.stage_token`), **`enabled`**, and **`overrides`** — a map
   naming *any* field of `SiestaConfig` and the value this stage uses for it.
   There is no privileged set: `mesh_cutoff`, `basis_size` and `kgrid` are as
   varyable as the four relaxation knobs, which is what
   [`stages.md`](?doc=engines/stages.md) § 1.2 means by *the catalogue is the
   schema's, the selection is the user's*. A field a stage does not name keeps
   the template's value (§ 6.2's subset rule).
-- **Resolution.** `siesta/input.py::effective_config(template, stage)` is the
-  **one** place a stage becomes a config: `dataclasses.replace(template,
-  **overrides)`, refusing an unknown field **by name**. What it returns is an
-  ordinary `SiestaConfig`, so the shipped validator and the shipped emitter
-  both take it unchanged (§ 4 R1).
+- **Resolution.** `molbuilder/resolve.py::effective_config(template,
+  overrides, *, where="")` is the **one** place a stage becomes a config:
+  `dataclasses.replace(template, **overrides)`, refusing an unknown field **by
+  name** and naming whoever supplied it. What it returns is an ordinary
+  `SiestaConfig`, so the shipped validator and the shipped emitter both take it
+  unchanged (§ 4 R1). *(This bullet put the function in `siesta/input.py` until
+  2026-08-16. It is not engine-specific and never was — resolving a stage
+  against a backbone is floor 3's job, which is why it moved when `resolve.py`
+  landed.)*
 - **The shipped ladder.** `siesta/stages.py::default_siesta_stages(strategy)`
   builds it: one stage per tier of `SIESTA_STAGE_PRESETS`, that tier's four
   values as its `overrides`, enabled per `SIESTA_STAGE_STRATEGY_PRESETS` —
   `publishable` (1+2), `loose-only` (1), `vib-quality` (1+2+3). CG warm-up
   0.05 → Broyden publishable 0.04 → Broyden crystal-tight 0.01 eV/Å; the
   authoritative per-tier value table is [`tuning.md`](?doc=engines/tuning.md)
-  § 4. Because `--stage {1,2,3}` overlays the *same* table, a one-shot tier-N
-  deck and stage N of the ladder cannot drift apart. The preset names + masks
+  § 4, and the presets are the one place those numbers enter, so no second
+  path can drift from them. The preset names + masks
   also live in the PySCF config and `form-schema.js`, kept in lock-step by
   `tests/test_siesta_stage_strategy_presets_drift.py`.
 - **Non-convergence policy does not exist for SIESTA**, and that is a decision
@@ -497,12 +519,16 @@ what it produced, and then prepare the next
   drift. The two checks that are about the *ladder* rather than a member of it
   — nothing enabled, and duplicate names (a collision would silently overwrite
   a per-stage `.fdf`) — are refused by `_enabled_stages`.
-- **How a ladder is asked for.** `--stage-strategy publishable` picks the enable
-  mask; `--stages-json` takes
-  **literal JSON or a file path** — a list of `{name, enabled, overrides}` —
-  and replaces the ladder wholesale (combinable with `--stage-strategy`: the
-  ladder from the JSON, the enable mask from the preset); both are **mutually
-  exclusive** with the single-stage `--stage {1,2,3}` overlay. The
+- **How a ladder is asked for.** At `describe`: `--stage-strategy publishable`
+  picks one of the shipped ladders, and omitting it describes a calculation
+  with a **single parameter set** — one stage named `coarse`, named and tokened
+  like any other ([`stages.md § 6.5`](?doc=engines/stages.md)). Beyond the
+  shipped ladders, the ladder is `task.json`'s `stages` list, written by the
+  surface or edited by hand; there is no flag that takes a ladder inline.
+  *(This bullet described `--stages-json` and a single-stage `--stage {1,2,3}`
+  overlay until 2026-08-16 — flags of the `molbuilder fdf` verb, deleted
+  2026-08-11 (§ 1). Both spellings survive today only on the standalone
+  `molbuilder pyscf` command, which is a different route.)* The
   `SystemLabel` stays unsuffixed across stages so SIESTA's `.XV`/`.DM`/`.CG`
   warm-restart files carry forward — which is what lets a later stage find an
   earlier one's geometry with nobody instructing it
@@ -520,8 +546,13 @@ what it produced, and then prepare the next
   from here and the selection from `task.json`.
 
 Running the ladder as a real *job-set* — per-stage directories, per-stage
-resources, and **one submission per stage, by hand** — is `execution/` territory
-(`siesta/stages.py::build_siesta_stage_bundle:144` produces the `JobSet`).
+resources, and **one submission per stage, by hand** — is `execution/`
+territory: `jobset/prep.py` renders one deck and wrapper per element of the
+resolved `ParameterSet`, and the `JobSet` is **derived from the description
+rather than emitted beside it**. *(This sentence credited
+`siesta/stages.py::build_siesta_stage_bundle` until 2026-08-16; that function
+was deleted in the fold, and `siesta/stages.py` exports only
+`default_siesta_stages` today.)*
 **There are no dependency edges between stages**: a `JobSet` carries none, and
 nothing can ask for one ([`job-system.md § 2`](?doc=execution/job-system.md),
 decision 6).
@@ -578,8 +609,14 @@ variant tested must `convert()` end-to-end without raising.
 **Tests:** `test_smiles_and_siesta.py` (render + convert round-trip),
 `test_review_fixes.py` (net-charge override, the thin-vacuum **warn** — D3, since
 `cell_padding` was removed 2026-07 — and the `Config`
-alias), `test_cli_siesta_stages.py` + `test_siesta_form_schema_stage_table.py`
-(staged-opt CLI + form widget), `test_molwatch_preview.py` (the sibling log).
+alias), `test_siesta_stages.py` + `test_siesta_stages_emit.py` (the ladder and
+what each stage emits), `test_siesta_stage_strategy_presets_drift.py` (the
+presets against their three consumers), `test_siesta_enable_gpu.py` (§ 7's
+two orthogonal decisions, including the rejected GPU + ScaLAPACK pair), and
+`test_molwatch_preview.py` (the sibling log). *(This list named
+`test_cli_siesta_stages.py` and `test_siesta_form_schema_stage_table.py` until
+2026-08-16; neither file exists — they went with the `fdf` verb and the stage
+form widget § 8 records as deliberately absent.)*
 
 ---
 
