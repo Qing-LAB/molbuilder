@@ -40,14 +40,16 @@ flowchart LR
         C["PySCFConfig<br/>(config/pyscf.py:395)"]
     end
     CLI["CLI: molbuilder pyscf …"]
-    WEB["web Spectrum / Structure-optimization tabs<br/>→ /api/build/pyscf"]
+    PREP["CLI: molbuilder jobset prep<br/>(via the template)"]
+    WEB["web Structure-optimization tab<br/><i>collects parameters only —<br/>renders no script</i>"]
     R["render_script(struct, config)<br/>pyscf/input.py:131"]
     PY["job.py — a runnable script"]
     RUN["running it → job.log · job.chk ·<br/>*_optimized.xyz · job.molwatch.log · …"]
     S --> R
     C --> R
     CLI --> R
-    WEB --> R
+    PREP --> R
+    WEB -.->|"the parameters it collected,<br/>via the template"| PREP
     R --> PY --> RUN
 ```
 
@@ -62,9 +64,21 @@ flowchart LR
   molbuilder pyscf input.xyz job.py --basis def2-TZVP --stage-strategy publishable
   ```
 
-- **Frontend.** The Spectrum and Structure-optimization tabs post to
-  `/api/build/pyscf` (validation preflight → `render_script`); `PySCFConfig`'s
-  field metadata drives the form.
+- **Frontend.** The Structure-optimization tab **collects parameters and
+  produces no artifact**: `/api/build/schema/pyscf` renders its form **from the
+  catalogue** (`_shared.catalogue_to_form_schema`, the same generator SIESTA's
+  form uses), and `/api/build/preflight` validates live. A script comes from
+  `prep`, or from the standalone `molbuilder pyscf` command above.
+
+  > *(This bullet said both tabs post to `/api/build/pyscf` and that
+  > **`PySCFConfig`'s field metadata drives the form**, until 2026-08-16.
+  > Neither holds: no page calls that route today — script generation left the
+  > tab on 2026-08-15 — and the form has been catalogue-driven since
+  > ([`template.md`](?doc=engines/template.md) § 2.1, the config class is a
+  > translator on the way out, not the source). **The Spectrum tab is a
+  > different config**: `SpectraConfig` still goes through
+  > `dataclass_to_form_schema`, which is why `section` stays live for it
+  > ([`stages.md`](?doc=engines/stages.md) § 1.2).)*
 
 ---
 
@@ -97,10 +111,18 @@ config — no under- or over-promising. `job_name` stays unsuffixed so
 > deck's own token, `<label>_<NN>_<stage>.molwatch.log`
 > ([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)).
 >
-> The `cfg.stage` single-stage marker path still emits `<job>-stage<N>.molwatch.log`.
-> **That field is being deleted** — it is the last user of the retired `-stage<N>`
-> spelling ([`staged-runs-implementation-plan.md`](?doc=execution/staged-runs-implementation-plan.md),
-> P12 unit 6b) — so do not build on it.
+> **`cfg.stage` is a live catalogue item and it carries the token, not the old
+> spelling.** It names the artifact token for a single-stage run —
+> `<job>_01_coarse.molwatch.log`, `None` keeping the unsuffixed name — and it is
+> resolved through the same `trajectory_log.format::molwatch_log_basename`
+> helper SIESTA's emitter uses, so there is one rule and not two.
+>
+> *(This note said the field *"still emits `<job>-stage<N>.molwatch.log`"* and
+> was *"being deleted, the last user of the retired `-stage<N>` spelling"*,
+> until 2026-08-16. Both were overtaken: the retirement landed as a
+> **migration** rather than a deletion — the field now takes `<NN>_<name>` like
+> everything else — and the catalogue declares it, `group = "staging"`,
+> `kind = "produce"`. It is safe to build on.)*
 
 ---
 
@@ -267,11 +289,17 @@ runs *inside* it — no manual "run stage 1, edit, run stage 2".
 - **Default ladder** `_default_stages()` (`config/pyscf.py:173`) — values verified
   against code:
 
-  | Stage | Enabled | `conv_tol` | `gmax` (Ha/Bohr) | `max_steps` | Purpose |
-  |---|---|---|---|---|---|
-  | 1 (loose pre-opt) | ✅ | 1e-7 | 2.0e-3 | 50 | rough geometry, cheaply |
-  | 2 (**publishable**) | ✅ | 1e-9 | 4.5e-4 | 200 | Gaussian OPT default — what papers cite |
-  | 3 (tight) | ☐ opt-in | 1e-10 | 2.0e-4 | 100 | for accurate Hessians / vib work |
+  | `name` | Enabled | `conv_tol` | `gmax` (Ha/Bohr) | `max_steps` | `on_nonconvergence` | Purpose |
+  |---|---|---|---|---|---|---|
+  | `stage1` (loose pre-opt) | ✅ | 1e-7 | 2.0e-3 | 50 | `proceed` | rough geometry, cheaply |
+  | `stage2` (**publishable**) | ✅ | 1e-9 | 4.5e-4 | 200 | `halt` | Gaussian OPT default — what papers cite |
+  | `stage3` (tight) | ☐ opt-in | 1e-10 | 2.0e-4 | 100 | `halt` | for accurate Hessians / vib work |
+
+  **The names really are `stage1` / `stage2` / `stage3`** — unlike SIESTA's
+  `coarse` / `medium` / `tight` (`config/siesta.py::SIESTA_STAGE_NAMES`). They
+  can differ because a PySCF name never becomes a deck's filename: the ladder
+  runs in one process and writes one unified log (§ 2). It reaches disk only in
+  the per-stage geomeTRIC prefixes, `<job>_geom_stage1_optim.xyz`.
 
 - **Presets** `STAGE_STRATEGY_PRESETS` (`:314`): `publishable` (1+2), `loose-only`
   (1), `vib-quality` (1+2+3) — the same names + masks as SIESTA, kept in lock-step
