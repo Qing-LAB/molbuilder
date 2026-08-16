@@ -714,12 +714,19 @@ what limits:
 #   mpi_np              4          # the launch BlockSize was derived from
 #
 #   field BlockSize        anchor=BlockSize        type=pow2  range=[8,256]  default=256
-#   field MaxSCFIterations anchor=MaxSCFIterations type=int   default=500
+#   field MaxSCFIterations anchor=MaxSCFIterations type=int   default=1000
 #   field MD.Steps    anchor=MD.Steps    type=int   default=200
-#   field MeshCutoff       anchor=MeshCutoff       type=float unit=Ry  default=400.0
+#   field MeshCutoff       anchor=MeshCutoff       type=float unit=Ry  default=300.0
 #   field Diag.Algorithm   anchor=Diag.Algorithm   type=enum
 # === molbuilder bench-marks END ===
 ```
+
+*(The example is a deck whose `block_size` was **set**. The default render omits
+that `field` line entirely — `block_size` unset means SIESTA's own automatic, so
+there is no value to offer for override; see the two-state note below. The
+shipped `default=` values shown are the real ones as of 2026-08-16:
+`MaxSCFIterations` read `500` and `MeshCutoff` `400.0` here until then, against
+a catalogue that says `1000` and `300.0`.)*
 
 - `version v1` is the block-format version; a higher version makes an old
   parser refuse rather than guess.
@@ -799,11 +806,18 @@ what limits:
   > **fallback**, not the only path. `BlockSize` is a tunable knob a person may
   > set and a benchmark may measure
   > ([`tuning.md § 2.11`](?doc=engines/tuning.md)), so this block's `field` line
-  > may declare any of three states: a value the user set, a value `prep`
-  > proposed, or — when the keyword is deliberately omitted so SIESTA uses its own
-  > default — **no `field BlockSize` line at all**. A tool reading this block must
+  > may declare either of **two** states: a value the user set or a benchmark
+  > measured, or — when the keyword is deliberately omitted so SIESTA uses its own
+  > automatic — **no `field BlockSize` line at all**. A tool reading this block must
   > treat an absent field as *"not offered for override"* rather than as an error,
   > which § 3.1's *"every reserved block is optional"* already requires of it.
+  >
+  > *(A third state sat between those two until 2026-08-16 — "a value `prep`
+  > proposed". It was retired on 2026-08-15: `render_fdf` no longer derives a
+  > block size at all, because unset means SIESTA's own automatic
+  > ([`tuning.md § 2.11`](?doc=engines/tuning.md), which owns the rule). What
+  > `prep` still does is **realign** an explicit value to a power of two when the
+  > target is GPU-ELPA, and record that it did — reconciling, not inventing.)*
 
 - **The metadata carries what a derived field was derived FROM.** `mpi_np`
   joins `n_atoms` and `gpu_mode` for exactly this reason

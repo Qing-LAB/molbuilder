@@ -505,10 +505,15 @@ decks that are subtly wrong for the machine they run on.
 > a deck asking for an ELPA solver a build does not have fails when SIESTA runs,
 > which is the right place to fail. The generator does not check.
 >
-> **A genuinely derived value is a different case** — `block_size` from the rank
-> count. There the default is computed at `prep`, an explicit user setting wins,
-> and both are available at that moment
-> ([`template.md`](?doc=engines/template.md) § 12).
+> **A value the machine has a say in is a different case** — `block_size`. An
+> explicit setting is honoured verbatim; unset means SIESTA's own automatic and
+> the keyword is not emitted at all; and `prep` **realigns** an explicit value to
+> a power of two when the target is GPU-ELPA, recording that it did. Both the
+> value and the target are in hand at that moment, which is why the
+> reconciliation belongs there ([`tuning.md § 2.11`](?doc=engines/tuning.md) owns
+> the rule; [`template.md`](?doc=engines/template.md) § 12). *(This note said the
+> default is **computed** at `prep` from the rank count until 2026-08-16 — the
+> middle state retired on 2026-08-15.)*
 
 > **Why the fourth row is not the third one wearing a hat** *(added 2026-08-08)*.
 > The third row's fields are **values the wrapper uses**: a rank count becomes an

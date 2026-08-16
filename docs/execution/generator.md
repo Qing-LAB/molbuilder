@@ -294,7 +294,7 @@ measures and a person then pins for the real run.
 |---|---|---|
 | stated at `prep` | the command | you benchmarked it and chose |
 | not stated | **the template's value** | whatever the description carries |
-| template carries none | the default | `tuning.md` § 2.11's *unset → proposed*, or omitted entirely |
+| template carries none | **SIESTA's own automatic** | the keyword is not emitted at all — `tuning.md` § 2.11's second state, and the default. *(This row read "`tuning.md` § 2.11's *unset → proposed*" until 2026-08-16; nothing proposes one.)* |
 
 > **The pin channel is bounded by that rule, not by a list**, which is what stops
 > it becoming a general "override anything at `prep`" back door. A second member

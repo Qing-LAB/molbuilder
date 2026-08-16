@@ -121,7 +121,7 @@ flowchart LR
 | | what the emitter must stop doing | why |
 |---|---|---|
 | **1** ✅ | **reading anything outside the config.** `cfg.stage` and its five read sites are gone — `molbuilder/siesta/` reads no `.stage` at all today ([`stages.md § 1.1`](?doc=engines/stages.md): the emitter never learns the word) — and the USER-CUSTOM read-back merge cannot run at `prep` at all, since there is no previous deck to harvest from, so the text arrives as an **item** ([`template.md § 9.2`](?doc=engines/template.md)) | the template is meant to be complete. Anything the emitter fetches for itself is a value the description does not record, and therefore a deck nothing can reproduce |
-| **2** | **always computing, always emitting.** A keyword like `BlockSize` now has **three** states — set by you, unset so `prep` proposes one, or **omitted entirely** so SIESTA uses its own default ([`tuning.md § 2.11`](?doc=engines/tuning.md)) | an emitter that always writes a line cannot express the third, and the third is a legitimate scientific answer |
+| **2** ✅ | **always computing, always emitting.** `BlockSize` has **two** states — a number you set or benchmarked, emitted verbatim, or **unset, in which case the keyword is not emitted at all** and SIESTA uses its own automatic ([`tuning.md § 2.11`](?doc=engines/tuning.md)) | an emitter that always writes a line cannot express the second, and the second is a legitimate scientific answer — the same shape as `Diag.Algorithm ScaLAPACK`, which § 7 also emits as nothing. Verified: an unset `block_size` produces no `BlockSize` line, and an explicit `24` is emitted as `24` rather than snapped to a power of two |
 | **3** | **seeing items that are not its own.** Only `kind` in `{engine, deck}` reaches the deck writer; `wrapper`, `produce` and `monitor` items belong to other layers ([`template.md § 6`](?doc=engines/template.md)) | *"a SIESTA producer must not try to emit a `wrapper` item as a keyword — SIESTA would not understand it"* |
 
 **What it does not change:** every block in § 3, the charge contract (§ 4), the
@@ -214,7 +214,7 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | 9 | Spin | `SpinPolarized .true.` + optional `Spin.Fix`/`Spin.Total` | only if `spin_polarized` — § 5 |
 | 10 | NetCharge | `NetCharge ±N` | only if resolved charge ≠ 0 — § 4 |
 | 11 | k-grid | `%block kgrid_Monkhorst_Pack` from `cfg.kgrid` | § 6 |
-| 12 | **Parallel (MPI)** | `BlockSize`, `Diag.ParallelOverK` | the ScaLAPACK/ELPA orbital-distribution block. **Tunable, and omitted entirely when you want SIESTA's own default** — the three states and the guidance are [`tuning.md § 2.11`](?doc=engines/tuning.md) |
+| 12 | **Parallel (MPI)** | `BlockSize`, `Diag.ParallelOverK` | the ScaLAPACK/ELPA orbital-distribution block. **Tunable, and omitted entirely by default**, which is how SIESTA's own automatic is requested — the two states and the guidance are [`tuning.md § 2.11`](?doc=engines/tuning.md) |
 | 13 | Diagonalizer | `Diag.Algorithm` / `Diag.ELPA.GPU` | § 7 |
 | 14 | Geometry opt / dynamics | relax: `MD.TypeOfRun` + `MD.Steps` + `MD.MaxForceTol`; dynamics (Verlet/Nose): `MD.LengthTimeStep`, `MD.InitialTemperature`, `MD.TargetTemperature` (Nosé) | skipped if `relax_type == "none"` |
 | 15 | Output flags | `WriteForces`, `WriteCoorXmol`, `SaveHS`, … | |

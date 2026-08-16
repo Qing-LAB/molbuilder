@@ -675,10 +675,14 @@ brings in whatever you told it to continue from.
 Because some of what goes *inside* the deck is a fact about the machine.
 
 `BlockSize` is the clearest case. It is a **tunable** knob — you may set it, and
-a benchmark may measure it ([`tuning.md § 2.11`](?doc=engines/tuning.md)) — but
-when you have not set one, `prep` proposes a value from **the orbital count, the
-rank count and whether there is a GPU**, and that number is written into the
-`.fdf`. The GPU flag is another: `enable_gpu` writes `Diag.ELPA.GPU` into the
+a benchmark may measure it ([`tuning.md § 2.11`](?doc=engines/tuning.md)) — and
+when the target is GPU-ELPA, `prep` **realigns** an explicit value to a power of
+two, because ELPA otherwise falls back to the CPU silently. That reconciliation
+needs the GPU flag and the rank count, which only exist here. *(Until
+2026-08-16 this said `prep` **proposes** a value from the orbital and rank
+counts when you have not set one. It does not: unset means SIESTA's own
+automatic and the keyword is not emitted — the middle state was retired on
+2026-08-15.)* The GPU flag is another: `enable_gpu` writes `Diag.ELPA.GPU` into the
 deck *and* sends the wrapper to a different conda environment, and whether this
 machine has a GPU at all is not a laptop's to know. A deck rendered on a laptop
 is either wrong for the cluster or a guess.
@@ -1337,7 +1341,7 @@ Four settings sit across the line, and they are the reason neither mechanism is
 | Setting | In the deck | Also decides |
 |---|---|---|
 | **GPU on/off** | yes (`Diag.ELPA.GPU`) | **the most of any item here**: the scheduler's `--gres`, which conda environment the wrapper activates (`molbuilder-siesta-gpu`, the source build), MPS, the NUMA pin and the rank/thread budget. The one item declaring `read_by = ["wrapper"]` |
-| MPI ranks | **no**, but an unset `BlockSize` is proposed from them | the scheduler's `-n`, and the launch |
+| MPI ranks | **no** | the scheduler's `-n`, the launch, and the ceiling a sensible `BlockSize` stays under (`tuning.md` § 2.11) |
 | `Diag.Algorithm` (ScaLAPACK / ELPA-1STAGE / ELPA-2STAGE) | yes | **nothing else.** It is numerics, and the packaged SIESTA carries ELPA through ELSI, so no ELPA variant needs a different build unless it is the GPU one |
 | `BlockSize` | **yes** — a tunable knob, set by you or measured by a benchmark ([`tuning.md § 2.11`](?doc=engines/tuning.md)) | nothing else; it is pure parallel efficiency |
 

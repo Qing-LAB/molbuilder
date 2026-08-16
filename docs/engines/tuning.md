@@ -295,15 +295,18 @@ conventional form in prose ("ωB97M-V"); the spelling traps are in
 | **Geometry (outer)** | PySCF `max_steps` | stage1 **50**, stage2 **200**, stage3 **100** | a warm-up needing > 50 has a wrong starting geometry — stop and inspect; 200 is the publishable safety margin |
 | | SIESTA `MD.Steps` | stage1 **600**, stage2 **200**, stage3 **100** | universal across CG / Broyden / FIRE (the per-type aliases aren't recognized); SIESTA's stage-1 budget is more generous than PySCF's |
 | **SCF (inner)** | PySCF `mf.max_cycle` | **100** | plenty for a well-conditioned SCF; hitting 100 means the *system* is the problem (broken-symmetry open shell, level-shift needed) — 500 won't help |
-| | SIESTA `MaxSCFIterations` | **500** | SIESTA's generous default; each outer step runs at most this many inner cycles until `DM.Tolerance` is met |
+| | SIESTA `MaxSCFIterations` | **1000** | molbuilder's own generous ceiling (SIESTA's is smaller); each outer step runs at most this many inner cycles until `DM.Tolerance` is met. *(This row said 500 until 2026-08-16; the catalogue and `SiestaConfig` both say 1000, range 10–5000.)* |
 
 ### 2.11 Block size (SIESTA — the ScaLAPACK / ELPA distribution block)
 
 > **Decided 2026-08-11 (user): `BlockSize` is a tunable parameter, measured by a
 > benchmark and then chosen — like the GPU and core assignment beside it.** It is
 > **not** a value molbuilder derives and hands you. Every other document that
-> described it as *"derived from the rank count"* is corrected to the three states
-> below.
+> described it as *"derived from the rank count"* is corrected to the **two**
+> states below. *(This line said "three states" until 2026-08-16 — written
+> before the middle state was retired on 2026-08-15, four subsections down. A
+> section that owns a rule and miscounts it in its own opening is how the
+> restatements elsewhere stayed wrong.)*
 
 **What it controls.** SIESTA distributes the Hamiltonian over MPI ranks in square
 blocks of `BlockSize` orbitals. It is the one knob here that is about **parallel
@@ -527,8 +530,11 @@ default**.
 
 - **SIESTA:** `siesta/stages.py::default_siesta_stages(strategy)` builds it —
   one `task.Stage` per tier, that tier's values as its `overrides`. The values
-  come from `config/siesta.py::SIESTA_STAGE_PRESETS`, which `--stage {1,2,3}`
-  also reads, so a one-shot tier-N deck and stage N of the ladder cannot drift.
+  come from `config/siesta.py::SIESTA_STAGE_PRESETS`, and that is the **one**
+  place they enter, so nothing can drift from them. The stage names are
+  `coarse` / `medium` / `tight`. *(This bullet also credited a `--stage {1,2,3}`
+  one-shot overlay until 2026-08-16 — a flag of the `molbuilder fdf` verb,
+  deleted 2026-08-11.)*
 - **PySCF:** `config/pyscf.py::_default_stages`, still a field of the config —
   its ladder runs inside one process ([`stages.md § 1.1`](?doc=engines/stages.md)).
 
@@ -593,9 +599,11 @@ MD.MaxForceTol    0.04 eV/Ang
 MD.MaxDispl     0.05 Ang
 ```
 
-Global knobs (not per-stage) carry their own shipped defaults: SIESTA
-`DM.Tolerance` 1×10⁻⁵, `MeshCutoff` 300 Ry, `MaxSCFIterations` 500; PySCF
-`mf.max_cycle` 100, `def2-SVP`, `B3LYP`+`d3bj`, `density_fit` on.
+Global knobs (not per-stage) carry their own shipped defaults, all verified
+against the catalogue 2026-08-16: SIESTA `DM.Tolerance` 1×10⁻⁵, `MeshCutoff`
+300 Ry, `MaxSCFIterations` **1000**, `PAO.BasisSize` DZP, `Diag.Algorithm`
+ScaLAPACK; PySCF `mf.max_cycle` 100, `def2-SVP`, `B3LYP`+`d3bj`, `density_fit`
+on. *(`MaxSCFIterations` read 500 here until 2026-08-16.)*
 
 ---
 

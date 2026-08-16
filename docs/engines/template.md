@@ -1811,11 +1811,17 @@ description.
   # this knob.  Read it there rather than here.
   group   = "budget"
   help    = """
-  The ScaLAPACK/ELPA distribution block, in orbitals.  Powers of two only.
-  Small systems: 16-32 (avoids load imbalance).  Large: 64-128 (less
-  communication).  Leave unset and prep proposes one; a benchmark can measure
-  it (tuning.md 2.11)."""
+  The ScaLAPACK/ELPA distribution block, in orbitals.  TWO STATES: left as
+  (auto) the keyword is NOT WRITTEN and SIESTA uses its own automatic; set to a
+  number, that number is written verbatim.  Guidance if you set one by hand:
+  powers of two (16, 32, 64, 128), smaller for few orbitals, larger for
+  thousands, under n_orbitals / ranks.  With ELPA on the GPU the block must be a
+  power of two or ELPA silently falls back to the CPU -- `prep` realigns it
+  there (tuning.md 2.11)."""
   ```
+  *(The `help` above is abridged from the catalogue's own, which is longer and
+  is the text a user actually reads. It said "leave unset and prep proposes one"
+  until 2026-08-16 — the state retired on 2026-08-15.)*
 - **`user_custom` needs a schema field** (§ 9.2) before it can be an ordinary
   item rather than an exception.
 - **PySCF's `stages`.** Its ladder runs inside one process, so for PySCF the
