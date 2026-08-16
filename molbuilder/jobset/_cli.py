@@ -123,12 +123,11 @@ def describe_cmd(structure: str, dest: str, shape: str,
     from pathlib import Path as _P
 
     from .. import load as _load_structure
-    from ..config.siesta import SiestaConfig
+    from ..config.siesta import SIESTA_STAGE_NAMES, SiestaConfig
     from ..describe import DescribeError, build_description, write_description
     from ..identity import normalise_id
     from ..siesta.input import _detect_species
     from ..siesta.stages import default_siesta_stages
-    from ..config.siesta import SIESTA_STAGE_NAMES
     from ..task import Stage
 
     out_dir = _P(dest)
@@ -175,9 +174,10 @@ def describe_cmd(structure: str, dest: str, shape: str,
     except (ValueError, OSError) as e:
         raise click.ClickException(str(e))
 
+    # Always a ladder now (§ 6.5), so there is no second phrasing: one stage
+    # reports as "1 stage: coarse", not as "one parameter set (no ladder)".
     ladder = (f"{len(desc.task.stages)} stage(s): "
-              f"{', '.join(s.name for s in desc.task.stages)}"
-              if desc.task.stages else "one parameter set (no ladder)")
+              f"{', '.join(s.name for s in desc.task.stages)}")
     click.echo(f"Described {desc.label!r} in {out_dir} -- {ladder}, "
                f"shape {shape}.", err=True)
     click.echo("  " + "\n  ".join(p.name for p in written), err=True)

@@ -149,9 +149,18 @@ class Stage:
 class Task:
     """One calculation.
 
-    ``stages`` and ``varies`` are ``None`` **together**: a description with
-    no stages *is* a single-parameter-set calculation (§ 6.5), and an empty
-    ``stages`` would be a second way to spell that.
+    **A Task read from disk always has both ``stages`` and ``varies``**, and
+    ``stages`` always has at least one entry (§ 6.5, 2026-08-16): one stage is
+    the ordinary starting point, not a special shape.  Until that date this
+    docstring said the opposite — that the two were ``None`` together and
+    that meant a single-parameter-set calculation.
+
+    They stay ``Optional`` on the dataclass all the same, and the asymmetry is
+    deliberate rather than an oversight: the codec is the gate (:func:`read_task`
+    refuses a description with no ``stages``, naming the fix), while the type
+    still admits ``None`` so a producer can build a Task in pieces.  What the
+    type must keep enforcing is that the two move TOGETHER — ``varies`` is what
+    differs across the stages, so neither means anything without the other.
 
     ``varies`` may be empty while ``stages`` is not, and that is a different
     state rather than a loophole — several stages differing in nothing but
@@ -205,14 +214,16 @@ class Task:
                 "warm-file vocabulary (job-contracts.md 4.2a)")
         if (self.varies is None) != (self.stages is None):
             raise ValueError(
-                "task: 'varies' and 'stages' are absent together or present "
-                f"together (varies={self.varies!r}, stages={self.stages!r}). "
-                "A description with no stages is one parameter set, and there "
-                "is nothing to vary across (engines/stages.md 6.5)")
+                "task: 'varies' and 'stages' travel together "
+                f"(varies={self.varies!r}, stages={self.stages!r}) -- "
+                "'varies' is what differs ACROSS the stages, so neither is "
+                "meaningful without the other (engines/stages.md 6.5)")
         if self.stages is not None and not self.stages:
             raise ValueError(
-                "task: 'stages' is present but empty. Omit it entirely for a "
-                "single parameter set (engines/stages.md 6.5)")
+                "task: 'stages' is present but empty. A job has at least one "
+                "stage -- give it a single entry rather than emptying it, "
+                "because an absent 'stages' is refused too "
+                "(engines/stages.md 6.5)")
         # The two LADDER-level refusals live here, in the codec, because
         # every route to a Task -- describe on a laptop, read_task on the
         # cluster, a hand-edited file -- passes through this constructor.
@@ -416,13 +427,16 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
 
     has_stages = "stages" in obj
     has_varies = "varies" in obj
-    if has_varies and not has_stages:
-        _refuse("'varies' without 'stages'. A description with no stages is "
-                "one parameter set, and there is nothing to vary across "
-                "(engines/stages.md 6.5)")
 
-    bench = _bench_from_obj(obj)
-
+    # THIS REFUSAL COMES FIRST, and that ordering is the whole point.  Until
+    # 2026-08-16 a ``'varies' without 'stages'`` check sat above it and fired
+    # instead on every real description -- `varies` travels with `stages`, so
+    # deleting `stages` by hand always tripped the pairing check, which
+    # answered with the RETIRED rule ("a description with no stages is one
+    # parameter set") and never said to add a stage.  A refusal that states
+    # the opposite of the contract is worse than no refusal.  The pairing
+    # check is gone because this one subsumes it: `stages` is never absent,
+    # so `varies` can never be the lone survivor.
     if not has_stages:
         # § 6.5 (2026-08-16): A JOB ALWAYS HAS AT LEAST ONE STAGE.  One stage
         # is the ordinary starting point, not a special shape -- it is named,
@@ -441,11 +455,15 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 '"stages": [{"name": "coarse", "enabled": true, '
                 '"overrides": {}}]')
 
+    bench = _bench_from_obj(obj)
+
     raw_stages = obj["stages"]
     if not isinstance(raw_stages, (list, tuple)) or not raw_stages:
-        _refuse("'stages' is present but empty. A description WITH stages has "
-                "at least one; a calculation with a single parameter set omits "
-                "the key entirely (engines/stages.md 6.5)")
+        _refuse("'stages' is present but empty. A job has at least one stage "
+                "(engines/stages.md 6.5) -- give it a single entry rather "
+                "than removing the key, which is refused the same way: "
+                '"stages": [{"name": "coarse", "enabled": true, '
+                '"overrides": {}}]')
 
     varies = tuple(str(v) for v in obj.get("varies", ()))
     stages = tuple(_stage_from_obj(s, varies, i)

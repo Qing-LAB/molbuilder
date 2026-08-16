@@ -258,19 +258,41 @@ def test_a_stage_may_omit_a_varied_key_and_that_means_base(example):
 #  § 6.5 -- one stage is no stages                                      #
 # --------------------------------------------------------------------- #
 
-def _one_stage(example: dict) -> dict:
-    example.pop("stages")
-    example.pop("varies")
-    return example
-
-
-def test_absent_stages_is_refused(example):
+@pytest.mark.parametrize("drop", [("stages",), ("stages", "varies")],
+                         ids=["stages-only", "stages-and-varies"])
+def test_absent_stages_is_refused(example, drop):
     """§ 6.5 (2026-08-16): a job always has at least one stage, so there is no
     stage-less form to read. It used to mean "one parameter set"; now the one
-    parameter set is spelled as the one stage it is."""
-    import pytest as _pytest
-    with _pytest.raises(ValueError, match="at least one stage"):
-        Task.from_dict(_one_stage(example))
+    parameter set is spelled as the one stage it is.
+
+    **Both shapes, and the first is the one that matters.** `varies` travels
+    with `stages`, so a real description carries both -- which means the
+    realistic way to reach this refusal is deleting `stages` alone by hand.
+    Until 2026-08-16 only the both-absent shape was tested, and it passed
+    while the realistic one hit a *different*, older refusal that fired first
+    and answered with the RETIRED rule ("a description with no stages is one
+    parameter set"), never saying to add a stage. A refusal that states the
+    opposite of the contract is worse than no refusal, and a test that only
+    exercises the unrealistic shape is how it survived.
+    """
+    obj = dict(example)
+    for key in drop:
+        obj.pop(key)
+    with pytest.raises(ValueError, match="at least one stage"):
+        Task.from_dict(obj)
+
+
+def test_an_empty_stages_refusal_does_not_send_you_to_the_other_refusal(
+        example):
+    """The two refusals must not form a loop. The empty-list message used to
+    read *"Omit it entirely for a single parameter set"* -- advice that lands
+    straight on the absent-`stages` refusal, so following it got you nowhere.
+    Each now names the same fix: give it one entry."""
+    obj = dict(example)
+    obj["stages"] = []
+    with pytest.raises(ValueError, match="at least one stage") as exc:
+        Task.from_dict(obj)
+    assert "omit" not in str(exc.value).lower(), str(exc.value)
 
 
 def test_a_one_stage_description_round_trips_with_both_keys(example, tmp_path):
@@ -290,11 +312,13 @@ def test_a_one_stage_description_round_trips_with_both_keys(example, tmp_path):
     assert written["varies"] == []
 
 
-def test_varies_without_stages_is_refused(example):
-    example.pop("stages")
-    with pytest.raises(ValueError) as e:
-        Task.from_dict(example)
-    assert "varies" in str(e.value)
+# ``test_varies_without_stages_is_refused`` was retired 2026-08-16.  It popped
+# `stages` and asserted the message mentioned "varies" -- pinning a check that
+# treated *varies without stages* as its own defect.  § 6.5 made `stages`
+# mandatory, so that input is simply a description with no stages, and the
+# check it pinned was the one firing ahead of the real refusal with the
+# retired rule's wording.  Its exact input is now the ``stages-only`` case of
+# ``test_absent_stages_is_refused``, asserting the message that names the fix.
 
 
 def test_an_empty_stage_list_is_refused(example):
