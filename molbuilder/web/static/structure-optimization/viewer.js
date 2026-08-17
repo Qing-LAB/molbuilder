@@ -1794,6 +1794,32 @@ import { mount as mvMount, formula as mvFormula }
             }
         }
         const body = { files: parts.map(([n]) => n) };
+
+        /* WHAT THE CELL GATE SAID.  The same gate every structure door runs
+         * answers with notices as well as refusals: a refusal is the 400 above,
+         * but a notice is a box it accepted and wants read — an axis it could
+         * not tell was periodic, a vacuum thinner than it expects.  These came
+         * back on every send and were dropped on the floor, so a person whose
+         * cell was questioned found out from the run.
+         *
+         * A notice does NOT hold the write back: the files are the person's own
+         * parameters and refusing to save them helps nobody.  It holds back the
+         * NAVIGATION, because a page that jumps away is a page whose warning
+         * was never read (`tabs.md` — a tab does not decide for its user). */
+        const notices = Array.isArray(out.notices) ? out.notices : [];
+        if (notices.length) {
+            const worst = notices.some((n) => n && n.severity === "error")
+                ? "error" : "warn";
+            _handoverSay(worst,
+                "Wrote " + body.files.join(", ") + ". The cell was checked and "
+                + (notices.length === 1 ? "one thing" : notices.length + " things")
+                + " came back — read them, then open Task setup:\n"
+                + notices.map((n) => "• "
+                    + ((n && n.where) ? "[" + n.where + "] " : "")
+                    + ((n && n.message) || String(n))).join("\n"));
+            return;
+        }
+
         _handoverSay("ok", "Wrote " + (body.files || []).join(" and ")
             + " — opening Task setup…");
         // The sidebar's selection is shared through sessionStorage, so Task

@@ -1185,3 +1185,42 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path):
                        for x, y in zip(a[:3], b[1:4])) < 1e-4, (a, b)
     finally:
         _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+
+
+def test_the_cell_gate_s_notices_reach_the_person():
+    """Every structure door runs the same cell gate, and it answers with
+    NOTICES as well as refusals: a refusal is the door's 400, but a notice is a
+    box the gate accepted and wants read.  The endpoint returned them on every
+    send and the browser dropped them, so somebody whose cell was questioned
+    found out from the run instead of from the page.
+
+    A notice does not hold the WRITE back — the files are the person's own
+    parameters.  It holds back the NAVIGATION, because a page that jumps to the
+    next tab is a page whose warning was never read."""
+    src = (ROOT / "molbuilder/web/static/structure-optimization/viewer.js").read_text()
+    body = src.split("const body = { files:", 1)[1].split("_refreshLoadButton", 1)[0]
+    assert "out.notices" in body, "the gate's notices are still dropped"
+    i_notice = body.index("out.notices")
+    i_nav = body.index('window.location.href = "/task-setup"')
+    assert i_notice < i_nav, "the page navigates before the notices are shown"
+    guard = body[i_notice:i_nav]
+    assert "return;" in guard, (
+        "notices are shown and then navigated past — nobody reads them")
+    assert "n.severity" in guard, "every notice reads as the same severity"
+
+
+def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
+    """`checked_periodicity` RAISES on a box it will not accept, and the app
+    turns that into a 400 carrying the gate's own sentence.  The hand-over runs
+    the same gate, so a refusal has to leave as the same answer — a 500 would
+    show a stack trace where the reason belongs."""
+    env = _envelope()
+    env["structure"]["metadata"] = {
+        "regions": {}, "cell": [[1.0, 0, 0], [1.0, 0, 0], [0, 0, 1.0]],
+        "cell_origin": None, "axis_kind": None, "vacuum": None,
+    }
+    r = web_client.post("/api/task-setup/handover", json=dict(
+        env, engine="siesta", name="bad", params={"system_label": "bad"}))
+    assert r.status_code in (200, 400), r.status_code
+    if r.status_code == 400:
+        assert (r.get_json() or {}).get("error"), "a refusal with no reason"
