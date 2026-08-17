@@ -496,3 +496,53 @@ def test_disabling_a_stage_keeps_its_values():
     body = re.sub(r"//.*", "", body)          # the code, not the commentary
     assert "delete" not in body, "disabling a stage discards its values"
     assert ".enabled" in body, "toggle does not touch `enabled`"
+
+
+# --------------------------------------------------------------------- #
+#  T4 machine rows · T5 what has run                                     #
+# --------------------------------------------------------------------- #
+
+def test_one_point_is_a_choice_and_several_a_measurement():
+    """`generator.md § 2` — a run is a sweep of length one, so both states are
+    the same structure at different lengths.  Verified legal by the reader:
+    `bench` takes a non-empty list, and a one-element list parses."""
+    src = VIEWER.read_text()
+    assert re.search(r'pts\.length === 1 \? "chosen" : "measured"', src), (
+        "the row's length no longer decides what it is")
+
+
+def test_a_machine_answered_setting_is_never_a_choice():
+    """mpi_np / omp_threads / max_memory_mb may never carry a value in a
+    description (`template.md § 6.4`), so even one point is a point to TRY."""
+    src = VIEWER.read_text()
+    assert re.search(r'MACHINE_ANSWERED\.has\(name\)\s*\n?\s*\?\s*"machine"', src), (
+        "a machine-answered setting can render as `chosen`")
+
+
+def test_measuring_never_discards_the_chosen_value():
+    """`task-setup.md § 9` — adding a point keeps the value as the first one."""
+    src = VIEWER.read_text()
+    assert "function addPoint" in src
+    body = src.split("function addPoint", 1)[1].split("\nfunction ", 1)[0]
+    assert "pts.push(v)" in body, "a new point replaces rather than appends"
+    assert "splice" not in body, "adding a point removes an existing one"
+
+
+def test_a_setting_with_no_points_is_removed_not_left_empty():
+    """`bench` takes a NON-EMPTY list — the reader refuses an empty one, so a
+    setting with no points is a setting that is not being measured."""
+    src = VIEWER.read_text()
+    body = src.split("function removePoint", 1)[1].split("\nfunction ", 1)[0]
+    assert "delete b[name]" in body, "an emptied setting stays as an empty list"
+
+
+def test_what_has_run_is_counted_from_the_directory_and_not_judged():
+    """No target machine needed, which is why it belongs here.  It counts
+    attempts; whether one CONVERGED is in its output and belongs to Results."""
+    src = VIEWER.read_text()
+    assert "function runsForStages" in src
+    assert "run-" in src, "attempts are not counted"
+    body = src.split("function runsForStages", 1)[1].split("\n/* ", 1)[0]
+    for verdict in ("converged", "failed", "success"):
+        assert f'"{verdict}"' not in body, (
+            f"the page judges a run as {verdict!r} from a listing")

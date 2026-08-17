@@ -63,6 +63,7 @@ let _handover   = null;   // the parsed task.1st.json, in handover mode
  * § 9a) -- the model is a convenience for the table, never the source. */
 let _task       = null;
 let _reparse    = null;   // debounce for the editor -> model re-parse
+let _runs       = {};     // stage name -> attempts on disk (T5)
 
 const $ = (id) => document.getElementById(id);
 
@@ -163,8 +164,15 @@ function renderStages(task) {
         }, "\u00d7");
         drop.addEventListener("click", () => removeStage(i));
 
+        const ran = _runs[name];
+        const ranEl = (ran === undefined) ? null
+            : el("span", { class: "ts-ran",
+                           title: ran ? ran + " attempt(s) on disk"
+                                      : "nothing has run for this stage yet" },
+                 ran ? ran + "\u00d7" : "\u2014");
+
         const tr = el("tr", { "data-off": on ? null : "yes" },
-            el("td", null, nameInput, toggle, drop));
+            el("td", null, nameInput, toggle, drop, ranEl));
 
         const ov = (st && st.overrides) || {};
         for (const col of varies) {
@@ -193,25 +201,43 @@ function renderMachine(task) {
 
     const bench = (task && task.bench) || {};
     const names = Object.keys(bench);
-    if (!names.length) { card.hidden = true; return; }
 
     for (const name of names) {
         const pts = Array.isArray(bench[name]) ? bench[name] : [bench[name]];
-        // The tab's one idea: length decides what this row IS.
+        // The tab's one idea: length decides what this row IS.  A machine-
+        // answered setting stays `machine` at any length -- a description may
+        // never assert a value for it, so even one point is a point to TRY.
         const kind = MACHINE_ANSWERED.has(name)
             ? "machine"
             : (pts.length === 1 ? "chosen" : "measured");
         const verdict = kind === "chosen"
             ? "chosen · 1 point"
-            : `measured · ${pts.length} trial${pts.length === 1 ? "" : "s"}`;
+            : `${kind === "machine" ? "to try" : "measured"} · ${pts.length} `
+              + `point${pts.length === 1 ? "" : "s"}`;
 
-        const pointEls = pts.map((p) => el("span", { class: "ts-pt" }, String(p)));
+        const chips = pts.map((p, i) => {
+            const drop = el("button", { type: "button", class: "ts-pt-x",
+                                        title: "Remove this point" }, "\u00d7");
+            drop.addEventListener("click", () => removePoint(name, i));
+            return el("span", { class: "ts-pt" }, String(p), drop);
+        });
+
+        const add = el("input", { class: "ts-pt-add", placeholder: "+ add",
+                                  "aria-label": "add a point to " + name });
+        add.addEventListener("change", () => { addPoint(name, add.value); add.value = ""; });
+
+        const dropRow = el("button", { type: "button", class: "ts-rowbtn ts-rowbtn-drop",
+                                       title: "Stop measuring " + name }, "\u00d7");
+        dropRow.addEventListener("click", () => removeSetting(name));
+
         host.appendChild(el("div", { class: "ts-row", "data-kind": kind },
             el("div", { class: "ts-row-name" }, name,
                 el("small", null, ROW_NOTE[name] || "")),
-            el("div", { class: "ts-points" }, ...pointEls),
-            el("div", { class: "ts-verdict" }, verdict)));
+            el("div", { class: "ts-points" }, ...chips, add),
+            el("div", { class: "ts-verdict" }, verdict, dropRow)));
     }
+    const acts = $("ts-machine-actions");
+    if (acts) acts.hidden = false;
     card.hidden = false;
 }
 
@@ -367,6 +393,7 @@ async function loadFolder(projects, dir) {
              + ` · ${(task.stages || []).length} stage(s)`);
 
     _mode = "description"; _handover = null; _task = task;
+    _runs = await runsForStages(projects, dir, task);
     _shape = String(task.shape || "");
     $("ts-shape-card").hidden = false;
     setShape(_shape);                            // shows which one it carries
@@ -439,6 +466,98 @@ function setCell(i, col, raw) {
         const n = Number(text);
         ov[col] = (text !== "" && Number.isFinite(n)) ? n : text;
     }
+    syncFromModel();
+}
+
+/* ---------- what has already run ---------- */
+
+/** Attempts per stage, read from the DIRECTORY — no target machine needed,
+ *  which is why this belongs here and not on Results (`task-setup.md` § 10).
+ *
+ *  Both shapes, from `job-contracts.md` § 6.3's Files table:
+ *    hierarchical  <NN>_<name>/run-<n>/
+ *    flat          <label>_<NN>_<name>-run<N>.out   (beside the deck)
+ *
+ *  It counts attempts and does not judge them.  Whether a run CONVERGED is in
+ *  its output, and parsing engine output is the Results tab's contract, not a
+ *  claim this page should make from a filename.
+ */
+async function runsForStages(projects, dir, task) {
+    const out = {};
+    const stages = (task && task.stages) || [];
+    let entries = [];
+    try {
+        const listing = await projects.listDir(dir);
+        entries = (listing && listing.entries) || [];
+    } catch (_) { return out; }
+
+    const names = entries.map((e) => (e && e.name) || "");
+    for (let i = 0; i < stages.length; i++) {
+        const stage = stages[i];
+        const token = String(i + 1).padStart(2, "0") + "_" + (stage.name || "");
+        const dirHit = names.filter((n) => n === token);
+        let attempts = 0;
+        if (dirHit.length) {
+            try {
+                const sub = await projects.listDir(dir + "/" + token);
+                attempts = ((sub && sub.entries) || [])
+                    .filter((e) => /^run-\d+$/.test((e && e.name) || "")).length;
+            } catch (_) { /* unreadable is not zero, but it is all we can say */ }
+        } else {
+            // flat: one output per attempt, carrying the same token
+            attempts = names.filter(
+                (n) => n.indexOf("_" + token + "-run") !== -1).length;
+        }
+        out[stage.name] = attempts;
+    }
+    return out;
+}
+
+/* ---------- the machine rows: a point is a choice, several a measurement ---- */
+
+/** Coerce a typed point to what `task.json` should carry.
+ *  `bench` takes scalars only — the reader refuses a nested value. */
+function coercePoint(raw) {
+    const t = String(raw).trim();
+    if (t === "") return null;
+    if (/^(true|on|yes)$/i.test(t))  return true;
+    if (/^(false|off|no)$/i.test(t)) return false;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : t;
+}
+
+function benchOf() {
+    if (!_task) return null;
+    return _task.bench || (_task.bench = {});
+}
+
+function addPoint(name, raw) {
+    const v = coercePoint(raw);
+    if (v === null) return;
+    const b = benchOf(); if (!b) return;
+    const pts = Array.isArray(b[name]) ? b[name] : (b[name] === undefined ? [] : [b[name]]);
+    // Adding a point to a CHOSEN setting keeps the value as the first point,
+    // so measuring never discards what you chose (`task-setup.md` § 9).
+    if (pts.some((p) => String(p) === String(v))) return;
+    pts.push(v);
+    b[name] = pts;
+    syncFromModel();
+}
+
+function removePoint(name, idx) {
+    const b = benchOf(); if (!b || !Array.isArray(b[name])) return;
+    b[name].splice(idx, 1);
+    // `bench` takes a NON-EMPTY list, so a setting with no points is not a
+    // setting with zero points -- it is a setting that is not being measured.
+    if (!b[name].length) delete b[name];
+    if (!Object.keys(b).length) delete _task.bench;
+    syncFromModel();
+}
+
+function removeSetting(name) {
+    const b = benchOf(); if (!b) return;
+    delete b[name];
+    if (!Object.keys(b).length) delete _task.bench;
     syncFromModel();
 }
 
@@ -578,6 +697,20 @@ function start() {
         b.addEventListener("click",
             () => setShape(b.getAttribute("data-shape") || ""));
     }
+    const addSetting = () => {
+        const inp = $("ts-add-setting");
+        const name = (inp.value || "").trim();
+        if (!/^[a-z_][a-z0-9_]*$/i.test(name)) {
+            setState("refuse", "That is not a setting name",
+                     "Use the parameter's own name — letters, digits and "
+                     + "underscore, as the catalogue spells it.");
+            return;
+        }
+        addPoint(name, "1");            // a row starts as ONE point: a choice
+        inp.value = "";
+    };
+    const goBtn = $("ts-add-setting-go");
+    if (goBtn) goBtn.addEventListener("click", addSetting);
     const addBtn = $("ts-add-stage");
     if (addBtn) addBtn.addEventListener("click", addStage);
     const saveBtn = $("ts-save");

@@ -14,9 +14,9 @@ and the content-aware doors;
 artifact registry.
 
 **This is the general procedure, named once so every generating tab uses the
-same one** (user, 2026-08-16). Structure optimization is the worked case;
-**Spectrum is next; Transport waits** because a transport calculation is a
-multi-component job and needs the extension in § 6 first.
+same one** (user, 2026-08-16). Structure optimization is the worked case. **Spectrum is next in ORDER but not
+ready** — its UI and template have not been migrated (§ 6). **Transport waits**
+beyond that: it is a multi-component job and needs the extension in § 6 first.
 
 ---
 
@@ -129,10 +129,30 @@ words.
 collected parameters*; the hand-over carries the engine, the structure and the
 name; the receiver asks for what is missing.
 
-**Spectrum** is the same shape: one engine, one parameter set, a description
-with stages. It needs its rows in the catalogue read by
-`catalogue_to_form_schema` — which they already are — and a Send button wired to
-the same endpoint with `engine: "pyscf"`. **No change to this procedure.**
+**Spectrum is NOT ready, and the work is upstream of this procedure.**
+
+> ⚠ **This section claimed on 2026-08-16 that Spectrum's "rows in the catalogue
+> are already read by `catalogue_to_form_schema`". That is false**, and it was
+> written without checking. `spectra.py:161` calls
+> `dataclass_to_form_schema(SpectraConfig, "s")`; the catalogue declares
+> `engines = ["siesta", "pyscf"]` and carries **zero** spectra items. The
+> correction is recorded rather than quietly edited because the claim would
+> have made the next piece of work look like wiring a button.
+
+What Spectrum needs first, and none of it is this procedure's:
+
+1. **Its parameters in the catalogue** — `SpectraConfig`'s fields become items
+   with `group`, `category`, `engines`, `kind`, `anchor`, the way the SIESTA and
+   PySCF sets did at the unification
+   ([`plans/template-unification-plan.md`](?doc=plans/template-unification-plan.md)).
+2. **Its form off `dataclass_to_form_schema`** and onto the catalogue, which is
+   what retires `section` for it ([`web/form-schema.md`](?doc=web/form-schema.md)
+   § 1a's note).
+3. **A decision this document cannot make**: whether a spectrum run is a
+   description with stages at all, or one parameter set with no ladder.
+
+**Only then** is the hand-over a Send button on the same endpoint. The procedure
+does not change; the tab has to reach it first.
 
 **Transport is not, and that is why it waits.** It is a **multi-component job**
 — *"it involves multiple results and the transportation needs to combine all of

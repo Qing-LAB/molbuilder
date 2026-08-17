@@ -94,10 +94,11 @@ on Results.
 
 **The procedure is named and contracted** —
 [`web/handover-procedure.md`](?doc=web/handover-procedure.md). Structure
-optimization is the worked case; **Spectrum is next** (user, 2026-08-16), and it
-is the same shape: one engine, one parameter set. Its catalogue rows already
-feed `catalogue_to_form_schema`, so it needs a Send button on the same endpoint
-with `engine: "pyscf"` and **no change to the procedure**.
+optimization is the worked case. **Spectrum is next in order and NOT ready**
+(user, 2026-08-16): its UI and template have not been migrated. It still builds
+its form from `dataclass_to_form_schema(SpectraConfig)`, and the catalogue
+carries no spectra items at all — so the work is a catalogue migration, not a
+button. § 6 of the procedure lists the three pieces.
 
 The bar is § 7's checks holding for it, not "a button appears".
 

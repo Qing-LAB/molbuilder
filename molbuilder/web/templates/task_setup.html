@@ -105,6 +105,15 @@
           measurement</strong> &mdash; the same row does both, because a run is a
           sweep of length one.</p>
         <div class="ts-rows" id="ts-machine-rows"></div>
+        <div class="ts-actions" id="ts-machine-actions" hidden>
+          <input id="ts-add-setting" class="ts-cell ts-cell-name"
+                 placeholder="setting name, e.g. mpi_np"
+                 aria-label="add a setting to measure">
+          <button type="button" class="btn" id="ts-add-setting-go">+ Add
+            setting</button>
+          <span class="hint">Only speed knobs — a setting that changes the
+            answer would make every point a different calculation.</span>
+        </div>
       </section>
 
     </div>
