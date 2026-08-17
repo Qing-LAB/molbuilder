@@ -1224,3 +1224,27 @@ def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
     assert r.status_code in (200, 400), r.status_code
     if r.status_code == 400:
         assert (r.get_json() or {}).get("error"), "a refusal with no reason"
+
+
+def test_the_file_list_shows_the_structure_the_calculation_is_of():
+    """The list said "Two files" while the folder holds four — so the page
+    whose job is showing you the folder omitted the geometry, on the screen
+    where a person checks a description before a week of compute.
+
+    It is looked up **by the name the description gives it**, never by
+    globbing for a `.xyz`: globbing answers "is there a geometry here", and the
+    case worth showing is a folder holding somebody else's structure and not
+    its own.  `prep` refuses on that, late; this says it where it can be fixed.
+    """
+    html = (ROOT / "molbuilder/web/templates/task_setup.html").read_text()
+    for probe in ("ts-f-struct", "ts-f-side", "ts-f-struct-name", "ts-f-side-name"):
+        assert probe in html, f"the file list has no {probe} row"
+    assert "Two files, into the folder above." not in html, (
+        "the hint still claims two files")
+
+    src = VIEWER.read_text()
+    body = src.split('markFile("ts-f-tmpl"', 1)[1].split("A hand-over:", 1)[0]
+    assert "ref.source" in body, "the structure row is not driven by the description"
+    assert ".endsWith(\".xyz\")" not in body, (
+        "the structure is being found by globbing rather than by name")
+    assert 'markFile("ts-f-struct"' in body and 'markFile("ts-f-side"' in body

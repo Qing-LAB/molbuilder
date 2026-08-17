@@ -133,7 +133,13 @@
 
       <section class="card">
         <h2>What gets written</h2>
-        <p class="hint">Two files, into the folder above.</p>
+        {# What the FOLDER holds, not only what this page writes.  The
+           structure is listed because it is what the calculation is OF: a
+           person checking a description before a week of compute is checking
+           the geometry as much as the parameters, and a list that omitted it
+           was the page's own claim that the folder had two files in it. #}
+        <p class="hint">What is in the folder. This page writes the first
+          two.</p>
         <ul class="ts-files" id="ts-file-list">
           <li>
             <span class="ts-file-name">task.json</span>
@@ -145,6 +151,17 @@
             <span class="ts-file-name" id="ts-f-tmpl-name">&lt;label&gt;.template.toml</span>
             <span class="ts-file-what">every parameter, with its value<br>
               <span class="ts-file-state" data-exists="no" id="ts-f-tmpl">not there yet</span></span>
+          </li>
+          <li>
+            <span class="ts-file-name" id="ts-f-struct-name">&lt;label&gt;.xyz</span>
+            <span class="ts-file-what">the structure this is of — the one
+              <code>task.json</code> names<br>
+              <span class="ts-file-state" data-exists="no" id="ts-f-struct">not there yet</span></span>
+          </li>
+          <li>
+            <span class="ts-file-name" id="ts-f-side-name">&lt;label&gt;.molstruct.json</span>
+            <span class="ts-file-what">its cell and region labels<br>
+              <span class="ts-file-state" data-exists="no" id="ts-f-side">not there yet</span></span>
           </li>
         </ul>
       </section>

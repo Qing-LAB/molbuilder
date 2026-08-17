@@ -356,9 +356,11 @@ async function loadFolder(projects, dir) {
     // What is already on disk, so the file list tells the truth rather than a
     // guess.  A listing failure is not fatal — the read above is what matters.
     let templateName = null;
+    let names = new Set();
     try {
         const listing = await projects.listDir(dir);
         const entries = (listing && listing.entries) || [];
+        names = new Set(entries.map((e) => e && e.name));
         const tmpl = entries.find((e) => e && typeof e.name === "string"
                                       && e.name.endsWith(".template.toml"));
         if (tmpl) templateName = tmpl.name;
@@ -367,6 +369,27 @@ async function loadFolder(projects, dir) {
     markFile("ts-f-task", !!taskText, "already here — saving would update it");
     markFile("ts-f-tmpl", !!templateName, "already here — saving would update it");
     if (templateName) $("ts-f-tmpl-name").textContent = templateName;
+
+    /* THE STRUCTURE, by the name the description itself gives it.  Globbing
+     * for a `.xyz` would answer a different question — "is there a geometry
+     * here" rather than "is the one this calculation names here" — and those
+     * differ in exactly the case worth showing: a folder that holds someone
+     * else's structure and not its own.  `prep` refuses on that, late; this
+     * says it on the page where it can still be fixed. */
+    let ref = {};
+    try {
+        const doc = JSON.parse(taskText || overText || "{}");
+        ref = (doc && doc.structure) || {};
+    } catch (_) { /* a file that does not parse is refused further down */ }
+    const structName = String(ref.source || "").split("/").pop();
+    const sideName = structName
+        ? structName.replace(/\.[^.]+$/, "") + ".molstruct.json" : "";
+    if (structName) $("ts-f-struct-name").textContent = structName;
+    if (sideName)   $("ts-f-side-name").textContent = sideName;
+    markFile("ts-f-struct", structName && names.has(structName),
+             "here — " + (ref.atoms || "?") + " atoms");
+    markFile("ts-f-side", sideName && names.has(sideName),
+             "here — the cell and the labels");
 
     // A hand-over: the parameters arrived, the description has not been
     // finished.  Show the file so it can be read, and say what is missing.
