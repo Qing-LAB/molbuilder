@@ -89,6 +89,15 @@ on Results.
 
 ---
 
+## 2a. What comes after, and not before
+
+**The editor module** ([`plans/editor-module-plan.md`](?doc=plans/editor-module-plan.md))
+— CodeMirror behind one door — is sequenced **after** T1–T5 (user, 2026-08-16).
+The workflow from the parameter tab through to a saved description is the thing
+with a user waiting on it; the editor consolidation is a refactor of working
+code whose payoff is mostly in what it prevents. Doing it first would mean
+porting an editor whose call sites are still changing.
+
 ## 3. Two things deliberately not done
 
 **The JSON mode is vendored; a mode for molbuilder's own formats is not.**
