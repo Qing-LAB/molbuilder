@@ -217,9 +217,6 @@
            streams the layout to the JS renderer below.  Adding or
            removing a field is a one-line dataclass change -- no
            HTML touched. -->
-      <div id="siesta-form-container" class="param-grid"
-           data-form-schema="siesta"></div>
-
       {# What is not at the recommended value, and a way back.  A single
          "reset everything" button cannot tell a deliberate k-grid from a
          value that came along from an older session, so this lists the
@@ -234,6 +231,10 @@
           </div>
         </div>
       </details>
+
+      <div id="siesta-form-container" class="param-grid"
+           data-form-schema="siesta"></div>
+
 
       <!-- Validation issues panel (live preflight + post-Generate).
            Hidden when there are no issues; populated by viewer.js's
@@ -257,9 +258,6 @@
            form fields are declared in molbuilder/config/pyscf.py
            with "section": metadata; adding / removing a field is a
            one-line dataclass change. -->
-      <div id="pyscf-form-container" class="param-grid"
-           data-form-schema="pyscf"></div>
-
       {# What is not at the recommended value, and a way back.  A single
          "reset everything" button cannot tell a deliberate k-grid from a
          value that came along from an older session, so this lists the
@@ -274,6 +272,10 @@
           </div>
         </div>
       </details>
+
+      <div id="pyscf-form-container" class="param-grid"
+           data-form-schema="pyscf"></div>
+
 
       <ul id="pyscf-issues" class="issues-panel" hidden
           aria-label="PySCF configuration validation issues"></ul>
