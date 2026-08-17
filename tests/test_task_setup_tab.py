@@ -56,17 +56,23 @@ def test_the_page_renders_the_designs_parts(web_client):
         assert needle in body, f"missing {needle!r} on /task-setup"
 
 
-def test_the_tab_writes_nothing_yet(web_client):
-    """Save is present but disabled, and the page says why.
+def test_save_is_disabled_until_it_could_succeed(web_client):
+    """Save now exists (T2).  It renders DISABLED and the page says why —
+    the button is enabled by `refreshSave()` only once a folder is open, the
+    folder has something to save, and a hand-over has been given its shape.
 
-    A page that looks like it can save and cannot is worse than one that says
-    so.  When saving lands, this test changes on purpose.
+    This replaced `test_the_tab_writes_nothing_yet` when the write path landed,
+    which is what that test was for: enabling a write path had to be a
+    deliberate edit, not a side effect.
     """
     body = web_client.get("/task-setup").data.decode()
     m = re.search(r"<button[^>]*id=\"ts-save\"[^>]*>", body)
     assert m, "the Save button is gone"
-    assert "disabled" in m.group(0), "Save is enabled but nothing writes yet"
-    assert "jobset describe" in body, "the page does not say what writes today"
+    assert "disabled" in m.group(0), (
+        "Save renders enabled — nothing is open yet, so it cannot succeed")
+    src = VIEWER.read_text()
+    assert "refreshSave" in src, "nothing decides when Save is usable"
+    assert "/api/task-setup/save" in src, "Save is not wired to the endpoint"
 
 
 def test_the_page_loads_the_shared_stylesheet_layers(web_client):
@@ -171,10 +177,11 @@ def test_the_editor_picks_its_mode_from_the_suffix():
     assert "modeFor" in src, "the editor no longer resolves its mode by path"
     assert re.search(r"modeFor\(TASK_JSON\)", src), (
         "the mode should be resolved from the file's own name")
-    for hardcoded in ("application/json", '"javascript"', "'javascript'"):
-        assert hardcoded not in src, (
-            f"{hardcoded!r} is hard-coded in the tab — the suffix map in "
-            "lib/codemirror-load.js is the one place that decides")
+    # Narrowly: the MODE option, not the file — `application/json` is also a
+    # legitimate Content-Type header on the save fetch.
+    assert not re.search(r"mode:\s*[\"']", src), (
+        "a mode string is hard-coded in the tab — the suffix map in "
+        "lib/codemirror-load.js is the one place that decides")
 
 
 def test_the_optional_read_uses_the_camelCase_option():
@@ -241,56 +248,56 @@ def _envelope():
                           "metadata": {}}}
 
 
-def test_handover_writes_a_partial_that_declares_itself(web_client):
-    """It writes the template + `task.1st.json`, and that file says what it is.
+def test_handover_renders_and_writes_nothing(web_client):
+    """The endpoint returns TEXTS; the browser writes them.
 
-    The schema is deliberately NOT `molbuilder/task@1`: without `shape` it
-    would fail that reader, and `check_schema` refuses a wrong artifact by
-    name.  `_what` and `awaiting` exist because a person reads this file in an
-    editor and should not need a document open beside it.
+    `web/projects.md` § 1 puts raw bytes in the content-blind file layer that
+    "every tab can use" — a tab that writes files itself bypasses the roots
+    guard, the lock, the uniform envelope and the sidebar re-list.  What is
+    genuinely server-side is the RENDER: only Python can turn a config into
+    `<label>.template.toml`.
     """
     d = _fresh_calc_dir()
     try:
-        body = dict(_envelope(), engine="siesta", dest=str(d),
-                    name="probe calc", params={"system_label": "probe"})
-        r = web_client.post("/api/task-setup/handover", json=body)
+        r = web_client.post("/api/task-setup/handover", json=dict(
+            _envelope(), engine="siesta", name="probe calc",
+            params={"system_label": "probe"}))
         assert r.status_code == 200, r.get_json()
         out = r.get_json()
         assert out["ok"] is True
-        assert "task.1st.json" in out["files"]
+        assert out["template_text"].strip(), "no template rendered"
+        assert out["handover_name"] == "task.1st.json"
+        assert list(d.iterdir()) == [], (
+            "the render endpoint wrote into the folder; the browser writes, "
+            "through projects.safeSave")
 
-        h = _json.loads((d / "task.1st.json").read_text())
+        h = _json.loads(out["handover_text"])
         assert h["schema"] == "molbuilder/task-handover@1"
-        assert "shape" not in h and "stages" not in h, (
-            "the hand-over must not assert a shape — it is required with no "
-            "default because inferring it hands you a tree you did not ask for")
+        assert "shape" not in h and "stages" not in h
         assert h["awaiting"] == ["shape", "stages"]
         assert h["_what"], "the file does not say what it is"
-        assert list(d.glob("*.template.toml")), "no template was written"
     finally:
         _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
 
 
-def test_handover_refuses_onto_a_described_calculation(web_client):
-    """One job per folder (`job-contracts.md § 2.1` Rule 1).  Overwriting a
-    description with a form's contents is the worst thing this could do."""
-    d = _fresh_calc_dir()
-    try:
-        (d / "task.json").write_text("{}")
-        body = dict(_envelope(), engine="siesta", dest=str(d),
-                    name="probe calc", params={"system_label": "probe"})
-        r = web_client.post("/api/task-setup/handover", json=body)
-        assert r.status_code == 409, r.status_code
-        assert "one job per folder" in r.get_json()["error"]
-    finally:
-        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+def test_the_tab_moves_bytes_through_the_file_layer():
+    """No hand-rolled writes or deletes on either surface."""
+    opt = (STATIC / "structure-optimization/viewer.js").read_text()
+    ts  = VIEWER.read_text()
+    assert "projects.safeSave(text, name," in opt, (
+        "the hand-over does not write through safeSave(TEXT, FILENAME, opts)")
+    assert "projects.deleteEntry(" in ts, (
+        "the hand-over is not removed through the file layer")
+    for surface, src in (("optimization", opt), ("task-setup", ts)):
+        assert "/api/files/write" not in src, (
+            f"{surface} calls the write route directly instead of the door")
 
 
-def test_handover_refuses_outside_the_roots(web_client):
-    """The picker's roots guard covers this door like every other."""
-    body = dict(_envelope(), engine="siesta", dest="/tmp",
-                name="x", params={"system_label": "probe"})
-    r = web_client.post("/api/task-setup/handover", json=body)
+def test_save_refuses_outside_the_roots(web_client):
+    """The save door owns `task.json` because it owns that schema — but it is
+    still inside the picker's roots guard like every other write."""
+    r = web_client.post("/api/task-setup/save",
+                        json={"dest": "/tmp", "text": "{}"})
     assert r.status_code >= 400
     assert "root" in str(r.get_json().get("error", "")).lower()
 
@@ -330,3 +337,95 @@ def test_the_handover_button_calls_only_helpers_that_exist():
     assert not (STATIC / "structure-optimization/handover.js").exists(), (
         "the standalone hand-over module is back; it cannot reach the "
         "private helpers and would have to duplicate them")
+
+
+# --------------------------------------------------------------------- #
+#  T1 shape · T2 save                                                    #
+# --------------------------------------------------------------------- #
+
+def test_the_shape_is_asked_and_never_defaulted(web_client):
+    """`stages.md § 6.7`: required with no default, because inferring it
+    "would hand somebody a directory tree they never asked for"."""
+    body = web_client.get("/task-setup").data.decode()
+    assert 'id="ts-shape-card"' in body
+    for shape in ("flat", "hierarchical"):
+        assert f'data-shape="{shape}"' in body, f"no {shape} option"
+    assert body.count('aria-pressed="false"') >= 2, (
+        "a shape renders pre-selected — the page must ask")
+    src = VIEWER.read_text()
+    assert 'let _shape      = "";' in src, "shape is initialised to a value"
+
+
+def test_the_editor_shows_what_will_be_written_not_the_handover(web_client):
+    """A person checking a description before a week of compute should be
+    reading the thing that lands, not its input."""
+    src = VIEWER.read_text()
+    assert "proposedFromHandover" in src
+    assert '"molbuilder/task@1"' in src, (
+        "the proposed description does not carry the real task schema")
+    assert re.search(r'name:\s*"coarse"', src), (
+        "the proposal should start with one stage named coarse (§ 6.5)")
+
+
+def test_save_writes_the_description_and_reports_the_handover(web_client):
+    """The save door owns `task.json` — the same reason `/api/structure/save`
+    owns the sidecar: a browser-authored, schema-stamped file that the loader
+    would reject is the save-then-reload trap `projects.md` § 3 describes.
+
+    It does NOT delete the hand-over; it reports that one is there, and the
+    browser removes it through `projects.deleteEntry`.
+    """
+    d = _fresh_calc_dir()
+    try:
+        rendered = web_client.post("/api/task-setup/handover", json=dict(
+            _envelope(), engine="siesta", name="probe",
+            params={"system_label": "probe"})).get_json()
+        # the browser's half, through the file layer
+        (d / rendered["handover_name"]).write_text(rendered["handover_text"])
+        over = _json.loads(rendered["handover_text"])
+
+        proposed = {"schema": "molbuilder/task@1", "engine": over["engine"],
+                    "shape": "flat", "run": over["run"],
+                    "structure": over["structure"], "varies": [],
+                    "stages": [{"name": "coarse", "enabled": True,
+                                "overrides": {}}]}
+        r = web_client.post("/api/task-setup/save", json={
+            "dest": str(d), "text": _json.dumps(proposed)})
+        assert r.status_code == 200, r.get_json()
+        out = r.get_json()
+        assert (d / "task.json").is_file()
+        assert out["stages"] == ["coarse"]
+        assert out["handover_here"] is True, (
+            "the save door should report the hand-over for the browser to remove")
+        assert (d / "task.1st.json").is_file(), (
+            "the save door deleted it; moving bytes is the file layer's job")
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+
+
+def test_save_refuses_rather_than_repairs(web_client):
+    """The text goes through `task.read_task` — the same door `prep` uses — so
+    a browser cannot become a second, drifting writer of descriptions."""
+    d = _fresh_calc_dir()
+    try:
+        r = web_client.post("/api/task-setup/save",
+                            json={"dest": str(d), "text": "{ not json"})
+        assert r.status_code == 400
+        assert not (d / "task.json").exists(), "a bad description was written"
+
+        # complete but for `stages`, so the STAGES refusal is what fires
+        from molbuilder.identity import run_id
+        no_stages = {"schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+                     "shape": "flat",
+                     "run": {"name": "x", "id": run_id("x", "H2"),
+                             "created": "2026-08-16T00:00:00-07:00"},
+                     "structure": {"source": "s.xyz", "formula": "H2",
+                                   "atoms": 2},
+                     "varies": []}
+        r2 = web_client.post("/api/task-setup/save", json={
+            "dest": str(d), "text": _json.dumps(no_stages)})
+        assert r2.status_code == 400
+        assert "stage" in r2.get_json()["error"].lower(), (
+            "the refusal should be the reader's own words")
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)

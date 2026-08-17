@@ -1566,24 +1566,24 @@ import { mount as mvMount, formula as mvFormula }
         const params = (engine === "siesta")
             ? collectFdfParams() : collectPyscfParams();
 
-        _handoverSay("muted", "Writing…");
-        let body;
+        _handoverSay("muted", "Rendering…");
+        let out;
         try {
             const r = await fetch("/api/task-setup/handover", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    structure, engine, params, dest,
+                    structure, engine, params,
                     name: (dest.split("/").filter(Boolean).pop() || ""),
                     structure_path:
                         (projects && typeof projects.getCurrentFile === "function")
                             ? projects.getCurrentFile() : "",
                 }),
             });
-            body = await r.json();
-            if (!r.ok || !body || body.ok === false) {
+            out = await r.json();
+            if (!r.ok || !out || out.ok === false) {
                 _handoverSay("error",
-                    (body && body.error) || ("write failed (" + r.status + ")"));
+                    (out && out.error) || ("render failed (" + r.status + ")"));
                 return;
             }
         } catch (e) {
@@ -1591,6 +1591,29 @@ import { mount as mvMount, formula as mvFormula }
                 + (e && e.message ? e.message : e));
             return;
         }
+
+        /* The BYTES go through the content-blind file layer, never a fetch of
+         * our own (`web/projects.md` § 1).  `safeSave` writes into the folder
+         * the user selected, refuses at the projects root, re-lists the
+         * sidebar afterwards, and returns the four-way shape below -- the
+         * canonical caller pattern, as `lib/spectra/core.js` uses it. */
+        _handoverSay("muted", "Writing…");
+        for (const [name, text] of [[out.template_name, out.template_text],
+                                    [out.handover_name, out.handover_text]]) {
+            // safeSave(TEXT, FILENAME, opts) -- text first.
+            const wrote = await projects.safeSave(text, name, { overwrite: true })
+                .catch((e) => ({ ok: false, error: String(e && e.message || e) }));
+            if (wrote && wrote.cancelled) {
+                _handoverSay("muted", "Cancelled — nothing written.");
+                return;
+            }
+            if (!wrote || !wrote.ok) {
+                _handoverSay("error", "Could not write " + name + ": "
+                    + ((wrote && wrote.error) || "no folder selected"));
+                return;
+            }
+        }
+        const body = { files: [out.template_name, out.handover_name] };
         _handoverSay("ok", "Wrote " + (body.files || []).join(" and ")
             + " — opening Task setup…");
         // The sidebar's selection is shared through sessionStorage, so Task

@@ -244,6 +244,7 @@
     --ts-aside-w:       clamp(20rem, 30vw, 25rem);
     --ts-editor-min-h:  22rem;   /* the CodeMirror pane's floor */
     --ts-label-w:       11.5rem; /* the settings-row name column */
+    --ts-opt-min:       16rem;   /* a shape option's flex basis */
 
     /* The destination path + folder-state rows. */
     --ts-here-bg:       var(--accent-bg);

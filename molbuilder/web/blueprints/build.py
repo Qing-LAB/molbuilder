@@ -67,6 +67,7 @@ from __future__ import annotations
 
 import typing
 import json
+import pathlib
 from datetime import datetime
 from typing import Any, Dict
 
@@ -1441,7 +1442,18 @@ TASK_HANDOVER_NAME = "task.1st.json"
 
 @bp.route("/api/task-setup/handover", methods=["POST"])
 def api_task_setup_handover():
-    """Write the parameter tab's work into a folder, for Task setup to finish.
+    """RENDER the parameter tab's work, for the browser to write.
+
+    **This writes nothing.**  `web/projects.md` § 1 puts raw bytes in the
+    content-blind file layer that *"every tab can use"* -- `writeFile` /
+    `safeSave` / `deleteEntry` -- and a tab that opens files itself bypasses the
+    roots guard, the lock, the uniform `{ok, ...}` envelope and the sidebar
+    re-list that come with it.  So this returns the two TEXTS and the caller
+    puts them where the user chose, through `projects.safeSave`.
+
+    What is genuinely server-side is the render: only Python can turn a config
+    into `<label>.template.toml`, because `template_with_values` narrows the
+    catalogue and fills in the answers.
 
     Two files, and neither is a runnable anything:
 
@@ -1465,29 +1477,6 @@ def api_task_setup_handover():
         return jsonify({"ok": False,
                         "error": f"unknown engine {engine!r}"}), 400
 
-    dest_raw = str(body.get("dest") or "")
-    if not dest_raw:
-        return jsonify({"ok": False,
-                        "error": "no destination folder given"}), 400
-    try:
-        dest = _resolve_within_roots(dest_raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
-    if not dest.is_dir():
-        return jsonify({"ok": False,
-                        "error": f"not a directory: {dest_raw}"}), 400
-
-    # REFUSE onto a described calculation.  One job per folder
-    # (`job-contracts.md § 2.1` Rule 1), and silently overwriting somebody's
-    # description with a form's contents is the worst thing this could do.
-    if (dest / "task.json").is_file():
-        return jsonify({
-            "ok": False,
-            "error": "this folder already holds a task.json — it is a "
-                     "described calculation. Pick or make another folder; "
-                     "one job per folder.",
-        }), 409
-
     try:
         struct = _struct_from_body(body)
     except (ValueError, TypeError) as exc:
@@ -1503,7 +1492,7 @@ def api_task_setup_handover():
     from molbuilder.identity import normalise_id, run_id
     from molbuilder.template import template_with_values
 
-    typed = str(body.get("name") or "") or dest.name
+    typed = str(body.get("name") or "") or "calculation"
     label = normalise_id(typed)
     formula = str(getattr(struct, "formula", "") or "")
 
@@ -1536,15 +1525,80 @@ def api_task_setup_handover():
         "awaiting":  ["shape", "stages"],
     }
 
-    tmpl_name = f"{label}.template.toml"
+    return jsonify({
+        "ok":            True,
+        "label":         label,
+        "template_name": f"{label}.template.toml",
+        "template_text": template_text,
+        "handover_name": TASK_HANDOVER_NAME,
+        "handover_text": json.dumps(handover, indent=2) + "\n",
+    })
+
+
+@bp.route("/api/task-setup/save", methods=["POST"])
+def api_task_setup_save():
+    """Write the description a person has been reading, and resolve a hand-over.
+
+    **The BUFFER is the source.**  The editor is where a description is checked
+    and corrected before it is written (`web/task-setup.md` § 9a), so this takes
+    the text as edited -- never a re-serialisation of a parsed model, which
+    would silently discard whatever was typed in the editor.
+
+    **Refused rather than repaired.**  The text goes through the shipped reader
+    (`task.read_task`), so a description that does not parse, names a field the
+    schema does not know, or carries no stage is refused with the reason -- the
+    same answer the CLI gives, from the same code.  A browser that "fixed" a
+    description would be the second, drifting writer this design exists to
+    avoid.
+
+    **The hand-over resolves in one direction.**  On success `task.json` exists
+    and `task.1st.json` is removed, so the next visit finds one description and
+    no ambiguity about which file is current (`engines/stages.md` § 6.5a).
+    Removed only AFTER the write succeeds: the reverse order loses the
+    parameters if the write fails.
+    """
+    body = request.get_json(silent=True) or {}
+    dest_raw = str(body.get("dest") or "")
+    text     = body.get("text")
+    if not dest_raw:
+        return jsonify({"ok": False, "error": "no destination folder given"}), 400
+    if not isinstance(text, str) or not text.strip():
+        return jsonify({"ok": False, "error": "nothing to save"}), 400
+
     try:
-        (dest / tmpl_name).write_text(template_text, encoding="utf-8")
-        (dest / TASK_HANDOVER_NAME).write_text(
-            json.dumps(handover, indent=2) + "\n", encoding="utf-8")
+        dest = _resolve_within_roots(dest_raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    if not dest.is_dir():
+        return jsonify({"ok": False, "error": f"not a directory: {dest_raw}"}), 400
+
+    import tempfile
+    from molbuilder.task import read_task, write_task
+
+    # Validate by READING it, in a scratch file, so nothing lands in the
+    # calculation folder unless it is a description the rest of the system
+    # can open.  `read_task` is the same door `prep` uses.
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = pathlib.Path(tmp) / "task.json"
+        probe.write_text(text, encoding="utf-8")
+        try:
+            task = read_task(probe)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    try:
+        write_task(dest / "task.json", task)      # atomic (persist.write_json)
     except OSError as exc:
         return jsonify({"ok": False, "error": f"could not write: {exc}"}), 500
 
-    return jsonify({"ok": True,
-                    "dest":  str(dest),
-                    "files": [tmpl_name, TASK_HANDOVER_NAME],
-                    "label": label})
+    # The hand-over's REMOVAL is the browser's, through
+    # `projects.deleteEntry` -- moving bytes is the content-blind layer's job
+    # (`projects.md` § 1), and unlinking here would bypass its guard and the
+    # sidebar re-list.  Reported so the caller knows whether to.
+    return jsonify({
+        "ok":            True,
+        "wrote":         "task.json",
+        "handover_name": TASK_HANDOVER_NAME,
+        "handover_here": (dest / TASK_HANDOVER_NAME).is_file(),
+        "stages":        [st.name for st in task.stages],
+    })

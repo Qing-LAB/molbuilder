@@ -266,3 +266,41 @@
     color: var(--warn-soft);
 }
 .ts-dirty[hidden] { display: none; }
+
+/* ---- Shape: asked, never guessed ---- */
+
+.ts-choice { display: flex; gap: var(--space-md); flex-wrap: wrap; }
+.ts-choice .opt {
+    flex: 1 1 var(--ts-opt-min);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    text-align: left;
+    padding: var(--space-md);
+    font: inherit;
+    color: inherit;
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+.ts-choice .opt:hover { border-color: var(--accent); }
+.ts-choice .opt[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent-bg);
+}
+.ts-choice .opt b { font-size: var(--text-base); }
+.ts-choice .opt span {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+/* Not an error — work is waiting on you.  Same hue as a measured row. */
+.ts-needs {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin: var(--space-md) 0 0;
+    font-size: var(--text-sm);
+    color: var(--ts-measured);
+}
+.ts-needs[hidden] { display: none; }

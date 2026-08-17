@@ -56,6 +56,31 @@
         </div>
       </section>
 
+      <section class="card" id="ts-shape-card" hidden>
+        <h2>How the files are kept apart</h2>
+        <p class="hint">Every attempt in one directory, or a directory per
+          attempt. <strong>There is no default</strong> — it decides where
+          results land, so it is asked, never guessed.</p>
+        <div class="ts-choice">
+          <button type="button" class="opt" id="ts-shape-flat"
+                  data-shape="flat" aria-pressed="false">
+            <b>Flat</b>
+            <span>One directory. Attempts told apart by filename —
+              <code>…_01_coarse-run0.out</code>. One shared set of warm files,
+              so each stage overwrites the last.</span>
+          </button>
+          <button type="button" class="opt" id="ts-shape-hier"
+                  data-shape="hierarchical" aria-pressed="false">
+            <b>Hierarchical</b>
+            <span>A directory per stage, per attempt —
+              <code>01_coarse/run-0/</code>. Every stage's state stays on
+              disk.</span>
+          </button>
+        </div>
+        <p class="ts-needs" id="ts-shape-needs">Needed before this can be
+          written</p>
+      </section>
+
       <section class="card" id="ts-stages-card" hidden>
         <h2>Stages</h2>
         <p class="hint">Rows are stages, columns are the parameters that vary.
@@ -106,15 +131,11 @@
         <div class="ts-editor" id="ts-editor"></div>
         <div class="ts-editor-bar">
           <span class="ts-dirty" id="ts-dirty" hidden>edited &mdash; not saved</span>
-          <button type="button" class="primary" id="ts-save" disabled
-                  title="Saving is not wired yet — the description is written by
-                         `molbuilder jobset describe` today.">
+          <button type="button" class="primary" id="ts-save" disabled>
             Save to this folder
           </button>
         </div>
-        <p class="hint" id="ts-save-why">Saving is not built yet. This page reads
-          and edits; <code>molbuilder jobset describe</code> is what writes a
-          description today.</p>
+        <p class="hint" id="ts-save-why">Pick a folder first.</p>
       </section>
 
     </aside>

@@ -50,6 +50,10 @@ const ROW_NOTE = {
 
 let _cm = null;
 let _loadedText = "";
+let _dir        = "";     // the folder currently open
+let _shape      = "";     // "" until chosen — never defaulted (§ 4)
+let _mode       = "";     // "description" | "handover" | "empty"
+let _handover   = null;   // the parsed task.1st.json, in handover mode
 
 const $ = (id) => document.getElementById(id);
 
@@ -213,8 +217,10 @@ async function readOptional(projects, path) {
 }
 
 async function loadFolder(projects, dir) {
+    _dir = dir;
     showPath(dir);
     if (!dir) {
+        _mode = "empty"; refreshSave();
         setState("empty", "Nothing selected",
                  "Pick a calculation folder in the sidebar to read its description.");
         return;
@@ -247,6 +253,9 @@ async function loadFolder(projects, dir) {
         try { over = JSON.parse(overText); } catch (_) { /* shown raw below */ }
         const awaiting = (over && Array.isArray(over.awaiting))
             ? over.awaiting.join(" and ") : "shape and stages";
+        _mode = "handover"; _handover = over;
+        $("ts-shape-card").hidden = false;
+        setShape(_shape);                       // re-assert / repaint the choice
         setState("handover",
                  "Handed over — not a description yet",
                  `${TASK_HANDOVER} is here, carrying the parameters. Still `
@@ -254,14 +263,19 @@ async function loadFolder(projects, dir) {
                  + `this file.`);
         $("ts-stages-card").hidden = true;
         renderMachine(over || {});
-        await setEditorText(overText);
+        if (!_shape) await setEditorText(overText);   // until a shape is picked
+        refreshSave();
         return;
     }
 
     if (!taskText) {
+        _mode = "empty"; _handover = null;
+        $("ts-shape-card").hidden = true;
+        refreshSave();
         setState("empty", "No description here yet",
-                 "This folder carries no task.json. Saving would write a new "
-                 + "one — once saving is built.");
+                 "This folder carries no task.json and no hand-over. Send "
+                 + "parameters here from the Structure-optimization tab, or "
+                 + "run `molbuilder jobset describe`.");
         $("ts-stages-card").hidden = true;
         $("ts-machine-card").hidden = true;
         await setEditorText("");
@@ -289,9 +303,116 @@ async function loadFolder(projects, dir) {
              + ` · shape ${task.shape || "?"}`
              + ` · ${(task.stages || []).length} stage(s)`);
 
+    _mode = "description"; _handover = null;
+    _shape = String(task.shape || "");
+    $("ts-shape-card").hidden = false;
+    setShape(_shape);                            // shows which one it carries
     renderStages(task);
     renderMachine(task);
     await setEditorText(taskText);
+}
+
+/* ---------- the shape, and what a hand-over becomes ---------- */
+
+/** A description built from a hand-over plus the chosen shape.
+ *
+ * The editor shows WHAT WILL BE WRITTEN, not the hand-over file — a person
+ * checking a description before a week of compute should be reading the thing
+ * that lands, not its input.  `varies: []` and one stage named `coarse` are the
+ * ordinary starting ladder (`stages.md` § 6.5): one stage is not a special
+ * shape, and empty `varies` is a real state.
+ */
+function proposedFromHandover(over, shape) {
+    const run = (over && over.run) || {};
+    return JSON.stringify({
+        schema:    "molbuilder/task@1",
+        engine:    (over && over.engine) || { name: "siesta" },
+        shape:     shape,
+        run:       { name: run.name || "", id: run.id || "",
+                     created: run.created || "" },
+        structure: (over && over.structure) || {},
+        varies:    [],
+        stages:    [{ name: "coarse", enabled: true, overrides: {} }],
+    }, null, 2) + "\n";
+}
+
+function setShape(shape) {
+    _shape = shape;
+    for (const b of document.querySelectorAll("#ts-shape-card .opt")) {
+        b.setAttribute("aria-pressed",
+                       b.getAttribute("data-shape") === shape ? "true" : "false");
+    }
+    const needs = $("ts-shape-needs");
+    if (needs) needs.hidden = !!shape;
+    if (_mode === "handover" && shape) {
+        setEditorText(proposedFromHandover(_handover, shape));
+    }
+    refreshSave();
+}
+
+/** Save is enabled only when it could actually succeed. */
+function refreshSave() {
+    const btn = $("ts-save");
+    const why = $("ts-save-why");
+    if (!btn) return;
+    let blocked = "";
+    if (!_dir)                                    blocked = "Pick a folder first.";
+    else if (_mode === "empty")                   blocked = "Nothing to save — this folder carries no description and no hand-over.";
+    else if (_mode === "handover" && !_shape)     blocked = "Choose how the files are kept apart, above.";
+    btn.disabled = !!blocked;
+    if (why) {
+        why.textContent = blocked
+            || "Writes task.json into this folder. The text in the editor is "
+             + "what gets written.";
+    }
+}
+
+async function save() {
+    if (!_cm || !_dir) return;
+    const btn = $("ts-save");
+    if (btn) btn.disabled = true;
+    setState(_mode === "handover" ? "handover" : "loaded", "Saving…", "");
+    let body;
+    try {
+        const r = await fetch("/api/task-setup/save", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ dest: _dir, text: _cm.getValue() }),
+        });
+        body = await r.json();
+        if (!r.ok || !body || body.ok === false) {
+            // Refused, not repaired — show the reader's own words.
+            setState("refuse", "Not written", (body && body.error)
+                     || ("save failed (" + r.status + ")"));
+            refreshSave();
+            return;
+        }
+    } catch (e) {
+        setState("refuse", "Not written",
+                 "Could not reach the server: " + (e && e.message ? e.message : e));
+        refreshSave();
+        return;
+    }
+    // The hand-over's REMOVAL is the browser's, through the content-blind
+    // file layer (`web/projects.md` § 1) -- the server writes task.json
+    // because it owns that schema, the way /api/structure/save owns the
+    // sidecar, but moving bytes is this layer's job.  AFTER the write
+    // succeeded: the reverse order loses the parameters if the write fails.
+    const projects = window.molbuilder && window.molbuilder.projects;
+    if (projects && body.handover_here
+        && typeof projects.deleteEntry === "function") {
+        const gone = await projects.deleteEntry(
+            _dir.replace(/\/$/, "") + "/" + body.handover_name, false)
+            .catch(() => null);
+        if (!gone || gone.ok === false) {
+            // The description is written and correct; a surviving hand-over is
+            // untidy, not wrong, and § 6.5a says the description wins.
+            console.warn("[task-setup] task.json written, but the hand-over "
+                         + "could not be removed:", gone && gone.error);
+        }
+    }
+    // Re-open the folder: it is now a description.
+    if (projects) await loadFolder(projects, _dir);
 }
 
 /* ---------- wiring ---------- */
@@ -320,6 +441,14 @@ function start() {
     if (typeof projects.onCommit === "function") {
         projects.onCommit((sel) => loadFolder(projects, (sel && sel.dir) || ""));
     }
+
+    for (const b of document.querySelectorAll("#ts-shape-card .opt")) {
+        b.addEventListener("click",
+            () => setShape(b.getAttribute("data-shape") || ""));
+    }
+    const saveBtn = $("ts-save");
+    if (saveBtn) saveBtn.addEventListener("click", save);
+    refreshSave();
 }
 
 if (document.readyState === "loading") {

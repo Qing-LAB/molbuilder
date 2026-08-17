@@ -398,6 +398,8 @@ owned by [`molview.md`](?doc=web/molview.md):
 | POST `/api/files/{mkdir,upload,write,rename,move,copy}` · DELETE `/api/files/delete` | Mutations |
 | POST `/api/projects/create` | Create a project (the topic tree) |
 | POST `/api/structure/save` | Save a structure + its sidecar to a path |
+| POST `/api/task-setup/handover` | **Render** the parameter tab's work — returns `<label>.template.toml` and `task.1st.json` as TEXT. Writes nothing: the browser puts them where the user chose, through `projects.safeSave` ([`task-setup.md`](?doc=web/task-setup.md)) |
+| POST `/api/task-setup/save` | Validate a description through `task.read_task` and write `task.json`. A **content-aware door**, for the same reason `/api/structure/save` is one: a browser-authored schema-stamped file the loader would reject is the save-then-reload trap. It reports a hand-over rather than deleting it — moving bytes is the file layer's job |
 
 **Session timeline** — owned by [`workspace.md`](?doc=web/workspace.md):
 POST `/api/workspace-storage/{write,read,prune}`.
