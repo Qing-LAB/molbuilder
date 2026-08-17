@@ -26,7 +26,8 @@ lives here and leaves in one of two directions** — its rules land in
 | three-state open | a `task.json` → a description · no `task.json` but a `task.1st.json` → a hand-over · neither → nothing described yet |
 | what it shows | the destination and folder state, the file list, the stage table, the machine rows, and `task.json` itself in the editor |
 | the editor | vendored CodeMirror 5.65.16, **highlighting chosen by file suffix**, eight modes, loaded on first use |
-| the hand-over | `POST /api/task-setup/handover` writes `<label>.template.toml` + `task.1st.json`; the button lives on the parameter tab |
+| the hand-over | the **procedure** (`web/handover-procedure.md`): the server renders, the browser writes through `projects.safeSave`, Task setup finishes and removes it |
+| T1 · T2 · T3 | the shape asked, save wired through `read_task`, and the stage table editable |
 | the CSS | layer 5, composition only; thirteen `--ts-*` tokens in `lib/tokens.css`; two tests fail on a raw colour or a magic number |
 
 **It writes no description.** Save is rendered disabled and says
@@ -88,6 +89,23 @@ converged. No target machine required, which is why it belongs here rather than
 on Results.
 
 ---
+
+### T6 — Spectrum onto the hand-over procedure
+
+**The procedure is named and contracted** —
+[`web/handover-procedure.md`](?doc=web/handover-procedure.md). Structure
+optimization is the worked case; **Spectrum is next** (user, 2026-08-16), and it
+is the same shape: one engine, one parameter set. Its catalogue rows already
+feed `catalogue_to_form_schema`, so it needs a Send button on the same endpoint
+with `engine: "pyscf"` and **no change to the procedure**.
+
+The bar is § 7's checks holding for it, not "a button appears".
+
+**Transport waits.** It is a multi-component job — one device becomes three
+coupled SIESTA runs — and § 6 of the procedure names the two things that must
+be designed first: a hand-over carrying several components, and a description
+whose members are coupled rather than a sweep or a ladder. Stretching
+`task-handover@1` to cover it is the thing not to do.
 
 ## 2a. What comes after, and not before
 
