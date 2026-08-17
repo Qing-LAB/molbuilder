@@ -96,23 +96,30 @@ reload. **The folder is the only link** — which is what lets the same page ser
 every producer, and what makes *"open a folder"* a load rather than a merge
 (§ 9).
 
-### 2.2 "Is this a calculation?" is answered once, by code that already ships
+### 2.2 What this page asks, and what `_is_bundle_root` asks
 
-The check is `checkpoint.py::_is_bundle_root` — it looks for a description and is
-the same test `checkpointing.md` **L1** uses to decide that a root carrying its
-description owns its subdirectories.
+*Corrected 2026-08-16.* This section used to say the check **is**
+`checkpoint.py::_is_bundle_root` and "must not be written a second time". That
+was wrong in a way worth keeping: **the two answer different questions**, and
+the tab neither uses nor duplicates it.
 
-**That rule must not be written a second time.** Two answers to *"is this a
-calculation?"* give you either a folder this page opens but the checkpoint system
-does not cover, or the reverse — and neither is visible until somebody loses
-work.
+| | asks | answers |
+|---|---|---|
+| `checkpoint.py::_is_bundle_root` | *does this path declare itself the root of one multi-directory unit of work?* | one boolean, over `task.json` **or** `job-set.json` — enough to decide the folder owns its subdirectories (`checkpointing.md` **L1**) |
+| **this page** | *does this folder hold a description to edit, a hand-over to finish, or nothing yet?* | **three** states, and it distinguishes `task.json` from `task.1st.json` — a distinction `_is_bundle_root` does not make and has no reason to |
 
-**And a folder of finished decks is not adoptable**, which is a refusal rather
-than a missing feature: `varies` **cannot be inferred**
+**The invariant that does bind them**, and it holds today: a folder this page
+treats as a described calculation is one the checkpoint system also covers.
+Both key on `task.json`, so they cannot disagree about that — which matters
+because § 8 takes a state in a folder before writing into it, and a folder the
+history did not cover would be one whose state could not be brought back.
+
+**And a folder of finished decks is still not adoptable**, which is a refusal
+rather than a missing feature: `varies` **cannot be inferred**
 ([`stages.md § 6.2`](?doc=engines/stages.md)). Decks do not record which
-parameters were *meant* to vary — a cutoff that happens to be equal in every
-stage is indistinguishable from one nobody promoted — so reconstructing intent
-would be guessing at the one thing the description exists to state.
+parameters were *meant* to vary — a cutoff equal in every stage is
+indistinguishable from one nobody promoted — so reconstructing intent would be
+guessing at the one thing the description exists to state.
 
 ---
 

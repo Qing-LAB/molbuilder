@@ -352,6 +352,7 @@ async function loadFolder(projects, dir) {
         const awaiting = (over && Array.isArray(over.awaiting))
             ? over.awaiting.join(" and ") : "shape and stages";
         _mode = "handover"; _handover = over;
+        renderCameOver(over);
         $("ts-shape-card").hidden = false;
         setShape(_shape);                       // re-assert / repaint the choice
         setState("handover",
@@ -368,6 +369,7 @@ async function loadFolder(projects, dir) {
 
     if (!taskText) {
         _mode = "empty"; _handover = null;
+        renderCameOver(null);
         $("ts-shape-card").hidden = true;
         refreshSave();
         setState("empty", "No description here yet",
@@ -402,6 +404,7 @@ async function loadFolder(projects, dir) {
              + ` · ${(task.stages || []).length} stage(s)`);
 
     _mode = "description"; _handover = null; _task = task;
+    renderCameOver(task);
     _runs = await runsForStages(projects, dir, task);
     _shape = String(task.shape || "");
     $("ts-shape-card").hidden = false;
@@ -476,6 +479,38 @@ function setCell(i, col, raw) {
         ov[col] = (text !== "" && Number.isFinite(n)) ? n : text;
     }
     syncFromModel();
+}
+
+/* ---------- what came over ---------- */
+
+/** The identity facts, read-only (`task-setup.md` § 3).
+ *
+ * Shown because you are about to commit a week of compute against them, not so
+ * they can be changed.  The **id** is displayed and never recomputed: it is
+ * read from the file and checked, which is what makes a rename DETECTABLE
+ * rather than silent (`run-identity.md` § 3).
+ */
+function renderCameOver(obj) {
+    const host = $("ts-facts");
+    const card = $("ts-came-card");
+    if (!host || !card) return;
+    host.textContent = "";
+    if (!obj) { card.hidden = true; return; }
+    const run = obj.run || {};
+    const st  = obj.structure || {};
+    const rows = [
+        ["Calculation", run.name || "\u2014"],
+        ["Run id",      run.id   || "\u2014"],
+        ["Engine",      (obj.engine && obj.engine.name) || "\u2014"],
+        ["Structure",   st.source ? String(st.source).split("/").pop() : "\u2014"],
+        ["Formula",     st.formula || "\u2014"],
+        ["Atoms",       (st.atoms === undefined ? "\u2014" : String(st.atoms))],
+    ];
+    for (const [k, v] of rows) {
+        host.appendChild(el("div", null,
+            el("dt", null, k), el("dd", null, v)));
+    }
+    card.hidden = false;
 }
 
 /* ---------- the columns: which parameters vary ---------- */

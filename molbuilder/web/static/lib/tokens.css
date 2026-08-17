@@ -247,6 +247,8 @@
     --ts-opt-min:       16rem;   /* a shape option's flex basis */
     --ts-cell-min:      5.5rem;  /* a stage-table cell */
     --ts-ptadd-w:       5rem;    /* the add-a-point input */
+    --ts-fact-min:      9rem;    /* an identity fact's column */
+    --ts-label-track:   0.07em;  /* uppercase label tracking */
     --ts-off-opacity:   0.55;    /* a disabled stage: faded, not hidden */
 
     /* The destination path + folder-state rows. */

@@ -688,3 +688,16 @@ def test_removing_a_column_does_not_pretend_the_value_survives():
     body = src.split("function removeColumn", 1)[1].split("\n/* ", 1)[0]
     assert "not the template" in body, (
         "the message implies the value is preserved somewhere it is not")
+
+
+def test_the_identity_facts_are_shown_and_read_only(web_client):
+    """`task-setup.md` § 3 — shown because you are about to commit a week of
+    compute against them, not so they can be changed."""
+    body = web_client.get("/task-setup").data.decode()
+    assert 'id="ts-came-card"' in body and 'id="ts-facts"' in body
+    src = VIEWER.read_text()
+    assert "function renderCameOver" in src
+    fn = src.split("function renderCameOver", 1)[1].split("\n/* ", 1)[0]
+    assert '"Run id"' in fn, "the id is not shown — nothing says which calculation"
+    assert "<input" not in fn and 'el("input"' not in fn, (
+        "the identity facts are editable here")

@@ -434,3 +434,25 @@
     border-color: var(--error);
 }
 .ts-table thead th .ts-rowbtn-drop { border: 0; }
+
+/* ---- What came over: identity, read-only ---- */
+
+.ts-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(var(--ts-fact-min), 1fr));
+    gap: var(--space-md) var(--space-lg);
+    margin: 0;
+}
+.ts-facts > div { display: flex; flex-direction: column; gap: var(--space-xs); }
+.ts-facts dt {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--ts-label-track);
+    color: var(--text-muted);
+}
+.ts-facts dd {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--text-mono);
+}
