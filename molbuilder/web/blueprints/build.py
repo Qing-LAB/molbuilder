@@ -1501,6 +1501,34 @@ def api_task_setup_handover():
     except Exception as exc:                      # a bad value, named
         return jsonify({"ok": False, "error": str(exc)}), 400
 
+    # THE STRUCTURE ITSELF, from the one generator.  `molview.md` § 11.7: the
+    # server writes every file, because a browser-authored pair drifts from the
+    # server's -- it shipped once without the sidecar's `schema_version` and
+    # every label in it was dropped silently on the next open.  So this asks
+    # `StructureCodec` for the pair exactly as `/api/structure/export` does, and
+    # the two are byte-identical by construction rather than by agreement.
+    #
+    # The STEM is ours (the calculation's label); the SUFFIXES are the codec's,
+    # because the format follows from the frame count and the pairing rule has
+    # one home (`model/structure.md` § 2.4).  A caller appending `.xyz` here
+    # would be answering a question that already has an answer.
+    from molbuilder.workingcopy_structure import StructureCodec
+    from ._shared import checked_periodicity
+    struct, struct_notices = checked_periodicity(struct)
+    try:
+        made = StructureCodec().files(struct, label)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    structure_files = [{"name": path.name, "text": blob.decode("utf-8")}
+                       for path, blob in made]
+    # `source` names the COORDINATE document only.  The sidecar beside it is
+    # found by the pairing rule, which has one home (`model/structure.md`
+    # § 2.4) and is the codec's -- naming it here would be a second copy of a
+    # rule this file does not own, and § 11.7 says that is how the `.extxyz`
+    # round trip came to not close.
+    geometry_name = next((f["name"] for f in structure_files
+                          if not f["name"].endswith(".json")), "")
+
     handover = {
         "schema":    TASK_HANDOVER_SCHEMA,
         # JSON has no comments, so the file carries a line that says what it
@@ -1512,12 +1540,24 @@ def api_task_setup_handover():
                      "beside it) plus what this calculation is OF. It is missing "
                      "`shape` and `stages` on purpose -- Task setup asks for those, "
                      "and on a successful save writes the real task.json and deletes "
-                     "this file. Nothing runs from it.",
+                     "this file. Nothing runs from it. The structure it is OF is the "
+                     "file named under `structure.files` in this same folder, written "
+                     "by the server's one codec: `structure.source` names the .xyz, "
+                     "which carries the coordinates and the cell, and the "
+                     ".molstruct.json beside it carries the region labels and frozen "
+                     "atoms.",
         "engine":    {"name": engine},
         "run":       {"name": typed,
                       "id": run_id(typed, formula),
                       "created": datetime.now().astimezone().isoformat(timespec="seconds")},
-        "structure": {"source":  str(body.get("structure_path") or ""),
+        # WHAT THIS IS OF -- by NAME, pointing at files in this same folder.
+        # It used to record `structure_path`, which was the projects sidebar's
+        # selected file: a second fact read at a second moment, which
+        # `molview.md` § 9.3a forbids for exactly the reason it went wrong --
+        # the cursor sat on a `.template.toml`, so the hand-over claimed a
+        # calculation was OF its own parameter file.  These names come from the
+        # structure that was sent, so they cannot disagree with it.
+        "structure": {"source":  geometry_name,
                       "formula": formula,
                       "atoms":   len(getattr(struct, "elements", []) or [])},
         # No `shape`, no `stages` -- Task setup asks.  Stated rather than
@@ -1532,6 +1572,10 @@ def api_task_setup_handover():
         "template_text": template_text,
         "handover_name": TASK_HANDOVER_NAME,
         "handover_text": json.dumps(handover, indent=2) + "\n",
+        # Each entry is a file as it would exist on disk, under the name it
+        # would exist as -- nothing is left for the browser to work out.
+        "structure_files": structure_files,
+        "notices": struct_notices,
     })
 
 

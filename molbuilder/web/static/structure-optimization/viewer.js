@@ -1737,9 +1737,13 @@ import { mount as mvMount, formula as mvFormula }
                 body: JSON.stringify({
                     structure, engine, params,
                     name: (dest.split("/").filter(Boolean).pop() || ""),
-                    structure_path:
-                        (projects && typeof projects.getCurrentFile === "function")
-                            ? projects.getCurrentFile() : "",
+                    // No `structure_path`.  It used to send the projects
+                    // sidebar's selected file, which is a SECOND fact read at a
+                    // second moment -- `molview.md` § 9.3a's rule is that the
+                    // facts which leave together were read together, and this
+                    // one was read from a cursor rather than from the
+                    // structure.  The server names the files it writes from the
+                    // structure that is right here in this body.
                 }),
             });
             out = await r.json();
@@ -1760,8 +1764,13 @@ import { mount as mvMount, formula as mvFormula }
          * sidebar afterwards, and returns the four-way shape below -- the
          * canonical caller pattern, as `lib/spectra/core.js` uses it. */
         _handoverSay("muted", "Writing…");
-        for (const [name, text] of [[out.template_name, out.template_text],
-                                    [out.handover_name, out.handover_text]]) {
+        /* The STRUCTURE goes first, and the order is deliberate: the hand-over
+         * NAMES those files, so writing it before them would leave a folder
+         * whose description points at nothing if the next write fails. */
+        const parts = (out.structure_files || []).map((f) => [f.name, f.text]);
+        parts.push([out.template_name, out.template_text],
+                   [out.handover_name, out.handover_text]);
+        for (const [name, text] of parts) {
             // safeSave(TEXT, FILENAME, opts) -- text first.
             const wrote = await projects.safeSave(text, name, { overwrite: true })
                 .catch((e) => ({ ok: false, error: String(e && e.message || e) }));
@@ -1775,7 +1784,7 @@ import { mount as mvMount, formula as mvFormula }
                 return;
             }
         }
-        const body = { files: [out.template_name, out.handover_name] };
+        const body = { files: parts.map(([n]) => n) };
         _handoverSay("ok", "Wrote " + (body.files || []).join(" and ")
             + " — opening Task setup…");
         // The sidebar's selection is shared through sessionStorage, so Task

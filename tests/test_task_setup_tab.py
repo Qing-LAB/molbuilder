@@ -964,3 +964,84 @@ def test_the_template_values_outrank_the_catalogue_default():
         "the parameter is overridden by the recommendation")
     assert "await loadTemplateValues(dir)" in src, (
         "nothing loads the template when the folder changes")
+
+
+def test_the_handover_carries_the_STRUCTURE_not_a_summary_of_it(web_client):
+    """The hole this closes.  The hand-over used to record a formula, an atom
+    count, and `structure_path` -- the projects sidebar's selected file, which
+    in a real folder pointed at the calculation's own `.template.toml`.  The
+    geometry, the cell and the region labels all crossed the wire and were
+    thrown away at the last step.
+
+    `molview.md` § 11.7: the SERVER writes every file, from the one generator,
+    because a browser-authored pair drifts -- it shipped once with no
+    `schema_version` and every label in it was dropped on the next open.  So
+    the pair comes from `StructureCodec`, exactly as `/api/structure/export`
+    builds it.
+
+    This is the check `handover-procedure.md` § 7 should have had from the
+    start: OPEN what `source` names and see whether the structure survived.
+    """
+    import json as _json
+    d = _fresh_calc_dir()
+    try:
+        env = _envelope()
+        env["structure"]["metadata"] = {
+            "regions": {"frozen_atoms": [0], "L-electrode": [1]},
+            "cell": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 12.0]],
+            "cell_origin": None, "axis_kind": None, "vacuum": None,
+        }
+        r = web_client.post("/api/task-setup/handover", json=dict(
+            env, engine="siesta", name="probe",
+            params={"system_label": "probe"}))
+        assert r.status_code == 200, r.get_json()
+        out = r.get_json()
+
+        files = out["structure_files"]
+        assert files, "the structure was not written at all"
+        names = [f["name"] for f in files]
+        assert out["label"] + ".xyz" in names, names
+        assert any(n.endswith(".molstruct.json") for n in names), (
+            "the cell and the region labels have nowhere to live")
+
+        # the browser's half, through the file layer
+        for f in files:
+            (d / f["name"]).write_text(f["text"])
+        (d / out["handover_name"]).write_text(out["handover_text"])
+
+        over = _json.loads(out["handover_text"])
+        src = over["structure"]["source"]
+        assert src and not src.endswith(".json"), src
+        assert "/" not in src, "the reference must be folder-relative"
+        assert (d / src).is_file(), f"{src} is named but not there"
+
+        # READ IT BACK through the one authority, pairing and all.
+        from molbuilder.workingcopy_structure import StructureCodec
+        back = StructureCodec().read(d / src)
+        assert len(back.elements) == over["structure"]["atoms"] == 2
+        assert back.cell is not None, "the CELL did not survive the hand-over"
+        assert [list(v) for v in back.cell][2][2] == 12.0, back.cell
+        assert back.frozen_atoms, "the frozen-atom tags did not survive"
+        assert "L-electrode" in (back.regions or {}), (
+            f"the region labels did not survive: {back.regions}")
+
+        side = _json.loads((d / (out["label"] + ".molstruct.json")).read_text())
+        assert side.get("schema_version"), (
+            "the sidecar has no schema version — the load door refuses the "
+            "pair on the next open and every label is dropped silently")
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+
+
+def test_the_sidebar_cursor_is_not_in_the_payload():
+    """`molview.md` § 9.3a: the facts that leave together were read together.
+    `getCurrentFile()` is a second fact sampled at a second moment, and it is
+    what made a calculation claim to be OF its own parameter file."""
+    src = (ROOT / "molbuilder/web/static/structure-optimization/viewer.js").read_text()
+    body = src.split("/api/task-setup/handover", 1)[1].split("out = await r.json()", 1)[0]
+    # Comments out first — this file's own note explains what was removed, and
+    # a test that matches its own explanation proves nothing.
+    body = re.sub(r"//.*", "", body)
+    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+    assert "structure_path" not in body, "the sidebar's cursor is still sent"
+    assert "getCurrentFile" not in body
