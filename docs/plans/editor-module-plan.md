@@ -155,6 +155,34 @@ than one buffer they fight over.
    *"you have unsaved edits from before; the file has changed since"* and let
    the user choose.
 
+### The stale-file handshake belongs here too
+
+*Folded in 2026-08-16 (user), from the Task-setup review's **F6**.*
+
+Rule 3 above already requires the editor to store **what a buffer was loaded
+from** — path, size, mtime — so a stale buffer cannot silently overwrite
+someone else's edit on restore. **That is the same fact a save needs**, and the
+same comparison:
+
+| | asks | answers with |
+|---|---|---|
+| **restore** | the buffer I kept — is the file still what it was? | *"you have unsaved edits from before; the file has changed since"* |
+| **save** | the file I loaded — has it moved under me? | *"this folder changed since you opened it — a `prep` ran, or somebody edited by hand"* |
+
+`task-setup.md` § 8 and [`tabs.md § 6`](?doc=web/tabs.md) require the second;
+Task setup ships without it today, and saving is last-write-wins. **Doing it in
+the tab would put mtime tracking in a second place**, three months before the
+editor puts it in the first — so the handshake is the module's, exposed on the
+handle:
+
+```js
+ed.loadedFrom()        // { path, size, mtime } | null
+ed.isStale()           // re-stat and compare; the caller decides what to do
+```
+
+Two callers, one comparison: `projects/preview.js` already has a save path with
+the same exposure, and Task setup's save calls `isStale()` before writing.
+
 **`lib/session-store.js`** — `get(tag)` / `set(tag, value)` / `drop(tag)`,
 quota- and private-mode-safe in one place. The editor needs it, and four
 existing ad-hoc `sessionStorage` sites (`transport_form`, the structure

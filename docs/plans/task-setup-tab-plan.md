@@ -117,6 +117,30 @@ with a user waiting on it; the editor consolidation is a refactor of working
 code whose payoff is mostly in what it prevents. Doing it first would mean
 porting an editor whose call sites are still changing.
 
+## 2b. The review's findings, and where the last two went
+
+A three-pass review on 2026-08-16 (against the agreed mock-up, the contracts and
+the running code) found nine. **Seven are closed**, including two data-loss bugs
+this work introduced — a Send that overwrote another calculation's template, and
+a save that replaced a different calculation's description. Both had been
+guarded and both lost the guard during a refactor; one lost its test in the same
+change.
+
+**The last two are folded into
+[`plans/editor-module-plan.md`](?doc=plans/editor-module-plan.md)** (user,
+2026-08-16), because they are the same fact the editor module already has to
+carry:
+
+* **F6 — the stale-file handshake.** Saving is last-write-wins today; two tabs
+  write one file and a `prep` can change the folder between loads
+  (`task-setup.md` § 8, `tabs.md` § 6). The fix needs the `path`/`size`/`mtime`
+  a buffer was loaded from — which the editor's tagged persistence stores
+  anyway, for the restore case. Doing it in the tab would put mtime tracking in
+  a second place three months before the module puts it in the first.
+* **F9 — the model can lag the buffer** inside the 400 ms re-parse debounce.
+  Behaviourally correct (the buffer is what saves), so it is a documentation
+  gap, and the editor contract is where that belongs.
+
 ## 3. Two things deliberately not done
 
 **The JSON mode is vendored; a mode for molbuilder's own formats is not.**
