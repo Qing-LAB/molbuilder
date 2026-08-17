@@ -54,6 +54,15 @@ let _dir        = "";     // the folder currently open
 let _shape      = "";     // "" until chosen — never defaulted (§ 4)
 let _mode       = "";     // "description" | "handover" | "empty"
 let _handover   = null;   // the parsed task.1st.json, in handover mode
+/* The parsed description the table is a VIEW of.
+ *
+ * ONE DIRECTION AT A TIME, because two-way binding between a table and a text
+ * buffer is how you get an edit loop.  A table edit mutates this, re-serialises
+ * into the editor, and re-renders; a hand edit in the editor re-parses into
+ * this when it is valid.  The BUFFER stays what `save` sends (`task-setup.md`
+ * § 9a) -- the model is a convenience for the table, never the source. */
+let _task       = null;
+let _reparse    = null;   // debounce for the editor -> model re-parse
 
 const $ = (id) => document.getElementById(id);
 
@@ -117,22 +126,63 @@ function renderStages(task) {
     for (const col of varies) hrow.appendChild(el("th", null, col));
     thead.appendChild(hrow);
 
-    for (const st of stages) {
+    stages.forEach((st, i) => {
         const name = (st && st.name) || "(unnamed)";
         const on   = st && st.enabled !== false;
-        const tr = el("tr", null,
-            el("td", null, on ? name : name + " (off)"));
+
+        const nameInput = el("input", {
+            class: "ts-cell ts-cell-name", value: name,
+            "aria-label": "stage " + (i + 1) + " name",
+        });
+        nameInput.addEventListener("change", () => {
+            const v = nameInput.value.trim();
+            // The name keys filenames, so the rule is the description's, not
+            // this page's (`stages.md` § 2): letters, digits, underscore.
+            if (!/^[A-Za-z0-9_]+$/.test(v)) {
+                setState("refuse", "That stage name cannot be used",
+                         "A stage name is letters, digits and underscore — no "
+                         + "hyphen, because a hyphen means \'a counter "
+                         + "follows\' everywhere else in the system.");
+                nameInput.value = name;
+                return;
+            }
+            _task.stages[i].name = v;
+            syncFromModel();
+        });
+
+        const toggle = el("button", {
+            type: "button", class: "ts-rowbtn",
+            "aria-pressed": on ? "true" : "false",
+            title: on ? "Disable this stage" : "Enable this stage",
+        }, on ? "on" : "off");
+        toggle.addEventListener("click", () => toggleStage(i));
+
+        const drop = el("button", {
+            type: "button", class: "ts-rowbtn ts-rowbtn-drop",
+            title: "Remove this stage",
+        }, "\u00d7");
+        drop.addEventListener("click", () => removeStage(i));
+
+        const tr = el("tr", { "data-off": on ? null : "yes" },
+            el("td", null, nameInput, toggle, drop));
+
         const ov = (st && st.overrides) || {};
         for (const col of varies) {
             const has = Object.prototype.hasOwnProperty.call(ov, col);
-            // Absent is a real state: "this stage uses the template's value"
-            // (`stages.md` § 6.2).  Shown muted, never blank-and-ambiguous.
-            tr.appendChild(el("td",
-                { "data-template": has ? null : "yes" },
-                has ? String(ov[col]) : "template"));
+            const cell = el("input", {
+                class: "ts-cell", value: has ? String(ov[col]) : "",
+                placeholder: "template",
+                "aria-label": name + " " + col,
+                "data-template": has ? null : "yes",
+            });
+            cell.addEventListener("change", () => setCell(i, col, cell.value));
+            tr.appendChild(el("td", { "data-template": has ? null : "yes" }, cell));
         }
         tbody.appendChild(tr);
-    }
+    });
+
+    const actions = $("ts-stage-actions");
+    if (actions) actions.hidden = false;
     card.hidden = false;
 }
 
@@ -185,6 +235,19 @@ async function ensureEditor() {
     _cm.on("change", () => {
         const dirty = _cm.getValue() !== _loadedText;
         $("ts-dirty").hidden = !dirty;
+        // A hand edit in the editor re-parses into the model, so the table
+        // keeps showing what the buffer says.  Debounced, and silent when the
+        // text is mid-typing and does not parse — an editor that flashed a
+        // refusal on every keystroke would be unusable.
+        clearTimeout(_reparse);
+        _reparse = setTimeout(() => {
+            let next = null;
+            try { next = JSON.parse(_cm.getValue()); } catch (_) { return; }
+            if (!next || typeof next !== "object") return;
+            _task = next;
+            renderStages(_task);
+            refreshSave();
+        }, 400);
     });
     return _cm;
 }
@@ -303,13 +366,80 @@ async function loadFolder(projects, dir) {
              + ` · shape ${task.shape || "?"}`
              + ` · ${(task.stages || []).length} stage(s)`);
 
-    _mode = "description"; _handover = null;
+    _mode = "description"; _handover = null; _task = task;
     _shape = String(task.shape || "");
     $("ts-shape-card").hidden = false;
     setShape(_shape);                            // shows which one it carries
     renderStages(task);
     renderMachine(task);
     await setEditorText(taskText);
+}
+
+/* ---------- the table edits the description ---------- */
+
+/** Push the model into the buffer and repaint. */
+async function syncFromModel() {
+    if (!_task) return;
+    await setEditorText(JSON.stringify(_task, null, 2) + "\n");
+    renderStages(_task);
+    refreshSave();
+}
+
+/** `stages.md` § 6.5: removing the last stage is refused — a job always has
+ *  at least one, so there is no stage-less shape to fall back to. */
+function removeStage(i) {
+    if (!_task || !Array.isArray(_task.stages)) return;
+    if (_task.stages.length <= 1) {
+        setState("refuse", "Cannot remove the last stage",
+                 "A job always has at least one stage — one is the ordinary "
+                 + "case, not a special shape. Rename it or change its values "
+                 + "instead.");
+        return;
+    }
+    _task.stages.splice(i, 1);
+    syncFromModel();
+}
+
+/** `task-setup.md` § 9: a new stage COPIES the previous one's overrides.
+ *  A refinement starts from what came before; a stage that inherits nothing
+ *  is a different calculation, not a next step. */
+function addStage() {
+    if (!_task) return;
+    const stages = _task.stages || (_task.stages = []);
+    const prev = stages[stages.length - 1];
+    let name = "stage" + (stages.length + 1);
+    const taken = new Set(stages.map((x) => String(x.name || "").toLowerCase()));
+    let n = stages.length + 1;
+    while (taken.has(name.toLowerCase())) { n += 1; name = "stage" + n; }
+    stages.push({
+        name,
+        enabled: true,
+        overrides: Object.assign({}, (prev && prev.overrides) || {}),
+    });
+    syncFromModel();
+}
+
+function toggleStage(i) {
+    if (!_task || !_task.stages || !_task.stages[i]) return;
+    // Disabling changes what `prep` builds; it does NOT delete the row's
+    // values (`task-setup.md` § 9).
+    _task.stages[i].enabled = _task.stages[i].enabled === false;
+    syncFromModel();
+}
+
+function setCell(i, col, raw) {
+    if (!_task || !_task.stages || !_task.stages[i]) return;
+    const ov = _task.stages[i].overrides || (_task.stages[i].overrides = {});
+    const text = String(raw).trim();
+    if (text === "") {
+        // Empty means "this stage uses the template's value" — a real state,
+        // expressed by the key being ABSENT (`stages.md` § 6.2).
+        delete ov[col];
+    } else {
+        const n = Number(text);
+        ov[col] = (text !== "" && Number.isFinite(n)) ? n : text;
+    }
+    syncFromModel();
 }
 
 /* ---------- the shape, and what a hand-over becomes ---------- */
@@ -345,7 +475,9 @@ function setShape(shape) {
     const needs = $("ts-shape-needs");
     if (needs) needs.hidden = !!shape;
     if (_mode === "handover" && shape) {
-        setEditorText(proposedFromHandover(_handover, shape));
+        const text = proposedFromHandover(_handover, shape);
+        try { _task = JSON.parse(text); } catch (_) { _task = null; }
+        setEditorText(text).then(() => { if (_task) renderStages(_task); });
     }
     refreshSave();
 }
@@ -446,6 +578,8 @@ function start() {
         b.addEventListener("click",
             () => setShape(b.getAttribute("data-shape") || ""));
     }
+    const addBtn = $("ts-add-stage");
+    if (addBtn) addBtn.addEventListener("click", addStage);
     const saveBtn = $("ts-save");
     if (saveBtn) saveBtn.addEventListener("click", save);
     refreshSave();

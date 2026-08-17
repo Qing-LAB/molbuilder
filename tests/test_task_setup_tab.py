@@ -429,3 +429,70 @@ def test_save_refuses_rather_than_repairs(web_client):
             "the refusal should be the reader's own words")
     finally:
         _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+
+
+# --------------------------------------------------------------------- #
+#  T3 — the stage table edits                                            #
+# --------------------------------------------------------------------- #
+
+def test_the_table_edits_the_description_in_one_direction():
+    """The table is a VIEW of the buffer, not a second source.
+
+    Two-way binding between a table and a text buffer is how you get an edit
+    loop, so a table edit mutates the model → re-serialises into the editor →
+    repaints; a hand edit re-parses the other way, debounced and silent while
+    the text is mid-typing.  The BUFFER stays what `save` sends.
+    """
+    src = VIEWER.read_text()
+    assert "function syncFromModel" in src
+    assert "JSON.stringify(_task" in src, "table edits do not reach the buffer"
+    assert "_reparse" in src, "a hand edit never reaches the table"
+
+
+def test_removing_the_last_stage_is_refused():
+    """`stages.md` § 6.5 — a job always has at least one stage, so there is no
+    stage-less shape to fall back to."""
+    src = VIEWER.read_text()
+    assert "function removeStage" in src
+    assert re.search(r"stages\.length\s*<=\s*1", src), (
+        "nothing stops the last stage being removed")
+
+
+def test_a_new_stage_copies_the_previous_ones_values():
+    """`task-setup.md` § 9 — a refinement starts from what came before; a
+    stage that inherits nothing is a different calculation, not a next step."""
+    src = VIEWER.read_text()
+    assert "function addStage" in src
+    assert re.search(r"Object\.assign\(\{\},\s*\(prev && prev\.overrides\)", src), (
+        "a new stage does not copy the previous overrides")
+
+
+def test_an_empty_cell_deletes_the_override_rather_than_storing_blank():
+    """Absent means "this stage uses the template's value" — a real state
+    (`stages.md` § 6.2), expressed by the key being gone."""
+    src = VIEWER.read_text()
+    assert "function setCell" in src
+    assert re.search(r'if \(text === ""\)[\s\S]{0,200}delete ov\[col\]', src), (
+        "an emptied cell stores a blank instead of removing the override")
+
+
+def test_a_stage_name_is_checked_against_the_descriptions_rule():
+    """The name keys filenames, so the rule is `stages.md` § 2's — letters,
+    digits, underscore; no hyphen, which means 'a counter follows'."""
+    src = VIEWER.read_text()
+    assert "/^[A-Za-z0-9_]+$/" in src, "stage names are not validated"
+
+
+def test_disabling_a_stage_keeps_its_values():
+    """It changes what `prep` builds; it does not delete the row's values.
+
+    The first version of this test matched the word "delete" in the function's
+    own COMMENT — asserting on prose rather than on code.  It now strips
+    comments and reads the statements.
+    """
+    src = VIEWER.read_text()
+    assert "function toggleStage" in src
+    body = src.split("function toggleStage", 1)[1].split("\nfunction ", 1)[0]
+    body = re.sub(r"//.*", "", body)          # the code, not the commentary
+    assert "delete" not in body, "disabling a stage discards its values"
+    assert ".enabled" in body, "toggle does not touch `enabled`"

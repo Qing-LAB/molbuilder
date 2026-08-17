@@ -304,3 +304,60 @@
     color: var(--ts-measured);
 }
 .ts-needs[hidden] { display: none; }
+
+/* ---- Editing the stage table ---- */
+
+.ts-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+    margin-top: var(--space-md);
+}
+.ts-actions[hidden] { display: none; }
+.ts-cell {
+    font: inherit;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    width: 100%;
+    min-width: var(--ts-cell-min);
+    padding: var(--space-xs) var(--space-sm);
+    background: transparent;
+    color: var(--text-mono);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+}
+.ts-cell:hover { border-color: var(--border-strong); }
+.ts-cell:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-input);
+}
+/* A cell the stage does not override: the placeholder says "template", so an
+ * empty box reads as a real state rather than a value nobody typed. */
+.ts-cell[data-template="yes"]::placeholder { color: var(--text-muted); }
+.ts-cell-name {
+    font-family: var(--font-sans);
+    font-weight: var(--weight-semibold);
+    color: var(--text-primary);
+    width: auto;
+}
+.ts-rowbtn {
+    font: inherit;
+    font-size: var(--text-xs);
+    margin-left: var(--space-xs);
+    padding: 0 var(--space-sm);
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+.ts-rowbtn[aria-pressed="true"] {
+    border-color: var(--accent);
+    color: var(--accent-hover);
+    background: var(--accent-bg);
+}
+.ts-rowbtn-drop:hover { border-color: var(--error); color: var(--error); }
+/* A disabled stage keeps its values and says so by fading, not by hiding. */
+.ts-table tr[data-off="yes"] td { opacity: var(--ts-off-opacity); }
