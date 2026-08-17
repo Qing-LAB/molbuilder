@@ -728,3 +728,36 @@ def test_the_runtime_loads_before_every_other_script(web_client):
     i_rt   = body.index("lib/molbuilder-runtime.js")
     i_tab  = body.index("task-setup/viewer.js")
     assert i_rt < i_tab, "the runtime loads after the tab's own script"
+
+
+def test_the_tab_hands_you_the_next_command(web_client):
+    """`task-setup.md` § 1 — this page "turns that into a description on disk
+    and **hands you the command to run it somewhere else**".  Half the tab's
+    purpose, and it was missing entirely until 2026-08-16."""
+    body = web_client.get("/task-setup").data.decode()
+    assert 'id="ts-next-card"' in body and 'id="ts-next"' in body
+    src = VIEWER.read_text()
+    assert "function renderNext" in src
+    assert "jobset prep run" in src and "jobset submit run" in src
+
+
+def test_the_command_names_its_stage_and_what_it_continues_from():
+    """Exact, not generic: every verb is given the stage's name
+    (`stages.md` § 6.5), and a continuing stage names the attempt because
+    `prep` is told, never left to guess (`project-layout.md` § 1.6)."""
+    src = VIEWER.read_text()
+    body = src.split("function renderNext", 1)[1].split("\n/* ", 1)[0]
+    assert '"molbuilder jobset prep run " + name' in body, (
+        "the command does not name its stage")
+    assert "--from" in body, "a continuing stage does not name its source"
+    assert 'restart' in body and 'continue' in body, (
+        "`--from` is emitted regardless of whether the stage continues")
+    assert "padStart(2" in body, "the --from token drops its ordinal"
+
+
+def test_a_disabled_stage_gets_no_command():
+    """It changes what `prep` will build, so offering a command for it would
+    be offering to run something the description says to skip."""
+    src = VIEWER.read_text()
+    body = src.split("function renderNext", 1)[1].split("\n/* ", 1)[0]
+    assert "enabled !== false" in body, "disabled stages still get commands"

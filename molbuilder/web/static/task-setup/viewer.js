@@ -371,6 +371,7 @@ async function loadFolder(projects, dir) {
         _mode = "empty"; _handover = null;
         renderCameOver(null);
         $("ts-shape-card").hidden = true;
+        $("ts-next-card").hidden = true;
         refreshSave();
         setState("empty", "No description here yet",
                  "This folder carries no task.json and no hand-over. Send "
@@ -410,6 +411,7 @@ async function loadFolder(projects, dir) {
     $("ts-shape-card").hidden = false;
     setShape(_shape);                            // shows which one it carries
     renderStages(task);
+    renderNext(task);
     renderMachine(task);
     await setEditorText(taskText);
 }
@@ -421,6 +423,7 @@ async function syncFromModel() {
     if (!_task) return;
     await setEditorText(JSON.stringify(_task, null, 2) + "\n");
     renderStages(_task);
+    renderNext(_task);
     refreshSave();
 }
 
@@ -584,6 +587,47 @@ function removeColumn(name) {
         if (st && st.overrides) delete st.overrides[name];
     }
     syncFromModel();
+}
+
+/* ---------- the hand-off: the next command ---------- */
+
+/** The exact commands, per stage, in order.
+ *
+ * `task-setup.md` § 1: this page "turns that into a description on disk and
+ * **hands you the command to run it somewhere else**".  Half the tab's purpose,
+ * and it has to be EXACT rather than a generic snippet — a stage that continues
+ * names what it continues from, because `prep` refuses to guess (`stages.md`
+ * § 6.5: every verb is given the stage's name).
+ */
+function renderNext(task) {
+    const card = $("ts-next-card");
+    const host = $("ts-next");
+    if (!card || !host) return;
+    host.textContent = "";
+    const stages = ((task && task.stages) || []).filter(
+        (st) => st && st.enabled !== false);
+    if (!stages.length) { card.hidden = true; return; }
+
+    stages.forEach((st, i) => {
+        const name = st.name || "";
+        const ov = st.overrides || {};
+        // `continue` carries from the stage before it — and `prep` is TOLD
+        // which attempt, never left to guess (`project-layout.md` § 1.6).
+        let from = "";
+        if (i > 0 && String(ov.restart || "") === "continue") {
+            const prev = stages[i - 1];
+            const token = String(i).padStart(2, "0") + "_" + (prev.name || "");
+            from = " --from " + token + "/run-0";
+        }
+        const runs = _runs[name];
+        host.appendChild(el("div", { class: "ts-next-step" },
+            el("div", { class: "ts-next-stage" }, name,
+               (runs ? el("span", { class: "ts-ran" }, runs + "\u00d7 run") : null)),
+            el("pre", { class: "ts-cmd" },
+               "molbuilder jobset prep run " + name + from + "\n"
+               + "molbuilder jobset submit run " + name)));
+    });
+    card.hidden = false;
 }
 
 /* ---------- what has already run ---------- */

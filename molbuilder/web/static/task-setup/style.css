@@ -456,3 +456,29 @@
     font-size: var(--text-sm);
     color: var(--text-mono);
 }
+
+/* ---- The hand-off: the next command ---- */
+
+.ts-next-step { margin-bottom: var(--space-md); }
+.ts-next-step:last-child { margin-bottom: 0; }
+.ts-next-stage {
+    font-family: var(--font-sans);
+    font-weight: var(--weight-semibold);
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    margin-bottom: var(--space-xs);
+}
+.ts-cmd {
+    margin: 0;
+    padding: var(--space-md);
+    background: var(--bg-code);
+    border: 1px solid var(--border-soft);
+    border-left: var(--ts-cmd-rule) solid var(--accent);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: var(--line-loose);
+    color: var(--text-mono);
+    overflow-x: auto;
+    white-space: pre;
+}
