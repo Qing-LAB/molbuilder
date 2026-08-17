@@ -132,7 +132,8 @@ function renderStages(task) {
             title: "Remove this column",
         }, "\u00d7");
         x.addEventListener("click", () => removeColumn(col));
-        hrow.appendChild(el("th", null, col, x));
+        const th = el("th", { title: helpText(col) }, col, x);
+        hrow.appendChild(th);
     }
     thead.appendChild(hrow);
 
@@ -200,9 +201,15 @@ function renderStages(task) {
         const ov = (st && st.overrides) || {};
         for (const col of varies) {
             const has = Object.prototype.hasOwnProperty.call(ov, col);
+            // An empty cell is not blank: it says what the stage will USE,
+            // which is the template's value.  Showing the number rather than
+            // the word "template" is what makes "adding a column changes
+            // nothing on screen" (§ 9) visible instead of merely true.
+            const fallback = defaultText(col);
             const cell = el("input", {
                 class: "ts-cell", value: has ? String(ov[col]) : "",
-                placeholder: "template",
+                placeholder: fallback || "template",
+                title: helpText(col),
                 "aria-label": name + " " + col,
                 "data-template": has ? null : "yes",
             });
@@ -254,7 +261,7 @@ function renderMachine(task) {
         dropRow.addEventListener("click", () => removeSetting(name));
 
         host.appendChild(el("div", { class: "ts-row", "data-kind": kind },
-            el("div", { class: "ts-row-name" }, name,
+            el("div", { class: "ts-row-name", title: helpText(name) }, name,
                 el("small", null, ROW_NOTE[name] || "")),
             el("div", { class: "ts-points" }, ...chips, add),
             el("div", { class: "ts-verdict" }, verdict, dropRow)));
@@ -534,7 +541,12 @@ function renderCameOver(obj) {
 
 /* ---------- the pickers: what may be added, from the catalogue ---------- */
 
-let _cols = null;       // every parameter this engine has  {name,label}
+let _cols = null;       // every parameter this engine has  {name,label,group}
+/* name -> the catalogue's own item, so the table can show what a parameter
+ * DEFAULTS to and what it is for.  The catalogue already carries `default`,
+ * `unit` and `help`; a second copy here would be the drift the one-source rule
+ * exists to prevent, so this is a lookup into what the schema returned. */
+const _meta = Object.create(null);
 let _sweep = null;      // the ones a benchmark may sweep
 
 /** Every parameter, for the column picker.
@@ -554,6 +566,7 @@ async function loadColumnChoices(engine) {
         for (const f of (sec.fields || [])) {
             _cols.push({ name: f.name, label: f.label || f.name,
                          group: f.workflow_group || "" });
+            _meta[f.name] = f;
         }
     }
     return _cols;
@@ -583,6 +596,13 @@ async function loadSweepChoices(engine) {
                           + encodeURIComponent(engine || "siesta"));
     const j = await r.json();
     _sweep = (j && j.items) || [];
+    // `staging` items are filtered out of the form schema, so this is the
+    // only place their note arrives -- fold it in so the table hovers work.
+    for (const i of _sweep) {
+        if (!_meta[i.name]) {
+            _meta[i.name] = { name: i.name, label: i.label, help: i.help };
+        }
+    }
     return _sweep;
 }
 
@@ -599,9 +619,14 @@ function fillPicker(sel, items, taken, empty) {
     sel.disabled = false;
     sel.appendChild(el("option", { value: "" }, "choose a parameter\u2026"));
     for (const i of left) {
-        sel.appendChild(el("option", { value: i.name },
-            i.name + (i.label && i.label !== i.name ? "  \u2014  " + i.label : "")
-            + (i.machine_answers ? "  (the machine answers this)" : "")));
+        const d = defaultText(i.name);
+        sel.appendChild(el("option", {
+            value: i.name,
+            title: helpText(i.name) || i.help || "",
+        }, i.name
+           + (i.label && i.label !== i.name ? "  \u2014  " + i.label : "")
+           + (d ? "  [" + d + "]" : "")
+           + (i.machine_answers ? "  (the machine answers this)" : "")));
     }
 }
 
@@ -618,6 +643,25 @@ async function refreshPickers() {
                    Object.keys((_task && _task.bench) || {}),
                    "every sweepable setting is already listed");
     } catch (_) { /* the pickers stay empty; nothing else breaks */ }
+}
+
+/** What a parameter falls back to, rendered the way it will be written. */
+function defaultText(name) {
+    const m = _meta[name];
+    if (!m || m.default === undefined || m.default === null) return "";
+    const v = Array.isArray(m.default) ? m.default.join(", ") : String(m.default);
+    return v + (m.unit ? " " + m.unit : "");
+}
+
+/** The parameter's own note, for a hover. */
+function helpText(name) {
+    const m = _meta[name];
+    if (!m) return "";   // caller falls back to its own note
+    const bits = [m.label && m.label !== name ? m.label : "", m.help || ""];
+    const d = defaultText(name);
+    if (d) bits.push("Default: " + d);
+    if (m.engine_key) bits.push("Writes: " + m.engine_key);
+    return bits.filter(Boolean).join("\n\n");
 }
 
 /* ---------- the tier presets ---------- */

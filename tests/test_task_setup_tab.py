@@ -877,3 +877,36 @@ def test_a_preset_adds_its_missing_columns_first():
     i_set = body.index("Object.assign(ov, values)")
     assert i_add < i_set, "values are written before the columns exist"
     assert "added.join" in body, "the page does not say which columns it added"
+
+
+def test_an_empty_cell_shows_what_the_stage_will_actually_use():
+    """An empty cell is not blank — it says the stage uses the template's
+    value.  Showing the NUMBER rather than the word "template" is what makes
+    "adding a column changes nothing on screen" (§ 9) visible, not merely true.
+    """
+    src = VIEWER.read_text()
+    assert "function defaultText" in src
+    assert "placeholder: fallback ||" in src, (
+        "an unset cell shows no recommended value")
+
+
+def test_every_parameter_carries_its_note_on_hover():
+    """The catalogue already holds `help`, `unit` and `default`; a second copy
+    would be the drift the one-source rule exists to prevent, so the tab looks
+    them up from what the schema returned."""
+    src = VIEWER.read_text()
+    assert "function helpText" in src
+    for surface in ('title: helpText(col)',        # a cell
+                    'title: helpText(col) }, col', # the column header
+                    'title: helpText(name)'):      # a machine row
+        assert surface in src, f"no hover note: {surface}"
+    assert "title: helpText(i.name)" in src, "the picker options carry no note"
+
+
+def test_the_sweepable_notes_reach_the_lookup():
+    """`staging` items are filtered out of the form schema, so the sweepable
+    endpoint is the only place their help arrives."""
+    src = VIEWER.read_text()
+    body = src.split("async function loadSweepChoices", 1)[1].split("\n/**", 1)[0]
+    assert "_meta[i.name]" in body, (
+        "machine settings would hover with no note at all")
