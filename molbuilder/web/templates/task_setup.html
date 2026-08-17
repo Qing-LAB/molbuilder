@@ -151,32 +151,35 @@
         </ul>
       </section>
 
-      <section class="card">
-        <h2>task.json</h2>
-        <p class="hint">The file itself &mdash; edit it here and check it before
-          it is written.</p>
-        <div class="ts-editor" id="ts-editor"></div>
-        <div class="ts-steps">
-          <label class="ts-step">
-            <input type="checkbox" id="ts-ckpt" checked>
-            <span><b>Save the folder's state first</b> — so whatever you are
-              about to change can be brought back.</span>
-          </label>
-          <input id="ts-ckpt-note" class="ts-cell ts-cell-name"
-                 placeholder="what you are about to change"
-                 aria-label="note for the saved state">
-        </div>
-        <div class="ts-editor-bar">
-          <span class="ts-dirty" id="ts-dirty" hidden>edited &mdash; not saved</span>
-          <button type="button" class="primary" id="ts-save" disabled>
-            Save to this folder
-          </button>
-        </div>
-        <p class="hint" id="ts-save-why">Pick a folder first.</p>
-      </section>
-
     </aside>
   </div>
+
+  {#- The description itself, FULL WIDTH below the panels: it is the thing
+  that gets written, and a JSON document reads badly in a narrow rail. -#}
+  <section class="card">
+    <h2>task.json</h2>
+    <p class="hint">The file itself &mdash; edit it here and check it before
+    it is written.</p>
+    <div class="ts-editor" id="ts-editor"></div>
+    <div class="ts-steps">
+      <label class="ts-step">
+        <input type="checkbox" id="ts-ckpt" checked>
+        <span><b>Save the folder's state first</b> — so whatever you are
+        about to change can be brought back.</span>
+      </label>
+      <input id="ts-ckpt-note" class="ts-cell ts-cell-name"
+      placeholder="what you are about to change"
+      aria-label="note for the saved state">
+    </div>
+    <div class="ts-editor-bar">
+      <span class="ts-dirty" id="ts-dirty" hidden>edited &mdash; not saved</span>
+      <button type="button" class="primary" id="ts-save" disabled>
+      Save to this folder
+    </button>
+  </div>
+  <p class="hint" id="ts-save-why">Pick a folder first.</p>
+  </section>
+
 
 </main>
 

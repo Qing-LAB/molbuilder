@@ -242,7 +242,7 @@
     /* Layout — the two-column page and the editor pane. */
     --ts-page-max:      1240px;
     --ts-aside-w:       clamp(20rem, 30vw, 25rem);
-    --ts-editor-min-h:  22rem;   /* the CodeMirror pane's floor */
+    --ts-editor-min-h:  30rem;   /* the CodeMirror pane's floor */
     --ts-label-w:       11.5rem; /* the settings-row name column */
     --ts-opt-min:       16rem;   /* a shape option's flex basis */
     --ts-cell-min:      5.5rem;  /* a stage-table cell */
