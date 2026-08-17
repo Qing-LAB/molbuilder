@@ -878,8 +878,16 @@ tenth.
 *Added 2026-08-16 (user).* A parameter surface can collect the physics but
 cannot answer `shape`, which is **required with no default** (§ 6.7) — so what
 it produces is not yet a description. It writes **`task.1st.json`**
-(`molbuilder/task-handover@1`) beside the template, and the surface that asks
-for the shape finishes the job.
+(`molbuilder/task-handover@1`) beside the template **and beside the structure
+the calculation is of** — the `.xyz` + `.molstruct.json` pair its
+`structure.source` names, folder-relative — and the surface that asks for the
+shape finishes the job.
+
+A hand-over carrying only a formula and an atom count is not one: the receiving
+folder has to be readable on its own, and a k-grid without the lattice it
+indexes is not a calculation anybody can check
+([`handover-procedure.md § 7`](?doc=web/handover-procedure.md) records what that
+cost).
 
 **Why not just write `task.json` early and fill it in.** Its *presence* is a
 claim, not a convenience: `checkpoint.py::_BUNDLE_DESCRIPTORS` treats a

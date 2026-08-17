@@ -40,7 +40,7 @@ open.
 flowchart LR
   P["<b>a parameter tab</b><br/>collects the physics"]
   R{{"<b>render</b><br/>server: config → texts"}}
-  W[("<b>the folder</b><br/>&lt;label&gt;.template.toml<br/>task.1st.json")]
+  W[("<b>the folder</b><br/>&lt;label&gt;.xyz + .molstruct.json<br/>&lt;label&gt;.template.toml<br/>task.1st.json")]
   T["<b>Task setup</b><br/>asks what only it can ask"]
   D[("task.json")]
   P -->|"Send to Task setup"| R
@@ -51,14 +51,26 @@ flowchart LR
   T -.->|"projects.deleteEntry, after"| W
 ```
 
-**Step 1 — render.** The server turns the collected values into the two texts
-and **returns them**. It writes nothing. Only the server can do this: rendering
-`<label>.template.toml` means narrowing the catalogue to one engine and filling
-in the answers (`template_with_values`), which is Python's.
+**Step 1 — render.** The server turns the collected values into the texts and
+**returns them**. It writes nothing. Two of them can only be made here:
+rendering `<label>.template.toml` means narrowing the catalogue to one engine
+and filling in the answers (`template_with_values`); and the structure's own
+pair comes from `StructureCodec`, because
+[`molview.md § 11.7`](?doc=web/molview.md) says **the server writes every
+file** — a browser-authored pair drifts from the server's, and one shipped
+without the sidecar's `schema_version`, after which the load door refused it
+and every label in it was dropped silently.
 
-**Step 2 — write, through the file layer.** The tab writes both texts with
-`projects.safeSave(text, filename, {overwrite})` into the folder the user
-selected. Never a fetch of its own: the content-blind layer is what *"every tab
+**The stem is the caller's, the suffixes are the codec's.** The calculation's
+label names the pair; which extension follows from the format, and what the
+sidecar beside it is called, is the pairing rule's — one home
+(`model/structure.md` § 2.4). A caller building either keeps a second copy of a
+rule it does not own.
+
+**Step 2 — write, through the file layer.** The tab writes every returned text
+with `projects.safeSave(text, filename, {overwrite})` into the folder the user
+selected — **the structure first**, because the hand-over *names* it and a
+hand-over pointing at a file that was never written is worse than no hand-over. Never a fetch of its own: the content-blind layer is what *"every tab
 can use"* (`projects.md` § 1), and it carries the roots guard, the lock, the
 uniform `{ok, …}` envelope and the sidebar re-list.
 
@@ -79,6 +91,23 @@ doing work (`stages.md` § 6.5a is the contract):
 | **the extension is last** | `task.1st.json`, not `task.json.1st`. Highlighting is by suffix, so the second spelling is plain text in the editor a person reads it in — and nothing looking for `task.json` matches it, which matters because `checkpoint.py::_BUNDLE_DESCRIPTORS` treats that name as the marker that a folder **declares itself a calculation root** |
 | **it says what it is** | JSON has no comments, so it opens with a `_what` line and an `awaiting` list naming the keys it lacks. A person reads it, in an editor, and should not need a document open beside it |
 
+**It names the structure, it does not summarise it.** `structure.source` is a
+**folder-relative** name — the `.xyz` beside it — plus `formula` and `atoms` as
+conveniences. Those three are `task.json`'s own `_STRUCTURE_KEYS`, so the
+hand-over and the description say the same thing in the same words.
+
+> **This is where the hole was.** `source` used to hold the projects sidebar's
+> *selected file*, which is a second fact read at a second moment —
+> [`molview.md § 9.3a`](?doc=web/molview.md): *the facts that leave together
+> were read together*. In a real folder the cursor sat on the calculation's own
+> `.template.toml`, so the hand-over said a calculation was OF its own
+> parameter file. Nothing in the sender may consult the sidebar for this: the
+> structure is in the request body, and the names come from what was written.
+
+**The sidecar is not named here.** It is found from the `.xyz` by the pairing
+rule, which has one home (`model/structure.md` § 2.4). Naming it would be a
+second copy of a rule this document does not own.
+
 **It resolves in one direction.** On a successful save `task.json` exists and the
 hand-over is removed, so the next visit finds one description. A folder holding
 both is a save that did not finish, and **the description wins** — it is the one
@@ -92,7 +121,7 @@ The split is `projects.md`'s, not this document's invention:
 
 | | who | why |
 |---|---|---|
-| the template, the hand-over | **the browser**, via `safeSave` | raw bytes — the content-blind layer |
+| the structure's pair, the template, the hand-over | **the browser**, via `safeSave` | raw bytes — the content-blind layer. The browser is a **courier**: every byte was generated on the server, and it composes neither a name nor a document |
 | removing the hand-over | **the browser**, via `deleteEntry` | likewise, and **only after** the write succeeded: the reverse order loses the parameters if the write fails |
 | `task.json` | **the server**, via `/api/task-setup/save` | a **content-aware door**, for the reason § 3 of `projects.md` gives about the sidecar: *"a browser-written sidecar had no schema stamp, so the load door rejected it — a save-then-reload trap"*. A description is validated through `task.read_task`, the same door `prep` uses, so the browser cannot become a second drifting writer |
 
@@ -179,14 +208,43 @@ reach for — the steps generalise, the payload does not.
 
 ## 7. How it is verified
 
+> ⚠ **This section asserted a verification it did not perform, from 2026-08-16
+> until 2026-08-17.** It listed four checks and concluded *"A tab is on this
+> procedure when those hold for it"* — and not one of them opened the structure
+> the hand-over names. The procedure was called proven end to end, and Spectrum
+> was told to clear this bar, while the hand-over carried a **formula and an
+> atom count** in place of the structure: the geometry crossed the wire from
+> `exportFile()` and was discarded, and `structure.source` recorded the
+> projects sidebar's *selected file* — which in a real folder pointed at the
+> calculation's own `.template.toml`.
+>
+> A 444-atom Au(111) slab handed over its k-grid and lost the lattice that
+> k-grid indexes. The correction is recorded rather than quietly edited because
+> **the false assurance was worse than the defect**: § 1 of this document
+> already says *"nothing it shows depends on the sending tab still being
+> open"*, and that sentence was the test nobody wrote.
+
+**The bar is a round trip, not a shape check.** A check that reads what was
+written proves the hand-over carried something; only opening it proves *what*.
+
 End to end, in `tests/test_task_setup_tab.py`:
 
-* the render endpoint returns both texts and **leaves the folder untouched**;
-* neither surface calls `/api/files/write` directly;
-* the hand-over declares its own schema, lacks `shape`/`stages`, and says what
-  it is;
-* save writes `task.json`, reports the hand-over rather than deleting it, and
-  refuses bad JSON, a missing stage list, and a destination outside the roots.
+| what it asks | how it fails |
+|---|---|
+| **open what `structure.source` names** and count its atoms | the reference points at nothing, or at a different structure |
+| **the cell survived** — read the geometry back through `StructureCodec` and compare the lattice | a periodic calculation silently becomes a molecule in a box it never had |
+| **the labels survived** — regions and frozen atoms, through the same read | region labels are how a device knows its electrodes; losing them is silent |
+| **the sidecar carries its `schema_version`** | the load door refuses the pair on the next open and drops every label — this has happened, in this codebase |
+| the render endpoint returns the texts and **leaves the folder untouched** | a render that writes is not a render |
+| neither surface calls `/api/files/write` directly | a second writer, and `projects.md` § 1's guard is bypassed |
+| the hand-over declares its own schema, lacks `shape`/`stages`, and says what it is | it could be read as a description |
+| save writes `task.json`, reports the hand-over rather than deleting it, and refuses bad JSON, a missing stage list, and a destination outside the roots | the browser becomes a second, drifting writer |
+
+**And the whole chain runs.** Structure file → parameters → hand-over → Task
+setup → saved description → `prep` → the rendered deck, with the deck's own
+`%block LatticeVectors` compared against the structure that started it. That is
+the check the four could not add up to: every link can hold while the thing
+being carried is lost between them.
 
 **A tab is on this procedure when those hold for it.** That is the bar Spectrum
 has to clear, and the reason to clear it before Transport is designed against it.

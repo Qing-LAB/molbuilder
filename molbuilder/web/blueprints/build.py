@@ -1455,7 +1455,7 @@ def api_task_setup_handover():
     into `<label>.template.toml`, because `template_with_values` narrows the
     catalogue and fills in the answers.
 
-    Two files, and neither is a runnable anything:
+    Four files, and none of them is a runnable anything:
 
       * ``<label>.template.toml`` -- every parameter with the value in force.
         This is the file the parameter tab's work has been going into a void
@@ -1463,6 +1463,10 @@ def api_task_setup_handover():
         this there is no path from the form to a calculation at all.
       * ``task.1st.json`` -- what the tab knows about the calculation ITSELF:
         the engine, the structure it is of, and what it is called.
+      * ``<label>.xyz`` + ``<label>.molstruct.json`` -- THE STRUCTURE, from
+        ``StructureCodec``, the same generator ``/api/structure/export`` uses.
+        ``molview.md`` § 11.7: the server writes every file, so the pair a
+        person downloads and the pair that lands here cannot differ.
 
     **This is a hand-over, not a description.**  `tabs.md` forbids an in-memory
     "send to tab" hand-off, and this obeys it -- the transfer goes through disk,

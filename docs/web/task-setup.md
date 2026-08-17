@@ -294,7 +294,12 @@ meaningless. The page refuses rather than warns.
 
 ## 7. What gets written
 
-**Two files, and which one a setting lands in follows from its point count:**
+**Four files land in the folder, and two of them are the calculation's
+description.** The structure the calculation is *of* —
+`<label>.xyz` + `<label>.molstruct.json` — arrives with the hand-over
+([`handover-procedure.md § 2`](?doc=web/handover-procedure.md)) and this page
+never rewrites it. Of the other two, which one a setting lands in follows from
+its point count:
 
 | | goes to | why |
 |---|---|---|
@@ -308,7 +313,9 @@ meaningless. The page refuses rather than warns.
   "engine": { "name": "siesta" },
   "shape":  "hierarchical",
   "run":    { "name": "BDT/Au relax", "id": "BDT_Au_relax_Au38C6H4S2" },
-  "structure": { "source": "…/bdt_au.xyz", "formula": "Au38C6H4S2", "atoms": 50 },
+  // `source` is FOLDER-RELATIVE — the .xyz beside this file, not a path from
+  // anywhere else.  Its sidecar is found by the pairing rule, never named here.
+  "structure": { "source": "bdt_au.xyz", "formula": "Au38C6H4S2", "atoms": 50 },
   "varies": ["mesh_cutoff", "relax_force_tol", "relax_type", "restart"],
   "stages": [ { "name": "coarse", "enabled": true, "overrides": { … } }, … ],
   "bench":  { "mpi_np": [4, 8, 16], "omp_threads": [1, 2] } }
