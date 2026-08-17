@@ -405,3 +405,24 @@
     font-size: var(--text-2xs);
     color: var(--text-muted);
 }
+
+/* ---- Saving is two steps, and the first is the checkpoint ---- */
+
+.ts-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+    padding: var(--space-md);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    background: var(--surface-deep);
+}
+.ts-step {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+.ts-step b { color: var(--text-primary); font-weight: var(--weight-semibold); }

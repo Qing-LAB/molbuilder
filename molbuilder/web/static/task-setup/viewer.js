@@ -622,6 +622,48 @@ async function save() {
     if (!_cm || !_dir) return;
     const btn = $("ts-save");
     if (btn) btn.disabled = true;
+
+    /* STEP 1 — the folder's current state (`task-setup.md` § 8).
+     *
+     * OFFERED, NEVER TAKEN SILENTLY (`checkpointing.md` § 9): the tick is the
+     * offer, and clearing it is a real answer.  Through the public API
+     * (`projects.md` § 5), not a fetch of our own — the panel showing this
+     * folder's history is refreshed by the same call.
+     *
+     * A refusal here STOPS the save.  The step exists so what you are about to
+     * change can be brought back; writing anyway would silently spend the
+     * safety net you asked for. */
+    const projects0 = window.molbuilder && window.molbuilder.projects;
+    const wantCkpt = $("ts-ckpt") && $("ts-ckpt").checked;
+    if (wantCkpt && projects0 && projects0.checkpoint) {
+        const note = ($("ts-ckpt-note") && $("ts-ckpt-note").value) || "";
+        const st = await projects0.checkpoint.status(_dir).catch(() => null);
+        if (st && st.ok && !st.initialised) {
+            const started = await projects0.checkpoint
+                .init(_dir, { engine: (_task && _task.engine
+                                       && _task.engine.name) || undefined })
+                .catch(() => null);
+            if (!started || !started.ok) {
+                setState("refuse", "No state was saved, so nothing was written",
+                         "Could not start a history here: "
+                         + ((started && started.error) || "unknown reason")
+                         + ". Untick the box to write without one.");
+                refreshSave();
+                return;
+            }
+        }
+        const kept = await projects0.checkpoint.saveState(_dir, note)
+            .catch((e) => ({ ok: false, error: String(e && e.message || e) }));
+        if (!kept || !kept.ok) {
+            setState("refuse", "No state was saved, so nothing was written",
+                     (kept && kept.error) || "the checkpoint failed");
+            refreshSave();
+            return;
+        }
+        // `changed: false` is honest, not a failure — nothing differed from
+        // the state the folder already stands at.
+    }
+
     setState(_mode === "handover" ? "handover" : "loaded", "Saving…", "");
     let body;
     try {

@@ -624,3 +624,32 @@ def test_save_refuses_a_different_calculation(web_client):
         assert again.status_code == 200, again.get_json()
     finally:
         _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+
+
+def test_saving_is_two_steps_and_the_first_is_the_checkpoint(web_client):
+    """`task-setup.md` § 8 — the state is saved before the description, so
+    whatever you are about to change can be brought back."""
+    body = web_client.get("/task-setup").data.decode()
+    assert 'id="ts-ckpt"' in body, "no checkpoint step on the save card"
+    assert 'id="ts-ckpt-note"' in body, "no note field (`checkpointing.md` L4)"
+
+    src = VIEWER.read_text()
+    assert "projects0.checkpoint.saveState" in src, (
+        "save does not take a state")
+    assert "/api/checkpoint/save" not in src, (
+        "the tab POSTs the checkpoint route itself instead of the API")
+    # the offer is a tick the user can clear — never taken silently
+    assert 'checked' in body and "ts-ckpt" in body
+    assert "wantCkpt" in src, "the checkpoint is unconditional"
+
+
+def test_a_failed_checkpoint_stops_the_save():
+    """The step exists so what you change can be brought back; writing anyway
+    would silently spend the safety net you asked for."""
+    src = VIEWER.read_text()
+    body = src.split("async function save()", 1)[1].split("\n/* ", 1)[0]
+    i_fail = body.index("No state was saved, so nothing was written")
+    i_post = body.index("/api/task-setup/save")
+    assert i_fail < i_post, "the description is written before the state"
+    assert body.count("return;", 0, i_post) >= 2, (
+        "a failed checkpoint does not stop the save")
