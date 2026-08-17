@@ -158,8 +158,10 @@ label = "Pulay history depth"
 tier = "advanced"
 help = """
 How many previous SCF steps the mixer uses to predict the next one.  Higher = steadier convergence, at a few vectors of memory.
-DEVIATION: SIESTA's own default is 2 -- inside the band its own manual warns about.  RAISED 3 -> 8 here on 2026-08-15: the manual is explicit that "a too low value (say 2-6) might change the convergence properties a lot", and "around 6 or above may be advised".  It also says two different HIGH values barely differ -- so there is no cost to sitting clear of the band rather than on its edge.  3 was an undocumented choice with no source in this project.
-Raise further (12-20) only if the SCF still oscillates after lowering the mixing weight; the weight is the first thing to try (manual: "experimentation with the mixing weight is preferred as a first resort")."""
+8 because SIESTA's manual puts 2-6 in a band where "a too low value (say 2-6) might change the convergence properties a lot", advises "around 6 or above", and notes that two different high values barely differ -- so 8 buys the manual's advice with margin, at a cost the manual says is negligible.
+DEVIATION: SIESTA's own default is 2.
+Raise to 12-20 if the SCF still oscillates AFTER lowering the mixing weight -- the weight is the first thing to try (manual: "experimentation with the mixing weight is preferred as a first resort").
+"""
 
 [item.dm_tolerance]
 kind = "engine"
@@ -238,7 +240,7 @@ label = "Max SCF cycles per geometry step"
 tier = "advanced"
 help = """
 INNER loop: the most self-consistency cycles SIESTA will run inside ONE geometry step.  A relaxation runs at most relax_steps outer steps, and each of those runs at most this many inner cycles (or until DM.Tolerance is met).
-RAISED 500 -> 1000 on 2026-08-15, to SIESTA's own default.  500 had no source in this project and contradicted our own mixing choice: this catalogue ships mixing_weight 0.02 against SIESTA's 0.25, and the manual is explicit that a low weight "may result in high number of SCF steps but is more likely to converge".  We chose to spend iterations for safety and then capped iterations below the engine's default.
+1000 is SIESTA's own default, and it is the right guard HERE because this catalogue ships mixing_weight 0.02 against SIESTA's 0.25: the manual says a low weight "may result in high number of SCF steps but is more likely to converge", so a run that is converging normally needs more cycles than a stock one.
 This is a RUNAWAY GUARD, not a budget -- the budget is wall time and continue_retries.  The two failure modes are not symmetric: too high wastes some CPU on a run that was going to fail anyway, while too low KILLS A CONVERGING RUN at the cap and throws away that whole geometry step, which compounds over 200 outer steps.  With a 0.02 mixing weight, several hundred cycles is normal for a metal junction -- do not read this number as a target."""
 
 [item.electronic_temperature]

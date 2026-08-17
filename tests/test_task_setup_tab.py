@@ -910,3 +910,57 @@ def test_the_sweepable_notes_reach_the_lookup():
     body = src.split("async function loadSweepChoices", 1)[1].split("\n/**", 1)[0]
     assert "_meta[i.name]" in body, (
         "machine settings would hover with no note at all")
+
+
+def test_the_folder_template_is_what_an_empty_cell_names(web_client):
+    """`stages.md` § 6.2: a stage that sets nothing uses THE TEMPLATE'S value.
+
+    So the whole point of the hand-over — the k-grid a person chose in the
+    parameter tab — has to survive into what Task setup shows.  Before this
+    endpoint the tab read the catalogue's default and named a number the job
+    would not run whenever the sender had changed that parameter.
+    """
+    d = _fresh_calc_dir()
+    try:
+        rendered = web_client.post("/api/task-setup/handover", json=dict(
+            _envelope(), engine="siesta", name="probe",
+            params={"system_label": "probe", "kgrid": [4, 4, 1],
+                    "mesh_cutoff": 450.0})).get_json()
+        (d / rendered["template_name"]).write_text(rendered["template_text"])
+
+        j = web_client.get("/api/task-setup/template-values?dir="
+                           + str(d)).get_json()
+        assert j["ok"], j
+        assert j["name"] == rendered["template_name"]
+        assert j["values"]["mesh_cutoff"] == 450.0, (
+            "the value the parameter tab collected did not reach Task setup; "
+            "the catalogue default (300.0) would be shown instead")
+        assert j["values"]["kgrid"] == [4, 4, 1], j["values"].get("kgrid")
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+
+
+def test_a_folder_with_no_template_is_not_an_error(web_client):
+    """An empty folder is an ordinary state, not a failure — the cells fall
+    back to the catalogue, which is exactly right when nothing was sent."""
+    d = _fresh_calc_dir()
+    try:
+        j = web_client.get("/api/task-setup/template-values?dir="
+                           + str(d)).get_json()
+        assert j["ok"] and j["name"] is None and j["values"] == {}
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+
+
+def test_the_template_values_outrank_the_catalogue_default():
+    """The order matters and is easy to write backwards."""
+    src = VIEWER.read_text()
+    body = src.split("function defaultText", 1)[1].split("\n/**", 1)[0]
+    assert "_tmpl.values" in body, (
+        "defaultText ignores the folder's template — it would show the "
+        "catalogue recommendation where the contract says the template's value")
+    assert body.index("_tmpl.values") < body.index("m.default"), (
+        "the catalogue default is consulted FIRST, so a template that answers "
+        "the parameter is overridden by the recommendation")
+    assert "await loadTemplateValues(dir)" in src, (
+        "nothing loads the template when the folder changes")

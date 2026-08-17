@@ -1668,6 +1668,48 @@ def api_task_setup_sweepable():
     return jsonify({"ok": True, "engine": engine, "items": out})
 
 
+@bp.route("/api/task-setup/template-values", methods=["GET"])
+def api_task_setup_template_values():
+    """What the folder's own template answers -- the baseline a stage inherits.
+
+    `engines/stages.md` § 6.2: a stage that sets nothing "uses the template's
+    value".  THE TEMPLATE'S -- not the catalogue's.  A tab that shows a
+    catalogue default in an empty cell is naming a number the job will not run
+    whenever the sender changed that parameter, which is the whole point of the
+    hand-over: the k-grid a person chose in a parameter tab lands HERE.
+
+    The server reads it because TOML is a format, and `projects.md` § 3 keeps a
+    format's correctness on this side of the wire -- `read_template` is the
+    same parser `prep` opens the file with, so the browser cannot become a
+    second reader that disagrees about what a value is.
+    """
+    dir_raw = str(request.args.get("dir") or "")
+    if not dir_raw:
+        return jsonify({"ok": False, "error": "no folder given"}), 400
+    try:
+        folder = _resolve_within_roots(dir_raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    if not folder.is_dir():
+        return jsonify({"ok": False, "error": f"not a directory: {dir_raw}"}), 400
+
+    found = sorted(folder.glob("*.template.toml"))
+    if not found:
+        return jsonify({"ok": True, "name": None, "values": {}})
+
+    from molbuilder.template import read_template
+    try:
+        tmpl = read_template(found[0].read_text())
+    except Exception as exc:
+        # A template that does not parse is the user's to fix, and saying which
+        # file beats an empty table that looks like "nothing was sent".
+        return jsonify({"ok": False, "name": found[0].name,
+                        "error": f"{found[0].name}: {exc}"}), 400
+
+    values = {it.name: it.value for it in tmpl.items if it.value is not None}
+    return jsonify({"ok": True, "name": found[0].name, "values": values})
+
+
 @bp.route("/api/task-setup/presets", methods=["GET"])
 def api_task_setup_presets():
     """The shipped tier presets, for filling a stage's row.

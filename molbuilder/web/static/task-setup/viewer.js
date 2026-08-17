@@ -338,6 +338,9 @@ async function readOptional(projects, path) {
 async function loadFolder(projects, dir) {
     _dir = dir;
     showPath(dir);
+    // Before anything renders: what this folder's template answers is the
+    // baseline every empty cell names.
+    await loadTemplateValues(dir);
     if (!dir) {
         _mode = "empty"; refreshSave();
         setState("empty", "Nothing selected",
@@ -645,12 +648,38 @@ async function refreshPickers() {
     } catch (_) { /* the pickers stay empty; nothing else breaks */ }
 }
 
-/** What a parameter falls back to, rendered the way it will be written. */
+/* What THIS FOLDER's template answers, which is not the same thing as what the
+ * catalogue recommends.  `stages.md` § 6.2: a stage that sets nothing uses the
+ * TEMPLATE's value -- so the k-grid a person chose in the parameter tab is the
+ * number an empty cell must name here, and the catalogue default is only the
+ * answer when the template is silent. */
+let _tmpl = { name: null, values: Object.create(null) };
+
+async function loadTemplateValues(dir) {
+    _tmpl = { name: null, values: Object.create(null) };
+    if (!dir) return;
+    try {
+        const r = await fetch("/api/task-setup/template-values?dir="
+                              + encodeURIComponent(dir));
+        const j = await r.json();
+        if (j && j.ok) _tmpl = { name: j.name, values: j.values || {} };
+    } catch (_) { /* the cells fall back to the catalogue, as before */ }
+}
+
+/** Rendered the way it will be written, unit and all. */
+function renderValue(v, unit) {
+    if (v === undefined || v === null) return "";
+    const t = Array.isArray(v) ? v.join(", ") : String(v);
+    return t + (unit ? " " + unit : "");
+}
+
+/** What a stage that sets nothing will actually use: the template first. */
 function defaultText(name) {
     const m = _meta[name];
-    if (!m || m.default === undefined || m.default === null) return "";
-    const v = Array.isArray(m.default) ? m.default.join(", ") : String(m.default);
-    return v + (m.unit ? " " + m.unit : "");
+    const unit = m && m.unit;
+    if (name in _tmpl.values) return renderValue(_tmpl.values[name], unit);
+    if (!m) return "";
+    return renderValue(m.default, unit);
 }
 
 /** The parameter's own note, for a hover. */
@@ -658,8 +687,16 @@ function helpText(name) {
     const m = _meta[name];
     if (!m) return "";   // caller falls back to its own note
     const bits = [m.label && m.label !== name ? m.label : "", m.help || ""];
-    const d = defaultText(name);
-    if (d) bits.push("Default: " + d);
+    /* When the template answers, BOTH numbers are worth reading: one is what
+     * this job runs, the other is what the catalogue recommends, and a person
+     * checking a description before a week of compute wants to see that they
+     * differ. */
+    if (name in _tmpl.values) {
+        bits.push("This job (" + (_tmpl.name || "template") + "): "
+                  + renderValue(_tmpl.values[name], m.unit));
+    }
+    const d = renderValue(m.default, m.unit);
+    if (d) bits.push("Recommended: " + d);
     if (m.engine_key) bits.push("Writes: " + m.engine_key);
     return bits.filter(Boolean).join("\n\n");
 }

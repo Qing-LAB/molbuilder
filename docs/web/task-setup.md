@@ -176,6 +176,33 @@ every stage.**
 stage uses the template's value* — a real state, and why `overrides` is a subset
 of `varies` rather than equal to it.
 
+### 5.1 An empty cell shows the number, and it comes from the folder
+
+An empty cell says *"the template's value"* — so it **shows that value**, greyed,
+as a placeholder. That is what makes the § 9 rule *"adding a column changes
+nothing on screen"* visible instead of merely true: promote a parameter and every
+cell shows the number it was already at.
+
+**The value is read from `<label>.template.toml`, not from the catalogue.** The
+distinction is the whole point of the hand-over: a person who chose a 4×4×1
+k-grid in the parameter tab has that grid in the template, and a cell naming the
+catalogue's recommendation would be naming a number the job will not run. Order,
+and it is one way round:
+
+| | shown when |
+|---|---|
+| the folder's template value | the template answers this parameter |
+| the catalogue's `default` | it does not — nothing was sent, or the sender left it alone |
+
+`GET /api/task-setup/template-values?dir=` reads it, because TOML is a format and
+[`projects.md § 3`](?doc=web/projects.md) keeps a format's correctness on the
+server. It parses with `read_template` — the same reader `prep` opens the file
+with — so the browser cannot become a second reader that disagrees.
+
+**A hover shows both numbers when they differ**: *"This job (probe.template.toml):
+450.0 Ry"* above *"Recommended: 300.0 Ry"*. Somebody checking a description
+before a week of compute should be able to see that the two are not the same.
+
 **A job always has at least one stage.** You start with `coarse`; adding another
 is one more row. There is no stage-less shape to fall into, so a job's artifacts
 are named the same way from the first run — `01_coarse` — and a job that grows a
