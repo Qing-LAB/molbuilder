@@ -1099,3 +1099,89 @@ def test_the_structure_pair_is_not_reported_as_engine_state():
         (base / "slab.XV").write_text("x")
         assert warm_files_present(base, "slab", "siesta") == ["slab.XV"], (
             "a real warm file stopped being detected")
+
+
+def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path):
+    """§ 7's bar, automated: structure -> hand-over -> description -> deck.
+
+    **Every link can hold while the thing being carried is lost between them.**
+    That is what the four shape-checks could not see, and why this compares the
+    DECK's own lattice against the structure that started the chain rather than
+    checking that each step returned `ok`.
+
+    Written 2026-08-17 because § 7 had just been rewritten to claim the chain
+    was verified — and it was, by hand, in a browser. A claim in a contract
+    that rests on somebody having driven it once is the same false assurance
+    the section above it retracts.
+    """
+    import json as _json, subprocess, sys
+    d = _fresh_calc_dir()
+    try:
+        # a periodic slab: a cell, a region label, a frozen atom
+        cell = [[5.77, 0.0, 0.0], [2.885, 4.997, 0.0], [0.0, 0.0, 20.0]]
+        env = _envelope()
+        env["structure"]["elements"] = ["Au", "Au", "S"]
+        env["structure"]["positions"] = [[0, 0, 0], [2.885, 0, 0], [0, 0, 4.755]]
+        env["structure"]["metadata"] = {
+            "regions": {"frozen_atoms": [0], "slab": [0, 1]},
+            "cell": cell, "cell_origin": None, "axis_kind": None, "vacuum": None,
+        }
+        r = web_client.post("/api/task-setup/handover", json=dict(
+            env, engine="siesta", name="chain",
+            params={"system_label": "chain", "kgrid": [8, 8, 1],
+                    "kgrid_displacement": [0.5, 0.5, 0.0], "mesh_cutoff": 350.0}))
+        assert r.status_code == 200, r.get_json()
+        out = r.get_json()
+
+        for f in out["structure_files"]:
+            (d / f["name"]).write_text(f["text"])
+        (d / out["template_name"]).write_text(out["template_text"])
+        over = _json.loads(out["handover_text"])
+
+        described = {"schema": "molbuilder/task@1", "engine": over["engine"],
+                     "shape": "flat", "run": over["run"],
+                     "structure": over["structure"], "varies": [],
+                     "stages": [{"name": "coarse", "enabled": True,
+                                 "overrides": {}}]}
+        s = web_client.post("/api/task-setup/save",
+                            json={"dest": str(d), "text": _json.dumps(described)})
+        assert s.status_code == 200, s.get_json()
+
+        # …and now the part no shape-check reaches: RENDER IT.
+        p = subprocess.run(
+            [sys.executable, "-m", "molbuilder.cli", "jobset", "prep", "run",
+             "coarse", "--bundle", str(d)],
+            capture_output=True, text=True, cwd=str(ROOT), timeout=300)
+        assert p.returncode == 0, p.stdout + p.stderr
+        assert "already under way" not in p.stdout, (
+            "the hand-over's own files are being reported as engine leftovers:\n"
+            + p.stdout)
+
+        decks = sorted(d.glob("*_01_coarse.fdf"))
+        assert decks, sorted(x.name for x in d.iterdir())
+        deck = decks[0].read_text()
+
+        # THE LATTICE the k-grid indexes — the thing the hand-over used to drop
+        lat = re.search(r"%block LatticeVectors(.*?)%endblock", deck, re.S)
+        assert lat, "the deck has no cell — a periodic run became a molecule"
+        rows = [[float(v) for v in ln.split()]
+                for ln in lat.group(1).strip().splitlines()]
+        assert rows == cell, f"deck lattice {rows} != source {cell}"
+
+        kg = re.search(r"%block kgrid_Monkhorst_Pack(.*?)%endblock", deck, re.S)
+        assert kg and "8 0 0 0.5" in kg.group(1), kg and kg.group(1)
+        assert "MeshCutoff 350.0 Ry" in deck
+
+        # the ATOMS, row by row, against the .xyz the hand-over wrote
+        blk = re.search(r"%block AtomicCoordinatesAndAtomicSpecies(.*?)%endblock",
+                        deck, re.S)
+        fdf = [ln.split() for ln in blk.group(1).strip().splitlines()]
+        xyz = [ln.split() for ln
+               in (d / over["structure"]["source"]).read_text().splitlines()[2:]
+               if ln.strip()]
+        assert len(fdf) == len(xyz) == 3
+        for a, b in zip(fdf, xyz):
+            assert max(abs(float(x) - float(y))
+                       for x, y in zip(a[:3], b[1:4])) < 1e-4, (a, b)
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)

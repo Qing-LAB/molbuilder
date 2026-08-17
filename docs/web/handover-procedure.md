@@ -240,11 +240,20 @@ End to end, in `tests/test_task_setup_tab.py`:
 | the hand-over declares its own schema, lacks `shape`/`stages`, and says what it is | it could be read as a description |
 | save writes `task.json`, reports the hand-over rather than deleting it, and refuses bad JSON, a missing stage list, and a destination outside the roots | the browser becomes a second, drifting writer |
 
-**And the whole chain runs.** Structure file → parameters → hand-over → Task
-setup → saved description → `prep` → the rendered deck, with the deck's own
-`%block LatticeVectors` compared against the structure that started it. That is
-the check the four could not add up to: every link can hold while the thing
-being carried is lost between them.
+**And the whole chain runs, in a test and not in somebody's memory of driving
+it** — `test_the_whole_chain_from_structure_to_rendered_deck`. Hand-over →
+description → `prep` → the rendered deck, comparing the deck's own `%block
+LatticeVectors` and its atom rows against the structure that started the chain.
+
+That is the check the four could not add up to: **every link can hold while the
+thing being carried is lost between them.** Removing the cell from what the
+hand-over writes leaves every step returning `ok` and puts a *bounding box*
+— `[[8.885,0,0],[0,6,0],[0,0,10.755]]` — in the deck where the hexagonal
+lattice belongs, which is a different calculation that never announces itself.
+
+> This paragraph first claimed the chain was verified when it had only been
+> driven by hand in a browser — the same false assurance as the retraction
+> above, written the same day, one section apart. The test exists now.
 
 **A tab is on this procedure when those hold for it.** That is the bar Spectrum
 has to clear, and the reason to clear it before Transport is designed against it.
