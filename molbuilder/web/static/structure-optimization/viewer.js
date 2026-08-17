@@ -1562,6 +1562,26 @@ import { mount as mvMount, formula as mvFormula }
                 + "of something.");
             return;
         }
+        /* A CALCULATION LIVES UNDER A TOPIC (`job-contracts.md` § 2.5): the
+         * tree is project / topic / calculation, and the three levels above
+         * the calculation are organisational.  `safeSave` refuses only at the
+         * projects ROOT, so without this a Send into a bare project or topic
+         * folder would put a calculation where one may not live.
+         *
+         * Measured against the projects root rather than by counting slashes,
+         * because the root is configurable — `relativeToProjects` is the
+         * sidebar's own answer to "where am I". */
+        const rel = (typeof projects.relativeToProjects === "function")
+            ? String(projects.relativeToProjects(dest) || "") : "";
+        const depth = rel.split("/").filter(Boolean).length;
+        if (depth < 3) {
+            _handoverSay("warn",
+                "That folder is too high in the tree — a calculation lives "
+                + "under a topic (projects / project / topic / your folder). "
+                + "Pick or make one further down in the sidebar.");
+            return;
+        }
+
         /* ONE JOB PER FOLDER (`job-contracts.md` § 2.1 Rule 1).  Send writes
          * with `overwrite: true`, so without this it would silently replace
          * another calculation's template.  The check goes through the file

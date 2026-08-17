@@ -124,7 +124,16 @@ function renderStages(task) {
     tbody.textContent = "";
 
     const hrow = el("tr", null, el("th", null, "Stage"));
-    for (const col of varies) hrow.appendChild(el("th", null, col));
+    for (const col of varies) {
+        const x = el("button", {
+            type: "button",
+            class: "ts-rowbtn ts-rowbtn-drop"
+                   + (_pendingDrop === col ? " is-pending" : ""),
+            title: "Remove this column",
+        }, "\u00d7");
+        x.addEventListener("click", () => removeColumn(col));
+        hrow.appendChild(el("th", null, col, x));
+    }
     thead.appendChild(hrow);
 
     stages.forEach((st, i) => {
@@ -469,6 +478,79 @@ function setCell(i, col, raw) {
     syncFromModel();
 }
 
+/* ---------- the columns: which parameters vary ---------- */
+
+/** `varies` is the column set; a stage's `overrides` fills the cells it
+ *  chooses to (`stages.md` § 6.2). */
+function variesOf() {
+    if (!_task) return null;
+    if (!Array.isArray(_task.varies)) _task.varies = [];
+    return _task.varies;
+}
+
+/**
+ * Add a column.
+ *
+ * `task-setup.md` § 9: it "seeds every stage with the current base value, so
+ * promoting changes nothing on screen — a statement about STRUCTURE, never
+ * about values".  Here that costs nothing to honour: an ABSENT override
+ * already means "this stage uses the template's value" (`stages.md` § 6.2),
+ * so adding the column and touching no cell IS seeding them all.
+ */
+function addColumn(name) {
+    const v = variesOf(); if (!v) return;
+    if (!/^[a-z_][a-z0-9_]*$/i.test(name)) {
+        setState("refuse", "That is not a parameter name",
+                 "Use the parameter's own name — letters, digits and "
+                 + "underscore, as the catalogue spells it.");
+        return;
+    }
+    if (v.indexOf(name) !== -1) return;
+    v.push(name);
+    syncFromModel();
+}
+
+/* Removing a column destroys values, so it is a TWO-CLICK act: the first says
+ * what would be lost, the second does it (`task-setup.md` § 9 — "the page says
+ * which value it kept, and says it BEFORE the click").  No browser dialog:
+ * a `confirm()` blocks everything, including the page's own scripts. */
+let _pendingDrop = "";
+
+function removeColumn(name) {
+    const v = variesOf(); if (!v) return;
+    const stages = (_task && _task.stages) || [];
+    const enabled = stages.filter((st) => st && st.enabled !== false);
+    const last = enabled.length ? enabled[enabled.length - 1] : stages[stages.length - 1];
+    const survivor = last && last.overrides
+        ? last.overrides[name] : undefined;
+
+    if (_pendingDrop !== name) {
+        _pendingDrop = name;
+        // The value the LAST ENABLED stage carries is the one § 9 keeps —
+        // it is the production stage, and the value a single run would use.
+        // This page cannot write it into the template, so it says so rather
+        // than implying the value survives somewhere.
+        setState("refuse", "Remove the column " + name + "?",
+                 (survivor === undefined
+                    ? "No stage overrides it, so nothing is lost. "
+                    : "The last enabled stage (" + ((last && last.name) || "?")
+                      + ") has " + JSON.stringify(survivor) + ", and every "
+                      + "stage's value for it is dropped — this page edits "
+                      + "task.json, not the template, so set it there if you "
+                      + "want it kept. ")
+                 + "Click × again to remove it.");
+        renderStages(_task);
+        return;
+    }
+
+    _pendingDrop = "";
+    v.splice(v.indexOf(name), 1);
+    for (const st of stages) {
+        if (st && st.overrides) delete st.overrides[name];
+    }
+    syncFromModel();
+}
+
 /* ---------- what has already run ---------- */
 
 /** Attempts per stage, read from the DIRECTORY — no target machine needed,
@@ -755,6 +837,12 @@ function start() {
     if (goBtn) goBtn.addEventListener("click", addSetting);
     const addBtn = $("ts-add-stage");
     if (addBtn) addBtn.addEventListener("click", addStage);
+    const colBtn = $("ts-add-col-go");
+    if (colBtn) colBtn.addEventListener("click", () => {
+        const inp = $("ts-add-col");
+        addColumn((inp.value || "").trim());
+        inp.value = "";
+    });
     const saveBtn = $("ts-save");
     if (saveBtn) saveBtn.addEventListener("click", save);
     refreshSave();

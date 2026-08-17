@@ -426,3 +426,11 @@
     color: var(--text-secondary);
 }
 .ts-step b { color: var(--text-primary); font-weight: var(--weight-semibold); }
+
+/* A column drop that is armed but not yet confirmed: it says what would be
+ * lost first, so the second click is a decision rather than a reflex. */
+.ts-rowbtn-drop.is-pending {
+    color: var(--error);
+    border-color: var(--error);
+}
+.ts-table thead th .ts-rowbtn-drop { border: 0; }

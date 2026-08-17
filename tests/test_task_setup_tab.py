@@ -653,3 +653,38 @@ def test_a_failed_checkpoint_stops_the_save():
     assert i_fail < i_post, "the description is written before the state"
     assert body.count("return;", 0, i_post) >= 2, (
         "a failed checkpoint does not stop the save")
+
+
+def test_a_new_column_seeds_every_stage_with_the_template_value():
+    """`task-setup.md` § 9 — adding a column "changes nothing on screen": it is
+    a statement about structure, never about values.
+
+    The tab has no template, but it does not need one: an ABSENT override
+    already means "this stage uses the template's value" (`stages.md` § 6.2),
+    so adding the column and touching no cell IS seeding them all.
+    """
+    src = VIEWER.read_text()
+    assert "function addColumn" in src
+    body = src.split("function addColumn", 1)[1].split("\n/* ", 1)[0]
+    assert "overrides" not in body, (
+        "adding a column writes cell values; absence is the seed")
+    assert "v.push(name)" in body
+
+
+def test_removing_a_column_says_what_is_lost_before_it_goes():
+    """§ 9 — "the page says which value it kept, and says it BEFORE the click"."""
+    src = VIEWER.read_text()
+    assert "_pendingDrop" in src, "removing a column is a single click"
+    body = src.split("function removeColumn", 1)[1].split("\n/* ", 1)[0]
+    assert "last enabled" in body.lower() or "enabled" in body, (
+        "the surviving value is not the last enabled stage's")
+    assert "Click × again" in body, "there is no second, confirming click"
+
+
+def test_removing_a_column_does_not_pretend_the_value_survives():
+    """This page edits `task.json`, not the template — so it must not imply
+    the kept value lands anywhere."""
+    src = VIEWER.read_text()
+    body = src.split("function removeColumn", 1)[1].split("\n/* ", 1)[0]
+    assert "not the template" in body, (
+        "the message implies the value is preserved somewhere it is not")
