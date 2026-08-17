@@ -688,8 +688,6 @@ import { mount as mvMount, formula as mvFormula }
             const pyscfC  = $("pyscf-form-container");
             if (siestaC) fs.renderForm(siestaC, siesta);
             if (pyscfC)  fs.renderForm(pyscfC,  pyscf);
-            if (siestaC) mountRecommended("siesta", siestaC, siesta);
-            if (pyscfC)  mountRecommended("pyscf",  pyscfC,  pyscf);
         } catch (exc) {
             console.error("could not load build-form schema:", exc);
             // Surface a visible failure so the user knows the
@@ -710,6 +708,18 @@ import { mount as mvMount, formula as mvFormula }
         wireCompatibilityListeners();
         wirePreflightListeners();
         applyCompatibility();
+        // AFTER the restore, and this ordering is the whole of whether the
+        // panel works: restoreFormState assigns `el.value` directly and
+        // dispatches nothing, so a panel mounted before it measures a form
+        // that is still at its defaults and then never hears the values
+        // arrive.  Mounted here, its first reading is the real one.
+        for (const [engine, hostId] of [["siesta", "siesta-form-container"],
+                                       ["pyscf",  "pyscf-form-container"]]) {
+            const host = $(hostId);
+            if (host && formSchemas[engine]) {
+                mountRecommended(engine, host, formSchemas[engine]);
+            }
+        }
     }
 
     // ----- Sidebar-driven loading (Projects sidebar -> Build) ------- //

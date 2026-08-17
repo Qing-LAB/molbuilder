@@ -238,9 +238,26 @@ def test_both_engine_forms_carry_the_panel():
         assert f'id="{engine}-recommend"' in html, (
             f"{engine}'s form has no recommended-value panel")
     src = VIEWER.read_text()
-    for engine in ("siesta", "pyscf"):
-        assert f'mountRecommended("{engine}"' in src, (
-            f"{engine}'s panel is never mounted")
+    mount = src.split("mountRecommended(engine, host", 1)
+    assert len(mount) == 2, "nothing mounts the panels"
+    for host in ("siesta-form-container", "pyscf-form-container"):
+        assert host in mount[0].rsplit("for (const [engine, hostId]", 1)[-1], (
+            f"{host} is not in the mount loop")
+
+
+def test_the_panel_is_mounted_AFTER_the_session_restore():
+    """The ordering IS the feature.  `restoreFormState` assigns `el.value`
+    directly and dispatches nothing, so a panel mounted before it takes its
+    first reading from a form still at its defaults — reports no
+    differences — and then never hears the saved values arrive.  That is
+    exactly how this shipped broken the first time."""
+    src = VIEWER.read_text()
+    body = src.split("async function initFormsFromSchema", 1)[1]
+    body = body.split("\n    // ----- Sidebar-driven", 1)[0]
+    assert "restoreFormState();" in body and "mountRecommended(" in body
+    assert body.index("restoreFormState();") < body.index("mountRecommended("), (
+        "the panel is mounted before the restore, so its first reading is "
+        "the defaults and the restored values never reach it")
 
 
 def test_the_panel_follows_the_form_rather_than_only_typing():
