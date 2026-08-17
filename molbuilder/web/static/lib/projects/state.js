@@ -158,7 +158,15 @@ function publishSelectionChange(payload) {
 // preview/candidate-tracking subscribers; publishCommit's
 // commitSubscribers fan out for tab-level "use this file"
 // subscribers.
-export function publishCommit(dir, file) {
+// THE SECOND ARGUMENT IS A FULL PATH, not a bare name.  `list.js` publishes
+// `publishCommit(currentPath, fullPath)`, and every subscriber uses it as a
+// path -- `structure-optimization` does `f.split("/").pop()` to get a name back
+// out of it.  It was called `file` for a long time, which reads as a filename:
+// a caller that passed one got a path resolved against the process's own
+// directory and a "outside every configured root" refusal, with nothing in the
+// message to say which of the two arguments was wrong.
+export function publishCommit(dir, path) {
+  const file = path;
   // Update sessionStorage + onChange subscribers FIRST so a
   // subscriber that gates on getCurrentFile() inside its
   // onCommit handler sees the new pick already in place.

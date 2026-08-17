@@ -296,3 +296,26 @@ def test_the_flag_tone_is_passive_not_a_call_to_action():
     assert m, "--rec-flag is not defined as a token reference"
     assert m.group(1) == "--warn-soft", (
         f"--rec-flag borrows {m.group(1)}; a difference is not an error")
+
+
+def test_a_commit_carrying_a_bare_name_still_finds_the_file():
+    """`publishCommit`'s second argument is a full PATH — `list.js` passes
+    `fullPath` — but it was called `file` for a long time, which reads as a
+    name.  A caller that passed a name got it resolved against the server
+    process's own directory and refused as "outside every configured root",
+    with nothing in the message naming the caller or the argument.
+
+    The commit already carries the directory, so the tab completes a bare name
+    rather than failing on it."""
+    src = VIEWER.read_text()
+    body = src.split("async function _commitStructure", 1)[1].split("\n        }", 1)[0]
+    assert 'sel.dir' in body, (
+        "a bare name is still resolved against whatever the process's cwd is")
+    assert '!f.includes("/")' in body, "nothing detects a bare name"
+
+
+def test_the_contract_says_the_argument_is_a_path():
+    doc = (ROOT / "docs/web/projects.md").read_text()
+    assert "publishCommit(dir, path)" in doc, (
+        "the contract still calls it `file`, which is what caused the misuse")
+    assert "FULL path" in doc

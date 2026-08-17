@@ -793,7 +793,16 @@ import { mount as mvMount, formula as mvFormula }
         // be treated as a commit; the user picked it on another tab
         // and navigated here to configure SIESTA / PySCF for it).
         async function _commitStructure(sel) {
-            const f = (sel && sel.file) ? String(sel.file) : "";
+            /* A commit carries the file's FULL path.  A caller that passed a
+             * bare name got it resolved against the server process's own
+             * directory and refused as "outside every configured root" — a
+             * message that names neither the caller nor which argument was
+             * wrong.  The commit also carries the directory, so the one case
+             * that used to fail is the one case we can simply complete. */
+            let f = (sel && sel.file) ? String(sel.file) : "";
+            if (f && !f.includes("/") && sel && sel.dir) {
+                f = String(sel.dir).replace(/\/+$/, "") + "/" + f;
+            }
             const ext = f.toLowerCase().split(".").pop();
             if (ext !== "xyz" && ext !== "pdb") {
                 // Commit on a non-structure file — tell the user

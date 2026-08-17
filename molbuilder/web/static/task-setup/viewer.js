@@ -1058,8 +1058,16 @@ async function save() {
     const wantCkpt = $("ts-ckpt") && $("ts-ckpt").checked;
     if (wantCkpt && projects0 && projects0.checkpoint) {
         const note = ($("ts-ckpt-note") && $("ts-ckpt-note").value) || "";
+        /* `status` answers `ok:false` for a folder that simply has no history
+         * yet -- `ok` there means "this folder is under checkpointing", not
+         * "the query worked".  Reading it as the latter skipped `init` for
+         * exactly the folders that need it, and the save then died on
+         * `saveState`'s "not a checkpoint folder; run init first" -- a message
+         * about a step the page had decided to skip.  What this branch needs
+         * is the question `initialised` already answers; `error` separates a
+         * real failure from a fine answer. */
         const st = await projects0.checkpoint.status(_dir).catch(() => null);
-        if (st && st.ok && !st.initialised) {
+        if (st && !st.error && !st.initialised) {
             const started = await projects0.checkpoint
                 .init(_dir, { engine: (_task && _task.engine
                                        && _task.engine.name) || undefined })

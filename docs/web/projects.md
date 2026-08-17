@@ -229,7 +229,7 @@ a uniform `{ ok, … }` result — they never throw.
 | `getProjectsRoot()` / `atRoot()` | your projects folder; whether you're at its top |
 | `onChange(cb)` | selection changed — fires once on subscribe too |
 | `onCommit(cb)` | a file was committed (double-clicked) — does not fire on subscribe |
-| `publishCommit(dir, file)` | commit a file from code (also moves the selection) |
+| `publishCommit(dir, path)` | commit a file from code (also moves the selection). **`path` is the file's FULL path**, not its name — subscribers use it as one |
 | `setShared(dir, file)` | move the selection without re-listing |
 | `navigateTo(path)` / `refresh()` | list a folder + move there / re-list the current folder |
 | `onProjectsRootResolved(cb)` / `onLockChange(cb)` | one-shot / lock notifications |
