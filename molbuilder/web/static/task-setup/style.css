@@ -289,6 +289,20 @@
     border-color: var(--accent);
     background: var(--accent-bg);
 }
+/* A tick on the chosen one.  The border tint alone reads as "hovered" as
+ * easily as "chosen", and this is a decision the page refuses to guess
+ * (`stages.md` § 6.7) -- so which one you picked has to be unmistakable.
+ * `aria-pressed` already carries it to assistive tech; this is the visual. */
+.ts-choice .opt b::before {
+    content: "\2713";
+    display: inline-block;
+    width: var(--ts-tick-w);
+    margin-right: var(--space-xs);
+    color: var(--accent);
+    visibility: hidden;          /* holds the space, so nothing shifts */
+}
+.ts-choice .opt[aria-pressed="true"] b::before { visibility: visible; }
+.ts-choice .opt[aria-pressed="true"] b { color: var(--accent-hover); }
 .ts-choice .opt b { font-size: var(--text-base); }
 .ts-choice .opt span {
     color: var(--text-secondary);
@@ -482,3 +496,18 @@
     overflow-x: auto;
     white-space: pre;
 }
+
+/* ---- The pickers: what may be added, drawn from the catalogue ---- */
+
+.ts-pick {
+    font: inherit;
+    font-size: var(--text-sm);
+    max-width: var(--ts-pick-max);
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+}
+.ts-pick:focus { outline: none; border-color: var(--accent); }
+.ts-pick:disabled { color: var(--text-muted); cursor: not-allowed; }

@@ -761,3 +761,93 @@ def test_a_disabled_stage_gets_no_command():
     src = VIEWER.read_text()
     body = src.split("function renderNext", 1)[1].split("\n/* ", 1)[0]
     assert "enabled !== false" in body, "disabled stages still get commands"
+
+
+def test_parameters_are_PICKED_from_the_catalogue_not_typed(web_client):
+    """A free-text box is not a list.  The catalogue knows every parameter, and
+    the parameter tab's own schema endpoint already serves it — so the picker
+    reads that rather than asking the user to spell a name."""
+    body = web_client.get("/task-setup").data.decode()
+    for sel in ('id="ts-add-col"', 'id="ts-add-setting"'):
+        assert f"<select {sel[:0]}" or sel in body
+    assert body.count("<select") >= 2, "the add controls are still text inputs"
+    src = VIEWER.read_text()
+    assert "/api/build/schema/" in src, "columns are not drawn from the catalogue"
+    assert "/api/task-setup/sweepable" in src, "bench settings are not drawn from it"
+
+
+def test_only_execution_category_parameters_may_be_swept(web_client):
+    """`stages.md § 6.8` — sweeping anything else means each point silently
+    measures a DIFFERENT calculation."""
+    j = web_client.get("/api/task-setup/sweepable?engine=siesta").get_json()
+    assert j["ok"] and j["items"]
+    from molbuilder.template import load_catalogue, read_template, one
+    t = read_template(load_catalogue())
+    for item in j["items"]:
+        it = one(t, item["name"])
+        assert "execution" in it.category, (
+            f"{item['name']} is offered for sweeping but is not `execution`")
+
+
+def test_the_sweepable_list_says_which_the_machine_answers(web_client):
+    """An allocation resolver means a description may never carry a value
+    (`template.md § 6.4`), so those can only ever be measured."""
+    j = web_client.get("/api/task-setup/sweepable?engine=siesta").get_json()
+    by = {i["name"]: i["machine_answers"] for i in j["items"]}
+    for machine in ("mpi_np", "omp_threads", "max_memory_mb"):
+        assert by.get(machine) is True, f"{machine} not flagged machine-answered"
+    assert by.get("enable_gpu") is False, (
+        "the GPU is a user decision, not something the machine answers "
+        "(template-unification-plan.md § 5.5)")
+
+
+def test_a_picker_offers_only_what_is_not_already_used():
+    src = VIEWER.read_text()
+    assert "function fillPicker" in src
+    body = src.split("function fillPicker", 1)[1].split("\nasync function", 1)[0]
+    assert "taken.indexOf(i.name) === -1" in body, (
+        "the picker offers parameters that are already columns/settings")
+
+
+def test_the_chosen_shape_carries_a_tick():
+    """A border tint reads as "hovered" as easily as "chosen", and the shape is
+    a decision the page refuses to guess — so which one you picked must be
+    unmistakable.  The gutter is reserved on both, so ticking shifts nothing."""
+    css = (STATIC / "task-setup/style.css").read_text()
+    assert '.ts-choice .opt b::before' in css, "no tick on the shape options"
+    assert 'visibility: hidden' in css and 'visibility: visible' in css, (
+        "the tick is added/removed rather than shown/hidden, so the label "
+        "shifts when you choose")
+    assert '.ts-choice .opt[aria-pressed="true"] b::before' in css
+
+
+def test_a_handover_opens_with_a_starting_matrix_not_an_empty_table():
+    """`stages.md § 1.3` — *"`varies` defaults to the engine's `stage` group,
+    and the user adds to or removes from it"*.
+
+    An empty `varies` is not a neutral start: the table opens with no columns
+    and nothing to edit, which is a dead end.  The group is a DEFAULT, never a
+    restriction — any parameter can be added and any of these removed (§ 1.2).
+    """
+    src = VIEWER.read_text()
+    assert 'c.group === "stage"' in src, (
+        "the proposal does not seed varies from the stage group")
+
+
+def test_the_bench_opens_with_a_starting_sweep():
+    """The machine-answered settings can ONLY be measured, so an empty bench
+    leaves the user typing point lists from scratch.  Safe to propose because
+    `bench` records points to TRY and never an answer (`stages.md § 6.8`)."""
+    src = VIEWER.read_text()
+    assert "BENCH_START" in src
+    assert "it.machine_answers" in src, (
+        "the starting sweep is not restricted to what the machine answers")
+
+
+def test_the_starting_sweep_only_covers_settings_the_engine_has():
+    """Proposed rows are intersected with the sweepable set, so a PySCF
+    description never opens with a SIESTA-only knob in its grid."""
+    src = VIEWER.read_text()
+    body = src.split("Promise.all([loadColumnChoices", 1)[1].split("}).catch", 1)[0]
+    assert "for (const it of sweep)" in body, (
+        "the grid is not intersected with what this engine can sweep")

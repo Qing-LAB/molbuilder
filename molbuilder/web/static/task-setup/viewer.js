@@ -413,6 +413,7 @@ async function loadFolder(projects, dir) {
     renderStages(task);
     renderNext(task);
     renderMachine(task);
+    refreshPickers();
     await setEditorText(taskText);
 }
 
@@ -424,6 +425,7 @@ async function syncFromModel() {
     await setEditorText(JSON.stringify(_task, null, 2) + "\n");
     renderStages(_task);
     renderNext(_task);
+    refreshPickers();
     refreshSave();
 }
 
@@ -514,6 +516,93 @@ function renderCameOver(obj) {
             el("dt", null, k), el("dd", null, v)));
     }
     card.hidden = false;
+}
+
+/* ---------- the pickers: what may be added, from the catalogue ---------- */
+
+let _cols = null;       // every parameter this engine has  {name,label}
+let _sweep = null;      // the ones a benchmark may sweep
+
+/** Every parameter, for the column picker.
+ *
+ * ANY field may be promoted (`stages.md` § 1.2 — the group is a default, never
+ * a restriction), so this is the whole form schema, which the parameter tab
+ * already builds from the catalogue.  No second list to keep in step.
+ */
+async function loadColumnChoices(engine) {
+    if (_cols) return _cols;
+    const r = await fetch("/api/build/schema/"
+                          + encodeURIComponent(engine || "siesta"));
+    const j = await r.json();
+    const secs = (j && j.schema && j.schema.sections) || [];
+    _cols = [];
+    for (const sec of secs) {
+        for (const f of (sec.fields || [])) {
+            _cols.push({ name: f.name, label: f.label || f.name,
+                         group: f.workflow_group || "" });
+        }
+    }
+    return _cols;
+}
+
+/* A STARTING SWEEP for the settings the machine answers.
+ *
+ * They can only ever be points to try -- a description may never carry a value
+ * for one (`template.md` § 6.4) -- so an empty bench leaves the card with
+ * nothing in it and the user typing point lists from scratch.  These are the
+ * shipped starting points, and `stages.md` § 6.8's rule is what makes them
+ * safe to propose: `bench` records POINTS TO TRY and never an answer, so a
+ * proposed grid costs nothing but a measurement, and every row can be edited
+ * or dropped.
+ *
+ * Powers of two for ranks because that is how the block distributes
+ * (`tuning.md` § 2.11); 1 and 2 threads because hybrid runs are the comparison
+ * worth making first. */
+const BENCH_START = { mpi_np: [4, 8, 16], omp_threads: [1, 2] };
+
+/** The sweepable set — `execution` category only (`stages.md` § 6.8).
+ *  A separate read because the FORM filters `staging` out, and those are
+ *  exactly the knobs a benchmark measures. */
+async function loadSweepChoices(engine) {
+    if (_sweep) return _sweep;
+    const r = await fetch("/api/task-setup/sweepable?engine="
+                          + encodeURIComponent(engine || "siesta"));
+    const j = await r.json();
+    _sweep = (j && j.items) || [];
+    return _sweep;
+}
+
+/** Fill a <select> with what is NOT already used. */
+function fillPicker(sel, items, taken, empty) {
+    if (!sel) return;
+    sel.textContent = "";
+    const left = items.filter((i) => taken.indexOf(i.name) === -1);
+    if (!left.length) {
+        sel.appendChild(el("option", { value: "" }, empty));
+        sel.disabled = true;
+        return;
+    }
+    sel.disabled = false;
+    sel.appendChild(el("option", { value: "" }, "choose a parameter\u2026"));
+    for (const i of left) {
+        sel.appendChild(el("option", { value: i.name },
+            i.name + (i.label && i.label !== i.name ? "  \u2014  " + i.label : "")
+            + (i.machine_answers ? "  (the machine answers this)" : "")));
+    }
+}
+
+async function refreshPickers() {
+    const engine = (_task && _task.engine && _task.engine.name) || "siesta";
+    try {
+        const [cols, sweep] = await Promise.all([
+            loadColumnChoices(engine), loadSweepChoices(engine)]);
+        fillPicker($("ts-add-col"), cols,
+                   Array.isArray(_task && _task.varies) ? _task.varies : [],
+                   "every parameter is already a column");
+        fillPicker($("ts-add-setting"), sweep,
+                   Object.keys((_task && _task.bench) || {}),
+                   "every sweepable setting is already listed");
+    } catch (_) { /* the pickers stay empty; nothing else breaks */ }
 }
 
 /* ---------- the columns: which parameters vary ---------- */
@@ -732,7 +821,7 @@ function removeSetting(name) {
  * ordinary starting ladder (`stages.md` § 6.5): one stage is not a special
  * shape, and empty `varies` is a real state.
  */
-function proposedFromHandover(over, shape) {
+function proposedFromHandover(over, shape, varies, bench) {
     const run = (over && over.run) || {};
     return JSON.stringify({
         schema:    "molbuilder/task@1",
@@ -741,8 +830,9 @@ function proposedFromHandover(over, shape) {
         run:       { name: run.name || "", id: run.id || "",
                      created: run.created || "" },
         structure: (over && over.structure) || {},
-        varies:    [],
+        varies:    varies || [],
         stages:    [{ name: "coarse", enabled: true, overrides: {} }],
+        bench:     bench || undefined,
     }, null, 2) + "\n";
 }
 
@@ -755,9 +845,38 @@ function setShape(shape) {
     const needs = $("ts-shape-needs");
     if (needs) needs.hidden = !!shape;
     if (_mode === "handover" && shape) {
-        const text = proposedFromHandover(_handover, shape);
-        try { _task = JSON.parse(text); } catch (_) { _task = null; }
-        setEditorText(text).then(() => { if (_task) renderStages(_task); });
+        /* THE STARTING MATRIX.  `stages.md` § 1.3: *"`varies` defaults to the
+         * engine's `stage` group, and the user adds to or removes from it"* —
+         * the settings that typically vary across a sequence.  A description
+         * that arrived with an empty `varies` would open on a table with no
+         * columns and nothing to edit, which is not a neutral starting point,
+         * it is a dead end.  The group is a DEFAULT, never a restriction: any
+         * parameter can be added and any of these removed (§ 1.2). */
+        const engine = (_handover && _handover.engine
+                        && _handover.engine.name) || "siesta";
+        Promise.all([loadColumnChoices(engine),
+                     loadSweepChoices(engine)]).then(([cols, sweep]) => {
+            const seed = cols.filter((c) => c.group === "stage")
+                             .map((c) => c.name);
+            // Only propose a sweep for settings this engine actually has.
+            const grid = {};
+            for (const it of sweep) {
+                if (it.machine_answers && BENCH_START[it.name]) {
+                    grid[it.name] = BENCH_START[it.name].slice();
+                }
+            }
+            const text = proposedFromHandover(_handover, shape, seed,
+                             Object.keys(grid).length ? grid : undefined);
+            try { _task = JSON.parse(text); } catch (_) { _task = null; }
+            return setEditorText(text).then(() => {
+                if (_task) { renderStages(_task); renderNext(_task);
+                             renderMachine(_task); refreshPickers(); }
+            });
+        }).catch(() => {
+            const text = proposedFromHandover(_handover, shape, []);
+            try { _task = JSON.parse(text); } catch (_) { _task = null; }
+            setEditorText(text).then(() => { if (_task) renderStages(_task); });
+        });
     }
     refreshSave();
 }
@@ -894,16 +1013,10 @@ function start(projects) {
             () => setShape(b.getAttribute("data-shape") || ""));
     }
     const addSetting = () => {
-        const inp = $("ts-add-setting");
-        const name = (inp.value || "").trim();
-        if (!/^[a-z_][a-z0-9_]*$/i.test(name)) {
-            setState("refuse", "That is not a setting name",
-                     "Use the parameter's own name — letters, digits and "
-                     + "underscore, as the catalogue spells it.");
-            return;
-        }
-        addPoint(name, "1");            // a row starts as ONE point: a choice
-        inp.value = "";
+        const sel = $("ts-add-setting");
+        if (!sel || !sel.value) return;
+        addPoint(sel.value, "1");       // a row starts as ONE point: a choice
+        sel.value = "";
     };
     const goBtn = $("ts-add-setting-go");
     if (goBtn) goBtn.addEventListener("click", addSetting);
@@ -911,9 +1024,8 @@ function start(projects) {
     if (addBtn) addBtn.addEventListener("click", addStage);
     const colBtn = $("ts-add-col-go");
     if (colBtn) colBtn.addEventListener("click", () => {
-        const inp = $("ts-add-col");
-        addColumn((inp.value || "").trim());
-        inp.value = "";
+        const sel = $("ts-add-col");
+        if (sel && sel.value) { addColumn(sel.value); sel.value = ""; }
     });
     const saveBtn = $("ts-save");
     if (saveBtn) saveBtn.addEventListener("click", save);

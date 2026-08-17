@@ -1626,3 +1626,43 @@ def api_task_setup_save():
         "handover_here": (dest / TASK_HANDOVER_NAME).is_file(),
         "stages":        [st.name for st in task.stages],
     })
+
+
+@bp.route("/api/task-setup/sweepable", methods=["GET"])
+def api_task_setup_sweepable():
+    """The parameters a benchmark may sweep, for the Task-setup picker.
+
+    **Not the form schema, and the difference is the rule.**
+    ``catalogue_to_form_schema`` filters the ``staging`` group out — a
+    parameter form does not ask how many ranks the scheduler granted — but
+    those are exactly the knobs a benchmark measures.  So this reads the
+    catalogue directly and applies § 6.8's rule instead:
+
+      > A key must name a field the engine already declares sweepable — the
+        ``execution`` category, which `template.md` § 6.2 defines as *"knobs
+        that change speed and not the answer"*.
+
+    Sweeping anything outside it means each point silently measures a
+    DIFFERENT calculation, and the comparison is meaningless.
+
+    Each item says whether the machine answers it: an ``allocation`` resolver
+    means a description may never carry a value for it (`template.md` § 6.4),
+    so the picker can show it as measurable-only rather than as a choice.
+    """
+    engine = str(request.args.get("engine") or "siesta").lower()
+    if engine not in ("siesta", "pyscf"):
+        return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
+
+    from molbuilder import template as _T
+    parsed = _T.read_template(_T.load_catalogue())
+    out = []
+    for it in _T.select(parsed, engine=engine):
+        if "execution" not in (it.category or ()):
+            continue
+        out.append({
+            "name":            it.name,
+            "label":           it.label or it.name,
+            "help":            it.help or "",
+            "machine_answers": it.resolver in _T.ALLOCATION_RESOLVERS,
+        })
+    return jsonify({"ok": True, "engine": engine, "items": out})

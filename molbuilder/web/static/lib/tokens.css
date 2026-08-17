@@ -249,6 +249,8 @@
     --ts-ptadd-w:       5rem;    /* the add-a-point input */
     --ts-fact-min:      9rem;    /* an identity fact's column */
     --ts-cmd-rule:      3px;     /* the command block's accent rule */
+    --ts-pick-max:      22rem;   /* an add-a-parameter picker */
+    --ts-tick-w:        1em;     /* the chosen-shape tick's gutter */
     --ts-label-track:   0.07em;  /* uppercase label tracking */
     --ts-off-opacity:   0.55;    /* a disabled stage: faded, not hidden */
 
