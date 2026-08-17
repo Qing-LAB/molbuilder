@@ -1562,6 +1562,33 @@ import { mount as mvMount, formula as mvFormula }
                 + "of something.");
             return;
         }
+        /* ONE JOB PER FOLDER (`job-contracts.md` § 2.1 Rule 1).  Send writes
+         * with `overwrite: true`, so without this it would silently replace
+         * another calculation's template.  The check goes through the file
+         * layer like every other read -- `missingOk` makes "no description
+         * here" a 200 rather than a logged 404, which is the normal case.
+         *
+         * This guard EXISTED as a 409 in the hand-over endpoint and was lost
+         * on 2026-08-16 when that endpoint stopped resolving the destination
+         * to become render-only.  Restored on the side that chooses where to
+         * write, which is where it belongs. */
+        try {
+            const prior = await projects.readFile(dest + "/task.json",
+                                                  { missingOk: true });
+            if (prior && prior.ok !== false && prior.exists !== false
+                && typeof prior.text === "string" && prior.text.trim()) {
+                _handoverSay("error",
+                    "That folder already holds a task.json — it is a described "
+                    + "calculation. Sending here would overwrite it. Pick or "
+                    + "make another folder in the sidebar; one job per folder.");
+                return;
+            }
+        } catch (e) {
+            _handoverSay("error", "Could not check the folder: "
+                + (e && e.message ? e.message : e));
+            return;
+        }
+
         const engine = _activeEngine();
         const params = (engine === "siesta")
             ? collectFdfParams() : collectPyscfParams();

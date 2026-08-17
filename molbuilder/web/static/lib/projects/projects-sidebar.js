@@ -31,8 +31,10 @@ import {
 } from "./list.js";
 import { initForms } from "./mutation-bar.js";
 import { initPreview } from "./preview.js";
-import { initCheckpointPanel } from "./checkpoint.js";
 import { parser } from "./parser.js";
+import { initCheckpointPanel,
+         status as ckStatus, init as ckInit, saveState as ckSaveState }
+    from "./checkpoint.js";
 
 window.molbuilder = window.molbuilder || {};
 // The format-aware sub-namespace: projects.parser.openMolecule / saveMolecule (the
@@ -40,6 +42,15 @@ window.molbuilder = window.molbuilder || {};
 // whole file-handling surface lives under ONE `projects` namespace
 // (docs/model/structure.md).
 projects.parser = parser;
+// The checkpoint sub-namespace (`docs/web/projects.md` § 5), attached beside
+// `parser` for the same reason: the whole surface a tab may use lives under ONE
+// `projects` namespace.  Restore and tag are deliberately absent -- they are
+// decisions taken at the panel, looking at the history.
+projects.checkpoint = {
+    status:    ckStatus,
+    init:      ckInit,
+    saveState: ckSaveState,
+};
 window.molbuilder.projects = projects;
 // Module-init contract (design.md "Module init contract"): also
 // register with the runtime so consumers can ``whenReady("projects")``

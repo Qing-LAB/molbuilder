@@ -651,12 +651,12 @@ async function _onCommitClick() {
     _hideAdvisory();
     elCommitBtn.disabled = true;
     try {
-        const res = await _fetchJSON("POST", "/api/checkpoint/save", {
-            path: _state.currentDir,
-            note: note.trim(),
-        });
+        // Through the public API (§ 5), so the panel and a tab that must take
+        // a state before writing share ONE implementation.
+        const out = await saveState(_state.currentDir, note.trim());
+        const res = { body: { ok: out.ok, changed: out.changed,
+                              error: out.error } };
         if (res.body && res.body.ok) {
-            await _refresh();
             // `changed:false` is the honest "nothing differed from where you
             // stand" -- not a failure, and not a state that was invented.
             if (res.body.changed === false) {
@@ -819,4 +819,73 @@ export function initCheckpointPanel() {
         }
     }
     return true;
+}
+
+/* ---------------------------------------------------------------- *
+ *  The public API — `projects.checkpoint`                           *
+ * ---------------------------------------------------------------- *
+ * Contract: `docs/web/projects.md` § 5.  A sub-namespace on the one door,
+ * the way `projects.parser` is.
+ *
+ * Before this the panel's save was a private click handler, so a tab that
+ * had to take a state before writing (Task setup, `task-setup.md` § 8) had
+ * two bad options: POST the route itself -- a second caller with its own
+ * error handling and no sidebar refresh -- or reach into the panel's DOM.
+ *
+ * Restore and tag are NOT here, and that is deliberate: restoring rewinds a
+ * folder and tagging writes in the namespace you are meant to be naming
+ * things in yourself (`checkpointing.md` L4).  Both are decisions taken at
+ * the panel, looking at the history.
+ */
+
+/** Does this folder have a history, and does it differ from where it stands? */
+export async function status(dir) {
+    if (!dir) return { ok: false, error: "no folder given" };
+    const res = await _fetchJSON("GET",
+        "/api/checkpoint/status?path=" + encodeURIComponent(dir));
+    const b = (res && res.body) || {};
+    return {
+        ok:          !!b.ok,
+        initialised: !!b.initialised,
+        clean:       b.clean !== false,
+        error:       b.error || null,
+    };
+}
+
+/** Start a history here.  Refuses with a reason a caller can show. */
+export async function init(dir, opts) {
+    if (!dir) return { ok: false, error: "no folder given" };
+    const res = await _fetchJSON("POST", "/api/checkpoint/init",
+        { path: dir, engine: (opts && opts.engine) || undefined });
+    const b = (res && res.body) || {};
+    const refusal = (Array.isArray(b.errors_only) && b.errors_only.length)
+        ? b.errors_only[0] : null;
+    return { ok: !!b.ok, error: b.error || refusal || null };
+}
+
+/**
+ * Save the folder's current state.
+ *
+ * A NOTE IS REQUIRED.  `checkpointing.md` L4 retired automatic messages —
+ * "a history where most tags are machine-made is one where your own are hard
+ * to find" — so nothing writes one on your behalf, and this refuses rather
+ * than inventing one.
+ *
+ * `changed: false` is HONEST, not a failure: nothing differed from the state
+ * the folder already stands at.
+ */
+export async function saveState(dir, note) {
+    if (!dir) return { ok: false, error: "no folder given" };
+    const text = String(note == null ? "" : note).trim();
+    if (!text) {
+        return { ok: false, error: "A state needs a note. Nothing was saved." };
+    }
+    const res = await _fetchJSON("POST", "/api/checkpoint/save",
+                                 { path: dir, note: text });
+    const b = (res && res.body) || {};
+    if (b.ok) {
+        // The panel is showing this folder's history; keep it truthful.
+        try { await _refresh(); } catch (_) { /* the state is saved either way */ }
+    }
+    return { ok: !!b.ok, changed: b.changed !== false, error: b.error || null };
 }

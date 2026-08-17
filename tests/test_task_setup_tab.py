@@ -546,3 +546,81 @@ def test_what_has_run_is_counted_from_the_directory_and_not_judged():
     for verdict in ("converged", "failed", "success"):
         assert f'"{verdict}"' not in body, (
             f"the page judges a run as {verdict!r} from a listing")
+
+
+# --------------------------------------------------------------------- #
+#  The checkpoint API (F3) and the two guards (F1, F2)                   #
+# --------------------------------------------------------------------- #
+
+def test_checkpoint_is_a_public_api_not_a_private_click_handler():
+    """`projects.md` § 5 — a sub-namespace on the one door, like
+    `projects.parser`.  The panel's save WAS a private click handler, so a tab
+    needing it had to POST the route itself or reach into the panel's DOM."""
+    ck = (STATIC / "lib/projects/checkpoint.js").read_text()
+    for fn in ("export async function status",
+               "export async function init",
+               "export async function saveState"):
+        assert fn in ck, f"missing from the API: {fn}"
+    for absent in ("export async function restore", "export async function tag"):
+        assert absent not in ck, (
+            "restore/tag are decisions taken at the panel, not another tab's "
+            "side effect (`checkpointing.md` L4)")
+    door = (STATIC / "lib/projects/projects-sidebar.js").read_text()
+    assert "projects.checkpoint" in door, "the API is not on the one door"
+
+
+def test_the_panel_calls_the_api_rather_than_a_second_implementation():
+    ck = (STATIC / "lib/projects/checkpoint.js").read_text()
+    body = ck.split("async function _onCommitClick", 1)[1].split("\nasync function", 1)[0]
+    assert "saveState(" in body, "the panel does not go through the API"
+    assert "/api/checkpoint/save" not in body, (
+        "the panel still POSTs the route itself — two implementations")
+
+
+def test_a_state_needs_a_note():
+    """`checkpointing.md` L4 retired automatic messages, so nothing writes one
+    on your behalf."""
+    ck = (STATIC / "lib/projects/checkpoint.js").read_text()
+    body = ck.split("export async function saveState", 1)[1]
+    assert "A state needs a note" in body, "saveState invents a note"
+
+
+def test_send_refuses_onto_a_described_calculation():
+    """F1 — this guard was a 409 in the endpoint and was LOST when it became
+    render-only.  Restored on the side that chooses where to write."""
+    src = (STATIC / "structure-optimization/viewer.js").read_text()
+    assert "one job per folder" in src, "Send can overwrite another calculation"
+    assert re.search(r'readFile\(dest \+ "/task\.json",\s*\n?\s*\{ missingOk: true \}',
+                     src), "the check does not go through the file layer"
+
+
+def test_save_refuses_a_different_calculation(web_client):
+    """F2 — the ids say these are different calculations, and overwriting one
+    with the other orphans every warm file keyed to it."""
+    d = _fresh_calc_dir()
+    try:
+        from molbuilder.identity import run_id
+        base = {"schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+                "shape": "flat", "structure": {"source": "a.xyz",
+                                               "formula": "Au2", "atoms": 2},
+                "varies": [], "stages": [{"name": "coarse", "enabled": True,
+                                          "overrides": {}}]}
+        theirs = dict(base, run={"name": "theirs", "id": run_id("theirs", "Au2"),
+                                 "created": "2026-08-01T00:00:00-07:00"})
+        (d / "task.json").write_text(_json.dumps(theirs))
+
+        mine = dict(base, run={"name": "mine", "id": run_id("mine", "Au2"),
+                               "created": "2026-08-16T00:00:00-07:00"})
+        r = web_client.post("/api/task-setup/save",
+                            json={"dest": str(d), "text": _json.dumps(mine)})
+        assert r.status_code == 409, r.status_code
+        assert "one job per folder" in r.get_json()["error"].lower()
+        back = _json.loads((d / "task.json").read_text())
+        assert back["run"]["id"] == theirs["run"]["id"], "it was overwritten"
+
+        # re-saving the SAME calculation stays free
+        again = web_client.post("/api/task-setup/save",
+                                json={"dest": str(d), "text": _json.dumps(theirs)})
+        assert again.status_code == 200, again.get_json()
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)

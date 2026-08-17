@@ -1586,6 +1586,30 @@ def api_task_setup_save():
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
+    # ONE JOB PER FOLDER (`job-contracts.md` § 2.1 Rule 1).  A folder already
+    # describing a DIFFERENT calculation is not a folder this save may land in:
+    # the ids say they are different calculations, and overwriting one with the
+    # other orphans every warm file and output already keyed to it.
+    #
+    # Compared by RUN ID, not by path: the id is `<label>_<formula>` and is the
+    # one thing that says which calculation a folder is
+    # (`run-identity.md` § 2.0a).  Re-saving the SAME calculation is the
+    # ordinary case and must stay free.
+    existing = dest / "task.json"
+    if existing.is_file():
+        try:
+            prior = read_task(existing)
+        except Exception:
+            prior = None                      # unreadable: let the write fix it
+        if prior is not None and prior.run.id != task.run.id:
+            return jsonify({
+                "ok": False,
+                "error": f"this folder already describes a different "
+                         f"calculation ({prior.run.id!r}); saving {task.run.id!r} "
+                         f"here would orphan its results. One job per folder — "
+                         f"pick or make another.",
+            }), 409
+
     try:
         write_task(dest / "task.json", task)      # atomic (persist.write_json)
     except OSError as exc:

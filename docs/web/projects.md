@@ -234,6 +234,30 @@ a uniform `{ ok, … }` result — they never throw.
 | `navigateTo(path)` / `refresh()` | list a folder + move there / re-list the current folder |
 | `onProjectsRootResolved(cb)` / `onLockChange(cb)` | one-shot / lock notifications |
 
+**Taking a state — `projects.checkpoint`** (added 2026-08-16)
+
+A **sub-namespace on the one door**, the way `projects.parser` is: the run-history
+panel drives these from the sidebar, and a tab that must take a state before it
+writes calls the same three. Before this, the panel's save was a private click
+handler — so a tab needing it had two bad options, POST the route itself (a
+second caller with its own error handling and no sidebar refresh) or reach into
+the panel's DOM.
+
+| Call | What it does |
+|---|---|
+| `checkpoint.status(dir)` | `{ok, initialised, clean, ...}` — does this folder have a history, and does it differ from where it stands? Read-only |
+| `checkpoint.init(dir, {engine})` | start a history here. Refuses with a reason a caller can show (a nested repository, a folder that declares nothing) |
+| `checkpoint.saveState(dir, note)` | save the folder's current state. **A note is required** — `checkpointing.md` **L4** retired automatic messages, so nothing writes one on your behalf. Returns `{ok, changed}`; **`changed: false` is honest, not a failure** — nothing differed from the state the folder already stands at |
+
+**What it deliberately does not expose:** restore and tag. Restoring rewinds a
+folder and tagging writes in the namespace you are meant to be naming things in
+yourself (`checkpointing.md` **L4**) — both are decisions a person takes at the
+panel, looking at the history, not side effects of another tab's save.
+
+**The rule these serve:** *the checkpoint is offered and never taken silently*
+([`checkpointing.md § 9`](?doc=execution/checkpointing.md)). A caller asks; it
+does not decide for the user.
+
 **Reading and writing file bytes** (content-blind — any tab)
 
 | Call | What it does |
