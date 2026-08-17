@@ -1032,6 +1032,20 @@ function setShape(shape) {
     }
     const needs = $("ts-shape-needs");
     if (needs) needs.hidden = !!shape;
+    /* A SHAPE CHANGE IS NOT A RESET.  Below, a hand-over is turned into a
+     * proposal -- stages, varies and a seeded bench.  That has to happen ONCE.
+     * Re-running it on every click meant picking flat, building a two-stage
+     * table with its overrides and a bench grid, then changing your mind to
+     * hierarchical, threw all of it away and silently rebuilt the starting
+     * proposal.  Shape is one field of the description; changing it edits that
+     * field. */
+    if (_mode === "handover" && shape && _task
+        && _task.schema === "molbuilder/task@1") {
+        _task.shape = shape;
+        syncFromModel();
+        refreshSave();
+        return;
+    }
     if (_mode === "handover" && shape) {
         /* THE STARTING MATRIX.  `stages.md` § 1.3: *"`varies` defaults to the
          * engine's `stage` group, and the user adds to or removes from it"* —

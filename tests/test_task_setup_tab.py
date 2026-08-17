@@ -1275,3 +1275,22 @@ def test_the_editor_is_mounted_once_even_under_concurrent_callers():
     assert "async" not in src.split("function ensureEditor", 1)[0][-20:], (
         "ensureEditor is async again — its guard cannot span the await")
     assert "_cmBooting" in body, "nothing caches the in-flight mount"
+
+
+def test_changing_the_shape_does_not_discard_the_table():
+    """Picking a shape turns a hand-over into a proposal — stages, varies and a
+    seeded bench.  That happens ONCE.  Re-running it on the second click meant
+    building a two-stage table with its overrides and a bench grid, changing
+    your mind about the shape, and losing all of it without a word.
+
+    Seen end to end: two stages varying mesh_cutoff 200/500 and a three-setting
+    bench became one bare `coarse` stage and the seed."""
+    src = VIEWER.read_text()
+    body = src.split("function setShape", 1)[1].split("\n}", 1)[0]
+    i_guard = body.find('_task.schema === "molbuilder/task@1"')
+    i_build = body.find("proposedFromHandover")
+    assert i_guard != -1, "nothing stops the proposal being rebuilt"
+    assert i_guard < i_build, (
+        "the rebuild runs before the guard, so the table is discarded first")
+    guard = body[i_guard:i_build]
+    assert "_task.shape = shape" in guard, "the shape is not simply edited"
