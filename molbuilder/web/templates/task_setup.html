@@ -183,6 +183,12 @@
 </div><!-- /app-content -->
 </div><!-- /app-body -->
 
+{# The sidebar's own module — it MOUNTS `window.molbuilder.projects` and lists
+   the tree.  Including `_projects_sidebar.html` gives the markup and nothing
+   else: without this the rail renders empty, no folder is ever listed, and
+   `runtime.whenReady("projects")` never resolves because nobody registers it.
+   Every tab that includes the partial loads this too. #}
+<script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='task-setup/viewer.js') }}"></script>
 </body>
 </html>
