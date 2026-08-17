@@ -66,6 +66,8 @@ JSON shape:
 from __future__ import annotations
 
 import typing
+import json
+from datetime import datetime
 from typing import Any, Dict
 
 from flask import Blueprint, jsonify, request
@@ -91,6 +93,7 @@ from molbuilder.pyscf  import render_script
 from molbuilder.siesta import render_fdf
 from molbuilder.structure import Structure
 from molbuilder.validation import validate
+from .files import _resolve_within_roots, _PickerError
 
 
 bp = Blueprint("build", __name__)
@@ -1409,3 +1412,139 @@ def _pyscf_config_from_params(params: Dict[str, Any]) -> PySCFConfig:
         PySCFConfig, params, _PYSCF_HINTS,
         none_sentinels=("solvent", "auxbasis", "dispersion"),
     )
+
+
+# --------------------------------------------------------------------- #
+#  Hand-over to Task setup                                              #
+# --------------------------------------------------------------------- #
+
+#: The hand-over file's own schema.  **Not** ``molbuilder/task@1``, and the
+#: difference is the point: this file is deliberately INCOMPLETE -- it carries
+#: what the parameter tab knows and cannot carry ``shape``, which is required
+#: with no default because inferring it "would hand somebody a directory tree
+#: they never asked for" (`engines/stages.md` § 6.7).  A file claiming
+#: ``molbuilder/task@1`` while failing its own reader is worse than one that
+#: says what it is; ``check_schema`` refuses a wrong artifact BY NAME, so this
+#: cannot be mistaken for a description anywhere.
+TASK_HANDOVER_SCHEMA = "molbuilder/task-handover@1"
+
+#: What the hand-over is called on disk.  The extension is LAST on purpose --
+#: `task.1st.json`, not `task.json.1st` -- so the editor's suffix map gives it
+#: JSON highlighting (`lib/codemirror-load.js`), and so nothing looking for
+#: `task.json` finds it.  That second half matters more than it looks:
+#: `checkpoint.py::_BUNDLE_DESCRIPTORS` treats a `task.json` as the marker that
+#: a folder "declares itself the root of one multi-directory unit of work", so
+#: writing a premature one would make the folder claim to be a calculation root
+#: before it is one (`checkpointing.md` L1).
+TASK_HANDOVER_NAME = "task.1st.json"
+
+
+@bp.route("/api/task-setup/handover", methods=["POST"])
+def api_task_setup_handover():
+    """Write the parameter tab's work into a folder, for Task setup to finish.
+
+    Two files, and neither is a runnable anything:
+
+      * ``<label>.template.toml`` -- every parameter with the value in force.
+        This is the file the parameter tab's work has been going into a void
+        for: the tab collects the physics and produces no artifact, so without
+        this there is no path from the form to a calculation at all.
+      * ``task.1st.json`` -- what the tab knows about the calculation ITSELF:
+        the engine, the structure it is of, and what it is called.
+
+    **This is a hand-over, not a description.**  `tabs.md` forbids an in-memory
+    "send to tab" hand-off, and this obeys it -- the transfer goes through disk,
+    so the receiving tab reads files like every other reader and nothing depends
+    on state you cannot see in the folder.  Task setup finishes the job: it asks
+    for the shape, takes the stages, and on a successful save writes the real
+    ``task.json`` and removes this file.
+    """
+    body = request.get_json(silent=True) or {}
+    engine = str(body.get("engine") or "siesta").lower()
+    if engine not in ("siesta", "pyscf"):
+        return jsonify({"ok": False,
+                        "error": f"unknown engine {engine!r}"}), 400
+
+    dest_raw = str(body.get("dest") or "")
+    if not dest_raw:
+        return jsonify({"ok": False,
+                        "error": "no destination folder given"}), 400
+    try:
+        dest = _resolve_within_roots(dest_raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    if not dest.is_dir():
+        return jsonify({"ok": False,
+                        "error": f"not a directory: {dest_raw}"}), 400
+
+    # REFUSE onto a described calculation.  One job per folder
+    # (`job-contracts.md § 2.1` Rule 1), and silently overwriting somebody's
+    # description with a form's contents is the worst thing this could do.
+    if (dest / "task.json").is_file():
+        return jsonify({
+            "ok": False,
+            "error": "this folder already holds a task.json — it is a "
+                     "described calculation. Pick or make another folder; "
+                     "one job per folder.",
+        }), 409
+
+    try:
+        struct = _struct_from_body(body)
+    except (ValueError, TypeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    params: Dict[str, Any] = body.get("params") or {}
+    try:
+        cfg = (_siesta_config_from_params(params) if engine == "siesta"
+               else _pyscf_config_from_params(params))
+    except (ValueError, TypeError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    from molbuilder.identity import normalise_id, run_id
+    from molbuilder.template import template_with_values
+
+    typed = str(body.get("name") or "") or dest.name
+    label = normalise_id(typed)
+    formula = str(getattr(struct, "formula", "") or "")
+
+    try:
+        template_text = template_with_values(cfg, engine=engine)
+    except Exception as exc:                      # a bad value, named
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    handover = {
+        "schema":    TASK_HANDOVER_SCHEMA,
+        # JSON has no comments, so the file carries a line that says what it
+        # is.  It IS read by a person -- Task setup shows it in the editor --
+        # and a file whose whole job is to be handed between two surfaces
+        # should not need a document open beside it to be understood.
+        "_what":     "A hand-over from the Structure-optimization tab, not a "
+                     "description. It carries the parameters (in the .template.toml "
+                     "beside it) plus what this calculation is OF. It is missing "
+                     "`shape` and `stages` on purpose -- Task setup asks for those, "
+                     "and on a successful save writes the real task.json and deletes "
+                     "this file. Nothing runs from it.",
+        "engine":    {"name": engine},
+        "run":       {"name": typed,
+                      "id": run_id(typed, formula),
+                      "created": datetime.now().astimezone().isoformat(timespec="seconds")},
+        "structure": {"source":  str(body.get("structure_path") or ""),
+                      "formula": formula,
+                      "atoms":   len(getattr(struct, "elements", []) or [])},
+        # No `shape`, no `stages` -- Task setup asks.  Stated rather than
+        # omitted so a reader of the file knows it is waiting on them.
+        "awaiting":  ["shape", "stages"],
+    }
+
+    tmpl_name = f"{label}.template.toml"
+    try:
+        (dest / tmpl_name).write_text(template_text, encoding="utf-8")
+        (dest / TASK_HANDOVER_NAME).write_text(
+            json.dumps(handover, indent=2) + "\n", encoding="utf-8")
+    except OSError as exc:
+        return jsonify({"ok": False, "error": f"could not write: {exc}"}), 500
+
+    return jsonify({"ok": True,
+                    "dest":  str(dest),
+                    "files": [tmpl_name, TASK_HANDOVER_NAME],
+                    "label": label})

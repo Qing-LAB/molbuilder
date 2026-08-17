@@ -22,7 +22,12 @@
 
 import { loadCodeMirror, modeFor } from "../lib/codemirror-load.js";
 
-const TASK_JSON = "task.json";
+const TASK_JSON     = "task.json";
+/* The hand-over a parameter tab leaves (`stages.md` § 6.5a).  Read ONLY when
+ * there is no `task.json` -- a folder holding both is a save that did not
+ * finish, and the description wins because it is the one that passed the
+ * preflight. */
+const TASK_HANDOVER = "task.1st.json";
 
 /* The three items whose value the MACHINE answers.  Each names an allocation
  * resolver, and `read_template` refuses a value on one — a description may
@@ -216,6 +221,9 @@ async function loadFolder(projects, dir) {
     }
 
     const taskText = await readOptional(projects, dir + "/" + TASK_JSON);
+    const overText = taskText
+        ? null
+        : await readOptional(projects, dir + "/" + TASK_HANDOVER);
 
     // What is already on disk, so the file list tells the truth rather than a
     // guess.  A listing failure is not fatal — the read above is what matters.
@@ -231,6 +239,24 @@ async function loadFolder(projects, dir) {
     markFile("ts-f-task", !!taskText, "already here — saving would update it");
     markFile("ts-f-tmpl", !!templateName, "already here — saving would update it");
     if (templateName) $("ts-f-tmpl-name").textContent = templateName;
+
+    // A hand-over: the parameters arrived, the description has not been
+    // finished.  Show the file so it can be read, and say what is missing.
+    if (!taskText && overText) {
+        let over = null;
+        try { over = JSON.parse(overText); } catch (_) { /* shown raw below */ }
+        const awaiting = (over && Array.isArray(over.awaiting))
+            ? over.awaiting.join(" and ") : "shape and stages";
+        setState("handover",
+                 "Handed over — not a description yet",
+                 `${TASK_HANDOVER} is here, carrying the parameters. Still `
+                 + `needed: ${awaiting}. Saving writes task.json and removes `
+                 + `this file.`);
+        $("ts-stages-card").hidden = true;
+        renderMachine(over || {});
+        await setEditorText(overText);
+        return;
+    }
 
     if (!taskText) {
         setState("empty", "No description here yet",

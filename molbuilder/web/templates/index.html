@@ -248,6 +248,24 @@
       <ul id="pyscf-issues" class="issues-panel" hidden
           aria-label="PySCF configuration validation issues"></ul>
       </div><!-- /#tab-pyscf -->
+
+      {#- The hand-off.  This tab collects parameters and produces no artifact,
+          so without this the form's work has nowhere to go.  It writes the
+          template + task.1st.json into the sidebar's selected folder and opens
+          Task setup there -- through DISK, never in memory, which is the rule
+          tabs.md § 1 states and the reason there is no other "send to tab"
+          button in the app. -#}
+      <div class="handover-bar">
+        <button type="button" id="send-to-task-setup" class="primary">
+          Send to Task setup &rarr;
+        </button>
+        <p class="hint" id="handover-hint">
+          Writes <code>&lt;label&gt;.template.toml</code> and
+          <code>task.1st.json</code> into the folder selected in the sidebar,
+          then opens Task setup there. Nothing runs.
+        </p>
+        <p class="status" id="handover-status" hidden></p>
+      </div>
     </section>
 
 </main>

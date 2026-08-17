@@ -217,3 +217,116 @@ def test_the_tab_reuses_the_shipped_files_api(endpoint, web_client):
     """No new endpoint was added for this tab; both already ship."""
     r = web_client.get(endpoint, query_string={"path": ""})
     assert r.status_code != 404, f"{endpoint} is missing"
+
+
+# --------------------------------------------------------------------- #
+#  The hand-over (`stages.md` § 6.5a)                                    #
+# --------------------------------------------------------------------- #
+
+import json as _json
+import shutil as _shutil
+
+
+def _fresh_calc_dir():
+    """A directory inside the configured root — the picker refuses anything
+    outside it, which is the guard working, not a test problem."""
+    d = ROOT / "projects/_t_handover/optimization/probe_calc"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _envelope():
+    return {"structure": {"elements": ["H", "H"],
+                          "positions": [[0, 0, 0], [0, 0, 0.74]],
+                          "metadata": {}}}
+
+
+def test_handover_writes_a_partial_that_declares_itself(web_client):
+    """It writes the template + `task.1st.json`, and that file says what it is.
+
+    The schema is deliberately NOT `molbuilder/task@1`: without `shape` it
+    would fail that reader, and `check_schema` refuses a wrong artifact by
+    name.  `_what` and `awaiting` exist because a person reads this file in an
+    editor and should not need a document open beside it.
+    """
+    d = _fresh_calc_dir()
+    try:
+        body = dict(_envelope(), engine="siesta", dest=str(d),
+                    name="probe calc", params={"system_label": "probe"})
+        r = web_client.post("/api/task-setup/handover", json=body)
+        assert r.status_code == 200, r.get_json()
+        out = r.get_json()
+        assert out["ok"] is True
+        assert "task.1st.json" in out["files"]
+
+        h = _json.loads((d / "task.1st.json").read_text())
+        assert h["schema"] == "molbuilder/task-handover@1"
+        assert "shape" not in h and "stages" not in h, (
+            "the hand-over must not assert a shape — it is required with no "
+            "default because inferring it hands you a tree you did not ask for")
+        assert h["awaiting"] == ["shape", "stages"]
+        assert h["_what"], "the file does not say what it is"
+        assert list(d.glob("*.template.toml")), "no template was written"
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+
+
+def test_handover_refuses_onto_a_described_calculation(web_client):
+    """One job per folder (`job-contracts.md § 2.1` Rule 1).  Overwriting a
+    description with a form's contents is the worst thing this could do."""
+    d = _fresh_calc_dir()
+    try:
+        (d / "task.json").write_text("{}")
+        body = dict(_envelope(), engine="siesta", dest=str(d),
+                    name="probe calc", params={"system_label": "probe"})
+        r = web_client.post("/api/task-setup/handover", json=body)
+        assert r.status_code == 409, r.status_code
+        assert "one job per folder" in r.get_json()["error"]
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+
+
+def test_handover_refuses_outside_the_roots(web_client):
+    """The picker's roots guard covers this door like every other."""
+    body = dict(_envelope(), engine="siesta", dest="/tmp",
+                name="x", params={"system_label": "probe"})
+    r = web_client.post("/api/task-setup/handover", json=body)
+    assert r.status_code >= 400
+    assert "root" in str(r.get_json().get("error", "")).lower()
+
+
+def test_the_tab_reads_the_handover_only_when_there_is_no_description():
+    """A folder holding both is a save that did not finish; the description
+    wins, because it is the one that passed the preflight."""
+    src = VIEWER.read_text()
+    assert "task.1st.json" in src, "the tab does not know the hand-over"
+    assert re.search(r"taskText\s*\n?\s*\?\s*null", src) or "taskText ?" in src, (
+        "the hand-over should be read only when task.json is absent")
+
+
+def test_the_handover_button_calls_only_helpers_that_exist():
+    """The button lives in `structure-optimization/viewer.js` because the two
+    things it needs are private to that file.
+
+    Written first as its own module against `structurePage.structureEnvelope()`
+    and `formSchema.lastSchema()` — **neither of which exists**.  It would have
+    parsed, loaded, and silently done nothing useful.  Same failure class as
+    passing `missing_ok` where the API takes `missingOk`: a name that is wrong
+    rather than code that is wrong.
+    """
+    src = (STATIC / "structure-optimization/viewer.js").read_text()
+    assert "send-to-task-setup" in src, "the hand-over button is not wired"
+    assert "/api/task-setup/handover" in src
+
+    for helper in ("_structureForRequest", "collectFdfParams",
+                   "collectPyscfParams", "_activeEngine"):
+        assert f"function {helper}" in src, (
+            f"{helper} is called by the hand-over but not defined here")
+
+    for invented in ("structureEnvelope", "lastSchema"):
+        assert invented not in src, (
+            f"{invented} does not exist anywhere in the tree")
+
+    assert not (STATIC / "structure-optimization/handover.js").exists(), (
+        "the standalone hand-over module is back; it cannot reach the "
+        "private helpers and would have to duplicate them")

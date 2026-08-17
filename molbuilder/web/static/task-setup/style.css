@@ -95,6 +95,13 @@
     background: var(--ts-refuse-bg);
 }
 .ts-state[data-state="loaded"] { border-color: var(--accent); }
+/* A hand-over is neither an error nor a finished description: work is
+ * waiting on you.  The measured hue, because it is the same "you have
+ * something to decide" signal the points rows use. */
+.ts-state[data-state="handover"] {
+    border-color: var(--ts-measured);
+    background: var(--ts-measured-bg);
+}
 .ts-state-title {
     font-weight: var(--weight-semibold);
     color: var(--text-primary);

@@ -873,6 +873,38 @@ delete. The cost is one word typed; what it buys is that the command a user
 learns on their first calculation is the command that still works on their
 tenth.
 
+### 6.5a The hand-over — a partial description, and why it is a different file
+
+*Added 2026-08-16 (user).* A parameter surface can collect the physics but
+cannot answer `shape`, which is **required with no default** (§ 6.7) — so what
+it produces is not yet a description. It writes **`task.1st.json`**
+(`molbuilder/task-handover@1`) beside the template, and the surface that asks
+for the shape finishes the job.
+
+**Why not just write `task.json` early and fill it in.** Its *presence* is a
+claim, not a convenience: `checkpoint.py::_BUNDLE_DESCRIPTORS` treats a
+`task.json` as the marker that a folder **declares itself the root of one
+multi-directory unit of work** (`checkpointing.md` L1). A premature one makes a
+folder claim to be a calculation root before it is one. The same shape as
+`run.json`, which "cannot be the carrier — its presence is what marks an attempt
+as launched, so it must not exist beforehand"
+([`project-layout.md § 1.6`](?doc=execution/project-layout.md)), and which
+answers with the same device: a private carrier between two steps of one act.
+
+**Three rules, and each one is doing work:**
+
+| | |
+|---|---|
+| **its own schema** | `molbuilder/task-handover@1`, never `molbuilder/task@1`. It has no `shape`, so it would fail that schema's reader — and a file claiming a schema it does not satisfy is worse than one that says what it is. `check_schema` refuses a wrong artifact **by name**, so nothing can read it as a description by accident (`job-contracts.md § 6.1`) |
+| **the extension is last** | `task.1st.json`, not `task.json.1st`. Highlighting is chosen by suffix, so the second spelling renders as plain text in the editor a person is meant to read it in; and nothing that looks for `task.json` matches it |
+| **it says what it is** | JSON carries no comments, so the file opens with a `_what` line and an `awaiting` list naming the keys it lacks. It is read by a **person**, in an editor, and should not need a document open beside it |
+
+**It resolves in one direction only.** On a successful save the real `task.json`
+is written and the hand-over is **deleted**, so the next visit to that folder
+finds one description and no ambiguity about which file is current. A folder
+holding both is a save that did not finish; the description wins, because it is
+the one that passed § 6.6's preflight.
+
 ### 6.6 The preflight
 
 In order, and all of it before anything is written:

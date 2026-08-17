@@ -1519,4 +1519,95 @@ import { mount as mvMount, formula as mvFormula }
             el.addEventListener(event, () => refreshPreflightDebounced[which]());
         });
     }
+    /* ---------------------------------------------------------------- *
+     *  Send to Task setup — the hand-off                                *
+     * ---------------------------------------------------------------- *
+     * This tab collects parameters and produces no artifact, so until this
+     * existed the form's work had nowhere to go at all.  The button writes
+     * two files into the folder the projects sidebar has selected, then
+     * opens Task setup there.
+     *
+     * THROUGH DISK, NEVER IN MEMORY.  `web/tabs.md` § 1 forbids an in-memory
+     * "send to tab" hand-off and lists four costs: a result depending on
+     * hidden state, re-running silently producing something different, two
+     * people getting different answers, export losing information.  Writing
+     * the files first keeps all four bought.
+     *
+     * It lives HERE rather than in its own module because the two things it
+     * needs -- `_structureForRequest()` and the collect*Params() pair -- are
+     * private to this file.  A separate module would have to re-derive them,
+     * which is the duplication this codebase keeps paying for.
+     */
+    function _handoverSay(kind, text) {
+        const n = document.getElementById("handover-status");
+        if (!n) return;
+        n.hidden = false;
+        n.className = "status " + kind;      // page-shell owns the severities
+        n.textContent = text;
+    }
+
+    async function _sendToTaskSetup() {
+        const projects = window.molbuilder && window.molbuilder.projects;
+        const dest = (projects && typeof projects.getCurrentDir === "function")
+            ? projects.getCurrentDir() : "";
+        if (!dest) {
+            _handoverSay("warn", "Pick the folder to write into, in the "
+                + "sidebar first — this button writes into the selected "
+                + "folder and creates none of its own.");
+            return;
+        }
+        const structure = _structureForRequest();
+        if (!structure) {
+            _handoverSay("warn", "Load a structure first — a description is "
+                + "of something.");
+            return;
+        }
+        const engine = _activeEngine();
+        const params = (engine === "siesta")
+            ? collectFdfParams() : collectPyscfParams();
+
+        _handoverSay("muted", "Writing…");
+        let body;
+        try {
+            const r = await fetch("/api/task-setup/handover", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    structure, engine, params, dest,
+                    name: (dest.split("/").filter(Boolean).pop() || ""),
+                    structure_path:
+                        (projects && typeof projects.getCurrentFile === "function")
+                            ? projects.getCurrentFile() : "",
+                }),
+            });
+            body = await r.json();
+            if (!r.ok || !body || body.ok === false) {
+                _handoverSay("error",
+                    (body && body.error) || ("write failed (" + r.status + ")"));
+                return;
+            }
+        } catch (e) {
+            _handoverSay("error", "Could not reach the server: "
+                + (e && e.message ? e.message : e));
+            return;
+        }
+        _handoverSay("ok", "Wrote " + (body.files || []).join(" and ")
+            + " — opening Task setup…");
+        // The sidebar's selection is shared through sessionStorage, so Task
+        // setup opens on the same folder without this handing it anything.
+        window.location.href = "/task-setup";
+    }
+
+    /** Which engine's form is showing — the one the user has been filling. */
+    function _activeEngine() {
+        const pyscf = document.getElementById("tab-pyscf");
+        const showing = pyscf && !pyscf.hidden
+            && getComputedStyle(pyscf).display !== "none";
+        return showing ? "pyscf" : "siesta";
+    }
+
+    {
+        const _btn = document.getElementById("send-to-task-setup");
+        if (_btn) _btn.addEventListener("click", _sendToTaskSetup);
+    }
 })();
