@@ -1062,3 +1062,40 @@ def test_a_folder_with_no_history_gets_one_before_the_first_save():
         "init is still gated on `ok`, which is false for every folder that "
         "has never been checkpointed — the ones that need init")
     assert "!st.initialised" in body, "nothing asks whether a history exists"
+
+
+def test_save_is_blocked_while_the_checkpoint_has_no_note():
+    """`saveState` requires a note (`checkpointing.md` L4 — nothing writes a
+    message on your behalf), and the save aborts rather than writing without
+    the state it was told to keep.  With the box ticked by default and the note
+    empty, the button was live and the only way to learn that was to press it
+    and read a refusal.  The condition is knowable before the click."""
+    src = VIEWER.read_text()
+    body = src.split("function refreshSave", 1)[1].split("\nasync function save", 1)[0]
+    assert "wantsCheckpoint()" in body and "checkpointNote()" in body, (
+        "the button does not consider the checkpoint it is about to run")
+    assert "blocked" in body.split("checkpointNote()", 1)[1][:200], (
+        "an empty note does not block the button")
+    watch = src.split("function watchCheckpointControls", 1)[1].split("\n}", 1)[0]
+    assert "ts-ckpt-note" in watch and "ts-ckpt" in watch, (
+        "nothing re-decides the button as the note is typed")
+
+
+def test_the_structure_pair_is_not_reported_as_engine_state():
+    """`warm_files_present` answers *has anything run here* by SUBTRACTION —
+    anything named after the label that is not on `OUR_FILE_PATTERNS` is the
+    engine's.  The hand-over started writing `<label>.xyz` +
+    `<label>.molstruct.json` into the bundle, so `prep` announced a brand-new
+    calculation as "already under way here: warm files at the root" and offered
+    a person their own input back as engine state."""
+    from molbuilder.validation.identity import warm_files_present
+    import tempfile, pathlib as _pl
+    with tempfile.TemporaryDirectory() as d:
+        base = _pl.Path(d)
+        for n in ("slab.xyz", "slab.molstruct.json", "slab.template.toml"):
+            (base / n).write_text("x")
+        assert warm_files_present(base, "slab", "siesta") == [], (
+            "the hand-over's own files are reported as engine warm files")
+        (base / "slab.XV").write_text("x")
+        assert warm_files_present(base, "slab", "siesta") == ["slab.XV"], (
+            "a real warm file stopped being detected")

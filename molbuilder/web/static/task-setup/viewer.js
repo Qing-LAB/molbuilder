@@ -1023,7 +1023,32 @@ function setShape(shape) {
 }
 
 /** Save is enabled only when it could actually succeed. */
+/** Is a state being kept before this write? */
+function wantsCheckpoint() {
+    const box = $("ts-ckpt");
+    return !!(box && box.checked);
+}
+
+/** The note that state would carry, trimmed. */
+function checkpointNote() {
+    const el = $("ts-ckpt-note");
+    return ((el && el.value) || "").trim();
+}
+
+/* The button's answer depends on these two, so it is recomputed when they
+ * change -- otherwise it is only ever right at the moment the page loaded. */
+function watchCheckpointControls() {
+    for (const id of ["ts-ckpt", "ts-ckpt-note"]) {
+        const el = $(id);
+        if (!el || el.dataset.mbWatched) continue;
+        el.dataset.mbWatched = "1";
+        el.addEventListener("input", refreshSave);
+        el.addEventListener("change", refreshSave);
+    }
+}
+
 function refreshSave() {
+    watchCheckpointControls();
     const btn = $("ts-save");
     const why = $("ts-save-why");
     if (!btn) return;
@@ -1031,6 +1056,13 @@ function refreshSave() {
     if (!_dir)                                    blocked = "Pick a folder first.";
     else if (_mode === "empty")                   blocked = "Nothing to save — this folder carries no description and no hand-over.";
     else if (_mode === "handover" && !_shape)     blocked = "Choose how the files are kept apart, above.";
+    /* A ticked checkpoint with no note cannot succeed: `saveState` requires
+     * one (`checkpointing.md` L4 -- nothing writes a message on your behalf),
+     * and the save aborts rather than writing without the state it was asked
+     * to keep.  Leaving the button live meant you found that out by pressing
+     * it and reading a refusal.  The condition was always knowable here. */
+    else if (wantsCheckpoint() && !checkpointNote())
+        blocked = "The checkpoint needs a note — say what this state is, or untick it.";
     btn.disabled = !!blocked;
     if (why) {
         why.textContent = blocked
@@ -1055,9 +1087,9 @@ async function save() {
      * change can be brought back; writing anyway would silently spend the
      * safety net you asked for. */
     const projects0 = window.molbuilder && window.molbuilder.projects;
-    const wantCkpt = $("ts-ckpt") && $("ts-ckpt").checked;
+    const wantCkpt = wantsCheckpoint();
     if (wantCkpt && projects0 && projects0.checkpoint) {
-        const note = ($("ts-ckpt-note") && $("ts-ckpt-note").value) || "";
+        const note = checkpointNote();
         /* `status` answers `ok:false` for a folder that simply has no history
          * yet -- `ok` there means "this folder is under checkpointing", not
          * "the query worked".  Reading it as the latter skipped `init` for

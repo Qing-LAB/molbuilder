@@ -142,6 +142,18 @@ MAX_LABEL_BYTES = _NAME_LIMIT - _STAGE_BUDGET - len(_LONGEST_EXTENSION)
 OUR_FILE_PATTERNS: Sequence[str] = (
     # inputs we generated
     "{label}.fdf", "{label}_*.fdf", "{label}.template.toml",
+    # THE STRUCTURE THE CALCULATION IS OF, written into the bundle by the
+    # hand-over (`web/handover-procedure.md`).  Added 2026-08-16, the same day
+    # molbuilder started writing them: before that the pair did not exist in a
+    # bundle, so the subtraction never saw it -- and the moment it did, `prep`
+    # announced a fresh calculation as *"already under way -- warm files at the
+    # root"* and offered a person's own input back to them as engine state.
+    #
+    # `{label}.xyz` is claimed even though SIESTA's `WriteCoorXmol` writes a
+    # `<SystemLabel>.xyz`, because the two never collide HERE: this question is
+    # asked at the BUNDLE ROOT, and an engine runs in `<stage>/run-<n>/`.  The
+    # sidecar is unambiguous -- nothing but molbuilder writes that format.
+    "{label}.xyz", "{label}.molstruct.json",
     "{label}.py", "{label}_*.py",
     # the wrapper and its scheduler header
     "{label}.run.sh", "{label}_*.run.sh",
