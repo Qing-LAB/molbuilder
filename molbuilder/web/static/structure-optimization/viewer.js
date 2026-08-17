@@ -566,6 +566,109 @@ import { mount as mvMount, formula as mvFormula }
     // schemas to build the persistence ID list.
     const formSchemas = { siesta: null, pyscf: null };
 
+
+    /* ---------- what is not at the recommended value ----------------
+     *
+     * A single "reset everything" button cannot tell a deliberate 4x4x1
+     * k-grid from a value that arrived with an older session, and both
+     * live in the same form.  So this LISTS the differences and resets
+     * only what is ticked.
+     *
+     * The comparison is `formSchema.diffFromDefaults` -- the module that
+     * already owns "what the DOM holds" and "what the schema says".
+     * Reading the inputs here would mean a second reader for every kind
+     * that module handles.
+     */
+    function mountRecommended(engine, container, schema) {
+        const panel = $(engine + "-recommend");
+        if (!panel) return;
+        const listEl  = panel.querySelector(".rec-diff-list");
+        const countEl = panel.querySelector(".rec-diff-count");
+        const resetEl = panel.querySelector(".rec-diff-reset");
+        const allEl   = panel.querySelector(".rec-diff-all");
+        const fs = (window.molbuilder || {}).formSchema;
+        if (!listEl || !fs || typeof fs.diffFromDefaults !== "function") return;
+
+        function show(v) {
+            if (Array.isArray(v)) return v.join(", ");
+            if (v === true) return "on";
+            if (v === false) return "off";
+            if (v === null || v === undefined || v === "") return "(empty)";
+            return String(v);
+        }
+
+        function ticked() {
+            return Array.from(listEl.querySelectorAll("input:checked"))
+                        .map((c) => c.value);
+        }
+
+        function refresh() {
+            let diffs = [];
+            try { diffs = fs.diffFromDefaults(container, schema); }
+            catch (_) { return; }          // a half-rendered form is not an error
+            if (!diffs.length) {
+                panel.hidden = true;
+                listEl.textContent = "";
+                return;
+            }
+            panel.hidden = false;
+            countEl.textContent = diffs.length === 1
+                ? "1 parameter is not at its recommended value"
+                : diffs.length + " parameters are not at their recommended values";
+            listEl.textContent = "";
+            for (const d of diffs) {
+                const li = document.createElement("li");
+                const lab = document.createElement("label");
+                const cb = document.createElement("input");
+                cb.type = "checkbox"; cb.value = d.name;
+                const name = document.createElement("span");
+                name.className = "rec-diff-name";
+                name.textContent = d.label;
+                const now = document.createElement("span");
+                now.className = "rec-diff-now";
+                now.textContent = show(d.current) + (d.unit ? " " + d.unit : "");
+                const rec = document.createElement("span");
+                rec.className = "rec-diff-rec";
+                rec.textContent = show(d.recommended) + (d.unit ? " " + d.unit : "");
+                lab.title = [d.name, d.help].filter(Boolean).join("\n\n");
+                lab.append(cb, name, now, rec);
+                li.append(lab);
+                listEl.append(li);
+            }
+            resetEl.disabled = true;
+        }
+
+        listEl.addEventListener("change", () => {
+            resetEl.disabled = ticked().length === 0;
+        });
+
+        allEl.addEventListener("click", () => {
+            const boxes = listEl.querySelectorAll("input[type=checkbox]");
+            const turnOn = ticked().length !== boxes.length;
+            boxes.forEach((c) => { c.checked = turnOn; });
+            resetEl.disabled = !turnOn;
+        });
+
+        resetEl.addEventListener("click", () => {
+            const want = new Set(ticked());
+            if (!want.size) return;
+            let diffs = [];
+            try { diffs = fs.diffFromDefaults(container, schema); }
+            catch (_) { return; }
+            const values = {};
+            for (const d of diffs) if (want.has(d.name)) values[d.name] = d.recommended;
+            fs.setValues(container, schema, values);
+            refresh();
+        });
+
+        // The form is also written by the compatibility engine and by
+        // session restore, so the panel follows the DOM rather than only
+        // the user's typing.
+        container.addEventListener("change", refresh);
+        container.addEventListener("input", refresh);
+        refresh();
+    }
+
     async function initFormsFromSchema() {
         const fs = (window.molbuilder || {}).formSchema;
         if (!fs) {
@@ -585,6 +688,8 @@ import { mount as mvMount, formula as mvFormula }
             const pyscfC  = $("pyscf-form-container");
             if (siestaC) fs.renderForm(siestaC, siesta);
             if (pyscfC)  fs.renderForm(pyscfC,  pyscf);
+            if (siestaC) mountRecommended("siesta", siestaC, siesta);
+            if (pyscfC)  mountRecommended("pyscf",  pyscfC,  pyscf);
         } catch (exc) {
             console.error("could not load build-form schema:", exc);
             // Surface a visible failure so the user knows the

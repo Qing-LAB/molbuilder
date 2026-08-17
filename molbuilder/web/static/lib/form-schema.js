@@ -21,6 +21,11 @@
  *     ``{system_label: "siesta", kgrid: [1,1,1], spin_total: null, ...}``
  *     that the existing build endpoints accept verbatim.
  *
+ *   * diffFromDefaults(container, schema) -- which fields are not
+ *     at the schema's recommended value, as
+ *     ``[{name, label, current, recommended, unit, help}]``.  Fields
+ *     with no default are skipped; there is nothing to reset them to.
+ *
  *   * fetchSchema(engine) -- thin wrapper around
  *     GET /api/build/schema/<engine> that throws on error and
  *     returns the schema body.
@@ -1107,11 +1112,59 @@
         }
     }
 
+
+    /* ---- diffFromDefaults(container, schema) ------------------------
+     * Which fields are NOT at the catalogue's recommended value, and
+     * what each would go back to.
+     *
+     * This belongs beside collectForm/setValues rather than in a tab,
+     * because it is the same pair of facts those two already own: what
+     * the DOM currently holds, and what the schema says.  A tab that
+     * compared them itself would need its own reader for every kind
+     * this module already handles.
+     *
+     * A field with no `default` is SKIPPED -- there is nothing to
+     * recommend, so offering to reset it would mean blanking a value
+     * on the user's behalf.
+     */
+    function diffFromDefaults(container, schema) {
+        const current = collectForm(container, schema);
+        const out = [];
+        for (const sec of (schema.sections || [])) {
+            for (const f of (sec.fields || [])) {
+                if (f.default === undefined || f.default === null) continue;
+                const now = current[f.name];
+                if (same(now, f.default)) continue;
+                out.push({
+                    name: f.name,
+                    label: f.label || f.name,
+                    current: now,
+                    recommended: f.default,
+                    unit: f.unit || "",
+                    help: f.help || "",
+                });
+            }
+        }
+        return out;
+    }
+
+    /* Values arrive typed (numbers, arrays, booleans), so comparing the
+     * JSON is right for the composite kinds and safe for the scalars.
+     * The one trap is 300 vs "300" -- a field the user typed into may
+     * read back as text -- so numbers are compared numerically first. */
+    function same(a, b) {
+        if (typeof b === "number" && a !== null && a !== "" && !isNaN(Number(a))) {
+            return Number(a) === b;
+        }
+        return JSON.stringify(a) === JSON.stringify(b);
+    }
+
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.formSchema = {
         renderForm:  renderForm,
         collectForm: collectForm,
         fetchSchema: fetchSchema,
         setValues:   setValues,
+        diffFromDefaults: diffFromDefaults,
     };
 })(typeof window !== "undefined" ? window : this);

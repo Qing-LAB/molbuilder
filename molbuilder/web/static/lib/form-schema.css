@@ -677,3 +677,65 @@ fieldset select:disabled {
     padding-top: 8px;
     border-top: 1px solid var(--border-soft);
 }
+
+/* ---- the recommended-value panel -----------------------------------
+ *
+ * Owned HERE rather than by a tab sheet because the widget is generic:
+ * it works off `formSchema.diffFromDefaults`, so any page rendering a
+ * schema form can carry it, and `ui-contract.md` § 1 gives a shared
+ * element exactly one owner.  The tab sheet keeps only placement.
+ *
+ * Every colour and length is a token — see lib/tokens.css --rec-*.
+ */
+.rec-diff {
+    border: 1px solid var(--rec-flag);
+    background: var(--rec-flag-bg);
+    border-radius: var(--radius-sm, 4px);
+    padding: var(--space-sm, 0.5rem) var(--space-md, 0.75rem);
+    margin-block: var(--space-md, 0.75rem);
+}
+
+.rec-diff > summary {
+    cursor: pointer;
+    color: var(--rec-flag);
+    font-weight: 600;
+}
+
+.rec-diff-list {
+    list-style: none;
+    margin: var(--space-sm, 0.5rem) 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--rec-row-gap);
+}
+
+.rec-diff-list label {
+    display: grid;
+    grid-template-columns: auto var(--rec-name-w) var(--rec-val-w) var(--rec-val-w);
+    align-items: baseline;
+    gap: var(--space-sm, 0.5rem);
+    cursor: pointer;
+}
+
+/* Digits line up down the column, so a changed order of magnitude reads
+ * at a glance rather than needing to be counted. */
+.rec-diff-now,
+.rec-diff-rec { font-variant-numeric: tabular-nums; }
+
+.rec-diff-now { color: var(--rec-flag); }
+.rec-diff-rec { color: var(--rec-ok); }
+
+/* The arrow says which direction "reset" moves, without a third column
+ * of words repeating it on every row. */
+.rec-diff-rec::before { content: "→ "; opacity: 0.7; }
+
+.rec-diff-actions {
+    display: flex;
+    gap: var(--space-sm, 0.5rem);
+    margin-top: var(--space-md, 0.75rem);
+}
+
+@media (max-width: 40rem) {
+    .rec-diff-list label { grid-template-columns: auto 1fr; }
+}

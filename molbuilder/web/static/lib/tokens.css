@@ -229,6 +229,18 @@
      * is a choice you made, SEVERAL is a measurement you asked for
      * (`task-setup.md` § 6).  They are deliberately different hues so the
      * distinction survives a glance down the column. */
+    /* ---- the recommended-value panel (lib/form-schema.css) ----------
+     * A parameter away from its recommendation is a FLAG, not an error --
+     * a 4x4x1 k-grid is a correct answer that differs.  So it borrows the
+     * passive --warn-soft tone, never --warning, which this palette
+     * reserves for a call to action. */
+    --rec-flag:      var(--warn-soft);
+    --rec-flag-bg:   rgba(216, 166, 75, 0.10);
+    --rec-ok:        var(--accent);       /* what it would go back to */
+    --rec-row-gap:   0.35rem;
+    --rec-name-w:    14rem;
+    --rec-val-w:     7rem;
+
     --ts-chosen:        var(--accent);      /* one point — your decision */
     --ts-chosen-bg:     var(--accent-bg);
     --ts-measured:      var(--warn-soft);   /* several points — a sweep */

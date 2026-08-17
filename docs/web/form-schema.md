@@ -256,7 +256,7 @@ flowchart LR
 Because both directions start from the one dataclass, the form a user fills in
 and the config the server rebuilds can't drift apart.
 
-## 3. The four calls
+## 3. The five calls
 
 Everything is on `window.molbuilder.formSchema` (a plain global — it does not
 register with the runtime):
@@ -267,6 +267,28 @@ register with the runtime):
 | `renderForm(host, schema)` | Draw the form from that shape into a host element. |
 | `collectForm(host, schema)` | Read the filled-in controls back into a plain values object (the schema tells it how to read each kind). |
 | `setValues(host, schema, values)` | Push a set of values into an already-drawn form (e.g. to restore a saved config). |
+| `diffFromDefaults(host, schema)` | Which fields are **not** at the catalogue's recommended value, as `[{name, label, current, recommended, unit, help}]`. |
+
+### 3.1 Why the difference is computed here
+
+`diffFromDefaults` needs both halves this module already owns — what the DOM
+holds and what the schema says — so a page that compared them itself would need
+its own reader for every kind in § 4. It skips a field with **no `default`**:
+there is nothing to recommend, so offering to reset it would mean blanking a
+value on the user's behalf.
+
+Two comparison rules, each earned by a way the naive version misleads:
+
+* **Numbers compare numerically.** A control reads back as text, so a JSON
+  comparison alone makes `"300"` differ from `300` and flags a field the moment
+  it is focused. A panel that cries wolf is one nobody reads.
+* **Composite kinds compare whole.** A k-grid is one decision, not three —
+  element-wise it would be reported three times and reset a third at a time.
+
+**The consumer is the recommended-value panel** on the structure-optimization
+forms: it lists what differs and resets only what is ticked. One "reset
+everything" button cannot tell a deliberate 4×4×1 k-grid from a value that
+arrived with an older session, and both live in the same form.
 
 ## 4. What each field type becomes
 
