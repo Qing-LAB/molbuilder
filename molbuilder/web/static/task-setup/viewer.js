@@ -273,8 +273,25 @@ function renderMachine(task) {
 
 /* ---------- the editor ---------- */
 
-async function ensureEditor() {
-    if (_cm) return _cm;
+/* SINGLE-FLIGHT, because this is async and the guard used to be on the
+ * RESULT.  Two callers arriving before the first finished both saw `_cm ===
+ * null`, both awaited the loader, and both constructed an editor into
+ * `#ts-editor` -- three of them stacked in the live page, the top two showing
+ * text from before the shape was chosen.  Every edit went to the newest
+ * instance and every reading came from the oldest, so the whole panel looked
+ * dead: rows would not add, points would not drop, and the JSON on screen
+ * never moved.  Caching the PROMISE is what makes the guard hold across the
+ * await. */
+let _cmBooting = null;
+
+function ensureEditor() {
+    if (_cm) return Promise.resolve(_cm);
+    if (_cmBooting) return _cmBooting;
+    _cmBooting = _bootEditor();
+    return _cmBooting;
+}
+
+async function _bootEditor() {
     const CM = await loadCodeMirror();
     // Highlighting comes from the SUFFIX, and the mode file is fetched only
     // when a file of that kind is first opened (`lib/codemirror-load.js`).
@@ -471,6 +488,13 @@ async function syncFromModel() {
     if (!_task) return;
     await setEditorText(JSON.stringify(_task, null, 2) + "\n");
     renderStages(_task);
+    // THE MACHINE ROWS TOO.  Every bench verb -- addPoint, removePoint,
+    // removeSetting -- ends here, and this function re-rendered everything
+    // except the card those verbs act on.  So a point was added to the model,
+    // written into the JSON on screen, and the row it belonged to went on
+    // showing the old chips: the panel looked inert while the file underneath
+    // it was changing.
+    renderMachine(_task);
     renderNext(_task);
     refreshPickers();
     refreshSave();

@@ -1248,3 +1248,30 @@ def test_the_file_list_shows_the_structure_the_calculation_is_of():
     assert ".endsWith(\".xyz\")" not in body, (
         "the structure is being found by globbing rather than by name")
     assert 'markFile("ts-f-struct"' in body and 'markFile("ts-f-side"' in body
+
+
+def test_a_bench_edit_repaints_the_row_it_changed():
+    """`syncFromModel` is where every editing verb ends, and it re-rendered
+    everything except the machine card.  So `addPoint` put the point in the
+    model and in the JSON on screen while the row went on showing the old
+    chips — the bench panel looked inert while the file underneath it moved."""
+    src = VIEWER.read_text()
+    body = src.split("async function syncFromModel", 1)[1].split("\n}", 1)[0]
+    for verb in ("renderStages", "renderMachine", "renderNext", "refreshPickers"):
+        assert verb + "(" in body, f"syncFromModel does not repaint via {verb}"
+
+
+def test_the_editor_is_mounted_once_even_under_concurrent_callers():
+    """`ensureEditor` is async and its guard was on the RESULT, so two callers
+    arriving before the first finished both saw `_cm === null` and both
+    constructed an editor into `#ts-editor`.  Three were stacked in the live
+    page: every edit went to the newest and every reading came from the
+    oldest, which is what made the whole panel look dead.
+
+    The guard has to be on the PROMISE for it to hold across the await."""
+    src = VIEWER.read_text()
+    body = src.split("function ensureEditor", 1)[1].split("\n}", 1)[0]
+    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+    assert "async" not in src.split("function ensureEditor", 1)[0][-20:], (
+        "ensureEditor is async again — its guard cannot span the await")
+    assert "_cmBooting" in body, "nothing caches the in-flight mount"
