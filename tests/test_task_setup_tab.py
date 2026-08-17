@@ -851,3 +851,29 @@ def test_the_starting_sweep_only_covers_settings_the_engine_has():
     body = src.split("Promise.all([loadColumnChoices", 1)[1].split("}).catch", 1)[0]
     assert "for (const it of sweep)" in body, (
         "the grid is not intersected with what this engine can sweep")
+
+
+def test_the_presets_come_from_the_shipped_table(web_client):
+    """The same table `default_siesta_stages` builds the ladder from, so a
+    stage filled here and stage N of that ladder cannot drift.  `tuning.md § 4`
+    is the authority for the numbers; this serves them, never restates them."""
+    j = web_client.get("/api/task-setup/presets?engine=siesta").get_json()
+    assert j["ok"] and len(j["presets"]) == 3
+    from molbuilder.config.siesta import SIESTA_STAGE_NAMES, SIESTA_STAGE_PRESETS
+    for ps in j["presets"]:
+        assert ps["name"] == SIESTA_STAGE_NAMES[ps["tier"]]
+        assert ps["values"] == SIESTA_STAGE_PRESETS[ps["tier"]], (
+            "the endpoint restates the tier values instead of serving them")
+
+
+def test_a_preset_adds_its_missing_columns_first():
+    """`task-setup.md § 9` — "a preset knows several fields.  If some are not
+    columns yet it ADDS THEM FIRST — a preset that half-applied would be worse
+    than one that refused"."""
+    src = VIEWER.read_text()
+    assert "function applyPreset" in src
+    body = src.split("function applyPreset", 1)[1].split("\n/* ", 1)[0]
+    i_add = body.index("v.push(key)")
+    i_set = body.index("Object.assign(ov, values)")
+    assert i_add < i_set, "values are written before the columns exist"
+    assert "added.join" in body, "the page does not say which columns it added"

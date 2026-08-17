@@ -1666,3 +1666,34 @@ def api_task_setup_sweepable():
             "machine_answers": it.resolver in _T.ALLOCATION_RESOLVERS,
         })
     return jsonify({"ok": True, "engine": engine, "items": out})
+
+
+@bp.route("/api/task-setup/presets", methods=["GET"])
+def api_task_setup_presets():
+    """The shipped tier presets, for filling a stage's row.
+
+    These are the SAME table `default_siesta_stages` builds the shipped ladder
+    from, so a stage filled here and a stage of the default ladder cannot drift
+    -- `engines/tuning.md` § 4 is the authority for what number each tier
+    carries, and this serves it rather than restating it.
+    """
+    engine = str(request.args.get("engine") or "siesta").lower()
+    out = []
+    if engine == "siesta":
+        from molbuilder.config.siesta import (SIESTA_STAGE_NAMES,
+                                              SIESTA_STAGE_PRESETS)
+        for tier in sorted(SIESTA_STAGE_PRESETS):
+            out.append({"tier": tier,
+                        "name": SIESTA_STAGE_NAMES.get(tier, f"stage{tier}"),
+                        "values": dict(SIESTA_STAGE_PRESETS[tier])})
+    elif engine == "pyscf":
+        from molbuilder.config.pyscf import _default_stages
+        for i, st in enumerate(_default_stages(), start=1):
+            out.append({"tier": i, "name": st.name, "values": {
+                "scf_conv_tol": st.conv_tol, "grid_level": None,
+            }})
+            out[-1]["values"] = {k: v for k, v in out[-1]["values"].items()
+                                 if v is not None}
+    else:
+        return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
+    return jsonify({"ok": True, "engine": engine, "presets": out})

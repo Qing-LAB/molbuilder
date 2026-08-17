@@ -173,6 +173,20 @@ function renderStages(task) {
         }, "\u00d7");
         drop.addEventListener("click", () => removeStage(i));
 
+        // Fill this row from a shipped tier (`tuning.md` § 4).
+        const preset = el("select", { class: "ts-preset",
+                                      "aria-label": "apply a preset to " + name });
+        preset.appendChild(el("option", { value: "" }, "preset\u2026"));
+        for (const ps of (_presets || [])) {
+            preset.appendChild(el("option", { value: String(ps.tier) }, ps.name));
+        }
+        preset.addEventListener("change", () => {
+            const ps = (_presets || []).find(
+                (x) => String(x.tier) === preset.value);
+            preset.value = "";
+            if (ps) applyPreset(i, ps.values);
+        });
+
         const ran = _runs[name];
         const ranEl = (ran === undefined) ? null
             : el("span", { class: "ts-ran",
@@ -181,7 +195,7 @@ function renderStages(task) {
                  ran ? ran + "\u00d7" : "\u2014");
 
         const tr = el("tr", { "data-off": on ? null : "yes" },
-            el("td", null, nameInput, toggle, drop, ranEl));
+            el("td", null, nameInput, toggle, drop, preset, ranEl));
 
         const ov = (st && st.overrides) || {};
         for (const col of varies) {
@@ -595,7 +609,8 @@ async function refreshPickers() {
     const engine = (_task && _task.engine && _task.engine.name) || "siesta";
     try {
         const [cols, sweep] = await Promise.all([
-            loadColumnChoices(engine), loadSweepChoices(engine)]);
+            loadColumnChoices(engine), loadSweepChoices(engine),
+            loadPresets(engine)]);
         fillPicker($("ts-add-col"), cols,
                    Array.isArray(_task && _task.varies) ? _task.varies : [],
                    "every parameter is already a column");
@@ -603,6 +618,51 @@ async function refreshPickers() {
                    Object.keys((_task && _task.bench) || {}),
                    "every sweepable setting is already listed");
     } catch (_) { /* the pickers stay empty; nothing else breaks */ }
+}
+
+/* ---------- the tier presets ---------- */
+
+let _presets = null;
+
+async function loadPresets(engine) {
+    if (_presets) return _presets;
+    const r = await fetch("/api/task-setup/presets?engine="
+                          + encodeURIComponent(engine || "siesta"));
+    const j = await r.json();
+    _presets = (j && j.presets) || [];
+    return _presets;
+}
+
+/**
+ * Fill a stage's row from a tier.
+ *
+ * `task-setup.md` § 9: *"a preset knows several fields.  If some are not
+ * columns yet it **adds them first** -- a preset that half-applied would be
+ * worse than one that refused."*  So every field the preset carries is
+ * promoted before any value is written, and the whole thing lands or nothing
+ * does.
+ *
+ * The values come from the SAME table `default_siesta_stages` builds the
+ * shipped ladder from, so a stage filled here and stage N of that ladder
+ * cannot drift (`tuning.md` § 4 is the authority for the numbers).
+ */
+function applyPreset(i, values) {
+    if (!_task || !_task.stages || !_task.stages[i]) return;
+    const v = variesOf(); if (!v) return;
+    const added = [];
+    for (const key of Object.keys(values)) {
+        if (v.indexOf(key) === -1) { v.push(key); added.push(key); }
+    }
+    const ov = _task.stages[i].overrides || (_task.stages[i].overrides = {});
+    Object.assign(ov, values);
+    if (added.length) {
+        setState(_mode === "handover" ? "handover" : "loaded",
+                 "Preset applied",
+                 "Added " + added.join(", ") + " as column"
+                 + (added.length === 1 ? "" : "s") + ", because the preset "
+                 + "sets them.");
+    }
+    syncFromModel();
 }
 
 /* ---------- the columns: which parameters vary ---------- */

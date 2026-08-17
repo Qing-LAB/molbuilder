@@ -511,3 +511,16 @@
 }
 .ts-pick:focus { outline: none; border-color: var(--accent); }
 .ts-pick:disabled { color: var(--text-muted); cursor: not-allowed; }
+
+/* The per-stage preset picker: fills the row from a shipped tier. */
+.ts-preset {
+    font: inherit;
+    font-size: var(--text-2xs);
+    margin-left: var(--space-xs);
+    padding: 0 var(--space-xs);
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+}
+.ts-preset:focus { outline: none; border-color: var(--accent); }
