@@ -827,14 +827,7 @@ async function save() {
 
 /* ---------- wiring ---------- */
 
-function start() {
-    const projects = window.molbuilder && window.molbuilder.projects;
-    if (!projects) {
-        setState("refuse", "The projects sidebar did not load",
-                 "This page follows the sidebar's selected folder, so it cannot "
-                 + "read anything without it.");
-        return;
-    }
+function start(projects) {
 
     // `getCurrentDir` is the public accessor; reading sessionStorage directly
     // would duplicate the sidebar's own key name in a second place.
@@ -883,8 +876,34 @@ function start() {
     refreshSave();
 }
 
+/* WAIT for the sidebar, never read it.
+ *
+ * `web/projects.md` § 1: *"A tab waits for it with
+ * `runtime.whenReady("projects")` instead of polling."*  The sidebar is a
+ * `type=module` script, so its deferred initialisation has NOT run at
+ * DOMContentLoaded -- reading `window.molbuilder.projects` there finds
+ * `undefined` and the page reported "the projects sidebar did not load" on
+ * every load.  That is what the runtime registry exists to prevent, and
+ * `structure-optimization/viewer.js` already waits this way.
+ */
+function boot() {
+    const rt = window.molbuilder && window.molbuilder.runtime;
+    if (rt && typeof rt.whenReady === "function") {
+        rt.whenReady("projects").then(start).catch((e) => {
+            setState("refuse", "The projects sidebar did not load",
+                     "This page follows the sidebar's selected folder, so it "
+                     + "cannot read anything without it. "
+                     + (e && e.message ? e.message : ""));
+        });
+        return;
+    }
+    // No runtime at all is a page-assembly fault, not a timing one.
+    setState("refuse", "The page did not assemble",
+             "molbuilder-runtime.js must load before every other script.");
+}
+
 if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", start, { once: true });
+    document.addEventListener("DOMContentLoaded", boot, { once: true });
 } else {
-    start();
+    boot();
 }

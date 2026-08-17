@@ -701,3 +701,30 @@ def test_the_identity_facts_are_shown_and_read_only(web_client):
     assert '"Run id"' in fn, "the id is not shown — nothing says which calculation"
     assert "<input" not in fn and 'el("input"' not in fn, (
         "the identity facts are editable here")
+
+
+def test_the_tab_waits_for_the_sidebar_instead_of_reading_it():
+    """`projects.md` § 1: *"A tab waits for it with
+    `runtime.whenReady("projects")` instead of polling."*
+
+    The sidebar is a `type=module` script, so its deferred initialisation has
+    NOT run at DOMContentLoaded.  Reading `window.molbuilder.projects` there
+    finds `undefined`, and the page reported "the projects sidebar did not
+    load" on every single load — a user-visible bug from ignoring a documented
+    facility, which is why this is pinned rather than just fixed.
+    """
+    src = VIEWER.read_text()
+    assert 'whenReady("projects")' in src, (
+        "the tab does not wait for the sidebar through the runtime registry")
+    boot = src.split("function boot()", 1)[1]
+    assert "window.molbuilder.projects" not in boot, (
+        "boot still reads the namespace directly instead of awaiting it")
+
+
+def test_the_runtime_loads_before_every_other_script(web_client):
+    """The registry can only hand out what registered with it, so it has to be
+    parsed first — `molbuilder-runtime.js` before the sidebar and the tab."""
+    body = web_client.get("/task-setup").data.decode()
+    i_rt   = body.index("lib/molbuilder-runtime.js")
+    i_tab  = body.index("task-setup/viewer.js")
+    assert i_rt < i_tab, "the runtime loads after the tab's own script"
