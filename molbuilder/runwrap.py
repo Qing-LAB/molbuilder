@@ -32,9 +32,16 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Mapping, Optional, Tuple
 
 from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
+
+if TYPE_CHECKING:                       # floor 5 reading floor 3's object
+    # Under TYPE_CHECKING because the annotation is all this module needs:
+    # `write_run_wrapper` unpacks a `Resources`, it never builds one (A4 --
+    # `resolve.py` is the one builder).  A runtime import would also be legal
+    # -- floor 5 may read floor 3 -- but it would be an import nothing calls.
+    from .jobset.model import Resources
 
 # Shell-safety guard for wrapper emission.  The wrapper interpolates
 # ``basename`` and ``script_name`` (the script's filename stem and
@@ -389,9 +396,32 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
     # here in a second language (E-1, 2026-08-13).  ``{label}`` becomes a
     # glob star because the sweep's own globs already anchor on the id --
     # the exception only needs the SHAPE of our names.
+    # ...anchored on the run's OWN id, not widened to a star.
+    #
+    # This read `{label}` -> `*` until 2026-08-17, on the argument that "the
+    # exception only needs the SHAPE of our names, because the sweep's own
+    # globs already anchor on the id".  That argues the widening is HARMLESS,
+    # not that it is needed -- and it stopped being harmless the moment a
+    # suffix was shared.  Every pattern here used to end in something only
+    # molbuilder writes (`.fdf`, `.run.sh`, `.template.toml`, `.molwatch.log`);
+    # `{label}.xyz` joined the list on 2026-08-16 so `prep` would stop calling
+    # a hand-over's input structure an engine leftover, and `.xyz` is the first
+    # suffix BOTH molbuilder and an engine write.  Widened, it read `*.xyz` and
+    # made PySCF's `<JOB>_optimized.xyz` -- warm state, the whole reason
+    # `--cold` exists -- look like a file molbuilder had written.
+    #
+    # Both spellings, because the sweep visits both: the label read out of the
+    # deck (`$_warm_label`) and the wrapper's own basename.  A quoted expansion
+    # inside a `case` pattern is matched literally, so `"$_warm_label".xyz`
+    # protects exactly one file while `<label>_optimized.xyz` goes aside.
+    #
+    # The ONE enumeration still governs (E-1, 2026-08-13): this narrows how the
+    # list is read, and adds no second list to drift from it.
     from .identity import OUR_FILE_PATTERNS
     _exceptions = "|".join(sorted(
-        {p.replace("{label}", "*") for p in OUR_FILE_PATTERNS}
+        {p.replace("{label}", anchor)
+         for p in OUR_FILE_PATTERNS
+         for anchor in ('"$_warm_label"', basename)}
         | {"*.psml", "*-restart-aside-*"}))
     return (
         f"# --- Cold-restart: NAME SWEEP --------------------------\n"
@@ -3357,18 +3387,30 @@ def _build_mem_audit(script_path: Path, *,
 
 
 def write_run_wrapper(script_path: Path, *,
+                       resources: "Resources",
                        env: Optional[str] = None,
-                       mpi_np: Optional[int] = None,
-                       omp_threads: Optional[int] = None,
-                       max_memory_mb: Optional[int] = None,
-                       time: Optional[str] = None,
-                       gres: Optional[str] = None,
-                       mem: Optional[str] = None,
-                       cpus_per_task: Optional[int] = None,
-                       exclusive: Optional[bool] = None,
-                       emit_sbatch: bool = True,
-                       continue_retries: Optional[int] = None) -> Path:
+                       emit_sbatch: bool = True) -> Path:
     """Render + write ``<basename>.run.sh`` next to ``script_path``.
+
+    **The allocation arrives whole** — `execution/architecture.md` § 3.1 and
+    rule A8.  This door took eleven loose keyword arguments until 2026-08-17,
+    and its two callers passed ten and five of them: `jobset/prep.py` wrote a
+    ``.sbatch`` asking for ``-c 8`` beside a ``.run.sh`` whose OMP default was
+    ``1``, while `web/blueprints/build.py` wrote a correct ``.run.sh`` beside a
+    ``.sbatch`` with no ``-c`` at all.  Neither produced a correct pair, and
+    neither call was wrong on its own terms — each had simply chosen a
+    different subset.  With one object there is no subset to choose.
+
+    ``env`` and ``emit_sbatch`` stay loose because neither is a per-job fact:
+    ``env`` is a per-invocation override (``prep --env``) and ``emit_sbatch``
+    is a surface's choice about what to write.  The test is ownership — a field
+    with a home in § 3's table arrives in that home or not at all.
+
+    **``omp_threads`` is no longer a parameter.**  `job-contracts.md` § 6.2
+    keeps the two names distinct because different layers read them, and that
+    distinction stands: ``cpus_per_task`` is what the scheduler is asked for
+    and the launcher's OMP default is derived from it here, in one place,
+    rather than supplied twice by callers who may agree.
 
     Returns the wrapper's path.  Sets executable bit (0o755) so the
     user can ``./my-job.run.sh`` directly.  Overwrites any existing
@@ -3392,6 +3434,16 @@ def write_run_wrapper(script_path: Path, *,
     script_path = Path(script_path).resolve()
     if not script_path.is_file():
         raise WrapperError(f"script not found: {script_path}")
+    # Unpacked ONCE, here, so the two renderings below cannot be given
+    # different answers (A9).  ``cpus_per_task`` is the one home for
+    # cores-per-rank; the launcher's OMP default is derived from it rather
+    # than arriving separately -- that separation is what let the sbatch ask
+    # for 8 while the launcher baked 1.
+    r = resources
+    mpi_np, omp_threads = r.mpi_np, r.cpus_per_task
+    max_memory_mb, continue_retries = r.max_memory_mb, r.continue_retries
+    time, gres, mem, exclusive = r.time, r.gres, r.mem, r.exclusive
+    cpus_per_task = r.cpus_per_task
     n_atoms = None
     if script_path.suffix.lower() == ".fdf":
         n_atoms = _parse_fdf_n_atoms(script_path)
@@ -3469,6 +3521,24 @@ def _maybe_write_sbatch(script_path: Path,
     """
     from . import runtime_config as _rc
     project_dir = script_path.parent if script_path.parent.exists() else None
+
+    # Does the MACHINE have a scheduler?  (P1, 2026-08-17.)  This asked only
+    # whether a `scheduler` BLOCK was configured, on the old premise that "a
+    # workstation needs no scheduler block" (`architecture.md` § 9).  M6
+    # amended that premise on 2026-08-17 -- a workstation records its
+    # capability in a config file too -- so block-presence stopped
+    # discriminating, and a workstation with one config got 14 `.sbatch` files
+    # for a queue it does not have.  The probed record answers the actual
+    # question, and it is the answer `prep` step 1 just wrote down.
+    #
+    # A record that says `slurm`, or no record at all, keeps the old
+    # behaviour: absent evidence is not evidence of absence, and refusing to
+    # emit on a cluster nobody probed would be worse than an extra file.
+    from .environment import machine_for
+    env_rec = machine_for(project_dir)
+    if env_rec is not None and env_rec.scheduler == "workstation":
+        return None  # no queue on this machine -> only .run.sh is meaningful
+
     scheduler = _rc.get_scheduler(project_dir=project_dir)
     if scheduler is None:
         return None  # § 10: no scheduler -> emit only .run.sh

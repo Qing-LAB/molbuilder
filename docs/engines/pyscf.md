@@ -126,6 +126,70 @@ config — no under- or over-promising. `job_name` stays unsuffixed so
 
 ---
 
+## 2a. GPU — `use_gpu`, and the run-time probe
+
+> **The cross-engine rule is [`overview.md`](?doc=engines/overview.md) § 3a**
+> (G-1…G-5). **This section is PySCF's mechanism**, and it had none written
+> down until 2026-08-17 — which is why the GPU question kept being re-derived
+> from SIESTA's contract, where the answers are different.
+
+**`use_gpu` is a user flag, off by default** (G-1). Turning it on emits a probe
+and a helper, not a hard requirement:
+
+```python
+USE_GPU = True                    # the literal config value
+_USING_GPU = False
+if USE_GPU:
+    try:
+        import cupy, gpu4pyscf    # present?
+        ...                       # a device, with compute capability >= 7.0?
+        _USING_GPU = True
+    except ImportError as e:
+        raise SystemExit(...)     # NO CPU FALLBACK -- the run stops
+    except Exception as e:
+        raise SystemExit(...)     # ditto: no device, or too old a card
+mf = _mb_to_gpu_if_enabled(mf)    # .to_gpu(); a failed promotion also stops
+```
+
+**Three things follow, and each is a rule rather than an implementation note.**
+
+**The probe runs at script start, not at `prep`, and it has to.** You prep on a
+login node and run on a GPU node, so the device is not visible when the script
+is written. SIESTA's check *can* happen at `prep` because what it needs is an
+**environment**, which the prepping machine can see —
+[`overview.md`](?doc=engines/overview.md) § 3a explains why that difference is
+forced rather than chosen.
+
+**There is no CPU fallback** *(user, 2026-08-17)*. All three failure paths —
+`gpu4pyscf` not importable, no usable device, a failed `.to_gpu()` promotion —
+**exit**, with a message naming the cause and the two ways out (run where the
+GPU is, or set `use_gpu = false`). The script previously printed
+*"CPU fallback."* and carried on; that made a GPU run and a CPU run
+indistinguishable without reading the log, and it made a benchmark dishonest.
+
+**What the run did is still recorded**, and now as a record rather than a
+correction: `gpu_used`, `gpu_name`, `gpu_compute_capability` and `cuda_version`
+go into `_RUNTIME_INFO`, so a summary reads what happened instead of inferring
+it from what was asked.
+
+**The helper is invoked AFTER the `mf` is fully assembled** — density fitting,
+dispersion and PCM all applied — because `.to_gpu()` mirrors the object it is
+handed. Promoting early hands it an incomplete one. `.newton()` is applied
+*after* the promotion instead, since gpu4pyscf's own SCF classes carry it.
+
+> **Benchmarking a PySCF GPU trial.** With the fallback gone, a trial that
+> *completed* and asked for the GPU used one — so § 3a's G-5a is now about
+> reading the record rather than catching a downgrade: report `gpu_used`,
+> never the flag. A trial that could not get the GPU **fails**, and a failed
+> trial is a missing point, which is visible; a silently-CPU trial was a wrong
+> point, which was not.
+
+> **The Raman block runs on the CPU even with the GPU on, and that is not a
+> fallback.** gpu4pyscf exposes no analytic CPHF polarizability, so that one
+> computation has no GPU implementation. § 3a's G-5 governs *availability* —
+> whether the GPU you asked for is there — not *coverage*, which is which
+> operations the engine can run on it.
+
 ## 3. The emitter's contracts
 
 These are the invariants the generated script must satisfy — prefer **behavioural**

@@ -266,30 +266,22 @@ def test_example_templates_cite_only_existing_docs():
     assert not bad, f"example templates cite missing docs: {bad}"
 
 
-def test_routing_rows_keep_the_operators_own_columns(tmp_path, monkeypatch):
-    """R10 (review-4 G5): get_routing rebuilt each row from a known-key
-    list, silently STRIPPING everything else -- decision 38's drafted
-    node_type/max_cores/gpu{} columns vanished between the file and
-    every caller, so drafting a column was indistinguishable from not
-    writing it.  Unknown columns now ride along; validated keys keep
-    their validated values."""
-    import json as _json
-    from molbuilder.runtime_config import get_routing
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
-    (tmp_path / "molbuilder.json").write_text(_json.dumps({
-        "scheduler": {"kind": "slurm",
-                      "directives": {"partition": "p", "qos": "q"},
-                      "routing": [{"name": "fast", "partition": "htc",
-                                   "qos": "express",
-                                   "max_time": "0-04:00:00",
-                                   "node_type": "epyc-7713",
-                                   "max_cores": 128,
-                                   "gpu": {"type": "a100"}}]}}))
-    rows = get_routing()
-    assert rows[0]["node_type"] == "epyc-7713"
-    assert rows[0]["max_cores"] == 128
-    assert rows[0]["gpu"] == {"type": "a100"}
-    assert rows[0]["max_time"] == "0-04:00:00"       # validated keys intact
+# ``test_routing_rows_keep_the_operators_own_columns`` stood here until
+# 2026-08-17 (N4).  It pinned R10 (review-4 G5): `get_routing` rebuilt each row
+# from a known-key list and silently STRIPPED everything else, so an operator
+# drafting a `node_type` / `max_cores` / `gpu{}` column in `molbuilder.json`
+# could not tell it apart from not writing one.
+#
+# Retired because its subject moved, not because the lesson did.  A routing row
+# is no longer an operator's hand-written description of their cluster -- the
+# domains are PROBED into `environment.json`, one typed `Domain` per reachable
+# (partition, qos) (`configuration.md` § 5, M-1).  Nobody hand-writes a column
+# there, so there is no unknown column to preserve, and
+# `test_scheduler_probe.py::test_a_domain_is_never_a_preference` now asserts
+# the opposite property deliberately: a domain carries EXACTLY the four fields
+# that were measured, and anything else appearing in one is a preference that
+# has crept back in.
+#
+# The stripping hazard itself is still live wherever a reader rebuilds a
+# person's object from a key list; `test_routing_domains.py` covers the one
+# key that changed houses, and refuses it by name rather than dropping it.

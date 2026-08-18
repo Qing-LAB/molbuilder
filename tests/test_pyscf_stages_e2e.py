@@ -98,115 +98,6 @@ _PUBLISHABLE_STAGES = [
 # --------------------------------------------------------------------- #
 
 
-class TestApiBuildPyscfAcceptsStages:
-
-    def test_stages_payload_yields_ok_true(self, web_client):
-        """Generator (post-#534 commit 4) emits a ``STAGES = [...]``
-        literal followed by a ``for STAGE in STAGES:`` driver loop.
-        Pin the literal exists and carries the wire values verbatim
-        so a schema regression that silently drops a stage shows up
-        at the wire tier.
-        """
-        r = web_client.post(
-            "/api/build/pyscf",
-            json={
-                "structure": _env(_H2O_XYZ),
-                "params": {"stages": _PUBLISHABLE_STAGES},
-            },
-        )
-        assert r.status_code == 200, r.get_data(as_text=True)
-        body = r.get_json()
-        assert body.get("ok") is True, f"render failed: {body!r}"
-        script = body.get("script") or ""
-        assert script, "rendered script is empty"
-        # Generator emits STAGES literal + per-stage driver.
-        assert "STAGES = [" in script, "STAGES literal missing"
-        assert "for STAGE in STAGES:" in script, "stages loop missing"
-        # 6c: optimize() now lives inside the _mb_run_stage_opt
-        # helper (factored out of the loop body so the 3-policy
-        # dispatch reads cleanly).
-        assert "def _mb_run_stage_opt(STAGE, _hard_fail):" in script
-        assert "return optimize(" in script
-        # Per-stage kwarg keyed on the STAGE dict (not a hardcoded
-        # value that would defeat per-stage control).
-        assert "convergence_grms      = STAGE['grms']" in script
-        assert "convergence_gmax      = STAGE['gmax']" in script
-        assert "mf.conv_tol = STAGE['conv_tol']" in script
-
-        # The STAGES literal must round-trip via ast.literal_eval to
-        # the EXACT enabled-stage payload (not a substring check that
-        # could pass with hardcoded defaults inside the loop body).
-        import ast
-        stages_text = script.split("STAGES = ")[1].split("\n]")[0] + "\n]"
-        parsed = ast.literal_eval(stages_text)
-        assert isinstance(parsed, list) and len(parsed) == 2, (
-            f"expected 2 enabled stages in STAGES literal; got "
-            f"{len(parsed) if isinstance(parsed, list) else type(parsed)}"
-        )
-        # Disabled stage3 must NOT leak through.
-        names = [row["name"] for row in parsed]
-        assert names == ["stage1", "stage2"], names
-        # Values match _PUBLISHABLE_STAGES exactly.
-        assert parsed[0]["conv_tol"] == 1.0e-7
-        assert parsed[0]["max_steps"] == 50
-        assert parsed[1]["conv_tol"] == 1.0e-9
-        assert parsed[1]["max_steps"] == 200
-        # 6c: per-stage non-convergence policy fields.  The user
-        # payload didn't pass on_nonconvergence so defaults from
-        # StageSpec apply: ``halt`` for un-customised rows.  The
-        # is_final flag is derived from position at generation time
-        # (last enabled = True).  These replace 5b's assert_convergence.
-        assert "on_nonconvergence" in parsed[0]
-        assert parsed[0]["is_final"] is False
-        assert parsed[1]["is_final"] is True
-        # continue_retries: integer in [1, 5], default 1.
-        assert parsed[0]["continue_retries"] == 1
-
-    def test_stages_payload_passes_through_validator(self, web_client):
-        """A stages payload doesn't trip the existing PySCF validator.
-        Guards against the validator gaining a ``stages`` check in
-        commit 4 that accidentally rejects the publication-guide
-        defaults.
-        """
-        r = web_client.post(
-            "/api/build/pyscf",
-            json={
-                "structure": _env(_H2O_XYZ),
-                "params": {"stages": _PUBLISHABLE_STAGES},
-            },
-        )
-        assert r.status_code == 200
-        body = r.get_json()
-        assert body.get("ok") is True
-        # Issues list is allowed to carry warnings (e.g. basis-tier
-        # advisories) but must not surface a stages-related error.
-        for issue in body.get("issues", []) or []:
-            where = (issue.get("where") or "").lower()
-            assert "stages" not in where, (
-                f"unexpected stages-related issue: {issue!r}"
-            )
-
-    def test_omitting_stages_still_works(self, web_client):
-        """Backwards compatibility: a payload without ``stages`` (the
-        legacy shape) must still render -- guarantees the
-        dataclass-default factory kicks in.
-        """
-        r = web_client.post(
-            "/api/build/pyscf",
-            json={
-                "structure": _env(_H2O_XYZ),
-                "params": {},
-            },
-        )
-        assert r.status_code == 200, r.get_data(as_text=True)
-        assert r.get_json().get("ok") is True
-
-
-# --------------------------------------------------------------------- #
-#  Coerce path: form payload -> PySCFConfig.stages                      #
-# --------------------------------------------------------------------- #
-
-
 class TestCoerceStagesFromParams:
 
     def test_coerce_round_trips_publishable_default(self):
@@ -294,35 +185,6 @@ class TestCoerceStagesFromParams:
 # --------------------------------------------------------------------- #
 
 
-class TestApiBuildPyscfRejectsBadStages:
-
-    def test_non_dict_stages_row_returns_400(self, web_client):
-        """The wire surface translates a coerce TypeError into a
-        clean 400 -- the user sees a typed error rather than a
-        500 / silently dropped row."""
-        r = web_client.post(
-            "/api/build/pyscf",
-            json={
-                "structure": _env(_H2O_XYZ),
-                "params": {"stages": ["bogus"]},
-            },
-        )
-        assert r.status_code == 400, r.get_data(as_text=True)
-        body = r.get_json()
-        assert body.get("ok") is False
-        assert "bad parameters" in (body.get("error") or "").lower()
-
-
-# --------------------------------------------------------------------- #
-#  Validator wires validate_stages: structural invariants that the      #
-#  generator can't recover from must surface as a typed config.stages   #
-#  error, NOT a runtime NameError on `mol_eq` from an empty STAGES      #
-#  literal.  Validation errors travel via render_script's               #
-#  ValidationError path, which returns HTTP 200 + ok=false + issues     #
-#  (per web-api.md § 1 (Status codes)).                                              #
-# --------------------------------------------------------------------- #
-
-
 class TestApiBuildPyscfRejectsBrokenStages:
 
     @staticmethod
@@ -333,94 +195,10 @@ class TestApiBuildPyscfRejectsBrokenStages:
                 return i
         return None
 
-    def test_empty_stages_list_surfaces_stages_error(self, web_client):
-        """``cfg.stages = []`` -> generator would emit ``STAGES = []``
-        + an empty for-loop -> ``mol_eq`` never bound -> downstream
-        ``_save_xyz(mol_eq, ...)`` raises NameError at runtime.
-        The validator must catch this at the API tier."""
-        r = web_client.post(
-            "/api/build/pyscf",
-            json={"structure": _env(_H2O_XYZ), "params": {"stages": []}},
-        )
-        assert r.status_code == 200, r.get_data(as_text=True)
-        body = r.get_json()
-        assert body.get("ok") is False, f"expected ok=false; got {body!r}"
-        issue = self._stages_issue(body)
-        assert issue is not None, (
-            f"missing config.stages issue.  Body: {body!r}"
-        )
-        assert issue["severity"] == "error"
-        assert "empty" in issue["message"].lower() \
-            or "at least one" in issue["message"].lower()
 
-    def test_all_disabled_stages_surfaces_stages_error(self, web_client):
-        """Same trap as empty list: every stage disabled means the
-        enabled-filter produces ``[]`` at generation time."""
-        all_off = [
-            {"name": "stage1", "enabled": False},
-            {"name": "stage2", "enabled": False},
-        ]
-        r = web_client.post(
-            "/api/build/pyscf",
-            json={"structure": _env(_H2O_XYZ), "params": {"stages": all_off}},
-        )
-        assert r.status_code == 200
-        body = r.get_json()
-        assert body.get("ok") is False
-        issue = self._stages_issue(body)
-        assert issue is not None and issue["severity"] == "error"
 
-    def test_duplicate_stage_names_surfaces_stages_error(self, web_client):
-        """Per-stage geomeTRIC trajectory files are named
-        ``<JOB>_geom_<stage>``; duplicate names would collide on disk
-        AND duplicate-key the nested convergence_targets header."""
-        dups = [
-            {"name": "stage1", "enabled": True},
-            {"name": "stage1", "enabled": True},
-        ]
-        r = web_client.post(
-            "/api/build/pyscf",
-            json={"structure": _env(_H2O_XYZ), "params": {"stages": dups}},
-        )
-        assert r.status_code == 200
-        body = r.get_json()
-        assert body.get("ok") is False
-        issue = self._stages_issue(body)
-        assert issue is not None and "duplicate" in issue["message"].lower()
 
-    def test_bad_stage_name_charset_surfaces_stages_error(self, web_client):
-        """Stage names land in filesystem paths (``_geom_<stage>``);
-        bogus chars would either break filename sanitisation or
-        produce surprising path traversal."""
-        bad = [{"name": "stage 1!", "enabled": True}]
-        r = web_client.post(
-            "/api/build/pyscf",
-            json={"structure": _env(_H2O_XYZ), "params": {"stages": bad}},
-        )
-        assert r.status_code == 200
-        body = r.get_json()
-        assert body.get("ok") is False
-        issue = self._stages_issue(body)
-        assert issue is not None
 
-    def test_optimize_false_skips_stages_validation(self, web_client):
-        """Single-point runs (``cfg.optimize = False``) don't emit a
-        stages loop -- the structural invariants don't apply.  Pin
-        that the validator doesn't surface a stages issue on an
-        otherwise-empty stages list when optimize is off."""
-        r = web_client.post(
-            "/api/build/pyscf",
-            json={
-                "structure": _env(_H2O_XYZ),
-                "params": {"optimize": False, "stages": []},
-            },
-        )
-        assert r.status_code == 200
-        body = r.get_json()
-        assert body.get("ok") is True, (
-            f"single-point with empty stages should NOT trip "
-            f"validate_stages; got: {body!r}"
-        )
 
 
 # --------------------------------------------------------------------- #
@@ -478,71 +256,8 @@ class TestMolwatchConvergenceTargetsCarriesAllSixKnobs:
         assert m, "missing _CONVERGENCE_TARGETS literal in script"
         return ast.literal_eval(m.group(1))
 
-    def test_each_enabled_stage_emits_all_six_leaves(self, web_client):
-        """Every enabled stage's dict must carry all 6 geomeTRIC
-        criteria converted to the molwatch unit convention (eV/Å for
-        forces, Å for displacements, eV for energy step) PLUS the
-        SCF-energy + iter caps.  8 leaves total per stage."""
-        targets = self._parse_conv_targets(self._render(web_client))
-        # Two stages enabled by default (stage1 + stage2).
-        assert set(targets.keys()) == {"stage1", "stage2"}
-        REQUIRED = {
-            "max_force_tol_eV_per_A",
-            "rms_force_tol_eV_per_A",
-            "max_displ_ang",
-            "rms_displ_ang",
-            "energy_step_tol_eV",
-            "scf_energy_tol",
-            "max_scf_iter",
-            "max_geom_iter",
-        }
-        for stage_name, leaves in targets.items():
-            missing = REQUIRED - set(leaves.keys())
-            assert not missing, (
-                f"{stage_name} missing leaves: {missing}.  "
-                f"Got: {sorted(leaves.keys())}"
-            )
 
-    def test_unit_conversion_matches_emitter_constants(self, web_client):
-        """The generator's Ha/Bohr -> eV/Å and Ha -> eV conversions
-        must round-trip to the same constants MolwatchEmitter uses
-        for the per-step force / energy emission, so threshold lines
-        and plotted values are on the same axis."""
-        targets = self._parse_conv_targets(self._render(web_client))
-        # stage2 = publishable, the Gaussian-OPT defaults.
-        s2 = targets["stage2"]
-        # gmax = 4.5e-4 Ha/Bohr  -> 4.5e-4 * 51.42208619 eV/Å
-        assert s2["max_force_tol_eV_per_A"] == pytest.approx(
-            4.5e-4 * self.HA_BOHR_TO_EV_ANG)
-        # grms = 3.0e-4 Ha/Bohr  -> 3.0e-4 * 51.42208619 eV/Å
-        assert s2["rms_force_tol_eV_per_A"] == pytest.approx(
-            3.0e-4 * self.HA_BOHR_TO_EV_ANG)
-        # dmax / drms already in Å -- carried verbatim
-        assert s2["max_displ_ang"] == pytest.approx(1.8e-3)
-        assert s2["rms_displ_ang"] == pytest.approx(1.2e-3)
-        # etol = 1e-6 Ha -> 1e-6 * 27.211386245988 eV
-        assert s2["energy_step_tol_eV"] == pytest.approx(
-            1.0e-6 * self.HARTREE_TO_EV)
-        # SCF energy tol stays in Hartree (parser tags the unit)
-        assert s2["scf_energy_tol"] == pytest.approx(1.0e-9)
 
-    def test_per_stage_values_differ_between_tiers(self, web_client):
-        """A regression that silently uses stage1's values for stage2
-        (or vice versa) would slip through if we only checked
-        existence.  Pin that the per-tier numbers ACTUALLY differ
-        per stage -- the whole point of the staged ladder."""
-        targets = self._parse_conv_targets(self._render(web_client))
-        s1, s2 = targets["stage1"], targets["stage2"]
-        # stage1 is loose preopt (gmax 2e-3), stage2 publishable
-        # (gmax 4.5e-4).  Their force-tol-eV-per-A values must
-        # differ by the same ~4.4x factor.
-        assert s1["max_force_tol_eV_per_A"] > s2["max_force_tol_eV_per_A"]
-        assert s1["rms_force_tol_eV_per_A"] > s2["rms_force_tol_eV_per_A"]
-        # SCF energy tol: stage1 1e-7, stage2 1e-9 (100x tighter)
-        assert s1["scf_energy_tol"] > s2["scf_energy_tol"]
-        # Geom-iter cap: stage1 50, stage2 200
-        assert s1["max_geom_iter"] == 50
-        assert s2["max_geom_iter"] == 200
 
 
 # --------------------------------------------------------------------- #

@@ -61,6 +61,21 @@ of the same entries:
 That is the whole idea. The rest of this document is what it takes to make it
 true and keep it true.
 
+**Six pieces of shorthand appear below.** They are defined here because a term
+used and never expanded is a term that only helps the person who coined it.
+
+| you will read | it means |
+|---|---|
+| **floor 1 / 2 / 3** | which layer a thing belongs to. **Floor 1** is the machine you are on. **Floor 2** is the *description* — what the calculation is, portable, naming no machine. **Floor 3** is the *plan* — what gets rendered for one run on one machine. The full set is [`architecture.md`](?doc=execution/architecture.md) § 2 |
+| **the deck** | the engine's own input file — a `.fdf` for SIESTA, a `.py` for PySCF. The thing the engine actually reads |
+| **⊕** | *"with these values replaced"*. `template ⊕ overrides` is the template's settings with a stage's changes applied on top. One function does it, four times over (§ 10a.2) |
+| **G1…G6** | the six goals in § 1.2. When a rule below looks arbitrary it is holding one of them up |
+| **D1…D5** | the five design decisions in § 1.3, each with the alternative it rejected |
+| **an item** | one setting in the file — its value and everything known about it |
+
+Dated tags like *R10* or *A-9* are internal review references. Each is a
+pointer to where a rule was argued, never a rule you need to know by name.
+
 ### 1.1 What it is, said once more with the surrounding pieces
 
 **A template is the calculation's own catalogue: every parameter the engine's
@@ -77,6 +92,39 @@ It is one of two files a generating surface writes, and they do not overlap:
 > ([`stages.md`](?doc=engines/stages.md) § 4). A stage's override *replaces an
 > item's value*. It never adds an item and never removes one.
 
+### 1.1a Which parts of this contract are WIRED, and which are the target
+
+**Read this before you rely on anything below.** This document describes a
+design, and most of it is built. Three pieces are not, and they are pieces
+other sections describe in the present tense — so a reader who trusts the
+prose writes code against a mechanism that is not there. *(Measured
+2026-08-17; the same honesty [`workflow.md`](?doc=workflow.md) § 7 keeps for
+the engine seam, and for the same reason.)*
+
+| the claim | today | where it is stated |
+|---|---|---|
+| **one file, every reader** — `select` / `one` are the read API | ✅ wired. `select` has four callers and they all go through it | § 8.0 |
+| **`prep` rebuilds a config and renders; it never splices** | ✅ wired | § 8.1 |
+| **the template is the master; nothing derives it from a config class** | ✅ wired — `render_template` was deleted 2026-08-14 | § 2.1 |
+| **a machine fact's value is refused on read** | ✅ wired — `template_fields` + `config_from_template` | § 7 |
+| **`kind` lets a layer find its own items** | ⚠ **not a dispatch axis.** No caller filters `select` by `kind`. What `kind` does today is force `anchor` on an engine item and `expands` on a deck one — a completeness check on the catalogue — and tell a *reader* who owns the item | § 6, § 8 |
+| **`read_by` tells the wrapper which items it depends on** | ⚠ **declared, not yet consumed.** `runwrap.py` does not import `template`; it still scans the deck text for `Diag.ELPA.GPU`. `read_by` is a **declaration kept in step with those scanners** by `tests/test_template_declarations.py::test_every_deck_keyword_the_wrapper_reads_is_declared_read_by` | § 6.1, § 11.3 |
+| **`kind = "monitor"`** | ⚠ **zero items carry it.** `monitor.py` reads a log; it is not a configured layer. The two molwatch switches are `kind="produce"`, which is correct — the *producer* decides what the script writes | § 6 |
+
+**Why the declarations are worth keeping while unconsumed, which is the part
+that needs saying.** The wrapper's deck scan is the habit
+[`architecture.md`](?doc=execution/architecture.md) § 1 exists to remove, and
+removing it means the wrapper is *told* instead. On the day that lands, the
+declarations must already be right — a rewiring that also has to discover which
+items the wrapper depends on is two changes at once. The guard test is what
+makes them right in the meantime: **it fails when a scanner is added without a
+declaration**, so the two cannot drift while one waits for the other.
+
+**What that costs today, stated plainly.** A new engine still cannot declare a
+wrapper dependency and be served — it would declare `read_by` correctly and the
+wrapper would not look. § 11.6's *"a new engine adopts the format"* is true of
+the deck and the form, and not yet of the wrapper.
+
 ### 1.2 The six goals, and what breaks without each
 
 Every rule in this document exists to hold one of these. When a later section
@@ -86,7 +134,7 @@ looks arbitrary, it is serving a row here.
 |---|---|---|---|
 | **G1** | **Portable** — the folder means the same thing on every machine | a description that names a queue or a rank count is wrong the moment it is copied somewhere else | § 2 — floor 2 must never name a machine |
 | **G2** | **Enough on its own for a surface** — a tab builds `task.json` from this file and nothing else | the browser has to ask a server what a field is, so the folder is not really portable | § 5 — every item carries `type`, `range`, `default`, `choices`, `group` |
-| **G3** | **Self-describing across layers** — a layer finds its own items without a list of field names | every new engine means editing the deck writer, the wrapper writer and the monitor | § 6 — `kind` and `read_by` |
+| **G3** | **Self-describing across layers** — a layer finds its own items without a list of field names | every new engine means editing the deck writer, the wrapper writer and the monitor | § 6 — `kind` and `read_by`. **The one goal not yet held in code** — the axes are declared and checked, and no layer dispatches on them (§ 1.1a) |
 | **G4** | **Faithful** — the deck `prep` renders is the deck the surface would have rendered | a silently different calculation, which is the worst failure this system has | § 10 — render both ways and compare the text |
 | **G5** | **Readable and editable by a person** | the "reference" half of *one file that is both the reference and the source* is a claim nobody can check | § 4 — one value per parameter, prose beside it, a format that survives hand editing |
 | **G6** | **Complete** — everything the run needs that is not the structure and not the machine | text or labels stranded in a file that was never copied — the defect § 9 was written to close | § 7 total membership, § 9 the reserved blocks |
@@ -182,20 +230,30 @@ Both questions this section used to pose are now answered.
 
 **What a config class still carries.** In principle: a name, a Python type, and
 its validators — enough to hold a value on the way to the engine. In practice it
-still carries copies of the template's facts (`label`, `help`, `range`, `unit`,
-`choices`, `engine_key`, `workflow_group`), because two consumers still read
-them off the class rather than off the catalogue: the legacy form builder that
-Spectra and Transport use, and the code that decides which card a validator
-finding lands on.
+still carries copies of the template's facts — `label`, `help`, `range`,
+`unit`, `choices`, `engine_key` and `workflow_group`, which is
+`tests/test_catalogue_agreement.py`'s `MIRRORED` set and the one place that
+list is defined — because two consumers still read them off the class rather
+than off the catalogue: the legacy form builder that Spectra and Transport use,
+and the code that decides which card a validator finding lands on.
 
 **That duplication is the debt, and it is measured and guarded rather than
-tolerated quietly.** 307 facts live in two places.
+tolerated quietly.** **452 facts live in two places** (measured 2026-08-17;
+307 when this was written, and the growth is the point — the debt compounds
+with every parameter added).
 `tests/test_catalogue_agreement.py` compares every one of them on every run, so
 the two cannot drift apart without a red test naming the item and the key. It
 has already earned its place several times — it caught 23 stale labels when the
 catalogue landed, and three merged items whose prose still described only
 SIESTA. When the remaining two consumers move onto the catalogue, the metadata
 is deleted and that test file goes with it.
+
+> **The number above is asserted, not typed.** A count stated in prose is a
+> claim about the code, and this one had been wrong by 145 for three days
+> before a review caught it. `tests/test_doc_claims.py` now measures every
+> such claim in this document and fails naming the sentence — the same
+> mechanism, one class of claim wider, that already keeps the closed
+> vocabularies in step.
 
 **The form question is closed.** `web/form-schema.md` § 1 now builds the SIESTA
 and PySCF forms from the catalogue: cards from `group`, legends from `category`,
@@ -371,83 +429,118 @@ does.** A template is a few hundred lines read once per `prep`.
 
 ### 4.2 A template, entire
 
+**Every item below is a real catalogue item, with the classification the
+catalogue gives it.** That is not a courtesy to the reader: an example is the
+shape everyone copies, and this one showed three items that do not exist —
+`frozen_indices` and `user_custom` were never added (§ 12), and `species_order`
+was shown as `kind="deck"` when it is `produce` (§ 6). Illustrations are now
+checked against the catalogue by
+`tests/test_doc_claims.py::test_every_documented_item_matches_the_catalogue`.
+
+The six items are chosen to show **all four `kind`s that any item carries** —
+`engine`, `deck`, `produce`, `wrapper` — and both value states. (`monitor` is
+the fifth member of the vocabulary and no item carries it; § 12.1 row 5.)
+
 ```toml
 # BDT on Au(111) — geometry relaxation.
 schema      = "molbuilder/template@2"
 engines     = ["siesta"]
 
+# kind = "engine" — the ordinary case: one keyword, one value.
 [item.mesh_cutoff]
-kind    = "engine"
-category = "accuracy"
-anchor  = "MeshCutoff"
-type    = "float"
-value   = 300.0
-default = 300.0
-unit    = "Ry"
-range   = [50, 2000]
-group   = "stage"
-help    = """
+kind     = "engine"
+category = ["accuracy"]
+anchor   = "MeshCutoff"
+type     = "float"
+value    = 300.0
+default  = 300.0
+unit     = "Ry"
+range    = [100.0, 1000.0]
+group    = "stage"
+help     = """
 The real-space integration grid, in Ry.  Higher is finer and slower;
 convergence is checked, not assumed.
-Tier ladder: 150 screening · 300 publishable · 500 tight."""
+Per-tier: screening 150 · publishable 350 · tight 500."""
 
-# `enable_gpu` is SIESTA's spelling TODAY.  The item is a settled merge with
-# PySCF's `use_gpu` (§ 6.3), and the rename that effects it has not landed --
-# so this example shows the file as it is, not as § 6.3's table states it.
+# kind = "engine" + read_by — a value that ALSO leaves the deck (§ 6.1).
+# `enable_gpu` is SIESTA's spelling TODAY; the merge with PySCF's `use_gpu` is
+# settled and un-renamed (§ 6.3), so the file shows two items and the table
+# there shows one answer.
 [item.enable_gpu]
-kind    = "engine"
-category = "execution"
-anchor  = "Diag.ELPA.GPU"
-type    = "bool"
-value   = false
-default = false
-read_by = ["wrapper"]
-help    = """
-Run the ELPA diagonalization on a GPU.  The wrapper reads this: it decides the
-environment (only the source build has GPU-capable ELPA) AND the GPU runtime --
-the gres ask, MPS, the NUMA pin.  So the value leaves the deck and reaches the
-launch, which is what read_by records."""
+kind     = "engine"
+category = ["execution"]
+anchor   = "Diag.ELPA.GPU"
+type     = "bool"
+value    = false
+default  = false
+group    = "staging"
+read_by  = ["wrapper"]
+help     = """
+Run the ELPA diagonalization on a GPU.  The wrapper depends on this: it decides
+the environment (only the source build has GPU-capable ELPA) AND the GPU runtime
+-- the gres ask, MPS, the NUMA pin.  So the value leaves the deck and reaches
+the launch, which is what read_by records."""
 
+# kind = "deck" — molbuilder's own item, reaching the deck as TWO keywords.
+# This is the shape § 8.1 uses to show why splicing cannot work.
+[item.spin_total]
+kind     = "deck"
+category = ["system"]
+expands  = ["Spin.Fix", "Spin.Total"]
+type     = "float"
+optional = true
+group    = "profile"
+help     = """
+Target total spin moment in Bohr magnetons (= unpaired electrons).  Emits BOTH
+`Spin.Fix .true.` and `Spin.Total <v>`; the first is required or the second is
+silently ignored, which is why one item writes two keywords."""
+
+# kind = "produce" — shapes HOW the script is written without becoming a
+# keyword.  It orders the ChemicalSpeciesLabel block; it does not produce it,
+# which is the line § 6 draws between `produce` and `deck`.
 [item.species_order]
-kind    = "deck"
-category = "system"
-expands = ["ChemicalSpeciesLabel"]
-type    = "strlist"
-value   = ["C", "H", "S", "Au"]
-help    = """
+kind       = "produce"
+category   = ["system"]
+engine_key = "(molbuilder: ChemicalSpeciesLabel block ordering)"
+type       = "strlist"
+optional   = true
+group      = "profile"
+help       = """
 The order species are declared in.  A .XV read against a different order lands
 every coordinate on the wrong atom (run-identity.md § 4)."""
 
-[item.frozen_indices]
-kind    = "deck"
-category = "system"
-expands = ["Geometry.Constraints"]
-type    = "intlist"
-value   = [88, 89, 90, 91]
-group   = "system"
-help    = """
-Which atoms are held fixed.  Seeded from the structure's sidecar, then the form
-is authoritative (engines/overview.md § 3, stage 1)."""
-
+# kind = "wrapper" — never reaches the deck at all.
 [item.continue_retries]
-kind    = "wrapper"
-category = "execution"
-type    = "int"
-value   = 1
-default = 1
-range   = [1, 5]
-help    = "How many times the run wrapper retries a stage that did not converge."
+kind     = "wrapper"
+category = ["execution"]
+type     = "int"
+value    = 1
+default  = 1
+range    = [1, 5]
+group    = "staging"
+help     = "How many times the run wrapper retries a stage that did not converge."
 
-[item.user_custom]
-kind  = "deck"
-category = "method"
-type  = "text"
-value = """
-SaveElectrostaticPotential   .true."""
-help  = """
-Your own engine text.  Copied byte-for-byte into the deck's USER-CUSTOM zone and
-never validated by molbuilder (§ 9.2)."""
+# kind = "engine", and DELIBERATELY VALUELESS -- the § 6.4 state.  Its resolver
+# names who answers it when nobody has.
+[item.block_size]
+kind     = "engine"
+category = ["execution"]
+anchor   = "BlockSize"
+type     = "int"
+optional = true
+resolver = "block_size"
+group    = "budget"
+help     = """
+The ScaLAPACK/ELPA distribution block, in orbitals.  Left unset the keyword is
+NOT WRITTEN and SIESTA uses its own automatic; set to a number, that number is
+written verbatim (tuning.md § 2.11)."""
 ```
+
+**Two absences in this file are meaningful and neither is an omission.**
+`block_size` has no `value` — that is *explicitly unset* (§ 3), the state a
+missing key encodes. `spin_total` has neither `value` nor `default` — it is
+`optional`, so *unset* is one of its legal answers and there is no default to
+fall back to.
 
 ---
 
@@ -462,7 +555,7 @@ never validated by molbuilder (§ 9.2)."""
 
 ```mermaid
 flowchart TD
-    CAT["<b>catalogue.template.toml</b><br/>authored · every parameter · defaults<br/><i>84 items — 47 siesta, 40 pyscf, 3 both</i>"]
+    CAT["<b>catalogue.template.toml</b><br/>authored · every parameter · defaults<br/><i>both engines, in one file</i>"]
     UI["a surface<br/><i>cards from group, legends from category,<br/>contents filtered by engine</i>"]
     TPL["<b>&lt;label&gt;.template.toml</b><br/>this calculation — same items, with values"]
     RD["read + narrow to one engine<br/><code>config_from_template</code>"]
@@ -526,7 +619,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `default` | what untouched means. A surface compares it to `value` to show whether the user set this |
 | `anchor` | the engine keyword this becomes. A bare keyword, never a sentence — it is what a **deck writer** matches on |
 | `engine_key` | how the engine **spells** this, in full — `gto.M(basis=...)`, `mf = mf.density_fit()`, or a `(molbuilder: …)` note when the setting never reaches the deck. A different fact from `anchor`, and a **surface** shows this one. Collapsing the two lost it on 29 items (2026-08-14→15): four PySCF controls all read `gto.M`, three read `mf`, and every molbuilder note vanished — and the note is the only way a reader learns the setting is not an engine keyword at all |
-| `manual` | **where the engine's own documentation defines this keyword** — `SIESTA 5.4.2 §6.9.2 'Mixing options'`. Catalogue-only, and read by nobody but a person reviewing the catalogue — § 5.1 |
+| `manual` | **where the engine's own documentation defines this keyword** — `SIESTA 5.4.2 §6.9.2 'Mixing options'`. Read by nobody but a person reviewing the catalogue, and **the one key no config class mirrors** — § 5.1. *(It rides into a calculation's own template like every other key; "catalogue-only" said here until 2026-08-17 and meant the second thing, which is the claim that matters)* |
 | `expands` | the engine keywords a `deck` item produces, as a list |
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
@@ -643,14 +736,17 @@ and wrongly, with nothing in the file to reveal that it moved. Naming the
 release the citation was taken against makes a stale pointer *visible* — the
 same reasoning as § 3's schema string.
 
-**It is the one key the config classes do NOT mirror.** `help`, `label`,
-`unit`, `range` and `choices` live in two homes until the form is rebuilt from
-the catalogue (§ 2.1a), and
-[`tests/test_catalogue_agreement.py`](?doc=engines/template.md) exists to keep
-those two in step. `manual` is deliberately outside that set: its entire job is
-to let a reviewer **check the catalogue**, and a fact duplicated into the thing
-it is meant to check is a fact that can disagree with itself. One home, and the
-home is the master.
+**It is the one key the config classes do NOT mirror.** The mirrored set lives
+in two homes until the form is rebuilt from the catalogue (§ 2.1a), and
+`tests/test_catalogue_agreement.py` keeps the two in step. **That set is named
+once, in the test's own `MIRRORED` constant** — naming it here as well is how
+this paragraph came to list five keys while § 2.1a listed seven and the code
+checked six.
+
+`manual` is deliberately outside it: its entire job is to let a reviewer
+**check the catalogue**, and a fact duplicated into the thing it is meant to
+check is a fact that can disagree with itself. One home, and the home is the
+master.
 
 **The citations were derived, not recalled.** The 5.4.2 manual sources were
 parsed for every `\begin{fdfentry}{…}` and its enclosing numbered heading, then
@@ -680,7 +776,7 @@ page that may describe a different version.
 
 ---
 
-## 5.2 Where a default differs from the engine's own, the help says so
+### 5.2 Where a default differs from the engine's own, the help says so
 
 A default that disagrees with the engine's own default is a **claim**, and an
 unexplained claim is indistinguishable from an oversight. So the rule:
@@ -714,13 +810,29 @@ wrapper, some shape what the producer does, some shape what the monitor writes.
 | `kind` | the item is | reaches the deck | who acts on it |
 |---|---|:--:|---|
 | `engine` | one of the engine's own keywords | yes, as `anchor` | the deck writer |
-| `deck` | molbuilder's own, but it shapes the deck — by expanding to keywords, ordering a block, or supplying verbatim text | yes, via `expands` | the deck writer, through molbuilder's rule rather than one keyword |
+| `deck` | molbuilder's own, and it **produces** keywords — one item becoming several, or one whose keyword is chosen by another value | yes, via `expands` | the deck writer, through molbuilder's rule rather than one keyword |
 | `wrapper` | shapes the run script | no | `runwrap` |
-| `produce` | shapes what the produce step does | no | the producer |
-| `monitor` | shapes what the monitor writes | no | the monitor |
+| `produce` | shapes **how the script is written** without becoming a keyword itself | no | the producer |
+| `monitor` | shapes what the monitor writes | no | the monitor — **and no item carries this today** (§ 1.1a) |
 
 **The vocabulary is closed.** An unknown `kind` is an error a reader reports,
 never something it silently drops (§ 3).
+
+> **Where `deck` ends and `produce` begins, drawn on the case that decides
+> it.** This table said `deck` covered *"ordering a block"*, and by that
+> reading `species_order` — which fixes the order species are declared in —
+> would be a `deck` item. It is `produce`, and the catalogue is right: **it
+> orders a block it does not produce.** The `ChemicalSpeciesLabel` block comes
+> from the structure; `species_order` only tells the producer which way round
+> to write it, which is why its `engine_key` is the note
+> `(molbuilder: ChemicalSpeciesLabel block ordering)` rather than a keyword.
+>
+> So the test is **does this item put keywords in the deck?** If yes it is
+> `deck` and must say which, in `expands` — that is why § 3 makes `expands`
+> conditionally required, and an item that produces nothing has nothing to put
+> there. If it only changes *how* something else is written, it is `produce`.
+> *(Stated 2026-08-17. The looser wording had put a wrong classification into
+> § 4.2's worked example, where it is the shape people copy.)*
 
 **This is what lets a producer refuse cleanly.** A SIESTA producer emits
 `kind="engine"` anchors and whatever `kind="deck"` items expand to, and **must
@@ -750,11 +862,31 @@ source-built environment **and** a GPU runtime: the `gres` ask, MPS, the NUMA
 pin, the rank/thread budget. So it is `kind="engine"` with
 `read_by = ["wrapper"]`.
 
-**Why that key earns its place.** The wrapper finds this out by **reading the
-deck text**, which is a layer re-deriving an answer another layer already holds
-— the habit [`execution/architecture.md`](?doc=execution/architecture.md) § 1
-exists to remove. With `read_by`, the wrapper is *told* which items it depends
-on, and a new engine declares its own without anyone editing the wrapper writer.
+**Why that key earns its place — and where it stands today.** The wrapper finds
+this out by **reading the deck text**, which is a layer re-deriving an answer
+another layer already holds — the habit
+[`execution/architecture.md`](?doc=execution/architecture.md) § 1 exists to
+remove. The target is that the wrapper is *told* which items it depends on, so
+a new engine declares its own without anyone editing the wrapper writer.
+
+> **⚠ That target is not reached, and this section said it was.** `runwrap.py`
+> does not import `template`; it still greps the rendered `.fdf` for
+> `Diag.ELPA.GPU`. So `read_by` today is a **declaration**, not a lookup —
+> nothing in the tree reads `Item.read_by` except the check that validates it
+> (§ 1.1a).
+>
+> **It is still worth carrying, for a reason that is checkable rather than
+> hopeful.** `tests/test_template_declarations.py::test_every_deck_keyword_the_wrapper_reads_is_declared_read_by`
+> asserts the direction that catches drift: **for every place the wrapper reads
+> the deck, some item declares that read.** Add a scanner without the
+> declaration and it fails by name. That is what makes the eventual rewiring a
+> single change instead of two — the declarations are already complete and
+> correct when the wrapper stops grepping.
+>
+> The test earned this on 2026-08-13: the wrapper scanned two keywords and only
+> one was declared, so an implementation that had trusted the declarations
+> would have silently dropped every GPU runtime fact — the `gres` ask, MPS, the
+> NUMA pin.
 
 > **⚠ This section argued from `diag_algorithm` until 2026-08-14, and the
 > premise was measured false.** The claim was that any ELPA solver needs a
@@ -871,7 +1003,7 @@ appears only where it narrows something. **An `engines` list naming every
 engine the file serves is redundant, not wrong** — a reader treats it the same
 as absence, and a writer should not emit it.
 
-### Items merge when they are the same question with the same answer
+#### Items merge when they are the same question with the same answer
 
 > **The test, and both halves are required:** two engines share an item when it
 > is **the same question** *and* **the same answer**. A shared *name* is
@@ -895,7 +1027,8 @@ nothing is derived.
 > ruling of 2026-08-13, restated 2026-08-14 and marked *do not re-open*
 > ([`template-unification-plan.md`](?doc=plans/template-unification-plan.md)
 > § 5.5); `charge` by § 1 of the same plan. The merge is **declared by spelling
-> the field alike in both engines** (§ 6.3 below, plan § 5.6), and that rename
+> the field alike in both engines** (*How a merge is DECLARED*, below; plan
+> § 5.6), and that rename
 > is a separate unit that has not landed: `enable_gpu` → `use_gpu` and
 > `net_charge` → `charge`, plus every reader of those names — 117 sites for
 > `net_charge` alone.
@@ -974,7 +1107,7 @@ defect § 1 of the unification plan measured.)*
 ```toml
 [item.mesh_cutoff]
 kind     = "engine"
-category = "accuracy"
+category = ["accuracy"]      # ALWAYS a list, even when there is one (§ 6.2)
 engines  = ["siesta"]        # SIESTA only; a PySCF surface never shows it
 anchor   = "MeshCutoff"
 type     = "float"
@@ -982,13 +1115,17 @@ value    = 300.0
 unit     = "Ry"
 help     = "The real-space integration grid, in Ry."
 
-[item.job_name]
+[item.write_molwatch_log]
 kind     = "produce"
-category = "procedure"
-# no `engines` key -- applies to every engine
-type     = "str"
-value    = "run1"
-help     = "What this run is called."
+category = ["procedure"]
+# no `engines` key -- so it applies to EVERY engine.  Absence is the wider
+# claim here, not the narrower one, which is why the writer omits the key
+# rather than listing them all.
+type     = "bool"
+value    = true
+default  = true
+group    = "output"
+help     = "Write <job>.molwatch.log alongside the run."
 ```
 
 ### 6.4 An item may be declared without a value
@@ -1021,8 +1158,16 @@ author needs and the code enforces it:
 |---|---|---|---|
 | `node_memory` | `max_memory_mb` | the node's maximum, from `environment.json` or detection | clamped to the allocation, and the clamp logged |
 | `block_size` | `block_size` | proposed from the orbital and rank counts | honoured verbatim |
-| `rank_count` | the MPI rank count | the allocation | an ask, resolved against what was granted |
-| `omp_threads` | `threads` | `OMP_NUM_THREADS` → `SLURM_CPUS_PER_TASK` → `PBS_NCPUS` → `NSLOTS` → physical cores | honoured; it outranks the chain |
+| `rank_count` | `mpi_np` | the allocation | an ask, resolved against what was granted |
+| `omp_threads` | `omp_threads` | `OMP_NUM_THREADS` → `SLURM_CPUS_PER_TASK` → `PBS_NCPUS` → `NSLOTS` → physical cores | honoured; it outranks the chain |
+
+**Four resolvers, four items, and all four items are SIESTA's.** That is the
+state, not the design. PySCF has its own thread count — the item `threads`,
+`lib.num_threads` — and it **names no resolver**, so nothing sizes it from the
+allocation the way `omp_threads` is sized. A PySCF job prepped on a 128-core
+node asks for whatever the script's default is. This is the gap § 12 records,
+and it is what *"PySCF is just a job"* has to close: the resolver registry is
+already the right mechanism, and PySCF is not yet plugged into it.
 
 **Three of the four answer from the ALLOCATION** — `rank_count`, `omp_threads`
 and `node_memory` — and an item naming one of those **may never carry a value**:
@@ -1143,6 +1288,20 @@ no layer carries a field list — this is G3 in operation.
 in the sense that matters: the surface does not call an API to learn what a field
 is, and the wrapper does not read someone else's artifact to learn what it needs.
 
+> **Which rows of that table are calls, and which are the design.** Two are
+> live: a surface calls `select(t, engine=…)`, and `prep` step 2 takes every
+> item through `config_from_template`. **The other four are not filters anybody
+> applies** — the deck writer, the wrapper writer, the benchmark and the
+> monitor all receive an ordinary **config object** and read the fields they
+> need off it. So `kind` and `category` are not steering those readers today;
+> they classify the items for a person and for the catalogue's own checks
+> (§ 1.1a).
+>
+> The table stays because it is the shape the seam is being built toward, and
+> because the columns are true statements about *which items belong to whom*
+> even while nothing dispatches on them. What it must not be read as is a
+> description of the call graph.
+
 ### 8.0 The one read API
 
 **`select(t, *, category=None, engine=None, kind=None, read_by=None)` → items,
@@ -1172,7 +1331,16 @@ it*. The § 8 table above is then a table of **calls**, not of bespoke code:
 engine="pyscf")` returns `None` — the item declares `engines = ["siesta"]`, so
 its absence here is an answer, not a fault. It **raises** only when the item is
 required for that engine and missing, because *"does not apply"* and *"should be
-here and is not"* must never read the same. That is Law A applied to a lookup.
+here and is not"* must never read the same.
+
+**That rule has a name in this project and it is worth spelling out here, since
+this is the only place the name appears:** *an absence and a refusal must never
+return the same value.* An empty list that means *nothing matched* and an empty
+list that means *you asked for something that does not exist* send a caller
+down the same branch, and only one of those callers is right. It is the same
+reasoning behind `select` refusing an engine the template does not serve
+(§ 3), and behind `environment.json` keeping an undetected field as `null`
+rather than omitting it ([`configuration.md`](?doc=configuration.md) § 5 M-2).
 
 **Why a filter API and not a query language.** The axes are closed vocabularies
 declared on the item, so a filter is a dict comparison — no expression to parse,
@@ -1258,9 +1426,9 @@ flowchart LR
 | block | its content comes from | what carries it | emitted by |
 |---|---|---|---|
 | **PROVENANCE** | molbuilder's version and the moment of rendering | nothing — generated at `prep`, which is the honest answer for a *generation* snapshot | the deck writer |
-| **BENCH-MARKS** | the same field metadata the template is built from | nothing — derived, which is why [`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3 requires both to come from one source | the deck writer |
+| **BENCH-MARKS** | the same field metadata the template is built from | nothing — derived, which is why [`job-contracts.md`](?doc=execution/job-contracts.md) § 3.3 requires both to come from one source | the deck writer — **SIESTA only.** A PySCF deck declares no override surface, so a benchmark has nothing to read from one ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.1) |
 | **ATOM-METADATA** | the structure's regions, frozen atoms and annotations | **the structure and its `.molstruct.json` sidecar** — data files in the folder (§ 9.1) | the deck writer |
-| **USER-CUSTOM** | text a person wrote | **an item in the template** (§ 9.2) | the deck writer, verbatim |
+| **USER-CUSTOM** | text a person wrote | **an item in the template** (§ 9.2) — ⚠ **not built.** No `user_custom` item exists, so in the staged path this block is emitted empty and a person's text does not survive (§ 12) | the deck writer, verbatim |
 | **HEADER** | reserved, emitted by nobody today | — | — |
 
 **Nothing here is new machinery.** The deck writer already emits all five; what
@@ -1285,10 +1453,28 @@ the one [`overview.md`](?doc=engines/overview.md) § 3 already draws:
 | the sidecar's **`frozen_atoms`** | the structure's own annotation. It **seeds** the form | with the structure, in the sidecar |
 | **`frozen_indices`** | what the user actually chose — this run's boundary condition | **a template item**, `kind="deck"`, producing `%block Geometry.Constraints` |
 
-The Stage-3A divergence warning exists precisely because those two can disagree,
-and nothing here changes it. Note also that the two use different index bases in
-one file on purpose ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.4:
-the metadata block is 0-based, SIESTA's constraints block is 1-based).
+Note that the two use different index bases in one file on purpose
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.4: the metadata block
+is 0-based, SIESTA's constraints block is 1-based).
+
+> **⚠ The second row is the design, and for SIESTA it is not built.** There is
+> no `frozen_indices` item in the catalogue and no such field on
+> `SiestaConfig` — only `SpectraConfig` has one. `siesta/input.py` writes
+> `%block Geometry.Constraints` straight from **`struct.frozen_atoms`**, the
+> sidecar's own annotation.
+>
+> **What that costs is the whole point of the distinction.** The boundary-
+> condition contract ([`overview.md`](?doc=engines/overview.md) § 3) says the
+> sidecar *seeds* the form and the form is then authoritative — leave the
+> pre-fill, add to it, or clear it deliberately. On the SIESTA path there is no
+> form value to be authoritative: clearing the field cannot unfreeze anything,
+> because the deck is written from the sidecar either way. The Stage-3A
+> divergence warning that would catch the two disagreeing is spectra-only, so
+> nothing reports it.
+>
+> Recorded rather than quietly corrected because the founding rule it touches
+> is a user directive of 2026-05-21 — *"no silent absorption of config"* — and
+> the gap is exactly a silent absorption. § 12 carries it as work owed.
 
 ### 9.2 A person's own text is an item, because there is no previous deck to read
 
@@ -1317,13 +1503,27 @@ than a special case:**
 - **The template is where you edit it**, which is the file this contract already
   says is meant to be edited (G5).
 
-> **One behaviour changes, and it is worth stating plainly rather than
-> discovering.** In the staged path, editing the custom zone of a *rendered
-> deck* does not survive the next `prep` — the template is what survives. The
-> **single-deck paths keep the read-back merge** (the web Build tab and
-> `molbuilder pyscf` regenerate one file in place, where *"the target"* is one
-> well-defined file and the merge is exactly right). What is not allowed is
-> `prep` harvesting from a deck it is about to overwrite.
+> **Where the read-back merge actually runs today, counted rather than
+> assumed.** `merge_user_custom_from_target` has **one** caller:
+> `web/blueprints/files.py`, and only on a *fresh regenerate* — an edit-save
+> bypasses it deliberately, because there the user is committing their own text
+> and a merge would undo edits inside the zone. So:
+>
+> | path | what happens to your custom text |
+> |---|---|
+> | the web Build tab, regenerating | **preserved** — read back from the target |
+> | `molbuilder siesta` / `molbuilder pyscf` at the terminal | **lost** — the CLI writes the file and never reads the old one |
+> | `jobset prep` (the staged path) | **lost** — no previous deck to read, and no template item yet to carry it |
+>
+> *(The second row said "preserved" here until 2026-08-17. It named the CLI
+> alongside the web tab as a single-deck path that keeps the merge; the CLI has
+> no merge call.)*
+>
+> **What the fix changes, when the item lands:** the template becomes what
+> survives in every row, and editing the custom zone of a *rendered deck* stops
+> surviving anywhere — which is correct, because a deck is disposable and the
+> template is not. What is not allowed in any design is `prep` harvesting from
+> a deck it is about to overwrite.
 
 > **⚠ This needs a schema field that does not exist yet.** Membership is total
 > over *the fields the engine's schema declares* (§ 7), and no engine config
@@ -1391,22 +1591,25 @@ takes it from there.
 
 ## 10a. THE CHAIN, traced — every call from the catalogue to the deck
 
-> ### Four views of one flow, and which to read
+> ### The views of one flow, and which to read
 >
-> The same journey is drawn four times in this document, deliberately, because
-> four different questions get asked about it and one diagram answering all of
+> The same journey is drawn five times in this document, deliberately, because
+> five different questions get asked about it and one diagram answering all of
 > them would answer none well. They do not disagree; each hides what the others
 > are for.
 >
 > | § | the question it answers | what it leaves out |
 > |---|---|---|
+> | **2.1a** | *which floor is each thing on, and which way may data move?* | how anything gets made |
 > | **4.3** | *where does a template come from?* — the authored catalogue narrowing to one calculation | everything downstream of the file |
-> | **6.5** | *who reads it, and what does each take?* — six consumers, each filtering on the axes it owns | the order they run in |
+> | **6.5** | *who reads it, and what does each take?* — six consumers, each filtering on the axes it owns. **The design, not the call graph** (§ 1.1a) | the order they run in |
 > | **10a** (here) | *what actually happens, call by call, and on which floor?* | what any single parameter looks like |
-> | **10a.4** | *what becomes of ONE parameter?* — nine lines of TOML into a control, a warning and a deck line | the rest of the file |
+> | **10a.4** | *what becomes of ONE parameter?* — nine lines of TOML into a control, a warning and a deck line | everything past the deck |
+> | **10a.5** | *what reaches the LAUNCH?* — the same item into the environment, the GPU runtime and the submission | every item that stops at the deck, which is most of them |
 >
-> If you read only one, read **10a.4**: it is the whole contract at the scale of
-> a single setting, and every rule in this document is visible in it.
+> **If you read one, read 10a.4** — the whole contract at the scale of a single
+> setting. **If your question is "what did my choice actually change on the
+> cluster?", read 10a.5**, which is the only one that goes that far.
 
 
 **What this section is for.** *"One file describes the calculation"* is a claim
@@ -1418,7 +1621,7 @@ lives** — because the floor a function sits on is half of whether it is right
 ```mermaid
 flowchart TD
     subgraph F0["the master — authored, edited as TOML"]
-      CAT["<b>data/catalogue.template.toml</b><br/>84 items · both engines"]
+      CAT["<b>data/catalogue.template.toml</b><br/>every parameter · both engines"]
     end
 
     subgraph F2["floor 2 · description — names no machine"]
@@ -1569,6 +1772,63 @@ the full spelling, which for PySCF is `gto.M(basis=...)` and for `mpi_np` is
 item never reaches a deck at all. One field cannot carry all three, and the day
 it was made to try, eleven items lost their badge and seventeen warnings lost
 their keyword (2026-08-14, fixed the next day).
+
+### 10a.5 ONE parameter that reaches the LAUNCH — the rest of the journey
+
+`mesh_cutoff` stops at the deck, which is where most items stop. **This is the
+other kind**, and it is the only trace in this documentation that runs from a
+control on a form to a line in a submitted job — the question *"I ticked a box;
+what actually changed on the cluster?"*
+
+`enable_gpu` is the case because it is the one item declaring
+`read_by = ["wrapper"]`, so its value has to leave floor 2 twice: once into the
+deck, and once past it.
+
+```mermaid
+flowchart TB
+    IT["<b>[item.enable_gpu]</b><br/>kind=engine · anchor=Diag.ELPA.GPU · read_by=[wrapper]"]
+
+    FORM["<b>the form</b><br/>a checkbox on the <i>staging</i> card,<br/>legend <i>execution</i>, badge <code>Diag.ELPA.GPU</code>"]
+    TPL["<b>the template</b><br/><code>value = true</code>"]
+
+    subgraph PREP["prep, on the target machine"]
+      direction TB
+      S2["<b>step 2</b> · resolve<br/><i>the value survives into the config</i>"]
+      S3["<b>step 3</b> · the deck<br/><code>Diag.ELPA.GPU .true.</code>"]
+      S4["<b>step 4</b> · the wrapper"]
+      S2 --> S3 --> S4
+    end
+
+    subgraph LAUNCH["what step 4 decides FROM that value"]
+      E1["the conda env<br/><code>molbuilder-siesta-gpu</code><br/><i>only the source build has GPU ELPA</i>"]
+      E2["the GPU runtime<br/><i>MPS · the NUMA pin</i>"]
+      E3["the memory audit<br/><i>a GPU job is budgeted differently</i>"]
+    end
+
+    IT --> FORM --> TPL --> S2
+    S4 --> E1 & E2 & E3
+    E1 & E2 & E3 --> SH["<code>&lt;label&gt;.run.sh</code> + <code>.sbatch</code>"]
+    SH --> SUB["<b>submit</b><br/><i>checks the deck and the launch still agree,<br/>then starts ONE job</i>"]
+```
+
+**Three things this picture is for.**
+
+**One value, two floors, and the second is where the cost lives.** A wrong
+`mesh_cutoff` gives you a worse number. A wrong `enable_gpu` puts the job in an
+environment whose SIESTA cannot do what the deck asks — and both wrong answers
+look exactly like the defaults, which is
+[`workflow.md`](?doc=workflow.md) § 5's argument for why step 4 cannot precede
+step 3.
+
+**This is why the deck is rendered before the wrapper**, stated as a fact about
+one item rather than as a sequencing rule. The wrapper cannot be written until
+`enable_gpu` is fixed, because three of its decisions are functions of it.
+
+**And it is where § 1.1a's second row bites.** Step 4 gets that value by
+**grepping the `.fdf` it just wrote**, not by reading `read_by`. The picture is
+the same either way — the same value reaching the same three decisions — which
+is exactly why the difference is easy to overlook and worth drawing: an engine
+whose deck is a `.py` produces the identical arrows and is not looked at.
 
 ---
 
@@ -1730,9 +1990,14 @@ stage at any time and get the same deck.
 ### 11.3 The wrapper needs to know the eigensolver
 
 A **GPU** deck must run in `molbuilder-siesta-gpu` — the source build is the
-only one whose ELPA was compiled with GPU support. The wrapper writer asks for
-every item whose `read_by` names it, gets `enable_gpu`, and picks both the
-environment and the GPU runtime from the value.
+only one whose ELPA was compiled with GPU support. The wrapper writer needs
+`enable_gpu`'s value to pick both the environment and the GPU runtime.
+
+**How it gets it today, and how it is meant to.** Today it greps the rendered
+deck for `Diag.ELPA.GPU`. The design is that it asks for every item whose
+`read_by` names it and is handed `enable_gpu` — and the item already carries
+that declaration, kept correct by the guard test in § 6.1. The difference is
+one import away and is § 1.1a's second row.
 
 **A CPU-ELPA deck needs neither**, which is the correction that made this
 example honest: the packaged SIESTA runs both ELPA stages on CPU
@@ -1741,11 +2006,13 @@ split on **provenance** — one installs from packages anywhere, the other must 
 compiled, which some sites forbid — so routing CPU-ELPA to the source build once
 refused a runnable calculation for a solver the baseline already had.
 
-**A new engine needs no change to the wrapper writer.** It declares
-`read_by = ["wrapper"]` on its own item and is served by the same code.
-`tests/test_template_declarations.py` asserts the other direction — that every
-place the wrapper reads the deck is claimed by some item's `read_by` — so a
-scanner added without a declaration fails by name.
+**A new engine will need no change to the wrapper writer** — it declares
+`read_by = ["wrapper"]` on its own item and is served by the same code. That is
+the payoff, and it is the part still owed: while the wrapper greps a `.fdf`, an
+engine whose deck is a `.py` declares its dependency correctly and is not
+looked at. `tests/test_template_declarations.py` asserts the direction that is
+enforceable now — that every place the wrapper reads the deck is claimed by
+some item's `read_by` — so a scanner added without a declaration fails by name.
 
 ### 11.4 A benchmark measures this calculation
 
@@ -1759,9 +2026,12 @@ item itself may be declared but stays valueless (§ 6.4), and a sweep never
 writes one. That is why a benchmark needs no new file: the science is already
 written down once, and the axis being swept was never part of it.
 
-**What the benchmark DOES read from the template is `category="execution"`** —
-the knobs that change speed and not the answer (§ 6.2). That is the sweepable
-set, and it is a filter rather than a maintained list.
+**What a benchmark is MEANT to read from the template is
+`category="execution"`** — the knobs that change speed and not the answer
+(§ 6.2). That is the sweepable set, and it is a filter rather than a maintained
+list. *(Today the sweep grid comes from the machine's topology rather than from
+this filter — § 1.1a. `category="execution"` is a correct and complete claim
+about which items are safe to sweep; it is not yet what selects them.)*
 
 ### 11.5 You open the file before submitting a week of compute
 
@@ -1799,18 +2069,22 @@ description.
   ([`tuning.md § 2.11`](?doc=engines/tuning.md)).
 
   ```toml
-  # The ITEM is `block_size`; `block_size` is the RESOLVER that
-  # answers it (§ 6.4).  Two different names for two different things --
-  # there is no item called `block_size`.
+  # The item and the resolver share the name `block_size`, and they are two
+  # different things: the ITEM is the parameter, the RESOLVER is who answers
+  # it when nobody has (§ 6.4).  Sharing the name is deliberate -- a resolver
+  # exists to answer one item, so a second name would be a second thing to
+  # keep in step.
   [item.block_size]
   kind     = "engine"
-  category = "execution"
+  category = ["execution"]
   anchor   = "BlockSize"
-  type    = "int"
+  type     = "int"
+  optional = true
+  resolver = "block_size"
   # no `value`, and no `range` -- both settled in tuning.md § 2.11, which owns
   # this knob.  Read it there rather than here.
-  group   = "budget"
-  help    = """
+  group    = "budget"
+  help     = """
   The ScaLAPACK/ELPA distribution block, in orbitals.  TWO STATES: left as
   (auto) the keyword is NOT WRITTEN and SIESTA uses its own automatic; set to a
   number, that number is written verbatim.  Guidance if you set one by hand:
@@ -1821,11 +2095,53 @@ description.
   ```
   *(The `help` above is abridged from the catalogue's own, which is longer and
   is the text a user actually reads. It said "leave unset and prep proposes one"
-  until 2026-08-16 — the state retired on 2026-08-15.)*
-- **`user_custom` needs a schema field** (§ 9.2) before it can be an ordinary
-  item rather than an exception.
-- **PySCF's `stages`.** Its ladder runs inside one process, so for PySCF the
-  stage list is engine behaviour rather than the mission
-  ([`overview.md`](?doc=engines/overview.md) § 4). Until that path is reworked,
-  PySCF's stage list is excluded from its template by § 7's *ladder* row and
-  lives in its config.
+  until 2026-08-16 — the state retired on 2026-08-15. The comment above said
+  "there is no item called `block_size`" directly over `[item.block_size]`
+  until 2026-08-17.)*
+
+### 12.1 What this contract describes and the code does not do yet
+
+**Every row is a claim made somewhere above in the present tense.** They are
+gathered here so the list is one thing rather than six asides, and so that
+closing one is a visible act. Measured 2026-08-17.
+
+| # | owed | stated at | why it matters, in one line |
+|---|---|---|---|
+| **1** | **`user_custom` has no schema field and no catalogue item** | § 9, § 9.2 | in the staged path a person's own engine text is silently dropped |
+| **2** | **`frozen_indices` has no item for SIESTA**; the deck is written from the sidecar | § 9.1 | the form cannot be authoritative over the freeze set, so clearing it does nothing — a silent absorption of config |
+| **3** | **`kind` steers no reader**; `select` is never called with it | § 6, § 8, § 1.1a | G3 is declared and checked, not dispatched on |
+| **4** | **`read_by` is declared and unconsumed**; the wrapper still greps the deck | § 6.1, § 11.3 | a new engine cannot yet be served by declaring a wrapper dependency |
+| **5** | **`kind = "monitor"` has no items** | § 6 | either an item earns it or the member is retired; a vocabulary member nothing uses is the family § 10 retired `fingerprint` from |
+| **6** | **PySCF's `threads` names no resolver** | § 6.4 | nothing sizes a PySCF job from the allocation |
+| **7** | **BENCH-MARKS is SIESTA-only** | § 9 | a PySCF deck declares no override surface, so a sweep has nothing to read from it |
+| **8** | **`required` is not an item** | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1 | a stage cannot declare the warm files it needs, because a description names fields and never defines them |
+| **9** | **`enable_gpu` → `use_gpu` is ruled and un-renamed** | § 6.3 | two names answer one question, so any caller asking *"does this want a GPU?"* must name an engine's spelling. `jobset/_cli.py::_bench_inputs` does, and is correct only while the seam refuses non-SIESTA engines |
+
+**Rows 1, 2 and 8 are the same shape and it is worth naming.** Each is a
+*carrier* that the contract assumes and the catalogue lacks. § 7's membership
+rule — every parameter the schema declares is an item — cannot manufacture one:
+if the schema has no field, there is no item to be total over. So each of these
+begins with a field on a config class, not with a catalogue row.
+
+**Rows 3, 4, 5 and 7 are the seam**, and they close together with the work
+[`generator.md`](?doc=execution/generator.md) § 7.2 tracks — which is why they
+are recorded here and planned there.
+
+### 12.2 Answered, and kept because the answer took work
+
+- **PySCF's `stages` are declared in `task.json`, like SIESTA's.**
+  *(Answered 2026-08-17 — [`stages.md`](?doc=engines/stages.md) § 1.1a.)* Two
+  questions had been conflated: **where a ladder is declared** and **how it
+  executes**. Only the second was ever PySCF's difference — its rungs share one
+  SCF process and one checkpoint, so they cannot be separate jobs, and that has
+  not changed. The declaration moved to the description for both engines, the
+  seven geometry knobs became catalogue items, and `PySCFConfig.stages`
+  survives as a field `prep` **derives** on the way to the deck. A structure
+  computed at render time and consumed one step later is not a second
+  declaration: the test is *can a person put a value there the description does
+  not state?*, and here they cannot.
+
+  *This section said the opposite until 2026-08-17 — that PySCF's stage list
+  "lives in its config", excluded by § 7's ladder row — and cited
+  [`overview.md`](?doc=engines/overview.md) § 4, the section that had already
+  recorded the change.*

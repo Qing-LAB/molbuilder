@@ -148,7 +148,7 @@ shared API.
 | group | how it runs work | status |
 |---|---|---|
 | **`jobset`** | `prep` → `submit`, one job per invocation, per-attempt directories, `run.json` | the design ([`job-system.md`](?doc=execution/job-system.md)) |
-| **`bench`** | `generate` → `prep` → `siesta-gpu` → `summarize` → `prep-run`, with its own baked executables | **the same act, a second spelling** — see below |
+| **`bench`** | `probe-scheduler` only | **RESOLVED 2026-08-17** — the four duplicate verbs are gone; benchmarking is `jobset prep bench <stage>`. See below |
 | **`transport`** | `bundle` → `bash run-transport.sh`, a driver that **chains** three coupled runs | **the case with no representation** ([`transport.md § 8`](?doc=engines/transport.md)) |
 
 **They are not the same kind of problem, and conflating them would fix neither.**
@@ -157,40 +157,39 @@ cannot say. The first is a merge, the second needs a vocabulary — job-set edge
 between genuinely coupled runs, which decision 6 removed for ladders on purpose
 and would have to come back differently.
 
-##### `bench` and `jobset` — the same act, twice
+##### `bench` and `jobset` — RESOLVED, and the record was inverted
 
-| the act | `jobset` says | `bench` says |
+> **This section described four acts with two spellings each and said *"the
+> `jobset` column is the one that does not exist yet"*. That was true when it
+> was written and is the exact inverse of today** (measured 2026-08-17): the
+> `bench` command's four verbs were deleted in the 2026-08-12 fold, and all
+> three `jobset` forms work.
+
+| the act | today | the second spelling it replaced |
 |---|---|---|
-| build it | `jobset prep bench <stage>` | `bench generate` **+** `bench prep` |
-| run it | `jobset submit bench <stage>` | `bench siesta-gpu` |
-| read it | `jobset summarize bench <stage>` | `bench summarize` |
-| use the answer | `jobset prep run <stage>` | `bench prep-run` |
+| build it | `jobset prep bench <stage>` | ~~`bench generate` + `bench prep`~~ |
+| run it | `jobset submit bench <stage>` | ~~`bench siesta-gpu`~~ |
+| read it | `jobset summarize bench <stage>` | ~~`bench summarize`~~ |
+| use the answer | `jobset prep run <stage>` — the verdict is **offered** and waits | ~~`bench prep-run`~~ |
 
-**Four acts, two spellings each, and the `jobset` column is the one that does
-not exist yet** — `jobset prep|submit bench` refuse today with a pointer at the
-`bench` command that works ([`job-system.md § 5.3`](?doc=execution/job-system.md)).
+**`molbuilder bench` is gone entirely** (2026-08-17, user: *all verbs unified
+under `jobset`*). Its last inhabitant was `probe-scheduler`, which reads
+`sinfo`/`sacctmgr` and proposes a scheduler config block — **never a benchmark
+verb at all**, and keeping the group alive for it left a name that described
+nothing it contained. It is now `molbuilder jobset probe`.
 
-**The design that resolves it is already settled:
+**Why it resolved this way, and it is the reason predicted here:**
 [`project-layout.md § 2.3.1a`](?doc=execution/project-layout.md) — *benchmarking
-is `prep`, specialised.*** A normal prep resolves one configuration and renders
-one deck; a benchmark prep resolves a **grid** and renders one deck per point.
-Machine detection, activation and the directory build are the *same framework*
-doing the same thing. So `bench` is not a second system that should be
-integrated — **it is where that framework was built first**, because the need
-appeared there, and the general part needs lifting out of it.
+is `prep`, specialised.* A normal prep resolves one configuration and renders one
+deck; a benchmark prep resolves a **grid** and renders one deck per point.
+Machine detection, activation and the directory build are the same framework
+doing the same thing, so there was never a second system to integrate — only a
+general part to lift out of where the need first appeared.
 
-**Why this matters beyond tidiness.** It breaches
-[`architecture.md § 0`](?doc=execution/architecture.md)'s rule that *every axis
-is a value read at one point, never a branch*: measuring and running are the same
-act over different parameters, and today they are two code paths that can drift.
-`bench probe-scheduler` is the deliberate exception and keeps its own verb — it
-reads a live cluster and proposes config, which is not a calculation at all.
-
-**`transport` breaches the same rule for the opposite reason** — not a second
-spelling of something that exists, but the only shipped work the job set cannot
-describe. Naming them together is the point: **one is a merge, the other is a
-gap**, and a plan that treated them alike would either delete a working
-capability or bless a permanent second path.
+**`bench` is a positional, alongside `run`.** `jobset prep <run|bench> [STAGE]`
+— which settles `generator.md` § 9's open question G3. And the STAGE is
+required for a benchmark, because a sweep belongs to one stage rather than to
+the calculation ([`generator.md § 4.3a`](?doc=execution/generator.md)).
 
 ### The CLI-wide conventions
 

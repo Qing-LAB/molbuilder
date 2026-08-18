@@ -246,6 +246,39 @@ def _default_stages() -> List[StageSpec]:
     ]
 
 
+def stages_from_configs(rungs) -> List[StageSpec]:
+    """**The derivation** (P2, 2026-08-17) — resolved per-rung configs → the
+    render-time ladder.
+
+    ``rungs`` is ``[(name, enabled, PySCFConfig), ...]``, one entry per stage of
+    ``task.json``, each config already resolved by `prep` step 2 (the
+    description ⊕ that stage's overrides).  The result is what
+    ``_emit_stages_loop`` reads.
+
+    This is the whole of *"`PySCFConfig.stages` survives as a DERIVED field"*
+    (`engines/stages.md` § 1.1a).  Nobody authors the returned list; it is
+    computed on the way to the deck and consumed one step later, so it cannot
+    carry a value the description does not state — which is the test § 1.1a
+    sets for whether a structure counts as a second declaration.
+
+    The field-by-field mapping is P1's table, in the one direction it runs.
+    ``conv_tol`` reads ``scf_conv_tol`` rather than a ``geom_`` twin because
+    the two were always the same knob: `StageSpec.conv_tol` and the catalogue's
+    ``scf_conv_tol`` both declare ``engine_key = "mf.conv_tol"``, and that
+    duplication is what closing the § 1.1 exception removed.
+    """
+    return [
+        StageSpec(name=name, enabled=bool(enabled),
+                  conv_tol=cfg.scf_conv_tol,
+                  gmax=cfg.geom_gmax, grms=cfg.geom_grms,
+                  dmax=cfg.geom_dmax, drms=cfg.geom_drms,
+                  etol=cfg.geom_etol, max_steps=cfg.geom_max_steps,
+                  on_nonconvergence=cfg.on_nonconvergence,
+                  continue_retries=cfg.geom_continue_retries)
+        for name, enabled, cfg in rungs
+    ]
+
+
 def validate_stages(stages: List[StageSpec]) -> List[str]:
     """Return a list of error strings; empty == OK.
 
@@ -884,6 +917,121 @@ class PySCFConfig:
             "minimum.  See docs/engines/tuning.md § 2.1."
         ),
     })
+    # ---------------- geomeTRIC convergence (per-stage knobs) ----------
+    #
+    # P1, 2026-08-17.  These eight were fields of ``StageSpec`` -- an engine
+    # config carrying its own ladder -- which `engines/stages.md` § 1.1 forbids
+    # and granted PySCF a TEMPORARY exception to, gated on *"until the SIESTA
+    # path works"*.  They are flat here now, exactly as SIESTA's per-stage
+    # knobs (``relax_force_tol``, ``relax_max_displ``, …) always were: the
+    # class holds ONE value, and `task.json`'s stages override it per rung.
+    #
+    # The ninth, ``StageSpec.conv_tol``, is NOT here because it already was:
+    # ``scf_conv_tol`` above declares the same ``engine_key`` (``mf.conv_tol``).
+    # One knob had two homes agreeing by coincidence -- the drift § 1.1 exists
+    # to prevent, living inside the exception § 1.1 granted.
+    geom_gmax: float = field(default=4.5e-4, metadata={
+        "skip_cli": True,
+        "category": ("accuracy",),
+        "section": "Compute & budget",
+        "workflow_group": "stage",
+        "label": "‖F‖∞", "unit": "Ha/Bohr", "step": "any",
+        "engine_key": "geomeTRIC convergence_gmax",
+        "range": (1.0e-6, 1.0e-1),
+        "tier": "advanced",
+        "help": "max-gradient convergence (Ha/Bohr)",
+    })
+    geom_grms: float = field(default=3.0e-4, metadata={
+        "skip_cli": True,
+        "category": ("accuracy",),
+        "section": "Compute & budget",
+        "workflow_group": "stage",
+        "label": "‖F‖RMS", "unit": "Ha/Bohr", "step": "any",
+        "engine_key": "geomeTRIC convergence_grms",
+        "range": (1.0e-6, 1.0e-1),
+        "tier": "advanced",
+        "help": "RMS-gradient convergence (Ha/Bohr)",
+    })
+    geom_dmax: float = field(default=1.8e-3, metadata={
+        "skip_cli": True,
+        "category": ("accuracy",),
+        "section": "Compute & budget",
+        "workflow_group": "stage",
+        "label": "Δx max", "unit": "Å", "step": "any",
+        "engine_key": "geomeTRIC convergence_dmax",
+        "range": (1.0e-5, 1.0),
+        "tier": "advanced",
+        "help": "max-displacement convergence (Å)",
+    })
+    geom_drms: float = field(default=1.2e-3, metadata={
+        "skip_cli": True,
+        "category": ("accuracy",),
+        "section": "Compute & budget",
+        "workflow_group": "stage",
+        "label": "Δx RMS", "unit": "Å", "step": "any",
+        "engine_key": "geomeTRIC convergence_drms",
+        "range": (1.0e-5, 1.0),
+        "tier": "advanced",
+        "help": "RMS-displacement convergence (Å)",
+    })
+    geom_etol: float = field(default=1.0e-6, metadata={
+        "skip_cli": True,
+        "category": ("accuracy",),
+        "section": "Compute & budget",
+        "workflow_group": "stage",
+        "label": "ΔE tol", "unit": "Hartree", "step": "any",
+        "engine_key": "geomeTRIC convergence_energy",
+        "range": (1.0e-12, 1.0e-2),
+        "tier": "advanced",
+        "help": "energy-step convergence (Hartree)",
+    })
+    geom_max_steps: int = field(default=200, metadata={
+        "skip_cli": True,
+        "category": ("procedure",),
+        "section": "Compute & budget",
+        "workflow_group": "stage",
+        "label": "Max steps",
+        "engine_key": "geomeTRIC maxsteps",
+        "range": (1, 10000),
+        "tier": "advanced",
+        "help": "max geomeTRIC iterations in this stage",
+    })
+    on_nonconvergence: str = field(default="halt", metadata={
+        "skip_cli": True,
+        "item_kind": "produce",
+        "category": ("procedure",),
+        "section": "Compute & budget",
+        "workflow_group": "stage",
+        "label": "If max_steps runs out",
+        "choices": ("proceed", "continue", "halt"),
+        "engine_key": "(molbuilder: per-stage non-convergence policy)",
+        "tier": "advanced",
+        "help": ("what to do if geomeTRIC's 5 criteria aren't all met when "
+                 "max_steps runs out: proceed (move on to next stage with "
+                 "the partial geometry), continue (extend this stage with "
+                 "more iterations), halt (raise + stop the whole script).  "
+                 "The LAST enabled stage's value is ignored; the final tier "
+                 "always halts on failure."),
+    })
+    geom_continue_retries: int = field(default=1, metadata={
+        "skip_cli": True,
+        "item_kind": "produce",
+        "category": ("procedure",),
+        "section": "Compute & budget",
+        "workflow_group": "stage",
+        "label": "Continue retries",
+        "engine_key": ("(molbuilder: max optimize() re-entries when "
+                       "on_nonconvergence=continue)"),
+        "range": (1, 5),
+        "tier": "advanced",
+        "help": ("only meaningful when on_nonconvergence='continue': how "
+                 "many additional max_steps batches to spend before falling "
+                 "through to halt.  Total step budget = max_steps * "
+                 "(1 + continue_retries).  Named geom_* to stay distinct "
+                 "from Resources.continue_retries, which is the WRAPPER's "
+                 "warm-restart count and a different thing entirely."),
+    })
+
     # 3-stage in-script optimization (task #534).  Per-stage SCF +
     # geomeTRIC convergence ladder lives here; the generator's
     # ``_emit_stages_loop`` walks the enabled stages, applies each

@@ -192,13 +192,27 @@ def test_the_wrapper_entry_points_take_exactly_these_parameters():
     for rather than appear.
 
     **The two sets differ, and that is the design, not an accident.**
-    `render_run_wrapper` returns the inner script's TEXT, so it takes what
-    shapes that text -- including the sizing inputs `n_atoms` and `mem_audit`.
-    `write_run_wrapper` puts it on disk and may also emit the `.sbatch`, so it
-    takes the SCHEDULER's vocabulary instead: `time`, `mem`, `gres`,
-    `cpus_per_task`, `exclusive`. Six parameters are shared, and neither set is
-    a superset of the other -- which is why watching only one would leave a
-    real surface unguarded.
+    `render_run_wrapper` is INTERNAL -- it returns the inner script's text, so
+    it takes what shapes that text, including the sizing inputs `n_atoms` and
+    `mem_audit`. `write_run_wrapper` is the DOOR: it puts the wrapper on disk
+    and may also emit the `.sbatch`, so it takes **the allocation, whole**
+    (`architecture.md` § 3.1, rule A8) plus the two things that belong to the
+    invocation rather than to the job.
+
+    **This set shrank from twelve to four on 2026-08-17, and the shrinking is
+    the fix.** Eleven loose keyword arguments meant two callers passing two
+    different subsets: `jobset/prep.py` passed ten and wrote a `.sbatch` asking
+    for `-c 8` beside a `.run.sh` baking an OMP default of `1`, while
+    `web/blueprints/build.py` passed five and wrote a correct `.run.sh` beside
+    a `.sbatch` with no `-c` at all. The door had already lost `max_memory_mb`
+    the same way on 2026-08-11. A door with N loose arguments has 2^N ways to
+    be called and one that is right; with the object there is no subset to
+    choose, which is why this assertion is now the narrow one.
+
+    ``env`` and ``emit_sbatch`` stay loose because neither is a per-job fact --
+    ``env`` is a per-invocation override (`prep --env`) and ``emit_sbatch`` is
+    a surface's choice about what to write. The test is ownership: a field with
+    a home in § 3's table arrives in that home or not at all.
     """
     import inspect
     assert set(inspect.signature(runwrap.render_run_wrapper).parameters) == {
@@ -206,7 +220,5 @@ def test_the_wrapper_entry_points_take_exactly_these_parameters():
         "continue_retries", "n_atoms", "mem_audit",
     }
     assert set(inspect.signature(runwrap.write_run_wrapper).parameters) == {
-        "script_path", "env", "mpi_np", "omp_threads", "max_memory_mb",
-        "continue_retries", "time", "mem", "gres", "cpus_per_task",
-        "exclusive", "emit_sbatch",
+        "script_path", "resources", "env", "emit_sbatch",
     }

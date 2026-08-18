@@ -53,7 +53,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .task import FILENAME as TASK_FILENAME
 from .task import Stage, StructureRef, Task, derive_run, varies_for
-from .template import SUFFIX as TEMPLATE_SUFFIX
+from .template import (SUFFIX as TEMPLATE_SUFFIX,
+                       template_filename as _template_filename)
 from .template import template_with_values
 from .workingcopy_structure import StructureCodec
 
@@ -89,7 +90,7 @@ class Description:
         here, because exactly one module owns each name.
         """
         return {
-            f"{self.label}{TEMPLATE_SUFFIX}": self.template,
+            _template_filename(self.label): self.template,
             TASK_FILENAME: _task_json_text(self.task),
         }
 

@@ -831,7 +831,9 @@ over different parameters (`project-layout.md § 2.3.1a`).
 > three-rung bare `prep run` exited 1 and created nothing. The unreachable
 > branch is deleted and the stage is simply required. The
 > standalone `bench siesta-gpu` np/omp/BlockSize sweep and `bench
-> probe-scheduler` remain as companions outside this grammar.)*
+> probe-scheduler` remained as companions outside this grammar. **Both names are
+> now dead**: the sweep was deleted 2026-08-13, and the prober is
+> `molbuilder jobset probe` since the group was deleted 2026-08-17.)*
 >
 > **`status <stage>` landed 2026-08-10**, and with it the last inconsistency in
 > this grammar: `plan` and `status` took the *folder* as their positional while
@@ -1149,20 +1151,26 @@ flowchart LR
     D --> P --> R --> S --> PR
 ```
 
-- **Detect the machine → `environment.json`** (`molbuilder/environment@1`): the
-  scheduler, the site, and the topology — resolved to the **compute node's**
-  real core and GPU counts (read from the scheduler via `scontrol show node`,
-  not from whatever login node you happen to be on), so the numbers are the ones
-  the job will actually run against.
+- **Detect the machine → `environment.json`** (`molbuilder/environment@2`): the
+  scheduler, the site, the topology, and the domains you can actually reach —
+  resolved to the **compute node's** real core and GPU counts (read from the
+  scheduler via `scontrol show node`, not from whatever login node you happen to
+  be on), so the numbers are the ones the job will actually run against. The
+  record holds only what was **probed**; what you want from the machine stays in
+  `molbuilder.json` ([`configuration.md` § 5](?doc=configuration.md)).
 - **Trials are the stage's science, made measurable — by pins, not by
   splicing.** Each trial's deck is **rendered from the description** like any
   deck, with the benchmark's pins laid over the resolved values
   (`template.md § 8.1`: rebuild and render, never splice): SCF capped at 5
   iterations, relaxation steps zeroed (a single point — you are timing an
-  iteration, not converging the chemistry), restart forced clean, the GPU
-  eigensolver (`ELPA-1STAGE`) on every trial so the grid isolates the
-  hardware, and a **per-trial relabel** so no trial can read or overwrite the
-  real run's warm files. *(Until 2026-08-12 this bullet described
+  iteration, not converging the chemistry), restart forced clean, and a
+  **per-trial relabel** so no trial can read or overwrite the real run's warm
+  files. **The GPU and the eigensolver are NOT pinned** — they are what the
+  description says, because *"use GPU or not is set up only at the Job Prep
+  UI"* ([`web/task-setup.md`](?doc=web/task-setup.md) § 6.2), and a benchmark
+  measures what was described
+  ([`project-layout.md § 2.3.2`](?doc=execution/project-layout.md), corrected
+  2026-08-17). *(Until 2026-08-12 this bullet described
   `bench-manifest.json` (`molbuilder/bench-manifest@2`) and its two
   comparable CPU/GPU points — the shipped-bundle machinery deleted in step 6
   u5. Nothing writes or reads a manifest now; the pair-of-points comparison
@@ -1173,6 +1181,12 @@ flowchart LR
   tried as a **starved / one-socket / cross-socket** triple
   (`{1, cores//K, 2·cores//K}`) to bracket the useful range. Each point runs in
   its own `bench-G<g>K<k>C<c>/` folder.
+
+  **`G` is there only when the description asks for the GPU** (2026-08-17). A
+  description with `enable_gpu = false` sweeps the same enumeration with `G`
+  held at one and dropped from the coordinate — the points are `(K, c)`, the
+  folders `bench-K<k>C<c>/`, and no `gres` is asked for, so a CPU trial does
+  not queue behind a GPU node it never uses.
 
   > **`BlockSize` belongs on this grid too** *(decided 2026-08-11, user; not yet
   > built)*. It is a parallel-efficiency knob whose right value depends on the
@@ -1214,9 +1228,18 @@ flowchart LR
   machine it is later run on *(the asker was named `prep-run`, a baked bundle
   executable, until the fold retired it)*.
 
-`molbuilder bench probe-scheduler` is a companion that reads a live cluster
-(`sinfo`/`sacctmgr`) and proposes a `scheduler` block + routing menu you can
-merge into your config with `--write`.
+`molbuilder jobset probe` is the companion that asks a live cluster
+(`sinfo`/`sacctmgr`) what it is — the GPU type, the partitions and QoS you can
+actually reach, and their wall limits — and writes that to `environment.json`
+with `--write`, so every calculation on this machine reads one probed answer
+instead of each re-probing its own.
+
+It writes **facts only**. Which partition you want, the account, and the policy
+no probe can invent (`gpu.exclusive`, `gpu.mem`) stay yours, in `molbuilder.json`
+— the split is [`configuration.md` § 5](?doc=configuration.md) M-1.
+*(Until 2026-08-17 this verb proposed a whole `scheduler` config block, defaulting
+your partition to the cheapest one it found; a probe choosing on your behalf is
+what that rule removes.)*
 
 > **The gap this box used to record is closed** *(2026-08-12)*. It read: *"the
 > benchmark already produces a `JobSet` (`bench prep` writes `job-set.json`),

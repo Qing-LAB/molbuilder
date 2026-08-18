@@ -89,7 +89,7 @@ caller holds.
 | `/api/structure/periodicity` | `{structure: <envelope>, op, payload}` |
 | `/api/structure/save` | `{structure: <envelope>, path, overwrite, frames?}` |
 | `/api/structure/export` | `{structure: <envelope>, name?, frames?}` |
-| `/api/build/fdf` · `/api/build/pyscf` · `/api/build/preflight` | `{structure: <envelope>, params, structure_path?}` — the **emit** doors. `structure_path` is provenance and a dest-dir anchor, never a source of geometry or labels |
+| ~~`/api/build/fdf`~~ · ~~`/api/build/pyscf`~~ · `/api/build/preflight` | `{structure: <envelope>, params, structure_path?}` — the **emit** doors. `structure_path` is provenance and a dest-dir anchor, never a source of geometry or labels |
 | `/api/spectra/render` | `{structure: <envelope>, params, structure_path?, prior_path?}` |
 | `/api/transport/render` | `{structure: <envelope>, params, structure_path?}` — the region-labeled device. Took the path as its GEOMETRY with the labels beside it until 2026-08-03; it was the last door on that shape |
 | `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, format?, sidecar?}`. **Not the envelope, and right not to be:** nothing is being sent back, a file or a paste is being *parsed*, and raw text is what a user supplied. It ALSO takes `{structure: <envelope>}` on one branch: a tab **putting back** the structure it was showing before the page was left, which is not a parse — `exportFile`'s exact inverse, through the one entrance so the same checks run |
@@ -354,7 +354,7 @@ Set on every response by an `after_request` hook (`app.py`):
   live in [`ops/deployment.md § 4`](?doc=ops/deployment.md).
 - The global upload cap is **50 MB** (`MAX_CONTENT_LENGTH`).
 
-## 3. Endpoint index — all 76 routes
+## 3. Endpoint index — all 80 routes
 
 > **Three routes below no longer exist** (found 2026-08-10 while correcting this
 > heading, which said 80): `/api/files/result-list`,
@@ -400,6 +400,9 @@ owned by [`molview.md`](?doc=web/molview.md):
 | POST `/api/structure/save` | Save a structure + its sidecar to a path |
 | POST `/api/task-setup/handover` | **Render** the parameter tab's work — returns `<label>.template.toml` and `task.1st.json` as TEXT. Writes nothing: the browser puts them where the user chose, through `projects.safeSave` ([`task-setup.md`](?doc=web/task-setup.md)) |
 | POST `/api/task-setup/save` | Validate a description through `task.read_task` and write `task.json`. A **content-aware door**, for the same reason `/api/structure/save` is one: a browser-authored schema-stamped file the loader would reject is the save-then-reload trap. It reports a hand-over rather than deleting it — moving bytes is the file layer's job |
+| GET `/api/task-setup/sweepable` | Which parameters a stage may vary — the catalogue's `execution`/`stage` items for one engine, so the tab's columns are **picked from the catalogue** rather than from a list in the browser ([`template.md § 6.2`](?doc=engines/template.md)) |
+| GET `/api/task-setup/presets` | A shipped tier's values for one stage (`coarse` / `medium` / `tight`), so a row can be filled from [`tuning.md § 4`](?doc=engines/tuning.md) instead of typed |
+| GET `/api/task-setup/template-values` | The FOLDER's `<label>.template.toml`, parsed by `read_template` — the same reader `prep` opens it with. It is what an empty stage cell shows, so the number on screen is the one the job will run rather than the catalogue's recommendation ([`task-setup.md § 5.1`](?doc=web/task-setup.md)). Server-side because TOML is a format, and [`projects.md § 3`](?doc=web/projects.md) keeps a format's correctness off the browser |
 
 **Session timeline** — owned by [`workspace.md`](?doc=web/workspace.md):
 POST `/api/workspace-storage/{write,read,prune}`.
@@ -440,8 +443,10 @@ auth routes.
 
 | Method · Path | Body → response |
 |---|---|
-| POST `/api/build/fdf` | `{ structure, config }` → the generated SIESTA `.fdf` text |
-| POST `/api/build/pyscf` | `{ structure, config }` → the generated PySCF `.py` text |
+| ~~POST `/api/build/fdf`~~ | **deleted 2026-08-17** — see the note below |
+| ~~POST `/api/build/pyscf`~~ | **deleted 2026-08-17** |
+
+*(Deleted 2026-08-17. Both routes rendered a deck in the browser; script generation left the structure-optimization tab on 2026-08-15 and nothing replaced the callers, so they had zero JS references and were kept alive only by their own tests. A deck is rendered by `prep`, on the machine that will run it.)*
 | POST `/api/build/preflight` | `{ structure, config, engine }` → the pre-run validation report (pseudos + config gates) |
 | POST `/api/structure/analyze` | `{ structure }` → the geometry/chemistry report + summary |
 | POST `/api/structure/periodicity` | `{structure, op, payload}` → `{ok, periodicity, notices}`. The unified periodicity door (`?doc=model/structure-periodicity.md` § 6.2): **four** ops — `vacuum` · `axis_kind` · `cell` · `cell_origin` — through the frame-contract gate. There is deliberately **no** `calibrate`: moving atoms is not a periodicity edit and lives at `/api/modify/calibrate`. The answer is the cell block in the same shape `/api/build/load` sends it — raw values with the `resolved_*` views beside them — so a client adopts it verbatim through the path a load already takes, and `notices` carries `{level, message, where, about}` rows — first what the edit did (RECEIPTS, `where: "cell.edit"`), then what is now true of the result (CONDITIONS, each with its own `cell.*` id) |

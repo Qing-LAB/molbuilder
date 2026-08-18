@@ -19,6 +19,7 @@ from molbuilder.diagnostics import (Capabilities, EXTENSION_TO_CATEGORY,
                                       set_capabilities)
 from molbuilder.runwrap import (WrapperError, render_run_wrapper,
                                   write_run_wrapper)
+from molbuilder.jobset.model import Resources
 
 
 @pytest.fixture(autouse=True)
@@ -321,7 +322,7 @@ def test_write_run_wrapper_parses_n_atoms_from_fdf(tmp_path,
     )
     fdf_path = tmp_path / "tiny.fdf"
     fdf_path.write_text(fdf_text)
-    wrapper_path = write_run_wrapper(fdf_path)
+    wrapper_path = write_run_wrapper(fdf_path, resources=Resources())
     text = wrapper_path.read_text()
     assert "_mpi_np_default=12" in text, (
         "expected wrapper to auto-clamp default to n_atoms=12 parsed "
@@ -342,7 +343,7 @@ def test_write_run_wrapper_unparseable_fdf_falls_back(tmp_path,
                         lambda: 4)
     fdf_path = tmp_path / "broken.fdf"
     fdf_path.write_text("# .fdf with no NumberOfAtoms line\n")
-    wrapper_path = write_run_wrapper(fdf_path)
+    wrapper_path = write_run_wrapper(fdf_path, resources=Resources())
     text = wrapper_path.read_text()
     # Falls back to physical_cores (4) without clamping.
     assert "_mpi_np_default=4" in text
@@ -532,7 +533,7 @@ def test_write_creates_sibling_dot_run_sh(tmp_path):
     _bind()
     script = tmp_path / "my-job.fdf"
     script.write_text("# fake fdf\n")
-    wrapper = write_run_wrapper(script)
+    wrapper = write_run_wrapper(script, resources=Resources())
     assert wrapper == tmp_path / "my-job.run.sh"
     assert wrapper.is_file()
     # The probe-driven launcher resolves the actual ``siesta`` command
@@ -544,7 +545,7 @@ def test_write_sets_executable_bit(tmp_path):
     _bind()
     script = tmp_path / "x.py"
     script.write_text("print('ok')\n")
-    wrapper = write_run_wrapper(script)
+    wrapper = write_run_wrapper(script, resources=Resources())
     mode = wrapper.stat().st_mode
     assert mode & stat.S_IXUSR
     assert mode & stat.S_IXGRP
@@ -556,7 +557,7 @@ def test_write_preserves_multidot_basename(tmp_path):
     _bind()
     script = tmp_path / "job.spectra.py"
     script.write_text("# fake\n")
-    wrapper = write_run_wrapper(script)
+    wrapper = write_run_wrapper(script, resources=Resources())
     assert wrapper.name == "job.spectra.run.sh"
 
 
@@ -570,9 +571,9 @@ def test_write_overwrites_existing(tmp_path):
     _bind()
     script = tmp_path / "x.fdf"
     script.write_text("# fake\n")
-    wrapper = write_run_wrapper(script)
+    wrapper = write_run_wrapper(script, resources=Resources())
     first = wrapper.read_text()
-    write_run_wrapper(script, mpi_np=8)
+    write_run_wrapper(script, resources=Resources(mpi_np=8))
     second = wrapper.read_text()
     assert "_mpi_np_default=8" in second
     assert "_mpi_np_default=8" not in first
@@ -581,7 +582,7 @@ def test_write_overwrites_existing(tmp_path):
 def test_write_missing_script_raises(tmp_path):
     _bind()
     with pytest.raises(WrapperError, match="not found"):
-        write_run_wrapper(tmp_path / "does-not-exist.fdf")
+        write_run_wrapper(tmp_path / "does-not-exist.fdf", resources=Resources())
 
 
 # ---------------------------------------------------------------------
@@ -620,7 +621,7 @@ def _emit_truncated_wrapper(tmp_path, basename, suffix=".fdf"):
     _bind()
     script = tmp_path / f"{basename}{suffix}"
     script.write_text("# fake\n")
-    wrapper_path = write_run_wrapper(script)
+    wrapper_path = write_run_wrapper(script, resources=Resources())
     text = wrapper_path.read_text()
     # Strip the per-run logging + conda activation block in-place
     # (preserving line numbers downstream).  Range: from the
@@ -800,7 +801,7 @@ def test_help_flag_lists_continue_and_force(tmp_path, _autosetup_minimal_config)
     _bind()
     script = tmp_path / "myjob.fdf"
     script.write_text("# fake\n")
-    wrapper_path = write_run_wrapper(script)
+    wrapper_path = write_run_wrapper(script, resources=Resources())
     # Stub conda so ``conda activate <env>`` returns 0 immediately --
     # the wrapper proceeds to the argv parser, where ``-h`` short-
     # circuits with the help message.
@@ -836,7 +837,7 @@ def test_pyscf_wrapper_redirects_via_out_file(tmp_path):
     _bind()
     script = tmp_path / "myjob.py"
     script.write_text("# fake\n")
-    wrapper_path = write_run_wrapper(script)
+    wrapper_path = write_run_wrapper(script, resources=Resources())
     text = wrapper_path.read_text()
     assert "python myjob.py > $_out_file 2>&1" in text
     assert '_out_file="myjob-run${_run_n}.pyscf.log"' in text
@@ -848,7 +849,7 @@ def test_pyscf_wrapper_emits_continue_args_block(tmp_path):
     _bind()
     script = tmp_path / "myjob.py"
     script.write_text("# fake\n")
-    wrapper_path = write_run_wrapper(script)
+    wrapper_path = write_run_wrapper(script, resources=Resources())
     text = wrapper_path.read_text()
     # 2026-06-14: ``--cold``/``--from-scratch`` joined the cross-
     # engine arg set; the case labels are aligned in the bash
@@ -914,7 +915,7 @@ def test_pyscf_wrapper_banner_mentions_pyscf_log_not_out(tmp_path):
     _bind()
     script = tmp_path / "myjob.py"
     script.write_text("# fake\n")
-    wrapper_path = write_run_wrapper(script)
+    wrapper_path = write_run_wrapper(script, resources=Resources())
     text = wrapper_path.read_text()
     assert "first run -> -run0.pyscf.log" in text, (
         "PySCF wrapper banner must show the .pyscf.log suffix"
@@ -930,7 +931,7 @@ def test_siesta_wrapper_banner_still_mentions_out(tmp_path):
     _bind()
     script = tmp_path / "myjob.fdf"
     script.write_text("SystemLabel myjob\n")
-    wrapper_path = write_run_wrapper(script)
+    wrapper_path = write_run_wrapper(script, resources=Resources())
     text = wrapper_path.read_text()
     assert "first run -> -run0.out" in text
     assert "first run -> -run0.pyscf.log" not in text
@@ -963,7 +964,7 @@ def test_pyscf_wrapper_passes_bash_n(tmp_path):
     # Use a non-trivial JOB literal with both double quotes (canonical)
     # so the awk -F regex actually has to handle them.
     script.write_text('JOB = "pdt-mol"\nimport pyscf\n')
-    wrapper_path = write_run_wrapper(script)
+    wrapper_path = write_run_wrapper(script, resources=Resources())
     cp = subprocess.run(
         ["bash", "-n", str(wrapper_path)],
         capture_output=True, text=True, timeout=15,
@@ -984,7 +985,7 @@ def test_pyscf_wrapper_passes_bash_n_single_quoted_job(tmp_path):
     import subprocess
     script = tmp_path / "pyscf_relax.py"
     script.write_text("JOB = 'pdt-mol'\nimport pyscf\n")
-    wrapper_path = write_run_wrapper(script)
+    wrapper_path = write_run_wrapper(script, resources=Resources())
     cp = subprocess.run(
         ["bash", "-n", str(wrapper_path)],
         capture_output=True, text=True, timeout=15,
@@ -1004,7 +1005,7 @@ def test_siesta_wrapper_passes_bash_n(tmp_path):
     import subprocess
     script = tmp_path / "myjob.fdf"
     script.write_text("SystemLabel myjob\nNumberOfAtoms 0\n")
-    wrapper_path = write_run_wrapper(script)
+    wrapper_path = write_run_wrapper(script, resources=Resources())
     cp = subprocess.run(
         ["bash", "-n", str(wrapper_path)],
         capture_output=True, text=True, timeout=15,
@@ -1071,7 +1072,7 @@ def test_pyscf_wrapper_with_full_inventory_passes_bash_n(tmp_path):
     import subprocess
     script = tmp_path / "myjob.py"
     script.write_text('JOB = "myjob"\nimport pyscf\n')
-    wrapper_path = write_run_wrapper(script)
+    wrapper_path = write_run_wrapper(script, resources=Resources())
     cp = subprocess.run(
         ["bash", "-n", str(wrapper_path)],
         capture_output=True, text=True, timeout=15,

@@ -941,8 +941,7 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
     (tmp_path / "JOB.fdf").write_text(
         "SystemName j\nSystemLabel JOB\nNumberOfAtoms 100\n"
         "NumberOfSpecies 1\nMeshCutoff 300 Ry\nBasis.Size DZP\n")
-    minimal = _blocks(write_run_wrapper(tmp_path / "JOB.fdf",
-                                        env="e", mpi_np=4).read_text())
+    minimal = _blocks(write_run_wrapper(tmp_path / "JOB.fdf", resources=Resources(mpi_np=4), env="e").read_text())
     # The MAXIMAL wrapper (R9, 2026-08-12): a GPU deck with an estimable
     # size and a retry budget emits the four conditional blocks the table
     # omitted -- and this guard, rendering only the minimal wrapper,
@@ -951,9 +950,7 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
         "SystemName g\nSystemLabel GPU\nNumberOfAtoms 100\n"
         "NumberOfSpecies 1\nMeshCutoff 300 Ry\nBasis.Size DZP\n"
         "Diag.ELPA.GPU .true.\n")
-    maximal = _blocks(write_run_wrapper(tmp_path / "GPU.fdf", env="e",
-                                        mpi_np=4, gres="gpu:a100:1",
-                                        continue_retries=2).read_text())
+    maximal = _blocks(write_run_wrapper(tmp_path / "GPU.fdf", resources=Resources(mpi_np=4, gres="gpu:a100:1", continue_retries=2), env="e").read_text())
     # The ESTIMABLE CPU deck (D9 tightening, user decision 2026-08-13):
     # the Memory block renders only from a chemically parseable deck
     # (species + coordinates) -- which NEITHER fixture above carries, so
@@ -968,13 +965,11 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
         "%block AtomicCoordinatesAndAtomicSpecies\n"
         "0.0 0.0 0.0 1\n0.0 0.0 0.74 1\n"
         "%endblock AtomicCoordinatesAndAtomicSpecies\n")
-    estimable = _blocks(write_run_wrapper(tmp_path / "EST.fdf",
-                                          env="e", mpi_np=2).read_text())
+    estimable = _blocks(write_run_wrapper(tmp_path / "EST.fdf", resources=Resources(mpi_np=2), env="e").read_text())
     # PySCF (D9: the guard never rendered one, so its parsing header
     # matched no row and its anatomy was unguarded entirely)
     (tmp_path / "PY.py").write_text('JOB = "PY"\nimport pyscf\n')
-    pyscf = _blocks(write_run_wrapper(tmp_path / "PY.py",
-                                      env="e").read_text())
+    pyscf = _blocks(write_run_wrapper(tmp_path / "PY.py", resources=Resources(), env="e").read_text())
     union = minimal | maximal | estimable | pyscf
     assert union <= documented, (
         "the wrapper emits blocks job-contracts.md § 2.6 does not list:\n"
@@ -2371,7 +2366,7 @@ def test_prep_resolves_the_machine_before_anything_else(tmp_path):
 
     import json
     env = json.loads((tmp_path / "environment.json").read_text())
-    assert env["schema"] == "molbuilder/environment@1"
+    assert env["schema"] == "molbuilder/environment@2"
     assert env["topology"]["cores_per_socket"] >= 1     # a real probe ran
 
 
@@ -2400,12 +2395,16 @@ def test_the_machine_probe_is_molbuilders_not_the_benchmarks():
     look like a special case of the special case."*
 
     The module moved out of `bench/` on 2026-08-10. Its persisted artifact was
-    **already** registered as `molbuilder/environment@1` (`job-contracts.md`
-    § 6.1) — the schema saying it was never the benchmark's to own.
+    **already** registered under the `molbuilder/environment@N` name
+    (`job-contracts.md` § 6.1) — the schema saying it was never the
+    benchmark's to own. What is asserted is the NAME; the major moved to @2 on
+    2026-08-17 (N2) when the record gained the reachable domains, and pinning
+    the major here would make this test fail for a reason it is not about.
     """
     import importlib
     from molbuilder.environment import SCHEMA
-    assert SCHEMA == "molbuilder/environment@1"
+    from molbuilder.persist import schema_name
+    assert schema_name(SCHEMA) == "molbuilder/environment"
     assert importlib.util.find_spec("molbuilder.bench.environment") is None
 
 
@@ -2458,6 +2457,16 @@ def _prep_bundle(base, *, scheduler: bool, monkeypatch):
                                            "qos": "public"},
                             "defaults": {"time": "0-04:00:00"}}
     (base / "molbuilder.json").write_text(json.dumps(cfg))
+    # The MACHINE, not just the config (P1, 2026-08-17).  Configuring a
+    # `scheduler` block no longer makes a cluster: M6 gave workstations config
+    # files too, so block-presence stopped discriminating and the probed
+    # record decides.  A test that wants a cluster has to say it IS one.
+    from molbuilder.environment import (FILENAME, Environment, Topology,
+                                        write_environment)
+    write_environment(
+        Environment(scheduler="slurm" if scheduler else "workstation",
+                    topology=Topology(sockets=2, cores_per_socket=64)),
+        base / FILENAME)
     monkeypatch.chdir(base)
     prep_jobset(js, base, env="molbuilder-siesta")
     return base
@@ -2465,11 +2474,18 @@ def _prep_bundle(base, *, scheduler: bool, monkeypatch):
 
 def test_a_workstation_gets_no_sbatch_and_a_cluster_gets_both(tmp_path,
                                                               monkeypatch):
-    """`architecture.md` § 9: a workstation needs no `scheduler` block.
+    """No queue on the machine -> no `.sbatch`.
 
-    With none configured **no `.sbatch` is written at all** -- emitting one
-    would be inventing a queue the machine does not have, which is the nanny
-    behaviour this project refuses.  With one configured both files appear.
+    Emitting one would be inventing a queue the machine does not have, which
+    is the nanny behaviour this project refuses.
+
+    **What "no queue" MEANS changed on 2026-08-17** (P1).  It used to mean *no
+    `scheduler` block is configured* (`architecture.md` § 9: "a workstation
+    needs no scheduler block").  M6 amended that premise the same day -- a
+    workstation records its capability in a config file too -- so
+    block-presence no longer discriminates, and a workstation with one config
+    got 14 `.sbatch` files for a queue it does not have.  The probed record
+    now decides, which is the fact `prep` step 1 just wrote down.
     """
     ws = _prep_bundle(tmp_path / "ws", scheduler=False, monkeypatch=monkeypatch)
     assert sorted(p.name for p in ws.glob("*.run.sh")) == [
@@ -2649,6 +2665,17 @@ def test_submit_honours_the_bundles_own_execution_block(tmp_path,
     assert "sbatch" not in r.output
 
 
+def _write_domains(where, rows):
+    """A probed `environment.json` carrying the reachable domains."""
+    from molbuilder.environment import (FILENAME, Domain, Environment,
+                                        Topology, write_environment)
+    return write_environment(
+        Environment(scheduler="slurm", topology=Topology(cores_per_socket=64),
+                    domains=[Domain(name=n, partition=p, qos=q, max_time=t)
+                             for n, p, q, t in rows]),
+        Path(where) / FILENAME)
+
+
 def test_submit_defaults_the_domain_from_the_bundles_execution_block(
         tmp_path, monkeypatch):
     """R3's other half: execution.domain -- documented in running-a-job
@@ -2666,11 +2693,13 @@ def test_submit_defaults_the_domain_from_the_bundles_execution_block(
     (bundle / ".molbuilder.json").write_text(_json.dumps({
         "execution": {"mode": "submit", "domain": "fast"},
         "scheduler": {"kind": "slurm",
-                      "directives": {"partition": "general", "qos": "public"},
-                      "routing": [{"name": "fast", "partition": "htc",
-                                   "qos": "express",
-                                   "max_time": "0-04:00:00"}]},
+                      "directives": {"partition": "general", "qos": "public"}},
     }))
+    # The domain MENU is probed, not configured (N4, 2026-08-17): it was
+    # `scheduler.routing` in the file above until the prober stopped writing
+    # into a person's config.  What the bundle still chooses is WHICH domain
+    # (`execution.domain`) -- the preference half of `configuration.md` § 5 M-1.
+    _write_domains(bundle, [("fast", "htc", "express", "0-04:00:00")])
     runner, grp = _runner()
     r = runner.invoke(grp, ["submit", "bench", "--bundle", str(bundle),
                             "--dry-run"])
@@ -2698,11 +2727,13 @@ def test_an_explicit_direct_mode_survives_a_configured_domain(
     (bundle / ".molbuilder.json").write_text(_json.dumps({
         "execution": {"mode": "submit", "domain": "fast"},
         "scheduler": {"kind": "slurm",
-                      "directives": {"partition": "general", "qos": "public"},
-                      "routing": [{"name": "fast", "partition": "htc",
-                                   "qos": "express",
-                                   "max_time": "0-04:00:00"}]},
+                      "directives": {"partition": "general", "qos": "public"}},
     }))
+    # The domain MENU is probed, not configured (N4, 2026-08-17): it was
+    # `scheduler.routing` in the file above until the prober stopped writing
+    # into a person's config.  What the bundle still chooses is WHICH domain
+    # (`execution.domain`) -- the preference half of `configuration.md` § 5 M-1.
+    _write_domains(bundle, [("fast", "htc", "express", "0-04:00:00")])
     runner, grp = _runner()
     r = runner.invoke(grp, ["submit", "bench", "--bundle", str(bundle),
                             "--mode", "direct", "--dry-run"])

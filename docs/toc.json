@@ -19,6 +19,14 @@
           "path": "backend-architecture.md"
         },
         {
+          "path": "workflow.md",
+          "label": "How molbuilder works"
+        },
+        {
+          "path": "configuration.md",
+          "label": "Configuration"
+        },
+        {
           "path": "roadmap.md"
         },
         {
@@ -348,6 +356,41 @@
           "path": "archive/2026-08-11-template-item-blocks.md",
           "label": "The template as an `.fdf` with item blocks — the retired design",
           "subtitle": "The template as an `.fdf` with item blocks — the retired design"
+        },
+        {
+          "path": "archive/2026-08-16-molview-corrections-plan.md",
+          "label": "MolView — the corrections plan",
+          "subtitle": "MolView — the corrections plan"
+        },
+        {
+          "path": "archive/2026-08-16-molview-integration-plan.md",
+          "label": "MolView — wiring the tabs to the finished module",
+          "subtitle": "MolView — wiring the tabs to the finished module"
+        },
+        {
+          "path": "archive/2026-08-16-molview-rework-plan.md",
+          "label": "MolView — building the code from the document",
+          "subtitle": "MolView — building the code from the document"
+        },
+        {
+          "path": "archive/2026-08-16-siesta-catalogue.md",
+          "label": "The SIESTA catalogue — all 44 fields in six categories (T1)",
+          "subtitle": "The SIESTA catalogue — all 44 fields in six categories (T1)"
+        },
+        {
+          "path": "archive/2026-08-16-structure-optimization-ui-plan.md",
+          "label": "The Structure-optimization tab — writing the description",
+          "subtitle": "The Structure-optimization tab — writing the description"
+        },
+        {
+          "path": "archive/2026-08-16-task-setup-plan.md",
+          "label": "Task Setup — the shared tab that finishes a description",
+          "subtitle": "Task Setup — the shared tab that finishes a description"
+        },
+        {
+          "path": "archive/2026-08-17-generator-api-plan.md",
+          "label": "Making the doors take the object — the work behind A8 and A9",
+          "subtitle": "Making the doors take the object — the work behind A8 and A9"
         },
         {
           "path": "archive/MIGRATION.md",

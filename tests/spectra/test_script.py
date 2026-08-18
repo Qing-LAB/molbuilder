@@ -757,8 +757,10 @@ class TestPySCFScriptGPU:
         # patch registers).
         assert "from gpu4pyscf import dft as _gpu_dft" in script
         assert "from gpu4pyscf import scf as _gpu_scf" in script
-        # CPU-fallback message tells the user when the run drops to CPU.
-        assert "CPU fallback" in script
+        # NO CPU FALLBACK (user, 2026-08-17; `overview.md` § 3a G-5):
+        # asking for the GPU and not getting one STOPS the run.
+        assert "There is no CPU fallback" in script
+        assert "raise SystemExit" in script
         compile(script, "<gpu-on>", "exec")
 
     def test_scf_construction_uses_indirect_pointers(self):
@@ -801,10 +803,14 @@ class TestPySCFScriptGPU:
         assert "getDeviceProperties" in script
         # Hard threshold: major >= 7.
         assert "_maj < 7" in script
-        assert "CPU fallback" in script
         # Two except branches: ImportError + Exception.
         assert "except ImportError" in script
         assert "except Exception" in script
+        # ...and BOTH stop rather than continuing on the CPU.  This test
+        # asserted "CPU fallback" until 2026-08-17; the user retired the
+        # fallback, so the old assertion pinned a contract that no longer
+        # exists (`engines/overview.md` § 3a G-5).
+        assert script.count("raise SystemExit") >= 3
 
     def test_raman_block_forces_cpu_even_with_gpu_on(self):
         """gpu4pyscf doesn't yet expose analytic CPHF polarizability,

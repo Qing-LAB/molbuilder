@@ -98,7 +98,7 @@ def test_unset_is_encoded_as_an_absent_key_not_an_empty_one():
     so absence is the encoding — and writing ``value = ""`` instead would make
     *unset* indistinguishable from an empty string."""
     text = T.template_with_values(SiestaConfig(system_label="JOB", net_charge=None))
-    item = T.read_template(text).get("net_charge")
+    item = T.one(T.read_template(text), "net_charge")
     assert item.value is None and not item.is_set
     assert "\nvalue" not in text.split("[item.net_charge]")[1].split("[item.")[0]
 
@@ -218,12 +218,12 @@ def test_an_optional_item_says_what_unset_is_called():
     """``optional`` says *unset* is a real state; ``null_label`` is what says
     how to show it.  Without it a tri-select has no third label."""
     text = T.template_with_values(SiestaConfig(system_label="JOB"))
-    assert T.read_template(text).get("block_size").null_label
+    assert T.one(T.read_template(text), "block_size").null_label
 
 
 def test_the_three_surface_keys_survive_the_round_trip():
     text = T.template_with_values(SiestaConfig(system_label="JOB"))
-    item = T.read_template(text).get("mesh_cutoff")
+    item = T.one(T.read_template(text), "mesh_cutoff")
     assert item.label and item.category and item.unit == "Ry"
 
 

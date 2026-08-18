@@ -277,6 +277,206 @@ def test_block_size_is_a_plain_int_and_survives_the_round_trip():
     assert _round_trip(None) is None
 
 
+# --------------------------------------------------------------------- #
+#  Gate B -- a worked example must illustrate a REAL item                 #
+#                                                                        #
+#  Gate A checks an example is a VALID template.  It cannot check the     #
+#  example is a TRUE one, and on 2026-08-17 a review found § 4.2 -- the   #
+#  section titled "A template, entire" -- illustrating three items that   #
+#  do not exist: `frozen_indices` and `user_custom` were never added to   #
+#  any schema, and `species_order` was shown as kind="deck" with an       #
+#  `expands` it does not have (it is `produce`).  A worked example is the #
+#  shape everyone copies, so a wrong one teaches a wrong classification.  #
+# --------------------------------------------------------------------- #
+
+#: Keys where the document and the catalogue must agree exactly when the
+#: document chooses to show them.  ``value`` is deliberately absent: an
+#: example may legitimately show a different answer than the shipped default,
+#: because the answer is what a person chose.  ``help`` is absent for the same
+#: reason as ``value`` plus one more -- the catalogue's own prose is long, and
+#: § 12 says in as many words that its example abridges it.
+_ILLUSTRATED = ("kind", "type", "anchor", "engine_key", "expands",
+                "category", "engines", "resolver", "group", "unit",
+                "range", "optional", "tier", "pattern", "default")
+
+
+def _catalogue_items():
+    import tomllib
+    return tomllib.loads(template.load_catalogue())["item"]
+
+
+def test_every_documented_item_matches_the_catalogue():
+    """An ``[item.x]`` in a contract either IS the catalogue's ``x`` or is
+    flagged as not built.
+
+    Two failures are possible and both matter:
+
+    * the document names an item the catalogue does not carry -- a reader
+      copies it, and their template is refused by its own reader;
+    * the document shows a real item with a key the catalogue spells
+      differently -- which is how § 4.2 taught that ``species_order`` is a
+      ``deck`` item for three days, contradicting the catalogue and § 6's own
+      definition at once.
+
+    **An unbuilt item is allowed, and must say so on the same line.** § 9.2
+    illustrates ``user_custom`` deliberately, because that section is where
+    the missing schema field is specified.
+    """
+    cat = _catalogue_items()
+    docs_with_examples = ("engines/template.md", "engines/stages.md",
+                          "execution/job-contracts.md")
+    problems = []
+    for doc_rel in docs_with_examples:
+        text = (DOCS / doc_rel).read_text(encoding="utf-8")
+        for i, body in _fenced_toml(doc_rel):
+            import tomllib
+            try:
+                parsed = tomllib.loads(body)
+            except Exception:
+                continue                       # Gate A owns parse errors
+            for name, shown in (parsed.get("item") or {}).items():
+                real = cat.get(name)
+                if real is None:
+                    # Permitted only where the block itself says it is unbuilt.
+                    if re.search(r"not built|NOT BUILT|does not exist|"
+                                 r"needs a schema field|§ ?12\.1", body):
+                        continue
+                    problems.append(
+                        f"{doc_rel} block {i}: [item.{name}] is in no "
+                        f"catalogue. Either it was renamed, or the example is "
+                        f"aspirational -- say so in the block and it passes.")
+                    continue
+                for key in _ILLUSTRATED:
+                    if key not in shown:
+                        continue               # showing a subset is fine
+                    want, got = real.get(key), shown[key]
+                    if isinstance(want, list) and isinstance(got, list):
+                        same = list(want) == list(got)
+                    else:
+                        same = want == got
+                    if not same:
+                        problems.append(
+                            f"{doc_rel} block {i}: [item.{name}] shows "
+                            f"{key}={got!r}, the catalogue says {want!r}")
+    assert not problems, (
+        "a worked example disagrees with the catalogue it illustrates:\n  "
+        + "\n  ".join(problems)
+        + "\n(engines/template.md § 4.2 -- an example is the shape people "
+          "copy, so a wrong one is a wrong classification taught.)"
+    )
+
+
+# --------------------------------------------------------------------- #
+#  Gate C -- a number stated in prose is a claim about the code          #
+#                                                                        #
+#  The vocabulary gate above checks MEMBERSHIP and Gate A checks EXAMPLES.#
+#  Neither can see a COUNT, and counts are what rotted: "84 items" when   #
+#  there were 92, "307 facts" when there were 452, "PySCF declares 3      #
+#  stage items" when it declares 11, "of 17 optional items only 12".      #
+#  Each was true when written.  A count is worth stating when it is the   #
+#  ARGUMENT -- "the duplication is measured rather than tolerated" means  #
+#  nothing without the measurement -- and worth deleting when it is       #
+#  decoration, which is why the diagram labels that carried item counts   #
+#  no longer do.                                                          #
+# --------------------------------------------------------------------- #
+
+def _optional_items():
+    cat = _catalogue_items()
+    opt = [n for n, i in cat.items() if i.get("optional")]
+    return len(opt), sum(1 for n in opt if cat[n].get("null_label"))
+
+
+def _mirrored_fact_count():
+    """The size of the debt `template.md` § 2.1a measures."""
+    from tests.test_catalogue_agreement import MIRRORED, RENAMED
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.config.pyscf import PySCFConfig
+    n = 0
+    for cls in (SiestaConfig, PySCFConfig):
+        for f in dataclasses.fields(cls):
+            for key in MIRRORED + tuple(RENAMED):
+                if f.metadata.get(RENAMED.get(key, key)) not in (None, "", (), []):
+                    n += 1
+    return n
+
+
+def _stage_group(engine):
+    return sum(1 for i in _catalogue_items().values()
+               if i.get("group") == "stage" and engine in (i.get("engines") or ()))
+
+
+def _exclusive_rows(engine):
+    return sum(1 for i in _catalogue_items().values()
+               if tuple(i.get("engines") or ()) == (engine,))
+
+
+#: ``id: (document, the regex that must match, what it should say)``.
+#:
+#: The regex carries the number, so a stale document fails with the sentence
+#: quoted rather than with a bare integer -- the failure has to be findable in
+#: prose, which is the whole reason these live in prose.
+MEASURED = {
+    "mirrored facts (template.md § 2.1a)":
+        ("engines/template.md", r"\*\*(\d+) facts live in two places\*\*",
+         _mirrored_fact_count),
+    "optional items (template.md § 5)":
+        ("engines/template.md", r"of (\d+) optional items only \d+ carry one",
+         lambda: _optional_items()[0]),
+    "optional items carrying null_label (template.md § 5)":
+        ("engines/template.md", r"of \d+ optional items only (\d+) carry one",
+         lambda: _optional_items()[1]),
+    "optional items (form-schema.md § 1.2)":
+        ("web/form-schema.md", r"of \*\*(\d+)\*\* optional items",
+         lambda: _optional_items()[0]),
+    # Both engines' counts come out of ONE row, so neither pattern carries the
+    # other's number.  The first draft spelled SIESTA's 44 inside the PySCF
+    # pattern as an anchor, which made adding a SIESTA row break the PySCF
+    # claim -- a test whose failure names the wrong document.
+    "SIESTA exclusive catalogue rows (generator.md § 7.2)":
+        ("execution/generator.md",
+         r"catalogue rows \| (\d+) items \| \*\*\d+ items\*\*",
+         lambda: _exclusive_rows("siesta")),
+    "PySCF exclusive catalogue rows (generator.md § 7.2)":
+        ("execution/generator.md",
+         r"catalogue rows \| \d+ items \| \*\*(\d+) items\*\*",
+         lambda: _exclusive_rows("pyscf")),
+    "SIESTA stage-group items (stages.md § 1.1a)":
+        ("engines/stages.md", r"\*\*It is (\d+) and \d+ now\*\*",
+         lambda: _stage_group("siesta")),
+    "PySCF stage-group items (stages.md § 1.1a)":
+        ("engines/stages.md", r"\*\*It is \d+ and (\d+) now\*\*",
+         lambda: _stage_group("pyscf")),
+}
+
+
+@pytest.mark.parametrize("claim_id", sorted(MEASURED))
+def test_a_number_stated_in_prose_is_the_number_the_code_has(claim_id):
+    """Every count a contract states about the code is measured on every run.
+
+    A count is a claim, and it decays in one direction only -- the code grows
+    and the sentence does not.  Four of these were wrong simultaneously on
+    2026-08-17, one of them by 145, and each had been correct when written.
+
+    **Adding a row here is the point**, exactly as it is for ``VOCABULARIES``:
+    when a document states a new measurement, register it, or accept that it
+    is true only on the day it is typed.
+    """
+    doc_rel, pattern, measure = MEASURED[claim_id]
+    text = (DOCS / doc_rel).read_text(encoding="utf-8")
+    m = re.search(pattern, text)
+    assert m, (
+        f"{doc_rel} no longer states {claim_id} in the shape this test reads "
+        f"(/{pattern}/).  Either the sentence was reworded -- update the "
+        f"pattern -- or the claim was dropped, and then this row should be "
+        f"dropped with it.")
+    stated, actual = int(m.group(1)), measure()
+    assert stated == actual, (
+        f"{doc_rel} says {stated} for {claim_id}; the code has {actual}.\n"
+        f"  the sentence: {m.group(0)!r}\n"
+        f"A count is an argument only while it is true (engines/template.md "
+        f"§ 2.1a).")
+
+
 def test_a_declared_type_must_be_in_the_vocabulary():
     """``metadata['decl_type']`` is checked against ``TYPES`` -- a typo there
     would otherwise put an unknown type into every template."""
@@ -287,3 +487,77 @@ def test_a_declared_type_must_be_in_the_vocabulary():
     fld.name, fld.type = "x", int
     with pytest.raises(ValueError, match="not in the type vocabulary"):
         template.declaration_for(fld, int)
+
+
+# --------------------------------------------------------------------- #
+#  The template file has ONE door                                        #
+# --------------------------------------------------------------------- #
+
+def test_the_template_path_is_formed_in_exactly_one_place():
+    """`engines/template.md` § 4.3 / `job-contracts.md` § 6.3 name the file
+    ``<label>.template.toml``.  SEVEN call sites formed it independently until
+    2026-08-17, in two INCOMPATIBLE ways -- from ``task.json``'s label, and by
+    ``sorted(glob("*.template.toml"))[0]`` -- so a folder holding two templates
+    had the web tab and ``prep`` reading different files.
+
+    Walks the AST rather than the lines, so **prose is not code**: a docstring
+    naming the file is how a contract is written, and the first version of
+    this guard flagged four of them while missing the two sites that mattered
+    (`build.py`'s ``template_name`` and `identity.py`'s pattern list) because
+    it only knew the ``SUFFIX``-join spelling and not the literal one.
+
+    What it bans, in executable code only: globbing for a template, joining
+    ``SUFFIX`` by hand, and spelling ``.template.toml`` in a string.  Use
+    :func:`template.template_filename`, :func:`template.template_path` or
+    :func:`template.find_template` -- the last REFUSES an ambiguous folder
+    rather than picking the alphabetical winner.
+    """
+    import ast
+    import pathlib as _pl
+    root = _pl.Path(__file__).resolve().parents[1] / "molbuilder"
+    offenders = []
+    for p in sorted(root.rglob("*.py")):
+        if p.name == "template.py":
+            continue                       # the door's own home
+        tree = ast.parse(p.read_text(encoding="utf-8", errors="replace"))
+        docstrings = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef,
+                                 ast.FunctionDef, ast.AsyncFunctionDef)):
+                body = getattr(node, "body", None)
+                if (body and isinstance(body[0], ast.Expr)
+                        and isinstance(body[0].value, ast.Constant)
+                        and isinstance(body[0].value.value, str)):
+                    docstrings.add(id(body[0].value))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                continue
+            if id(node) in docstrings:
+                continue                   # prose, not code
+            s = node.value
+            if "catalogue.template.toml" in s:
+                continue                   # the shipped master, a different file
+            # PROSE IS NOT A PATH.  `task.1st.json`'s ``_what`` line explains
+            # itself to a reader in a sentence that names the template beside
+            # it -- and that is the file doing its job, not a path being
+            # formed.  A path is short; a sentence is not.
+            if len(s) > 40:
+                continue
+            where = f"{p.relative_to(root.parent)}:{node.lineno}"
+            if "*.template.toml" in s:
+                offenders.append(f"{where} globs for a template")
+            elif ".template.toml" in s:
+                offenders.append(f"{where} spells the suffix literally")
+        # the f-string join, which is not one Constant
+        for node in ast.walk(tree):
+            if isinstance(node, ast.JoinedStr):
+                names = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+                if {"SUFFIX", "TEMPLATE_SUFFIX"} & names:
+                    offenders.append(
+                        f"{p.relative_to(root.parent)}:{node.lineno} "
+                        f"joins the suffix by hand")
+    assert not offenders, (
+        "the template path is formed outside its one door:\n  "
+        + "\n  ".join(offenders)
+        + "\nUse template.template_filename / template_path / find_template."
+    )

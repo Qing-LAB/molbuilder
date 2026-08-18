@@ -270,14 +270,26 @@ def emit_gpu_probe_lines(use_gpu: bool,
                           min_compute_capability: int = GPU4PYSCF_MIN_COMPUTE_CAPABILITY) -> List[str]:
     """Emit the GPU probe + to_gpu helper.
 
-    Defines two module-level names on the running script:
+    **No silent fallback** (user, 2026-08-17; `engines/overview.md` § 3a
+    G-5).  When ``use_gpu`` is set and the GPU is missing, unusable or too
+    old, the emitted script **raises SystemExit with an actionable
+    message** rather than continuing on the CPU.  All three former fallback
+    paths -- import failure, device failure, and a failed ``.to_gpu()``
+    promotion -- now stop.
+
+    The reason is a measurement one as much as a correctness one: a trial
+    labelled *GPU* that quietly ran on the CPU puts a CPU time in a GPU
+    column, and `bench/result.py` would score it.
+
+    Defines these module-level names on the running script:
       * ``USE_GPU``    -- the literal config value (True/False).
       * ``_USING_GPU`` -- True iff gpu4pyscf + a usable NVIDIA GPU
         (compute capability >= ``min_compute_capability``) were both
-        found at run start.
+        found at run start.  Since the failure paths now exit, this is
+        equal to ``USE_GPU`` for any script that gets past the probe.
       * ``_mb_to_gpu_if_enabled(mf)`` -- helper used by callers to
         promote an mf object to its gpu4pyscf equivalent when
-        ``_USING_GPU`` is True; pass-through on CPU.
+        ``_USING_GPU`` is True; pass-through when the user asked for CPU.
 
     Caller responsibility: invoke ``mf = _mb_to_gpu_if_enabled(mf)``
     AFTER the mf is fully assembled (density-fit + dispersion +
@@ -295,8 +307,12 @@ def emit_gpu_probe_lines(use_gpu: bool,
     out.append("# Probes cupy + gpu4pyscf at run start.  If both present AND")
     out.append("# the local GPU has compute capability >=")
     out.append(f"# {min_compute_capability}.0, sets _USING_GPU=True and the helper below")
-    out.append("# promotes mf objects via .to_gpu().  Falls back to CPU on")
-    out.append("# any failure (no install, no GPU, too-old card).")
+    out.append("# promotes mf objects via .to_gpu().")
+    out.append("#")
+    out.append("# THERE IS NO CPU FALLBACK.  You asked for the GPU; if it is")
+    out.append("# not here the run STOPS (no install, no GPU, too-old card).")
+    out.append("# A run that silently changed where it executed would report a")
+    out.append("# CPU time under a GPU label -- and a benchmark would score it.")
     out.append(f"USE_GPU = {bool(use_gpu)!r}")
     out.append("_USING_GPU = False")
     out.append("if USE_GPU:")
@@ -329,14 +345,39 @@ def emit_gpu_probe_lines(use_gpu: bool,
     out.append("            pass")
     out.append("        print(f'GPU acceleration ON (gpu4pyscf, {_gpu_name}, "
                "CC {_maj}.{_min}).')")
+    # NO SILENT FALLBACK (user, 2026-08-17; `engines/overview.md` § 3a G-5).
+    #
+    # These two branches printed "CPU fallback" and carried on.  That made a
+    # GPU run and a CPU run indistinguishable except by reading the log, and
+    # it made a BENCHMARK dishonest: a trial labelled *GPU* that quietly ran
+    # on the CPU reports a CPU time in a GPU column, so the GPU looks slow for
+    # a reason that has nothing to do with the GPU.
+    #
+    # The user asked for the GPU.  Either they get it or the run stops --
+    # the same rule the boundary-condition contract states as *no silent
+    # absorption of config* (`engines/overview.md` § 3).
     out.append("    except ImportError as _gpu_exc:")
     out.append("        _RUNTIME_INFO['gpu_name'] = f'gpu4pyscf not installed: {_gpu_exc}'")
-    out.append("        print(f'USE_GPU=True but gpu4pyscf not installed "
-               "({_gpu_exc}); CPU fallback.')")
+    out.append("        raise SystemExit(")
+    out.append("            'molbuilder: this run asked for the GPU "
+               "(use_gpu = true) and\\n'")
+    out.append("            f'  gpu4pyscf is not importable here: {_gpu_exc}\\n'")
+    out.append("            '  There is no CPU fallback: a run that silently "
+               "changed where it\\n'")
+    out.append("            '  executed would report a CPU time under a GPU "
+               "label.\\n'")
+    out.append("            '  Fix: run in an env with gpu4pyscf + cupy, or "
+               "set use_gpu = false.')")
     out.append("    except Exception as _gpu_exc:")
     out.append("        _RUNTIME_INFO['gpu_name'] = f'GPU unusable: {_gpu_exc}'")
-    out.append("        print(f'USE_GPU=True but the local GPU is "
-               "not usable ({_gpu_exc}); CPU fallback.')")
+    out.append("        raise SystemExit(")
+    out.append("            'molbuilder: this run asked for the GPU "
+               "(use_gpu = true) and\\n'")
+    out.append("            f'  the local GPU is not usable: {_gpu_exc}\\n'")
+    out.append("            '  There is no CPU fallback (see above).  Fix: run "
+               "on a node with a\\n'")
+    out.append(f"            '  supported NVIDIA GPU (compute capability >= "
+               f"{min_compute_capability}.0), or set use_gpu = false.')")
     out.append("")
     out.append("def _mb_to_gpu_if_enabled(mf_obj):")
     out.append("    \"\"\"Promote an mf object to its gpu4pyscf equivalent when")
@@ -345,11 +386,21 @@ def emit_gpu_probe_lines(use_gpu: bool,
     out.append("    applied) so .to_gpu() mirrors the complete CPU state.\"\"\"")
     out.append("    if not _USING_GPU:")
     out.append("        return mf_obj")
+    # The third silent fallback, and the least visible of the three: the probe
+    # passed, so the run announced "GPU acceleration ON", and THEN the
+    # promotion failed and the work went to the CPU anyway.
     out.append("    try:")
     out.append("        return mf_obj.to_gpu()")
     out.append("    except Exception as _e:")
-    out.append("        print(f'mf.to_gpu() failed ({_e}); reverting to CPU.')")
-    out.append("        return mf_obj")
+    out.append("        raise SystemExit(")
+    out.append("            'molbuilder: this run asked for the GPU and the "
+               "probe found one,\\n'")
+    out.append("            f'  but promoting the SCF object to gpu4pyscf "
+               "failed: {_e}\\n'")
+    out.append("            '  There is no CPU fallback: the run announced "
+               "GPU acceleration,\\n'")
+    out.append("            '  and finishing on the CPU would make that "
+               "announcement false.')")
     out.append("")
     return out
 

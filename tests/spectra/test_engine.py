@@ -362,10 +362,13 @@ class TestPySCFEnginePreflight:
         # Message names the package + the install command.
         assert "gpu4pyscf" in warns[0].message
         assert "pip install" in warns[0].message
-        # And explicitly mentions the CPU fallback so the user knows
-        # this is non-fatal.
-        assert "fall" in warns[0].message.lower() \
-            or "cpu" in warns[0].message.lower()
+        # And states that there is NO fallback -- asking for the GPU
+        # and not getting one stops the run (user, 2026-08-17;
+        # `engines/overview.md` § 3a G-5).  This asserted the opposite
+        # ("mentions the CPU fallback so the user knows this is
+        # non-fatal") until the fallback was retired.
+        assert "no cpu" in warns[0].message.lower()
+        assert "stop" in warns[0].message.lower()
 
     def test_use_gpu_no_warn_when_gpu4pyscf_and_modern_gpu(self, monkeypatch):
         """When gpu4pyscf is importable AND the GPU is modern enough

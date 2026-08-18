@@ -182,38 +182,8 @@ def _assert_workflow_group_enrichment(
 # --------------------------------------------------------------------- #
 
 
-def test_siesta_build_issues_carry_workflow_group(web_client):
-    """SIESTA's build.py is the reference implementation -- it
-    passes ``cfg=cfg`` everywhere.  This pin would catch a future
-    regression that drops the kwarg from any of build.py:726, 731,
-    747."""
-    body = _post(web_client, "/api/build/fdf", {
-        "structure": _env(_BENZENE_XYZ),
-        # mesh_cutoff = 30 is < 100 Ry, outside the declared range;
-        # config-metadata validator emits a warn whose ``where`` is
-        # ``config.mesh_cutoff``, which carries workflow_group="stage".
-        "params": {"mesh_cutoff": 30},
-    })
-    assert body.get("ok") is True, body.get("error")
-    _assert_workflow_group_enrichment(
-        body.get("issues") or [], "/api/build/fdf",
-    )
 
 
-def test_pyscf_build_issues_carry_workflow_group(web_client):
-    """PySCF mirror of the SIESTA pin.  ``build.py:793,796,812`` all
-    pass cfg=cfg."""
-    body = _post(web_client, "/api/build/pyscf", {
-        "structure": _env(_BENZENE_XYZ),
-        # Same OOB approach: pick a PySCF field with workflow_group +
-        # range.  ``scf_max_cycle`` is range=(10, 1000),
-        # workflow_group="budget" (see config/pyscf.py:172).
-        "params": {"scf_max_cycle": 5},
-    })
-    assert body.get("ok") is True, body.get("error")
-    _assert_workflow_group_enrichment(
-        body.get("issues") or [], "/api/build/pyscf",
-    )
 
 
 # --------------------------------------------------------------------- #

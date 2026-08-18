@@ -536,48 +536,127 @@ def _offer_bench_verdict(base, allocation, stage=None):
     return allocation, pins
 
 
-def _bench_inputs(base):
+def _bench_inputs(base, target=None):
     """The benchmark specialisation's three inputs — `project-layout.md`
-    § 2.3.1a's split, stated as data: WHERE the values come from (the GPU
-    grid, enumerated from THIS machine's probed topology, as explicit
-    points), the G/K/C → Resources translation, and the trial pins.  The
-    framework — `prep`'s five steps — receives a longer list and never asks
-    why (`generator.md` § 2).
+    § 2.3.1a's split, stated as data: WHERE the values come from (the grid,
+    enumerated from THIS machine's probed topology, as explicit points), the
+    point → Resources translation, and the trial pins.  The framework —
+    `prep`'s five steps — receives a longer list and never asks why
+    (`generator.md` § 2).
+
+    **The grid is enumerated HERE, at prep, and not read from the
+    description** — `generator.md` § 4.3: *a sweep and an allocation are both
+    inputs to `prep`, never fields of the description*, and § 10's class 3
+    puts ``mpi_np`` / ``omp_threads`` / ``max_memory_mb`` at prep, *"never
+    floor 2"*.  That is what keeps one portable folder benchmarkable on a
+    cluster it has never met.
+
+    **Whether this is a GPU grid is the DESCRIPTION's answer, not this
+    function's assumption** (2026-08-17).  `web/task-setup.md` § 6.2 —
+    *"use GPU or not is set up only at the Job Prep UI"* — makes ``enable_gpu``
+    a value the person chose, carried in the template like any other; and
+    § 6.2 is equally explicit that the eigensolver is NOT the same question
+    (``diag_algorithm`` is a `budget` item on the parameter tab).  This
+    function pinned ``enable_gpu=True`` and ``diag_algorithm='ELPA-1STAGE'``
+    flat, so every trial measured a GPU regardless of what was asked for —
+    and on a machine with no GPU the whole verb refused, which made a
+    CPU benchmark impossible to run at all.  Both pins are gone: the
+    description answers, and the grid follows its answer.
     """
     from ..bench.grid import _FALLBACK_KS, sweep_K, sweep_grid
     from ..resolve import MachineTranslation
+    from ..task import FILENAME as TASK_FILENAME, read_task
+    from ..template import (read_template, template_path,
+                            select as template_select)
     from .prep import _environment_for
-    environment = _environment_for(base)
+    # The grid is enumerated from the TARGET's topology, not from whatever
+    # box you happen to be typing on (P2, 2026-08-17).  Without this a
+    # benchmark prepped on a workstation for a cluster measured the
+    # workstation -- 20 cores, no GPU -- and said nothing.
+    environment = _environment_for(base, target)
     topo = getattr(environment, "topology", None)
     gpn = getattr(topo, "gpus_per_node", None) or 0
     cps = getattr(topo, "cores_per_socket", None)
     gtype = getattr(topo, "gpu_type", None)
-    if not gpn or not gtype:
+
+    task = read_task(Path(base) / TASK_FILENAME)
+    tmpl = read_template(
+        template_path(Path(base), task.label).read_text(encoding="utf-8"))
+    # THE one read API (`template.md` § 8.0), not a dict comprehension over
+    # `.items`.  The hand-rolled version asked for `enable_gpu` by name with no
+    # engine, which is § 2.2's predicted failure exactly -- a second reader
+    # differing "about the item that does not apply to the engine being asked
+    # about".  On a PySCF description it read the GPU flag as absent and
+    # enumerated a CPU grid, silently.
+    #
+    # TWO names answer one question until § 6.3's settled merge is renamed:
+    # SIESTA's `enable_gpu`, PySCF's `use_gpu`.  Spelling both here is the
+    # honest encoding of "an un-renamed pair stays two items", and it collapses
+    # to one line when the rename lands.
+    # THE one read API (`template.md` § 8.0).  This was a dict comprehension
+    # over ``tmpl.items`` -- a second reader, and § 2.2's predicted failure
+    # exactly: it ignored ``engines``, so it asked a per-engine question as
+    # though it were global.
+    #
+    # ``select`` rather than ``one`` because the question is *is it on?*: a
+    # template that never carried the item answers "no", while ``one`` RAISES
+    # on a name the file never had -- right for a caller that NEEDS the item,
+    # wrong for one asking whether it exists.
+    #
+    # THE NAME IS SIESTA'S, AND THAT IS A DEPENDENCY RATHER THAN A CHOICE.
+    # The GPU question has no engine-agnostic name yet: `template.md` § 6.3's
+    # merge of ``enable_gpu`` / ``use_gpu`` is RULED and not yet renamed, so
+    # today two names answer one question.  Writing an engine->name table here
+    # would put that un-landed rename in a second place to maintain.  It is
+    # safe only because `prep bench` refuses a non-SIESTA engine moments later
+    # at the seam (`prep.py::_engine_seam`) -- so when that arm lands, THIS
+    # LINE MUST READ THE MERGED ITEM, or a GPU PySCF sweep silently enumerates
+    # a CPU grid.  Recorded as § 12.1 row 9.
+    on_gpu = any(i.name == "enable_gpu" and bool(i.value)
+                 for i in template_select(tmpl, engine=task.engine))
+
+    if on_gpu and (not gpn or not gtype):
         raise click.ClickException(
-            f"prep bench enumerates the GPU grid (G × ranks-per-GPU × "
-            f"cores), and this machine's probe found no GPU topology "
+            f"this description asks for the GPU (enable_gpu = true), so the "
+            f"benchmark enumerates a GPU grid (G × ranks-per-GPU × cores) -- "
+            f"and this machine's probe found no GPU topology "
             f"(gpus_per_node={gpn!r}, gpu_type={gtype!r}).  Delete "
             f"environment.json to re-probe, or run the benchmark on the "
             f"target it is meant to measure -- the comparison is by node "
             f"type (asu-sol.md § 5.2).")
+
     ks = sweep_K(topo) or list(_FALLBACK_KS)
-    points = [{"G": g, "K": k, "C": c}
-              for g, k, c in sweep_grid(gpn, cps, ks, None)]
-    translation = MachineTranslation(
-        axes=("G", "K", "C"),
-        to_resources=lambda p, _env: {
-            "mpi_np": p["G"] * p["K"], "cpus_per_task": p["C"],
-            "gres": f"gpu:{gtype}:{p['G']}"})
+    # ONE enumeration, both grids (`bench/grid.py`: the single source of truth
+    # for the sweep grid, so no two consumers can define it differently).  On
+    # CPU there is no device to range over, so G is held at 1 and dropped from
+    # the coordinate -- the axes become the two that mean something.
+    raw = list(sweep_grid(gpn if on_gpu else 1, cps, ks, None))
+    if on_gpu:
+        points = [{"G": g, "K": k, "C": c} for g, k, c in raw]
+        translation = MachineTranslation(
+            axes=("G", "K", "C"),
+            to_resources=lambda p, _env: {
+                "mpi_np": p["G"] * p["K"], "cpus_per_task": p["C"],
+                "gres": f"gpu:{gtype}:{p['G']}"})
+    else:
+        points = [{"K": k, "C": c} for _g, k, c in raw]
+        translation = MachineTranslation(
+            axes=("K", "C"),
+            to_resources=lambda p, _env: {
+                "mpi_np": p["K"], "cpus_per_task": p["C"]})
     # The trial pins -- what `transform_fdf` used to SPLICE into a finished
     # deck, now schema values resolved like any other (`template.md` § 8.1:
     # rebuild and render, never splice): capped SCF, single point, forced
-    # cold, the GPU eigensolver.  ``SCF.MustConverge`` has NO schema field
-    # (the splice invented it); a capped trial therefore reports its
-    # nonconvergence honestly rather than being silenced -- adding the field
-    # is a recorded vocabulary gap (template.md § 7), not this unit's scope.
-    pins = {"max_scf_iter": 5, "relax_steps": 0, "restart": "clean",
-            "diag_algorithm": "ELPA-1STAGE", "enable_gpu": True,
-            "block_size": 256}
+    # cold.  ``SCF.MustConverge`` has NO schema field (the splice invented
+    # it); a capped trial therefore reports its nonconvergence honestly rather
+    # than being silenced -- adding the field is a recorded vocabulary gap
+    # (template.md § 7), not this unit's scope.
+    #
+    # What is pinned here is what makes a trial a MEASUREMENT rather than a
+    # run.  What the calculation IS -- the GPU, the eigensolver, the block
+    # size -- is the description's, and pinning it here would measure a
+    # configuration nobody asked to run.
+    pins = {"max_scf_iter": 5, "relax_steps": 0, "restart": "clean"}
     return points, pins, translation
 
 
@@ -690,14 +769,20 @@ def _resolve_stage(js, stage, verb: str):
 @click.option("--max-memory-mb", type=int, default=None, metavar="MB",
               help="per-rank cap, baked into the wrapper as ulimit -v.")
 @click.option("--domain", default=None, metavar="NAME",
-              help="which named domain to run in (a scheduler.routing entry -- "
-                   "a partition and a QOS together, with its own limits).")
+              help="which named domain to run in (a PROBED domain from "
+                   "environment.json -- a partition and a QOS together, "
+                   "with its own limits).")
+@click.option("--target", default=None, metavar="NAME",
+              help="which MACHINE this is for -- a record written by "
+                   "`jobset probe --write --name NAME`.  Omit when there is "
+                   "one; naming it is how a bench prepped on a workstation "
+                   "measures the cluster instead of the desk.")
 @click.option("--sbatch/--no-sbatch", "emit_sbatch", default=True,
               help="emit .sbatch wrappers (default on; auto-skipped when no "
                    "scheduler is configured).")
 def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
              mpi_np, cpus_per_task, gres, time_, mem, max_memory_mb,
-             domain, emit_sbatch: bool) -> None:
+             domain, target, emit_sbatch: bool) -> None:
     """Set a stage up to run, and report what was done.
 
     Renders the wrappers, then makes that stage's next ``run-<n>``, links the
@@ -718,8 +803,11 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     # bundles down a path that then asked for a template they never had.
     from pathlib import Path as _P
     from ..task import FILENAME as _TASK
+    from ..template import find_template as _find_template
     base = _P(bundle).resolve()
-    if not ((base / _TASK).is_file() and any(base.glob("*.template.toml"))):
+    # `find_template` rather than a glob: it REFUSES a folder holding two
+    # rather than answering from the first one alphabetically.
+    if not ((base / _TASK).is_file() and _find_template(base) is not None):
         # Described-only (U2/U4, 2026-08-12): the pre-made-bundle arm that
         # stood here had NO producer left -- `describe` is the only writer
         # of floor 2, and the old bench bundles died in step 6 u5.  A
@@ -798,7 +886,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                 raise click.ClickException(
                     "prep bench measures ONE stage's configuration; "
                     "name it:\n    molbuilder jobset prep bench <stage>")
-            sweep, pins, translation = _bench_inputs(base)
+            sweep, pins, translation = _bench_inputs(base, target)
         elif stage is not None:
             # § 2.3.2's other half: a run prepped where a verdict sits
             # is OFFERED it -- asked, never applied silently.
@@ -822,10 +910,14 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                 cont = None
             _ask_if_underway(base, stage, bench_container=cont)
         from .prep import prep_calculation
-        dirs = prep_calculation(base, stage, allocation=allocation,
-                                env=env, emit_sbatch=emit_sbatch,
-                                sweep=sweep, pins=pins,
-                                translation=translation)
+        from ..environment import UnknownTarget
+        try:
+            dirs = prep_calculation(base, stage, allocation=allocation,
+                                    env=env, emit_sbatch=emit_sbatch,
+                                    sweep=sweep, pins=pins,
+                                    translation=translation, target=target)
+        except UnknownTarget as exc:
+            raise click.ClickException(str(exc))
         # `prep` WROTE floor 3 as part of those five steps; read it back
         # rather than keeping a second copy in hand, so what the attempt
         # setup below sees is exactly what landed on disk.  A sweep's
@@ -1044,7 +1136,7 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                    "in molbuilder.json**, which is what running-a-job.md § 5.4 "
                    "says gates submission; pass it only to override that.")
 @click.option("--domain", default=None,
-              help="scheduler.routing domain -> -p/-q (submit mode; EXPLICIT, "
+              help="probed domain (environment.json) -> -p/-q (submit mode; EXPLICIT, "
                    "never auto-picked).")
 @click.option("--dry-run", is_flag=True,
               help="print the exact command each job WOULD get; launch "
@@ -1150,3 +1242,130 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     if not dry_run:
         click.echo("next: molbuilder jobset status   (look before the next "
                    "stage)")
+
+
+# --------------------------------------------------------------------- #
+#  probe-scheduler -- MOVED here from `molbuilder bench` on 2026-08-17.  #
+#                                                                        #
+#  It was the last inhabitant of a command group whose four lifecycle    #
+#  verbs were deleted in the 2026-08-12 fold, and it is not a benchmark  #
+#  verb at all: it reads a live SLURM cluster and proposes a `scheduler` #
+#  config block.  Leaving it there kept a group alive whose name no      #
+#  longer described anything, so `molbuilder bench` is gone and every    #
+#  verb now lives under `jobset` (user, 2026-08-17).                     #
+# --------------------------------------------------------------------- #
+
+@jobset_group.command("probe",
+                     short_help="probe this machine's capability -> "
+                                "environment.json")
+@click.option("--out", default=None,
+              type=click.Path(file_okay=False, resolve_path=True),
+              help="directory to write environment.json into with --write "
+                   "(default: the per-user machine scope).")
+@click.option("--write", "do_write", is_flag=True, default=False,
+              help="write the probed record (shows a diff + confirms).")
+@click.option("--name", default=None, metavar="NAME",
+              help="record this as a NAMED target (environments/NAME.json) "
+                   "instead of as this machine, so a workstation can hold a "
+                   "cluster's capability and `prep --target NAME` use it.")
+@click.option("--yes", is_flag=True, default=False,
+              help="skip the confirmation prompt when --write.")
+def cmd_probe_scheduler(out, do_write: bool, name, yes: bool) -> None:
+    """Probe this machine and record what it IS -- cores, GPUs, scheduler, and
+    on a cluster every (partition, QoS) you may actually submit to, with its
+    wall.  Writes ``environment.json`` at the machine scope, so one probe
+    serves every calculation here (`configuration.md` § 5).
+
+    **Facts only.** Which partition you want, the account, and the policy no
+    probe can invent (``gpu.exclusive``, ``gpu.mem``) stay yours, in
+    ``molbuilder.json`` -- M-1.  Until 2026-08-17 this verb proposed a whole
+    ``scheduler`` config block and defaulted your partition to the cheapest one
+    it found; a probe choosing on your behalf is what that rule removed.
+
+    Run it on a login node for a cluster; on a workstation it records the same
+    shape with no domains (M-2), rather than refusing.
+    """
+    import getpass
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from ..environment import (Domain, FILENAME, _run, machine_scope_path,
+                               read_environment, resolve_environment,
+                               write_environment)
+    from ..scheduler_probe import (derive_domains, parse_allowed_qos,
+                                    parse_qos, parse_sinfo)
+
+    user = getpass.getuser()
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    # The NODE probe first -- scheduler, topology, default partition.  It is
+    # the same call `prep` step 1 makes, so the two cannot disagree about what
+    # this machine is.
+    env = resolve_environment(now_iso=now)
+
+    notes = []
+    sinfo_txt = _run(["sinfo", "-h", "-o", "%P|%30l|%D|%40G"])
+    if sinfo_txt is None:
+        # NOT a refusal.  M-2: a workstation records its capability in the same
+        # shape a cluster does.  This verb used to exit 2 here, which left the
+        # one machine that most needs a stated ceiling with no record at all.
+        notes.append("no sinfo, so no scheduler domains -- this is a "
+                     "workstation record (topology only).")
+    else:
+        parts = parse_sinfo(sinfo_txt)
+        qos = parse_qos(_run(["sacctmgr", "-nP", "show", "qos",
+                              "format=Name,MaxWall,Flags"]) or "")
+        allowed = parse_allowed_qos(
+            _run(["sacctmgr", "-nP", "show", "assoc", f"user={user}",
+                  "format=QOS"]) or "")
+        rows, notes = derive_domains(parts, qos, allowed)
+        env.domains = [Domain(**r) for r in rows]
+        env.source["domains"] = "sinfo+sacctmgr"
+        click.echo(f"Probed (user={user}): {len(parts)} partitions; "
+                   f"allowed QoS: {', '.join(sorted(allowed)) or '(unknown)'}")
+
+    t = env.topology
+    click.echo(f"\nMachine: scheduler={env.scheduler}"
+               f"  cores/socket={t.cores_per_socket}  sockets={t.sockets}"
+               f"  gpus/node={t.gpus_per_node}  gpu={t.gpu_type or '-'}"
+               f"  mem={t.mem_total_gb or '-'} GB")
+    if env.domains:
+        click.echo("\nReachable domains (submit with --domain <name>):")
+        for d in env.domains:
+            click.echo(f"  {d.name:<10} <= {str(d.max_time):<12} "
+                       f"{d.partition}/{d.qos}")
+    if notes:
+        click.echo("\nNotes / assumptions (read before --write):")
+        for n in notes:
+            click.echo(f"  - {n}")
+
+    # A named target is a record ABOUT another machine, kept beside this
+    # machine's rather than replacing it (P2): a workstation holds both its own
+    # capability and the cluster's, and `prep --target NAME` says which.
+    if name:
+        from ..environment import environments_dir
+        target = Path(out) if out else environments_dir()
+    else:
+        target = Path(out) if out else machine_scope_path().parent
+    fname = f"{name}.json" if name else FILENAME
+    if not do_write:
+        click.echo(f"\n(dry run -- nothing written. Re-run with --write to "
+                   f"record this in {target / fname}.)")
+        return
+
+    before = read_environment(target / fname)
+    old = [d.name for d in before.domains] if before else None
+    click.echo(f"\nDIFF domains: {old if old is not None else '(no record)'} "
+               f"-> {[d.name for d in env.domains]}")
+    if not yes:
+        click.confirm(f"Write this record to {target / fname}?", abort=True)
+    target.mkdir(parents=True, exist_ok=True)
+    path = write_environment(env, target / fname)
+    if name:
+        click.echo(f"wrote {path}\n"
+                   f"  use it with `molbuilder jobset prep run <stage> "
+                   f"--target {name}`.")
+    else:
+        click.echo(f"wrote {path}\n"
+                   f"  `prep` snapshots it into each calculation; what you "
+                   f"WANT from this machine stays in molbuilder.json.")

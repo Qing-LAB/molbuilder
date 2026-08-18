@@ -19,6 +19,7 @@ import pytest
 
 from molbuilder import runwrap
 from molbuilder.diagnostics import Capabilities, set_capabilities
+from molbuilder.jobset.model import Resources
 
 
 @pytest.fixture(autouse=True)
@@ -316,7 +317,7 @@ def test_wrapper_ships_standalone_monitor(tmp_path):
         {"script_generation": {"activation": "source activate"}}))
     fdf = tmp_path / "j.fdf"
     fdf.write_text("NumberOfAtoms 10\nDiag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, mpi_np=2, emit_sbatch=False)
+    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=2), emit_sbatch=False)
     shipped = tmp_path / "mb_monitor.py"
     assert shipped.is_file()
     src = (shipped).read_text()
@@ -327,7 +328,7 @@ def test_wrapper_ships_standalone_monitor(tmp_path):
     # PySCF job: no monitor shipped (siesta-only instrument).
     py = tmp_path / "q.py"; py.write_text("# fake\n")
     (tmp_path / "mb_monitor.py").unlink()
-    runwrap.write_run_wrapper(py, emit_sbatch=False)
+    runwrap.write_run_wrapper(py, resources=Resources(), emit_sbatch=False)
     assert not (tmp_path / "mb_monitor.py").exists()
 
 

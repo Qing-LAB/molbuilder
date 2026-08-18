@@ -188,8 +188,11 @@ Two facts keep the picture honest:
   The forward plan reuses the *already-shipped* CLI producers, decoders, and
   wrappers in the browser rather than reinventing them (`job-system.md § 8`).
 - **"A ladder scheduled as dependent jobs" is SIESTA-only today.** PySCF's
-  staged relaxation runs as an in-script loop, not a JobSet; PySCF/transport
-  producers are planned. (Details in `job-system.md § 4`.)
+  staged relaxation runs as an **in-script loop** — so its `JobSet` has one
+  `Job` whose deck contains every rung, rather than one job per rung. It is a
+  JobSet of length one, not an exception to the model
+  ([`stages.md § 1.1a`](?doc=engines/stages.md)); PySCF/transport producers are
+  planned. (Details in `job-system.md § 4`.)
 
 ### 2.1 The second transition — one folder shape becomes a choice of two
 

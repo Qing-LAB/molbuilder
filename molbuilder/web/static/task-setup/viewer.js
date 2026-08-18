@@ -1,23 +1,28 @@
 /* task-setup/viewer.js — the Task Setup tab's page controller.
  *
- * WHAT THIS TAB DOES TODAY, and it is deliberately less than the design:
+ * WHAT THIS TAB DOES:
  *   1. Follow the projects sidebar's selected DIRECTORY.
- *   2. Read that folder's `task.json` (and notice the template beside it).
+ *   2. Read that folder's `task.json`, or the `task.1st.json` hand-over a
+ *      parameter tab left when there is no description yet.
  *   3. Show what the description says — its stages, and the machine settings
  *      you either chose or asked to have measured.
  *   4. Let you read and edit the file itself in the vendored CodeMirror.
- *
- * IT WRITES NOTHING.  Save is disabled and says why.  `molbuilder jobset
- * describe` is what writes a description today, and building a browser write
- * path against a design neither of us has seen running is how you get a page
- * that is confidently wrong.
+ *   5. WRITE IT — POST /api/task-setup/save, which puts `task.json` into the
+ *      folder.  An offered checkpoint runs first (`checkpointing.md` § 9):
+ *      the tick is the offer and clearing it is a real answer.
+ *   6. Read three things the page cannot derive: the sweepable set
+ *      (`/api/task-setup/sweepable`), the tier presets (`…/presets`) and the
+ *      folder's own template values (`…/template-values`).
  *
  * The contract is `docs/web/task-setup.md`; where this disagrees, that wins.
  *
- * NO NEW ENDPOINT.  Reading a folder is `/api/files/list` + `/api/files/read`,
- * both already shipped and both already inside the roots guard.  `missing_ok`
- * exists precisely for the "this folder is not a calculation yet" case, so the
- * normal empty answer costs no failed-resource console error.
+ * THIS HEADER SAID *"IT WRITES NOTHING.  Save is disabled and says why"*
+ * until 2026-08-17, while `refreshSave()` computed the button's state per
+ * folder and the hint under it read *"Writes task.json into this folder."*
+ * The claim was true when the page was read-only and was never revisited when
+ * saving landed.  A header drifts in one direction — it keeps describing the
+ * smaller, earlier page — so the claim to distrust is always the categorical
+ * one: *it writes nothing*, *these are the only calls*.
  */
 
 import { loadCodeMirror, modeFor } from "../lib/codemirror-load.js";
@@ -29,14 +34,31 @@ const TASK_JSON     = "task.json";
  * preflight. */
 const TASK_HANDOVER = "task.1st.json";
 
-/* The three items whose value the MACHINE answers.  Each names an allocation
- * resolver, and `read_template` refuses a value on one — a description may
- * state the question and never the answer (`engines/template.md` § 6.4).  So
- * on this page they can only ever be points to measure, never a choice.
- * Hard-coded here rather than derived because the catalogue is not fetched by
- * this page; a fourth one would show up as `chosen`, which reads wrong but
- * breaks nothing, and the fix is one line. */
-const MACHINE_ANSWERED = new Set(["mpi_np", "omp_threads", "max_memory_mb"]);
+/* Which items the MACHINE answers — DERIVED, never listed here.
+ *
+ * An item whose `resolver` is an allocation resolver may state the question
+ * and never the answer (`engines/template.md` § 6.4), so on this page it can
+ * only be a point to measure, never a choice.  The server already computes
+ * exactly that (`/api/task-setup/sweepable` ships `machine_answers` per item,
+ * from `template.ALLOCATION_RESOLVERS`) and this page already reads that field
+ * in two other places.
+ *
+ * It was a hard-coded `new Set(["mpi_np", "omp_threads", "max_memory_mb"])`
+ * until 2026-08-17 — a THIRD answer to a question the page already had two
+ * answers to, and not even in the same vocabulary: the constant listed ITEM
+ * names while `ALLOCATION_RESOLVERS` holds RESOLVER names, which collide on
+ * `omp_threads` by coincidence.  Its own comment named the drift it invited:
+ * *"a fourth one would show up as `chosen`, which reads wrong but breaks
+ * nothing"* — that is a machine-answered value presented as a person's
+ * choice, silently. */
+function _handoverEngine(over) {
+    return String((over && over.engine) || (_handover && _handover.engine)
+                  || "siesta");
+}
+
+function machineAnswers(name) {
+    return (_sweep || []).some(i => i.name === name && i.machine_answers);
+}
 
 /* Friendly second lines.  A name the catalogue carries would be better and is
  * what the built version should read; this page does not load the catalogue. */
@@ -237,7 +259,7 @@ function renderMachine(task) {
         // The tab's one idea: length decides what this row IS.  A machine-
         // answered setting stays `machine` at any length -- a description may
         // never assert a value for it, so even one point is a point to TRY.
-        const kind = MACHINE_ANSWERED.has(name)
+        const kind = machineAnswers(name)
             ? "machine"
             : (pts.length === 1 ? "chosen" : "measured");
         const verdict = kind === "chosen"
@@ -425,6 +447,10 @@ async function loadFolder(projects, dir) {
                  + `needed: ${awaiting}. Saving writes task.json and removes `
                  + `this file.`);
         $("ts-stages-card").hidden = true;
+        // The machine rows are labelled from the SERVER's answer, so it has to
+        // be here before they paint.  `loadSweepChoices` is memoised, so this
+        // costs one fetch per engine per page-load, and nothing on repeat.
+        await loadSweepChoices(_handoverEngine(over));
         renderMachine(over || {});
         if (!_shape) await setEditorText(overText);   // until a shape is picked
         refreshSave();
@@ -476,6 +502,7 @@ async function loadFolder(projects, dir) {
     setShape(_shape);                            // shows which one it carries
     renderStages(task);
     renderNext(task);
+    await loadSweepChoices(String(task.engine || "siesta"));
     renderMachine(task);
     refreshPickers();
     await setEditorText(taskText);
@@ -494,6 +521,7 @@ async function syncFromModel() {
     // written into the JSON on screen, and the row it belonged to went on
     // showing the old chips: the panel looked inert while the file underneath
     // it was changing.
+    await loadSweepChoices(String((_task && _task.engine) || "siesta"));
     renderMachine(_task);
     renderNext(_task);
     refreshPickers();

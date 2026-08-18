@@ -49,6 +49,8 @@ import re
 from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple
 
+from .template import SUFFIX as _TEMPLATE_SUFFIX
+
 
 @dataclass(frozen=True)
 class RestartGroup:
@@ -141,7 +143,13 @@ MAX_LABEL_BYTES = _NAME_LIMIT - _STAGE_BUDGET - len(_LONGEST_EXTENSION)
 #: what a user goes back to read, and nothing here may treat them as leftovers.
 OUR_FILE_PATTERNS: Sequence[str] = (
     # inputs we generated
-    "{label}.fdf", "{label}_*.fdf", "{label}.template.toml",
+    "{label}.fdf", "{label}_*.fdf",
+    # Built from the SUFFIX rather than spelled: this list answers *"did the
+    # engine leave this, or did we write it"* by subtraction, so a pattern
+    # that silently stops matching hands a person's own input back to them
+    # as engine state -- the exact failure the `{label}.xyz` note below
+    # records, one file over.
+    "{label}" + _TEMPLATE_SUFFIX,
     # THE STRUCTURE THE CALCULATION IS OF, written into the bundle by the
     # hand-over (`web/handover-procedure.md`).  Added 2026-08-16, the same day
     # molbuilder started writing them: before that the pair did not exist in a
@@ -153,6 +161,21 @@ OUR_FILE_PATTERNS: Sequence[str] = (
     # `<SystemLabel>.xyz`, because the two never collide HERE: this question is
     # asked at the BUNDLE ROOT, and an engine runs in `<stage>/run-<n>/`.  The
     # sidecar is unambiguous -- nothing but molbuilder writes that format.
+    #
+    # ⚠ THIS LIST HAS A SECOND READER, and "HERE" is why that mattered.
+    # `runwrap._cold_restart_aside_block` derives `--cold`'s *"except what
+    # molbuilder wrote"* exception from these same patterns, and it runs where
+    # an engine's output IS present.  It used to read `{label}` as `*`, so
+    # adding this line (2026-08-16) silently turned it into `*.xyz` and made
+    # PySCF's `<JOB>_optimized.xyz` -- warm state -- look like ours; `--cold`
+    # then walked past the file it exists to move.  Fixed 2026-08-17 by
+    # anchoring that exception on the run's id instead of a star, and pinned by
+    # `test_the_exception_is_anchored_on_the_id_not_widened_to_a_star`.
+    #
+    # **`.xyz` is the first suffix on this list that an ENGINE also writes**,
+    # which is what made a widening that had been harmless for every other
+    # entry into a real over-match.  Adding another shared suffix here is safe
+    # now, and is still worth stopping to check both readers for.
     "{label}.xyz", "{label}.molstruct.json",
     "{label}.py", "{label}_*.py",
     # the wrapper and its scheduler header

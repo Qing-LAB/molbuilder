@@ -154,12 +154,34 @@ def _resolve_charge(struct: Structure, cfg: PySCFConfig) -> int:
 
 
 def render_script(struct: Structure,
-                  config: Optional[PySCFConfig] = None) -> str:
+                  config: Optional[PySCFConfig] = None,
+                  *,
+                  stage_token: Optional[str] = None) -> str:
     """Format a Structure as a runnable PySCF script (Python text).
 
     The result is what you'd write by hand if you knew exactly what
     every PySCF knob does -- with verbose comments turned on by
     default so you can read the file as documentation of the choices.
+
+    ``stage_token`` is **accepted and deliberately not used** (P3,
+    2026-08-17).  The engine seam calls every deck writer as
+    ``(structure, config, stage_token=)`` (`generator.md` § 7.1), and this
+    one took two positional arguments, so PySCF could not be plugged in at
+    all.  Accepting it closes that.
+
+    Using it would be wrong here, and the contract says so:
+    `engines/pyscf.md` § 5 -- *"a PySCF name never becomes a deck's
+    filename: the ladder runs in one process and writes one unified log"*.
+    SIESTA suffixes its deck, its stdout and its molwatch log with the token
+    because each rung is a separate job that would otherwise overwrite the
+    last one's outputs.  Here every rung shares one process, one
+    ``<JOB>.molwatch.log`` and one checkpoint **on purpose** -- that unified
+    log is the feature -- and per-rung output is separated where it actually
+    needs to be, in the geomeTRIC prefixes (``<JOB>_geom_<stage>_optim.xyz``).
+
+    The DECK's filename still carries a token when `prep` gives it one: the
+    caller builds that name, not this function.  Ignored here means *the
+    script's internals are not re-suffixed*, not *the token is discarded*.
     """
     cfg = config or PySCFConfig()
     charge = _resolve_charge(struct, cfg)

@@ -211,58 +211,6 @@ class TestBuildLoadDoor:
             "the cell arrived but the labels did not; both facts travel"
         )
 
-    def test_a_bad_box_is_reported_by_this_door_and_refused_by_the_emitters(self, client):
-        """The verdict follows WHAT THE REQUEST IS FOR (contract:
-        structure-periodicity.md § 8.2).
-
-        Loading is not generating.  A structure whose box is unusable still
-        opens, with the problem attached to the answer, because the user has to
-        be able to see it to fix it -- a load that refused would leave that
-        structure unopenable and therefore unfixable.  The doors that emit
-        something you would RUN refuse the same box, because there is nothing to
-        gain from a calculation that cannot be trusted.
-
-        And the check is on the STRUCTURE, not on the field the box arrived in,
-        so it does not matter which of the four routes carried it -- here, the
-        named field and the label document both.
-        """
-        left_handed = [[1, 0, 0], [0, 1, 0], [0, 0, -1]]
-        smuggled = json.loads(_md_json_4c())
-        smuggled["cell"] = left_handed
-
-        for label, payload in (
-            ("the named field", {"periodicity": {"cell": left_handed}}),
-            ("the label document", {"atom_metadata": json.dumps(smuggled)}),
-        ):
-            r = client.post("/api/build/load", json={
-                "text": _XYZ_4C_FRAME0, "filename": "run.xyz", **payload})
-            assert r.status_code == 200, (
-                f"loading refused a bad box through {label} "
-                f"({r.status_code}) -- the structure is now unopenable, so "
-                f"there is no way to correct it"
-            )
-            said = " ".join(n.get("message", "")
-                            for n in (r.get_json().get("notices") or []))
-            # PROSE, because a refusal raises and only its sentence reaches
-            # the caller. Keyed on the term the message is built around;
-            # reworded 2026-08-04 ("must be right-handed" -> "is mirrored
-            # ... left-handed"), which is the edit a prose match turns into
-            # a false failure.
-            assert "left-handed" in said, (
-                f"{label}: the box was accepted and NOTHING was said about it "
-                f"({said!r}) -- a report nobody sees is the same as no check"
-            )
-
-        # The same box, at a door that emits a calculation: refused.
-        emit = client.post("/api/build/fdf", json={
-            # The box rides IN the structure -- the top-level `periodicity`
-            # block this used went with the legacy request shape.
-            "structure": _env_per(_XYZ_4C_FRAME0, {"cell": left_handed}),
-            "params": {}})
-        assert emit.status_code == 400, (
-            f"an .fdf was generated from an impossible box: {emit.status_code}"
-        )
-        assert "left-handed" in (emit.get_json().get("error") or "")
 
     def test_the_label_block_is_passed_through_untouched(self, client):
         """The browser must not re-state ``n_atoms_total``.

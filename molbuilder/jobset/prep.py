@@ -67,7 +67,7 @@ def _user_error_as_prep():
         raise PrepError(str(exc)) from exc
 
 
-def resolve_target(base_dir) -> Path:
+def resolve_target(base_dir, target: Optional[str] = None) -> Path:
     """**Step 1 of the five: resolve the machine** (`project-layout.md`
     § 2.3.1) — probe cores, GPUs, scheduler and conda, and persist the answer
     as ``environment.json`` beside the bundle.
@@ -97,16 +97,24 @@ def resolve_target(base_dir) -> Path:
     and the deck/launch agreement (`agreement.launch_agreement`) is what
     actually refuses a wrong launch.
     """
-    from ..environment import resolve_environment
-    out = Path(base_dir) / "environment.json"
+    from ..environment import FILENAME, machine_for, write_environment
+    out = Path(base_dir) / FILENAME
     if out.is_file():
         return out
-    try:
-        env = resolve_environment()
-    except Exception:                     # pragma: no cover - probe is best-effort
+    # `machine_for()` WITHOUT a bundle: the calculation has no record yet (we
+    # just early-returned if it did), so this is the MACHINE scope -- what
+    # `jobset probe` wrote -- and a fresh probe only when that is absent too.
+    # Snapshotting the machine's answer rather than re-probing is what makes
+    # one probe serve every calculation here (configuration.md § 5, M-3).
+    # ``target`` names WHICH machine this is for (P2).  Without it: this
+    # machine's record, else a fresh probe.  With it: the named record, and an
+    # error naming the ones that exist if it is not among them -- a benchmark
+    # prepped for a cluster was silently measured against the workstation it
+    # was prepped ON, because there was one record and nobody said otherwise.
+    env = machine_for(target=target, probe=(target is None))
+    if env is None:                       # pragma: no cover - probe is best-effort
         return out
-    out.write_text(env.to_json() + "\n", encoding="utf-8")
-    return out
+    return write_environment(env, out)
 
 
 def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
@@ -161,31 +169,26 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
             raise PrepError(
                 f"job {job.name!r}: script {job.script!r} not in bundle root "
                 f"{base} (render the inputs before prep).")
-        r = job.resources
         with _user_error_as_prep():
+            # The ALLOCATION, whole (architecture.md § 3.1, rule A8).  This
+            # call listed nine of the wrapper's eleven keyword arguments until
+            # 2026-08-17 and omitted `omp_threads`, so every deck here shipped
+            # a `.sbatch` asking for `-c N` beside a `.run.sh` that baked an
+            # OMP default of 1 -- invisible under sbatch, where
+            # SLURM_CPUS_PER_TASK outranks the default, and silently flat on a
+            # workstation, which is where a benchmark's cores-per-rank axis
+            # stopped measuring anything.
+            #
+            # It is the second time this door lost a field to a hand-copied
+            # argument list: `max_memory_mb` went the same way on 2026-08-11,
+            # and that fix moved the field onto `Resources` without changing
+            # how it is passed.  Passing the object is what buys the sentence
+            # that fix wrote -- *carried on the allocation, it cannot be
+            # forgotten by one of them.*
             write_run_wrapper(
                 script_path,
+                resources=job.resources,
                 env=env,
-                mpi_np=r.mpi_np,
-                cpus_per_task=r.cpus_per_task,
-                time=r.time,
-                gres=r.gres,
-                mem=r.mem,
-                exclusive=r.exclusive,
-                # The warm-retry budget, which becomes no sbatch flag: the
-                # wrapper bakes it into its own retry loop at install time
-                # (running-a-job.md § 3.5).  This line is the second half of
-                # the road job-contracts.md § 6.2 describes -- without it the
-                # field was carried the whole way here and then dropped, which
-                # is why `job-system.md § 4.1` recorded the SIESTA ladder as
-                # never having implemented `continue` (2026-08-07, P2 unit 3).
-                continue_retries=r.continue_retries,
-                # Until 2026-08-11 this line did not exist, so a staged run
-                # silently dropped a cap the user had set: `cli.py` and the
-                # web blueprint both passed it and this call site did not.
-                # Carried on the allocation, it cannot be forgotten by one of
-                # three.
-                max_memory_mb=r.max_memory_mb,
                 emit_sbatch=emit_sbatch,
             )
         rendered.add(job.script)
@@ -325,34 +328,26 @@ def _engine_seam(engine: str) -> EngineSeam:
         f"that name.")
 
 
-def _environment_for(base: Path):
+def _environment_for(base: Path, target: Optional[str] = None):
     """**Step 1**, and its answer is *returned* rather than only written.
 
     ``resolve_target`` persisted ``environment.json`` and its return value was
     discarded by the only caller — so floor 1 resolved a machine and nothing
     downstream ever heard the answer. That is the same defect as floor 2's, one
     storey down, and it is why this returns the object.
-    """
-    import json as _json
 
-    from ..environment import Environment, resolve_environment
-    path = resolve_target(base)
-    if path.is_file():
-        # NARROW except, deliberately: this called a method that did not
-        # exist (`from_json`) from 2026-08-11 to 2026-08-12 and the broad
-        # `except Exception` swallowed the AttributeError -- so the persisted
-        # answer was never read back and every prep silently re-probed.  A
-        # hand-edited file earns tolerance (fall through to a fresh probe);
-        # a programming error does not.
-        try:
-            return Environment.from_dict(
-                _json.loads(path.read_text(encoding="utf-8")))
-        except (ValueError, TypeError, KeyError):
-            pass                       # malformed file -> re-probe below
-    try:
-        return resolve_environment()
-    except Exception:                  # pragma: no cover - probing is optional
-        return None
+    **The reading and the precedence are not this module's** (N1). They were
+    inline here -- a ``json.loads`` plus a hand-written fallback -- which is how
+    the tree came to hold two readers of one file returning two different
+    types.  ``environment.machine_for`` is the one door, and the narrow-except
+    reasoning that used to live in this body moved with it.
+    """
+    from ..environment import machine_for
+    resolve_target(base, target)       # step 1 proper: snapshot, idempotent
+    # probe=True: this IS step 1, and if the snapshot could not be written
+    # (read-only tree, a racing prep) `prep` still needs an answer to resolve
+    # against rather than a None that silently drops the machine.
+    return machine_for(base, target=target, probe=(target is None))
 
 
 def _structure_for(task, base: Path):
@@ -402,7 +397,8 @@ def _structure_for(task, base: Path):
 def prep_calculation(base_dir, stage: Optional[str] = None, *,
                      allocation=None, env: str = None,
                      emit_sbatch: bool = True,
-                     sweep=None, pins=None, translation=None) -> List[Path]:
+                     sweep=None, pins=None, translation=None,
+                     target: Optional[str] = None) -> List[Path]:
     """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
     the order it calls *forced rather than chosen*.
 
@@ -426,7 +422,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     from ..resolve import ResolveError, resolve
     from ..task import FILENAME as TASK_FILENAME
     from ..task import read_task
-    from ..template import SUFFIX as TEMPLATE_SUFFIX
+    from ..template import (SUFFIX as TEMPLATE_SUFFIX,
+                            template_path as _template_path)
 
     base = Path(base_dir).resolve()
     if not base.is_dir():
@@ -438,11 +435,13 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             f"runnable directory; write one first with `jobset describe`.")
 
     # ---- 1. resolve the machine ---------------------------------------- #
-    environment = _environment_for(base)
+    environment = _environment_for(base, target)
 
     # ---- 2. resolve the parameters ------------------------------------- #
     task = read_task(desc)
-    template_path = base / f"{task.label}{TEMPLATE_SUFFIX}"
+    # THE one place this name is formed (`template.template_path`).  Six
+    # call sites spelled it in two incompatible ways until 2026-08-17.
+    template_path = _template_path(base, task.label)
     if not template_path.is_file():
         raise PrepError(
             f"no {template_path.name} beside {TASK_FILENAME}. The portable "

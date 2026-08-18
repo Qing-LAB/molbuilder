@@ -50,9 +50,9 @@ flowchart LR
 ```
 
 The things that are **shared across engines** live outside any one emitter, so they
-stay defined once. **Two** are defined in this document — the script wrapper
-(§ 2) and the boundary-condition contract (§ 3) — and § 5 shows how a new engine
-plugs into them. § 4 is a **map** rather than a third definition: what the two
+stay defined once. **Three** are defined in this document — the script wrapper
+(§ 2), the boundary-condition contract (§ 3) and the GPU contract (§ 3a) — and
+§ 5 shows how a new engine plugs into them. § 4 is a **map** rather than a third definition: what the two
 ladders share is the **tier values**, and those are
 [`tuning.md`](?doc=engines/tuning.md) § 4's.  *(It counted three until
 2026-08-11, when the staged-optimization "policy" turned out to be PySCF's alone
@@ -72,9 +72,9 @@ called by both `siesta/input.py` and `pyscf/input.py`:
 | Block | What it is | Emitted by |
 |---|---|---|
 | **provenance** header | molbuilder version + git SHA + generation timestamp, so a script is traceable back to what produced it | both (`emit_provenance`) |
-| **bench-marks** | a machine-readable metadata header (a `BenchField` set) for regression harnesses | SIESTA only (`emit_bench_marks`) |
+| **bench-marks** | a machine-readable metadata header (a `BenchField` set) for regression harnesses | SIESTA only (`emit_bench_marks`) — a PySCF deck declares no override surface, which is why a sweep cannot read one |
 | **ATOM-METADATA** block | the structure's `regions` + `frozen_atoms` as an in-body, round-trippable comment block (so the labels travel *with* the script) | both (`emit_atom_metadata`) |
-| **user-custom** placeholder | a marked, empty region a user can edit; on re-generate, molbuilder **preserves** whatever the user put there (`merge_user_custom_from_target`) | both (`emit_user_custom_placeholder`) |
+| **user-custom** placeholder | a marked region a user can edit. **Whether your text survives a re-generate depends on which surface writes the file** — the web Build tab reads it back, the CLI and `jobset prep` do not ([`job-contracts.md`](?doc=execution/job-contracts.md) § 3.5's table). *This row said "molbuilder preserves whatever the user put there" without qualification until 2026-08-17, which is true of one of the three paths* | both (`emit_user_custom_placeholder`) |
 | post-processing hook | a commented-template section (in the engine body, emitted inline by each emitter — not a `_sc` block) where downstream steps attach | both (inline) |
 
 Because it is one module, a change to the wrapper contract lands in every engine at
@@ -134,8 +134,23 @@ flowchart LR
   exactly — `FROZEN_INDICES_USER = list(cfg.frozen_indices)` (`spectra/pyscf_script.py:370`)
   — and nothing else. It does **not** silently union with `struct.frozen_atoms` at emit
   time, and the generated script does **not** read the sidecar at run time. Whatever
-  the form showed is what lands in the script. (The SIESTA emitter obeys the same
-  Stage-2 rule for its `Geometry.Constraints` freeze block.)
+  the form showed is what lands in the script.
+
+  > **⚠ SIESTA does not do this yet, and the difference is Stage 1 rather than
+  > Stage 2** *(measured 2026-08-17; this bullet claimed the SIESTA emitter
+  > "obeys the same Stage-2 rule")*. `siesta/input.py` writes
+  > `%block Geometry.Constraints` from **`struct.frozen_atoms`** — the sidecar
+  > itself. There is no `frozen_indices` field on `SiestaConfig` and no such
+  > catalogue item, so **there is no form value for the form to be
+  > authoritative with**: clearing the field cannot unfreeze an atom, because
+  > the sidecar is what the deck is written from either way. Stage 2 is
+  > technically satisfied (the emitter copies verbatim and invents nothing) and
+  > Stage 1 is not, which is the half that carries the user's intent.
+  >
+  > It is a **silent absorption of config** — the thing the 2026-05-21
+  > directive above names — and the Stage-3A divergence check that would report
+  > it is spectra-only. Tracked as row 2 of
+  > [`template.md`](?doc=engines/template.md) § 12.1.
 - **Stage 3 — preflight (warn on what it can't use).** Two checks live in the engine's
   render-time checks (`spectra/pyscf_engine.py::render_checks` — A at :576, B at :604);
   the third runs at the render endpoint (`web/blueprints/spectra.py:408` — C), where the
@@ -177,6 +192,106 @@ only *seeds* via the Stage-1 pre-fill — the form stays authoritative.
 
 ---
 
+## 3a. The GPU contract — the user decides, every engine
+
+*Settled 2026-08-17 (user), and written here because it had no single home:
+SIESTA's mechanism is [`siesta.md`](?doc=engines/siesta.md) § 7–7.2, PySCF's was
+**undocumented entirely**, and the shared rule was nowhere. That is why the
+question kept being re-derived, and re-derived differently each time.*
+
+**Five rules. They hold for every engine, present and future.**
+
+> **G-1 — The GPU is a decision a person makes, and molbuilder never makes it
+> for them.** Each engine declares **one boolean item**, `kind = "engine"`,
+> `category = ["execution"]`, defaulting to **off**. Detected hardware never
+> turns it on: a machine having a GPU is a fact about the machine, and wanting
+> to use it is a preference about this run — the same split
+> [`configuration.md`](?doc=configuration.md) § 5 M-1 draws for every other
+> machine fact.
+>
+> **Which surface asks is [`web/task-setup.md`](?doc=web/task-setup.md) § 6.2's**
+> — the Job Prep page, not a parameter tab (user, 2026-08-16). Both items sit
+> in `group = "staging"`, which `catalogue_to_form_schema` filters out, so a
+> parameter form cannot offer it even by accident.
+
+> **G-2 — It changes *where the work runs*, never the answer.** That is what
+> puts it in `category = "execution"`, and `execution` is a **claim**
+> ([`template.md`](?doc=engines/template.md) § 6.2): the knobs that change
+> speed and not the science. SIESTA's measured equivalence — ELPA-GPU and
+> ELPA-CPU agree to ~1e-6 eV on eigenvalues and ~1e-5 eV on the total energy
+> (§ 7.1) — is what earns the claim rather than assumes it.
+
+> **G-3 — Because of G-2 it is a legal benchmark axis, and it is the user's
+> to sweep.** A sweep may turn it on and off across trials for the same reason
+> it may sweep rank counts: the science is identical at every point, so the
+> comparison is meaningful. Nothing else licenses sweeping a parameter.
+
+> **G-4 — How the engine *consumes* it never leaves that engine.** SIESTA emits
+> `Diag.ELPA.GPU` and gates it on an ELPA solver (§ 7); PySCF emits
+> `mf = mf.to_gpu()` behind a helper. Neither spelling reaches any shared
+> layer — which is what `kind`'s vocabulary means by *the engine's own keyword*.
+
+> **G-5 — Asked for and not available means the run STOPS. There is no CPU
+> fallback, in either engine, in a run or in a benchmark trial.** *(User,
+> 2026-08-17.)* The user decided to use the GPU; a run that quietly executed
+> somewhere else has changed the thing that was asked for and said nothing —
+> which is exactly the **silent absorption of config** § 3's founding directive
+> forbids for boundary conditions, one axis over.
+>
+> It is also what keeps G-3 honest. If a GPU trial may silently become a CPU
+> trial, then *every* benchmark number is suspect: the GPU column may hold CPU
+> times, and the GPU looks slow for a reason that has nothing to do with the
+> GPU. **A sweep is only meaningful if each point ran where its label says.**
+
+### Where each engine stops, and why the moment differs
+
+The rule is identical; only the **moment it can be enforced** differs, and that
+is decided by where the capability lives rather than by preference.
+
+| | **SIESTA** | **PySCF** |
+|---|---|---|
+| the item | `enable_gpu` | `use_gpu` |
+| what the flag turns on | `Diag.ELPA.GPU .true.` in the deck, and only with an ELPA solver — GPU + ScaLAPACK is refused by the **emitter** | `mf = _mb_to_gpu_if_enabled(mf)` in the script, after the `mf` is fully assembled |
+| **where the capability lives** | in the **environment** — only `molbuilder-siesta-gpu`'s ELPA has the GPU codepath | in the **device**, plus `gpu4pyscf` + `cupy` |
+| **when it is checked** | **at `prep`** — an env is a fact the prepping machine can see | **at run start** — you prep on a login node and run on a GPU node, so the device is not visible until the job is on it |
+| **what happens if it is missing** | **the wrapper refuses to generate** — `WrapperError`, naming the env and how to install it | **the script exits** — `SystemExit` with the reason and the two ways out |
+
+**Neither engine can check at the other's moment**, which is why this is not an
+inconsistency to be flattened: SIESTA's env is knowable before queueing and its
+absence is fatal then; PySCF's device is *not* knowable before queueing, so the
+earliest honest refusal is the first second of the run. Both refuse. Neither
+downgrades.
+
+> **G-5a — A benchmark reports what the run DID, never what it was asked for.**
+> With G-5 in place a completed PySCF trial that asked for the GPU *did* use
+> one — so `_RUNTIME_INFO['gpu_used']` is a **record**, not a correction. It is
+> still what a summary should read, for the same reason `bench/result.py`
+> separates `asked` from `effective` for rank counts: the artifact says what
+> happened, and nothing infers it from the request.
+
+> **One silent path survives, inside ELPA, and it is not ours to remove.** ELPA
+> can run every SCF step on the CPU while `nvidia-smi` shows a busy GPU
+> ([`siesta.md`](?doc=engines/siesta.md) § 7.1). No molbuilder check sees it;
+> the canary is `molbuilder envs validate molbuilder-siesta-gpu`'s
+> *elpa gpu codepath* probe. Recorded here so the rule above is not read as a
+> guarantee it cannot make.
+
+**A computation with no GPU implementation is a different thing, and is not a
+fallback.** gpu4pyscf has no analytic CPHF polarizability, so a Raman block
+runs on the CPU *by design* even with the GPU on. That is the engine having no
+GPU code for one operation — announced, deterministic, and unrelated to whether
+a GPU is present. G-5 governs *availability*, not *coverage*.
+
+### What is still owed
+
+| | |
+|---|---|
+| **one name** | `enable_gpu` / `use_gpu` are the same question with two spellings. The merge is **ruled and un-renamed** ([`template.md`](?doc=engines/template.md) § 6.3, § 12.1 row 9), so any caller asking *"does this run want a GPU?"* must currently name an engine's spelling |
+| **`read_by`** | `enable_gpu` declares `read_by = ["wrapper"]`; `use_gpu` does not, though both decide which environment the job needs. PySCF has no env routing in `runwrap` at all |
+| **`gpu_used` read-back** | G-5a is a rule with no reader yet: nothing compares a PySCF trial's asked GPU against `_RUNTIME_INFO['gpu_used']` |
+
+---
+
 ## 4. Staged optimization — what the two engines share, and what they do not
 
 Both the SIESTA and PySCF emitters ship a **three-stage relaxation ladder**, and
@@ -189,10 +304,15 @@ two halves were symmetric and has not been since 2026-08-07.
 > `SiestaStageSpec` and `SiestaConfig.stages` were **deleted**, and the SIESTA
 > ladder lives in `task.json` as `task.py::Stage` — `name`, `enabled`, and
 > `overrides`, which may name **any** field of the shared schema
-> ([`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2). **PySCF keeps its
-> `StageSpec`** (`config/pyscf.py`): its ladder runs inside one process, so
-> there the list is also engine behaviour. The parity tests that policed the
-> old symmetry went with the SIESTA half.
+> ([`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2). **PySCF kept its
+> `StageSpec`** (`config/pyscf.py`) while the SIESTA path was being built: its
+> ladder runs inside one process, so there the list was also engine behaviour.
+> The parity tests that policed the old symmetry went with the SIESTA half.
+>
+> **That exception closed 2026-08-17** ([`stages.md` § 1.1a](?doc=engines/stages.md)):
+> the ladder is declared in `task.json` for **both** engines, and PySCF still
+> executes it in one process. Where it is *declared* and how it *runs* were two
+> questions, and only the second was ever PySCF's difference.
 >
 > What the two still share is what this section is actually about — **the tier
 > values**, below. That was always the part worth keeping aligned; the

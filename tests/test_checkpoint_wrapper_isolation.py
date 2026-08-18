@@ -27,6 +27,7 @@ import subprocess
 import pytest
 
 from molbuilder.runwrap import render_run_wrapper, write_run_wrapper
+from molbuilder.jobset.model import Resources
 
 
 @pytest.fixture(autouse=True)
@@ -71,11 +72,12 @@ _GIT_COMMAND = re.compile(
 _GIT_WORD = re.compile(r"\bgit\b")
 
 
-def _emit(tmp_path, **kwargs):
+def _emit(tmp_path, resources=None, emit_sbatch=True):
     """Write a real wrapper for a real script and return every emitted file."""
     script = tmp_path / "job.fdf"
     script.write_text("SystemLabel job\n")
-    write_run_wrapper(script, env="molbuilder-siesta", **kwargs)
+    write_run_wrapper(script, resources=resources or Resources(),
+                      env="molbuilder-siesta", emit_sbatch=emit_sbatch)
     return [p for p in tmp_path.iterdir() if p.is_file() and p != script]
 
 
@@ -97,9 +99,13 @@ def _shell(files):
 
 @pytest.mark.parametrize("kwargs", [
     {"emit_sbatch": False},
-    {"emit_sbatch": True, "time": "01:00:00", "mem": "8G", "cpus_per_task": 4},
-    {"emit_sbatch": False, "continue_retries": 2},
-    {"emit_sbatch": False, "mpi_np": 4, "omp_threads": 2},
+    {"emit_sbatch": True,
+     "resources": Resources(time="01:00:00", mem="8G", cpus_per_task=4)},
+    {"emit_sbatch": False, "resources": Resources(continue_retries=2)},
+    # `omp_threads` was the wrapper's own name for cores-per-rank until
+    # 2026-08-17; it is `cpus_per_task` on the allocation and nowhere else
+    # (job-contracts.md § 6.2, architecture.md § 3.1).
+    {"emit_sbatch": False, "resources": Resources(mpi_np=4, cpus_per_task=2)},
 ])
 def test_no_emitted_wrapper_invokes_git(tmp_path, kwargs):
     """I4's stated test, over every shape the generator produces.
@@ -164,8 +170,7 @@ def test_the_rendered_text_is_what_gets_written(tmp_path):
     script = tmp_path / "job.fdf"
     script.write_text("SystemLabel job\n")
     rendered = render_run_wrapper(script, env="molbuilder-siesta")
-    written = write_run_wrapper(script, env="molbuilder-siesta",
-                                emit_sbatch=False)
+    written = write_run_wrapper(script, resources=Resources(), env="molbuilder-siesta", emit_sbatch=False)
     assert _logic(written.read_text()) == _logic(rendered)
 
 

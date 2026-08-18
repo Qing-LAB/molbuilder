@@ -295,8 +295,10 @@ class Item:
 
     #: Whether *unset* is a state this item has at all — and since 2026-08-14
     #: it IS written to the file.  A surface must offer *(auto)* / *(no cap)*,
-    #: and it cannot be inferred from ``null_label``: 17 items are optional and
-    #: only 12 carry one, so five would silently lose the option.
+    #: and it cannot be inferred from ``null_label``: 16 items are optional and
+    #: only 11 carry one, so five would silently lose the option.  (The gap of
+    #: five is the load-bearing part and has been stable; the totals are
+    #: asserted by ``tests/test_doc_claims.py`` so they cannot drift again.)
     optional: bool = False
 
     #: ``basic`` or ``advanced`` — a judgement about the PARAMETER, so a
@@ -382,30 +384,50 @@ class Item:
 
 @dataclass(frozen=True)
 class Template:
-    """A parsed template: the three top-level keys, and the items in order."""
-    engine: str                     # engines[0] -- the @1 spelling, kept for callers
-    #: Every engine this calculation can run on (§ 6.3).  ``engine`` above is
-    #: its first element; a @1 file yields a one-element list.
+    """A parsed template: the two top-level keys, and the items in order.
+
+    ``schema`` and ``engines``.  It was **three** until ``fingerprint`` was
+    retired on 2026-08-14 (`engines/template.md` § 10) -- a digest of the shape
+    the file was written against, whose only reader emitted a warning that
+    never blocked anything.
+    """
+    #: Every engine this calculation can run on (§ 6.3).  A @1 file yields a
+    #: one-element list.
     engines: Tuple[str, ...] = ()
     items: Tuple[Item, ...] = ()
 
-    def __iter__(self):
-        return iter(self.items)
-
-    def get(self, name: str) -> Optional[Item]:
-        for it in self.items:
-            if it.name == name:
-                return it
-        return None
-
-    def values(self) -> Dict[str, Any]:
-        """``{name: value}`` for every item that carries one.
-
-        Items that are **unset** are omitted rather than mapped to ``None``:
-        see :func:`config_from_template` for why that is the correct reading
-        and not a loss.
-        """
-        return {it.name: it.value for it in self.items if it.is_set}
+    # ----------------------------------------------------------------- #
+    #  FOUR members were deleted here on 2026-08-17, and they were one   #
+    #  defect wearing four hats: a SECOND WAY TO READ THE FILE.          #
+    #                                                                    #
+    #  `engines/template.md` § 2.2 and § 8.0 say `select` and `one` are  #
+    #  THE read API, "because a second way to read the file is a second  #
+    #  answer to *what does this template say*, and the two will differ  #
+    #  eventually -- usually about the item that does not apply to the   #
+    #  engine being asked about."  This class shipped three more, and    #
+    #  that prediction came true in `jobset/_cli.py`, where a hand-rolled#
+    #  read of `.items` ignored `engines` and reported a GPU PySCF       #
+    #  description as CPU.                                               #
+    #                                                                    #
+    #    * ``get(name)``   -- duplicated ``one()`` minus its engine      #
+    #                        filter and minus Law A (``one`` tells       #
+    #                        *"not for this engine"* apart from *"no     #
+    #                        such item"*; ``get`` returned None for      #
+    #                        both).  ZERO callers.                       #
+    #    * ``values()``    -- ZERO callers, while TWO sites re-wrote its #
+    #                        body inline.  One idea, three copies, and   #
+    #                        the named one unused.                       #
+    #    * ``__iter__``    -- a fourth way to reach the items, bypassing #
+    #                        every filter.  ZERO callers.                #
+    #    * ``engine``      -- the @1 singular, commented "kept for       #
+    #                        callers".  ZERO callers, and it invited     #
+    #                        exactly the single-engine assumption @2     #
+    #                        exists to remove: `engines[0]` is not "the" #
+    #                        engine of a two-engine catalogue.           #
+    #                                                                    #
+    #  Read the items through ``select(t, ...)``; ask for one through    #
+    #  ``one(t, name, engine=...)``.                                     #
+    # ----------------------------------------------------------------- #
 
 
 # --------------------------------------------------------------------- #
@@ -779,6 +801,59 @@ def _item_payload(it: Item) -> Dict[str, Any]:
 CATALOGUE = _Path(__file__).resolve().parent / "data" / "catalogue.template.toml"
 
 
+def template_filename(label: str) -> str:
+    """``<label>.template.toml`` — the NAME, for a caller that has no directory.
+
+    ``describe`` returns ``{filename: text}`` and never touches the filesystem
+    itself, so it needs the name rather than a path.  Splitting the rule in two
+    would put the naming convention in two places, which is what this pair
+    exists to prevent: :func:`template_path` is this joined to a directory.
+    """
+    return f"{label}{SUFFIX}"
+
+
+def template_path(base, label: str) -> "_Path":
+    """``<base>/<label>.template.toml`` — **the one place this name is formed.**
+
+    The naming rule is `job-contracts.md` § 6.3's, and it was spelled at six
+    call sites in two INCOMPATIBLE ways before this existed (2026-08-17): three
+    derived the name from ``task.json``'s label, and two globbed
+    ``*.template.toml`` and took the first hit.  A folder holding two templates
+    therefore had the web tab and ``prep`` reading DIFFERENT FILES -- and
+    ``/api/task-setup/template-values``'s own docstring argues, correctly, that
+    the browser must not become "a second reader that disagrees about what a
+    value is".  It shared `prep`'s parser and not `prep`'s path.
+    """
+    return _Path(base) / template_filename(label)
+
+
+def find_template(base) -> Optional["_Path"]:
+    """This calculation's template in *base* — or ``None`` when there is none.
+
+    For the callers that have a folder and no label.  **A folder is one
+    calculation** (`project-layout.md` § 1.4), so exactly one template belongs
+    in it.
+
+    **Two templates raises rather than picking**, which is the whole reason
+    this is a function: ``sorted(glob(...))[0]`` answers an ambiguous question
+    confidently and differently from every label-derived caller.  *Nothing
+    here* and *I cannot tell which* are different answers and must not return
+    the same value (§ 8.0's rule, applied to a path).
+    """
+    found = sorted(_Path(base).glob(f"*{SUFFIX}"))
+    if not found:
+        return None
+    if len(found) > 1:
+        raise ValueError(
+            f"{base} holds {len(found)} templates "
+            f"({', '.join(p.name for p in found)}), so which one describes "
+            f"this calculation is not answerable from the folder alone. A "
+            f"folder is ONE calculation (project-layout.md § 1.4); the extra "
+            f"file is a leftover -- remove it, or read the one named by "
+            f"task.json's label with template_path().")
+    return found[0]
+
+
 def load_catalogue() -> str:
     """The catalogue's text (§ 4.3).
 
@@ -981,7 +1056,7 @@ def read_template(text: str) -> Template:
                 f"(engines = {list(engines_t)}). An item's `engines` narrows "
                 f"the file's list; it cannot widen it (engines/template.md "
                 f"§ 6.3)", where=_it.name)
-    return Template(engine=str(engine), engines=engines_t, items=items)
+    return Template(engines=engines_t, items=items)
 
 
 def _is_int(v) -> bool:
@@ -1088,6 +1163,27 @@ def _item_from(name: str, body: Any) -> Item:
     for key in _REQUIRED_ITEM_KEYS:
         if key not in body:
             _refuse(f"missing required key {key!r}", where=name)
+
+    # A key that must be a LIST is refused when it is a bare string, BY NAME.
+    #
+    # ``tuple("accuracy")`` is ``('a','c','c','u','r','a','c','y')``, so a
+    # hand-written ``category = "accuracy"`` used to reach the vocabulary check
+    # one character at a time and refuse with *"category 'a' is not one of
+    # system, method, ..."* -- an error that names the wrong problem and sends
+    # the reader looking for a category called `a`.  Both of this contract's
+    # own § 6.3 examples were written that way and were refused by their own
+    # reader (found 2026-08-17 by ``test_every_documented_item_matches_the_catalogue``).
+    #
+    # This is R4's bug one field over.  R4 (2026-08-12) fixed a scalar reaching
+    # a ``strlist`` VALUE; the same explosion on a list-valued KEY was never
+    # swept for.  Refusing here, before any of them is read, is what keeps the
+    # message about the key the author actually typed.
+    for _k in ("category", "engines", "read_by", "expands", "choices"):
+        if isinstance(body.get(_k), str):
+            _refuse(f"{_k} must be a list, not the string "
+                    f"{body[_k]!r} -- write {_k} = [{body[_k]!r}]. A bare "
+                    f"string is read one character at a time, so the refusal "
+                    f"would name a member you never wrote", where=name)
 
     rng = body.get("range")
     type_ = str(body["type"])

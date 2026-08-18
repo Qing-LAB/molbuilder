@@ -79,7 +79,7 @@ is where the *data* comes from.
 
 | key | why the form cannot derive it |
 |---|---|
-| `optional` | *unset* is a real state and the control must offer it. It is **not** inferable from `null_label`: of 17 optional items only 12 carry one, so five would silently lose their *(auto)* option |
+| `optional` | *unset* is a real state and the control must offer it. It is **not** inferable from `null_label`: of **16** optional items only **11** carry one, so five would silently lose their *(auto)* option |
 | `tier` | `basic` / `advanced`. A judgement about the parameter, not about the widget — the form dims advanced fields |
 | `pattern` | a regex the value must match. Two items have one (`system_label`, `job_name`) and nothing else can express it |
 
@@ -118,8 +118,38 @@ stale unnoticed. **The vocabulary grows; the axis does not.**
 
 *Written 2026-08-07 (user rule): **every tag this system uses must have a stated
 meaning, function and reader in a contract**, so that expanding the data set has
-rules rather than precedents.* Fifteen keys are in use across the four engine
-configs; this is all of them.
+rules rather than precedents.*
+
+**Twenty-two keys are in use across the four engine configs**, and they split
+into two groups that this table conflated until 2026-08-17 — when it listed
+fifteen and said *"this is all of them"*, while seven were in the tree with no
+entry anywhere. The rule above is what made that a defect rather than an
+oversight: a tag with no contract entry is a tag whose meaning is whatever the
+last person to add one assumed.
+
+**Group 1 — the form's own tags**, below. They describe *how a field is
+presented*, and this document owns them.
+
+**Group 2 — the catalogue's axes**, which happen to ride on the same
+`field(metadata=…)` because that is where a config class carries anything.
+They describe *what an item is*, they are owned by
+[`engines/template.md`](?doc=engines/template.md), and the form reads none of
+them:
+
+| key | what it says | owned by |
+|---|---|---|
+| `category` | which question about the calculation this answers | `template.md` § 6.2 |
+| `read_by` | which other layer derives from the value | `template.md` § 6.1 |
+| `resolver` | who computes the value when it is unset | `template.md` § 6.4 |
+| `allocation` | this value belongs to the allocation, so a template may never carry one | `template.md` § 7 |
+| `expands` | the engine keywords a `deck` item produces | `template.md` § 5 |
+| `item_kind` | the item's `kind` when it is not the default `engine` | `template.md` § 6 |
+| `validate` | a per-field checker the validation layer runs | `validation/` |
+
+*(An eighth, `decl_type`, is **read** by `template.declaration_for` — it names
+the validation type where a Python annotation cannot, and is checked against
+`template.TYPES`. No field carries one today; it is listed so that the next
+person to need it finds the entry rather than inventing a second spelling.)*
 
 > **The rule for a new tag, before the table:** a tag earns its place only if
 > something **reads** it. A key nothing consumes is a comment wearing metadata's

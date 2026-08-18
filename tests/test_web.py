@@ -212,15 +212,6 @@ def test_build_response_no_issues_when_protonated(web_client):
 # mount(host, file, ctx) call, not a URL query parameter.
 
 
-def test_fdf_response_includes_validation_issues(web_client, peptide_xyz):
-    """/api/build/fdf returns the validation issue list alongside the
-    rendered text so the UI can show warnings to the user.  For a clean
-    peptide the list is empty; this just pins the response shape."""
-    r = web_client.post("/api/build/fdf",
-                        json={"structure": _env(peptide_xyz), "params": {}})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert "issues" in body and isinstance(body["issues"], list)
 
 
 def test_project_tagline_renders_identically_on_every_tab(web_client):
@@ -354,12 +345,6 @@ def peptide_xyz(web_client):
     return r.get_json()["xyz"]
 
 
-def test_fdf_default_params(web_client, peptide_xyz):
-    r = web_client.post("/api/build/fdf", json={"structure": _env(peptide_xyz), "params": {}})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert "SystemName" in body["fdf"]
-    assert "ChemicalSpeciesLabel" in body["fdf"]
 
 
 # --------------------------------------------------------------------- #
@@ -416,83 +401,8 @@ def _xyz_with_region_sidecar(tmp_path, peptide_xyz):
     return str(xyz), peptide_xyz
 
 
-def test_fdf_surfaces_info_when_structure_carries_regions(
-        web_client, peptide_xyz, tmp_path, monkeypatch):
-    """Three-stage Pattern B (engines/overview.md § 3 B): the
-    SCF/relaxation deck does NOT consume transport region labels.
-    Generating the .fdf for a structure that carries L-electrode /
-    R-electrode / bridge regions used to absorb them silently;
-    task #303 wires an INFO issue so the user can re-direct to
-    the Transport tab.  Pin both the FDF still renders OK and the
-    notice lands in the issues array."""
-    # tmp_path needs to be an allowed picker root so the sidecar
-    # apply pass can resolve the structure_path.
-    from molbuilder import diagnostics
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
-    )
-    cls = type(caps)
-    monkeypatch.setattr(
-        cls, "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),),
-    )
-    diagnostics.set_capabilities(caps)
-
-    xyz_path, xyz_text = _xyz_with_region_sidecar(tmp_path, peptide_xyz)
-    r = web_client.post("/api/build/fdf", json={
-        "structure":      _envelope_with_regions(xyz_text,
-                                                 _PATTERN_B_REGIONS),
-        "params":         {},
-        "structure_path": xyz_path,
-    })
-    body = r.get_json()
-    assert body["ok"] is True, body
-    region_notices = [
-        i for i in body["issues"]
-        if i["severity"] == "info"
-        and i.get("where") == "config.regions"
-    ]
-    assert region_notices, (
-        f"expected an INFO issue with where='config.regions'; "
-        f"got {body['issues']}"
-    )
-    msg = region_notices[0]["message"]
-    assert "L-electrode" in msg, msg
-    assert "Transport" in msg, msg
 
 
-def test_pyscf_surfaces_info_when_structure_carries_regions(
-        web_client, peptide_xyz, tmp_path, monkeypatch):
-    """Symmetric Pattern-B coverage on the PySCF generate endpoint."""
-    from molbuilder import diagnostics
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
-    )
-    cls = type(caps)
-    monkeypatch.setattr(
-        cls, "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),),
-    )
-    diagnostics.set_capabilities(caps)
-
-    xyz_path, xyz_text = _xyz_with_region_sidecar(tmp_path, peptide_xyz)
-    r = web_client.post("/api/build/pyscf", json={
-        "structure":      _envelope_with_regions(xyz_text,
-                                                 _PATTERN_B_REGIONS),
-        "params":         {},
-        "structure_path": xyz_path,
-    })
-    body = r.get_json()
-    assert body["ok"] is True, body
-    region_notices = [
-        i for i in body["issues"]
-        if i["severity"] == "info"
-        and i.get("where") == "config.regions"
-    ]
-    assert region_notices, (
-        f"expected an INFO issue with where='config.regions'; "
-        f"got {body['issues']}"
-    )
 
 
 # --------------------------------------------------------------------- #
@@ -591,54 +501,8 @@ def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
 # --------------------------------------------------------------------- #
 
 
-def test_string_typed_numeric_params_coerced_to_field_types(web_client, peptide_xyz):
-    """A 3rd-party API caller sending JSON with stringly-typed numbers
-    (``"mesh_cutoff": "450"``) must be coerced to the field's declared
-    type (float here) before reaching SiestaConfig.  Without R5,
-    SiestaConfig stores the string and the validator's range check
-    raises TypeError on string<int and silently drops the warning."""
-    r = web_client.post("/api/build/fdf", json={
-        "structure": _env(peptide_xyz),
-        "params": {
-            # All values intentionally as strings to mimic a non-JS
-            # HTTP client.
-            "mesh_cutoff":  "450",
-            "max_scf_iter": "1000",
-            "kgrid":        ["4", "4", "1"],
-            "relax_type":   "none",
-        },
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    fdf = body["fdf"]
-    # Float coercion: "450" -> 450.0 -> "MeshCutoff 450.0 Ry"
-    assert "MeshCutoff 450.0 Ry"   in fdf
-    # Int coercion: "1000" -> 1000 -> "MaxSCFIterations  1000"
-    assert "MaxSCFIterations  1000" in fdf
-    # Tuple-of-int coercion: ["4","4","1"] -> (4, 4, 1)
-    assert "4 0 0 0.0"             in fdf
-    # Bool coercion: "false" -> False -> the .true. line is gone.
-    assert "DM.UseSaveDM      .true." not in fdf
 
 
-def test_pyscf_string_numeric_params_coerced(web_client, peptide_xyz):
-    """Same R5 coverage on the PySCF endpoint."""
-    r = web_client.post("/api/build/pyscf", json={
-        "structure": _env(peptide_xyz),
-        "params": {
-            "scf_max_cycle":  "200",     # int field
-            "scf_conv_tol":   "1e-10",   # float field
-            "level_shift":    "0.2",     # float field
-            "optimize":       "false",   # bool field
-            "verbose_comments": "true",
-        },
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    py = body["script"]
-    assert "mf.max_cycle = 200" in py
-    assert "mf.conv_tol  = 1e-10" in py
-    assert "mf.level_shift = 0.2" in py
 
 
 # --------------------------------------------------------------------- #
@@ -697,38 +561,8 @@ def test_watch_upload_temp_filenames_unique_within_one_second(web_client, tmp_pa
     assert all(r is not None for r in paths) or len(paths) == 0
 
 
-def test_fdf_custom_params(web_client, peptide_xyz):
-    # 2026-05-27: dropped system_name from the params -- it's no
-    # longer a config field; SystemName + SystemLabel both come from
-    # system_label.
-    r = web_client.post("/api/build/fdf", json={
-        "structure": _env(peptide_xyz),
-        "params": {
-            "system_label":  "my_pep",
-            "basis_size":    "TZP",
-            "mesh_cutoff":   450.0,
-            "xc_functional": "GGA", "xc_authors": "BLYP",
-            "kgrid":         [4, 4, 1],
-            "relax_type":    "none",
-            "max_scf_iter":  1000,
-        },
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    fdf = body["fdf"]
-    assert "SystemName        my_pep"   in fdf
-    assert "PAO.BasisSize TZP"          in fdf
-    assert "MeshCutoff 450.0 Ry"        in fdf
-    assert "XC.authors    BLYP"         in fdf
-    assert "4 0 0 0.0"                  in fdf
-    assert "MD.TypeOfRun" not in fdf, "relax_type=none must drop MD block"
-    assert "MaxSCFIterations  1000"     in fdf
 
 
-def test_fdf_missing_xyz_returns_error(web_client):
-    r = web_client.post("/api/build/fdf", json={"params": {}})
-    body = r.get_json()
-    assert body["ok"] is False
 
 
 # --------------------------------------------------------------------- #
@@ -783,16 +617,6 @@ def test_load_empty_returns_error(web_client):
     assert body["ok"] is False
 
 
-def test_load_then_fdf_chain(web_client, peptide_xyz):
-    loaded = web_client.post("/api/build/load",
-                             json={"text": peptide_xyz, "filename": "p.xyz"}
-                             ).get_json()
-    r = web_client.post("/api/build/fdf",
-                        json={"structure": _env(loaded["xyz"]),
-                              "params": {"system_label": "lp"}})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert "SystemLabel       lp" in body["fdf"]
 
 
 # --------------------------------------------------------------------- #
@@ -800,77 +624,12 @@ def test_load_then_fdf_chain(web_client, peptide_xyz):
 # --------------------------------------------------------------------- #
 
 
-def test_pyscf_default_params(web_client, peptide_xyz):
-    r = web_client.post("/api/build/pyscf",
-                        json={"structure": _env(peptide_xyz), "params": {}})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert "from pyscf import gto, scf, dft" in body["script"]
-    assert 'mf.xc = "B3LYP"' in body["script"]
-    # #534 6c: optimize() is now inside the _mb_run_stage_opt helper;
-    # the loop body calls the helper.  Anchor on both pieces.
-    assert "def _mb_run_stage_opt(STAGE, _hard_fail):" in body["script"]
-    assert "for STAGE in STAGES:" in body["script"]
-    compile(body["script"], "<api/pyscf default>", "exec")
 
 
-def test_pyscf_custom_params(web_client, peptide_xyz):
-    r = web_client.post("/api/build/pyscf", json={
-        "structure": _env(peptide_xyz),
-        "params": {
-            "job_name":         "my_pep",
-            "method":           "UKS",
-            "spin":             1,
-            "charge":           -1,
-            "functional":       "PBE0",
-            "basis":            "def2-TZVP",
-            "optimize":         False,
-            "dispersion":       "d4",
-            "solvent":          "water",
-            "verbose_comments": False,
-        },
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    script = body["script"]
-    assert 'JOB = "my_pep"' in script
-    assert "mf = dft.UKS(mol)" in script
-    assert "spin       = 1"   in script
-    assert "charge     = -1"  in script
-    assert 'mf.xc = "PBE0"'   in script
-    assert 'basis      = "def2-TZVP"' in script
-    # optimize=False -> no stages loop emitted at all (neither
-    # the helper definition nor the for-loop driver).
-    assert "def _mb_run_stage_opt(" not in script
-    assert "for STAGE in STAGES:" not in script
-    assert 'mf.disp = "d4"' in script
-    assert "mf = mf.PCM()" in script   # PySCF 2.x SCF-method form (P1)
-    assert "TROUBLESHOOTING" not in script      # verbose off
 
 
-def test_pyscf_auto_charge_from_phosphates(web_client):
-    """Hand-craft a 7-atom deprotonated diester missing both HOPs."""
-    xyz = (
-        "7\n"
-        "deprotonated diester\n"
-        "C  -2.5  0.0  0.0\n"
-        "O  -1.4  0.0  0.0\n"
-        "P   0.0  0.0  0.0\n"
-        "O   0.0  1.5  0.0\n"
-        "O   0.0 -0.8  1.3\n"
-        "O   1.4  0.0  0.0\n"
-        "C   2.5  0.0  0.0\n"
-    )
-    r = web_client.post("/api/build/pyscf", json={"structure": _env(xyz), "params": {}})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert "charge     = -1" in body["script"]
 
 
-def test_pyscf_missing_xyz_returns_error(web_client):
-    r = web_client.post("/api/build/pyscf", json={"params": {}})
-    body = r.get_json()
-    assert body["ok"] is False
 
 
 # --------------------------------------------------------------------- #
@@ -1893,34 +1652,8 @@ def test_modify_electrode_rejects_bad_side(web_client):
 # --------------------------------------------------------------------- #
 
 
-def test_modify_fdf_rejects_slash_in_system_label(web_client):
-    """The Build /api/build/fdf endpoint validates ``system_label``
-    against the basename charset before any file write.  Slashes,
-    spaces, dots, and leading-dot are all rejected per
-    docs/execution/job-contracts.md."""
-    for bad in ("a/b", "with spaces", "has.dot", ".leading"):
-        r = web_client.post("/api/build/fdf", json={
-            "structure": _env(_LINEAR_XYZ),
-            "params": {"system_label": bad},
-        })
-        body = r.get_json()
-        assert body["ok"] is False or any(
-            i.get("severity") == "error" and "basename" in i.get("message", "")
-            for i in body.get("issues", [])
-        ), f"expected error for system_label={bad!r}; got {body}"
 
 
-def test_modify_pyscf_rejects_slash_in_job_name(web_client):
-    """Same rule for PySCFConfig.job_name."""
-    r = web_client.post("/api/build/pyscf", json={
-        "structure": _env(_LINEAR_XYZ),
-        "params": {"job_name": "evil/path"},
-    })
-    body = r.get_json()
-    assert body["ok"] is False or any(
-        i.get("severity") == "error" and "basename" in i.get("message", "")
-        for i in body.get("issues", [])
-    ), f"expected error for job_name='evil/path'; got {body}"
 
 
 # --------------------------------------------------------------------- #
@@ -2265,9 +1998,23 @@ def test_pyscf_form_schema_matches_documented_layout():
         # threads and use_gpu were its only members and both are bench axes.
         ("system",      6),
         ("method",      8),
-        ("accuracy",    3),
+        # +5 on 2026-08-17 with P1's stage ladder: the FIVE geomeTRIC criteria
+        # (`geom_gmax`/`_grms`/`_dmax`/`_drms`/`_etol`) are one family
+        # (`tuning.md` § 2.4) and they are THRESHOLDS -- *what answer you will
+        # accept* -- which is what `accuracy` means in § 6.2, and what puts
+        # `scf_conv_tol` there too.  `_dmax`/`_drms` landed under `procedure`
+        # and split the family across two panels until this was found.
+        ("accuracy",    8),
+        # `convergence` is *how do I reach it when it fights* -- the § 7.2
+        # escalation ladder (diis_space, level_shift, damp, soscf) and the SCF
+        # iteration budget.  Loosening a threshold to "fix" a stubborn run is
+        # the substitution § 6.2 splits these two categories to discourage.
         ("convergence", 6),
-        ("procedure",  13),
+        # `geom_max_steps` is the OUTER geometry budget, so it sits with
+        # `relax_steps`, the SIESTA knob `tuning.md` § 3.1 pairs it with --
+        # not with the inner SCF budget.  It was under `convergence`, which
+        # put one cross-engine concept on two different panels.
+        ("procedure",  16),
     ], got
 
     # The stage table is NOT here.  PySCFConfig still has a `stages`

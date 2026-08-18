@@ -116,6 +116,14 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "names key filenames, and case-insensitive filesystems make "
         "'Tight' and 'tight' one deck; both parsers and the constructor "
         "call this instead of keeping their own loops"),
+    "stages_from_configs": (
+        3, ("molbuilder/config/pyscf.py",),
+        "DERIVES it -- resolved per-rung PySCFConfigs in, the render-time "
+        "StageSpec ladder out (P2, 2026-08-17).  Not a fourth way to say "
+        "stage but the bridge that removes one: `task.json` is now the only "
+        "AUTHORED ladder for both engines, and this is how PySCF's in-script "
+        "loop is built from it (engines/stages.md § 1.1a).  Nothing a person "
+        "writes reaches it."),
     "stages_from_dicts": (
         3, ("molbuilder/config/pyscf.py",),
         "parses it -- PySCF's own StageSpec ladder, the one --stages-json "
@@ -309,6 +317,22 @@ JS_LEDGER: dict[str, tuple[int | None, str]] = {
     # be exactly the obsolete truth this map exists to prevent.
     "lib/molview/mount.js": (
         None, "molviewer-window-stage is a CSS layer -- unrelated role"),
+    # Attributed 2026-08-16 with the Task-setup tab's editable stage table.
+    # NOT a mechanism, for the reason mechanism 9's removal states three lines
+    # up: what made that one a mechanism was turning a stage NUMBER into a deck
+    # filename.  This file spells no ordinal and names no deck.  Its two uses:
+    #   * `"stage" + n` -- the default NAME offered for a row the user just
+    #     added (task-setup.md § 9), deduped against the names already taken.
+    #     A name, which is the user's to change; the `<NN>` that orders it is
+    #     assigned by `identity` at prep and never appears here (rule A1).
+    #   * `c.group === "stage"` -- READING the catalogue's closed `group`
+    #     vocabulary (template.md § 5) to decide which columns start ticked.
+    #     Consuming a value the catalogue declares is the opposite of a second
+    #     way to express a ladder.
+    # The rest are `ts-*` DOM ids -- a CSS layer, like the row above.
+    "task-setup/viewer.js": (
+        None, "the stage TABLE -- offers a new row's default name and reads "
+              "the catalogue's `stage` group; spells no ordinal, names no deck"),
 }
 
 #: Eleven on 2026-08-07 morning, and it went UP on purpose: P1 added

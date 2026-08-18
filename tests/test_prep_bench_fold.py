@@ -56,14 +56,24 @@ def _sandbox(tmp_path_factory, monkeypatch):
 
 @pytest.fixture
 def calc(tmp_path):
-    """A described calculation on a machine whose probe found one a100."""
+    """A GPU calculation, described, on a machine whose probe found one a100.
+
+    ``enable_gpu=True`` is stated here rather than assumed, because from
+    2026-08-17 it is the DESCRIPTION that decides whether this is a GPU
+    benchmark — `web/task-setup.md` § 6.2, *"use GPU or not is set up only at
+    the Job Prep UI"*.  `_bench_inputs` used to pin it True for every trial, so
+    this fixture measured a GPU while describing a CPU run and nothing said so.
+    Every test below is about the G × K × C grid, and the fixture now says so.
+    """
     struct = Structure(elements=["H", "H"],
                        positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
                        vacuum=(10.0, 10.0, 10.0))
     (tmp_path / "h2.xyz").write_text(struct.to_xyz())
     dest = tmp_path / "calc"
     D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB"),
+        D.build_description(struct,
+                            SiestaConfig(system_label="JOB", enable_gpu=True,
+                                         diag_algorithm="ELPA-1STAGE"),
                             default_siesta_stages("publishable"),
                             engine="siesta", shape="hierarchical", name="JOB",
                             source=str(tmp_path / "h2.xyz")),
@@ -229,6 +239,24 @@ def _finished_trial_and_verdict(calc):
     return name
 
 
+def _describe_cpu(calc):
+    """Turn this calculation's description back to CPU.
+
+    The `calc` fixture asks for the GPU because the grid tests are about the
+    G × K × C grid.  A test whose claim is *"the verdict was NOT applied"*
+    cannot use it: `Diag.ELPA.GPU .true.` in the deck only proves a verdict was
+    taken if the description did not ask for the GPU itself.  So the claim and
+    the fixture are separated here rather than weakened.
+    """
+    p = calc / "JOB.template.toml"
+    text = p.read_text()
+    i = text.index("[item.enable_gpu]")
+    j = text.index("[item.", i + 1)
+    p.write_text(text[:i]
+                 + text[i:j].replace("value = true", "value = false")
+                 + text[j:])
+
+
 def test_prep_run_offers_the_verdict_and_silence_is_no(calc):
     """§ 2.3.2: it asks; it does not just take it — and a non-interactive
     shell's silence is No, so nothing is ever applied by default."""
@@ -236,6 +264,7 @@ def test_prep_run_offers_the_verdict_and_silence_is_no(calc):
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     _finished_trial_and_verdict(calc)
+    _describe_cpu(calc)
     r = CliRunner().invoke(jobset_group,
                            ["prep", "run", "coarse", "--bundle", str(calc),
                             "--no-sbatch"])

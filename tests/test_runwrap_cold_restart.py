@@ -43,6 +43,7 @@ import pytest
 
 from molbuilder.diagnostics import Capabilities, set_capabilities
 from molbuilder.runwrap import write_run_wrapper
+from molbuilder.jobset.model import Resources
 
 
 @pytest.fixture(autouse=True)
@@ -90,13 +91,13 @@ class TestColdFlagText:
             "SystemLabel  myjob\nNumberOfAtoms 1\n%block AtomicCoordinatesAndAtomicSpecies\n"
             "0 0 0 1\n%endblock AtomicCoordinatesAndAtomicSpecies\n"
         )
-        return write_run_wrapper(script).read_text()
+        return write_run_wrapper(script, resources=Resources()).read_text()
 
     def _pyscf_wrapper(self, tmp_path: Path) -> str:
         _bind()
         script = tmp_path / "myjob.py"
         script.write_text("# fake\n")
-        return write_run_wrapper(script).read_text()
+        return write_run_wrapper(script, resources=Resources()).read_text()
 
     def test_siesta_cold_in_help(self, tmp_path):
         text = self._siesta_wrapper(tmp_path)
@@ -190,7 +191,7 @@ def _truncated_siesta(tmp_path: Path, basename: str = "myjob") -> Path:
         "%block AtomicCoordinatesAndAtomicSpecies\n0 0 0 1\n"
         "%endblock AtomicCoordinatesAndAtomicSpecies\n"
     )
-    wrapper = write_run_wrapper(script)
+    wrapper = write_run_wrapper(script, resources=Resources())
     text = _strip_preamble_activation(wrapper.read_text())
     # Truncate at the first ``mpirun`` so the cold block has executed
     # but the SIESTA launch is skipped.  Append explicit exit 0 so
@@ -210,7 +211,7 @@ def _truncated_pyscf(tmp_path: Path, basename: str = "myjob") -> Path:
     _bind()
     script = tmp_path / f"{basename}.py"
     script.write_text("# fake\n")
-    wrapper = write_run_wrapper(script)
+    wrapper = write_run_wrapper(script, resources=Resources())
     text = _strip_preamble_activation(wrapper.read_text())
     # "\nexec python", NOT "\nexec ": the log-redirect line
     # (``exec > >(tee ...)``) matches the bare form FIRST, and cutting
@@ -263,7 +264,7 @@ class TestPyscfFreshDirectorySurvives:
             script.write_text("# fake\n" if make.endswith(".py") else
                               "SystemLabel myjob\n")
             _bind()
-            text = write_run_wrapper(script).read_text()
+            text = write_run_wrapper(script, resources=Resources()).read_text()
             assert not re.search(r"\$_warm_label[A-Za-z0-9_]", text), (
                 f"{make}: unbraced $_warm_label concatenation renders"
             )
@@ -282,7 +283,7 @@ def _gpu_wrapper(tmp_path: Path, fdf_text: str) -> Path:
     _bind_gpu()
     fdf = tmp_path / "myjob.fdf"
     fdf.write_text(fdf_text)
-    wrapper = write_run_wrapper(fdf)
+    wrapper = write_run_wrapper(fdf, resources=Resources())
     wrapper.write_text(_strip_preamble_activation(wrapper.read_text()))
     return wrapper
 
@@ -318,7 +319,7 @@ class TestTrialLabelledCold:
             "SystemLabel JOB-G1K4C6\nNumberOfAtoms 1\n"
             "%block AtomicCoordinatesAndAtomicSpecies\n0 0 0 1\n"
             "%endblock AtomicCoordinatesAndAtomicSpecies\n")
-        wrapper = write_run_wrapper(script)
+        wrapper = write_run_wrapper(script, resources=Resources())
         text = _strip_preamble_activation(wrapper.read_text())
         cut = text.find("mpirun")
         if cut < 0:
@@ -402,7 +403,7 @@ class TestGpuFlagPrecedence:
         }))
         fdf = tmp_path / "myjob.fdf"
         fdf.write_text(_GPU_FDF)
-        wrapper = write_run_wrapper(fdf)   # emits myjob.sbatch too (-n 1)
+        wrapper = write_run_wrapper(fdf, resources=Resources())   # emits myjob.sbatch too (-n 1)
         assert "#SBATCH -n 1" in (tmp_path / "myjob.sbatch").read_text()
         wrapper.write_text(_strip_preamble_activation(wrapper.read_text()))
         proc = _dry(wrapper, tmp_path, "-np", "3")
@@ -561,7 +562,7 @@ class TestColdBehaviourSystemLabelMismatch:
             f"0 0 0 1\n"
             f"%endblock AtomicCoordinatesAndAtomicSpecies\n"
         )
-        wrapper = write_run_wrapper(script)
+        wrapper = write_run_wrapper(script, resources=Resources())
         text = _strip_preamble_activation(wrapper.read_text())
         # Truncate AFTER the closing banner separator (which prints
         # the Mode + Constraints lines we want to observe).  The
@@ -713,7 +714,7 @@ class TestColdBehaviourSystemLabelMismatch:
             "0 0 0 1\n"
             "%endblock AtomicCoordinatesAndAtomicSpecies\n"
         )
-        wrapper = write_run_wrapper(script)
+        wrapper = write_run_wrapper(script, resources=Resources())
         text = _strip_preamble_activation(wrapper.read_text())
         end = text.find('echo "================================')
         if end < 0:
@@ -834,3 +835,48 @@ class TestNameSweep:
                 f"{kept} went into the aside dir -- molbuilder's own "
                 f"history treated as engine state")
         assert not (tmp_path / "myjob.DM").exists()
+
+
+def test_the_exception_is_anchored_on_the_id_not_widened_to_a_star():
+    """§ 4.1's exception must name OUR files, not every file of that shape.
+
+    ``--cold``'s "except what molbuilder wrote" list is derived from the one
+    enumeration, ``identity.OUR_FILE_PATTERNS`` (E-1, 2026-08-13).  How it is
+    READ is the thing this pins: each pattern's ``{label}`` becomes the run's
+    actual id, never ``*``.
+
+    **The widening was defended as harmless and was not.**  It read
+    ``{label}`` -> ``*`` until 2026-08-17, on the argument that the sweep's own
+    globs already anchor on the id — which says the widening cannot make the
+    sweep visit MORE files, and says nothing about the exception matching more
+    of them.  It held only while every pattern ended in a suffix nobody but
+    molbuilder writes.  ``{label}.xyz`` joined the list on 2026-08-16 (so
+    ``prep`` would stop calling a hand-over's input structure an engine
+    leftover) and widened to ``*.xyz``, which claimed PySCF's
+    ``<JOB>_optimized.xyz`` — warm state, and the whole reason ``--cold``
+    exists.
+
+    So this guards the CLASS rather than that one file: the next shared suffix
+    added to ``OUR_FILE_PATTERNS`` for the other reader's sake must not quietly
+    re-open it.  Two globs are exempt by design and named here — ``*.psml`` is
+    element-named, not run-named, and the aside directories are what the sweep
+    must never recurse into.
+    """
+    from molbuilder.runwrap import _cold_restart_aside_block
+
+    block = _cold_restart_aside_block("myjob", engine="pyscf")
+    line = [l for l in block.splitlines()
+            if l.strip().endswith(") continue ;;")]
+    assert len(line) == 1, "the exception case arm moved or multiplied"
+    pats = line[0].strip()[:-len(") continue ;;")].split("|")
+
+    bare = sorted(p for p in pats if p.startswith("*"))
+    assert bare == ["*-restart-aside-*", "*.psml"], (
+        f"an exception is anchored on nothing but a suffix: {bare}.\n"
+        f"A pattern that starts with `*` protects every file of that shape "
+        f"from --cold, including the engine output the sweep exists to move. "
+        f"Anchor it on the run's id -- `\"$_warm_label\"` and the basename.")
+
+    # ...and both spellings are present, because the sweep visits both.
+    assert any("_warm_label" in p for p in pats)
+    assert any(p.startswith("myjob") for p in pats)

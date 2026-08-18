@@ -86,10 +86,14 @@ class JobResult:
 
 def _resolve_domain(domain: Optional[str], *, gpu: bool,
                     project_dir: Optional[Path]) -> Optional[tuple]:
-    """Resolve a ``scheduler.routing`` domain name to ``(partition, qos)``
-    for the ``sbatch`` CLI.  ``None`` domain → ``None`` (use the rendered
-    header's default directives).  A GPU job prefers the domain's
-    ``gpu_partition`` when set (running-a-job.md § 5.3)."""
+    """Resolve a submission-domain name to ``(partition, qos)`` for the
+    ``sbatch`` CLI.  ``None`` domain → ``None`` (use the rendered header's
+    default directives).  A GPU job prefers the domain's ``gpu_partition``
+    when set (running-a-job.md § 5.3).
+
+    The menu is ``environment.json``'s ``domains`` since 2026-08-17 (N4) --
+    probed, not configured (`configuration.md` § 5, M-1).  This function did
+    not change: `get_routing` still answers, from a different file."""
     if not domain:
         return None
     from .. import runtime_config as _rc
@@ -99,10 +103,12 @@ def _resolve_domain(domain: Optional[str], *, gpu: bool,
             part = (d.get("gpu_partition") or d["partition"]) if gpu \
                 else d["partition"]
             return (part, d["qos"])
-    names = ", ".join(d["name"] for d in routing) or "(none configured)"
+    names = ", ".join(d["name"] for d in routing) or "(none probed)"
     raise SubmitError(
-        f"unknown submission domain {domain!r}; configured: {names} "
-        "(scheduler.routing in .molbuilder.json, running-a-job.md § 5.3)")
+        f"unknown submission domain {domain!r}; reachable: {names}.  The menu "
+        f"is PROBED into environment.json -- run `molbuilder jobset probe "
+        f"--write` on a login node, then `prep` snapshots it beside the "
+        f"calculation (docs/configuration.md § 5).")
 
 
 # --------------------------------------------------------------------- #
@@ -509,7 +515,7 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
 
     ``mode`` is ``"submit"`` (SLURM ``sbatch`` + per-job CLI flags) or
     ``"direct"`` (ordered local ``bash``).  ``domain`` is a
-    ``scheduler.routing`` name resolved to ``-p/-q`` (``submit`` mode only).
+    probed domain name resolved to ``-p/-q`` (``submit`` mode only).
     ``dry_run`` returns the planned command for each job without launching.
 
     ``only`` names ONE job to launch.  For a ladder that is the ONLY case --

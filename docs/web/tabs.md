@@ -162,8 +162,8 @@ auto-detect its chemistry, generate an input script. It mounts:
 - the **detection chip** that shows the auto-detected charge/spin/method.
 
 The flow: **inspect** → **Auto-detect** (`POST /api/structure/analyze` pre-fills
-both sub-forms) → **Generate** (renders the script *text* — `POST /api/build/fdf`
-for SIESTA, `POST /api/build/pyscf` for PySCF — nothing is written to disk yet) →
+both sub-forms) → ~~**Generate**~~ *(the two emit routes were **deleted**
+2026-08-17; a deck is rendered by `prep`, never by a browser)* →
 **Save to current dir**. There's no single `/api/build/render`; the two engines
 have their own render routes. Live validation runs against `/api/build/preflight`
 as you edit.

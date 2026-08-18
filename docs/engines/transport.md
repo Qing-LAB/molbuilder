@@ -358,9 +358,10 @@ Three corrections that catch real mistakes:
 >
 > `transport bundle` emits **`run-transport.sh`**, and you run the three
 > calculations with `bash run-transport.sh`. So a transport bundle is the **third
-> orchestration lifecycle** in molbuilder, beside `molbuilder jobset` and
-> `molbuilder bench` ([`process/conventions.md § 3`](?doc=process/conventions.md)),
-> and it is the only one that **chains** — a shell script starting one engine
+> orchestration lifecycle** in molbuilder, beside `molbuilder jobset`
+> ([`process/conventions.md § 3`](?doc=process/conventions.md) — the `bench`
+> lifecycle it was once a third of is gone; every verb is a `jobset` verb since
+> 2026-08-17), and it is the only one that **chains** — a shell script starting one engine
 > after another.
 >
 > **Two rules it does not satisfy, stated plainly rather than left for somebody

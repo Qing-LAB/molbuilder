@@ -1,23 +1,31 @@
 /* molbuilder web UI client — the structure-optimization tab page controller.
  *
- * WHAT THIS TAB DOES, and it is less than it used to:
+ * WHAT THIS TAB DOES:
  *   1. Show the structure the sidebar loaded, through the MolView component.
  *   2. Render the parameter form from the CATALOGUE (`/api/build/schema`,
  *      fetched by the shared form library) and collect what the user sets.
  *   3. Validate it live — POST /api/build/preflight — and place each finding
  *      beside the control it is about.
  *   4. Offer the auto-detected charge / spin — POST /api/structure/analyze.
+ *   5. HAND THE DESCRIPTION OVER — POST /api/task-setup/handover, then write
+ *      the returned files through the projects file layer (`safeSave`).  That
+ *      is `task.1st.json` (`stages.md` § 6.5a): a partial description the Task
+ *      Setup tab finishes.
  *
- * IT PRODUCES NO ARTIFACT.  It renders no deck, writes no file and hands
- * nothing to `prep`.  Those two POSTs are the only calls it makes.
+ * IT RENDERS NO DECK.  A deck is written by `prep`, on the machine that will
+ * run it (`project-layout.md` § 2.2) — never here.  What this tab produces is
+ * a DESCRIPTION, and step 5 is where it leaves.
  *
- * This header described a third concern until 2026-08-15 — *"POST
- * /api/build/fdf with the XYZ + form values -> get back FDF text, offer it as
- * a Blob download"* — and that flow was removed when script generation and
- * staging left this tab (user: the tab collects parameters, the staging
- * surface owns the rest).  The route still exists in `build.py`; this UI no
- * longer exposes it.  A file header that describes a removed feature is the
- * worst kind of stale, because it is the first thing a reader trusts.
+ * TWO THINGS THIS HEADER GOT WRONG, both fixed 2026-08-17, and the pattern is
+ * worth naming because it will happen again.  It said *"IT PRODUCES NO
+ * ARTIFACT … hands nothing to `prep`"* and *"those two POSTs are the only
+ * calls it makes"* — while step 5 had been here and writing files.  A header
+ * is maintained when a feature is REMOVED and forgotten when one is ADDED, so
+ * it drifts in one direction only: it describes a smaller tab than exists.
+ * This header already carried that lesson about a removed `/api/build/fdf`
+ * call — *"the worst kind of stale, because it is the first thing a reader
+ * trusts"* — and was wrong in the other direction at the same time.  Those
+ * two deck-rendering routes were deleted outright on 2026-08-17.
  *
  * MolView is consumed through its ONE public door (molview-esm-finalization.md): the ES-module
  * import below.  No `window.molbuilder.molview` / `.fmt` global reads — those are the transitional
@@ -271,9 +279,7 @@ import { mount as mvMount, formula as mvFormula }
     // defaults doesn't see warnings that haven't been earned yet.
     async function refreshPreflight(engine) {
         if (!_structureForRequest()) return;
-        const params = (engine === "siesta")
-            ? collectFdfParams()
-            : collectPyscfParams();
+        const params = collectParams(engine);
         const panelId = (engine === "siesta") ? "fdf-issues" : "pyscf-issues";
         const formContainerId = (engine === "siesta")
             ? "siesta-form-container" : "pyscf-form-container";
@@ -561,8 +567,8 @@ import { mount as mvMount, formula as mvFormula }
     }
 
     // Module-level cache of the form schemas, populated once on
-    // page load by initFormsFromSchema().  collectFdfParams() and
-    // collectPyscfParams() read from this; getFormIds() walks both
+    // page load by initFormsFromSchema().  collectParams() reads from
+    // this; getFormIds() walks both
     // schemas to build the persistence ID list.
     const formSchemas = { siesta: null, pyscf: null };
 
@@ -1472,57 +1478,35 @@ import { mount as mvMount, formula as mvFormula }
         }
     }(40));   // ~6s budget
 
-    function collectFdfParams() {
-        // The schema-driven collector returns one entry per dataclass
-        // field with a "section": metadata key.  The "Relaxation
-        // stage" preset is a UI shortcut, not a dataclass field
-        // rendered by the schema; we layer the stage-number on top of
-        // the collected params.  (2026-05-27: dropped the legacy
-        // system_name = system_label fold -- the dataclass no longer
-        // has system_name.)
-        if (!formSchemas.siesta) return {};
+    /* ONE collector, both engines (2026-08-17).
+     *
+     * There were two — `collectFdfParams` and `collectPyscfParams` — and by
+     * the time they were read side by side the SIESTA one was a PURE
+     * PASS-THROUGH carrying an eight-line comment about a stage number it no
+     * longer layered, a `params.stages` lookup that had been deleted with
+     * `SiestaStageSpec`, and a `"section"` metadata key retired for both
+     * engines on 2026-08-15 when the forms moved onto the catalogue.  The
+     * PySCF one differed by a container id and two normalisations.
+     *
+     * Comments describing removed behaviour are worse than none: they are
+     * read as the reason the function exists.
+     *
+     * The two normalisations stay and are PySCF's alone, for stated reasons:
+     *   - `dispersion = "none"` arrives as the literal string; the server
+     *     normalises it, and dropping it here too keeps the placeholder out
+     *     of the validation panel;
+     *   - null-valued keys are dropped so a dataclass falls back to its own
+     *     default instead of receiving None where it declares an int/float —
+     *     `charge = null` in particular must leave the field ABSENT, because
+     *     the server's auto-detect runs only when no charge key was sent.
+     */
+    function collectParams(engine) {
+        const schema = formSchemas[engine];
+        if (!schema) return {};
         const fs = (window.molbuilder || {}).formSchema;
-        const params = fs.collectForm(
-            $("siesta-form-container"), formSchemas.siesta
-        );
-        // `continue_retries` needs NO lifting: it is an ordinary SiestaConfig
-        // field (section "Compute & budget"), so `collectForm` above already
-        // returned it, and `engines/stages.md § 3` is explicit that it is "an
-        // ordinary shared field; what made it look special is only where it
-        // lands".
-        //
-        // A block here used to read `params.stages[<seq>].on_nonconvergence`
-        // and copy the retry budget up.  Both halves of that are gone:
-        // `SiestaConfig` has had no `stages` field since P2 deleted
-        // `SiestaStageSpec`, so `params.stages` was `undefined` and the gate
-        // could never fire; and `on_nonconvergence` left the SIESTA producer
-        // with the inter-stage edges (P7 unit 2).  Deleting it is what makes
-        // the retry budget actually arrive -- it was being gated on a lookup
-        // that always failed.
-        return params;
-    }
-
-    function collectPyscfParams() {
-        // Schema-driven collector + three post-processing tweaks:
-        //   1. The "Relaxation stage" preset is a UI shortcut (lives
-        //      in the SIESTA panel but flows through to PySCFConfig
-        //      so PySCF runs also write stage-suffixed molwatch logs).
-        //   2. dispersion = "none" comes off the select as the literal
-        //      string "none"; server's config_from_params normalises
-        //      it to None, but we drop it client-side too so the
-        //      validation panel never sees the placeholder.
-        //   3. Drop null-valued keys so the dataclass uses its
-        //      declared default rather than getting None where it
-        //      expects an int / float (e.g. charge=None should leave
-        //      the dataclass alone; the server's auto-detect path
-        //      runs only when no charge key is present).
-        if (!formSchemas.pyscf) return {};
-        const fs = (window.molbuilder || {}).formSchema;
-        const params = fs.collectForm(
-            $("pyscf-form-container"), formSchemas.pyscf
-        );
+        const params = fs.collectForm($(engine + "-form-container"), schema);
+        if (engine !== "pyscf") return params;
         if (params.dispersion === "none") params.dispersion = null;
-        // Drop nulls.
         Object.keys(params).forEach(k => {
             if (params[k] === null) delete params[k];
         });
@@ -1734,8 +1718,7 @@ import { mount as mvMount, formula as mvFormula }
         }
 
         const engine = _activeEngine();
-        const params = (engine === "siesta")
-            ? collectFdfParams() : collectPyscfParams();
+        const params = collectParams(engine);
 
         _handoverSay("muted", "Rendering…");
         let out;

@@ -142,42 +142,6 @@ class TestF2NoSecondSource:
         assert not s.frozen_atoms
         assert not s.regions
 
-    def test_a_sidecar_on_disk_never_reaches_an_emitted_deck(self, tmp_path):
-        """The property F2 actually guarantees, end to end: labels sitting in a
-        .molstruct.json next to the .xyz do NOT appear in the emitted input.
-
-        Before F2 the server read that sidecar whenever the body omitted the
-        keys, so a deck could be emitted with frozen atoms the model had already
-        cleared -- a structure nobody was looking at."""
-        import json as _json
-        pytest.importorskip("flask")
-        from molbuilder.diagnostics import Capabilities, set_capabilities
-        xyz_text = ("3\nprobe\nO 0.0 0.0 0.0\n"
-                    "H 0.757 0.586 0.0\nH -0.757 0.586 0.0\n")
-        xyz = tmp_path / "probe.xyz"
-        xyz.write_text(xyz_text, encoding="utf-8")
-        import hashlib
-        (tmp_path / "probe.molstruct.json").write_text(_json.dumps({
-            "schema_version": 3, "n_atoms_total": 3,
-            "structure_hash": hashlib.sha256(xyz.read_bytes()).hexdigest(),
-            "regions": {"L-electrode": [0]}, "frozen_atoms": [0],
-            "selection_rules": {},
-        }), encoding="utf-8")
-        set_capabilities(Capabilities(runtime_config={},
-                                      conda_binary="/usr/bin/conda"))
-        try:
-            from molbuilder.web.app import create_app
-            client = create_app(config={}).test_client()
-            r = client.post("/api/build/fdf", json={
-                "structure": _env(xyz_text), "params": {},
-                "structure_path": str(xyz),      # named, but NOT a label source
-            })
-            assert r.status_code == 200, r.data
-            fdf = (r.get_json() or {}).get("fdf", "")
-            assert "%block Geometry.Constraints" not in fdf, (
-                "the disk sidecar's frozen atom leaked into the emitted deck")
-        finally:
-            set_capabilities(None)
 
 
 def _strip_js_comments(src: str) -> str:

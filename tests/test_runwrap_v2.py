@@ -27,6 +27,7 @@ from molbuilder.diagnostics import (Capabilities, EXTENSION_TO_CATEGORY,
 from molbuilder.runtime_config import RuntimeConfigError
 from molbuilder.runwrap import (WrapperError, render_run_wrapper,
                                   write_run_wrapper)
+from molbuilder.jobset.model import Resources
 
 
 def _bind():
@@ -244,7 +245,7 @@ def test_write_run_wrapper_writes_chmod_x(sandbox, tmp_path):
         pytest.skip("bash unavailable")
     fdf = tmp_path / "JOB.fdf"
     fdf.write_text("SystemLabel JOB\nNumberOfAtoms 2\n")
-    p = write_run_wrapper(fdf, mpi_np=2)
+    p = write_run_wrapper(fdf, resources=Resources(mpi_np=2))
     assert p.stat().st_mode & stat.S_IXUSR
     r = subprocess.run([bash, "-n", str(p)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr

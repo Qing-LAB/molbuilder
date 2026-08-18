@@ -28,6 +28,7 @@ from molbuilder.diagnostics import (Capabilities, reset_capabilities,
 from molbuilder.siesta.input import render_fdf
 from molbuilder.structure import Structure
 from molbuilder import runwrap as _runwrap
+from molbuilder.jobset.model import Resources
 
 
 # --------------------------------------------------------------------- #
@@ -112,7 +113,13 @@ def test_enable_gpu_metadata_is_present():
     # physics axis (System -> Basis -> XC -> SCF -> Spin -> Output)
     # stays compact.  See SiestaConfig._form_section_order.
     assert md["section"] == "Compute & budget"
-    assert md["workflow_group"] == "budget"
+    # ``staging`` -- the group whose items a parameter form deliberately does
+    # NOT ask, because the Job Prep UI answers them (web/task-setup.md § 6.1,
+    # § 6.2).  The class's ``workflow_group`` must MIRROR the catalogue item's
+    # ``group``, which is ``staging`` (web/form-schema.md § 2): the form reads
+    # the catalogue's, finding-placement reads this one, so a disagreement puts
+    # the control on one card and its warnings on another.
+    assert md["workflow_group"] == "staging"
     assert md["id_suffix"] == "enable-gpu"
     # The engine_key must reference the SIESTA fdf keyword so the
     # methods-text generator can cite it; an empty value would let
@@ -292,7 +299,7 @@ def test_write_run_wrapper_routes_to_gpu_env_when_keyword_set(
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
-    wrapper_path = _runwrap.write_run_wrapper(fdf)
+    wrapper_path = _runwrap.write_run_wrapper(fdf, resources=Resources())
     wrapper_text = wrapper_path.read_text(encoding="utf-8")
     assert "molbuilder-siesta-gpu" in wrapper_text
 
@@ -315,7 +322,7 @@ def test_write_run_wrapper_refuses_gpu_when_env_absent(tmp_path):
         fdf.write_text(fdf_text, encoding="utf-8")
         with pytest.raises(_runwrap.WrapperError,
                            match=r"molbuilder-siesta-gpu.*not installed"):
-            _runwrap.write_run_wrapper(fdf)
+            _runwrap.write_run_wrapper(fdf, resources=Resources())
     finally:
         set_capabilities(Capabilities(runtime_config={}))
 
@@ -327,7 +334,7 @@ def test_write_run_wrapper_routes_to_cpu_env_by_default(
     fdf_text = render_fdf(_mk_struct(), SiestaConfig())
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
-    wrapper_path = _runwrap.write_run_wrapper(fdf)
+    wrapper_path = _runwrap.write_run_wrapper(fdf, resources=Resources())
     wrapper_text = wrapper_path.read_text(encoding="utf-8")
     assert "molbuilder-siesta-gpu" not in wrapper_text
     assert "molbuilder-siesta" in wrapper_text
@@ -352,7 +359,7 @@ def test_gpu_wrapper_keeps_siesta_template_intact(
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
-    wrapper_path = _runwrap.write_run_wrapper(fdf)
+    wrapper_path = _runwrap.write_run_wrapper(fdf, resources=Resources())
     wrapper_text = wrapper_path.read_text(encoding="utf-8")
     # Signature 1: the run-index resolver globs SIESTA's output
     # extension.  The bare substring ".pyscf.log" is no longer a branch
@@ -398,7 +405,7 @@ def test_gpu_wrapper_honors_user_set_mpi_np(tmp_path, caps_with_gpu_env):
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
-    wrapper_path = _runwrap.write_run_wrapper(fdf, mpi_np=4, omp_threads=3)
+    wrapper_path = _runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=4, cpus_per_task=3))
     wrapper_text = wrapper_path.read_text(encoding="utf-8")
     # Both literals must appear; the shell-var fallback names must NOT
     # be the source of either ``_*_default`` line for THIS run.
@@ -419,7 +426,7 @@ def test_gpu_wrapper_uses_policy_default_when_user_unset(
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
     # No mpi_np / omp_threads kwargs -> auto path.
-    wrapper_path = _runwrap.write_run_wrapper(fdf)
+    wrapper_path = _runwrap.write_run_wrapper(fdf, resources=Resources())
     wrapper_text = wrapper_path.read_text(encoding="utf-8")
     assert "_mpi_np_default=$_gpu_mpi_np_default" in wrapper_text
     assert "_omp_threads_default=$_omp_default" in wrapper_text
@@ -435,9 +442,7 @@ def test_write_run_wrapper_explicit_env_overrides_detection(
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
-    wrapper_path = _runwrap.write_run_wrapper(
-        fdf, env="molbuilder-siesta",
-    )
+    wrapper_path = _runwrap.write_run_wrapper(fdf, resources=Resources(), env="molbuilder-siesta")
     wrapper_text = wrapper_path.read_text(encoding="utf-8")
     assert "molbuilder-siesta-gpu" not in wrapper_text
     assert "molbuilder-siesta" in wrapper_text
@@ -465,7 +470,7 @@ def test_gpu_runtime_defaults_block_uses_numa_aware_budget(
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
-    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources()).read_text(encoding="utf-8")
     # NUMA-pin decision is a 3-condition AND.
     assert 'if [ "$_gpu_numa" != "unknown" ] && ' in wrapper_text
     assert '[ "$_n_sockets" -ge 2 ] && ' in wrapper_text
@@ -492,7 +497,7 @@ def test_gpu_runtime_defaults_block_wraps_mpirun_in_numactl(
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
-    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources()).read_text(encoding="utf-8")
     # The wrap variable is set inside the GPU defaults block.
     assert ('_numa_wrap_gpu="numactl --cpunodebind=$_gpu_numa '
             '--membind=$_gpu_numa"' in wrapper_text)
@@ -524,7 +529,7 @@ def test_gpu_mpirun_binds_to_physical_cores_not_ht_siblings(
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
-    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources()).read_text(encoding="utf-8")
     # The new form: package-level mapping, PE counts physical cores,
     # bound to core, ranked by core for deterministic ordering.
     assert ('_mpirun_bind="--bind-to core --map-by '
@@ -546,7 +551,7 @@ def test_cpu_mode_wrapper_does_not_emit_numa_wrap_gpu_branches(
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
-    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources()).read_text(encoding="utf-8")
     # The GPU defaults block must NOT be injected.
     assert "_gpu_mpi_np_default" not in wrapper_text
     assert "_gpu_budget" not in wrapper_text
@@ -568,7 +573,7 @@ def test_gpu_resources_summary_unified_in_launch_banner(
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
-    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources()).read_text(encoding="utf-8")
     # the single unified summary line, in the launch banner, resolved values
     assert "GPU resources : GPU mode (ELPA-CUDA, no NCCL)" in wrapper_text
     assert "chosen $_mpi_np ranks × $_omp_threads threads" in wrapper_text
@@ -599,7 +604,7 @@ def test_gpu_runtime_defaults_block_probes_gpu_numa(
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
-    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources()).read_text(encoding="utf-8")
     assert "_gpu_numa=" in wrapper_text
     assert 'MOLBUILDER_GPU_NUMA' in wrapper_text   # runtime override
     assert '*[!0-9]*' in wrapper_text              # numeric guard
@@ -630,7 +635,7 @@ def test_wrapper_emits_fdf_aware_rank_default_selector(
     cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf = tmp_path / "job.fdf"
     fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
-    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources()).read_text(encoding="utf-8")
     # The runtime selector must be emitted -- a literal
     # ``_mpi_np_default=<int>`` at top level would be the pre-fix
     # shape.  Since R6 (2026-08-12) the detector is the SAME rule as
@@ -670,8 +675,7 @@ def test_cpu_mode_wrapper_falls_back_to_safe_gpu_default_if_toggled(
         cfg = SiestaConfig()  # CPU mode (enable_gpu=False)
         fdf = tmp_path / "job.fdf"
         fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
-        wrapper_text = _runwrap.write_run_wrapper(
-            fdf).read_text(encoding="utf-8")
+        wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources()).read_text(encoding="utf-8")
         # The launch-time selector is still emitted (so toggling GPU
         # works), in its R6 shared-rule form.
         assert 'tolower($1) == "diag.elpa.usegpu"' in wrapper_text
@@ -713,7 +717,7 @@ def test_cpu_elpa_stays_on_the_packaged_build(tmp_path, caps_with_gpu_env):
     cfg = SiestaConfig(enable_gpu=False, diag_algorithm="ELPA-2STAGE")
     fdf = tmp_path / "job.fdf"
     fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
-    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources()).read_text(encoding="utf-8")
     assert "molbuilder-siesta-gpu" not in wrapper_text
     assert "molbuilder-siesta" in wrapper_text
 
@@ -729,7 +733,7 @@ def test_gpu_is_what_routes_to_the_source_build(tmp_path, caps_with_gpu_env):
     cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-2STAGE")
     fdf = tmp_path / "job.fdf"
     fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
-    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources()).read_text(encoding="utf-8")
     assert "molbuilder-siesta-gpu" in wrapper_text
 
 
@@ -737,7 +741,7 @@ def test_scalapack_routes_to_the_packaged_build(tmp_path, caps_with_gpu_env):
     """ScaLAPACK (default) stays on the packaged env."""
     fdf = tmp_path / "job.fdf"
     fdf.write_text(render_fdf(_mk_struct(), SiestaConfig()), encoding="utf-8")
-    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources()).read_text(encoding="utf-8")
     assert "molbuilder-siesta-gpu" not in wrapper_text
     assert "molbuilder-siesta" in wrapper_text
 
@@ -752,6 +756,5 @@ def test_a_named_env_always_wins_over_the_route(tmp_path, caps_with_gpu_env):
     cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-2STAGE")
     fdf = tmp_path / "job.fdf"
     fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
-    wrapper_text = _runwrap.write_run_wrapper(
-        fdf, env="molbuilder-siesta").read_text(encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources(), env="molbuilder-siesta").read_text(encoding="utf-8")
     assert "molbuilder-siesta-gpu" not in wrapper_text

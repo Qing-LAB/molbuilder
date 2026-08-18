@@ -35,7 +35,6 @@ import click
 
 from .diagnostics import initialize as _initialize_diagnostics
 from .envs._cli import envs_group
-from .bench._cli import bench_group
 from .transport._cli import transport_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .structure import Structure
@@ -319,10 +318,12 @@ def cli() -> None:
 # self-contained click group registered here as a single sub-group.
 cli.add_command(envs_group)
 
-# `molbuilder bench ...`  -- only `probe-scheduler` remains (a config
-# helper): the benchmark itself is a jobset (`jobset prep bench`), and
-# the legacy in-place siesta-gpu sweep was deleted 2026-08-13.
-cli.add_command(bench_group)
+# `molbuilder bench ...` was DELETED 2026-08-17 (user: all verbs are unified
+# under `jobset`).  Its four lifecycle verbs went in the 2026-08-12 fold, and
+# its last inhabitant -- `probe-scheduler`, a scheduler-config helper that was
+# never a benchmark verb -- moved to `jobset probe-scheduler`.  A group whose
+# name no longer described anything it contained was the last thing keeping
+# two spellings alive for one act (process/conventions.md 3).
 
 # `molbuilder jobset ...`  (engine-agnostic staged execution: plan / prep /
 # submit a bundle's job-set.json -- the SIESTA stage ladder, and later the

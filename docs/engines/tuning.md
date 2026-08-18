@@ -535,8 +535,10 @@ default**.
   `coarse` / `medium` / `tight`. *(This bullet also credited a `--stage {1,2,3}`
   one-shot overlay until 2026-08-16 — a flag of the `molbuilder fdf` verb,
   deleted 2026-08-11.)*
-- **PySCF:** `config/pyscf.py::_default_stages`, still a field of the config —
-  its ladder runs inside one process ([`stages.md § 1.1`](?doc=engines/stages.md)).
+- **PySCF:** `config/pyscf.py::_default_stages` — the default ladder. It was a
+  field of the config until 2026-08-17; the ladder is now declared in
+  `task.json` like SIESTA's, while still **executing** inside one process
+  ([`stages.md § 1.1a`](?doc=engines/stages.md)).
 
 > **The non-convergence policy is PySCF's alone**, and the table below says so in
 > its own column. `proceed` / `continue` / `halt` decided the **edge** between one

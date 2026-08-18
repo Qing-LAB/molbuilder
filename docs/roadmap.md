@@ -590,6 +590,61 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   proof held, the agreement check is mutation-proven, the three
   hard-coded copies are retired, and the fine-tuned copy wins with its
   source named in the plan.  Open: **U6b only** (the UI door, web track).
+- **Machine facts — one shape, one door** — contract settled 2026-08-17 (user
+  decision) and stated ENTIRELY in
+  [`configuration.md`](?doc=configuration.md) § 5
+  (M-1…M-5 + the schema bump), with `project-layout.md` § 2.3.1's D3/D4 and
+  M2/M2a amended to match. **The defect it closes:** two files answered *what
+  GPU is on this machine* — `environment.json`'s `topology.gpu_type` and
+  `molbuilder.json`'s `scheduler.gpu.default_type`, both probed — and only the
+  first reached the code that builds the ask; meanwhile `Site.qos`/`Site.account`
+  were fields nothing had ever written, because `environment.py` declared QoS
+  underivable while `scheduler_probe.parse_allowed_qos` derived it.
+  **Planned units, in the contract's order:**
+  **N1** `environment.py` gains the file layer — `FILENAME`,
+  `read_environment`, `write_environment`, `machine_for` (M-4) — and the four
+  existing call sites (`prep.resolve_target`, `prep._environment_for`,
+  `summarize._read_environment`, `_bench_inputs`) go through it; done when the
+  written record is byte-identical · **N2** `molbuilder/environment@2`:
+  `Site.qos` filled, `domains` added; done when an `@1` record is *refused* by
+  name rather than read as a cluster with no domains · **N3**
+  `jobset probe --write` targets `environment.json` at the site scope and stops
+  emitting `directives` (M-1: a probe never writes a preference) · **N4**
+  `get_scheduler`/`get_routing` source `routing` + `gpu.default_type` from the
+  machine record; the four consumers (`runwrap.py` ×2, `submit.py`, `_cli.py`)
+  are unchanged by construction, which is the done-when · **N5** `_bench_inputs`
+  loses its `getattr(..., None) or 0` guards and its hand-built `gres`, both of
+  which exist only because today's reader may answer `None`. **Not started.**
+- **PySCF joins the engine seam** — contract settled 2026-08-17 (user decision),
+  stated in [`engines/stages.md`](?doc=engines/stages.md) § 1.1a (the ladder is
+  declared once, in `task.json`, and still executes in one process) and
+  [`execution/generator.md`](?doc=execution/generator.md) § 7.1–7.2 (what the
+  seam actually asks for — eight members, not the two § 7 claimed — and where
+  each engine stands). **Where it already is:** the catalogue drives both
+  engines (44 SIESTA items, 37 PySCF, every one mapping to a config field),
+  `molbuilder/pyscf/warm-files.toml` ships, and `PySCFConfig` declares
+  `literal="JOB"`. **The blocker:** `_engine_seam` has one arm, so `jobset prep`
+  refuses PySCF outright. **Planned units, in the contract's order:**
+  **P1** the seven geomeTRIC knobs (`gmax`, `grms`, `dmax`, `drms`, `etol`,
+  `max_steps`, `on_nonconvergence`) become catalogue items with
+  `engines = ["pyscf"]` and `group = "stage"`, carrying the metadata already on
+  the `StageSpec` fields; **`conv_tol` collapses into the existing
+  `scf_conv_tol`**, which declares the same `engine_key` (`mf.conv_tol`) — two
+  declarations of one knob is the drift the exception was hiding. Done when
+  PySCF's `stage` group is 10 items, not 3 · **P2** `PySCFConfig.stages` is
+  **deleted**, not reshaped (the same surgery `SiestaStageSpec` got on
+  2026-08-07); `_default_stages` becomes a default *selection* over the
+  catalogue, and `describe` writes the rungs as `Stage(name, enabled,
+  overrides)`. Done when a PySCF `task.json` and a SIESTA one differ only in
+  their values · **P3** `render_script` gains `stage_token=`, matching the seam's
+  `(structure, config, stage_token=)`. Done when two stages of one PySCF
+  calculation no longer share a `.molwatch.log` — the SIESTA-side defect, checked
+  on PySCF · **P4** the `pyscf` arm of `_engine_seam` (suffix `.py`, `label_of`
+  → `JOB`, `warm_for` → its own `warm-files.toml`, `sibling_artifacts=None`).
+  Done when `jobset prep run <stage>` writes a runnable PySCF folder · **P5**
+  `_emit_stages_loop` renders from the **resolved** stage list. Done when the
+  rungs in the deck match `task.json`'s, and the `JobSet` has exactly one `Job`.
+  **Not started.**
 - **Backend concern seams W1–W5** — `backend-architecture.md § 5`:
   runwrap's SIESTA reach-ins (W1), `jobset/runstatus.py`'s warm-file
   table → producer-supplied inventory (W2), `runtime_config`'s untyped
@@ -648,6 +703,36 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   migration"*; it also closes `LaunchSpec` and unblocks the `bench` fold-in.
   **Open, and the user's:** how a person states an allocation, and whether a
   per-project default belongs beside the `scheduler` block.
+
+- **✅ `bench` in `molbuilder/task@1` — CLOSED 2026-08-17 (user).** The two
+  contracts disagreed: [`engines/stages.md`](?doc=engines/stages.md) § 6.8 put a
+  sweep in the description while [`execution/generator.md`](?doc=execution/generator.md)
+  § 4.3 says a sweep is an input to `prep`, never a field of one — and
+  `stages.md` cited `generator.md` nowhere, which is how they came to disagree.
+  **Decided:** *"sweep is decided at prep, not in the description, and it is
+  specifically tied to a stage because a stage chooses its run parameters based
+  on bench results."* § 6.8 is withdrawn in place; the rule and its per-stage
+  reasoning are `generator.md` § 4.3a. **Remaining work:** remove the key from
+  `molbuilder/task@1` (nothing ever read it), retire the tests that pin it, and
+  drop the Task-setup tab's machine rows, which write a field that will no
+  longer exist.
+
+- **The run wrapper's string assembly.** `render_run_wrapper` is ~1780 lines
+  emitting bash through ~295 f-strings. A real maintenance risk and a fair
+  reading of *"handcrafted text injection"* — recorded here rather than
+  scheduled because **neither 2026-08-17 defect entered there**: it has one
+  entry point and one caller, and both arrived above it, at the boundary rules
+  A8/A9 now close ([`execution/architecture.md`](?doc=execution/architecture.md)
+  § 3.1). Worth doing on its own terms; not worth folding into a boundary fix.
+
+- **GPU detection is implemented twice** — Python at prep
+  (`runwrap._fdf_requests_gpu`, for the `.sbatch` header) and awk at launch
+  (inside the wrapper, after a person may have edited the deck). **Two
+  implementations are required**, because one runs on a login node and the
+  other on a compute node hours later; the truthy set is already a shared
+  constant (`_GPU_TRUTHY`), so the *fact* has one home and only the matching
+  logic is parallel. The honest guard is a test rendering both against one
+  deck set — not a merge that cannot happen.
 
 ---
 

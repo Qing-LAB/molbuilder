@@ -948,6 +948,29 @@ molbuilder does not validate its contents (engine-invalid text there will be
 rejected by the engine, not by molbuilder). The block may be missing; on
 regenerate an empty one is emitted.
 
+> **Which paths actually preserve it, because "on regeneration" is not one
+> path.** `merge_user_custom_from_target` has a single caller — the web file
+> save, and only on a fresh regenerate (an edit-save skips it deliberately, so
+> that committing your own text is not undone by a merge).
+>
+> | path | your text |
+> |---|---|
+> | the web Build tab, regenerating | **preserved**, read back from the target |
+> | `molbuilder siesta` / `molbuilder pyscf` | **lost** — the CLI writes and never reads the old file |
+> | `jobset prep` (the staged path) | **lost** — see below |
+>
+> **`prep` cannot use this mechanism at all**, and that is structural rather
+> than unfinished: it renders on the target machine where there is usually no
+> previous deck, it renders one deck *per stage* so *"the target"* names
+> nothing, and it must be reproducible — harvesting whatever is on disk would
+> make the same description produce different decks.
+>
+> The design that closes it is a template item carrying the text
+> ([`engines/template.md`](?doc=engines/template.md) § 9.2), which also makes
+> per-stage custom text free rather than a new mechanism. **It is not built** —
+> no engine config has a `user_custom` field — so today the staged path emits
+> an empty zone. Tracked as row 1 of that document's § 12.1.
+
 ### 3.6 Versioning and what a tool may assume
 
 Each structured block versions **independently**: BENCH-MARKS carries
@@ -963,14 +986,23 @@ refuse the retired `frozen_atoms` key with the same regenerate message
 answers who/when/what-defaults; BENCH-MARKS lists the overridable fields and
 their bounds; ATOM-METADATA round-trips (its dict feeds the same
 `apply_to_structure` path the sidecar uses); USER-CUSTOM survives
-regeneration.
+regeneration **on the paths § 3.5's table marks preserved** — a tool must not
+assume it on the staged path, where nothing carries it yet.
 
 ---
 
-### 3.7 The deck template — moved to `engines/template.md`
+### 3.7 The template — moved to `engines/template.md`
 
 **A template is not a generated script**, and § 3 is the generated-script
-contract. It is the *description* a deck is rendered **from**: a floor-2 object
+contract. **It is also not a deck** — and this document called it *"the deck
+template"* in the registry, in § 6.3's file table and in this heading until
+2026-08-17, which is a fossil of the retired design described below: the file
+genuinely *was* an `.fdf` once. Since it stopped being one the phrase has named
+a floor-2 description after the floor-3 product it feeds. **It is *the
+template*.** Dated entries in [`design.md`](?doc=design.md)'s decision ledger
+keep the words used on the day, as ledger entries should.
+
+It is the *description* a deck is rendered **from**: a floor-2 object
 ([`architecture.md`](?doc=execution/architecture.md) § 2.1) that names no
 machine, written by a generating surface and read by `prep`.
 
@@ -1037,6 +1069,26 @@ is the one below.**
 > The checkpoint history is the safety net for the other direction: `--cold`
 > **moves** files aside rather than deleting them, and a checkpoint can recover
 > anything the sweep took that the user wanted.
+>
+> **The exception is anchored on the run's id, and that is load-bearing**
+> *(2026-08-17)*. *"What molbuilder wrote"* is derived from the one enumeration
+> — `identity.OUR_FILE_PATTERNS` — and each pattern's `{label}` becomes **this
+> run's id**, never `*`. Widening it to a star protects every file of that
+> *shape*, which is a different and much larger set: `{label}.xyz` read as
+> `*.xyz` claimed PySCF's `<JOB>_optimized.xyz`, so `--cold` walked past warm
+> state in the operation whose entire purpose is leaving nothing behind.
+>
+> The widening had been defended as harmless because *the sweep's own globs
+> already anchor on the id* — which is an argument that widening cannot make
+> the sweep **visit** more files, and says nothing about the exception
+> **matching** more of them. It held only while every pattern ended in a suffix
+> nobody but molbuilder writes; `.xyz` was the first that an engine writes too.
+> Pinned by `test_the_exception_is_anchored_on_the_id_not_widened_to_a_star`.
+>
+> **`OUR_FILE_PATTERNS` has two readers who need different precision** — one
+> asks *"has anything run here?"* at the bundle root, where an engine's output
+> is absent, and this one runs where it is present. Adding a pattern for one
+> reader is a change to both.
 
 ### 4.2 Per-engine warm-file inventory
 
@@ -1371,15 +1423,15 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 
 | Artifact | File | Schema string | Authoritative code | Key top-level fields |
 |---|---|---|---|---|
-| User config | `molbuilder.json` / `.molbuilder.json` | *(validated, no `@N`)* | `runtime_config.py` | `scheduler{kind,directives,gpu,defaults,mem_model,routing}`, `execution`, `script_generation`, `envs` |
-| Detected environment | `environment.json` | `molbuilder/environment@1` | `environment.py` | `scheduler`, `topology`, `site` |
+| User config | `molbuilder.json` / `.molbuilder.json` | *(validated, no `@N`)* | `runtime_config.py` | `scheduler{kind,directives,gpu,defaults,mem_model}`, `execution`, `script_generation`, `envs` — **what you want**, never what a machine reports ([`configuration.md`](?doc=configuration.md) § 5 M-1); `scheduler.routing` and `scheduler.gpu.default_type` moved to the row below 2026-08-17 |
+| Machine record | `environment.json` — the calculation's, a **named target**, then this machine's; first found wins ([`configuration.md`](?doc=configuration.md) § 5 M-3) | `molbuilder/environment@2` | `environment.py`, and only `environment.py` — the door is § 5 M-4's table | `scheduler`, `topology`, `site`, `domains` — **what the target machine is**, in one shape whether it is a cluster or a workstation |
 | ~~Benchmark manifest~~ | ~~`bench-manifest.json`~~ | ~~`molbuilder/bench-manifest@2`~~ | *(retired — no writer, no reader; note below)* | ~~`points.{cpu,gpu}`~~ |
 | Benchmark result | `<seq>_<stage>/bench/bench-result.json` — in the stage's container (§ 6.3) | `molbuilder/bench-result@1` | `bench/result.py` | `points`, `choice`, `recommend` |
 | Job-set plan | `job-set.json` at the root — the RUN plan, **merged per stage, never overwritten**; a sweep's own record is `<seq>_<stage>/bench/job-set.json` (§ 6.3) | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` |
 | Warm-file vocabulary | `<engine>/warm-files.toml`, shipped IN the engine's package (§ 4.2a); a calculation may carry its own copy (U6a) | `molbuilder/warm-files@1` | `warmfiles.py` | `[base]` + one section per calculation type; rows of `suffix` · `carry` · `requires_same` · `honoured_by` |
 | Task hand-over | `task.1st.json` — beside where `task.json` will go; **removed** when the description is saved | `molbuilder/task-handover@1` | `web/blueprints/build.py` (`api_task_setup_handover`) | `_what` (a line saying what the file is, since JSON has no comments), `engine`, `run`, `structure`, `awaiting` — the keys it is missing and who supplies them. **Deliberately not `molbuilder/task@1`**: it has no `shape`, so it would fail that schema's own reader, and `check_schema` refuses a wrong artifact by name. The extension is last (`task.1st.json`, not `task.json.1st`) so the editor highlights it as JSON and so nothing looking for `task.json` finds it — `checkpoint.py::_BUNDLE_DESCRIPTORS` treats that name as the marker that a folder is a calculation root |
 | Task description | `task.json` | `molbuilder/task@1` | `task.py` | `engine`, `shape`, `run`, `structure`, `varies`, `stages[]` — **what changes**; what does not is in `<label>.template.toml` |
-| Deck template | `<label>.template.toml` | `molbuilder/template@2` | `template.template_with_values`, from the catalogue `molbuilder/data/catalogue.template.toml` ([`template.md`](?doc=engines/template.md) § 4.3) | `schema`, `engines`, `item.<name>` — *(`fingerprint` was a third top-level key until 2026-08-14; retired, `template.md` § 10)* — **every parameter of the calculation, each on a `category` and declaring which `engines` it applies to.** A value is *not* required: an item may state the question and leave the answer to a later floor (the `execution` category does exactly that — `prep` resolves it from `environment.json`). TOML because a person reads and edits it ([`engines/template.md`](?doc=engines/template.md)); the warm-file vocabulary two rows up shares the format for the same reason (§ 4.2a's UI-edit door) |
+| Template | `<label>.template.toml` | `molbuilder/template@2` | `template.template_with_values`, from the catalogue `molbuilder/data/catalogue.template.toml` ([`template.md`](?doc=engines/template.md) § 4.3) | `schema`, `engines`, `item.<name>` — *(`fingerprint` was a third top-level key until 2026-08-14; retired, `template.md` § 10)* — **every parameter of the calculation, each on a `category` and declaring which `engines` it applies to.** A value is *not* required: an item may state the question and leave the answer to a later floor (the `execution` category does exactly that — `prep` resolves it from `environment.json`). TOML because a person reads and edits it ([`engines/template.md`](?doc=engines/template.md)); the warm-file vocabulary two rows up shares the format for the same reason (§ 4.2a's UI-edit door) |
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` | *(sidecar pair, bare-int `schema_version` from `sidecars/molstruct.SCHEMA_VERSION` — never typed in a doc)* | `bundle_writer.py`, `sidecars/molstruct.py` | geometry; `regions` (frozen atoms are a label inside it) / `structure_hash` |
 | Checkpoint archive | `.binsnapshots/<digest>/MANIFEST.do_not_edit` | *(3-col tab-separated `<sha256>\t<bytes>\t<key>`)* | `checkpoint.py` | the directory is the sha256 of this file (§ 6.1) |
 | Run launch record | `<attempt>/run.json` — a trial dir is its own attempt, so a launched trial carries one too; written at process **start** (a running job must read as launched) | `molbuilder/run-launch@1` | `jobset/materialize.py` (`write_run_launch`) | `mode`, `command`, `job_id`, `launched_at`, `continued_from` |
@@ -1472,6 +1524,23 @@ any `@1` artifact parsed as any other `@1` artifact. § 6.3's own amendment
 records the same correction: "major-only" was always about tolerating minors
 within one artifact, never about ignoring which artifact.)*
 
+### 6.1a Machine facts — moved
+
+The rules that decide **which file a machine fact belongs in** — probed facts to
+`environment.json`, chosen preferences to `molbuilder.json`, a probe never
+writing a preference, one door reading and writing the record, and the bump to
+`molbuilder/environment@2` — are M-1 through M-5 of
+[`configuration.md` § 5](?doc=configuration.md).
+
+They lived here from 2026-08-17 until later the same day. They moved because
+this section is the **artifact registry** — *what is this file called, what
+schema does it carry, which module owns it* — and the machine-facts split
+answers a different question: *who writes it, and who wins.* Holding both made
+the registry answer two questions, which is the overlap
+[`configuration.md`](?doc=configuration.md) exists to remove. The registry rows
+for `environment.json` and `molbuilder.json` stay above, where a reader looking
+up a schema will find them.
+
 ### 6.2 The parameter vocabulary — config ↔ scheduler
 
 There are **two layers** with a deliberate, documented translation between
@@ -1525,6 +1594,20 @@ already translated and does not re-derive it from `omp_threads`. (In the
 wrapper these are two distinct knobs that *coincide* on SLURM, where `-c` sets
 `SLURM_CPUS_PER_TASK`, which the wrapper uses as its OMP default — the "one
 concept, one name" framing here is the SLURM mapping, not a Python rename.)
+
+> **Two names, one delivery — and the second half is not optional.** The
+> paragraph above says the two knobs are legitimately distinct. It has been read
+> as saying a caller may supply one of them, and that reading produced two
+> defects: a `.run.sh` whose OMP default was `1` while its own `.sbatch` asked
+> for `-c 8`, and a `.sbatch` with no `-c` at all beside a correct `.run.sh`
+> (2026-08-17). **The coincidence on SLURM rescues only the scheduled path** —
+> off a scheduler the baked default is the whole answer.
+>
+> So the distinction stands and the delivery is fixed:
+> [`architecture.md` § 3.1 and rule A8](?doc=execution/architecture.md) —
+> **a `Resources` crosses a boundary whole**. A door that renders from one takes
+> the object; which of the two names it uses inside is its own business, and no
+> caller can pass a subset. Rule A9 checks the pair it produces.
 
 The `jobset.Resources` dataclass holds exactly **nine** fields — `domain`,
 `time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`, plus the two
@@ -1609,7 +1692,7 @@ last paragraph says why).
 | What | Name | Where it sits |
 |---|---|---|
 | **description** | `task.json` | the calculation root, both shapes |
-| **deck template** | `<label>.template.toml` | the calculation root, both shapes |
+| **template** | `<label>.template.toml` | the calculation root, both shapes |
 | **deck** | `<label>_<NN>_<stage>.fdf` | flat: the root · hierarchical: inside `<NN>_<stage>/` |
 | **wrapper** | `<label>_<NN>_<stage>.run.sh` / `.sbatch` | beside its deck |
 | **trajectory log** | `<label>_<NN>_<stage>.molwatch.log` | beside its deck |

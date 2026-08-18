@@ -69,6 +69,12 @@ only implied it.*
 calculation — a mesh cutoff, a basis, one relaxation tolerance. It has no
 `stages` field, and the emitter that reads it never learns the word.
 
+*(Amended 2026-08-17: the rule is **no AUTHORED stage list**. A structure
+`prep` derives from the resolved description and hands to the emitter one step
+later is not a declaration — it cannot disagree with the description, which is
+what this rule protects. § 1.1a states the test: can a person put a value there
+that the description does not say?)*
+
 **The stage list lives in `task.json`, and nowhere else** (§ 6). It is not a
 field of an engine's config, because a stage is not a property of a calculation
 — it is a record of the user's intention to tune some parameters across a
@@ -85,9 +91,143 @@ sequence of them.
 > engine-agnostic by construction. The shipped SIESTA ladder is built from
 > it by `siesta/stages.py::default_siesta_stages`.
 >
-> PySCF is a deliberate exception **for now**: its ladder runs inside one
-> process, so its stage list has a second life as engine behaviour. It is left
+> PySCF was a deliberate exception **for now**: its ladder runs inside one
+> process, so its stage list has a second life as engine behaviour. It was left
 > alone until the SIESTA path works.
+>
+> **That gate is met, and the exception is closed** *(2026-08-17, user
+> decision)* — see § 1.1a. The rule above now holds for **both** engines with no
+> exception, which is what 2026-08-07 was reaching for: it deleted the SIESTA
+> engine config's stage list, and this deletes PySCF's. Closing it is completing
+> that direction, not reversing it.
+
+### 1.1a Closing the PySCF exception — the ladder is declared once, and still runs in one process
+
+*Decided 2026-08-17 (user). § 1.1's exception named its own gate — "until the
+SIESTA path works" — and `prep`'s five steps now run over SIESTA end to end.*
+
+**Two things were conflated, and only one of them is PySCF's difference.**
+
+| | SIESTA | PySCF |
+|---|---|---|
+| **where the ladder is declared** | `task.json` | `task.json` — *was `PySCFConfig.stages`* |
+| **how the ladder executes** | N decks, N jobs, a person looks between them | **one deck, one job, a loop inside the process** |
+
+The second row is real physics and does not change: PySCF's rungs share one SCF
+process and one checkpoint, so they cannot be separate jobs. Everything already
+written about that stands — `pyscf/input.py::_emit_stages_loop` still emits the
+loop, and a PySCF calculation is still **one** `Job`.
+
+The first row was never a consequence of the second. A ladder can be *declared*
+in one place and *executed* in whichever shape the engine requires. Keeping the
+declaration in the engine config meant a PySCF description and a SIESTA
+description meant different things, and the workflow could not treat them alike.
+
+**A run is a jobset of length one** is already this framework's idiom. So is a
+ladder that runs in one process: its `JobSet` has one `Job`, whose deck happens
+to contain every rung.
+
+#### What the derivation is
+
+`StageSpec` carries `name`, `enabled`, and **eight tunable knobs**. `Stage`
+(`task.py`) carries `name`, `enabled`, and `overrides` — and § 2 already says
+`overrides` may name **any field of the shared schema**. So the mapping is
+direct and total:
+
+```
+StageSpec(name="stage1", enabled=True, conv_tol=1e-7, gmax=2e-3, max_steps=50, …)
+                                   ↓
+Stage(name="stage1", enabled=True,
+      overrides={"scf_conv_tol": 1e-7, "geom_gmax": 2e-3, "geom_max_steps": 50, …})
+```
+
+**The blocker was a vocabulary gap, not a shape mismatch** — for those knobs to
+be legal `overrides` they must be items of the shared schema, and seven of the
+eight were not. **They are now** *(landed 2026-08-17)*:
+
+| `StageSpec` field | its `engine_key` | catalogue item |
+|---|---|---|
+| `conv_tol` | `mf.conv_tol` | **`scf_conv_tol`** — already existed, `group = "stage"`, **same `engine_key`**; the two collapsed into it |
+| `gmax` | `geomeTRIC convergence_gmax` | `geom_gmax` |
+| `grms` | `geomeTRIC convergence_grms` | `geom_grms` |
+| `dmax` | `geomeTRIC convergence_dmax` | `geom_dmax` |
+| `drms` | `geomeTRIC convergence_drms` | `geom_drms` |
+| `etol` | `geomeTRIC convergence_energy` | `geom_etol` |
+| `max_steps` | `geomeTRIC maxsteps` | `geom_max_steps` |
+| `on_nonconvergence` | *(generated control flow)* | `on_nonconvergence`, `kind = "produce"` — it names no engine keyword because it **is** the emitted loop's control flow |
+
+The first row is the finding that decided the rest: **`scf_conv_tol` and
+`StageSpec.conv_tol` were the same knob declared twice**, in the catalogue and
+in the engine config, agreeing only by the coincidence of both naming
+`mf.conv_tol`. That is the drift § 1.1 exists to prevent, sitting inside the
+exception § 1.1 granted.
+
+Each new item carries the metadata its `StageSpec` field already had —
+`label`, `unit`, `help`, `step`, `range`, `engine_key` — with
+`engines = ["pyscf"]` and `group = "stage"`. **Eight items were added**: the
+seven above, plus `geom_continue_retries`, which `StageSpec` carries beside
+`on_nonconvergence` and which is meaningless without it.
+
+**None of the eight gets a `--flag`.** They are set per stage, through the
+stage table and `task.json`, so they declare `skip_cli`. That is not a new
+policy: the flat `--geom-max-steps` family was **deliberately retired** when
+these knobs became per-stage, and a catalogue row that regenerated them would
+have undone that.
+
+`stages_from_configs` (`config/pyscf.py`) is the derivation in the one
+direction it runs — resolved per-rung configs → the render-time ladder.
+
+#### Why `group = "stage"` is the right home
+
+§ 1.3's mechanism — *the default selection is a group each engine declares* — is
+already live in the catalogue and already per-engine. Before this landed SIESTA
+declared 11 items in `group = "stage"` and PySCF declared 3, so PySCF's group
+described about a third of its own ladder. **It is 11 and 11 now**, and the
+same UI, the same `varies` machinery and the same resolver serve both engines.
+
+**No new mechanism is introduced by this decision.** The catalogue is the
+master, `overrides` names schema fields, a group declares the default selection,
+`prep` resolves — every part is the one already in use for SIESTA.
+
+#### `PySCFConfig.stages` survives as a **derived** field, and that is not a second declaration
+
+*(Decided 2026-08-17 with the rest. The first plan said "deleted, not reshaped",
+matching what `SiestaStageSpec` got — and that is the wrong surgery here,
+because the two cases differ in a way worth stating.)*
+
+**§ 1.1's rule is about where a ladder is DECLARED.** `SiestaConfig.stages` was
+a genuine second declaration: a person filled it in, and `task.json` held a
+rival copy. Deleting it removed a place two answers could disagree.
+
+PySCF has no rival copy after this change. `task.json` is the only thing anyone
+authors. What remains on the class is the shape the emitter reads — `prep`
+resolves the description into one `PySCFConfig` per rung and derives the rows
+from those. It is a **render input, computed on the way to the deck**, and it
+cannot disagree with the description any more than the deck itself can.
+
+So the rule reads, exactly: **no engine config carries an *authored* stage
+list.** A structure derived at `prep` and consumed one step later is not a
+declaration, and forbidding it would forbid the deck too.
+
+The practical test, and the one to keep: **can a person put a value there that
+the description does not say?** For `SiestaConfig.stages` the answer was yes.
+Here it is no — `prep` overwrites it from the resolved set on every render.
+
+> **What this deliberately does not do.** Deleting the field outright would
+> reach `form-schema.js`, the structure-optimization viewer and the
+> `stage-table` widget — the Build UI, which is out of scope unless asked for
+> (user, standing). The eight items P1 added to the catalogue are what a
+> catalogue-driven replacement for that widget would be built from, whenever
+> the form moves onto the catalogue (`template-unification-plan.md` § 4).
+
+#### What stays PySCF's own
+
+- **One deck.** Step 3 renders one `.py`, not one per stage.
+- **One `Job`.** The `JobSet` has length one; there are no edges, which is the
+  same thing SIESTA's ladder says for a different reason.
+- **`on_nonconvergence` becomes real control flow**, which is why § 3 keeps it
+  out of the *shared* stage schema and why it is a PySCF-only item: on SIESTA
+  the same word names a scheduler edge that no longer exists.
 
 ### 1.2 Which parameters may vary is the user's choice, not a class's
 

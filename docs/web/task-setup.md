@@ -262,6 +262,17 @@ calculation's description.
 > **Decided by the user, 2026-08-16: *"use GPU or not is set up only at the Job
 > Prep UI."***
 
+> **This section owns the SURFACE. The cross-engine rule is
+> [`engines/overview.md`](?doc=engines/overview.md) § 3a** (G-1…G-5a) —
+> including the one thing this page cannot tell you: **what happens when you
+> ask for a GPU and there is none.** The run stops; there is no CPU fallback,
+> in either engine, in a run or in a benchmark trial.
+>
+> *Cross-linked 2026-08-17. Until then this was the only place the GPU
+> decision was written down, and it is a **web tab's** contract — so a reader
+> coming from the engine side never found it and re-derived the rule instead,
+> differently each time. That is why the question kept coming back.*
+
 Three things are true of it at once, and no parameter tab can know any of them:
 
 - **It depends on the machine.** Whether there *is* a GPU is a fact about the

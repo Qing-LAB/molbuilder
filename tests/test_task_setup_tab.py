@@ -209,14 +209,34 @@ def test_the_page_reads_the_current_dir_through_the_public_accessor():
         "projects.getCurrentDir() instead")
 
 
-def test_the_machine_answered_settings_are_named():
-    """mpi_np / omp_threads / max_memory_mb may never carry a value in a
-    description (`engines/template.md` § 6.4), so the page must not show them
-    as a choice."""
+def test_the_machine_answered_set_is_derived_and_not_listed():
+    """An item whose resolver is an allocation resolver may never carry a
+    value in a description (`engines/template.md` § 6.4), so the page must not
+    show it as a choice.
+
+    **The page must DERIVE which those are, not list them.**  It listed them
+    -- ``new Set(["mpi_np", "omp_threads", "max_memory_mb"])`` -- until
+    2026-08-17, which was a third answer to a question the page already had
+    two answers to: ``/api/task-setup/sweepable`` ships ``machine_answers``
+    per item, computed from ``template.ALLOCATION_RESOLVERS``, and the page
+    already read that field in two other places.  A fourth allocation-backed
+    item would have rendered as the user's own choice, silently.
+
+    This asserts the direction that drifts: the derivation is present and the
+    hard-coded list is not.
+    """
     src = VIEWER.read_text()
+    assert "machineAnswers" in src, "the page no longer derives the set"
+    assert '"/api/task-setup/sweepable' in src, (
+        "the derivation's source endpoint is not called")
+    assert "MACHINE_ANSWERED" not in src, (
+        "the hard-coded set is back -- derive it from `machine_answers`")
+    # And no fresh literal list of the three, in any order.
+    code = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    code = re.sub(r"^\s*//.*$", "", code, flags=re.M)
     for name in ("mpi_np", "omp_threads", "max_memory_mb"):
-        assert name in src, f"{name} not distinguished in the controller"
-    assert "MACHINE_ANSWERED" in src
+        assert f'"{name}"' not in code or "ROW_NOTE" in code, (
+            f"{name} is spelled in executable code again")
 
 
 @pytest.mark.parametrize("endpoint", ["/api/files/read", "/api/files/list"])
@@ -325,8 +345,11 @@ def test_the_handover_button_calls_only_helpers_that_exist():
     assert "send-to-task-setup" in src, "the hand-over button is not wired"
     assert "/api/task-setup/handover" in src
 
-    for helper in ("_structureForRequest", "collectFdfParams",
-                   "collectPyscfParams", "_activeEngine"):
+    # `collectFdfParams` / `collectPyscfParams` collapsed into ONE
+    # `collectParams(engine)` on 2026-08-17: the SIESTA one had become a
+    # pure pass-through and the two differed by a container id.
+    for helper in ("_structureForRequest", "collectParams",
+                   "_activeEngine"):
         assert f"function {helper}" in src, (
             f"{helper} is called by the hand-over but not defined here")
 
@@ -515,7 +538,7 @@ def test_a_machine_answered_setting_is_never_a_choice():
     """mpi_np / omp_threads / max_memory_mb may never carry a value in a
     description (`template.md § 6.4`), so even one point is a point to TRY."""
     src = VIEWER.read_text()
-    assert re.search(r'MACHINE_ANSWERED\.has\(name\)\s*\n?\s*\?\s*"machine"', src), (
+    assert re.search(r'machineAnswers\(name\)\s*\n?\s*\?\s*"machine"', src), (
         "a machine-answered setting can render as `chosen`")
 
 
@@ -1038,7 +1061,12 @@ def test_the_sidebar_cursor_is_not_in_the_payload():
     `getCurrentFile()` is a second fact sampled at a second moment, and it is
     what made a calculation claim to be OF its own parameter file."""
     src = (ROOT / "molbuilder/web/static/structure-optimization/viewer.js").read_text()
-    body = src.split("/api/task-setup/handover", 1)[1].split("out = await r.json()", 1)[0]
+    # Anchored on the CALL, not on any mention of the route: the file
+    # header names its endpoints (fixed 2026-08-17), so splitting on the
+    # bare path started the slice in the header and swept in an
+    # unrelated `structure_path` from a different fetch.
+    body = src.split('fetch("/api/task-setup/handover"', 1)[1]\
+              .split("out = await r.json()", 1)[0]
     # Comments out first — this file's own note explains what was removed, and
     # a test that matches its own explanation proves nothing.
     body = re.sub(r"//.*", "", body)
@@ -1183,6 +1211,107 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path):
         for a, b in zip(fdf, xyz):
             assert max(abs(float(x) - float(y))
                        for x, y in zip(a[:3], b[1:4])) < 1e-4, (a, b)
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+
+
+def test_a_cpu_description_gets_a_cpu_benchmark(web_client):
+    """The machine half of § 7's bar, which the chain test above does not reach.
+
+    **Where the grid comes from is settled and it is not the description.**
+    `generator.md` § 4.3 — *a sweep and an allocation are both inputs to `prep`,
+    never fields of the description* — and § 10's class 3 puts `mpi_np`,
+    `omp_threads` and `max_memory_mb` at prep, *"never floor 2"*.  So this test
+    does NOT write points into `task.json`; it writes a description and asks
+    `prep bench` to enumerate.
+
+    **What the description DOES answer is the GPU**, and that is equally
+    settled: `web/task-setup.md` § 6.2, *"use GPU or not is set up only at the
+    Job Prep UI"*.  `enable_gpu` is a `staging` item carrying a real value, and
+    it rides the template like any other.
+
+    Until 2026-08-17 `_bench_inputs` pinned `enable_gpu=True` and
+    `diag_algorithm='ELPA-1STAGE'` flat, so **every trial measured a GPU
+    whatever was asked for** — and on a machine whose probe finds no GPU the
+    verb refused outright, which made a CPU benchmark impossible to run at all.
+    That is the case here: an ordinary CPU description, benchmarked.
+
+    Three claims:
+
+    * it RUNS, and produces more than one trial;
+    * no trial carries the GPU keyword the description declined;
+    * every trial is separately labelled (`project-layout.md` § 7 invariant 5)
+      — two trials sharing a SystemLabel warm-start off each other's `.DM` and
+      the timings stop being comparable, which is the one thing a benchmark
+      exists to produce.
+    """
+    import json as _json, subprocess, sys
+    d = _fresh_calc_dir()
+    try:
+        env = _envelope()
+        r = web_client.post("/api/task-setup/handover", json=dict(
+            env, engine="siesta", name="grid",
+            params={"system_label": "grid", "mesh_cutoff": 200.0,
+                    "enable_gpu": False}))
+        assert r.status_code == 200, r.get_json()
+        out = r.get_json()
+        for f in out["structure_files"]:
+            (d / f["name"]).write_text(f["text"])
+        (d / out["template_name"]).write_text(out["template_text"])
+        over = _json.loads(out["handover_text"])
+
+        described = {"schema": "molbuilder/task@1", "engine": over["engine"],
+                     "shape": "hierarchical", "run": over["run"],
+                     "structure": over["structure"], "varies": [],
+                     "stages": [{"name": "coarse", "enabled": True,
+                                 "overrides": {}}]}
+        s = web_client.post("/api/task-setup/save",
+                            json={"dest": str(d), "text": _json.dumps(described)})
+        assert s.status_code == 200, s.get_json()
+
+        p = subprocess.run(
+            [sys.executable, "-m", "molbuilder.cli", "jobset", "prep", "bench",
+             "coarse", "--bundle", str(d)],
+            capture_output=True, text=True, cwd=str(ROOT), timeout=300)
+        assert p.returncode == 0, (
+            "a CPU description cannot be benchmarked:\n" + p.stdout + p.stderr)
+
+        # `prep` LINKS each deck into its attempt directory, so a bare rglob
+        # counts every trial twice.  The rendered deck is the real file.
+        decks = sorted(p for p in d.rglob("*.fdf") if not p.is_symlink())
+        assert len(decks) > 1, (
+            "a benchmark is a set of points; got "
+            + repr([str(x.relative_to(d)) for x in decks]))
+
+        labels = []
+        for deck in decks:
+            text = deck.read_text()
+            m = re.search(r"^SystemLabel\s+(\S+)", text, re.M)
+            assert m, f"{deck.name} has no SystemLabel"
+            labels.append(m.group(1))
+            # The description said CPU.  A trial that turns the GPU on is
+            # measuring a calculation nobody asked to run.
+            g = re.search(r"^Diag\.ELPA\.GPU\s+(\S+)", text, re.M)
+            assert not (g and g.group(1).lower().strip(".") == "true"), (
+                f"{deck.name} enables the GPU against the description's "
+                f"enable_gpu = false -- the Job Prep UI's answer was "
+                f"overridden by a pin (web/task-setup.md § 6.2)")
+        assert len(set(labels)) == len(labels), (
+            f"trials share a SystemLabel {labels} -- they will warm-start off "
+            f"each other's .DM and the timings stop being comparable")
+
+        js = sorted(d.rglob("job-set.json"))
+        assert js, sorted(str(x.relative_to(d)) for x in d.rglob("*"))
+        plan = _json.loads(js[0].read_text())
+        assert plan["kind"] == "sweep", plan["kind"]
+        assert len(plan["jobs"]) == len(decks), (
+            [j.get("script") for j in plan["jobs"]])
+        # A CPU sweep asks for no GPU.  `gres` set here would queue every
+        # trial behind a GPU node it never uses.
+        for j in plan["jobs"]:
+            res = j.get("resources") or {}
+            assert not (j.get("gres") or res.get("gres")), (
+                f"a CPU trial asks for {j.get('gres') or res.get('gres')!r}")
     finally:
         _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
 

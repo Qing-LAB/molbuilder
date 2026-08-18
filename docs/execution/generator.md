@@ -314,6 +314,43 @@ else runs on a different cluster at a configuration of their own. **None of
 those three edits it.** That is what floor 2's *names no machine* is actually
 buying.
 
+#### 4.3a A sweep is per STAGE, and it is DECLARED in the description
+
+> **Settled by the user, 2026-08-17**, closing a disagreement between this
+> document and [`engines/stages.md`](?doc=engines/stages.md) § 6.8: *"sweep is
+> decided at prep, not in the description, and it is specifically tied to a
+> stage because a stage chooses its run parameters based on bench results."*
+
+**Read "decided at prep" as WHERE IT IS RESOLVED, not where it is asked for**,
+because both halves are real and they are different acts:
+
+| | | |
+|---|---|---|
+| **what to measure** | `task.json`'s `bench` — *"try 4, 8, 16 ranks"* | **declared**, floor 2, portable |
+| **what those points mean on this machine** | `prep bench <stage>` | **resolved**, floor 3, on the target |
+| **what was fastest** | `<stage>/bench/bench-result.json` | **measured**, and offered back to that stage's next `prep run` |
+
+> **§ 4.3 above forbids a MACHINE'S OPINION in the description, not a
+> QUESTION.** *"Use 16 ranks"* is true on one cluster and is refused. *"Try 4,
+> 8 and 16"* is true on every cluster, so it is portable and belongs with the
+> calculation — § 6.8's argument, and it holds. The sentence *"a machine axis
+> IS an allocation"* conflates the two; an axis is the set you want measured,
+> and the allocation is what you then ask for.
+>
+> **Without the declaration there is no way for a person to say what to
+> measure at all** — `_bench_inputs` enumerates a grid from the probed
+> topology, so the machine chooses the points and the user has no input. That
+> is the concrete cost of removing the key, and it is why it stays.
+
+**Per stage, and that is the second half of the decision.** What runs fastest
+changes between a coarse stage and a tight one — different mesh cutoff and
+basis size mean a different grid and matrix, so a different best rank count
+([`project-layout.md § 2.3.2`](?doc=execution/project-layout.md)). `prep bench`
+therefore takes a stage name, writes into that stage's own `bench/` container,
+and that stage's next run is offered the verdict.
+
+---
+
 ### 4.4 What a benchmark actually produces — a scaling rule, measured elsewhere
 
 *Specified by the user, 2026-08-11.*
@@ -463,25 +500,114 @@ left to implement.
 | 4 · `materialize` | a `JobSet` · `Shape` | re-resolve a parameter |
 | 5 · `submit` · `runwrap` | the built directory · `read_by` items | decide anything (M5) |
 
+### 6.2 The five steps — what each may assume, and what it leaves behind
+
+§ 6.1 is a **spatial** rule: who may read what. This is the **temporal** one:
+what must already have happened. `project-layout.md` § 2.3.1a names the five
+steps in prose; stated as a table they can be checked, and the two dependencies
+that are easy to get backwards become visible.
+
+| # | step | may assume | leaves behind | may **not** |
+|:--:|---|---|---|---|
+| **1** | resolve the machine | the bundle exists | `environment.json` | read the template |
+| **2** | resolve the parameters | 1 · the description on disk | a `ParameterSet`, **in memory** | write any file (§ 6.1) |
+| **3** | render the deck(s) | 2 | `<label>[-<token>]_<seq>_<stage>.<suffix>`, at the bundle root | know the directory shape |
+| **4** | render the wrapper(s) | **3** | `.run.sh` + `.sbatch`, beside the deck | re-resolve a parameter |
+| **5** | lay out the directory | 4 | `<seq>_<stage>/run-<n>/`, or `…/bench/bench-<token>/`, and the links into them | render anything |
+
+**Step 4 after step 3 is a data dependency, not a convention.** The wrapper reads
+the *rendered deck* for two facts it has no other source for: `Diag.ELPA.GPU`
+decides which conda env the job activates, and `NumberOfAtoms` bounds the rank
+clamp. A wrapper written before its deck would route to the CPU env and skip the
+clamp — **silently, because both wrong answers are also the defaults**, which is
+the failure mode this whole contract is built to make impossible.
+
+**Step 5 links; it never copies, and never renders.** Everything under
+`<seq>_<stage>/` is a symlink to what steps 3 and 4 wrote at the root. That is
+what makes the root the one home for a deck: re-render it and every attempt and
+every trial pointing at it is current, with nothing to synchronise.
+
+> **Why the artifacts land at the root and the tree holds links** — the same
+> reason § 3.1 gives for objects. One home for a fact, and a reference to it
+> everywhere else. A copy per attempt would be a second home that drifts the
+> first time somebody edits one.
+
 ---
 
 ## 7. The engine seam — a plugin, not a branch
 
-**An engine supplies exactly two things**, and adding one touches no shared file:
+**An engine supplies two kinds of thing**, and adding one touches no shared file:
 
 1. **its rows in the catalogue** — every parameter it models, each declaring
    `type`, `range`, `unit`, `default`, `anchor`, `kind`, `read_by`, and an
    `engines` list naming itself. It adds rows to the one shared file; it does
    not bring a file of its own ([`template.md`](?doc=engines/template.md)
    § 6.3).
-2. **a deck writer** — a function from `ResolvedConfig` to deck text, which maps
-   `kind="engine"` items through `anchor` and `kind="deck"` items through
-   molbuilder's own rule.
+2. **an entry in the seam** — the code side, stated as data rather than as a
+   branch.
+
+### 7.1 What the seam actually asks for
+
+*(Stated 2026-08-17. This section said an engine supplies "exactly two things",
+naming the catalogue rows and a deck writer. `EngineSeam` (`jobset/prep.py`) has
+**eight** members, so the contract understated the ask by six — and *"what does
+this engine still owe?"* is precisely the question a second engine arrives
+with.)*
+
+| member | what the engine supplies | may it be absent? |
+|---|---|---|
+| `config_cls` | the class the template rebuilds into | no |
+| `render_deck` | `(structure, config, stage_token=) -> deck text` | no |
+| `suffix` | the deck's type suffix — `.fdf`, `.py` | no |
+| `label_of` | `config -> the identity literal` (`SystemLabel`, `JOB`) | no |
+| `relabel` | `(config, label) -> config` — the identity **written**, for a trial's relabelling | no |
+| `warm_for` | the warm-file declaration, read from the engine's `warm-files.toml` | no |
+| `traits_for` | what the launcher routes on (GPU solver, …) | no |
+| `sibling_artifacts` | files the deck's own **text** promises | **yes** — `None` when its decks promise nothing |
 
 **Everything else is shared**: resolution, sweeps, layout, wrappers, submission,
 status. `template.md` § 6 already makes this checkable — a producer *"must not
 try to emit a `wrapper` item as a keyword"*, and an item says on its own face
 which layer owns it.
+
+### 7.2 Where the two engines stand
+
+*(Counts below are **engine-exclusive rows** — items naming only that engine.
+Three further items name no engine at all and so belong to both;
+[`template.md`](?doc=engines/template.md) § 6.3's rule is that an absent
+`engines` key means every engine. Stating the convention because the same
+quantity was counted two ways in two documents.)*
+
+| | SIESTA | PySCF |
+|---|---|---|
+| catalogue rows | 44 items | **45 items** |
+| every row maps to a config field | yes | **yes** |
+| `warm-files.toml` in its package | yes | **yes** — `base` · `optimization` · `vibration` |
+| identity literal declared | `SystemLabel` | **`JOB`** (`config/pyscf.py`) |
+| the deck writer's signature | `(structure, config, stage_token=)` | **matches** — `render_script` accepts the token and deliberately ignores it |
+| a seam entry | yes | **no** — `_engine_seam` raises *"no deck writer for engine"* for every name but `siesta` |
+
+**PySCF is further along than the seam's one arm suggests**, which is the shape
+this section exists to make visible: floor 2 is already unified — the catalogue
+drives both engines, and its rows map cleanly onto `PySCFConfig`. What is
+missing is the code entry.
+
+**The signature is settled** *(P3, 2026-08-17)*. `render_script(struct, config)`
+took two positional arguments and could not be plugged in at all; it now takes
+`stage_token` and **does not use it**, which is the correct behaviour rather
+than a stub. The token suffixes a deck, an engine stdout and a molwatch log so
+that two stages do not write to one file — and PySCF's ladder **is** one
+process writing one unified log by design
+([`pyscf.md`](?doc=engines/pyscf.md) § 5). An engine that must ignore the token
+is exactly what an optional keyword argument is for.
+
+*(This section said "takes no `stage_token`" and called it the one thing
+missing, until 2026-08-17. [`workflow.md`](?doc=workflow.md) § 7 carried the
+same sentence.)*
+
+The ladder half of PySCF's unification — the description declaring the ladder
+for both engines, while PySCF still executes it in one process — is
+[`stages.md` § 1.1a](?doc=engines/stages.md).
 
 > **The test of the seam:** adding an engine adds files and edits none. If a new
 > engine requires a change inside `resolve/`, `materialize` or `submit`, the seam
@@ -513,7 +639,7 @@ where two things can disagree, is not this work.
 | # | question | why it is not decided here |
 |---|---|---|
 | **38** | `scheduler.routing` has **no cores, GPU count or GPU type** per entry, so *"does this allocation fit this cluster?"* cannot be answered from config | § 4.1a needs it and this document does not design the config's shape — `architecture.md` § 8 owns that |
-| **G3** | whether `bench` keeps a positional in the grammar | `architecture.md` § 0 settles the *mechanism* (a merge); the word is P9's |
+| ~~**G3**~~ | ~~whether `bench` keeps a positional in the grammar~~ — **CLOSED 2026-08-17.** It does: `jobset prep <run\|bench> [STAGE]`, and the same positional on `submit` and `summarize`. The `bench` command's four duplicate verbs were deleted in the 2026-08-12 fold, leaving it one unrelated subcommand (`probe-scheduler`); [`process/conventions.md`](?doc=process/conventions.md) carries the before/after. **STAGE is required for `bench`**, because a sweep belongs to one stage rather than to the calculation (§ 4.3a) | — |
 | **37** | ~~whether `transport`'s chained runs become a `ParameterSet`~~ — **decided 2026-08-11 (user): they do not.** Transport is a **separate kind — a multi-component job**: *"it involves multiple results and the transportation needs to combine all of them… a different kind of beast"* | it is not a sweep and not a ladder. **This contract covers single-parameter-set jobs** — structure, optimization, spectra — and a multi-component kind is designed on its own, not folded in here |
 
 ---

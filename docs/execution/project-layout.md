@@ -169,7 +169,7 @@ stage directories for the hierarchical one. The UI stops producing the last
 file in the chain and starts producing the second-to-last.
 
 **One package, two layouts, and you choose.** The browser always writes the same
-thing — a deck template, `task.json`, the data files, none of it naming a
+thing — a template, `task.json`, the data files, none of it naming a
 machine. `prep`, on the machine that will run it, translates that into a runnable
 directory **in whichever shape you ask for**.
 
@@ -654,7 +654,7 @@ what only the target machine can**.
 | | What | Why it is portable |
 |---|---|---|
 | the **data files** | pseudopotentials, the structure | they are the same everywhere |
-| the **deck template** | the science backbone — **every parameter, carrying the value that holds unless a stage changes it** | it is physics |
+| the **template** | the science backbone — **every parameter, carrying the value that holds unless a stage changes it** | it is physics |
 | **`task.json`** | the variables each stage tunes | it is the mission |
 | the **resource intent** | *use a GPU · this is a big job · aim for this scale* | a wish, not a number |
 
@@ -770,7 +770,7 @@ and it is where every join is made:**
 
 ```mermaid
 flowchart LR
-    UI["<b>browser</b><br/>data files · deck template<br/>task.json · resource intent"]
+    UI["<b>browser</b><br/>data files · the template<br/>task.json · resource intent"]
     P{"<b>prep</b><br/>on the target machine"}
     B["benchmark<br/>runs"]
     R["a run<br/>runs"]
@@ -811,13 +811,13 @@ order. Only the **inputs** differ.
 ```mermaid
 flowchart TB
     subgraph inputs["What prep is given"]
-      D["the description<br/>task.json + the deck template"]
+      D["the description<br/>task.json + the template"]
       S["which stage"]
       F["a source of earlier results<br/>(optional: a finished run,<br/>or a benchmark verdict)"]
     end
     subgraph steps["The five steps, always in this order"]
       direction TB
-      S1["<b>1. Resolve the machine</b><br/>detect cores, GPUs, scheduler, conda<br/>→ environment.json"]
+      S1["<b>1. Resolve the machine</b><br/>read the record: this calculation's, else this machine's<br/>— probe only when neither exists<br/>→ snapshot environment.json"]
       S2["<b>2. Resolve the parameters</b><br/>the template's values ⊕ this stage's overrides<br/>⊕ what the benchmark measured"]
       S3["<b>3. Render the deck</b><br/>the template becomes a real .fdf —<br/>BlockSize, Diag.Algorithm, everything"]
       S4["<b>4. Render the wrapper</b><br/>activation baked in verbatim"]
@@ -828,6 +828,17 @@ flowchart TB
     D & S & F --> S1
     S5 --> R
 ```
+
+**Step 1 reads before it probes, and that is precedence rather than
+detection.** `environment.machine_for` walks the scopes — the calculation's own
+snapshot, then this machine's record, then a named target — and **the first one
+found is the whole answer**, with no field-level merge. A fresh probe happens
+only when no scope answered, and only for the caller that writes the answer
+down. That is what lets you `prep` for a cluster from a workstation: the
+cluster's record was declared, not detected, and declaring is how a fact about
+a machine you are not standing on arrives ([`configuration.md § 5`](?doc=configuration.md)
+M-1, M-3). *(This box said "detect cores, GPUs, scheduler, conda" until
+2026-08-17, which described the last resort as though it were the rule.)*
 
 **Why the order is forced, not chosen.** Step 3 cannot precede step 1, because a
 deck carries values that *depend on how it will be launched* — a block size
@@ -858,25 +869,31 @@ Naming them apart is what makes step 1 answerable.
   capability. Ranks, cores per rank, GPUs, wall time, memory, which queue. It is
   a property of *this run*, and two runs on the same machine routinely differ.
 - **D3 · The machine record** — `environment.json`
-  (`molbuilder/environment@1`), written by step 1 into the run directory. It
-  holds the capability **as resolved**, plus a `source` field saying where each
-  fact came from.
+  (`molbuilder/environment@2`), the **whole probed answer**: topology, scheduler,
+  site, and the reachable domains. It exists at two scopes — written per-machine
+  by `jobset probe`, snapshotted into the calculation by step 1 — and carries a
+  `source` field saying where each fact came from. One shape whether the machine
+  is a cluster or a workstation ([`configuration.md` § 5](?doc=configuration.md)
+  M-2, M-3).
 - **D4 · The machine config** — the `scheduler` block of `molbuilder.json`
-  (`running-a-job.md` § 5.3). It holds capability that **cannot be detected** —
-  the queue you are entitled to, the account, site quirks — and anything you
-  want to override detection with.
+  (`running-a-job.md` § 5.3). It holds what you **want**: the default partition
+  and QoS, the account, the activation command, and the policy no probe may
+  invent (`gpu.exclusive`, `gpu.mem`, `defaults`, `mem_model` — the probe's own
+  notes call these *"POLICY, not probed"*). It is **not** where detection is
+  overridden; that door belongs on the probed side
+  ([`configuration.md` § 5](?doc=configuration.md) M-5).
 
 ##### Rules
 
 | | rule | why |
 |---|---|---|
 | **M1** | **Capability is resolved on the machine that will run the job, never before.** | The bundle you produce names no machine (§ 2.1). This is target isolation — `job-system.md` § 2, decision 3 |
-| **M2** | **Detection and declaration cover different facts, and each owns its own.** *Detected:* cores, GPUs and their type, the scheduler, the default partition — things a machine can be asked. *Declared:* the QoS, the account, the activation command, the partition you are entitled to — **site policy, which a machine cannot report.** | `environment.py::detect_site` states it: *"`qos`/`account` are intentionally left `None` — they are site policy, not reliably derivable from `sinfo`, so they come from the user's config"*. A node reports what it *has*; only your config knows what you may *use* |
-| **M2a** | **Where the two overlap, the declaration wins, and the disagreement is recorded rather than silently resolved.** The **partition** is the one fact both can supply | A detected default partition and a declared one that differ is a real situation — a cluster's default is rarely the one you are entitled to — and picking one without saying so produces a job that bounces with no trace of why |
+| **M2** | **Detection and declaration cover different facts, and each owns its own.** *Detected:* cores, GPUs and their type, the scheduler, **the partitions and QoS you can actually reach and their wall limits**. *Preference:* which of them you **want** — the default partition and QoS, the account, the activation command, `gpu.exclusive`, `gpu.mem`, `defaults`, `mem_model`. **A machine reports what exists; only you can say what you want** — and when the machine is not the one you are standing on, you state its facts yourself (M2a). | *(Amended 2026-08-17 — the declared list said "the QoS … the partition you are entitled to", citing `environment.py::detect_site`'s claim that those are "not reliably derivable from `sinfo`". `scheduler_probe.parse_allowed_qos` derives exactly that from `sacctmgr -nP show assoc user=$USER`, so the tree held two modules disagreeing about whether one fact is detectable. Entitlement **is** probed; preference is not — [`configuration.md` § 5](?doc=configuration.md) M-1.)* |
+| **M2a** | **A fact may be PROBED or DECLARED, and the probe wins when there is one.** *What partitions and QoS you can reach* is a fact: detected when you are on the machine, written down by hand when you are not (describing on a workstation for a cluster). *Which one this run wants* is a preference and stays in `molbuilder.json`. `prep` checks the second against the first (M4's capability ⊇ allocation) | *(Rewritten twice on 2026-08-17.)* It first said the partition is the one fact both sides supply and **declaration wins** — a tie-break. The rewrite removed the tie-break by declaring the fact "probed only", which made the workstation-describing-a-cluster case an **error**: you cannot probe a machine you are not on. The third form keeps the split by ROLE (fact vs preference) and settles the overlap by EVIDENCE (a measurement beats a note), which is the only ordering that leaves both cases expressible. Full argument: [`configuration.md` § 5](?doc=configuration.md) M-1 |
 | **M3** | **What was detected and what was declared must both be recoverable from the run directory.** | *"the numbers were wrong"* is unanswerable if you cannot tell a probe from a setting |
 | **M4** | **Allocation is an input to `prep`, not a field of the description and not a decision at submit.** | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *derived from the rank count* (block size), plus the GPU line that picks the environment the wrapper activates. A deck written before the allocation is known has guessed |
 | **M5** | **`submit` decides nothing. It checks that the deck and the launch still agree, refuses if they do not, and starts one job.** | The check already exists (`LaunchAgreement`). A launch that quietly disagrees with its deck is the failure M4 exists to prevent, arriving one step later |
-| **M6** | **A workstation needs no config file.** Detection alone is a complete capability there, and asking for a file would be the nanny behaviour § 0 forbids | There is one machine, you are on it, and nothing is rationed |
+| **M6** | ~~A workstation needs no config file~~ — **AMENDED 2026-08-17 (user): a workstation records its capability in a config file too, in the same shape a cluster uses.** Detection still answers *what is here*; the file answers *what a run may have*, and `prep` needs the second to refuse an over-ask rather than discover it at launch | The original reasoning was *nothing is rationed*, which held only while nothing checked. Once `prep` enforces capability ⊇ allocation ([`generator.md § 4.1`](?doc=execution/generator.md)), a workstation with no stated ceiling is the one machine where the check cannot run — so the rule that was sparing the user a file was instead sparing them the error. **One shape for both kinds of machine** also means the probe verb, the config reader and `prep`'s bound have one path rather than a workstation special case. |
 
 ##### What this looks like in practice
 
@@ -884,13 +901,18 @@ Naming them apart is what makes step 1 answerable.
 flowchart TB
     subgraph cap["CAPABILITY — what the machine has"]
       direction LR
-      W["<b>workstation</b><br/>detected: lscpu, nvidia-smi<br/><i>no config needed</i>"]
-      H["<b>HPC</b><br/>detected: scontrol, sinfo<br/>+ molbuilder.json scheduler block:<br/>queue, account, GPU partition"]
+      W["<b>workstation</b><br/>probed: lscpu, nvidia-smi"]
+      H["<b>HPC</b><br/>probed: scontrol, sinfo, sacctmgr"]
+      E["<b>environment.json</b><br/><i>one shape for both</i><br/>jobset probe writes it"]
+      W --> E
+      H --> E
     end
+    C["<b>molbuilder.json</b> — what you WANT<br/>default partition + QoS, account,<br/>activation, gpu.mem, defaults"]
     A["<b>ALLOCATION — what this run asks for</b><br/>8 ranks · 1 GPU · 4 h<br/><i>given to prep</i>"]
-    P["<b>prep</b><br/>step 1 resolves capability → environment.json<br/>steps 3-4 render the deck and wrapper<br/><b>against this allocation</b>"]
+    P["<b>prep</b><br/>step 1 snapshots capability → environment.json<br/>steps 3-4 render the deck and wrapper<br/><b>against this allocation</b>"]
     S["<b>submit</b><br/>checks the deck still agrees<br/>launches ONE job"]
     cap --> P
+    C --> P
     A --> P
     P --> S
 ```
@@ -1120,7 +1142,7 @@ right name.
 | Input | Where it comes from | What it decides |
 |---|---|---|
 | the description (`task.json`) | the browser, or a terminal | which stages exist, their overrides, the shape |
-| the deck template | the browser | everything about the system that does not depend on the machine |
+| the template | the browser | everything about the system that does not depend on the machine |
 | **which stage** | you, on the command line | which overrides apply |
 | **the machine** | detected, here, now | ranks, GPUs, scheduler, activation → `environment.json` |
 | a benchmark verdict *(optional)* | `jobset summarize bench <stage>` | rank count, eigensolver and memory → the deck; whether a GPU was worth it → the deck **and** the wrapper's env |
@@ -1362,9 +1384,36 @@ benchmark's **pins** laid over the resolved values
 - **relaxation steps zeroed** — a single point, not a geometry;
 - **cold start forced** (`restart: clean`);
 - **relabelled per trial** — the calculation's label with the point's token
-  appended;
-- **the GPU eigensolver pinned** (`ELPA-1STAGE`, GPU on) for every trial, so
-  the grid isolates the hardware.
+  appended.
+
+**And nothing else.** What is pinned is what makes a trial a *measurement*
+rather than a run. **What the calculation IS — the GPU, the eigensolver, the
+block size — is the description's, and the benchmark measures what was
+described.**
+
+> **Corrected 2026-08-17.** This list ended with *"the GPU eigensolver pinned
+> (`ELPA-1STAGE`, GPU on) for every trial, so the grid isolates the hardware"*,
+> and `_bench_inputs` implemented it. Two things were wrong with it.
+>
+> **It overrode a decision that had already been taken elsewhere.**
+> [`web/task-setup.md`](?doc=web/task-setup.md) § 6.2 — *"use GPU or not is set
+> up only at the Job Prep UI"* (user, 2026-08-16) — makes `enable_gpu` a value
+> the person chose, and § 6.2 is equally explicit that the eigensolver is a
+> **separate** question owned by the parameter tab. Pinning both here measured
+> a configuration nobody asked to run, and *"the grid isolates the hardware"* is
+> the argument for a GPU study, not for every benchmark.
+>
+> **And it made a CPU benchmark impossible.** The grid enumerated `G` from the
+> probe's GPU count, so on a machine with none the verb refused outright — while
+> `siesta.md § 7.1` says CPU is often the faster answer for a small system, and
+> § 7.2 that the packaged SIESTA runs ELPA on CPU through ELSI. The one
+> measurement that would settle *"is the GPU worth it here?"* could not be run.
+>
+> **What replaced it:** the description answers, and the grid follows its
+> answer. `enable_gpu = true` → the `(G, K, c)` grid, with `gres`, and a machine
+> whose probe finds no GPU is refused **by name**. `enable_gpu = false` → the
+> `(K, c)` grid from the same enumerator, no `gres`, no refusal. One
+> enumeration, two shapes.
 
 **The relabel and the forced cold are what make it safe to nest.** A trial that
 kept the stage's label and honoured saved state would read the stage's
@@ -1627,7 +1676,7 @@ how a folder stops being trustworthy.
 | `<label>_<NN>_<stage>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
 | `job-set.json` | ③ calculation (the RUN plan, merged per stage); a sweep's own record in the stage's `bench/` | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6) |
 | ~~`.molbuilder.json`~~ | ~~⑤ benchmark bundle~~ | *(retired — note below)* | ~~the activation the bundle carries to the target~~ |
-| `environment.json` | ③ calculation | `molbuilder/environment@1` | the machine as `prep` step 1 detected it |
+| `environment.json` | ③ calculation — **and** per-machine, outside the tree, where `jobset probe` writes it; the calculation's copy wins ([`configuration.md` § 5](?doc=configuration.md) M-3) | `molbuilder/environment@2` | the machine **as probed**: topology, scheduler, site, reachable domains. Never what you want from it — that is `molbuilder.json` |
 | ~~`bench-manifest.json`~~ | ~~⑤ benchmark bundle~~ | *(retired — note below)* | ~~the two comparable points, and the source deck's hash~~ |
 | `bench-result.json` | the stage's `bench/` container | `molbuilder/bench-result@1` | every trial's timing, the winner, a recommendation |
 

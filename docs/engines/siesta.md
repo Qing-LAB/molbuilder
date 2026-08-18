@@ -337,6 +337,12 @@ knob, **not** a `Structure` field.
 
 ## 7. The eigensolver — `Diag.Algorithm` + the optional GPU accelerator
 
+> **The cross-engine rule is [`overview.md`](?doc=engines/overview.md) § 3a**
+> (G-1…G-5: the user decides, it changes speed and not the answer, it is a
+> legal bench axis, and each engine consumes it its own way). **This section is
+> SIESTA's mechanism** — which keyword, which solver it requires, and why
+> availability is settled at `prep` rather than at run time.
+
 ```mermaid
 flowchart TD
     A{"Diag.Algorithm?"}

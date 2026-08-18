@@ -185,23 +185,13 @@ def parse_allowed_qos(text: str) -> Set[str]:
 #  derivation (pure)                                                     #
 # --------------------------------------------------------------------- #
 
-def best_gpu_type(partitions: List[Partition]) -> Optional[str]:
-    """Pick the GPU type to default to: prefer FULL cards (no MIG ``.`` slice)
-    that are not ``l40`` (crippled FP64 -- § 11/§ 8), then the most plentiful
-    (by node count).  Mirrors decision D3 (a100 on Sol) without naming it."""
-    counts: Dict[str, int] = {}
-    for p in partitions:
-        for t in p.gpu_types:
-            counts[t] = counts.get(t, 0) + p.nodes
-    if not counts:
-        return None
-
-    def quality(t: str) -> Tuple[bool, int]:
-        full = "." not in t            # MIG slices look like a100.20gb
-        ok = t != "l40"
-        return (full and ok, counts[t])
-
-    return max(counts, key=quality)
+# ``best_gpu_type`` stood here until 2026-08-17 (N3).  It ranked GPU types --
+# *"prefer FULL cards (no MIG slice) that are not l40, then the most plentiful"*
+# -- to choose one to default to.  Ranking is a PREFERENCE, and a probe writes
+# facts only (`configuration.md` § 5, M-1).  The GPU a run is sized against is
+# the probed compute node's ``topology.gpu_type``, which is a measurement of the
+# machine the job will land on rather than a vote across the cluster.  Deleted
+# rather than left unused: its one caller went with it.
 
 
 def _pick_qos(allowed: Set[str], partition_name: str) -> Optional[str]:
@@ -218,93 +208,89 @@ def _pick_qos(allowed: Set[str], partition_name: str) -> Optional[str]:
     return next(iter(sorted(allowed)), None)
 
 
-def derive_scheduler_block(
+
+def derive_domains(
     partitions: List[Partition],
     qos: Dict[str, Tuple[Optional[str], Optional[int]]],
     allowed: Set[str],
-) -> Tuple[Optional[dict], List[str]]:
-    """Live probes -> proposed ``scheduler`` block + a list of human notes /
-    assumptions (job-system.md § 7).  Returns ``(block, notes)``;
-    ``block`` is None when no usable GPU partition/QoS was found."""
+) -> Tuple[List[dict], List[str]]:
+    """Live probes -> **every (partition, qos) this account may submit to**,
+    with the wall each allows, plus human notes.  Facts only.
+
+    Replaced ``derive_scheduler_block`` on 2026-08-17 (N3), which produced the
+    same routing list wrapped in a whole ``scheduler`` config block -- ``kind``,
+    ``gpu``, and a ``directives`` default whose partition was ``route_parts[0]``,
+    *the cheapest*.  Cheapest is a preference, and the file it was written into
+    was a person's (`configuration.md` § 5, M-1).  What survives is the part
+    that was always a measurement.
+
+    **No GPU filter**, and that is the second change.  The old derivation kept
+    only partitions carrying the chosen full GPU type, which quietly assumed
+    every question is a GPU question -- so a CPU-only partition was invisible
+    even to a CPU benchmark.  Every reachable partition is listed; what a
+    partition *has* is the topology's answer, and what a run *wants* is the
+    person's.
+
+    Ordered cheapest ceiling first, deduped by ``(partition, qos)``.
+    """
     notes: List[str] = []
-    gpu_parts = sorted((p for p in partitions if p.has_gpu),
-                       key=lambda p: p.timelimit_secs)
-    if not gpu_parts:
-        notes.append("no GPU-bearing partition found in sinfo.")
-        return None, notes
-    gtype = best_gpu_type(gpu_parts)
-    if not gtype:
-        notes.append("no GPU type parsed from sinfo gres.")
-        return None, notes
-    # Only route to partitions that actually carry the chosen full GPU type
-    # (drops MIG-only, l40-only, and exotic-accelerator partitions).
-    route_parts = [p for p in gpu_parts if gtype in p.gpu_types]
+    if not partitions:
+        notes.append("sinfo listed no partitions.")
+        return [], notes
     if not allowed:
         notes.append("could not read your allowed QoS (sacctmgr assoc); "
                      "assuming 'public'. Verify with sacctmgr show assoc "
-                     f"user=$USER.")
+                     "user=$USER.")
         allowed = {"public"}
 
-    routing: List[dict] = []
-    # 1) a debug domain iff the user has the debug QoS.
+    parts = sorted(partitions, key=lambda p: p.timelimit_secs)
+    domains: List[dict] = []
+
+    # A debug domain iff the user actually holds the debug QoS.  It rides on
+    # the cheapest partition because a debug QoS is a wall, not a place.
     if "debug" in allowed and "debug" in qos:
         mw_str, _ = qos["debug"]
-        routing.append({
-            "name": "debug", "max_time": mw_str or "0-00:15:00",
-            "partition": route_parts[0].name, "qos": "debug"})
-    # 2) one domain per reachable GPU partition (cheapest -> most general).
-    for p in route_parts:
+        domains.append({"name": "debug", "max_time": mw_str or "0-00:15:00",
+                        "partition": parts[0].name, "qos": "debug"})
+
+    for p in parts:
         q = _pick_qos(allowed, p.name)
         if not q:
             continue
         q_secs = qos.get(q, (None, None))[1]
-        # max_time = the smaller of the partition limit and the QoS ceiling.
+        # the wall is the SMALLER of the partition limit and the QoS ceiling
         if q_secs is not None and q_secs < p.timelimit_secs:
             max_time = qos[q][0]
         else:
             max_time = (p.timelimit_str
                         if p.timelimit_secs < _INFINITE_SECS else _INFINITE_STR)
             if p.timelimit_secs >= _INFINITE_SECS:
-                notes.append(f"partition '{p.name}' has no time limit "
-                             f"(infinite); capped the domain at {_INFINITE_STR}"
-                             " -- adjust if needed.")
-        routing.append({"name": p.name, "max_time": max_time,
+                notes.append(f"partition {p.name!r} has no time limit "
+                             f"(infinite); capped the domain at "
+                             f"{_INFINITE_STR} -- adjust if needed.")
+        domains.append({"name": p.name, "max_time": max_time,
                         "partition": p.name, "qos": q})
 
-    # de-dupe by (partition, qos) keeping the first (cheapest) occurrence,
-    # then order by ceiling ascending (§ 4.3 first-fitting = cheapest).
     seen: Set[Tuple[str, str]] = set()
     uniq: List[dict] = []
-    for d in routing:
+    for d in domains:
         key = (d["partition"], d["qos"])
         if key in seen:
             continue
         seen.add(key)
         uniq.append(d)
     uniq.sort(key=lambda d: _to_secs(d["max_time"]))
-    routing = uniq
 
-    default_q = _pick_qos(allowed, route_parts[0].name)
-    block = {
-        "kind": "slurm",
-        "directives": {"partition": route_parts[0].name, "qos": default_q},
-        "gpu": {"partition": route_parts[0].name, "default_type": gtype},
-        "routing": routing,
-    }
     notes.append(
         "ASSUMPTION: a QoS allowed to your account is valid on any reachable "
         "partition (preferred 'public'). sinfo/assoc do not give the "
         "per-partition QoS list -- confirm with `scontrol show partition "
         "<name>` (AllowQos) and drop any domain you cannot actually submit "
         "to (e.g. a privately-owned partition).")
-    notes.append(
-        "exclusivity + memory are POLICY, not probed (section 4.3.1): gpu.exclusive "
-        "is left to you / the --exclusive prep flag, and gpu.mem must be "
-        "configured as a site policy (it cannot be probed).")
-    return block, notes
+    return uniq, notes
 
 
 __all__ = [
     "Partition", "parse_sinfo", "parse_qos", "parse_allowed_qos",
-    "best_gpu_type", "derive_scheduler_block",
+    "derive_domains",
 ]

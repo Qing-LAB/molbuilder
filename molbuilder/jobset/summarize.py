@@ -208,13 +208,17 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
 
 
 def _read_environment(bundle: Path) -> Dict:
-    p = Path(bundle) / "environment.json"
-    if p.is_file():
-        try:
-            return json.loads(_read(p))
-        except ValueError:
-            return {}
-    return {}
+    """The machine a result was measured on, as data for ``bench-result.json``.
+
+    Through the one door (N1).  This was the SECOND reader of
+    ``environment.json`` and it returned a raw ``dict`` where `prep`'s returned
+    an ``Environment`` -- one file, two readers, two types.  It reads the
+    object now and asks it for its own dict, so the shape a result records is
+    the shape the record has.
+    """
+    from ..environment import FILENAME, read_environment
+    env = read_environment(Path(bundle) / FILENAME)
+    return env.to_dict() if env is not None else {}
 
 
 def _norm(key: str) -> str:

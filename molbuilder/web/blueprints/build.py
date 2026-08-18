@@ -253,14 +253,28 @@ def api_run_install_wrapper():
     pre_existed  = wrapper_dest.exists()
 
     from molbuilder.runwrap import write_run_wrapper, WrapperError
+    from molbuilder.jobset.model import Resources
+    # The ALLOCATION this tab is asking for, assembled once (architecture.md
+    # § 3.1, rule A8).  This call passed four loose values until 2026-08-17 and
+    # named no `cpus_per_task`, so the `.sbatch` it emits alongside carried no
+    # `-c` at all while the `.run.sh` beside it baked the right OMP default --
+    # the mirror image of what `jobset/prep.py` got wrong, and for the same
+    # reason: two callers, one door, and each choosing its own subset.
+    #
+    # `omp_threads` is the tab's word for it and `cpus_per_task` the
+    # scheduler's (job-contracts.md § 6.2); the translation happens HERE,
+    # at the boundary, which is the rule that section already states.
+    resources = Resources(
+        mpi_np=mpi_np,
+        cpus_per_task=omp_threads,
+        max_memory_mb=max_memory_mb,
+        continue_retries=continue_retries,
+    )
     try:
         wrapper = write_run_wrapper(
             script_path,
+            resources=resources,
             env=env_override,
-            mpi_np=mpi_np,
-            omp_threads=omp_threads,
-            max_memory_mb=max_memory_mb,
-            continue_retries=continue_retries,
         )
     except WrapperError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
@@ -1091,178 +1105,25 @@ def api_build_load():
     })
 
 
-@bp.route("/api/build/fdf", methods=["POST"])
-def api_build_fdf():
-    body = request.get_json(silent=True) or {}
-    params: Dict[str, Any] = body.get("params") or {}
-
-    # Parse XYZ -> Structure (skip ASE round-trip; we wrote it ourselves)
-    # THE STRUCTURE ARRIVES AS DATA, through the one reader every structure
-    # door shares: the atoms as numbers and the facts beside them, with the
-    # legacy `xyz` text still accepted for a caller that has only text.
-    #
-    # THIS DOOR READ `xyz` AND NOTHING ELSE, and the browser stopped sending it
-    # -- the tab posts the envelope, like every other emitting door already
-    # takes.  So Generate FDF, Generate PySCF and the live preflight on
-    # /structure-optimization all answered `400 no xyz provided` for the exact
-    # body the tab sends.  Found by driving the page: the boot test caught the
-    # console error only once a restored structure made the preflight fire
-    # before anybody clicked anything.
-    try:
-        struct = _struct_from_body(body)
-    except (ValueError, TypeError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-
-    # F2 (science/validation.md 4.1): labels come from the BODY, which the
-    # viewer model fills via factsForRequest().  A body that omits them is a
-    # 400 -- there is no disk fallback, so an emitted deck can never mix body
-    # geometry with disk labels the model has since changed.
-    from ._shared import periodicity_checked_for_emit
-    # The tab-emit contract: the body carries the MODEL's periodicity
-    # truth (never a second source); apply + gate (structure-periodicity.md 7).
-    struct = periodicity_checked_for_emit(struct)
-
-    try:
-        cfg = _siesta_config_from_params(params)
-    except Exception as exc:
-        return jsonify({"ok": False,
-                        "error": f"bad parameters: {exc}"}), 400
-
-    # Optional dest_dir hint: the JS sends the Projects sidebar's
-    # current dir so the validator can resolve dest-relative
-    # ``cfg.psml_lib`` paths correctly (the portable form the Save
-    # handler persists).  Validates against the picker-root allowlist
-    # before trusting it -- otherwise a hostile client could pass a
-    # path outside projects/ to influence resolution.
-    dest_dir = None
-    dest_dir_raw = (body.get("dest_dir") or "").strip()
-    if dest_dir_raw:
-        try:
-            dest_dir = _resolve_path_within_roots(dest_dir_raw, require="dir")
-        except Exception:
-            # Bad / outside-root hint: ignore silently.  The validator
-            # falls back to projects/-relative resolution.
-            dest_dir = None
-
-    # Validate before render so the web layer gets a structured copy
-    # of the issues.  render_fdf will validate again and write warnings
-    # to stderr / raise on errors -- we keep that for CLI/library
-    # callers; here we want the issues as JSON for the UI.
-    issues = validate(struct, cfg, dest_dir=dest_dir)
-    # Three-stage Pattern B: the SIESTA SCF/relaxation deck does
-    # NOT consume electrode regions (L-electrode / R-electrode /
-    # bridge) — those drive the Transport tab.  See
-    # _shared.regions_pattern_b_notice for the canonical issue.
-    from ._shared import regions_pattern_b_notice
-    regions_notice = regions_pattern_b_notice(struct, "the .fdf")
-    if regions_notice is not None:
-        issues.append(regions_notice)
-    try:
-        fdf = render_fdf(struct, cfg)
-    except ValidationError as exc:
-        # web-api.md § 1.6 (b) scientific advisory: validator
-        # hard-fail blocks emission, but the HTTP exchange
-        # succeeded — the server ran the check and is reporting
-        # back.  Body carries the merged issue list so the form's
-        # workflow cards (web-ui-coherence Rule 2) render the
-        # findings inline; the user adjusts parameters and
-        # resubmits.  HTTP 200 is EXPLICIT (not Flask default)
-        # so the intent is visible at the call site and the
-        # contract test catches future drift.
-        merged_issues = _issues_to_json(exc.issues, cfg=cfg)
-        # Add any pre-render issues NOT already in exc.issues (de-dup
-        # by (severity, where, message) tuple).
-        exc_keys = {(d["severity"], d.get("where", ""), d["message"])
-                    for d in merged_issues}
-        for i in _issues_to_json(issues, cfg=cfg):
-            if (i["severity"], i.get("where", ""), i["message"]) not in exc_keys:
-                merged_issues.append(i)
-        return jsonify({
-            "ok":     False,
-            "error":  str(exc),
-            "issues": merged_issues,
-        }), 200
-    except Exception as exc:
-        return jsonify({"ok": False,
-                        "error": f"render failed: {exc}"}), 500
-
-    return jsonify({
-        "ok": True,
-        "fdf": fdf,
-        "system_label": cfg.system_label,
-        "issues": _issues_to_json(issues, cfg=cfg),
-    })
-
-
-@bp.route("/api/build/pyscf", methods=["POST"])
-def api_build_pyscf():
-    body = request.get_json(silent=True) or {}
-    params: Dict[str, Any] = body.get("params") or {}
-
-    # THE STRUCTURE ARRIVES AS DATA, through the one reader every structure
-    # door shares: the atoms as numbers and the facts beside them, with the
-    # legacy `xyz` text still accepted for a caller that has only text.
-    #
-    # THIS DOOR READ `xyz` AND NOTHING ELSE, and the browser stopped sending it
-    # -- the tab posts the envelope, like every other emitting door already
-    # takes.  So Generate FDF, Generate PySCF and the live preflight on
-    # /structure-optimization all answered `400 no xyz provided` for the exact
-    # body the tab sends.  Found by driving the page: the boot test caught the
-    # console error only once a restored structure made the preflight fire
-    # before anybody clicked anything.
-    try:
-        struct = _struct_from_body(body)
-    except (ValueError, TypeError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-
-    # Three-stage contract carrier: apply frozen_atoms + regions to
-    # the structure before render_script sees it.  2026-06-14 update:
-    # prefer in-body labels (the viewer-is-truth contract) and only
-    # fall back to disk sidecar when neither key is sent.
-    from ._shared import periodicity_checked_for_emit
-    # The tab-emit contract: the body carries the MODEL's periodicity
-    # truth (never a second source); apply + gate (structure-periodicity.md 7).
-    struct = periodicity_checked_for_emit(struct)
-
-    try:
-        cfg = _pyscf_config_from_params(params)
-    except Exception as exc:
-        return jsonify({"ok": False,
-                        "error": f"bad parameters: {exc}"}), 400
-
-    issues = validate(struct, cfg)
-    # Three-stage Pattern B (mirrors /api/build/fdf above).
-    from ._shared import regions_pattern_b_notice
-    regions_notice = regions_pattern_b_notice(struct, "the PySCF script")
-    if regions_notice is not None:
-        issues.append(regions_notice)
-    try:
-        script = render_script(struct, cfg)
-    except ValidationError as exc:
-        # web-api.md § 1.6 (b) scientific advisory — see the
-        # mirroring /api/build/fdf path above for the rationale.
-        # HTTP 200 explicit so the intent is visible.
-        merged_issues = _issues_to_json(exc.issues, cfg=cfg)
-        exc_keys = {(d["severity"], d.get("where", ""), d["message"])
-                    for d in merged_issues}
-        for i in _issues_to_json(issues, cfg=cfg):
-            if (i["severity"], i.get("where", ""), i["message"]) not in exc_keys:
-                merged_issues.append(i)
-        return jsonify({
-            "ok":     False,
-            "error":  str(exc),
-            "issues": merged_issues,
-        }), 200
-    except Exception as exc:
-        return jsonify({"ok": False,
-                        "error": f"render failed: {exc}"}), 500
-
-    return jsonify({
-        "ok": True,
-        "script": script,
-        "job_name": cfg.job_name,
-        "issues": _issues_to_json(issues, cfg=cfg),
-    })
+# ---------------------------------------------------------------------- #
+#  DELETED 2026-08-17 -- ``/api/build/fdf`` and ``/api/build/pyscf``.      #
+#                                                                         #
+#  The two deck-emitting doors.  Script generation left the               #
+#  structure-optimization tab on 2026-08-15 (user: the tab collects        #
+#  parameters, the staging surface owns the rest), and nothing replaced    #
+#  the callers: `/api/build/fdf` had ZERO references in any JS or HTML     #
+#  outside a comment saying it was orphaned, and `/api/build/pyscf` had    #
+#  none at all.  Both were reachable, both rendered a deck, and only       #
+#  tests called them.                                                     #
+#                                                                         #
+#  A reachable door with no caller is not free.  It is a second way to     #
+#  render a deck -- the thing `prep` owns (`generator.md` § 7) -- kept     #
+#  alive by its own tests, which is how a "still works" argument gets      #
+#  made for a path no user can take.                                      #
+#                                                                         #
+#  A browser renders no deck.  `jobset prep` does, on the machine that     #
+#  will run it (`project-layout.md` § 2.2).                               #
+# ---------------------------------------------------------------------- #
 
 
 @bp.route("/api/build/schema/<engine>", methods=["GET"])
@@ -1494,7 +1355,8 @@ def api_task_setup_handover():
         return jsonify({"ok": False, "error": str(exc)}), 400
 
     from molbuilder.identity import normalise_id, run_id
-    from molbuilder.template import template_with_values
+    from molbuilder.template import (template_filename as _template_filename,
+                                     template_with_values)
 
     typed = str(body.get("name") or "") or "calculation"
     label = normalise_id(typed)
@@ -1572,7 +1434,11 @@ def api_task_setup_handover():
     return jsonify({
         "ok":            True,
         "label":         label,
-        "template_name": f"{label}.template.toml",
+        # THE door (`template.template_filename`), not a literal suffix --
+        # this was the seventh site forming this name, and the one the
+        # 2026-08-17 sweep missed because it spelled `.template.toml`
+        # rather than joining SUFFIX.
+        "template_name": _template_filename(label),
         "template_text": template_text,
         "handover_name": TASK_HANDOVER_NAME,
         "handover_text": json.dumps(handover, indent=2) + "\n",
@@ -1621,13 +1487,17 @@ def api_task_setup_save():
         return jsonify({"ok": False, "error": f"not a directory: {dest_raw}"}), 400
 
     import tempfile
+    # FILENAME comes from `task.py` too: the description's NAME is that
+    # module's to spell, like its bytes (`task-description.md` § 6.4 --
+    # one reader, so the two surfaces cannot produce different files).
+    from molbuilder.task import FILENAME as TASK_FILENAME
     from molbuilder.task import read_task, write_task
 
     # Validate by READING it, in a scratch file, so nothing lands in the
     # calculation folder unless it is a description the rest of the system
     # can open.  `read_task` is the same door `prep` uses.
     with tempfile.TemporaryDirectory() as tmp:
-        probe = pathlib.Path(tmp) / "task.json"
+        probe = pathlib.Path(tmp) / TASK_FILENAME
         probe.write_text(text, encoding="utf-8")
         try:
             task = read_task(probe)
@@ -1643,7 +1513,7 @@ def api_task_setup_save():
     # one thing that says which calculation a folder is
     # (`run-identity.md` § 2.0a).  Re-saving the SAME calculation is the
     # ordinary case and must stay free.
-    existing = dest / "task.json"
+    existing = dest / TASK_FILENAME
     if existing.is_file():
         try:
             prior = read_task(existing)
@@ -1659,7 +1529,7 @@ def api_task_setup_save():
             }), 409
 
     try:
-        write_task(dest / "task.json", task)      # atomic (persist.write_json)
+        write_task(dest / TASK_FILENAME, task)      # atomic (persist.write_json)
     except OSError as exc:
         return jsonify({"ok": False, "error": f"could not write: {exc}"}), 500
 
@@ -1669,7 +1539,7 @@ def api_task_setup_save():
     # sidebar re-list.  Reported so the caller knows whether to.
     return jsonify({
         "ok":            True,
-        "wrote":         "task.json",
+        "wrote":         TASK_FILENAME,
         "handover_name": TASK_HANDOVER_NAME,
         "handover_here": (dest / TASK_HANDOVER_NAME).is_file(),
         "stages":        [st.name for st in task.stages],
@@ -1741,21 +1611,32 @@ def api_task_setup_template_values():
     if not folder.is_dir():
         return jsonify({"ok": False, "error": f"not a directory: {dir_raw}"}), 400
 
-    found = sorted(folder.glob("*.template.toml"))
-    if not found:
+    # THE door, not a glob (`template.find_template`).  This took
+    # ``sorted(glob(...))[0]`` until 2026-08-17 -- so a folder holding two
+    # templates had this tab reading one file and `prep` reading the other,
+    # which is precisely the split this endpoint's own docstring argues
+    # against one layer down: it shared `prep`'s PARSER and not its PATH.
+    from molbuilder.template import find_template, read_template, select
+    try:
+        found = find_template(folder)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if found is None:
         return jsonify({"ok": True, "name": None, "values": {}})
 
-    from molbuilder.template import read_template
     try:
-        tmpl = read_template(found[0].read_text())
+        tmpl = read_template(found.read_text())
     except Exception as exc:
         # A template that does not parse is the user's to fix, and saying which
         # file beats an empty table that looks like "nothing was sent".
-        return jsonify({"ok": False, "name": found[0].name,
-                        "error": f"{found[0].name}: {exc}"}), 400
+        return jsonify({"ok": False, "name": found.name,
+                        "error": f"{found.name}: {exc}"}), 400
 
-    values = {it.name: it.value for it in tmpl.items if it.value is not None}
-    return jsonify({"ok": True, "name": found[0].name, "values": values})
+    # THE one read API (`engines/template.md` § 8.0), not a comprehension over
+    # `.items` -- which is what this was, and which re-implemented the
+    # `Template.values()` deleted on 2026-08-17 as one of four second readers.
+    values = {it.name: it.value for it in select(tmpl) if it.is_set}
+    return jsonify({"ok": True, "name": found.name, "values": values})
 
 
 @bp.route("/api/task-setup/presets", methods=["GET"])

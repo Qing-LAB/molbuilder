@@ -16,6 +16,7 @@ import pytest
 
 from molbuilder.runtime_config import config_provenance, format_provenance
 from molbuilder.runwrap import write_run_wrapper
+from molbuilder.jobset.model import Resources
 
 
 @pytest.fixture(autouse=True)
@@ -32,7 +33,7 @@ def _wrapper(tmp_path):
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))
     (tmp_path / "JOB.fdf").write_text("SystemLabel JOB\n")
-    return write_run_wrapper(tmp_path / "JOB.fdf", env="e")
+    return write_run_wrapper(tmp_path / "JOB.fdf", resources=Resources(), env="e")
 
 
 # ---- the gate, in the emitted text and under execution ---------------- #

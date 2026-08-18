@@ -4,9 +4,17 @@
 defined there, and a config class carries a name, a type and its validators.
 
 **But the live Build form still reads the facts off the dataclass fields** —
-`label`, `help`, `unit`, `range`, `choices` (`web/blueprints/_shared.py`). Until
-the UI is rebuilt from the catalogue (deferred, `template-unification-plan.md`
-§ 4), those facts live in **two** homes: 307 of them, measured 2026-08-14.
+:data:`MIRRORED`, which is the one place that set is named (`template.md` § 5.1
+used to list it too, and listed five of the six). Until the UI is rebuilt from
+the catalogue (deferred, `template-unification-plan.md` § 4), those facts live
+in **two** homes.
+
+**The size of the debt is stated in `template.md` § 2.1a and asserted by
+`tests/test_doc_claims.py`**, not typed here: it was 307 on 2026-08-14 and 452
+on 2026-08-17, and a number in a docstring that nothing measures is how the
+first figure survived three days past its truth. The growth is the argument —
+the debt compounds with every parameter added, which is what makes deleting it
+worth scheduling rather than admiring.
 
 That breaks D3 (*each value is stored once*), and D3's own reasoning says what
 happens next: *"then a hand edit of one is silently ignored — the file

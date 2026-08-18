@@ -314,6 +314,7 @@ classDiagram
 | **`Environment`** | 1 | *what is this machine?* | `resolve_environment` |
 | **`Task` / `Stage`** | 2 | *what did the person ask for?* | `read_task` |
 | **`JobSet` / `Job` / `WarmFile`** | 3 | *what jobs does that mean, on this machine?* | `prep`, from the resolved `ParameterSet` (`resolve.py`) — one `Job` per element *(the producers `stages_to_jobset` / `sweep_to_jobset` built these until 2026-08-12; deleted, § 2.1's row-3 note)* |
+| **`Resources`** | 3 | *what does this job ask the machine for?* — the nine fields of [`job-contracts.md § 6.2`](?doc=execution/job-contracts.md), in the exchange vocabulary | **two roles, and they are not the same answer twice.** A **surface** assembles *the ask* from what the person said — `--np`, the Build tab's form — which is what [`generator.md § 4.1a`](?doc=execution/generator.md) means by *"stated in the command, at prep"*. `resolve.py` then produces *the per-element allocation*, the ask ⊕ this sweep point's machine axes, one per `ParameterSet` element. § 4.1's containment (capability ⊇ allocation ⊇ sweep) is exactly the relationship between them |
 | **`Shape`** | 4 | *where do this stage's files live?* | `Shape.named`, from the description |
 | **`Attempt`** | 4 | *which try is this, and what was put in it?* | `prepare_attempt` |
 | **`LaunchAgreement`** | 5 | *does this deck match the launch it is about to get?* | `launch_agreement` (`jobset/agreement.py` — its own floor-5 module since 2026-08-12, so `prep` and `submit` both import it downward and neither imports the other) |
@@ -324,6 +325,51 @@ a run it continues, and the condition on each — and never *from whom*. Which r
 that is, is named by a person at `prep`. `traits` holds the values a condition is
 compared against: SIESTA puts its optimizer there, so a conjugate-gradient
 history is not handed to a Broyden stage.
+
+### 3.1 An object travels whole — the other half of "one owning function"
+
+The table above answers *who may build one*. **This section answers who may take
+one apart, and the answer is nobody.**
+
+> **An object crosses a floor boundary as itself.** A function that consumes one
+> takes the object; it never takes a hand-picked list of its fields, and a
+> caller never destructures one to call it.
+
+**This is A4 seen from the receiving end, and without it A4 buys nothing.** One
+owning function guarantees the object is *assembled* correctly and says nothing
+about what survives the call — so a structure built whole on floor 3 can still
+arrive on floor 5 with two of nine fields missing, and every rule above is
+satisfied while the artifact is wrong.
+
+**The failure it forbids, in the form it actually takes.** A door with N loose
+keyword arguments has 2^N ways to be called and one that is right. Every caller
+re-derives which subset matters, so the doors disagree by construction — and the
+disagreement is invisible, because a missing field is indistinguishable from a
+field whose value happens to be the default:
+
+| | asked for | wrote |
+|---|---|---|
+| `jobset/prep.py` | 16 ranks × 8 cores | `.sbatch -c 8` · `.run.sh` OMP default **1** |
+| `web/blueprints/build.py` | 16 ranks × 8 cores | `.run.sh` OMP default 8 · `.sbatch` **no `-c`** |
+
+*(Measured 2026-08-17. Two call sites of one door, eleven loose arguments, ten
+passed by one and five by the other — each correct about one artifact and wrong
+about the other. The same door had already lost `max_memory_mb` this way on
+2026-08-11; that fix moved the field onto `Resources` and left the calling
+convention alone, so the class stayed open and fired again four days later.)*
+
+**What stays loose, and why that is not a hole.** A parameter that belongs to the
+*invocation* rather than to the *job* is not part of any object: `--env` is a
+per-call override, `emit_sbatch` is a surface's choice about what to write.
+The test is ownership — if a field has a home in § 3's table, it arrives in that
+home or not at all.
+
+**Two names for one fact stay two names.** `job-contracts.md` § 6.2 keeps
+`omp_threads` and `cpus_per_task` distinct because they are read by different
+layers, and this rule does not merge them. It removes the thing that made the
+distinction dangerous: with the object passed whole, *which* name a door uses
+internally is its own business, and no caller can supply one and forget the
+other.
 
 ---
 
@@ -506,7 +552,7 @@ sequenceDiagram
     participant O as status<br/>(floor 6)
 
     U->>B: describe the calculation
-    B->>B: write task.json + the deck template + data files
+    B->>B: write task.json + the template + data files
     Note over B: names NO machine — this folder is portable
     U->>P: scp to the cluster, then `jobset prep run coarse`
     P->>P: the five steps → 01_coarse/run-0/
@@ -540,12 +586,22 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 | **A5** | **a stage's number is worked out, never stored** | `test_task_description`, `test_stage_resolution` |
 | **A6** | **once a run has started, its folder never changes** | `test_jobset` |
 | **A7** | **nothing depends upwards** — a floor-N file imports floors ≤ N | `test_architecture_rules`, whose floor map must match § 2.1's table |
+| **A8** | **an object travels whole** (§ 3.1). A door that consumes one of § 3's objects takes the object; its signature may not also name that object's fields, and no caller may destructure one to call it | `test_architecture_rules` — a generator door's parameter names, intersected with the fields of every object it already takes, must be empty |
+| **A9** | **two artifacts of one object agree.** Where a single object is rendered into more than one file, the files are checked against **each other**, not only against a test's intent | `test_runwrap_pair` — one `Resources` in, `.run.sh` and `.sbatch` out, ranks · cores · GPU compared across the pair |
 
-> **A1, A4 and A7 are about the shape of the source** — who may spell a name, who
-> may build an object, who may import whom — and no amount of running the program
-> shows you that. They are checked by parsing `molbuilder/` rather than calling
-> it. **Each is a fence, not a proof:** A1 knows the spellings a person actually
-> reaches for, and A7 judges the files § 2.1 names.
+> **A1, A4, A7 and A8 are about the shape of the source** — who may spell a name,
+> who may build an object, who may import whom, who may take one apart — and no
+> amount of running the program shows you that. They are checked by parsing
+> `molbuilder/` rather than calling it. **Each is a fence, not a proof:** A1
+> knows the spellings a person actually reaches for, and A7 judges the files
+> § 2.1 names.
+>
+> **A9 is the one that has to run the program**, and it is here because A8 alone
+> would not have caught the 2026-08-17 defect from the outside: both call sites
+> were internally consistent, and only the *pair* of files they produced
+> disagreed. A rule about signatures cannot see a wrong number in a rendered
+> file, so the two rules cover each other — A8 makes the mistake unwritable, A9
+> makes it visible if it is written another way.
 >
 > **A4's unit is the function, not the module.** The owning module legitimately
 > builds its own object; what must not happen is a *second* function building

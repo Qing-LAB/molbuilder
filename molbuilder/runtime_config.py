@@ -62,6 +62,16 @@ PROJECT_CONFIG_FILENAME = ".molbuilder.json"
 # Matches the convention auth-setup uses (see molbuilder/auth_setup.py).
 _XDG_FALLBACK_RELATIVE = Path(".config") / "molbuilder" / CONFIG_FILENAME
 
+#: One message, two raisers -- `get_scheduler` (which knows the file) and
+#: `_validate_scheduler` (which does not).  ``{path}`` is what a person edits.
+_ROUTING_MOVED = (
+    "{path}: 'scheduler.routing' is no longer configured here.  The reachable "
+    "(partition, qos) domains are PROBED, not declared -- run `molbuilder "
+    "jobset probe --write` and they land in environment.json, where every "
+    "calculation on this machine reads one answer (docs/configuration.md "
+    "§ 5).  What stays yours in this file is which of them you WANT: "
+    "'scheduler.directives.partition' and '.qos'.")
+
 
 class RuntimeConfigError(Exception):
     """Raised when ``molbuilder.json`` is present but unreadable / malformed.
@@ -964,6 +974,25 @@ _PROVENANCE_SECTIONS = tuple(
     name for name, spec in _SECTIONS.items() if spec["provenance_safe"])
 
 
+def machine_config_path() -> Tuple[Path, str]:
+    """Which ``molbuilder.json`` the MACHINE scope resolves to, and how —
+    ``(path, "cwd"|"xdg")``.
+
+    Split out 2026-08-17 so a refusal can name the file it is refusing.  This
+    two-step lookup was computed inline in :func:`config_provenance` and
+    re-derived inside :func:`read_config`, so the display that exists to answer
+    *"which file said this"* and the reader that raises about it could describe
+    different files.
+    """
+    cwd_path = Path(CONFIG_FILENAME)
+    # ABSOLUTE, always.  The cwd branch is a bare relative name, and a refusal
+    # quoting "molbuilder.json" is the very ambiguity this helper exists to
+    # remove -- there are three files it could mean.
+    if cwd_path.is_file():
+        return cwd_path.resolve(), "cwd"
+    return _per_user_fallback_path().resolve(), "xdg"
+
+
 def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     """Which config files this process consults, and which one supplied each
     execution-relevant value — the answer to *"where did that setting come
@@ -979,9 +1008,7 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     order (bundle last = wins); ``effective`` maps ``section.key`` to
     ``{"value": ..., "from": "machine"|"bundle"}``.
     """
-    cwd_path = Path(CONFIG_FILENAME)
-    machine_path = cwd_path if cwd_path.is_file() else _per_user_fallback_path()
-    machine_via = "cwd" if cwd_path.is_file() else "xdg"
+    machine_path, machine_via = machine_config_path()
     sources = [{"scope": "machine", "path": str(machine_path.resolve()),
                 "found": machine_path.is_file(), "via": machine_via}]
     machine_raw = _read_scope(machine_path)
@@ -1036,14 +1063,30 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
         except Exception:
             pass                      # display must never break a prep
 
-    domains: List[str] = []
-    for raw in (machine_raw, bundle_raw):
-        sched = raw.get("scheduler")
-        if isinstance(sched, Mapping):
-            routing = sched.get("routing")
-            if isinstance(routing, list):
-                domains = [str(r.get("name")) for r in routing
-                           if isinstance(r, Mapping) and r.get("name")]
+    # Domains come from the MACHINE RECORD since N4, not from these files, so
+    # provenance follows them there -- a display that kept reporting the old
+    # home would say "(none)" on a correctly-probed cluster.  The record's own
+    # scopes join `sources`, because "which file supplied this" is the question
+    # this function exists to answer and environment.json now answers part of
+    # it (`configuration.md` § 5, M-3).
+    from .environment import FILENAME as ENV_FILENAME
+    from .environment import machine_for, machine_scope_path
+    env_machine = machine_scope_path()
+    env_scopes = ([(Path(project_dir) / ENV_FILENAME, "calculation")]
+                  if project_dir is not None else [])
+    env_scopes.append((env_machine, "machine"))
+    for path, via in env_scopes:
+        sources.append({"scope": "environment", "path": str(path),
+                        "found": path.is_file(), "via": via})
+    # Through `get_routing`, NOT a second resolution.  This read the probed
+    # record directly and so reported "no domains" on a workstation whose
+    # config declared two -- a display whose whole job is to say where a value
+    # came from, disagreeing with the reader that actually answers it.  One
+    # question, one function.
+    try:
+        domains = [d["name"] for d in get_routing(project_dir=project_dir)]
+    except RuntimeConfigError:
+        domains = []               # a malformed block is the caller's to raise
     return {"sources": sources, "effective": effective, "domains": domains}
 
 
@@ -1051,15 +1094,23 @@ def format_provenance(prov: Mapping[str, Any]) -> str:
     """The ONE rendering of :func:`config_provenance` — the CLI echo and
     STAGE-PLAN.md both use it, so they cannot drift."""
     lines = ["config:"]
+    # Width from the WIDEST scope name present, not a literal: "environment"
+    # (11 chars) arrived on 2026-08-17 and ran straight into the hardcoded 8,
+    # printing `environment/home/...` with no gap -- a display whose whole job
+    # is to make the source legible.
+    width = max([len(s["scope"]) for s in prov["sources"]] + [8]) + 1
     for s in prov["sources"]:
         state = "found" if s["found"] else "absent"
         via = f", via {s['via']}" if s["found"] and s["via"] != "bundle" else ""
-        lines.append(f"  {s['scope']:<8}{s['path']}  ({state}{via})")
+        lines.append(f"  {s['scope']:<{width}}{s['path']}  ({state}{via})")
     for key in sorted(prov["effective"]):
         e = prov["effective"][key]
         lines.append(f"  {key} = {e['value']!r}   <- {e['from']}")
     if prov["domains"]:
-        lines.append(f"  scheduler.routing domains: "
+        # Named for where they LIVE.  This said "scheduler.routing domains"
+        # until N4 moved them out of the scheduler block, and a label pointing
+        # at a key that no longer exists is worse than no label.
+        lines.append(f"  environment.domains: "
                      f"{', '.join(prov['domains'])}")
     return "\n".join(lines)
 
@@ -1431,11 +1482,61 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
         "defaults":   defaults,
         "mem_model":  mem_model,
     }
-    # routing: pass through verbatim (deep-validated by get_routing, which
-    # owns the domain schema -- running-a-job.md § 5.3).  Preserve it
-    # here so get_scheduler -> get_routing can see it.
+    # routing: REFUSED here since 2026-08-17 (N4).  It used to pass through to
+    # get_routing, which owned the domain schema.  A domain is what `sinfo` and
+    # `sacctmgr` measured, so it belongs in the machine record, and a probe no
+    # longer writes into a person's config file (`configuration.md` § 5, M-1).
+    # Refused rather than ignored, for this file's own stated reason: a section
+    # read, validated and then silently dropped looks effective while nobody
+    # applied it -- and a stale hand-written menu is exactly the case where
+    # "looks effective" gets a job rejected by the scheduler.
+    # routing rides through verbatim: DECLARED capability (`_declared_routing`),
+    # which `get_routing` uses when nothing has been probed.  It was refused
+    # here for part of 2026-08-17, on a rule that made the workstation-
+    # describing-a-cluster case an error -- the one case that must declare.
     if raw.get("routing") is not None:
         out["routing"] = raw["routing"]
+    return out
+
+
+def _declared_routing(project_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """``scheduler.routing`` read as **declared capability**, not as an error.
+
+    *(Corrected 2026-08-17, same day, after the user pointed at the machine
+    this actually runs on.)*  N4 refused this key outright, on the rule
+    "domains are PROBED, not declared".  That rule sorted by the wrong axis.
+
+    **You can only probe the machine you are standing on.** A person
+    describing a calculation on a workstation, to run on a cluster, cannot
+    probe the cluster -- so they write its partitions and walls down by hand,
+    and those rows are *facts*, merely declared ones rather than detected
+    ones.  Refusing them made the one case that NEEDS declaring an error, and
+    bricked `prep` on a workstation over a block describing a machine
+    elsewhere.
+
+    The axis is **fact vs preference**, not probed vs chosen.  This module
+    already knew that and I did not read it: ``Environment.source``'s
+    vocabulary is ``scontrol`` / ``lscpu`` / **``flag``**, and ``flag`` is the
+    declared case; ``resolve_environment(overrides=...)`` is its door.
+
+    Probed still wins where both exist -- standing on the machine beats a
+    hand-written note about it -- which is why this is a FALLBACK.
+    """
+    out: List[Dict[str, Any]] = []
+    scopes = [_read_server_wide().get("scheduler")]
+    if project_dir is not None:
+        scopes.append(_read_project(Path(project_dir)).get("scheduler"))
+    for raw in scopes:
+        if not isinstance(raw, Mapping):
+            continue
+        rows = raw.get("routing")
+        if isinstance(rows, list):
+            # Rows ride through WHOLE.  An operator's own columns
+            # (`node_type`, `max_cores`, `max_mem_gb`, `gpu{}`) are the point
+            # of declaring -- R10, 2026-08-12: rebuilding a row from a
+            # known-key list made drafting a column indistinguishable from
+            # not writing one.  A reader owns only the keys it checks.
+            out = [dict(r) for r in rows if isinstance(r, Mapping)]
     return out
 
 
@@ -1466,7 +1567,9 @@ def get_scheduler(
     """
     server_raw  = _read_server_wide().get("scheduler")
     project_raw: Optional[Mapping[str, Any]] = None
+    project_path = None
     if project_dir is not None:
+        project_path = Path(project_dir) / PROJECT_CONFIG_FILENAME
         project_raw = _read_project(Path(project_dir)).get("scheduler")
 
     if server_raw is None and project_raw is None:
@@ -1483,7 +1586,43 @@ def get_scheduler(
     elif project_raw is not None:
         _validate_scheduler(project_raw)  # raises
 
-    return _validate_scheduler(merged)
+    # Name the FILE the block came from.  `_validate_scheduler` sees only the
+    # MERGED mapping, so every refusal it raises -- a bad `kind`, a missing
+    # directive -- could say no more than the generic "molbuilder.json", which
+    # names three possible files (cwd, XDG, bundle) and answers none.  R10
+    # fixed exactly this for `read_config` on 2026-08-12 and the scheduler
+    # getter was never given the same treatment.
+    #
+    # Where ONE scope defines the block we can pin it exactly; where both do,
+    # both are listed rather than one guessed at.
+    contributors = [str(path) for path, raw in
+                    ((machine_config_path()[0], server_raw),
+                     (project_path, project_raw))
+                    if isinstance(raw, Mapping)]
+    try:
+        out = _validate_scheduler(merged)
+    except RuntimeConfigError as exc:
+        msg = str(exc)
+        if contributors and not any(c in msg for c in contributors):
+            where = contributors[0] if len(contributors) == 1 else \
+                " + ".join(contributors)
+            raise RuntimeConfigError(f"{where}: {msg}") from None
+        raise
+
+    # gpu.default_type: the PROBED answer is the default, the configured one is
+    # an override (N4, 2026-08-17).  Which card exists here is a measurement
+    # (`topology.gpu_type`); which card you want is a choice, and a site that
+    # wants the a30 rather than the a100 still says so in this file.  Before
+    # this, two files each held a probed GPU type -- `topology.gpu_type` and
+    # `scheduler.gpu.default_type` -- and only the first reached the code that
+    # sizes a run (`configuration.md` § 5, M-1).
+    if not (out.get("gpu") or {}).get("default_type"):
+        from .environment import machine_for
+        env = machine_for(project_dir)
+        probed = getattr(getattr(env, "topology", None), "gpu_type", None)
+        if probed:
+            out.setdefault("gpu", {})["default_type"] = probed
+    return out
 
 
 def get_execution(
@@ -1539,66 +1678,42 @@ def get_execution(
 def get_routing(
     project_dir: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
-    """Return the validated ``scheduler.routing`` list (running-a-job.md § 5.3): the named submission-domain menu, read at prep time.
+    """Return the submission-domain menu: every ``(partition, qos)`` this
+    account may actually reach, with its wall.
 
-    Each entry is a domain ``{name, max_time, max_mem_gb?, partition, qos,
-    gpu_partition?}``.  Returns ``[]`` when no table is configured (→ the
-    single ``directives`` default behavior, unchanged).  The framework
-    hardcodes NO names/limits — every value here is user data, seeded from
-    the user's live ``sinfo``/``sacctmgr`` (§ 7.0).  Order is preserved
-    (most-constrained → most-general); the FIRST fitting domain is the
-    recommendation.
+    **Sourced from ``environment.json``, not from this file** (N4,
+    2026-08-17).  A domain is a MEASUREMENT -- ``jobset probe`` reads it from
+    live ``sinfo``/``sacctmgr`` -- and `configuration.md` § 5 M-1 puts
+    measurements in the machine record and preferences in ``molbuilder.json``.
+    It lived under ``scheduler.routing`` here until the prober stopped writing
+    into a person's config file.
+
+    Each entry is ``{name, max_time, partition, qos}``.  Returns ``[]`` when
+    there is no record, or on a workstation, which is the same signal it always
+    was: no named menu, so the rendered header's default directives stand.
+    Order is preserved (cheapest ceiling -> most general); the FIRST fitting
+    domain is the recommendation.
+
+    ``project_dir`` selects the calculation scope, so a folder carried to a
+    cluster reads the record `prep` snapshotted beside it (M-3's precedence,
+    through the one door).
     """
-    sched = get_scheduler(project_dir=project_dir) or {}
-    raw = sched.get("routing")
-    if raw is None:
-        return []
-    if not isinstance(raw, list):
-        raise RuntimeConfigError(
-            "scheduler.routing must be a list of domain objects "
-            "(running-a-job.md § 5.3).")
-    out: List[Dict[str, Any]] = []
-    seen = set()
-    for i, dom in enumerate(raw):
-        if not isinstance(dom, Mapping):
-            raise RuntimeConfigError(
-                f"scheduler.routing[{i}] must be an object; got "
-                f"{type(dom).__name__}.")
-        for key in ("name", "max_time", "partition", "qos"):
-            if not dom.get(key) or not isinstance(dom[key], str):
-                raise RuntimeConfigError(
-                    f"scheduler.routing[{i}].{key} is required and must be a "
-                    f"non-empty string (§ 4.3).")
-        name = dom["name"]
-        if name in seen:
-            raise RuntimeConfigError(
-                f"scheduler.routing: duplicate domain name {name!r} (§ 4.3).")
-        seen.add(name)
-        mem = dom.get("max_mem_gb")
-        if mem is not None and not isinstance(mem, (int, float)):
-            raise RuntimeConfigError(
-                f"scheduler.routing[{i}].max_mem_gb must be a number (GB).")
-        gpu_part = dom.get("gpu_partition")
-        if gpu_part is not None and not isinstance(gpu_part, str):
-            raise RuntimeConfigError(
-                f"scheduler.routing[{i}].gpu_partition must be a string.")
-        # PASS-THROUGH for columns this reader does not consume (R10,
-        # 2026-08-12: rebuilding the row from a known-key list silently
-        # STRIPPED everything else -- decision 38's drafted node_type /
-        # max_cores / gpu{} columns vanished between the file and every
-        # caller, so drafting a column in config was indistinguishable
-        # from not writing it).  Validated keys keep their validated
-        # values; unknown keys ride along untouched -- a routing row is
-        # the operator's description of their cluster, and this reader
-        # owns only the keys it checks.
-        row = dict(dom)
-        row.update({
-            "name": name, "max_time": dom["max_time"],
-            "max_mem_gb": mem, "partition": dom["partition"],
-            "qos": dom["qos"], "gpu_partition": gpu_part,
-        })
-        out.append(row)
-    return out
+    from .environment import Domain, machine_for
+    env = machine_for(project_dir)
+    domains = list(env.domains) if env is not None else []
+    if not domains:
+        # No probed domains: either a workstation (there are none to have) or a
+        # cluster nobody has run `jobset probe` on yet.  Fall back to what was
+        # DECLARED -- the only source available when the target is not this
+        # machine.
+        domains = [d for d in (Domain.from_row(r)
+                               for r in _declared_routing(project_dir))
+                   if d is not None]
+    # ONE shape, whichever branch ran.  Until 2026-08-17 the probed branch
+    # emitted a 4-key mapping built here by hand and the declared branch passed
+    # its rows through whole, so a caller got 4 keys or 6 depending on which
+    # source answered -- from the same function.
+    return [d.to_row() for d in domains]
 
 
 def write_config_scope(

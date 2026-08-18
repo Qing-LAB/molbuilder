@@ -226,9 +226,10 @@ class TestKnownAdvisorySitesAreHTTP200:
     """
 
     @pytest.mark.parametrize("path,needle", [
-        # build.py::api_build_fdf has the ValidationError catch
-        # returning the merged issue list at HTTP 200.
-        (BLUEPRINT_DIR / "build.py",     '"issues": merged_issues,\n        }), 200'),
+        # build.py's two advisory sites (api_build_fdf, api_build_pyscf)
+        # were DELETED with those routes on 2026-08-17 -- a browser renders
+        # no deck.  The RULE is unchanged and still pinned at the two live
+        # sites below; what went is two of its instances.
         # spectra.py::api_spectra_render preflight failure.
         (BLUEPRINT_DIR / "spectra.py",
          '"errors_only": _issues_to_json(errors_only, cfg=cfg),\n        }), 200'),
@@ -246,21 +247,11 @@ class TestKnownAdvisorySitesAreHTTP200:
             f"site."
         )
 
-    def test_build_py_has_two_advisory_200_sites(self):
-        # build.py carries TWO advisory sites: api_build_fdf and
-        # api_build_pyscf, both catching ValidationError.  Count
-        # the literal ``, 200`` occurrences after a jsonify body
-        # to make sure neither one regresses to a 400.
-        src = (BLUEPRINT_DIR / "build.py").read_text()
-        # Count tuples of (jsonify-close, 200).  The strict
-        # whitespace pattern ``}), 200`` distinguishes intentional
-        # advisory 200s from accidental matches.
-        n = src.count("}), 200")
-        assert n >= 2, (
-            f"build.py expected >= 2 advisory ``}}, 200`` sites "
-            f"(api_build_fdf + api_build_pyscf ValidationError catches); "
-            f"found {n}.  Both sites are pinned in § 1.6 (b)."
-        )
+    # ``test_build_py_has_two_advisory_200_sites`` was deleted 2026-08-17.
+    # It counted ``}, 200`` in build.py and required >= 2, naming
+    # ``api_build_fdf`` and ``api_build_pyscf`` as the two.  Both routes are
+    # gone, so build.py now has ZERO advisory sites and the count it asserted
+    # can never be met again -- the test's subject, not its rule, was removed.
 
 
 class TestKnownServerFaultSitesAreHTTP500:

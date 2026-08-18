@@ -756,32 +756,7 @@ class TestTabEmitContract:
             coords.append([float(x) for x in l.split()[:3]])
         return np.array(lat), np.array(coords)
 
-    def test_body_vacuum_governs_the_emitted_fdf(self, client):
-        r = client.post("/api/build/fdf", json={
-            "structure": _env_per(self._XYZ, {"cell": None, "cell_origin": None,
-                            "axis_kind": ["isolated"] * 3,
-                            "vacuum": [2.5, 2.5, 2.5]}),
-            "params": {"system_label": "pin", "verbose_comments": False},
-        })
-        assert r.status_code == 200, r.get_json()
-        lat, coords = self._lattice_and_coords(r.get_json()["fdf"])
-        # bbox (2,0,0) + 2*2.5 vacuum -> 7 x 5 x 5 box...
-        assert np.allclose(np.diag(lat), [7.0, 5.0, 5.0])
-        # ...with the molecule centred: min corner at exactly vacuum.
-        assert np.allclose(coords.min(axis=0), [2.5, 2.5, 2.5])
 
-    def test_body_explicit_cell_and_origin_shift_the_frame(self, client):
-        r = client.post("/api/build/fdf", json={
-            "structure": _env_per(self._XYZ, {"cell": (np.eye(3) * 10.0).tolist(),
-                            "cell_origin": [9.0, 9.0, 9.0],
-                            "axis_kind": ["isolated"] * 3,
-                            "vacuum": [0.0, 0.0, 0.0]}),
-            "params": {"system_label": "pin", "verbose_comments": False},
-        })
-        assert r.status_code == 200, r.get_json()
-        lat, coords = self._lattice_and_coords(r.get_json()["fdf"])
-        assert np.allclose(np.diag(lat), [10.0, 10.0, 10.0])
-        assert np.allclose(coords[0], [1.0, 1.0, 1.0])   # 10 - 9: shifted
 
     def test_preflight_sees_what_generate_sees(self, client):
         """A planar molecule with vacuum: preflight must NOT judge the
@@ -1567,21 +1542,7 @@ class TestARefusedCellIsA400:
             f"{door}: answered 400, but not with the gate's reason: "
             f"{body.get('error')!r}")
 
-    def test_the_fdf_door_refuses(self, client):
-        self._assert_refused(client.post("/api/build/fdf", json={
-            # THE BOX IS PART OF THE STRUCTURE.  This stated it in a
-            # top-level `periodicity` block beside the envelope -- the legacy
-            # request shape, retired 2026-08-04 once nothing sent it.
-            "structure": _env_per(self.XYZ, {"cell": self.LEFT_HANDED}),
-            "params": {}}), "/api/build/fdf")
 
-    def test_the_pyscf_door_refuses(self, client):
-        self._assert_refused(client.post("/api/build/pyscf", json={
-            # THE BOX IS PART OF THE STRUCTURE.  This stated it in a
-            # top-level `periodicity` block beside the envelope -- the legacy
-            # request shape, retired 2026-08-04 once nothing sent it.
-            "structure": _env_per(self.XYZ, {"cell": self.LEFT_HANDED}),
-            "params": {}}), "/api/build/pyscf")
 
     def test_the_preflight_door_refuses(self, client):
         self._assert_refused(client.post("/api/build/preflight", json={

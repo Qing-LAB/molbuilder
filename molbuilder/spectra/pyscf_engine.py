@@ -754,6 +754,13 @@ class PySCFSpectraEngine:
         Always WARN (not ERROR) -- the generated script falls back
         to CPU automatically, so an unusable GPU is annoying but
         not fatal.
+
+        **That is no longer true** (user, 2026-08-17; `engines/overview.md`
+        § 3a G-5): the script STOPS when the GPU is missing.  These stay
+        ``warn`` rather than ``error`` for one reason -- this preflight runs
+        on the SERVER, and the job may run somewhere else.  A missing GPU
+        here is evidence, not a verdict.  What changed is the MESSAGE: it no
+        longer promises a fallback that was removed.
         """
         try:
             import gpu4pyscf  # noqa: F401
@@ -762,9 +769,10 @@ class PySCFSpectraEngine:
                 severity="warn",
                 message=(
                     "GPU acceleration requested, but gpu4pyscf is "
-                    "not installed on this server.  The generated "
-                    "script falls back to CPU PySCF automatically, "
-                    "so this is non-fatal.  To get the GPU speed-up: "
+                    "not installed on this server.  There is NO CPU "
+                    "fallback: if the machine that runs this job "
+                    "also lacks it, the run will STOP.  To get the "
+                    "GPU speed-up: "
                     "pip install gpu4pyscf-cuda12x  (or cuda11x for "
                     "older drivers).  Requires an NVIDIA GPU."
                 ),
@@ -780,8 +788,9 @@ class PySCFSpectraEngine:
                 message=(
                     "GPU acceleration requested -- gpu4pyscf is "
                     "installed, but cupy (its required dependency) "
-                    "isn't.  Reinstall gpu4pyscf.  Script will fall "
-                    "back to CPU at runtime."
+                    "isn't.  Reinstall gpu4pyscf.  There is no CPU "
+                    "fallback -- the run stops if cupy is missing "
+                    "where it executes."
                 ),
                 where="config.use_gpu",
             )]
@@ -799,7 +808,8 @@ class PySCFSpectraEngine:
                     f"({type(exc).__name__}: {exc}).  Check that "
                     f"the NVIDIA driver is installed and the CUDA "
                     f"toolkit version matches gpu4pyscf's build.  "
-                    f"Script will fall back to CPU."
+                    f"There is no CPU fallback -- the run stops "
+                    f"where this cannot be resolved."
                 ),
                 where="config.use_gpu",
             )]
@@ -808,9 +818,10 @@ class PySCFSpectraEngine:
                 severity="warn",
                 message=(
                     "GPU acceleration requested but no NVIDIA GPU "
-                    "was detected on this host.  Script will fall "
-                    "back to CPU at runtime.  Untick \"Use GPU\" "
-                    "to silence this warning."
+                    "was detected on this host.  There is no CPU "
+                    "fallback: if the machine that runs this job "
+                    "has none either, the run STOPS.  Untick "
+                    "\"Use GPU\" to run on the CPU deliberately."
                 ),
                 where="config.use_gpu",
             )]
@@ -824,8 +835,8 @@ class PySCFSpectraEngine:
                 message=(
                     f"GPU acceleration requested but the device "
                     f"properties for GPU 0 couldn't be read "
-                    f"({type(exc).__name__}: {exc}).  Script will "
-                    f"fall back to CPU."
+                    f"({type(exc).__name__}: {exc}).  There is no "
+                    f"CPU fallback -- the run stops."
                 ),
                 where="config.use_gpu",
             )]
@@ -849,10 +860,9 @@ class PySCFSpectraEngine:
                     f"Running on a {major}.{minor}-class card will "
                     f"either fail with cryptic CUDA errors or "
                     f"silently fall back to slow paths.  The "
-                    f"generated script will detect this at runtime "
-                    f"and fall back to CPU automatically.  Untick "
-                    f"\"Use GPU\" to silence this warning and skip "
-                    f"the GPU code path entirely."
+                    f"generated script detects this at runtime and "
+                    f"STOPS -- there is no CPU fallback.  Untick "
+                    f"\"Use GPU\" to run on the CPU deliberately."
                 ),
                 where="config.use_gpu",
             )]

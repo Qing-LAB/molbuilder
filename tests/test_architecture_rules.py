@@ -415,3 +415,86 @@ def test_every_config_section_is_documented_and_every_documented_one_exists():
         "disagree about which config sections exist.\n"
         f"  read by the code, not in the table: {sorted(code - doc)}\n"
         f"  in the table, not read by the code: {sorted(doc - code)}")
+
+
+# ===================================================================== #
+#  A8 -- an object travels whole                                        #
+# ===================================================================== #
+
+#: The § 3 objects whose fields a caller must not pick apart, and where their
+#: fields are declared.  Kept to the objects that CROSS a floor boundary as a
+#: unit -- that is what A8 is about; a local dataclass nobody passes down is
+#: not a boundary.
+_TRAVELS_WHOLE = {"Resources": Path("jobset/model.py")}
+
+
+def _dataclass_fields(rel: Path, cls: str) -> set[str]:
+    """The annotated field names of ``cls`` as declared in ``rel``.
+
+    Read from the SOURCE rather than by importing, for A7's reason: this file
+    parses ``molbuilder/`` instead of calling it, so a rule about the shape of
+    the source cannot be satisfied by an import side-effect.
+    """
+    tree = ast.parse((_PKG / rel).read_text(encoding="utf-8"), filename=str(rel))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == cls:
+            return {b.target.id for b in node.body
+                    if isinstance(b, ast.AnnAssign)
+                    and isinstance(b.target, ast.Name)}
+    raise AssertionError(f"{cls} is not declared in {rel}")
+
+
+def test_a8_no_caller_takes_an_object_apart_to_make_a_call():
+    """**A8 — an object travels whole** (`architecture.md` § 3.1).
+
+    A4 says each object has one owning function, which guarantees it is
+    ASSEMBLED correctly and says nothing about what survives the call.  This is
+    the receiving end: a door takes the object, so a caller has no subset to
+    pass.
+
+    **What it looks for is the destructure** — a call with two or more keyword
+    arguments of the form ``field=<something>.field``, where the names are
+    fields of an object that travels whole.  Two is the threshold because one
+    is ordinary (``mem=r.mem`` into a function that genuinely wants one value);
+    at two the caller is re-assembling the object the callee should have been
+    handed, and the third is the one that gets forgotten.
+
+    **The measurement behind this found the violation it now prevents.**  On
+    2026-08-17 ``write_run_wrapper`` took eleven loose keyword arguments;
+    ``jobset/prep.py`` passed ten and ``web/blueprints/build.py`` passed five,
+    so one wrote a ``.sbatch`` asking for ``-c 8`` beside a ``.run.sh`` whose
+    OMP default was ``1``, and the other wrote a correct ``.run.sh`` beside a
+    ``.sbatch`` with no ``-c`` at all.  Neither produced a correct pair.  The
+    same door had already lost ``max_memory_mb`` this way on 2026-08-11; that
+    fix moved the field onto ``Resources`` and left the calling convention
+    alone, so the class stayed open and fired again four days later.
+
+    A9 (`test_runwrap_pair`) covers the half this cannot see: a signature rule
+    cannot notice a wrong number in a rendered file.
+    """
+    offences = []
+    for cls, decl in _TRAVELS_WHOLE.items():
+        fields = _dataclass_fields(decl, cls)
+        for rel in _python_files():
+            if rel == decl:
+                continue          # the owner may name its own fields
+            tree = ast.parse((_PKG / rel).read_text(encoding="utf-8"),
+                             filename=str(rel))
+            for call in [n for n in ast.walk(tree) if isinstance(n, ast.Call)]:
+                taken = sorted(
+                    kw.arg for kw in call.keywords
+                    if kw.arg in fields
+                    and isinstance(kw.value, ast.Attribute)
+                    and kw.value.attr == kw.arg)
+                if len(taken) >= 2:
+                    offences.append(
+                        f"{rel}:{call.lineno} takes a {cls} apart into "
+                        f"{taken}")
+    assert not offences, (
+        "A8 -- an object travels whole (architecture.md § 3.1):\n  "
+        + "\n  ".join(offences)
+        + "\n\nPass the object itself.  A door with N loose arguments has 2^N "
+          "ways to be called and one that is right, so every caller re-derives "
+          "which subset matters and the doors disagree by construction -- "
+          "invisibly, because a missing field is indistinguishable from a "
+          "field whose value happens to be the default.")

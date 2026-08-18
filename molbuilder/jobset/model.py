@@ -49,7 +49,8 @@ class Resources:
     artifacts (bench-manifest, scheduler config) so the system speaks one
     language on files: ``mpi_np`` / ``cpus_per_task`` / ``time`` / ``mem`` /
     ``exclusive`` (NOT ``omp`` / ``walltime``).  ``domain`` is a
-    ``scheduler.routing`` name (running-a-job.md § 5.3) the submit engine
+    probed domain name (`configuration.md` § 5 -- it was
+    ``scheduler.routing`` until 2026-08-17) the submit engine
     resolves to ``-p``/``-q``; ``gres`` is a raw SLURM gres string (e.g.
     ``"gpu:a100:1"``) or None.
 

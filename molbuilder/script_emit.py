@@ -165,8 +165,10 @@ class BenchField:
 # Anchor (post-2026-06-23 SIESTA keyword fix): ONE step-count keyword serves
 # CG / Broyden / FIRE -- the per-type aliases ``MD.NumBroydenSteps`` /
 # ``MD.NumFIRESteps`` do not exist and were silently dropped pre-fix.  So the
-# bench anchor is the same regardless of cfg.relax_type and Step 4
-# (molbuilder bench siesta-gpu) needs no per-type dispatch.  See
+# bench anchor is the same regardless of cfg.relax_type, so a trial's deck
+# needs no per-type dispatch.  (This named ``molbuilder bench siesta-gpu``
+# until 2026-08-17; that verb was deleted 2026-08-13 and its group with it --
+# a trial is rendered by ``jobset prep bench``.)  See
 # decision-log 2026-06-23 in design.md.  Task #486 is closed by
 # this realization.
 #
