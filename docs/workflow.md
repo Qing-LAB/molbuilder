@@ -303,6 +303,36 @@ The browser never writes an engine input. It renders the *form* from the
 catalogue and asks the server to produce the files, because getting a format
 right is the server's job ([`projects.md § 3`](?doc=web/projects.md)).
 
+### 6.1 The one assumption on the target — a working conda or mamba
+
+**Everything on the machine that runs the job rests on exactly one
+prerequisite: conda or mamba works there, and the environments were
+provisioned through it** ([`ops/installation.md`](?doc=ops/installation.md) —
+one host env, one env per engine, all created by the bootstrap). Nothing else
+is assumed: no PATH entry points, no pre-activated shells, no molbuilder on
+the compute node.
+
+Two scripts divide the work, and the split is the design:
+
+| | knows | does |
+|---|---|---|
+| **the shell half** — `install-env.sh` once, every generated `.run.sh` per run | how to reach conda/mamba (the bootstrap finds it; the wrapper carries the hook line `prep` baked from this machine) | make the environment right, then hand over — activate and exec, nothing else ([`running-a-job.md § 2.2a`](?doc=execution/running-a-job.md)) |
+| **the Python half** — molbuilder before the run, the engine and `mb_monitor.py` during it | everything that computes | describe, resolve, render, arrange, watch |
+
+**And the spelling convention every document uses:** `molbuilder <verb>`
+means `python -m molbuilder <verb>`, run in the activated host env from the
+repo clone. That is the **supported form** — molbuilder is deliberately *not*
+pip-installed into its env ([`ops/installation.md`](?doc=ops/installation.md);
+a console-script entry point exists in `pyproject.toml` but is not the
+supported invocation). An evaluation that goes looking for `molbuilder` on
+`PATH` is testing an assumption this design never makes — made once,
+2026-08-19, which is why this section exists.
+
+**Verified against the scripts, not assumed** (2026-08-19): both engines'
+wrappers were run in a pure shell — `env -i`, no conda on `PATH`, no rc
+files — and bootstrapped from nothing but their baked hook line: activation,
+engine resolution, and a real completed SIESTA run.
+
 ---
 
 ## 7. What is genuinely data-driven today, and what is not

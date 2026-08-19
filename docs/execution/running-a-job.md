@@ -69,6 +69,13 @@ generated/prepped, so the compute node needs nothing but the files in the
 directory. This is what lets you `scp` a run dir to a cluster, or hand it to a
 collaborator, and have it run identically.
 
+> **Verified in a pure shell, 2026-08-19.** Both engines' wrappers were run
+> under `env -i` — no conda on `PATH`, no rc files, non-interactive — and
+> bootstrapped from nothing but the baked hook line: sourced it, activated
+> the routed env, resolved the launch (`--dry-run`, exit 0, both engines),
+> and completed a real SIESTA run. The one assumption is the package manager
+> `prep` found ([`workflow.md § 6.1`](?doc=workflow.md)).
+
 ### 2.1 "Detection" — reading external state
 
 "Detection" means reading state that is *not* in the run directory. There are
