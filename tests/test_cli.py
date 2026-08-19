@@ -535,32 +535,21 @@ def _stub_pyscf_summary(out_path):
 
 
 @pytest.mark.parametrize("flag,cli_val,attr,expected", [
-    # PySCFConfig CLI override coverage.  Same shape as the SIESTA
-    # version but spans method / SCF / opt / runtime tiers.
-    ("--job-name",         "demo",       "job_name",          "demo"),
-    ("--net-charge",       "-2",         "net_charge",        -2),
-    ("--spin",             "1",          "spin",              1),
-    ("--method",           "UKS",        "method",            "UKS"),
-    ("--functional",       "PBE",        "functional",        "PBE"),
-    ("--basis",            "def2-TZVP",  "basis",             "def2-TZVP"),
-    ("--auxbasis",         "def2-universal-jkfit", "auxbasis", "def2-universal-jkfit"),
-    ("--solvent",          "water",      "solvent",           "water"),
-    ("--solvent-method",   "C-PCM",      "solvent_method",    "C-PCM"),
-    ("--scf-conv-tol",     "1e-10",      "scf_conv_tol",      1e-10),
-    ("--scf-max-cycle",    "200",        "scf_max_cycle",     200),
-    ("--scf-init-guess",   "huckel",     "scf_init_guess",    "huckel"),
-    ("--grid-level",       "5",          "grid_level",        5),
-    ("--level-shift",      "0.2",        "level_shift",       0.2),
-    ("--diis-space",       "16",         "diis_space",        16),
-    ("--damp",             "0.4",        "damp",              0.4),
-    ("--optimizer",        "berny",      "optimizer",         "berny"),
-    ("--max-memory-mb",    "8000",       "max_memory_mb",     8000),
-    ("--threads",          "4",          "threads",           4),
-    ("--verbose",          "5",          "verbose",           5),
+    # ONE case per value branch of ``add_dataclass_options`` -- the single
+    # machine that generates every PySCF option from the dataclass.  A case
+    # per FIELD proved nothing the branch case does not: all twenty rows of
+    # the old sweep ran the same four code paths (collapsed 2026-08-19).
+    # The rule: declared data and same-branch nouns earn no case of their
+    # own; a distinct CODE PATH does.  The representatives are chosen for
+    # the real edge inside their branch:
+    ("--net-charge",   "-2",    "net_charge",   -2),      # int, NEGATIVE value after the flag
+    ("--scf-conv-tol", "1e-10", "scf_conv_tol", 1e-10),   # float, scientific notation
+    ("--functional",   "PBE",   "functional",   "PBE"),   # plain str
+    ("--solvent",      "water", "solvent",      "water"), # Optional[str] -- the Union unwrap
 ])
 def test_pyscf_cli_override_propagates_to_pyscf_config(
         flag, cli_val, attr, expected, monkeypatch, tmp_path):
-    """Per-field PySCFConfig CLI override coverage."""
+    """A generated option's value reaches its PySCFConfig field."""
     captured = {}
 
     def fake_convert(input_path, py_path, config):
@@ -579,22 +568,15 @@ def test_pyscf_cli_override_propagates_to_pyscf_config(
 
 
 @pytest.mark.parametrize("attr,default,off_flag", [
-    # Curated bool-flag round-trip for PySCFConfig.  Defaults true ->
-    # passing --no-<flag> must flip to False.
-    ("symmetry",            False, "--symmetry"),       # default False -> positive form sets True
-    ("density_fit",         True,  "--no-density-fit"),
-    ("optimize",            True,  "--no-optimize"),
-    ("chkfile",             True,  "--no-chkfile"),
-    ("log_file",            True,  "--no-log-file"),
-    ("save_optimized_xyz",  True,  "--no-save-optimized-xyz"),
-    ("save_initial_xyz",    True,  "--no-save-initial-xyz"),
-    ("write_trajectory",    True,  "--no-write-trajectory"),
-    ("write_molwatch_log",  True,  "--no-write-molwatch-log"),
-    ("verbose_comments",    True,  "--no-verbose-comments"),
+    # The bool branch emits a --x/--no-x PAIR; its two directions are the
+    # two code paths.  One case each (was ten same-path cases, collapsed
+    # 2026-08-19).
+    ("symmetry",    False, "--symmetry"),        # default False -> positive flag sets True
+    ("density_fit", True,  "--no-density-fit"),  # default True  -> negative flag sets False
 ])
 def test_pyscf_cli_bool_flags_round_trip(
         attr, default, off_flag, monkeypatch, tmp_path):
-    """Same idea as the SIESTA bool round-trip test."""
+    """Both directions of the generated dual bool flag reach the config."""
     captured = []
 
     def fake_convert(input_path, py_path, config):
@@ -613,51 +595,13 @@ def test_pyscf_cli_bool_flags_round_trip(
     )
 
 
-# ---- Layer 3: default values render in the generated FDF -------- #
-
-
-@pytest.mark.parametrize("keyword,expected", [
-    ("MeshCutoff", "300.0 Ry"),
-    ("PAO.BasisSize", "DZP"),
-    ("PAO.EnergyShift", "0.01 Ry"),
-    ("XC.functional", "GGA"),
-    ("XC.authors", "PBE"),
-    ("SCF.Mixer.Weight", "0.02"),
-    ("SCF.Mixer.History", "8"),
-    ("DM.Tolerance", "1e-05"),
-    ("DM.EnergyTolerance", "1e-04 eV"),
-    ("MaxSCFIterations", "1000"),
-    ("ElectronicTemperature", "300.0 K"),
-    ("SolutionMethod", "diagon"),
-    ("MD.TypeOfRun", "CG"),
-    ("MD.Steps", "200"),
-    ("MD.MaxForceTol", "0.02 eV/Ang"),
-    ("MD.MaxDispl", "0.05 Ang"),
-    ("WriteForces", ".true."),
-    ("WriteCoorStep", ".true."),
-    ("WriteCoorXmol", ".true."),
-    ("WriteMDhistory", ".true."),
-])
-def test_siesta_default_values_render_in_fdf(keyword, expected):
-    """Each scalar/bool default in SiestaConfig must reach the FDF with the
-    expected VALUE.  Catches "field is wired to the CLI but the FDF generator
-    ignores its value" mutations (e.g. mesh_cutoff 300 -> 100 with no test
-    failure).
-
-    Asked through ``_deck.assert_fdf``, which compares the way ``fdf_get``
-    does.  These were exact substrings including the column padding until
-    2026-08-19, so widening one field by a single space -- a change libfdf
-    cannot perceive -- failed thirteen of them."""
-    from molbuilder.siesta import SiestaConfig, render_fdf
-    from molbuilder.structure import Structure
-    s = Structure(
-        elements=["H", "H"],
-        positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
-        title="h2", vacuum=(12.0, 12.0, 12.0))
-    fdf = render_fdf(s, SiestaConfig())
-    from _deck import assert_fdf
-    assert_fdf(fdf, keyword, expected)
-
+# The 20-case "each default renders in the FDF" sweep that sat here was
+# retired 2026-08-19.  Every case re-ran the section walk the deck-runner
+# tests already pin, over values that are DECLARED DATA in the catalogue;
+# the failure it feared -- a field wired to the CLI that the generator
+# ignores -- is caught, for every field including tomorrow's, by
+# tests/test_every_form_field_reaches_the_deck.py, which fails NAMING the
+# field whenever changing it cannot change the deck.
 
 # ---- Modify electrode-spec parser is case-insensitive on key ----- #
 
