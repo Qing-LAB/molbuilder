@@ -1,6 +1,6 @@
 """The four questions that decide whether the staged-run design landed.
 
-``docs/plans/staged-runs-implementation-plan.md`` carries them as standing
+``docs/archive/2026-08-19-staged-runs-implementation-plan.md`` carries them as standing
 guards -- things a reader should be able to *check*, not believe.  They
 originated in a design draft archived 2026-08-11 as
 ``docs/archive/2026-08-11-staged-runs-architecture.md`` § 8c:
@@ -13,7 +13,7 @@ originated in a design draft archived 2026-08-11 as
 Three of the four answers are wrong today.  This module makes all four
 mechanical, so a regression is caught by a test rather than by the next
 fresh-eyes review, and so the subtraction reviews of
-``docs/plans/staged-runs-implementation-plan.md`` have a number to point
+``docs/archive/2026-08-19-staged-runs-implementation-plan.md`` have a number to point
 at instead of an opinion.  The three that are wrong are ``xfail(strict=True)``
 naming the phase that fixes each: strict matters, because it fails loudly the
 day the behaviour *starts* working, so a fix cannot land without the plan
@@ -758,7 +758,7 @@ def baseline() -> list[tuple[str, str, int, str, str]]:
 
 if __name__ == "__main__":  # pragma: no cover -- the reporting surface
     rows = baseline()
-    print("staged-run baseline -- docs/plans/staged-runs-implementation-plan.md")
+    print("staged-run baseline -- docs/archive/2026-08-19-staged-runs-implementation-plan.md")
     print()
     for q, measure, count, target, phase in rows:
         flag = "!!" if target == "0" and count else "  "

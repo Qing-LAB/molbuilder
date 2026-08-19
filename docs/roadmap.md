@@ -57,6 +57,75 @@ deferred with rationale, and named architecture seams.)
 > migrating it means giving that kind a first-class representation, not
 > bending it into a ladder.
 
+## 0. The immediate two  *(the active priority — user, 2026-08-19)*
+
+Two workflow completions come before everything else, both specified from a
+loop that was **driven end to end today** rather than read. Everything else
+below proceeds around them; the two named deferrals follow the section.
+
+### 0.1 Connect the benchmark to the run — Task I
+
+**Goal.** A scientist benchmarks a stage and the system carries the answer to
+the run: `summarize` prints what was measured, a **verdict with its
+rationale**, and the exact next commands; the next `prep run` **offers** the
+verdict (ask, never apply — the user's flags always win); nothing is ever
+hand-copied. The editable artifact is `bench-result.json` itself.
+
+**Measured state (2026-08-19, water fixture, driven end to end).** Working:
+trial isolation (per-trial relabel, forced cold, own directories, `run.json`),
+one-trial-per-invocation submission with a helpful unknown-trial refusal,
+`summarize`'s ranked s/iter table with honest `incomplete`/`unknown` marks,
+the `bench-result@1` write, and the offer machinery itself
+(`_offer_bench_verdict`: asks every time, silence-is-no, fills only the
+allocation fields the user did not state, ledger-recorded).
+
+**The four breaks, each found by running:**
+
+| # | break | done when |
+|---|---|---|
+| **B1** | `prep bench` **ignores the declared grid** — `task.json`'s `bench: {mpi_np: [1,2,3]}` produced eleven machine-enumerated K×C trials instead of three. `generator.md § 4.3a` (user-settled) says the declaration is the whole reason the key exists | declaring `{mpi_np: [1,2]}` yields exactly those trials; a point exceeding the machine's capability is refused **by name** |
+| **B2** | **a capped trial classifies as failure** — the pins cap SCF at 5 iterations *by design*, but nothing tells SIESTA the stop is expected (`SCF.MustConverge` has no schema field — the recorded vocabulary gap, `template.md § 7`), so every trial ends `ABNORMAL_TERMINATION` and reads `incomplete` | a capped trial reads **measured**, carrying its s/iter |
+| **B3** | **no verdict can ever exist for a normal sweep** — `summarize` writes `choice: {}` when points are incomplete, and B2 makes *every* properly-capped point incomplete | today's water sweep produces a non-empty `choice` + `recommend`, with an honesty flag when coverage is partial |
+| **B4** | **an unusable verdict is silent** — `prep run` says nothing when `bench-result.json` exists but carries no choice; the user cannot tell "no benchmark" from "benchmark that failed to conclude" | `prep run` names the artifact and says *why* it is not offering |
+| **B5** | **the connection surface** — `summarize` ends with `next: prep run <stage>` but not the verdict's own values or the fact that the artifact is editable | the summary closes with the verdict, the exact commands, and the sentence naming `bench-result.json` as the editable proposal |
+
+**Test-pin shape:** the water fixture's loop, pinned at each row above; the
+offer's ask/decline/fill-only-unstated behaviour is already shaped in
+`_offer_bench_verdict` and keeps its doctrine.
+
+### 0.2 The probe writes the machine record — Task II
+
+**Goal.** `jobset probe` records this machine's physical resources into
+`environment.json` — **interactively** where a fact needs a person: naming a
+record (`--name sol`), consenting before an existing record is overwritten,
+choosing what to keep — and `prep`/Task setup then use that record as the
+capability they plan within. Declared facts enter through the same door
+(`resolve_environment(overrides=…)`, `source="flag"` — the door and its
+caller exist; the flags do not).
+
+**Measured state (2026-08-19).** `jobset probe` calls `resolve_environment`
+(`_cli.py:1336`) and the machine-scope record on this workstation is read by
+every `prep` (the E2E's config provenance listed it). The contract is settled
+and stated: `configuration.md § 5` M-1…M-5 + the `@2` schema. The planned
+units N1–N5 already exist in workstream 6 (machine facts — one shape, one
+door); **this task is those units plus the interactive layer**:
+
+| piece | what it is |
+|---|---|
+| **N3+** | `probe` writes `environment.json` at the machine scope (and `--name <target>` at the named scope), **shows what it found next to what the record holds, and asks per difference before overwriting** — consent, never a clobber; `--yes` for scripts (silence is no, the standing doctrine) |
+| **flags** | `--set key=value` (feeds `overrides`, stamped `flag`), `--scheduler` (the override that exists unfed) — the declared half of M-1 finally reachable |
+| **N4** | `get_scheduler`/`get_routing` source `routing` + `gpu.default_type` from the record, consumers unchanged |
+| **done when** | probing this workstation round-trips with consent; a named-target record written here is used by `prep --target`; `config_provenance` shows the record supplying the values |
+
+### The deferrals — decided, not drifted *(user, 2026-08-19)*
+
+| deferred | until |
+|---|---|
+| **the remote-HPC proof** (D7's cluster half: the described route through SLURM on Sol) | **after the immediate two** |
+| **migration of the other tabs** (spectra + transport onto the framework — workstream 2's producers and the branching kind) | **the follow-up period, not this one** |
+
+---
+
 ```mermaid
 flowchart TD
     W1["1 · Batch execution reaches the web<br/>(the JobSet framework's UI)"]:::active
@@ -116,9 +185,9 @@ authoritative.
 > is), [`execution/run-identity.md`](?doc=execution/run-identity.md) (the id) and
 > [`execution/checkpointing.md`](?doc=execution/checkpointing.md) (the history)
 > before building any of this. The design and each item's *"done when"* is
-> [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md);
+> [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md);
 > **the order, the milestones and the reviews are
-> [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)**,
+> [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)**,
 > which is the one build order for this workstream.
 
 ### Vocabulary (defined once, used throughout)
@@ -140,12 +209,12 @@ authoritative.
   authority** — for anything still open, the live owners are
   [`engines/stages.md`](?doc=engines/stages.md),
   [`execution/project-layout.md`](?doc=execution/project-layout.md) and
-  [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md).
+  [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md).
 
 ### Phasing
 
 **The SIESTA half of this workstream is planned in one place:**
-[`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
+[`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)
 — thirteen milestones bottom-up, from `task.json` to the two web tabs. What this
 workstream still owns *beyond* that plan is the two other engines and the gate
 between:
@@ -282,6 +351,14 @@ finishing the ES-module conversion (both **browser-verified** before they
 count as done), routing the CLI through the shared codec, and exercising the
 last annotation channel kind. The design for each item lives in its contract;
 this is the plan tail.
+
+**Rebuild the Build form from the catalogue** *(extracted 2026-08-19 from
+the archived template-unification plan, whose § 4 deferred it)*: the live
+form still reads its facts off the dataclass fields (`MIRRORED`), so those
+facts live in **two** homes — a debt `template.md § 2.1a` measures on every
+run (452 on 2026-08-17) and `test_catalogue_agreement.py` holds together.
+Rebuilding the form from the catalogue deletes the second home. Pin: the
+`MIRRORED` set empties.
 
 **Conceal the data model.**
 
@@ -596,7 +673,7 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   2026-08-18** — the stage token is a render argument for both engines and no
   config field carries it; `PySCFConfig.stage` was the last one, and its last
   reader was the molwatch emitter. The order is argued in
-  [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
+  [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)
   § 5g. They sit *behind* the front rather than blocking it, which is why none
   earns a milestone.
 

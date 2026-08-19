@@ -204,7 +204,9 @@ def test_the_solver_is_reported_by_class_not_by_flag():
 # --------------------------------------------------------------------- #
 #  max_memory: UNSET means no cap, and the DEFAULT config must render    #
 #                                                                        #
-#  `template-unification-plan.md` § 5.1 / § 5.5a.  T4 made SIESTA's      #
+#  `template.md` § 2 (G1: an allocation item states no value at
+#  floor 2; the archived template-unification plan's T4 is the
+#  history).  T4 made SIESTA's      #
 #  max_memory_mb a valueless allocation item and left PySCF's at a       #
 #  static ``int = 4000`` -- a machine fact asserted in a portable         #
 #  description, which § 7 forbids floor 2 to do.  Closed 2026-08-14.      #

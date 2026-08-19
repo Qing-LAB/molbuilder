@@ -60,7 +60,7 @@ you are reading tells you how much to trust it and what to do when two disagree.
 
 | You want to know… | Open |
 |---|---|
-| **What gets built first, and how each step is checked** — the milestones, the gates, and the three reviews at each one | **[`staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)** |
+| **What gets built first, and how each step is checked** — the milestones, the gates, and the three reviews at each one | **[`staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)** |
 
 *(The Task-setup tab graduated out of this kind: it shipped, and
 [`web/task-setup.md`](?doc=web/task-setup.md) is a **contract** — the tab that

@@ -1166,7 +1166,7 @@ nothing is derived.
 > **Two of those three are RULED but not yet RENAMED, and the file still shows
 > the pair.** `use_gpu` and `charge` are settled merges — `use_gpu` by a user
 > ruling of 2026-08-13, restated 2026-08-14 and marked *do not re-open*
-> ([`template-unification-plan.md`](?doc=plans/template-unification-plan.md)
+> ([`template-unification-plan.md`](?doc=archive/2026-08-19-template-unification-plan.md)
 > § 5.5); `charge` by § 1 of the same plan. The merge is **declared by spelling
 > the field alike in both engines** (*How a merge is DECLARED*, below; plan
 > § 5.6), and that rename

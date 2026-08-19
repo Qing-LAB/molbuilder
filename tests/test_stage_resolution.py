@@ -4,7 +4,7 @@ Contract: ``docs/engines/stages.md`` § 4 — *effective config = the template's
 values ⊕ that stage's ``overrides``*, one object validated **and** rendered
 (R1), validated as a resolved whole and never as a diff (R2).
 
-P2 unit 1 of ``docs/plans/staged-runs-implementation-plan.md`` pinned
+P2 unit 1 of ``docs/archive/2026-08-19-staged-runs-implementation-plan.md`` pinned
 today's behaviour **before** changing anything: four relaxation values lived
 in two places — on ``SiestaConfig`` and again on ``SiestaStageSpec`` — and
 the old renderer resolved the collision with a hard-coded

@@ -6,7 +6,7 @@
 — the tree this walks through; [`engines/stages.md`](?doc=engines/stages.md) —
 what a stage is; [`execution/checkpointing.md`](?doc=execution/checkpointing.md)
 — what the history guarantees;
-[`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
+[`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)
 — the plan and the order of work.
 
 This is the whole design followed once, with a real molecule, in the order a

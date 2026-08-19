@@ -36,7 +36,7 @@ ground everything rests on.
 > | who owns which decision — floors, routes, vocabularies | `execution/architecture.md` |
 > | what a directory *is*, the two shapes, what `prep` does | `execution/project-layout.md` |
 > | what a stage is, and the description on disk | `engines/stages.md` |
-> | the order the work is built in, its items and its gates | `plans/staged-runs-implementation-plan.md` |
+> | the order the work is built in, its items and its gates | `archive/2026-08-19-staged-runs-implementation-plan.md` |
 > | the CLI grammar it called *step 1c* | `execution/job-system.md` |
 >
 > **It never held decisions** — its own status line below says so. It was still
@@ -377,7 +377,7 @@ through a scheduler changes neither shape.
 ## 8. The work, item by item
 
 > **The *order* moved out of this section on 2026-08-07.** It lives in
-> [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
+> [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)
 > — the phases, the milestones, the gates, and the three reviews at each one.
 > **What stays here is each item's *"Done when:"* sentence**, which the plan
 > cites rather than copies, and the audit evidence in § 8a–8b that produced the
@@ -1363,7 +1363,7 @@ prepped twice differently, putting two layouts in one history; and inferring it
 from the stage count hands somebody a directory tree they never asked for.
 
 **The order in which the remaining items get built, the milestones, and the
-review at each one are** [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md).
+review at each one are** [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md).
 Its § 5 carries the milestone map, its § 4 the phases, and its Track Z the five
 items that are gated by nothing — **14** and **14a** (dead citations and module
 hygiene), **10a** (archive size reporting), **12c** (the warm-file lists),

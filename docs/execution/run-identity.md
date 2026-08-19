@@ -8,7 +8,7 @@ restart banner (§ 4), all of which this document builds on and none of which it
 changes; [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — how a
 run is actually launched and what the wrapper does with the files;
 [`engines/stages.md`](?doc=engines/stages.md) — the description this id is
-derived from; [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
+derived from; [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)
 — the plan that motivates this contract and schedules the work.
 
 **Status: landed.** Written first, then built to: `task.json` stores the id
@@ -690,6 +690,6 @@ owns it.*
 - **What a stage is, and the description the id is derived from** —
   [`engines/stages.md`](?doc=engines/stages.md).
 - **Phasing and what is built when** —
-  [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md) and
+  [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md) and
   [`roadmap.md`](?doc=roadmap.md) — `conventions.md`'s R3. *(Open questions about the **id** are
   § 6a above, because they are this contract's to answer.)*

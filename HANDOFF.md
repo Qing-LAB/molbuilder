@@ -157,6 +157,19 @@ their remaining items, then archive; the scope-name drift
 regex remain recorded code follow-ups; `structure_to_dict`'s disposition
 (model/structure.md vs backend-architecture § 2) still needs one decision.
 
+**The plan of record moved (2026-08-19, user).** The persistent plan is
+`roadmap.md § 0` — **the immediate two**: Task I (connect the benchmark to the
+run: B1 the declared grid must drive `prep bench`, B2 a capped trial must
+classify as measured, B3 summarize must write a choice, B4 an unusable verdict
+must be said, B5 the summary closes with the verdict + exact commands) and
+Task II (the probe writes `environment.json` interactively — consent before
+overwrite, `--set`/`--scheduler` feeding the overrides door, N3–N4).  Both
+specified from a loop driven end to end today.  **Deferred by the user:** the
+remote-HPC proof (after the two), spectra/transport migration (next period).
+Three finished plans archived per protocol (task-setup-tab,
+template-unification, staged-runs — 21 files repointed, one deferred item
+extracted to workstream 3); `plans/` now holds only genuinely open work.
+
 ### 3. Collapse the instance tests. This is my mess.
 
 35 test functions generate **332 cases that re-run one rule with different

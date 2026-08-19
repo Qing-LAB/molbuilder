@@ -173,7 +173,7 @@ What Spectrum needs first, and none of it is this procedure's:
 1. **Its parameters in the catalogue** — `SpectraConfig`'s fields become items
    with `group`, `category`, `engines`, `kind`, `anchor`, the way the SIESTA and
    PySCF sets did at the unification
-   ([`plans/template-unification-plan.md`](?doc=plans/template-unification-plan.md)).
+   ([`archive/2026-08-19-template-unification-plan.md`](?doc=archive/2026-08-19-template-unification-plan.md)).
 2. **Its form off `dataclass_to_form_schema`** and onto the catalogue, which is
    what retires `section` for it ([`web/form-schema.md`](?doc=web/form-schema.md)
    § 1a's note).

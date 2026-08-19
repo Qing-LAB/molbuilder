@@ -148,7 +148,7 @@
           "path": "execution/job-system.md"
         },
         {
-          "path": "plans/staged-runs-implementation-plan.md"
+          "path": "archive/2026-08-19-staged-runs-implementation-plan.md"
         },
         {
           "path": "execution/architecture.md"
@@ -167,7 +167,7 @@
           "path": "execution/asu-sol.md"
         },
         {
-          "path": "plans/template-unification-plan.md"
+          "path": "archive/2026-08-19-template-unification-plan.md"
         }
       ]
     },
@@ -235,7 +235,7 @@
           "path": "plans/editor-module-plan.md"
         },
         {
-          "path": "plans/task-setup-tab-plan.md"
+          "path": "archive/2026-08-19-task-setup-tab-plan.md"
         },
         {
           "path": "plans/css-system-plan.md"

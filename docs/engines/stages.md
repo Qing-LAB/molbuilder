@@ -12,7 +12,7 @@ whether a stage continues; [`execution/job-contracts.md`](?doc=execution/job-con
 — the run directory the decks land in and the persisted-artifact registry;
 [`engines/template.md`](?doc=engines/template.md) — the file the effective config
 is resolved *from*, and the format every engine's parameters share;
-[`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
+[`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)
 — the plan that motivates this contract and schedules the work.
 
 **Status: landed.** This document was written first and the code built to it,
@@ -1854,6 +1854,6 @@ were written for a flat directory and would silently have lost data in a tree.
   says *when* a checkpoint is taken and *what it is called*; that one says what
   must be true of it afterwards, in a form a test can assert.
 - **Phasing, status, and what is built when** —
-  [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md) and
+  [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md) and
   [`roadmap.md`](?doc=roadmap.md) — the *status-lives-in-the-roadmap* rule,
   not § 4's R3.

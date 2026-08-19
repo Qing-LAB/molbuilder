@@ -847,7 +847,7 @@ def test_the_sweepable_list_says_which_the_machine_answers(web_client):
         assert by.get(machine) is True, f"{machine} not flagged machine-answered"
     assert by.get("enable_gpu") is False, (
         "the GPU is a user decision, not something the machine answers "
-        "(template-unification-plan.md § 5.5)")
+        "(engines/overview.md § 3a: the user decides the GPU)")
 
 
 def test_a_picker_offers_only_what_is_not_already_used():
