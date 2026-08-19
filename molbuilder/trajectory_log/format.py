@@ -90,9 +90,11 @@ def write_initial_preview(
         Tool that wrote the file; goes into the ``# generator:``
         header.  Default ``"molbuilder"``.
     stage_name : str, optional
-        Stage label for multi-stage SIESTA / PySCF runs (e.g.
-        ``"stage1"``, ``"stage2"``).  Emitted as ``# stage: <name>``
-        when set; absent header line means "single-stage run".
+        The stage's ARTIFACT TOKEN for multi-stage SIESTA / PySCF runs
+        (``"01_coarse"``, ``"02_tight"`` — digit-first,
+        `identity.stage_token`, `job-contracts.md` § 6.3; the callers
+        pass exactly that).  Emitted as ``# stage: <name>`` when set;
+        absent header line means "single-stage run".
     convergence_targets : Mapping[str, float], optional
         Per-target thresholds for the stage's convergence (e.g.
         ``{"max_force_ev_per_ang": 0.05, "max_steps": 600}``).  Each

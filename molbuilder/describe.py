@@ -220,6 +220,26 @@ def write_description(desc: Description, dest, *,
     """
     out_dir = Path(dest)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # THE TRAVELLING COPY'S NAME CARRIES THE ``.source`` MARK, and the
+    # written ``task.json`` records that marked name (`job-contracts.md`
+    # § 6.3): identities are validated dot-free, so no engine output --
+    # which stems every file on an identity -- can ever take a dotted
+    # name.  Before the mark, a flat run whose label matched the
+    # structure's stem overwrote its own input (WriteCoorXmol writes
+    # ``<SystemLabel>.xyz``; found 2026-08-19).  The original path stays
+    # the locator here; what lands in the folder is the description's
+    # own, self-contained reference.
+    src = (Path(desc.task.structure.source).expanduser()
+           if desc.task.structure.source else None)
+    travel_name = (f"{src.stem}.source{src.suffix}"
+                   if src is not None and src.is_file() else None)
+    if travel_name is not None:
+        import dataclasses as _dc
+        desc = _dc.replace(desc, task=_dc.replace(
+            desc.task, structure=_dc.replace(
+                desc.task.structure, source=travel_name)))
+
     staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.describe-",
                                     dir=out_dir.parent))
     try:
@@ -241,16 +261,14 @@ def write_description(desc: Description, dest, *,
         # travels as the codec pair (document + .molstruct.json, the pair
         # prep's loader already reads); one without travels as the raw
         # copy, byte-identical provenance.
-        src = (Path(desc.task.structure.source).expanduser()
-               if desc.task.structure.source else None)
-        if src is not None and src.is_file():
+        if travel_name is not None:
             pair = ([] if struct is None else
-                    StructureCodec().files(struct, staging / src.name))
+                    StructureCodec().files(struct, staging / travel_name))
             if len(pair) > 1:      # keep_sidecar: metadata worth carrying
                 for path, data in pair:
                     path.write_bytes(data)
             else:
-                shutil.copy2(src, staging / src.name)
+                shutil.copy2(src, staging / travel_name)
         if psml_lib and desc.pseudo_species:
             from .siesta.input import copy_pseudopotentials
             lib = Path(psml_lib).expanduser()

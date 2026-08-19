@@ -149,7 +149,7 @@ def _run_index_resolver(basename: str, ext: str = ".out") -> str:
 
     The resolver is shared by SIESTA + PySCF wrappers so the run-index
     semantics are identical across engines; only the suffix differs.
-    ``basename`` is the script stem (e.g. ``siesta-hemeC-gas-stage3``)
+    ``basename`` is the script stem (e.g. ``hemeC_gas_03_tight``)
     baked in at generation time -- the bash itself doesn't try to
     derive it.
     """
@@ -581,9 +581,9 @@ def _runtime_status_block(
         # Warm-start file extensions matching the cold-restart block.
         # 2026-06-14 fix: SIESTA writes warm-start files keyed on the
         # ``SystemLabel`` from inside the .fdf -- NOT on the .fdf's
-        # filename basename.  So a stage2 .fdf with
+        # filename basename.  So a second-stage .fdf with
         # ``SystemLabel  foo`` writes ``foo.DM`` etc., regardless of
-        # the script being named ``foo-stage2.fdf``.  Test both label
+        # the script being named ``foo_02_tight.fdf``.  Test both label
         # patterns (SystemLabel-keyed AND basename-keyed) for the
         # warm-start detection so the Mode line is accurate.
         # Match the full SIESTA warm-start ext tuple used by the

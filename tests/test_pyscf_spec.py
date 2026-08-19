@@ -245,3 +245,50 @@ def test_charge_explicit_zero_overrides_heuristic(deprotonated_diester):
 def test_every_variant_compiles(small_struct, cfg):
     text = render_script(small_struct, cfg)
     compile(text, "<spec-test>", "exec")
+
+
+# --------------------------------------------------------------------- #
+#  The emitted program fills the directory it was LAUNCHED in           #
+# --------------------------------------------------------------------- #
+
+
+def test_emitted_outputs_stay_in_the_attempt_directory(small_struct, tmp_path):
+    """A hierarchical attempt addresses the deck through a link
+    (``run-0/<job>.py -> ../../<job>.py``) and owns everything the run
+    produces (``project-layout.md``, the "attempt" row: *a run,
+    immutable*).  So the emitted path anchor must NOT follow the link:
+    every ``_mb_outfile(...)`` product belongs beside the path that was
+    invoked, not beside the link's target.
+
+    Executed against the EMITTED prelude itself -- the ``_MB_SCRIPT_DIR``
+    assignment and ``_mb_outfile`` definition are cut out of a rendered
+    deck and run with ``__file__`` set to the link -- because the defect
+    this pins (``resolve()`` walking out of the attempt, found by the
+    2026-08-19 E2E run) lived in emitted text no import ever executes.
+    """
+    import ast
+
+    text = render_script(small_struct, PySCFConfig(job_name="w"))
+    tree = ast.parse(str(text))
+    keep = [n for n in tree.body
+            if (isinstance(n, ast.ImportFrom) and n.module == "pathlib")
+            or (isinstance(n, ast.Assign)
+                and any(getattr(t, "id", "") == "_MB_SCRIPT_DIR"
+                        for t in n.targets))
+            or (isinstance(n, ast.FunctionDef) and n.name == "_mb_outfile")]
+    assert len(keep) == 3, "the deck no longer carries the one path anchor"
+    prelude = ast.Module(body=keep, type_ignores=[])
+
+    bundle = tmp_path / "bundle"
+    attempt = bundle / "01_coarse" / "run-0"
+    attempt.mkdir(parents=True)
+    real = bundle / "w.py"
+    real.write_text("# the deck\n")
+    link = attempt / "w.py"
+    link.symlink_to("../../w.py")
+
+    ns = {"__file__": str(link)}
+    exec(compile(prelude, str(link), "exec"), ns)
+    out = ns["_mb_outfile"]("w.chk")
+    assert out == str(attempt / "w.chk"), (
+        f"emitted anchor left the attempt directory: {out}")

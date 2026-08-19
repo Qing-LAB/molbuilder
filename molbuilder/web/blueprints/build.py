@@ -1321,7 +1321,8 @@ def api_task_setup_handover():
         this there is no path from the form to a calculation at all.
       * ``task.1st.json`` -- what the tab knows about the calculation ITSELF:
         the engine, the structure it is of, and what it is called.
-      * ``<label>.xyz`` + ``<label>.molstruct.json`` -- THE STRUCTURE, from
+      * ``<label>.source.xyz`` + ``<label>.source.molstruct.json`` -- THE
+        STRUCTURE, from
         ``StructureCodec``, the same generator ``/api/structure/export`` uses.
         ``molview.md`` § 11.7: the server writes every file, so the pair a
         person downloads and the pair that lands here cannot differ.
@@ -1413,7 +1414,13 @@ def api_task_setup_handover():
     from ._shared import checked_periodicity
     struct, struct_notices = checked_periodicity(struct)
     try:
-        made = StructureCodec().files(struct, label)
+        # ``<label>.source`` -- the dotted segment is the reservation
+        # (`job-contracts.md` § 6.3): every identity is validated
+        # dot-free, so no engine output, which stems its files on an
+        # identity, can ever take this name.  Before it, a flat SIESTA
+        # run whose label matched the structure's stem overwrote its own
+        # input via WriteCoorXmol (found 2026-08-19).
+        made = StructureCodec().files(struct, f"{label}.source")
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     structure_files = [{"name": path.name, "text": blob.decode("utf-8")}

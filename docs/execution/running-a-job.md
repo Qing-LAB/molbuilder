@@ -428,11 +428,18 @@ directory, with these fields:
   `%block TS.Elec.*` → transport; conflicting matches raise
   `JobTypeAmbiguousError`).
 - **`status`** — `running` / `stale` / `failed` / `finished`, derived from the
-  SIESTA trajectory parser's run-state: `finished` once the run's end-of-run
-  marker appears, `failed` when the parser reports an errored run (a fatal
-  marker in the `.out`, or a torn run whose last SCF block did not converge),
-  `running` while the active `.out` keeps growing, `stale` when it stops
-  growing for > 60 s without finishing or failing.
+  trajectory parsers' run-state over the directory's **result files**: every
+  `.out` (SIESTA's), plus every `*.molwatch.log` whose footer concludes the
+  run — the engine-neutral end-of-run marker, and the only one a PySCF
+  attempt has (its stdout is a `.log`, and SIESTA's `.out` convention never
+  applies).  A molwatch log **without** a conclusion footer is a live view,
+  not a result, and contributes nothing — which is what keeps a prep-time
+  seed from ever steering the state.  `finished` once the active result's
+  end-of-run marker appears, `failed` when a parser reports an errored run
+  (a fatal marker in the `.out`, a torn run whose last SCF block did not
+  converge, or an error footer in the molwatch log), `running` while the
+  active result keeps growing, `stale` when it stops growing for > 60 s
+  without finishing or failing.
 - **`engine_body_summary`** — a fixed set of 25 curated SIESTA directives
   (System / SCF / XC / Solver / MD / k-mesh), emitted as **raw strings** with
   `null` for absent keys — the decoder never interprets or converts values.

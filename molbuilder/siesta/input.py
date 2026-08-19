@@ -668,7 +668,7 @@ def _relaxation_facts(cfg) -> Optional[dict]:
     #   redata: Dynamics option        = Broyden coord. optimization
     #   redata: Maximum number of optimization moves = 5
     #   redata: Max atomic displ per move = 0.1000 Ang
-    # Identical echo lines stage1 (CG) already produces in real jobs.
+    # Identical echo lines a CG first stage already produces in real jobs.
     #
     # Verlet / Nose (NVE / NVT dynamics, not relaxation) use distinct
     # step-control keywords -- ``MD.FinalTimeStep`` + the temperature

@@ -380,3 +380,54 @@ def test_no_direct_out_grep_in_decoder():
         "job.py has too many read_text calls; should only read "
         ".fdf bodies, not other engine outputs"
     )
+
+
+# --------------------------------------------------------------------- #
+#  Result files are engine-neutral: the molwatch conclusion counts      #
+# --------------------------------------------------------------------- #
+# running-a-job.md § 4: state is derived over the directory's RESULT
+# files -- every .out, plus each molwatch log whose footer concludes the
+# run.  A PySCF attempt has no .out at all, so the molwatch conclusion
+# is its ONLY end-of-run marker (found 2026-08-19: a finished PySCF
+# attempt read "running -- no .out file yet" forever).
+
+
+def _mw_log(dirpath, name, *, concluded):
+    body = (
+        "# molwatch trajectory log v1\n"
+        "# engine: pyscf\n"
+        "# job: w\n"
+        "# units: energy=eV, force=eV/Ang, coords=Ang\n"
+        "\n"
+        "==== molwatch step 0 begin ====\n"
+        "step_index: 0\n"
+        "kind: initial_preview\n"
+        "n_atoms: 1\n"
+        "coordinates (Ang):\n"
+        "   H       0.0 0.0 0.0\n"
+        "==== molwatch step 0 end ====\n"
+    )
+    if concluded:
+        body += "\n# concluded: 2026-08-19T12:00:00\n"
+    p = Path(dirpath) / name
+    p.write_text(body)
+    return p
+
+
+def test_a_concluded_molwatch_log_finishes_an_attempt_with_no_out(tmp_path):
+    """A PySCF attempt: no .out ever exists, the concluded molwatch log
+    is the result file, and the verb's one job is to say finished."""
+    _mw_log(tmp_path, "w_01_coarse.molwatch.log", concluded=True)
+    res = parse_dir(tmp_path)
+    assert res.status["state"] == "finished"
+    assert res.status["detail"] == "job_completed"
+
+
+def test_a_seed_molwatch_log_is_a_live_view_not_a_result(tmp_path):
+    """The prep-time seed has no conclusion footer, so it contributes
+    nothing: the attempt reads as running with no result yet -- never as
+    finished, and never as a state the seed's mtime could steer."""
+    _mw_log(tmp_path, "w_01_coarse.molwatch.log", concluded=False)
+    res = parse_dir(tmp_path)
+    assert res.status["state"] == "running"
+    assert res.status["detail"] == "no result file yet"

@@ -72,15 +72,80 @@ _END_RE         = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+end\s*====")
 _HEADER_RE      = re.compile(r"^#\s*molwatch\s+trajectory\s+log", re.IGNORECASE)
 _ENGINE_RE      = re.compile(r"^#\s*engine:\s*(\S+)", re.IGNORECASE)
 _RUNTIME_RE     = re.compile(r"^#\s*runtime\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
+_CONV_KEY = r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)?"
 _CONVERGENCE_RE = re.compile(
     # Two header shapes share this regex:
     #   FLAT:   # convergence.<leaf>:        <val>      -- single-stage runs
     #   NESTED: # convergence.<stage>.<leaf>: <val>     -- staged runs (#534)
     # The capture group catches either bare ``<leaf>`` or
     # ``<stage>.<leaf>``; ``_on_convergence`` splits the dotted form.
-    r"^#\s*convergence\.([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?):\s*(.*)$")
+    # A segment is ``[A-Za-z0-9_]+`` -- DIGIT-FIRST INCLUDED, because the
+    # nested form's first segment is a stage token and those lead with the
+    # zero-padded ordinal (``01_coarse``, `job-contracts.md` § 6.3).  The
+    # identifier-shaped ``[a-zA-Z_]`` head that stood here was written
+    # against the ``stage1.<leaf>`` example in the emitter's comment, so
+    # every real staged header parsed to an EMPTY target dict and the
+    # Results card said "not found in source" over eight present lines
+    # (found by the 2026-08-19 E2E run).  ``_CONV_KEY`` is the ONE spelling
+    # of the key grammar -- the section rule's start pattern below uses the
+    # same fragment, because the drift lived exactly in its inline copy.
+    r"^#\s*convergence\.(" + _CONV_KEY + r"):\s*(.*)$")
 _CONCLUDED_RE   = re.compile(r"^#\s*concluded:\s*(.+)$", re.IGNORECASE)
 _ERROR_RE       = re.compile(r"^#\s*error:\s*(.+)$",     re.IGNORECASE)
+
+
+def parse_convergence_line(line: str, targets: Dict[str, Any]) -> bool:
+    """Apply one ``# convergence.<key>: <value>`` header line to
+    ``targets`` and return whether the line matched.
+
+    THE one reader of the convergence-header grammar.  The molwatch
+    parser's own handler delegates here, and the PySCF trajectory
+    parser's sibling-log enrichment imports this instead of keeping a
+    private copy -- the private copy it kept "to avoid coupling" was
+    letter-first and flat-only, so a staged header (digit-first
+    ``01_coarse.<leaf>`` keys) read as EMPTY on the trajectory-view
+    path while the molwatch-view path, once fixed, read it fine
+    (2026-08-19).  Coupling to the format's owner is the point.
+
+    Both header shapes land as the callers expect (#534):
+
+      * flat   ``convergence.<leaf>``          -> ``targets[<leaf>]``
+      * nested ``convergence.<stage>.<leaf>``  -> ``targets[<stage>][<leaf>]``
+
+    Stamps ``source = "molwatch_header"`` on the first hit.
+    """
+    m = _CONVERGENCE_RE.match(line)
+    if not m:
+        return False
+    full_key, val = m.group(1), m.group(2).strip()
+    targets.setdefault("source", "molwatch_header")
+
+    def _coerce(s):
+        if s == "None" or s == "null":
+            return None
+        if s in ("True", "False"):
+            return s == "True"
+        try:
+            return int(s)
+        except ValueError:
+            pass
+        try:
+            return float(s)
+        except ValueError:
+            pass
+        return s
+
+    if "." in full_key:
+        stage_name, leaf_key = full_key.split(".", 1)
+        stage_bucket = targets.setdefault(stage_name, {})
+        if not isinstance(stage_bucket, dict):
+            # Defensive: a flat-shape run that reused a stage-name as a
+            # leaf key (hand-edited file) is not silently clobbered.
+            return True
+        stage_bucket[leaf_key] = _coerce(val)
+        return True
+    targets[full_key] = _coerce(val)
+    return True
 
 
 def _maybe_float(token: str) -> Optional[float]:
@@ -189,43 +254,11 @@ def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
         if k != "source")``.  The ``source`` key sits at top-level
         in either shape.
         """
-        m = _CONVERGENCE_RE.match(line)
-        if not m:
-            return
-        full_key, val = m.group(1), m.group(2).strip()
         ct = runtime_info.setdefault("convergence_targets", {})
-        ct.setdefault("source", "molwatch_header")
-
-        def _coerce(s):
-            if s == "None" or s == "null":
-                return None
-            if s in ("True", "False"):
-                return s == "True"
-            try:
-                return int(s)
-            except ValueError:
-                pass
-            try:
-                return float(s)
-            except ValueError:
-                pass
-            return s
-
-        # Nested form: stage_name + dot + leaf_key.  Split on the
-        # first ``.`` (leaf names themselves never contain ``.``;
-        # they're the closed set in _LEAF_KEYS on the emitter side).
-        if "." in full_key:
-            stage_name, leaf_key = full_key.split(".", 1)
-            stage_bucket = ct.setdefault(stage_name, {})
-            if not isinstance(stage_bucket, dict):
-                # Defensive: if a flat-shape run reused a stage-name
-                # as a leaf key (shouldn't happen, but molwatch.log
-                # files can be hand-edited), don't silently clobber.
-                return
-            stage_bucket[leaf_key] = _coerce(val)
-            return
-        # Flat form: bare leaf key.
-        ct[full_key] = _coerce(val)
+        if not parse_convergence_line(line, ct) and len(ct) == 0:
+            # No match and nothing accumulated: drop the empty dict so
+            # absence still reads as absence downstream.
+            runtime_info.pop("convergence_targets", None)
 
     # ---- block boundary on_start callbacks ----
 
@@ -402,9 +435,7 @@ def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
             # commit 3b.  The handler (`_on_convergence`) re-applies
             # the full _CONVERGENCE_RE and splits the dotted form.
             start=matches_regex_ci(
-                r"^#\s*convergence\."
-                r"[a-zA-Z_][a-zA-Z0-9_]*"
-                r"(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?:"),
+                r"^#\s*convergence\." + _CONV_KEY + r":"),
             on_start=_on_convergence,
         ),
         block_begin_rule,

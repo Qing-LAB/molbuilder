@@ -448,12 +448,20 @@ class TestAbsorbSatellites:
     """
 
     #: The real filenames from that run, master first.
-    _MASTER = "/p/pyscf_relax-stage3.molwatch.log"
+    # REAL staged names: the master carries the stage's artifact token
+    # (digit-first ``03_tight`` -- job-contracts.md 6.3); ``_initial`` /
+    # ``_optimized`` stem on the bare job; the geomeTRIC streams carry
+    # their own rung's token inside.  Until 2026-08-19 these fixtures
+    # spelled the retired ``-stageN`` overlay, so the absorb rule and
+    # its tests agreed on a grammar no generated file has used since
+    # the token rename -- and every real staged relaxation was five
+    # menu entries again.
+    _MASTER = "/p/pyscf_relax_03_tight.molwatch.log"
     _SATS = [
         "/p/pyscf_relax_initial.xyz",
         "/p/pyscf_relax_optimized.xyz",
-        "/p/pyscf_relax_geom_stage1_optim.xyz",
-        "/p/pyscf_relax_geom_stage2_optim.xyz",
+        "/p/pyscf_relax_geom_01_coarse_optim.xyz",
+        "/p/pyscf_relax_geom_02_tight_optim.xyz",
     ]
 
     @staticmethod
@@ -496,17 +504,18 @@ class TestAbsorbSatellites:
 
     def test_the_master_log_absorbs_its_working_files(self):
         out = self._absorb(([self._MASTER] + self._SATS))
-        assert out == ["pyscf_relax-stage3.molwatch.log"], (
+        assert out == ["pyscf_relax_03_tight.molwatch.log"], (
             "one PySCF relaxation must be ONE menu entry; got: " + repr(out)
         )
 
-    def test_the_stage_overlay_suffix_is_stripped_before_matching(self):
-        """The master is ``<base>-stage<N>.molwatch.log`` while its satellites
-        are plain ``<base>_*`` (job-contracts.md § 2.3).  Without stripping the
-        overlay suffix the prefixes never match and nothing is absorbed."""
+    def test_the_stage_token_is_stripped_before_matching(self):
+        """The master is ``<job>_<token>.molwatch.log`` while ``_initial`` /
+        ``_optimized`` satellites stem on the bare ``<job>``.  Without
+        stripping the token the prefixes never match and nothing is
+        absorbed."""
         out = self._absorb((
-            ["/p/pyscf_relax-stage3.molwatch.log", "/p/pyscf_relax_optimized.xyz"]))
-        assert out == ["pyscf_relax-stage3.molwatch.log"]
+            ["/p/pyscf_relax_03_tight.molwatch.log", "/p/pyscf_relax_optimized.xyz"]))
+        assert out == ["pyscf_relax_03_tight.molwatch.log"]
 
     def test_without_the_master_the_parts_still_list(self):
         """Absorption needs the master PRESENT.  A deleted or never-written
@@ -520,15 +529,15 @@ class TestAbsorbSatellites:
         out = self._absorb(([
             self._MASTER,
             "/p/pyscf_relax_optimized.xyz",
-            "/p/other_job-stage1.molwatch.log",
+            "/p/other_job_01_coarse.molwatch.log",
             "/p/other_job_optimized.xyz",
         ]))
-        assert sorted(out) == ["other_job-stage1.molwatch.log",
-                               "pyscf_relax-stage3.molwatch.log"]
+        assert sorted(out) == ["other_job_01_coarse.molwatch.log",
+                               "pyscf_relax_03_tight.molwatch.log"]
 
     def test_a_master_in_another_directory_absorbs_nothing(self):
         out = self._absorb((
-            ["/p/a/pyscf_relax-stage3.molwatch.log",
+            ["/p/a/pyscf_relax_03_tight.molwatch.log",
              "/p/b/pyscf_relax_optimized.xyz"]))
-        assert sorted(out) == ["pyscf_relax-stage3.molwatch.log",
+        assert sorted(out) == ["pyscf_relax_03_tight.molwatch.log",
                                "pyscf_relax_optimized.xyz"]

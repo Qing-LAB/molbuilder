@@ -318,6 +318,8 @@ prefix, so there's no column-width fragility:
 # job: <job_name>
 # units: energy=eV, force=eV/Ang, coords=Ang
 # created: <ISO8601 local timestamp>
+# runtime.<key>: <value>                 # optional, repeated (threads, gpu, host, ...)
+# convergence.<key>: <value>             # optional, repeated -- the stage's targets
 
 ==== molwatch step 0 begin ====          # step 0 = the initial-state PREVIEW
 kind: initial_preview
@@ -351,6 +353,18 @@ A **real** opt step (index ≥ 1) carries an energy/forces/max_force value and a
 - **Hook-wired, not monkey-patched:** `mf.callback` (per SCF cycle) + `optimize(…,
   callback=…)` (per accepted opt step) — both documented PySCF/geomeTRIC extension
   points.
+- **The convergence-header key grammar**: flat `convergence.<leaf>` for an
+  unstaged run, nested `convergence.<token>.<leaf>` for a staged one — and the
+  `<token>` is the stage's artifact token, **digit-first**
+  (`01_coarse`, [`job-contracts.md` § 6.3](?doc=execution/job-contracts.md)),
+  never an identifier-shaped `stageN`. One reader owns the grammar
+  (`parse/engines/molwatch.py::parse_convergence_line`); the two readers that
+  spelled it privately both assumed letter-first identifiers and silently
+  dropped every staged header (found 2026-08-19).
+- **The footer** is the run's conclusion: `# concluded: <stamp>` on a clean
+  end, `# error: <message>` on a failure — the engine-neutral end-of-run
+  marker `jobset status` and the Results page read
+  ([`running-a-job.md` § 4](?doc=execution/running-a-job.md)).
 
 ---
 

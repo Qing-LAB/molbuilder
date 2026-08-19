@@ -96,12 +96,20 @@
          * Listing them as peers turned one PySCF relaxation into five menu
          * entries (2026-08-04).
          *
-         * NAMING: a staged run's master is `<base>-stage<N>.molwatch.log`
-         * while its satellites stay plain `<base>_*` -- the `-stage<N>`
-         * overlay suffix (job-contracts.md § 2.3) has to come off before the
-         * prefixes can be compared.  Only `.molwatch.log` absorbs; a SIESTA
-         * `.out` names its own stage files the same way and is left alone
-         * until that is verified against a real staged SIESTA run.
+         * NAMING: a staged run's master is `<job>_<token>.molwatch.log`
+         * where the token is the stage's artifact token -- digit-first,
+         * `01_coarse` (job-contracts.md § 6.3) -- while `_initial` /
+         * `_optimized` satellites stem on the bare `<job>` and the
+         * geomeTRIC stream carries the token INSIDE
+         * (`<job>_geom_<token>_optim.xyz`).  So satellites are matched
+         * against BOTH stems: the master's full stem and the
+         * token-stripped job.  (The `-stage<N>` strip that stood here
+         * was the pre-rename spelling; after the token rename it
+         * matched nothing, and every staged relaxation went back to
+         * being five menu entries -- 2026-08-19.)  Only `.molwatch.log`
+         * absorbs; a SIESTA `.out` names its own stage files the same
+         * way and is left alone until that is verified against a real
+         * staged SIESTA run.
          */
         absorbs: (master, other) => {
             const lower = master.toLowerCase();
@@ -114,16 +122,18 @@
             const m = cut(master);
             const o = cut(other);
             if (m.dir !== o.dir) return false;          // same folder only
-            // `<base>-stage3.molwatch.log` -> `<base>`
-            const base = m.name
-                .slice(0, -(".molwatch.log".length))
-                .replace(/-stage\d+$/i, "");
-            if (!base) return false;
+            const stem = m.name.slice(0, -(".molwatch.log".length));
+            if (!stem) return false;
+            // `<job>_<token>` -> `<job>`; an unstaged stem passes through.
+            const job = stem.replace(/_\d+_[A-Za-z0-9_]+$/, "");
             const n = o.name.toLowerCase();
-            const b = base.toLowerCase();
-            return n === b + "_initial.xyz"
+            const stems = job && job !== stem
+                ? [stem.toLowerCase(), job.toLowerCase()]
+                : [stem.toLowerCase()];
+            return stems.some((b) =>
+                n === b + "_initial.xyz"
                 || n === b + "_optimized.xyz"
-                || (n.startsWith(b + "_geom_") && n.endsWith("_optim.xyz"));
+                || (n.startsWith(b + "_geom_") && n.endsWith("_optim.xyz")));
         },
     });
 

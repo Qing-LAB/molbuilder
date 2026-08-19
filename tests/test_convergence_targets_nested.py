@@ -10,12 +10,17 @@ Contract:
 
   parser → ``runtime_info["convergence_targets"] = {key: val, ...}``
 
-* Nested header lines (staged runs)::
+* Nested header lines (staged runs) — the first segment is the stage's
+  artifact TOKEN (`identity.stage_token`), which is DIGIT-FIRST
+  (``01_coarse``, `job-contracts.md` § 6.3).  Until 2026-08-19 this file
+  round-tripped an identifier-shaped ``stageN`` spelling no real deck
+  writes, so the reader's letter-first key regex passed every test here
+  while parsing every real staged header to an empty dict::
 
-    # convergence.stage1.max_force_tol_eV_per_A: 0.103
-    # convergence.stage1.scf_energy_tol:         1e-7
-    # convergence.stage2.max_force_tol_eV_per_A: 0.023
-    # convergence.stage2.scf_energy_tol:         1e-9
+    # convergence.01_coarse.max_force_tol_eV_per_A: 0.103
+    # convergence.01_coarse.scf_energy_tol:         1e-7
+    # convergence.02_tight.max_force_tol_eV_per_A: 0.023
+    # convergence.02_tight.scf_energy_tol:         1e-9
 
   parser → ``runtime_info["convergence_targets"] = {stage_name:
                                                     {key: val}}``
@@ -72,12 +77,12 @@ def test_emitter_writes_nested_lines_for_nested_input(tmp_path):
         str(out), "test", mol,
         runtime_info=None,
         convergence_targets={
-            "stage1": {
+            "01_coarse": {
                 "max_force_tol_eV_per_A": 0.103,
                 "scf_energy_tol":         1.0e-7,
                 "max_geom_iter":          50,
             },
-            "stage2": {
+            "02_tight": {
                 "max_force_tol_eV_per_A": 0.023,
                 "scf_energy_tol":         1.0e-9,
                 "max_geom_iter":          200,
@@ -85,10 +90,10 @@ def test_emitter_writes_nested_lines_for_nested_input(tmp_path):
         },
     )
     body = out.read_text()
-    assert "# convergence.stage1.max_force_tol_eV_per_A: 0.103" in body
-    assert "# convergence.stage1.scf_energy_tol: 1e-07"         in body
-    assert "# convergence.stage2.max_force_tol_eV_per_A: 0.023" in body
-    assert "# convergence.stage2.scf_energy_tol: 1e-09"         in body
+    assert "# convergence.01_coarse.max_force_tol_eV_per_A: 0.103" in body
+    assert "# convergence.01_coarse.scf_energy_tol: 1e-07"         in body
+    assert "# convergence.02_tight.max_force_tol_eV_per_A: 0.023" in body
+    assert "# convergence.02_tight.scf_energy_tol: 1e-09"         in body
     # No flat-shape lines.
     assert "# convergence.max_force" not in body
 
@@ -120,12 +125,12 @@ scf_history end
 _SAMPLE_NESTED = """\
 # molwatch trajectory log v1
 # engine: pyscf
-# convergence.stage1.max_force_tol_eV_per_A: 0.103
-# convergence.stage1.scf_energy_tol: 1e-07
-# convergence.stage1.max_geom_iter: 50
-# convergence.stage2.max_force_tol_eV_per_A: 0.023
-# convergence.stage2.scf_energy_tol: 1e-09
-# convergence.stage2.max_geom_iter: 200
+# convergence.01_coarse.max_force_tol_eV_per_A: 0.103
+# convergence.01_coarse.scf_energy_tol: 1e-07
+# convergence.01_coarse.max_geom_iter: 50
+# convergence.02_tight.max_force_tol_eV_per_A: 0.023
+# convergence.02_tight.scf_energy_tol: 1e-09
+# convergence.02_tight.max_geom_iter: 200
 
 ==== molwatch step 0 begin ====
 step_index: 0
@@ -161,12 +166,12 @@ def test_parser_reads_nested_header_as_nested_dict(tmp_path):
     """Nested header round-trips: stage_name → leaf_key dict."""
     traj = _parse(_SAMPLE_NESTED, tmp_path)
     ct = traj.runtime_info["convergence_targets"]
-    assert isinstance(ct["stage1"], dict)
-    assert ct["stage1"]["max_force_tol_eV_per_A"] == pytest.approx(0.103)
-    assert ct["stage1"]["scf_energy_tol"]         == pytest.approx(1.0e-7)
-    assert ct["stage1"]["max_geom_iter"]          == 50
-    assert ct["stage2"]["max_force_tol_eV_per_A"] == pytest.approx(0.023)
-    assert ct["stage2"]["scf_energy_tol"]         == pytest.approx(1.0e-9)
+    assert isinstance(ct["01_coarse"], dict)
+    assert ct["01_coarse"]["max_force_tol_eV_per_A"] == pytest.approx(0.103)
+    assert ct["01_coarse"]["scf_energy_tol"]         == pytest.approx(1.0e-7)
+    assert ct["01_coarse"]["max_geom_iter"]          == 50
+    assert ct["02_tight"]["max_force_tol_eV_per_A"] == pytest.approx(0.023)
+    assert ct["02_tight"]["scf_energy_tol"]         == pytest.approx(1.0e-9)
     assert ct["source"] == "molwatch_header"
 
 

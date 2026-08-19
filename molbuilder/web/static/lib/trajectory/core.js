@@ -1105,9 +1105,11 @@ import { mount } from "/static/lib/molview/index.js";
     //      source: "molwatch_header"}
     //     -> returned as-is.
     //
-    //   NESTED (staged runs, task #534):
-    //     {stage1: {max_force_tol_eV_per_A: ..., ...},
-    //      stage2: {max_force_tol_eV_per_A: ..., ...}, ...,
+    //   NESTED (staged runs, task #534) — keys are the stages' artifact
+    //   TOKENS, digit-first (job-contracts.md 6.3), so they are NOT
+    //   identifiers and always need quoting:
+    //     {"01_coarse": {max_force_tol_eV_per_A: ..., ...},
+    //      "02_tight":  {max_force_tol_eV_per_A: ..., ...}, ...,
     //      source: "molwatch_header"}
     //     -> flattened to the LAST stage's leaf dict (the tightest
     //     tier — the run only stops when the last enabled stage's

@@ -41,32 +41,72 @@ to deck text; the render walk, the W10 derived context, the declined-items
 line, the W5 recorded nothings, and the 24-line check gate all appear as the
 contract says.  Results tab: live plots and trajectories for both runs.
 
-**Findings — each found only by executing, none decided yet.  Decide, then fix
-the owning rule first.**
+**The four findings — classified (user, 2026-08-19), fixed the same day.**
+Natures: 1 design hole, 2 framework bug, 3 explicitly-deferred design item,
+4 framework bug (and the "missing lines" half of my original report was my
+own truncated read -- the lines were present; the READER dropped them).
 
-1. **Flat SIESTA clobbers the structure source.**  `WriteCoorXmol` writes
-   `<SystemLabel>.xyz`; with label = structure stem (the natural choice) that
-   is `structure.source` itself.  `water.xyz` now holds the relaxed, wrapped
-   coordinates; `prep` reads geometry from that file (`prep.py:593`), so a
-   re-prep would silently use them.  No contract, validator or preflight
-   covers the collision.
-2. **The emitted PySCF program disobeys the attempt contract.**
-   `_mb_outfile` anchors at `_MB_Path(__file__).resolve().parent` — through
-   the symlink, the BUNDLE ROOT — so chk/molwatch/xyz/log land outside
-   `run-0/`, and a second attempt overwrites the first.  `project-layout.md`
-   § ⑤: an attempt is "everything one invocation produced — a run,
-   immutable".  SIESTA (cwd-relative) honours it; the emitted program does
-   not.  (Note the tension before fixing: `mf.init_guess = "chkfile"` warm
-   restart currently *relies* on finding the shared chk.)
-3. **`jobset status` never sees a PySCF attempt finish.**
-   `parse/dirs/job.py::_enumerate_files` classifies SIESTA suffixes only, so
-   a completed PySCF run reports "running — no .out file yet" forever, while
-   the Results page (molwatch-based, engine-agnostic) says Finished for the
-   same directory.
-4. **The PySCF molwatch header omits the convergence targets.**  SIESTA's
-   seed writes `# convergence.*`; PySCF's emitted header writes `runtime.*`
-   only, so the Results convergence card is empty against the page's own
-   hint that the header carries the targets.
+1. **Fixed — the `.source` reservation** (`job-contracts.md` § 6.3).  The
+   description's structure pair is `<label>.source.xyz` +
+   `<label>.source.molstruct.json`; identities are validated dot-free, so
+   no engine output can take a dotted name in any shape.  Writers: the
+   hand-over and `jobset describe` (which now also records the marked name
+   in the travelling `task.json`).  `identity.OUR_FILE_PATTERNS` rows
+   updated — a bare `<label>.xyz` at a flat root is the ENGINE's now and
+   is reported as run state; `--cold` names it as at-stake.  Old folders
+   keep working (readers follow `task.json`).
+2. **Fixed — the emitted anchor.**  `_mb_outfile` anchors with
+   ``absolute()``: `resolve()` was a flat-era reflex (a6908f1f,
+   2026-05-28, when the deck was never a link) that walked hierarchical
+   outputs out of `run-<n>/`.  Attempt state now lands in the attempt;
+   warm carry stays with prep's sanctioned route (`pyscf/warm-files.toml`).
+   Verified live: run-1 holds chk/molwatch/xyz, and `jobset status` lists
+   its warm files.  The same residue exists in `spectra/pyscf_script.py`
+   — deferred scope, fix it in the spectra pass.
+3. **Fixed — status reads the engine-neutral conclusion.**
+   `running-a-job.md` § 4 now derives state over RESULT files: every
+   `.out` plus each molwatch log whose footer concludes the run; a
+   seed (no footer) contributes nothing, so SIESTA behaviour is
+   bit-identical.  The dir parser claims molwatch dirs (the B3 deferral
+   of 2026-06-19, shipped for status).  Verified live: the PySCF attempt
+   reads finished · job_completed.
+4. **Fixed — the convergence-key grammar.**  The molwatch reader's key
+   regex was letter-first while real stage tokens are digit-first
+   (`01_coarse`), so every staged header parsed to an EMPTY target dict
+   and the Results card said "not found" over eight present lines.  One
+   grammar fragment (`_CONV_KEY`) now feeds both the extraction regex and
+   the dispatch rule; the nested-form tests round-trip REAL tokens
+   instead of the imagined `stageN` spelling.  The JS card needed
+   nothing (read in full: shape-detection is type-based, key-agnostic).
+
+**The follow-up sweep the fixes earned (user, 2026-08-19: "number-starting
+name vs stageN was a historical residue -- be sure nothing is left behind, in
+comments, code, or documents").**  Swept the whole tree for the retired
+spellings (`stageN`, `-stage<N>`, letter-first key grammars, pre-stage stem
+strippers) and for the retired trajectory glob.  Live code found and fixed:
+
+* `parse/engines/pyscf.py` — THREE private pre-stage stem-strippers (molwatch
+  sibling, Step-0 energy log, SCF-history log) each missed every staged run's
+  files; one inverse of the writer grammar now (`_resolve_job_token`), plus
+  the module's own letter-first flat-only convergence regex replaced by the
+  format owner's one reader (`molwatch.parse_convergence_line`).
+* `web/static/lib/inspectors/trajectory.js` — the absorb rule stripped the
+  retired `-stage<N>` overlay, so every staged relaxation was five menu
+  entries again; now strips the real token and matches both stems.
+* `web/blueprints/watch.py` — discovery-chain steps 3–4 spelled only the
+  unstaged grammar (`*_geom_optim.xyz` cannot match a staged trajectory);
+  masked whenever a molwatch seed exists, live for `write_molwatch_log=False`.
+* Tests that round-tripped the imagined spellings (`stage1` keys, `-stage3`
+  masters) now round-trip real tokens — they were green against grammar no
+  generated file has used since the token rename.
+* Teaching text swept to today's grammar (emitter examples, format.py's
+  `stage_name` doc, core.js's nested example, runwrap/checkpoint examples,
+  the emitted deck's Outputs rows, `engines/pyscf.md` § 4 now specs the
+  header/footer lines and the digit-first key grammar, `job-contracts.md`'s
+  chain text).  Left alone on purpose: frozen fixtures
+  (`hemeC-stage2-run3-finished-42fr.out`), dated empirical citations, user
+  tag examples (`stage1-good`), and project-layout's quoted-and-corrected
+  review trail — history keeps its era's names; teaching text does not.
 
 ### 3. Collapse the instance tests. This is my mess.
 

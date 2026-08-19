@@ -114,28 +114,92 @@ def _can_parse_xyz(path: str) -> bool:
         return False
 
 
-def _sibling_molwatch_log(traj_path: str) -> Optional[str]:
-    """Return the path of the sibling ``<stem>.molwatch.log`` for
-    ``traj_path``, or None when no candidate exists.
+#: A stage's artifact token leads with its zero-padded ordinal
+#: (``01_coarse`` -- `identity.stage_token`, `job-contracts.md` § 6.3).
+_STAGE_TOKEN_RE = re.compile(r"\d+_[A-Za-z0-9_]+$")
 
-    For a trajectory at ``<base>_geom_optim.xyz`` (or any of the
-    other recognised .xyz variants) we look for ``<base>.molwatch.log``
-    in the same directory.  Used by :func:`_read_molwatch_metadata`
-    to surface convergence_targets + run_state + error_message onto
-    PySCF-parser Trajectories — which the molwatch parser already
-    extracts but is otherwise lost when the user is viewing the
-    trajectory file instead of the .molwatch.log.
+
+def _resolve_job_token(base: str, fname: str) -> Tuple[str, Optional[str]]:
+    """``(job, token)`` for a PySCF artifact filename -- THE inverse of
+    the generator's naming, in one place.
+
+    The writer's grammar (``pyscf/input.py``; verified against it,
+    2026-08-19 -- three private stem-strippers here each assumed the
+    pre-stage spelling and silently missed every staged run's siblings):
+
+      * trajectory        ``<job>_geom[_<token>]_optim.xyz``
+      * geomeTRIC log     ``<job>_geom[_<token>].log`` / ``.qdata``
+      * pyscf stdout      ``<job>[_<token>].log``
+      * molwatch          ``<job>[_<token>].molwatch.log``
+      * wrapper stdout    ``<job>[_<token>]-run<N>.pyscf.log``
+      * tokenless         ``<job>_initial.xyz`` / ``<job>_optimized.xyz``
+
+    A trajectory name carries the token itself (split at the RIGHTMOST
+    ``_geom`` -- a job name may legally contain ``_geom``).  A tokenless
+    artifact resolves its token from the molwatch logs beside it: the
+    bare ``<job>.molwatch.log`` means an unstaged run; otherwise the
+    ``<job>_<token>.molwatch.log`` beside it names the token -- newest
+    mtime wins when a flat folder holds several stages' logs, because
+    the tokenless artifact was itself written by whichever rung ran
+    last.  No molwatch log at all leaves the token ``None``, which
+    reproduces the unstaged spelling.
+    """
+    stem = fname
+    if stem.endswith("_optim.xyz"):
+        stem = stem[: -len("_optim.xyz")]
+        cut = stem.rfind("_geom")
+        if cut != -1:
+            job = stem[:cut]
+            rest = stem[cut + len("_geom"):]
+            if rest == "":
+                return job, None
+            if rest.startswith("_") and _STAGE_TOKEN_RE.fullmatch(rest[1:]):
+                return job, rest[1:]
+        return stem, None
+    for suffix in ("_initial.xyz", "_optimized.xyz", ".xyz"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    if os.path.isfile(os.path.join(base, stem + ".molwatch.log")):
+        return stem, None
+    tokens = []
+    try:
+        for entry in os.listdir(base):
+            if (entry.startswith(stem + "_")
+                    and entry.endswith(".molwatch.log")):
+                tok = entry[len(stem) + 1: -len(".molwatch.log")]
+                if _STAGE_TOKEN_RE.fullmatch(tok):
+                    tokens.append((os.path.getmtime(
+                        os.path.join(base, entry)), tok))
+    except OSError:
+        pass
+    if tokens:
+        return stem, max(tokens)[1]
+    return stem, None
+
+
+def _stemmed(job: str, token: Optional[str]) -> str:
+    """``<job>[_<token>]`` -- the stem every token-carrying sibling
+    (stdout log, molwatch log, wrapper stdout) is named under."""
+    return f"{job}_{token}" if token else job
+
+
+def _sibling_molwatch_log(traj_path: str) -> Optional[str]:
+    """Return the path of the sibling molwatch log for ``traj_path``,
+    or None when no candidate exists.
+
+    ``<job>[_<token>].molwatch.log`` via :func:`_resolve_job_token`.
+    Used by :func:`_read_molwatch_metadata` to surface
+    convergence_targets + run_state + error_message onto PySCF-parser
+    Trajectories — which the molwatch parser already extracts but is
+    otherwise lost when the user is viewing the trajectory file
+    instead of the .molwatch.log.
     """
     base, fname = os.path.split(traj_path)
     if not base:
         base = "."
-    stem = fname
-    for suffix in ("_geom_optim.xyz", "_initial.xyz",
-                   "_optimized.xyz", ".xyz"):
-        if stem.endswith(suffix):
-            stem = stem[: -len(suffix)]
-            break
-    candidate = os.path.join(base, stem + ".molwatch.log")
+    job, token = _resolve_job_token(base, fname)
+    candidate = os.path.join(base, _stemmed(job, token) + ".molwatch.log")
     if os.path.isfile(candidate):
         return candidate
     return None
@@ -147,29 +211,15 @@ def _sibling_molwatch_log(traj_path: str) -> Optional[str]:
 # ``# error:``) appear after the last ``==== ... end ====`` block.
 _MW_HEADER_LINE_RE = re.compile(r"^#")
 _MW_STEP_BEGIN_RE  = re.compile(r"====\s*molwatch\s+step\s+\d+\s+begin\s*====")
-_MW_CONVERGENCE_RE = re.compile(
-    r"^#\s*convergence\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
 _MW_CONCLUDED_RE   = re.compile(r"^#\s*concluded:\s*(.+)$", re.IGNORECASE)
 _MW_ERROR_RE       = re.compile(r"^#\s*error:\s*(.+)$",     re.IGNORECASE)
-
-
-def _coerce_convergence_value(val: str):
-    """Same coercion the molwatch parser uses: None / bool / int /
-    float / str.  Kept private here to avoid coupling pyscf parser
-    to molwatch parser internals."""
-    if val == "None" or val == "null":
-        return None
-    if val in ("True", "False"):
-        return val == "True"
-    try:
-        return int(val)
-    except ValueError:
-        pass
-    try:
-        return float(val)
-    except ValueError:
-        pass
-    return val
+# The convergence-header grammar has ONE reader --
+# ``molwatch.parse_convergence_line`` (imported in
+# ``_read_molwatch_metadata``).  The private regex + coercion that
+# stood here, kept "to avoid coupling", were letter-first and
+# flat-only: a staged header's digit-first ``01_coarse.<leaf>`` keys
+# read as EMPTY on this path while the molwatch path read them fine
+# (2026-08-19).  The format's owner is the coupling.
 
 
 def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
@@ -198,6 +248,7 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
     log_path = _sibling_molwatch_log(traj_path)
     if log_path is None:
         return {}
+    from .molwatch import parse_convergence_line
     out: Dict[str, object] = {}
     convergence: Dict[str, object] = {}
 
@@ -208,14 +259,10 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
             for line in fh:
                 if _MW_STEP_BEGIN_RE.search(line):
                     break
-                m = _MW_CONVERGENCE_RE.match(line.rstrip("\n"))
-                if m:
-                    key, raw_val = m.group(1), m.group(2).strip()
-                    convergence[key] = _coerce_convergence_value(raw_val)
+                parse_convergence_line(line.rstrip("\n"), convergence)
     except OSError:
         return {}
-    if convergence:
-        convergence["source"] = "molwatch_header"
+    if len(convergence) > 1:      # more than the "source" stamp alone
         out["convergence_targets"] = convergence
 
     # Footer scan: tail the last ~32 KB and look for # concluded: or
@@ -261,12 +308,10 @@ def _read_initial_energy_from_log(traj_path: str) -> Optional[float]:
     base, fname = os.path.split(traj_path)
     if not base:
         base = "."
-    stem = fname
-    for suffix in ("_geom_optim.xyz", "_initial.xyz",
-                   "_optimized.xyz", ".xyz"):
-        if stem.endswith(suffix):
-            stem = stem[: -len(suffix)]
-            break
+    # ``<job>[_<token>]-run<N>.pyscf.log`` -- the wrapper stems its
+    # redirect on the DECK's name, which carries the token.
+    job, token = _resolve_job_token(base, fname)
+    stem = _stemmed(job, token)
     candidates: List[str] = []
     try:
         for entry in os.listdir(base):
@@ -395,12 +440,14 @@ def _read_scf_history(
     of runs (one per geom-opt step); each run is a list of per-cycle
     dicts.  Empty list when no log is present."""
     base, fname = os.path.split(traj_path)
-    stem = fname
-    if stem.endswith("_optim.xyz"):
-        stem = stem[: -len("_optim.xyz")]
-    if stem.endswith("_geom"):
-        stem = stem[: -len("_geom")]
-    log_path = os.path.join(base, stem + ".log")
+    if not base:
+        base = "."
+    # ``<job>[_<token>].log`` -- the pyscf stdout carries the token
+    # (`pyscf/input.py`: ``_logname``); the ``_geom``-strip that stood
+    # here reproduced only the unstaged spelling, so a staged
+    # trajectory read the geomeTRIC opt log (no SCF cycles) instead.
+    job, token = _resolve_job_token(base, fname)
+    log_path = os.path.join(base, _stemmed(job, token) + ".log")
     if not os.path.isfile(log_path):
         return []
 

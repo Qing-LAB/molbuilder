@@ -40,7 +40,7 @@ open.
 flowchart LR
   P["<b>a parameter tab</b><br/>collects the physics"]
   R{{"<b>render</b><br/>server: config → texts"}}
-  W[("<b>the folder</b><br/>&lt;label&gt;.xyz + .molstruct.json<br/>&lt;label&gt;.template.toml<br/>task.1st.json")]
+  W[("<b>the folder</b><br/>&lt;label&gt;.source.xyz + .molstruct.json<br/>&lt;label&gt;.template.toml<br/>task.1st.json")]
   T["<b>Task setup</b><br/>asks what only it can ask"]
   D[("task.json")]
   P -->|"Send to Task setup"| R

@@ -195,26 +195,26 @@ OUR_FILE_PATTERNS: Sequence[str] = (
     # announced a fresh calculation as *"already under way -- warm files at the
     # root"* and offered a person's own input back to them as engine state.
     #
-    # `{label}.xyz` is claimed even though SIESTA's `WriteCoorXmol` writes a
-    # `<SystemLabel>.xyz`, because the two never collide HERE: this question is
-    # asked at the BUNDLE ROOT, and an engine runs in `<stage>/run-<n>/`.  The
-    # sidecar is unambiguous -- nothing but molbuilder writes that format.
+    # `.source` is the reservation (`job-contracts.md` § 6.3): identities are
+    # validated dot-free, so this is a name no engine output can take -- in
+    # ANY shape.  Until 2026-08-19 the row here was a bare `{label}.xyz`,
+    # defended with *"the two never collide HERE: this question is asked at
+    # the BUNDLE ROOT, and an engine runs in `<stage>/run-<n>/`"* -- true only
+    # for the hierarchical shape.  A FLAT engine runs at the bundle root, and
+    # the first flat relaxation whose label matched the structure's stem had
+    # `WriteCoorXmol` overwrite the description's own input.  A bare
+    # `{label}.xyz` at the root is therefore the ENGINE's now, and the
+    # subtraction reports it as run state -- which, post-reservation, it is.
     #
-    # ⚠ THIS LIST HAS A SECOND READER, and "HERE" is why that mattered.
-    # `runwrap._cold_restart_block` derives `--cold`'s *"except what
-    # molbuilder wrote"* exception from these same patterns, and it runs where
-    # an engine's output IS present.  It used to read `{label}` as `*`, so
-    # adding this line (2026-08-16) silently turned it into `*.xyz` and made
-    # PySCF's `<JOB>_optimized.xyz` -- warm state -- look like ours; `--cold`
-    # then walked past the file it exists to move.  Fixed 2026-08-17 by
-    # anchoring that exception on the run's id instead of a star, and pinned by
-    # `test_the_exception_is_anchored_on_the_id_not_widened_to_a_star`.
-    #
-    # **`.xyz` is the first suffix on this list that an ENGINE also writes**,
-    # which is what made a widening that had been harmless for every other
-    # entry into a real over-match.  Adding another shared suffix here is safe
-    # now, and is still worth stopping to check both readers for.
-    "{label}.xyz", "{label}.molstruct.json",
+    # ⚠ THIS LIST HAS A SECOND READER.  `runwrap._cold_restart_block` derives
+    # `--cold`'s *"except what molbuilder wrote"* exception from these same
+    # patterns, and it runs where an engine's output IS present.  It used to
+    # read `{label}` as `*`, so the 2026-08-16 line silently became `*.xyz`
+    # and made PySCF's `<JOB>_optimized.xyz` -- warm state -- look like ours;
+    # `--cold` then walked past the file it exists to move.  Fixed 2026-08-17
+    # by anchoring that exception on the run's id instead of a star, and
+    # pinned by `test_the_exception_is_anchored_on_the_id_not_widened_to_a_star`.
+    "{label}.source.xyz", "{label}.source.molstruct.json",
     "{label}.py", "{label}_*.py",
     # the wrapper and its scheduler header
     "{label}.run.sh", "{label}_*.run.sh",

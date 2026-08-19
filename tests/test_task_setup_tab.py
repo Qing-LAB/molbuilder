@@ -1049,7 +1049,9 @@ def test_the_handover_carries_the_STRUCTURE_not_a_summary_of_it(web_client):
         files = out["structure_files"]
         assert files, "the structure was not written at all"
         names = [f["name"] for f in files]
-        assert out["label"] + ".xyz" in names, names
+        assert out["label"] + ".source.xyz" in names, (
+            "the hand-over's structure pair must carry the .source "
+            "reservation (job-contracts.md 6.3): " + repr(names))
         assert any(n.endswith(".molstruct.json") for n in names), (
             "the cell and the region labels have nowhere to live")
 
@@ -1074,7 +1076,7 @@ def test_the_handover_carries_the_STRUCTURE_not_a_summary_of_it(web_client):
         assert "L-electrode" in (back.regions or {}), (
             f"the region labels did not survive: {back.regions}")
 
-        side = _json.loads((d / (out["label"] + ".molstruct.json")).read_text())
+        side = _json.loads((d / (out["label"] + ".source.molstruct.json")).read_text())
         assert side.get("schema_version"), (
             "the sidecar has no schema version — the load door refuses the "
             "pair on the next open and every label is dropped silently")
@@ -1146,13 +1148,22 @@ def test_the_structure_pair_is_not_reported_as_engine_state():
     import tempfile, pathlib as _pl
     with tempfile.TemporaryDirectory() as d:
         base = _pl.Path(d)
-        for n in ("slab.xyz", "slab.molstruct.json", "slab.template.toml"):
+        for n in ("slab.source.xyz", "slab.source.molstruct.json",
+                  "slab.template.toml"):
             (base / n).write_text("x")
         assert warm_files_present(base, "slab", "siesta") == [], (
             "the hand-over's own files are reported as engine warm files")
         (base / "slab.XV").write_text("x")
         assert warm_files_present(base, "slab", "siesta") == ["slab.XV"], (
             "a real warm file stopped being detected")
+        # Post-reservation the bare `<label>.xyz` is the ENGINE's name --
+        # WriteCoorXmol writes it at the root of a flat run, which is the
+        # file the 2026-08-19 clobber overwrote the input with.  The
+        # subtraction must report it as run state now, not claim it.
+        (base / "slab.xyz").write_text("x")
+        assert "slab.xyz" in warm_files_present(base, "slab", "siesta"), (
+            "a bare <label>.xyz is WriteCoorXmol's output and is engine "
+            "state under the .source reservation")
 
 
 from conftest import write_pseudos as _pseudos_for

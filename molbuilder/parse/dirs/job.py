@@ -6,8 +6,11 @@ Implements :class:`JobDirParser` + :func:`decode_run_dir` per
 infrastructure:
 
 * ``molbuilder.parsers`` — file-level TrajectoryParser registry; the
-  decoder calls ``detect_parser`` + ``.parse`` on each ``.out``.  It
-  NEVER opens a SIESTA output file directly.
+  decoder calls ``detect_parser`` + ``.parse`` on each result file:
+  every ``.out``, and each ``*.molwatch.log`` whose footer concludes
+  the run (``running-a-job.md`` § 4 — the engine-neutral end-of-run
+  marker, and the only one a PySCF attempt has).  It NEVER opens an
+  engine output file directly.
 * ``molbuilder.script_contract`` — reads HEADER / PROVENANCE /
   BENCH-MARKS / ATOM-METADATA / USER-CUSTOM via the existing
   ``extract_*`` helpers.  The decoder does NOT re-grep for these
@@ -336,12 +339,12 @@ def _enumerate_files(run_dir: Path) -> Dict[str, List[Path]]:
     """Bucket relevant files in the dir by kind.
 
     Returns {"fdf": [...], "out": [...], "xv": [...], "struct_out": [...],
-             "molstruct_json": [...], "ani": [...]}.  Paths sorted by
-    name within each bucket.
+             "molstruct_json": [...], "ani": [...], "molwatch": [...]}.
+    Paths sorted by name within each bucket.
     """
     by_kind: Dict[str, List[Path]] = {
         "fdf": [], "out": [], "xv": [], "struct_out": [],
-        "molstruct_json": [], "ani": [],
+        "molstruct_json": [], "ani": [], "molwatch": [],
     }
     for child in sorted(run_dir.iterdir()):
         if not child.is_file():
@@ -359,6 +362,8 @@ def _enumerate_files(run_dir: Path) -> Dict[str, List[Path]]:
             by_kind["molstruct_json"].append(child)
         elif name.endswith(".ANI"):
             by_kind["ani"].append(child)
+        elif name.endswith(".molwatch.log"):
+            by_kind["molwatch"].append(child)
     return by_kind
 
 
@@ -649,17 +654,43 @@ def _read_cell_from_fdf(fdf_path: Path) -> Optional[List[List[float]]]:
     return None
 
 
+def _molwatch_conclusions(mw_paths: List[Path]) -> Dict[str, str]:
+    """The CONCLUDED molwatch logs' run-states, by filename.
+
+    A molwatch log is the engine-neutral end-of-run channel
+    (``running-a-job.md`` § 4): its writer appends a conclusion footer
+    when the run ends, so a log carrying one is a result file and its
+    run-state counts.  One without a footer is a live view — a prep-time
+    seed, or a run still going — and is deliberately NOT in the answer:
+    feeding it into the state would let a stage's seed outvote its own
+    ``.out``.  Fail-soft like the ``.out`` path: a log the registry
+    cannot read simply contributes nothing.
+    """
+    from molbuilder.parse import detect, UnknownFormatError
+    states: Dict[str, str] = {}
+    for path in mw_paths:
+        try:
+            traj = detect(path).parse(path)
+        except (UnknownFormatError, OSError, ValueError):
+            continue
+        if (traj.run_state or "") in ("finished", "error"):
+            states[path.name] = traj.run_state
+    return states
+
+
 # ---- status + progress ---------------------------------------------- #
 
 
 def _build_status(out_paths: List[Path],
                   out_run_states: Dict[str, str]
                   ) -> Dict[str, Any]:
-    """Build the status envelope per § 5."""
+    """Build the status envelope per § 5, over the directory's RESULT
+    files — every ``.out`` plus each concluded molwatch log
+    (``running-a-job.md`` § 4)."""
     if not out_paths:
         return {
             "state":            "running",
-            "detail":           "no .out file yet",
+            "detail":           "no result file yet",
             "last_change_at":   None,
             "active_source":    None,
         }
@@ -797,7 +828,10 @@ def decode_run_dir(run_dir: Path) -> JobResult:
     fdf_stages.discard(None)
     if fdf_stages:
         stages_total_known = max(fdf_stages)
-    status = _build_status(files["out"], out_run_states)
+    mw_states = _molwatch_conclusions(files["molwatch"])
+    status = _build_status(
+        files["out"] + [p for p in files["molwatch"] if p.name in mw_states],
+        {**out_run_states, **mw_states})
     progress = _build_progress(plots, engine_input_by_stage,
                                out_run_states, stages_total_known)
 
@@ -858,17 +892,23 @@ class JobDirParser(DirParser):
     @classmethod
     def can_parse(cls, run_dir: Path) -> bool:
         """Claim any directory that contains at least one ``.fdf``
-        engine script (SIESTA / TranSIESTA).  A directory with only
-        inputs but no .out yet is still a valid (running / pre-
-        launch) job dir.
+        engine script (SIESTA / TranSIESTA) or one ``*.molwatch.log``
+        (the engine-neutral trajectory/result channel every molbuilder
+        prep seeds — which is how a PySCF attempt, whose deck is a
+        ``.py``, is claimed).  A directory with only inputs but no
+        result yet is still a valid (running / pre-launch) job dir.
 
-        ``.py`` (PySCF) dirs are NOT claimed yet — the decoder
-        produces empty results for them.  Re-add when PySCF
-        DirParser support ships (post-2026-06-19 fix B3).
+        A bare ``.py`` is deliberately NOT a claim signal: any python
+        file would match (``mb_monitor.py`` beside every flat run),
+        which is why the 2026-06-19 B3 deferral existed.  The molwatch
+        suffix is the precise spelling of "a molbuilder job lives
+        here"; status support for it shipped 2026-08-19
+        (``running-a-job.md`` § 4).
         """
         try:
             for child in run_dir.iterdir():
-                if child.is_file() and child.name.endswith(".fdf"):
+                if child.is_file() and (child.name.endswith(".fdf")
+                                        or child.name.endswith(".molwatch.log")):
                     return True
         except OSError:
             return False

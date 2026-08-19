@@ -136,11 +136,16 @@ def test_an_existing_structure_file_travels_with_the_calculation(
     src.write_text(struct.to_xyz())
     D.write_description(_describe(struct, cfg, source=str(src)),
                         tmp_path / "calc")
-    copied = tmp_path / "calc" / "bdt.xyz"
+    # The travelling copy carries the ``.source`` mark and the written
+    # task.json records THAT name (`job-contracts.md` 6.3, 2026-08-19):
+    # identities are dot-free, so no engine output can take the copy's
+    # name, and the folder is self-contained -- prep resolves the local
+    # marked file, never this machine's original path.
+    copied = tmp_path / "calc" / "bdt.source.xyz"
     assert copied.is_file()
     assert copied.read_text() == src.read_text()
     task = read_task(tmp_path / "calc" / "task.json")
-    assert task.structure.source == str(src)   # the reference still records
+    assert task.structure.source == "bdt.source.xyz"
 
 
 def test_a_described_modification_travels_as_the_codec_pair(
@@ -155,7 +160,7 @@ def test_a_described_modification_travels_as_the_codec_pair(
     src.write_text(struct.to_xyz())     # bare xyz: no vacuum in these bytes
     D.write_description(_describe(struct, cfg, source=str(src)),
                         tmp_path / "calc", struct=struct)
-    assert (tmp_path / "calc" / "bdt.molstruct.json").is_file(), \
+    assert (tmp_path / "calc" / "bdt.source.molstruct.json").is_file(), \
         "the metadata sidecar did not travel"
     from molbuilder.jobset.prep import _structure_for
     task = read_task(tmp_path / "calc" / "task.json")
@@ -178,7 +183,7 @@ def test_the_vacuum_flag_reaches_the_travelling_structure(tmp_path):
         "describe", str(xyz), str(tmp_path / "calc"),
         "--shape", "hierarchical", "--vacuum", "8", "--name", "JOB"])
     assert res.exit_code == 0, res.output
-    reloaded = StructureCodec().load(tmp_path / "calc" / "h2.xyz")
+    reloaded = StructureCodec().load(tmp_path / "calc" / "h2.source.xyz")
     assert reloaded.vacuum == (8.0, 8.0, 8.0)
 
 

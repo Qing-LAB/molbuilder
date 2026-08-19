@@ -324,7 +324,10 @@ meaningless. The page refuses rather than warns.
 
 **Four files land in the folder, and two of them are the calculation's
 description.** The structure the calculation is *of* —
-`<label>.xyz` + `<label>.molstruct.json` — arrives with the hand-over
+`<label>.source.xyz` + `<label>.source.molstruct.json` — the `.source`
+segment is reserved: no engine output can take a dotted name
+([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)) — arrives with
+the hand-over
 ([`handover-procedure.md § 2`](?doc=web/handover-procedure.md)) and this page
 never rewrites it. Of the other two, which one a setting lands in follows from
 its point count:

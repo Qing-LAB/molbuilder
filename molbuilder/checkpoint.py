@@ -1634,7 +1634,7 @@ class Repo:
         # S1b lets a name skip a *measurement* for a family that is always big.
         # A link has no size worth measuring -- it is twenty bytes of path text
         # -- so for a link the hint is simply wrong, and `.gitignore` was
-        # sending `stage2/job.DM -> ../stage1/job.DM` to the store that does
+        # sending `02_tight/job.DM -> ../01_coarse/job.DM` to the store that does
         # not take links.  It was then in NEITHER store: `add` skipped it as
         # ignored, the archive skipped it as a link, and a restore neither
         # brought it back (git never had it) nor removed it (`git clean`
@@ -1760,7 +1760,7 @@ class Repo:
         # `walk_entries`, not `walk_files`: SYMLINKS ARE LEFTOVERS TOO.
         #
         # `git clean` above removes an untracked link, but only when no ignore
-        # pattern matches its name -- so a stray `job.DM -> ../stage1/job.DM`
+        # pattern matches its name -- so a stray `job.DM -> ../01_coarse/job.DM`
         # survived a restore of a state that never held it, pointing a later
         # run at the wrong stage's output.  A link the target did not hold is a
         # leftover exactly like a file, and A5 removes leftovers without asking

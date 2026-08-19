@@ -118,8 +118,11 @@ class MolwatchEmitter:
                 #     # convergence.max_force_tol_eV_per_A: 0.0231
                 #
                 #   NESTED  (staged runs, task #534):
-                #     # convergence.stage1.max_force_tol_eV_per_A: 0.103
-                #     # convergence.stage2.max_force_tol_eV_per_A: 0.0231
+                #     # convergence.01_coarse.max_force_tol_eV_per_A: 0.103
+                #     # convergence.02_tight.max_force_tol_eV_per_A: 0.0231
+                # (the first segment is the stage's artifact TOKEN --
+                # digit-first, `job-contracts.md` 6.3 -- which is what the
+                # reader's key grammar must accept)
                 #
                 # Detection: any top-level value that's a dict tags
                 # the payload as nested-shape; otherwise flat.  Empty

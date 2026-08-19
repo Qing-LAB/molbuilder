@@ -364,13 +364,20 @@ specific file, it resolves the trajectory with this chain — first hit wins
 2. `*.fdf` — parse `SystemLabel`; try `<label>.molwatch.log`, then
    `<label>.out`.
 3. `*.py` — grep for a `job_name = "…"` assignment; try `<job>.molwatch.log`,
-   then `<job>.log`, then `<job>_geom_optim.xyz`. *(Current generated PySCF
+   then `<job>.log`, then `<job>_geom_optim.xyz` — **each also tried on the
+   deck filename's stem** when it differs, because a staged deck is
+   `<job>_<token>.py` and its stdout / molwatch siblings carry that token
+   (§ 6.3) while `job_name` stays bare; then the rung-aware trajectory glob
+   `<job>_geom_*_optim.xyz`, newest first. *(Current generated PySCF
    scripts emit the label as `JOB = "…"`, not `job_name = "…"`, so this step
    matches none of them today — such a directory still resolves via step 1's
    `*.molwatch.log` or step 4's content-sniff. The regex/emit mismatch is a
    code follow-up.)*
-4. `run.out` / `siesta.log` / `*.out` / `*_geom_optim.xyz` — content-sniff via
-   the trajectory-parser registry.
+4. `run.out` / `siesta.log` / `*.out` / `*_geom*_optim.xyz` — content-sniff via
+   the trajectory-parser registry.  The trajectory glob has the inner star
+   because a staged trajectory carries the rung token between `_geom` and
+   `_optim` (`<job>_geom_<token>_optim.xyz`); the tokenless spelling that
+   stood here matched only unstaged runs (found 2026-08-19).
 
 > **Note on the `.out` / `.log` fallbacks (steps 2–3):** they look for the
 > **non-indexed** `<label>.out` / `<job>.log`, not the run-indexed
@@ -1652,6 +1659,21 @@ parser) split a name without knowing what is in it.
 | `-` | **attaches a counter or qualifier** to a name that stands alone without it | `run-0`, `bench-G1K4C6`, `<label>-restart-aside-<UTC>` |
 | `.` | **introduces a type suffix** — what the file *is* | `.fdf`, `.XV`, `.molwatch.log`, `.template.toml` |
 | `/` | **separates levels of a path** | `01_coarse/run-0/`, `02_tight/run-1/` |
+
+**And it is why the description's own structure pair is
+`<label>.source.xyz` + `<label>.source.molstruct.json`.** Every identity — a
+calculation label, a `SystemLabel`, a PySCF job name — is validated to
+`[A-Za-z0-9_-]`, no `.`, so a dotted segment like `.source` names something
+**no engine output can ever take**: an engine stems every file it writes on an
+identity (`WriteCoorXmol` writes `<SystemLabel>.xyz`, PySCF writes
+`<job>_optimized.xyz`), and an identity cannot spell the dot. Before the
+reservation the hand-over wrote the source as `<label>.xyz`, and a flat SIESTA
+relaxation whose label matched the structure's stem — the natural naming —
+**overwrote its own input** with the relaxed coordinates on the first run
+(found 2026-08-19); `task.json` then pointed at a geometry the description
+never described. The writers mark the pair (the hand-over and `jobset
+describe`); every reader follows `task.json`'s `structure.source`, so folders
+written before the reservation keep working unchanged.
 
 **This is why a stage name may not contain a hyphen** (`engines/stages.md § 2`):
 a hyphen announces *"a counter follows"*, so one inside a name makes it

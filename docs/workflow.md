@@ -184,7 +184,7 @@ The ones you will actually meet:
 | `catalogue.template.toml` | the master setting list | **TOML** — a person edits it by hand |
 | `<label>.template.toml` | this calculation's answers | **TOML** — a person reads and edits it |
 | `task.json` | the steps | **JSON** — mostly machine-written |
-| `<label>.xyz` + `.molstruct.json` | the atoms, plus where they came from | plain text + JSON sidecar |
+| `<label>.source.xyz` + `.source.molstruct.json` | the atoms, plus where they came from | plain text + JSON sidecar |
 | `molbuilder.json` | what **you** want from this installation — the queue to default to, the account, the activation command | JSON, hand-edited |
 | `environment.json` | what the target machine **is** | JSON, written by a probe |
 | `job-set.json` | the jobs this folder amounts to | JSON |

@@ -20,7 +20,7 @@ core POSTs to /api/watch/load with the absolute path, then polls
 branch of /api/watch/load follows the discovery chain in
 ``docs/execution/job-contracts.md``: ``*.molwatch.log`` first, then
 ``*.fdf`` parsed for SystemLabel, then ``*.py`` parsed for job_name,
-then a generic ``*.out`` / ``*_geom_optim.xyz`` fallback.
+then a generic ``*.out`` / ``*_geom*_optim.xyz`` fallback.
 
 Format support is plugin-style: see ``molbuilder/parsers/`` for the
 registered parsers and the auto-detection registry.
@@ -252,9 +252,15 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
       2. ``*.fdf`` -> parse SystemLabel -> ``<label>.molwatch.log``,
          ``<label>.out``.
       3. ``*.py``  -> parse job_name      -> ``<job>.molwatch.log``,
-         ``<job>.log``, ``<job>_geom_optim.xyz``.
+         ``<job>.log``, ``<job>_geom_optim.xyz`` — and the deck
+         FILENAME's stem tried the same way, because a staged deck is
+         ``<job>_<token>.py`` and its stdout/molwatch siblings carry
+         that token (`job-contracts.md` § 6.3) while ``job_name`` stays
+         bare; then the rung-aware trajectory glob
+         ``<job>_geom_*_optim.xyz``.
       4. Generic fallbacks: ``run.out``, ``siesta.log``, ``*.out``,
-         ``*_geom_optim.xyz``.
+         ``*_geom*_optim.xyz`` (staged trajectories carry the rung
+         token between ``_geom`` and ``_optim``).
     """
     attempts: List[str] = []
 
@@ -287,12 +293,27 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
         if not name:
             attempts.append(f"  {os.path.basename(py)}: job_name not found")
             continue
-        for suffix in (".molwatch.log", ".log", "_geom_optim.xyz"):
-            cand = os.path.join(directory, f"{name}{suffix}")
-            attempts.append(f"  -> {name}{suffix}: "
-                            f"{'found' if os.path.isfile(cand) else 'missing'}")
-            if os.path.isfile(cand):
-                return cand, attempts
+        # A staged deck is ``<job>_<token>.py`` and its stdout / molwatch
+        # siblings are stemmed on THAT (token included), while job_name
+        # stays the bare ``<job>`` -- so the deck filename's stem is
+        # tried alongside the parsed name (found 2026-08-19: every
+        # staged spelling here was the unstaged one, and a staged run
+        # without a molwatch seed resolved to nothing).
+        py_stem = os.path.splitext(os.path.basename(py))[0]
+        stems = [name] if py_stem == name else [name, py_stem]
+        for stem in stems:
+            for suffix in (".molwatch.log", ".log", "_geom_optim.xyz"):
+                cand = os.path.join(directory, f"{stem}{suffix}")
+                attempts.append(f"  -> {stem}{suffix}: "
+                                f"{'found' if os.path.isfile(cand) else 'missing'}")
+                if os.path.isfile(cand):
+                    return cand, attempts
+        rung_hits = glob.glob(
+            os.path.join(directory, f"{name}_geom_*_optim.xyz"))
+        attempts.append(f"  -> {name}_geom_*_optim.xyz: "
+                        f"{len(rung_hits)} match(es)")
+        if rung_hits:
+            return _newest(rung_hits), attempts
 
     # 4. Generic fallbacks.
     for fname in ("run.out", "siesta.log"):
@@ -305,9 +326,12 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
     if out_hits:
         attempts.append(f"*.out -> picked {os.path.basename(out_hits[0])}")
         return _newest(out_hits), attempts
-    optim_hits = glob.glob(os.path.join(directory, "*_geom_optim.xyz"))
+    # ``*_geom*_optim.xyz``: the staged spelling carries the rung token
+    # between ``_geom`` and ``_optim`` (``<job>_geom_<token>_optim.xyz``);
+    # the tokenless glob that stood here matched only unstaged runs.
+    optim_hits = glob.glob(os.path.join(directory, "*_geom*_optim.xyz"))
     if optim_hits:
-        attempts.append(f"*_geom_optim.xyz -> "
+        attempts.append(f"*_geom*_optim.xyz -> "
                         f"picked {os.path.basename(optim_hits[0])}")
         return _newest(optim_hits), attempts
 

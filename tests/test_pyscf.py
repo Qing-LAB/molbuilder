@@ -70,8 +70,17 @@ def test_hf_render_omits_dft_import(h2o):
     Tier 2 #13 from the deep code review."""
     text = render_script(h2o, PySCFConfig(method="RHF"))
     compile(text, "<rendered>", "exec")
-    assert "from pyscf import gto, scf" in text
-    assert "from pyscf import gto, scf, dft" not in text
+    # Asked of the IMPORT STATEMENTS, not of the raw text: the deck's
+    # namespace commentary may legitimately spell out the DFT import it
+    # is contrasting with (a substring grep failed on exactly that,
+    # 2026-08-19).
+    import ast as _ast
+    imported = {a.name
+                for n in _ast.walk(_ast.parse(str(text)))
+                if isinstance(n, _ast.ImportFrom) and n.module == "pyscf"
+                for a in n.names}
+    assert {"gto", "scf"} <= imported
+    assert "dft" not in imported
     # Sanity: HF script doesn't accidentally use dft.* anywhere.
     assert "dft." not in text or all(
         ln.lstrip().startswith("#") for ln in text.splitlines() if "dft." in ln

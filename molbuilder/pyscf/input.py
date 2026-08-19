@@ -266,7 +266,8 @@ def spec_for(struct: Structure,
         out.append("")
         out.append("Outputs:")
         if cfg.log_file:
-            out.append(f"    {label}.log              -- pyscf verbose log")
+            _lr = f"_{stage_token}" if stage_token else ""
+            out.append(f"    {label}{_lr}.log              -- pyscf verbose log")
         if cfg.chkfile:
             out.append(f"    {label}.chk              -- checkpoint (DM, mol)")
         if cfg.save_initial_xyz:
@@ -283,7 +284,8 @@ def spec_for(struct: Structure,
             out.append(f"    {label}_geom{_rung}.log         -- geomeTRIC's opt log")
             out.append("                                          for this rung.")
         if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
-            out.append(f"    {label}.molwatch.log     -- unified per-step log: marker-")
+            _mr = f"_{stage_token}" if stage_token else ""
+            out.append(f"    {label}{_mr}.molwatch.log     -- unified per-step log: marker-")
             out.append("                                  delimited blocks containing")
             out.append("                                  coords, energy (eV), forces")
             out.append("                                  (eV/Ang), and SCF cycle history.")
@@ -406,8 +408,18 @@ def spec_for(struct: Structure,
         # script must be robust when invoked directly too.  Resolving
         # everything via ``_mb_outfile(name)`` makes the script land
         # ALL its outputs next to itself, regardless of cwd.
+        #
+        # ``absolute()``, never ``resolve()``: a hierarchical attempt
+        # addresses this deck through a link (``run-0/<job>.py ->
+        # ../../<job>.py``), and the attempt owns everything the run
+        # produces (project-layout.md "attempt" row).  ``absolute()``
+        # anchors beside the path that was INVOKED, so outputs stay in
+        # the attempt directory; ``resolve()`` is wrong exactly when
+        # the deck is a link, because it walks out of the attempt into
+        # the stage root, where the next attempt overwrites them
+        # (found by the 2026-08-19 E2E run).
         out.append("from pathlib import Path as _MB_Path")
-        out.append("_MB_SCRIPT_DIR = _MB_Path(__file__).resolve().parent")
+        out.append("_MB_SCRIPT_DIR = _MB_Path(__file__).absolute().parent")
         out.append("def _mb_outfile(name):")
         out.append("    p = _MB_Path(name)")
         out.append("    return str(p if p.is_absolute() else _MB_SCRIPT_DIR / p)")
@@ -1415,7 +1427,9 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     if v:
         out.append("# This block defines a small helper that writes one self-")
         out.append("# contained, marker-delimited record per accepted opt step")
-        out.append("# to <JOB>.molwatch.log.  molwatch reads this file directly")
+        out.append("# to the molwatch log named in the manifest above (the")
+        out.append("# rung's own <JOB>[_<NN>_<stage>].molwatch.log).  molwatch")
+        out.append("# reads this file directly")
         out.append("# (no sibling-file discovery needed) and shows trajectory +")
         out.append("# energy + force + per-cycle SCF residual plots.")
         out.append("#")
