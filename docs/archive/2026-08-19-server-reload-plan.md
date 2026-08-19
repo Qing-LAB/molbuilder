@@ -1,6 +1,7 @@
 # Reloading a running server — a plan
 
-**Role:** plan (**complete — A–E all landed 2026-08-03**; kept as the record of
+**Role:** plan (**complete — A–E all landed 2026-08-03**; archived 2026-08-19
+per the plans-folder rule — a finished plan leaves `plans/`; kept as the record of
 what was decided and what was rejected. The shipped behaviour is documented in
 [`deployment.md`](?doc=ops/deployment.md) § 1 and § 4.)
 **Domain:** ops

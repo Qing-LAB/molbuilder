@@ -60,25 +60,35 @@ projects/BDT-Au/structure/bdt_au.xyz
                           bdt_au.molstruct.json     ← regions, frozen atoms
 ```
 
-⛔ **Gap 1.** Nothing owns this step. A geometry you just loaded or edited lives
-in the workspace and has no path yet, and no surface says *"save this into the
-project first"*. Today you would put it there by hand and the tab would not tell
-you that you had to.
+✅ **Gap 1 — CLOSED.** The Molbuilder tab's **Save to project** writes the
+pair through the server's one codec into the folder you picked, and the
+hand-over later writes the calculation's own copy beside the description
+(as `<label>.source.xyz` — the reserved name no engine output can take,
+`job-contracts.md § 6.3`). *(When this walkthrough was written, nothing
+owned this step and you copied the file by hand.)*
 
 ---
 
 ## 3. Describing the calculation
 
-In the Structure-optimization tab: pick the project and the topic, fill in the
-physics once, then add the stages.
+Two tabs share the work, and the split is the design (*the browser
+describes*): the **Structure-optimization tab** collects the physics —
+every parameter, stated once — and **Send to Task setup** writes the
+hand-over into the calculation folder you picked; the **Task setup tab**
+then asks what only it may ask — the shape, the stages, what varies — and
+its save writes the real `task.json`.
 
 |  | **base** | **01 coarse** | **02 tight** |
 |---|---|---|---|
 | mesh cutoff | 300 Ry | **150** | 300 |
 | force tolerance | 0.01 eV/Å | **0.04** | 0.01 |
 | relaxation | Broyden | **CG** | Broyden |
-| restart | — | **clean** | **continue** |
 | everything else (35 fields) | shared | — | — |
+
+*(No `restart` row: the shipped ladders set none, deliberately — a rung's
+position says nothing about whether there is anything to continue from, and
+`continue` is the default anyway (`run-identity.md § 4`, corrected
+2026-08-18). Set it per stage only when you mean to override that.)*
 
 Two things are worth noticing.
 
@@ -106,18 +116,23 @@ of them names the folder** — you type that when you generate (§ 4).
 
 ## 4. Generating
 
-Press **Check** — every stage is validated whole, and any complaint says which
-stage it is about. Then **Generate**:
+The Task setup tab's **Save to this folder** writes the description (its
+first step is a checkpoint of the folder's state, so what you are about to
+change can be brought back):
 
 ```
 projects/BDT-Au/optimization/bdt-relax/    ← the folder name is yours to pick
 ├── BDT_Au_relax.template.toml      every parameter of the calculation —
 │                                  the hardware's named, not answered
-├── task.json                      what each stage tunes, + resource intent,
+├── task.json                      what each stage tunes, + the bench plan,
 │                                  and the id — BDT_Au_relax_Au38C6H4S2
-├── Au.psml  S.psml  C.psml  H.psml the shared package, once
-└── mb_monitor.py
+├── BDT_Au_relax.source.xyz          the structure pair, from the hand-over
+└── BDT_Au_relax.source.molstruct.json
 ```
+
+*(No pseudopotentials yet, and no monitor: `prep` copies those from the
+library on the machine that runs the job — `project-layout.md § 2.6`,
+stated 2026-08-18.)*
 
 **Nothing here names a machine** — no walltime, no partition, no activation
 command, no rank count. Copy this folder to any cluster and it still describes
@@ -143,10 +158,11 @@ earlier one's `.XV`, and it is why the formula stays out of the filename (§ 3).
 > a subdirectory per attempt. It is the clearer one to read, because every state
 > the calculation passed through stays visible on disk.
 >
-> **It is not the one that ships.** A project directory is *flat* or
-> *hierarchical*, and which one is a field in the description you wrote in § 3
-> ([`project-layout.md`](?doc=execution/project-layout.md) § 1); flat is what the
-> UI produces today. The same two stages, flat:
+> **Both ship, and the page ASKS — there is no default** (it decides where
+> results land, so it is never guessed). Which one is a field in the
+> description you wrote in § 3
+> ([`project-layout.md`](?doc=execution/project-layout.md) § 1). The same two
+> stages, flat:
 >
 > ```text
 > bdt-relax/

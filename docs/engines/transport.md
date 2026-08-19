@@ -9,6 +9,18 @@ emitter transport extends); [`model/structure-annotations.md`](?doc=model/struct
 the leads need); [`engines/overview.md`](?doc=engines/overview.md) (the shared
 engine contract).
 
+> **⚠ Migration status (2026-08-19, user).** This workflow is
+> **pre-framework**: it has NOT migrated onto the described route
+> (describe → `prep` → `submit`) that structure optimization now runs end to
+> end. It is deliberately untouched until that loop is fully verified — the
+> statement of record is the migration box at the top of
+> [`roadmap.md`](?doc=roadmap.md). Two facts, kept distinct: transport is
+> *unmigrated* (this banner), **and** it is a **different KIND of job** —
+> three coupled runs, one answer assembled from pieces
+> ([`execution/architecture.md § 0`](?doc=execution/architecture.md), decided
+> 2026-08-11) — so migrating it means giving that kind a representation,
+> not bending it into a ladder. § 8 states exactly what it costs today.
+
 This is how molbuilder computes **electron transport** (conductance) through a
 molecular junction — e.g. a single benzene-1,4-dithiol molecule bridging two gold
 electrodes (Au–BDT–Au). It uses **TranSIESTA**, SIESTA's transport engine, which
@@ -389,7 +401,9 @@ Three corrections that catch real mistakes:
 > roll-up, and no scheduler header. Folding it in is
 > [`job-system.md § 8`](?doc=execution/job-system.md) phase 3–4, *"where the
 > single-parent limit is lifted to a branching graph"*, and it is gated on the
-> SIESTA ladder proving out first.
+> ladder proving out first — **half proven 2026-08-19**: the whole loop ran
+> end to end on a workstation, both engines; the cluster half of that gate
+> remains.
 
 - **Shipped (zero-bias scope):** the `transport bundle`/`electrode`/`preflight`
   CLI, the electrode wizard, the 3-run orchestration + driver, the zero-bias

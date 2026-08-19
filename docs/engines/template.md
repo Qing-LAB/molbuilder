@@ -1678,20 +1678,25 @@ than a special case:**
   says is meant to be edited (G5).
 
 > **Where the read-back merge actually runs today, counted rather than
-> assumed.** `merge_user_custom_from_target` has **one** caller:
-> `web/blueprints/files.py`, and only on a *fresh regenerate* — an edit-save
-> bypasses it deliberately, because there the user is committing their own text
-> and a merge would undo edits inside the zone. So:
+> assumed (re-counted 2026-08-19).** The merge lives in `write_script`, and
+> since the seam migration **every generated file goes through it** —
+> `prepare_deck` writes each deck that way (so `jobset prep` and
+> `molbuilder pyscf` both preserve the zone) and the wrapper writer uses the
+> same door (2026-08-17). `web/blueprints/files.py` additionally chains
+> `merge_user_custom_from_target` on a fresh regenerate; an edit-save
+> bypasses the merge deliberately, because there the user is committing
+> their own text and a merge would undo edits inside the zone. So:
 >
 > | path | what happens to your custom text |
 > |---|---|
-> | the web Build tab, regenerating | **preserved** — read back from the target |
-> | `molbuilder pyscf` at the terminal | **lost** — the CLI writes the file and never reads the old one |
-> | `jobset prep` (the staged path) | **lost** — no previous deck to read, and no template item yet to carry it |
+> | the web, regenerating | **preserved** — read back from the target |
+> | `molbuilder pyscf` at the terminal | **preserved** — `prepare_deck` → `write_script` merges |
+> | `jobset prep` (the staged path) | **preserved** — same one writer |
 >
-> *(The second row said "preserved" here until 2026-08-17. It named the CLI
-> alongside the web tab as a single-deck path that keeps the merge; the CLI has
-> no merge call.)*
+> *(The last two rows said "lost" until 2026-08-19 — true of the pre-seam
+> writers, which wrote files directly. The second row had already flipped
+> once the other way on 2026-08-17; the one-writer migration is what settled
+> it.)*
 >
 > **What the fix changes, when the item lands:** the template becomes what
 > survives in every row, and editing the custom zone of a *rendered deck* stops

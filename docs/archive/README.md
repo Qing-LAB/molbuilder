@@ -64,3 +64,5 @@ date-prefixed file, you are reading history, not policy.
 > reorganization, so *internal* relative links inside them point at the old
 > tree layout and may dangle. That is expected — they are verbatim history
 > (the link-integrity test exempts `archive/`).
+
+- **`2026-08-19-server-reload-plan.md`** — the reload-mechanism plan, complete since 2026-08-03 (A–E landed); archived per the plans-folder rule. Shipped behaviour: `ops/deployment.md`; the gates: `ops/access-control.md`.

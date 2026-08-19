@@ -1,7 +1,7 @@
 /* Reload the server, from the browser.
  *
  * MODULE: app-reload (classic script; publishes nothing).
- * Contract: docs/plans/server-reload-plan.md § 3.3.
+ * Contract: docs/archive/2026-08-19-server-reload-plan.md § 3.3.
  *
  * The server restarts by EXITING with a code its supervisor is waiting for, so
  * from here it is three steps: ask, wait for the socket to answer again, reload

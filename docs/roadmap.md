@@ -33,6 +33,30 @@ priority; the others proceed around it. (5 and 6 are consolidation streams
 added 2026-07-29 from the migration's deferred-work dig: science checks
 deferred with rationale, and named architecture seams.)
 
+> ### Where the unified workflow stands — and what has NOT migrated yet
+> *(Stated 2026-08-19, user, so nobody confuses the two.)*
+>
+> **The framework is being established and verified on ONE task first:
+> structure optimization**, SIESTA and PySCF. That loop — describe in the
+> browser (parameter tab → Task setup), `prep` and `submit` on the machine,
+> observe on the Results tab — ran **end to end on 2026-08-19**: real water
+> calculations, both engines, both folder shapes, warm restart and the
+> launch-door gate exercised. That is the D7 gate's loop, proven on a
+> workstation; the **cluster** half of D7 (the same loop through SLURM on
+> Sol) is what remains of it.
+>
+> **Spectra and transport have not migrated onto this framework.** Their
+> code and process still run the paths built before it — the spectra tab's
+> compute side and `transport bundle`'s three-run driver — and they are
+> **deliberately untouched** until the structure-optimization loop is fully
+> verified. Only then do they migrate (workstream 2 for transport; the
+> spectra producer rides the same gate). Transport is additionally **a
+> different KIND of job** — three coupled runs, one answer assembled from
+> pieces — per the 2026-08-11 decision
+> ([`execution/architecture.md`](?doc=execution/architecture.md) § 0);
+> migrating it means giving that kind a first-class representation, not
+> bending it into a ladder.
+
 ```mermaid
 flowchart TD
     W1["1 · Batch execution reaches the web<br/>(the JobSet framework's UI)"]:::active
@@ -59,18 +83,24 @@ Phase 3 (workstream 1), not as separate one-off code.
 (for example, a relaxation "ladder" that tightens convergence stage by
 stage), clicks one button, and gets back a **runnable bundle**: a folder of
 per-stage input files plus a `job-set.json` plan describing how they chain,
-ready to copy to a workstation or an HPC cluster and launch. Today that
-button exists in the Structure-optimization tab but its output is silently
-dropped — the stage table POSTs a ladder that goes nowhere.
+ready to copy to a workstation or an HPC cluster and launch. **This
+shipped**: the Structure-optimization tab hands over to the Task setup tab,
+which writes the description (shape, stages, bench) — the loop ran end to
+end on 2026-08-19. *(The sentence that stood here — "the stage table POSTs a
+ladder that goes nowhere" — described the pre-Task-setup tab.)*
 
 **Where the work stands.** The whole engine-agnostic framework already
 exists on the command line: the `jobset` model and its `job-set.json`
 persistence, the `molbuilder jobset describe/prep/plan/submit/summarize/status`
 verbs (both local `bash` execution and SLURM submission, **one job per
 invocation**), and `prep`'s five steps writing floor 3 on the target (*the
-chaining producers died in the 2026-08-12 fold*). What is missing is the **web front-end** onto that framework —
-the setup tabs cannot yet produce a bundle, show its plan, or report its
-run status. What is built lives in
+chaining producers died in the 2026-08-12 fold*). **The describe half of the
+web front-end is built**: the parameter tabs hand over to the shared Task
+setup tab, which writes the description (`web/task-setup.md`, a shipped
+contract) — and prep/submit stay on the terminal **by design** (*the browser
+describes and observes; the terminal acts*). What is still missing on the
+web is the observe half beyond the Results tab: a plan view and a per-stage
+status roll-up. What is built lives in
 [`execution/job-system.md`](?doc=execution/job-system.md) (the JobSet framework
 and its CLI verbs); the current→target status matrix is
 [`execution/overview.md`](?doc=execution/overview.md) § 2, which is
@@ -136,12 +166,15 @@ flowchart LR
 ```
 
 **D7 gate — prove it before expanding.** Before building any more producers, run
-the full SIESTA loop end-to-end on a real cluster: produce → prep → submit →
-monitor. This gate exists because the other engines' producers are cheap to add
-but expensive to debug remotely; we validate the pattern once on the engine that
-is furthest along. In the implementation plan it sits after **M9** (the command
-surface), which is the first point at which the whole loop can be driven from a
-terminal.
+the full loop end-to-end: produce → prep → submit → monitor. This gate exists
+because the other engines' producers are cheap to add but expensive to debug
+remotely; we validate the pattern once before broadening. **Half passed
+2026-08-19**: the loop ran end to end on a workstation — browser describe →
+`prep --pipeline-log` → `submit` → Results — for **both** engines (water,
+both shapes, warm restart, the launch-door gate). *(PySCF crossed the gate
+early because it shares the deck pipeline — the seam landed 2026-08-18 and
+the same E2E proved it.)* **What remains of D7 is the cluster half**: the
+same loop through SLURM on Sol. Transport and spectra stay gated on that.
 
 **Transport (gated on D7).** A `transport` producer and a transport-tab mode.
 This is also how the transport **bias scan** (workstream 2) ships: one `.fdf`
@@ -153,10 +186,14 @@ ladder — one deck per bias point, all independent — and `task.json` already
 expresses that: one member per voltage, each saying `restart: clean`. What the
 transport tab owes is a producer, not a new format.
 
-**PySCF / spectra (gated on D7).** `pyscf` and `spectra` producers with their tab
-mirrors, plus PySCF's big-binary globs for the checkpoint system. ⚠ PySCF's
-ladder runs **inside one process**, so it is genuinely a different shape — it
-reads the same description, not the same runner (`engines/stages.md`).
+**PySCF (structure optimization) — DONE, ahead of the gate.** The seam has a
+PySCF arm (2026-08-18), a PySCF ladder is N decks and N jobs like SIESTA's
+([`stages.md § 1.1a`](?doc=engines/stages.md); the in-script loop is retired),
+and the 2026-08-19 E2E ran it through the whole loop. Still open from the old
+item: PySCF's big-binary globs for the checkpoint system.
+
+**Spectra (gated on D7).** The `spectra` producer and its tab mirror still run
+the pre-framework path (see the migration box at the top of this file).
 
 **Two decisions this workstream contributed, carried into the plan.** **D10 —
 the activation warning**: on a workstation, detect the conda activation and
@@ -552,8 +589,10 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   it; [`engines/template.md`](?doc=engines/template.md) § 10), `jobset describe`
   exists, `--mode` falls back to
   `execution.mode`, and the deleted-flag print is gone. Still open, scheduled
-  with steps 6–7: trial directories still `point-` (C6), `BlockSize`'s third
-  state (C8), and the rank-clamp message (C12, needs a call). **C7 closed
+  with steps 6–7: `BlockSize`'s third
+  state (C8), and the rank-clamp message (C12, needs a call). **C6 closed** —
+  trial directories are `bench-<token>`; `jobset/materialize.py` records the
+  `point-` retirement in place. **C7 closed
   2026-08-18** — the stage token is a render argument for both engines and no
   config field carries it; `PySCFConfig.stage` was the last one, and its last
   reader was the molwatch emitter. The order is argued in
@@ -677,16 +716,19 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   are unchanged by construction, which is the done-when · **N5** `_bench_inputs`
   loses its `getattr(..., None) or 0` guards and its hand-built `gres`, both of
   which exist only because today's reader may answer `None`. **Not started.**
-- **PySCF joins the engine seam** — contract settled 2026-08-17 (user decision),
-  stated in [`engines/stages.md`](?doc=engines/stages.md) § 1.1a (the ladder is
-  declared once, in `task.json`, and still executes in one process) and
+- **✅ PySCF joins the engine seam — CLOSED 2026-08-18** (contract settled
+  2026-08-17, user; execution decision — N decks, N jobs — 2026-08-18, user;
+  proven end to end by the 2026-08-19 E2E: `jobset prep`/`submit` ran a real
+  PySCF relaxation). Stated in [`engines/stages.md`](?doc=engines/stages.md)
+  § 1.1a (the ladder is declared once, in `task.json` — and since 2026-08-18
+  executes as N decks and N jobs) and
   [`execution/generator.md`](?doc=execution/generator.md) § 7.1–7.2 (what the
-  seam actually asks for — eight members, not the two § 7 claimed — and where
-  each engine stands). **Where it already is:** the catalogue drives both
-  engines (44 SIESTA items, 37 PySCF, every one mapping to a config field),
-  `molbuilder/pyscf/warm-files.toml` ships, and `PySCFConfig` declares
-  `literal="JOB"`. **The blocker:** `_engine_seam` has one arm, so `jobset prep`
-  refuses PySCF outright. **Planned units, in the contract's order:**
+  seam actually asks for, and where each engine stands — both sections now
+  record the FILLED seam: both engines answer every question, four of
+  PySCF's answers being a recorded *nothing*, which is W5 working).
+  *(The block that stood here named "the blocker: `_engine_seam` has one
+  arm, so `jobset prep` refuses PySCF outright" — closed with the rest.)*
+  The planned units below all landed — kept for the record:
   **P1** the seven geomeTRIC knobs (`gmax`, `grms`, `dmax`, `drms`, `etol`,
   `max_steps`, `on_nonconvergence`) become catalogue items with
   `engines = ["pyscf"]` and `group = "stage"`, carrying the metadata already on
@@ -705,8 +747,9 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   → `JOB`, `warm_for` → its own `warm-files.toml`, `sibling_artifacts=None`).
   Done when `jobset prep run <stage>` writes a runnable PySCF folder · **P5**
   `_emit_stages_loop` renders from the **resolved** stage list. Done when the
-  rungs in the deck match `task.json`'s, and the `JobSet` has exactly one `Job`.
-  **Not started.**
+  rungs in the deck match `task.json`'s — **overtaken by the 2026-08-18
+  decision**: the in-script loop is retired, so the done-when became "one
+  deck per rung", which is what shipped.  **All landed 2026-08-17/18.**
 - **Backend concern seams W1–W5** — `backend-architecture.md § 5`:
   runwrap's SIESTA reach-ins (W1), `jobset/runstatus.py`'s warm-file
   table → producer-supplied inventory (W2), `runtime_config`'s untyped
@@ -735,7 +778,7 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   | 4 layout | ✅ | — |
   | 5 launch | ⚠ | `runwrap` **writes** a script and `submit` **starts** one; one floor holds both. Real, harmless, and splitting it costs more than it returns |
   | 6 observe | ⚠ | in the flat layout, one stage's verdict is still read from the whole folder |
-  | 7 surfaces | ⚠ | the web has no staged path at all |
+  | 7 surfaces | ⚠ | the web DESCRIBES a staged calculation (Task setup, shipped) and observes runs (Results); a web plan view and a per-stage status roll-up remain |
   | — | `bench/` | ~~a second copy of floors 3–6 for sweeps~~ **folded 2026-08-12** (step 6 u1–u5): a sweep is `prep` with a longer step 2; the legacy `siesta-gpu` stack was deleted 2026-08-13 (user: no obsolete paths beside the verb that replaced them) |
 
   **Every ⚠ except floor 5's was the same unfinished change** — the producer
@@ -774,10 +817,15 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   **Decided:** *"sweep is decided at prep, not in the description, and it is
   specifically tied to a stage because a stage chooses its run parameters based
   on bench results."* § 6.8 is withdrawn in place; the rule and its per-stage
-  reasoning are `generator.md` § 4.3a. **Remaining work:** remove the key from
-  `molbuilder/task@1` (nothing ever read it), retire the tests that pin it, and
-  drop the Task-setup tab's machine rows, which write a field that will no
-  longer exist.
+  reasoning are `generator.md` § 4.3a — **which also settles what happens to
+  the key, the other way from what this bullet first said**: `task.json`'s
+  `bench` STAYS. It declares *what to measure* ("try 4, 8, 16 ranks" —
+  portable, true on every cluster); `prep bench` resolves what those points
+  mean on this machine. Removing the key would leave no way for a person to
+  say what to measure at all — § 4.3a's own closing argument. The Task-setup
+  tab's machine rows are that declaration's UI and stay. *(The "remove the
+  key / retire its tests / drop the rows" work list that stood here read the
+  decision backwards; § 4.3a is the owner.)*
 
 - **The run wrapper's string assembly.** `render_run_wrapper` is ~1780 lines
   emitting bash through ~295 f-strings. A real maintenance risk and a fair

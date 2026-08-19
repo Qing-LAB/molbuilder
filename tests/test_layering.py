@@ -128,7 +128,7 @@ _L1_MODULES = {
                          # next reload can fix the mistake.  It first lived at
                          # ``web/reload_protocol.py``, where reading it ran
                          # ``web/__init__.py`` and pulled in the whole app plus
-                         # Flask (docs/plans/server-reload-plan.md 3.3).
+                         # Flask (docs/archive/2026-08-19-server-reload-plan.md 3.3).
 }
 
 _L2_MODULES = {

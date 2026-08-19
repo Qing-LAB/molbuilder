@@ -110,7 +110,7 @@ flowchart TB
     subgraph FOLDER["one calculation = one folder"]
       TMPL["<b>template</b> · <code>&lt;label&gt;.template.toml</code><br/><i>every setting, WITH its answer</i>"]
       TASK["<b>description</b> · <code>task.json</code><br/><i>the steps, and what differs between them</i>"]
-      XYZ["<b>structure pair</b><br/><code>&lt;label&gt;.xyz</code> + <code>&lt;label&gt;.molstruct.json</code><br/><i>the atoms, and where they came from</i>"]
+      XYZ["<b>structure pair</b><br/><code>&lt;label&gt;.source.xyz</code> + <code>&lt;label&gt;.source.molstruct.json</code><br/><i>the atoms, and where they came from —<br/>the .source segment is reserved, § 6.3</i>"]
     end
 
     STRUCT --> XYZ
@@ -176,7 +176,7 @@ measurement found ([`generator.md § 4.3a`](?doc=execution/generator.md)).
 ### Every file, and who owns it
 
 The full registry — file name, its schema string, the module that owns it — is
-[`job-contracts.md § 6.1`](?doc=execution/job-contracts.md), fourteen entries.
+[`job-contracts.md § 6.1`](?doc=execution/job-contracts.md).
 The ones you will actually meet:
 
 | file | plain meaning | format, and why |
@@ -308,7 +308,12 @@ right is the server's job ([`projects.md § 3`](?doc=web/projects.md)).
 ## 7. What is genuinely data-driven today, and what is not
 
 **This section is the honest one, and it is the reason the rest of the page is
-worth reading carefully.** Measured 2026-08-17.
+worth reading carefully.** Re-measured 2026-08-19. *(Its previous measurement,
+2026-08-17, predated the engine seam: it reported "the multi-step pipeline
+refuses PySCF outright — the registry has one entry." That was true that day
+and closed the next: the seam landed 2026-08-18, and the 2026-08-19
+end-to-end run drove a real PySCF calculation through describe → prep →
+submit → results.)*
 
 ### Data-driven, and it works
 
@@ -320,42 +325,33 @@ that engine's translator. Two tests hold the boundary in both directions: a
 setting the catalogue does not carry is one no surface can offer, and a
 catalogue entry no engine can hold is a dead entry.
 
+**Writing the decks.** Both engines answer the seam's questions —
+[`generator.md § 7`](?doc=execution/generator.md) counts the catalogue half,
+[`script-preparation.md § 4`](?doc=execution/script-preparation.md) the code
+half — and one conductor (`prepare_deck`: validate → render → write → check)
+runs every deck of every engine through the same steps. Four of PySCF's
+answers are a recorded *nothing*, which is the design working: a decision a
+reader can check, not an arm nobody thought about.
+
 ### Not yet — and it is a known, named gap
 
-**Writing the run scripts still has per-engine code in it.** There are
-**nineteen** places in the program that branch on which engine is running;
-**seven** are in the file that writes the wrapper. The contract is explicit
-that this is wrong — [`generator.md § 7`](?doc=execution/generator.md) says an
-engine supplies **two** things, its catalogue entries and a function that
-writes its input, and that *"everything else is shared: resolution, sweeps,
-layout, **wrappers**, submission, status"*, with its own test: *"adding an
-engine adds files and edits none."*
+**The WRAPPER writer still carries per-engine facts in its own body.**
+`runwrap.py` branches on which engine it is writing for in **four** places
+(measured 2026-08-19) — what a cold restart clears, how the label is read
+back out of a deck, how the launch line is formed. Those facts belong beside
+the engine's other seam answers, and moving them is the recorded seam item
+**W1** ([`backend-architecture.md § 5`](?doc=backend-architecture.md),
+scheduled in [`roadmap.md § 6`](?doc=roadmap.md)). Until then, adding an
+engine edits `runwrap.py` — which is exactly what
+[`generator.md § 7`](?doc=execution/generator.md)'s *"adding an engine adds
+files and edits none"* test exists to catch.
 
-**The sharpest symptom:** the multi-step pipeline refuses PySCF outright.
-
-```
-siesta   OK       writes .fdf
-pyscf    REFUSED  "no deck writer for engine 'pyscf'"
-```
-
-PySCF has a configuration class, catalogue entries, a script writer and a
-wrapper — but the registry that tells the pipeline how to drive an engine has
-**one entry**. This is not a design flaw: that registry is exactly the right
-shape, a small record of what an engine supplies. It is **unfinished**.
-
-**What finishing it will run into**, because these are the parts that are not
-just "add an entry": the per-engine facts the wrapper needs — what a cold
-restart clears, how the job is launched — sit in the wrapper file rather than
-in the registry where they belong; and the wrapper learns what a job needs by
-**reading the generated input file**, which only works for a `.fdf`. An engine
-whose input is a `.py` declares its needs correctly in the catalogue and is
-still not looked at ([`engines/template.md`](?doc=engines/template.md) § 1.1a).
-
-*(A third asymmetry was listed here — that PySCF's input writer would not
-accept the stage's name — and it was closed on 2026-08-17. It accepted the name
-and ignored it, because PySCF's steps shared one process and one log file; since
-2026-08-18 it uses it, because they no longer do
-([`stages.md § 1.1a`](?doc=engines/stages.md)).)*
+**And two whole workflows have not migrated onto this pipeline at all.**
+Spectra and transport still run the paths built before it — deliberately, so
+the framework is verified on one task (structure optimization) before
+anything else moves. The statement of record is the migration box at the top
+of [`roadmap.md`](?doc=roadmap.md); transport is additionally a different
+KIND of job ([`execution/architecture.md § 0`](?doc=execution/architecture.md)).
 
 **Where this is tracked:** [`roadmap.md § 6`](?doc=roadmap.md).
 

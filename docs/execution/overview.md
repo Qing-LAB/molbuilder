@@ -19,7 +19,7 @@ around.
 
 ## 1. The map — which doc to open
 
-Fourteen documents live here, and they come in **three kinds**. Knowing which kind
+The documents here come in **three kinds**. Knowing which kind
 you are reading tells you how much to trust it and what to do when two disagree.
 
 - A **contract** says what a thing *is*. It is the authority. When a contract and
@@ -61,7 +61,10 @@ you are reading tells you how much to trust it and what to do when two disagree.
 | You want to know… | Open |
 |---|---|
 | **What gets built first, and how each step is checked** — the milestones, the gates, and the three reviews at each one | **[`staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)** |
-| The tab that **writes** a description — the stages, and the machine settings you choose or measure | **[`web/task-setup.md`](?doc=web/task-setup.md)** |
+
+*(The Task-setup tab graduated out of this kind: it shipped, and
+[`web/task-setup.md`](?doc=web/task-setup.md) is a **contract** — the tab that
+writes a description.)*
 
 **Where the design itself lives has changed.** It is
 [`architecture.md`](?doc=execution/architecture.md), a contract, because it says
@@ -128,39 +131,44 @@ many of that primitive. Nothing in the job system replaces the single-job wrappe
 molbuilder is mid-way through a deliberate shift in how jobs are organised and
 executed, and the whole `execution/` domain is shaped by it:
 
-- **Where it started (and where the web still is): one task at a time.** You
-  generate a single calculation, and a self-contained wrapper runs it. This is
-  what the **web UI** does today — it focuses on one generated task.
+- **Where it started: one task at a time.** You generate a single
+  calculation, and a self-contained wrapper runs it. *(This bullet described
+  the web UI's present tense until 2026-08-19; the web now describes staged
+  calculations — the third bullet.)*
 - **Where the command line already is: a job system.** A real result needs a
   *sequence* of runs (coarse → tight), a project needs *many* such sequences,
   and HPC adds scheduler headers, queue routing, and the question of how many
   GPUs/cores actually run fastest. The **JobSet framework** answers all of that —
   and it is **shipped on the CLI today**.
-- **Where it's going — and it is narrower than it used to be** (decided
-  2026-08-07). The browser gets to **describe a staged calculation and observe
+- **Where the browser landed — narrower than first planned, by decision**
+  (2026-08-07). The browser gets to **describe a staged calculation and observe
   one**; it does not get to run one. **The browser describes and observes; the
   terminal acts.** That is not a limitation of the UI, it is
   `project-layout.md § 2.2`: a deck carries values that depend on how it will be
-  launched, so it cannot be finished before the machine is known. Two tabs are
-  planned — a generating tab that writes the description, and one **shared** tab
-  that starts from a folder and fills in each stage's values. Neither is built.
+  launched, so it cannot be finished before the machine is known. **The two
+  tabs this needed are built and shipped**: the generating tabs hand over, and
+  the shared **Task setup** tab writes the description
+  ([`web/task-setup.md`](?doc=web/task-setup.md)); the whole loop ran end to
+  end on 2026-08-19. *(This bullet ended "Neither is built" until then.)*
 
-So the honest one-line status of the whole domain: **single-task works
-everywhere; the job system works from the command line; the browser's half of it
-is describing and observing, and it is the target.**
+So the honest one-line status of the whole domain: **describe in the browser,
+act on the terminal, observe on either — shipped and proven for structure
+optimization on a workstation; the cluster proof and a web plan/status view
+remain (`roadmap.md` workstream 1), and spectra/transport still run their
+pre-framework paths (the roadmap's migration box).**
 
 ```mermaid
 flowchart TB
     subgraph now["Shipped today"]
       direction LR
-      WS["Web UI<br/>generate + run ONE task"]
+      WD["Web UI<br/>DESCRIBE a staged calculation<br/>(Task setup) + observe results"]
       CS["CLI<br/>one job + checkpoints"]
-      CJ["CLI<br/>JobSet framework:<br/>ladders, sweeps, HPC, benchmarks"]
+      CJ["CLI<br/>JobSet framework:<br/>ladders, sweeps, HPC, benchmarks —<br/>prep + submit, one stage at a time"]
     end
-    subgraph target["The target migration"]
-      WJ["Web UI<br/>drives the JobSet framework<br/>(batches, plan/status)"]
+    subgraph target["Still to build (roadmap workstream 1)"]
+      WJ["Web UI<br/>plan view + per-stage status roll-up<br/>(observe half, beyond Results)"]
     end
-    CJ -. "reuse the same producers,<br/>decoders, and wrappers" .-> WJ
+    CJ -. "reuses the shipped decoder,<br/>no new parser" .-> WJ
     classDef t fill:#eef;
     class target t;
 ```
@@ -173,7 +181,8 @@ flowchart TB
 | Watch a run's live trajectory + monitor | ✅ | ✅ | `running-a-job.md § 4` |
 | `molbuilder.json` config (envs, activation, scheduler) | ✅ | — | `running-a-job.md § 5` |
 | Checkpoint / restore a run (`molbuilder checkpoint`) | ✅ | ✅ | `running-a-job.md § 6` |
-| Staged relaxation ladder | ✅ | ⏳ | `job-system.md § 3` |
+| Describe a staged calculation (shape · stages · bench) | ✅ | ✅ | `web/task-setup.md`, `job-system.md § 5.1` |
+| Prep / submit a staged ladder (one stage at a time) | ✅ | — *(by design: the terminal acts)* | `job-system.md § 3` |
 | Parameter / resource sweep | ✅ | — | `job-system.md § 4.2` |
 | Benchmark → recommended resources | ✅ | — | `job-system.md § 7` |
 | SLURM deployment (routing domains; **one job per submission**) | ✅ | ⏳ | `job-system.md § 6` |
@@ -184,16 +193,17 @@ flowchart TB
 
 Two facts keep the picture honest:
 
-- **The job system's web front-end is genuinely unbuilt** — there is no web
-  route that drives a JobSet, and the web Build tab still emits a single deck.
-  The forward plan reuses the *already-shipped* CLI producers, decoders, and
-  wrappers in the browser rather than reinventing them (`job-system.md § 8`).
-- **"A ladder scheduled as dependent jobs" is SIESTA-only today.** PySCF's
-  staged relaxation runs as an **in-script loop** — so its `JobSet` has one
-  `Job` whose deck contains every rung, rather than one job per rung. It is a
-  JobSet of length one, not an exception to the model
-  ([`stages.md § 1.1a`](?doc=engines/stages.md)); PySCF/transport producers are
-  planned. (Details in `job-system.md § 4`.)
+- **The web's describe half is built; the act half stays on the terminal by
+  design.** The parameter tabs write no deck at all — the old deck-rendering
+  routes were deleted (2026-08-18) — they hand over to Task setup, which
+  writes the description; `prep`/`submit` run where the machine is. What the
+  web still lacks is the observe half beyond the Results tab: a plan view
+  and a per-stage status roll-up (`roadmap.md` workstream 1).
+- **Both engines' ladders are N decks, N jobs.** A PySCF ladder is declared
+  in `task.json` and executes one rung per job, exactly as SIESTA's does
+  ([`stages.md § 1.1a`](?doc=engines/stages.md), decided 2026-08-18 — the
+  in-script loop this bullet used to describe is retired). Transport and
+  spectra producers are still pre-framework (the roadmap's migration box).
 
 ### 2.1 The second transition — one folder shape becomes a choice of two
 
@@ -201,7 +211,7 @@ The status matrix above is about *which surface* can run a job. There is a secon
 change in flight, about *what the folder looks like*, and it is the reason four of
 the eleven documents here were written in August 2026.
 
-**What ships today is the flat shape.** One directory holds everything. Several
+**The flat shape** is the simpler of the two. One directory holds everything. Several
 stages live side by side, told apart by a suffix in the filename
 (`job_01_coarse.fdf`, `job_02_medium.fdf`); several attempts at one stage are told apart
 by a number in the output name (`job-run0.out`, `job-run1.out`); and the warm

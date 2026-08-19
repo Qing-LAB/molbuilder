@@ -157,16 +157,15 @@ prepare, and `prep` lays out whichever you asked for — flat puts every stage i
 one directory and tells them apart by filename; hierarchical gives each stage a
 directory and each attempt a directory inside it.
 
-**Where the browser still differs.** The Build tab writes a *finished* `.fdf`
-and its paired `.run.sh` into one directory — a single job, not a described
-calculation. That is the one real migration below: it will write a **template
-plus `task.json`** and let `prep` render the deck.
-
-**What changes, and it is the one real migration.** Today the UI writes the
-*finished* deck. Under this design it writes a **template plus `task.json`**,
-and `prep` renders the deck — into one directory for the flat shape, or into
-stage directories for the hierarchical one. The UI stops producing the last
-file in the chain and starts producing the second-to-last.
+**The one real migration LANDED.** The browser writes a **template plus
+`task.json`** — the parameter tabs hand over to Task setup, which saves the
+description — and `prep` renders every deck on the target: into one directory
+for the flat shape, or into stage directories for the hierarchical one. The
+UI produces the second-to-last file in the chain, never the last. *(Until
+2026-08-18 the Build tab wrote a finished `.fdf` and its `.run.sh` — a single
+job, not a described calculation — and these two paragraphs described moving
+off that as future work. The deck-rendering web routes were deleted the same
+day the hand-over shipped; proven end to end 2026-08-19.)*
 
 **One package, two layouts, and you choose.** The browser always writes the same
 thing — a template, `task.json`, the data files, none of it naming a
@@ -223,9 +222,14 @@ exactly why stage 2 overwrites them.
 
 ```
 bdt-relax/                            the CALCULATION — the user typed this name
-├── <label>.template.toml              ─┐ written by the browser
-├── task.json                         │ portable: names no machine, and
-├── Au.psml  S.psml  mb_monitor.py    ─┘ says the id — label plus formula
+├── <label>.template.toml              ─┐ the description: written by the
+├── task.json                         ─┘ browser (or `jobset describe`) —
+│                                        portable, names no machine, says
+│                                        the id — label plus formula
+├── <label>.source.xyz  + sidecar        the structure pair (§ 6.3's .source
+│                                        reservation), from the hand-over
+├── Au.psml  S.psml  mb_monitor.py       copied in by `prep` from the library
+│                                        (or by `describe --psml-lib`) — § 2.6
 │
 ├── 01_coarse/                        a STAGE — written by `prep`
 │   ├── <label>_01_coarse.fdf            the deck, rendered for THIS machine
@@ -653,7 +657,7 @@ what only the target machine can**.
 
 | | What | Why it is portable |
 |---|---|---|
-| the **data files** | pseudopotentials, the structure | they are the same everywhere |
+| the **structure pair** | `<label>.source.xyz` + its sidecar | it is the same everywhere. *(Pseudopotentials are NOT the browser's to write — `prep` copies them from the library on the target, or `describe --psml-lib` does; § 2.6, stated 2026-08-18)* |
 | the **template** | the science backbone — **every parameter, carrying the value that holds unless a stage changes it** | it is physics |
 | **`task.json`** | the variables each stage tunes | it is the mission |
 | the **resource intent** | *use a GPU · this is a big job · aim for this scale* | a wish, not a number |
@@ -713,8 +717,8 @@ flowchart LR
     S["<b>task.json</b><br/>this stage's values<br/><i>the browser · portable</i>"]
     M["<b>molbuilder.json</b><br/>activation · scheduler · env names<br/><i>this machine · outside the tree</i>"]
     B["<b>bench-result.json</b><br/>ranks · solver · GPU · memory<br/><i>measured here, optional</i>"]
-    D["<b>&lt;id&gt;.fdf</b><br/>the deck the engine reads"]
-    W["<b>&lt;id&gt;.run.sh</b><br/>the wrapper"]
+    D["<b>&lt;label&gt;_&lt;token&gt;.fdf</b><br/>the deck the engine reads"]
+    W["<b>&lt;label&gt;_&lt;token&gt;.run.sh</b><br/>the wrapper"]
     T --> D
     S --> D
     M --> W
@@ -753,9 +757,9 @@ identical while the environment differs, and it is the GPU line that moved.)*
 The last row is the point. The portable half did not move; only what the machine
 decided did.
 
-This is the same shape the benchmark already ships: `bench prep` runs on the
-target, detects the machine, writes `environment.json`, and formats the scripts
-for it — *"the user never hand-edits a queue name or a core count; this is what
+This is the same shape the benchmark already ships: `jobset prep bench` runs
+on the target, detects the machine, writes `environment.json`, and formats the
+scripts for it — *"the user never hand-edits a queue name or a core count; this is what
 makes the bundle portable."* The staged path reuses that shape rather than
 inventing a second one.
 
@@ -1158,7 +1162,7 @@ sequenceDiagram
     participant E as the engine
 
     U->>B: pick a structure, describe the stages
-    B->>T: template.toml · task.json · pseudopotentials
+    B->>T: template.toml · task.json · the structure pair
     Note over T: portable — names no machine
 
     U->>C: jobset prep bench tight

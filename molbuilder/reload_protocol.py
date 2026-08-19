@@ -10,7 +10,7 @@ code it exists to survive.  Measured, not guessed: ``molbuilder.web.app`` was in
 ``sys.modules`` immediately afterwards.
 
 The supervisor's whole value is that it NEVER IMPORTS APPLICATION CODE
-(docs/plans/server-reload-plan.md § 3.2) — that is what lets a child which fails to
+(docs/archive/2026-08-19-server-reload-plan.md § 3.2) — that is what lets a child which fails to
 import leave the parent alive, so the next reload can fix it.  A parent that had
 to import the app to learn its own exit code would lose exactly the property it
 exists for: a syntax error anywhere in the app would kill the supervisor too, and

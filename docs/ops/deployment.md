@@ -166,7 +166,7 @@ server **exit with a sentinel code** that its supervisor is waiting for, so a
 fresh child starts with every Python module imported again; the page then polls
 `/api/health` and reloads itself, picking up new JS and CSS through the
 revalidation described in
-[`server-reload-plan.md`](?doc=plans/server-reload-plan.md) § 2. There is no
+[`server-reload-plan.md`](?doc=archive/2026-08-19-server-reload-plan.md) § 2. There is no
 module-swapping — a new process is the whole mechanism, which is why it can't
 leave half the app running old code.
 

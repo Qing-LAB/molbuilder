@@ -1709,7 +1709,7 @@ def _supervise_forever() -> int:
     parent cannot be broken by the code it restarts, so a child that fails to
     import leaves the supervisor alive and the next reload can fix it.
 
-    The watcher is deliberately absent (docs/plans/server-reload-plan.md § 3.1).
+    The watcher is deliberately absent (docs/archive/2026-08-19-server-reload-plan.md § 3.1).
     Werkzeug's reloader stat-polls every imported module once a second and
     fires on ANY mtime change, so a chunked editor write or a `git checkout`
     touching fifty files reloads against a momentarily inconsistent tree and
@@ -1762,7 +1762,7 @@ def _supervise_forever() -> int:
                    "restarts (systemd, Docker, gunicorn) -- a supervisor inside "
                    "one of those is a second answer to a question already "
                    "answered.  --debug turns it off on its own.  "
-                   "See docs/plans/server-reload-plan.md.")
+                   "See docs/archive/2026-08-19-server-reload-plan.md.")
 @click.option("--no-auth", is_flag=True,
               help="Run with NO authentication (ignores molbuilder.json's "
                    "auth/TLS).  Allowed ONLY on a loopback --host "

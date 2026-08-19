@@ -89,12 +89,15 @@ which copies coarse's relaxed coordinates in — and submit that. You check
 
 ### Where it stands today (read this before the details)
 
-> **The job system is shipped on the command line and pending on the web.**
-> Everything in this document — the `JobSet` model, the `molbuilder jobset`
-> verbs, one-job-at-a-time SLURM submission with routing domains, and the whole
-> benchmark workflow — works today from a terminal. The **web UI does not
-> drive any of it yet**; it still generates and runs one task at a time. Moving
-> the job system into the browser is the target migration, laid out in § 8.
+> **The job system is shipped on the command line; the web describes and
+> observes.** Everything in this document — the `JobSet` model, the
+> `molbuilder jobset` verbs, one-job-at-a-time SLURM submission with routing
+> domains, and the whole benchmark workflow — works today from a terminal.
+> The web's half is the description (the Task setup tab writes `task.json` +
+> the template — [`web/task-setup.md`](?doc=web/task-setup.md)) and the
+> Results tab; `prep` and `submit` stay on the terminal **by design** (*the
+> browser describes and observes; the terminal acts*). What the web still
+> lacks is a plan view and a per-stage status roll-up — § 8.
 
 > ### How a ladder advances
 >
@@ -619,18 +622,13 @@ separate machine, it is `prep` whose parameters are a set rather than a point
 heading named `bench/to_jobset.py::sweep_to_jobset` as the builder until
 2026-08-12 — deleted with the fold, § 4's note.)*
 
-> **A ladder that is *not* a JobSet — PySCF.** PySCF also supports staged
-> relaxation, but it runs its stages as an **in-script loop inside the single
-> `.py`** (see [`engines/tuning.md`](?doc=engines/tuning.md)), not as separate
-> scheduled jobs. So **"a ladder of separately-scheduled jobs" is a SIESTA-only
-> reality right now** — and the two are genuinely different objects, not two
-> spellings of one: PySCF's stages advanced in memory inside a single process,
-> SIESTA's advance because a person prepped the next one.
->
-> ⚠ **One object as of 2026-08-18** ([`stages.md § 1.1a`](?doc=engines/stages.md)):
-> a PySCF ladder is N separately-prepped jobs too, so *"a ladder of
-> separately-scheduled jobs"* is no longer SIESTA-only.
-> PySCF, transport, and spectra producers are planned (§ 8).
+> **Both engines' ladders are the same object** — N decks, N jobs, a person
+> looks between the rungs ([`stages.md § 1.1a`](?doc=engines/stages.md)).
+> *(PySCF's ran as an in-script loop inside a single `.py` until 2026-08-18 —
+> genuinely a different object then: its stages advanced in memory while
+> SIESTA's advanced because a person prepped the next one. The loop is
+> retired; the history and the reasoning live in § 1.1a.)* Transport and
+> spectra producers remain pre-framework (`roadmap.md`'s migration box).
 
 ---
 
@@ -1283,32 +1281,36 @@ grammar; § 4's note has the story.)*
 > anywhere in this picture"*). What ships is one `sbatch` per invocation with the
 > job's own resources as flags.
 
-### Not built yet — the web, and other engines
+### Where the web stands, and what other engines wait on
 
 This is the migration the project is undertaking, planned in
 [`roadmap.md`](?doc=roadmap.md) (workstream 1, "Batch execution reaches the
-web"). Today there is **no `jobset` web blueprint, no `/api/jobset/*` route**,
-and the web Build tab still renders a single `.fdf` (it drops the stage table).
+web") — and its first phase shipped:
 
-- **Phase 1 — the Build tab writes the description.** The stage table becomes a
-  real `describe` surface, writing the same template + `task.json` the CLI verb
-  writes; the target's `prep` derives the `JobSet` from it as ever (§ 4).
-  *(This phase read "a web bundle producer, calling the same
-  `build_siesta_stage_bundle` seam" until 2026-08-12 — that seam was deleted
-  with the producers, and a browser writing floor 3 is exactly what the
-  describe/prep split forbids: the browser is not on the machine that runs.)*
-- **Phase 2 — web Plan + Status (read-only).** Reusing the *already-shipped*
-  run decoder in the browser, with no new parser. **A branch control was
-  planned here and is not needed**: the checkpoint rework removed the verb, and
-  forking is restore-then-save — both already routed and both already in the
-  sidebar panel ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7.1).
-- **Phases 3–4 — other engines, gated on a cluster-validation milestone.**
-  transport, PySCF and spectra — **one engine seam each** (§ 9), teaching
-  `prep` to render that engine's decks from a description — with their tab
-  mirrors, behind a hard gate: prove the SIESTA ladder end-to-end
-  (describe → prep → submit → monitor) on a real cluster *before* broadening.
-  Reaching transport is also where the single-parent limit (§ 2, design decision
-  #6) is lifted to a branching graph.
+- **✅ Phase 1 — the browser writes the description** *(shipped; proven end
+  to end 2026-08-19)*. The parameter tabs hand over to the shared **Task
+  setup** tab, which writes the same template + `task.json` the CLI verb
+  writes ([`web/task-setup.md`](?doc=web/task-setup.md),
+  [`web/handover-procedure.md`](?doc=web/handover-procedure.md)); the
+  target's `prep` derives the `JobSet` from it as ever (§ 4). *(An earlier
+  shape of this phase — "a web bundle producer, calling the same
+  `build_siesta_stage_bundle` seam" — died 2026-08-12: a browser writing
+  floor 3 is exactly what the describe/prep split forbids.)*
+- **Phase 2 — web Plan + Status (read-only), still open.** Reusing the
+  *already-shipped* run decoder in the browser, with no new parser. **A
+  branch control was planned here and is not needed**: the checkpoint rework
+  removed the verb, and forking is restore-then-save — both already routed
+  and both already in the sidebar panel
+  ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7.1).
+- **Phases 3–4 — transport and spectra, gated on the cluster milestone.**
+  One engine seam each (§ 9), teaching `prep` to render that engine's decks
+  from a description, with their tab mirrors — behind the hard gate: prove
+  the ladder end-to-end (describe → prep → submit → monitor) **on a real
+  cluster** before broadening. *(PySCF was listed here and crossed early: it
+  shares the deck pipeline, its seam landed 2026-08-18, and the 2026-08-19
+  workstation E2E drove it — see `roadmap.md`'s migration box.)* Reaching
+  transport is also where the single-parent limit (§ 2, design decision #6)
+  is lifted to a branching graph.
 
 Also out of scope for now: **multi-node MPI** (v1 fixes one node), a
 `molbuilder config init --site` command (a site preset ships only as a JSON

@@ -11,11 +11,14 @@ framework that runs **batches** of jobs on top of this same wrapper;
 [`execution/overview.md`](?doc=execution/overview.md) — the map and the
 current → target status picture.
 
-**This is the path that works today.** The web UI generates and installs a
-run wrapper for **one** task at a time; on the CLI, one task is
-`molbuilder jobset prep` then `molbuilder jobset submit --mode direct` — **a job
-set of one, through the same commands as a hundred** (there is no
-`molbuilder run`; decided 2026-08-11). Everything here — the
+**This is the path that works today.** One task is
+`molbuilder jobset prep` then `molbuilder jobset submit --mode direct` — **a
+job set of one, through the same commands as a hundred** (there is no
+`molbuilder run`; decided 2026-08-11). The browser's part is the description
+(the hand-over + Task setup — [`web/task-setup.md`](?doc=web/task-setup.md));
+prep and submit run where the machine is. *(A legacy web install-wrapper
+endpoint survives as the low-level side door the described route supersedes —
+`job-contracts.md § 2.6`'s note.)* Everything here — the
 self-contained wrapper, the runtime resource resolution, `molbuilder.json`
 config, checkpoints, and watching a run — is shipped and usable now. Running
 **many** parameterised jobs (sweeps, staged ladders, HPC deployment,
@@ -418,9 +421,12 @@ directory resolves the trajectory via the discovery chain in
 directory into a single structured view.
 
 The decoder is `decode_run_dir(run_dir)` → an in-memory `JobResult`
-(`molbuilder/parse/dirs/job.py`). It is **SIESTA-only** today (it refuses a
-`.py`-only directory) and produces one consolidated result per project
-directory, with these fields:
+(`molbuilder/parse/dirs/job.py`). It claims any directory holding a `.fdf`
+**or a molwatch log** — which is how a PySCF attempt, whose deck is a `.py`,
+is decoded (shipped 2026-08-19; the claim rule's own note records the 2026-06
+deferral it closed). The curated engine-body summary and the plots remain
+SIESTA's; a PySCF attempt contributes its trajectory and its molwatch
+conclusion. One consolidated result per directory, with these fields:
 
 - **`job_type`** — `optimization` / `spectrum` / `transport`, inferred from the
   script-contract BENCH-MARKS block or by sniffing the engine body

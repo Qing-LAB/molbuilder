@@ -108,6 +108,55 @@ strippers) and for the retired trajectory glob.  Live code found and fixed:
   tag examples (`stage1-good`), and project-layout's quoted-and-corrected
   review trail — history keeps its era's names; teaching text does not.
 
+**The full-text documentation review (user, 2026-08-19: start at the root,
+stay with the documents, fix errors/jargon/logic, mark the migration status).**
+All 77 non-archive docs covered — full reads for the spine, execution, and
+engines domains plus the high-risk web six; structured probes (drift-signature
+greps + section maps) for the stable module docs, which came back clean.
+
+**The finding in one sentence: the CONTRACTS are current; the STATUS layer had
+stratified.** The maintained contracts (stages, template, generator,
+script-preparation, run-identity, configuration, checkpointing, job-contracts,
+architecture) carry dated corrections and match the code. The pages that
+SUMMARIZE status — roadmap, execution/overview § 2, workflow § 7, job-system's
+status sections, project-layout §§ 1.1/2.1 — still described the world before
+the seam/Task-setup work, some contradicting the contracts they cite (roadmap
+said "remove task.json's bench key" while generator § 4.3a — the owner — says
+it stays; execution/overview cited stages § 1.1a for the design that section
+reverses).  Fixed at the owners, restatements swept:
+
+* the migration-status box at the top of `roadmap.md` (the user's framing:
+  framework verified on structure optimization first; spectra + transport are
+  pre-framework and migrate after) + banners on `engines/transport.md` and
+  `web/spectra.md` pointing at it;
+* roadmap: workstream 1 truth, D7 half-passed 2026-08-19, PySCF-seam block
+  closed (it said "not started" beside its own closure notes), the bench
+  bullet aligned to § 4.3a, C6 closed;
+* execution/overview § 2 rewritten (both tabs shipped; the matrix speaks
+  describe-vs-act; the N-decks truth); workflow § 7 re-measured 2026-08-19
+  (deck writing is seam-driven; runwrap's 4 engine branches are the named
+  gap, W1); job-system §§ status/4.2/8; project-layout's "one real migration"
+  marked LANDED and the pseudo-writer drift fixed at § 2.6's rule;
+  worked-example refreshed to the shipped flow (no positional-restart
+  teaching, no Generate button, `.source` names);
+* small residue: engines/overview's retired-loop pointers, running-a-job's
+  header + § 4.2 (my own #3 fix had left its intro contradicting its status
+  bullet), job-contracts § 2.3 one-execution-shape + § 6.3 paragraph order +
+  the hand-edit honesty note, template.md's USER-CUSTOM box re-counted (ALL
+  routes preserve now — write_script is the one writer);
+* housekeeping: brittle counts dropped ("fourteen"), R2's role list gains
+  `investigation`/`audit report`, `plans/server-reload-plan.md` archived per
+  the plans rule (full protocol: 10 inbound repoints, toc, archive README).
+
+**Dispositions recorded, not yet executed** (each is its own protocol pass):
+`plans/task-setup-tab-plan.md`, `plans/template-unification-plan.md` and
+`plans/staged-runs-implementation-plan.md` look substantially landed — audit
+their remaining items, then archive; the scope-name drift
+(project/bundle, configuration § 8) awaits its § 6.3 naming decision;
+`projects.py`'s `structure_dir` API naming and the watch `JOB = ` resolver
+regex remain recorded code follow-ups; `structure_to_dict`'s disposition
+(model/structure.md vs backend-architecture § 2) still needs one decision.
+
 ### 3. Collapse the instance tests. This is my mess.
 
 35 test functions generate **332 cases that re-run one rule with different

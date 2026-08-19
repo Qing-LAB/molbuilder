@@ -264,7 +264,7 @@ For a job with basename `my-job` (`N` is the auto-advancing run index, § 2.6):
 | File | Written by | Read by | Purpose |
 |---|---|---|---|
 | `my-job.fdf` | **`prep`** (§ 2.6), from the template | SIESTA | input deck (SIESTA) |
-| `my-job.py` | Build tab / `molbuilder pyscf` | Python | input script (PySCF) |
+| `my-job.py` | **`prep`** (§ 2.6), from the template; `molbuilder pyscf` for a standalone deck | Python | input script (PySCF) |
 | `my-job.run.sh` | **`prep`** (§ 2.6) | shell / SLURM | wrapper: activates the env and runs the engine |
 | `my-job.sbatch` | **`prep`**, on a cluster (§ 2.6) | `sbatch` | outer resource header that inner-execs the `.run.sh` |
 | `my-job.molwatch.log` | both generators (initial preview) + live frames (PySCF's inlined emitter; SIESTA via the parser-on-stdout path) | the run viewer, `molbuilder watch parse` / `tail` | **canonical trajectory source** — preferred by every reader |
@@ -342,17 +342,16 @@ and **there is one convention for it**:
   > on this document's own terms, and a stage is not a counter — it is a name
   > with an assigned ordinal.
 
-**Two multi-stage execution shapes exist, deliberately:**
-
-- **Per-stage processes (SIESTA run stage-by-stage, and the PySCF `cfg.stage`
-  marker path)** — each stage is a separate process invocation writing its own
-  `.molwatch.log`. A directory with **more than one** `.molwatch.log` is merged
-  by the viewer: all logs are parsed in mtime order (oldest first) into one
-  trajectory with a dashed boundary line per stage; live polling pins to the
-  newest log.
-- **PySCF in-script ladder (`cfg.stages`)** — all stages run inside **one**
-  Python process (`for stage in STAGES:`), which writes a **single, unified**
-  `<basename>.molwatch.log`. There is no per-stage suffix in this mode.
+**One multi-stage execution shape, both engines** *(since 2026-08-18 —
+`stages.md § 1.1a`)*: each stage is a separate process invocation writing its
+own `<label>_<token>.molwatch.log`. A directory with **more than one**
+`.molwatch.log` is merged by the viewer: all logs are parsed in mtime order
+(oldest first) into one trajectory with a dashed boundary line per stage;
+live polling pins to the newest log. *(A second shape existed until then —
+PySCF's in-script ladder, `cfg.stages`, one process writing a single
+unsuffixed log. The field, the loop, and the `cfg.stage` marker are all
+retired; the viewer's merge behaviour above is unchanged and still handles
+the old runs' files.)*
 
 ### 2.4 Resolving a directory — the discovery chain
 
@@ -1660,6 +1659,11 @@ parser) split a name without knowing what is in it.
 | `.` | **introduces a type suffix** — what the file *is* | `.fdf`, `.XV`, `.molwatch.log`, `.template.toml` |
 | `/` | **separates levels of a path** | `01_coarse/run-0/`, `02_tight/run-1/` |
 
+**This is why a stage name may not contain a hyphen** (`engines/stages.md § 2`):
+a hyphen announces *"a counter follows"*, so one inside a name makes it
+impossible to tell where the name ends. Names use `_`; the system uses `-` to
+append to them.
+
 **And it is why the description's own structure pair is
 `<label>.source.xyz` + `<label>.source.molstruct.json`.** Every identity — a
 calculation label, a `SystemLabel`, a PySCF job name — is validated to
@@ -1673,12 +1677,10 @@ relaxation whose label matched the structure's stem — the natural naming —
 (found 2026-08-19); `task.json` then pointed at a geometry the description
 never described. The writers mark the pair (the hand-over and `jobset
 describe`); every reader follows `task.json`'s `structure.source`, so folders
-written before the reservation keep working unchanged.
-
-**This is why a stage name may not contain a hyphen** (`engines/stages.md § 2`):
-a hyphen announces *"a counter follows"*, so one inside a name makes it
-impossible to tell where the name ends. Names use `_`; the system uses `-` to
-append to them.
+written before the reservation keep working unchanged. *(The guarantee
+covers what molbuilder validates: a hand-edited deck may spell a dotted
+`SystemLabel` — the wrapper tolerates one, § 4.3 — and a person who renames
+their label to `<x>.source` by hand has aimed at their own foot.)*
 
 **And it is why a sweep coordinate renders as ONE qualifier.** The token is the
 point's axes in declaration order, each as `<axis><value>`, **concatenated with

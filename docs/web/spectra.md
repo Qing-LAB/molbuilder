@@ -10,6 +10,14 @@ registry that picks it for a `.spectra.json`; [`molview.md`](?doc=web/molview.md
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — the run that
 produces the `.spectra.json`.
 
+> **⚠ Migration status (2026-08-19, user).** The compute side of this surface
+> is **pre-framework**: it still generates and runs a standalone script, not a
+> described calculation through `prep`/`submit`. It is deliberately untouched
+> until the structure-optimization loop is fully verified; the statement of
+> record is the migration box at the top of [`roadmap.md`](?doc=roadmap.md).
+> (The *viewing* half — the presenter, the chart, the mode table — is current
+> and unaffected.)
+
 The spectra surface computes a **Raman vibrational spectrum** for a molecule and
 then shows it as an interactive chart: a stick spectrum of frequencies, a
 sortable table of the vibrational modes, and — when you click a peak — a **3D

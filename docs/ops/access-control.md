@@ -5,7 +5,7 @@
 **Companions:** [`deployment.md`](?doc=ops/deployment.md) (how the server is
 started, bound and exposed — the operational half of everything below);
 [`installation.md`](?doc=ops/installation.md) (the env model);
-[`server-reload-plan.md`](?doc=plans/server-reload-plan.md) (why the restart
+[`server-reload-plan.md`](?doc=archive/2026-08-19-server-reload-plan.md) (why the restart
 mechanism has the shape it has); [`web/web-api.md`](?doc=web/web-api.md) (the
 routes these gates sit in front of); [`design.md`](?doc=design.md) (the
 project-wide stance this is an instance of).
@@ -218,7 +218,7 @@ reaches a buffer. A 200 or a 304 is invisible to the limiter.
 
 That is not an implementation detail — it is the assumption that lets every
 static asset revalidate on every page load (§ 2 of
-[`server-reload-plan.md`](?doc=plans/server-reload-plan.md)). ~170 assets asking
+[`server-reload-plan.md`](?doc=archive/2026-08-19-server-reload-plan.md)). ~170 assets asking
 "is my copy still good" answer 304, and 304 does not count. If the limiter is
 ever widened to count 3xx, ordinary use trips it;
 `tests/test_static_revalidates.py` pins the predicate for exactly that reason.
@@ -283,7 +283,7 @@ before it exists at all.
 
 **Reload server** exits the process with a sentinel its supervisor is waiting
 for, so a fresh child starts with every Python module imported again. The design
-of that mechanism is [`server-reload-plan.md`](?doc=plans/server-reload-plan.md);
+of that mechanism is [`server-reload-plan.md`](?doc=archive/2026-08-19-server-reload-plan.md);
 what belongs here is who may press it.
 
 `POST /api/admin/reload` **is not registered at all** unless both hold:
