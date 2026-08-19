@@ -136,7 +136,7 @@ shared API.
 `bench` (the CPU-vs-GPU benchmark), `jobset` (staged execution →
 [`execution/job-system.md`](?doc=execution/job-system.md)), `transport`
 (TranSIESTA helpers), `pseudo` (`.psml` screening →
-[`science/pseudopotentials.md`](?doc=science/pseudopotentials.md)), `snapshot`
+[`science/pseudopotentials.md`](?doc=science/pseudopotentials.md)), `checkpoint`
 (git run-checkpoints), `watch` (trajectory parse to JSON/NDJSON).
 
 #### Three orchestration lifecycles, where the design says one
@@ -223,5 +223,5 @@ the calculation ([`generator.md § 4.3a`](?doc=execution/generator.md)).
 > geometry-only, emits a JSON *object*, and exits non-zero only with
 > `--exit-on-error`; the CLI *does* have dedicated tests (five files, not "none");
 > and enforcement is pre-commit, not CI. The full command families
-> (`run`/`envs`/`bench`/`jobset`/`transport`/`snapshot`/…) that the legacy table
+> (`envs`/`jobset`/`transport`/`checkpoint`/…) that the legacy table
 > omitted are included above.

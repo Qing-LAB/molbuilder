@@ -497,7 +497,7 @@ dropped in the same commit that closes its item)*:
   the `molbuilder/backends/` back-compat re-export package, and the
   `_apply_sidecar_if_possible` dead alias (`web/blueprints/spectra.py:252`).
 - **Ship-or-retire decision batch** — named-in-design, never built, no
-  recorded retirement: the checkpoint tail (`prune`, a CLI `snapshot diff`
+  recorded retirement: the checkpoint tail (`prune`, a CLI `checkpoint diff`
   face, the `snippets/` library, wrapper-git "Path B" — running-a-job.md § 6
   lists them as unbuilt), #32 MD viewer/editor (only *persistence* is
   planned above), #34 stage-4 refinement preset, the `beforeunload`
@@ -552,12 +552,74 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   it; [`engines/template.md`](?doc=engines/template.md) § 10), `jobset describe`
   exists, `--mode` falls back to
   `execution.mode`, and the deleted-flag print is gone. Still open, scheduled
-  with steps 6–7: trial directories still `point-` (C6), `cfg.stage` still the
-  emitter's channel for the stage token (C7), `BlockSize`'s third state (C8),
-  and the rank-clamp message (C12, needs a call). The order is argued in
+  with steps 6–7: trial directories still `point-` (C6), `BlockSize`'s third
+  state (C8), and the rank-clamp message (C12, needs a call). **C7 closed
+  2026-08-18** — the stage token is a render argument for both engines and no
+  config field carries it; `PySCFConfig.stage` was the last one, and its last
+  reader was the molwatch emitter. The order is argued in
   [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md)
   § 5g. They sit *behind* the front rather than blocking it, which is why none
   earns a milestone.
+
+- **Two things the in-script PySCF ladder used to carry — both settled
+  2026-08-18.** Retiring `_emit_stages_loop` (`stages.md` § 1.1a: a PySCF
+  ladder is N decks and N jobs) moved the ladder out of the script, and two
+  guarantees that lived inside the loop needed an answer. Neither was dropped
+  quietly:
+  **L1 — closed as NOT NEEDED, 2026-08-18 (user).** The loop forced
+  `on_nonconvergence` to `halt` on the final stage so that no user knob could
+  silently ship a non-converged answer. **Nothing needs to force it now**:
+  stages are run by hand, one at a time, and a person evaluates each result
+  before starting the next — which is the premise the whole N-decks design
+  rests on (§ 1.1a). The old rule protected a case that cannot arise here, and
+  keeping it would mean overriding a value a person stated while looking at the
+  run it applies to.
+  **L2 — closed 2026-08-18.** `PySCFConfig.stages` is deleted, and with it
+  `StageSpec`, `_default_stages`, `validate_stages`, `stages_from_dicts`,
+  `stages_from_configs` and `apply_stage_strategy`. `--stage-strategy` now
+  means what it means for SIESTA and nothing else: `jobset describe` builds a
+  ladder from the engine's preset table. `molbuilder pyscf` lost its ladder
+  flags — one deck is not a ladder. The stage-table's Python feed went too; its
+  JS renderer is now reached by nothing and is left for whenever the Build UI
+  is next opened.
+
+- **The preparation layer against its contract, stated 2026-08-18** — the steps,
+  the floors and the seam are consolidated in
+  [`execution/script-preparation.md`](?doc=execution/script-preparation.md);
+  **six things the code did not do, and all six are now closed**
+  ([`archive/2026-08-18-preparation-backend-plan.md`](?doc=archive/2026-08-18-preparation-backend-plan.md)
+  built them as one programme in five phases, deleting the old writer as each
+  landed):
+  **P1** — the enforced floor map put `runwrap` and `jobset/prep` on floor 5;
+  the contract puts `runwrap` on 3 with the other renderers and `prep` beside
+  the stack as the conductor (§ 3.3). *Landed 2026-08-18.*
+  **P2 — closed for the QUESTION it was about, and worth stating precisely.**
+  *"Does this engine write its values with their reasons?"* is now answered by
+  reading `<engine>/layout.py`: every value both engines emit goes through
+  `parameter()`, and `deck_note` — the hand-paired alternative — has no caller
+  left in either writer. **The runner is the route too since 2026-08-18**: one
+  `DeckSpec` per deck, one syntax door per engine, and `prepare_deck` — validate
+  → render → write → check — called by every route that writes a deck. The seam
+  carries the engine's form rather than finished text
+  (`archive/2026-08-18-preparation-backend-plan.md` § 7.1). *Phases 1–3, closed out.*
+  **P3** — nothing named the shared package; `jobset/prep._shared_for` globbed
+  `*.psml`, a SIESTA fact a floor below where SIESTA may speak, so a second
+  engine with data files of its own would have shipped none of them (step 3.2).
+  `shared_package` is the engine's answer now. *Phase 4.*
+  **P4 — closed 2026-08-18.** Each block has one writer (`emit_provenance`,
+  `emit_bench_marks`, `emit_atom_metadata`, `emit_user_custom_placeholder`,
+  `machine_record_banner`) **and the assembly moved too**: *science ·
+  user-custom · banner · record* is written once, in `render_deck`. It was three
+  copies — one per engine and one in the framework — agreeing only because they
+  were written together. *Phase 1 landed the writers; the migration landed the
+  assembly.*
+  **P5** — PySCF had **no seam entry at all**: `_engine_seam` refused every
+  name but `siesta`, so all fifteen questions were unanswered for the engine
+  already unified on the catalogue side. *Phase 2.*
+  **P6** — `render_wrappers` returns step 4's texts and `write_run_wrapper`
+  writes them through the one writer, so floor 3 holds one pattern (§ 5, W7).
+  `write_sbatch` went with it: a second writer with no production caller.
+  *Phase 4, 2026-08-18.*
 
 - **The warm-file rules file** — contract settled 2026-08-13 (user
   decision) and stated ENTIRELY in

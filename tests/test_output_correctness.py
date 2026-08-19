@@ -29,9 +29,9 @@ def small_struct():
 # --------------------------------------------------------------------- #
 
 
-def test_c1_initial_xyz_captured_before_stages_loop(small_struct):
-    """Spec: capture the user's actual input geometry NOW, before any
-    stage in the optimization loop has a chance to modify it.
+def test_c1_initial_xyz_captured_before_the_optimization(small_struct):
+    """Spec: capture the user's actual input geometry NOW, before the
+    optimization has a chance to modify it.
     Otherwise _initial.xyz would save the post-stage-N geometry because
     ``mol_eq`` shadows ``mol`` (and reset() rebinds mf.mol).
     """
@@ -42,13 +42,13 @@ def test_c1_initial_xyz_captured_before_stages_loop(small_struct):
     save_pos = text.find('_save_xyz(mol, _mb_outfile(JOB + "_initial.xyz")')
     assert save_pos != -1, "no _initial.xyz save call found"
 
-    # The stages driver loop comes after the SCF setup.
-    loop_pos = text.find("for STAGE in STAGES:")
-    assert loop_pos != -1, "no stages-loop header found"
+    # The optimization comes after the SCF setup.
+    opt_pos = text.find("mol_eq = _mb_run_optimization(")
+    assert opt_pos != -1, "no optimization call found"
 
-    # The save MUST come before the loop.
-    assert save_pos < loop_pos, (
-        "_initial.xyz is saved AFTER the stages loop starts; mol "
+    # The save MUST come before it.
+    assert save_pos < opt_pos, (
+        "_initial.xyz is saved AFTER the optimization starts; mol "
         "may have been rebound to mol_eq via mf.reset() by then so "
         "the file would contain the post-relax geometry, not the "
         "user's input."
@@ -136,62 +136,37 @@ def test_c2_spin_total_emits_dotted_form_with_fix(small_struct):
 # --------------------------------------------------------------------- #
 
 
-def test_c3_stages_loop_threads_per_stage_policy(small_struct):
-    """Per-stage ``on_nonconvergence`` policy with three branches
-    (proceed / continue / halt), plus the final-stage override that
-    forces 'halt' regardless of the declared value.
+def test_c3_the_deck_renders_its_own_non_convergence_policy(small_struct):
+    """proceed / continue / halt, for THIS rung.
 
-    Rationale: this is the #534 commit 6c generalisation of 5b's
-    hardcoded True/False assert_convergence.  The user (not
-    molbuilder) picks per-stage what should happen when geomeTRIC
-    exhausts max_steps without converging.  The script's final-
-    stage contract (must produce a converged answer) is enforced
-    at render time AND re-enforced at runtime via the ``is_final``
-    override.
+    A deck is one rung (`stages.md` § 1.1a), so the policy it renders is its own
+    and the branch is chosen at render time rather than dispatched at run time
+    over a table of rungs.
+
+    **What retired with the loop, and where it went.** The old version also
+    asserted an ``is_final`` override -- the in-script loop forced the last rung
+    to `halt` whatever the user declared, so that no knob could silently ship a
+    non-converged answer. A deck no longer knows whether it is last, so the
+    script cannot enforce that. The guarantee is not abandoned; it is homeless,
+    and it is recorded as such in `roadmap.md` § 6 rather than quietly dropped.
     """
+    for policy, expected in (("halt", "mol_eq = _mb_run_optimization(_hard_fail=True)"),
+                             ("proceed", "mol_eq = _mb_run_optimization(_hard_fail=False)"),
+                             ("continue", "for _attempt in range(_budget):")):
+        text = render_script(small_struct,
+                             PySCFConfig(on_nonconvergence=policy))
+        assert expected in text, f"policy {policy!r} did not render {expected!r}"
+
     text = render_script(small_struct, PySCFConfig())
-    # The optimize() call (now factored into _mb_run_stage_opt
-    # helper) passes assert_convergence keyed on the helper's
-    # ``_hard_fail`` parameter, not a hardcoded value.
-    helper_block = text.split("def _mb_run_stage_opt(")[1].split(
-        "for STAGE in STAGES:")[0]
-    assert "assert_convergence    = _hard_fail" in helper_block, (
-        f"helper must thread assert_convergence via _hard_fail "
-        f"param.  helper body:\n{helper_block}"
-    )
-    # Loop body: the 3-policy dispatch with the final-stage override.
-    loop_block = text.split("for STAGE in STAGES:")[1]
-    loop_block = loop_block.split("\nprint(f")[0]
-    assert "_policy = ('halt' if STAGE['is_final']" in loop_block, (
-        "loop must override declared policy to 'halt' on the "
-        "final stage -- the script's contract is that the final "
-        "tier must converge"
-    )
-    for branch in ("if _policy == 'proceed':",
-                   "elif _policy == 'halt':",
-                   "else:  # 'continue'"):
-        assert branch in loop_block, (
-            f"missing policy branch: {branch!r}.  loop:\n{loop_block}"
-        )
-    # The STAGES literal must carry per-stage policy + retries +
-    # is_final fields (replaces 5b's assert_convergence bool).
-    stages_block = text.split("STAGES = [")[1].split("\n]")[0]
-    assert "'on_nonconvergence':" in stages_block
-    assert "'continue_retries':" in stages_block
-    # is_final: exactly one True (the last enabled), >=1 False.
-    assert stages_block.count("'is_final':          True") == 1, (
-        f"exactly ONE stage should be marked is_final=True (the "
-        f"last enabled).  STAGES literal:\n{stages_block}"
-    )
-    assert stages_block.count("'is_final':          False") >= 1
-    # Default per-tier policy from _default_stages: stage1=proceed,
-    # stage2=halt (last enabled in the default 2-tier config).
-    assert "'on_nonconvergence': 'proceed'" in stages_block
-    assert "'on_nonconvergence': 'halt'" in stages_block
+    helper = text.split("def _mb_run_optimization(")[1].split("\n\n")[0]
+    assert "assert_convergence    = _hard_fail" in helper, (
+        "the single call site must thread assert_convergence through the "
+        f"helper's parameter rather than hardcoding it.  helper:\n{helper}")
+    assert "STAGES = [" not in text, "the in-script ladder is retired"
 
 
 # --------------------------------------------------------------------- #
-#  C4 — RKS / RHF + nonzero spin must raise at generation               #
+#  C4 — spin / method compatibility                                      #
 # --------------------------------------------------------------------- #
 
 

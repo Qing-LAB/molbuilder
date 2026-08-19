@@ -18,6 +18,7 @@ import subprocess
 import sys
 
 from molbuilder.runtime_info import emit_threading_setup_lines
+from molbuilder.jobset.model import Resources
 
 _PROBE = "\nimport os\nprint(os.environ['OMP_NUM_THREADS'], _MB_THREADS_FROM, sep='|')\n"
 
@@ -95,7 +96,7 @@ def _pyscf_wrapper(tmp_path, monkeypatch):
         {"script_generation": {"preamble": "true",
                                "activation": "source activate"}}))
     (tmp_path / "job.py").write_text("print('hi')\n")
-    return runwrap.render_run_wrapper(tmp_path / "job.py")
+    return runwrap.render_run_wrapper(tmp_path / "job.py", resources=Resources())
 
 
 def test_the_wrapper_accepts_the_flags_submit_actually_sends(

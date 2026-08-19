@@ -44,10 +44,15 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import dataclasses as _dataclasses
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional,
+                    Tuple)
+
+if TYPE_CHECKING:                       # annotations only -- `issues`
+    from .issues import Issue           # is L1 and imports nothing
 
 
 # --------------------------------------------------------------------- #
@@ -61,6 +66,11 @@ BLOCK_PROVENANCE    = "provenance"
 BLOCK_BENCH_MARKS   = "bench-marks"
 BLOCK_ATOM_METADATA = "atom-metadata"
 BLOCK_USER_CUSTOM   = "user-custom"
+#: The parameters the ENGINE actually holds, recorded into the run log at
+#: startup.  Shared between engines on purpose: the deck says what was asked
+#: for, this says what was heard, and one reader should be able to compare
+#: them without knowing which engine wrote it.
+BLOCK_PARAMETERS    = "effective-parameters"
 #: § 3.7 item blocks: the marker is ``item <field>``, so the NAME reaches
 #: the marker and prep can rebuild a config by scanning.
 
@@ -750,7 +760,7 @@ __all__ = [
     "BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
     "BLOCK_ATOM_METADATA", "BLOCK_USER_CUSTOM",
     "MARKER_RE", "begin_marker", "end_marker",
-    "DECL_TYPES", "decl_line",
+    "DECL_TYPES", "decl_line", "deck_note",
     # Bench declarations
     "BenchField", "SIESTA_BENCH_FIELDS",
     # Emitters
@@ -767,3 +777,711 @@ __all__ = [
     "extract_header_text", "extract_provenance_dict",
     "extract_user_custom_inner", "extract_script_source",
 ]
+
+
+# --------------------------------------------------------------------- #
+#  deck_note -- an item's note comes from the CATALOGUE, for EVERY engine #
+#                                                                        #
+#  `engines/template.md` § 1.0 says the template exists because an engine #
+#  input "cannot be read without knowing the engine -- there is nowhere   #
+#  in the file to say what it is, what it is measured in, or what a       #
+#  sensible value looks like."  Both emitters answered that by writing    #
+#  their OWN prose beside each keyword and never consulting the           #
+#  catalogue: 392 of a 485-line SIESTA deck were hand-written comments,   #
+#  and `pyscf/input.py` carries 179 more.                                #
+#                                                                        #
+#  Two homes for one explanation drift, and had (found 2026-08-17 by      #
+#  reading a generated deck): the comment called 0.02 "typical            #
+#  production" while the deck emitted 0.01; it said "3 fine for most      #
+#  cases" while shipping 8; and the catalogue stated the § 5.2 DEVIATION  #
+#  for `SCF.Mixer.Weight` while the deck -- the file a scientist opens    #
+#  before a week of compute -- did not.                                   #
+#                                                                        #
+#  It lives HERE, not in one engine, because § 2 of `engines/overview.md` #
+#  makes this module the shared script-contract wrapper both emitters     #
+#  call, and because the note is per-ITEM: an item may serve one engine   #
+#  or several, so the lookup takes the ENGINE and asks the one read API   #
+#  (`template.one`), which answers None for "not for this engine" and     #
+#  raises for "no such item" -- two different answers that must not read  #
+#  the same.                                                             #
+# --------------------------------------------------------------------- #
+
+
+
+def _catalogue():
+    """The parsed catalogue, through its one door.
+
+    This kept a module-level cache of its own until 2026-08-18 -- correct, and
+    a second answer to *"where do I get the catalogue?"*  ``template.catalogue``
+    is that answer now, and it caches for everybody.
+    """
+    from . import template as _T
+    return _T.catalogue()
+
+
+def deck_note(item_name, engine, *lead, extra=()):
+    """One item's catalogue note as deck comment lines: ``["", "# ...", ...]``.
+
+    *engine* is required and is not decoration: an item may declare
+    ``engines`` and a note pulled without it would put another engine's
+    guidance in this deck.  An item that does not apply here yields NO
+    comment rather than a wrong one.
+
+    *lead* is an optional first line naming the keyword, for a reader
+    scanning the file.  *extra* carries lines that are the EMITTER's own --
+    how THIS deck wires the value -- which do not belong in a catalogue
+    whose help is engine-agnostic and is also shown on a form.
+
+    Prose is re-flowed to the deck's width; an INDENTED line is copied
+    verbatim with its relative indent, because several items carry a
+    hand-aligned tier ladder and re-flowing that destroys the alignment
+    that makes it a table.  One source line is one paragraph: the
+    catalogue writes help with a hard newline between thoughts.
+    """
+    import textwrap
+    from . import template as _T
+    try:
+        it = _T.one(_catalogue(), item_name, engine=engine)
+    except KeyError:
+        it = None
+    out = [""]
+    for ln in lead:
+        out.append("# %s" % ln)
+    if it is not None and (it.help or "").strip():
+        para = []
+
+        def _flush():
+            if para:
+                for ln in textwrap.wrap(" ".join(para), width=66):
+                    out.append(("# %s" % ln).rstrip())
+                para.clear()
+
+        for raw in it.help.strip().splitlines():
+            if not raw.strip():
+                _flush(); out.append("#")
+            elif raw[:1].isspace():
+                # An indented line is a LADDER ROW.  Its own indent is kept so
+                # the column survives, and a long row is wrapped with a hanging
+                # indent rather than left at 180 characters -- verbatim was
+                # right for "150   screening" and wrong for a bullet carrying a
+                # sentence.
+                _flush()
+                lead = raw[: len(raw) - len(raw.lstrip())]
+                for w in textwrap.wrap(raw.strip(), width=66,
+                                       initial_indent=lead,
+                                       subsequent_indent=lead + "    "):
+                    out.append(("# %s" % w).rstrip())
+            else:
+                para.append(raw.strip()); _flush()
+        _flush()
+    out.extend(("# %s" % ln).rstrip() for ln in extra)
+    return out if len(out) > 1 else []
+
+
+# --------------------------------------------------------------------- #
+#  § 8.0's read API, for a GENERATOR — one door per parameter           #
+# --------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class Parameter:
+    """What a script writer may ask about ONE parameter of the calculation
+    it is writing.
+
+    **Why this exists, and what it replaces.** A generator legitimately owns
+    its own logic — which parameters to write, in what order, with what
+    checks. What it must never own is the *information*: what a parameter
+    declares, what this calculation resolved it to, and which engine keywords
+    it therefore writes. Before this object each writer got that information
+    its own way, and the ways did not agree:
+
+    * ``siesta/input.py`` asked the catalogue for HELP (``deck_note``, 22
+      sites) and hand-kept everything else;
+    * ``runwrap.py`` asked nothing — it re-parsed the deck with awk for the
+      two facts it could cheaply re-parse, and asserted the rest from string
+      literals. Every re-parsed fact stayed true and every asserted one went
+      stale, five copies of one claim among them;
+    * ``pyscf/input.py`` asked nothing at all.
+
+    And the fact itself had three homes: ``[item.restart].expands``,
+    ``SIESTA_RESTART_GROUP.keys`` and ``warm-files.toml``'s ``honoured_by``
+    rows — the same three keywords in three different orders, with nothing
+    comparing them. *"Pull it from the source you know"* is not a thing a
+    writer can do when there are three sources.
+
+    So: one object, one question per attribute, and the catalogue is the
+    declaration behind all of them.
+    """
+
+    #: The item's name in the catalogue (``restart``, ``mesh_cutoff``).
+    name: str
+    #: Which engine is asking — an item that does not apply to it answers
+    #: EMPTY rather than handing over another engine's guidance.
+    engine: str
+    #: The catalogue's declaration, or ``None`` when this engine has no such
+    #: item. Callers test :attr:`known` rather than this.
+    declaration: Any = None
+    #: What THIS calculation resolved it to, when the caller supplied a
+    #: config or a rendered deck to read it from; ``None`` when unknown.
+    value: Any = None
+
+    @property
+    def known(self) -> bool:
+        """Whether the catalogue declares this item for this engine."""
+        return self.declaration is not None
+
+    @property
+    def writes(self) -> Tuple[str, ...]:
+        """The engine keywords this parameter puts in the deck.
+
+        ``expands`` when it writes several (``restart`` →
+        ``DM.UseSaveDM`` / ``MD.UseSaveXV`` / ``MD.UseSaveCG``), the single
+        ``anchor`` when it writes one, and empty when it writes none — a
+        wrapper-only knob, or one whose effect is generated control flow.
+
+        **This is the declaration that had three copies.** A generator asks
+        here and there is nothing left to keep in step.
+        """
+        if not self.known:
+            return ()
+        if self.declaration.expands:
+            return tuple(self.declaration.expands)
+        return (self.declaration.anchor,) if self.declaration.anchor else ()
+
+    @property
+    def default(self):
+        """The catalogue's recommended value — what the item declares, never
+        what this calculation chose. :attr:`value` is that."""
+        return self.declaration.default if self.known else None
+
+    def note(self, *lead, extra=()) -> List[str]:
+        """This parameter's own note, as deck comment lines.
+
+        The same rendering :func:`deck_note` has always done — kept as one
+        implementation, reached now through the object rather than by name.
+        """
+        return deck_note(self.name, self.engine, *lead, extra=extra)
+
+
+_UNSET = object()
+
+
+def declarations(engine: str = None):
+    """Every item the catalogue declares, for one engine — the LIST door.
+
+    :func:`parameter` answers about one item by name; this answers *which items
+    are there*, which is the question a record of the whole configuration asks.
+
+    **It exists so that nothing outside this module loads the catalogue.**  Two
+    callers reached through ``_catalogue()`` -- a private -- into
+    ``template.select`` to get this, which meant the catalogue OBJECT travelled
+    out of the one module that owns reading it.  A caller that holds the object
+    can ask it anything, including things the read API deliberately does not
+    offer, and that is how a second way of reading a declaration starts.
+    """
+    from . import template as _T
+    return list(_T.select(_catalogue(), engine=engine))
+
+
+def parameter(name: str, engine: str, *, config=None,
+              deck_text: str = None, value=_UNSET) -> "Parameter":
+    """The ONE door a script writer opens to ask about a parameter.
+
+    ``config`` is the resolved engine config — the answer a writer has BEFORE
+    it renders. ``deck_text`` is a rendered deck — the answer a writer has
+    AFTER, and the one the *wrapper* generator must use, because the wrapper
+    ships beside a finished deck and the deck is what the engine obeys. Both
+    resolve through the same declaration, so the two moments cannot disagree
+    about what a parameter is; they can only differ about what it says, which
+    is the real question and the one worth being able to ask.
+
+    Neither given, the Parameter still answers :attr:`writes`, :attr:`default`
+    and :meth:`note` — the declaration alone.
+    """
+    from . import template as _T
+    try:
+        decl = _T.one(_catalogue(), name, engine=engine)
+    except KeyError:
+        decl = None
+    if value is not _UNSET:
+        # A DERIVED value -- one the engine worked out rather than one a field
+        # answers.  A block size computed from this deck's rank count is nobody's
+        # config field, and without this door every such value would fall to the
+        # engine's free-form body, where the note-with-the-value rule cannot
+        # reach it (script-preparation.md 4.2a).  The declaration, the range and
+        # the note still come from the catalogue; only the number is the
+        # caller's.
+        return Parameter(name=name, engine=engine, declaration=decl, value=value)
+    resolved = None
+    if decl is not None and config is not None:
+        resolved = getattr(config, name, None)
+    elif decl is not None and deck_text is not None:
+        resolved = _deck_answer(decl, deck_text)
+    return Parameter(name=name, engine=engine, declaration=decl, value=resolved)
+
+
+def _deck_answer(decl, deck_text: str):
+    """What a RENDERED deck says for this item, or ``None``.
+
+    Reads the first occurrence of the item's own keyword — libfdf's rule, and
+    the rule ``jobset/summarize.deck_value`` already documents: ``fdf_locate``
+    walks from the first line and stops at the first label that matches, so a
+    deck naming a keyword twice is read with its FIRST value.
+
+    An item that expands to several keywords answers with the FIRST of them:
+    they are one field's expansion and a deck that disagreed with itself
+    across them would be a defect of the writer, not a state to model.
+    """
+    keys = (tuple(decl.expands) if decl.expands
+            else ((decl.anchor,) if decl.anchor else ()))
+    if not keys:
+        return None
+    want = keys[0].lower().replace(".", "").replace("_", "").replace("-", "")
+    for line in deck_text.splitlines():
+        toks = line.split("#", 1)[0].split()
+        if len(toks) >= 2 and toks[0].lower().replace(".", "").replace(
+                "_", "").replace("-", "") == want:
+            return toks[1]
+    return None
+
+
+def write_script(path, text: str) -> "Path":
+    """Write a generated script, KEEPING the reader's own USER-CUSTOM block.
+
+    **Every writer of a generated script goes through here.**  The deck says,
+    in its own words, *"Your own additions go here.  molbuilder will preserve
+    this section verbatim across regenerations."*  That promise had exactly one
+    keeper until 2026-08-18 — the web file-editor's save route — so a person
+    who added ``WriteMullikenPop`` or a ``%block BandLines`` (the very things
+    the deck's own post-processing section invites) lost them at the next
+    ``prep``, silently, to a file that had promised otherwise.
+
+    The merge itself is :func:`merge_user_custom_from_target` and is unchanged;
+    what was missing was a door the generators actually open.  It is safe in
+    every degenerate case — no target, no block on either side, unreadable
+    target — so a first write behaves exactly like ``write_text``.
+
+    This is the third mechanism in this module to have been present and
+    uncalled: :func:`deck_note` (the deck writer uses it, the wrapper and the
+    PySCF writer do not) and ``StructureCodec`` (``prep`` and the web route use
+    it, the single-shot converters did not) were the others.  A shared writer
+    only shares what its callers ask it for.
+    """
+    from pathlib import Path as _P
+    p = _P(path)
+    p.write_text(merge_user_custom_from_target(text, p), encoding="utf-8")
+    return p
+
+
+# --------------------------------------------------------------------- #
+#  The step-3 runner — `execution/script-preparation.md` § 3 and § 4.2   #
+#                                                                       #
+#  The framework owns the ORDER of the sub-steps and the four that are   #
+#  the same for every engine (validate · reader section · record ·       #
+#  write) plus the frame of the fifth (check).  An engine answers three  #
+#  doors and never sees a bare value to write, which is what makes       #
+#  "a value is written with its reason" structural rather than a habit.  #
+# --------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class Section:
+    """One titled run of parameters in a deck — the **layout, as data**.
+
+    ``items`` are CATALOGUE NAMES, not engine keywords: the framework turns
+    each into a :class:`Parameter` through :func:`parameter`, so the engine is
+    handed the declaration and cannot emit the value without its note.
+
+    Deck layout is engine knowledge and stays with the engine — but as a table
+    rather than as control flow.  The catalogue's own ``group`` cannot serve
+    here: its vocabulary is the FORM's (setup / stage / profile / budget /
+    staging / output) and one group cuts across several deck sections --
+    ``stage`` alone holds ``PAO.BasisSize``, ``MeshCutoff`` and
+    ``DM.Tolerance``, which land in three different places in a deck.
+    """
+    title: str
+    items: Tuple[str, ...]
+    #: Lines that sit BETWEEN the heading and the values — the section's own
+    #: explanation, in the engine's comment syntax.
+    #:
+    #: **It is here because that is where it goes in the deck**, and a walk
+    #: that emitted heading-then-values had nowhere to put it.  An engine with
+    #: an explanation used to write the heading AND the prose itself and then
+    #: suppress the framework's heading — which meant its sections could not
+    #: share one spec, and cost the section its NAME in the layout, since a
+    #: falsy title was the only way to ask for silence.  A reader of the layout
+    #: then could not tell what the section was without going to find the
+    #: writer.
+    #:
+    #: Dropped with the notes when ``verbose`` is off: it is explanation, and
+    #: that is what the quiet deck leaves out.
+    note: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Block:
+    """A part of a deck that no parameter models — **in layout order**.
+
+    A cell, a coordinate table, a run loop, a post-processing template: things
+    whose text the engine writes whole.  They are members of the layout rather
+    than a separate door because **a deck interleaves them with its
+    parameters** — SIESTA's cell sits between the exchange-correlation
+    settings and the SCF ones, and a door appended after the sections could
+    not put it there.
+
+    ``render`` is ``(struct, cfg) -> str | None``, and ``None`` means *nothing
+    to say for this configuration* — the same answer :meth:`DeckSpec.line`
+    gives for a parameter, so conditionality is one idea in this framework and
+    not two.  ``title`` names the block for a reader of the layout; a block
+    writes its own headings, because what a free-form block looks like is the
+    thing it is free about.
+    """
+    title: str
+    render: Callable
+
+
+@dataclass(frozen=True)
+class DeckSpec:
+    """Everything one engine supplies to the runner — § 4.2's TWO doors, and
+    the values only this engine can put in the record.
+
+    Everything NOT here is the framework's, and an engine that needs a third
+    door is evidence the seam is wrong rather than a reason to add a callable.
+
+    **Nine slots and two doors is not a contradiction.**  ``layout`` is door 1
+    and ``line`` is door 2; ``note_lead`` and ``section_title`` are how this
+    engine writes a note and a heading in its own syntax; ``provenance_defaults``
+    and ``bench_marks`` are VALUES for blocks the framework assembles;
+    ``check_rules`` is what a finished deck of this engine must satisfy; and
+    ``engine`` / ``created_by`` are names.  Only the first two are asked at
+    every item.
+
+    **A form, not a function** (§ 4.3).  A function can only be called; a form
+    can be READ -- which is what lets the framework work out what the deck was
+    supposed to contain and compare that with the file, without the writer
+    passing it a list to be believed.
+    """
+    #: Which engine's catalogue rows and notes to read.
+    engine: str
+    #: Door 1 — the deck's layout in order: :class:`Section` for parameters,
+    #: :class:`Block` for the text no parameter models.  One ordered table,
+    #: because a deck interleaves the two and an appended door could not.
+    #:
+    #: **Its MEMBERSHIP is settled here, when the spec is built** (§ 4.2, W9).
+    #: A section that only some calculations have is left OUT for the others --
+    #: ``spec_for`` holds ``(struct, cfg)`` and can answer that.  A section
+    #: chosen inside a :class:`Block` instead is a section this table cannot
+    #: name and :func:`render_deck` cannot collect from, and then the check
+    #: gate has nothing to compare the file against.  Both engines did exactly
+    #: that until 2026-08-19: SIESTA's whole deck was one ``Block``, so a
+    #: 728-line file reported zero written keywords.
+    layout: Tuple[Any, ...]
+    #: Door 2 — ``(Parameter) -> str | None``.  ``None`` means *not emitted
+    #: for this configuration*, and that is the whole conditionality
+    #: mechanism: ``MD.Steps`` under ``relax_type="none"`` simply returns None.
+    line: Callable
+    #: ``(cfg) -> {field: description}`` for the PROVENANCE block's
+    #: resolved-defaults rows.  The block itself is the framework's.
+    provenance_defaults: Optional[Callable] = None
+    #: ``(struct, cfg) -> dict`` of :func:`emit_bench_marks` keyword
+    #: arguments, or ``None`` for an engine that declares no anchors.
+    bench_marks: Optional[Callable] = None
+    #: ``(text, struct, cfg) -> [Issue]`` — this engine's answer to *what must
+    #: a finished deck of mine satisfy?*  Runs on the file as written.
+    check_rules: Optional[Callable] = None
+    #: How a section title is written as a comment.  **Neither shipped
+    #: engine overrides this** -- both write `#` comments -- and that is
+    #: worth knowing rather than assuming: the slot is unexercised, kept
+    #: because the comment character is an engine's syntax and the next
+    #: engine may not spell it this way.  Both restated the default
+    #: verbatim until 2026-08-19, which made it look like a variation.
+    section_title: Callable = lambda title: f"# --- {title} ---"
+    #: ``(Parameter) -> tuple[str, ...]`` — lines to head this parameter's note
+    #: with.  SIESTA heads each with the keyword it writes, because its notes
+    #: are long and the keyword otherwise arrives after them; PySCF's line sits
+    #: right below a short note and needs no signpost.  Formatting is the
+    #: engine's, so the choice is too.
+    note_lead: Callable = lambda param: ()
+    #: Recorded in ATOM-METADATA as the producer.
+    created_by: str = "molbuilder"
+
+
+class RenderedDeck(str):
+    """A deck's text, carrying what the parameters step says it emitted.
+
+    ``emitted`` is what lets the **check** gate close its loop — the engine
+    keywords the parameters step actually wrote, so the check can ask whether
+    each one survived into the file rather than trusting that it did.  Without
+    it that rule has no input and passes silently, which is what it did on
+    every production route until 2026-08-18.
+
+    **It IS the text**, a ``str`` subclass rather than a wrapper around one.
+    The seam says a deck writer returns deck text (§ 4), three production
+    routes and twenty test files already have a string in hand, and changing
+    that return type to carry one extra tuple would be a rewrite of the test
+    suite wearing a migration's clothes (`archive/2026-08-18-preparation-backend-plan.md`
+    § 3.1a).  A caller that wants the text uses it as text; a caller that wants
+    to close the loop reads ``.emitted``.
+    """
+    emitted: Tuple[str, ...]
+
+    def __new__(cls, text: str, emitted=()) -> "RenderedDeck":
+        self = super().__new__(cls, text)
+        self.emitted = tuple(emitted)
+        return self
+
+    @property
+    def text(self) -> str:
+        """The deck, as a plain ``str``.  Named because the check gate and its
+        tests read it that way, and because ``str(deck)`` at a call site reads
+        as a conversion rather than as *the deck's text*."""
+        return str(self)
+
+
+def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True
+                    ) -> Tuple[List[str], List[str]]:
+    """The **parameters** sub-step: walk the layout, one Parameter at a time.
+
+    Returns ``(lines, emitted)``.  A section whose parameters all decline to
+    emit contributes no title either -- a heading over nothing is the block
+    lying, the same rule the BENCH-MARKS defaults row follows.
+
+    :class:`Block` members are SKIPPED here: they are text, and placing them
+    in order is :func:`render_deck`'s job.
+
+    **PRIVATE since 2026-08-19, and that is the point.**  Both engines called
+    it -- nine times in one SIESTA deck, once in a PySCF one -- each passing a
+    one-section spec built with ``dataclasses.replace``.  So the sections were
+    rendered from INSIDE a block, where the layout could not name them and
+    :func:`render_deck` could not collect what they wrote: SIESTA's deck
+    reported zero written keywords for a 728-line file, and the check gate's
+    loop-closing rule ran on an empty list and passed.  There is one walk now,
+    and no door for an engine to start a second one
+    (`script-preparation.md` § 4.1).
+    """
+    out: List[str] = []
+    emitted: List[str] = []
+    for section in spec.layout:
+        if isinstance(section, Block):
+            continue          # a Block is text, not parameters -- render_deck
+        body: List[str] = []
+        for name in section.items:
+            param = parameter(name, spec.engine, config=cfg)
+            text = spec.line(param)
+            if text is None:
+                continue
+            if verbose:
+                body.extend(param.note(*spec.note_lead(param)))
+            body.append(text)
+            # WHICH KEYWORD THIS PARAMETER COMMITTED THE DECK TO.
+            #
+            # An item may declare several and choose between them:
+            # ``relax_steps`` declares ``MD.Steps`` and ``MD.FinalTimeStep``
+            # and writes whichever the run mode calls for, never both.  Only
+            # the TEXT knows which branch was taken, so where the line names
+            # one of them, that is the answer.
+            #
+            # **Where it names none, the single declared keyword is still the
+            # answer** *(2026-08-19)*.  A deck that is a PROGRAM binds the
+            # value here and hands it to the engine further down --
+            # ``_GEOM_ETOL = 1e-06`` at the top, ``convergence_energy =
+            # _GEOM_ETOL`` at the ``optimize()`` call -- so the keyword is in
+            # the FILE, which is what the gate reads, and not in this line.
+            # Asking the line alone made every PySCF geometry target invisible
+            # to the gate.  With one candidate there is nothing to resolve; the
+            # parameter emitted, so the deck claims that keyword and the file
+            # has to show it.  With several and no match the line has told us
+            # nothing, and inventing an answer is what the gate exists to stop.
+            chosen = [k for k in param.writes if _mentions_keyword(text, k)]
+            emitted.extend(
+                chosen if chosen
+                else param.writes if len(param.writes) == 1
+                else ())
+        if body:
+            out.append("")
+            # A SECTION WITH NO TITLE GETS NO HEADING, and the engine is not
+            # asked to spell one.  This called ``section_title("")`` and tested
+            # the result, so an engine whose heading it writes itself had to
+            # pass a suppressing ``section_title`` -- which meant its OTHER
+            # sections could not share the spec, which is why one deck needed
+            # eight of them.
+            title = spec.section_title(section.title) if section.title else ""
+            # A falsy title means the caller has already written its own
+            # heading -- a section whose explanation must sit between the
+            # heading and the values, which the walk has no way to interleave.
+            if title:
+                out.append(title)
+            # The section's own explanation, between the heading and the
+            # values — where a reader of the deck needs it, and where a walk
+            # that only knew headings and values could not put it.
+            if verbose:
+                out.extend(section.note)
+            out.extend(body)
+    return out, emitted
+
+
+def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True
+                ) -> "RenderedDeck":
+    """Sub-steps **structure** through **record**, in that order.
+
+    **The layout is walked in order**, and a member of it is either a
+    :class:`Section` — parameters, through the engine's ``line`` — or a
+    :class:`Block`, whose text the engine writes whole.  That is the deck's own
+    shape: a cell sits between two runs of settings, a run loop after a third,
+    and a framework that appended its free-form parts after the sections could
+    describe neither engine's deck.
+
+    The engine is asked for its layout and its syntax and nothing else; the
+    reader's section, the record blocks and the banner are the framework's, so
+    two engines cannot drift about what a generated file looks like below the
+    science.
+    """
+    parts: List[str] = []
+    emitted: List[str] = []
+    for member in spec.layout:
+        if isinstance(member, Block):
+            text = member.render(struct, cfg)
+            # ``None`` is *nothing to say*; ``""`` is a blank line the block
+            # meant to write.  Testing truthiness conflates them, and a block
+            # whose whole content is one blank line joins to "" -- so the
+            # separator between two runs of settings silently disappeared.
+            if text is not None:
+                parts.append(text)
+            continue
+        lines, names = _render_sections(
+            _dataclasses.replace(spec, layout=(member,)), cfg, verbose=verbose)
+        parts.extend(lines)
+        emitted.extend(names)
+    science = "\n".join(parts)
+
+    record: List[str] = [emit_provenance(
+        generator_version=molbuilder_git_sha(),
+        generated_at=generated_at_now(),
+        resolved_defaults=(spec.provenance_defaults(cfg)
+                           if spec.provenance_defaults else None))]
+    if spec.bench_marks is not None:
+        marks = spec.bench_marks(struct, cfg)
+        if marks:
+            record.append(emit_bench_marks(**marks))
+    atoms = emit_atom_metadata(
+        regions=dict(getattr(struct, "regions", {}) or {}),
+        annotations=dict(getattr(struct, "annotations", {}) or {}),
+        n_atoms_total=int(getattr(struct, "n_atoms", 0)),
+        created_by=spec.created_by,
+        created_at=generated_at_now())
+    if atoms:
+        record.append(atoms)
+
+    text = (science + "\n\n" + emit_user_custom_placeholder()
+            + "\n\n" + machine_record_banner()
+            + "\n\n" + "\n\n".join(record) + "\n")
+    return RenderedDeck(text=text, emitted=tuple(emitted))
+
+
+# --------------------------------------------------------------------- #
+#  The CHECK gate — the file the engine will open                       #
+# --------------------------------------------------------------------- #
+
+
+def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
+               struct=None, cfg=None) -> List["Issue"]:
+    """Read the WRITTEN file back and report what is wrong with it.
+
+    **The subject is the artifact, and that is what is new.**  Every other
+    validator in this tree takes ``(struct, cfg)`` and runs before emission, so
+    none of them can see a writer bug: a value that never reached the text, a
+    keyword written twice, a generated program that does not parse.  Those are
+    exactly the defects that have shipped.
+
+    **The file, not the rendered string.**  ``write_script`` merges the
+    reader's own USER-CUSTOM section from whatever was already there, so the
+    string handed to the writer is an intermediate and the file is what the
+    engine opens.  Checking the intermediate would check something nobody runs.
+
+    Shared rules here; the engine's own are ``spec.check_rules``.  Reported
+    through the existing :class:`~molbuilder.issues.Issue` and
+    ``validation.report``, so a refusal reads like every other refusal.
+
+    **One door.**  A second entry point, ``check_written``, took the same
+    arguments loose rather than as a spec, for a conductor that held an
+    engine's rules and a written deck but no ``DeckSpec``.  Both engines build
+    one now and `prep` calls :func:`prepare_deck`, so that caller no longer
+    exists; it was removed on 2026-08-19 rather than left as a public name with
+    one internal caller and an expired reason.
+    """
+    from pathlib import Path as _P
+    from .issues import Issue
+
+    rules, emitted = spec.check_rules, rendered.emitted
+
+    out: List[Issue] = []
+    p = _P(path)
+    if not p.is_file():
+        return [Issue("error", f"the deck was not written: {p}",
+                      where="deck.missing")]
+    text = p.read_text(encoding="utf-8")
+
+    for block, label in ((BLOCK_USER_CUSTOM, "the section left for a reader"),
+                         (BLOCK_PROVENANCE, "the provenance record")):
+        n = text.count(begin_marker(block))
+        if n != 1:
+            out.append(Issue(
+                "error",
+                f"{label} appears {n} times in {p.name}, expected once",
+                where=f"deck.{block}"))
+
+    # THE LOOP CLOSED: every keyword the parameters sub-step says it wrote must
+    # be in the file.  Without this the two halves are only related by hope --
+    # which is how a deck came to state values nobody had read.
+    for key in dict.fromkeys(emitted):
+        if not _mentions_keyword(text, key):
+            out.append(Issue(
+                "error",
+                f"{p.name} was written with {key!r} but the file does not "
+                f"contain it",
+                where="deck.missing_keyword"))
+
+    if rules is not None:
+        out.extend(rules(text, struct, cfg) or [])
+    return out
+
+
+def _mentions_keyword(text: str, key: str) -> bool:
+    """Whether a deck names this engine keyword, ignoring comments.
+
+    Compared loosely on purpose -- SIESTA's fdf reader itself ignores case and
+    the ``.``/``_``/``-`` separators, so a check that insisted on one spelling
+    would report a deck the engine reads perfectly well.
+    """
+    want = key.lower().replace(".", "").replace("_", "").replace("-", "")
+    for line in text.splitlines():
+        code = line.split("#", 1)[0]
+        for tok in code.replace("=", " ").split():
+            if tok.lower().replace(".", "").replace("_", "").replace(
+                    "-", "") == want:
+                return True
+    return False
+
+
+def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
+                 verbose: bool = True):
+    """**Validate → render → write → check**, in that order, for one deck.
+
+    The shared spine of `script-preparation.md` § 3's per-deck sub-steps. The
+    conductor still owns what surrounds it -- naming the file and stamping the
+    identity before, keeping the deck's promises and declaring the job after --
+    because those are its business and not an emitter's.
+
+    The two gates are separate on purpose and neither can do the other's job.
+    **Validate** reads the resolved config and asks *is this a sound
+    calculation?*; it is the existing framework, shared with the form's
+    preflight, and nothing upstream of the final deck is re-checked here.
+    **Check** reads the written file and asks *does this deck say what it was
+    meant to say?* -- a question that can only be asked of an artifact, which is
+    why no validator in this tree could ask it before.
+    """
+    from .validation import report, validate
+    report(validate(struct, cfg))                      # 3.3 validate
+    rendered = render_deck(spec, struct, cfg, verbose=verbose)
+    written = write_script(path, rendered.text)        # 3.10 write
+    report(check_deck(written, spec, rendered, struct, cfg))   # 3.11 check
+    return written

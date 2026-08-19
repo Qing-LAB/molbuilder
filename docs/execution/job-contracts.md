@@ -500,10 +500,11 @@ wrapper contains these and nothing else:
 | **SIESTA-specific argument parsing** | `-np` / `-omp` and friends |
 | **OpenMP thread sizing** | PySCF only. Resolves the thread count — `-omp` flag, else `OMP_NUM_THREADS`, else the scheduler's allocation, else this node's physical cores — and **exports** it, so the wrapper and the script cannot disagree. Deciding, not computing: the node is the last resort, never the first answer. Added 2026-08-13 (P1b) because the wrapper deliberately left the variable unset and the script counted the whole node, so a job holding 8 cores of a 128-core node started 128 threads and time-sliced them onto its 8. PySCF is OpenMP-only, so `-np` is accepted, reported and ignored — `submit` passes it to every run script |
 | **Run index resolution** | picks `-runN` so a re-run never overwrites |
-| **Cold-restart: NAME SWEEP** | what `--cold` does — everything the id names goes aside, minus what molbuilder wrote (§ 4.1, U17) |
+| **Cold restart: SAY WHAT WOULD BE LOST, THEN STOP** | what `--cold` does — NAMES everything the id names, minus what molbuilder wrote (§ 4.1, U17), and refuses; `--force` proceeds and the engine overwrites them. It moved them into an aside directory until 2026-08-18; keeping a state is `molbuilder checkpoint save` and it is never automatic |
 | **Runtime status banner** | prints what it found — warm files, ranks |
 | **Probe SIESTA build at runtime** | reads the build's own capabilities |
 | **Record resolved launch command + placement** | writes down what it is about to do |
+| **What the engine will read** | *(SIESTA decks only)* echoes the deck into the log with comments and blanks stripped — exactly the lines libfdf parses — followed by the catalogue items the deck does **not** carry, each with the default that therefore applies. Read at launch rather than baked at generation, so a deck edited after `prep` records what the engine will really see. It is the `effective-parameters` fence, shared with the block PySCF's script prints for itself, so one reader serves either engine. Activating and execing is still all the wrapper does: this writes down what it is about to hand over, and decides nothing |
 | **SCF per-iteration timing instrument** | the benchmark sampler |
 | **Thread / BLAS pinning** | the OMP/MKL/OpenBLAS thread exports (and, hybrid GPU builds, the OMP bind vars) — real compute-node policy, headered and listed since 2026-08-13 (E-6: it rendered headerless, structurally invisible to the guard below) |
 | **GPU load-balance: rank <-> GPU matching** | *(GPU decks only)* maps MPI ranks onto visible GPUs (K ranks per device via MPS) so a 2-GPU node does not stack every rank on device 0 |
@@ -956,7 +957,7 @@ regenerate an empty one is emitted.
 > | path | your text |
 > |---|---|
 > | the web Build tab, regenerating | **preserved**, read back from the target |
-> | `molbuilder siesta` / `molbuilder pyscf` | **lost** — the CLI writes and never reads the old file |
+> | `molbuilder pyscf` at the terminal | **lost** — the CLI writes and never reads the old file |
 > | `jobset prep` (the staged path) | **lost** — see below |
 >
 > **`prep` cannot use this mechanism at all**, and that is structural rather
@@ -1045,17 +1046,17 @@ owned by `execution/job-system.md`.
 | Behavior | What happens |
 |---|---|
 | **Project ID** | Every script declares its ID in one literal (`SystemLabel` / `JOB = "…"`). This ID keys all warm files as `<ID>.<ext>`. |
-| **Warm-restart (auto)** | If warm files named by the ID exist in the directory, the engine resumes from them — no flag. Absent files ⇒ clean cold start. |
+| **Warm-restart (auto)** | If warm files named by the ID exist in the directory, the engine resumes from them — no flag, and this is the default (`run-identity.md` § 4 rule 3). Absent files ⇒ clean cold start. |
 | **`--continue`** | Same as auto, but *asserts* the warm files must be present: if none exist it prints "…starting cold by necessity" rather than silently cold-starting. |
-| **`--cold`** | Forces a clean start regardless of on-disk state. Warm files are **moved aside** (never deleted) into `<basename>-restart-aside-<UTC-timestamp>/`. |
+| **`--cold`** | Forces a clean start regardless of on-disk state, **overwriting** the prior state as the run proceeds. It NAMES those files and **refuses**; `--force` proceeds. |
 
 The critical safety property of `--cold` is unchanged — **nothing the engine
 could read may survive it**, or `--cold` silently leaks prior state into a
-"clean" run — but **how that is achieved changed on 2026-08-08, and the reason
-is the one below.**
+"clean" run. Which is why what it must get right is the SWEEP, and why the
+sweep changed on 2026-08-08 for the reason below.
 
 > **`--cold` sweeps by NAME, not by a list of extensions.** Everything matching
-> the run's id goes aside, except the files molbuilder itself wrote (the deck,
+> the run's id is named, except the files molbuilder itself wrote (the deck,
 > the template, the pseudopotentials).
 >
 > An enumeration cannot be complete and never could be: **SIESTA's output set
@@ -1066,9 +1067,15 @@ is the one below.**
 > construction, has nothing to drift, and needs no maintenance when an option
 > starts writing something new.
 >
-> The checkpoint history is the safety net for the other direction: `--cold`
-> **moves** files aside rather than deleting them, and a checkpoint can recover
-> anything the sweep took that the user wanted.
+> **The safety net for the other direction is a REFUSAL, not a copy**
+> *(user, 2026-08-18)*. `--cold` names every file it would overwrite and exits
+> without changing anything; `--force` proceeds. It moved them into a
+> timestamped `<basename>-restart-aside-<UTC>/` instead, until it was pointed
+> out that this is the launcher deciding to keep something nobody asked it to
+> keep — and that it left two mechanisms for preserving a state, with different
+> shapes and different names. Keeping one is `molbuilder checkpoint save`, and
+> [`checkpointing.md § 2`](?doc=execution/checkpointing.md) says it is never
+> automatic.
 >
 > **The exception is anchored on the run's id, and that is load-bearing**
 > *(2026-08-17)*. *"What molbuilder wrote"* is derived from the one enumeration
@@ -1330,7 +1337,7 @@ differently has misread the design.
 
 ### 4.3 Project-ID extraction
 
-For `--cold` to move aside the *right* files, the wrapper must read the ID
+For `--cold` to NAME the *right* files, the wrapper must read the ID
 from **inside** the script — `<basename>-stage2.fdf` may carry `SystemLabel
 foo` (not `foo-stage2`). At runtime the wrapper `awk`s the `SystemLabel`
 (SIESTA) or `JOB = "…"` (PySCF) line, **sanitizes** the value to
@@ -1351,7 +1358,7 @@ the same thing for SIESTA and PySCF):
 | `WARM-RESTART (silent; engine will load existing <files>. Pass --cold to discard them.)` | warm files present, no flag — auto-resume |
 | `WARM-RESUME (--continue; engine will load <files>)` | `--continue` + warm files present |
 | `WARM-RESUME REQUESTED but no prior state found -- starting cold by necessity` | `--continue` but no warm files — degraded to cold |
-| `COLD (--cold; warm-start files moved aside)` | `--cold` — warm files moved to `-restart-aside-<UTC>/` |
+| `COLD (--cold --force; prior state overwritten)` | `--cold` was confirmed with `--force`; the files it named are overwritten as the run proceeds |
 
 (The flag spellings: `--continue` / `-c`; `--force` / `-f` resets the run
 index to `-run0`; `--cold` / `--from-scratch`.)
@@ -1564,7 +1571,7 @@ them; within a layer, one concept has exactly one name.
 | Routing domain | `routing[].name` / `execution.domain` | `domain` (in `jobset.Resources`) | `--domain` → `-p`/`-q` |
 | GPU request | `enable_gpu` | `gres` → `--gres` | derived from the deck's `Diag.ELPA.GPU` + GPU type. *(This row named `diag_algorithm` as a second source until 2026-08-14. The solver choice decides no resource and no environment — the packaged SIESTA runs ELPA on CPU, `engines/siesta.md` § 7.2 — so `Diag.ELPA.GPU` is the one keyword read.)* |
 | Eigensolver | `diag_algorithm` (`ScaLAPACK` / `ELPA-1STAGE` / `ELPA-2STAGE`) | `.fdf`: `Diag.Algorithm` | `render_fdf` |
-| Non-convergence policy (**PySCF only**) | `on_nonconvergence` | *(no scheduler name)* | the emitted `.py`'s own control flow — PySCF's ladder runs as a loop in one process, so the policy is a branch inside the script. SIESTA's stages are separate jobs a person starts, so it has no equivalent; `engines/stages.md § 3` keeps the field out of the shared stage schema for that reason |
+| Non-convergence policy (**PySCF only**) | `on_nonconvergence` | *(no scheduler name)* | the emitted `.py`'s own control flow — PySCF's ladder ran as a loop in one process, so the policy was a branch inside the script (⚠ that loop is retired, [`stages.md § 1.1a`](?doc=engines/stages.md)). SIESTA's stages are separate jobs a person starts, so it has no equivalent; `engines/stages.md § 3` keeps the field out of the shared stage schema for that reason |
 | Warm-retry budget | `continue_retries` (1–5) | `continue_retries` — **not a SLURM flag** | `resolve.py` — rides the element's `Resources`; `prep` bakes it into the wrapper |
 
 > **One row in this table becomes no scheduler flag at all, and it is not an
@@ -1731,7 +1738,7 @@ for not clobbering a previous output, not a name for a stage.
 | **attempt** *(hierarchical)* | `run-<n>` — **not** padded | a counter of invocations that happened, not a designed sequence; `run-` is reserved and its members are numbers, full stop |
 | **benchmark** | `bench/` inside the stage it measures; **flat**, where no stage directory exists, `bench_<seq>_<stage>/` at the root | a benchmark nests in what it measures (`project-layout.md § 3`) — and in flat the token qualifies the container's own name, or two stages' benchmarks would share one directory and overwrite each other (A5, 2026-08-12).  Underscore-joined, so it cannot be read as a trial's dash-joined `bench-<point>` |
 | **trial** | `bench-G<gpus>K<ranks-per-gpu>C<cores>` | a sweep has no order, so the name carries **what was tried** — which is what lets `summarize` map a directory back to its point |
-| **warm state moved aside** | `<label>-restart-aside-<UTC>/` | `--cold` moves, never deletes — § 4.1's own rule (the I3 citation that stood here pointed at an invariant that disowns run-layer cold semantics) |
+| ~~**warm state moved aside**~~ | ~~`<label>-restart-aside-<UTC>/`~~ | **RETIRED 2026-08-18 (user).** `--cold` moved prior state here rather than overwriting it; keeping a state is `molbuilder checkpoint save` and it is never automatic, so a second preservation mechanism with its own name was one too many. `--cold` names what it would overwrite and refuses; `--force` proceeds. The name stays reserved: folders written before the change still hold one, and the sweep skips it |
 
 #### History
 

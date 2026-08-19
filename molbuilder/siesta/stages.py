@@ -67,31 +67,17 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
     out: List[Stage] = []
     for i, tier in enumerate(sorted(SIESTA_STAGE_PRESETS)):
         overrides = dict(SIESTA_STAGE_PRESETS[tier])
-        # § 4 rule 3: "A first stage is normally 'clean' and everything after
-        # it 'continue'.  Nothing special is needed to say so."  Positional,
-        # not tiered -- which is why it is set here and not in the presets
-        # table, where every value is a property of that TIER's science.
+        # NO ``restart`` HERE, and its absence is the rule rather than a gap
+        # (`run-identity.md` § 4 rule 3).  A rung's position does not answer
+        # *is there anything to continue from* -- the folder does, at run
+        # time.  Every rung takes the shared default, ``continue``, which
+        # means *read what is there*; with nothing there the engine starts
+        # from the deck's own coordinates and says so.
         #
-        # Keyed on POSITION IN THE TABLE, not on which stage is first
-        # *enabled*.  Both readings are defensible and this one keeps an
-        # invariant the ladder already had and the tests already assert: a
-        # strategy preset says which tiers run and never retunes one.  Under
-        # the other reading, `loose-only` (which disables stage2) and
-        # `vib-quality` (which enables it) would hand stage2 different
-        # overrides, so picking a strategy would silently change what a stage
-        # computes.
-        #
-        # The case that reading protected -- stage1 off, so stage2 is first
-        # and says 'continue' with nothing before it -- no shipped mask
-        # produces, and it is not silent when it happens: the carry is empty
-        # (the resolved ladder has no predecessor to take from) and § 5's
-        # surface + wrapper banner both report the absence.
-        #
-        # Before P3 unit 4 the ladder carried no `restart` at all and
-        # continued anyway, because the three use_save_* booleans defaulted
-        # True -- continuation by accident rather than by description, which
-        # is exactly what § 4 rule 2 exists to end.
-        overrides["restart"] = "clean" if i == 0 else "continue"
+        # This set ``clean`` on the first rung positionally until 2026-08-18.
+        # That decided for the user: re-running a ladder in a folder holding
+        # a result would silently discard it, which is the one outcome a
+        # person who just looked at that result did not ask for.
         # The tier's NAME, from the one table -- not ``f"stage{tier}"``, which
         # this built until 2026-08-10.  Decision 27 puts the ordinal in the
         # artifact token, so a name that is itself a position says the number
@@ -102,12 +88,10 @@ def default_siesta_stages(strategy: str = "publishable") -> List[Stage]:
     return out
 
 
-#: The key a `.CG` carry is conditioned on.  Named once because two modules
-#: must spell it identically for the comparison to mean anything, and a typo
-#: on either side reads as *"the optimizers disagree"* -- which withholds the
-#: file silently rather than failing.  ``JobSet.validate`` catches the
-#: declaration half; this constant is why there is only one spelling to catch.
-OPTIMIZER_TRAIT = "optimizer"
+#: The key a `.CG` carry is conditioned on -- re-exported from the one place
+#: it is spelled (`jobset/model.py`), because the comparison it feeds is
+#: engine-agnostic and both engines' producers must hand in the same string.
+from ..jobset.model import OPTIMIZER_TRAIT
 
 
 def _traits(eff) -> Dict[str, str]:
@@ -134,7 +118,7 @@ def _warm_declaration(label: str, eff,
     2026-08-13): ``siesta/warm-files.toml``'s carry rows for this
     CALCULATION TYPE, gated -- as ever -- on the stage actually
     continuing: `run-identity.md` § 4 rule 2 makes ``restart`` the ONE
-    field that says so, and ``_continues`` gates the deck's
+    field that says so, and ``identity.continues`` gates the deck's
     ``MD.UseSave*`` keywords from the same answer, so files placed for a
     ``clean`` stage would sit unread -- § 4's *"present but not
     honoured"*, the silent half of the pair.
@@ -146,9 +130,9 @@ def _warm_declaration(label: str, eff,
     hard-coded XV/DM/CG list this replaces was one of the three copies
     § 4.2a's history records drifting.
     """
+    from ..identity import continues
     from ..warmfiles import rules_for
-    from .input import _continues
-    if not _continues(eff):
+    if not continues(eff):
         return []
     return [WarmFile(f"{label}{r.suffix}", requires_same=r.requires_same)
             for r in rules_for("siesta", calculation,

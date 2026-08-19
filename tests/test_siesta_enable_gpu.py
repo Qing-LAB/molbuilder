@@ -103,16 +103,22 @@ def test_enable_gpu_default_is_off():
 
 
 def test_enable_gpu_metadata_is_present():
-    """The form schema is auto-built from dataclass metadata.  Missing
-    a key here means the field renders as a default text input (or
-    not at all), not the boolean checkbox we want."""
+    """The metadata a live reader still takes off this field.
+
+    The docstring said *"the form schema is auto-built from dataclass
+    metadata"* until 2026-08-17.  That direction was retired on 2026-08-15:
+    the SIESTA form is built from the CATALOGUE, and what still reads this
+    class is finding-placement (`workflow_group`) and the catalogue-agreement
+    mirror (`engine_key`, `choices`, ...).
+    """
     field = SiestaConfig.__dataclass_fields__["enable_gpu"]
     md = field.metadata
-    # 2026-06-16 form restructure: merged "Relaxation" + "Parallel
-    # execution" into a single "Compute & budget" section so the
-    # physics axis (System -> Basis -> XC -> SCF -> Spin -> Output)
-    # stays compact.  See SiestaConfig._form_section_order.
-    assert md["section"] == "Compute & budget"
+    # ``section`` is NOT asserted: it gates nothing for SiestaConfig /
+    # PySCFConfig since 2026-08-15, when their forms moved onto the
+    # catalogue (`web/form-schema.md` § 1a -- *"for those two classes
+    # `section` is read by nothing"*).  Pinning its exact string made
+    # this test look like it guarded where the control appears; it
+    # guarded a dead tag.  `workflow_group` below is the live one.
     # ``staging`` -- the group whose items a parameter form deliberately does
     # NOT ask, because the Job Prep UI answers them (web/task-setup.md § 6.1,
     # § 6.2).  The class's ``workflow_group`` must MIRROR the catalogue item's
@@ -209,12 +215,12 @@ def test_render_fdf_gpu_with_scalapack_is_rejected():
 
 
 def test_diag_algorithm_field_metadata():
-    """Pin the form-schema metadata: a dropdown with three choices
-    (ScaLAPACK + the two ELPA variants), default ScaLAPACK (safe on the
-    precompiled CPU env), always shown (NOT gated behind GPU)."""
+    """A dropdown with three choices (ScaLAPACK + the two ELPA variants),
+    default ScaLAPACK (safe on the precompiled CPU env), always shown (NOT
+    gated behind GPU).  ``section`` is not pinned -- see the note in
+    ``test_enable_gpu_metadata_is_present``."""
     field = SiestaConfig.__dataclass_fields__["diag_algorithm"]
     md = field.metadata
-    assert md["section"] == "Compute & budget"
     assert md["workflow_group"] == "budget"
     assert md["choices"] == ("ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE")
     assert md["engine_key"] == "Diag.Algorithm"

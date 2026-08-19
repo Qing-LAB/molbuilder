@@ -14,9 +14,15 @@ executable;
 formats it writes;
 [`roadmap.md`](?doc=roadmap.md) — how much of this the code holds today.
 
-> **This document says how declared data becomes a job set.** It is the authority
-> for the *generating* half of execution: what data exists, who bounds it, who
-> reads it, and the one object that makes benchmarking and running the same code.
+> **This document says what every value is, and where it came from.** It is the
+> authority for the *data spine* of execution — catalogue → template →
+> description → parameter set → jobs — for who bounds a sweep, and for the one
+> object that makes benchmarking and running the same code.
+>
+> **It is not the authority for how those values become files.** That is
+> [`script-preparation.md`](?doc=execution/script-preparation.md): the steps, the
+> order, and what each engine supplies at each one. Values here, files there —
+> and the two have different readers, which is why they are two documents.
 > It says nothing about *when* any of it gets built — that is
 > [`roadmap.md`](?doc=roadmap.md) and the staged-runs plan.
 
@@ -39,7 +45,8 @@ formats it writes;
 | the **data spine** — catalogue → template → description → parameter set → jobs | what a project directory *is* (`project-layout.md`) |
 | **`ParameterSet`**, and why it is a list | the item format (`template.md`) |
 | **what bounds a sweep**, and from which source | the deck's block syntax (`job-contracts.md` § 3) |
-| the **engine seam** — what an engine supplies, and what it may not | the ladder and its overrides (`stages.md`) |
+| the engine seam's **catalogue half** — which rows an engine declares | the seam's **code half**, and the preparation steps (`script-preparation.md`) |
+| — | the ladder and its overrides (`stages.md`) |
 
 ---
 
@@ -197,7 +204,7 @@ families, and they differ in *who is allowed to bound them*:
 | family | example | candidate values declared by | bounded by | why that source |
 |---|---|---|---|---|
 | **parameter** | `block_size` · `mesh_cutoff` · `pao_energy_shift` | the template item's own `range` · `choices` · `type` | **the catalogue** | it is a parameter, and § 7 of `template.md` makes every parameter of the calculation an item |
-| **machine** | `mpi_np` · `cpus_per_task` · `gpu_mode` (including *none*) | **the item is declared, valueless**, naming its `resolver` (`template.md` § 6.4) | **the allocation** — see § 4.1 | floor 2 must never assert a machine's VALUE (`template.md` § 7; `project-layout.md` M1) |
+| **machine** | `mpi_np` · `cpus_per_task` · `gpu_mode` (including *none*) | **the item is declared, valueless**, and marked as one the machine answers (`template.md` § 6.4) | **the allocation** — see § 4.1 | floor 2 must never assert a machine's VALUE (`template.md` § 7; `project-layout.md` M1) |
 
 **Both bounds already exist as data.** The template carries `range` and `choices`
 for every parameter; the allocation is stated for this run and is itself bounded
@@ -209,8 +216,8 @@ data that was declared for other reasons — never by a table inside the generat
 > 2026-08-11 — a sweep is bounded by **what you asked for**, not by what the
 > machine has, which is § 4.1's whole point. (2) It said a machine axis is
 > *"not a template item at all"* until 2026-08-14, which `@2` changed: the
-> **item** is declared and stays **valueless**, naming the resolver that will
-> answer it (`template.md` § 6.4). The VALUE is still forbidden on floor 2 —
+> **item** is declared and stays **valueless**, marked as one the machine will
+> answer (`template.md` § 6.4). The VALUE is still forbidden on floor 2 —
 > that never moved — and a reader refuses one.
 
 > **The worked case, because it is the one that goes wrong.** `block_size` (the
@@ -469,9 +476,9 @@ the ROOT doc of that name — a wrong page, worse than a dead one; F-9,
 flowchart TB
     F7["<b>7 · surfaces</b><br/><code>cli/</code> · <code>web/</code>"]
     F6["<b>6 · observe</b><br/><code>jobset/runstatus</code> · <code>parse/dirs</code>"]
-    F5["<b>5 · launch</b><br/><code>jobset/submit</code> · <code>runwrap</code>"]
+    F5["<b>5 · launch</b><br/><code>jobset/submit</code>"]
     F4["<b>4 · layout</b><br/><code>jobset/materialize</code> · <code>jobset/shape</code>"]
-    F3["<b>3 · plan</b><br/><code>resolve/</code> → <b>ParameterSet</b><br/><code>jobset/model</code> → <b>JobSet</b>"]
+    F3["<b>3 · plan &amp; render</b><br/><code>resolve/</code> → <b>ParameterSet</b><br/><code>jobset/model</code> → <b>JobSet</b><br/><code>siesta/input</code> · <code>pyscf/input</code> · <code>runwrap</code>"]
     F2["<b>2 · description</b><br/><code>task</code> · <code>template</code>"]
     F1["<b>1 · names & machine</b><br/><code>identity</code> · <code>environment</code>"]
     F7 --> F6 --> F5 --> F4 --> F3 --> F2 --> F1
@@ -498,34 +505,22 @@ left to implement.
 | 3 · `resolve` | template · task · `Environment` · the allocation · the sweep · the pins | write a file |
 | 3 · `model` | a `ParameterSet` | re-read the template |
 | 4 · `materialize` | a `JobSet` · `Shape` | re-resolve a parameter |
-| 5 · `submit` · `runwrap` | the built directory · `read_by` items | decide anything (M5) |
+| 3 · the script writers · `runwrap` | a resolved config · the rendered script · `read_by` items | **re-decide a value it was handed** |
+| 5 · `submit` | the built directory | decide anything (M5) |
 
-### 6.2 The five steps — what each may assume, and what it leaves behind
+### 6.2 The five steps — where they are
 
-§ 6.1 is a **spatial** rule: who may read what. This is the **temporal** one:
-what must already have happened. `project-layout.md` § 2.3.1a names the five
-steps in prose; stated as a table they can be checked, and the two dependencies
-that are easy to get backwards become visible.
+§ 6.1 is the **spatial** rule: who may read what. The **temporal** one — what must
+already have happened at each step, what it leaves behind, and what it may not do
+— is [`script-preparation.md`](?doc=execution/script-preparation.md) § 3, which
+states it at three resolutions.
 
-| # | step | may assume | leaves behind | may **not** |
-|:--:|---|---|---|---|
-| **1** | resolve the machine | the bundle exists | `environment.json` | read the template |
-| **2** | resolve the parameters | 1 · the description on disk | a `ParameterSet`, **in memory** | write any file (§ 6.1) |
-| **3** | render the deck(s) | 2 | `<label>[-<token>]_<seq>_<stage>.<suffix>`, at the bundle root | know the directory shape |
-| **4** | render the wrapper(s) | **3** | `.run.sh` + `.sbatch`, beside the deck | re-resolve a parameter |
-| **5** | lay out the directory | 4 | `<seq>_<stage>/run-<n>/`, or `…/bench/bench-<token>/`, and the links into them | render anything |
-
-**Step 4 after step 3 is a data dependency, not a convention.** The wrapper reads
-the *rendered deck* for two facts it has no other source for: `Diag.ELPA.GPU`
-decides which conda env the job activates, and `NumberOfAtoms` bounds the rank
-clamp. A wrapper written before its deck would route to the CPU env and skip the
-clamp — **silently, because both wrong answers are also the defaults**, which is
-the failure mode this whole contract is built to make impossible.
-
-**Step 5 links; it never copies, and never renders.** Everything under
-`<seq>_<stage>/` is a symlink to what steps 3 and 4 wrote at the root. That is
-what makes the root the one home for a deck: re-render it and every attempt and
-every trial pointing at it is current, with nothing to synchronise.
+Two of its rules bear directly on § 6.1 above. **Step 4 follows step 3 as a data
+dependency, not a convention**: the wrapper reads the rendered deck for the
+environment and the rank clamp, and a wrapper written first gets both wrong
+*silently, because both wrong answers are also the defaults*. **Step 5 links; it
+never copies and never renders**: everything under the tree points at what steps
+3 and 4 wrote at the root.
 
 > **Why the artifacts land at the root and the tree holds links** — the same
 > reason § 3.1 gives for objects. One home for a fact, and a reference to it
@@ -536,82 +531,68 @@ every trial pointing at it is current, with nothing to synchronise.
 
 ## 7. The engine seam — a plugin, not a branch
 
-**An engine supplies two kinds of thing**, and adding one touches no shared file:
+An engine supplies two kinds of thing, and
+[`script-preparation.md § 4`](?doc=execution/script-preparation.md) enumerates
+both — it has to, because the point of that enumeration is that a gap in either
+half is visible against the step that asks for it.
 
-1. **its rows in the catalogue** — every parameter it models, each declaring
-   `type`, `range`, `unit`, `default`, `anchor`, `kind`, `read_by`, and an
-   `engines` list naming itself. It adds rows to the one shared file; it does
-   not bring a file of its own ([`template.md`](?doc=engines/template.md)
-   § 6.3).
-2. **an entry in the seam** — the code side, stated as data rather than as a
-   branch.
+**This document owns the first half: an engine's rows in the catalogue** —
+every parameter it models, each declaring `type`, `range`, `unit`, `default`,
+`anchor`, `kind`, `read_by`, and an `engines` list naming itself. It adds rows
+to the one shared file; it does not bring a file of its own
+([`template.md § 6.3`](?doc=engines/template.md)). § 7.2 counts where each
+engine stands on it.
 
-### 7.1 What the seam actually asks for
+### 7.1 What the seam asks for — where it is
 
-*(Stated 2026-08-17. This section said an engine supplies "exactly two things",
-naming the catalogue rows and a deck writer. `EngineSeam` (`jobset/prep.py`) has
-**eight** members, so the contract understated the ask by six — and *"what does
-this engine still owe?"* is precisely the question a second engine arrives
-with.)*
+The **code half** of the seam is
+[`script-preparation.md`](?doc=execution/script-preparation.md) § 4, indexed by
+the preparation step that asks for it. That indexing is the point: members listed
+as a flat bag cannot answer *"what does this engine still owe?"*; listed against
+the steps, a gap is a blank row. **Fifteen questions — one asked at step 2,
+fourteen inside step 3**, and both engines have an answer to every one.
 
-| member | what the engine supplies | may it be absent? |
-|---|---|---|
-| `config_cls` | the class the template rebuilds into | no |
-| `render_deck` | `(structure, config, stage_token=) -> deck text` | no |
-| `suffix` | the deck's type suffix — `.fdf`, `.py` | no |
-| `label_of` | `config -> the identity literal` (`SystemLabel`, `JOB`) | no |
-| `relabel` | `(config, label) -> config` — the identity **written**, for a trial's relabelling | no |
-| `warm_for` | the warm-file declaration, read from the engine's `warm-files.toml` | no |
-| `traits_for` | what the launcher routes on (GPU solver, …) | no |
-| `sibling_artifacts` | files the deck's own **text** promises | **yes** — `None` when its decks promise nothing |
+**Four of PySCF's answers are *nothing*, and that is W5 working rather than a
+gap.** It ships its basis sets inside the library, so it needs no data file and
+puts nothing in the shared package; its decks instruct no sibling script; and it
+declares no benchmark anchors. Written down, each of those is a decision a
+reader can check. Left silent, they are indistinguishable from an arm nobody
+thought about — which is the state PySCF reached a full review in.
 
-**Everything else is shared**: resolution, sweeps, layout, wrappers, submission,
-status. `template.md` § 6 already makes this checkable — a producer *"must not
-try to emit a `wrapper` item as a keyword"*, and an item says on its own face
-which layer owns it.
+| the question | SIESTA | PySCF |
+|---|:--:|:--:|
+| what it cannot start without (`provide_data`) | pseudopotentials | **nothing** |
+| the shared package (`shared_package`) | the `.psml` files | **nothing** |
+| benchmark anchors (`spec.bench_marks`) | block size, ranks | **nothing** |
+| files its deck's text promises (`sibling_artifacts`) | the Makov-Payne script | **nothing** |
+| the record's resolved defaults (`spec.provenance_defaults`) | GPU, block size, ranks | threads, memory, fitting |
+| what a finished deck must satisfy (`spec.check_rules`) | ✓ | ✓ |
 
-### 7.2 Where the two engines stand
+### 7.2 Where the two engines stand — the catalogue half
 
-*(Counts below are **engine-exclusive rows** — items naming only that engine.
-Three further items name no engine at all and so belong to both;
-[`template.md`](?doc=engines/template.md) § 6.3's rule is that an absent
-`engines` key means every engine. Stating the convention because the same
-quantity was counted two ways in two documents.)*
+*(Counts are **engine-exclusive rows** — items naming only that engine. Three
+further items name no engine at all and so belong to both, and one —
+`restart` — names both explicitly because each engine answers it with a
+different mechanism; [`template.md`](?doc=engines/template.md) § 6.3's rule is
+that an absent `engines` key means every engine.)*
 
 | | SIESTA | PySCF |
 |---|---|---|
-| catalogue rows | 44 items | **45 items** |
+| catalogue rows | 43 items | **44 items** |
 | every row maps to a config field | yes | **yes** |
 | `warm-files.toml` in its package | yes | **yes** — `base` · `optimization` · `vibration` |
 | identity literal declared | `SystemLabel` | **`JOB`** (`config/pyscf.py`) |
-| the deck writer's signature | `(structure, config, stage_token=)` | **matches** — `render_script` accepts the token and deliberately ignores it |
-| a seam entry | yes | **no** — `_engine_seam` raises *"no deck writer for engine"* for every name but `siesta` |
+| the seam's form-builder (`spec_for`) | `(structure, config, stage_token=)` | **matches** |
 
-**PySCF is further along than the seam's one arm suggests**, which is the shape
-this section exists to make visible: floor 2 is already unified — the catalogue
-drives both engines, and its rows map cleanly onto `PySCFConfig`. What is
-missing is the code entry.
+**The `stage_token` argument is what makes one writer serve a ladder.** It
+suffixes a script, an engine stdout and a trajectory log so that two stages never
+write to one file, and a PySCF ladder is N scripts and N jobs
+([`stages.md` § 1.1a](?doc=engines/stages.md)) — so its writer uses the token
+exactly as SIESTA's does.
 
-**The signature is settled** *(P3, 2026-08-17)*. `render_script(struct, config)`
-took two positional arguments and could not be plugged in at all; it now takes
-`stage_token` and **does not use it**, which is the correct behaviour rather
-than a stub. The token suffixes a deck, an engine stdout and a molwatch log so
-that two stages do not write to one file — and PySCF's ladder **is** one
-process writing one unified log by design
-([`pyscf.md`](?doc=engines/pyscf.md) § 5). An engine that must ignore the token
-is exactly what an optional keyword argument is for.
-
-*(This section said "takes no `stage_token`" and called it the one thing
-missing, until 2026-08-17. [`workflow.md`](?doc=workflow.md) § 7 carried the
-same sentence.)*
-
-The ladder half of PySCF's unification — the description declaring the ladder
-for both engines, while PySCF still executes it in one process — is
-[`stages.md` § 1.1a](?doc=engines/stages.md).
-
-> **The test of the seam:** adding an engine adds files and edits none. If a new
-> engine requires a change inside `resolve/`, `materialize` or `submit`, the seam
-> has leaked and the leak is the bug — not the engine.
+**On this half PySCF is complete**: the catalogue drives both engines and its
+rows map cleanly onto `PySCFConfig`. Where each engine stands on the **code**
+half is [`script-preparation.md`](?doc=execution/script-preparation.md) § 4.
 
 ---
 
@@ -722,8 +703,8 @@ bounds the **allocation** (asked: ranks, cores, GPUs, time, domain), and both
 enter resolution at **prep, on the machine that will run it** — which is the
 whole reason describe and prep are two verbs
 ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 2.3.1).
-There is no catalogue default for `mpi_np` — its item is declared **valueless**,
-naming the `rank_count` resolver ([`template.md`](?doc=engines/template.md)
+There is no catalogue default for `mpi_np` — its item is declared **valueless**
+and marked as one the machine answers ([`template.md`](?doc=engines/template.md)
 § 6.4) — so the default is **derived from the
 machine standing under the command** (physical cores, clamped — see
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.1), which

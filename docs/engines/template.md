@@ -238,7 +238,7 @@ than off the catalogue: the legacy form builder that Spectra and Transport use,
 and the code that decides which card a validator finding lands on.
 
 **That duplication is the debt, and it is measured and guarded rather than
-tolerated quietly.** **452 facts live in two places** (measured 2026-08-17;
+tolerated quietly.** **449 facts live in two places** (measured 2026-08-18;
 307 when this was written, and the growth is the point — the debt compounds
 with every parameter added).
 `tests/test_catalogue_agreement.py` compares every one of them on every run, so
@@ -379,7 +379,7 @@ engines     = ["siesta"]                # REQUIRED — which engines this
 |---|---|
 | `anchor` | `kind = "engine"` — an engine item that names no keyword cannot reach the deck |
 | `value` | **when the item has been answered.** Its absence is a real state — *explicitly unset* — distinct from the default and from an absent key elsewhere. It was listed as unconditionally required until 2026-08-13, which read as though a valueless item were malformed; § 6.4 makes valueless the **normal** state for anything resolved at `prep` (memory, `block_size`, rank count, threads) |
-| `resolver` | when the item is normally valueless and something must compute it — § 6.4. An unset item with no resolver is simply unanswered; an unset item WITH one names who answers it |
+| `allocation` | when the **scheduler** answers this item, not a person — § 6.4. It is what makes a `value` on the item a refusal rather than a choice |
 | `expands` | `kind = "deck"` — it is how a reader learns which keywords this item produces |
 | `choices` | `type = "enum"` — an enum with no members cannot be validated or rendered as a control |
 
@@ -516,19 +516,18 @@ category = ["execution"]
 type     = "int"
 value    = 1
 default  = 1
-range    = [1, 5]
+range    = [0, 5]
 group    = "staging"
-help     = "How many times the run wrapper retries a stage that did not converge."
+help     = "How many times the run wrapper retries a stage that did not converge.  0 means run once, whatever happens -- which is what a benchmark trial needs."
 
-# kind = "engine", and DELIBERATELY VALUELESS -- the § 6.4 state.  Its resolver
-# names who answers it when nobody has.
+# kind = "engine", and DELIBERATELY VALUELESS -- the § 6.4 state.  Unflagged,
+# because the scheduler does NOT grant it: a benchmark measures it.
 [item.block_size]
 kind     = "engine"
 category = ["execution"]
 anchor   = "BlockSize"
 type     = "int"
 optional = true
-resolver = "block_size"
 group    = "budget"
 help     = """
 The ScaLAPACK/ELPA distribution block, in orbitals.  Left unset the keyword is
@@ -624,13 +623,13 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
 | `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
-| `resolver` | who computes this item's value when it is unset — a **name** from a closed registry, never code (§ 6.4) |
+| `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
 | `range` · `unit` · `choices` | bounds, unit label, enum members |
 | `group` | **which card**, from the closed vocabulary `template.GROUPS`, in render order: `setup` (what the run is called and where its pseudopotentials come from — nothing can be built without these, so they come first) · `profile` (what you're computing) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
-| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 16 optional items only 11 carry one, so five would silently lose the option (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
+| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 15 optional items only 11 carry one, so five would silently lose the option (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
 | `tier` | `basic` or `advanced`. A judgement about the **parameter**, not about the widget: a surface dims the advanced ones so a first-time reader is not asked to weigh every knob at once |
 | `pattern` | a regex the value must match. Two items have one — `system_label`, `job_name` — and nothing else in the vocabulary can express *"letters, digits, hyphens, underscores; no dots"* |
 | `help` | what this is, in prose. Multi-line is ordinary TOML |
@@ -986,6 +985,29 @@ order and filters the contents by engine. A SIESTA user sees `mesh_cutoff` under
 *Accuracy*; a PySCF user sees `grid_level`. Same panel, same position, same
 mental model.
 
+#### An item both engines hold, answered differently by each
+
+**One question, one item — even when the two engines implement it differently.**
+`restart` is the case: *does this run start from what is already in the folder?*
+SIESTA answers by writing three keywords into its deck; PySCF answers by
+generating branches that read `<JOB>.chk` and `<JOB>_optimized.xyz`, and writes
+no keyword at all. It is one row, `engines = ["siesta", "pyscf"]`, and its
+`engine_key` names both mechanisms.
+
+**What that costs, stated so nobody discovers it as a bug.** `kind` and
+`expands` are properties of the item, and the item has one of each: `restart` is
+`kind = "deck"` with SIESTA's three keywords in `expands`, because those are the
+keywords it produces *where it produces any*. A PySCF calculation's template
+therefore carries an `expands` list that PySCF does not honour.
+
+**It is not fixed by making them per-engine, and that is deliberate.** `section`
+was the per-engine key and was **retired at `@2`** for exactly the drift such a
+key invites (see the table in § 6). One imprecise row is a smaller price than a
+second axis on which two engines can disagree about one item. *(Decided
+2026-08-18. Revisit when a SECOND item needs it: one instance is not a pattern,
+and `one(t, name, engine=)` already takes the engine, so the reader half of a
+per-engine answer would cost little on the day it is actually needed.)*
+
 #### What the WRITER puts in the file
 
 `engines` at the top lists every engine the file serves. On an item it is
@@ -1086,7 +1108,7 @@ contribute one item.
 3. A name from **one** class → an item carrying `engines = [that engine]`.
 4. A name from **several** → **one** item carrying every contributing engine —
    *only if the declarations agree*. `kind`, `type`, `default`, `category`,
-   `allocation`, `resolver`, `optional` and `unit` must match.
+   `allocation`, `optional` and `unit` must match.
 5. **Any disagreement is an error naming both fields and the attribute.** Not a
    warning and not a first-wins: two engines answering one question differently
    is either a defect in one of them or evidence they were never one question,
@@ -1145,55 +1167,88 @@ A valueless item still carries `choices`, `range`, `unit` and `help`, so a
 surface can offer the *right* options before any value exists — `diag_algorithm`
 has a handful of legal eigensolvers whether or not one has been picked.
 
-**`resolver` names who fills an unset one.** Some values cannot be constants:
-they depend on the machine, on an explicit ask, or on both. The item names its
-resolver and `prep` calls it — `prep` never carries a list of which fields are
-special, which is the same argument `read_by` won in § 6.1.
+**Where a machine fact comes from — the whole chain, and it is four steps.**
 
-**The registry is four names, and they are the only legal values of
-`resolver`** — a reader refuses any other (§ 3), so this list is what a template
-author needs and the code enforces it:
+```
+  probe          ->  environment.json  ->  run / bench     ->  the engine
+  detects and        saves it              says what THIS      sees the
+  saves the                                run asks for        reconciled
+  capability                                                   answer
+```
 
-| `resolver` | the item it answers | unset → | explicitly set → |
+1. **`probe` detects and saves the capability** — cores, GPUs, scheduler, the
+   queues you can reach. How it detects is its own business and no caller
+   needs to know.
+2. **`environment.json` holds it.** One record, one writer, one reader:
+   `environment.machine_for()`. **Nothing else asks the machine anything.**
+3. **A run or a benchmark states what it wants** — ranks, threads, memory. One
+   number for a run, a set of them for a sweep.
+4. **`prep` reconciles the two and hands the engine the answer.** What is
+   asked must fit inside what exists; a sweep point that exceeds the
+   allocation is **refused, never clamped** — clamping would silently measure
+   something other than what was asked.
+
+**That is the entire API.** A consumer that wants a machine fact calls
+`machine_for()`. It never runs `sinfo`, never reads the file, never carries a
+default for "how many cores are there".
+
+**What the template contributes is step 3's QUESTION and never its answer** —
+which is what the flag below is for.
+
+**`allocation` says the SCHEDULER answers this one.** One boolean on the item,
+and it is the whole mechanism:
+
+```toml
+[item.mpi_np]
+kind       = "wrapper"
+category   = ["execution"]
+type       = "int"
+allocation = true      # the scheduler answers it; a description may never
+                       # state a value, and a reader refuses one
+optional   = true
+group      = "staging"
+help       = "How many MPI ranks to run with."
+```
+
+| the item | what it means | unset → | may it carry a value? |
 |---|---|---|---|
-| `node_memory` | `max_memory_mb` | the node's maximum, from `environment.json` or detection | clamped to the allocation, and the clamp logged |
-| `block_size` | `block_size` | proposed from the orbital and rank counts | honoured verbatim |
-| `rank_count` | `mpi_np` | the allocation | an ask, resolved against what was granted |
-| `omp_threads` | `omp_threads` | `OMP_NUM_THREADS` → `SLURM_CPUS_PER_TASK` → `PBS_NCPUS` → `NSLOTS` → physical cores | honoured; it outranks the chain |
+| `allocation = true` | ranks, threads, memory — **granted, not chosen** | `prep` fills it from what the machine granted | **no.** A reader refuses one (§ 2, G1) |
+| `optional = true`, no value | *unset is a legal answer* | the engine's own default, or `prep` proposes | yes |
 
-**Four resolvers, four items, and all four items are SIESTA's.** That is the
-state, not the design. PySCF has its own thread count — the item `threads`,
-`lib.num_threads` — and it **names no resolver**, so nothing sizes it from the
-allocation the way `omp_threads` is sized. A PySCF job prepped on a 128-core
-node asks for whatever the script's default is. This is the gap § 12 records,
-and it is what *"PySCF is just a job"* has to close: the resolver registry is
-already the right mechanism, and PySCF is not yet plugged into it.
+**Three items carry it** — `mpi_np`, `omp_threads`, `max_memory_mb` — and
+`select(t, allocation=True)` is the one way to ask which. Nothing hand-lists
+them: not the deck writer, not the web form, not `prep`.
 
-**Three of the four answer from the ALLOCATION** — `rank_count`, `omp_threads`
-and `node_memory` — and an item naming one of those **may never carry a value**:
-that is § 2's rule checked on read, because a template is a file a person is
-invited to edit. `block_size` is deliberately not in that set: `prep` *proposes*
-it, and a person or a benchmark may also set it (§ 12).
+**`block_size` is the case that shows why one flag is enough.** The scheduler
+does not grant it: a benchmark measures it and `prep` realigns it against the
+GPU target, so its item may legitimately carry a value. It says that by being
+**unflagged and `optional` with no value** — no extra key, no second name.
 
-*(The four names were absent from this document until 2026-08-14 — the table
-above described the items in prose while the closed vocabulary a reader must
-spell lived only in `template.py`. Found by the doc-claims gate,
-`tests/test_doc_claims.py`, on its first run.)*
-
-```
-resolve(asked: value | None, env: Environment) -> (effective, reason)
-```
-
-**A NAME from a closed registry — never code in the file.** A template is data:
-hand-editable, and it travels between machines. Executable content would end both
-properties and make a description something you must *trust* rather than
-something you can *read*. An unknown resolver name is an error a reader
-**reports** (§ 3), like any closed vocabulary here.
-
-**`reason` is not decoration.** Every resolver produces a number the user did not
-type, and a value the run obeys but nobody can see is the same problem as an
-undocumented one. It reaches the run log and the decision ledger, so *"64 GB,
-clamped from a 96 GB ask"* is readable after the fact.
+> ### ⛔ The `resolver` registry is RETIRED — deleted 2026-08-17
+>
+> An item used to name *who* answers it, from a closed list of four:
+> `rank_count`, `omp_threads`, `node_memory`, `block_size`. **Nothing ever
+> dispatched on those names.** There was no registry mapping a name to a
+> function; `prep`'s allocation fields came from a hand-typed tuple in
+> `resolve.py` — `("mpi_np", "max_memory_mb")` — which is precisely the *"list
+> of which fields are special"* this section claimed the mechanism removed.
+>
+> The registry was also a **second vocabulary for the first**. Half the names
+> repeated the item's own (`omp_threads`, `block_size`); half invented one
+> (`mpi_np` → `rank_count`, `max_memory_mb` → `node_memory`). So a reader had
+> to hold two spellings of one idea and could not tell a collision from a
+> coincidence.
+>
+> And the fact was **already a boolean**. `Item.allocation` existed, the config
+> fields carried `allocation: True`, and this document said the flag was
+> *"recoverable from"* the resolver — two homes for one fact, with a note
+> observing it.
+>
+> Counted at the end, *"the scheduler answers `mpi_np`"* was written **six**
+> times: the boolean, the resolver name, the list of which names counted, the
+> hand-typed tuple in `resolve.py`, and two hand-typed lists in the Task Setup
+> page. One is now enough. *(User, 2026-08-17: unify them into one parameter
+> and one API.)*
 
 **This is how `execution` items live here without § 7's machine-fact rule being
 broken.** The template may say *"rank count is a parameter of this calculation"*;
@@ -1512,7 +1567,7 @@ than a special case:**
 > | path | what happens to your custom text |
 > |---|---|
 > | the web Build tab, regenerating | **preserved** — read back from the target |
-> | `molbuilder siesta` / `molbuilder pyscf` at the terminal | **lost** — the CLI writes the file and never reads the old one |
+> | `molbuilder pyscf` at the terminal | **lost** — the CLI writes the file and never reads the old one |
 > | `jobset prep` (the staged path) | **lost** — no previous deck to read, and no template item yet to carry it |
 >
 > *(The second row said "preserved" here until 2026-08-17. It named the CLI
@@ -1644,8 +1699,9 @@ flowchart TD
     end
 
     subgraph FE["the engine seam — the only engine-aware step"]
-      DECK["seam.render_deck<br/><i>siesta.render_fdf · pyscf.render_script</i>"]
-      WRAP["runwrap.render_run_wrapper"]
+      SPEC["seam.spec_for<br/><i>the engine's FORM: which settings, in what<br/>order, and how each is spelled</i>"]
+      DECK["script_emit.prepare_deck<br/><i>validate → render → write → check</i>"]
+      WRAP["runwrap.render_wrappers → write_run_wrapper"]
     end
 
     CAT --> LOAD --> READ --> SEL
@@ -1656,7 +1712,7 @@ flowchart TD
     ENV --> RES
     RES -->|"⊕ stage ⊕ sweep ⊕ pin"| EFF
     EFF --> RES
-    RES --> RC --> DECK --> WRAP --> RUN["the run directory"]
+    RES --> RC --> SPEC --> DECK --> WRAP --> RUN["the run directory"]
 ```
 
 ### 10a.1 The calls in order, and what each is FOR
@@ -1671,8 +1727,9 @@ flowchart TD
 | 6 | `effective_config` | 3 | **⊕** — the template's values plus a mapping of overrides | R1: what comes back is an ordinary config, so the shipped validator and emitter both take it unchanged and nothing downstream learns the word *stage* |
 | 7 | `resolve` | 3 | applies the whole precedence and returns a `ParameterSet` | it is where **capability ⊇ allocation ⊇ sweep** is enforced; a sweep exceeding the grant is refused, not clamped |
 | 8 | `element.render_config()` | 3 | values **⊕ the allocation** | a deck records what it assumed in BENCH-MARKS; one rendered without a rank count says `mpi_np auto` and is then launched at 32 |
-| 9 | `seam.render_deck` | engine | the `.fdf` / `.py` | the only step that knows an engine's spelling |
-| 10 | `render_run_wrapper` | engine | the `.run.sh` | — |
+| 9 | `seam.spec_for` | 3 (engine) | the deck's **form** — its layout, and how this engine spells one setting | the only step that knows an engine's spelling, and the only thing about the deck that is the engine's to say |
+| 10 | `script_emit.prepare_deck` | 3 | the `.fdf` / `.py`, **written and checked** | the order — validate, render, write, read back — has one owner; stated per caller it drifted |
+| 11 | `runwrap.render_wrappers` → `write_run_wrapper` | 3 | the `.run.sh` (and `.sbatch`) | rendering returns text and the writer writes it, so *"what would a run of this deck look like?"* can be asked without producing files (§ 5, W7) |
 
 ### 10a.2 Precedence, in the order `resolve` applies it
 
@@ -2069,19 +2126,17 @@ description.
   ([`tuning.md § 2.11`](?doc=engines/tuning.md)).
 
   ```toml
-  # The item and the resolver share the name `block_size`, and they are two
-  # different things: the ITEM is the parameter, the RESOLVER is who answers
-  # it when nobody has (§ 6.4).  Sharing the name is deliberate -- a resolver
-  # exists to answer one item, so a second name would be a second thing to
-  # keep in step.
+  # NOT `allocation`: the scheduler does not grant a block size.  A
+  # benchmark measures it and `prep` realigns it against the GPU target, so
+  # this item may legitimately carry a value -- which is exactly what being
+  # unflagged, `optional`, and valueless already says (§ 6.4).
   [item.block_size]
   kind     = "engine"
   category = ["execution"]
   anchor   = "BlockSize"
   type     = "int"
   optional = true
-  resolver = "block_size"
-  # no `value`, and no `range` -- both settled in tuning.md § 2.11, which owns
+    # no `value`, and no `range` -- both settled in tuning.md § 2.11, which owns
   # this knob.  Read it there rather than here.
   group    = "budget"
   help     = """
@@ -2112,7 +2167,7 @@ closing one is a visible act. Measured 2026-08-17.
 | **3** | **`kind` steers no reader**; `select` is never called with it | § 6, § 8, § 1.1a | G3 is declared and checked, not dispatched on |
 | **4** | **`read_by` is declared and unconsumed**; the wrapper still greps the deck | § 6.1, § 11.3 | a new engine cannot yet be served by declaring a wrapper dependency |
 | **5** | **`kind = "monitor"` has no items** | § 6 | either an item earns it or the member is retired; a vocabulary member nothing uses is the family § 10 retired `fingerprint` from |
-| **6** | **PySCF's `threads` names no resolver** | § 6.4 | nothing sizes a PySCF job from the allocation |
+| **6** | **PySCF's `threads` is not flagged `allocation`** | § 6.4 | nothing sizes a PySCF job from what the machine granted |
 | **7** | **BENCH-MARKS is SIESTA-only** | § 9 | a PySCF deck declares no override surface, so a sweep has nothing to read from it |
 | **8** | **`required` is not an item** | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1 | a stage cannot declare the warm files it needs, because a description names fields and never defines them |
 | **9** | **`enable_gpu` → `use_gpu` is ruled and un-renamed** | § 6.3 | two names answer one question, so any caller asking *"does this want a GPU?"* must name an engine's spelling. `jobset/_cli.py::_bench_inputs` does, and is correct only while the seam refuses non-SIESTA engines |

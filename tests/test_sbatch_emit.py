@@ -1,6 +1,7 @@
 """Tests for the SLURM ``.sbatch`` submission-layer emitter
-(``runwrap.render_sbatch`` / ``write_sbatch`` + the ``write_run_wrapper``
-wiring).
+(``runwrap.render_sbatch`` + the ``render_wrappers`` / ``write_run_wrapper``
+wiring).  ``write_sbatch`` was a second writer with no production caller and
+went on 2026-08-18 (roadmap P6); one test below asserts its absence.
 
 Authoritative design: docs/execution/job-system.md  two-layer model (header delegates to the unchanged .run.sh)
   § 5  block-by-block header
@@ -21,7 +22,7 @@ import pytest
 
 from molbuilder import diagnostics, runwrap
 from molbuilder.diagnostics import Capabilities
-from molbuilder.runwrap import WrapperError, render_sbatch, write_sbatch
+from molbuilder.runwrap import WrapperError, render_sbatch
 from molbuilder.jobset.model import Resources
 
 
@@ -308,13 +309,18 @@ def test_parse_gres_forms(spec, expect):
 
 
 def test_rendered_sbatch_is_valid_bash(tmp_path):
+    """The header parses as shell before anything writes it.
+
+    Asked ``write_sbatch`` until 2026-08-18 -- a second writer with no
+    production caller, deleted with P6.  The gate itself did not move: it runs
+    inside ``render_wrappers``, which is where the text is produced, and the
+    mode the file lands with is asserted where the writing happens
+    (``test_wrapper_emits_sbatch_when_scheduler_configured`` below)."""
     fdf = tmp_path / "gpu-2a100.fdf"
     fdf.write_text("Diag.ELPA.GPU .true.\n")
-    # write_sbatch runs bash -n internally; a malformed header raises.
-    p = write_sbatch(fdf, _SCHED, ntasks=2, cpus_per_task=12,
-                     gpu=True, gpu_count=2, exclusive=False)
-    assert p.name == "gpu-2a100.sbatch"
-    assert oct(p.stat().st_mode)[-3:] == "644"
+    text = render_sbatch(fdf, _SCHED, ntasks=2, cpus_per_task=12,
+                         gpu=True, gpu_count=2, exclusive=False)
+    runwrap._validate_rendered_wrapper(text, fdf)   # raises if bash rejects it
 
 
 # --------------------------------------------------------------------- #

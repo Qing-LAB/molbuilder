@@ -49,8 +49,6 @@ import re
 from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple
 
-from .template import SUFFIX as _TEMPLATE_SUFFIX
-
 
 @dataclass(frozen=True)
 class RestartGroup:
@@ -83,6 +81,42 @@ class RestartGroup:
     literal: str
     keys: Tuple[str, ...]
     mechanism: str
+    #: WHICH CONFIG FIELD carries the literal — ``system_label`` / ``job_name``.
+    #:
+    #: ``literal`` is what the engine calls it; this is what molbuilder calls
+    #: it, and a surface that has a config in hand and needs the calculation's
+    #: name needs this one. Added 2026-08-18, because without it the web
+    #: hand-over had no engine-agnostic way to ask and named the calculation
+    #: after its DESTINATION FOLDER instead — so the label the person typed
+    #: stayed in the template while `task.json` carried another, and § 4's
+    #: *"there is no second name"* was false on disk: the engine wrote
+    #: ``bdt_e2e.XV`` while everything molbuilder named was stemmed
+    #: ``bdt-e2e``. `prep --from` then refused a carry with *"that attempt
+    #: holds none of the files this stage would continue from"* — of a stage
+    #: that had run and produced exactly those files under the other name.
+    #:
+    #: Defaulted so an engine that has not been revisited still constructs;
+    #: the two shipped engines both fill it in.
+    field: str = ""
+
+def continues(cfg) -> bool:
+    """Does this run start from what is already in the folder? (§ 4 rule 2.)
+
+    ``restart`` is ONE field with two answers, and the engine's renderer
+    expands it into whatever that engine's restart group is -- three declared
+    keywords for SIESTA, generated control flow for PySCF.  This is the
+    reading of the field, and it lives here rather than in either engine
+    because both ask the same question of the same field: a copy per engine
+    would be two spellings of one rule, free to drift in the direction § 4
+    calls silent.
+
+    ``getattr`` with a default rather than ``cfg.restart``: this is also
+    reached with a template-shaped object during stage resolution, and a
+    missing field means *clean*, which is the safe reading of silence -- the
+    dangerous direction is resuming when nobody asked.
+    """
+    return getattr(cfg, "restart", "clean") == "continue"
+
 
 #: One character of the id's alphabet.  Deliberately a character class rather
 #: than a whole-string pattern: this module *builds* names, and the shipped
@@ -144,12 +178,16 @@ MAX_LABEL_BYTES = _NAME_LIMIT - _STAGE_BUDGET - len(_LONGEST_EXTENSION)
 OUR_FILE_PATTERNS: Sequence[str] = (
     # inputs we generated
     "{label}.fdf", "{label}_*.fdf",
-    # Built from the SUFFIX rather than spelled: this list answers *"did the
-    # engine leave this, or did we write it"* by subtraction, so a pattern
-    # that silently stops matching hands a person's own input back to them
-    # as engine state -- the exact failure the `{label}.xyz` note below
-    # records, one file over.
-    "{label}" + _TEMPLATE_SUFFIX,
+    # SPELLED, not imported, and that is the LAYERING rule rather than a
+    # shortcut: this module is L1 and `template` is L2, so importing the
+    # suffix here is the violation `tests/test_layering.py` catches (tried
+    # 2026-08-17 and reverted).  The cost is real -- this list answers *"did
+    # the engine leave this, or did we write it"* by subtraction, so a
+    # pattern that silently stops matching hands a person's own input back to
+    # them as engine state, the exact failure the `{label}.xyz` note below
+    # records.  What guards it instead is `test_doc_claims.py`'s
+    # template-path test, which exempts this one line BY NAME.
+    "{label}.template.toml",
     # THE STRUCTURE THE CALCULATION IS OF, written into the bundle by the
     # hand-over (`web/handover-procedure.md`).  Added 2026-08-16, the same day
     # molbuilder started writing them: before that the pair did not exist in a
@@ -163,7 +201,7 @@ OUR_FILE_PATTERNS: Sequence[str] = (
     # sidecar is unambiguous -- nothing but molbuilder writes that format.
     #
     # ⚠ THIS LIST HAS A SECOND READER, and "HERE" is why that mattered.
-    # `runwrap._cold_restart_aside_block` derives `--cold`'s *"except what
+    # `runwrap._cold_restart_block` derives `--cold`'s *"except what
     # molbuilder wrote"* exception from these same patterns, and it runs where
     # an engine's output IS present.  It used to read `{label}` as `*`, so
     # adding this line (2026-08-16) silently turned it into `*.xyz` and made
@@ -408,9 +446,28 @@ def is_ours(name: str, label: str) -> bool:
     would match nothing and report every warm file as the engine's — or, worse
     in :func:`~molbuilder.validation.identity.warm_files_present`, report that
     nothing has run at all.
+
+    **A TRIAL'S LABEL IS A LABEL TOO**, and that is why the patterns are tried
+    against two prefixes rather than being written out twice. A benchmark
+    relabels each point ``<label>-<coordinate>`` so its warm files can never
+    meet the run's (`project-layout.md` § 2.3.2), and everything molbuilder
+    writes for that point is stemmed on the new label: ``bdt-G1K4C6_01_coarse.fdf``,
+    its wrapper, its trajectory log. None of them matched, so after any
+    ``prep bench`` the whole trial set was reported back as engine restart
+    state — 33 files on the fixture this was found with, none of them the
+    engine's, while the `run-identity.md` § 6 prompt they filled is the one
+    moment a person is asked to stop and read.
+
+    Trying ``{label}-*`` as well as ``{label}`` is the rule
+    `job-contracts.md` § 6.3 already states — ``-`` announces ONE qualifier,
+    and ``resolve.point_token`` keeps the coordinate inside ``[A-Za-z0-9_]``
+    so it cannot contain another. Deriving it costs one line; writing the
+    qualified forms out would double a list whose whole failure mode, twice
+    recorded above, is a pattern that silently stops matching.
     """
     import fnmatch
-    return any(fnmatch.fnmatchcase(name, p.format(label=label))
+    return any(fnmatch.fnmatchcase(name, p.format(label=stem))
+               for stem in (label, f"{label}-*")
                for p in OUR_FILE_PATTERNS)
 
 
@@ -523,5 +580,6 @@ def run_id(label: str, formula: str = "", *,
 
 
 __all__ = ["MAX_LABEL_BYTES", "OUR_FILE_PATTERNS", "RestartGroup", "StageRef",
-           "is_ours", "normalise_id", "parse_stage_token", "render_stage_refs",
-           "resolve_stage_ref", "run_id", "seq_text", "stage_token"]
+           "continues", "is_ours", "normalise_id", "parse_stage_token",
+           "render_stage_refs", "resolve_stage_ref", "run_id", "seq_text",
+           "stage_token"]

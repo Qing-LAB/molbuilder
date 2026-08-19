@@ -1,4 +1,10 @@
-"""Prep — the five steps of `project-layout.md` § 2.3.1.
+"""Prep — THE CONDUCTOR of `docs/execution/script-preparation.md`.
+
+It walks floors 1 -> 4 in order and owns no decision of its own: the five
+steps, and the eleven sub-steps inside step 3, are that document's (§ 4);
+what each engine supplies at each step is its § 5.  **It may call, but it
+may never decide** -- a value settled here is a value no floor owns, which
+is the shape of the "stomp" bugs (§ 3.3).
 
 :func:`prep_calculation` is the five entire, on the described route: a
 description plus its template in, one rendered deck and wrapper **per
@@ -36,6 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional
 
+from .. import script_emit as _sc
 from .materialize import job_dir_names, shape_of, materialize, relink
 from .model import Job, JobSet, Resources
 
@@ -252,8 +259,21 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
 
 @dataclass(frozen=True)
 class EngineSeam:
-    """What an engine supplies for `prep` to run the five steps over it —
-    `generator.md` § 7's seam ("a plugin, not a branch"), stated as data.
+    """What an engine supplies for `prep` to run the steps over it —
+    `script-preparation.md` § 4's seam, stated as data.
+
+    **That document indexes the questions by the STEP that asks them**, which is
+    the ordering to read them in: a bag of callables cannot answer *"what does
+    this engine still owe?"*, and against the steps a gap is a blank row.
+
+    **Fifteen questions, ten members.**  One is answered by shared code
+    (`validation.validate`), and four arrive together through ``spec_for`` --
+    the layout, the syntax, the record's values and the check rules are all the
+    engine describing its deck, so they ride on one ``DeckSpec`` rather than on
+    four seam members.  A member that answers ``None`` is answering *nothing*,
+    which is a real answer and a recorded one (§ 4, W5): PySCF gives it to
+    ``provide_data``, ``shared_package`` and ``sibling_artifacts``, and to
+    ``bench_marks`` on the spec.
 
     Everything engine-specific that the loop below needs lives HERE, so the
     loop itself never asks which engine it is in.  ``_job_for`` branched on
@@ -262,10 +282,20 @@ class EngineSeam:
     """
     #: The config class the template rebuilds into.
     config_cls: type
-    #: ``(structure, config, stage_token=) -> deck text`` -- the token is
-    #: a RENDER ARGUMENT (step 7, C7): the emitter never learns the word,
-    #: the deck's filename carries it.
-    render_deck: Callable
+    #: ``(structure, config, stage_token=) -> DeckSpec`` — the engine
+    #: DESCRIBES its deck; the framework renders, writes and checks it
+    #: (`script-preparation.md` § 4.3).  The token is a RENDER ARGUMENT (step
+    #: 7, C7): the emitter never learns the word, the deck's filename carries
+    #: it.
+    #:
+    #: **It handed back finished TEXT until 2026-08-18**, and that one fact was
+    #: what kept the framework's step-3 runner unreachable: given text, the
+    #: conductor had no form to pass on, so it performed the write and the
+    #: check itself and the ORDER of step 3 was stated in two places.  Given a
+    #: form, the framework can also re-derive what the deck was supposed to
+    #: contain, so nothing has to be carried alongside the text to make the
+    #: check possible.
+    spec_for: Callable
     #: The deck's type suffix (``.fdf``).
     suffix: str
     #: ``config -> the engine's identity literal`` (``SystemLabel`` / ``JOB``).
@@ -289,6 +319,34 @@ class EngineSeam:
     #: renders the deck).  ``None`` for an engine whose decks promise
     #: nothing.
     sibling_artifacts: Optional[Callable] = None
+    #: ``(base_dir) -> [filename]`` — which files in the calculation are the
+    #: SHARED PACKAGE every job links to.  The engine that put them there is
+    #: the one that can name them: this was a ``*.psml`` glob in shared code,
+    #: a SIESTA fact stated a floor below where SIESTA may speak, so a second
+    #: engine with data files of its own would have shipped none of them.
+    #: ``None`` for an engine that puts nothing in — the package is then empty,
+    #: which is the honest answer rather than an accident of a glob.
+    shared_package: Optional[Callable] = None
+    #: ``(struct, config, base_dir) -> None`` — the DATA FILES this engine's
+    #: deck cannot run without, put into the calculation.
+    #:
+    #: *Named ``stage_data`` for about a minute, until `test_stage_vocabulary`
+    #: refused it: "stage" is this project's core noun and here it was being
+    #: borrowed as a verb, which is the collision that ledger exists to catch
+    #: — the same refusal `submit._staged_for_launch` earned.*  Distinct from
+    #: ``sibling_artifacts``, which is about what a deck's own text promises;
+    #: this is about what the ENGINE will open.  ``None`` for an engine that
+    #: needs none (PySCF's basis sets ship inside PySCF).
+    #:
+    #: It belongs to `prep` because `project-layout.md` § 2.6 puts the copy on
+    #: the machine that runs the job — where the library lives is a fact about
+    #: that machine — and because `prep` is already what decides the shared
+    #: package.  Added 2026-08-18: the rule *"a calculation copies the
+    #: pseudopotentials it needs into its own shared package"* was written and
+    #: unowned, so `jobset describe` performed it and the browser's hand-over
+    #: did not, and a calculation described in the browser prepped, laid out
+    #: its directories and reported success with no pseudopotentials in it.
+    provide_data: Optional[Callable] = None
 
 
 def _siesta_sibling_artifacts(struct, cfg, deck_path: Path) -> None:
@@ -310,22 +368,154 @@ def _siesta_sibling_artifacts(struct, cfg, deck_path: Path) -> None:
                                system_label=cfg.system_label, q=q)
 
 
+def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
+    """Put the pseudopotentials this deck needs into the calculation.
+
+    SIESTA opens ``<element>.psml`` in the directory it runs from and has no
+    search path, so a missing file is not a preference — it is a run that
+    cannot start, after a queue wait and however long MPI takes to come up.
+
+    **Idempotent, and the folder wins.**  Anything already here was put here by
+    an earlier prep, by `jobset describe`, or by travelling with the folder;
+    `copy_pseudopotentials` leaves it alone.  Only what is missing is fetched,
+    from the library named by ``psml_lib``.
+
+    **The species come from the STRUCTURE**, which `prep` has just loaded and
+    checked against the description's witness — not from a list in the
+    description.  A recorded list would be a second answer to *which elements
+    is this calculation of*, and the structure is the first.
+
+    A species in neither place stops `prep` **by name**, before a deck is
+    written.
+
+    **And then the science protocol runs on what is actually there.**
+    `science/pseudopotentials.md` exists because a defective `S.psml` with a
+    dead p-channel shipped into a real run on 2026-06-26: wrong sulfur bonding,
+    and `propor: ERROR: IMAX=0` — but only at high rank counts, so a small run
+    would have reported plausible, wrong numbers instead of crashing. The check
+    that catches that class reads the pseudopotentials themselves.
+
+    It has always run against ``psml_lib`` — the LIBRARY — and it is gated on
+    that field being set, so a calculation whose files are already beside it and
+    whose ``psml_lib`` is empty had **nothing checked at all**: the only thing
+    said was *"psml_lib is not set … once set, this preflight will check
+    coverage"*, while three real pseudopotentials sat in the folder the run
+    would open them from. This step makes that state the normal one, so it runs
+    the protocol here, against the **calculation** — which is where the files
+    the run reads actually are — and refuses on the same ERROR statuses the
+    preflight and `molbuilder pseudo check` refuse on, from the same shared
+    constant.
+    """
+    from ..pseudos import resolve_psml_lib
+    from ..siesta.input import _detect_species, copy_pseudopotentials
+
+    species = _detect_species(struct.elements)
+    if not species:
+        return
+    have = {p.stem for p in base.glob("*.psml")}
+    want = [s for s in species if s not in have]
+    if not want:
+        _screen_pseudos(species, cfg, base)
+        return
+
+    lib_raw = getattr(cfg, "psml_lib", None)
+    if not lib_raw:
+        raise PrepError(
+            f"this calculation needs pseudopotentials for "
+            f"{', '.join(want)} and none are in {base.name}/, but no "
+            f"pseudopotential directory is set.  Set `psml_lib` in the "
+            f"template to the library they live in -- the convention is "
+            f"`projects/pseudopotential/` (project-layout.md § 2.6).")
+    lib = resolve_psml_lib(str(lib_raw), dest_dir=base)
+    if not lib.is_dir():
+        raise PrepError(
+            f"this calculation needs pseudopotentials for "
+            f"{', '.join(want)}, and the library they should come from is "
+            f"not a directory: {lib}.")
+    missing = copy_pseudopotentials(want, lib, base)
+    if missing:
+        raise PrepError(
+            f"this calculation needs {', '.join(f'{m}.psml' for m in missing)}"
+            f" and there is none in {base.name}/ or in {lib}.  SIESTA opens "
+            f"<element>.psml in the directory it runs from and has no search "
+            f"path, so it would refuse at startup.  Put the file in the "
+            f"library, or point `psml_lib` at one that has it.")
+    _screen_pseudos(species, cfg, base)
+
+
+def _screen_pseudos(species, cfg, base: Path) -> None:
+    """`science/pseudopotentials.md` § 1, run on the calculation's own files.
+
+    Same engine (`pseudos.check_coverage`), same severity set
+    (`pseudos.ERROR_STATUSES`) and same XC-family table
+    (`pseudos.expected_xc_family`) as the render-time preflight and the
+    `molbuilder pseudo check` CLI, so the three surfaces cannot disagree about
+    what blocks.  What differs is only WHICH DIRECTORY is read: this one asks
+    about the files the run will open.
+
+    The three blocking statuses are `missing`, `dead_projector` and
+    `xc_family_mismatch` — a file absent, a valence channel physically absent,
+    or the wrong XC family.  The rest are advisory and are printed.
+    """
+    from ..pseudos import ERROR_STATUSES, check_coverage, expected_xc_family
+    import sys as _sys
+    entries = check_coverage(
+        species, base,
+        expected_xc_family=expected_xc_family(
+            getattr(cfg, "xc_authors", "") or ""),
+        expected_xc_authors=(getattr(cfg, "xc_authors", "") or "") or None,
+    )
+    blocking = [e for e in entries if e.status in ERROR_STATUSES]
+    for e in entries:
+        if e.status != "ok" and e not in blocking:
+            print(f"  note: {e.message}", file=_sys.stderr)
+    if blocking:
+        raise PrepError(
+            "the pseudopotentials in this calculation do not pass the "
+            "screening (science/pseudopotentials.md § 1):\n  - "
+            + "\n  - ".join(f"{e.element}: {e.message}" for e in blocking)
+            + "\n  These are the checks that exist because a dead-channel "
+              "S.psml once shipped into a real run -- wrong bonding, and a "
+              "propor IMAX=0 crash that only appeared at high rank counts.")
+
+
 def _engine_seam(engine: str) -> EngineSeam:
     if engine == "siesta":
         from ..config.siesta import SiestaConfig
-        from ..siesta.input import render_fdf
+        from ..siesta.input import spec_for as _siesta_spec
         from ..siesta.stages import _traits, _warm_declaration
-        return EngineSeam(config_cls=SiestaConfig, render_deck=render_fdf,
+        return EngineSeam(config_cls=SiestaConfig, spec_for=_siesta_spec,
                           suffix=".fdf",
                           label_of=lambda cfg: cfg.system_label,
                           relabel=lambda cfg, label: dataclasses.replace(
                               cfg, system_label=label),
                           warm_for=_warm_declaration, traits_for=_traits,
-                          sibling_artifacts=_siesta_sibling_artifacts)
+                          sibling_artifacts=_siesta_sibling_artifacts,
+                          provide_data=_siesta_provide_pseudos,
+                          shared_package=_siesta_shared_package)
+    if engine == "pyscf":
+        from ..config.pyscf import PySCFConfig
+        from ..pyscf.input import spec_for as _pyscf_spec
+        from ..pyscf.stages import _traits as _pyscf_traits
+        from ..pyscf.stages import _warm_declaration as _pyscf_warm
+        # NO ``provide_data`` and NO ``sibling_artifacts``, and both absences
+        # are ANSWERS rather than omissions (`script-preparation.md` § 4, W5):
+        # PySCF's basis sets ship inside PySCF, so there is no file to put in
+        # the calculation; and its script's own text instructs nothing to be
+        # run beside it, so there is no promise to keep.
+        return EngineSeam(config_cls=PySCFConfig, spec_for=_pyscf_spec,
+                          suffix=".py",
+                          label_of=lambda cfg: cfg.job_name,
+                          relabel=lambda cfg, label: dataclasses.replace(
+                              cfg, job_name=label),
+                          warm_for=_pyscf_warm, traits_for=_pyscf_traits)
+        # NO ``shared_package``: PySCF's basis sets ship inside PySCF, so
+        # there is nothing in the calculation for every job to link to.
     raise PrepError(
-        f"no deck writer for engine {engine!r}. An engine supplies its schema "
-        f"and a deck writer (generator.md § 7); this backend has neither for "
-        f"that name.")
+        f"no deck writer for engine {engine!r}. An engine supplies its "
+        f"catalogue rows and an answer at each preparation step "
+        f"(script-preparation.md § 4); this backend has neither for that "
+        f"name.")
 
 
 def _environment_for(base: Path, target: Optional[str] = None):
@@ -422,8 +612,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     from ..resolve import ResolveError, resolve
     from ..task import FILENAME as TASK_FILENAME
     from ..task import read_task
-    from ..template import (SUFFIX as TEMPLATE_SUFFIX,
-                            template_path as _template_path)
+    from ..template import template_path as _template_path
 
     base = Path(base_dir).resolve()
     if not base.is_dir():
@@ -458,6 +647,14 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 
     # ---- 3. render the deck(s) ----------------------------------------- #
     struct = _structure_for(task, base)
+    # The DATA FILES the engine will open, before any deck is written: a
+    # missing pseudopotential is a run that cannot start, and finding that out
+    # here costs a second (project-layout.md § 2.6).  Idempotent -- what is
+    # already in the folder is left alone.  The elements come from the
+    # structure, which has just been checked against the description's witness.
+    if seam.provide_data is not None:
+        with _user_error_as_prep():
+            seam.provide_data(struct, pset[0].render_config(), base)
     token = token_for(task, pset.stage)
     jobs: List[Job] = []
     for element in pset:
@@ -467,14 +664,12 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         # records the rank count it actually assumed.  Rendering from the
         # values alone emits `mpi_np auto` and the launch check then refuses a
         # deck that `prep` itself just made -- which is how this was found.
-        # The stage's artifact TOKEN reaches the emitter here.  It feeds three
-        # names -- the deck, the engine's stdout, and the molwatch log -- and
-        # leaving it unset made two stages of one calculation write to a single
-        # `<label>.molwatch.log`.  Caught by the trajectory-log tests when
-        # `molbuilder fdf` was deleted, which is the channel that used to carry
-        # it.  C7 replaces `cfg.stage` with a render ARGUMENT; until then the
-        # field is how the emitter is told, and `prep` -- which holds the
-        # StageRef -- is what tells it.
+        # The stage's artifact TOKEN reaches the emitter here, as a RENDER
+        # ARGUMENT (C7).  It feeds three names -- the deck, the engine's own
+        # log, and the molwatch log -- and leaving it unset made two rungs of
+        # one calculation write to a single `<label>.molwatch.log`.  `prep`
+        # holds the StageRef, so `prep` says the word; no config field carries
+        # it, for either engine (`stages.md` § 1.1).
         cfg = element.render_config()
         if element.is_trial:
             # The deck's OWN identity line carries the trial label -- this,
@@ -499,10 +694,15 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         # learns the word (engines/stages.md § 1.1).
         # The render's refusals (missing pseudos above all) are user-fixable
         # and translate to PrepError -- see _user_error_as_prep (A8).
+        # STEP 3, WHOLE, IN ONE CALL: validate the settings, render the deck,
+        # write it through the one writer (which keeps the reader's USER-CUSTOM
+        # block), then read the file back and refuse one that does not say what
+        # it was meant to say.  The conductor says WHEN; the framework owns the
+        # order (`script-preparation.md` § 4.3).
         with _user_error_as_prep():
-            deck_text = seam.render_deck(struct, cfg,
-                                         stage_token=(token or None))
-        (base / script).write_text(deck_text, encoding="utf-8")
+            _sc.prepare_deck(
+                seam.spec_for(struct, cfg, stage_token=(token or None)),
+                struct, cfg, base / script)
         if seam.sibling_artifacts is not None:
             seam.sibling_artifacts(struct, cfg, base / script)
         _seed_trajectory_log(struct, cfg, base, engine=task.engine,
@@ -522,7 +722,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # pair rule needs the source job on file, read the whole ladder.
     kind = "sweep" if sweep is not None else "ladder"
     js = JobSet(name=task.label, engine=task.engine, kind=kind,
-                shared=_shared_for(base), jobs=jobs)
+                shared=_shared_for(base, seam), jobs=jobs)
     if kind == "sweep":
         # The container spelling is materialize's (the naming authority):
         # ONE function places the record here and the trials in
@@ -685,10 +885,24 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
                traits=seam.traits_for(element.values))
 
 
-def _shared_for(base: Path) -> List[str]:
-    """The static package every job links — the pseudopotentials
-    (``*.psml``; the shared-package data-file set, `project-layout.md` § 2.1).
+def _siesta_shared_package(base: Path) -> List[str]:
+    """SIESTA's shared package: the pseudopotentials it put in the folder.
+
+    The same suffix ``_siesta_provide_pseudos`` copies, named by the engine
+    that copied them (`script-preparation.md` § 4, the data-files step).
     """
     return sorted(p.name for p in base.glob("*.psml"))
+
+
+def _shared_for(base: Path, seam: "EngineSeam" = None) -> List[str]:
+    """The static package every job links (`project-layout.md` § 2.1).
+
+    **Asked of the engine, not guessed from the folder.**  An engine that puts
+    no data files in has an empty package, and that is an answer rather than an
+    accident of which suffix the glob happened to name.
+    """
+    if seam is None or seam.shared_package is None:
+        return []
+    return list(seam.shared_package(base))
 
 __all__ = ["prep_calculation", "prep_jobset", "PrepError", "resolve_target"]

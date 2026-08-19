@@ -1,145 +1,97 @@
-# HANDOFF — Job execution workflow & toolbox
+# Handoff — the preparation layer
 
-You are continuing **the job-execution work** on molbuilder
-(repo `/home/qqing/molbuilder`, branch `main`). This file is scratch; the
-durable truth is the docs + task list it points at. Read this whole file,
-then **obey the READ-FIRST gate before doing anything**.
+## Read these first, in this order. They are the source of truth; the code is not.
 
----
+1. `docs/execution/script-preparation.md` — **the contract.** The three
+   questions (space / time / the seam), the seven floors, `prep`'s five steps,
+   the thirteen sub-steps of step 3, and W1–W10.
+2. `docs/execution/generator.md` — the other half of the layer: what every value
+   *is* and where it came from. § 7 owns the catalogue half of the engine seam;
+   § 4 of the contract owns the code half.
+3. `docs/engines/stages.md` § 1.1a — a ladder is N decks and N jobs for **both**
+   engines. Its five consequences are all in place and each names the file that
+   holds it.
+4. `docs/engines/tuning.md` § 2.4 / § 2.5 — the per-tier convergence tables.
+   **These tables are the authority for those numbers, not any code**, and
+   `test_doc_claims.py` checks the presets against them. § 4's ladder table is a
+   convenience restatement and loses to them.
+5. `docs/roadmap.md` § 6 — **status lives here, never in a contract.** The
+   preparation-layer debts are P1–P6 and all six have landed.
 
-## 0. THE JOB (one line) + scope
+The programme that built this is archived at
+`docs/archive/2026-08-18-preparation-backend-plan.md`. Open it for history, not
+to decide what is open now.
 
-Make the **job-execution toolbox** ready: molbuilder generates a *self-running
-script bundle* → you copy it to a target → a `prep` step detects the machine
-and formats the run → the wrapper runs itself (activates its own conda env,
-runs the engine, handles warm/cold restart). The core pipeline is BUILT; the
-remaining work is closing the gaps in § 3.
+## Where the work stands
 
-**What job execution IS:** the *generic* machinery to **run any prepared
-script on a target** — engine-agnostic AND calculation-agnostic. It does not
-know or care what the script computes. It owns: `runwrap` (self-activating
-wrapper), `prep` (detect the machine), scheduler adapters, the monitor, the
-portable bundle, the benchmark sweep, and production runs.
+The layer is built and both engines are on it. `prep`, `siesta convert` and
+`pyscf convert` all reach the deck through one call —
+`script_emit.prepare_deck(spec, struct, cfg, path)` — which runs **validate →
+render → write → check** in that order, once, for every route.
 
-**What job execution IS NOT (out of scope — do NOT pull these in):** the
-*science* modules that PREPARE inputs — `transport` (NEGF; multi-backend:
-SIESTA/PySCF/future VASP), `optimization`, `spectra`. They produce `.fdf`/`.py`
-for a scientific purpose and are tracked under their OWN modules/roadmaps.
-Note: "TranSIESTA" is not an engine — it is SIESTA run with a transport
-`.fdf`, so a transport job is just a SIESTA job to the runner. **Reason about a
-thing's role/layer, not its name** (see memory `reason-by-role-not-surface-terms`).
+**What the seam carries is the engine's FORM, not finished text.** `spec_for`
+returns a `DeckSpec`: the deck's layout as an ordered table of `Section`s and
+`Block`s, plus how this engine spells one setting. The framework walks it, so it
+knows what the deck was supposed to contain and can compare that against the
+file it just wrote — which is what the check gate needs and what no validator in
+this tree could do before.
 
-**LASER FOCUS — the only goal is a ready toolbox, in priority order:**
-- **P1 = #25** prep tells the user if the target is ready (readiness pointer).
-- **P2 = #24/#25** ONE bundle runs on workstation AND HPC without regeneration.
-- **P3 = #5** hardening (only after P1+P2).
+**Two rules make that work, and they are the ones to keep in mind when touching
+either engine's writer:**
 
-Do them in order. Do not start anything outside this list — no science
-modules, no web UI, no new features. If a task isn't in § 3, it is out of scope.
+- **W9 — the layout's MEMBERSHIP is settled when the spec is built; each
+  member's TEXT is settled when the framework walks it.** A section only some
+  calculations have is *left out* of the layout for the others, never chosen
+  inside a `Block`. `spec_for` holds `(struct, cfg)` and can answer that.
+- **W10 — an engine keeps ONE per-render context** (`_derived`), and every
+  reader takes it whole: the layout for membership, the syntax door for a
+  derived value's spelling, the record blocks to quote one.
 
----
+## What a review on 2026-08-19 found and fixed
 
-## 1. READ-FIRST GATE (do this BEFORE proposing or writing anything)
+The full findings are in `docs/execution/script-preparation.md`'s own history
+notes; three are worth carrying forward because they are the shapes that recur.
 
-Past sessions failed by acting while clueless. Do NOT. In order:
+- **Both engines rendered their sections from inside a `Block`**, by calling the
+  framework's section walk themselves — nine times in one SIESTA deck. So the
+  layout could not name them, `render_deck` could not collect what they wrote,
+  and the check gate's loop-closing rule ran on an empty list and passed: a
+  728-line SIESTA deck reported **zero** written keywords. It reports 24 now,
+  PySCF 13, and the walk has one owner (`_render_sections` is private).
+- **SIESTA's wrapper `--help` promised a timestamped backup directory** that the
+  launcher had stopped creating the day before, while citing the section that
+  says the opposite. PySCF's copy had been corrected and SIESTA's had not. The
+  entry has one writer now (`runwrap._cold_usage_entry`) and a test reads the
+  *generated* help.
+- **A test that proves the framework against a stub proves nothing about the
+  engines.** `test_deck_runner.py` used a stub whose layout was already the
+  table the contract describes, so every promise held for it while both real
+  engines violated them. It now asks the real forms too.
 
-1. **`memory/MEMORY.md`** — the rules index. Especially: *read-before-claiming*,
-   *reason-by-role-not-surface-terms*, *framework-first / no reinventing*,
-   *static-review-first*, *align-before-act*, *assistant-not-nanny*,
-   *design.md is source of truth*, *run under correct env*, *no pip install -e*,
-   *commit author/trailers*.
-2. **`docs/design.md`** — the Stance ("assistant, not nanny": easy but explicit,
-   never push-button; don't twist the env/recipe) + the numbered Design
-   Principles + Anti-patterns (no custom frameworks/registries).
-3. **`docs/execution/running-a-job.md`** — THE SOLE SOURCE OF TRUTH for this work. Read it
-   *in full*: §1 big picture, §2 workflow, **§3 the detection/standalone
-   contract**, §4 cookbook, §5 the sub-doc map, §6 roadmap.
-4. **The sub-doc that owns your task's detail** (from §5 map):
-   - config schema + wrapper contract → `docs/execution/running-a-job.md § 5` §§1–8
-   - self-running wrapper, warm/cold restart per engine → `docs/execution/job-contracts.md`
-   - SLURM/sbatch/Sol facts, CUDA floor, GPU gate → `docs/execution/job-system.md`
-   - benchmark workflow stages, probes/adapters, data formats → `docs/execution/job-system.md`
-   - on-disk naming → `docs/execution/job-contracts.md`
-5. **The actual code for your task** — grep + read it; run the relevant
-   `molbuilder <group> --help`. Never claim a fact you have not just verified.
+## How to work (these were the repeated failures)
 
-Then run `TaskList` and pick the highest-priority unblocked task.
-
----
-
-## 2. DISCIPLINE (non-negotiable)
-
-- **READ-FIRST / NO REINVENTING.** Check what exists first. The canonical trap:
-  do **not** build a readiness/doctor/env-checker — it EXISTS as
-  `molbuilder envs doctor` + `molbuilder envs validate`. Reuse it.
-- **REASON BY ROLE, NOT NAME.** Before claiming two things are the same or one
-  belongs to another, state each one's purpose/owner/layer; if they differ,
-  they're different even when they share a word. (This session's whole mess
-  came from collapsing transport-module / TranSIESTA / job-execution by name.)
-- **STATIC-REVIEW-FIRST.** Read the code AND the generated product/script
-  before executing anything.
-- **ALIGN-BEFORE-ACT.** Propose the change in words, get an explicit "go", ship
-  ONE thing. No trailing "want me to also…?". No same-day self-reversals.
-  For tasks that change the **contract** (e.g. #24/#25), update
-  `job-execution.md` in the SAME change as the code.
-- **ASSISTANT, NOT NANNY.** Surface support/hints; don't own the recipe,
-  auto-decide, auto-install, or silently twist the env. Easy but EXPLICIT.
-- **ENV/REPO HYGIENE.** Run each command under its category's conda env (unit
-  pytest → `molbuilder`; backend execution → its named env, e.g.
-  `molbuilder-siesta-gpu`); never `pip install -e .` (use `python -m molbuilder`);
-  no PYTHONPATH/sys.path hacks. **Commit only when asked**; author
-  `Quan <qqing@asu.edu>`, NEVER `Co-Authored-By: Claude`; never push under
-  `.github/workflows/*`.
-- **VERIFY EVERY CLAIM — yours and any agent's.** ~half of subagent claims
-  don't survive a check (this session a survey wrongly reported a feature
-  "done"). Verify in the code before acting.
-
----
-
-## 3. GROUNDED STATE — verified this session (do NOT re-derive)
-
-**Vocabulary:** "deployment" = serving the molbuilder *app* (`deployment.md`).
-Using the script-generator *module* to run calculations = "job execution"
-(this work). Don't conflate.
-
-**BUILT (the core pipeline):** `bench generate` (host, bundle) → `prep-bench`
-(target detect+format) → run+monitor → `summarize` → `prep-run` → production.
-Shared core: `bench/{generate,environment,adapters,result,prep,prep_run,
-summarize}.py` + `runwrap.py` (self-activating, warm/cold restart) +
-`monitor.py`. Scheduler adapters: slurm + workstation. Activation: baked at
-generate time — workstation autodetected (`bench/generate.py::_ensure_activation`
-→ writes `.molbuilder.json`), HPC explicit (`--activation`/`--preamble` or the
-`asu-sol` example config). The *core* generator refuses-to-emit without
-`activation` (config.md §2/§4); the bench front-end autodetects+writes it on a
-workstation.
-
-**REMAINING WORK — three open tasks (see `TaskList` for full detail):**
-- **P1 · #25 readiness gate** (small): `bench/prep.py::_summary` does NOT yet
-  surface `envs doctor` / `envs validate`. Add the pointer (surface only,
-  reuse the envs toolkit). Owner doc: job-execution.md §3.4 + §6 item 1.
-- **P2 · #24/#25 one portable bundle** (large, THE goal): activation is baked
-  at generate → a bundle is locked to one target. Move activation resolution to
-  **prep-time on the target** so ONE bundle works on workstation + HPC. Changes
-  the contract (relaxes job-execution.md §3.3 row C for activation only) →
-  design against `job-execution.md §3` and update the doc in lockstep.
-- **P3 · #5 hardening** (after P1+P2): test the §3.5 activation defaults;
-  end-to-end static-review + validation of prep→bench→run.
-
-**Done this session:** consolidated all job-execution docs into the single
-master `docs/execution/running-a-job.md` (moved config.md §9 → §3; folded+deleted the old
-cookbook; reconciled the activation layering note), then **removed a
-transport↔job-execution conflation** I had introduced (transport is a separate
-science module, not job execution). See `git log` for the doc series. Task list
-is clean: #1 done; #2 (#25), #3 (#24/#25), #5 (hardening) open.
-
----
-
-## 4. START HERE
-
-**#25 (P1) first** — small, self-contained, pure surface. Then design
-**#24/#25 (P2)** in words and get a go before coding (it changes the contract).
-**#5 (P3)** only after P1+P2.
-
-After the READ-FIRST gate, propose the chosen task in words, wait for the
-explicit "go", ship ONE thing. This file is scratch — delete it once absorbed,
-or ask to keep it tracked.
+- **Code top-down from the contract. Do not read the old implementation for
+  guidance and do not preserve its behaviour by default.** Three convergence
+  values in PySCF's tight rung were wrong because they were copied from
+  `config/pyscf.py` instead of read from `tuning.md` § 2.4.
+- **The contract may itself be stale — sweep it, don't work around it.** Fix the
+  document that owns the concept, then sweep the restatements. A retraction
+  stapled over a live table is harder to read than either version.
+- **Prove a restructure output-neutral before believing it.** Render a matrix of
+  decks across both engines and several configurations, normalise the timestamp
+  and the git sha, and hash it. Every step of the 2026-08-19 restructure was
+  gated on that digest; the one deliberate change (naming a section that had
+  none) was measured at exactly one added line per deck.
+- **Mutation-test every new guard.** Break the code, watch the test fail, put it
+  back. A green test proves nothing until you have seen it go red.
+- **Static analysis, not poking.** Read the code and the contract side by side.
+  Tests would not have caught the wrong convergence numbers.
+- **Targeted test runs**, not the 6800-test suite: `python tools/testrun.py run
+  none2e <files>` then `status --fails`. Never edit source while a batch runs —
+  it silently corrupts the result.
+- **No obsolete claims in comments.** A comment describing the old mechanism is
+  worse than none.
+- SIESTA and PySCF must end up identical except their parameters and their
+  engine — same stage names (`coarse`/`medium`/`tight`), same ladder shape, same
+  framework for prep/bench/submit, both directory shapes. A rule that holds for
+  one and is untested on the other is where they drift apart.

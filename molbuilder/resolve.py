@@ -72,6 +72,26 @@ ALLOCATION_FIELDS: Tuple[str, ...] = tuple(f.name for f in
                                       dataclasses.fields(Resources))
 
 
+def _emitter_fields(config_cls) -> tuple:
+    """Allocation fields the DECK WRITER also needs, under the config's own
+    names -- **derived from the schema, never listed here.**
+
+    Deliberately not every field of ``Resources``: a partition or a wall time
+    reaches the wrapper and never the deck, and handing them to the emitter
+    would invite it to render one.  The line between them is already drawn on
+    the field itself, by the machine-answered flag, so this asks it.
+
+    It was ``_EMITTER_FIELDS = ("mpi_np", "max_memory_mb")`` until 2026-08-17
+    -- a hand-kept list of exactly the fields the catalogue already marks,
+    and the one that actually drove behaviour while the catalogue's own
+    marking was read by nothing.  Adding a fourth machine-answered setting
+    changed nothing anywhere; now it arrives here on its own.
+    """
+    import dataclasses
+    return tuple(f.name for f in dataclasses.fields(config_cls)
+                 if f.metadata.get("allocation"))
+
+
 @dataclass(frozen=True)
 class ResolvedConfig:
     """One configuration, complete and renderable on its own (§ 5)."""
@@ -114,18 +134,14 @@ class ResolvedConfig:
         emitter's argument. Those are different objects, and conflating them is
         what put ``mpi_np`` in the template in the first place.
         """
+        fields = _emitter_fields(type(self.values))
         machine = {k: v for k, v in dataclasses.asdict(self.resources).items()
-                   if v is not None and k in _EMITTER_FIELDS
+                   if v is not None and k in fields
                    and hasattr(self.values, k)}
         return (dataclasses.replace(self.values, **machine) if machine
                 else self.values)
 
 
-#: Allocation fields the DECK WRITER also needs, under the config's own names.
-#: Deliberately not every field of ``Resources``: a partition or a wall time
-#: reaches the wrapper and never the deck, and handing them to the emitter would
-#: invite it to render one.
-_EMITTER_FIELDS = ("mpi_np", "max_memory_mb")
 
 
 @dataclass(frozen=True)
@@ -500,7 +516,7 @@ def _catalogue_types() -> Mapping[str, str]:
     from . import template as _t
     try:
         return {i.name: i.type
-                for i in _t.read_template(_t.load_catalogue()).items}
+                for i in _t.catalogue().items}
     except Exception:                       # pragma: no cover - defensive
         return {}
 

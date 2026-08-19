@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..identity import RestartGroup
 
@@ -334,7 +334,12 @@ class SiestaConfig:
         # energies converge to within a few meV instead of tens.
         # Loosen back to 0.02 only for screening; tighten to 0.005
         # for phonon / vibrational work.
-        "help":  "smaller = more diffuse / more accurate; production work uses 0.005-0.01 Ry",
+        "help":  """How diffuse the PAO orbitals are, in Ry: the energy rise that defines each orbital's cutoff radius.  Smaller = more diffuse = more accurate = slower.
+Per-tier (Ry):
+  0.05    fast screening only
+  0.01    production (this project's default)
+  0.005   accuracy-critical: band gaps, weak interactions, vdW
+DEVIATION: SIESTA's own default is 0.02 Ry.  This catalogue starts at 0.01, because its targets are molecules and metal-molecule junctions, where the more diffuse tails are what set adsorption geometry and level alignment.""",
     })
 
     # Mesh cutoff lives in the "Basis & grid" section in the form
@@ -363,19 +368,14 @@ class SiestaConfig:
         # picking a low-but-not-tiny value see a soft nudge.
         "range": (100.0, 1000.0),
         "tier":  "basic",
-        "help":  (
-            "Real-space integration grid (Ry).  Sets the spacing of "
-            "the 3D mesh SIESTA uses for Hartree + XC potentials, via "
-            "the plane-wave-equivalent kinetic-energy cutoff.\n"
-            "Per-tier: screening 150, loose preopt 200-250, "
-            "publishable 350, tight (vib/phonons) 500 (600 for "
-            "first-row elements).\n"
-            "Below 150 Ry the forces / energies are noticeably wrong "
-            "on organic / biomolecule systems; the validator warns "
-            "below that floor.  Egg-box noise sets the floor for "
-            "vibrational work — test by varying ±50 Ry.  See "
-            "docs/engines/tuning.md § 2.6."
-        ),
+        "help":  """Real-space integration grid (Ry).  Sets the spacing of the 3D mesh SIESTA uses for Hartree + XC potentials, via the plane-wave-equivalent kinetic-energy cutoff.
+Per-tier (Ry):
+  150      screening (sanity-check only)
+  200-250  loose preopt
+  350      publishable -- forces stable to < 0.01 eV/Ang on organic + Au
+  500+     tight / vibrational -- egg-box noise below 0.001 eV/Ang
+           (600 for first-row elements)
+Below 150 Ry the forces / energies are noticeably wrong on organic / biomolecule systems; the validator warns below that floor.  Egg-box noise sets the floor for vibrational work — test by varying ±50 Ry.  See docs/engines/tuning.md § 2.6.""",
     })
 
     # XC
@@ -397,8 +397,8 @@ class SiestaConfig:
                    "calculation (or vice versa) silently gives wrong "
                    "bond lengths.  PseudoDojo ships separate families "
                    "for PBE / PBEsol / LDA -- pick the matching set.\n"
-                   "DEVIATION: SIESTA's own default is LDA; this project "
-                   "ships GGA.  The reason is the over-binding above -- "
+                   "DEVIATION: SIESTA's own default is LDA; this "
+                   "catalogue starts at GGA.  The reason is the over-binding above -- "
                    "LDA's systematic error is large enough that essentially "
                    "no current published work on molecules or biomolecules "
                    "uses it for production geometries.  GGA/PBE has been the "
@@ -432,7 +432,7 @@ class SiestaConfig:
                    "PseudoDojo organises downloads by this name.\n"
                    "DEVIATION: SIESTA's own default is PZ, which is the LDA "
                    "parameterisation that goes with its LDA default family.  "
-                   "This project ships PBE because it ships GGA -- the two "
+                   "This catalogue starts at PBE because it ships GGA -- the two "
                    "move together, and a family and a parameterisation that "
                    "do not belong to each other is not a configuration "
                    "SIESTA implements.  Change one and check the other.",
@@ -449,7 +449,10 @@ class SiestaConfig:
         "label": "Solution method",
         "engine_key":  'SolutionMethod',
         "choices": ("diagon", "OMM", "transiesta"),
-        "help": "diagon / OMM / transiesta (transiesta requires the TranSIESTA build)",
+        "help": """Which solver produces the density matrix each SCF step.
+  diagon      standard diagonalisation, O(N^3) -- the default, and right for almost everything this project runs
+  OMM         order-N; worth it only for systems beyond ~500 atoms
+  transiesta  non-equilibrium transport; requires the TranSIESTA build""",
     })
     mixing_weight: float = field(default=0.02, metadata={
         "category": ("convergence",),
@@ -462,7 +465,7 @@ class SiestaConfig:
         "engine_key":  'SCF.Mixer.Weight',
         "range": (0.001, 0.5),
         "tier":  "advanced",
-        "help":  'How much of each new SCF solution is mixed in.  SIESTA\'s own default is 0.25; this project ships 0.02 deliberately, because the systems it targets (metal junctions, open-shell metals) leave the convergence basin at high weights.  The manual backs the direction: "a low value ... is more likely to converge", at the cost of more SCF steps, and the value is "heavily system dependent".\nFIRST THING TO TRY when the SCF oscillates -- lower this before touching anything else (manual: "experimentation with the mixing weight is preferred as a first resort").\nOrganic molecules with no metal converge happily at 0.1-0.25 and will run in far fewer steps; raise it if your system is well-behaved.',
+        "help":  'How much of each new SCF solution is mixed in.  SIESTA\'s own default is 0.25; this catalogue starts at 0.02, deliberately, because the systems it targets (metal junctions, open-shell metals) leave the convergence basin at high weights.  The manual backs the direction: "a low value ... is more likely to converge", at the cost of more SCF steps, and the value is "heavily system dependent".\nFIRST THING TO TRY when the SCF oscillates -- lower this before touching anything else (manual: "experimentation with the mixing weight is preferred as a first resort").\nOrganic molecules with no metal converge happily at 0.1-0.25 and will run in far fewer steps; raise it if your system is well-behaved.',
     })
     pulay_history: int = field(default=8, metadata={
         "category": ("convergence",),
@@ -485,24 +488,14 @@ class SiestaConfig:
         "engine_key":  'DM.Tolerance',
         "range": (1e-8, 1e-3),
         "tier":  "advanced",
-        "help":  (
-            "Density-matrix element convergence threshold for the "
-            "inner SCF loop.  Forces are derived from the converged "
-            "density -- sloppy SCF -> noisy forces -> optimizer "
-            "thrashes.\n"
-            "Per-tier (dimensionless): screening 1e-3, loose preopt "
-            "1e-4, publishable 1e-4, tight (vib/IR) 1e-5.\n"
-            "DEVIATION: SIESTA's own default is 1e-4; this project ships "
-            "1e-5, one decade tighter.  The work this project is built for "
-            "is relaxations and vibrational analysis, where the forces come "
-            "out of the converged density and a loose SCF shows up as force "
-            "noise the optimiser then chases -- which costs more geometry "
-            "steps than the extra SCF cycles cost.  For single-point "
-            "screening, 1e-4 is the engine's own answer and is enough.\n"
-            "Rule of thumb: keep SCF tol ~10x tighter than the "
-            "force-precision target you want at convergence.  See "
-            "docs/engines/tuning.md § 2.5."
-        ),
+        "help":  """Density-matrix element convergence threshold for the inner SCF loop.  Forces are derived from the converged density -- sloppy SCF -> noisy forces -> optimizer thrashes.
+Per-tier (dimensionless):
+  1e-3   screening (sanity-check only)
+  1e-4   loose preopt / publishable
+  1e-5   tight (vib / IR / accurate forces)
+  1e-6   very-tight (band structure, phonons)
+DEVIATION: SIESTA's own default is 1e-4; this catalogue starts at 1e-5, one decade tighter.  The work this project is built for is relaxations and vibrational analysis, where the forces come out of the converged density and a loose SCF shows up as force noise the optimiser then chases -- which costs more geometry steps than the extra SCF cycles cost.  For single-point screening, 1e-4 is the engine's own answer and is enough.
+Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you want at convergence.  See docs/engines/tuning.md § 2.5.""",
     })
     dm_energy_tolerance: float = field(default=1e-4, metadata={
         "category": ("accuracy",),
@@ -752,20 +745,26 @@ class SiestaConfig:
         "engine_key":  'MD.Steps (CG / Broyden / FIRE) | MD.FinalTimeStep (Verlet / Nose)',
         "range": (1, 10000),
         "tier":  "advanced",
-        "help":  (
+        "help": (
             "OUTER loop: max geometry steps the optimiser is allowed "
-            "(each step = full SCF + forces + atom move).  Which "
-            "keyword carries it is decided by MD.TypeOfRun: CG / Broyden "
-            "/ FIRE relax and bound the loop with ``MD.Steps``; Verlet / "
-            "Nose integrate and bound it with ``MD.FinalTimeStep`` "
-            "instead (SIESTA 5.4.2, siesta_init.F -- idyn 0 uses "
-            "MD.Steps, idyn 1-5 use MD.InitialTimeStep..MD.FinalTimeStep)"
-            ".  ``MD.Steps`` DEPRECATES the older ``MD.NumCGsteps``, "
-            "whose CG-prefixed name hid that it was never CG-only.\n"
-            "Per-tier: loose warm-up ~50, publishable ~200, tight "
-            "(vib/IR) ~100 (small displacement cap = slow but few "
-            "steps from a publishable-converged starting geometry).  "
-            "See docs/engines/tuning.md § 2.10."
+            "(each step = full SCF + forces + atom move). Which keyword "
+            "carries it is decided by MD.TypeOfRun: CG / Broyden / FIRE "
+            "relax and bound the loop with ``MD.Steps``; Verlet / Nose "
+            "integrate and bound it with ``MD.FinalTimeStep`` instead "
+            "(SIESTA 5.4.2, siesta_init.F -- idyn 0 uses MD.Steps, idyn "
+            "1-5 use MD.InitialTimeStep..MD.FinalTimeStep). ``MD.Steps`` "
+            "DEPRECATES the older ``MD.NumCGsteps``, whose CG-prefixed "
+            "name hid that it was never CG-only. Per-tier: loose warm-up "
+            "~50, publishable ~200, tight (vib/IR) ~100 (small "
+            "displacement cap = slow but few steps from a "
+            "publishable-converged starting geometry). See "
+            "docs/engines/tuning.md § 2.10. A well-behaved relaxation "
+            "converges in 30-150 steps, so 200+ is a safety cap rather "
+            "than a target -- it is there to stop a run that is not going "
+            "to converge, not to describe one that is. For molecular "
+            "dynamics the count is not a cap but a duration: steps x "
+            "timestep is the timescale you actually sample, so pick it "
+            "from the physics you want to see."
         ),
     })
     relax_force_tol: float = field(default=0.02, metadata={
@@ -785,7 +784,7 @@ class SiestaConfig:
             "publishable 0.04 (Gaussian-OPT default), tight (vib/IR) "
             "0.01, very-tight (NEB barrier) 0.001.\n"
             "DEVIATION: SIESTA's own default is 0.04 eV/Å -- the "
-            "'publishable' row above.  This project ships 0.02, twice as "
+            "'publishable' row above.  This catalogue starts at 0.02, twice as "
             "tight, because a relaxation that stops at the loose end leaves "
             "residual forces big enough to contaminate a frequency "
             "calculation run on top of it, and re-relaxing afterwards costs "
@@ -805,24 +804,28 @@ class SiestaConfig:
         "id_suffix": "max-displ",
         "range": (0.001, 0.5),
         "tier":  "advanced",
-        "help":  (
-            "Displacement cap per optimiser step (Å).  Applies across "
-            "CG, Broyden AND FIRE.  Hard ceiling that catches line-search "
-            "over-shoot.  ``MD.MaxDispl`` DEPRECATES the older "
+        "help": (
+            "Displacement cap per optimiser step (Å). Applies across CG, "
+            "Broyden AND FIRE. Hard ceiling that catches line-search "
+            "over-shoot. ``MD.MaxDispl`` DEPRECATES the older "
             "``MD.MaxCGDispl`` (SIESTA 5.4.2); same meaning, same 0.2 "
-            "Bohr default, and the CG-prefixed name was never CG-only.\n"
+            "Bohr default, and the CG-prefixed name was never CG-only. "
             "DEVIATION: that engine default of 0.2 Bohr is 0.106 Å; this "
-            "project ships 0.05 Å, about half.  The cap only ever LIMITS a "
-            "step, so a smaller one costs steps and never accuracy -- and "
-            "the oscillation below is what a too-large cap looks like.  "
-            "Raise it back toward 0.2 Å for a cheap first pass on a "
-            "structure that starts far from its minimum.\n"
-            "Per-tier (Å): screening 0.30, loose preopt 0.20, "
-            "publishable 0.05, tight (vib/IR) 0.02.\n"
-            "Symptom of too-large cap: max-force oscillates rather "
-            "than descends (e.g. 0.09 → 0.44 → 0.13 → 0.31 → ...).  "
-            "Halve the cap.  See docs/engines/tuning.md "
-            "§ 2.2 + the BDT/Au worked example in § 6."
+            "catalogue starts at 0.05 Å, about half. The cap only ever "
+            "LIMITS a step, so a smaller one costs steps and never "
+            "accuracy -- and the oscillation below is what a too-large "
+            "cap looks like. Raise it back toward 0.2 Å for a cheap first "
+            "pass on a structure that starts far from its minimum. "
+            "Per-tier (Å): screening 0.30, loose preopt 0.20, publishable "
+            "0.05, tight (vib/IR) 0.02. Symptom of too-large cap: "
+            "max-force oscillates rather than descends (e.g. 0.09 → 0.44 "
+            "→ 0.13 → 0.31 → ...). Halve the cap. See "
+            "docs/engines/tuning.md § 2.2 + the BDT/Au worked example in "
+            "§ 6. It is a hard ceiling that catches line-search "
+            "over-shoot, not a target. The symptom of one set too large "
+            "is a maximum force that oscillates instead of descending "
+            "(0.09 -> 0.44 -> 0.13 -> 0.31 ...); halve the cap and "
+            "continue."
         ),
     })
 
@@ -851,7 +854,14 @@ class SiestaConfig:
         # budget card only because a retry costs compute.
         "workflow_group": "staging",
         "label":          "Warm-retry budget",
-        "range":          (1, 5),
+        # 0 IS A REAL ANSWER: "run once, whatever happens".  The lower bound
+        # was 1, so there was no way to say it -- and a BENCHMARK TRIAL is
+        # exactly the run that must not retry.  A trial is capped at 5 SCF
+        # cycles on purpose, so it never converges, so the wrapper retried it
+        # every time and `summarize` timed the SECOND run.  The wrapper has
+        # always handled 0 (`continue_retries and > 0` gates the whole loop);
+        # only this bound refused to express it.
+        "range":          (0, 5),
         "engine_key":     "(molbuilder: baked into the run wrapper at "
                           "install time; never an .fdf line and never an "
                           "sbatch flag)",
@@ -901,7 +911,7 @@ class SiestaConfig:
                   "means nothing -- an MD at 0 K still needs electronic "
                   "smearing if the system is metallic.\n"
                   "DEVIATION: SIESTA's own default is 0 K, i.e. start from "
-                  "rest.  This project ships 300 K because a run seeded at "
+                  "rest.  This catalogue starts at 300 K because a run seeded at "
                   "0 K spends its opening picoseconds simply acquiring "
                   "thermal motion, and 300 K is both room temperature and "
                   "the condition most reported simulations are run at.  Set "
@@ -918,10 +928,8 @@ class SiestaConfig:
         "null_label": "(use MD.InitialTemperature)",
         "range":      (0.0, 5000.0),       # mirror md_initial_temperature
         "tier":  "advanced",
-        "help":  ("Nose-Hoover NVT target temperature (K).  Used ONLY "
-                  "by Nose dynamics; CG / Broyden / FIRE / Verlet "
-                  "ignore this.  Defaults to md_initial_temperature "
-                  "when unset."),
+        "help":  """Nose-Hoover NVT target temperature (K).  Used ONLY by Nose dynamics; CG / Broyden / FIRE / Verlet ignore it.  Defaults to md_initial_temperature when unset.
+REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and the run QUENCHES instead of equilibrating.""",
     })
     md_length_timestep: float = field(default=1.0, metadata={
         "category": ("procedure",),
@@ -952,7 +960,7 @@ class SiestaConfig:
     # in this folder" too, which is question 2's test.  A stage may promote
     # it like any other field, and the stage table draws it as the
     # "start from" row (web/task-setup-plan.md § 6).
-    restart: str = field(default="clean", metadata={
+    restart: str = field(default="continue", metadata={
         "category": ("convergence", "execution"),
         "section": "Compute & budget",
         "item_kind":  "deck",
@@ -969,19 +977,25 @@ class SiestaConfig:
         "choices": ("clean", "continue"),
         "id_suffix": "restart",
         "tier": "advanced",
-        "engine_key": ("(molbuilder: expands to DM.UseSaveDM / MD.UseSaveXV / "
-                       "MD.UseSaveCG; not a single .fdf key)"),
+        "engine_key": ("(molbuilder: one field, one mechanism per "
+                       "engine -- SIESTA expands it to DM.UseSaveDM / "
+                       "MD.UseSaveXV / MD.UseSaveCG; PySCF emits control "
+                       "flow that reads <JOB>.chk and "
+                       "<JOB>_optimized.xyz.  Not a single engine key on "
+                       "either)"),
         "help": (
-            "Whether this run starts from what is already in the folder.\n"
-            "  clean     -- ignore any .XV/.DM/.CG left there and start over.\n"
-            "  continue  -- read them, warm-starting from the previous run's "
-            "geometry and density.\n"
-            "In a staged ladder the first stage is normally 'clean' and the "
-            "rest 'continue', which is what makes a ladder a ladder rather "
-            "than three unrelated runs.  See docs/execution/run-identity.md "
-            "§ 4 -- continuing works because the engine finds warm files "
-            "keyed by the SystemLabel it was given, so nothing is copied or "
-            "pointed at."
+            'Whether this run starts from what is already in the folder.\n'
+            '  continue  -- read it (the default).  Nothing there is not an '
+            "error: the engine starts from the deck's own coordinates.\n"
+            '  clean     -- ignore it and start over, OVERWRITING what is there '
+            'as the run proceeds.\n'
+            "Which files that means is the engine's own: SIESTA reads .XV / .DM "
+            '/ .CG, PySCF reads <JOB>_optimized.xyz and <JOB>.chk.\n'
+            'Continuing is the default because a run you start in a folder that '
+            'already holds a result is a run you started after looking at that '
+            'result.  To keep the old state, save it first with `molbuilder '
+            'checkpoint save` -- the launcher warns before a clean run overwrites '
+            'anything and stops unless you pass --force.'
         ),
     })
 
@@ -1231,7 +1245,6 @@ class SiestaConfig:
     # Compute & budget workflow-group card.
     mpi_np: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
-        "resolver": "rank_count",
         "section": "Compute & budget",
         # NOT a template item: a machine fact, which floor 2 must never
         # name (engines/template.md 7).  It arrives as the ALLOCATION at
@@ -1280,7 +1293,6 @@ class SiestaConfig:
         # a GPU-enabled ELPA, and breaking it is not an error there either
         # (ELPA falls back to the CPU).  `pow2` survives where it belongs --
         # BENCH-MARKS, a constraint the benchmark puts on its own sweep.
-        "resolver": "block_size",
         "validate": (lambda value, cfg: _validate_block_size(value)),
         "section": "Compute & budget",
         "workflow_group": "budget",
@@ -1338,7 +1350,6 @@ class SiestaConfig:
     # with the PySCF / spectra scripts.
     omp_threads: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
-        "resolver": "omp_threads",
         "section": "Compute & budget",
         # NOT a template item: a machine fact, which floor 2 must never
         # name (engines/template.md 7).  It arrives as the ALLOCATION at
@@ -1370,7 +1381,6 @@ class SiestaConfig:
     # records it so the /results trajectory inspector shows the cap.
     max_memory_mb: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
-        "resolver": "node_memory",
         "section": "Compute & budget",
         # NOT a template item: a machine fact, which floor 2 must never
         # name (engines/template.md 7).  It arrives as the ALLOCATION at
@@ -1665,11 +1675,8 @@ class SiestaConfig:
         # value to fix; Spin.Total without Spin.Fix to gate the
         # constraint).
         "engine_key":  "Spin.Fix + Spin.Total",
-        "help":        ("target total spin moment in mu_B (= number "
-                          "of unpaired electrons).  Emits BOTH "
-                          "``Spin.Fix .true.`` and ``Spin.Total <v>`` "
-                          "in the .fdf.  Only emitted when --spin-"
-                          "polarized."),
+        "help":        """Target total spin moment in mu_B (= the number of unpaired electrons).  Emits BOTH `Spin.Fix .true.` and `Spin.Total <v>`: the first is required or the second is silently ignored, which is why one item writes two keywords.  Only emitted with a polarized spin treatment.
+NOTE 0.0 with a POLARIZED treatment asks for a constrained singlet via open-shell DFT (broken-symmetry capable).  Most users wanting a singlet are better served by the non-polarized treatment -- the spin-restricted formalism is cheaper and gives the same answer.  Set 0.0 here only when you specifically want an anti-ferromagnetic / broken-symmetry singlet.""",
     })
 
 
@@ -1737,10 +1744,40 @@ Config = SiestaConfig
 #: dynamics modes ignore it. That conditionality lives in the renderer beside
 #: the optimizer it depends on, not here: this declares what the group *is*,
 #: and the emitter decides which members are meaningful for a given run.
+#: WHICH KEYWORDS -- spelled here, and PROVEN equal to the catalogue.
+#:
+#: This is `identity.OUR_FILE_PATTERNS`' arrangement and for the same reason:
+#: this module is **L1** and the catalogue reader is **L2**, so importing it
+#: here is the violation `tests/test_layering.py` catches (tried 2026-08-18 and
+#: reverted).  The fact still has ONE authority -- `[item.restart].expands` --
+#: and every PRODUCTION reader goes there through `script_emit.parameter`; this
+#: tuple has no production reader left at all.
+#:
+#: What keeps it honest is a gate, not discipline:
+#: `test_the_restart_group_object_is_not_a_second_declaration` asserts identity
+#: with the catalogue rather than naming the keywords again, so a tuple that
+#: drifts fails rather than quietly becoming a fourth spelling -- which is what
+#: it was, in its own order, until 2026-08-18.
 SIESTA_RESTART_GROUP = RestartGroup(
     literal="SystemLabel",
-    keys=("DM.UseSaveDM", "MD.UseSaveCG", "MD.UseSaveXV"),
-    mechanism="declared .fdf keys; SIESTA reads .DM/.CG/.XV only when set",
+    keys=("DM.UseSaveDM", "MD.UseSaveXV", "MD.UseSaveCG"),
+    # MEASURED, not assumed (2026-08-18).  This said "SIESTA reads .DM/.CG/.XV
+    # only when set", and a deck carrying NONE of these keys, with a `.DM`
+    # beside it, printed:
+    #     Attempting to read DM from file... Succeeded...
+    #     DM from file: <dSpData2D:IO-DM: bdt-e2e-K1C1.DM
+    # -- so the read is not gated on the key being present.  Every member is
+    # therefore written for BOTH answers: `.true.` to continue and `.false.`
+    # to start clean.  Omission is not a refusal, and a design that expressed
+    # "clean" by leaving the keys out was expressing nothing.
+    #
+    # This is the same lesson `Diag.ELPA.GPU` records one file away -- *the
+    # explicit `.false.` is load-bearing* -- learned twice, for the same
+    # reason: what a keyword does when ABSENT is the engine's business, and
+    # the only way to state an intention is to state it.
+    mechanism="declared .fdf keys, written for both answers; SIESTA reads "
+              ".DM/.CG/.XV unless told .false.",
+    field="system_label",
 )
 
 

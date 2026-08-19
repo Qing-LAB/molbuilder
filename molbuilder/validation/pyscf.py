@@ -295,23 +295,14 @@ def _validate_pyscf(struct: Structure, cfg,
                 "config.method",
             ))
 
-    # Stages ladder (task #534).  When cfg.optimize is True the
-    # generator's _emit_stages_loop walks cfg.stages and emits one
-    # optimize() call per enabled row.  ``validate_stages`` enforces
-    # the structural invariants the generator can't recover from --
-    # empty list, all-disabled, duplicate names, bogus name chars,
-    # non-positive numeric knobs, non-int / non-positive max_steps.
-    # WITHOUT this check, an empty-or-all-disabled stages list
-    # silently emits ``STAGES = []`` + an empty for-loop, which
-    # leaves ``mol_eq`` unbound and the downstream
-    # ``_save_xyz(mol_eq, ...)`` / frequencies block raises
-    # NameError at runtime.  Surface as ``"error"`` so the Build
-    # tab blocks the Generate POST instead of shipping a broken
-    # script.
-    if bool(getattr(cfg, "optimize", False)):
-        from ..config.pyscf import validate_stages
-        for _msg in validate_stages(getattr(cfg, "stages", []) or []):
-            issues.append(Issue("error", _msg, "config.stages"))
+    # NO LADDER CHECK HERE, and that is not a gap.  A ladder is declared in
+    # task.json for both engines (`stages.md` § 1.1a), so its structural
+    # invariants are the DESCRIPTION's and are checked where descriptions are:
+    # ``task.Task.validate`` refuses an empty stage list, duplicate names and
+    # an all-disabled ladder, and ``validation/task.py`` checks every
+    # override against the ``range`` / ``choices`` the schema declares -- which
+    # is what used to be spelled out per knob here.  This validator sees ONE
+    # rung's resolved config and cannot see the ladder at all.
 
     # Peptide protonation: PeptideBuilder + AddHs builds the gas-phase
     # NEUTRAL form (Asp / Glu protonated, Lys / Arg neutral, etc.).

@@ -97,18 +97,12 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
             + hint,
             "config.psml_lib",
         )]
-    # Derive expected XC family from cfg.xc_authors (PBE/PBEsol/...
-    # -> GGA; CA/PZ/PW -> LDA; DRSLL/LMKLL -> VDW).
-    GGA = {"pbe", "pbesol", "blyp", "revpbe", "rpbe"}
-    LDA = {"ca", "pz", "pw"}
-    VDW = {"drsll", "lmkll"}
+    # The expected XC family, from the ONE table (`pseudos.expected_xc_family`).
+    # It was spelled out here and again in `cli.py`, and the two disagreed --
+    # the CLI copy had no VDW arm.
     xc_authors = (getattr(cfg, "xc_authors", "") or "").strip()
-    a = xc_authors.lower()
-    expected_family = ("GGA" if a in GGA
-                       else "LDA" if a in LDA
-                       else "VDW" if a in VDW
-                       else None)
-    from ..pseudos import check_coverage, ERROR_STATUSES
+    from ..pseudos import check_coverage, ERROR_STATUSES, expected_xc_family
+    expected_family = expected_xc_family(xc_authors)
     out: List[Issue] = []
     for entry in check_coverage(
         struct.elements, psml_dir,

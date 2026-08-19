@@ -1,7 +1,7 @@
 """Checkpointing — saving a calculation folder so its state can be brought back.
 
 **Module:** L1 + L2 (the data model and ``Repo``, the class every surface goes
-through).  **Callers:** the ``molbuilder snapshot`` CLI group
+through).  **Callers:** the ``molbuilder checkpoint`` CLI group
 (:mod:`molbuilder.cli`) and the HTTP routes in
 ``molbuilder/web/blueprints/checkpoint.py``; nothing else in the codebase
 constructs a ``Repo``, which is what keeps *"nothing is ever saved without you
@@ -839,7 +839,7 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
                 f"removing it and saving again rebuilds it from the files in "
                 f"this folder:\n"
                 f"    rm -rf {archive_dir(root, digest)}\n"
-                f"    molbuilder snapshot save -m \"…\"\n"
+                f"    molbuilder checkpoint save -m \"…\"\n"
                 f"(checkpointing.md I2b, § 1)."
             ) from exc
         return digest
@@ -1106,7 +1106,7 @@ class Repo:
         if not self.initialized:
             raise CheckpointError(
                 f"{self.path} is not a checkpoint folder; run "
-                f"`molbuilder snapshot init` first.")
+                f"`molbuilder checkpoint init` first.")
 
     def init(self, engine: Optional[str] = None,
              note: str = "set up",
@@ -1190,7 +1190,7 @@ class Repo:
         and is fixed at init: it is written verbatim into every state, so
         changing it later would make one history claim two names.
 
-        **Read-only and unvalidated on purpose.**  ``snapshot config`` and the
+        **Read-only and unvalidated on purpose.**  ``checkpoint config`` and the
         panel show this on folders that may be in any condition, and a reader
         that raises turns "your name needs fixing" into "this folder cannot be
         looked at".  The refusal L3 asks for belongs where the name is
@@ -1202,7 +1202,7 @@ class Repo:
     def classification(self) -> Dict[str, object]:
         """Which files this folder's saves send to the archive (§ 4, S1c).
 
-        Public: two surfaces print it — ``snapshot config`` and
+        Public: two surfaces print it — ``checkpoint config`` and
         ``GET /api/checkpoint/config`` — and a private name they both reach
         past is not a seam, it is a seam being ignored.
 
@@ -1238,11 +1238,11 @@ class Repo:
                 f"so it was lost rather than never written, and nothing here "
                 f"can be called saved or unsaved until that is resolved.\n\n"
                 f"Two ways on, and neither needs git:\n"
-                f"    molbuilder snapshot save -m \"…\"\n"
+                f"    molbuilder checkpoint save -m \"…\"\n"
                 f"        records what is on disk now -- and rebuilds THIS "
                 f"archive byte-identically if those large files are "
                 f"unchanged, since an archive is named by its content;\n"
-                f"    molbuilder snapshot restore <other-state> --force\n"
+                f"    molbuilder checkpoint restore <other-state> --force\n"
                 f"        leaves this state, accepting whatever is here.\n"
                 f"(checkpointing.md I2b, § 2.0.)")
         raw = man.read_bytes()
@@ -1596,7 +1596,7 @@ class Repo:
                 f"{exc}\n\nThis folder is a git repository that molbuilder did "
                 f"not name -- most likely `git init` was run here by hand. "
                 f"Give it one, and nothing else changes:\n"
-                f"    molbuilder snapshot init --calculation <name>\n"
+                f"    molbuilder checkpoint init --calculation <name>\n"
                 f"Nothing was saved.") from exc
         cls = self.classification()
         always = cls["always_large"]
@@ -1729,7 +1729,7 @@ class Repo:
                     "this folder has work that is not saved, and restoring "
                     "will lose it:\n"
                     + _describe(here)
-                    + "\n\nSave it first with `molbuilder snapshot save "
+                    + "\n\nSave it first with `molbuilder checkpoint save "
                       "-m \"…\"`, or pass --force to accept the loss.")
 
         # --- from here on the folder is being changed --------------- #

@@ -32,6 +32,10 @@
         {
           "path": "audit-2026-07-28-document-migration.md",
           "label": "Document Migration Audit"
+        },
+        {
+          "path": "audit-2026-08-14-template-execution-review.md",
+          "label": "Template + Execution Review"
         }
       ]
     },
@@ -151,6 +155,10 @@
         },
         {
           "path": "execution/generator.md"
+        },
+        {
+          "path": "execution/script-preparation.md",
+          "label": "Script preparation — the fixed steps"
         },
         {
           "path": "execution/handoff-bundle.md"
@@ -391,6 +399,11 @@
           "path": "archive/2026-08-17-generator-api-plan.md",
           "label": "Making the doors take the object — the work behind A8 and A9",
           "subtitle": "Making the doors take the object — the work behind A8 and A9"
+        },
+        {
+          "path": "archive/2026-08-18-preparation-backend-plan.md",
+          "label": "The preparation backend — building step 3 new, and migrating onto it",
+          "subtitle": "The preparation backend — building step 3 new, and migrating onto it"
         },
         {
           "path": "archive/MIGRATION.md",

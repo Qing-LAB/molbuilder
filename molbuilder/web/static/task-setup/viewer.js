@@ -51,24 +51,49 @@ const TASK_HANDOVER = "task.1st.json";
  * *"a fourth one would show up as `chosen`, which reads wrong but breaks
  * nothing"* — that is a machine-answered value presented as a person's
  * choice, silently. */
+/* WHICH ENGINE the hand-over is for.
+ *
+ * `engine` is an OBJECT in every artifact this system writes -- `{name: ...}`
+ * in `task.1st.json` and in `task.json` alike -- so the name is `.engine.name`.
+ * This read `.engine` and wrapped it in `String()`, which produced the literal
+ * `"[object Object]"`, and everything downstream of it went quiet rather than
+ * loud: the sweepable fetch answered `400 unknown engine`, the cached answer
+ * became the empty list, and the machine card then reported the OPPOSITE of
+ * the truth -- *"every sweepable setting is already listed"*, disabled, with
+ * nine settings available and none listed.  `enable_gpu` is one of the nine,
+ * so the surface `task-setup.md` § 6.2 makes the ONE place a GPU is chosen was
+ * inert on the hand-over path, which is the only path the UI offers.
+ *
+ * `setShape` twelve lines down had always read it correctly.  Two accessors
+ * for one field is the shape of this bug; one of them is now gone. */
 function _handoverEngine(over) {
-    return String((over && over.engine) || (_handover && _handover.engine)
-                  || "siesta");
+    const from = (o) => (o && o.engine && o.engine.name) || "";
+    return String(from(over) || from(_handover) || "siesta");
 }
 
 function machineAnswers(name) {
     return (_sweep || []).some(i => i.name === name && i.machine_answers);
 }
 
-/* Friendly second lines.  A name the catalogue carries would be better and is
- * what the built version should read; this page does not load the catalogue. */
-const ROW_NOTE = {
-    enable_gpu:    "Use the GPU — yours to choose",
-    use_gpu:       "Use the GPU — yours to choose",
-    mpi_np:        "MPI ranks — the scheduler answers",
-    omp_threads:   "Threads per rank — the scheduler answers",
-    max_memory_mb: "Memory cap — the scheduler answers",
-};
+/* The second line under a row's name — DERIVED, never a table here.
+ *
+ * The catalogue already carries each item's `label`, and the server already
+ * ships it (`/api/task-setup/sweepable`).  Whether the scheduler answers it is
+ * the `machine_answers` flag beside it.  So the note is those two facts read
+ * together, and there is nothing to keep in step.
+ *
+ * It was a hand-typed `ROW_NOTE` map until 2026-08-17 — the LAST of the
+ * copies of "the scheduler answers mpi_np", which that one fact had been
+ * written in six times across the tree.  Its own comment said what it was:
+ * *"a name the catalogue carries would be better."*
+ */
+function rowNote(name) {
+    const it = (_sweep || []).find(i => i.name === name);
+    if (!it) return "";
+    return it.machine_answers
+        ? `${it.label || name} — the scheduler answers`
+        : `${it.label || name} — yours to choose`;
+}
 
 let _cm = null;
 let _loadedText = "";
@@ -284,7 +309,7 @@ function renderMachine(task) {
 
         host.appendChild(el("div", { class: "ts-row", "data-kind": kind },
             el("div", { class: "ts-row-name", title: helpText(name) }, name,
-                el("small", null, ROW_NOTE[name] || "")),
+                el("small", null, rowNote(name))),
             el("div", { class: "ts-points" }, ...chips, add),
             el("div", { class: "ts-verdict" }, verdict, dropRow)));
     }
@@ -627,26 +652,26 @@ let _cols = null;       // every parameter this engine has  {name,label,group}
 const _meta = Object.create(null);
 let _sweep = null;      // the ones a benchmark may sweep
 
-/** Every parameter, for the column picker.
+/** Every parameter that may become a column.
  *
- * ANY field may be promoted (`stages.md` § 1.2 — the group is a default, never
- * a restriction), so this is the whole form schema, which the parameter tab
- * already builds from the catalogue.  No second list to keep in step.
+ * `stages.md` § 6.2: anything the description is ALLOWED TO HOLD may be a
+ * column; the settings the machine answers may not, because the description
+ * may not hold them at all.  The server answers that from the catalogue —
+ * there is no list here and none there.
+ *
+ * It read `/api/build/schema` until 2026-08-18, which is the PARAMETER FORM's
+ * schema and filters the whole `staging` group out on purpose.  Filtering a
+ * panel and limiting a table are different jobs, and borrowing the first
+ * answer for the second cost this table `restart` — the field that decides
+ * whether a ladder is a ladder — so a ladder built here ran every stage clean.
  */
 async function loadColumnChoices(engine) {
     if (_cols) return _cols;
-    const r = await fetch("/api/build/schema/"
+    const r = await fetch("/api/task-setup/columns?engine="
                           + encodeURIComponent(engine || "siesta"));
     const j = await r.json();
-    const secs = (j && j.schema && j.schema.sections) || [];
-    _cols = [];
-    for (const sec of secs) {
-        for (const f of (sec.fields || [])) {
-            _cols.push({ name: f.name, label: f.label || f.name,
-                         group: f.workflow_group || "" });
-            _meta[f.name] = f;
-        }
-    }
+    _cols = (j && j.items) || [];
+    for (const it of _cols) _meta[it.name] = it;
     return _cols;
 }
 
@@ -1067,8 +1092,18 @@ function setShape(shape) {
      * hierarchical, threw all of it away and silently rebuilt the starting
      * proposal.  Shape is one field of the description; changing it edits that
      * field. */
-    if (_mode === "handover" && shape && _task
-        && _task.schema === "molbuilder/task@1") {
+    /* WRITING IT THROUGH IS NOT THE HAND-OVER'S PRIVILEGE.  This required
+     * `_mode === "handover"`, so on a SAVED description the buttons repainted
+     * and the model was never touched: the page showed `flat` chosen while the
+     * buffer Save posts still said `hierarchical`, and the write was silently
+     * the old value.  `task-setup.md` § 4 says the shape is free to change
+     * before the first produce -- a refusal would have been a fair answer, and
+     * showing the new choice while writing the old one is not one.
+     *
+     * The condition that matters is whether there is a DESCRIPTION to edit,
+     * which is what `_task.schema` asks; the hand-over branch below is about
+     * BUILDING one, and only that has to happen once. */
+    if (shape && _task && _task.schema === "molbuilder/task@1") {
         _task.shape = shape;
         syncFromModel();
         refreshSave();

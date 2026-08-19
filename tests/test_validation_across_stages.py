@@ -370,11 +370,17 @@ def test_the_sequence_warnings_reach_the_prep_surface(tmp_path):
     D.write_description(
         D.build_description(
             struct, SiestaConfig(system_label="JOB"),
+            # Stage b resolves identically AND starts clean -- the one case
+            # § 6.6a warns about, and since 2026-08-18 the only way to reach
+            # it: `continue` is the default, and two identical rungs where the
+            # second continues are simply *more steps at these settings*.
             _ladder(("a", {"mesh_cutoff": 200.0}),
-                    ("b", {"mesh_cutoff": 200.0})),
+                    ("b", {"mesh_cutoff": 200.0, "restart": "clean"})),
             engine="siesta", shape="hierarchical",
             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
+    from conftest import write_pseudos
+    write_pseudos(dest, ["H"])
     (dest / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))

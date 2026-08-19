@@ -169,7 +169,7 @@ def test_the_rendered_text_is_what_gets_written(tmp_path):
                          if not l.lstrip("# ").startswith("generated-at"))
     script = tmp_path / "job.fdf"
     script.write_text("SystemLabel job\n")
-    rendered = render_run_wrapper(script, env="molbuilder-siesta")
+    rendered = render_run_wrapper(script, env="molbuilder-siesta", resources=Resources())
     written = write_run_wrapper(script, resources=Resources(), env="molbuilder-siesta", emit_sbatch=False)
     assert _logic(written.read_text()) == _logic(rendered)
 

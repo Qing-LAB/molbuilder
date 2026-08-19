@@ -1185,7 +1185,7 @@ bootstrap, not a program**).
    > **Still owed:** § 7.2's *second* half — *a replacing produce checkpoints
    > first, then removes what the description no longer contains*. Today a
    > disabled stage's deck stays behind, describing a calculation the
-   > description does not have. That needs `molbuilder snapshot` in the produce
+   > description does not have. That needs `molbuilder checkpoint` in the produce
    > path and is a bigger question than the transaction (§ 7.2 itself notes the
    > binary half of checkpointing *"is not cheap, today"*).
    >

@@ -24,7 +24,6 @@ Defaults are tuned for "build a small/medium molecule and relax it":
 
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -33,322 +32,62 @@ from .siesta import _validate_basename     # shared with SiestaConfig
 
 
 # --------------------------------------------------------------------- #
-#  Staged optimization (task #534)                                      #
+#  The ladder's per-tier science                                        #
 # --------------------------------------------------------------------- #
-#
-# Per ``docs/engines/pyscf.md`` § "In-script staged
-# optimization", every PySCF script runs up to N stages internally
-# (default 3).  Each stage carries its own SCF tolerance + 5 geomeTRIC
-# convergence knobs + max-step cap; the generated script's main loop
-# walks ``STAGES`` and skips disabled entries, carrying ``mol``
-# forward between enabled stages.  This commit lands the DATA layer
-# only — the generator + form UI consume it in commit-family
-# follow-ups (parse-module H4 is done; #534 commit 2 = form schema,
-# commit 3 = generator rewrite).
-#
-# Naming convention: stages are addressed by their ``name`` field
-# (default ``stage1`` / ``stage2`` / ``stage3``) so per-stage output
-# files end up ``<JOB>_stage1_geom_optim.xyz``, etc.  Keep names
-# ``[A-Za-z0-9_]+`` (filesystem-safe; no dots, no whitespace).
-#
-# Units recap (geomeTRIC source-of-truth):
-#   * ``gmax`` / ``grms``  — Hartree / Bohr
-#   * ``dmax`` / ``drms``  — Angstrom (NOT Bohr — long-standing
-#                            geomeTRIC doc bug; the source uses Å)
-#   * ``etol``             — Hartree
-#   * ``conv_tol``         — Hartree (SCF energy convergence —
-#                            ``mf.conv_tol``, separate from geomeTRIC)
+
+#: What each rung of a PySCF ladder is tuned to, tier by tier.
+#:
+#: Read across from ``SIESTA_STAGE_PRESETS``: one table per engine, keyed by
+#: the same three tiers, and ``<engine>/stages.py::default_<engine>_stages``
+#: turns it into the shipped ladder of :class:`~molbuilder.task.Stage`
+#: objects.  The two engines differ in which parameters a tier names and in
+#: nothing else (`stages.md` § 1.1a).
+#:
+#: **Every number is `tuning.md` § 2.4's and § 2.5's**, column by column --
+#: loose preopt, publishable, tight.  That table is what a reviewer is
+#: pointed at, so it is what this states; a value here that disagrees with it
+#: is a bug here rather than a second opinion.
+#:
+#: The keys are catalogue items, which is what makes them legal ``overrides``
+#: on a stage (`stages.md` § 2).  ``restart`` is NOT among them: it follows
+#: from a rung's POSITION rather than its tier (`run-identity.md` § 4 rule
+#: 3), so ``default_pyscf_stages`` sets it -- exactly where SIESTA's twin
+#: does.
+#:
+#: Units: ``geom_gmax`` / ``geom_grms`` in Ha/Bohr; ``geom_dmax`` /
+#: ``geom_drms`` in Angstrom -- NOT Bohr, a long-standing geomeTRIC doc bug
+#: whose source uses Angstrom; ``geom_etol`` and ``scf_conv_tol`` in Hartree.
+PYSCF_STAGE_PRESETS: Dict[int, Dict[str, Any]] = {
+    1: {   # loose preopt
+        "scf_conv_tol":   1.0e-7,
+        "geom_gmax":      2.0e-3,
+        "geom_grms":      1.3e-3,
+        "geom_dmax":      7.2e-3,
+        "geom_drms":      4.8e-3,
+        "geom_etol":      1.0e-5,
+        "geom_max_steps": 50,
+    },
+    2: {   # publishable -- geomeTRIC's GAU preset
+        "scf_conv_tol":   1.0e-9,
+        "geom_gmax":      4.5e-4,
+        "geom_grms":      3.0e-4,
+        "geom_dmax":      1.8e-3,
+        "geom_drms":      1.2e-3,
+        "geom_etol":      1.0e-6,
+        "geom_max_steps": 200,
+    },
+    3: {   # tight
+        "scf_conv_tol":   1.0e-10,
+        "geom_gmax":      2.0e-4,
+        "geom_grms":      1.0e-4,
+        "geom_dmax":      1.0e-3,
+        "geom_drms":      5.0e-4,
+        "geom_etol":      1.0e-6,
+        "geom_max_steps": 100,
+    },
+}
 
 
-@dataclass
-class StageSpec:
-    """One stage of the in-script PySCF optimization loop.
-
-    Defaults are the geomeTRIC GAU set (publication-quality middle
-    tier per the publication-guide table).  Override on construction
-    to build loose / TIGHT / etc. tiers; the publication-guide tier
-    table is the canonical reference.
-
-    Per-field ``metadata`` (label / unit / help / step / range) is
-    walked by ``web/blueprints/_shared.dataclass_to_form_schema``
-    when it emits the ``stage-table`` schema for
-    ``PySCFConfig.stages`` — the JS renderer (commit 3) uses it to
-    label table columns and pick input widget kinds.
-    """
-    name:      str = field(default="stage1", metadata={
-        "label":      "Name",
-        "help":       "filename suffix (``<JOB>_<name>_geom_optim.xyz``); "
-                      "must match [A-Za-z0-9_]+",
-        "pattern":    r"^[A-Za-z0-9_]+$",
-    })
-    enabled:   bool = field(default=True, metadata={
-        "label":      "Run",
-        "help":       "run this stage; uncheck to skip + carry the prior "
-                      "stage's geometry forward",
-    })
-    conv_tol:  float = field(default=1.0e-9, metadata={
-        "label":      "SCF tol", "unit": "Hartree", "step": "any",
-        "engine_key": "mf.conv_tol",
-        "help":       "SCF energy convergence (Hartree)",
-    })
-    gmax:      float = field(default=4.5e-4, metadata={
-        "label":      "‖F‖∞", "unit": "Ha/Bohr", "step": "any",
-        "engine_key": "geomeTRIC convergence_gmax",
-        "help":       "max-gradient convergence (Ha/Bohr)",
-    })
-    grms:      float = field(default=3.0e-4, metadata={
-        "label":      "‖F‖RMS", "unit": "Ha/Bohr", "step": "any",
-        "engine_key": "geomeTRIC convergence_grms",
-        "help":       "RMS-gradient convergence (Ha/Bohr)",
-    })
-    dmax:      float = field(default=1.8e-3, metadata={
-        "label":      "Δx max", "unit": "Å", "step": "any",
-        "engine_key": "geomeTRIC convergence_dmax",
-        "help":       "max-displacement convergence (Å)",
-    })
-    drms:      float = field(default=1.2e-3, metadata={
-        "label":      "Δx RMS", "unit": "Å", "step": "any",
-        "engine_key": "geomeTRIC convergence_drms",
-        "help":       "RMS-displacement convergence (Å)",
-    })
-    etol:      float = field(default=1.0e-6, metadata={
-        "label":      "ΔE tol", "unit": "Hartree", "step": "any",
-        "engine_key": "geomeTRIC convergence_energy",
-        "help":       "energy-step convergence (Hartree)",
-    })
-    max_steps: int = field(default=200, metadata={
-        "label":      "Max steps", "range": (1, 10000),
-        "engine_key": "geomeTRIC maxsteps",
-        "help":       "max geomeTRIC iterations in this stage",
-    })
-    # Per-stage non-convergence policy (task #534 commit 6).
-    # Three choices for what to do if ``max_steps`` runs out
-    # without geomeTRIC's 5 convergence criteria all being met:
-    #
-    #   "proceed"  — take the partial mol_eq and hand off to the
-    #                next stage anyway.  Emits a WARN line to
-    #                stdout + .molwatch.log.  Sensible for loose
-    #                warm-up stages where the next tier can
-    #                refine from "not bad" geometry.
-    #
-    #   "continue" — re-enter optimize() on THIS stage's same
-    #                convergence targets, warm-started from the
-    #                current geometry.  Repeat up to
-    #                ``continue_retries`` times; if still not
-    #                converged, fall through to "halt".  Useful
-    #                for cheap stages where you have budget to
-    #                give and suspect the optimizer was almost
-    #                there but ran out of steps.
-    #
-    #   "halt"     — raise RuntimeError + stop the whole script.
-    #                Right for publishable / TIGHT tiers where
-    #                failure is a real signal (SCF instability,
-    #                wrong functional/basis, or quasi-flat PES).
-    #                Silent proceed risks shipping wrong physics.
-    #
-    # The LAST enabled stage's value is IGNORED at script-render
-    # time and forced to "halt" -- the script's contract is to
-    # produce a converged answer, so the final tier must succeed
-    # or raise.  Setting "halt" explicitly on a non-final stage
-    # AND on the next-tier's expected failure mode is the
-    # publication-defensible default.
-    on_nonconvergence: str = field(default="halt", metadata={
-        "label":      "If max_steps runs out",
-        "choices":    ("proceed", "continue", "halt"),
-        "engine_key": "(molbuilder: per-stage non-convergence policy)",
-        "help":       "what to do if geomeTRIC's 5 criteria aren't all "
-                      "met when max_steps runs out: proceed (move on to "
-                      "next stage with the partial geometry), continue "
-                      "(extend this stage with more iterations), halt "
-                      "(raise + stop the whole script).  The LAST "
-                      "enabled stage's value is ignored; the final tier "
-                      "always halts on failure.",
-    })
-    continue_retries: int = field(default=1, metadata={
-        "label":      "Continue retries", "range": (1, 5),
-        "engine_key": "(molbuilder: max optimize() re-entries when "
-                      "on_nonconvergence=continue)",
-        "help":       "only meaningful when on_nonconvergence='continue': "
-                      "how many additional max_steps batches to spend "
-                      "before falling through to halt.  Total step "
-                      "budget = max_steps * (1 + continue_retries).",
-    })
-
-
-def _default_stages() -> List[StageSpec]:
-    """Three-stage publication-guide default.
-
-    Tier 1 = loose pre-opt (enabled; cheap structure cleanup).
-    Tier 2 = publishable GAU (enabled; what papers cite).
-    Tier 3 = TIGHT GAU_TIGHT (DISABLED by default; opt-in for vib/
-             IR/NEB where tight Hessians matter).
-
-    Most users tick 1 + 2 and leave 3 off.  Power users override any
-    knob per stage via the form (lands in #534 commit 2)."""
-    # Per-stage non-convergence defaults (#534 commit 6a):
-    #
-    #   stage1 = proceed   — loose warm-up; "good enough" geometry
-    #                        is the goal, hand off to publishable.
-    #   stage2 = halt      — publishable tier; failure here is a
-    #                        real signal (don't silently move to
-    #                        tighter tols, which won't help).
-    #   stage3 = halt      — TIGHT tier; final stage anyway, the
-    #                        value is force-ignored at render time
-    #                        (last stage always halts).
-    #
-    # The user can override any of these in the form's stage-table
-    # widget; the LAST enabled stage's value is shown disabled +
-    # labelled "halt (final)" so the contract stays explicit.
-    return [
-        StageSpec(name="stage1", enabled=True,
-                  conv_tol=1.0e-7,
-                  gmax=2.0e-3, grms=1.3e-3,
-                  dmax=7.2e-3, drms=4.8e-3,
-                  etol=1.0e-5,
-                  max_steps=50,
-                  on_nonconvergence="proceed"),
-        StageSpec(name="stage2", enabled=True,
-                  conv_tol=1.0e-9,
-                  gmax=4.5e-4, grms=3.0e-4,
-                  dmax=1.8e-3, drms=1.2e-3,
-                  etol=1.0e-6,
-                  max_steps=200,
-                  on_nonconvergence="halt"),
-        # stage3 = TIGHT (crystal-practical), 2026-06-23 realignment:
-        # Pre-2026-06-23 stage3 carried geomeTRIC's GAU_TIGHT preset
-        # (gmax 1.5e-5 Ha/Bohr ~= 0.00077 eV/Å, dmax 6e-5 Å).  Those
-        # are Gaussian's *very-tight* values intended for small-
-        # molecule vibrational analysis / IR intensities / TS search
-        # / NEB barriers -- they CHASE SCF NOISE on any system with
-        # >50 metal atoms and effectively never converge for surfaces
-        # or interfaces.  The 2026-06-23 BDT-Au junction debugging
-        # surfaced this when the user asked "is this practical for
-        # large crystal systems?".
-        #
-        # Realigned to community-standard tight thresholds for
-        # production crystal / surface / interface work:
-        #   gmax 2e-4 Ha/Bohr  ~= 0.01  eV/Å   (VASP EDIFFG=-0.01)
-        #   grms 1e-4 Ha/Bohr  ~= 0.005 eV/Å
-        #   dmax 1e-3 Å        (~10x looser than GAU_TIGHT)
-        #   drms 5e-4 Å
-        #   etol 1e-6 Ha       (unchanged; SCF noise floor)
-        # For molecule-scale vib/IR/TS work the user can override via
-        # the form's stage-table or --stages-json -- the tier doc
-        # (docs/engines/tuning.md § 2.3) carries the
-        # very-tight (0.001 eV/Å) values for that regime explicitly.
-        StageSpec(name="stage3", enabled=False,
-                  conv_tol=1.0e-10,
-                  gmax=2.0e-4, grms=1.0e-4,
-                  dmax=1.0e-3, drms=5.0e-4,
-                  etol=1.0e-6,
-                  max_steps=100,
-                  on_nonconvergence="halt"),
-    ]
-
-
-def stages_from_configs(rungs) -> List[StageSpec]:
-    """**The derivation** (P2, 2026-08-17) — resolved per-rung configs → the
-    render-time ladder.
-
-    ``rungs`` is ``[(name, enabled, PySCFConfig), ...]``, one entry per stage of
-    ``task.json``, each config already resolved by `prep` step 2 (the
-    description ⊕ that stage's overrides).  The result is what
-    ``_emit_stages_loop`` reads.
-
-    This is the whole of *"`PySCFConfig.stages` survives as a DERIVED field"*
-    (`engines/stages.md` § 1.1a).  Nobody authors the returned list; it is
-    computed on the way to the deck and consumed one step later, so it cannot
-    carry a value the description does not state — which is the test § 1.1a
-    sets for whether a structure counts as a second declaration.
-
-    The field-by-field mapping is P1's table, in the one direction it runs.
-    ``conv_tol`` reads ``scf_conv_tol`` rather than a ``geom_`` twin because
-    the two were always the same knob: `StageSpec.conv_tol` and the catalogue's
-    ``scf_conv_tol`` both declare ``engine_key = "mf.conv_tol"``, and that
-    duplication is what closing the § 1.1 exception removed.
-    """
-    return [
-        StageSpec(name=name, enabled=bool(enabled),
-                  conv_tol=cfg.scf_conv_tol,
-                  gmax=cfg.geom_gmax, grms=cfg.geom_grms,
-                  dmax=cfg.geom_dmax, drms=cfg.geom_drms,
-                  etol=cfg.geom_etol, max_steps=cfg.geom_max_steps,
-                  on_nonconvergence=cfg.on_nonconvergence,
-                  continue_retries=cfg.geom_continue_retries)
-        for name, enabled, cfg in rungs
-    ]
-
-
-def validate_stages(stages: List[StageSpec]) -> List[str]:
-    """Return a list of error strings; empty == OK.
-
-    The validator is intentionally permissive on per-knob ranges
-    (publication-quality tiers span 5 orders of magnitude; clamping
-    locks out legitimate power-user choices).  It only rejects what
-    would corrupt the loop or produce a file-name collision:
-
-      * Must contain at least one enabled stage (an all-disabled
-        list is indistinguishable from ``optimize=False`` and would
-        emit a no-op script).
-      * Stage names must be filesystem-safe (``[A-Za-z0-9_]+``) and
-        unique within the list (otherwise per-stage output files
-        collide).
-      * Every numeric knob must be strictly positive (zero or
-        negative breaks geomeTRIC's convergence test).
-      * ``max_steps`` must be a positive integer.
-    """
-    import re as _re
-    errors: List[str] = []
-    if not stages:
-        errors.append("stages: list is empty; need at least 1 stage")
-        return errors
-    if not any(s.enabled for s in stages):
-        errors.append(
-            "stages: no stage is enabled; either enable one or set "
-            "optimize=False to skip the optimization loop entirely")
-    seen_names = set()
-    name_re = _re.compile(r"^[A-Za-z0-9_]+$")
-    for i, s in enumerate(stages):
-        prefix = f"stages[{i}]"
-        if not isinstance(s.name, str) or not name_re.match(s.name or ""):
-            errors.append(
-                f"{prefix}.name = {s.name!r}: must match [A-Za-z0-9_]+ "
-                f"(used as filename suffix)")
-        elif s.name in seen_names:
-            errors.append(
-                f"{prefix}.name = {s.name!r}: duplicate; per-stage "
-                f"output files would collide")
-        else:
-            seen_names.add(s.name)
-        for knob in ("conv_tol", "gmax", "grms", "dmax", "drms", "etol"):
-            v = getattr(s, knob)
-            if not isinstance(v, (int, float)) or v <= 0:
-                errors.append(
-                    f"{prefix}.{knob} = {v!r}: must be a positive number")
-        if not isinstance(s.max_steps, int) or s.max_steps <= 0:
-            errors.append(
-                f"{prefix}.max_steps = {s.max_steps!r}: "
-                f"must be a positive integer")
-        # 6a: per-stage non-convergence policy + retries
-        if s.on_nonconvergence not in ("proceed", "continue", "halt"):
-            errors.append(
-                f"{prefix}.on_nonconvergence = {s.on_nonconvergence!r}: "
-                f"must be one of 'proceed' / 'continue' / 'halt'")
-        if (not isinstance(s.continue_retries, int)
-                or s.continue_retries < 1 or s.continue_retries > 5):
-            errors.append(
-                f"{prefix}.continue_retries = {s.continue_retries!r}: "
-                f"must be an integer in [1, 5]")
-    return errors
-
-
-# Stage-strategy presets — toggle the ``enabled`` flag on the default
-# three-stage ladder.  Mirrored in the JS form-schema (web/static/lib/
-# form-schema.js ``STAGE_STRATEGY_PRESETS``); keep the two in sync.
-# CLI (``--stage-strategy``) and web (preset dropdown) both apply
-# these to the canonical _default_stages() ladder so the user gets the
-# same behavior across surfaces.  The values are 0-indexed booleans
-# aligned to stages[0..N-1]; a stage index past the end is ignored.
 #: § 4 rule 1 — PySCF's identity group.
 #:
 #: Read across from ``SIESTA_RESTART_GROUP`` and the contract's point is
@@ -358,21 +97,21 @@ def validate_stages(stages: List[StageSpec]) -> List[str]:
 #: An empty tuple alone would read as "nothing is bound", which is the
 #: opposite of true.
 #:
-#: ⚠ **Rule 2 is not satisfied here yet, and this is the honest place to say
-#: so.** PySCF has no ``restart`` field: the resume branches are gated on
-#: ``chkfile`` and ``save_optimized_xyz``, which are *write* flags doubling as
-#: read gates (``pyscf/input.py`` says so at the ``_optimized.xyz`` branch).
-#: So "write a checkpoint but do not resume from one" — which is exactly what
-#: ``restart='clean'`` means on a rerun — cannot be expressed. Separating the
-#: read gate from the write gate changes emitted-script behaviour and needs
-#: its own science review, so it is P4's, and
-#: ``tests/test_restart_group.py`` carries a strict xfail naming it.
+#:
+#: **Rule 2 is answered by the ``restart`` field below**, and by the same one
+#: field SIESTA answers it with: two values, ``clean`` and ``continue``, and
+#: a rerun that says ``clean`` writes its checkpoint without reading the one
+#: already beside it. Before that field existed the resume branches were
+#: gated on ``chkfile`` and ``save_optimized_xyz`` -- *write* flags doubling
+#: as read gates -- so *"write a checkpoint but do not resume from one"* was
+#: a sentence this engine could not say.
 PYSCF_RESTART_GROUP = RestartGroup(
     literal="JOB",
     keys=(),
     mechanism="generated control flow: mf.chkfile + init_guess='chkfile' "
               "when the file exists, and <JOB>_optimized.xyz overriding the "
               "literal geometry",
+    field="job_name",
 )
 
 
@@ -381,79 +120,6 @@ STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
     "loose-only":  (True,  False, False),   # stage1 only (cheap warm-up)
     "vib-quality": (True,  True,  True),    # all three (TIGHT for vib/IR/NEB)
 }
-
-
-def apply_stage_strategy(
-    stages: List[StageSpec], strategy: str
-) -> List[StageSpec]:
-    """Return a copy of *stages* with ``enabled`` flags overlaid from
-    the named preset in :data:`STAGE_STRATEGY_PRESETS`.
-
-    Raises ``ValueError`` on an unknown strategy.  Non-enabled fields
-    (convergence targets, max_steps, on_nonconvergence, ...) are
-    preserved verbatim from the input list -- the preset only chooses
-    which stages run, not how they're tuned.  A stage index past the
-    preset's length is left at its current ``enabled`` value.
-    """
-    import dataclasses as _dc
-    if strategy not in STAGE_STRATEGY_PRESETS:
-        valid = ", ".join(sorted(STAGE_STRATEGY_PRESETS))
-        raise ValueError(
-            f"unknown stage strategy {strategy!r}; choose from: {valid}")
-    enables = STAGE_STRATEGY_PRESETS[strategy]
-    out: List[StageSpec] = []
-    for i, s in enumerate(stages):
-        if i < len(enables):
-            out.append(_dc.replace(s, enabled=enables[i]))
-        else:
-            out.append(_dc.replace(s))
-    return out
-
-
-def stages_from_dicts(payload: Any) -> List[StageSpec]:
-    """Coerce a list-of-dicts (e.g. parsed from ``--stages-json``) into
-    a ``List[StageSpec]``.
-
-    Unknown keys are silently ignored (matches the web layer's
-    ``_shared._coerce_dataclass_list`` behavior, which lets users
-    paste a payload from one PySCFConfig version into another that
-    has slightly different per-stage fields).  Missing keys fall
-    back to ``StageSpec``'s field defaults.  Type coercion is
-    intentionally permissive (``"true"`` -> True, ``"1e-4"`` -> 1e-4)
-    so JSON-from-shell payloads round-trip cleanly.
-
-    Raises ``TypeError`` if *payload* is not a list, or if any item
-    is not a dict.
-    """
-    if not isinstance(payload, list):
-        raise TypeError(
-            f"stages payload must be a list of dicts, got "
-            f"{type(payload).__name__}")
-    spec_fields = {f.name: f for f in dataclasses.fields(StageSpec)}
-    out: List[StageSpec] = []
-    for i, item in enumerate(payload):
-        if not isinstance(item, dict):
-            raise TypeError(
-                f"stages[{i}]: expected dict, got {type(item).__name__}")
-        kwargs: Dict[str, Any] = {}
-        for k, v in item.items():
-            f = spec_fields.get(k)
-            if f is None:
-                continue
-            t = f.type
-            if t is bool or t == "bool":
-                if isinstance(v, str):
-                    kwargs[k] = v.strip().lower() in ("true", "1", "yes", "on")
-                else:
-                    kwargs[k] = bool(v)
-            elif t is int or t == "int":
-                kwargs[k] = int(v)
-            elif t is float or t == "float":
-                kwargs[k] = float(v)
-            else:
-                kwargs[k] = v
-        out.append(StageSpec(**kwargs))
-    return out
 
 
 @dataclass
@@ -479,8 +145,10 @@ class PySCFConfig:
     # section at the end.  Workflow-group cards inside the new
     # section split the merged fields cleanly:
     #   * Profile card -- optimize toggle + optimizer choice
-    #   * Stage card   -- per-stage convergence ladder (cfg.stages,
-    #                     rendered as a stage-table widget)
+    #   * Stage card   -- THIS rung's convergence knobs (the fields
+    #                     marked ``workflow_group = "stage"``).  The ladder
+    #                     itself is not here: it is declared in task.json
+    #                     and each rung is its own deck (`stages.md` § 1.1a)
     #   * Budget card  -- max_memory_mb + threads + use_gpu + verbose
     #                     + chkfile + log_file + verbose_comments
     _form_section_order = (
@@ -538,8 +206,16 @@ class PySCFConfig:
         "section": "System",
         "label":   "Use point-group symmetry",
         "engine_key":  'gto.M(symmetry=...)',
-        "help": "enable point-group symmetry; faster but rarely matches "
-                "builder-output geometry exactly",
+        "help": (
+            "enable point-group symmetry; faster but rarely matches "
+            "builder-output geometry exactly A symmetric molecule can run "
+            "2-10x faster with this on, because PySCF skips the integrals "
+            "symmetry makes redundant. It is unforgiving of numerical "
+            "drift, though: builder output rarely places atoms on the "
+            "symmetry elements to the precision PySCF checks, and a near "
+            "miss is refused rather than approximated. Leave it off "
+            "unless you know the geometry is exact."
+        ),
     })
 
     # ---------------- Method (main run) ----------------
@@ -558,17 +234,25 @@ class PySCFConfig:
         "workflow_group": "profile",
         "label":   "Functional",
         "engine_key":  'mf.xc = ...',
-        "help": "XC functional, written as ``mf.xc`` (B3LYP / PBE / PBE0 / "
-                "M06-2X / wB97X-D / ...).\n"
-                "DEVIATION: PySCF's own default is 'LDA,VWN'.  That is the "
-                "fallback ``dft.RKS`` carries when nothing has been set, not "
-                "a recommendation -- setting mf.xc is expected of every real "
-                "calculation.  We ship B3LYP, the most widely used hybrid in "
-                "molecular chemistry (Becke, J. Chem. Phys. 98, 5648 (1993); "
-                "Lee, Yang & Parr, Phys. Rev. B 37, 785 (1988)), and it pairs "
-                "with the D3(BJ) dispersion this project also defaults to -- "
-                "which is what repairs B3LYP's known weakness on non-covalent "
-                "interactions.",
+        "help": (
+            "XC functional, written as ``mf.xc`` (B3LYP / PBE / PBE0 / "
+            "M06-2X / wB97X-D / ...). DEVIATION: PySCF's own default is "
+            "'LDA,VWN'. That is the fallback ``dft.RKS`` carries when "
+            "nothing has been set, not a recommendation -- setting mf.xc "
+            "is expected of every real calculation. This catalogue starts "
+            "at B3LYP, the most widely used hybrid in molecular chemistry "
+            "(Becke, J. Chem. Phys. 98, 5648 (1993); Lee, Yang & Parr, "
+            "Phys. Rev. B 37, 785 (1988)), and it pairs with the D3(BJ) "
+            "dispersion this project also defaults to -- which is what "
+            "repairs B3LYP's known weakness on non-covalent interactions. "
+            "Pure GGAs (PBE, BLYP) run 2-3x faster than a hybrid because "
+            "they need no exact-exchange build. What they lose with it is "
+            "the partial cancellation of self-interaction error that "
+            "exact exchange provides, so a pure functional suffers more "
+            "of it -- which surfaces as underestimated gaps and "
+            "over-delocalised anions. Worth taking for a "
+            "pre-optimization, rarely for the number you publish."
+        ),
     })
     basis: str = field(default="def2-SVP", metadata={
         "category": ("method", "accuracy"),
@@ -578,7 +262,7 @@ class PySCFConfig:
         "engine_key":  'gto.M(basis=...)',
         "help": (
             "Gaussian basis set.  This is NOT a per-stage knob -- "
-            "the convergence ladder (cfg.stages) varies tolerances, "
+            "the convergence ladder varies tolerances, "
             "not the level of theory.  Pick once based on the chemistry.\n"
             "Per-tier:\n"
             "  • screening / loose preopt: def2-SVP (current default)\n"
@@ -632,18 +316,22 @@ class PySCFConfig:
         "workflow_group": "profile",
         "label":   "Density fitting",
         "engine_key":  'mf = mf.density_fit()',
-        "help": "Approximate the four-centre electron-repulsion integrals by "
-                "three-centre ones over an auxiliary basis (also called "
-                "resolution of the identity), which is what makes the "
-                "Coulomb and exchange build cheap.\n"
-                "DEVIATION: PySCF applies NO density fitting unless "
-                "``mf.density_fit()`` is called; we default it on.  The "
-                "speed-up is large and the error it introduces sits well "
-                "below the error of the orbital basis itself when the "
-                "auxiliary set matches the basis -- which is why it is "
-                "standard practice rather than a shortcut.  Turn it off when "
-                "you need exact-integral reference numbers, or when "
-                "comparing against a published value that did not use it.",
+        "help": (
+            "Approximate the four-centre electron-repulsion integrals by "
+            "three-centre ones over an auxiliary basis (also called "
+            "resolution of the identity), which is what makes the Coulomb "
+            "and exchange build cheap. DEVIATION: PySCF applies NO "
+            "density fitting unless ``mf.density_fit()`` is called; we "
+            "default it on. The speed-up is large and the error it "
+            "introduces sits well below the error of the orbital basis "
+            "itself when the auxiliary set matches the basis -- which is "
+            "why it is standard practice rather than a shortcut. Turn it "
+            "off when you need exact-integral reference numbers, or when "
+            "comparing against a published value that did not use it. In "
+            "practice the SCF iteration cost drops by roughly 5-10x, and "
+            "for organic systems the total-energy error it introduces "
+            "stays under about 0.1 kcal/mol."
+        ),
     })
     dispersion: Optional[str] = field(default="d3bj", metadata={
         "category": ("method",),
@@ -670,17 +358,22 @@ class PySCFConfig:
         # The zero-damping variant a user picking "d3" means is spelled
         # ``d3zero``, so the choice is renamed rather than dropped.
         "choices": ("d3bj", "d3zero", "d4", "none"),
-        "help": 'Grimme dispersion correction, written as ``mf.disp``.\n'
-                "d3bj (default) is D3 with Becke-Johnson damping; d3zero is "
-                "D3 with the original zero damping; d4 is the newer, "
-                "charge-dependent D4.  'none' disables the correction.\n"
-                "BJ damping is the usual recommendation for D3 -- it does not "
-                "go to zero at short range, which is where zero damping tends "
-                "to under-bind.  Use d3zero only to reproduce a published "
-                "number that used it.\n"
-                "SOURCE: the accepted spellings are PySCF 2.13's own "
-                "(pyscf/scf/dispersion.py); a value outside that set raises "
-                "NotImplementedError at run time, not at setup.",
+        "help": (
+            "Grimme dispersion correction, written as ``mf.disp``. d3bj "
+            "(default) is D3 with Becke-Johnson damping; d3zero is D3 "
+            "with the original zero damping; d4 is the newer, "
+            "charge-dependent D4. 'none' disables the correction. BJ "
+            "damping is the usual recommendation for D3 -- it does not go "
+            "to zero at short range, which is where zero damping tends to "
+            "under-bind. Use d3zero only to reproduce a published number "
+            "that used it. SOURCE: the accepted spellings are PySCF "
+            "2.13's own (pyscf/scf/dispersion.py); a value outside that "
+            "set raises NotImplementedError at run time, not at setup. It "
+            "matters most for biomolecules and anything weakly bound: "
+            "pi-stacking, van der Waals contacts and hydrogen-bond "
+            "geometries are all under-bound without a correction, and the "
+            "cost of adding one is negligible."
+        ),
     })
     # Effective Core Potential -- TWO plain fields, ONE format each.
     #
@@ -739,7 +432,13 @@ class PySCFConfig:
         "engine_key":  'mf.conv_tol',
         "range": (1e-12, 1e-4),
         "tier":  "advanced",
-        "help":  "SCF convergence tolerance on the energy (Hartree)",
+        "help": (
+            "SCF convergence tolerance on the energy (Hartree) Tighten it "
+            "(1e-10) when forces look noisy, or when DFT energies drift "
+            "between geometry steps. Both are symptoms of an SCF that "
+            "stopped while the density was still moving, which shows up "
+            "in the derivative long before it shows up in the energy."
+        ),
     })
     scf_conv_tol_grad: float = field(default=0.0, metadata={
         "category": ("accuracy",),
@@ -799,7 +498,7 @@ class PySCFConfig:
         "tier":  "advanced",
         "help":  "The most SCF cycles PySCF will run for one single-point "
                  "before giving up.\n"
-                 "DEVIATION: PySCF's own default is 50; we ship 100.  This "
+                 "DEVIATION: PySCF's own default is 50; this catalogue starts at 100.  This "
                  "is a RUNAWAY GUARD, not a target -- the two failure modes "
                  "are not symmetric.  Too high wastes some CPU on a run that "
                  "was not going to converge anyway; too low stops a "
@@ -836,7 +535,7 @@ class PySCFConfig:
         "help":  "Density of the numerical grid the exchange-correlation "
                  "energy is integrated on: 0 = coarse, 3 = screening, "
                  "4 = production, 5 = tight, 9 = ultra.\n"
-                 "DEVIATION: PySCF's own default is 3; we ship 4.  Level 3 "
+                 "DEVIATION: PySCF's own default is 3; this catalogue starts at 4.  Level 3 "
                  "is fine for an energy, but the quadrature error does not "
                  "cancel in derivatives -- it shows up in forces and, most "
                  "visibly, in vibrational frequencies, where grid noise "
@@ -919,17 +618,16 @@ class PySCFConfig:
     })
     # ---------------- geomeTRIC convergence (per-stage knobs) ----------
     #
-    # P1, 2026-08-17.  These eight were fields of ``StageSpec`` -- an engine
-    # config carrying its own ladder -- which `engines/stages.md` § 1.1 forbids
-    # and granted PySCF a TEMPORARY exception to, gated on *"until the SIESTA
-    # path works"*.  They are flat here now, exactly as SIESTA's per-stage
-    # knobs (``relax_force_tol``, ``relax_max_displ``, …) always were: the
-    # class holds ONE value, and `task.json`'s stages override it per rung.
+    # **Flat, one value each** -- exactly as SIESTA's per-rung knobs
+    # (``relax_force_tol``, ``relax_max_displ``, …) are.  An engine config
+    # holds what ONE run does; `task.json`'s stages override it per rung, and
+    # a ladder is N of these decks (`engines/stages.md` § 1.1, § 1.1a).  A
+    # list-of-rungs field here would be a second place to declare the ladder,
+    # free to disagree with the description -- which is what § 1.1 forbids.
     #
-    # The ninth, ``StageSpec.conv_tol``, is NOT here because it already was:
-    # ``scf_conv_tol`` above declares the same ``engine_key`` (``mf.conv_tol``).
-    # One knob had two homes agreeing by coincidence -- the drift § 1.1 exists
-    # to prevent, living inside the exception § 1.1 granted.
+    # The SCF tolerance is not among them because it is already above:
+    # ``scf_conv_tol`` declares ``mf.conv_tol``, and a per-stage twin of it
+    # would be the same knob with two homes.
     geom_gmax: float = field(default=4.5e-4, metadata={
         "skip_cli": True,
         "category": ("accuracy",),
@@ -1006,12 +704,15 @@ class PySCFConfig:
         "choices": ("proceed", "continue", "halt"),
         "engine_key": "(molbuilder: per-stage non-convergence policy)",
         "tier": "advanced",
-        "help": ("what to do if geomeTRIC's 5 criteria aren't all met when "
-                 "max_steps runs out: proceed (move on to next stage with "
-                 "the partial geometry), continue (extend this stage with "
-                 "more iterations), halt (raise + stop the whole script).  "
-                 "The LAST enabled stage's value is ignored; the final tier "
-                 "always halts on failure."),
+        "help": (
+            "what to do if geomeTRIC's 5 criteria aren't all met when "
+            "max_steps runs out: proceed (accept the partial geometry and "
+            "let the next rung start from it), continue (extend this rung "
+            "with more iterations), halt (raise rather than hand on a "
+            "geometry nobody accepted). This is THIS rung's answer: a "
+            "ladder is N decks and N jobs, so each deck carries its own "
+            "policy and none of them can see the others."
+        ),
     })
     geom_continue_retries: int = field(default=1, metadata={
         "skip_cli": True,
@@ -1031,54 +732,6 @@ class PySCFConfig:
                  "from Resources.continue_retries, which is the WRAPPER's "
                  "warm-restart count and a different thing entirely."),
     })
-
-    # 3-stage in-script optimization (task #534).  Per-stage SCF +
-    # geomeTRIC convergence ladder lives here; the generator's
-    # ``_emit_stages_loop`` walks the enabled stages, applies each
-    # row's knobs to ``mf.conv_tol`` + the six geomeTRIC convergence
-    # kwargs (gmax/grms/dmax/drms/etol/max_steps), and warm-starts
-    # the next iter at the relaxed geometry.  Defaults match the
-    # publication-guide tier table (stage 1 loose, stage 2
-    # publishable, stage 3 TIGHT opt-in).
-    stages: List[StageSpec] = field(
-        default_factory=_default_stages,
-        metadata={
-            # ``skip_cli`` keeps ``molbuilder.cli.add_dataclass_options``
-            # from trying to auto-generate a ``--stages`` Click option
-            # for a List[StageSpec] (cli.py:198 bails loudly on
-            # unsupported types).  CLI exposure (likely a JSON-string
-            # ``--stages-json`` plus a ``--stage-strategy`` preset)
-            # lands later in the #534 family.
-            "skip_cli":   True,
-            # Form layer (commit 2): visible in the schema as a
-            # ``kind: "stage-table"`` field.  Backend round-trips a
-            # list-of-dicts payload back to ``List[StageSpec]`` via
-            # ``coerce_to_field_type``'s dataclass-list branch.  JS
-            # renderer for the table + ``Stage strategy`` preset
-            # dropdown lands in commit 3.
-            "section":        "Compute & budget",
-            "workflow_group": "stage",
-            "id_suffix":      "stages",
-            "label":          "Optimization stages",
-            "tier":           "advanced",
-            "engine_key":     "STAGES = [...]; for stage in STAGES: optimize(...)",
-            "help": (
-                "Per-stage optimization knobs.  Each row carries a "
-                "name (used as the per-stage output-file suffix), an "
-                "enable checkbox, an SCF tolerance, 5 geomeTRIC "
-                "convergence targets (max + RMS gradient, max + RMS "
-                "displacement, energy step), a max-step cap, and a "
-                "non-convergence policy (proceed / continue / halt). "
-                "Generated-script loop walks the list and skips "
-                "disabled stages; ``mol`` carries forward between "
-                "enabled stages.  Defaults match the publication-"
-                "guide tier table (Stage 1 loose preopt, Stage 2 "
-                "publishable, Stage 3 TIGHT vib/IR opt-in).\n"
-                "Full per-tier values + scientific rationale + "
-                "citations in docs/engines/tuning.md "
-                "§ 2 (per-parameter) + § 4 (preset summary table)."),
-        },
-    )
 
     # ---------------- Solvent (optional) ----------------
     solvent: Optional[str] = field(default=None, metadata={
@@ -1102,7 +755,7 @@ class PySCFConfig:
         "choices": ("IEF-PCM", "C-PCM", "COSMO"),
         "help": "Which polarisable-continuum model represents the solvent.\n"
                 "DEVIATION: PySCF's own default is C-PCM "
-                "(pyscf.solvent.pcm.PCM.method); we ship IEF-PCM.  IEF-PCM "
+                "(pyscf.solvent.pcm.PCM.method); this catalogue starts at IEF-PCM.  IEF-PCM "
                 "solves the full integral-equation formalism, so it is the "
                 "more general of the two and is what most quantum-chemistry "
                 "packages default to; C-PCM is the conductor-like "
@@ -1124,7 +777,6 @@ class PySCFConfig:
     # and this one never got the fix.  Now they are ONE item (§ 6.3).
     max_memory_mb: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
-        "resolver": "node_memory",
         "allocation": True,
         "item_kind": "wrapper",
         "workflow_group": "staging",
@@ -1149,6 +801,15 @@ class PySCFConfig:
     })
     threads: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
+        # THE MACHINE ANSWERS THIS, exactly as SIESTA's `omp_threads` does --
+        # they are one fact, cores per task, under two engine spellings.  It
+        # carried no such mark until 2026-08-18, so `template_fields` excluded
+        # three machine facts for SIESTA and ONE for PySCF, and a portable
+        # PySCF description could assert how many cores to use -- the one thing
+        # `engines/template.md` § 7 forbids floor 2 to do.  Proven by the
+        # asymmetry it produced: the identical stage override was REFUSED as a
+        # machine fact for SIESTA and ACCEPTED for PySCF.
+        "allocation": True,
         "workflow_group": "staging",
         "section": "Compute & budget",
         "label":      "CPU threads",
@@ -1207,10 +868,48 @@ class PySCFConfig:
         "tier":  "advanced",
         "help":  "How much PySCF writes to the log: 0 silent, 3 note, "
                  "4 info, 5 debug.\n"
-                 "DEVIATION: PySCF's own default is 3; we ship 4, because "
+                 "DEVIATION: PySCF's own default is 3; this catalogue starts at 4, because "
                  "level 4 is where the per-cycle SCF convergence table "
                  "appears -- and that table is what makes a run that failed "
                  "diagnosable from the log alone, without repeating it.",
+    })
+    restart: str = field(default="continue", metadata={
+        "category": ("convergence", "execution"),
+        "section": "Compute & budget",
+        # ``produce``, not ``deck``, and `template.md` § 8s own test decides
+        # it: *does this item put keywords in the deck?*  On SIESTA yes --
+        # three of them, which is why the shared catalogue row is ``deck``.
+        # On PySCF no: it changes HOW the script is written, emitting the
+        # branches that read the checkpoint and the optimized geometry, and
+        # naming no keyword at all.  Same question, same field, same two
+        # answers; the mechanism is the engine's (`stages.md` § 1.1a,
+        # consequence 3).
+        "item_kind":  "produce",
+        "workflow_group": "staging",
+        "label": "Start from",
+        "choices": ("clean", "continue"),
+        "id_suffix": "restart",
+        "tier": "advanced",
+        "engine_key": ("(molbuilder: one field, one mechanism per "
+                       "engine -- SIESTA expands it to DM.UseSaveDM / "
+                       "MD.UseSaveXV / MD.UseSaveCG; PySCF emits control "
+                       "flow that reads <JOB>.chk and "
+                       "<JOB>_optimized.xyz.  Not a single engine key on "
+                       "either)"),
+        "help": (
+            'Whether this run starts from what is already in the folder.\n'
+            '  continue  -- read it (the default).  Nothing there is not an '
+            "error: the engine starts from the deck's own coordinates.\n"
+            '  clean     -- ignore it and start over, OVERWRITING what is there '
+            'as the run proceeds.\n'
+            "Which files that means is the engine's own: SIESTA reads .XV / .DM "
+            '/ .CG, PySCF reads <JOB>_optimized.xyz and <JOB>.chk.\n'
+            'Continuing is the default because a run you start in a folder that '
+            'already holds a result is a run you started after looking at that '
+            'result.  To keep the old state, save it first with `molbuilder '
+            'checkpoint save` -- the launcher warns before a clean run overwrites '
+            'anything and stops unless you pass --force.'
+        ),
     })
     chkfile: bool = field(default=True, metadata={
         "category": ("procedure",),
@@ -1299,8 +998,18 @@ class PySCFConfig:
         "label": "Post-relax frequencies + thermochemistry",
         "engine_key":  'pyscf.hessian + thermo.thermo()',
         "tier":  "advanced",
-        "help":  "compute analytic Hessian + RRHO thermochemistry "
-                 "(ZPE, H, G, S, Cv, Cp) at temperature_K / pressure_atm",
+        "help": (
+            "compute analytic Hessian + RRHO thermochemistry (ZPE, H, G, "
+            "S, Cv, Cp) at temperature_K / pressure_atm A relaxed "
+            "geometry that is a true minimum has only REAL vibrational "
+            "modes; an imaginary mode means the optimizer stopped at a "
+            "saddle point, which is the cheapest way to find that out. "
+            "The RRHO thermochemistry is what you add to the electronic "
+            "energy when reporting reaction or binding free energies. "
+            "Cost: one analytic Hessian, typically 5-15x a single SCF for "
+            "a small molecule and more for larger ones -- no extra SCF, "
+            "it reuses the converged one."
+        ),
     })
     temperature_K: float = field(default=298.15, metadata={
         "category": ("procedure",),
@@ -1338,31 +1047,6 @@ class PySCFConfig:
         "help": (
         "Emit inline tuning hints and a Troubleshooting block in the "
         "generated script, in whatever comment syntax that engine uses."),
-    })
-
-    # ---------------- Staged relaxation (job-layout v1) ----------------
-    # When 1, 2, or 3, the inlined ``MolwatchEmitter`` writes to
-    # ``<job>-stage<N>.molwatch.log`` instead of ``<job>.molwatch.log``,
-    # so the three stages of a coarse->medium->tight relaxation in one
-    # directory each get their own log and the Watch tab's multi-stage
-    # merge picks them up automatically.  ``None`` (default) keeps the
-    # unsuffixed name for single-run workflows.  ``job_name`` (the
-    # protocol basename) stays identical across stages.
-    # A stage's ARTIFACT TOKEN -- ``<NN>_<name>``, e.g. ``01_coarse``.  Same
-    # field, same meaning and same one helper as SiestaConfig.stage: PySCF's
-    # emitter resolves the log name through ``molwatch_log_basename`` too, so
-    # the two engines cannot spell one rule two ways.  Held an int (1/2/3) and
-    # produced ``-stage<N>`` until 2026-08-10 (decision 27).
-    stage: Optional[str] = field(default=None, metadata={
-        # molbuilder's own doing, not a PySCF keyword: it shapes
-        # what the PRODUCER writes, so it is kind="produce" (§ 6).
-        "item_kind": "produce",
-        "workflow_group": "staging",
-        "category": ("procedure",),
-        "label": "Relaxation stage",
-        "engine_key":  '(molbuilder: filename token + log naming)',
-        "help":  "stage token <NN>_<name> (e.g. 01_coarse) for the "
-                 ".molwatch.log filename; None keeps the unsuffixed name",
     })
 
     # Back-compat: the field was named ``molwatch_log`` before the

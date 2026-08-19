@@ -734,7 +734,12 @@ def test_spin_total_nonzero_does_not_emit_constrained_singlet_note():
         SiestaConfig(spin_treatment="polarized", spin_total=2.0,
                      verbose_comments=True),
     )
-    assert "constrained singlet" not in fdf
+    # The SP-A WARNING must be absent, not the words.  `spin_total`'s own
+    # catalogue note explains what a constrained singlet is -- that note is
+    # emitted for every value now that the item goes through the one door, and
+    # it is information, not a warning.  What must not appear is the advisory
+    # block, which fires only when the value really is 0.0.
+    assert "# NOTE: spin_total = 0.0 with Spin polarized" not in fdf
 
 
 def test_default_fdf_has_no_spin_block():
@@ -1062,7 +1067,15 @@ def test_relaxation_emits_universal_md_displ_cap(relax_type):
     assert "MD.MaxDispl 0.07 Ang" in text, (
         f"relax_type={relax_type}: generator must emit MD.MaxDispl, the "
         f"current spelling of the per-step displacement cap")
-    assert "MD.MaxCGDispl" not in text, (
+    # Asked of the CODE, not the raw text.  libfdf reads keywords, not
+    # comments, so the rule is *the deck must not SET the retired keyword* --
+    # and the catalogue's note for MD.MaxDispl says out loud that it deprecates
+    # MD.MaxCGDispl, which is exactly the kind of thing a reader of a generated
+    # deck should be told.  Stripping comments first is the same discipline the
+    # deck's own duplicate-keyword check uses (`siesta/layout.py::check_rules`);
+    # asserting on the raw text made a useful note look like a violation.
+    code = "\n".join(ln.split("#", 1)[0] for ln in text.splitlines())
+    assert "MD.MaxCGDispl" not in code, (
         f"relax_type={relax_type}: MD.MaxCGDispl is DEPRECATED by SIESTA "
         f"5.4.2 in favour of MD.MaxDispl; both set the same variable, so "
         f"there is nothing to gain by writing the retired one.")

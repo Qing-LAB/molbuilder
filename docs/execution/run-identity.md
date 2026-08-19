@@ -524,9 +524,40 @@ scheduler's business.
    whatever that engine's group is: three declared keys for SIESTA, generated
    control flow for PySCF. Nobody keeps a group in step by hand, and no
    description can carry its members individually and disagree with itself.
-3. **It is per-stage, because it is an ordinary field.** A first stage is
-   normally `clean` and everything after it `continue`. Nothing special is needed
-   to say so.
+3. **`continue` is the default, and nothing computes it.** A run started in a
+   folder that already holds a result is a run somebody started *after looking
+   at that result*, so it continues from it. Saying `clean` is that person
+   overriding the default, and a clean run **overwrites** what is there as it
+   proceeds.
+
+   **Nothing has to detect anything.** *Is there prior state?* is answered by
+   the engine, at run time, where it is knowable: SIESTA with `MD.UseSaveXV`
+   and no `.XV` warns and uses the deck's coordinates; PySCF's script guards
+   each read on the file existing and being non-empty. So `continue` means
+   *this deck may read what is there*, and an empty folder needs no special
+   case anywhere.
+
+   **A rung's POSITION does not answer it, and neither does anything else about
+   the ladder.** The shipped ladders set no `restart` at all.
+
+   > **Corrected 2026-08-18 (user), twice on one day.** This first said
+   > *"nothing special is needed to say so"*, which was true of one producer and
+   > not of the system. The fix made it positional — *first stage `clean`, the
+   > rest `continue`* — written into each stage's overrides by the shipped-ladder
+   > builder.
+   >
+   > **That was the wrong rule, not a wrong implementation.** A rung's index has
+   > nothing to do with whether there is anything to continue from, and the
+   > default it produced was the destructive one: re-running a ladder in a folder
+   > holding a result silently discarded it — the one outcome the person who had
+   > just read that result did not ask for.
+   >
+   > **Keeping the old state is a separate tool and a separate decision**:
+   > `molbuilder checkpoint save` ([`checkpointing.md`](?doc=execution/checkpointing.md)),
+   > which is never automatic. The launcher names what a clean run would
+   > overwrite and refuses; `--force` proceeds. Two mechanisms for preserving a
+   > state would be one too many, which is why `--cold` no longer moves anything
+   > aside.
 4. **What `continue` implies is a short fixed set; what a stage needs *beyond*
    it is declared.** `restart: continue` means the geometry, the density and the
    optimizer's history — `.XV`, `.DM`, `.CG` — because that is what continuing a
@@ -660,5 +691,5 @@ owns it.*
   [`engines/stages.md`](?doc=engines/stages.md).
 - **Phasing and what is built when** —
   [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md) and
-  [`roadmap.md`](?doc=roadmap.md) (R3). *(Open questions about the **id** are
+  [`roadmap.md`](?doc=roadmap.md) — `conventions.md`'s R3. *(Open questions about the **id** are
   § 6a above, because they are this contract's to answer.)*

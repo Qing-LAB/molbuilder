@@ -374,10 +374,11 @@ def cmd_pseudo_check(directory, elements, xc_authors, relativistic):
         if not els:
             raise click.ClickException(f"no parseable .psml files in {d}")
 
-    GGA = {"pbe", "pbesol", "blyp", "revpbe", "rpbe"}
-    LDA = {"ca", "pz", "pw"}
-    a = (xc_authors or "").lower()
-    fam = "GGA" if a in GGA else "LDA" if a in LDA else None
+    # The ONE table (`pseudos.expected_xc_family`).  This copy had no VDW arm,
+    # so a van-der-Waals audit compared against no expected family at all and
+    # passed a mismatch the preflight blocks.
+    from .pseudos import expected_xc_family
+    fam = expected_xc_family(xc_authors)
 
     entries = check_coverage(els, d, expected_xc_family=fam,
                              expected_xc_authors=xc_authors or None,
@@ -522,32 +523,14 @@ def _make_pyscf_options_decorator():
                    "'*' every element present, 'Au' that element, 'A*' "
                    "every symbol starting with A (e.g. Au,Pt).  Omitted "
                    "or empty = no ECP.")
-# --stages-json + --stage-strategy: power-user escape hatches for the
-# staged-optimization ladder (cfg.stages).  The everyday UI is the
-# web form's stage-table widget; CLI users can paste a JSON payload
-# or pick a named preset.  Applied in order: --stages-json replaces
-# the entire ladder, then --stage-strategy overlays enable flags.
-@click.option("--stages-json", "stages_json", default=None,
-              metavar="JSON_OR_PATH",
-              help="override the per-stage convergence ladder with a "
-                   "JSON list-of-dicts (one entry per stage, keys = "
-                   "StageSpec fields).  Accepts either a literal JSON "
-                   "string or a path to a .json file.  Unknown keys "
-                   "are ignored.  Applied BEFORE --stage-strategy so "
-                   "you can combine them (custom knobs + preset enable "
-                   "flags).  Power-user escape hatch; the form's "
-                   "stage-table is the everyday UI.")
-@click.option("--stage-strategy",
-              type=click.Choice(["publishable", "loose-only", "vib-quality"]),
-              default=None,
-              help="override stage enable flags with a named preset: "
-                   "'publishable' = stages 1+2 (default), 'loose-only' "
-                   "= stage 1 only (cheap warm-up), 'vib-quality' = "
-                   "1+2+3 (TIGHT tier for vib/IR/NEB Hessians).  "
-                   "Mirrors the form's Stage strategy dropdown.")
+# THIS COMMAND WRITES ONE DECK, AND A LADDER IS N DECKS (`stages.md` § 1.1a),
+# so there is no ``--stages-json`` / ``--stage-strategy`` here -- for the same
+# reason ``molbuilder siesta`` never had them.  A ladder is DECLARED in
+# task.json, and ``jobset describe --engine pyscf --stage-strategy ...`` is the
+# one door that writes one.  A second door here would be a second place a
+# ladder could be said, free to disagree with the description.
 @_make_pyscf_options_decorator()
-def cmd_pyscf(input_path, py_path, ecp_atoms, stages_json, stage_strategy,
-              **fields):
+def cmd_pyscf(input_path, py_path, ecp_atoms, **fields):
     """Convert an XYZ or PDB structure into a runnable PySCF script.
 
     Every PySCFConfig field is exposed as a CLI option (auto-generated
@@ -573,51 +556,6 @@ def cmd_pyscf(input_path, py_path, ecp_atoms, stages_json, stage_strategy,
                            if p.strip()]
 
     cfg = PySCFConfig(**fields)
-
-    # Apply stage overrides (7c).  --stages-json wins on knob values;
-    # --stage-strategy then overlays enable flags on top.  Either may
-    # be omitted; both omitted leaves cfg.stages at its default.
-    if stages_json is not None:
-        import json as _json
-        from pathlib import Path as _Path
-        from .config.pyscf import stages_from_dicts
-        s = stages_json.strip()
-        # Heuristic: starts with '[' = literal JSON; otherwise treat
-        # as a path.  Keeps the common "paste a JSON literal on the
-        # shell" case clean without forcing a wrapper sentinel.
-        if s.startswith("["):
-            try:
-                payload = _json.loads(s)
-            except _json.JSONDecodeError as e:
-                raise click.BadParameter(
-                    f"--stages-json: not valid JSON ({e.msg} at "
-                    f"line {e.lineno}, column {e.colno})",
-                    param_hint="--stages-json",
-                )
-        else:
-            p = _Path(s)
-            if not p.exists():
-                raise click.BadParameter(
-                    f"--stages-json: file not found: {p}",
-                    param_hint="--stages-json",
-                )
-            try:
-                payload = _json.loads(p.read_text())
-            except _json.JSONDecodeError as e:
-                raise click.BadParameter(
-                    f"--stages-json: not valid JSON in {p} "
-                    f"({e.msg} at line {e.lineno}, column {e.colno})",
-                    param_hint="--stages-json",
-                )
-        try:
-            cfg.stages = stages_from_dicts(payload)
-        except (TypeError, ValueError) as e:
-            raise click.BadParameter(
-                f"--stages-json: {e}", param_hint="--stages-json")
-
-    if stage_strategy is not None:
-        from .config.pyscf import apply_stage_strategy
-        cfg.stages = apply_stage_strategy(cfg.stages, stage_strategy)
 
     with _resolve_input_path(input_path) as resolved_input:
         summary = convert(resolved_input, py_path, cfg)
@@ -1535,7 +1473,6 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
 
     # 2. Resolve target paths -----------------------------------------
     output_path = _Path(output or "molbuilder.json").resolve()
-    secret_dir = _as.default_secret_dir()
     secret_key_file = _as.secret_key_path()
     google_secret_file = _as.google_client_secret_path()
 
@@ -1901,9 +1838,9 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
 # --------------------------------------------------------------------- #
 
 
-@cli.group("snapshot",
+@cli.group("checkpoint",
            short_help="save a calculation folder so you can come back to it")
-def cmd_snapshot():
+def cmd_checkpoint():
     """Save the state of a calculation folder, and come back to it.
 
     A **state** is a saved snapshot of the whole folder: it has an id, a note
@@ -1911,11 +1848,11 @@ def cmd_snapshot():
     state so you can find it again.  That is the whole vocabulary.
 
     \b
-        molbuilder snapshot init
-        molbuilder snapshot save -m "stage 1 converged, 41 steps"
-        molbuilder snapshot list
-        molbuilder snapshot tag stage1-good -m "geometry I trust"
-        molbuilder snapshot restore 4f9ca71
+        molbuilder checkpoint init
+        molbuilder checkpoint save -m "stage 1 converged, 41 steps"
+        molbuilder checkpoint list
+        molbuilder checkpoint tag stage1-good -m "geometry I trust"
+        molbuilder checkpoint restore 4f9ca71
 
     Going back to a state and saving from it is how you branch: the new state's
     parent is the one you restored, both attempts stay listed, and neither can
@@ -1964,7 +1901,7 @@ def _repo_or_exit(path):
     repo = Repo(_resolve_repo_path(path))
     if not repo.initialized:
         click.echo(f"Error: {repo.path} is not a checkpoint folder.  "
-                   f"Run `molbuilder snapshot init` first.", err=True)
+                   f"Run `molbuilder checkpoint init` first.", err=True)
         sys.exit(2)
     return repo
 
@@ -1973,7 +1910,7 @@ _PATH_OPT = click.option("-p", "--path", default=None, type=click.Path(),
                          help="The calculation folder.  Default: cwd.")
 
 
-@cmd_snapshot.command("init",
+@cmd_checkpoint.command("init",
                       short_help="make this folder a checkpoint folder")
 @click.option("--engine", default=None,
               help="Engine hint, so families that are always large skip the "
@@ -1986,7 +1923,7 @@ _PATH_OPT = click.option("-p", "--path", default=None, type=click.Path(),
                    "Default: the folder's name.  Written verbatim into every "
                    "state, so a name needing repair is refused.")
 @_PATH_OPT
-def cmd_snapshot_init(engine, note, calculation, path):
+def cmd_checkpoint_init(engine, note, calculation, path):
     """Make this folder a checkpoint folder and save its first state.
 
     One repository per calculation.  A folder whose subdirectories are working
@@ -2029,14 +1966,14 @@ def cmd_snapshot_init(engine, note, calculation, path):
     click.echo(f"  {state.short}  {state.note}")
 
 
-@cmd_snapshot.command("save",
+@cmd_checkpoint.command("save",
                       short_help="save the folder as a new state")
 @click.option("-m", "--note", required=True,
               help="What happened, and what you were about to do.  Required: "
                    "it is the only thing that answers the question you bring "
                    "to a history a month later.")
 @_PATH_OPT
-def cmd_snapshot_save(note, path):
+def cmd_checkpoint_save(note, path):
     """Save the whole folder as a new state.
 
     The new state's parent is wherever the folder currently stands, so saving
@@ -2066,7 +2003,7 @@ def cmd_snapshot_save(note, path):
     click.echo(f"saved {state.short}  {state.note}")
 
 
-@cmd_snapshot.command("list", short_help="the states you have saved")
+@cmd_checkpoint.command("list", short_help="the states you have saved")
 @click.option("-n", "--limit", default=None, type=int,
               help="Show only the newest N.")
 @click.option("--check", is_flag=True,
@@ -2075,7 +2012,7 @@ def cmd_snapshot_save(note, path):
                    "certainty right now -- a save or a restore always checks "
                    "content regardless.")
 @_PATH_OPT
-def cmd_snapshot_list(limit, check, path):
+def cmd_checkpoint_list(limit, check, path):
     """Every state, newest first, with the state each came from.
 
     Two states sharing a parent are alternatives from the same point -- that is
@@ -2097,7 +2034,7 @@ def cmd_snapshot_list(limit, check, path):
     #
     # AND IT IS THE ONE CALL HERE THAT CAN FAIL.  It reads the standing state's
     # MANIFEST, and a lost or tampered archive is *named* rather than absorbed
-    # (I2b) -- which arrived here as an uncaught exception, so `snapshot list`
+    # (I2b) -- which arrived here as an uncaught exception, so `checkpoint list`
     # answered a damaged folder with a Python traceback while the HTTP route
     # returned a structured error for the identical condition.
     #
@@ -2126,7 +2063,7 @@ def cmd_snapshot_list(limit, check, path):
         sys.exit(1)
     if not status.clean:
         click.echo(f"   {len(status.unsaved())} unsaved change(s) here; "
-                   f"`snapshot save` keeps them.")
+                   f"`molbuilder checkpoint save` keeps them.")
         for name in status.unsaved():
             click.echo(f"     {name}")
     elif check:
@@ -2141,14 +2078,14 @@ def cmd_snapshot_list(limit, check, path):
                    "The next save rewrites it from the classification.")
 
 
-@cmd_snapshot.command("tag", short_help="name a state so you can find it")
+@cmd_checkpoint.command("tag", short_help="name a state so you can find it")
 @click.argument("name")
 @click.option("-m", "--note", required=True,
               help="Why this state is worth returning to.")
 @click.option("--at", default=None,
               help="Which state to name.  Default: where the folder stands.")
 @_PATH_OPT
-def cmd_snapshot_tag(name, note, at, path):
+def cmd_checkpoint_tag(name, note, at, path):
     """Give a state a name.
 
     Nothing tags a state on your behalf -- the namespace is yours alone, which
@@ -2167,14 +2104,14 @@ def cmd_snapshot_tag(name, note, at, path):
     click.echo(f"tagged {tag.state[:7]} as {tag.name}")
 
 
-@cmd_snapshot.command("restore",
+@cmd_checkpoint.command("restore",
                       short_help="put the folder back to a state")
 @click.argument("state")
 @click.option("--force", is_flag=True,
               help="Accept the loss of unsaved work without being asked.  For "
                    "scripts; interactively you are asked instead.")
 @_PATH_OPT
-def cmd_snapshot_restore(state, force, path):
+def cmd_checkpoint_restore(state, force, path):
     """Make the folder equal STATE exactly -- text and big files together.
 
     STATE is a state id or a tag.
@@ -2226,10 +2163,10 @@ def cmd_snapshot_restore(state, force, path):
     click.echo(f"restored to {target.short}  {target.note}")
 
 
-@cmd_snapshot.command("config",
+@cmd_checkpoint.command("config",
                       short_help="which files are stored where, and why")
 @_PATH_OPT
-def cmd_snapshot_config(path):
+def cmd_checkpoint_config(path):
     """Show the classification this folder is saved under.
 
     It lives in molbuilder.json, not in the folder: one home, so two folders

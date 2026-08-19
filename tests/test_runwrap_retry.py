@@ -29,6 +29,7 @@ from pathlib import Path
 import pytest
 
 from molbuilder.diagnostics import Capabilities, set_capabilities
+from molbuilder.jobset.model import Resources
 from molbuilder.runwrap import render_run_wrapper
 
 REPO = Path(__file__).resolve().parents[1]
@@ -61,7 +62,12 @@ def sandbox(tmp_path, monkeypatch):
 
 
 def _render(**kw) -> str:
-    return render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, **kw)
+    """The wrapper's text for a four-rank SIESTA job.
+
+    ``kw`` are allocation fields: the door takes the object whole (A8), so
+    they are set on it rather than passed beside it."""
+    return render_run_wrapper(Path("/x/JOB.fdf"),
+                              resources=Resources(mpi_np=4, **kw))
 
 
 # --------------------------------------------------------------------- #

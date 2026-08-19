@@ -120,15 +120,11 @@ def test_each_stages_overrides_are_exactly_that_tiers_preset(tier):
     ladder overrides with the same dict.  One table, two readers — so a
     tier value can be changed in exactly one place."""
     stage = default_siesta_stages("vib-quality")[tier - 1]
-    # Split deliberately: the tier's SCIENCE comes from the shared table and
-    # must match it exactly, while `restart` is POSITIONAL and belongs to no
-    # tier -- stage2 is 'continue' because something precedes it, not because
-    # tier 2 means anything about restarting (run-identity.md § 4 rule 3).
-    # Folding them into one dict would let a tier value drift in under cover
-    # of the positional one.
-    science = {k: v for k, v in stage.overrides.items() if k != "restart"}
-    assert science == SIESTA_STAGE_PRESETS[tier]
-    assert stage.overrides["restart"] == ("clean" if tier == 1 else "continue")
+    # The rung's overrides ARE that tier's row, with nothing added.  `restart`
+    # was spliced in here positionally until 2026-08-18; it is a property of
+    # neither the tier nor the rung's index -- the folder answers it, at run
+    # time (`run-identity.md` § 4 rule 3).
+    assert stage.overrides == SIESTA_STAGE_PRESETS[tier]
 
 
 def test_the_one_shot_overlay_and_the_ladder_agree_field_for_field():
@@ -141,17 +137,13 @@ def test_the_one_shot_overlay_and_the_ladder_agree_field_for_field():
         resolved = dataclasses.asdict(effective_config(
             template, getattr(stage, "overrides", None),
             where=f"stage {stage.name!r}"))
-        # `restart` is the ONE field they may differ in, and the difference is
-        # the point rather than a leak: `--stage 2` is a single run with
-        # nothing before it, so it stays on the template's value, while
-        # stage2 OF A LADDER has stage1 in front of it and continues.
-        # Asserted as an exact set so a second divergence cannot hide behind
-        # this one.
+        # They agree on EVERY field now.  `restart` was the one they could
+        # differ on, because the ladder spliced a positional value into each
+        # rung while `--stage N` left the template's; with that rule gone
+        # (2026-08-18) a rung and a one-shot at the same tier are the same
+        # config, which is what "one table, two readers" was always claiming.
         differing = {k for k in overlaid if overlaid[k] != resolved[k]}
-        assert differing <= {"restart"}
-        if tier > 1:
-            assert differing == {"restart"}
-            assert resolved["restart"] == "continue"
+        assert differing == set(), differing
 
 
 def test_a_stage_has_exactly_the_three_fields_of_section_2():
@@ -176,11 +168,7 @@ def test_every_field_the_shipped_ladder_varies_exists_in_the_schema():
               for k in s.overrides}
     assert varied <= known
     assert varied == {"relax_type", "relax_steps",
-                      "relax_force_tol", "relax_max_displ",
-                      # P3 unit 4: the shipped ladder now SAYS it continues
-                      # rather than continuing because three booleans
-                      # happened to default True (run-identity.md § 4).
-                      "restart"}
+                      "relax_force_tol", "relax_max_displ"}
 
 
 # --------------------------------------------------------------------- #

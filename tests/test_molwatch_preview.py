@@ -226,10 +226,10 @@ def test_pyscf_generated_script_emits_preview_block_text():
     # The preview block is emitted before optimize() is called -- the
     # class instantiation line must appear before the optimize(...) call.
     inst_pos = text.index("MolwatchEmitter(")
-    # #534 6c: optimize() lives inside _mb_run_stage_opt helper now;
-    # the loop body calls the helper rather than calling optimize()
-    # directly.  Anchor on the helper definition.
-    opt_pos = text.index("def _mb_run_stage_opt(")
+    # optimize() lives inside the _mb_run_optimization helper; the policy
+    # dispatch calls the helper rather than optimize() directly, so the
+    # helper definition is the anchor.
+    opt_pos = text.index("def _mb_run_optimization(")
     assert inst_pos < opt_pos
 
 
@@ -252,13 +252,13 @@ def test_pyscf_generated_script_runs_and_produces_preview(tmp_path):
         positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
         title="h2",
     )
-    from molbuilder.config.pyscf import StageSpec
     cfg = PySCFConfig(
         job_name="prev_e2e",
         log_file=False,
-        # Tiny single-stage ladder so the e2e run doesn't burn cycles
-        # on the publication-guide three-stage default.
-        stages=[StageSpec(name="quick", enabled=True, max_steps=2)],
+        # A deck IS one rung (`stages.md` § 1.1a), so a cheap run is a small
+        # step cap on this config -- not a one-row ladder.  Two steps is
+        # enough to produce the preview block this test reads.
+        geom_max_steps=2,
         basis="STO-3G",
         dispersion=None,
         density_fit=False,
@@ -328,127 +328,22 @@ def test_pyscf_generated_script_runs_and_produces_preview(tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_pyscf_staged_opt_warm_start_runs_two_stages(tmp_path):
-    """End-to-end: two-stage cfg runs to completion; .molwatch.log
-    contains opt-step blocks from BOTH stages; final energy is
-    reasonable for H2/STO-3G; and the script's stage banner is
-    printed twice (proving the loop body executed twice, not just
-    the first stage).
-
-    Warm-start CODE-SHAPE is gated at L3 (see header comment above);
-    this L4 gates "the rendered script runs end-to-end without
-    crashing on the real pyscf+geomeTRIC stack".
-
-    Subprocess dispatches into molbuilder-pySCF env per
-    [[feedback_pyscf_env_isolation]] -- the generated script needs
-    pyscf + geomeTRIC, both of which live there, not in the host
-    env where pytest itself runs.
-    """
-    pyscf_py = _require_pyscf_env()
-
-    s = Structure(
-        elements=["H", "H"],
-        positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
-        title="h2",
-    )
-    from molbuilder.config.pyscf import StageSpec
-    cfg = PySCFConfig(
-        job_name="warm_start_e2e",
-        log_file=False,
-        # Two enabled stages -- the FIRST exercises the warm-start
-        # handoff at the loop boundary; the SECOND is forced to halt
-        # on non-convergence (script contract for the final stage).
-        # max_steps=2 each keeps total runtime tiny while still
-        # forcing the loop to take the inter-stage transition.
-        stages=[
-            StageSpec(name="warmup",
-                      enabled=True, max_steps=2,
-                      conv_tol=1.0e-7,
-                      on_nonconvergence="proceed"),
-            StageSpec(name="refine",
-                      enabled=True, max_steps=2,
-                      conv_tol=1.0e-9,
-                      on_nonconvergence="proceed"),
-        ],
-        basis="STO-3G",
-        dispersion=None,
-        density_fit=False,
-        write_trajectory=False,
-    )
-    text = render_script(s, cfg)
-    script_path = tmp_path / "warm_start_e2e.py"
-    script_path.write_text(text)
-    proc = subprocess.run(
-        [str(pyscf_py), str(script_path)],
-        cwd=str(tmp_path), check=True,
-        capture_output=True, text=True, timeout=180,
-    )
-    stdout = proc.stdout
-
-    # 1. Stage banner printed twice -- the loop took the inter-
-    #    stage handoff (not just the first stage).
-    assert stdout.count("=== Stage: warmup optimization ===") == 1, (
-        f"warmup stage banner missing/duplicated in stdout:\n{stdout}"
-    )
-    assert stdout.count("=== Stage: refine optimization ===") == 1, (
-        f"refine stage banner missing/duplicated in stdout:\n{stdout}"
-    )
-    # 2. Final energy printed once at the end -- not raised, not lost.
-    assert "Final energy:" in stdout, (
-        f"missing 'Final energy:' line in stdout:\n{stdout}"
-    )
-    final_match = re.search(r"Final energy:\s*(-?\d+\.\d+)\s*Hartree",
-                            stdout)
-    assert final_match, f"can't parse final energy from:\n{stdout}"
-    e_tot = float(final_match.group(1))
-    # H2/STO-3G total energy is around -1.12 Ha; allow a generous
-    # window (the run is only 2+2 steps, geometry isn't fully
-    # relaxed, but we should be in the right basin).
-    assert -1.3 < e_tot < -0.9, (
-        f"H2/STO-3G final energy {e_tot} Ha is not in the expected "
-        f"range -- something is wrong with the SCF or the warm-start"
-    )
-
-    # 3. .molwatch.log carries opt-step blocks from BOTH stages.
-    #    Per-stage prefix on geomeTRIC trajectory files = each stage
-    #    writes its own _geom_<stage>_optim.xyz; the unified log
-    #    accumulates ALL steps across stages.
-    mw = tmp_path / "warm_start_e2e.molwatch.log"
-    assert mw.exists()
-    log_text = mw.read_text()
-    # Should have at least 3 marker-delimited blocks total: step 0
-    # (initial preview) + at least 1 step from each of 2 stages.
-    step_count = log_text.count("==== molwatch step ")
-    # Each step has begin + end -> 2 markers; we counted "begin "
-    # plus "end ====" so divide by 2.
-    n_steps = step_count // 2
-    assert n_steps >= 3, (
-        f"expected at least 3 molwatch step blocks (initial + 1 per "
-        f"stage); got {n_steps}.  Log:\n{log_text[-2000:]}"
-    )
-
-    # 4. Per-stage geomeTRIC trajectory files exist (write_trajectory
-    #    was False so they should NOT appear -- this is the negative
-    #    half of the per-stage prefix contract; flip to assert
-    #    presence when write_trajectory=True).
-    assert not list(tmp_path.glob("warm_start_e2e_geom_*_optim.xyz"))
-
-    # 5. The nested-shape convergence_targets reached the molwatch
-    #    header (7a contract): one entry per enabled stage with the
-    #    8 leaves the post-7a generator emits.
-    from molbuilder.parse.engines.molwatch import MolwatchLogParser
-    traj = MolwatchLogParser.parse(str(mw))
-    ct = traj.runtime_info.get("convergence_targets") or {}
-    # Two enabled stages -> nested shape with two top-level entries.
-    assert set(ct.keys()) - {"source"} == {"warmup", "refine"}, (
-        f"convergence_targets keys: {sorted(ct.keys())}"
-    )
-    warmup = ct["warmup"]
-    assert "max_force_tol_eV_per_A" in warmup
-    assert "rms_force_tol_eV_per_A" in warmup
-    assert "max_displ_ang" in warmup
-    assert "rms_displ_ang" in warmup
-
+# RETIRED 2026-08-18 -- `test_pyscf_staged_opt_warm_start_runs_two_stages`.
+#
+# It proved that ONE generated script ran TWO rungs: it counted the stage
+# banner and required it printed twice, "proving the loop body executed twice".
+# `stages.md` § 1.1a retired exactly that -- a PySCF ladder is N decks and N
+# jobs, so one script runs one rung and printing the banner twice would now be
+# the bug.
+#
+# The two guarantees underneath it are both still gated, on the design that
+# exists:
+#   * the rendered script runs end to end on the real pyscf + geomeTRIC stack
+#     -- `test_pyscf_generated_script_runs_and_produces_preview`, above;
+#   * a rung hands the next one its geometry and density -- now `.chk` and
+#     `<JOB>_optimized.xyz` travelling between job directories, which is the
+#     warm-file vocabulary's job (`job-contracts.md` § 4.2a) and is tested
+#     there rather than inside one process.
 
 # --------------------------------------------------------------------- #
 #  Cross-repo round-trip: molwatch parser reads the preview block       #

@@ -107,20 +107,28 @@ def _is_ladder(cls, f) -> bool:
             and bool(args) and dataclasses.is_dataclass(args[0]))
 
 
-def test_a_stage_ladder_is_not_a_template_item():
-    """`stages.md § 1.1`: a ladder is the user's decision about what varies
-    and lives in ``task.json``.  PySCF is the only config that still has one,
-    and it is excluded for WHAT IT IS rather than by falling through to the
-    unnameable-type error, which would report a vocabulary gap where there is
-    none."""
-    # (via declaration_for directly: PySCF's whole-schema walk refuses on
-    # its § 7 vocabulary gaps -- pinned by name below -- but the ladder
-    # exclusion is checkable per-field.)
-    from molbuilder.template import declaration_for
-    hints = typing.get_type_hints(PySCFConfig)
-    f = next(f for f in dataclasses.fields(PySCFConfig)
-             if f.name == "stages")
-    assert declaration_for(f, hints["stages"]) is None
+def test_no_engine_config_carries_a_stage_ladder():
+    """`stages.md` § 1.1: a ladder is the user's decision about what varies,
+    and it lives in ``task.json``.
+
+    ``declaration_for`` used to carry an exclusion for a ``List[<dataclass>]``
+    field, and this test pinned it against ``PySCFConfig.stages`` -- the last
+    such field, deleted 2026-08-18.  **The exclusion went with it, and that is
+    the stronger state**: a ladder field re-added to a config now reaches the
+    unnameable-type error loudly instead of being quietly skipped.
+
+    What the rule became is asserted where it belongs, per engine, against the
+    SHAPE rather than one field's name:
+    ``test_pyscf_stages.py::test_no_field_of_the_config_is_a_list_of_dataclasses``
+    and its SIESTA twin.  This checks the pair are actually there, so deleting
+    one does not leave the rule unasserted anywhere."""
+    import ast
+    from pathlib import Path as _P
+    for rel in ("tests/test_pyscf_stages.py", "tests/test_siesta_stages.py"):
+        src = _P(rel).read_text(encoding="utf-8")
+        names = {n.name for n in ast.walk(ast.parse(src))
+                 if isinstance(n, ast.FunctionDef)}
+        assert "test_no_field_of_the_config_is_a_list_of_dataclasses" in names, rel
 
 
 # --------------------------------------------------------------------- #
@@ -581,8 +589,7 @@ def test_the_module_exports_its_own_read_api_and_vocabularies():
     a sample of two would invent policy.
     """
     from molbuilder import template as _t
-    for name in ("select", "one", "CATEGORIES", "RESOLVERS",
-                 "ALLOCATION_RESOLVERS"):
+    for name in ("select", "one", "CATEGORIES", "KINDS", "TYPES"):
         assert name in _t.__all__, (
             f"{name} is part of what template.md § 8.0 documents but is not "
             f"in __all__ -- the module's declared surface is narrower than "
@@ -596,3 +603,61 @@ def test_the_module_exports_its_own_read_api_and_vocabularies():
     # -- and no rule anywhere says a module must re-export or hide those.
     # Writing one from this module alone would be inventing policy, which is
     # the thing § 1.5 is complaining about in the other direction.
+
+
+# --------------------------------------------------------------------- #
+#  The help-authoring convention `deck_note` depends on                  #
+# --------------------------------------------------------------------- #
+
+
+def test_help_prose_is_authored_one_paragraph_per_line():
+    """`script_emit.deck_note` states a convention; the catalogue must keep it.
+
+    Its rule is *"One source line is one paragraph: the catalogue writes help
+    with a hard newline between thoughts"* -- which is what lets it re-flow prose
+    to the deck's width while copying an INDENTED ladder row verbatim, so a
+    hand-aligned tier table survives.
+
+    An item whose help is instead **soft-wrapped mid-sentence** breaks that: each
+    source line is re-wrapped as its own paragraph, so a 74-column line becomes a
+    full line plus a two-word orphan, and the note reaches the deck as::
+
+        # How much memory this run may use.  Left blank -- the normal state
+        # -- it is
+        # the machine's maximum, resolved at prep on the node that granted
+        # it; set a
+
+    This went unseen while nothing emitted those particular items' notes. It
+    stopped being invisible when PySCF started reading the catalogue, which is
+    the point of a convention having a test rather than a docstring.
+
+    A line is a soft wrap when **both it and the next line are prose** -- neither
+    indented -- and it does not end a thought.  A ladder row is exempt on either
+    side: `deck_note` copies indented lines verbatim to keep a hand-aligned tier
+    table aligned, and the last row of a ladder rarely ends in a full stop.
+    """
+    import tomllib
+
+    from molbuilder.template import CATALOGUE
+
+    rows = tomllib.loads(CATALOGUE.read_text(encoding="utf-8"))
+    rows = rows.get("item", rows)
+    offenders = {}
+    for name, item in rows.items():
+        if not isinstance(item, dict):
+            continue
+        lines = (item.get("help") or "").split("\n")
+        for a, b in zip(lines, lines[1:]):
+            if not a.strip() or not b.strip():
+                continue
+            if a[:1].isspace() or b[:1].isspace():
+                continue                      # a ladder row, copied verbatim
+            if a.strip()[-1] in ".:;!?":
+                continue                      # a finished thought
+            offenders.setdefault(name, a.strip()[-40:])
+            break
+    assert offenders == {}, (
+        "these catalogue items soft-wrap their help mid-sentence, so deck_note "
+        "re-flows each line as its own paragraph and the note reaches the deck "
+        "broken:\n  "
+        + "\n  ".join(f"{k}: ...{v!r}" for k, v in sorted(offenders.items())))

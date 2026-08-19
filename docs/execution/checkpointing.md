@@ -70,7 +70,7 @@ folder that is cheap to store and wrong is worth nothing.
 
 ### 2.0 One rule for you: use the verbs, not git
 
-**A calculation folder is managed through `molbuilder snapshot`. Running bare
+**A calculation folder is managed through `molbuilder checkpoint`. Running bare
 git commands in it is outside this contract.**
 
 It *is* a git repository — that is how the snapshots are made — so nothing stops
@@ -240,12 +240,12 @@ it can tell.
 
 | Piece | What it is | Who writes it |
 |---|---|---|
-| **git** | the history of everything small | `snapshot save` |
-| **the archive** — `.binsnapshots/<digest>/` | whole copies of everything large, named by content | `snapshot save` |
-| **`MANIFEST.do_not_edit`** | what is in one archive, with a sha256 each — the name is the reminder (I2b) | `snapshot save` |
-| **`.gitignore`** | what git skips — *generated*, so it matches the archive exactly | `snapshot save` only |
+| **git** | the history of everything small | `checkpoint save` |
+| **the archive** — `.binsnapshots/<digest>/` | whole copies of everything large, named by content | `checkpoint save` |
+| **`MANIFEST.do_not_edit`** | what is in one archive, with a sha256 each — the name is the reminder (I2b) | `checkpoint save` |
+| **`.gitignore`** | what git skips — *generated*, so it matches the archive exactly | `checkpoint save` only |
 | **the config** | the size limit and the per-engine hints | you, in molbuilder's config |
-| **`molbuilder snapshot …`** | the verbs you type (§ 5) | — |
+| **`molbuilder checkpoint …`** | the verbs you type (§ 5) | — |
 | **`Repo`** (`molbuilder/checkpoint.py`) | the class every surface goes through | — |
 
 **The config is molbuilder-wide, not per folder.** It sits in `molbuilder.json`
@@ -312,25 +312,25 @@ flowchart LR
 
 ```bash
 # once, in the calculation folder
-molbuilder snapshot init
+molbuilder checkpoint init
 
 # save the folder as a state -- the note is required, and § 5.1 says why
-molbuilder snapshot save -m "stage 1 converged, 41 steps -- before retightening"
+molbuilder checkpoint save -m "stage 1 converged, 41 steps -- before retightening"
 
 # what have I got?
-molbuilder snapshot list
+molbuilder checkpoint list
 
 # name one you know you will come back to
-molbuilder snapshot tag stage1-good -m "geometry I trust"
+molbuilder checkpoint tag stage1-good -m "geometry I trust"
 
 # go back to a state -- by id or by tag.  The whole folder returns.
 # Anything unsaved here is named first, and you are asked.
-molbuilder snapshot restore 4f9ca71
-molbuilder snapshot restore stage1-good
-molbuilder snapshot restore 4f9ca71 --force   # answers yes, for a script
+molbuilder checkpoint restore 4f9ca71
+molbuilder checkpoint restore stage1-good
+molbuilder checkpoint restore 4f9ca71 --force   # answers yes, for a script
 
 # which files count as "big" here
-molbuilder snapshot config
+molbuilder checkpoint config
 ```
 
 **A state's id is permanent and never reused.** It is git's own commit hash, so
@@ -351,7 +351,7 @@ A history is only useful if you can pick from it a month later, and everything
 you read when you come back is something you wrote:
 
 ```text
-molbuilder snapshot list
+molbuilder checkpoint list
 
   4f9ca71  set up                                          09:15
   b2e033d  stage 1 converged, 41 steps -- before            11:40   from 4f9ca71
@@ -393,7 +393,7 @@ in no commit and git cannot show it.
 
 ```mermaid
 flowchart TB
-    S["snapshot save"] --> R{"is .gitignore<br/>what it should be?"}
+    S["checkpoint save"] --> R{"is .gitignore<br/>what it should be?"}
     R -->|"edited by hand"| STOP1["refuse or repair<br/>— an edited ignore list<br/>silently drops files"]
     R -->|"yes"| M["measure every file"]
     M --> B["big ones → build the archive in a<br/>private staging dir"]
@@ -487,7 +487,7 @@ question comes last, immediately before the first byte moves.
 **The question is answered by you, and the answer is honoured.** It names what is
 unsaved and says plainly that **it will be lost unless you save it first**.
 Nothing is rescued, stashed, renamed or set aside. If you say yes, it is gone —
-you called `restore` without calling `snapshot save`, and that is a choice the
+you called `restore` without calling `checkpoint save`, and that is a choice the
 system spells out rather than second-guesses (A5).
 
 **`--force` is that answer given in advance, so the question is not asked at
@@ -514,17 +514,17 @@ out to have been the better answer.
 
 ```bash
 # 1. Keep what you have.  It costs nothing and you cannot get it back later.
-molbuilder snapshot save -m "stage 2 at 200 Ry -- forces worse than stage 1"
+molbuilder checkpoint save -m "stage 2 at 200 Ry -- forces worse than stage 1"
 
 # 2. Go back to stage 1's state.  The whole folder returns to that moment.
-molbuilder snapshot restore b2e033d
+molbuilder checkpoint restore b2e033d
 
 # 3. Retune, rerun, and keep the result.
-molbuilder snapshot save -m "stage 2 at 300 Ry -- forces now below 0.02"
+molbuilder checkpoint save -m "stage 2 at 300 Ry -- forces now below 0.02"
 ```
 
 ```text
-molbuilder snapshot list
+molbuilder checkpoint list
 
   4f9ca71  set up                                          09:15
   b2e033d  stage 1 converged, 41 steps                     11:40   from 4f9ca71
@@ -704,6 +704,19 @@ to save first. You answer.
 a queue, and submitting starts something new rather than changing something that
 exists. **Never on the compute node**, which would need git there (I4).
 
+> **The launcher points here; it does not act** *(user, 2026-08-18)*. A run
+> started with `--cold`, or from a deck that says `restart: clean`, overwrites
+> the prior state as it proceeds. The wrapper names those files, tells you to
+> run `molbuilder checkpoint save`, and **exits without changing anything**;
+> `--force` proceeds. That is the shape § 9 requires and a queue tolerates: a
+> refusal fails the job immediately with the reason in the log, where a prompt
+> would hang.
+>
+> It used to *move* the files into a timestamped folder of its own instead —
+> preserving a state without being asked, under a name this document has never
+> heard of. Two mechanisms for keeping a state is one too many, and the one
+> that keeps it is this one.
+
 **Something already watches the run, and it is not this.** `mb_monitor.py` sits
 beside the job, follows the launcher's PID so it knows when the run really ended,
 reads the outputs, and can notify you — webhook, email, whatever you wire in. So
@@ -721,13 +734,13 @@ Going back once is § 7.1. Going back to the *same* state repeatedly is the
 ordinary way a parameter gets swept by hand, and it needs nothing extra:
 
 ```bash
-molbuilder snapshot restore b2e033d
+molbuilder checkpoint restore b2e033d
 # run at 300 Ry
-molbuilder snapshot save -m "stage 2 at 300 Ry -- forces below 0.02"
+molbuilder checkpoint save -m "stage 2 at 300 Ry -- forces below 0.02"
 
-molbuilder snapshot restore b2e033d
+molbuilder checkpoint restore b2e033d
 # run at 400 Ry
-molbuilder snapshot save -m "stage 2 at 400 Ry -- no better than 300, 3x slower"
+molbuilder checkpoint save -m "stage 2 at 400 Ry -- no better than 300, 3x slower"
 ```
 
 ```text
@@ -743,7 +756,7 @@ Three attempts, one parent, none of them privileged and none of them lost.
 today and a puzzle in a month. Tag the one you decided on:
 
 ```bash
-molbuilder snapshot tag chosen-mesh -m "300 Ry: the cheapest that met the force tolerance"
+molbuilder checkpoint tag chosen-mesh -m "300 Ry: the cheapest that met the force tolerance"
 ```
 
 and `restore chosen-mesh` works forever, whatever else you try afterwards.
@@ -1045,7 +1058,7 @@ partial restore. Text and binaries are one state; returning half of one save and
 keeping half of another produces a folder no save ever held, and § 1's promise
 is about *states*, not about files.
 
-**`snapshot restore --no-binaries` was that partial restore, on three surfaces**
+**`checkpoint restore --no-binaries` was that partial restore, on three surfaces**
 — the CLI flag, `include_binaries` in the `/api/checkpoint/restore` body, and
 the Python keyword — and it did not merely skip the copy: both remaining
 protections sat inside the same conditional, so it also skipped the
@@ -1099,7 +1112,7 @@ file a later run picks up without being asked to.
 is an operation's question, so it is always answered exactly.
 
 **Checkpointing is not responsible for work you did not save.** Calling
-`restore` without calling `snapshot save` is a decision, and the answer is
+`restore` without calling `checkpoint save` is a decision, and the answer is
 yours. There is no stash, no move-aside, no automatic save-before-restore, no
 `.orig` copies — each of those owns a decision it should not, and each leaves
 debris a later restore has to reason about.
@@ -1144,7 +1157,7 @@ that is.
 
 *The exception is named by what may be written, not by which verb writes it.*
 An earlier draft excepted `init` instead, on the grounds that setup writes the
-ignore file — but § 4 has always said `.gitignore` is written by **`snapshot
+ignore file — but § 4 has always said `.gitignore` is written by **`checkpoint
 save` only**, and the tamper rule needs it regenerated every time. Excepting a
 verb hid the two files the rule actually has to allow, and pointed at a verb
 that does not write them.
@@ -1231,7 +1244,7 @@ the history's name from the folder's ([`run-identity.md`](?doc=execution/run-ide
 > § 2.0 says people do — skipped it entirely and wrote its raw directory name
 > into every state: `Calculation: has spaces!`, in a history `init` would have
 > turned away. The check belongs where the name is *written into a state*.
-> Reading it stays unchecked, so `snapshot config` and the panel still work on
+> Reading it stays unchecked, so `checkpoint config` and the panel still work on
 > a folder in that condition.
 >
 > **`init` is the verb that repairs it**, and that is a change to what `init`
@@ -1239,7 +1252,7 @@ the history's name from the folder's ([`run-identity.md`](?doc=execution/run-ide
 > which was right while it only ever created things. A refusal that names a
 > command which no-ops is worse than naming nothing — it reads as *"I tried
 > that, it is still broken"*, and § 2.0's promise that **the verbs cover the
-> work** fails quietly. So `snapshot init --calculation <name>` now names an
+> work** fails quietly. So `checkpoint init --calculation <name>` now names an
 > unnamed folder and leaves an already-named one alone.
 >
 > **On every surface.** The CLI and the route each had their own early return,
@@ -1272,7 +1285,7 @@ machine-made is one where your own tags are hard to see, which is the opposite o
 what a tag is for.
 
 - **Test:** run a full staged calculation and assert the tag list is empty until
-  somebody types `snapshot tag`.
+  somebody types `checkpoint tag`.
 
 ### The folder is also a real git repository
 
@@ -1474,7 +1487,7 @@ a path that runs every time a directory is opened.
 **Verifying without restoring.** `verify_archive` already checks everything I2
 asks and touches nothing — but no verb reaches it, so the only way to learn an
 archive is intact is to attempt a restore. That is the worst moment to find out.
-A `snapshot verify [<ref>]` verb is a few lines over a function that exists and
+A `checkpoint verify [<ref>]` verb is a few lines over a function that exists and
 is already public.
 
 ---
@@ -1555,7 +1568,7 @@ nobody is maintaining against this document, which is how the two drift.
 | A6 | `test_checkpoint_states.py` — restore, save, restore elsewhere, then `git gc --prune=now`: the state saved in between is still listed and still restorable |
 | L1 | `test_checkpoint_states.py` — independent calculations refused, one declared calculation accepted |
 | L3 | `test_checkpoint_states.py` — a save with no note is refused; a state names its calculation without polluting the note; a name needing repair is refused; the note **round-trips through the one parser** (§ 15) over several shapes; and a note that itself looks like a trailer stays a note rather than forging the calculation's name |
-| L4 | `test_checkpoint_states.py` — the tag list stays empty across a **staged** calculation, stages and attempts and all, until somebody types `snapshot tag` — the retired mechanism was per-stage, so a flat folder could not have caught it |
+| L4 | `test_checkpoint_states.py` — the tag list stays empty across a **staged** calculation, stages and attempts and all, until somebody types `checkpoint tag` — the retired mechanism was per-stage, so a flat folder could not have caught it |
 | S5 | `test_checkpoint_states.py` — attempts are added to every stage and every state still names one calculation |
 | L7 | `test_checkpoint_states.py` — a big-file-only change |
 | S7 | `test_checkpoint_states.py` — a file grows past the limit, and one shrinks below it; **and the round trip**, which the two store-membership tests do not attempt: a file held in git by one state and in the archive by the next comes back correctly from *either*, travelling in both directions, and S1 still holds in every state along the way |
@@ -1644,11 +1657,11 @@ the rows above it as well, naming three test files that no longer exist —
 ## 16. What this does not own
 
 - **How to use it** — the CLI verbs, the routes, the sidebar panel, and what is
-  unbuilt (archive pruning, `snapshot diff`) —
+  unbuilt (archive pruning, `checkpoint diff`) —
   [`running-a-job.md`](?doc=execution/running-a-job.md) § 6.
 - **The file formats** — [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1.
 - **The folder being saved, and the two moments a save is offered** —
   [`engines/stages.md`](?doc=engines/stages.md) § 7.
 - **Phasing and what is built when** —
   [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md) and
-  [`roadmap.md`](?doc=roadmap.md) (R3).
+  [`roadmap.md`](?doc=roadmap.md) — `conventions.md`'s R3.

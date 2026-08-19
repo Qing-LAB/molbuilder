@@ -14,10 +14,10 @@ calculation's files share.
 
 What this document adds is the *whole*: which
 directory owns what, how parameter tuning and resource tuning nest, and where the
-saved history sits.  *(Status lives in `roadmap.md`, never in a contract — R3.
+saved history sits.  *(Status lives in `roadmap.md`, never in a contract — `conventions.md`'s R3.
 The Status block that stood here was also FALSE: it called `task.json`, its
 reader and § 4's stage naming unbuilt long after all three shipped, which is
-exactly why R3 keeps status out of contracts.)*
+exactly why that rule keeps status out of contracts.)*
 
 **This contract owns:** the levels of the tree, who may write at each one, how
 each level is named, and the invariants that hold across them. It does not
@@ -806,28 +806,18 @@ do not chain (§ 1.6).
 #### 2.3.1 What `prep` does, every time
 
 Whatever job you are asking for, `prep` runs the same five steps in the same
-order. Only the **inputs** differ.
+order — **resolve the machine · resolve the parameters · render the decks ·
+render the wrappers · build the run directory.** Only the *inputs* differ.
 
-```mermaid
-flowchart TB
-    subgraph inputs["What prep is given"]
-      D["the description<br/>task.json + the template"]
-      S["which stage"]
-      F["a source of earlier results<br/>(optional: a finished run,<br/>or a benchmark verdict)"]
-    end
-    subgraph steps["The five steps, always in this order"]
-      direction TB
-      S1["<b>1. Resolve the machine</b><br/>read the record: this calculation's, else this machine's<br/>— probe only when neither exists<br/>→ snapshot environment.json"]
-      S2["<b>2. Resolve the parameters</b><br/>the template's values ⊕ this stage's overrides<br/>⊕ what the benchmark measured"]
-      S3["<b>3. Render the deck</b><br/>the template becomes a real .fdf —<br/>BlockSize, Diag.Algorithm, everything"]
-      S4["<b>4. Render the wrapper</b><br/>activation baked in verbatim"]
-      S5["<b>5. Build the run directory</b><br/>create it, link the inputs,<br/><b>copy in what you named</b>"]
-      S1 --> S2 --> S3 --> S4 --> S5
-    end
-    R["a directory you can submit<br/>+ a printed report of what was resolved"]
-    D & S & F --> S1
-    S5 --> R
-```
+**The sequence is owned by
+[`script-preparation.md`](?doc=execution/script-preparation.md)**, which states
+it at three resolutions: the whole system's decision chain, these five steps, and
+the eleven sub-steps inside step 3. Go there for what each step may assume, what
+it leaves behind, why each ordering is forced, and what an engine supplies at
+each one.
+
+**What stays here is step 5's product** — the tree those scripts are laid out
+into, which is the rest of this document.
 
 **Step 1 reads before it probes, and that is precedence rather than
 detection.** `environment.machine_for` walks the scopes — the calculation's own
@@ -840,18 +830,14 @@ a machine you are not standing on arrives ([`configuration.md § 5`](?doc=config
 M-1, M-3). *(This box said "detect cores, GPUs, scheduler, conda" until
 2026-08-17, which described the last resort as though it were the rule.)*
 
-**Why the order is forced, not chosen.** Step 3 cannot precede step 1, because a
-deck carries values that *depend on how it will be launched* — a block size
-derived from the rank count, and a GPU line that also decides which environment
-the wrapper must activate. **A parameter that depends on the launch cannot be
-decided before the launch is known.** Any deck written before step 1 has guessed
-at them. That is § 2.2 restated as a sequencing rule, and it is the whole reason
-`prep` is a step of its own rather than something the browser finishes.
-
-Step 4 follows step 3 for the same reason one level up: the wrapper's environment
-is chosen by a value the deck decides — `Diag.ELPA.GPU`, the one item in the
-catalogue carrying `read_by = ["wrapper"]`
-([`template.md`](?doc=engines/template.md) § 6.1).
+**Why the order is forced** is argued in
+[`script-preparation.md`](?doc=execution/script-preparation.md) § 4.1, pair by
+pair. The short form, and the reason `prep` is a step of its own rather than
+something the browser finishes: a script carries values that *depend on how it
+will be launched* — a block size derived from the rank count, and a GPU line that
+also decides which environment the wrapper must activate. **A parameter that
+depends on the launch cannot be decided before the launch is known.** That is
+§ 2.2 restated as a sequencing rule.
 
 #### 2.3.1b Capability and allocation — two different things called "resources"
 
@@ -922,7 +908,7 @@ that allocation**, producing a deck sized for it. Benchmarking is the same act
 repeated — § 2.3.1a, which is why it is not a separate machine.
 
 Status of these rules against the code lives in
-[`roadmap.md`](?doc=roadmap.md) § 6 (R3 — contracts hold the rule, the roadmap
+[`roadmap.md`](?doc=roadmap.md) § 6 (`conventions.md`'s R3 — contracts hold the rule, the roadmap
 holds what is left to do).
 
 #### 2.3.1a `prep` is the framework; benchmarking is one thing you prep
@@ -1192,7 +1178,7 @@ sequenceDiagram
     C->>E: run it
     E-->>T: .XV .DM .out
 
-    U->>C: status · snapshot save
+    U->>C: status · checkpoint save
     Note over U,C: look, decide, and go back to prep
 ```
 
@@ -1268,6 +1254,40 @@ was never the grammar, and "the sweep script", which died with the bundle.)*
 files, not calculations. A calculation *points* at a structure and *copies* the
 pseudopotentials it needs into its own shared package, so it stays
 self-contained when moved to a cluster.
+
+#### `prep` is what puts them there, and it says so when it cannot
+
+**The copy happens at `prep`, and doing it twice costs nothing.** For each element
+the deck names, `prep` looks in the calculation's own folder first and does
+nothing if the file is already there — put there by an earlier `prep`, by
+`jobset describe`, or by having travelled with the folder. Only what is missing is
+copied, from the library in `pseudopotential/`.
+
+**Why `prep` and not the surface that wrote the description.** `prep` is the step
+that runs on the machine that will run the job, and *where the library lives* is a
+fact about that machine — the same class of fact as how many cores there are. It
+is also the step that already decides what the shared package contains, so putting
+the copy anywhere else would mean two places deciding one thing. And it is the
+only arrangement under which the two ways of describing a calculation — the
+browser and `jobset describe` — end up with identical folders, because neither of
+them has to remember to do it.
+
+**An element with no pseudopotential in either place stops `prep`, by name**, before
+a deck is written: *"this calculation needs S.psml and there is none in the folder
+or in the library."* SIESTA has no search path — it opens `<element>.psml` in the
+directory it is run from and nowhere else — so a missing file is not a warning
+about a preference, it is a run that cannot start. Finding that out at `prep`, on
+the machine, costs a second; finding it out afterwards costs a queue wait and
+however long MPI takes to come up first.
+
+> **Stated 2026-08-18 (user).** The rule above — a calculation copies what it
+> needs — was already here, and nothing was said about who performs the copy. So
+> one route did it (`jobset describe`, while writing the folder) and the browser's
+> hand-over did not, and a calculation described in the browser reached `prep`,
+> rendered its decks, laid out its directories and reported success with no
+> pseudopotentials anywhere in it. Nothing checked: the coverage check reads the
+> *library*, where the files genuinely are, and never the folder that needs them.
+> An unowned step is one that some callers perform.
 
 ---
 

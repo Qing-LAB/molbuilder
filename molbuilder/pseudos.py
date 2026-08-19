@@ -440,6 +440,40 @@ class CoverageEntry:
 ERROR_STATUSES = frozenset({"missing", "dead_projector", "xc_family_mismatch"})
 
 
+#: XC authors -> the FAMILY a pseudopotential must belong to.
+#:
+#: One home, for the same reason ``ERROR_STATUSES`` has one: it decides an
+#: ERROR-severity verdict (``xc_family_mismatch`` — *"never physically
+#: correct, energies/forces silently wrong"*), so two copies of it are two
+#: opinions about whether a run may proceed.
+#:
+#: **It was written twice and they already disagreed** (found 2026-08-18):
+#: ``validation/siesta.py`` mapped ``drsll`` / ``lmkll`` to ``VDW`` and
+#: ``cli.py`` had no VDW arm at all, so a van-der-Waals run audited from the
+#: command line compared its pseudos against *no* expected family and passed
+#: a mismatch the preflight would have blocked.
+_XC_FAMILIES = {
+    "GGA": ("pbe", "pbesol", "blyp", "revpbe", "rpbe"),
+    "LDA": ("ca", "pz", "pw"),
+    "VDW": ("drsll", "lmkll"),
+}
+
+
+def expected_xc_family(xc_authors: Optional[str]) -> Optional[str]:
+    """The XC family ``xc_authors`` implies, or ``None`` if it names none.
+
+    ``None`` is a real answer and not a failure: an unrecognised or empty
+    authors string means *do not compare families*, which is what lets a
+    curated set through rather than blocking on a name this table has not been
+    taught yet.
+    """
+    a = (xc_authors or "").strip().lower()
+    for family, authors in _XC_FAMILIES.items():
+        if a in authors:
+            return family
+    return None
+
+
 def check_coverage(elements: Iterable[str],
                     directory: Path,
                     *,

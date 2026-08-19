@@ -13,7 +13,7 @@ three cross-engine contracts).
 
 This is the canonical answer to **"what value should this knob carry, for what
 purpose, and why?"** — the reference the SIESTA/PySCF form-field `help` strings and
-the stage-table presets point at. It covers the parameters that genuinely depend on
+both engines' shipped ladders point at. It covers the parameters that genuinely depend on
 what you're using the result for: optimizer algorithm, convergence thresholds, SCF
 tolerance, mesh / basis / k-grid quality, step caps. Knobs whose answer is the same
 across all quality levels (charge auto-detect, log-file naming) are not here.
@@ -61,9 +61,10 @@ flowchart TD
     Q3 -->|no| S["screening<br/>(is the geometry even sane?)"]
 ```
 
-Both engines ship a **three-stage ladder** that bakes these tiers into the default
-`stage1` / `stage2` / `stage3` rows (§ 4). Stage 3 (tight) is **disabled by default** —
-most users run stages 1 + 2 and opt into 3 for vib/IR/production work.
+Both engines ship a **three-rung ladder** that bakes these tiers into the default
+`coarse` / `medium` / `tight` rows (§ 4) — one vocabulary, both engines. The `tight`
+rung is **disabled by default**: most runs are `coarse` + `medium`, and `tight` is
+opted into for vib/IR/production work.
 
 ---
 
@@ -147,44 +148,48 @@ Full per-tier values:
 | Tier | Force convergence |
 |---|---|
 | screening | 0.10 eV/Å |
-| loose preopt | 0.05 eV/Å (SIESTA `MD.MaxForceTol` stage-1 default) |
+| loose preopt | 0.05 eV/Å (SIESTA `relax_force_tol`, the `coarse` rung) |
 | publishable | **0.04 eV/Å (SIESTA) / 4.5×10⁻⁴ Ha/Bohr ≈ 0.023 eV/Å (PySCF)** |
 | tight — crystal/surface | **0.01 eV/Å / ≈ 2×10⁻⁴ Ha/Bohr** (VASP `EDIFFG=-0.01`; safe for 100s of atoms) |
 | tight — molecule vib/IR | ≈ 0.001 eV/Å (SIESTA) / 1.5×10⁻⁵ Ha/Bohr (geomeTRIC `GAU_TIGHT`; **never** on a 100+ atom metal — it chases SCF noise forever) |
 
-**The shipped stage-3 defaults use the crystal/surface number** (0.01 eV/Å ≈
-`gmax 2×10⁻⁴ Ha/Bohr`), *not* `GAU_TIGHT`, precisely because the tight default has to
-be safe on large systems. Molecule vib/IR work opts into the very-tight column via
-the stage-table or `--stages-json`.
+**The shipped `tight` rung uses the crystal/surface number** (0.01 eV/Å ≈
+`geom_gmax 2×10⁻⁴ Ha/Bohr`), *not* `GAU_TIGHT`, precisely because a default named
+tight has to be safe on large systems. Molecule vib/IR work opts into the very-tight
+column by overriding those items on the rung in `task.json`.
 
 **Cross-engine caveat.** SIESTA checks **one** criterion (`MD.MaxForceTol`, the max
-force). PySCF/geomeTRIC checks **five, all must pass** (`gmax`, `grms`, `dmax`,
-`drms`, energy step — modelled on Gaussian's `OPT`). At the same numerical max-force
+force). PySCF/geomeTRIC checks **five, all must pass** (`geom_gmax`, `geom_grms`, `geom_dmax`,
+`geom_drms`, energy step — modelled on Gaussian's `OPT`). At the same numerical max-force
 threshold a PySCF "converged" geometry is generally tighter than a SIESTA one, so
 expect PySCF to take more iterations to declare success. [Schlegel 2011]
 
 ### 2.4 The five geomeTRIC criteria (PySCF)
 
-The `gmax` companion criteria. These are `StageSpec` fields
-(`config/pyscf.py::StageSpec`) that reach geomeTRIC as `convergence_gmax` / `_grms` /
-`_dmax` / `_drms` / `_energy` kwargs:
+The `geom_gmax` companion criteria. These are catalogue items, set per rung
+through a stage's `overrides`, and they reach geomeTRIC as `convergence_gmax` /
+`_grms` / `_dmax` / `_drms` / `_energy` kwargs:
 
-| `StageSpec` field | Loose (stage 1) | Publishable (stage 2) | **Tight (stage 3, shipped default)** | Very-tight (molecule vib, opt-in) | Units |
+| catalogue item | Loose (coarse) | Publishable (medium) | **Tight (tight, opt-in)** | Very-tight (molecule vib, opt-in) | Units |
 |---|---|---|---|---|---|
-| `gmax` | 2.0×10⁻³ | 4.5×10⁻⁴ | **2.0×10⁻⁴** | 1.5×10⁻⁵ | Ha/Bohr |
-| `grms` | 1.3×10⁻³ | 3.0×10⁻⁴ | **1.0×10⁻⁴** | 1.0×10⁻⁵ | Ha/Bohr |
-| `dmax` | 7.2×10⁻³ | 1.8×10⁻³ | **1.0×10⁻³** | 6.0×10⁻⁵ | Å |
-| `drms` | 4.8×10⁻³ | 1.2×10⁻³ | **5.0×10⁻⁴** | 4.0×10⁻⁵ | Å |
-| `etol` | 1.0×10⁻⁵ | 1.0×10⁻⁶ | 1.0×10⁻⁶ | 1.0×10⁻⁶ | Hartree |
+| `geom_gmax` | 2.0×10⁻³ | 4.5×10⁻⁴ | **2.0×10⁻⁴** | 1.5×10⁻⁵ | Ha/Bohr |
+| `geom_grms` | 1.3×10⁻³ | 3.0×10⁻⁴ | **1.0×10⁻⁴** | 1.0×10⁻⁵ | Ha/Bohr |
+| `geom_dmax` | 7.2×10⁻³ | 1.8×10⁻³ | **1.0×10⁻³** | 6.0×10⁻⁵ | Å |
+| `geom_drms` | 4.8×10⁻³ | 1.2×10⁻³ | **5.0×10⁻⁴** | 4.0×10⁻⁵ | Å |
+| `geom_etol` | 1.0×10⁻⁵ | 1.0×10⁻⁶ | 1.0×10⁻⁶ | 1.0×10⁻⁶ | Hartree |
+
+**This table is the authority for these numbers.** `PYSCF_STAGE_PRESETS`
+(`config/pyscf.py`) is the one place they are written down in code, and it is
+written down FROM here — the first three columns, tier by tier. A value in the
+code that disagrees with this table is a bug in the code.
 
 The publishable column is geomeTRIC's `GAU` preset; the very-tight column is
 `GAU_TIGHT` — ≈ 30× tighter on every gradient and displacement criterion (the energy
-step is unchanged). All five per-stage values
-flow end-to-end: they reach the rendered script's `STAGES = [...]` literal (geomeTRIC
-consumes them via `optimize(...)`) **and** a per-stage `_CONVERGENCE_TARGETS` map the
-script writes into the `.molwatch.log` (unit-converted to eV / eV·Å⁻¹), which the
-Results-tab trajectory inspector reads to draw per-stage threshold lines — nothing the
-user sets is dropped before the plots.
+step is unchanged). All five values flow end-to-end: a rung's deck hands them to
+`optimize(...)`, **and** writes them into that rung's `.molwatch.log` as a
+`_CONVERGENCE_TARGETS` map (unit-converted to eV / eV·Å⁻¹), which the Results-tab
+trajectory inspector reads to draw the threshold lines — nothing the user sets is
+dropped before the plots.
 [Wang & Song 2016]
 
 ### 2.5 SCF tolerance
@@ -200,13 +205,13 @@ you want at the end. Publishable force ≈ 0.04 eV/Å ≈ 10⁻³ Ha/Bohr → SC
 | Tier | SIESTA `DM.Tolerance` (dimensionless) | PySCF `mf.conv_tol` (Ha) |
 |---|---|---|
 | screening | 1×10⁻³ | 1×10⁻⁷ |
-| loose preopt | 1×10⁻⁴ | 1×10⁻⁷ (stage-1 default) |
-| publishable | 1×10⁻⁴ | **1×10⁻⁹** (stage-2 default) |
-| tight | 1×10⁻⁵ | 1×10⁻¹⁰ (stage-3 default) |
+| loose preopt | 1×10⁻⁴ | 1×10⁻⁷ (the `coarse` rung) |
+| publishable | 1×10⁻⁴ | **1×10⁻⁹** (the `medium` rung) |
+| tight | 1×10⁻⁵ | 1×10⁻¹⁰ (the `tight` rung) |
 
 **Shipped default:** `SiestaConfig.dm_tolerance` is **1×10⁻⁵** (the tight value) as a
 single global — SIESTA doesn't vary `DM.Tolerance` per stage, so the emitted `.fdf`
-carries 1×10⁻⁵ unless you override it. PySCF *does* vary `conv_tol` per stage
+carries 1×10⁻⁵ unless you override it. PySCF *does* vary `scf_conv_tol` per rung
 (1e-7 → 1e-9 → 1e-10). Tightening SCF on a warm-up (forces ~1 eV/Å) buys nothing — it
 starts to matter as `force ≪ 0.1 eV/Å`. [Pulay & Fogarasi 1992]
 
@@ -292,8 +297,8 @@ conventional form in prose ("ωB97M-V"); the spelling traps are in
 
 | Loop | Engine | Shipped default | Rationale |
 |---|---|---|---|
-| **Geometry (outer)** | PySCF `max_steps` | stage1 **50**, stage2 **200**, stage3 **100** | a warm-up needing > 50 has a wrong starting geometry — stop and inspect; 200 is the publishable safety margin |
-| | SIESTA `MD.Steps` | stage1 **600**, stage2 **200**, stage3 **100** | universal across CG / Broyden / FIRE (the per-type aliases aren't recognized); SIESTA's stage-1 budget is more generous than PySCF's |
+| **Geometry (outer)** | PySCF `geom_max_steps` | coarse **50**, medium **200**, tight **100** | a warm-up needing > 50 has a wrong starting geometry — stop and inspect; 200 is the publishable safety margin |
+| | SIESTA `relax_steps` | coarse **600**, medium **200**, tight **100** | universal across CG / Broyden / FIRE (the per-type aliases aren't recognized); SIESTA's coarse budget is more generous than PySCF's |
 | **SCF (inner)** | PySCF `mf.max_cycle` | **100** | plenty for a well-conditioned SCF; hitting 100 means the *system* is the problem (broken-symmetry open shell, level-shift needed) — 500 won't help |
 | | SIESTA `MaxSCFIterations` | **1000** | molbuilder's own generous ceiling (SIESTA's is smaller); each outer step runs at most this many inner cycles until `DM.Tolerance` is met. *(This row said 500 until 2026-08-16; the catalogue and `SiestaConfig` both say 1000, range 10–5000.)* |
 
@@ -509,13 +514,13 @@ For users who know one engine and want the other's equivalent.
 | Concept | SIESTA | PySCF / geomeTRIC | Units |
 |---|---|---|---|
 | Geometry algorithm | `MD.TypeOfRun` | `cfg.optimizer` (`"geometric"` ≈ BFGS) | enum |
-| Force convergence | `MD.MaxForceTol` | `convergence_gmax` (`StageSpec.gmax`) | SIESTA eV/Å; PySCF Ha/Bohr |
-| RMS-grad convergence | *(not checked)* | `convergence_grms` (`grms`) | Ha/Bohr |
-| Displacement convergence | *(implicit via `MD.MaxDispl`)* | `convergence_dmax`/`_drms` (`dmax`/`drms`) | Å |
-| Energy-step convergence | *(implicit via SCF tol)* | `convergence_energy` (`etol`) | Hartree |
+| Force convergence | `MD.MaxForceTol` | `convergence_gmax` (`geom_gmax`) | SIESTA eV/Å; PySCF Ha/Bohr |
+| RMS-grad convergence | *(not checked)* | `convergence_grms` (`geom_grms`) | Ha/Bohr |
+| Displacement convergence | *(implicit via `MD.MaxDispl`)* | `convergence_dmax`/`_drms` (`geom_dmax`/`geom_drms`) | Å |
+| Energy-step convergence | *(implicit via SCF tol)* | `convergence_energy` (`geom_etol`) | Hartree |
 | Step cap | `MD.MaxDispl` (universal) | *(geomeTRIC-internal line search)* | Å |
 | SCF tolerance | `DM.Tolerance` | `mf.conv_tol` | dimensionless / Hartree |
-| Max geometry steps | `MD.Steps` (universal) | `StageSpec.max_steps` | integer |
+| Max geometry steps | `MD.Steps` (universal) | `geom_max_steps` | integer |
 | Max SCF cycles | `MaxSCFIterations` | `mf.max_cycle` | integer |
 | Discretisation | `MeshCutoff` (Ry) | *(basis-determined)* | Ry / — |
 | Basis | NAO via `PAO.Basis` (default DZP) | `cfg.basis` (Gaussian, default def2-SVP) | string |
@@ -535,62 +540,82 @@ default**.
   `coarse` / `medium` / `tight`. *(This bullet also credited a `--stage {1,2,3}`
   one-shot overlay until 2026-08-16 — a flag of the `molbuilder fdf` verb,
   deleted 2026-08-11.)*
-- **PySCF:** `config/pyscf.py::_default_stages` — the default ladder. It was a
-  field of the config until 2026-08-17; the ladder is now declared in
-  `task.json` like SIESTA's, while still **executing** inside one process
-  ([`stages.md § 1.1a`](?doc=engines/stages.md)).
+- **PySCF:** `pyscf/stages.py::default_pyscf_stages(strategy)` builds it — the
+  same call, the same return type and the same three names as SIESTA's, one
+  `task.Stage` per tier with that tier's values as its `overrides`. The values
+  come from `config/pyscf.py::PYSCF_STAGE_PRESETS`, and that is the **one**
+  place they enter. *(It was `config/pyscf.py::_default_stages`, a field of the
+  config, until 2026-08-17; the ladder is declared in `task.json` like SIESTA's
+  now, and since 2026-08-18 **executes** like SIESTA's too — N decks, N jobs
+  ([`stages.md § 1.1a`](?doc=engines/stages.md)).)*
 
-> **The non-convergence policy is PySCF's alone**, and the table below says so in
-> its own column. `proceed` / `continue` / `halt` decided the **edge** between one
-> attempt and the next; a SIESTA ladder emits no edges
-> ([`project-layout.md § 1.6`](?doc=execution/project-layout.md)), so on
-> 2026-08-10 the field was **removed from the SIESTA producer** rather than left
-> inert ([`stages.md § 3`](?doc=engines/stages.md)). PySCF keeps it because there
-> the ladder is a loop inside one process, so the policy is real control flow.
+> **Neither engine's ladder carries a non-convergence policy, and running out
+> of steps means the same thing in both: the rung stops, and you decide.** A
+> stage that exhausts its budget leaves its geometry behind; the next stage
+> exists only because somebody looked at that result and prepared it. That is
+> the judgement the policy was trying to encode, made where the evidence is.
 >
-> **What replaces it for SIESTA is you.** A stage that exhausts its step budget
-> stops, and the next stage exists only because you looked at the result and
-> prepared it. That is the same judgement the policy was trying to encode,
-> made where the evidence is.
+> *`proceed` / `continue` / `halt` decided the **edge** between one attempt and
+> the next. A SIESTA ladder emits no edges
+> ([`project-layout.md § 1.6`](?doc=execution/project-layout.md)), so the field
+> was removed from its producer on 2026-08-10 rather than left inert
+> ([`stages.md § 3`](?doc=engines/stages.md)); PySCF kept it while its ladder
+> was a loop inside one process and the policy was real control flow, and that
+> loop was retired on 2026-08-18
+> ([`stages.md § 1.1a`](?doc=engines/stages.md)).*
+>
+> **`on_nonconvergence` survives as a PySCF field with a narrower meaning**: it
+> sets `assert_convergence` for THIS rung's `optimize()` call — whether an
+> unconverged rung raises or exits with the partial geometry. That is a property
+> of one deck, not of an edge between two, and it is
+> [`pyscf.md § 3`](?doc=engines/pyscf.md)'s to describe.
 
-| Stage (tier) | SIESTA | PySCF | on running out of steps |
-|---|---|---|---|
-| **stage 1** (loose preopt) | CG · 600 steps · force 0.05 eV/Å · Δx 0.20 Å | `geometric` · 50 steps · `gmax` 2×10⁻³ · `conv_tol` 1×10⁻⁷ | SIESTA: stops, you decide · PySCF: **proceed** |
-| **stage 2** (publishable) | Broyden · 200 · 0.04 eV/Å · 0.05 Å | `geometric` · 200 · `gmax` 4.5×10⁻⁴ · `conv_tol` 1×10⁻⁹ | SIESTA: stops, you decide · PySCF: **halt** |
-| **stage 3** (tight, *off*) | Broyden · 100 · 0.01 eV/Å · 0.02 Å | `geometric` · 100 · `gmax` 2×10⁻⁴ · `conv_tol` 1×10⁻¹⁰ | SIESTA: stops, you decide · PySCF: **halt** |
+| Stage (tier) | SIESTA | PySCF |
+|---|---|---|
+| **stage 1** (loose preopt) | CG · 600 steps · force 0.05 eV/Å · Δx 0.20 Å | `geometric` · 50 steps · `gmax` 2×10⁻³ · `conv_tol` 1×10⁻⁷ |
+| **stage 2** (publishable) | Broyden · 200 · 0.04 eV/Å · 0.05 Å | `geometric` · 200 · `gmax` 4.5×10⁻⁴ · `conv_tol` 1×10⁻⁹ |
+| **stage 3** (tight, *off*) | Broyden · 100 · 0.01 eV/Å · 0.02 Å | `geometric` · 100 · `gmax` 2×10⁻⁴ · `conv_tol` 1×10⁻¹⁰ |
+
+> **These numbers restate § 2.4 and § 2.5, which are their authority** — those
+> tables are checked against `PYSCF_STAGE_PRESETS` and `SIESTA_STAGE_PRESETS` by
+> `test_doc_claims.py`; this one is not. It is here because a reader comparing
+> two ladders wants them side by side. If they ever disagree, § 2.4 / § 2.5 win.
 
 **The geometry flows from each stage to the next, and the optimizer history is
-reset at the boundary (§ 5) — but *how* it flows differs by engine, and that is
-the one place these two ladders are not the same thing.**
+reset at the boundary (§ 5). Both engines flow it the same way: a rung ends, a
+person looks at it, and the next rung is prepared from the run they name.**
 
 ```mermaid
-flowchart TB
-    subgraph PY["<b>PySCF</b> — one process, one script"]
-      direction LR
-      P1["stage 1 · loose<br/>proceed"] -->|"in memory"| P2["stage 2 · publishable<br/>halt"] -->|"in memory"| P3["stage 3 · tight (off)<br/>halt"]
-    end
-    subgraph SI["<b>SIESTA</b> — one job per stage, started by a person"]
-      direction LR
-      S1["stage 1 · loose"] --> L1{{"you look at it"}}
-      L1 -->|"prep run tight --from …<br/>copies the .XV / .DM"| S2["stage 2 · publishable"]
-      S2 --> L2{{"you look at it"}} -->|"prep run …"| S3["stage 3 · tight (off)"]
-    end
+flowchart LR
+    S1["stage 1 · loose"] --> L1{{"you look at it"}}
+    L1 -->|"prep run … --from &lt;attempt&gt;<br/>copies the geometry + density"| S2["stage 2 · publishable"]
+    S2 --> L2{{"you look at it"}} -->|"prep run …"| S3["stage 3 · tight (off)"]
 ```
 
-Read the two rows against each other: **PySCF's ladder is a loop and SIESTA's is
-a workflow.** That is why `on_nonconvergence` means something on one and nothing
-on the other, and why only PySCF can ship a policy that decides what happens
-next without asking.
+What each engine copies at that boundary is its own vocabulary and the only thing
+that differs: SIESTA's `.XV` and `.DM`, PySCF's `<JOB>_optimized.xyz` and
+`<JOB>.chk` ([`job-contracts.md § 4.2a`](?doc=execution/job-contracts.md)).
 
-What the values look like emitted — PySCF's per-stage list and SIESTA's stage-2
-`.fdf` MD block:
+> **This drew two different ladders until 2026-08-18** — PySCF's as a loop
+> passing state *in memory* inside one process, SIESTA's as a workflow — and
+> called that *"the one place these two ladders are not the same thing"*. It was
+> the argument for why `on_nonconvergence` meant something on one engine and
+> nothing on the other. With the loop retired
+> ([`stages.md § 1.1a`](?doc=engines/stages.md)) they are the same thing, and the
+> on-running-out-of-steps column above is a PySCF-only behaviour whose future the
+> unit that retires the loop settles.
+
+What the values look like emitted. **Both engines emit one deck per rung**
+([`stages.md` § 1.1a](?doc=engines/stages.md)), so what follows is the `medium`
+rung of each — the same tier, in each engine's own syntax:
 
 ```python
-# PySCF: the rendered script's STAGES literal (geomeTRIC reads these)
-STAGES = [
-    {"name": "stage1", "gmax": 2.0e-3, "conv_tol": 1e-7, "max_steps": 50,  "on_nonconvergence": "proceed"},
-    {"name": "stage2", "gmax": 4.5e-4, "conv_tol": 1e-9, "max_steps": 200, "on_nonconvergence": "halt"},
-]
+# PySCF: <label>_02_medium.py -- this rung's targets, handed to geomeTRIC
+mf.conv_tol = 1e-09
+mol_eq = optimize(mf, maxsteps=200,
+                  convergence_gmax=0.00045, convergence_grms=0.0003,
+                  convergence_dmax=0.0018,  convergence_drms=0.0012,
+                  convergence_energy=1e-06)
 ```
 
 ```fdf

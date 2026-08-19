@@ -92,44 +92,36 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         1, "molbuilder/config/siesta.py",
         "the tier values -- real science, kept as the defaults a new stage "
         "is created with"),
+    "PYSCF_STAGE_PRESETS": (
+        1, "molbuilder/config/pyscf.py",
+        "the same table for PySCF (2026-08-18).  Not a new mechanism: it is "
+        "mechanism 1 finally being the same shape on both engines, and the "
+        "numbers in it are `tuning.md` § 2.4's, guarded by "
+        "test_doc_claims.py rather than restated anywhere"),
     "--stage-strategy": (
-        2, ("molbuilder/cli.py", "molbuilder/jobset/_cli.py"),
-        "named presets over the *enable* flags -- on `pyscf` (until decision "
-        "34 reworks it) and on `jobset describe`, where the ladder is "
-        "described rather than rendered"),
+        2, "molbuilder/jobset/_cli.py",
+        "named presets over the *enable* flags, on `jobset describe` -- "
+        "where the ladder is DESCRIBED rather than rendered, and for both "
+        "engines through one option.  It was also on `molbuilder pyscf` "
+        "until 2026-08-18; a command that writes ONE deck had no business "
+        "carrying a ladder (`stages.md` § 1.1a)"),
     "SIESTA_STAGE_STRATEGY_PRESETS": (
         2, "molbuilder/config/siesta.py",
         "those presets -- pure enable-mask data now; the applier that turned "
         "them into SiestaStageSpec objects went with the class (P2)"),
-    "apply_stage_strategy": (
-        2, "molbuilder/config/pyscf.py", "the same road for PySCF"),
     "STAGE_STRATEGY_PRESETS": (
         2, "molbuilder/config/pyscf.py",
-        "PySCF's own copy of the strategy presets"),
-    "--stages-json": (
-        3, "molbuilder/cli.py",
-        "the whole ladder from a file; its help says 'Unknown keys ignored', "
-        "which P1 reverses"),
+        "PySCF's copy of the enable-mask table.  Two homes for one fact, "
+        "and a drift test is what keeps them equal -- the honest reading is "
+        "that this is mechanism 2's remaining debt, not a second mechanism. "
+        "`default_pyscf_stages` reads it exactly as SIESTA's twin reads "
+        "SIESTA_STAGE_STRATEGY_PRESETS"),
     "_refuse_duplicate_stage_names": (
         None, "molbuilder/task.py",
         "the ONE case-insensitive duplicate check (D10, 2026-08-13) -- "
         "names key filenames, and case-insensitive filesystems make "
         "'Tight' and 'tight' one deck; both parsers and the constructor "
         "call this instead of keeping their own loops"),
-    "stages_from_configs": (
-        3, ("molbuilder/config/pyscf.py",),
-        "DERIVES it -- resolved per-rung PySCFConfigs in, the render-time "
-        "StageSpec ladder out (P2, 2026-08-17).  Not a fourth way to say "
-        "stage but the bridge that removes one: `task.json` is now the only "
-        "AUTHORED ladder for both engines, and this is how PySCF's in-script "
-        "loop is built from it (engines/stages.md § 1.1a).  Nothing a person "
-        "writes reaches it."),
-    "stages_from_dicts": (
-        3, ("molbuilder/config/pyscf.py",),
-        "parses it -- PySCF's own StageSpec ladder, the one --stages-json "
-        "reaches.  (task.py's same-named twin was deleted 2026-08-13, "
-        "V22: zero production callers; its duplicate-name refusal lives "
-        "on the read_task route.)"),
     # Mechanism 5 -- SiestaStageSpec, _default_siesta_stages,
     # validate_siesta_stages -- is RETIRED (P2 unit 2, 2026-08-07).  These
     # three rows are deleted rather than commented out: their absence is
@@ -233,6 +225,13 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
     #  ``STAGES`` -- the bash array in the runner's template -- went with the
     #  template on 2026-08-10.  It was the only stage vocabulary that lived in
     #  GENERATED TEXT, which is where questions 3 and 4 used to look.
+    "default_pyscf_stages": (
+        11, "molbuilder/pyscf/stages.py",
+        "the same builder for PySCF, body-for-body: mechanism 1's preset "
+        "table for the science, mechanism 2's for the enable mask, `restart` "
+        "positional, ValueError on an unknown strategy.  It read neither "
+        "table and invented its own strategy names until 2026-08-18, so "
+        "`--stage-strategy vib-quality` silently ran the publishable ladder"),
     "default_siesta_stages": (
         11, "molbuilder/siesta/stages.py",
         "builds the shipped ladder as task.Stage objects, reading the tier "
@@ -240,22 +239,22 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "mechanism 2's.  It produces the design's own stage rather than "
         "being a way of expressing one, which is why it is 11 and not a "
         "twelfth"),
-    "StageSpec": (
-        8, "molbuilder/config/pyscf.py",
-        "PySCF's ladder: one process, one file, an in-script loop -- "
-        "genuinely a different shape, and it stays"),
-    "_default_stages": (
-        8, "molbuilder/config/pyscf.py", "its default ladder"),
-    "validate_stages": (
-        8, "molbuilder/config/pyscf.py", "its gate"),
-    "_emit_stages_loop": (
-        8, "molbuilder/pyscf/input.py", "emits that in-script loop"),
-    # Mechanism 9 is a DOM id, so it lives in the JS ledger below.
-    "_stagespec_to_field_schemas": (
-        10, "molbuilder/web/blueprints/_shared.py",
-        "the Python end of the generic stage-table: any List[<dataclass>] "
-        "becomes a per-stage grid"),
-
+    # Mechanism 3 -- ``--stages-json``, ``stages_from_dicts`` and
+    # ``stages_from_configs`` -- and mechanism 8 -- ``StageSpec``,
+    # ``_default_stages``, ``validate_stages`` -- are RETIRED (2026-08-18).
+    # `stages.md` § 1.1a made a PySCF ladder N decks and N jobs, which left
+    # mechanism 8 with no reader and mechanism 3 with nothing to parse INTO.
+    # Their rows are deleted rather than commented out: their absence is what
+    # proves the subtraction, and the guard below fails if any name comes back.
+    # What replaced them is mechanisms 1, 2 and 11 -- all three already here,
+    # and all three now the same on both engines.
+    #
+    # Mechanism 10's Python half went with mechanism 8:
+    # ``_stagespec_to_field_schemas`` walked a ``List[<dataclass>]`` config
+    # field into a stage-table schema, and no config anywhere has such a field
+    # now.  The JS renderer below still exists and is reached by nothing --
+    # recorded rather than deleted, because the Build UI is not touched
+    # without an ask.
     "Stage": (
         11, "molbuilder/task.py",
         "THE DESIGN'S OWN: a stage in task.json -- name, enabled, overrides, "
@@ -358,9 +357,16 @@ JS_LEDGER: dict[str, tuple[int | None, str]] = {
 #: SIX since 2026-08-16: mechanism 9 -- the structure-optimization tab's
 #: ``p-stage-preset``, which turned a stage NUMBER into a deck filename --
 #: went with that tab's cleanup.  The panel names no decks now, so the last
-#: place a stage was spelled in the browser is gone and every remaining
-#: mechanism is Python.
-MECHANISM_COUNT = 6
+#: place a stage was spelled in the browser is gone.
+#:
+#: FOUR since 2026-08-18: mechanisms 3 and 8 -- PySCF's own ``StageSpec``
+#: ladder and the ``--stages-json`` route that authored one -- are DELETED
+#: with the in-script loop that read them (`stages.md` § 1.1a).  **This is
+#: the subtraction the whole PySCF exception was costing**: the four that
+#: remain are 1 (tier values), 2 (enable masks), 10 (a dead JS renderer) and
+#: 11 (task.json's own stage), and the first, second and fourth are now the
+#: SAME code on both engines rather than a pair of parallel ones.
+MECHANISM_COUNT = 4
 
 
 def _py_sources() -> list[Path]:

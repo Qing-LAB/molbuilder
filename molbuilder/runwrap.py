@@ -29,8 +29,7 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
-import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Mapping, Optional, Tuple
 
@@ -214,15 +213,13 @@ def _continue_force_args_parser(name_for_usage: str) -> str:
       * ``--force`` / ``-f``: start a fresh run-index sequence
         (-run0) even when prior outputs exist.  Does NOT touch the
         engine warm-start files -- the engine still loads them.
-      * ``--cold`` / ``--from-scratch``: NAME SWEEP -- move
-        everything named after the run's id, minus what molbuilder
-        itself wrote, into a timestamped backup directory before
-        running (`job-contracts.md` § 4.1: a list of extensions is
-        a snapshot of one build, and a file nobody listed is a file
-        --cold walks past).  The engine starts strictly from the
-        .fdf / .py coordinates and conditions.  Distinct from
-        ``--force`` which only resets the run-index; ``--cold``
-        resets the engine state too.
+      * ``--cold`` / ``--from-scratch``: start the engine strictly
+        from the .fdf / .py, OVERWRITING everything named after the
+        run's id as the run proceeds (`job-contracts.md` § 4.1: a
+        list of extensions is a snapshot of one build, and a file
+        nobody listed is a file --cold walks past, so the sweep is
+        by name).  It NAMES those files and refuses; ``--force``
+        proceeds.  Keeping them is `molbuilder checkpoint save`.
 
     Added 2026-06-14 after the BDT-stage-2 incident where stage 2
     ran without the user's frozen-atom constraints (contract bug
@@ -230,26 +227,37 @@ def _continue_force_args_parser(name_for_usage: str) -> str:
     warm-start files would have contaminated every subsequent run
     until ``--cold`` was provided.
 
-    Caller is responsible for the eventual ``--help`` text.
+    Caller is responsible for the eventual ``--help`` text, EXCEPT for the
+    ``--cold`` entry: that one fact has one writer,
+    :func:`_cold_usage_entry`, because it is what drifted when each engine
+    wrote its own.
     """
     return (
+        # WHAT THE FLAGS DO TO THE RUN INDEX -- which is all this shared
+        # block can honestly say.  It is emitted for BOTH engines and its
+        # whole input is a name, so it cannot know what the deck beside it
+        # instructs; until 2026-08-18 it asserted anyway ("warm-start from
+        # prior .DM/.CG/.XV"; "the engine still loads them"), which was the
+        # fifth copy of a claim that is false for every stage described
+        # `clean`.  Whether the ENGINE also picks up prior state is said where
+        # the deck is known -- the usage text in each engine's own branch.
         f"# --- Continuation flags (shared SIESTA / PySCF) --------\n"
-        f"# ``--continue`` / ``-c``: advance run-index AND warm-\n"
-        f"#                          start from prior .DM/.CG/.XV\n"
-        f"#                          (SIESTA) or .chk (PySCF).\n"
-        f"# ``--force``    / ``-f``: reset run-index to -run0; prior\n"
-        f"#                          warm-start files remain on disk\n"
-        f"#                          and the engine still loads them.\n"
+        f"# ``--continue`` / ``-c``: advance the run index, and ask\n"
+        f"#                          the engine to resume if its deck\n"
+        f"#                          allows it (see -h).\n"
+        f"# ``--force``    / ``-f``: reset the run index to -run0.\n"
+        f"#                          Prior state files stay on disk;\n"
+        f"#                          whether they are read is the\n"
+        f"#                          deck's to say.\n"
         f"# ``--cold`` / ``--from-scratch``:\n"
-        f"#                          move EVERYTHING named after the\n"
-        f"#                          run's id -- minus what molbuilder\n"
-        f"#                          itself wrote -- into a\n"
-        f"#                          timestamped backup dir BEFORE\n"
-        f"#                          running, so the engine starts\n"
-        f"#                          purely from the .fdf/.py.  Use\n"
-        f"#                          when the prior run was bad and\n"
-        f"#                          its restart files would corrupt\n"
-        f"#                          the next run.\n"
+        f"#                          start purely from the .fdf/.py,\n"
+        f"#                          OVERWRITING everything named\n"
+        f"#                          after the run's id -- minus what\n"
+        f"#                          molbuilder itself wrote.  Names\n"
+        f"#                          them and refuses; --force\n"
+        f"#                          proceeds.  Use when the prior\n"
+        f"#                          run was bad and its restart\n"
+        f"#                          files would corrupt the next.\n"
         f"# Self-identity for the warm-retry re-exec: an ABSOLUTE path to\n"
         f"# this wrapper.  Under ``bash x.run.sh`` $0 is a bare relative\n"
         f"# name -- bash's ``exec`` PATH-searches slash-less words (never\n"
@@ -280,9 +288,8 @@ def _continue_force_args_parser(name_for_usage: str) -> str:
     )
 
 
-#: SIESTA's warm-restart files, by suffix.  The SAME inventory the ``--cold``
-#: move-aside covers (job-contracts.md § 4.2) -- one list, so a new warm hook
-#: cannot be carried without also being moved aside, or vice versa.
+#: SIESTA's warm-restart files, by suffix (job-contracts.md § 4.2) -- the
+#: short hint list a deck writes and ``prep`` carries between stages.
 #: CANONICAL ORDER (U1 precursor, 2026-08-13): the carry rows first, in
 #: `project-layout.md` § 2.3.4's own row order (.XV geometry, .DM density,
 #: .CG history), then the inventory-only rows, transport's last.  The old
@@ -302,9 +309,9 @@ _SIESTA_WARM_SUFFIXES = _warm_inventory("siesta")
 #: plain extension match would catch (job-contracts.md § 4.2).
 #:
 #: **Hoisted 2026-08-10 (P7 unit 5).**  These five were a local tuple inside
-#: ``_cold_restart_aside_block``, while the startup banner tested ``.chk``
+#: ``_cold_restart_block``, while the startup banner tested ``.chk``
 #: ALONE -- so a run holding ``<JOB>_optimized.xyz`` and no ``.chk`` announced
-#: itself as a clean start and then had that file moved aside by ``--cold`` as
+#: itself as a clean start and then had that file named by ``--cold`` as
 #: warm state.  The two halves of one contract disagreeing, and the half that
 #: was wrong is the one `run-identity.md § 5` says must never be weakened,
 #: because it is the one always present.  SIESTA's pair was derived from a
@@ -312,12 +319,57 @@ _SIESTA_WARM_SUFFIXES = _warm_inventory("siesta")
 _PYSCF_WARM_SUFFIXES = _warm_inventory("pyscf")
 
 
-def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
-    """Bash snippet that moves prior run state aside when ``_cold=1``.
+def _cold_usage_entry(*, warm_examples: str) -> str:
+    """The ``--cold`` / ``--from-scratch`` entry of a wrapper's ``--help``.
+
+    **ONE writer, because it is ONE fact.**  `job-contracts.md` § 4.1's sweep
+    is engine-independent *by construction*: it reads no list of extensions,
+    so there is nothing in it for an engine to differ about.  An engine
+    contributes only ``warm_examples`` -- what its own runs happen to leave
+    behind -- and the rule itself is written once.
+
+    **It was written out per engine until 2026-08-19, and the two copies
+    disagreed.**  SIESTA's still promised to move the files "into a
+    timestamped backup dir BEFORE running", which the launcher stopped doing
+    on 2026-08-18 when the aside directory was replaced by a refusal; and it
+    cited `job-contracts.md` § 4.1 while stating that section's opposite.  A
+    reader who believed it would pass ``--cold --force`` expecting a copy and
+    get an overwrite.  PySCF's copy had been corrected, which is what made
+    this the shape the twin-file rule exists to catch: one engine fixed, the
+    other not, with no mechanism that could notice.
+    """
+    return (
+        "  --cold,\n"
+        "  --from-scratch   start the engine from the deck alone.\n"
+        "                   Everything named after the run's id --\n"
+        "                   minus what molbuilder itself wrote --\n"
+        f"                   is OVERWRITTEN as the run proceeds\n"
+        f"                   ({warm_examples}).  So --cold NAMES\n"
+        "                   those files and REFUSES; --force then\n"
+        "                   proceeds.  Nothing is moved or copied:\n"
+        "                   keep a state with `molbuilder\n"
+        "                   checkpoint save` before you discard it.\n"
+        "                   Swept BY NAME, never by a list of\n"
+        "                   extensions (job-contracts.md 4.1) -- a\n"
+        "                   file nobody listed is a file --cold\n"
+        "                   walks past.\n"
+    )
+
+
+def _cold_restart_block(basename: str, *, engine: str) -> str:
+    """Bash snippet that NAMES the prior state a cold run would overwrite.
+
+    **It reports and stops; ``--force`` proceeds** *(user, 2026-08-18)*.  It
+    MOVED the files into a timestamped aside directory until then, which read
+    as helpful and was not: the launcher was deciding to keep something nobody
+    asked it to keep, and it left two mechanisms for preserving a state with
+    different shapes and different names.  Keeping one is
+    `molbuilder checkpoint save`, it is never automatic
+    (`checkpointing.md` § 2), and this message says so.
 
     **A NAME SWEEP, not a list** (`job-contracts.md` § 4.1, decided
     2026-08-08; implemented U17, 2026-08-12): everything matching the
-    run's id goes aside, except the files molbuilder itself wrote.  The
+    run's id is named, except the files molbuilder itself wrote.  The
     suffix enumeration that stood here (13 SIESTA extensions, 5 PySCF
     suffixes, each with its own hazard comment) was a snapshot of one
     build's behaviour, and its failure mode was silent in the worst
@@ -343,9 +395,8 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
     ``<id>_*``: ``--cold`` on stage 2 moved stage 1's stdout and timing
     history into the aside dir.
 
-    Backups land in ``<basename>-restart-aside-<UTC-timestamp>/`` so the
-    user can inspect / recover the prior state.  Deleting that directory
-    is a manual user action -- we never auto-delete prior results.
+    Nothing is moved, copied or deleted here.  The engine overwrites what it
+    overwrites, once the user has said to.
     """
     if engine == "siesta":
         label_extract = (
@@ -424,19 +475,26 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
          for anchor in ('"$_warm_label"', basename)}
         | {"*.psml", "*-restart-aside-*"}))
     return (
-        f"# --- Cold-restart: NAME SWEEP --------------------------\n"
-        f"# Everything named after the run's id goes aside, except what\n"
-        f"# molbuilder itself wrote.  No list of engine extensions: a\n"
-        f"# list is a snapshot of one build, and a file nobody listed\n"
-        f"# is a file --cold walks past.\n"
+        f"# --- Cold restart: SAY WHAT WOULD BE LOST, THEN STOP ------\n"
+        f"# --cold starts the engine from the deck alone, so everything\n"
+        f"# named after the run's id is about to be overwritten.  This\n"
+        f"# NAMES those files and refuses; --force proceeds.\n"
+        f"#\n"
+        f"# It MOVED them into a timestamped aside/ folder until\n"
+        f"# 2026-08-18 (user).  That was the launcher deciding to keep\n"
+        f"# something nobody asked it to keep, and it left two ways to\n"
+        f"# preserve a state with different shapes.  Keeping a state is\n"
+        f"# `molbuilder checkpoint save` and it is never automatic\n"
+        f"# (`checkpointing.md` § 2).\n"
+        f"#\n"
+        f"# No list of engine extensions: a list is a snapshot of one\n"
+        f"# build, and a file nobody listed is a file --cold walks past.\n"
         # THE ONE label extraction (F13, 2026-08-13): outside the --cold
         # guard, so the status banner below reads THIS value instead of
         # re-extracting without the sanitizer and overwriting it.
         + label_extract +
         f'if [ "$_cold" = "1" ]; then\n'
-        f"    # UTC timestamp keeps multiple cold runs from colliding.\n"
-        f'    _aside="{basename}-restart-aside-$(date -u +%Y%m%dT%H%M%SZ)"\n'
-        f"    _moved=0\n"
+        f"    _clobber=0\n"
         f"    shopt -s nullglob 2>/dev/null || true\n"
         f"    echo \"[molbuilder] --cold: name sweep over "
         f"\\\"$_warm_label\\\".* and \\\"{basename}\\\".* -- everything the id "
@@ -449,19 +507,27 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
         f"            # derived from identity.OUR_FILE_PATTERNS)\n"
         f"            {_exceptions}) continue ;;\n"
         f"        esac\n"
-        f'        if [ "$_moved" = "0" ]; then\n'
-        f'            mkdir -p "$_aside"\n'
-        f"            _moved=1\n"
+        f'        if [ "$_clobber" = "0" ]; then\n'
+        f'            echo "[molbuilder] --cold would OVERWRITE prior state:" >&2\n'
+        f"            _clobber=1\n"
         f"        fi\n"
-        f'        mv "$_f" "$_aside/"\n'
-        f'        echo "[molbuilder] --cold: moved $_f" >&2\n'
+        f'        echo "[molbuilder]     $_f" >&2\n'
         f"    done\n"
-        f'    if [ "$_moved" = "1" ]; then\n'
-        f'        echo "[molbuilder] --cold: moved prior state into $_aside/" >&2\n'
-        f"    else\n"
-        f'        echo "[molbuilder] --cold: nothing under this name to move; already a clean start" >&2\n'
-        f"    fi\n"
         f"    shopt -u nullglob 2>/dev/null || true\n"  # D18c: restore
+        f'    if [ "$_clobber" = "1" ]; then\n'
+        f'        if [ "$_force" = "1" ]; then\n'
+        f'            echo "[molbuilder] --force given: overwriting the files above." >&2\n'
+        f"        else\n"
+        f'            echo "[molbuilder] Refusing: nothing has been changed." >&2\n'
+        f'            echo "[molbuilder] To keep this state, save it first:" >&2\n'
+        f"            echo \"[molbuilder]     molbuilder checkpoint save -m "
+        f"'before a clean rerun'\" >&2\n"
+        f'            echo "[molbuilder] Then run again with --force to overwrite." >&2\n'
+        f"            exit 1\n"
+        f"        fi\n"
+        f"    else\n"
+        f'        echo "[molbuilder] --cold: nothing under this name; already a clean start" >&2\n'
+        f"    fi\n"
         f"fi\n"
         f"\n"
     )
@@ -479,7 +545,8 @@ def _runtime_status_block(
     BEFORE the engine launches:
 
       * **Mode** -- one of:
-        - ``COLD`` (``--cold`` was passed; warm-start files moved aside)
+        - ``COLD`` (``--cold`` was confirmed with ``--force``; the prior
+          state it named is overwritten as the run proceeds)
         - ``WARM-RESUME`` (``--continue`` with prior state on disk)
         - ``WARM-RESUME REQUESTED but no prior state`` (``--continue``
           with nothing to resume from -- the user probably intended
@@ -540,9 +607,6 @@ def _runtime_status_block(
             warmstart_test_pieces.append(f'[ -e "$_warm_label.{ext}" ]')
             warmstart_test_pieces.append(f'[ -e "{basename}.{ext}" ]')
         warmstart_test = " || ".join(warmstart_test_pieces)
-        warmstart_listing = " ".join(
-            f"{basename}.{ext}" for ext in warmstart_exts
-        )
         # Awk that:
         #   * lower-cases the first token for case-insensitive
         #     ``%block`` / ``%endblock`` / ``position`` matching
@@ -603,7 +667,7 @@ def _runtime_status_block(
         # DERIVED, mirroring SIESTA: the banner and the ``--cold`` mover
         # read ONE list, so a run whose only warm file is
         # ``<JOB>_optimized.xyz`` can no longer announce a clean start and
-        # then have that very file moved aside as warm state.
+        # then have that very file named by --cold as warm state.
         # BRACED, not bare: four of the five suffixes start with "_", so
         # an unbraced "$_warm_label_optimized.xyz" parses as one variable
         # name -- unbound under set -u, killing EVERY fresh-directory run
@@ -615,9 +679,6 @@ def _runtime_status_block(
             for suf in _PYSCF_WARM_SUFFIXES
             for piece in (f'[ -e "${{_warm_label}}{suf}" ]',
                           f'[ -e "{basename}{suf}" ]')
-        )
-        warmstart_listing = " ".join(
-            f"{basename}{suf}" for suf in _PYSCF_WARM_SUFFIXES
         )
         # PySCF embeds the canonical frozen-atom list as a single-line
         # comment.  Counting digits in that comment is sufficient
@@ -675,7 +736,7 @@ def _runtime_status_block(
         + f"if {warmstart_test}; then _warmstart_present=1; fi\n"
         f'_mode="initial-run (clean state)"\n'
         f'if [ "$_cold" = "1" ]; then\n'
-        f'    _mode="COLD (--cold; warm-start files moved aside)"\n'
+        f'    _mode="COLD (--cold --force; prior state overwritten)"\n'
         f'elif [ "$_continue" = "1" ]; then\n'
         f'    if [ "$_warmstart_present" = "1" ]; then\n'
         f'        _mode="WARM-RESUME (--continue; engine will load {warm_files_label})"\n'
@@ -1581,6 +1642,39 @@ def _fdf_requests_gpu(fdf_path: Path) -> bool:
 # deck keyword like any other, and it no longer decides an environment.
 
 
+def _fdf_honours_restart(fdf_path: Path) -> Optional[bool]:
+    """Whether this deck lets SIESTA read the state a previous run left.
+
+    Reads the deck, because the deck is what SIESTA obeys.  ``None`` when it
+    says nothing — a non-SIESTA script, or one from before the restart group
+    was written out.
+
+    **Why the wrapper has to ask rather than assert.** Its ``--continue`` help
+    said *"SIESTA reads .DM/.CG/.XV automatically when present (generator emits
+    the flags by default)"*, which was true of a continuing deck and false of a
+    clean one — and the wrapper ships beside exactly one deck, so it can simply
+    look. A stage described `clean` now carries ``DM.UseSaveDM .false.``, and on
+    that deck ``--continue`` advances the run index and starts cold; a help text
+    promising otherwise is the wrapper telling the user something its own deck
+    contradicts.
+
+    First match wins, as libfdf does (`fdf_locate` stops at the first label).
+    """
+    from .script_emit import parameter
+    try:
+        text = fdf_path.read_text()
+    except OSError:
+        return None
+    # THE ONE DOOR, deck-backed.  Which keyword answers for `restart` is the
+    # catalogue's to say (`[item.restart].expands`), not this function's -- it
+    # hand-spelled `DM.UseSaveDM` in a regex, which is the fourth copy of the
+    # declaration and the habit this object exists to end.
+    answer = parameter("restart", "siesta", deck_text=text).value
+    if answer is None:
+        return None
+    return answer.strip().lower() in _GPU_TRUTHY
+
+
 def _parse_fdf_n_atoms(fdf_path: Path) -> Optional[int]:
     """Read the ``NumberOfAtoms`` line from a SIESTA .fdf, or None.
 
@@ -1604,15 +1698,74 @@ def _parse_fdf_n_atoms(fdf_path: Path) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+def _effective_parameters_block(script_path: "Path") -> str:
+    """The parameters SIESTA will actually read, echoed into the run log.
+
+    **The deck is the input, so the record is the deck** -- comments and blank
+    lines stripped, which is exactly the set of lines libfdf parses.  It is read
+    at LAUNCH rather than baked at generation, so a deck somebody hand-edited
+    after `prep` records what the engine will really see, not what we once
+    wrote.
+
+    Two columns cannot be had here the way PySCF has three.  PySCF can read its
+    own objects back after setup; SIESTA is a separate process that has not
+    started yet, so *what the engine holds* is only knowable from its own output
+    afterwards.  What the wrapper can say honestly is *what it is being given*.
+
+    **What the deck does not carry is recorded too.** A keyword left out takes
+    the engine's own default, and a reader chasing a surprising number needs to
+    know that it was never set rather than assume the deck is the whole story.
+    That list is baked at generation time, because it comes from the catalogue.
+    """
+    from . import script_emit as _sc
+
+    script_name = script_path.name
+    try:
+        deck_text = script_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        deck_text = ""          # the caller already refuses a missing deck
+    absent = []
+    for item in _sc.declarations(engine="siesta"):
+        param = _sc.parameter(item.name, "siesta", deck_text=deck_text)
+        if param.writes and param.value is None:
+            absent.append(f"{item.name} (catalogue default {param.default!r})")
+
+    lines = [
+        "",
+        "# --- What the engine will read ------------------------------",
+        f'echo "{_sc.begin_marker(_sc.BLOCK_PARAMETERS)}"',
+        f'grep -v "^[[:space:]]*#" "{script_name}" | grep -v "^[[:space:]]*$"'
+        ' | sed "s/^/#   /"',
+    ]
+    if absent:
+        lines.append(
+            'echo "#   -- not in the deck; the engine default applies --"')
+        for row in absent:
+            lines.append(f'echo "#   {row}"')
+    lines.append(f'echo "{_sc.end_marker(_sc.BLOCK_PARAMETERS)}"')
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
 def render_run_wrapper(script_path: Path, *,
+                        resources: "Resources",
                         env: Optional[str] = None,
-                        mpi_np: Optional[int] = None,
-                        omp_threads: Optional[int] = None,
-                        max_memory_mb: Optional[int] = None,
                         n_atoms: Optional[int] = None,
-                        mem_audit: Optional[Mapping[str, Any]] = None,
-                        continue_retries: Optional[int] = None) -> str:
+                        mem_audit: Optional[Mapping[str, Any]] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
+
+    **The allocation arrives whole** — `architecture.md` § 3.1, rule A8.  This
+    named four of ``Resources``' fields in its own signature until 2026-08-18,
+    so every caller re-derived which subset mattered; ``max_memory_mb`` was
+    lost that way once and the ranks/cores pair once more four days later.
+    With the object passed whole there is no subset to choose, and *which*
+    name this function uses internally — ``omp_threads`` for what the object
+    calls ``cpus_per_task`` — is its own business (`job-contracts.md` § 6.2
+    keeps the two names because different layers read them).
+
+    ``env``, ``n_atoms`` and ``mem_audit`` stay loose because none of them is
+    part of the allocation: the first is a per-invocation override, and the
+    other two are facts read off the DECK.
 
     Routing by file extension:
 
@@ -1636,14 +1789,19 @@ def render_run_wrapper(script_path: Path, *,
       script_path: the ``.fdf`` or ``.py`` to wrap.
       env: override the routed env name for this invocation.  Default
         is whatever ``Capabilities.env_for_category(<category>)`` returns.
-      mpi_np: SIESTA MPI rank count.  Ignored for ``.py`` scripts.
+      resources: the job's allocation, whole.  ``mpi_np`` is the SIESTA
+        rank count and is ignored for ``.py`` scripts.
       n_atoms: SIESTA atom count.  Used to clamp the auto-mpi default
         (``resolved_mpi = min(physical_cores, n_atoms)``) -- otherwise
         a small molecule on a many-core box gets mpi_np > n_atoms and
         SIESTA aborts at propor IMAX=0 with no possible BlockSize fix.
-        Auto-parsed from the .fdf by ``write_run_wrapper`` when
-        omitted; pass None to keep the un-clamped legacy behaviour.
+        Auto-parsed from the .fdf by ``render_wrappers`` when omitted;
+        pass None to keep the un-clamped behaviour.
     """
+    r = resources
+    mpi_np, omp_threads = r.mpi_np, r.cpus_per_task
+    max_memory_mb, continue_retries = (r.max_memory_mb,
+                                       r.continue_retries)
     script_path = Path(script_path)
     suffix = script_path.suffix.lower()
     category = EXTENSION_TO_CATEGORY.get(suffix)
@@ -1738,6 +1896,27 @@ def render_run_wrapper(script_path: Path, *,
             f"ELPA-1stage/ELPA-2stage`` is fine either way: the packaged "
             f"env runs both on CPU."
         )
+
+    # What this deck instructs about prior state -- read from the deck, so the
+    # wrapper's own help cannot contradict the file it ships beside.
+    _restart_honoured = (_fdf_honours_restart(script_path)
+                         if suffix == ".fdf" else None)
+
+    # THE BUDGET IS NOT OVERRIDDEN HERE, and that is deliberate.
+    #
+    # This zeroed `continue_retries` on a deck that declines prior state, on
+    # the reasoning that a retry which cannot warm-start just repeats an
+    # identical cold run.  The reasoning is right about the RUN and wrong about
+    # whose call it is: `job-contracts.md` § 6.2 says the value *"rides the
+    # element's Resources; prep bakes it into the wrapper"*, and
+    # `test_the_warm_retry_budget_travels_the_described_route` exists because
+    # it once did not -- *"a value that travels correctly and is dropped at the
+    # last hop"*, which is precisely what dropping it here recreated.
+    #
+    # So the budget travels, and what changes is that the wrapper stops
+    # DESCRIBING a cold re-run as a warm resume: the retry banner and the
+    # comment beside the loop read the deck (`_restart_honoured`) and say what
+    # a retry will actually do on this one.  Say it, do not decide it.
 
     basename = script_path.stem
     script_name = script_path.name
@@ -2101,27 +2280,39 @@ def render_run_wrapper(script_path: Path, *,
             f"\n"
             f"  --continue, -c   resume from prior run.  Scans existing\n"
             f"                   -runN.out files and writes -run(N+1).\n"
-            f"                   SIESTA reads .DM/.CG/.XV automatically\n"
-            f"                   when present (generator emits the\n"
-            f"                   ``DM.UseSaveDM`` / ``MD.UseSaveCG`` /\n"
-            f"                   ``MD.UseSaveXV`` flags by default).\n"
-            f"  --force, -f      start over from -run0 even if prior\n"
+            + (
+                f"                   This deck says 'start from: continue'\n"
+                f"                   (DM.UseSaveDM / MD.UseSaveXV /\n"
+                f"                   MD.UseSaveCG .true.), so SIESTA also\n"
+                f"                   reads the .DM/.XV/.CG left under this\n"
+                f"                   SystemLabel.\n"
+                if _restart_honoured else
+                f"                   This deck says 'start from: clean'\n"
+                f"                   (DM.UseSaveDM .false.), so SIESTA will\n"
+                f"                   NOT read prior .DM/.XV/.CG: the run\n"
+                f"                   index advances and the calculation\n"
+                f"                   starts cold.  Change 'restart' in the\n"
+                f"                   description and prep again to resume.\n"
+                if _restart_honoured is False else
+                f"                   Whether the engine also reads prior\n"
+                f"                   state is the deck's to say.\n"
+            )
+            + f"  --force, -f      start over from -run0 even if prior\n"
             f"                   runs exist.  Old files are NOT deleted;\n"
             f"                   the existing -run0.out is overwritten.\n"
             f"                   Prior .DM/.CG/.XV warm-start files STAY\n"
-            f"                   on disk -- SIESTA will still load them.\n"
-            f"  --cold,\n"
-            f"  --from-scratch   NAME SWEEP: move EVERYTHING named after\n"
-            f"                   the run's id -- minus what molbuilder\n"
-            f"                   itself wrote -- into a timestamped\n"
-            f"                   backup dir BEFORE running (job-contracts\n"
-            f"                   4.1; a list of extensions was a snapshot\n"
-            f"                   of one build).  Use when a prior run was\n"
-            f"                   bad (e.g. wrong constraints) and its\n"
-            f"                   restart files would corrupt this run.\n"
-            f"                   Combine with -f to also restart the\n"
-            f"                   run-index sequence at -run0.\n"
-            f"  -np N            override MPI rank count.  Default at\n"
+            + (
+                f"                   on disk -- and this deck reads them.\n"
+                f"                   Use --cold --force to discard them.\n"
+                if _restart_honoured else
+                f"                   on disk, but this deck declines them\n"
+                f"                   (.false.), so they are not read.\n"
+                if _restart_honoured is False else
+                f"                   on disk; whether they are read is the\n"
+                f"                   deck's to say.\n"
+            )
+            + _cold_usage_entry(warm_examples=".DM/.CG/.XV among them")
+            + f"  -np N            override MPI rank count.  Default at\n"
             f"                   generation time was $_mpi_np_default.\n"
             f"  -omp N,          override OpenMP threads per MPI rank.\n"
             f"  -t N, --threads  Aliased.  Default was $_omp_threads_default.\n"
@@ -2215,7 +2406,7 @@ def render_run_wrapper(script_path: Path, *,
             'fi\n'
             f"\n"
             + _run_index_resolver(basename)
-            + _cold_restart_aside_block(basename, engine="siesta")
+            + _cold_restart_block(basename, engine="siesta")
             + _runtime_status_block(basename, engine="siesta",
                                      script_name=script_name)
         )
@@ -2517,8 +2708,19 @@ def render_run_wrapper(script_path: Path, *,
             f'echo "  SIESTA version: ${{_siesta_ver:-unknown}}"\n'
             f'echo "  Build paral.  : ${{_siesta_par:-unknown}}"\n'
             f'echo "  Launch mode   : $_launch_note"\n'
+            # WHAT A RETRY WILL ACTUALLY DO ON THIS DECK.  It said
+            # "--continue warm-resume" whatever the deck instructed, so a
+            # `restart: clean` stage announced a warm resume and then re-ran
+            # cold.  The budget is the user's (it travels; see the note in
+            # `render_run_wrapper`); the description is the deck's.
             + (f'echo "  Retry policy  : up to {continue_retries} '
                f'retry(s) on non-convergence (--continue warm-resume)"\n'
+               if continue_retries and continue_retries > 0
+               and _restart_honoured is not False else
+               f'echo "  Retry policy  : up to {continue_retries} '
+               f'retry(s) on non-convergence -- COLD, because this deck '
+               f'sets DM.UseSaveDM .false.: a retry re-runs from the '
+               f'deck\'s coordinates, it does not resume"\n'
                if continue_retries and continue_retries > 0 else
                f'echo "  Retry policy  : none (halt on non-convergence)"\n')
             + f'echo "  Threading     : OMP_NUM_THREADS=$_omp_threads, '
@@ -2628,18 +2830,9 @@ def render_run_wrapper(script_path: Path, *,
             f"                   the existing -run0.pyscf.log is\n"
             f"                   overwritten.  Prior ``.chk`` warm-start\n"
             f"                   files STAY on disk -- PySCF still loads.\n"
-            f"  --cold,\n"
-            f"  --from-scratch   NAME SWEEP: move EVERYTHING named after\n"
-            f"                   the run's id -- .chk, _optimized.xyz and\n"
-            f"                   the rest, minus what molbuilder itself\n"
-            f"                   wrote -- into a timestamped backup dir\n"
-            f"                   BEFORE running (job-contracts 4.1; a\n"
-            f"                   list of extensions was a snapshot of one\n"
-            f"                   build).  Use when the prior run was bad\n"
-            f"                   and its warm state would corrupt this\n"
-            f"                   run.  Combine with -f to also restart\n"
-            f"                   the run-index sequence at -run0.\n"
-            f"  -omp N           OpenMP threads.  Highest precedence;\n"
+            + _cold_usage_entry(
+                warm_examples=".chk and _optimized.xyz among them")
+            + f"  -omp N           OpenMP threads.  Highest precedence;\n"
             f"                   otherwise OMP_NUM_THREADS, else the\n"
             f"                   scheduler's allocation, else this\n"
             f"                   node's physical cores.\n"
@@ -2705,7 +2898,7 @@ def render_run_wrapper(script_path: Path, *,
             # apart from SIESTA's (which keeps ``.out``).  Per
             # docs/web/tabs.md (Phase C, 2026-06-07).
             + _run_index_resolver(basename, ext=".pyscf.log")
-            + _cold_restart_aside_block(basename, engine="pyscf")
+            + _cold_restart_block(basename, engine="pyscf")
             + _runtime_status_block(basename, engine="pyscf",
                                      script_name=script_name)
         )
@@ -3213,13 +3406,28 @@ def render_run_wrapper(script_path: Path, *,
         f"#     nohup ./{basename}.run.sh &         # background, detached\n"
         f"#\n"
         f"# Continuation contract:\n"
-        f"#  * SIESTA: ``DM.UseSaveDM`` / ``MD.UseSaveCG`` / ``MD.UseSaveXV``\n"
-        f"#    are emitted by the generator by default; SIESTA auto-loads\n"
-        f"#    .DM/.CG/.XV from the previous run.\n"
-        f"#  * PySCF: ``mf.chkfile`` is set by default; the script's startup\n"
-        f"#    shim auto-loads the prior SCF density via ``mf.init_guess =\n"
-        f"#    \"chkfile\"`` when the .chk file exists.\n"
-        f"#\n"
+        # THE DECK DECIDES, AND THIS WRAPPER SHIPS BESIDE EXACTLY ONE DECK.
+        # This block asserted that the generator emits the restart keywords
+        # "by default" and that SIESTA "auto-loads .DM/.CG/.XV" -- the third
+        # copy of one claim in this file, and false for every stage described
+        # `clean`, whose deck now says `.false.` three times.  All three copies
+        # read `_restart_honoured` now; there is no fourth.
+        + (
+            f"#  * SIESTA: this deck sets ``DM.UseSaveDM`` /\n"
+            f"#    ``MD.UseSaveXV`` / ``MD.UseSaveCG`` .true., so SIESTA\n"
+            f"#    loads the .DM/.XV/.CG left under this SystemLabel.\n"
+            if _restart_honoured else
+            f"#  * SIESTA: this deck sets ``DM.UseSaveDM`` .false., so\n"
+            f"#    SIESTA does NOT load prior .DM/.XV/.CG -- the run starts\n"
+            f"#    from the coordinates in the deck.  Change `restart` in\n"
+            f"#    the description and prep again to continue instead.\n"
+            if _restart_honoured is False else
+            f"#  * PySCF: ``mf.chkfile`` is set by default and the script\n"
+            f"#    resumes from it whenever the .chk exists -- there is no\n"
+            f"#    field that declines it (run-identity.md § 4 rule 2 is\n"
+            f"#    unimplemented for this engine).\n"
+        )
+        + f"#\n"
         f"# IMPORTANT: this wrapper does NOT change cwd (see\n"
         f"# docs/execution/running-a-job.md § 5).  Output artefacts (the runwrap log,\n"
         f"# -runN.out, .chk, trajectory XYZ, .molwatch.log,\n"
@@ -3317,31 +3525,35 @@ def render_run_wrapper(script_path: Path, *,
         f"\n"
         f"{env_activation}"
         f"{env_prefix}"
+        # THE RECORD, before the engine starts.  PySCF writes its own from
+        # inside the script (it can read its objects back); SIESTA cannot, so
+        # its wrapper echoes the deck it is about to hand over.
+        f"{'' if _is_pyscf else _effective_parameters_block(script_path)}"
         f"{launch_block}"
         f"\n{_user_custom}\n"
     )
 
 
-def _ship_monitor_script(dest_dir: Path) -> Path:
-    """Copy the stdlib-only monitor (``molbuilder/monitor.py``) into
-    ``dest_dir`` as ``mb_monitor.py``.
+def _monitor_source() -> str:
+    """The stdlib-only monitor's source, to travel beside a SIESTA job.
 
-    GOAL: make the background monitor runnable by a generated job with
-    the JOB's OWN python, from the working directory -- molbuilder is
-    never installed and the backend env has no numpy/molbuilder, so the
-    monitor cannot be reached as ``python -m molbuilder monitor``.  A
-    verbatim copy of the stdlib-only module solves it (running-a-job.md § 4.1).
-    Overwrites any existing copy so it stays in sync with the package.
+    GOAL: make the background monitor runnable by a generated job with the
+    JOB's OWN python, from the working directory -- molbuilder is never
+    installed and the backend env has no numpy/molbuilder, so the monitor
+    cannot be reached as ``python -m molbuilder monitor``.  A verbatim copy of
+    the stdlib-only module solves it (`running-a-job.md` § 4.1).
+
+    **Returned as text rather than copied to a destination.**  Step 4 is on
+    floor 3, and floor 3 does not touch the disk (`script-preparation.md` § 5,
+    W7); the ``shutil.copyfile`` this replaces was the last write in this
+    module with no counterpart on the caller's side.
     """
     from . import monitor as _monitor
-    src = Path(_monitor.__file__)
-    dst = Path(dest_dir) / "mb_monitor.py"
     try:
-        shutil.copyfile(src, dst)
+        return Path(_monitor.__file__).read_text(encoding="utf-8")
     except OSError as exc:
         raise WrapperError(
-            f"could not ship mb_monitor.py to {dest_dir}: {exc}") from None
-    return dst
+            f"could not read the monitor source to ship: {exc}") from None
 
 
 def _build_mem_audit(script_path: Path, *,
@@ -3386,129 +3598,148 @@ def _build_mem_audit(script_path: Path, *,
         return None
 
 
-def write_run_wrapper(script_path: Path, *,
-                       resources: "Resources",
-                       env: Optional[str] = None,
-                       emit_sbatch: bool = True) -> Path:
-    """Render + write ``<basename>.run.sh`` next to ``script_path``.
+@dataclass(frozen=True)
+class RenderedWrapper:
+    """**Step 4's product, before anything reaches the disk** —
+    `script-preparation.md` § 5, W7.
 
-    **The allocation arrives whole** — `execution/architecture.md` § 3.1 and
-    rule A8.  This door took eleven loose keyword arguments until 2026-08-17,
-    and its two callers passed ten and five of them: `jobset/prep.py` wrote a
-    ``.sbatch`` asking for ``-c 8`` beside a ``.run.sh`` whose OMP default was
-    ``1``, while `web/blueprints/build.py` wrote a correct ``.run.sh`` beside a
-    ``.sbatch`` with no ``-c`` at all.  Neither produced a correct pair, and
-    neither call was wrong on its own terms — each had simply chosen a
-    different subset.  With one object there is no subset to choose.
+    Named texts in the order they are written, plus which of them the shell
+    must be able to execute.  The wrapper is always ``files[0]``: it is what
+    step 4 exists to produce, and the ``.sbatch`` and the shipped monitor are
+    things it needs beside it.
+
+    **Why a set rather than one string.**  A deck is one file; a wrapper is up
+    to three, and which of them exist depends on facts only this layer holds --
+    whether the machine has a queue, whether the deck is SIESTA's.  Returning
+    the set keeps those decisions on floor 3 where they are made, and leaves
+    the disk to the caller.
+    """
+    files: Tuple[Tuple[str, str], ...]
+    executable: Tuple[str, ...] = ()
+
+    @property
+    def wrapper_name(self) -> str:
+        return self.files[0][0]
+
+
+def render_wrappers(script_path: Path, *,
+                    resources: "Resources",
+                    env: Optional[str] = None,
+                    emit_sbatch: bool = True) -> RenderedWrapper:
+    """Render everything step 4 produces for *script_path*, and write nothing.
+
+    **W7 — floor 3 returns text.**  The deck writers hand back a string and the
+    conductor writes it; step 4 held the opposite pattern until 2026-08-18,
+    when rendering and writing were one function.  That made *"what would a run
+    of this deck look like?"* unanswerable without producing files, and left
+    the two halves of one floor with two shapes for the next engine to choose
+    between.
+
+    **The allocation arrives whole** — `execution/architecture.md` § 3.1, rule
+    A8.  This took eleven loose keyword arguments until 2026-08-17, and its two
+    callers passed ten and five of them: `jobset/prep.py` wrote a ``.sbatch``
+    asking for ``-c 8`` beside a ``.run.sh`` whose OMP default was ``1``, while
+    `web/blueprints/build.py` wrote a correct ``.run.sh`` beside a ``.sbatch``
+    with no ``-c`` at all.  Neither pair was right, and neither call was wrong
+    on its own terms — each had simply chosen a different subset.  With one
+    object there is no subset to choose, and it is unpacked ONCE here so the
+    two renderings cannot be given different answers (A9).
+
+    **``omp_threads`` is not a parameter.**  `job-contracts.md` § 6.2 keeps the
+    two names distinct because different layers read them: ``cpus_per_task`` is
+    what the scheduler is asked for, and the launcher's OMP default is derived
+    from it here, in one place, rather than supplied twice by callers who may
+    agree.
 
     ``env`` and ``emit_sbatch`` stay loose because neither is a per-job fact:
     ``env`` is a per-invocation override (``prep --env``) and ``emit_sbatch``
     is a surface's choice about what to write.  The test is ownership — a field
     with a home in § 3's table arrives in that home or not at all.
 
-    **``omp_threads`` is no longer a parameter.**  `job-contracts.md` § 6.2
-    keeps the two names distinct because different layers read them, and that
-    distinction stands: ``cpus_per_task`` is what the scheduler is asked for
-    and the launcher's OMP default is derived from it here, in one place,
-    rather than supplied twice by callers who may agree.
+    For a ``.fdf`` the deck is parsed for ``NumberOfAtoms`` and the count is
+    threaded into the wrapper so the auto-mpi path can clamp ``mpi_np <=
+    n_atoms`` (propor's IMAX=0 lower bound).  A parse failure reads as
+    *unknown* and falls back to the unclamped behaviour rather than refusing.
 
-    Returns the wrapper's path.  Sets executable bit (0o755) so the
-    user can ``./my-job.run.sh`` directly.  Overwrites any existing
-    wrapper.
-
-    For ``.fdf`` scripts the file is parsed for ``NumberOfAtoms`` and
-    that value is threaded into ``render_run_wrapper`` so the auto-mpi
-    path can clamp ``mpi_np <= n_atoms`` (the propor IMAX=0 lower
-    bound).  Parse-failure is treated as "unknown" and falls back to
-    the unclamped behaviour rather than refusing to render.
-
-    **SLURM submission layer** (job-system.md § 6): when a
-    ``scheduler`` block is configured (``get_scheduler`` non-None) and
-    ``emit_sbatch`` is True, ALSO writes ``<basename>.sbatch`` -- the
-    thin submission wrapper that ``sbatch``'s this same ``.run.sh``.
-    The ``time``/``gres``/``mem``/``cpus_per_task``/``exclusive`` knobs
-    feed that header (§ 6 value-source matrix); they are no-ops when no
-    scheduler is configured (local/laptop users just get the ``.run.sh``,
-    § 10).
+    Both shell texts go through ``bash -n`` (parse-only, no execution) before
+    they are returned, so a caller never receives malformed shell to write.
+    That gate exists because the 2026-06-20 pentanedithiol incident shipped an
+    unterminated quote and the user found out by running it.
     """
     script_path = Path(script_path).resolve()
     if not script_path.is_file():
         raise WrapperError(f"script not found: {script_path}")
-    # Unpacked ONCE, here, so the two renderings below cannot be given
-    # different answers (A9).  ``cpus_per_task`` is the one home for
-    # cores-per-rank; the launcher's OMP default is derived from it rather
-    # than arriving separately -- that separation is what let the sbatch ask
-    # for 8 while the launcher baked 1.
     r = resources
-    mpi_np, omp_threads = r.mpi_np, r.cpus_per_task
-    max_memory_mb, continue_retries = r.max_memory_mb, r.continue_retries
-    time, gres, mem, exclusive = r.time, r.gres, r.mem, r.exclusive
-    cpus_per_task = r.cpus_per_task
-    n_atoms = None
-    if script_path.suffix.lower() == ".fdf":
-        n_atoms = _parse_fdf_n_atoms(script_path)
+    n_atoms = (_parse_fdf_n_atoms(script_path)
+               if script_path.suffix.lower() == ".fdf" else None)
     text = render_run_wrapper(
-        script_path,
-        env=env, mpi_np=mpi_np,
-        omp_threads=omp_threads,
-        max_memory_mb=max_memory_mb,
-        n_atoms=n_atoms,
-        mem_audit=_build_mem_audit(script_path, gres=gres, env=env),
-        continue_retries=continue_retries,
+        script_path, resources=r, env=env, n_atoms=n_atoms,
+        mem_audit=_build_mem_audit(script_path, gres=r.gres, env=env),
     )
-    # Defense-in-depth: every rendered wrapper goes through ``bash -n``
-    # (parse-only, no execution) before we hand it back.  Catches the
-    # whole class of "shipped malformed shell" bugs that the
-    # 2026-06-20 pentanedithiol incident exposed (an awk -F char-
-    # class with a broken SQ-escape produced an unterminated DQ; the
-    # user only found out when they tried to run the script).  Both
-    # the writer-side L2 tests and this in-line gate must agree:
-    # ``bash -n`` rejects → caller never sees a broken file on disk.
     _validate_rendered_wrapper(text, script_path)
-    # Use stem + ".run.sh" rather than ``.with_suffix(".run.sh")``: the
-    # latter REPLACES only the last suffix, so ``job.spectra.py`` would
-    # become ``job.run.sh`` and lose the "spectra" tag.  We want
-    # ``job.spectra.run.sh``.
-    wrapper_path = script_path.parent / (script_path.stem + ".run.sh")
-    wrapper_path.write_text(text)
-    wrapper_path.chmod(0o755)
+    # ``stem + ".run.sh"`` rather than ``with_suffix(".run.sh")``: the latter
+    # replaces only the LAST suffix, so ``job.spectra.py`` would become
+    # ``job.run.sh`` and lose the "spectra" tag.
+    files = [(script_path.stem + ".run.sh", text)]
 
-    # Ship the self-contained background monitor next to SIESTA jobs so
-    # the wrapper can run it with the JOB's own python (the backend env
-    # has no molbuilder/numpy; molbuilder is never installed -- it runs
-    # from the repo dir only).  ``mb_monitor.py`` is a verbatim copy of
-    # the stdlib-only molbuilder/monitor.py (running-a-job.md § 4.1).
+    # The background monitor travels WITH a SIESTA job because it has to run
+    # under the job's own python (`running-a-job.md` § 4.1).
     if script_path.suffix.lower() == ".fdf":
-        _ship_monitor_script(script_path.parent)
+        files.append(("mb_monitor.py", _monitor_source()))
 
-    # --- SLURM submission layer (job-system.md § 6) ---------
-    # Emit <basename>.sbatch iff a scheduler is configured.  Resolution
-    # of the per-job header values (ntasks/cpus/gpu) lives here because
-    # only this layer knows both the .fdf (GPU request, n_atoms) and the
-    # CLI overrides.  Skipped silently when no scheduler block exists
-    # (today's behaviour for local/laptop users, § 10).
+    # The submission layer (`job-system.md` § 6): a ``.sbatch`` only when the
+    # machine has a queue.  Resolving its header values lives here because only
+    # this layer knows both the deck (GPU request, atom count) and the
+    # invocation's overrides.
     if emit_sbatch:
-        _maybe_write_sbatch(
-            script_path, wrapper_path,
-            mpi_np=mpi_np, time=time, gres=gres, mem=mem,
-            cpus_per_task=cpus_per_task, exclusive=exclusive,
-            env=env,
-        )
-    return wrapper_path
+        sbatch = _render_sbatch_for(script_path, resources=r, env=env)
+        if sbatch is not None:
+            _validate_rendered_wrapper(sbatch, script_path)
+            files.append((script_path.stem + ".sbatch", sbatch))
+
+    return RenderedWrapper(files=tuple(files), executable=(files[0][0],))
 
 
-def _maybe_write_sbatch(script_path: Path,
-                        wrapper_path: Path,
-                        *,
-                        mpi_np: Optional[int],
-                        time: Optional[str],
-                        gres: Optional[str],
-                        mem: Optional[str],
-                        cpus_per_task: Optional[int],
-                        exclusive: Optional[bool],
-                        env: Optional[str]) -> Optional[Path]:
-    """Resolve the per-job header values and write ``<basename>.sbatch``
-    when a ``scheduler`` block is configured; else return None.
+def write_run_wrapper(script_path: Path, *,
+                      resources: "Resources",
+                      env: Optional[str] = None,
+                      emit_sbatch: bool = True) -> Path:
+    """Write what :func:`render_wrappers` produced, and return the wrapper's path.
+
+    **This function renders nothing.**  It is the writing half of step 4, kept
+    beside the rendering half so both conductors — `jobset/prep` and the web
+    build route — write the set the same way rather than each deciding what a
+    wrapper needs beside it.
+
+    **Through the one writer** (`script-preparation.md` § 3.2, W4), which keeps
+    the reader's USER-CUSTOM block.  The wrapper EMITS that block — it invites
+    a person to put their own lines in it — and this was a plain
+    ``write_text``, so every re-prep deleted what they wrote.  An invitation
+    the next run silently revokes is worse than no invitation.
+
+    Modes: the wrapper is 0o755 so a person can ``./my-job.run.sh`` it; the
+    ``.sbatch`` is 0o644 because you ``sbatch`` it rather than run it.
+    Overwrites whatever is there.
+    """
+    from . import script_emit as _sc_write
+    rendered = render_wrappers(script_path, resources=resources,
+                               env=env, emit_sbatch=emit_sbatch)
+    parent = Path(script_path).resolve().parent
+    for name, text in rendered.files:
+        written = _sc_write.write_script(parent / name, text)
+        written.chmod(0o755 if name in rendered.executable else 0o644)
+    return parent / rendered.wrapper_name
+
+
+def _render_sbatch_for(script_path: Path,
+                       *,
+                       resources: "Resources",
+                       env: Optional[str]) -> Optional[str]:
+    """Resolve the per-job header values and RETURN the ``.sbatch`` text when
+    this machine has a queue; ``None`` when it does not.
+
+    Returns text rather than writing, so the whole of step 4 can be rendered
+    before anything is on disk (`script-preparation.md` § 5, W7).
 
     Resolution rules (running-a-job.md § 3.1):
       * ``-n`` (ntasks) = the **MPI rank count** (``mpi_np``) for BOTH CPU
@@ -3520,6 +3751,9 @@ def _maybe_write_sbatch(script_path: Path,
         runtime rank count from ``SLURM_NTASKS``, running-a-job.md § 3.1).
     """
     from . import runtime_config as _rc
+    r = resources
+    mpi_np, cpus_per_task = r.mpi_np, r.cpus_per_task
+    time, gres, mem, exclusive = r.time, r.gres, r.mem, r.exclusive
     project_dir = script_path.parent if script_path.parent.exists() else None
 
     # Does the MACHINE have a scheduler?  (P1, 2026-08-17.)  This asked only
@@ -3570,7 +3804,7 @@ def _maybe_write_sbatch(script_path: Path,
         # SLURM_NTASKS (running-a-job.md § 3.1), so the user controls scale via -n.
         ntasks = mpi_np if (mpi_np and mpi_np >= 1) else 1
 
-    return write_sbatch(
+    return render_sbatch(
         script_path, scheduler,
         ntasks=ntasks,
         cpus_per_task=cpus_per_task,
@@ -3658,7 +3892,7 @@ def render_sbatch(script_path: Path,
     per-job values (``ntasks``/``cpus_per_task``/``time``/``mem``/GPU
     type+count/``exclusive``) arrive already resolved from the JOB'S OWN
     RESOURCES -- floor 3 resolved them per element, ``prep`` passes them
-    through ``write_run_wrapper`` -> ``_maybe_write_sbatch``.  *(This
+    through ``render_wrappers`` -> ``_render_sbatch_for``.  *(This
     said "CLI flag -> .fdf -> config default" until the follow-up sweep,
     2026-08-12 -- the resolution chain of the deleted ``molbuilder fdf``
     route, not of any caller that exists.)*
@@ -3890,24 +4124,6 @@ def render_sbatch(script_path: Path,
     return "\n".join(lines) + "\n" + body
 
 
-def write_sbatch(script_path: Path,
-                 scheduler: Mapping[str, Any],
-                 **kwargs: Any) -> Path:
-    """Render + write ``<basename>.sbatch`` next to ``script_path``.
-
-    Returns the path.  Mode 0o644 (a submission script, not directly
-    executed -- you ``sbatch`` it, you don't ``./`` it).  Validated
-    through ``bash -n`` like the wrapper before it hits disk.
-    """
-    script_path = Path(script_path).resolve()
-    text = render_sbatch(script_path, scheduler, **kwargs)
-    _validate_rendered_wrapper(text, script_path)
-    sbatch_path = script_path.parent / (script_path.stem + ".sbatch")
-    sbatch_path.write_text(text)
-    sbatch_path.chmod(0o644)
-    return sbatch_path
-
-
 def _validate_rendered_wrapper(text: str, script_path: Path) -> None:
     """Run ``bash -n`` (parse-only) on the rendered wrapper text.
     Raises :exc:`WrapperError` if bash rejects it as malformed shell.
@@ -3956,5 +4172,4 @@ __all__ = [
     "render_run_wrapper",
     "write_run_wrapper",
     "render_sbatch",
-    "write_sbatch",
 ]

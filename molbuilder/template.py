@@ -61,6 +61,7 @@ file, making the class the master and the file its printout — was **deleted
 from __future__ import annotations
 
 import dataclasses
+import functools
 import re
 import tomllib
 import types
@@ -101,36 +102,18 @@ KINDS = ("engine", "deck", "wrapper", "produce", "monitor")
 CATEGORIES = ("system", "method", "accuracy", "convergence",
               "procedure", "execution")
 
-#: The closed RESOLVER vocabulary (§ 6.4).  An item that cannot be answered by
-#: a constant NAMES who computes its value, and ``prep`` calls it -- so no
-#: layer carries a list of which fields are special, which is G3 again.
-#:
-#: A NAME, never code.  A template is data: hand-editable, and it travels
-#: between machines.  Executable content in it would end both properties and
-#: make a description something you must TRUST rather than something you can
-#: READ.  An unknown name is an error a reader reports (§ 3).
-#:
-#: ``allocation`` resolvers answer from what the scheduler GRANTED and their
-#: items are always valueless; ``block_size`` proposes a value a person may
-#: also set or measure.
-#:
-#: ``block_size`` names PREP AND THE BENCHMARK, not the deck writer.  That
-#: distinction was blurred on 2026-08-15 and is worth stating: ``render_fdf``
-#: used to derive a block size at deck-render time and stopped, because unset
-#: means SIESTA's own automatic (`engines/tuning.md` § 2.11).  The RESOLVER is
-#: a different question -- *who answers when the user has not* -- and the
-#: answer is the bench, which sweeps this axis, and `prep`, which realigns it
-#: against the GPU target.  A value measured on the machine is exactly what a
-#: resolver is for.
-RESOLVERS = ("rank_count", "omp_threads", "node_memory", "block_size")
 
-#: The resolvers that answer from what the scheduler GRANTED.  An item naming
-#: one may never carry a value: that is § 2's rule that the template declares
-#: the QUESTION and never asserts the ANSWER, and it is checked on READ because
-#: a template is a file a person is invited to edit.  ``block_size`` is
-#: deliberately absent -- prep PROPOSES it, but a person or a benchmark may
-#: also set it, and honouring that was a 2026-08-11 user decision.
-ALLOCATION_RESOLVERS = ("rank_count", "omp_threads", "node_memory")
+#: **THE machine-answered fact, one home.**  `engines/template.md` § 6.4.
+#:
+#: An item whose value the SCHEDULER answers -- ranks, threads, memory.  A
+#: portable description states the question and never the answer, so a value
+#: on one is refused on read.
+#:
+#: There is no second vocabulary.  A `resolver` NAME key and an
+#: ``ALLOCATION_RESOLVERS`` list of which names counted were deleted
+#: 2026-08-17: nothing ever dispatched on a resolver name, half of them simply
+#: repeated the item's own name, and the flag below already said the same
+#: thing.  Ask ``Item.allocation``, or ``select(t, allocation=True)``.
 
 #: § 5 — the validation vocabulary. TOML types the *storage*; this types what a
 #: reader must check, which a parser cannot know: that ``pow2`` is a power of
@@ -279,18 +262,22 @@ class Item:
     category: Tuple[str, ...] = ()
     #: Which engines this item applies to.  EMPTY MEANS ALL (§ 6.3).
     engines:  Tuple[str, ...] = ()
-    #: Who computes this item's value when it is unset -- a NAME from a closed
-    #: registry, never code (§ 6.4).  A template carrying executable content
-    #: would be something you must trust rather than something you can read.
-    resolver: str = ""
 
-    #: Whether this item's value belongs to the ALLOCATION rather than to the
-    #: calculation (§ 2, G1).  **Not written to the file, and recoverable from
-    #: it**: the three allocation items are exactly those whose `resolver` is in
-    #: :data:`ALLOCATION_RESOLVERS` (§ 6.4), which is how
-    #: :func:`template_with_values` knows to emit them VALUELESS however the
-    #: config is filled.  Set from the schema on the WRITE side, so an item read
-    #: back from a file carries ``False`` -- ask the resolver, not this flag.
+    #: **THE machine-answered flag.  One parameter, written to the file.**
+    #:
+    #: True means the scheduler answers this, not the person -- so a portable
+    #: description may state the question and never the answer (§ 2, G1).
+    #:
+    #: This one fact used to be spelled SIX ways: this boolean on the config
+    #: field, a `resolver` NAME in the catalogue, an ``ALLOCATION_RESOLVERS``
+    #: list saying which of those names counted, a hand-typed
+    #: ``_EMITTER_FIELDS`` in `resolve.py`, and two more hand-typed lists in
+    #: the Task Setup page.  Half the resolver names repeated the item's own
+    #: name (``omp_threads``, ``block_size``) and half invented a new one
+    #: (``mpi_np`` -> ``rank_count``), so the second vocabulary bought nothing
+    #: and cost a permanent confusion between the two.
+    #:
+    #: Ask it directly, or filter for it: ``select(t, allocation=True)``.
     allocation: bool = False
 
     #: Whether *unset* is a state this item has at all — and since 2026-08-14
@@ -361,20 +348,6 @@ class Item:
         if self.group is not None and self.group not in GROUPS:
             _refuse(f"group {self.group!r} is not one of "
                     f"{', '.join(GROUPS)}", where=self.name)
-        # Same argument, one axis over: `resolver` names WHO ANSWERS an item
-        # that carries no value, and three of the four names make the item
-        # allocation-backed -- which is what the § 2 / G1 check on READ keys
-        # off.  It was unchecked until 2026-08-15, so a hand-edited
-        # ``resolver = "rank_kount"`` silently turned that protection OFF and
-        # let a template assert a machine fact.  `read_by` beside it was given
-        # this check on 2026-08-14 and this one was not swept with it.
-        if self.resolver and self.resolver not in RESOLVERS:
-            _refuse(f"resolver {self.resolver!r} is not one of "
-                    f"{', '.join(RESOLVERS)} -- a resolver is a NAME "
-                    f"molbuilder ships, never code in the file (§ 6.4). An "
-                    f"unknown one would silently disable the check that keeps "
-                    f"a machine fact out of a portable template (§ 2)",
-                    where=self.name)
 
     @property
     def is_set(self) -> bool:
@@ -547,7 +520,7 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     # answers *"is it part of the calculation's description"* -- two questions
     # that happen to have had one switch.
     # § 6.4 (schema @2): a machine fact's VALUE is still forbidden, but the
-    # ITEM is declared -- valueless, with the resolver that will answer it.
+    # ITEM is declared -- valueless, flagged as the scheduler's to answer.
     # A surface must know the question exists in order to ask it, and the
     # wrapper writer must know to look.  Until @2 this returned None, so the
     # question was invisible: a UI reading the execution panel had no way to
@@ -560,16 +533,6 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     _alloc = bool(f.metadata.get("allocation"))
 
     ann, optional = _unwrap_optional(annotation)
-
-    # A ``List[<dataclass>]`` is a STAGE LADDER, and a ladder is not a template
-    # item -- it is the user's decision about what varies, and it lives in
-    # ``task.json`` (`engines/stages.md` § 1.1).  Excluded for what it IS, with
-    # a reason, rather than left to fall through to the type error below, which
-    # would report a vocabulary gap where there is none.
-    _args = typing.get_args(ann)
-    if (typing.get_origin(ann) in (list, tuple)
-            and _args and dataclasses.is_dataclass(_args[0])):
-        return None
 
     choices = f.metadata.get("choices")
     # A field may DECLARE its type when the annotation cannot carry the
@@ -610,12 +573,6 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
                 f"field {f.name!r}: unknown category {_c!r}. The vocabulary "
                 f"is closed: {CATEGORIES}.")
     engines = tuple(f.metadata.get("engines", ()) or ())
-    resolver = str(f.metadata.get("resolver", "") or "")
-    if resolver and resolver not in RESOLVERS:
-        raise ValueError(
-            f"field {f.name!r}: unknown resolver {resolver!r}. The vocabulary "
-            f"is closed: {RESOLVERS}. A resolver is a NAME molbuilder ships, "
-            f"never code in the file (engines/template.md § 6.4).")
     kind = f.metadata.get("item_kind") or _DEFAULT_KIND
     anchor = _bare_anchor(f.metadata.get("engine_key", "") or f.name)
     expands = tuple(f.metadata.get("expands", ()) or ())
@@ -659,7 +616,6 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
         pattern=str(f.metadata.get('pattern', '') or ''),
         category=category,
         engines=engines,
-        resolver=resolver,
     )
 
 
@@ -744,7 +700,7 @@ def _toml_value(v: Any) -> str:
 #: what it is, then what it is worth, then what bounds it, then the prose.
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "anchor", "engine_key",
                    "manual", "expands", "type",
-                   "choices", "value", "default", "optional", "resolver",
+                   "choices", "value", "default", "optional", "allocation",
                    "unit", "range", "tier", "pattern",
                    "group", "label", "null_label", "read_by", "help")
 
@@ -784,8 +740,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["category"] = list(it.category)
     if it.engines:
         out["engines"] = list(it.engines)
-    if it.resolver:
-        out["resolver"] = it.resolver
+    if it.allocation:
+        out["allocation"] = True
     if it.label:
         out["label"] = it.label
     if it.null_label:
@@ -863,6 +819,24 @@ def load_catalogue() -> str:
     return CATALOGUE.read_text(encoding="utf-8")
 
 
+@functools.lru_cache(maxsize=1)
+def catalogue() -> "Template":
+    """**The parsed catalogue** — the one door for it, parsed once.
+
+    ``read_template(load_catalogue())`` was written out at five call sites, each
+    re-parsing the master file, and one of them kept a cache of its own.  The
+    two-step is not a fact anybody should have to remember: `select` and `one`
+    are the one door for an ITEM, and this is the one door for the file they
+    read from.
+
+    Cached because the catalogue ships with the package and does not change
+    inside a process.  A caller holding a DIFFERENT catalogue text -- a test
+    fixture, a calculation's own template -- calls :func:`read_template` on it
+    directly; that is a different file and not this one.
+    """
+    return read_template(load_catalogue())
+
+
 def template_with_values(config, *, engine: str = "", catalogue: str = "",
                          title: str = "") -> str:
     """**This calculation's** template: the catalogue, narrowed to one engine,
@@ -874,7 +848,7 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
     file and thereby made the class the master (§ 2.1).
 
     **Allocation items stay valueless whatever the config holds** (§ 2, G1, and
-    § 6.4): their resolver names who answers them, and the answer belongs to the
+    § 6.4): the scheduler answers them, and the answer belongs to the
     machine that granted it. The config may legitimately carry a rank count — it
     was resolved somewhere — but writing it here would make the description
     assert a machine fact and stop being portable.
@@ -890,7 +864,7 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             # A per-calculation template serves ONE engine, so no item narrows
             # anything and none carries `engines` (§ 6.3's writer rule).
             engines=(),
-            value=(None if it.resolver in ALLOCATION_RESOLVERS
+            value=(None if it.allocation
                    else getattr(config, it.name, it.value)),
         )
         for it in select(parsed, engine=eng)
@@ -1010,7 +984,6 @@ def read_template(text: str) -> Template:
         _refuse("missing required key 'engines' -- without it a reader cannot "
                 "know which config classes these items belong to, and would "
                 "have to infer it from their names (engines/template.md § 3)")
-    engine = engines[0]
     engines_t = tuple(engines)
     table = raw.get("item") or {}
     if not isinstance(table, Mapping):
@@ -1033,11 +1006,11 @@ def read_template(text: str) -> Template:
     # against: a deck once rendered for a rank count the allocation never
     # granted.  The item itself is legitimate at @2; its VALUE is not.
     for _it in items:
-        if _it.resolver in ALLOCATION_RESOLVERS and _it.value is not None:
+        if _it.allocation and _it.value is not None:
             _refuse(
-                f"carries value {_it.value!r}, but its resolver "
-                f"{_it.resolver!r} answers from the ALLOCATION -- what the "
-                f"scheduler granted on the machine that runs it. A template "
+                f"carries value {_it.value!r}, but the SCHEDULER answers "
+                f"it -- this is what was granted on the machine that runs "
+                f"it. A template "
                 f"declares the question and never asserts the answer, or it "
                 f"stops being portable (engines/template.md § 2). Remove the "
                 f"value; `prep` fills it", where=_it.name)
@@ -1218,7 +1191,7 @@ def _item_from(name: str, body: Any) -> Item:
         label=str(body.get("label", "") or ""),
         category=tuple(body.get("category", ()) or ()),
         engines=tuple(body.get("engines", ()) or ()),
-        resolver=str(body.get("resolver", "") or ""),
+        allocation=bool(body.get("allocation", False)),
         null_label=str(body.get("null_label", "") or ""),
     )
 
@@ -1266,7 +1239,7 @@ def _check_engine(t: "Template", engine) -> None:
 
 
 def select(t: "Template", *, category=None, engine=None,
-           kind=None, read_by=None) -> List[Item]:
+           kind=None, read_by=None, allocation=None) -> List[Item]:
     """The items matching every filter given, **in category order**.
 
     One function, one file, every reader (`engines/template.md` § 8.0).
@@ -1310,6 +1283,12 @@ def select(t: "Template", *, category=None, engine=None,
         if want_kind and it.kind not in want_kind:
             continue
         if want_read_by and not (set(want_read_by) & set(it.read_by)):
+            continue
+        # THE machine-answered filter -- `select(t, allocation=True)` is the
+        # one API for *"which settings does the scheduler answer?"*.  Before
+        # this, four places hand-listed the answer and a fifth derived it from
+        # a second vocabulary of resolver names.
+        if allocation is not None and bool(it.allocation) is not bool(allocation):
             continue
         out.append(it)
 
@@ -1413,10 +1392,11 @@ def config_from_template(text: str, config_cls):
 #: calls THE ONE READ API -- and the three closed vocabularies until
 #: 2026-08-14, so a surface wanting to order panels by the closed six had to
 #: hard-code them or reach past this line (audit § 1.5).
-__all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES", "RESOLVERS", "ALLOCATION_RESOLVERS",
+__all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "Item", "Template",
            "declaration_for", "declarations_for",
            "select", "one",
-           "CATALOGUE", "load_catalogue", "template_with_values",
+           "CATALOGUE", "catalogue", "load_catalogue",
+           "template_with_values",
            "read_template", "config_from_template",
            "template_fields"]

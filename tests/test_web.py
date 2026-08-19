@@ -332,9 +332,6 @@ def test_build_bad_input_returns_clear_error(web_client):
     assert "X" in body["error"]
 
 
-# --------------------------------------------------------------------- #
-#  /api/build/fdf                                                         #
-# --------------------------------------------------------------------- #
 
 
 @pytest.fixture
@@ -469,10 +466,10 @@ def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
 
     2026-06-14 R4-A contract change (see build.py:895-911): the
     response now uses ``ok: False`` + HTTP 400 instead of the
-    earlier ``ok: True`` + 200 -- so the wire shape matches
-    /api/build/fdf's parse-failure shape and the UI's
-    ``!body.ok`` gate renders issues uniformly across both
-    endpoints.  Asserting the new shape so the test stays a
+    earlier ``ok: True`` + 200, so the UI's ``!body.ok`` gate
+    renders issues uniformly.  (It compared this to
+    ``/api/build/fdf``'s parse-failure shape until that route was
+    deleted on 2026-08-17; the shape it describes is this one.)  Asserting the new shape so the test stays a
     contract pin and not stale documentation.
     """
     r = web_client.post("/api/build/preflight", json={
@@ -619,9 +616,6 @@ def test_load_empty_returns_error(web_client):
 
 
 
-# --------------------------------------------------------------------- #
-#  /api/build/pyscf                                                         #
-# --------------------------------------------------------------------- #
 
 
 

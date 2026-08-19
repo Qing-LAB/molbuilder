@@ -42,13 +42,13 @@ def _setup(tmp_path, monkeypatch):
 def _gpu(tmp_path: Path, np: int = 4) -> str:
     f = tmp_path / "g.fdf"
     f.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
-    return runwrap.render_run_wrapper(f, mpi_np=np)
+    return runwrap.render_run_wrapper(f, resources=Resources(mpi_np=np))
 
 
 def _cpu(tmp_path: Path, np: int = 20) -> str:
     f = tmp_path / "c.fdf"
     f.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .false.\n")
-    return runwrap.render_run_wrapper(f, mpi_np=np)
+    return runwrap.render_run_wrapper(f, resources=Resources(mpi_np=np))
 
 
 # --------------------------------------------------------------------- #
@@ -190,7 +190,7 @@ def test_dry_run_present_for_cpu_without_gpu_mapping(tmp_path):
 def test_pyscf_has_dry_run(tmp_path):
     p = tmp_path / "q.py"
     p.write_text("# fake\n")
-    t = runwrap.render_run_wrapper(p)
+    t = runwrap.render_run_wrapper(p, resources=Resources())
     assert "--dry-run|--dryrun)" in t
     assert "molbuilder DRY RUN (no PySCF launch)" in t
 
@@ -278,7 +278,7 @@ def test_pyscf_has_no_scf_timing(tmp_path):
     """
     p = tmp_path / "q.py"
     p.write_text("# fake\n")
-    t = runwrap.render_run_wrapper(p)
+    t = runwrap.render_run_wrapper(p, resources=Resources())
     assert "_mb_scf_tee" not in t
     assert "SCF per-iteration timing instrument" not in t
     assert "_scf_timing_log=" not in t

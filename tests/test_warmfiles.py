@@ -223,15 +223,75 @@ def test_a_continuing_deck_emits_every_declared_keyword():
             f"— the carry would be 'present but not honoured'")
 
 
-def test_a_clean_deck_honours_nothing():
+def test_a_clean_deck_refuses_every_honouring_keyword_out_loud():
     """The other silent half: a clean deck emitting UseSave* would read
-    warm state a stage was told to ignore."""
+    warm state a stage was told to ignore.
+
+    **It must say `.false.`, not go quiet** (2026-08-18). This asserted only
+    that no keyword was set `.true.`, which an OMITTED keyword satisfies —
+    and omission was what the emitter did, and was the bug: SIESTA reads
+    `<SystemLabel>.DM` when the file is there unless a deck refuses it, so a
+    stage told to start clean warm-started. The assertion could not tell the
+    fix from the defect, so it is written the other way round: every keyword
+    the rules file names as honouring a file is PRESENT and says `.false.`.
+    """
     import re
     deck = _siesta_deck("clean")
-    for rule in W.rules_for("siesta", "optimization"):
-        if rule.honoured_by:
-            assert not re.search(
-                rf"^{re.escape(rule.honoured_by)}\s+\.true\.", deck,
-                re.M), (
-                f"a clean deck sets {rule.honoured_by} .true. — warm "
-                f"state would be read by a stage told to start clean")
+    honouring = [r.honoured_by for r in W.rules_for("siesta", "optimization")
+                 if r.honoured_by]
+    assert honouring, "the rules file names no honouring keyword to check"
+    for keyword in honouring:
+        assert re.search(rf"^{re.escape(keyword)}\s+\.false\.", deck, re.M), (
+            f"a clean deck must set {keyword} .false. -- leaving it out is "
+            f"not a refusal, because SIESTA reads the file it names whenever "
+            f"it is present")
+
+
+# --------------------------------------------------------------------- #
+#  The two files that must name the same keywords                       #
+# --------------------------------------------------------------------- #
+
+def test_the_warm_rules_and_the_catalogue_name_the_same_keywords():
+    """``honoured_by`` and ``[item.restart].expands`` are two questions with
+    one answer, and nothing compared them until 2026-08-18.
+
+    They are not duplicates and must not be collapsed: the rules file says
+    *which keyword honours THIS FILE* (a per-file mapping, which is what
+    ``prep`` needs to decide a carry), and the catalogue says *which keywords
+    this PARAMETER writes* (what the deck writer needs to emit the group).
+    Different shapes, different consumers.
+
+    What they cannot do is disagree about the SET. `restart` is one field
+    expanding into a group; if the rules file honoured a keyword the deck
+    never writes, a carried file would sit unread, and if the deck wrote one
+    no file claims, a keyword would be set for state nothing carries — both
+    halves of `run-identity.md` § 4's silent pair, from a mismatch no test
+    would have caught.
+
+    A third copy lived in ``SIESTA_RESTART_GROUP.keys`` until the same day —
+    the same three names in a third order — and it is gone: that object now
+    reads the catalogue. This gate is what keeps the remaining two honest.
+    """
+    from molbuilder.script_emit import parameter
+    declared = set(parameter("restart", "siesta").writes)
+    honoured = {r.honoured_by
+                for r in W.rules_for("siesta", "optimization")
+                if r.honoured_by}
+    assert declared == honoured, (
+        f"the catalogue says `restart` writes {sorted(declared)} and the warm "
+        f"rules say {sorted(honoured)} honour a carried file -- one field, "
+        f"one group, and these are the two files that spell it")
+
+
+def test_the_restart_group_object_is_not_a_second_declaration():
+    """`SIESTA_RESTART_GROUP.keys` is DERIVED, and this is what says so.
+
+    It was a literal tuple, and being a literal is what let it drift into a
+    different order from the catalogue's `expands` and the rules file's rows.
+    Pinning identity-with-the-catalogue rather than a hardcoded expectation is
+    the point: a test naming the three keywords here would be a fourth copy.
+    """
+    from molbuilder.config.siesta import SIESTA_RESTART_GROUP
+    from molbuilder.script_emit import parameter
+    assert tuple(SIESTA_RESTART_GROUP.keys) == parameter("restart",
+                                                         "siesta").writes

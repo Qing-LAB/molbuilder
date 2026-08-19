@@ -94,7 +94,8 @@ _bundle_option = click.option(
 @click.option("--name", default=None, metavar="NAME",
               help="what you call this calculation; the label and the run id "
                    "derive from it. Default: the destination folder's name.")
-@click.option("--engine", default="siesta", type=click.Choice(("siesta",)),
+@click.option("--engine", default="siesta",
+              type=click.Choice(("siesta", "pyscf")),
               help="whose parameters these are.")
 @click.option("--psml-lib", default=None, metavar="DIR",
               type=click.Path(exists=True, file_okay=False),
@@ -135,6 +136,7 @@ def describe_cmd(structure: str, dest: str, shape: str,
     from ..describe import DescribeError, build_description, write_description
     from ..identity import normalise_id
     from ..siesta.input import _detect_species
+    from ..pyscf.stages import default_pyscf_stages
     from ..siesta.stages import default_siesta_stages
     from ..task import Stage
 
@@ -155,16 +157,28 @@ def describe_cmd(structure: str, dest: str, shape: str,
         # stage-less shape that used to mean the same thing.  One shape, so
         # the artifact names, the tokens and the directories are the same
         # whether a job has one rung or three.
-        stages = (tuple(default_siesta_stages(stage_strategy))
+        # THE LADDER IS THE ENGINE'S, AND THE SHAPE OF IT IS NOT.
+        # Both engines describe a ladder the same way -- a tuple of ``Stage``
+        # with per-rung ``overrides`` -- and differ only in which values those
+        # rungs carry, which is the engine's own preset table.
+        _ladder = {"siesta": default_siesta_stages,
+                   "pyscf": default_pyscf_stages}[engine]
+        _one = SIESTA_STAGE_NAMES[1]        # the shared ladder vocabulary
+        stages = (tuple(_ladder(stage_strategy))
                   if stage_strategy
-                  else (Stage(name=SIESTA_STAGE_NAMES[1], enabled=True,
-                              overrides={}),))
+                  else (Stage(name=_one, enabled=True, overrides={}),))
         # The label goes through the SAME normaliser Task.label uses, so the
         # template's SystemLabel and the description's id cannot disagree
         # about what this calculation is called.
         label = normalise_id(run_name, what="name",
                              stage_names=tuple(s.name for s in stages))
-        cfg = SiestaConfig(system_label=label, psml_lib=psml_lib)
+        # The config the template is written from -- the engine's own class,
+        # carrying the one identity field each spells differently.
+        if engine == "pyscf":
+            from ..config.pyscf import PySCFConfig
+            cfg = PySCFConfig(job_name=label)
+        else:
+            cfg = SiestaConfig(system_label=label, psml_lib=psml_lib)
 
         desc = build_description(
             struct, cfg, stages,
@@ -419,7 +433,7 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
     click.echo("  re-rendering replaces the DECKS only: the warm files are "
                "NOT touched and nothing is renamed (run-identity.md § 6).")
     if (Path(base) / ".git").is_dir():
-        click.echo("  (a checkpoint repo exists -- `molbuilder snapshot "
+        click.echo("  (a checkpoint repo exists -- `molbuilder checkpoint "
                    "save` first records the current state)")
     try:
         ok = click.confirm("  proceed (re-render the decks)?", default=True)
@@ -656,7 +670,18 @@ def _bench_inputs(base, target=None):
     # run.  What the calculation IS -- the GPU, the eigensolver, the block
     # size -- is the description's, and pinning it here would measure a
     # configuration nobody asked to run.
-    pins = {"max_scf_iter": 5, "relax_steps": 0, "restart": "clean"}
+    #
+    # ``continue_retries: 0`` is what makes the trial run ONCE.  Without it
+    # the capped SCF above guarantees non-convergence, the wrapper's retry
+    # budget reads that as a failure and re-runs, and `summarize` reads the
+    # HIGHEST run index -- so every trial that retried was timed on its second
+    # run and every trial that did not was timed on its first.  Those are not
+    # comparable, which is the one thing a sweep exists to be.  (Until the
+    # `restart: clean` group was written out rather than omitted, the second
+    # run was also WARM, so the second measurement was of a different
+    # calculation as well as a different run.)
+    pins = {"max_scf_iter": 5, "relax_steps": 0, "restart": "clean",
+            "continue_retries": 0}
     return points, pins, translation
 
 

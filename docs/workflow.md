@@ -214,17 +214,25 @@ flowchart LR
     end
     subgraph MAKE["making things runnable"]
       G["<code>resolve.resolve(...)</code><br/><i>answers + machine + your ask<br/>→ the settled configuration(s)</i>"]
+      K["<code>script_emit.prepare_deck(spec, …)</code><br/><i>the engine's input file — validate,<br/>render, write, then read it back</i>"]
       H["<code>runwrap.write_run_wrapper(script, resources=)</code><br/><i>the wrapper AND the submission</i>"]
       I["<code>materialize.materialize(jobset, base)</code><br/><i>makes the directories</i>"]
       J["<code>submit.submit_jobset(...)</code>"]
     end
     READ --> MAKE
     WRITE --> MAKE
+    G --> K --> H
 ```
 
 Two things about this list are worth knowing, because they are the rules that
 were most recently paid for:
 
+- **A generated file has ONE writer, and the writer keeps what you put in your
+  own section.** Every deck goes through `write_script`, which merges back the
+  `USER-CUSTOM` block from whatever was already on disk — so the one part of a
+  generated file you are invited to edit survives the next `prep`. Any route
+  reaching for a plain write destroys those edits, and one did: wrappers were
+  written that way until 2026-08-17.
 - **A door takes a whole thing, never a handful of its fields.** When a job's
   resources are handed to the wrapper writer, the *whole* set of resources
   goes, not `ranks` and `cores` picked out by hand. The reason is measured:
@@ -266,7 +274,9 @@ them. So re-writing the deck updates every attempt pointing at it, with nothing
 to keep in step.
 
 The step table with what each step may and may not do is
-[`generator.md § 6.2`](?doc=execution/generator.md).
+[`script-preparation.md § 5`](?doc=execution/script-preparation.md); the
+sub-steps inside step 3 are § 3 there, and what each *engine* must supply at
+each one is § 4.
 
 ### One run, or sixteen — the same pipeline
 
@@ -342,9 +352,10 @@ whose input is a `.py` declares its needs correctly in the catalogue and is
 still not looked at ([`engines/template.md`](?doc=engines/template.md) § 1.1a).
 
 *(A third asymmetry was listed here — that PySCF's input writer would not
-accept the stage's name — and it was closed on 2026-08-17. It accepts it and
-deliberately ignores it, because PySCF's steps share one process and one log
-file.)*
+accept the stage's name — and it was closed on 2026-08-17. It accepted the name
+and ignored it, because PySCF's steps shared one process and one log file; since
+2026-08-18 it uses it, because they no longer do
+([`stages.md § 1.1a`](?doc=engines/stages.md)).)*
 
 **Where this is tracked:** [`roadmap.md § 6`](?doc=roadmap.md).
 

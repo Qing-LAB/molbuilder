@@ -246,10 +246,27 @@ The `staging` group is what a parameter form deliberately does not ask
 ([`form-schema.md § 1.3`](?doc=web/form-schema.md): `catalogue_to_form_schema`
 filters it). Inside it, the catalogue draws a line:
 
-| | items | may carry a value? |
+| | which ones | may carry a value? |
 |---|---|---|
-| **you answer it** | `enable_gpu` · `restart` · `continue_retries` | **yes.** No resolver; a real default (`false`, `clean`, `1`) |
-| **the machine answers it** | `mpi_np` · `omp_threads` · `max_memory_mb` | **no.** Each names an allocation resolver, and `read_template` **refuses** a value on one ([`template.md § 6.4`](?doc=engines/template.md)) |
+| **you answer it** | everything in the group the machine does not answer | **yes.** It has a real default — `false`, `clean`, `1` |
+| **the machine answers it** | the ones marked as the machine's | **no.** Reading a template with a value on one is **refused** ([`template.md § 6.4`](?doc=engines/template.md)) |
+
+**Neither row is a list, and neither should be written as one.** Each setting in
+the catalogue already says whether the machine answers it, so asking that
+question sorts the group in two with nothing to keep in step. For SIESTA today
+that comes out as `restart` · `continue_retries` · `enable_gpu` on the first row
+and `mpi_np` · `omp_threads` · `max_memory_mb` on the second — but those are what
+the answer *is* right now, not what it is defined as.
+
+> **Corrected 2026-08-18.** Both rows used to be typed out here, and the second
+> described the mechanism that sorted them — *"each names an allocation
+> resolver"* — which had already been replaced by a single mark on each setting.
+> So this table was a hand-kept copy of an answer the data gives, written in the
+> vocabulary of a mechanism that no longer existed. The first row was the copy
+> that mattered: `restart` sat in it, correctly, while the table on this same
+> page could not offer `restart` as a column
+> ([`stages.md § 6.2`](?doc=engines/stages.md)) — the page's two halves
+> disagreeing about one setting, in one document, three sections apart.
 
 So ranks, threads and memory can only ever be *points to try* here — what a run
 actually gets is what the scheduler granted, resolved at `prep` on the target.

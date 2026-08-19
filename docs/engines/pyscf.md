@@ -60,9 +60,14 @@ flowchart LR
   (`cmd_pyscf`, `cli.py:933`) writes the script from a structure file:
 
   ```bash
-  # config fields (--basis, --functional, …) + --ecp / --stages-json / --stage-strategy
-  molbuilder pyscf input.xyz job.py --basis def2-TZVP --stage-strategy publishable
+  # every config field is a flag (--basis, --functional, …), plus --ecp-atoms
+  molbuilder pyscf input.xyz job.py --basis def2-TZVP
   ```
+
+  **It writes ONE deck, and it has no ladder flags** — a ladder is N decks
+  (§ 1.1a), declared in `task.json` and built by
+  `jobset describe --engine pyscf --stage-strategy …`, which is the one door
+  either engine's ladder is authored through.
 
 - **Frontend.** The Structure-optimization tab **collects parameters and
   produces no artifact**: `/api/build/schema/pyscf` renders its form **from the
@@ -102,14 +107,18 @@ The script's header `Outputs:` block lists **exactly** this set for the active
 config — no under- or over-promising. `job_name` stays unsuffixed so
 `.chk`/`.log`/`_optimized.xyz` transfer across stages.
 
-> **PySCF writes ONE unified log, and that is the difference from SIESTA.** Its
-> ladder runs inside a single process, so all stages append to one
-> `<job>.molwatch.log` with no per-stage suffix
-> ([`job-contracts.md § 2.3`](?doc=execution/job-contracts.md), the second of the
-> two multi-stage execution shapes). A per-stage name is only meaningful where a
-> stage is a separate process — which is SIESTA's shape, where the log takes the
-> deck's own token, `<label>_<NN>_<stage>.molwatch.log`
-> ([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)).
+> ⚠ **This changed on 2026-08-18 and the code has not caught up yet.** A PySCF
+> ladder is now N decks and N jobs, like SIESTA's
+> ([`stages.md § 1.1a`](?doc=engines/stages.md)), so each rung writes its own log
+> under the deck's own token — `<label>_<NN>_<stage>.molwatch.log`
+> ([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)) — and the two
+> engines name their outputs the same way.
+>
+> Until 2026-08-18 this paragraph read: *"PySCF writes ONE unified log, and that
+> is the difference from SIESTA. Its ladder runs inside a single process, so all
+> stages append to one `<job>.molwatch.log` with no per-stage suffix. A per-stage
+> name is only meaningful where a stage is a separate process."* The last sentence
+> was right, and it is now true of both engines.
 >
 > **`cfg.stage` is a live catalogue item and it carries the token, not the old
 > spelling.** It names the artifact token for a single-stage run —
@@ -195,12 +204,14 @@ handed. Promoting early hands it an incomplete one. `.newton()` is applied
 These are the invariants the generated script must satisfy — prefer **behavioural**
 tests (run it, assert the log) over structural ones (a line appears).
 
-**Logging.** All PySCF runtime output goes to `<job>.log`. `gto.M(..., output=…)`
-opens it once; the stages loop reuses the open handle (`mf.mol.stdout`) so every
-stage appends — no truncation. Per-stage banners (`print("=== Stage: … ===")`) go
-to the terminal (stdout), not the log. **Forbidden in any generated script:**
-(1) a *second* `gto.M(...)` after the initial build (truncates the log — the stages
-loop must warm-start via `mf.reset(mol_eq)`); (2) `mol.build()` without
+**Logging.** All PySCF runtime output for one rung goes to that rung's own
+`<job>_<NN>_<stage>.log`. `gto.M(..., output=…)` opens it once and the run keeps
+that handle. A ladder is N jobs (§ 1.1a), so appending across rungs is not a
+thing a script has to arrange — each writes its own file, exactly as SIESTA's
+rungs do. **Forbidden in any generated script:**
+(1) a *second* `gto.M(...)` after the initial build (it truncates the log; the
+re-convergence at the relaxed geometry warm-starts via `mf.reset(mol_eq)`);
+(2) `mol.build()` without
 `dump_input=False`; (3) any reassignment of `mol.stdout`.
 
 **Optimizer.** `optimizer="geometric"` (default) needs the `geometric` package,
@@ -211,31 +222,36 @@ only for single-stage runs** — it doesn't accept the per-stage `convergence_dr
 `convergence_dmax` kwargs the staged-opt loop (§ 5) emits, so use `geometric` for any
 multi-stage ladder.
 
-**Per-stage non-convergence policy.** Each `StageSpec` carries an
-`on_nonconvergence` policy ∈ {`proceed`, `continue`, `halt`} (default `halt`) that
-decides what happens when a stage hits `max_steps` without converging:
+**Non-convergence policy.** A deck carries one rung's policy —
+`on_nonconvergence` ∈ {`proceed`, `continue`, `halt`} (default `halt`) — deciding
+what happens when it hits `geom_max_steps` without converging:
 
-- **`proceed`** → take the partial geometry and move to the next stage (no raise;
-  geomeTRIC's `assert_convergence=False`). Stage 1's default — warm-ups are loose.
+- **`proceed`** → take the partial geometry (geomeTRIC's
+  `assert_convergence=False`). The loose rung's default; a warm-up is meant to be
+  rough.
 - **`halt`** → hard-fail with geomeTRIC's diagnostic (`assert_convergence=True`).
-- **`continue`** → extend this stage for up to `continue_retries` more `max_steps`
-  batches (total budget = `max_steps × (1 + continue_retries)`), then halt.
+- **`continue`** → extend this rung for up to `geom_continue_retries` more
+  `geom_max_steps` batches (total budget = `geom_max_steps × (1 +
+  geom_continue_retries)`), then halt.
 
-The **last enabled stage is always forced to `halt`**, whatever its declared policy
-— the script's contract is to produce a *converged* final geometry, so no knob can
-silently ship a non-converged answer. `assert_convergence` is therefore *derived*
-from the policy (`input.py:905-944`), not set directly — this supersedes the older
-"False except last" model.
+**There is no last-rung override.** A deck is one rung and cannot see the others,
+so nothing can force the final one to `halt` from inside a script. SIESTA has
+never had such an override; the setting the user gave stands, for both engines.
 
 ```mermaid
 flowchart TD
-    ST["a stage exhausts max_steps<br/>without converging"] --> F{"is this the<br/>last enabled stage?"}
-    F -->|yes| H["HALT — hard-fail (RuntimeError)<br/>final geometry must be converged"]
-    F -->|no| P{"on_nonconvergence?"}
-    P -->|proceed| PR["take the partial geometry,<br/>go to the next stage"]
-    P -->|halt| H
-    P -->|continue| C["retry (same targets) up to<br/>continue_retries more batches,<br/>then halt"]
+    ST["this rung exhausts geom_max_steps<br/>without converging"] --> P{"on_nonconvergence?"}
+    P -->|halt| H["HALT — hard-fail (RuntimeError).<br/>The job ends without an answer<br/>nobody accepted"]
+    P -->|continue| C["retry, same targets, up to<br/>geom_continue_retries more batches,<br/>then halt"]
+    P -->|proceed| PR["save the partial geometry and exit 0.<br/>A person decides whether the<br/>next rung starts from it"]
 ```
+
+**The rung's own setting decides, and nothing overrides it.** A deck is one
+rung and cannot see the others, so there is no *"is this the last one?"*
+branch to take — and none is wanted: **stages are run by hand, one at a time,
+and a person reads each result before starting the next** *(user, 2026-08-18)*.
+The guarantee a last-rung force-halt used to provide was a property of the
+one-process loop, where nobody looked in between.
 
 *Budget example:* a `continue` stage with `max_steps=200` and `continue_retries=2`
 runs up to `200 × (1 + 2) = 600` steps before it finally halts.
@@ -338,61 +354,40 @@ A **real** opt step (index ≥ 1) carries an energy/forces/max_force value and a
 
 ---
 
-## 5. In-script staged optimization
+## 5. A ladder is N decks and N jobs
 
-PySCF's edge over SIESTA: molbuilder generates the script, so a multi-stage ladder
-runs *inside* it — no manual "run stage 1, edit, run stage 2".
+**PySCF runs a ladder exactly as SIESTA does** ([`stages.md`
+§ 1.1a](?doc=engines/stages.md)): the ladder is declared once in `task.json`,
+`prep` renders one deck per rung, and each rung is its own job. There is no
+in-script loop over stages, and no stage list in the engine config.
 
-- **Data model** `StageSpec` (`config/pyscf.py:59`): `name`, `enabled`, `conv_tol`
-  (→ `mf.conv_tol`), the five geomeTRIC knobs `gmax`/`grms`/`dmax`/`drms`/`etol`
-  (**g** = gradient/force, **d** = displacement/step; **max**/**rms** = per-atom
-  peak vs root-mean-square; **etol** = energy), `max_steps`, plus the
-  non-convergence policy `on_nonconvergence`
-  (proceed/continue/halt) and `continue_retries` (§ 3). `PySCFConfig.stages` is the
-  sole source of truth (the legacy `preopt_*` / flat `geom_conv_*` fields are gone).
-- **Default ladder** `_default_stages()` (`config/pyscf.py:173`) — values verified
-  against code:
+- **Where a rung's numbers come from.** `task.json`'s `Stage.overrides`, on the
+  shared schema — `scf_conv_tol`, the five geomeTRIC criteria `geom_gmax` /
+  `geom_grms` / `geom_dmax` / `geom_drms` / `geom_etol` (**g** = gradient/force,
+  **d** = displacement/step; **max**/**rms** = per-atom peak vs root-mean-square;
+  **etol** = energy), and `geom_max_steps`. The per-tier values are
+  [`tuning.md` § 2.4](?doc=engines/tuning.md)'s table, and that table is the
+  authority for them.
+- **The shipped ladder** is `pyscf/stages.py::default_pyscf_stages`, whose rungs
+  carry the shared stage names `coarse` / `medium` / `tight` — the same three
+  SIESTA uses, because a stage name says which rung of *this* ladder it is and
+  nothing about which engine is running it.
+- **What a rung hands the next one** is the converged geometry
+  (`<JOB>_optimized.xyz`) and the converged density (`<JOB>.chk`), copied at
+  `prep` when the next rung's `restart` says `continue` — the same pair SIESTA
+  carries as `.XV` and `.DM`, declared in
+  [`job-contracts.md` § 4.2a](?doc=execution/job-contracts.md)'s warm-file rules.
+- **What a deck decides on its own** is one rung's non-convergence policy:
+  `on_nonconvergence` ∈ {`proceed`, `continue`, `halt`} with
+  `geom_continue_retries` for the middle one. A deck cannot see the other rungs,
+  so there is no "force the last one to halt" override — SIESTA has never had
+  one either, and the user's setting stands.
 
-  | `name` | Enabled | `conv_tol` | `gmax` (Ha/Bohr) | `max_steps` | `on_nonconvergence` | Purpose |
-  |---|---|---|---|---|---|---|
-  | `stage1` (loose pre-opt) | ✅ | 1e-7 | 2.0e-3 | 50 | `proceed` | rough geometry, cheaply |
-  | `stage2` (**publishable**) | ✅ | 1e-9 | 4.5e-4 | 200 | `halt` | Gaussian OPT default — what papers cite |
-  | `stage3` (tight) | ☐ opt-in | 1e-10 | 2.0e-4 | 100 | `halt` | for accurate Hessians / vib work |
-
-  **The names really are `stage1` / `stage2` / `stage3`** — unlike SIESTA's
-  `coarse` / `medium` / `tight` (`config/siesta.py::SIESTA_STAGE_NAMES`). They
-  can differ because a PySCF name never becomes a deck's filename: the ladder
-  runs in one process and writes one unified log (§ 2). It reaches disk only in
-  the per-stage geomeTRIC prefixes, `<job>_geom_stage1_optim.xyz`.
-
-- **Presets** `STAGE_STRATEGY_PRESETS` (`:314`): `publishable` (1+2), `loose-only`
-  (1), `vib-quality` (1+2+3) — the same names + masks as SIESTA, kept in lock-step
-  with `form-schema.js`.
-- **Generated loop** (`_emit_stages_loop`, `pyscf/input.py:800`): the SCF is set up
-  **once** (`mf.xc`, `mf.disp`, `density_fit`), the disabled stages are filtered out
-  at generation time, and each `STAGE` dict carries its convergence knobs plus
-  `on_nonconvergence`, `continue_retries`, and an `is_final` flag. A helper
-  `_mb_run_stage_opt(STAGE, _hard_fail)` wraps the `optimize(mf, convergence_*=…,
-  prefix=…, callback=…, assert_convergence=_hard_fail)` call; the loop picks
-  `_hard_fail` from the policy (§ 3) and warm-starts the next stage:
-
-  ```python
-  for STAGE in STAGES:
-      mf.conv_tol = STAGE['conv_tol']
-      _policy = 'halt' if STAGE['is_final'] else STAGE['on_nonconvergence']
-      if _policy == 'proceed':                       # warm-up: take the partial geom
-          mol_eq = _mb_run_stage_opt(STAGE, _hard_fail=False)
-      elif _policy == 'halt':                        # production: hard-fail if not converged
-          mol_eq = _mb_run_stage_opt(STAGE, _hard_fail=True)
-      else:                                          # 'continue': retry up to continue_retries
-          ...                                        #             then halt
-      # warm-start the next stage at the relaxed geometry (no disk round-trip):
-      dm_prev = mf.make_rdm1() if (mf.mo_coeff is not None and mf.mo_occ is not None) else None
-      mf.reset(mol_eq); mf.kernel(dm0=dm_prev)
-  ```
-
-Running the ladder as a scheduler job-set is `execution/` territory; this in-script
-loop is the direct-mode path.
+**Why not keep the in-script loop.** A ladder exists so somebody looks between
+the rungs, and looking requires a rung to have *ended*. Everything the workflow
+offers between stages — open the next attempt, name the run it continues from,
+read what happened, redo one rung with different numbers — is per-job machinery
+that a single process running every rung can reach none of.
 
 ---
 

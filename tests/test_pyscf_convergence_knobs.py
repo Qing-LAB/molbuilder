@@ -67,7 +67,8 @@ def test_the_field_exists_with_ui_metadata():
     makes ONE declaration reach the UI, the template and the doc.  A
     field with no label/help is invisible where the user sets it."""
     f = PySCFConfig.__dataclass_fields__["scf_conv_tol_grad"]
-    assert f.metadata["section"] == "SCF"
+    # ``section`` gates nothing for PySCFConfig since 2026-08-15 (the form
+    # is built from the catalogue) -- not pinned.
     assert f.metadata["engine_key"] == "mf.conv_tol_grad"
     assert f.metadata["label"]
     assert f.metadata["help"]
@@ -136,7 +137,8 @@ def test_chosen_and_derived_are_distinguishable(kw, expected):
 
 def test_soscf_field_exists_with_ui_metadata():
     f = PySCFConfig.__dataclass_fields__["scf_soscf"]
-    assert f.metadata["section"] == "SCF"
+    # ``section`` gates nothing for PySCFConfig since 2026-08-15 (the form
+    # is built from the catalogue) -- not pinned.
     assert f.metadata["engine_key"] == "mf.newton()"
     assert f.metadata["label"]
     assert f.metadata["help"]
@@ -262,8 +264,11 @@ def test_memory_is_one_item_across_both_engines():
     from molbuilder.config.siesta import SiestaConfig
     s = {d.name: d for d in declarations_for(SiestaConfig)}["max_memory_mb"]
     p = {d.name: d for d in declarations_for(PySCFConfig)}["max_memory_mb"]
+    # `resolver` left this list on 2026-08-17 with the key itself: it was a
+    # second NAME for what `allocation` already states, and nothing dispatched
+    # on it.  `template.md` § 6.3's merge-agreement list dropped it too.
     for attr in ("kind", "type", "default", "category",
-                 "allocation", "resolver", "optional", "unit"):
+                 "allocation", "optional", "unit"):
         assert getattr(s, attr) == getattr(p, attr), (
             f"max_memory_mb.{attr}: siesta={getattr(s, attr)!r} "
             f"pyscf={getattr(p, attr)!r} -- the two halves of ONE item "

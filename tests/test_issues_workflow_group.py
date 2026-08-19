@@ -74,14 +74,21 @@ class TestResolveWorkflowGroup:
         assert resolve_workflow_group(
             "config.scf_max_cycle", cfg) == "budget"
 
-    def test_pyscf_stages_resolves_to_stage(self):
-        """Post-#534 commit 4b the per-stage convergence ladder is the
-        ``stages`` field (a stage-table widget) rather than the flat
-        geom_conv_* scalars.  The workflow-group resolver tags it
-        ``stage`` so it lands in the Stage card."""
+    @pytest.mark.parametrize("field", [
+        "scf_conv_tol", "geom_gmax", "geom_grms", "geom_dmax",
+        "geom_drms", "geom_etol", "geom_max_steps",
+    ])
+    def test_pyscf_per_rung_knobs_resolve_to_stage(self, field):
+        """The knobs a rung varies land in the Stage card.
+
+        This asserted ``config.stages`` -- one field holding a whole ladder
+        -- until 2026-08-18.  `stages.md` § 1.1a moved the ladder to
+        ``task.json`` and made each rung its own deck, so what the config
+        carries is THIS rung's flat values, and it is each of them that must
+        be tagged.  A finding on one of them still has to reach the same
+        card; the card did not change, the thing being grouped did."""
         cfg = PySCFConfig()
-        assert resolve_workflow_group(
-            "config.stages", cfg) == "stage"
+        assert resolve_workflow_group(f"config.{field}", cfg) == "stage"
 
     # ---- Non-config wheres (geometry / cell / polymer) -------------- #
 

@@ -59,7 +59,6 @@ giving the user a one-command way to extract the corrected number.
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from typing import List, Optional
 
@@ -424,7 +423,12 @@ def emit_correction_script(
     parent = Path(fdf_path).parent
     if not parent.is_dir():
         return None
-    out_path = parent / "makov_payne_correction.py"
-    out_path.write_text(render_correction_script(
-        system_label=system_label, q=q, epsilon_r=epsilon_r))
-    return out_path
+    # THROUGH THE ONE WRITER (`script-preparation.md` § 3.2, W4).  This is a
+    # generated script like any other -- the deck's own text tells a person to
+    # run it -- and a plain ``write_text`` here was the last generated artifact
+    # in the tree written by a second hand.
+    from .. import script_emit as _sc
+    return _sc.write_script(parent / "makov_payne_correction.py",
+                            render_correction_script(
+                                system_label=system_label, q=q,
+                                epsilon_r=epsilon_r))

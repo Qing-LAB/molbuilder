@@ -332,13 +332,24 @@ launch (all in `molbuilder/runwrap.py`):
 | Flag | Engines | Effect |
 |---|---|---|
 | `--continue` / `-c` | both | advance the run index and warm-restart from `.DM`/`.CG`/`.XV` (SIESTA) or `.chk` (PySCF) |
-| `--force` / `-f` | both | reset the run index to `-run0` (overwrite it); does **not** touch warm-start files |
-| `--cold` / `--from-scratch` | both | move warm-start files aside before running (§ `job-contracts § 4`) |
+| `--force` / `-f` | both | reset the run index to `-run0` (overwrite it); does **not** touch warm-start files. Also what says *yes, overwrite* to `--cold`'s refusal |
+| `--cold` / `--from-scratch` | both | start the engine from the deck alone, **overwriting** the prior state it names (§ `job-contracts § 4`). Names the files and **refuses**; `--force` proceeds |
 | `-np` / `--np N` | SIESTA | override MPI ranks |
 | `-omp` / `--omp` / `-t` / `--threads N` | SIESTA | override OMP threads |
 | `--mps` / `--no-mps` | SIESTA (GPU) | force MPS on / off |
 | `--dry-run` | both | print the resolved launch command + rank→GPU/NUMA map, then exit 0 |
 | `-h` / `--help` | both | usage |
+
+> **`--cold` refuses before it overwrites, and that is the whole of the safety
+> net.** It prints every file the run would overwrite, tells you to save the
+> state first with `molbuilder checkpoint save`, and exits 1 having changed
+> nothing. Run it again with `--force` and the same list is printed and the run
+> proceeds. It *moved* those files into a timestamped `…-restart-aside-<UTC>/`
+> folder until 2026-08-18; keeping a state is the checkpoint tool's job and it
+> is never automatic ([`checkpointing.md § 2`](?doc=execution/checkpointing.md)).
+>
+> It works the same under `sbatch`: a refusal fails the job immediately with the
+> reason in the log, where a prompt would simply hang.
 
 Unrecognised arguments are **rejected** (the wrapper exits 1) — only the flags
 above are accepted, for either engine. The `.sbatch` outer file forwards
@@ -656,7 +667,7 @@ shipped script emits it any more.)*
 
 ---
 
-## 6. Saving a calculation — `molbuilder snapshot`
+## 6. Saving a calculation — `molbuilder checkpoint`
 
 A calculation folder can be put under a git-backed snapshot system, so any state
 you saved is one you can come back to — rerun a stage, retune and try again, or
@@ -698,12 +709,12 @@ in exactly one of the two stores.
 ### 6.2 The verbs
 
 ```bash
-molbuilder snapshot init                                  # once, in the folder
-molbuilder snapshot save -m "stage 1 converged, 41 steps"  # the note is required
-molbuilder snapshot list                                   # what have I got?
-molbuilder snapshot tag stage1-good -m "geometry I trust"  # name one
-molbuilder snapshot restore 4f9ca71                        # or restore stage1-good
-molbuilder snapshot config                                 # which files count as big
+molbuilder checkpoint init                                  # once, in the folder
+molbuilder checkpoint save -m "stage 1 converged, 41 steps"  # the note is required
+molbuilder checkpoint list                                   # what have I got?
+molbuilder checkpoint tag stage1-good -m "geometry I trust"  # name one
+molbuilder checkpoint restore 4f9ca71                        # or restore stage1-good
+molbuilder checkpoint config                                 # which files count as big
 ```
 
 Every verb takes `-p/--path` (default: the current directory).
@@ -775,9 +786,9 @@ refuses, and names the files that differ.
 
 ### 6.5 What is not built
 
-- **`snapshot verify`** — the archive check exists and is reachable only by
+- **`checkpoint verify`** — the archive check exists and is reachable only by
   attempting a restore, which is the worst moment to learn an archive is gone.
-- **`snapshot diff`** — no verb, on any surface.
+- **`checkpoint diff`** — no verb, on any surface.
 - **`prune`** — nothing is ever reclaimed, and under "every saved state stays
   restorable" almost nothing can be. The one genuine case is an archive left by
   a save interrupted before its state was recorded.

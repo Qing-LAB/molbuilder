@@ -179,6 +179,20 @@ class Job:
         )
 
 
+#: The trait a warm file may be conditioned on, spelled ONCE.
+#:
+#: It is a string in three places that must agree -- each engine's ``_traits``
+#: producer and every ``requires_same`` row of a ``warm-files.toml`` -- and a
+#: typo on any of them reads as *"the optimizers disagree"*, which withholds
+#: the file silently rather than failing.  The rules files are data and say it
+#: for themselves; this is the one Python spelling, and it lives beside
+#: :func:`warm_carry` because that is the only place the comparison happens.
+#:
+#: Declared twice until 2026-08-18 -- once per engine, each with a comment
+#: explaining that it had to match the other.  A comment is not a mechanism.
+OPTIMIZER_TRAIT = "optimizer"
+
+
 def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
     """What ``job`` takes from ``source`` — the pair's answer, not an edge's.
 
@@ -292,10 +306,10 @@ class JobSet:
     def validate(self) -> List[str]:
         """Return human-readable structural errors (empty == OK).  Checks
         the invariants the engines can't recover from -- exactly the same
-        discipline as PySCF's ``validate_stages``.  (It used to name SIESTA's
-        alongside it; that one was deleted with ``SiestaStageSpec`` in P2, and
-        the ladder-level checks it made live in ``task.py``,
-        where a description's ladder is read and refused.)
+        discipline the description's own stage validation applies.  (It used
+        to name a per-engine stage validator alongside it; those went with the
+        engine-config stage lists, and the ladder-level checks they made live
+        in ``task.py``, where a description's ladder is read and refused.)
 
           * non-empty; ``kind`` known;
           * unique job names (the dir + ``-J`` collide otherwise);

@@ -63,7 +63,6 @@ VOCABULARIES = {
     "item kind":        (template.KINDS,       "engines/template.md"),
     "category":         (template.CATEGORIES,  "engines/template.md"),
     "item type":        (template.TYPES,       "engines/template.md"),
-    "resolver":         (template.RESOLVERS,   "engines/template.md"),
     "Resources field":  (Resources,            "execution/job-contracts.md"),
     "Job field":        (Job,                  "execution/job-contracts.md"),
     "WarmFile field":   (WarmFile,             "execution/job-contracts.md"),
@@ -477,6 +476,123 @@ def test_a_number_stated_in_prose_is_the_number_the_code_has(claim_id):
         f"§ 2.1a).")
 
 
+# --------------------------------------------------------------------- #
+#  A TIER TABLE in prose is the tier table the code ships                #
+# --------------------------------------------------------------------- #
+
+#: ``2.0×10⁻³`` is how a tier table writes a number, and ``2.0e-3`` is how the
+#: code does.  Translating the superscripts is the whole difference.
+_SUPERSCRIPTS = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁻", "0123456789-")
+
+
+def _doc_number(cell: str):
+    """The first number in a table cell, however the prose dresses it.
+
+    Bold markers and a trailing gloss (``**1×10⁻⁹** (the `medium` rung)``) are
+    editorial; the number is the claim.
+    """
+    m = re.search(r"[\d.]+(?:×10[⁻]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+)?", cell)
+    if not m:
+        return None
+    return float(m.group(0).replace("×10", "e").translate(_SUPERSCRIPTS))
+
+
+def _doc_section(doc_rel: str, heading: str) -> str:
+    """One section's body: from its heading to the next heading of any level.
+
+    Tier tables reuse the tier NAMES as row labels -- "loose preopt" heads a
+    row in § 2.2 and another in § 2.5 -- so a document-wide search finds
+    whichever comes first and silently checks the wrong table.  A claim names
+    the section it is made in.
+    """
+    text = (DOCS / doc_rel).read_text(encoding="utf-8")
+    m = re.search(r"^" + re.escape(heading) + r"\b.*?(?=^#|\Z)",
+                  text, re.M | re.S)
+    assert m, f"{doc_rel} has no section {heading!r}"
+    return m.group(0)
+
+
+def _doc_tier_row(doc_rel: str, heading: str, label: str):
+    """The numbers of the markdown table row whose first cell is *label*.
+
+    One reader for every tier table, so registering a new one is a row in
+    ``TIER_TABLES`` rather than another hand-rolled parse -- the same shape
+    ``MEASURED`` gives single numbers.
+    """
+    body = _doc_section(doc_rel, heading)
+    m = re.search(r"^\|\s*`?" + re.escape(label) + r"`?\s*\|(.+)$",
+                  body, re.M)
+    assert m, (
+        f"{doc_rel} {heading} has no tier-table row for {label!r}.  Either "
+        f"the table was reshaped -- update this row -- or the claim was "
+        f"dropped, and then the row should be dropped with it.")
+    return [_doc_number(c) for c in m.group(1).split("|")]
+
+
+def _pyscf_presets():
+    from molbuilder.config.pyscf import PYSCF_STAGE_PRESETS
+    return PYSCF_STAGE_PRESETS
+
+
+#: ``id: (document, section, {item: (row label, {tier: column})}, code table)``.
+#:
+#: A tier table is a claim of the same kind ``MEASURED`` holds -- a number
+#: stated in prose that the code also states -- only there are fifteen of them
+#: and they are the ones that decide what a calculation converges to.  They are
+#: registered rather than copied because copying is what put three wrong values
+#: into the tight rung on 2026-08-18: they were read off the code they were
+#: supposed to be checking.
+TIER_TABLES = {
+    "PySCF geomeTRIC criteria (tuning.md § 2.4)": (
+        "engines/tuning.md", "### 2.4",
+        # One row per item, the three tier columns read across it.
+        {"geom_gmax": [("geom_gmax", {1: 0, 2: 1, 3: 2})],
+         "geom_grms": [("geom_grms", {1: 0, 2: 1, 3: 2})],
+         "geom_dmax": [("geom_dmax", {1: 0, 2: 1, 3: 2})],
+         "geom_drms": [("geom_drms", {1: 0, 2: 1, 3: 2})],
+         "geom_etol": [("geom_etol", {1: 0, 2: 1, 3: 2})]},
+        _pyscf_presets),
+    "PySCF SCF tolerance (tuning.md § 2.5)": (
+        "engines/tuning.md", "### 2.5",
+        # § 2.5 is transposed: one row per TIER, and the PySCF value is the
+        # second cell of it.  Same reader, three rows for one item.
+        {"scf_conv_tol": [("loose preopt", {1: 1}),
+                          ("publishable", {2: 1}),
+                          ("tight", {3: 1})]},
+        _pyscf_presets),
+}
+
+
+@pytest.mark.parametrize("claim_id", sorted(TIER_TABLES))
+def test_a_tier_table_stated_in_prose_is_the_table_the_code_ships(claim_id):
+    """Every per-tier number a contract tabulates is measured on every run.
+
+    `tuning.md` § 2.4 says outright that it is the authority for these values,
+    which is only true if something checks.  Nothing did, and on 2026-08-18
+    three of the tight rung's five criteria were wrong in the code -- copied
+    from the implementation being replaced rather than read off the table.
+    No test of the emitter could have caught it: every one of them asserts
+    that the config's value reached the deck, and it did.
+    """
+    doc_rel, heading, rows, code_table = TIER_TABLES[claim_id]
+    table = code_table()
+    for item, places in rows.items():
+        for label, columns in places:
+            cells = _doc_tier_row(doc_rel, heading, label)
+            for tier, col in columns.items():
+                stated = cells[col]
+                actual = table[tier][item]
+                assert stated is not None, (
+                    f"{doc_rel} {heading}: row {label!r} column {col} "
+                    f"carries no number")
+                assert stated == pytest.approx(actual, rel=1e-12), (
+                    f"{doc_rel} {heading} says {item} = {stated!r} for tier "
+                    f"{tier}; the shipped ladder uses {actual!r}.\n"
+                    f"The DOCUMENT is the authority -- fix the code, unless "
+                    f"the science changed, in which case fix the table "
+                    f"first and the code from it.")
+
+
 def test_a_declared_type_must_be_in_the_vocabulary():
     """``metadata['decl_type']`` is checked against ``TYPES`` -- a typo there
     would otherwise put an unknown type into every template."""
@@ -519,6 +635,13 @@ def test_the_template_path_is_formed_in_exactly_one_place():
     for p in sorted(root.rglob("*.py")):
         if p.name == "template.py":
             continue                       # the door's own home
+        if p.name == "identity.py":
+            # THE ONE EXEMPTION, and it is a layering fact, not a lapse.
+            # `identity.py` is L1 and `template` is L2, so it may not import
+            # the suffix -- `tests/test_layering.py` fails if it does.  Its
+            # pattern list therefore spells the name, and that single line is
+            # the only place outside the door allowed to.
+            continue
         tree = ast.parse(p.read_text(encoding="utf-8", errors="replace"))
         docstrings = set()
         for node in ast.walk(tree):

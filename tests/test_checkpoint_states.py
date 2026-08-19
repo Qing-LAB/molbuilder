@@ -1166,7 +1166,7 @@ def test_nothing_tags_a_state_on_your_behalf(calc):
 
 def test_a_whole_staged_calculation_tags_nothing(staged):
     """L4's stated test: *"run a **full staged calculation** and assert the
-    tag list is empty until somebody types `snapshot tag`."*
+    tag list is empty until somebody types `checkpoint tag`."*
 
     Three plain saves in a flat folder cannot fail for the reason the rule
     exists -- nothing in `save` was ever going to tag.  The retired mechanism

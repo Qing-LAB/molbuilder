@@ -269,3 +269,51 @@ def pytest_collection_modifyitems(config, items):
         if "_smoke" in fn or "_smoke_l4" in fn:
             item.add_marker(_pt.mark.integration)
             item.add_marker(_pt.mark.smoke)
+
+
+# --------------------------------------------------------------------- #
+#  Pseudopotentials for a calculation under test                        #
+# --------------------------------------------------------------------- #
+
+#: The smallest PSML ``pseudos.parse_psml_header`` accepts: a real element and
+#: a scalar-relativistic spec, and no projector block -- so no null channel,
+#: and ``check_coverage`` returns ``ok``.
+_PSML_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
+<psml version="1.1" energy_unit="hartree" length_unit="bohr"
+      xmlns="http://launchpad.net/psml">
+  <pseudo-atom-spec atomic-label="{el}" atomic-number="{z}"
+                    z-pseudo="1" core-corrections="no"
+                    relativity="scalar" spin-dft="no" flavor="test-fixture">
+    <valence-configuration total-valence-charge="1"/>
+  </pseudo-atom-spec>
+</psml>
+"""
+
+_PSML_Z = {"H": 1, "C": 6, "N": 7, "O": 8, "S": 16, "Fe": 26, "Au": 79}
+
+
+def write_pseudos(dest, elements) -> None:
+    """Put the ``.psml`` files a SIESTA calculation needs into *dest*.
+
+    Since 2026-08-18 `prep` REFUSES by element name when a species has no
+    pseudopotential in the calculation and none in the library
+    (`project-layout.md` § 2.6): SIESTA opens ``<element>.psml`` in the
+    directory it runs from and has no search path, so a bundle without them is
+    one that cannot start, and laying out a tree for it helps nobody.  A test
+    that preps therefore supplies them, exactly as a person does.
+
+    **Real PSML, not touch-files.**  `prep` also runs the screening in
+    `science/pseudopotentials.md` § 1 over whatever is in the folder -- the
+    checks that exist because a dead-p-channel ``S.psml`` once shipped into a
+    real run, giving wrong sulfur bonding and a `propor: ERROR: IMAX=0` that
+    appeared only at high rank counts.  An unparseable file reads as
+    ``missing``, which blocks.  These parse, name their element and declare no
+    null channel; the physics is not what the tests using this are about.
+
+    One home because four test files needed it within an hour of the refusal
+    landing.
+    """
+    from pathlib import Path as _P
+    for el in elements:
+        (_P(dest) / f"{el}.psml").write_text(
+            _PSML_FIXTURE.format(el=el, z=_PSML_Z[el]))

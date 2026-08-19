@@ -46,16 +46,17 @@ def _outputs_block(text: str) -> str:
 
 
 @pytest.mark.parametrize("cfg, must_list, must_not_list", [
-    # Default config: log + chk + initial + optimized + per-stage
-    # geom traj/log placeholders (post-#534 commit 4: stages
-    # generate one set per enabled stage).
+    # Default config: log + chk + initial + optimized + THIS RUNG's geom
+    # trajectory and log.  A ladder is N decks and N jobs (`stages.md`
+    # § 1.1a), so one deck lists one set -- the per-stage placeholders the
+    # in-script loop needed are gone with it.
     (
         PySCFConfig(),
         ["pyscf_relax.log", "pyscf_relax.chk",
          "pyscf_relax_initial.xyz", "pyscf_relax_optimized.xyz",
-         "pyscf_relax_geom_<stage>_optim.xyz",
-         "pyscf_relax_geom_<stage>.log"],
-        ["_preopt"],
+         "pyscf_relax_geom_optim.xyz",
+         "pyscf_relax_geom.log"],
+        ["_preopt", "geom_<stage>"],
     ),
     # No optimization: no trajectory files, no _optimized.xyz
     (
@@ -142,23 +143,26 @@ def _optimize_calls(text: str):
         yield m.group("body")
 
 
-def test_optimize_call_has_per_stage_prefix_when_traj_on(small_struct):
-    """Spec: when write_trajectory=True the single per-stage
-    ``optimize()`` call inside the stages loop must pass a per-stage
-    prefix= (the STAGE['name'] gets concatenated into the path) so
-    each enabled stage's geomeTRIC trajectory lands in its own file.
+def test_optimize_call_carries_this_rung_s_trajectory_prefix(small_struct):
+    """Spec: with ``write_trajectory=True`` the single ``optimize()`` call passes
+    a ``prefix=`` naming **this rung**, so two rungs of one ladder cannot write
+    into the same geomeTRIC trajectory.
+
+    A PySCF ladder is N decks and N jobs (`stages.md` § 1.1a), so the separation
+    that used to come from ``STAGE['name']`` inside an in-script loop now comes
+    from the stage token the deck was rendered with -- the same token that
+    suffixes the deck's own filename.
     """
     cfg = PySCFConfig()
-    bodies = list(_optimize_calls(render_script(small_struct, cfg)))
+    bodies = list(_optimize_calls(render_script(small_struct, cfg,
+                                               stage_token="02_tight")))
     assert len(bodies) == 1, (
-        f"Expected exactly 1 optimize() call inside the stages loop, "
-        f"found {len(bodies)}"
-    )
+        f"Expected exactly 1 optimize() call, found {len(bodies)}")
     body = bodies[0]
     assert "prefix" in body
-    assert "_mb_outfile(JOB + '_geom_' + STAGE['name'])" in body, (
-        f"optimize() prefix must concat STAGE['name'] so each stage "
-        f"gets its own trajectory file.  Body was:\n{body}"
+    assert "_mb_outfile(JOB + '_geom_02_tight')" in body, (
+        f"optimize() prefix must carry this rung's token so two rungs get "
+        f"separate trajectory files.  Body was:\n{body}"
     )
 
 

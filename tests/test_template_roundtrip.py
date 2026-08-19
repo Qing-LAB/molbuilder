@@ -358,7 +358,7 @@ def test_a_hand_added_machine_fact_VALUE_is_refused_with_the_story():
     Until @2 an allocation-tagged field was never WRITTEN into a
     template, so its mere presence meant a hand edit and the item was
     refused.  § 6.4 changed that: the ITEM is now declared -- valueless,
-    with its resolver -- because a surface must be able to ask for ranks.
+    flagged as the scheduler's -- a surface must be able to ask for ranks.
     So the refusal moved from the item to its VALUE, which is where § 2
     always put it: *the template declares the question and never asserts
     the answer.*
@@ -370,9 +370,9 @@ def test_a_hand_added_machine_fact_VALUE_is_refused_with_the_story():
     import molbuilder.template as T
     text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\n\n'
             '[item.mpi_np]\nkind = "wrapper"\ncategory = ["execution"]\n'
-            'resolver = "rank_count"\ntype = "int"\nvalue = 8\n'
+            'allocation = true\ntype = "int"\nvalue = 8\n'
             'help = "hand-added"\n')
-    with pytest.raises(ValueError, match=r"answers from the ALLOCATION"):
+    with pytest.raises(ValueError, match=r"the SCHEDULER answers it"):
         T.read_template(text)
 
 
@@ -383,7 +383,7 @@ def test_the_item_itself_is_legitimate_only_its_value_is_not():
     import molbuilder.template as T
     text = (f'schema = "{T.SCHEMA}"\nengines = ["siesta"]\n\n'
             '[item.mpi_np]\nkind = "wrapper"\ncategory = ["execution"]\n'
-            'resolver = "rank_count"\ntype = "int"\nhelp = "ask me"\n')
+            'allocation = true\ntype = "int"\nhelp = "ask me"\n')
     t = T.read_template(text)
     assert T.one(t, "mpi_np").value is None
 
@@ -546,7 +546,7 @@ def test_an_item_claiming_an_unlisted_engine_is_refused():
 
 
 # ------------------------------------------------------------------ #
-#  T4 -- execution items are DECLARED, valueless, with a resolver     #
+#  T4 -- execution items are DECLARED, valueless, and FLAGGED        #
 # ------------------------------------------------------------------ #
 
 def test_the_execution_panel_carries_the_machine_questions():
@@ -578,45 +578,29 @@ def test_an_allocation_item_is_emitted_VALUELESS_however_the_config_is_filled():
         "machine fact and is no longer portable")
 
 
-def test_every_resolver_named_is_one_the_registry_knows():
-    """§ 6.4: the vocabulary is closed, and a resolver is a NAME rather
-    than code -- a template you must TRUST is not a template you can
-    READ."""
+def test_the_machine_answered_items_are_flagged_and_nothing_else_is():
+    """**One flag, and it is the item's own.**
+
+    Three tests stood here until 2026-08-17 -- that every resolver name was
+    in the closed registry, that an unknown one was refused, and that the
+    four items named in the contract carried theirs.  All three tested a
+    SECOND vocabulary: a `resolver` NAME beside the boolean that already said
+    the same thing.  Nothing ever dispatched on those names, half of them
+    (``omp_threads``, ``block_size``) simply repeated the item's own name and
+    half invented one (``mpi_np`` -> ``rank_count``), so the registry bought
+    nothing and cost a standing confusion between two vocabularies.
+
+    What survives is the fact they were circling: **the scheduler answers
+    exactly these three, and the flag says so on the item.**
+    """
     t = _siesta_template()
-    named = [i.resolver for i in t.items if i.resolver]
-    assert named, "no item declares a resolver -- the key is specified but dead"
-    for r in named:
-        assert r in T.RESOLVERS
+    answered = {i.name for i in T.select(t, allocation=True)}
+    assert answered == {"mpi_np", "omp_threads", "max_memory_mb"}, answered
 
-
-def test_an_unknown_resolver_is_refused():
-    import dataclasses
-    from dataclasses import field as dc_field
-    bad = dataclasses.make_dataclass("Bad", [
-        ("x", int, dc_field(default=1, metadata={
-            "category": ("execution",), "resolver": "ask_a_friend",
-            "help": "x", "workflow_group": "budget"}))])
-    with pytest.raises(ValueError, match=r"unknown resolver 'ask_a_friend'"):
-        T.declarations_for(bad)
-
-
-def test_the_items_that_need_a_resolver_have_one():
-    """The behavioural half.  A resolver key that exists but is declared
-    nowhere is the hollow-mechanism pattern this session hit three times
-    (RUNTIME_INFO_KEYS, read_by, and this one) -- so the guard is that
-    the items § 6.4's table names actually carry theirs."""
-    t = _siesta_template()
-    expected = {"mpi_np": "rank_count", "omp_threads": "omp_threads",
-                "max_memory_mb": "node_memory",
-                "block_size": "block_size"}
-    for name, res in expected.items():
-        got = T.one(t, name)
-        assert got is not None and got.resolver == res, (
-            f"{name} should declare resolver {res!r}; § 6.4 names it and "
-            f"nothing else will fill the value")
-    # ``block_size`` is the one resolver that is NOT an allocation fact: the
-    # scheduler does not grant it, the BENCHMARK measures it and `prep`
-    # realigns it against the GPU target.  So its item may legitimately carry
-    # a value, which is why the two tuples differ.
-    assert "block_size" in T.RESOLVERS
-    assert "block_size" not in T.ALLOCATION_RESOLVERS
+    # `block_size` is the case that made the old registry look necessary: the
+    # scheduler does NOT grant it -- a benchmark measures it and `prep`
+    # realigns it against the GPU target -- so its item may legitimately carry
+    # a value.  It needs no name of its own to say that; being unflagged and
+    # `optional` with no value already says it.
+    bs = T.one(t, "block_size")
+    assert bs is not None and not bs.allocation and bs.optional

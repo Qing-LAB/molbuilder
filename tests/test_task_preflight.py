@@ -95,23 +95,29 @@ def test_the_generator_table_is_an_argument_so_a_test_need_not_invent_one():
 
 
 # --------------------------------------------------------------------- #
-#  Row 1a — § 6.7, a one-process ladder has no hierarchy                #
+#  § 6.7 — every engine offers both shapes                              #
+#                                                                        #
+#  This block asserted the opposite until 2026-08-18: that `hierarchical`#
+#  is REFUSED for PySCF, because its ladder ran inside one process and   #
+#  so wrote one directory.  `stages.md` § 1.1a retired that -- a PySCF   #
+#  ladder is N decks and N jobs like SIESTA's -- and § 6.7 with it.      #
+#  The test is not deleted, because the question it asks is still the    #
+#  right one; it is inverted to the answer the contract now gives.       #
 # --------------------------------------------------------------------- #
 
-def test_hierarchical_on_a_one_process_engine_is_refused_naming_it():
-    """PySCF runs its whole ladder inside a single process, so a directory per
-    stage describes a layout that never exists on disk."""
-    [issue] = preflight(_task(engine="pyscf", shape="hierarchical"))
-    assert issue.severity == "error" and issue.where == "task.shape"
-    assert "pyscf" in issue.message and "flat" in issue.message
+@pytest.mark.parametrize("engine", ("siesta", "pyscf"))
+@pytest.mark.parametrize("shape", ("flat", "hierarchical"))
+def test_both_shapes_are_offered_by_both_engines(engine, shape):
+    """`stages.md` § 6.7: how a calculation's files are kept apart is a question
+    about the CALCULATION, not about the engine -- and the layer that answers it
+    names no engine.
 
-
-def test_hierarchical_is_fine_on_an_engine_whose_stages_are_real_jobs():
-    assert preflight(_task(engine="siesta", shape="hierarchical")) == []
-
-
-def test_flat_is_fine_on_a_one_process_engine():
-    assert preflight(_task(engine="pyscf", shape="flat")) == []
+    The PySCF/hierarchical cell was carried by a strict xfail while the code
+    still refused it. It stopped being an exception when the in-script ladder
+    went (§ 1.1a): a PySCF ladder is N decks and N jobs, so there is a directory
+    per rung to lay out, exactly as there is for SIESTA.
+    """
+    assert preflight(_task(engine=engine, shape=shape)) == []
 
 
 # --------------------------------------------------------------------- #

@@ -36,7 +36,7 @@ def mb(calc):
     runner = CliRunner()
 
     def invoke(*args):
-        return runner.invoke(cli, ["snapshot", *args, "-p", str(calc)])
+        return runner.invoke(cli, ["checkpoint", *args, "-p", str(calc)])
     return invoke
 
 
@@ -68,7 +68,7 @@ def test_the_group_offers_exactly_the_contracts_verbs():
     fails here, whatever it is called.
     """
     from molbuilder.cli import cli as _cli
-    assert set(_cli.commands["snapshot"].commands) == {
+    assert set(_cli.commands["checkpoint"].commands) == {
         "init", "save", "list", "tag", "restore", "config"}
 
 
@@ -81,7 +81,7 @@ def test_restore_returns_the_whole_folder(mb):
     partial-restore flag from landing without a contract change.
     """
     from molbuilder.cli import cli as _cli
-    restore = _cli.commands["snapshot"].commands["restore"]
+    restore = _cli.commands["checkpoint"].commands["restore"]
     assert {q.name for q in restore.params} == {"state", "path", "force"}
 
 
@@ -107,7 +107,7 @@ def test_init_twice_is_not_an_error_and_says_where_you_stand(mb):
 def test_a_calculation_name_needing_repair_is_refused(tmp_path):
     root = tmp_path / "has spaces!"
     root.mkdir()
-    result = CliRunner().invoke(cli, ["snapshot", "init", "-p", str(root)])
+    result = CliRunner().invoke(cli, ["checkpoint", "init", "-p", str(root)])
     assert result.exit_code != 0
 
 
@@ -117,7 +117,7 @@ def test_the_remedy_a_refused_save_names_actually_works(tmp_path,
 
     A folder somebody `git init`-ed by hand has no name molbuilder gave it, so
     a save is refused (L3) and the message says to run
-    `snapshot init --calculation <name>`.  **That command used to print
+    `checkpoint init --calculation <name>`.  **That command used to print
     "already a checkpoint folder" and return** — `init` bailed out before doing
     any work whenever the folder was already a repository, which was fine while
     `init` only ever created things and stopped being fine the moment it became
@@ -140,7 +140,7 @@ def test_the_remedy_a_refused_save_names_actually_works(tmp_path,
     runner = CliRunner()
 
     def run(*args):
-        return runner.invoke(cli, ["snapshot", *args, "-p", str(root)])
+        return runner.invoke(cli, ["checkpoint", *args, "-p", str(root)])
 
     refused = run("save", "-m", "stage 1 converged")
     assert refused.exit_code == 2, (
@@ -281,7 +281,7 @@ def test_list_names_a_lost_archive_instead_of_dying_on_it(mb, calc):
     # is not "did it raise" but "did it raise something it MEANT to".  Anything
     # else here is the traceback a real terminal would print.
     assert result.exception is None or isinstance(result.exception, SystemExit), (
-        f"`snapshot list` died instead of reporting: {result.exception!r}")
+        f"`checkpoint list` died instead of reporting: {result.exception!r}")
     assert result.exit_code == 1, (
         "exit 1 is the machine; 2 is the person's input, and a lost archive "
         "is not something they typed")
@@ -289,7 +289,7 @@ def test_list_names_a_lost_archive_instead_of_dying_on_it(mb, calc):
     assert "stage 1 converged" in result.output, (
         "the history must still print -- it is what somebody recovering reads")
     assert "missing" in combined or "lost" in combined
-    assert "snapshot save" in combined, (
+    assert "checkpoint save" in combined, (
         "a refusal with no way out is a dead end; a save records what is on "
         "disk and rebuilds the archive if those files are unchanged")
 
@@ -335,7 +335,7 @@ def test_at_a_terminal_the_question_is_asked_and_yes_is_an_answer(
     # seam -- not stdin itself.
     monkeypatch.setattr(cli_mod, "_stdin_is_a_terminal", lambda: True)
     result = CliRunner().invoke(
-        cli, ["snapshot", "restore", first, "-p", str(calc)], input="y\n")
+        cli, ["checkpoint", "restore", first, "-p", str(calc)], input="y\n")
     assert result.exit_code == 0, result.output
     assert (calc / "job.XV").read_text() == "saved\n"
 
@@ -352,7 +352,7 @@ def test_answering_no_changes_nothing(mb, calc, monkeypatch):
 
     monkeypatch.setattr(cli_mod, "_stdin_is_a_terminal", lambda: True)
     result = CliRunner().invoke(
-        cli, ["snapshot", "restore", first, "-p", str(calc)], input="n\n")
+        cli, ["checkpoint", "restore", first, "-p", str(calc)], input="n\n")
     assert result.exit_code != 0
     assert (calc / "job.XV").read_text() == "unsaved\n", (
         "answering no must leave the folder exactly as it was")

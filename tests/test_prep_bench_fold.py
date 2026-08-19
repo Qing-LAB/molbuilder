@@ -78,9 +78,13 @@ def calc(tmp_path):
                             engine="siesta", shape="hierarchical", name="JOB",
                             source=str(tmp_path / "h2.xyz")),
         dest)
+    from conftest import write_pseudos
+    write_pseudos(dest, sorted(set(struct.elements)))
     (dest / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))
+    from conftest import write_pseudos
+    write_pseudos(dest, ["H"])
     # The probe's answer, pre-seeded: resolve_target early-returns on an
     # existing environment.json, so the grid enumerates THIS topology.
     (dest / "environment.json").write_text(
@@ -711,9 +715,13 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
                             engine="siesta", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
+    from conftest import write_pseudos
+    write_pseudos(dest, sorted(set(struct.elements)))
     (dest / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))
+    from conftest import write_pseudos
+    write_pseudos(dest, ["H"])
     r = CliRunner()
     # § 6.5: the bare verb does NOT guess the lone stage.  A rule that held
     # only at length one would stop holding the moment a second stage was
@@ -796,18 +804,22 @@ def test_a_one_stage_calculation_continues_from_its_own_attempt(tmp_path):
                             engine="siesta", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
+    from conftest import write_pseudos
+    write_pseudos(dest, sorted(set(struct.elements)))
     (dest / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))
-    # a calculation that CONTINUES: `restart` is the ONE field that says
-    # so (run-identity.md § 4 rule 2), set where a user sets it -- the
-    # template.
+    # A calculation that CONTINUES -- which is what a described calculation
+    # does by default since 2026-08-18 (`run-identity.md` § 4 rule 3): a run
+    # started in a folder that already holds a result was started after
+    # somebody read that result.  The template is checked rather than edited,
+    # because the value being the default is the thing this depends on.
     tpl = dest / "JOB.template.toml"
     head, sep, tail = tpl.read_text().partition("[item.restart]")
     assert sep, "the template lost its restart item"
-    assert 'value = "clean"' in tail
-    tpl.write_text(head + sep + tail.replace('value = "clean"',
-                                             'value = "continue"', 1))
+    assert 'value = "continue"' in tail, (
+        "the described default is no longer `continue`, so this test is no "
+        "longer setting up the case it was written for")
     r = CliRunner()
     res = r.invoke(jobset_group, ["prep", "run", "coarse", "--bundle",
                                   str(dest), "--no-sbatch"])
@@ -850,6 +862,8 @@ def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
                             engine="siesta", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest, struct=struct)
+    from conftest import write_pseudos
+    write_pseudos(dest, sorted(set(struct.elements)))
     (dest / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))
@@ -889,6 +903,8 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
                             engine="siesta", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
+    from conftest import write_pseudos
+    write_pseudos(dest, sorted(set(struct.elements)))
     (dest / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))
@@ -969,6 +985,8 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
                             engine="siesta", shape="flat", name="JOB",
                             source=str(tmp_path / "h2.xyz")),
         dest)
+    from conftest import write_pseudos
+    write_pseudos(dest, sorted(set(struct.elements)))
     (dest / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))
@@ -1032,6 +1050,8 @@ def test_a_flat_one_stage_calculation_preps_to_completion(tmp_path):
                             engine="siesta", shape="flat",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
+    from conftest import write_pseudos
+    write_pseudos(dest, sorted(set(struct.elements)))
     (dest / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))
@@ -1080,6 +1100,8 @@ def test_a_config_refusal_is_a_refusal_not_a_traceback(tmp_path, monkeypatch):
                             engine="siesta", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
+    from conftest import write_pseudos
+    write_pseudos(dest, sorted(set(struct.elements)))
     (dest / ".molbuilder.json").write_text("{}")   # no activation anywhere
     res = CliRunner().invoke(jobset_group,
                              ["prep", "run", "coarse", "--bundle", str(dest),

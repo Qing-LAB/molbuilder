@@ -22,7 +22,9 @@ steps — the effective config resolved from the template ⊕ a stage's
 `overrides` and rendered per stage on the target — shipped 2026-08-12
 (step 4). *(This line read "proposed, not built — nothing in `SiestaConfig`
 matches it yet" until 2026-08-12.)* Remaining work stays in the plan, not
-here (R3).
+here ([`process/conventions.md`](?doc=process/conventions.md)'s R3 — *status
+lives in the roadmap, never in a contract*; the `R1`–`R4` used inside § 4 below
+are that section's own, and unrelated).
 
 **This contract owns:** what a stage is, which fields are a stage's and which are
 the shared schema's, how an effective config is formed, where a promoted field
@@ -42,13 +44,15 @@ anything preceded it. The word exists only inside molbuilder:
 The base is *what the system is*. A stage is *how we are approaching it this
 time*.
 
-**Scope: one deck per stage is SIESTA's shape.** `job-contracts.md § 2.3` names
-two multi-stage execution shapes, and only one of them is this. PySCF's staged
-relaxation runs **inside one Python process** writing a single unified log, so a
-three-stage PySCF calculation is one file, not three. This contract describes the
-per-deck shape; extending it to PySCF means first deciding whether its stages
-become a loop inside one script (what ships today) or genuinely separate files,
-and that decision is not made here.
+**Scope: one deck per stage, for every engine.** A three-stage calculation is
+three decks and three jobs, whichever engine renders them.
+
+> **The open question here is closed** *(2026-08-18, user)*. This paragraph used
+> to say one deck per stage was *"SIESTA's shape"*, describe PySCF's staged
+> relaxation as a loop inside one Python process writing a single unified log, and
+> leave the choice between that and genuinely separate files explicitly undecided:
+> *"that decision is not made here."* It is separate files, for both engines, and
+> § 1.1a is where it is decided and why.
 
 **A stage resolves completely at generate time.** What comes out is an ordinary,
 complete engine input that does not need molbuilder to be interpreted and does
@@ -100,8 +104,13 @@ sequence of them.
 > exception, which is what 2026-08-07 was reaching for: it deleted the SIESTA
 > engine config's stage list, and this deletes PySCF's. Closing it is completing
 > that direction, not reversing it.
+>
+> **And the second half of the exception closed on 2026-08-18**: the loop that
+> gave the stage list its *"second life as engine behaviour"* is retired, so a
+> PySCF ladder is N decks and N jobs like any other (§ 1.1a). There is no longer
+> a sense in which PySCF's stages differ from SIESTA's.
 
-### 1.1a Closing the PySCF exception — the ladder is declared once, and still runs in one process
+### 1.1a Closing the PySCF exception — the ladder is declared once, and runs like SIESTA's
 
 *Decided 2026-08-17 (user). § 1.1's exception named its own gate — "until the
 SIESTA path works" — and `prep`'s five steps now run over SIESTA end to end.*
@@ -111,71 +120,121 @@ SIESTA path works" — and `prep`'s five steps now run over SIESTA end to end.*
 | | SIESTA | PySCF |
 |---|---|---|
 | **where the ladder is declared** | `task.json` | `task.json` — *was `PySCFConfig.stages`* |
-| **how the ladder executes** | N decks, N jobs, a person looks between them | **one deck, one job, a loop inside the process** |
-
-The second row is real physics and does not change: PySCF's rungs share one SCF
-process and one checkpoint, so they cannot be separate jobs. Everything already
-written about that stands — `pyscf/input.py::_emit_stages_loop` still emits the
-loop, and a PySCF calculation is still **one** `Job`.
+| **how the ladder executes** | N decks, N jobs, a person looks between them | **the same** — *was one deck, one job, a loop inside the process* |
 
 The first row was never a consequence of the second. A ladder can be *declared*
 in one place and *executed* in whichever shape the engine requires. Keeping the
 declaration in the engine config meant a PySCF description and a SIESTA
 description meant different things, and the workflow could not treat them alike.
 
-**A run is a jobset of length one** is already this framework's idiom. So is a
-ladder that runs in one process: its `JobSet` has one `Job`, whose deck happens
-to contain every rung.
+#### And the second row went the same way *(decided 2026-08-18, user)*
 
-#### What the derivation is
+**A PySCF ladder is N decks and N jobs, exactly as SIESTA's is.** The in-script
+loop over rungs is retired.
 
-`StageSpec` carries `name`, `enabled`, and **eight tunable knobs**. `Stage`
-(`task.py`) carries `name`, `enabled`, and `overrides` — and § 2 already says
-`overrides` may name **any field of the shared schema**. So the mapping is
-direct and total:
+**Why: a ladder exists so that somebody looks between the rungs.** That is the
+whole reason stages do not chain — *"a run that continues on its own can spend a
+week refining a geometry you would have rejected in a minute"*
+([`project-layout.md § 1.6`](?doc=execution/project-layout.md)). Looking between
+rungs requires a rung to have *ended*, and a single process running every rung
+ends once, at the end. Everything the workflow offers between stages — open the
+next attempt, say which run it continues from, read what happened, redo one rung
+with different numbers — is per-job machinery, and an engine whose whole ladder is
+one job can reach none of it.
+
+**It works because PySCF already has the state a rung hands to the next one.** The
+two things a relaxation must carry are the geometry and the converged density, and
+PySCF writes both: `<JOB>_optimized.xyz` and `<JOB>.chk`, already declared in its
+warm-file vocabulary ([`job-contracts.md § 4.2a`](?doc=execution/job-contracts.md))
+and already read by the generated script, which prefers the optimized geometry over
+the literal one and loads the checkpoint as its initial guess when it is there.
+That is the same pair SIESTA carries as `.XV` and `.DM`. Nothing new has to be
+invented for a rung to be able to end.
+
+**What it costs, plainly.** Each rung starts Python again, rebuilds the molecule
+and reads the checkpoint back from disk instead of keeping it in memory. That is
+wrong when the rungs are many and each is seconds long, where the restart would
+dominate what it is measuring. It is right when a rung is a real piece of work —
+which is when a ladder is worth having at all, and the case this framework is
+built for.
+
+**Five things follow, and they are the whole of the change. All five are in
+place; each names the file that holds it, so the claim is checkable.**
+
+1. **The stage token reaches the deck's name, the engine's log and the trajectory
+   log** — the same three names it suffixes for SIESTA — so two rungs cannot write
+   to one file. It is a render *argument*, never a config field, so the emitter
+   never learns the word *stage* (`pyscf/input.py`, `spec_for(..., stage_token=)`).
+2. **The `JOB` literal stays unsuffixed**, exactly as `SystemLabel` does and for
+   the same reason: the engine finds the previous rung's files by that name, so a
+   name that changed per rung would hide them (§ 1, decision 26).
+3. **`restart` is both engines'.** One field
+   ([`run-identity.md § 4`](?doc=execution/run-identity.md) rule 3) serves both:
+   `continue` by default, so a rung reads what the rung before it left, and
+   `clean` when somebody says so. It expands into three declared keywords for
+   SIESTA and into generated control flow for PySCF, and no shipped ladder sets
+   it — a rung's position says nothing about whether there is anything to
+   continue from.
+4. **PySCF's warm-file declaration carries the geometry.** `<JOB>_optimized.xyz`
+   and the trajectory join `.chk` as `carry = "when-continuing"`
+   (`pyscf/warm-files.toml`). The geometry is what a rung hands the next one and
+   the density is the other half — the same pair SIESTA carries as `.XV` and
+   `.DM`; the trajectory carries for the reason SIESTA's does, *the shape must
+   not change the data*.
+5. **`PySCFConfig.stages` and the in-script loop are gone.** The field outlived
+   `SiestaConfig.stages` on the strength of one reader — the `for STAGE in
+   STAGES:` loop that made the list engine BEHAVIOUR rather than a rival
+   declaration. With the loop retired the field had no reader, and both went;
+   `tests/test_pyscf_stages.py` asserts their absence directly.
+
+#### What a PySCF rung varies
+
+A `Stage` (`task.py`) carries `name`, `enabled` and `overrides`, and § 2 says
+`overrides` may name **any field of the shared schema**. So a PySCF rung is
+declared exactly as a SIESTA one is:
 
 ```
-StageSpec(name="stage1", enabled=True, conv_tol=1e-7, gmax=2e-3, max_steps=50, …)
-                                   ↓
-Stage(name="stage1", enabled=True,
-      overrides={"scf_conv_tol": 1e-7, "geom_gmax": 2e-3, "geom_max_steps": 50, …})
+Stage(name="coarse", enabled=True,
+      overrides={"scf_conv_tol": 1e-7, "geom_gmax": 2e-3,
+                 "geom_max_steps": 50})
 ```
 
-**The blocker was a vocabulary gap, not a shape mismatch** — for those knobs to
-be legal `overrides` they must be items of the shared schema, and seven of the
-eight were not. **They are now** *(landed 2026-08-17)*:
+*(No `restart`: the shipped ladders set none. Every rung takes the default,
+`continue`, and a rung that should start over says `"restart": "clean"` —
+[`run-identity.md § 4`](?doc=execution/run-identity.md) rule 3.)*
 
-| `StageSpec` field | its `engine_key` | catalogue item |
-|---|---|---|
-| `conv_tol` | `mf.conv_tol` | **`scf_conv_tol`** — already existed, `group = "stage"`, **same `engine_key`**; the two collapsed into it |
-| `gmax` | `geomeTRIC convergence_gmax` | `geom_gmax` |
-| `grms` | `geomeTRIC convergence_grms` | `geom_grms` |
-| `dmax` | `geomeTRIC convergence_dmax` | `geom_dmax` |
-| `drms` | `geomeTRIC convergence_drms` | `geom_drms` |
-| `etol` | `geomeTRIC convergence_energy` | `geom_etol` |
-| `max_steps` | `geomeTRIC maxsteps` | `geom_max_steps` |
-| `on_nonconvergence` | *(generated control flow)* | `on_nonconvergence`, `kind = "produce"` — it names no engine keyword because it **is** the emitted loop's control flow |
+**What that required was vocabulary, not a new shape** — a knob is only a legal
+override if it is an item of the shared schema, and PySCF's convergence knobs
+were not. They are:
 
-The first row is the finding that decided the rest: **`scf_conv_tol` and
-`StageSpec.conv_tol` were the same knob declared twice**, in the catalogue and
-in the engine config, agreeing only by the coincidence of both naming
+| catalogue item | its `engine_key` |
+|---|---|
+| **`scf_conv_tol`** | `mf.conv_tol` |
+| `geom_gmax` | `geomeTRIC convergence_gmax` |
+| `geom_grms` | `geomeTRIC convergence_grms` |
+| `geom_dmax` | `geomeTRIC convergence_dmax` |
+| `geom_drms` | `geomeTRIC convergence_drms` |
+| `geom_etol` | `geomeTRIC convergence_energy` |
+| `geom_max_steps` | `geomeTRIC maxsteps` |
+| `on_nonconvergence` | *(none — `kind = "produce"`)*, because it **is** generated control flow rather than a keyword |
+| `geom_continue_retries` | *(none — same reason)*, and meaningless without the one above it |
+
+All carry `engines = ["pyscf"]` and `group = "stage"`, and their per-tier values
+are [`tuning.md` § 2.4 and § 2.5](?doc=engines/tuning.md)'s — stated there,
+written down once in `PYSCF_STAGE_PRESETS`, and checked against the table on
+every run.
+
+**`scf_conv_tol` is one item, and that is the finding that decided the rest.**
+The engine config used to declare an SCF tolerance of its own beside the
+catalogue's, the two agreeing only by the coincidence of both naming
 `mf.conv_tol`. That is the drift § 1.1 exists to prevent, sitting inside the
 exception § 1.1 granted.
 
-Each new item carries the metadata its `StageSpec` field already had —
-`label`, `unit`, `help`, `step`, `range`, `engine_key` — with
-`engines = ["pyscf"]` and `group = "stage"`. **Eight items were added**: the
-seven above, plus `geom_continue_retries`, which `StageSpec` carries beside
-`on_nonconvergence` and which is meaningless without it.
-
-**None of the eight gets a `--flag`.** They are set per stage, through the
-stage table and `task.json`, so they declare `skip_cli`. That is not a new
+**None of them gets a `--flag`.** They are set per rung, in `task.json`, so
+they declare `skip_cli`. That is not a new
 policy: the flat `--geom-max-steps` family was **deliberately retired** when
 these knobs became per-stage, and a catalogue row that regenerated them would
 have undone that.
-
-`stages_from_configs` (`config/pyscf.py`) is the derivation in the one
-direction it runs — resolved per-rung configs → the render-time ladder.
 
 #### Why `group = "stage"` is the right home
 
@@ -189,45 +248,40 @@ same UI, the same `varies` machinery and the same resolver serve both engines.
 master, `overrides` names schema fields, a group declares the default selection,
 `prep` resolves — every part is the one already in use for SIESTA.
 
-#### `PySCFConfig.stages` survives as a **derived** field, and that is not a second declaration
+#### No engine config carries a stage list, and PySCF is not an exception to that
 
-*(Decided 2026-08-17 with the rest. The first plan said "deleted, not reshaped",
-matching what `SiestaStageSpec` got — and that is the wrong surgery here,
-because the two cases differ in a way worth stating.)*
-
-**§ 1.1's rule is about where a ladder is DECLARED.** `SiestaConfig.stages` was
-a genuine second declaration: a person filled it in, and `task.json` held a
-rival copy. Deleting it removed a place two answers could disagree.
-
-PySCF has no rival copy after this change. `task.json` is the only thing anyone
-authors. What remains on the class is the shape the emitter reads — `prep`
-resolves the description into one `PySCFConfig` per rung and derives the rows
-from those. It is a **render input, computed on the way to the deck**, and it
-cannot disagree with the description any more than the deck itself can.
-
-So the rule reads, exactly: **no engine config carries an *authored* stage
-list.** A structure derived at `prep` and consumed one step later is not a
-declaration, and forbidding it would forbid the deck too.
+**The rule is about where a ladder is DECLARED**, and after this decision
+neither engine's config declares one. `task.json` is the only thing anyone
+authors, for either engine; `prep` resolves it into one config per rung, and a
+rung's config carries THAT rung's values as ordinary flat fields — the same
+shape SIESTA's per-rung knobs always had.
 
 The practical test, and the one to keep: **can a person put a value there that
-the description does not say?** For `SiestaConfig.stages` the answer was yes.
-Here it is no — `prep` overwrites it from the resolved set on every render.
+the description does not say?** For a config holding a list of rungs the answer
+is yes, which is what makes it a second declaration. For a config holding one
+value per knob it is no, because a rung's config is overwritten from the
+resolved description on every render.
 
-> **What this deliberately does not do.** Deleting the field outright would
-> reach `form-schema.js`, the structure-optimization viewer and the
-> `stage-table` widget — the Build UI, which is out of scope unless asked for
-> (user, standing). The eight items P1 added to the catalogue are what a
-> catalogue-driven replacement for that widget would be built from, whenever
-> the form moves onto the catalogue (`template-unification-plan.md` § 4).
+**The tier values are a table, not a field.** Each engine ships one —
+`SIESTA_STAGE_PRESETS` and `PYSCF_STAGE_PRESETS`, both keyed by the same three
+tiers — and `<engine>/stages.py::default_<engine>_stages` turns it into the
+shipped ladder. A table of defaults is not a declaration: nothing reads it at
+render time, and a description that names no tier gets no value from it.
 
 #### What stays PySCF's own
 
-- **One deck.** Step 3 renders one `.py`, not one per stage.
-- **One `Job`.** The `JobSet` has length one; there are no edges, which is the
-  same thing SIESTA's ladder says for a different reason.
-- **`on_nonconvergence` becomes real control flow**, which is why § 3 keeps it
-  out of the *shared* stage schema and why it is a PySCF-only item: on SIESTA
-  the same word names a scheduler edge that no longer exists.
+The engine differs in **which parameters a rung varies** and in **how it
+answers a question the shared schema asks** — never in the shape of the ladder,
+the number of decks, or the number of jobs. Two such answers today:
+
+- **`restart` is control flow rather than keywords.** SIESTA expands the field
+  into three declared keys; PySCF's script reads `<JOB>.chk` and
+  `<JOB>_optimized.xyz`, or does not. One field, two answers, and the mechanism
+  is the engine's business ([`run-identity.md § 4`](?doc=execution/run-identity.md)
+  rule 2).
+- **`on_nonconvergence` is real control flow**, which is why § 3 keeps it out of
+  the *shared* stage schema and why it is a PySCF-only item: on SIESTA the same
+  word names a scheduler edge that no longer exists.
 
 ### 1.2 Which parameters may vary is the user's choice, not a class's
 
@@ -269,11 +323,36 @@ the three items that declare no `engines` list and therefore apply everywhere
 > catalogue, and the machine asks moved to `staging` — a form does not ask a
 > person how many ranks the scheduler granted.)*
 
-> **So `varies` defaults to the engine's `stage` group**, and the user adds to or
-> removes from it. That is the whole of "which parameters may vary" — declared by
-> each engine, beside the fields themselves, in the one place that already knows
-> what a field *is*. No engine needs code in the shared machinery, and a new
-> engine gets a working default by tagging its own fields.
+> **So `varies` starts as the engine's `stage` group**, and the user adds to or
+> removes from it — declared by each engine, beside the fields themselves, in the
+> one place that already knows what a field *is*. No engine needs code in the
+> shared machinery, and a new engine gets a working starting point by tagging its
+> own fields.
+
+**`group` says which panel asks about a setting. It does not say whether the
+setting may differ between stages.** Those are two questions, and the answer to
+the second is § 6.2's: any setting the description is allowed to hold may differ
+between stages. The `stage` group is where the table *starts*, not what it is
+limited to.
+
+> **Corrected 2026-08-18 (user).** The paragraph above used to end *"That is the
+> whole of which parameters may vary"*, and one tag was being asked both
+> questions. A setting can only carry one group, so anything that is not a
+> physics parameter — and therefore belongs on the staging panel — lost its
+> ability to differ between stages at the same time.
+>
+> `restart` is the case that made this visible, and it is the worst one it could
+> have been: **it is the setting that decides whether a ladder is a ladder.**
+> `restart` says whether a stage starts from what the stage before it produced.
+> It is not a physics parameter, so it sits in `staging`; and because the table's
+> columns were being read off the `stage` group, it could not become a column at
+> all. A ladder built anywhere except `jobset describe --stage-strategy` therefore
+> had no `restart` on any stage — which, while `clean` was the default, meant
+> every stage started clean and the stages were three unrelated runs. Nothing
+> said so; the refusal only arrived later, at `prep --from`, as *"this stage
+> declares no warm-restart files"*. **Flipping the default to `continue`
+> (2026-08-18) is what removed that failure mode**: a ladder that says nothing
+> now continues, which is what a ladder is.
 >
 > ⚠ **The tag is a default, never a restriction.** Any field of the shared schema
 > may be promoted, whatever group it carries — § 1.2's rule stands. The group only
@@ -524,10 +603,17 @@ scheduler there is nothing for it to mean.
 > producer rather than left inert. Reinstating a per-stage policy means giving
 > it a home in the description *and* a reader that does something with it.
 >
-> **PySCF is untouched and rightly so.** Its ladder runs in **one process**
-> (§ 6.7), so its `on_nonconvergence` becomes generated control flow rather
-> than a scheduler edge — a real effect, and the reason the same word means
-> something on one engine and nothing on the other.
+> **PySCF kept its `on_nonconvergence`**, because its rungs ran in one process
+> and the setting became generated control flow inside that loop — a real effect,
+> and the reason the same word meant something on one engine and nothing on the
+> other.
+>
+> ⚠ **That reason expires with the loop** *(2026-08-18, § 1.1a)*. Once a PySCF
+> rung is its own job, what happens after a rung fails to converge is once again
+> the gap between two jobs, which is exactly where SIESTA's copy was deleted for
+> having no effect. Whether `on_nonconvergence` survives, and in what form, is
+> settled by the unit that retires the loop — not assumed here in either
+> direction.
 
 Leaving the stage is not enough, though: if it stayed a field of the **shared
 schema** it would be promotable through `overrides` like anything else, and § 2's
@@ -592,7 +678,8 @@ validator is handed a whole config plus the stage's name as a label — never an
 overlay. The label travels beside `where`, never inside it
 (`science/validation.md § 4.1`).
 
-**R3 — the sequence is checked as well as its members.** R2 makes every stage
+**§ 4 R3 — the sequence is checked as well as its members.** § 4 R2 makes
+every stage
 individually sound and says nothing about the order they are in, yet the order is
 the whole point of having several. A ladder that *loosens* — stage 2 coarser than
 stage 1 — passes R2 twice and is almost certainly a mistake, because the second
@@ -917,6 +1004,28 @@ indistinguishable, in the decks, from one that was never promoted.
 **And the fallback is the template, not a second copy in this file.** A stage
 that omits a varied key renders with the template's value for it (§ 4).
 
+#### Which settings may become columns
+
+> **Any setting the description is allowed to hold may become a column. The ones
+> it is not allowed to hold may not.**
+
+There is no separate list of promotable settings, and there must not be one: § 1.2
+already says a stage may name any field of the shared schema, and the description
+is already forbidden to hold the settings the machine answers — how many ranks,
+how many cores per rank, how much memory ([`template.md`](?doc=engines/template.md)
+§ 7). Those two rules together give the column set with nothing left to decide.
+It is the same membership `prep` already applies when it accepts or refuses an
+override, a pin, or a benchmark axis, so a column the table offers is a column
+`prep` will accept, by construction rather than by agreement.
+
+Concretely, for SIESTA that means the physics settings **plus** `restart`,
+`continue_retries` and `enable_gpu` — the three staging settings a person answers
+— and **not** `mpi_np`, `omp_threads` or `max_memory_mb`, which the machine
+answers at `prep`. A surface that instead borrows the parameter form's list gets
+a different and smaller answer, because that form filters out the whole staging
+panel on purpose: it does not ask a person how many ranks the scheduler granted.
+Filtering a panel and limiting a table are different jobs (§ 1.3).
+
 > **The two files answer different questions, which is why neither duplicates
 > the other** (user, 2026-08-07):
 >
@@ -1176,15 +1285,21 @@ they never asked for, which `project-layout.md § 8` had already rejected. A
 the file itself carries what was chosen. That is the same rule as `varies`
 (§ 6.2): intent is recorded, never reconstructed.
 
-**Not every engine can offer both, and that is a refusal rather than an
-exemption** (2026-08-07). `shape` describes how a calculation's files are kept
-apart on disk, and that question is meaningful for every engine — but an engine
-whose ladder runs **inside one process** writes one directory and one log, so
-**`flat` is the only shape it can honour**. PySCF is that case (§ 1). Its
-descriptions still carry the key, still say `flat`, and a PySCF description
-asking for `hierarchical` is **refused naming the engine**, not quietly
-downgraded. The alternative — making the field optional for some engines — would
-put a hole in the one key `prep` is guaranteed to be able to read.
+**Every engine offers both shapes** *(decided 2026-08-18, user)*. How a
+calculation's files are kept apart on disk is a question about the calculation,
+not about the engine, and the layer that answers it — the one that names stage
+directories, attempt directories and benchmark containers — contains no mention
+of any engine and never has. Sharing it across engines therefore costs nothing
+and removes the one place a layout question had an engine's name in it.
+
+> **This paragraph refused `hierarchical` for PySCF until 2026-08-18**, on the
+> grounds that its ladder ran inside one process and so wrote one directory. That
+> was true of how PySCF executed, and it was allowed to decide how PySCF's files
+> were *kept*, which are different questions. § 1 had already left the first one
+> open — *"whether its stages become a loop inside one script or genuinely
+> separate files, that decision is not made here"* — and it is now made: **one
+> deck per stage, for both engines** (§ 1.1a). With that, there is nothing left
+> for the refusal to protect.
 
 **It is fixed once the calculation has produced.** The shape decides where every
 deck, output and warm file lives, so changing it after a stage has run orphans
@@ -1503,7 +1618,7 @@ that breaks the premise every rule here rests on: that a folder's contents are
 what its description says they are.
 
 The answer is not to tiptoe around the orphans. It is
-[`molbuilder snapshot`](?doc=execution/running-a-job.md) § 6, which already puts
+[`molbuilder checkpoint`](?doc=execution/running-a-job.md) § 6, which already puts
 a run directory under a git-backed history — text tracked (including the small
 `.XV` / `.CG`, *"so a restore brings back a resumable state"*), large binaries
 archived by content and deduped:
@@ -1595,7 +1710,7 @@ queue to ask is the wrong party at the wrong moment. A non-interactive `prep`
 proceeds without a checkpoint **and says that it did**.
 
 **Who initialises, exactly.** A produce that *creates* the folder initialises it
-(`snapshot init --engine <engine>`) — molbuilder made the directory, so offering
+(`checkpoint init --engine <engine>`) — molbuilder made the directory, so offering
 it a history costs the user nothing and asks them nothing. A produce into a
 folder that **already existed without a checkpoint** does not: that folder is
 someone's deliberate state, and putting it under version control is their call,
@@ -1740,4 +1855,5 @@ were written for a flat directory and would silently have lost data in a tree.
   must be true of it afterwards, in a form a test can assert.
 - **Phasing, status, and what is built when** —
   [`plans/staged-runs-implementation-plan.md`](?doc=plans/staged-runs-implementation-plan.md) and
-  [`roadmap.md`](?doc=roadmap.md) (R3).
+  [`roadmap.md`](?doc=roadmap.md) — the *status-lives-in-the-roadmap* rule,
+  not § 4's R3.

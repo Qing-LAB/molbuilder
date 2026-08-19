@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import dataclasses
 import math
-import re
 import typing
 from dataclasses import fields
 from typing import Any, Dict, List, Optional, Tuple
@@ -30,7 +29,6 @@ from flask import jsonify
 
 from molbuilder.structure import (
     Structure,
-    annotations_from_json,
 )
 from molbuilder.validation import validate_geometry
 from molbuilder.cell import resolve_and_check
@@ -840,30 +838,6 @@ def _field_to_schema(f: dataclasses.Field,
         # the user enter a comma-separated list.  ``coerce_to_field_type``
         # parses it back into List[float] before the dataclass sees it.
         out["kind"] = "comma-floats"
-    elif (origin in (list, tuple) and args
-          and dataclasses.is_dataclass(args[0])):
-        # List[<dataclass>] — ``PySCFConfig.stages`` is now the ONLY such
-        # case.  Emit ``kind: "stage-table"`` plus the per-row field shape
-        # so the JS renderer can lay out a table without knowing the
-        # dataclass at compile time.
-        #
-        # ⚠ 2026-08-07 (P2 unit 2): this branch is no longer reachable from
-        # ``SiestaConfig``, and that is the fix, not a coincidence.  Its
-        # stage list was a field of the config, so this walked into it and
-        # published ``SiestaStageSpec``'s field names as the columns a user
-        # is allowed to vary — answering *which settings may vary* with the
-        # *what settings exist* machinery (engines/stages.md § 1.2, and the
-        # reason a SIESTA stage could vary exactly four values).  Deleting
-        # the field is what closed it.
-        #
-        # PySCF keeps its ``stages`` field deliberately (user, same day):
-        # its ladder runs inside ONE process, so its stage list has a
-        # second life as engine behaviour.  This emitter therefore stays
-        # until the SIESTA path proves out — it is PySCF's now, not a
-        # shared mechanism.
-        elem_cls = args[0]
-        out["kind"] = "stage-table"
-        out["stage_fields"] = _stagespec_to_field_schemas(elem_cls)
     elif ann is str:
         out["kind"] = "text"
     else:
@@ -912,85 +886,9 @@ def _serialize_default(f: dataclasses.Field, ann: Any = None) -> Any:
         # the contract stays JSON-friendly).
         if origin in (list, tuple) and args and args[0] is float:
             return ", ".join(repr(x) for x in v)
-        # List[<dataclass>] (PySCFConfig.stages) — serialize each
-        # row to a plain dict so the JSON envelope is faithful.
-        # ``asdict`` is recursive (handles nested dataclasses) and
-        # keeps the field order from the dataclass declaration.
-        if (origin in (list, tuple) and args
-                and dataclasses.is_dataclass(args[0])):
-            return [dataclasses.asdict(item) for item in v]
         return list(v)
     return v
 
-
-def _stagespec_to_field_schemas(elem_cls) -> List[Dict[str, Any]]:
-    """Walk ``dataclasses.fields(elem_cls)`` and emit a per-field
-    schema entry the JS ``stage-table`` renderer (commit 3) lays
-    out as one table column per row of the parent ``stages`` field.
-
-    Per-row schema is intentionally smaller than the outer
-    ``_field_to_schema`` shape — no HTML ``id`` (the JS composes
-    per-stage ids), no ``optional``/``null_*`` (rows are dense),
-    no ``section`` / ``tier``.  Carries the minimum the renderer
-    needs to pick an input widget + label it: ``name``, ``kind``,
-    ``label``, ``help``, ``default``, ``unit?``, ``step?``,
-    ``min``/``max``?, ``pattern``?, ``engine_key``?.
-
-    Type-driven dispatch mirrors ``_field_to_schema``: ``bool`` ->
-    checkbox, ``int`` -> int, ``float`` -> number, ``str`` -> text.
-    Anything fancier raises ``TypeError`` — the JS renderer doesn't
-    know how to render select / triple / etc. inside a row, and a
-    silent fallback would surface as a broken UI.
-    """
-    # ``elem_cls`` may use ``from __future__ import annotations`` so
-    # ``sf.type`` arrives as a *string* ("'float'", "'bool'", ...);
-    # resolve via ``typing.get_type_hints`` for the real classes.
-    hints = typing.get_type_hints(elem_cls)
-    out: List[Dict[str, Any]] = []
-    for sf in dataclasses.fields(elem_cls):
-        md = dict(sf.metadata)
-        row: Dict[str, Any] = {
-            "name":    sf.name,
-            "label":   md.get("label", sf.name),
-            "help":    md.get("help", ""),
-            "default": (sf.default
-                        if sf.default is not dataclasses.MISSING
-                        else None),
-        }
-        if "unit"       in md: row["unit"]       = md["unit"]
-        if "step"       in md: row["step"]       = md["step"]
-        if "pattern"    in md: row["pattern"]    = md["pattern"]
-        if "engine_key" in md: row["engine_key"] = md["engine_key"]
-        rng = md.get("range")
-        if rng is not None:
-            row["min"], row["max"] = rng
-        t = hints.get(sf.name, sf.type)
-        if t is bool:
-            row["kind"] = "checkbox"
-        elif t is int:
-            row["kind"] = "int"
-        elif t is float:
-            row["kind"] = "number"
-            row.setdefault("step", "any")
-        elif t is str:
-            # `str` with a ``choices`` enum -> dropdown widget; the
-            # plain string variant stays as a text input.  #534 6a
-            # introduced the first stage-table choice field
-            # (``on_nonconvergence``); the JS renderer dispatches on
-            # ``kind: "choice"`` to render a ``<select>`` with the
-            # provided ``choices`` tuple.
-            if "choices" in md:
-                row["kind"] = "choice"
-                row["choices"] = list(md["choices"])
-            else:
-                row["kind"] = "text"
-        else:
-            raise TypeError(
-                f"_stagespec_to_field_schemas: field {elem_cls.__name__}."
-                f"{sf.name} has unsupported type {t!r} for a stage-table "
-                f"row.  Supported: bool / int / float / str.")
-        out.append(row)
-    return out
 
 
 # --------------------------------------------------------------------- #
@@ -1019,6 +917,7 @@ _CONTROL_FOR_TYPE = {
     "strlist": "text",
     "intlist": "text",
 }
+
 
 
 def _control_for(item) -> str:
@@ -1051,7 +950,7 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p") -> Dict[str, Any
     """
     from molbuilder import template as _T
 
-    parsed = _T.read_template(_T.load_catalogue())
+    parsed = _T.catalogue()
     items = _T.select(parsed, engine=engine)
 
     # ``staging`` is a PANEL THIS SURFACE DOES NOT HAVE.  The stage token is a
@@ -1225,83 +1124,7 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
         if isinstance(value, (list, tuple)):
             return [float(v) for v in value]
         return value
-    # List[<dataclass>] (PySCFConfig.stages — task #534).  Form
-    # payload arrives as a list of plain dicts; rebuild each row by
-    # passing the dict as kwargs to the dataclass constructor.
-    # Missing keys fall back to the dataclass's per-field defaults
-    # (so a partial UI update — e.g. only changing ``enabled`` —
-    # doesn't blank the other knobs).  Items already of the right
-    # type pass through unchanged.  Per-field type coercion
-    # (string "1e-9" -> float 1e-9 for number inputs) mirrors the
-    # scalar branches above; the JS sends typed values but a
-    # non-browser HTTP client may send strings.
-    if (origin in (list, tuple) and args
-            and dataclasses.is_dataclass(args[0])):
-        elem_cls = args[0]
-        if not isinstance(value, (list, tuple)):
-            # Non-list payloads on a List[<dataclass>] field are a
-            # wire-format error (a dict on cfg.stages would silently
-            # crash validate_stages with AttributeError on
-            # ``s.enabled``; #534 commit 5c).  Reject at the
-            # boundary so the API surfaces a clean 400 instead of a
-            # 500 / corrupt downstream state.
-            raise TypeError(
-                f"cannot coerce {type(value).__name__} to "
-                f"list of {elem_cls.__name__}: expected list, got "
-                f"{value!r}"
-            )
-        # ``from __future__ import annotations`` makes
-        # ``sf.type`` arrive as a string; resolve via
-        # ``typing.get_type_hints`` for the per-field coerce
-        # dispatch below.
-        elem_hints = typing.get_type_hints(elem_cls)
-        spec_fields = {
-            sf.name: (sf, elem_hints.get(sf.name, sf.type))
-            for sf in dataclasses.fields(elem_cls)
-        }
-        out = []
-        for item in value:
-            if isinstance(item, elem_cls):
-                out.append(item)
-                continue
-            if not isinstance(item, dict):
-                raise TypeError(
-                    f"cannot coerce {type(item).__name__} to "
-                    f"{elem_cls.__name__}: expected dict")
-            kwargs: Dict[str, Any] = {}
-            for k, v in item.items():
-                pair = spec_fields.get(k)
-                if pair is None:
-                    continue   # unknown keys silently ignored
-                _sf, _t = pair
-                kwargs[k] = _coerce_scalar(_t, v)
-            out.append(elem_cls(**kwargs))
-        return out
     # Anything else: pass through.
-    return value
-
-
-def _coerce_scalar(t: Any, value: Any) -> Any:
-    """Per-row scalar coercion for ``List[<dataclass>]`` items.
-
-    Mirrors the top-level dispatch in :func:`coerce_to_field_type`
-    but stays focused on the inner-row primitive types that the
-    ``stage-table`` renderer emits: bool / int / float / str.
-    Coercion failures raise so the caller can surface a typed
-    error rather than silently storing a string in a float field.
-    """
-    if t is bool:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return value.strip().lower() in ("true", "1", "yes", "on")
-        return bool(value)
-    if t is int:
-        return int(value)
-    if t is float:
-        return float(value)
-    if t is str:
-        return str(value)
     return value
 
 

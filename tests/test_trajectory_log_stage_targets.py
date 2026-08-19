@@ -214,6 +214,8 @@ def _staged(xyz, tmp_path, strategy):
                             engine="siesta", shape="flat", name="JOB",
                             source=str(xyz)),
         tmp_path)
+    from conftest import write_pseudos
+    write_pseudos(tmp_path, sorted(set(struct.elements)))
     # The DOTTED, bundle-scoped project config -- the scope the wrapper
     # writer resolves from the script's own directory.  The undotted name is
     # the cwd-first server scope, and writing it here was inert: the tests

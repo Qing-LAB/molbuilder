@@ -19,8 +19,17 @@ carry  = "when-continuing"      # the one file a continuing PySCF run
 
 [[optimization.file]]
 suffix = "_optimized.xyz"       # latest converged geometry
+carry  = "when-continuing"      # WHAT A RUNG HANDS THE NEXT ONE.  Under one
+                                # process nothing was ever copied between
+                                # rungs; a ladder is N jobs now, so this is
+                                # the geometry half of the hand-off and the
+                                # .chk is the density half -- the same pair
+                                # SIESTA carries as .XV and .DM
+                                # (stages.md 1.1a, consequence 4).
 [[optimization.file]]
 suffix = "_geom_optim.xyz"      # geomeTRIC trajectory
+carry  = "when-continuing"      # the record carries for the reason SIESTA's
+                                # does: the shape must not change the data
 [[optimization.file]]
 suffix = "_geom_optim.tmp"
 [[optimization.file]]

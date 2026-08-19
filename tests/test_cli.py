@@ -238,7 +238,13 @@ def test_pyscf_cli_exposes_review_fix_l_options(monkeypatch, tmp_path):
     # molwatch / save toggles drop the corresponding code paths.
     assert "MolwatchEmitter" not in text
     assert "_initial.xyz" not in text
-    assert "_optimized.xyz" not in text
+    # ``--no-save-optimized-xyz`` turns off the WRITE.  The READ is a separate
+    # question and `restart` answers it: continuing is the default since
+    # 2026-08-18, so a deck still reads a geometry a previous run left even
+    # when it writes none of its own (`run-identity.md` § 4 rule 2 -- the two
+    # gates are what "write a checkpoint but do not resume from one" needs).
+    assert '_save_xyz(mol_eq, _mb_outfile(JOB + "_optimized.xyz")' not in text
+    assert "_opt_path = _mb_outfile(JOB + \"_optimized.xyz\")" in text
 
 
 def test_pyscf_cli_help_lists_all_review_fix_l_options():

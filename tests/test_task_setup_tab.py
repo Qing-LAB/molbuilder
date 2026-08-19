@@ -787,16 +787,42 @@ def test_a_disabled_stage_gets_no_command():
 
 
 def test_parameters_are_PICKED_from_the_catalogue_not_typed(web_client):
-    """A free-text box is not a list.  The catalogue knows every parameter, and
-    the parameter tab's own schema endpoint already serves it — so the picker
-    reads that rather than asking the user to spell a name."""
+    """A free-text box is not a list.  The catalogue knows every parameter, so
+    the picker reads it rather than asking the user to spell a name.
+
+    **From the columns endpoint, not the parameter form's schema**
+    (2026-08-18).  This asserted `/api/build/schema/`, which is the FORM's
+    schema and filters the whole `staging` group out on purpose — a form does
+    not ask how many ranks the scheduler granted.  Borrowing that answer cost
+    the table `restart`, the field that decides whether a ladder is a ladder,
+    so a ladder built here ran every stage clean.  `stages.md` § 6.2 gives the
+    right question: anything the description may HOLD may be a column."""
     body = web_client.get("/task-setup").data.decode()
     for sel in ('id="ts-add-col"', 'id="ts-add-setting"'):
         assert f"<select {sel[:0]}" or sel in body
     assert body.count("<select") >= 2, "the add controls are still text inputs"
     src = VIEWER.read_text()
-    assert "/api/build/schema/" in src, "columns are not drawn from the catalogue"
-    assert "/api/task-setup/sweepable" in src, "bench settings are not drawn from it"
+    assert "/api/task-setup/columns" in src, \
+        "columns are not drawn from the catalogue"
+    assert "/api/build/schema/" not in src, \
+        "the column picker is reading the parameter FORM's schema again, " \
+        "which filters out the staging group -- restart among it"
+    assert "/api/task-setup/sweepable" in src, \
+        "bench settings are not drawn from it"
+
+
+def test_the_column_picker_offers_restart(web_client):
+    """The regression that motivated the endpoint, pinned end to end.
+
+    `restart` sits in the `staging` group because it is not a physics
+    parameter, and it is per-stage because it decides whether each rung starts
+    from what the one before it produced.  One `group` cannot say both, so the
+    table's columns are drawn from what the description may HOLD instead."""
+    j = web_client.get("/api/task-setup/columns?engine=siesta").get_json()
+    names = [i["name"] for i in j["items"]]
+    assert "restart" in names
+    # ...and the machine's settings are still not the description's to hold
+    assert not ({"mpi_np", "omp_threads", "max_memory_mb"} & set(names))
 
 
 def test_only_execution_category_parameters_may_be_swept(web_client):
@@ -1129,6 +1155,10 @@ def test_the_structure_pair_is_not_reported_as_engine_state():
             "a real warm file stopped being detected")
 
 
+from conftest import write_pseudos as _pseudos_for
+
+
+
 def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path):
     """§ 7's bar, automated: structure -> hand-over -> description -> deck.
 
@@ -1174,6 +1204,9 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path):
         s = web_client.post("/api/task-setup/save",
                             json={"dest": str(d), "text": _json.dumps(described)})
         assert s.status_code == 200, s.get_json()
+
+        # the data files the engine will open -- prep refuses without them
+        _pseudos_for(d, ["Au", "S"])
 
         # …and now the part no shape-check reaches: RENDER IT.
         p = subprocess.run(
@@ -1268,6 +1301,7 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client):
         s = web_client.post("/api/task-setup/save",
                             json={"dest": str(d), "text": _json.dumps(described)})
         assert s.status_code == 200, s.get_json()
+        _pseudos_for(d, ["H"])
 
         p = subprocess.run(
             [sys.executable, "-m", "molbuilder.cli", "jobset", "prep", "bench",

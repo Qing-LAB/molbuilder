@@ -44,9 +44,6 @@ from ..issues import Issue, ValidationError
 #: Engines whose ladder runs inside ONE process, so a per-stage directory tree
 #: would describe a layout that never exists on disk (§ 6.7 + § 1.1's note on
 #: why PySCF keeps its own stage list).
-_ONE_PROCESS_ENGINES = ("pyscf",)
-
-
 def preflight(task, config_cls=None, *,
               generators: Optional[Dict[str, Any]] = None,
               template_text: Optional[str] = None) -> List[Issue]:
@@ -85,16 +82,6 @@ def preflight(task, config_cls=None, *,
             f"Available: {', '.join(sorted(known)) or '(none)'}",
             where="task.engine")]
     cls = config_cls if config_cls is not None else known[task.engine]
-
-    # -- 1a. § 6.7 -- a one-process ladder has no hierarchy to lay out -----
-    if task.shape == "hierarchical" and task.engine in _ONE_PROCESS_ENGINES:
-        out.append(Issue(
-            "error",
-            f"shape 'hierarchical' asks for one directory per stage, but "
-            f"{task.engine!r} runs its whole ladder inside a single process, "
-            f"so there is only ever one directory to put things in. Use "
-            f"shape 'flat'",
-            where="task.shape"))
 
     # -- 1b. § 6.8 -- only a SPEED knob may be swept -----------------------
     #

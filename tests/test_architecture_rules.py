@@ -205,12 +205,17 @@ _FLOOR = {
     "resolve.py":             3,
     "bench/grid.py":          3,
     "jobset/model.py":        3,
+    "siesta/input.py":        3,
+    "pyscf/input.py":         3,
     "jobset/materialize.py":  4,
     "jobset/shape.py":        4,
+    # ``runwrap`` renders text from decided values, exactly as an engine's script
+    # writer does, and imports nothing above floor 3.  Keeping it here is what
+    # makes the preparation sequence walk the floors without going backwards
+    # (`script-preparation.md` § 2.3 and § 5).
+    "runwrap.py":             3,
     "jobset/submit.py":       5,
-    "jobset/prep.py":         5,
     "jobset/agreement.py":    5,
-    "runwrap.py":             5,
     "jobset/runstatus.py":    6,
     "jobset/summarize.py":    6,
     "parse/dirs/":            6,
@@ -221,9 +226,25 @@ _FLOOR = {
 }
 
 
+#: THE CONDUCTOR, deliberately NOT in ``_FLOOR``
+#: (`script-preparation.md` § 2.3).  `prep` walks floors 1 -> 4 in order and owns
+#: no decision of its own, so it appears in no row of § 2.1's floor table -- and
+#: ``test_a7_the_floor_map_still_matches_the_document`` compares that table to
+#: ``_FLOOR`` by equality, which is what keeps this distinction honest rather
+#: than a comment.
+#:
+#: The number is still needed: it is the IMPORT BOUND a7 enforces -- 4 is the
+#: highest floor `prep` walks -- and it is not a claim that `prep` is a layout
+#: module.  That it is a conductor is checked separately, by
+#: ``test_only_a_surface_imports_the_conductor``.
+_CONDUCTOR = {"jobset/prep.py": 4}
+
+
 def _floor_of(rel: str | Path) -> int | None:
     """The floor of a path under ``molbuilder/``, or ``None`` if unmapped."""
     s = str(rel).replace(os.sep, "/")
+    if s in _CONDUCTOR:
+        return _CONDUCTOR[s]
     if s in _FLOOR:
         return _FLOOR[s]
     for key, floor in _FLOOR.items():
@@ -270,6 +291,34 @@ def _imported_modules(rel: Path, tree: ast.AST) -> set[str]:
             for alias in node.names:          # from . import prep
                 add(parts + (alias.name,))
     return out
+
+
+def test_only_a_surface_imports_the_conductor():
+    """`prep` is the conductor, and a conductor has exactly one caller kind.
+
+    `script-preparation.md` § 2.3: *"the conductor may call, but it may never
+    decide"* -- every decision belongs to a floor.  The half of that rule a test
+    can check is the other direction: if a module BELOW a surface imports `prep`,
+    then something inside the stack is driving the sequence, and the sequence has
+    two owners again -- which is the state this whole consolidation exists to
+    leave.
+
+    Holds today with room to spare: the only importer is ``jobset/_cli.py``
+    (floor 7).  It is written down now so that stops being an accident.
+    """
+    offenders = []
+    for rel in _python_files():
+        if rel.as_posix() in ("jobset/prep.py", "jobset/__init__.py"):
+            continue          # itself, and the package re-export
+        floor = _floor_of(rel)
+        if floor is None or floor == 7:
+            continue          # unmapped domain code, or a surface: allowed
+        tree = ast.parse((_PKG / rel).read_text(encoding="utf-8"))
+        if "jobset/prep.py" in _imported_modules(rel, tree):
+            offenders.append(f"{rel.as_posix()} (floor {floor})")
+    assert not offenders, (
+        "only a surface may import the conductor `jobset/prep.py`; these are "
+        "below floor 7 and import it: " + ", ".join(sorted(offenders)))
 
 
 @pytest.mark.parametrize(
@@ -351,7 +400,8 @@ def test_a7_the_floor_map_still_matches_the_document():
 
 def test_the_floor_map_names_only_real_paths():
     """A stale entry exempts nothing and outlives the rename that broke it."""
-    missing = sorted(k for k in _FLOOR if not (_PKG / k).exists())
+    missing = sorted(k for k in {**_FLOOR, **_CONDUCTOR}
+                     if not (_PKG / k).exists())
     assert not missing, (
         f"the floor map names paths that are not in the tree: {missing}")
 

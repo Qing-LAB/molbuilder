@@ -304,15 +304,19 @@ two halves were symmetric and has not been since 2026-08-07.
 > `SiestaStageSpec` and `SiestaConfig.stages` were **deleted**, and the SIESTA
 > ladder lives in `task.json` as `task.py::Stage` — `name`, `enabled`, and
 > `overrides`, which may name **any** field of the shared schema
-> ([`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2). **PySCF kept its
-> `StageSpec`** (`config/pyscf.py`) while the SIESTA path was being built: its
-> ladder runs inside one process, so there the list was also engine behaviour.
-> The parity tests that policed the old symmetry went with the SIESTA half.
+> ([`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2). **PySCF kept a
+> stage list of its own** while the SIESTA path was being built: its ladder ran
+> inside one process, so there the list was also engine behaviour. The parity
+> tests that policed the old symmetry went with the SIESTA half.
 >
 > **That exception closed 2026-08-17** ([`stages.md` § 1.1a](?doc=engines/stages.md)):
-> the ladder is declared in `task.json` for **both** engines, and PySCF still
-> executes it in one process. Where it is *declared* and how it *runs* were two
-> questions, and only the second was ever PySCF's difference.
+> the ladder is declared in `task.json` for **both** engines. Where it is
+> *declared* and how it *runs* were two questions, and only the second was ever
+> PySCF's difference.
+>
+> ⚠ **And the second closed 2026-08-18** (same section): a PySCF ladder is N decks
+> and N jobs, like SIESTA's. This paragraph ended *"and PySCF still executes it in
+> one process"* until then; the list is no longer engine behaviour either.
 >
 > What the two still share is what this section is actually about — **the tier
 > values**, below. That was always the part worth keeping aligned; the
@@ -321,22 +325,22 @@ two halves were symmetric and has not been since 2026-08-07.
 - **The tier *values*** (algorithm, steps, force / `gmax`, per stage) are owned by
   **[`tuning.md`](?doc=engines/tuning.md) § 4** — the single value table both emitters
   and this contract defer to.
-- **The non-convergence policy is PySCF's alone, and is *not* defined here.**
-  ⚠ **This bullet claimed the opposite until 2026-08-11** — *"shared and defined
-  here… both realise the same policy"* — and it was the **fourth** copy of a rule
-  that had already been corrected in `stages.md` § 3, `job-contracts.md` § 6.2
-  and `job-system.md` § 4.1. The correction: `proceed` / `continue` / `halt`
-  decided the **scheduler edge** between one attempt and the next; a SIESTA
-  ladder emits no edges ([`project-layout.md § 1.6`](?doc=execution/project-layout.md)),
-  so on 2026-08-10 the field was **removed from the SIESTA producer** rather than
-  left inert. PySCF keeps it because there the ladder is a loop inside one
-  process and the policy is real control flow. **Its semantics live with the
-  engine that has them** — [`pyscf.md`](?doc=engines/pyscf.md) § 3, with the
-  values in [`tuning.md`](?doc=engines/tuning.md) § 4.
+- **Neither engine's ladder carries a non-convergence policy**, and running out
+  of steps means the same thing in both: the rung stops, and you decide. The
+  next stage exists only because you looked at the result and prepped it — the
+  same judgement the policy tried to encode, made where the evidence is.
+  **`on_nonconvergence` survives as a PySCF field with a narrower meaning** —
+  whether THIS rung's `optimize()` raises or exits with the partial geometry —
+  and its semantics live with the engine that has it,
+  [`pyscf.md`](?doc=engines/pyscf.md) § 3.
 
-  **What a SIESTA stage does instead:** it runs out of steps and stops, and the
-  next stage exists only because you looked at the result and prepped it. Same
-  judgement, made where the evidence is.
+  *This bullet has been wrong twice, in opposite directions, and both times
+  because it restated a rule owned elsewhere. Until 2026-08-11 it said the
+  policy was **shared** — the fourth copy of a claim already corrected in
+  `stages.md` § 3, `job-contracts.md` § 6.2 and `job-system.md` § 4.1. Until
+  2026-08-19 it said PySCF keeps it **because its ladder is a loop inside one
+  process**, nineteen lines after this same file records that the loop was
+  retired ([`stages.md § 1.1a`](?doc=engines/stages.md)).*
 
 > **Why this one was worth catching rather than quietly editing.** A section
 > that says *"defined here"* is claiming to be the single owner, so a reader

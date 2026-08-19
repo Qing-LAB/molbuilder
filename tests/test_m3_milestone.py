@@ -46,18 +46,36 @@ def _keys_in(deck: str):
                   if ln.split() and ln.split()[0] in SIESTA_RESTART_GROUP.keys)
 
 
+def _answers_in(deck: str):
+    """``{key: ".true."/".false."}`` -- what the deck actually INSTRUCTS.
+
+    Added 2026-08-18.  Every member is now written for both answers, so which
+    keys appear no longer distinguishes a continuing deck from a clean one;
+    the answer beside each key does.
+    """
+    return {ln.split()[0]: ln.split()[1] for ln in deck.splitlines()
+            if ln.split() and ln.split()[0] in SIESTA_RESTART_GROUP.keys}
+
+
 # --------------------------------------------------------------------- #
 #  M3, first half — a real two-stage description                        #
 # --------------------------------------------------------------------- #
 
-def test_a_two_stage_ladder_renders_all_of_the_group_and_none_of_it(h2o):
+def test_a_two_stage_ladder_answers_the_group_both_ways(h2o):
     """**One test, both halves**, exactly as the plan words it: the failure
     mode is that they disagree, so asserting them apart would let precisely
     that through.
 
     A ladder, not two single configs -- the two decks come out of ONE
     ladder walk against one template, which is the
-    path a user actually takes."""
+    path a user actually takes.
+
+    **The clean half reads `.false.`, not absence** (2026-08-18).  This was
+    ``..._renders_all_of_the_group_and_none_of_it`` and asserted the coarse
+    deck carried NO member, which pinned the premise that a key left out is a
+    key not honoured.  SIESTA 5.4.2 reads ``<SystemLabel>.DM`` whenever the
+    file is there regardless, so *none of it* instructed nothing and the first
+    rung continued from whatever the directory held."""
     template = SiestaConfig(system_label=ID, relax_type="CG")
     decks = _live_ladder_decks(h2o, template, [
         Stage(name="coarse", overrides={"restart": "clean",
@@ -69,9 +87,11 @@ def test_a_two_stage_ladder_renders_all_of_the_group_and_none_of_it(h2o):
     # Keyed by FILENAME (`<label>_<stage>.fdf`), not by stage name -- which
     # is itself the § 3.2 rule that anything a stage produced carries
     # `_<stage>` while anything the engine resumes from carries the bare id.
-    assert _keys_in(decks[f"{ID}_01_coarse.fdf"]) == []
-    assert _keys_in(decks[f"{ID}_02_tight.fdf"]) == \
-        sorted(SIESTA_RESTART_GROUP.keys)
+    coarse = _answers_in(decks[f"{ID}_01_coarse.fdf"])
+    tight = _answers_in(decks[f"{ID}_02_tight.fdf"])
+    assert sorted(coarse) == sorted(tight) == sorted(SIESTA_RESTART_GROUP.keys)
+    assert set(coarse.values()) == {".false."}     # the rung that starts fresh
+    assert set(tight.values()) == {".true."}       # the rung that continues
 
 
 def test_the_two_stages_are_otherwise_the_same_calculation(h2o):

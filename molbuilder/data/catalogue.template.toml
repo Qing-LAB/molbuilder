@@ -52,7 +52,12 @@ range = [0.001, 0.05]
 group = "stage"
 label = "Orbital confinement (energy shift)"
 tier = "advanced"
-help = "smaller = more diffuse / more accurate; production work uses 0.005-0.01 Ry"
+help = """How diffuse the PAO orbitals are, in Ry: the energy rise that defines each orbital's cutoff radius.  Smaller = more diffuse = more accurate = slower.
+Per-tier (Ry):
+  0.05    fast screening only
+  0.01    production (this project's default)
+  0.005   accuracy-critical: band gaps, weak interactions, vdW
+DEVIATION: SIESTA's own default is 0.02 Ry.  This catalogue starts at 0.01, because its targets are molecules and metal-molecule junctions, where the more diffuse tails are what set adsorption geometry and level alignment."""
 
 [item.mesh_cutoff]
 kind = "engine"
@@ -71,7 +76,12 @@ label = "Real-space grid cutoff"
 tier = "basic"
 help = """
 Real-space integration grid (Ry).  Sets the spacing of the 3D mesh SIESTA uses for Hartree + XC potentials, via the plane-wave-equivalent kinetic-energy cutoff.
-Per-tier: screening 150, loose preopt 200-250, publishable 350, tight (vib/phonons) 500 (600 for first-row elements).
+Per-tier (Ry):
+  150      screening (sanity-check only)
+  200-250  loose preopt
+  350      publishable -- forces stable to < 0.01 eV/Ang on organic + Au
+  500+     tight / vibrational -- egg-box noise below 0.001 eV/Ang
+           (600 for first-row elements)
 Below 150 Ry the forces / energies are noticeably wrong on organic / biomolecule systems; the validator warns below that floor.  Egg-box noise sets the floor for vibrational work — test by varying ±50 Ry.  See docs/engines/tuning.md § 2.6."""
 
 [item.xc_functional]
@@ -89,7 +99,7 @@ group = "profile"
 label = "XC functional family"
 help = """
 XC functional family.  GGA (default) is the safe production choice for organic / biomolecule work + metals; LDA over-binds (bond lengths ~2-3% too short, energies ~10 kcal/mol off); VDW adds a non-local dispersion kernel and matters for non-covalent / vdW-stacked systems (DNA bases, MOFs).  IMPORTANT: the pseudopotential MUST match the functional family -- a PBE pseudo on an LDA calculation (or vice versa) silently gives wrong bond lengths.  PseudoDojo ships separate families for PBE / PBEsol / LDA -- pick the matching set.
-DEVIATION: SIESTA's own default is LDA; this project ships GGA.  The reason is the over-binding above -- LDA's systematic error is large enough that essentially no current published work on molecules or biomolecules uses it for production geometries.  GGA/PBE has been the baseline since Perdew, Burke & Ernzerhof, Phys. Rev. Lett. 77, 3865 (1996).  LDA remains here because it is cheap and legitimate for screening."""
+DEVIATION: SIESTA's own default is LDA; this catalogue starts at GGA.  The reason is the over-binding above -- LDA's systematic error is large enough that essentially no current published work on molecules or biomolecules uses it for production geometries.  GGA/PBE has been the baseline since Perdew, Burke & Ernzerhof, Phys. Rev. Lett. 77, 3865 (1996).  LDA remains here because it is cheap and legitimate for screening."""
 
 [item.xc_authors]
 kind = "engine"
@@ -106,7 +116,7 @@ group = "profile"
 label = "XC parameterisation"
 help = """
 XC parameterisation within the family.  GGA: PBE (default, all-purpose), PBEsol (better lattice constants for solids), revPBE / RPBE (better thermochemistry, slightly different binding), BLYP (rare but accepted).  VDW: DRSLL (vdW-DF1) / LMKLL (vdW-DF2-C09).  LDA: CA (Ceperley-Alder, default), PZ, PW.  This name MUST match what your pseudopotential was generated for -- mismatched XC + pseudo gives silently-wrong bond lengths.  PseudoDojo organises downloads by this name.
-DEVIATION: SIESTA's own default is PZ, which is the LDA parameterisation that goes with its LDA default family.  This project ships PBE because it ships GGA -- the two move together, and a family and a parameterisation that do not belong to each other is not a configuration SIESTA implements.  Change one and check the other."""
+DEVIATION: SIESTA's own default is PZ, which is the LDA parameterisation that goes with its LDA default family.  This catalogue starts at PBE because it ships GGA -- the two move together, and a family and a parameterisation that do not belong to each other is not a configuration SIESTA implements.  Change one and check the other."""
 
 [item.solution_method]
 kind = "engine"
@@ -121,7 +131,10 @@ value = "diagon"
 default = "diagon"
 group = "profile"
 label = "Solution method"
-help = "diagon / OMM / transiesta (transiesta requires the TranSIESTA build)"
+help = """Which solver produces the density matrix each SCF step.
+  diagon      standard diagonalisation, O(N^3) -- the default, and right for almost everything this project runs
+  OMM         order-N; worth it only for systems beyond ~500 atoms
+  transiesta  non-equilibrium transport; requires the TranSIESTA build"""
 
 [item.mixing_weight]
 kind = "engine"
@@ -138,7 +151,7 @@ group = "profile"
 label = "SCF mixing weight"
 tier = "advanced"
 help = """
-How much of each new SCF solution is mixed in.  SIESTA's own default is 0.25; this project ships 0.02 deliberately, because the systems it targets (metal junctions, open-shell metals) leave the convergence basin at high weights.  The manual backs the direction: "a low value ... is more likely to converge", at the cost of more SCF steps, and the value is "heavily system dependent".
+How much of each new SCF solution is mixed in.  SIESTA's own default is 0.25; this catalogue starts at 0.02, deliberately, because the systems it targets (metal junctions, open-shell metals) leave the convergence basin at high weights.  The manual backs the direction: "a low value ... is more likely to converge", at the cost of more SCF steps, and the value is "heavily system dependent".
 FIRST THING TO TRY when the SCF oscillates -- lower this before touching anything else (manual: "experimentation with the mixing weight is preferred as a first resort").
 Organic molecules with no metal converge happily at 0.1-0.25 and will run in far fewer steps; raise it if your system is well-behaved."""
 
@@ -179,8 +192,12 @@ label = "Density-matrix tolerance"
 tier = "advanced"
 help = """
 Density-matrix element convergence threshold for the inner SCF loop.  Forces are derived from the converged density -- sloppy SCF -> noisy forces -> optimizer thrashes.
-Per-tier (dimensionless): screening 1e-3, loose preopt 1e-4, publishable 1e-4, tight (vib/IR) 1e-5.
-DEVIATION: SIESTA's own default is 1e-4; this project ships 1e-5, one decade tighter.  The work this project is built for is relaxations and vibrational analysis, where the forces come out of the converged density and a loose SCF shows up as force noise the optimiser then chases -- which costs more geometry steps than the extra SCF cycles cost.  For single-point screening, 1e-4 is the engine's own answer and is enough.
+Per-tier (dimensionless):
+  1e-3   screening (sanity-check only)
+  1e-4   loose preopt / publishable
+  1e-5   tight (vib / IR / accurate forces)
+  1e-6   very-tight (band structure, phonons)
+DEVIATION: SIESTA's own default is 1e-4; this catalogue starts at 1e-5, one decade tighter.  The work this project is built for is relaxations and vibrational analysis, where the forces come out of the converged density and a loose SCF shows up as force noise the optimiser then chases -- which costs more geometry steps than the extra SCF cycles cost.  For single-point screening, 1e-4 is the engine's own answer and is enough.
 Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you want at convergence.  See docs/engines/tuning.md § 2.5."""
 
 [item.dm_energy_tolerance]
@@ -350,7 +367,9 @@ label = "Max geometry-optimisation steps"
 tier = "advanced"
 help = """
 OUTER loop: max geometry steps the optimiser is allowed (each step = full SCF + forces + atom move).  Which keyword carries it is decided by MD.TypeOfRun: CG / Broyden / FIRE relax and bound the loop with ``MD.Steps``; Verlet / Nose integrate and bound it with ``MD.FinalTimeStep`` instead (SIESTA 5.4.2, siesta_init.F -- idyn 0 uses MD.Steps, idyn 1-5 use MD.InitialTimeStep..MD.FinalTimeStep).  ``MD.Steps`` DEPRECATES the older ``MD.NumCGsteps``, whose CG-prefixed name hid that it was never CG-only.
-Per-tier: loose warm-up ~50, publishable ~200, tight (vib/IR) ~100 (small displacement cap = slow but few steps from a publishable-converged starting geometry).  See docs/engines/tuning.md § 2.10."""
+Per-tier: loose warm-up ~50, publishable ~200, tight (vib/IR) ~100 (small displacement cap = slow but few steps from a publishable-converged starting geometry).  See docs/engines/tuning.md § 2.10.
+
+A well-behaved relaxation converges in 30-150 steps, so 200+ is a safety cap rather than a target -- it is there to stop a run that is not going to converge, not to describe one that is. For molecular dynamics the count is not a cap but a duration: steps x timestep is the timescale you actually sample, so pick it from the physics you want to see."""
 
 [item.relax_force_tol]
 kind = "engine"
@@ -370,7 +389,7 @@ tier = "advanced"
 help = """
 Force-tol stop criterion: max unconstrained atomic force below which the relaxation declares success.  Ignored by Verlet/Nose (those are MD, not relax).
 Per-tier (eV/Å): screening 0.10, loose preopt 0.05, publishable 0.04 (Gaussian-OPT default), tight (vib/IR) 0.01, very-tight (NEB barrier) 0.001.
-DEVIATION: SIESTA's own default is 0.04 eV/Å -- the 'publishable' row above.  This project ships 0.02, twice as tight, because a relaxation that stops at the loose end leaves residual forces big enough to contaminate a frequency calculation run on top of it, and re-relaxing afterwards costs more than the extra steps did.  For a single-point or a screening pass, 0.04 is the engine's own answer.
+DEVIATION: SIESTA's own default is 0.04 eV/Å -- the 'publishable' row above.  This catalogue starts at 0.02, twice as tight, because a relaxation that stops at the loose end leaves residual forces big enough to contaminate a frequency calculation run on top of it, and re-relaxing afterwards costs more than the extra steps did.  For a single-point or a screening pass, 0.04 is the engine's own answer.
 SIESTA only checks max force.  See docs/engines/tuning.md § 2.3 for the 5-criteria geomeTRIC/Gaussian convention + citations."""
 
 [item.relax_max_displ]
@@ -390,9 +409,11 @@ label = "Max displacement per step"
 tier = "advanced"
 help = """
 Displacement cap per optimiser step (Å).  Applies across CG, Broyden AND FIRE.  Hard ceiling that catches line-search over-shoot.  ``MD.MaxDispl`` DEPRECATES the older ``MD.MaxCGDispl`` (SIESTA 5.4.2); same meaning, same 0.2 Bohr default, and the CG-prefixed name was never CG-only.
-DEVIATION: that engine default of 0.2 Bohr is 0.106 Å; this project ships 0.05 Å, about half.  The cap only ever LIMITS a step, so a smaller one costs steps and never accuracy -- and the oscillation below is what a too-large cap looks like.  Raise it back toward 0.2 Å for a cheap first pass on a structure that starts far from its minimum.
+DEVIATION: that engine default of 0.2 Bohr is 0.106 Å; this catalogue starts at 0.05 Å, about half.  The cap only ever LIMITS a step, so a smaller one costs steps and never accuracy -- and the oscillation below is what a too-large cap looks like.  Raise it back toward 0.2 Å for a cheap first pass on a structure that starts far from its minimum.
 Per-tier (Å): screening 0.30, loose preopt 0.20, publishable 0.05, tight (vib/IR) 0.02.
-Symptom of too-large cap: max-force oscillates rather than descends (e.g. 0.09 → 0.44 → 0.13 → 0.31 → ...).  Halve the cap.  See docs/engines/tuning.md § 2.2 + the BDT/Au worked example in § 6."""
+Symptom of too-large cap: max-force oscillates rather than descends (e.g. 0.09 → 0.44 → 0.13 → 0.31 → ...).  Halve the cap.  See docs/engines/tuning.md § 2.2 + the BDT/Au worked example in § 6.
+
+It is a hard ceiling that catches line-search over-shoot, not a target. The symptom of one set too large is a maximum force that oscillates instead of descending (0.09 -> 0.44 -> 0.13 -> 0.31 ...); halve the cap and continue."""
 
 [item.continue_retries]
 kind = "wrapper"
@@ -402,7 +423,7 @@ engine_key = "(molbuilder: baked into the run wrapper at install time; never an 
 type = "int"
 value = 1
 default = 1
-range = [1, 5]
+range = [0, 5]
 group = "staging"
 label = "Warm-retry budget"
 tier = "advanced"
@@ -426,7 +447,7 @@ tier = "advanced"
 help = """
 Temperature the initial atomic velocities are drawn for, in Verlet / Nose molecular dynamics.  IGNORED by CG / Broyden / FIRE geometry relaxation -- those don't have velocities to seed.
 THIS IS ABOUT THE ATOMS, not the electrons.  It is a different quantity from 'Electronic temperature (smearing)', which shares the word and the unit and nothing else: that one sets how sharply electronic states fill at the Fermi level and applies to every run type, including this one.  Setting them to match means nothing -- an MD at 0 K still needs electronic smearing if the system is metallic.
-DEVIATION: SIESTA's own default is 0 K, i.e. start from rest.  This project ships 300 K because a run seeded at 0 K spends its opening picoseconds simply acquiring thermal motion, and 300 K is both room temperature and the condition most reported simulations are run at.  Set it to 0 deliberately if you want the cold start."""
+DEVIATION: SIESTA's own default is 0 K, i.e. start from rest.  This catalogue starts at 300 K because a run seeded at 0 K spends its opening picoseconds simply acquiring thermal motion, and 300 K is both room temperature and the condition most reported simulations are run at.  Set it to 0 deliberately if you want the cold start."""
 
 [item.md_target_temperature]
 kind = "engine"
@@ -443,7 +464,8 @@ label = "Target temperature (NVT)"
 null_label = "(use MD.InitialTemperature)"
 optional = true
 tier = "advanced"
-help = "Nose-Hoover NVT target temperature (K).  Used ONLY by Nose dynamics; CG / Broyden / FIRE / Verlet ignore this.  Defaults to md_initial_temperature when unset."
+help = """Nose-Hoover NVT target temperature (K).  Used ONLY by Nose dynamics; CG / Broyden / FIRE / Verlet ignore it.  Defaults to md_initial_temperature when unset.
+REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and the run QUENCHES instead of equilibrating."""
 
 [item.md_length_timestep]
 kind = "engine"
@@ -465,22 +487,23 @@ help = "integration timestep for Verlet/Nose dynamics (fs).  1.0 fs is SIESTA's 
 [item.restart]
 kind = "deck"
 category = ["convergence", "execution"]
-engines = ["siesta"]
+engines = ["siesta", "pyscf"]
 expands = ["DM.UseSaveDM", "MD.UseSaveXV", "MD.UseSaveCG"]
-engine_key = "(molbuilder: expands to DM.UseSaveDM / MD.UseSaveXV / MD.UseSaveCG; not a single .fdf key)"
+engine_key = "(molbuilder: one field, one mechanism per engine -- SIESTA expands it to DM.UseSaveDM / MD.UseSaveXV / MD.UseSaveCG; PySCF emits control flow that reads <JOB>.chk and <JOB>_optimized.xyz.  Not a single engine key on either)"
 manual = "SIESTA 5.4.2 §6.9.5 'Initialization of the density-matrix' + §6.4.4 'Input of structural information from external files' + §7.2.1 'Conjugate-gradients optimization'"
 type = "enum"
 choices = ["clean", "continue"]
-value = "clean"
-default = "clean"
+value = "continue"
+default = "continue"
 group = "staging"
 label = "Start from"
 tier = "advanced"
 help = """
 Whether this run starts from what is already in the folder.
-  clean     -- ignore any .XV/.DM/.CG left there and start over.
-  continue  -- read them, warm-starting from the previous run's geometry and density.
-In a staged ladder the first stage is normally 'clean' and the rest 'continue', which is what makes a ladder a ladder rather than three unrelated runs.  See docs/execution/run-identity.md § 4 -- continuing works because the engine finds warm files keyed by the SystemLabel it was given, so nothing is copied or pointed at."""
+  continue  -- read it (the default).  Nothing there is not an error: the engine starts from the deck's own coordinates.
+  clean     -- ignore it and start over, OVERWRITING what is there as the run proceeds.
+Which files that means is the engine's own: SIESTA reads .XV / .DM / .CG, PySCF reads <JOB>_optimized.xyz and <JOB>.chk.
+Continuing is the default because a run you start in a folder that already holds a result is a run you started after looking at that result.  To keep the old state, save it first with `molbuilder checkpoint save` -- the launcher warns before a clean run overwrites anything and stops unless you pass --force."""
 
 [item.wrap_into_cell]
 kind = "produce"
@@ -508,8 +531,7 @@ default = true
 group = "output"
 label = "Verbose inline comments"
 help = """
-Emit inline tuning hints and a Troubleshooting block in the generated
-script, in whatever comment syntax that engine uses."""
+Emit inline tuning hints and a Troubleshooting block in the generated script, in whatever comment syntax that engine uses."""
 [item.write_forces]
 kind = "engine"
 category = ["procedure"]
@@ -622,16 +644,14 @@ default = true
 group = "output"
 label = "Write the molwatch trajectory log"
 help = """
-Write <job>.molwatch.log alongside the run: per-step coordinates, energy
-and forces, in one additive file the Watch tab reads.  It exists so a
-trajectory can be followed while the engine is still running."""
+Write <job>.molwatch.log alongside the run: per-step coordinates, energy and forces, in one additive file the Watch tab reads.  It exists so a trajectory can be followed while the engine is still running."""
 [item.mpi_np]
 kind = "wrapper"
 category = ["execution"]
 engines = ["siesta"]
 engine_key = "(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)"
 type = "int"
-resolver = "rank_count"
+allocation = true
 range = [1, 1024]
 group = "staging"
 label = "MPI ranks (np)"
@@ -649,7 +669,6 @@ engines = ["siesta"]
 anchor = "BlockSize"
 engine_key = "BlockSize"
 manual = "SIESTA 5.4.2 §6.27 'Parallel options'"
-resolver = "block_size"
 type = "int"
 group = "budget"
 label = "ScaLAPACK block size"
@@ -682,7 +701,7 @@ category = ["execution"]
 engines = ["siesta"]
 engine_key = "(molbuilder: .run.sh OMP_NUM_THREADS + .fdf runtime_info comment)"
 type = "int"
-resolver = "omp_threads"
+allocation = true
 group = "staging"
 label = "OMP threads per rank"
 null_label = "(auto: physical cores)"
@@ -694,7 +713,7 @@ kind = "wrapper"
 category = ["execution"]
 engine_key = "(molbuilder: memory cap for the run -- ulimit -v in .run.sh / mol.max_memory)"
 type = "int"
-resolver = "node_memory"
+allocation = true
 unit = "MB"
 range = [100, 1000000]
 group = "staging"
@@ -703,13 +722,9 @@ null_label = "(no cap)"
 optional = true
 tier = "advanced"
 help = """
-How much memory this run may use.  Left blank -- the normal state -- it is
-the machine's maximum, resolved at prep on the node that granted it; set a
-number only when you need a ceiling.
+How much memory this run may use.  Left blank -- the normal state -- it is the machine's maximum, resolved at prep on the node that granted it; set a number only when you need a ceiling.
 
-Each engine applies it its own way: SIESTA emits a SystemMemory hint into
-the deck and caps the wrapper, PySCF passes it to mol.max_memory, which is
-what it consults to choose in-core versus out-of-core."""
+Each engine applies it its own way: SIESTA emits a SystemMemory hint into the deck and caps the wrapper, PySCF passes it to mol.max_memory, which is what it consults to choose in-core versus out-of-core."""
 [item.enable_gpu]
 kind = "engine"
 category = ["execution"]
@@ -830,7 +845,8 @@ group = "profile"
 label = "Target spin moment"
 null_label = "(default)"
 optional = true
-help = "target total spin moment in mu_B (= number of unpaired electrons).  Emits BOTH ``Spin.Fix .true.`` and ``Spin.Total <v>`` in the .fdf.  Only emitted when --spin-polarized."
+help = """Target total spin moment in mu_B (= the number of unpaired electrons).  Emits BOTH `Spin.Fix .true.` and `Spin.Total <v>`: the first is required or the second is silently ignored, which is why one item writes two keywords.  Only emitted with a polarized spin treatment.
+NOTE 0.0 with a POLARIZED treatment asks for a constrained singlet via open-shell DFT (broken-symmetry capable).  Most users wanting a singlet are better served by the non-polarized treatment -- the spin-restricted formalism is cheaper and gives the same answer.  Set 0.0 here only when you specifically want an anti-ferromagnetic / broken-symmetry singlet."""
 
 [item.job_name]
 kind = "produce"
@@ -886,7 +902,10 @@ value = false
 default = false
 group = "profile"
 label = "Use point-group symmetry"
-help = "enable point-group symmetry; faster but rarely matches builder-output geometry exactly"
+help = """
+enable point-group symmetry; faster but rarely matches builder-output geometry exactly
+
+A symmetric molecule can run 2-10x faster with this on, because PySCF skips the integrals symmetry makes redundant. It is unforgiving of numerical drift, though: builder output rarely places atoms on the symmetry elements to the precision PySCF checks, and a near miss is refused rather than approximated. Leave it off unless you know the geometry is exact."""
 
 [item.method]
 kind = "engine"
@@ -917,7 +936,9 @@ group = "profile"
 label = "Functional"
 help = """
 XC functional, written as ``mf.xc`` (B3LYP / PBE / PBE0 / M06-2X / wB97X-D / ...).
-DEVIATION: PySCF's own default is 'LDA,VWN'.  That is the fallback ``dft.RKS`` carries when nothing has been set, not a recommendation -- setting mf.xc is expected of every real calculation.  We ship B3LYP, the most widely used hybrid in molecular chemistry (Becke, J. Chem. Phys. 98, 5648 (1993); Lee, Yang & Parr, Phys. Rev. B 37, 785 (1988)), and it pairs with the D3(BJ) dispersion this project also defaults to -- which is what repairs B3LYP's known weakness on non-covalent interactions."""
+DEVIATION: PySCF's own default is 'LDA,VWN'.  That is the fallback ``dft.RKS`` carries when nothing has been set, not a recommendation -- setting mf.xc is expected of every real calculation.  This catalogue starts at B3LYP, the most widely used hybrid in molecular chemistry (Becke, J. Chem. Phys. 98, 5648 (1993); Lee, Yang & Parr, Phys. Rev. B 37, 785 (1988)), and it pairs with the D3(BJ) dispersion this project also defaults to -- which is what repairs B3LYP's known weakness on non-covalent interactions.
+
+Pure GGAs (PBE, BLYP) run 2-3x faster than a hybrid because they need no exact-exchange build. What they lose with it is the partial cancellation of self-interaction error that exact exchange provides, so a pure functional suffers more of it -- which surfaces as underestimated gaps and over-delocalised anions. Worth taking for a pre-optimization, rarely for the number you publish."""
 
 [item.basis]
 kind = "engine"
@@ -932,7 +953,7 @@ default = "def2-SVP"
 group = "profile"
 label = "Basis set"
 help = """
-Gaussian basis set.  This is NOT a per-stage knob -- the convergence ladder (cfg.stages) varies tolerances, not the level of theory.  Pick once based on the chemistry.
+Gaussian basis set.  This is NOT a per-stage knob -- the convergence ladder varies tolerances, not the level of theory.  Pick once based on the chemistry.
 Per-tier:
   • screening / loose preopt: def2-SVP (current default)
   • publishable:               def2-TZVP (modern standard for organic chemistry; ECPs bundled to Rn)
@@ -969,7 +990,9 @@ group = "profile"
 label = "Density fitting"
 help = """
 Approximate the four-centre electron-repulsion integrals by three-centre ones over an auxiliary basis (also called resolution of the identity), which is what makes the Coulomb and exchange build cheap.
-DEVIATION: PySCF applies NO density fitting unless ``mf.density_fit()`` is called; we default it on.  The speed-up is large and the error it introduces sits well below the error of the orbital basis itself when the auxiliary set matches the basis -- which is why it is standard practice rather than a shortcut.  Turn it off when you need exact-integral reference numbers, or when comparing against a published value that did not use it."""
+DEVIATION: PySCF applies NO density fitting unless ``mf.density_fit()`` is called; we default it on.  The speed-up is large and the error it introduces sits well below the error of the orbital basis itself when the auxiliary set matches the basis -- which is why it is standard practice rather than a shortcut.  Turn it off when you need exact-integral reference numbers, or when comparing against a published value that did not use it.
+
+In practice the SCF iteration cost drops by roughly 5-10x, and for organic systems the total-energy error it introduces stays under about 0.1 kcal/mol."""
 
 [item.dispersion]
 kind = "engine"
@@ -989,7 +1012,9 @@ help = """
 Grimme dispersion correction, written as ``mf.disp``.
 d3bj (default) is D3 with Becke-Johnson damping; d3zero is D3 with the original zero damping; d4 is the newer, charge-dependent D4.  'none' disables the correction.
 BJ damping is the usual recommendation for D3 -- it does not go to zero at short range, which is where zero damping tends to under-bind.  Use d3zero only to reproduce a published number that used it.
-SOURCE: the accepted spellings are PySCF 2.13's own (pyscf/scf/dispersion.py); a value outside that set raises NotImplementedError at run time, not at setup."""
+SOURCE: the accepted spellings are PySCF 2.13's own (pyscf/scf/dispersion.py); a value outside that set raises NotImplementedError at run time, not at setup.
+
+It matters most for biomolecules and anything weakly bound: pi-stacking, van der Waals contacts and hydrogen-bond geometries are all under-bound without a correction, and the cost of adding one is negligible."""
 
 [item.ecp]
 kind = "engine"
@@ -1035,7 +1060,10 @@ range = [1e-12, 0.0001]
 group = "stage"
 label = "scf.conv_tol"
 tier = "advanced"
-help = "SCF convergence tolerance on the energy (Hartree)"
+help = """
+SCF convergence tolerance on the energy (Hartree)
+
+Tighten it (1e-10) when forces look noisy, or when DFT energies drift between geometry steps. Both are symptoms of an SCF that stopped while the density was still moving, which shows up in the derivative long before it shows up in the energy."""
 
 [item.scf_conv_tol_grad]
 kind = "engine"
@@ -1084,7 +1112,7 @@ label = "scf.max_cycle"
 tier = "advanced"
 help = """
 The most SCF cycles PySCF will run for one single-point before giving up.
-DEVIATION: PySCF's own default is 50; we ship 100.  This is a RUNAWAY GUARD, not a target -- the two failure modes are not symmetric.  Too high wastes some CPU on a run that was not going to converge anyway; too low stops a converging SCF at the cap and throws away that geometry step, which then repeats at every step of a relaxation.  A well-behaved closed-shell molecule converges in 10-30."""
+DEVIATION: PySCF's own default is 50; this catalogue starts at 100.  This is a RUNAWAY GUARD, not a target -- the two failure modes are not symmetric.  Too high wastes some CPU on a run that was not going to converge anyway; too low stops a converging SCF at the cap and throws away that geometry step, which then repeats at every step of a relaxation.  A well-behaved closed-shell molecule converges in 10-30."""
 
 [item.scf_init_guess]
 kind = "engine"
@@ -1117,7 +1145,7 @@ label = "DFT grid level"
 tier = "advanced"
 help = """
 Density of the numerical grid the exchange-correlation energy is integrated on: 0 = coarse, 3 = screening, 4 = production, 5 = tight, 9 = ultra.
-DEVIATION: PySCF's own default is 3; we ship 4.  Level 3 is fine for an energy, but the quadrature error does not cancel in derivatives -- it shows up in forces and, most visibly, in vibrational frequencies, where grid noise produces spurious low-frequency modes.  Since this project exists to run geometry optimisations and Hessians, the grid that supports them is the right default.  Drop to 3 for single-point screening."""
+DEVIATION: PySCF's own default is 3; this catalogue starts at 4.  Level 3 is fine for an energy, but the quadrature error does not cancel in derivatives -- it shows up in forces and, most visibly, in vibrational frequencies, where grid noise produces spurious low-frequency modes.  Since this project exists to run geometry optimisations and Hessians, the grid that supports them is the right default.  Drop to 3 for single-point screening."""
 
 [item.level_shift]
 kind = "engine"
@@ -1228,13 +1256,14 @@ group = "profile"
 label = "PCM model"
 help = """
 Which polarisable-continuum model represents the solvent.
-DEVIATION: PySCF's own default is C-PCM (pyscf.solvent.pcm.PCM.method); we ship IEF-PCM.  IEF-PCM solves the full integral-equation formalism, so it is the more general of the two and is what most quantum-chemistry packages default to; C-PCM is the conductor-like approximation, cheaper and very close to IEF-PCM for polar solvents but less reliable as the dielectric constant falls.  COSMO is the original conductor-like model.
+DEVIATION: PySCF's own default is C-PCM (pyscf.solvent.pcm.PCM.method); this catalogue starts at IEF-PCM.  IEF-PCM solves the full integral-equation formalism, so it is the more general of the two and is what most quantum-chemistry packages default to; C-PCM is the conductor-like approximation, cheaper and very close to IEF-PCM for polar solvents but less reliable as the dielectric constant falls.  COSMO is the original conductor-like model.
 For water the three agree closely; the choice matters in low-dielectric solvents."""
 
 [item.threads]
 kind = "engine"
 category = ["execution"]
 engines = ["pyscf"]
+allocation = true
 anchor = "lib.num_threads"
 engine_key = "lib.num_threads(N) + os.environ['OMP_NUM_THREADS']"
 manual = "PySCF 2.13 pyscf.lib.misc 'num_threads()'"
@@ -1275,7 +1304,7 @@ label = "PySCF verbose"
 tier = "advanced"
 help = """
 How much PySCF writes to the log: 0 silent, 3 note, 4 info, 5 debug.
-DEVIATION: PySCF's own default is 3; we ship 4, because level 4 is where the per-cycle SCF convergence table appears -- and that table is what makes a run that failed diagnosable from the log alone, without repeating it."""
+DEVIATION: PySCF's own default is 3; this catalogue starts at 4, because level 4 is where the per-cycle SCF convergence table appears -- and that table is what makes a run that failed diagnosable from the log alone, without repeating it."""
 
 [item.chkfile]
 kind = "engine"
@@ -1354,7 +1383,10 @@ default = false
 group = "profile"
 label = "Post-relax frequencies + thermochemistry"
 tier = "advanced"
-help = "compute analytic Hessian + RRHO thermochemistry (ZPE, H, G, S, Cv, Cp) at temperature_K / pressure_atm"
+help = """
+compute analytic Hessian + RRHO thermochemistry (ZPE, H, G, S, Cv, Cp) at temperature_K / pressure_atm
+
+A relaxed geometry that is a true minimum has only REAL vibrational modes; an imaginary mode means the optimizer stopped at a saddle point, which is the cheapest way to find that out. The RRHO thermochemistry is what you add to the electronic energy when reporting reaction or binding free energies. Cost: one analytic Hessian, typically 5-15x a single SCF for a small molecule and more for larger ones -- no extra SCF, it reuses the converged one."""
 
 [item.temperature_K]
 kind = "engine"
@@ -1389,26 +1421,6 @@ group = "profile"
 label = "Thermochemistry pressure"
 tier = "advanced"
 help = "RRHO pressure for thermo.thermo() (standard: 1 atm = 101325 Pa)"
-
-[item.stage]
-kind = "produce"
-category = ["procedure"]
-engines = ["pyscf"]
-engine_key = "(molbuilder: filename token + log naming)"
-type = "str"
-group = "staging"
-label = "Relaxation stage"
-optional = true
-help = "stage token <NN>_<name> (e.g. 01_coarse) for the .molwatch.log filename; None keeps the unsuffixed name"
-
-# ---- geomeTRIC per-stage convergence (P1, 2026-08-17) ---------------
-# Moved out of PySCFConfig.StageSpec: the ladder is declared in
-# task.json for BOTH engines now (engines/stages.md 1.1a), so these
-# are ordinary items a stage may override -- exactly like SIESTA's
-# relax_force_tol.  group = "stage" makes them PySCF's default
-# per-stage selection (1.3).  The two policy rows are kind=produce:
-# they name no engine keyword, they steer the emitted script's own
-# control flow.
 
 [item.geom_gmax]
 kind = "engine"
@@ -1523,7 +1535,7 @@ choices = ["proceed", "continue", "halt"]
 group = "stage"
 label = "If max_steps runs out"
 tier = "advanced"
-help = "what to do if geomeTRIC's 5 criteria aren't all met when max_steps runs out: proceed (move on to next stage with the partial geometry), continue (extend this stage with more iterations), halt (raise + stop the whole script).  The LAST enabled stage's value is ignored; the final tier always halts on failure."
+help = "what to do if geomeTRIC's 5 criteria aren't all met when max_steps runs out: proceed (accept the partial geometry and let the next rung start from it), continue (extend this rung with more iterations), halt (raise rather than hand on a geometry nobody accepted).  This is THIS rung's answer: a ladder is N decks and N jobs, so each deck carries its own policy and none of them can see the others."
 
 [item.geom_continue_retries]
 kind = "produce"

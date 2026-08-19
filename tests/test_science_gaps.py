@@ -450,9 +450,12 @@ def test_gap_10_diis_damp_emitted_only_when_tuned(h2):
     `mf.diis_space = N` / `mf.damp = X` line."""
     def live_lines(text, needle):
         # Filter commented-out lines (the troubleshooting block at
-        # end of script mentions both knobs as hints in `#` lines).
+        # end of script mentions both knobs as hints in `#` lines) and the
+        # effective-parameters record, which READS every knob back to show
+        # what the engine holds -- a read is not a setting.
         return [ln for ln in text.splitlines()
-                if needle in ln and not ln.lstrip().startswith("#")]
+                if needle in ln and not ln.lstrip().startswith("#")
+                and "_MB_PARAMS[" not in ln]
 
     cfg_default = PySCFConfig(job_name="h2",
                               density_fit=False, dispersion=None)

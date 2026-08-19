@@ -1454,7 +1454,7 @@ def test_what_a_run_continues_from_is_copied_never_linked(tmp_path):
 #    stages use the same algorithm                                       #
 # --------------------------------------------------------------------- #
 
-def _shipped_ladder():
+def _shipped_ladder(coarse_restart=None):
     """The ladder a user actually gets — coarse (CG), medium + tight (Broyden).
 
     Built through the real producer rather than by hand, because the claim
@@ -1475,8 +1475,11 @@ def _shipped_ladder():
     for i, st in enumerate(default_siesta_stages("vib-quality"), start=1):
         if not st.enabled:
             continue
+        overrides = dict(getattr(st, "overrides", None) or {})
+        if coarse_restart is not None and i == 1:
+            overrides["restart"] = coarse_restart
         eff = effective_config(SiestaConfig(system_label=label),
-                               getattr(st, "overrides", None),
+                               overrides,
                                where=f"stage {st.name!r}")
         jobs.append(Job(name=st.name,
                         script=f"{label}_{stage_token(i, st.name)}.fdf",
@@ -1591,13 +1594,24 @@ def test_a_clean_stage_refuses_from_instead_of_copying_nothing(tmp_path):
     files are right there, the parameter is off, and the stage starts from
     scratch looking like it continued.
 
-    A `restart: clean` stage's deck omits `MD.UseSaveXV` / `DM.UseSaveDM` /
-    `MD.UseSaveCG` (the same `_continues` gate decides both), so anything
-    copied in would sit unread. Copying it anyway and reporting success is
-    the failure; the refusal is the fix.
+    A `restart: clean` stage's deck writes `MD.UseSaveXV` / `DM.UseSaveDM` /
+    `MD.UseSaveCG` as `.false.` (the same `restart` field decides the deck and
+    the declaration), so anything copied in would sit unread. Copying it
+    anyway and reporting success is the failure; the refusal is the fix.
+
+    *(This said the deck OMITS them until 2026-08-18. It did, and that was the
+    bug: SIESTA reads the files when they are present unless a deck says
+    `.false.`, so "clean" said nothing and the stage continued. The refusal
+    tested here was right either way -- it reads the WARM DECLARATION, which
+    has always been empty for a clean stage.)*
     """
     from molbuilder.jobset.materialize import prepare_attempt
-    js = _shipped_ladder()
+    # The rung is made clean EXPLICITLY, which is the only way a stage is
+    # clean since 2026-08-18: `continue` is the default, and `clean` is a
+    # person overriding it (`run-identity.md` § 4 rule 3).  The shipped ladder
+    # used to splice `clean` into rung one positionally, which is what this
+    # test used to lean on.
+    js = _shipped_ladder(coarse_restart="clean")
     _finished(tmp_path, "01_coarse")
 
     with pytest.raises(ValueError) as e:

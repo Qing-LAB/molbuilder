@@ -38,6 +38,7 @@ import re
 import pytest
 
 from molbuilder import runwrap
+from molbuilder.jobset.model import Resources
 
 
 @pytest.fixture(autouse=True)
@@ -68,7 +69,8 @@ ENGINES = (
 def _wrapper(tmp_path, ext, body, **kw):
     p = tmp_path / f"job{ext}"
     p.write_text(body)
-    return runwrap.render_run_wrapper(p, env="molbuilder-siesta", **kw)
+    return runwrap.render_run_wrapper(p, env="molbuilder-siesta",
+                                      resources=Resources(**kw))
 
 
 @pytest.mark.parametrize("engine,const,ext,body", ENGINES)
@@ -117,7 +119,7 @@ def test_adding_a_suffix_changes_the_banner_and_only_the_banner(
 #: which lands in an unrelated ``--help`` line -- so one block's match
 #: satisfied the other's assertion, and two mutations retyping the mover's
 #: list survived. **This module's own subject, reproduced inside its test.**
-_MOVER_HEADING = "--- Cold-restart: NAME SWEEP"
+_MOVER_HEADING = "--- Cold restart: SAY WHAT WOULD BE LOST, THEN STOP"
 _BANNER_HEADING = "--- Runtime status banner"
 
 
@@ -191,13 +193,17 @@ def test_the_wrapper_entry_points_take_exactly_these_parameters():
     surface -- a new one means new work on a compute node and should be argued
     for rather than appear.
 
-    **The two sets differ, and that is the design, not an accident.**
-    `render_run_wrapper` is INTERNAL -- it returns the inner script's text, so
-    it takes what shapes that text, including the sizing inputs `n_atoms` and
-    `mem_audit`. `write_run_wrapper` is the DOOR: it puts the wrapper on disk
-    and may also emit the `.sbatch`, so it takes **the allocation, whole**
-    (`architecture.md` § 3.1, rule A8) plus the two things that belong to the
-    invocation rather than to the job.
+    **All three take the allocation whole** (`architecture.md` § 3.1, rule A8),
+    and differ only in what else they need. `render_run_wrapper` returns the
+    inner script's text, so it also takes the sizing inputs read off the DECK:
+    `n_atoms` and `mem_audit`. `render_wrappers` returns everything step 4
+    produces -- the wrapper, the `.sbatch` when the machine has a queue, the
+    monitor a SIESTA job carries -- and reads those two off the deck itself.
+    `write_run_wrapper` writes what it rendered.
+
+    `render_run_wrapper` named four of `Resources`' fields in its own signature
+    until 2026-08-18, which is the destructure A8 forbids one call short of the
+    door: the caller re-assembled the object rather than passing it.
 
     **This set shrank from twelve to four on 2026-08-17, and the shrinking is
     the fix.** Eleven loose keyword arguments meant two callers passing two
@@ -216,8 +222,10 @@ def test_the_wrapper_entry_points_take_exactly_these_parameters():
     """
     import inspect
     assert set(inspect.signature(runwrap.render_run_wrapper).parameters) == {
-        "script_path", "env", "mpi_np", "omp_threads", "max_memory_mb",
-        "continue_retries", "n_atoms", "mem_audit",
+        "script_path", "resources", "env", "n_atoms", "mem_audit",
+    }
+    assert set(inspect.signature(runwrap.render_wrappers).parameters) == {
+        "script_path", "resources", "env", "emit_sbatch",
     }
     assert set(inspect.signature(runwrap.write_run_wrapper).parameters) == {
         "script_path", "resources", "env", "emit_sbatch",

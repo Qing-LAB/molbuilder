@@ -65,7 +65,12 @@ def calc(tmp_path):
     (dest / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "source /opt/conda/etc/profile.d/conda.sh"}}))
+    _pseudos_for(dest, ["S", "C", "H"])
     return dest
+
+
+from conftest import write_pseudos as _pseudos_for
+
 
 
 # --------------------------------------------------------------------- #

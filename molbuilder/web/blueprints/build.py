@@ -75,7 +75,6 @@ from flask import Blueprint, jsonify, request
 
 from ._shared import (
     config_from_params as _config_from_params,
-    dataclass_to_form_schema as _dataclass_to_form_schema,
     catalogue_to_form_schema as _catalogue_to_form_schema,
     issues_to_json as _issues_to_json,
     ok_structure_response,
@@ -88,10 +87,7 @@ from molbuilder import (
 )
 from molbuilder.config.pyscf  import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.issues import Issue, ValidationError
 from molbuilder.runtime_config import RuntimeConfigError
-from molbuilder.pyscf  import render_script
-from molbuilder.siesta import render_fdf
 from molbuilder.structure import Structure
 from molbuilder.validation import validate
 from .files import _resolve_within_roots, _PickerError
@@ -1358,9 +1354,43 @@ def api_task_setup_handover():
     from molbuilder.template import (template_filename as _template_filename,
                                      template_with_values)
 
-    typed = str(body.get("name") or "") or "calculation"
+    # WHAT THIS CALCULATION IS CALLED — the identity the person typed, and the
+    # destination folder only when they did not.
+    #
+    # `run-identity.md` § 4: *"The label is the SystemLabel / JOB literal.
+    # There is no second name."*  This took the folder's name unconditionally,
+    # so the identity typed on the parameter tab stayed in the template while
+    # `task.json` carried another — two names for one calculation, and both
+    # persisted.  Downstream the engine wrote `<system_label>.XV` while every
+    # file molbuilder named was stemmed on the task label, so `prep --from`
+    # refused a carry from a stage that HAD run and had produced exactly those
+    # files: *"that attempt holds none of the files this stage would continue
+    # from. Did it run?"*
+    #
+    # Which field carries the identity is the ENGINE's to say, and it says so
+    # (`RestartGroup.field`) — no `if engine ==` here.  The folder name is
+    # still the answer when the field is untouched, because the schema default
+    # is a placeholder (`siesta`, `pyscf_relax`) and naming a calculation after
+    # a placeholder is worse than naming it after the folder somebody chose.
+    from molbuilder.config.pyscf import PYSCF_RESTART_GROUP
+    from molbuilder.config.siesta import SIESTA_RESTART_GROUP
+    _group = SIESTA_RESTART_GROUP if engine == "siesta" else PYSCF_RESTART_GROUP
+    _identity = str(getattr(cfg, _group.field, "") or "")
+    _placeholder = str(
+        type(cfg).__dataclass_fields__[_group.field].default or "")
+    typed = (_identity if _identity and _identity != _placeholder
+             else (str(body.get("name") or "") or "calculation"))
     label = normalise_id(typed)
     formula = str(getattr(struct, "formula", "") or "")
+
+    # AND THE TEMPLATE CARRIES THE SAME ONE.  Choosing the label above is only
+    # half of "there is no second name": the template's identity field is what
+    # the ENGINE writes its files under, so if it kept the placeholder while
+    # `task.json` took the folder's name, the split would simply reappear from
+    # the other side.  Normalisation happens once and the result is stored
+    # (§ 3 rule 1) — this is the storing.
+    import dataclasses as _dc
+    cfg = _dc.replace(cfg, **{_group.field: label})
 
     try:
         template_text = template_with_values(cfg, engine=engine)
@@ -1572,7 +1602,7 @@ def api_task_setup_sweepable():
         return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
 
     from molbuilder import template as _T
-    parsed = _T.read_template(_T.load_catalogue())
+    parsed = _T.catalogue()
     out = []
     for it in _T.select(parsed, engine=engine):
         if "execution" not in (it.category or ()):
@@ -1581,7 +1611,55 @@ def api_task_setup_sweepable():
             "name":            it.name,
             "label":           it.label or it.name,
             "help":            it.help or "",
-            "machine_answers": it.resolver in _T.ALLOCATION_RESOLVERS,
+            "machine_answers": it.allocation,
+        })
+    return jsonify({"ok": True, "engine": engine, "items": out})
+
+
+@bp.route("/api/task-setup/columns", methods=["GET"])
+def api_task_setup_columns():
+    """Which parameters may become a column of the stage table.
+
+    `engines/stages.md` § 6.2: *"Any setting the description is allowed to hold
+    may become a column. The ones it is not allowed to hold may not."*  There is
+    no separate list — § 1.2 already says a stage may name any field of the
+    shared schema, and `template.md` § 7 already forbids the description to hold
+    the settings the machine answers.  Those two rules give the set with nothing
+    left to decide, and it is the same membership `prep` applies when it accepts
+    or refuses an override: a column offered here is a column `prep` will take.
+
+    **Why this is not `/api/build/schema`**, which is what the tab read until
+    2026-08-18.  That is the PARAMETER FORM's schema, and it filters the whole
+    `staging` group out on purpose — a form does not ask a person how many ranks
+    the scheduler granted (`form-schema.md` § 1.3).  Filtering a panel and
+    limiting a table are different jobs, and borrowing the answer to the first
+    for the second cost the table its most important column: `restart`, the
+    field that decides whether a ladder is a ladder, sits in `staging` and so
+    could never be added.  Every ladder built anywhere but
+    `jobset describe --stage-strategy` therefore ran every stage `clean`.
+
+    `group` rides along because it is still the right answer to a different
+    question — which columns the table STARTS with (§ 1.3).
+    """
+    engine = str(request.args.get("engine") or "siesta").lower()
+    if engine not in ("siesta", "pyscf"):
+        return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
+
+    from molbuilder import template as _T
+    parsed = _T.catalogue()
+    out = []
+    for it in _T.select(parsed, engine=engine):
+        # THE membership rule, asked of the item rather than restated here.
+        if it.allocation:
+            continue
+        out.append({
+            "name":    it.name,
+            "label":   it.label or it.name,
+            "help":    it.help or "",
+            "unit":    it.unit or "",
+            "default": it.default,
+            "group":   it.group or "",
+            "engine_key": it.anchor or "",
         })
     return jsonify({"ok": True, "engine": engine, "items": out})
 
@@ -1658,13 +1736,18 @@ def api_task_setup_presets():
                         "name": SIESTA_STAGE_NAMES.get(tier, f"stage{tier}"),
                         "values": dict(SIESTA_STAGE_PRESETS[tier])})
     elif engine == "pyscf":
-        from molbuilder.config.pyscf import _default_stages
-        for i, st in enumerate(_default_stages(), start=1):
-            out.append({"tier": i, "name": st.name, "values": {
-                "scf_conv_tol": st.conv_tol, "grid_level": None,
-            }})
-            out[-1]["values"] = {k: v for k, v in out[-1]["values"].items()
-                                 if v is not None}
+        # Same source as the shipped PySCF ladder, for the same reason the
+        # SIESTA arm above reads SIESTA's: a stage filled from a preset here
+        # and a stage of the default ladder must not be able to disagree.
+        # ``restart`` is dropped -- it is a rung's POSITION, not its tier
+        # (`run-identity.md` § 4 rule 3), so it is not a value to fill a row
+        # with.  Every tier is offered whatever the strategy enables; the
+        # enable-mask is the ladder's business, not this menu's.
+        from molbuilder.pyscf.stages import default_pyscf_stages
+        for i, st in enumerate(default_pyscf_stages(), start=1):
+            out.append({"tier": i, "name": st.name,
+                        "values": {k: v for k, v in st.overrides.items()
+                                   if k != "restart"}})
     else:
         return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
     return jsonify({"ok": True, "engine": engine, "presets": out})

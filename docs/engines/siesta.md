@@ -88,7 +88,10 @@ flowchart LR
 *Stated 2026-08-11 (user). **✅ It is code**: `jobset/prep.py` takes the
 description plus its template and emits one deck per element of the resolved
 `ParameterSet`, through `EngineSeam(config_cls=SiestaConfig,
-render_deck=render_fdf)`. This line read "Not yet code" until 2026-08-16.*
+spec_for=spec_for)`. This line read "Not yet code" until 2026-08-16, and named
+`render_deck=render_fdf` until 2026-08-18 — the seam handed back finished TEXT
+until then, and now hands back the deck's **form**
+([`script-preparation.md § 4.3`](?doc=execution/script-preparation.md)).*
 
 > **`render_fdf` no longer starts from a config somebody typed. It starts from
 > the layered description** — the template's items, resolved through this stage
@@ -479,8 +482,10 @@ verb names its stage, on a one-rung ladder exactly as on three
 > of a calculation, so an engine config carries no stage list; it is one
 > parameter set, and the ladder is the **user's** decision about what varies.
 > [`engines/stages.md`](?doc=engines/stages.md) § 1.1–1.2 is the contract.
-> **PySCF's ladder is deliberately untouched** — it runs inside one process,
-> so its stage list is also engine behaviour.
+> **PySCF's ladder was deliberately untouched** while this was written — it ran
+> inside one process, so its stage list was also engine behaviour. Both halves of
+> that exception are now closed ([`stages.md § 1.1a`](?doc=engines/stages.md)):
+> the ladder is declared in `task.json` and executes as N decks and N jobs.
 
 - **Data model.** A stage is `molbuilder/task.py::Stage`: **`name`** (→ the
   `<label>_<NN>_<name>.fdf` stem, ordinal and name together —
@@ -517,14 +522,18 @@ verb names its stage, on a one-rung ladder exactly as on three
   2026-08-10 the field was **removed from the producer rather than left inert**
   ([`stages.md § 3`](?doc=engines/stages.md)). A stage that runs out of steps
   simply stops, and you decide what to do — which is what you were doing between
-  stages anyway. **PySCF keeps it** (`pyscf.md § 3`), because there the ladder is
-  a loop inside one process and the policy is real control flow.
+  stages anyway. **PySCF kept it** (`pyscf.md § 3`) while its ladder was
+  a loop inside one process and the policy was real control flow; with that loop
+  retired ([`stages.md § 1.1a`](?doc=engines/stages.md)) the question is open
+  again and belongs to the unit that removes it.
 - **Validation.** A stage is validated as a **resolved whole, never as a
   diff** (§ 4 R2): the caller resolves it and runs the ordinary single-config
   validator on the result, so there is no parallel copy of the knob rules to
   drift. The two checks that are about the *ladder* rather than a member of it
   — nothing enabled, and duplicate names (a collision would silently overwrite
-  a per-stage `.fdf`) — are refused by `_enabled_stages`.
+  a per-stage `.fdf`) — moved to the layers that own them when `_enabled_stages`
+  died with its producers, and are asserted by
+  `tests/test_stage_resolution.py`.
 - **How a ladder is asked for.** At `describe`: `--stage-strategy publishable`
   picks one of the shipped ladders, and omitting it describes a calculation
   with a **single parameter set** — one stage named `coarse`, named and tokened

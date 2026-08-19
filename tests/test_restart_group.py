@@ -37,8 +37,21 @@ def _deck(**kw) -> str:
 
 
 def _group_lines(deck: str):
-    return sorted(ln.split()[0] for ln in deck.splitlines()
-                  if ln.split() and ln.split()[0] in SIESTA_RESTART_GROUP.keys)
+    """The group's members, as ``{key: ".true."/".false."}``.
+
+    It returned a bare sorted list of KEYS until 2026-08-18, which was the
+    right shape while `clean` was expressed by leaving them out: presence WAS
+    the answer.  It is not any more -- both answers are written -- so a test
+    that only asked which keys appeared could no longer tell a continuing deck
+    from a clean one.
+    """
+    return {ln.split()[0]: ln.split()[1] for ln in deck.splitlines()
+            if ln.split() and ln.split()[0] in SIESTA_RESTART_GROUP.keys}
+
+
+def _group_keys(deck: str):
+    """Which members the deck carries at all -- the run-mode question."""
+    return sorted(_group_lines(deck))
 
 
 def _string_literals(mod):
@@ -114,13 +127,29 @@ def test_the_members_cannot_be_set_individually_any_more():
     assert "restart" in names
 
 
-def test_clean_renders_none_and_continue_renders_every_member():
+def test_every_member_is_written_and_restart_decides_the_answer():
     """**M3, asserted together in one test on purpose** — the plan says the
     failure mode is that the two halves disagree, so checking them apart
-    would let exactly that through."""
-    assert _group_lines(_deck(restart="clean", relax_type="CG")) == []
-    assert _group_lines(_deck(restart="continue", relax_type="CG")) == \
-        sorted(SIESTA_RESTART_GROUP.keys)
+    would let exactly that through.
+
+    **`clean` writes `.false.`; it does not stay silent** (2026-08-18).  This
+    read ``_group_lines(clean) == []`` and was named
+    ``test_clean_renders_none_and_continue_renders_every_member``, pinning the
+    premise that a key left out is a key not honoured.  Measured against
+    SIESTA 5.4.2, it is not: a deck carrying none of these keys, with a `.DM`
+    beside it, printed *"Attempting to read DM from file... Succeeded"* and
+    opened its SCF at the previous run's converged density.  So a stage told
+    to start clean continued, and a benchmark trial -- forced clean precisely
+    so every point measures the same thing -- measured a warm run whenever the
+    wrapper retried it.
+
+    The direction that matters is `clean`: `continue` was always right, and
+    the test that only checked `continue` would have stayed green forever."""
+    clean = _group_lines(_deck(restart="clean", relax_type="CG"))
+    cont = _group_lines(_deck(restart="continue", relax_type="CG"))
+    assert sorted(clean) == sorted(cont) == sorted(SIESTA_RESTART_GROUP.keys)
+    assert set(clean.values()) == {".false."}
+    assert set(cont.values()) == {".true."}
 
 
 def test_the_deck_never_carries_a_member_the_run_mode_ignores():
@@ -134,20 +163,30 @@ def test_the_deck_never_carries_a_member_the_run_mode_ignores():
     optimizers get this member; that is a SIESTA semantics question needing
     the manual and a science review. Asserting both halves here so whichever
     way that question is settled, the day it changes is loud."""
-    assert _group_lines(_deck(restart="continue", relax_type="Verlet")) == \
+    assert _group_keys(_deck(restart="continue", relax_type="Verlet")) == \
         ["DM.UseSaveDM", "MD.UseSaveXV"]
-    assert _group_lines(_deck(restart="continue", relax_type="Broyden")) == \
+    assert _group_keys(_deck(restart="continue", relax_type="Broyden")) == \
         sorted(SIESTA_RESTART_GROUP.keys)
 
-    # And the reason every assertion here reads EMITTED KEYS rather than raw
-    # text, shown rather than asserted in a comment: the explanatory block is
-    # emitted whenever the run continues and it *names* MD.UseSaveCG, so on a
-    # Verlet deck the string is present while the key is not.  A substring
-    # check would have passed for the wrong reason.  Caught when this test
-    # first ran.
+    # WHICH members a run mode carries is independent of the ANSWER: a clean
+    # Verlet deck carries the same two, saying .false.
+    assert _group_keys(_deck(restart="clean", relax_type="Verlet")) == \
+        ["DM.UseSaveDM", "MD.UseSaveXV"]
+
+    # Every assertion here reads EMITTED KEYS rather than raw text, and the
+    # reason is worth keeping even though the specific hazard has moved.  The
+    # per-member explanatory blocks used to NAME `MD.UseSaveCG` whenever a run
+    # continued, so on a Verlet deck the string was present while the key was
+    # not, and a substring check passed for the wrong reason -- caught when
+    # this test first ran.  Those per-member blocks were replaced on
+    # 2026-08-18 by one block for the whole group, which names the FILES
+    # (.XV / .DM / .CG) rather than the keys, so the trap is not armed today.
+    # The keys-not-text discipline stays: what a deck says in a comment and
+    # what it instructs the engine to do are different questions, and only one
+    # of them is this test's.
     verlet = _deck(restart="continue", relax_type="Verlet")
-    assert "MD.UseSaveCG" in verlet
-    assert "MD.UseSaveCG" not in _group_lines(verlet)
+    assert "MD.UseSaveCG" not in _group_keys(verlet)
+    assert _group_lines(verlet)["MD.UseSaveXV"] == ".true."
 
 
 def test_a_continuing_static_stage_still_reads_the_geometry():
@@ -162,8 +201,9 @@ def test_a_continuing_static_stage_still_reads_the_geometry():
     unconditional continue group as ``DM.UseSaveDM``; ``MD.UseSaveCG``
     stays a relaxation member."""
     assert _group_lines(_deck(restart="continue", relax_type="none")) == \
-        ["DM.UseSaveDM", "MD.UseSaveXV"]
-    assert _group_lines(_deck(restart="clean", relax_type="none")) == []
+        {"DM.UseSaveDM": ".true.", "MD.UseSaveXV": ".true."}
+    assert _group_lines(_deck(restart="clean", relax_type="none")) == \
+        {"DM.UseSaveDM": ".false.", "MD.UseSaveXV": ".false."}
 
 
 def test_a_missing_restart_field_reads_as_clean():
@@ -172,8 +212,21 @@ def test_a_missing_restart_field_reads_as_clean():
     run computed from."""
     class Bare:
         pass
-    from molbuilder.siesta.input import _continues
-    assert _continues(Bare()) is False
+    from molbuilder.identity import continues
+    assert continues(Bare()) is False
+
+
+def test_both_engines_read_restart_through_the_one_function():
+    """§ 4 rule 2 says ONE field; this is the other half -- one READING of
+    it.  SIESTA kept the predicate private in ``siesta/input.py`` while PySCF
+    was about to need the same three lines, and two copies of *"does this run
+    continue?"* are two things that can answer differently."""
+    import molbuilder.identity as _id
+    import molbuilder.siesta.input as _si
+    import molbuilder.pyscf.input as _pi
+    assert _si.continues is _id.continues
+    assert _pi.continues is _id.continues
+    assert not hasattr(_si, "_continues")
 
 
 # --------------------------------------------------------------------- #
@@ -313,13 +366,25 @@ def test_only_the_optimizer_history_is_conditional():
 #  The gap this phase knowingly leaves                                  #
 # --------------------------------------------------------------------- #
 
-@pytest.mark.xfail(strict=True, reason=(
-    "P4 -- PySCF has no `restart` field, so § 4 rule 2's 'the user says one "
-    "thing' is unimplemented for it.  Its resume branches are gated on "
-    "`chkfile` and `save_optimized_xyz`, which are WRITE flags doubling as "
-    "read gates, so 'write a checkpoint but do not resume from one' cannot "
-    "be said.  Separating them changes emitted-script behaviour and needs a "
-    "science review of its own."))
 def test_pyscf_also_says_it_with_one_field():
+    """§ 4 rule 2 for the other engine.  This carried a strict xfail until
+    2026-08-18: PySCF had no ``restart``, and its resume branches were gated
+    on ``chkfile`` and ``save_optimized_xyz`` -- WRITE flags doubling as read
+    gates, so *"write a checkpoint but do not resume from one"* was a
+    sentence the engine could not say.
+
+    `stages.md` § 1.1a consequence 3 is what closed it: a PySCF ladder is N
+    decks and N jobs, so there is a real gap between rungs for the field to
+    answer about, and rule 3's first-clean/rest-continue default has
+    something to fill in."""
     names = {f.name for f in PySCFConfig.__dataclass_fields__.values()}
     assert "restart" in names
+    fld = PySCFConfig.__dataclass_fields__["restart"]
+    # The SAME two answers SIESTA gives.  A third value on one engine would
+    # make `restart` mean different things in two descriptions.
+    assert tuple(fld.metadata["choices"]) == ("clean", "continue")
+    # And the same DEFAULT.  `continue` since 2026-08-18 (user): a run started
+    # in a folder that already holds a result was started after somebody read
+    # that result, so it continues from it.  `clean` is that person overriding,
+    # and it overwrites (`run-identity.md` § 4 rule 3).
+    assert fld.default == "continue"

@@ -53,10 +53,9 @@ def test_default_render_compiles(h2o):
         'mf.xc = "B3LYP"',
         "mf = mf.density_fit()",
         'mf.disp = "d3bj"',
-        # 6c: optimize() now lives inside the _mb_run_stage_opt
-        # helper (factored out of the loop body so the 3-policy
-        # dispatch stays readable); both anchors must be present.
-        "def _mb_run_stage_opt(",
+        # optimize() lives inside the _mb_run_optimization helper, so the
+        # non-convergence policy dispatch below it stays readable.
+        "def _mb_run_optimization(",
         "    return optimize(",
         "_save_xyz(",
     ):
@@ -206,83 +205,58 @@ def test_no_optimize_drops_geom_block(h2o):
     assert 'JOB + "_optimized.xyz"), "Final optimized geometry"' not in text
 
 
-def test_stages_loop_emits_per_stage_optimize_kwargs(h2o):
-    """Post-#534 commit 4: the generator emits a single
-    ``optimize(mf, ...)`` call -- factored into the
-    ``_mb_run_stage_opt`` helper since 6c -- driven by a
-    ``for STAGE in STAGES:`` policy dispatch.  Pin the kwarg list
-    on the helper so a regression that loses any per-stage knob
-    surfaces immediately.
+def test_one_optimize_call_site_carrying_this_rung_s_targets(h2o):
+    """A deck is one rung, so there is one ``optimize(mf, ...)`` call in it.
+
+    `stages.md` § 1.1a retired the in-script ladder: the six convergence targets
+    belong to THIS deck and arrive as named constants the single call reads.
+    Pinning the kwarg list here means a regression that loses one of them
+    surfaces immediately, which is what the old staged-loop version of this test
+    was for -- the guarantee outlived the loop.
     """
     text = render_script(h2o, PySCFConfig())
-    # Exactly one optimize() call site -- inside the helper.
     assert text.count("return optimize(") == 1, (
-        f"expected exactly 1 optimize() call inside _mb_run_stage_opt; "
-        f"got {text.count('return optimize(')}"
-    )
-    assert text.count("mol_eq = optimize(") == 0, (
-        "loop body should call helper, not optimize() directly"
-    )
-    # Loop header + helper definition + per-stage SCF tol re-set.
-    assert "for STAGE in STAGES:" in text
-    assert "def _mb_run_stage_opt(STAGE, _hard_fail):" in text
-    assert "mf.conv_tol = STAGE['conv_tol']" in text
-    # Per-stage kwargs that geomeTRIC consumes via OptParams +
-    # kernel; all 7 must be threaded from STAGE on every call.
-    for kw in (
-        "maxsteps              = STAGE['max_steps']",
-        "convergence_energy    = STAGE['etol']",
-        "convergence_grms      = STAGE['grms']",
-        "convergence_gmax      = STAGE['gmax']",
-        "convergence_drms      = STAGE['drms']",
-        "convergence_dmax      = STAGE['dmax']",
-        # 6c: assert_convergence is now ``_hard_fail`` parameter of
-        # the helper, set by the per-policy dispatch in the loop.
-        # See test_c3_stages_loop_threads_per_stage_policy in
-        # test_output_correctness.py for the directional pin.
-        "assert_convergence    = _hard_fail",
-    ):
-        assert kw in text, f"missing per-stage kwarg: {kw}"
-    # 6c: the 3-policy dispatch.  All three branches present so
-    # generated scripts handle proceed / continue / halt correctly
-    # at runtime.
-    assert "if _policy == 'proceed':" in text
-    assert "elif _policy == 'halt':" in text
-    assert "else:  # 'continue'" in text
-    # The final-stage override is in the loop body (last stage is
-    # always 'halt' regardless of declared policy).
-    assert "_policy = ('halt' if STAGE['is_final']" in text
+        f"expected exactly one optimize() call site inside "
+        f"_mb_run_optimization; got {text.count('return optimize(')}")
+    assert "mol_eq = optimize(" not in text, (
+        "the policy dispatch calls the helper, never optimize() directly")
+    for kwarg in ("convergence_energy", "convergence_grms", "convergence_gmax",
+                  "convergence_drms", "convergence_dmax", "maxsteps"):
+        assert f"{kwarg} " in text, f"missing geomeTRIC kwarg {kwarg!r}"
+    assert "for STAGE in STAGES:" not in text, (
+        "the in-script ladder is retired: a PySCF ladder is N decks and N "
+        "jobs, so that a person can look between the rungs")
 
 
-def test_molwatch_log_instantiated_before_stages_loop(h2o):
+def test_molwatch_log_instantiated_before_the_optimization(h2o):
     """Critical UX guarantee: ``.molwatch.log`` exists from the moment
     the script starts running, BEFORE any stage's optimize() can take
     hours on a real molecule.  Pin the source ordering:
-    ``_molwatch = MolwatchEmitter(...)`` must appear before the
-    stages loop, ``mf.callback`` wiring before optimize() runs, and
-    the opt-step callback INSIDE the optimize() kwargs.
+    ``_molwatch = MolwatchEmitter(...)`` must appear before the optimization,
+    ``mf.callback`` wiring before optimize() runs, and the opt-step callback
+    INSIDE the optimize() kwargs.
     """
     text = render_script(h2o, PySCFConfig())
     inst_at      = text.find('_molwatch = MolwatchEmitter(_mb_outfile(JOB')
     mf_callback  = text.find("mf.callback = _molwatch.scf_cycle_hook")
-    helper_def   = text.find("def _mb_run_stage_opt(STAGE, _hard_fail):")
+    helper_def   = text.find("def _mb_run_optimization(_hard_fail):")
     opt_at       = text.find("    return optimize(")
     step_cb      = text.find("callback              = _molwatch.opt_step_hook")
-    loop_at      = text.find("for STAGE in STAGES:")
+    loop_at      = text.find("mol_eq = _mb_run_optimization(")
     for name, off in [
         ("_molwatch instantiation", inst_at),
         ("mf.callback wiring",      mf_callback),
         ("_mb_run_stage_opt def",   helper_def),
         ("return optimize(",        opt_at),
         ("opt_step callback",       step_cb),
-        ("for STAGE in STAGES:",    loop_at),
+        ("the optimization call",   loop_at),
     ]:
         assert off >= 0, f"missing in script: {name}"
     # inst < mf_callback (sets the SCF-cycle hook on the prod mf)
     #     < helper_def (closes over mf + _molwatch, must follow them)
     #         < opt_at (inside helper body)
     #             < step_cb (opt_step_hook kwarg inside optimize)
-    #                 < loop_at (the stages driver that calls helper)
+    #                 < loop_at (the policy dispatch that calls it)
     assert inst_at < mf_callback < helper_def < opt_at < step_cb < loop_at, (
         "molwatch wiring out of order; expected inst < mf_callback < "
         "helper_def < optimize < step_cb < loop.  "
@@ -319,7 +293,10 @@ def test_stability_analysis_skipped_for_closed_shell(h2o):
 
 def test_dispersion_can_be_disabled(h2o):
     text = render_script(h2o, PySCFConfig(dispersion=None))
-    assert "mf.disp" not in text
+    # The ASSIGNMENT is the guarantee.  The effective-parameters record reads
+    # `mf.disp` back to show the engine has none, and that read is the record
+    # working, not the setting leaking.
+    assert "mf.disp = " not in text
 
 
 def test_dispersion_none_string_does_not_crash_pyscf(h2o):
@@ -327,7 +304,7 @@ def test_dispersion_none_string_does_not_crash_pyscf(h2o):
     # literal string "none" (only None / 0 / a real version like "d3bj"
     # are accepted).  Make sure the string sentinel is treated like None.
     text = render_script(h2o, PySCFConfig(dispersion="none"))
-    assert "mf.disp" not in text
+    assert "mf.disp = " not in text
 
 
 def test_solvent_emits_pcm_block(h2o):
@@ -470,12 +447,16 @@ def test_pcm_uses_mf_method_form(h2o):
 
 
 def test_chkfile_continuation_shim_emitted(h2o):
-    """2026-05-30: when cfg.chkfile=True (default), the generated
-    script auto-detects an existing .chk file at startup and flips
-    ``mf.init_guess`` to ``"chkfile"`` so a re-run via ``bash
-    job.run.sh --continue`` warm-starts from the saved DM instead
-    of MINAO / atom / huckel."""
-    text = render_script(h2o, PySCFConfig())
+    """A rung that CONTINUES starts its SCF from the density the rung before
+    it converged: the script detects a non-empty ``.chk`` and flips
+    ``mf.init_guess`` to ``"chkfile"`` instead of MINAO / atom / huckel.
+
+    Rendered with ``restart="continue"`` since 2026-08-18.  It used to be
+    unconditional, which meant ``clean`` could only be had by turning off the
+    WRITE -- and that threw away the checkpoint the next rung wanted
+    (`run-identity.md` § 4 rule 2).  The clean side is asserted in
+    ``test_pyscf_rung_artifacts.py``."""
+    text = render_script(h2o, PySCFConfig(restart="continue"))
     # The chkfile assignment is still there.
     assert 'mf.chkfile = _mb_outfile(JOB + ".chk")' in text
     # The auto-detect shim is appended right after.
@@ -512,12 +493,14 @@ def test_geometry_warm_restart_block_emitted(h2o):
     docs/execution/job-contracts.md § "Generator-side warm-
     restart contract" item 2.
 
-    Without this hook, a ``bash job.run.sh --continue`` after a
-    converged run would re-start from the script's literal
-    coordinates -- discarding the optimization the user just paid
-    for.
+    Without this hook, a rung that says ``continue`` would re-start from the
+    script's literal coordinates -- discarding the optimization the rung
+    before it paid for.
+
+    Rendered with ``restart="continue"`` since 2026-08-18: the read is gated
+    on that field and on nothing else (`run-identity.md` § 4 rule 2).
     """
-    text = render_script(h2o, PySCFConfig())
+    text = render_script(h2o, PySCFConfig(restart="continue"))
     # The literal coordinates land in ``_atom_block``, not directly
     # as ``atom='...'`` -- so the warm-restart block can override
     # the variable before gto.M() consumes it.
@@ -541,7 +524,7 @@ def test_geometry_warm_restart_block_precedes_gto_M(h2o):
     ``_atom_block`` -- otherwise the literal is consumed and the
     override is dead code.  Pins the lexical order in the rendered
     script."""
-    text = render_script(h2o, PySCFConfig())
+    text = render_script(h2o, PySCFConfig(restart="continue"))
     opt_block_ix = text.index('_opt_path = _mb_outfile(JOB + "_optimized.xyz")')
     gto_call_ix  = text.index("mol = gto.M(")
     assert opt_block_ix < gto_call_ix, (
@@ -571,7 +554,7 @@ def test_geometry_warm_restart_overrides_literal_when_xyz_exists(h2o, tmp_path):
     Catches the "branch present but never fires" class of bug
     from the design.md "Required tests" table.
     """
-    text = render_script(h2o, PySCFConfig())
+    text = render_script(h2o, PySCFConfig(restart="continue"))
 
     # Extract just the warm-restart slice we want to exercise.  We
     # want everything from the _atom_block initial assignment up to
@@ -704,57 +687,21 @@ def test_post_opt_warm_starts_from_converged_dm(h2o):
     assert "mf.kernel()" not in rest
 
 
-def test_staged_opt_warm_starts_inside_stage_loop(h2o):
-    """Decision log 2026-06-22: warm-start between stages via
-    ``mf.reset(mol_eq); mf.kernel(dm0=dm_prev)`` is the load-bearing
-    scientific guarantee for #534's staged-opt ladder.  The prior
-    test (``test_post_opt_warm_starts_from_converged_dm``) happens
-    to cover this because the staged loop puts the two lines
-    adjacent, but it slices the script by FIRST ``mf.reset()``
-    occurrence -- not by the staged loop's body.  This test gates
-    the loop body explicitly: a regression that moves the warm-
-    start out of the loop, or replaces ``dm0=dm_prev`` with cold
-    init INSIDE the loop, would fail here while the prior test
-    might still pass.
-
-    Layer: L3 (render-only).  L4 e2e (``test_pyscf_staged_opt_
-    warm_start_runs_two_stages`` in tests/test_molwatch_preview.py)
-    verifies the rendered script RUNS to convergence end-to-end --
-    those two layers together gate the warm-start guarantee.  H2/
-    STO-3G is too forgiving for the L4 to gate warm-start on cycle
-    counts alone; the render-shape gate at L3 is the right layer
-    for "did the generator emit the right code?"
-    """
-    # Default 3-stage ladder, stages 1+2 enabled (stage 3 disabled by
-    # default; the loop iterates twice).
-    text = render_script(h2o, PySCFConfig(optimize=True))
-    # Scope to the staged-loop body: from "for STAGE in STAGES:" up
-    # to the post-loop banner.  Anything outside the slice (e.g., the
-    # single-point ``e = mf.kernel()`` path for optimize=False) does
-    # not interfere.
-    loop_start = text.index("for STAGE in STAGES:")
-    final_banner_idx = text.index('print(f"\\nFinal energy:', loop_start)
-    loop_body = text[loop_start:final_banner_idx]
-    # The warm-start pair must be inside the loop body -- ONCE
-    # lexically (loop iterates the same lines per stage at runtime).
-    assert "mf.reset(mol_eq)" in loop_body, (
-        "staged-loop body must call mf.reset(mol_eq) to drop stale "
-        "integrals at the previous-stage geometry")
-    assert "mf.kernel(dm0=dm_prev)" in loop_body, (
-        "staged-loop body must warm-start the next stage's SCF from "
-        "the converged DM at the previous geometry "
-        "(per decision-log 2026-06-22, this is the scientific "
-        "guarantee that makes the staged ladder publication-defensible)")
-    # The bare ``mf.kernel()`` form must NOT appear in the loop body
-    # -- it would discard the converged DM and restart from MINAO,
-    # burning 5-30 SCF cycles per stage transition.
-    assert "mf.kernel()" not in loop_body, (
-        "staged-loop body must NOT call bare mf.kernel() -- always "
-        "pass dm0=dm_prev so the converged DM carries forward")
-    # Belt-and-braces: the deprecated ``mf.mol = mol_eq`` assignment
-    # (which leaves cached integrals stale) must not have crept back
-    # in alongside the proper mf.reset() call.
-    assert "mf.mol = mol_eq" not in loop_body
+# RETIRED 2026-08-18 -- `test_staged_opt_warm_starts_inside_stage_loop`.
+#
+# It gated the warm-start pair (`mf.reset(mol_eq); mf.kernel(dm0=dm_prev)`)
+# INSIDE the in-script `for STAGE in STAGES:` body, and said so: its whole value
+# over `test_post_opt_warm_starts_from_converged_dm` was that it sliced the
+# script by the loop rather than by the first `mf.reset()`.  `stages.md` § 1.1a
+# retired that loop -- a PySCF ladder is N decks and N jobs -- so the thing this
+# test scoped to no longer exists.
+#
+# The SURVIVING guarantee is that a deck re-converges SCF at its relaxed
+# geometry from the converged density rather than from MINAO, and
+# `test_post_opt_warm_starts_from_converged_dm` asserts exactly that, on the
+# deck this design actually produces.  Between rungs the warm start is now
+# `.chk` + `<JOB>_optimized.xyz` on disk, which is the warm-file vocabulary's
+# job and is tested there.
 
 
 # --------------------------------------------------------------------- #
@@ -876,10 +823,14 @@ def test_python_api_ecp_name_without_atoms_emits_nothing(h2o):
 
 
 def test_pyscf_molwatch_emitter_uses_stage_suffix(h2o):
-    """When cfg.stage is 1/2/3 the inlined ``MolwatchEmitter(...)``
-    call writes to ``<JOB>-stage<N>.molwatch.log`` so stages don't
-    overwrite each other in a shared directory."""
-    text = render_script(h2o, PySCFConfig(stage="02_medium", job_name="my-job"))
+    """Given a rung's token the inlined ``MolwatchEmitter(...)`` writes to
+    ``<JOB>_<token>.molwatch.log``, so two rungs sharing a directory cannot
+    overwrite each other's log.
+
+    The token is a render ARGUMENT, not a config field (roadmap C7 closed
+    2026-08-18): `prep` holds the StageRef, so `prep` says the word."""
+    text = render_script(h2o, PySCFConfig(job_name="my-job"),
+                         stage_token="02_medium")
     # Quote style is repr()'s choice (single or double); the contract
     # is the JOB + "<suffix>" expression with the right suffix.
     # 2026-05-27: path arg now wraps in _mb_outfile() so the log
@@ -889,7 +840,7 @@ def test_pyscf_molwatch_emitter_uses_stage_suffix(h2o):
 
 
 def test_pyscf_molwatch_emitter_unsuffixed_when_stage_is_none(h2o):
-    text = render_script(h2o, PySCFConfig(stage=None, job_name="my-job"))
+    text = render_script(h2o, PySCFConfig(job_name="my-job"), stage_token=None)
     # 2026-05-27: path arg now wraps in _mb_outfile().
     assert ("MolwatchEmitter(_mb_outfile(JOB + '.molwatch.log')" in text
             or 'MolwatchEmitter(_mb_outfile(JOB + ".molwatch.log")' in text)

@@ -540,7 +540,14 @@ class TestWorkflowGroupSchemaConsistency:
         from molbuilder.template import GROUPS
         valid = set(GROUPS)
         bad = []
-        for cls in (SiestaConfig, PySCFConfig, TransportConfig, SpectraConfig):
+        # Scoped to the two classes whose forms STILL come from this
+        # metadata.  SIESTA and PySCF build from the catalogue since
+        # 2026-08-15, so `section` gates nothing there and the rule
+        # below -- *has section, therefore shown, therefore needs a
+        # card* -- does not apply.  Its sibling in
+        # `test_issues_workflow_group.py` was scoped then; this one
+        # was missed.
+        for cls in (TransportConfig, SpectraConfig):
             for f in dataclasses.fields(cls):
                 tag = f.metadata.get("workflow_group")
                 if tag is not None and tag not in valid:

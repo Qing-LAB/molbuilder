@@ -75,7 +75,7 @@ def test_render_refuses_when_no_activation_configured(tmp_path, monkeypatch):
     _bind()
     try:
         with pytest.raises(RuntimeConfigError, match="activation"):
-            render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+            render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
     finally:
         set_capabilities(None)
 
@@ -92,7 +92,7 @@ def test_render_refuses_when_only_preamble_configured(tmp_path,
     _bind()
     try:
         with pytest.raises(RuntimeConfigError, match="activation"):
-            render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+            render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
     finally:
         set_capabilities(None)
 
@@ -103,7 +103,7 @@ def test_render_refuses_when_only_preamble_configured(tmp_path,
 
 
 def test_wrapper_does_not_cd(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
     # No cd at the top of the wrapper.  Caller's cwd is the contract.
     assert "SLURM_SUBMIT_DIR" not in text or "cd " not in text.split(
         "SLURM_SUBMIT_DIR", 1)[0]
@@ -118,7 +118,7 @@ def test_wrapper_does_not_cd(sandbox):
 
 
 def test_preamble_baked_verbatim(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
     # Each preamble line from molbuilder.json appears literally.
     assert "module load mamba" in text
     assert "export FOO=bar" in text
@@ -137,7 +137,7 @@ def test_preamble_chunks_carry_correct_scope_labels(sandbox, tmp_path):
             "preamble": "export PROJECT_VAR=xyz",
         },
     }))
-    text = render_run_wrapper(proj / "JOB.fdf", mpi_np=4)
+    text = render_run_wrapper(proj / "JOB.fdf", resources=Resources(mpi_np=4))
     assert "SERVER PREAMBLE (from molbuilder.json)" in text
     assert "PROJECT ADDITIONS (from .molbuilder.json)" in text
     # Server preamble lines appear BEFORE project additions.
@@ -156,7 +156,7 @@ def test_empty_preamble_emits_placeholder(tmp_path, monkeypatch):
     }))
     _bind()
     try:
-        text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+        text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
         # The "(none configured)" comment shows the empty case is
         # explicit rather than silently elided.
         assert "(none configured)" in text or "no script_generation" in text
@@ -170,7 +170,7 @@ def test_empty_preamble_emits_placeholder(tmp_path, monkeypatch):
 
 
 def test_activation_baked_as_single_line(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
     # Literal one-liner.  No conda-activate-with-fallback, no
     # source-activate-with-fallback, no 6-path detection block.
     assert "source activate molbuilder-siesta" in text
@@ -188,7 +188,7 @@ def test_activation_form_from_config(tmp_path, monkeypatch):
     }))
     _bind()
     try:
-        text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+        text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
         assert "conda activate molbuilder-siesta" in text
         assert "source activate molbuilder-siesta" not in text
     finally:
@@ -201,7 +201,7 @@ def test_activation_form_from_config(tmp_path, monkeypatch):
 
 
 def test_no_six_path_detection_block(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
     for needle in ("path 1:", "path 2:", "path 3:", "path 4:",
                     "path 5:", "path 6:",
                     "mamba info --base", "conda info --base",
@@ -213,13 +213,13 @@ def test_no_six_path_detection_block(sandbox):
 
 
 def test_no_molbuilder_preactivate_cmds_hook(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
     # The runtime env-var hook is gone per docs/execution/running-a-job.md § 5
     assert "MOLBUILDER_PREACTIVATE_CMDS" not in text
 
 
 def test_no_autodetect_field(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
     assert "autodetect_conda" not in text
 
 
@@ -232,7 +232,7 @@ def test_rendered_wrapper_passes_bash_n(sandbox, tmp_path):
     bash = shutil.which("bash")
     if bash is None:
         pytest.skip("bash unavailable")
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
     p = tmp_path / "JOB.run.sh"
     p.write_text(text)
     r = subprocess.run([bash, "-n", str(p)], capture_output=True, text=True)
@@ -276,7 +276,7 @@ def test_log_filename_does_not_hardcode_directory(sandbox):
     What the original test was protecting -- no generation-time directory baked
     into the text -- is what is asserted here.
     """
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
     assert 'JOB.runwrap-$(date +%Y%m%d-%H%M%S).log' in text
     assert "/x/" not in text, "the generation-time directory must not be baked in"
     assert '_runwrap_log="/' not in text, "not a literal absolute path"

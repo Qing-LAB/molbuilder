@@ -167,17 +167,18 @@ flowchart TB
       direction LR
       O1["jobset/runstatus.py"]; O2["parse/dirs/"]
     end
-    subgraph F5["<b>5 · launch</b> — turn a folder into a running program"]
+    subgraph F5["<b>5 · launch</b> — start one program"]
       direction LR
-      U1["jobset/prep.py"]; U2["runwrap.py"]; U3["jobset/submit.py"]
+      U3["jobset/submit.py"]; U4["jobset/agreement.py"]
     end
     subgraph F4["<b>4 · layout</b> — folders, links, copies, attempts"]
       direction LR
       Y1["jobset/materialize.py"]; Y2["jobset/shape.py"]
     end
-    subgraph F3["<b>3 · plan</b> — what was asked for + this machine → a list of jobs"]
+    subgraph F3["<b>3 · plan &amp; render</b> — values, and the text of every file"]
       direction LR
       P1["siesta/stages.py"]; P2["resolve.py"]; P3["bench/grid.py"]; P4["jobset/model.py"]
+      P5["siesta/input.py"]; P6["pyscf/input.py"]; P7["runwrap.py"]
     end
     subgraph F2["<b>2 · description</b> — what the person asked for"]
       direction LR
@@ -191,6 +192,8 @@ flowchart TB
     F5 -.-> F1
     F4 -.-> F1
     F7 -.-> F3
+    PREP["<b>jobset/prep.py</b> — the conductor<br/><i>not a floor: it walks 1 → 4</i>"]
+    PREP -.-> F4
 ```
 
 Solid arrows are the ordinary way down. **Dotted arrows are allowed shortcuts:**
@@ -208,9 +211,9 @@ note records the deletion.)*
 |---|---|---|---|---|---|---|
 | **1** | **names & plain facts** | what a thing is called; what this machine is | `identity` · `environment` · `scheduler_probe` · `persist` | `resolve_stage_ref` · `stage_token` · `parse_stage_token` · `run_id` · `normalise_id` · `resolve_environment` · `detect_scheduler` · `read_json` / `write_json` | `environment.json` | know what a folder is |
 | **2** | **description** | what the person asked for | `task` | `read_task` · `write_task` · `derive_run` · `varies_for` | `task.json` | **name a machine** |
-| **3** | **plan** | asked-for **+ machine** → a list of jobs | `siesta/stages` · `resolve` · `bench/grid` · `jobset/model` | `default_siesta_stages` · `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins → `ParameterSet`) · `JobSet.write` / `load` / `validate` | `job-set.json` | touch the disk *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
+| **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **and the text of every file** | `siesta/stages` · `resolve` · `bench/grid` · `jobset/model` · `siesta/input` · `pyscf/input` · `runwrap` | `default_siesta_stages` · `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `render_fdf` / `render_script` · `write_run_wrapper` · `render_sbatch` | `job-set.json` · the scripts · `.run.sh` · `.sbatch` | **re-decide a value it was handed** *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
 | **4** | **layout** | where every file sits | `jobset/materialize` · `jobset/shape` | `materialize` · `job_dir_names` · `stage_refs` · `shape_of` · `Shape.named` · `prepare_attempt` · `attempts` · `latest_attempt` · `relink` | the folder tree; `run-<n>/` | know about a queue |
-| **5** | **launch** | how a folder becomes a running program | `jobset/prep` · `jobset/agreement` · `runwrap` · `jobset/submit` | `prep_jobset` · `resolve_target` · `launch_agreement` · `check_launch_matches_deck` · `write_run_wrapper` · `render_sbatch` · `submit_jobset` | `.run.sh` · `.sbatch` · `run.json` | decide physics |
+| **5** | **launch** | start one program | `jobset/agreement` · `jobset/submit` | `launch_agreement` · `check_launch_matches_deck` · `submit_jobset` | `run.json` | decide physics |
 | **6** | **observe** | what happened | `jobset/runstatus` · `jobset/summarize` · `parse/dirs` | `jobset_status` · `render_status` · `render_stage_status` · `decode_run_dir` | — | write anything |
 | **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobset/ledger` · `web` | `molbuilder jobset {describe,prep,plan,submit,summarize,status}` · the web blueprints · `ledger.record` (each verb's decisions, into `jobset-decisions.log`) | `jobset-decisions.log` | work out a name, a folder, or a launch |
 
@@ -218,10 +221,13 @@ note records the deletion.)*
 may never reach across.* Floor 5 deciding a rank count that floor 3 already
 assumed is that reach, and it once cost a real run.
 
-> **Floor 5 holds two jobs today** — `runwrap` *writes* a script (arguably a
-> layout act) and `submit` *starts* one. It is real, it is harmless, and
-> splitting it costs more structure than it returns. Recorded so the next reader
-> does not think it was missed.
+> **`prep` is not a floor — it is the conductor.** It walks floors 1 → 4 in order
+> and owns no decision of its own, which is why it is drawn beside the stack
+> rather than in it. **It may call, but it may never decide**: a value settled
+> inside `prep` is a value no floor owns, and that is the shape of the "stomp"
+> failures — an allocation re-applied over per-element resources floor 3 had
+> already resolved. **Only a surface may import it.** The sequence it walks is
+> [`script-preparation.md`](?doc=execution/script-preparation.md) § 3.
 
 ---
 
@@ -407,34 +413,34 @@ is the whole shape of the split.
 
 ```mermaid
 flowchart LR
-    subgraph PREP["<b>prep</b>"]
+    subgraph PREP["<b>prep</b> — the conductor"]
       direction TB
       p1["1 · Resolve the machine"] --> p2["2 · Resolve the parameters"]
-      p2 --> p3["3 · Render the deck"] --> p4["4 · Render the wrapper"]
+      p2 --> p3["3 · Render the decks"] --> p4["4 · Render the wrappers"]
       p4 --> p5["5 · Build the run directory"]
     end
     p1 -.->|"floor 1"| q1["resolve_environment"]
     p2 -.->|"floors 2→3"| q2["read_task + this stage's changes"]
     p3 -.->|"floor 3"| q3["the engine's deck writer"]
-    p4 -.->|"floor 5"| q4["write_run_wrapper"]
+    p4 -.->|"floor 3"| q4["write_run_wrapper"]
     p5 -.->|"floor 4"| q5["materialize / prepare_attempt"]
 ```
 
-**The five steps are named once**, in
-[`project-layout.md`](?doc=execution/project-layout.md) § 2.3.1, which owns
-them; this section says which floor answers each.
+**The sequence is owned by**
+[`script-preparation.md`](?doc=execution/script-preparation.md), which states it
+at three resolutions — the decision chain below, these five steps, and the eleven
+sub-steps inside step 3. This section says only which floor answers each step.
 
-**Step 4 uses floor 5 and step 5 uses floor 4.** That looks wrong and is not.
-The wrapper must be rendered before the directory is built, and rendering a
-wrapper is a *launch* job while building a directory is a *layout* job. **The order
-things happen in is not the order of who depends on whom** — which is exactly why
-one table cannot carry both, and why `prep` is a route rather than a floor.
+**The floors never go backwards** — 1 → 2·3 → 3 → 3 → 4 — which is a property to
+check rather than a coincidence: `runwrap` renders text from decided values and
+sits on floor 3 with the engines' own deck writers.
 
 **Why the order is forced, not chosen:** step 3 cannot precede step 1, because a
-deck carries values that *depend on how it will be launched* — a block size
+script carries values that *depend on how it will be launched* — a block size
 derived from the rank count, an eigensolver that also decides which environment
 the wrapper activates. **A parameter that depends on the launch cannot be decided
-before the launch is known.**
+before the launch is known.** The full dependency table, pair by pair, is
+[`script-preparation.md`](?doc=execution/script-preparation.md) § 4.1.
 
 ### 4.2 A worked example, in plain words
 
@@ -527,7 +533,7 @@ do not:
 | 4–5 | **2 · description** |
 | 6–7 | outside — preflight and validation are their own contracts |
 | 8 | **3 · plan** (and the engine renderers it calls) |
-| 9 | **5 · launch**, at `prep` step 4 |
+| 9 | **3 · plan & render**, at `prep` step 4 |
 | 10 | **7 · surfaces** |
 | 11–12 | outside — the wrapper and the engine, at run time |
 

@@ -64,7 +64,7 @@ def test_extension_table_covers_two_engines():
 def test_render_unknown_extension_raises():
     _bind()
     with pytest.raises(WrapperError, match="unsupported script extension"):
-        render_run_wrapper(Path("/tmp/job.txt"))
+        render_run_wrapper(Path("/tmp/job.txt"), resources=Resources())
 
 
 # --------------------------------------------------------------------- #
@@ -84,7 +84,7 @@ def test_render_siesta_always_uses_mpirun():
     replaced by a captured run + propor diagnostic (see
     ``test_render_siesta_emits_propor_diagnostic``)."""
     _bind()
-    text = render_run_wrapper(Path("/somewhere/my-job.fdf"))
+    text = render_run_wrapper(Path("/somewhere/my-job.fdf"), resources=Resources())
     # The MPI branch sets ``_launch_cmd="$_numa_wrap_gpu mpirun
     # -np $_mpi_np $_mpirun_bind $_siesta_target"`` -- the ``$_numa_wrap_gpu``
     # slot is empty for CPU mode (defensive default) and populated
@@ -122,7 +122,7 @@ def test_render_siesta_with_mpi_ranks():
     """mpi_np from the form becomes the DEFAULT for -np; the launcher
     line uses the runtime $_mpi_np shell variable so user can override."""
     _bind()
-    text = render_run_wrapper(Path("/somewhere/my-job.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/somewhere/my-job.fdf"), resources=Resources(mpi_np=4))
     # Generation-time default baked into a shell variable.
     assert "_mpi_np_default=4" in text
     # Probe block's MPI branch uses the runtime variable.
@@ -134,7 +134,7 @@ def test_render_siesta_mpi_np_one_still_uses_mpirun():
     """np=1 still goes through mpirun -- a SIESTA-MPI build needs
     the MPI runtime even for a single rank.  The default propagates."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=1)
+    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=1))
     assert "_mpi_np_default=1" in text
     assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
 
@@ -144,7 +144,7 @@ def test_render_siesta_emits_np_arg_parser():
     override.  Pin the parser shape so a regression silently
     re-bakes the rank count."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=15)
+    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=15))
     # Default fallback chain: arg -> env -> generation-time value.
     # Precedence chain: -np flag > MB_NP env > SLURM_NTASKS >
     # PBS_NP > generation-time default.  Honoring SLURM_NTASKS means
@@ -169,7 +169,7 @@ def test_render_siesta_emits_propor_diagnostic():
     'it's-never-a-config-bug, just-lower-np' framing that masks a
     defective pseudo."""
     _bind()
-    text = render_run_wrapper(Path("/x/hemeC.fdf"), mpi_np=15)
+    text = render_run_wrapper(Path("/x/hemeC.fdf"), resources=Resources(mpi_np=15))
     # Captured run, not exec.  2026-06-26: the launch is piped through
     # the _mb_scf_tee timing filter (§ 11.0b), so the exit code is read
     # from ${PIPESTATUS[0]} (awk must not mask SIESTA's exit), not $?.
@@ -199,7 +199,7 @@ def test_render_siesta_emits_build_probe_block():
     Pins the key shell idioms so a regression doesn't silently
     de-probe the wrapper back to a static launcher."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=4))
     # Probe runs siesta --version once.
     assert 'siesta --version 2>/dev/null' in text
     # Parses Version + Parallelisations.
@@ -244,7 +244,7 @@ def test_render_siesta_redirects_stdout_per_job_layout_v1():
     job-contracts.md (post-2026-05-30: ``-runN`` series for
     ``--continue`` support).  First run is -run0."""
     _bind()
-    text = render_run_wrapper(Path("/x/system-label.fdf"))
+    text = render_run_wrapper(Path("/x/system-label.fdf"), resources=Resources())
     assert "> $_out_file" in text
     # The resolver bakes the basename into the per-script template.
     assert '_out_file="system-label-run${_run_n}.out"' in text
@@ -260,7 +260,7 @@ def test_render_siesta_auto_mpi_clamps_to_n_atoms(monkeypatch):
     monkeypatch.setattr("molbuilder.runtime_info.physical_core_count",
                         lambda: 64)
     # 30-atom molecule, no user-set mpi_np -> auto.
-    text = render_run_wrapper(Path("/x/small-mol.fdf"), n_atoms=30)
+    text = render_run_wrapper(Path("/x/small-mol.fdf"), n_atoms=30, resources=Resources())
     # The generation-time default must be 30, NOT 64.  The launcher
     # itself uses ``$_mpi_np`` so user can also override at run time
     # via ``-np N`` / ``MB_NP=N``.
@@ -281,7 +281,7 @@ def test_render_siesta_auto_mpi_no_clamp_when_atoms_geq_cores(monkeypatch):
     _bind()
     monkeypatch.setattr("molbuilder.runtime_info.physical_core_count",
                         lambda: 8)
-    text = render_run_wrapper(Path("/x/big-mol.fdf"), n_atoms=200)
+    text = render_run_wrapper(Path("/x/big-mol.fdf"), n_atoms=200, resources=Resources())
     assert "_mpi_np_default=8" in text
     assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
     assert "clamped" not in text
@@ -292,9 +292,7 @@ def test_render_siesta_user_mpi_over_atoms_emits_warning(monkeypatch):
     override) but tagged with a runtime WARNING in the wrapper output
     so the user sees what's about to crash + how to fix it."""
     _bind()
-    text = render_run_wrapper(
-        Path("/x/tiny.fdf"), mpi_np=20, n_atoms=10
-    )
+    text = render_run_wrapper(Path("/x/tiny.fdf"), n_atoms=10, resources=Resources(mpi_np=20))
     # Honoured verbatim (we do NOT silently override user input).
     assert "_mpi_np_default=20" in text
     assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
@@ -369,7 +367,7 @@ def test_render_siesta_mpi_pins_blas_to_one_and_sets_omp():
     Rewritten 2026-05-22 from the original OMP=1 contract (which
     crippled hybrid runs) to OMP=physical_cores // mpi_np."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=4))
     # BLAS is always 1 per rank.
     assert "export MKL_NUM_THREADS=1" in text
     assert "export OPENBLAS_NUM_THREADS=1" in text
@@ -393,7 +391,7 @@ def test_render_siesta_omp_threads_kwarg_wins():
     auto-detect.  The wrapper emits exactly the value the user asked
     for so cluster schedulers (which allocate cores explicitly) win."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=4, omp_threads=2)
+    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=4, cpus_per_task=2))
     # As of 2026-06-15, the wrapper exports a SHELL VAR (so it can
     # honor ``-omp N`` and ``OMP_NUM_THREADS`` env at run time) and the
     # numeric value lives in ``_omp_threads_default=N``.  Pin both
@@ -408,7 +406,7 @@ def test_render_siesta_single_process_still_pins_blas():
     physical cores by default (the user wants threading -- BLAS=1 +
     OMP=physical is the canonical recipe, not BLAS-only)."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"))     # no mpi_np
+    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources())     # no mpi_np
     assert "export MKL_NUM_THREADS=1" in text
     assert "export OPENBLAS_NUM_THREADS=1" in text
     # OMP set to physical cores (numerical value, not absent).
@@ -418,7 +416,7 @@ def test_render_siesta_single_process_still_pins_blas():
 def test_render_siesta_mpi_np_one_pins_blas_too():
     """np=1 is single-process semantically; same recipe as no-mpi."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=1)
+    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=1))
     assert "export OPENBLAS_NUM_THREADS=1" in text
     assert "export OMP_NUM_THREADS=" in text
 
@@ -427,8 +425,7 @@ def test_render_siesta_max_memory_emits_ulimit():
     """max_memory_mb kwarg becomes a ``ulimit -v`` soft cap so a
     runaway SIESTA process can't OOM the host."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=4,
-                              max_memory_mb=8192)
+    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=4, max_memory_mb=8192))
     assert "ulimit -v" in text
     # 8192 MB = 8388608 KB.
     assert "8388608" in text
@@ -451,7 +448,7 @@ def test_render_pyscf_never_serialises_threading():
         multiplying.
     """
     _bind()
-    text = render_run_wrapper(Path("/x/y.py"))
+    text = render_run_wrapper(Path("/x/y.py"), resources=Resources())
     for needle in ("MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
         assert needle not in text, (
             f"PySCF wrapper pins {needle!r} -- BLAS pinning is the "
@@ -475,7 +472,7 @@ def test_render_pyscf_never_serialises_threading():
 
 def test_render_pyscf():
     _bind()
-    text = render_run_wrapper(Path("/somewhere/my-job.py"))
+    text = render_run_wrapper(Path("/somewhere/my-job.py"), resources=Resources())
     assert "python my-job.py" in text
     assert 'source activate molbuilder-pySCF' in text
     # PySCF scripts handle their own logging; no stdout redirect.
@@ -492,9 +489,9 @@ def test_render_pyscf_ignores_mpi_np():
         return "\n".join(l for l in text.splitlines()
                          if not l.lstrip("# ").startswith("generated-at"))
     _bind()
-    a = render_run_wrapper(Path("/x/y.py"))
+    a = render_run_wrapper(Path("/x/y.py"), resources=Resources())
     _bind()
-    b = render_run_wrapper(Path("/x/y.py"), mpi_np=8)
+    b = render_run_wrapper(Path("/x/y.py"), resources=Resources(mpi_np=8))
     assert _logic(a) == _logic(b)
 
 
@@ -502,7 +499,7 @@ def test_render_multidot_basename_preserved():
     """``job.spectra.py`` should keep its multi-dotted stem in the
     wrapper text (so users see ``python job.spectra.py``)."""
     _bind()
-    text = render_run_wrapper(Path("/x/job.spectra.py"))
+    text = render_run_wrapper(Path("/x/job.spectra.py"), resources=Resources())
     assert "python job.spectra.py" in text
 
 
@@ -513,14 +510,14 @@ def test_render_multidot_basename_preserved():
 
 def test_render_explicit_env_override():
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), env="my-custom-siesta")
+    text = render_run_wrapper(Path("/x/y.fdf"), env="my-custom-siesta", resources=Resources())
     assert 'source activate my-custom-siesta' in text
 
 
 def test_render_picks_up_config_env_override():
     """Per-machine envs overrides flow through Capabilities -> wrapper."""
     _bind({"siesta": "siesta-ng-v54"})
-    text = render_run_wrapper(Path("/x/y.fdf"))
+    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources())
     assert 'source activate siesta-ng-v54' in text
 
 
@@ -1052,8 +1049,8 @@ def test_pyscf_cold_block_sweeps_by_name_not_by_inventory():
     ever named.  What THIS pin keeps: the PySCF block carries the
     id-keyed glob forms (braced for underscore suffixes) and no suffix
     enumeration."""
-    from molbuilder.runwrap import _cold_restart_aside_block
-    block = _cold_restart_aside_block("myjob", engine="pyscf")
+    from molbuilder.runwrap import _cold_restart_block
+    block = _cold_restart_block("myjob", engine="pyscf")
     assert '"$_warm_label".*' in block
     assert '"${_warm_label}"_*' in block
     assert "myjob.*" in block and "myjob_*" in block
@@ -1083,25 +1080,27 @@ def test_pyscf_wrapper_with_full_inventory_passes_bash_n(tmp_path):
     )
 
 
-def test_pyscf_cold_actually_moves_optimized_xyz_aside(tmp_path):
-    """End-to-end behavior: extract the cold-restart bash block from
-    the runwrap emitter, plant ALL five warm-restart files (each
-    with a distinct sentinel), run the block with ``_cold=1`` under
-    bash, and assert every file got moved into the dated aside dir.
+def test_pyscf_cold_names_every_warm_file_it_would_overwrite(tmp_path):
+    """End-to-end behavior: extract the cold-restart bash block from the
+    runwrap emitter, plant ALL five warm-restart files (each with a distinct
+    sentinel), run the block with ``_cold=1`` under bash, and assert every one
+    of them is NAMED in the refusal -- and that none of them is touched.
 
-    Runs the actual bash block, not a model of it -- catches a bug
-    where the glob entries are present but the move-aside loop has
-    a typo that causes the actual ``mv`` to skip a file (the
-    "branch present but never fires" class from design.md Required
-    tests table).
+    **``--cold`` reports and refuses; ``--force`` proceeds** *(user,
+    2026-08-18)*.  It moved the files into a dated aside directory until then;
+    keeping a state is ``molbuilder checkpoint save`` and it is never
+    automatic.  What this test protects is unchanged: that the sweep reaches
+    every one of the five, run against the real bash rather than a model of it
+    -- the "branch present but never fires" class from design.md's Required
+    tests table.
 
     Uses bash subprocess directly (not the truncated wrapper helper
     -- that cuts at the run-index resolver, BEFORE the cold block
     runs in the rendered wrapper, so it can't exercise this path).
     """
-    from molbuilder.runwrap import _cold_restart_aside_block
+    from molbuilder.runwrap import _cold_restart_block
     job = "myjob"
-    block = _cold_restart_aside_block(job, engine="pyscf")
+    block = _cold_restart_block(job, engine="pyscf")
 
     # The block reads JOB= from the .py script to populate
     # _warm_label.  Plant a minimal script alongside the warm-
@@ -1133,25 +1132,21 @@ def test_pyscf_cold_actually_moves_optimized_xyz_aside(tmp_path):
         capture_output=True, text=True, timeout=15,
         env={**os.environ, **_MANUAL},
     )
-    assert proc.returncode == 0, (
-        f"cold-restart block exited non-zero;\n"
+    assert proc.returncode == 1, (
+        f"--cold with prior state must refuse;\n"
         f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
 
-    # No warm-restart files remain in cwd.
+    named = {ln.split()[-1] for ln in proc.stderr.splitlines()
+             if ln.startswith("[molbuilder]     ") and "checkpoint" not in ln}
     for suffix in _PYSCF_WARM_RESTART_INVENTORY:
-        assert not (tmp_path / f"{job}{suffix}").exists(), (
-            f"--cold did not move {job}{suffix} aside; design.md "
-            f"warm-restart contract violated")
-
-    # Aside dir exists (dated), contains every planted file.
-    aside_dirs = list(tmp_path.glob(f"{job}-restart-aside-*"))
-    assert len(aside_dirs) == 1, (
-        f"expected exactly one aside dir; got {aside_dirs}")
-    moved = sorted(p.name for p in aside_dirs[0].iterdir())
-    expected = sorted(f"{job}{s}" for s in _PYSCF_WARM_RESTART_INVENTORY)
-    assert moved == expected, (
-        f"aside dir contents diverge from planted inventory; "
-        f"got {moved}, expected {expected}")
+        assert f"{job}{suffix}" in named, (
+            f"--cold did not name {job}{suffix}; it would be overwritten "
+            f"with no warning")
+        assert (tmp_path / f"{job}{suffix}").is_file(), (
+            f"{job}{suffix} was touched -- a refusal changes nothing")
+    assert not list(tmp_path.glob(f"{job}-restart-aside-*")), (
+        "the launcher kept a copy; keeping a state is the checkpoint tool's "
+        "job and is never automatic (checkpointing.md § 2)")
 
 
 # --------------------------------------------------------------------- #
@@ -1181,7 +1176,7 @@ def test_every_siesta_warm_suffix_reaches_both_halves_of_the_wrapper(tmp_path):
 
     # Engine is routed by extension, and the basename comes from the path --
     # `.fdf` is what makes this the SIESTA wrapper.
-    script = render_run_wrapper(Path("/somewhere/job.fdf"))
+    script = render_run_wrapper(Path("/somewhere/job.fdf"), resources=Resources())
 
     # The cold-restart aside block, and the warm-detection test, are both in
     # the one script; every suffix must appear for the file-name patterns of

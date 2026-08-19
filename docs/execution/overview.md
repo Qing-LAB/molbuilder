@@ -19,7 +19,7 @@ around.
 
 ## 1. The map — which doc to open
 
-Thirteen documents live here, and they come in **three kinds**. Knowing which kind
+Fourteen documents live here, and they come in **three kinds**. Knowing which kind
 you are reading tells you how much to trust it and what to do when two disagree.
 
 - A **contract** says what a thing *is*. It is the authority. When a contract and
@@ -35,14 +35,15 @@ you are reading tells you how much to trust it and what to do when two disagree.
 |---|---|
 | **Who decides what** — the seven floors, the four routes, which function is the entry point at each floor, and the rules that must never break | **[`architecture.md`](?doc=execution/architecture.md)** |
 | **What ASU Sol actually provides** — node types, partitions, QOS, and how to ask for resources | **[`asu-sol.md`](?doc=execution/asu-sol.md)** |
-| **How declared data becomes a job set** — schema → template → `ParameterSet` → decks, and why benchmarking and running are one pipeline | **[`generator.md`](?doc=execution/generator.md)** |
+| **What every value is and where it came from** — schema → template → `ParameterSet`, and why benchmarking and running are one pipeline | **[`generator.md`](?doc=execution/generator.md)** |
+| **How a value becomes a file** — the preparation steps, in order, and what each engine supplies at each one | **[`script-preparation.md`](?doc=execution/script-preparation.md)** |
 | **Which config setting reaches which part of the system**, and at which step | **[`architecture.md`](?doc=execution/architecture.md)** § 8 |
 | **What differs between a workstation and a cluster** — and what does not | **[`architecture.md`](?doc=execution/architecture.md)** § 9 |
 | **What language is spoken where, and who translates** — the nine vocabularies and every point one becomes another | **[`architecture.md`](?doc=execution/architecture.md)** § 10 |
 | Where a run's files go, what they are named, what a `.fdf`'s reserved comment blocks are, what warm/cold restart means, or what any persisted file's format is | **[`job-contracts.md`](?doc=execution/job-contracts.md)** |
 | What a whole project directory looks like — the **two shapes** (flat and hierarchical), what `prep` does, and why the browser cannot finish a deck | **[`project-layout.md`](?doc=execution/project-layout.md)** |
 | Why a calculation's files all share one name, and what actually makes a run *continue* from an earlier one | **[`run-identity.md`](?doc=execution/run-identity.md)** |
-| What a saved history must always guarantee — the 31 rules behind `molbuilder snapshot` | **[`checkpointing.md`](?doc=execution/checkpointing.md)** |
+| What a saved history must always guarantee — the 31 rules behind `molbuilder checkpoint` | **[`checkpointing.md`](?doc=execution/checkpointing.md)** |
 | How a **finished run** becomes the starting point of the next calculation | **[`handoff-bundle.md`](?doc=execution/handoff-bundle.md)** |
 | What a **stage** is (it is molbuilder's idea, not the engine's) and the file that describes one | **[`engines/stages.md`](?doc=engines/stages.md)** — in `engines/`, because a stage is about parameters |
 | What a **template** is — the file that carries every parameter with its value, and which layer owns each one | **[`engines/template.md`](?doc=engines/template.md)** — in `engines/`, by the same rule: a template is nothing but parameters |
@@ -171,7 +172,7 @@ flowchart TB
 | Generate + run one task | ✅ | ✅ | `running-a-job.md` |
 | Watch a run's live trajectory + monitor | ✅ | ✅ | `running-a-job.md § 4` |
 | `molbuilder.json` config (envs, activation, scheduler) | ✅ | — | `running-a-job.md § 5` |
-| Checkpoint / restore a run (`molbuilder snapshot`) | ✅ | ✅ | `running-a-job.md § 6` |
+| Checkpoint / restore a run (`molbuilder checkpoint`) | ✅ | ✅ | `running-a-job.md § 6` |
 | Staged relaxation ladder | ✅ | ⏳ | `job-system.md § 3` |
 | Parameter / resource sweep | ✅ | — | `job-system.md § 4.2` |
 | Benchmark → recommended resources | ✅ | — | `job-system.md § 7` |

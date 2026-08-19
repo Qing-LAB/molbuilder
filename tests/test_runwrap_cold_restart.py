@@ -6,22 +6,26 @@ U17, 2026-08-12; the suffix list the sentence below used to carry was a
 snapshot of one build, and a file nobody listed was a file --cold
 walked past):
 
-  * ``bash <name>.run.sh --cold`` moves EVERYTHING named after the
-    run's id -- minus what molbuilder itself wrote (deck, template,
-    .psml, wrappers, molbuilder's logs) -- into
-    ``<basename>-restart-aside-<UTC>/`` BEFORE the engine launches.
+  * ``bash <name>.run.sh --cold`` NAMES everything matching the run's
+    id -- minus what molbuilder itself wrote (deck, template, .psml,
+    wrappers, molbuilder's logs) -- and **refuses**, changing nothing;
+    ``--force`` then proceeds and the run overwrites them as it goes.
     SIESTA's ``DM.UseSaveDM`` / ``MD.UseSaveCG`` / ``MD.UseSaveXV``
-    then find nothing, so the calc starts strictly from the .fdf
+    find nothing surviving, so the calc starts strictly from the .fdf
     coords + conditions.
+  * **Nothing is moved or copied** *(user, 2026-08-18)*.  It moved the
+    files into ``<basename>-restart-aside-<UTC>/`` until then, which
+    left two mechanisms for preserving a state; keeping one is
+    ``molbuilder checkpoint save`` and it is never automatic
+    (`checkpointing.md` § 2).
   * Distinct from ``--force``: ``--force`` only resets the
     run-index sequence; the warm-start files stay on disk and the
-    engine still loads them.  ``--cold`` resets the engine state.
+    engine still loads them.  ``--cold`` is about the engine state.
   * Combinable with ``--force`` (cold + restart run-index) and
-    ``--continue`` (cold = no-op when there's nothing to move,
+    ``--continue`` (cold = no-op when there is nothing to name,
     which is the typical case mid-run).
-  * Idempotent: re-running with ``--cold`` on a directory that's
-    already clean emits a "no warm-start files to move" line and
-    proceeds.
+  * Idempotent: re-running with ``--cold`` on a directory that is
+    already clean says so and proceeds.
 
 Motivation (2026-06-14 BDT incident): stage 2 ran without the
 frozen-atom constraints the user intended (separate UI bug).  The
@@ -81,8 +85,12 @@ def _bind():
 
 
 class TestColdFlagText:
-    """Source-text guards: the cold flag must appear in the help,
-    in the arg parser, and as a working aside-move block."""
+    """Source-text guards: the cold flag must appear in the help, in the
+    arg parser, and in a sweep that VISITS every warm-start file.
+
+    *Visits*, not moves: since 2026-08-18 the sweep names what it found and
+    refuses.  Which files it selects is unchanged and is what these check.
+    """
 
     def _siesta_wrapper(self, tmp_path: Path) -> str:
         _bind()
@@ -124,17 +132,17 @@ class TestColdFlagText:
         assert "--cold|--from-scratch)" in text
         assert "_cold=1" in text
 
-    def test_siesta_aside_block_moves_all_warmstart_exts(self, tmp_path):
+    def test_siesta_sweep_visits_all_warmstart_exts(self, tmp_path):
         text = self._siesta_wrapper(tmp_path)
-        # Each of SIESTA's warm-start extensions must appear in the
-        # move loop.  Missing one would leave a partial warm-start
-        # that triggers an inconsistent restart.
+        # Each of SIESTA's warm-start extensions must fall inside the
+        # sweep's globs.  Missing one would leave a file the run then
+        # overwrites without ever having named it.
         for ext in ("DM", "CG", "XV", "LWF", "ZM"):
             assert f"myjob.{ext}" in text, (
                 f"cold block missing myjob.{ext} glob"
             )
 
-    def test_pyscf_aside_block_moves_chk(self, tmp_path):
+    def test_pyscf_sweep_visits_chk(self, tmp_path):
         text = self._pyscf_wrapper(tmp_path)
         assert "myjob.chk" in text
 
@@ -222,6 +230,44 @@ def _truncated_pyscf(tmp_path: Path, basename: str = "myjob") -> Path:
     assert cut > 0, "no exec-python launch line in the PySCF wrapper"
     wrapper.write_text(text[:cut] + "\nexit 0\n")
     return wrapper
+
+
+def _cold(wrapper, tmp_path, *args):
+    """Run ``--cold`` and return ``(proc, the set of files it NAMED)``.
+
+    **``--cold`` reports what it would overwrite and refuses; ``--force``
+    proceeds** *(user, 2026-08-18)*.  It moved those files into a timestamped
+    aside directory until then, and that is what the tests below used to read.
+
+    What they were protecting is unchanged and is why they are repointed
+    rather than retired: **which files the name sweep selects.**  The sweep
+    picks the same files; they are now named in a refusal instead of moved,
+    so the report is where the selection is visible.
+    """
+    proc = subprocess.run(
+        ["bash", str(wrapper), "--cold", *args], cwd=tmp_path,
+        capture_output=True, text=True, timeout=20,
+        # U10's launch-door gate: these tests exercise the SWEEP; the claim
+        # is the deliberate manual door.
+        env={**os.environ, "MB_LAUNCHED_BY": "manual"})
+    named, collecting = set(), False
+    for ln in proc.stderr.splitlines():
+        if "would OVERWRITE prior state:" in ln:
+            collecting = True
+            continue
+        if collecting:
+            m = re.match(r"^\[molbuilder\]     (\S.*)$", ln)
+            if m:
+                named.add(m.group(1))
+            else:
+                collecting = False
+    return proc, named
+
+
+def _no_aside(tmp_path) -> bool:
+    """Nothing was moved anywhere.  The launcher keeps no copies -- keeping a
+    state is ``molbuilder checkpoint save`` and it is never automatic."""
+    return not list(tmp_path.glob("*-restart-aside-*"))
 
 
 def _has_bash() -> bool:
@@ -328,16 +374,12 @@ class TestTrialLabelledCold:
         wrapper.write_text(text[:cut] + "\nexit 0\n")
         for ext in ("DM", "XV", "CG"):
             (tmp_path / f"JOB-G1K4C6.{ext}").write_text(f"trial {ext}")
-        proc = subprocess.run(
-            ["bash", str(wrapper), "--cold"], cwd=tmp_path,
-            capture_output=True, text=True, timeout=20,
-            env={**os.environ, "MB_LAUNCHED_BY": "manual"})
-        assert proc.returncode == 0, proc.stderr
+        proc, named = _cold(wrapper, tmp_path)
+        assert proc.returncode == 1, proc.stderr
         for ext in ("DM", "XV", "CG"):
-            assert not (tmp_path / f"JOB-G1K4C6.{ext}").exists(), (
-                f"trial-labelled JOB-G1K4C6.{ext} survived --cold")
-        asides = list(tmp_path.glob("JOB-G1K4C6-restart-aside-*"))
-        assert len(asides) == 1, asides
+            assert f"JOB-G1K4C6.{ext}" in named, (
+                f"trial-labelled JOB-G1K4C6.{ext} was not named by --cold")
+        assert _no_aside(tmp_path)
 
 
 @pytest.mark.skipif(not _has_bash(), reason="bash not available")
@@ -447,31 +489,15 @@ class TestColdBehaviour:
         # Plant warm-start files the cold block should move.
         for ext in ("DM", "CG", "XV", "LWF", "ZM"):
             (tmp_path / f"myjob.{ext}").write_text(f"fake {ext}")
-        proc = subprocess.run(
-            ["bash", str(wrapper), "--cold"],
-            cwd=tmp_path,
-            capture_output=True, text=True, timeout=20,
-            # U10's launch-door gate: these tests exercise the SWEEP;
-            # the claim is the deliberate manual door
-            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
-        )
-        assert proc.returncode == 0, (
-            f"wrapper exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}"
-        )
-        # Originals are gone.
+        proc, named = _cold(wrapper, tmp_path)
+        assert proc.returncode == 1, (
+            f"--cold with prior state must refuse\nstderr:\n{proc.stderr}")
         for ext in ("DM", "CG", "XV", "LWF", "ZM"):
-            assert not (tmp_path / f"myjob.{ext}").exists(), (
-                f"myjob.{ext} should have been moved aside"
-            )
-        # An aside dir was created and holds the originals.
-        asides = list(tmp_path.glob("myjob-restart-aside-*"))
-        assert len(asides) == 1, f"expected 1 aside dir, got {asides}"
-        aside = asides[0]
-        for ext in ("DM", "CG", "XV", "LWF", "ZM"):
-            assert (aside / f"myjob.{ext}").exists(), (
-                f"aside dir missing myjob.{ext}"
-            )
+            assert f"myjob.{ext}" in named, (
+                f"myjob.{ext} would be overwritten and was not named")
+            assert (tmp_path / f"myjob.{ext}").exists(), (
+                f"myjob.{ext} was touched -- a refusal changes nothing")
+        assert _no_aside(tmp_path)
 
     def test_cold_with_no_warmstart_files_is_noop(self, tmp_path):
         """Idempotent: ``--cold`` on a clean directory must not
@@ -592,35 +618,16 @@ class TestColdBehaviourSystemLabelMismatch:
         for ext in ("DM", "CG", "XV", "LWF", "ZM"):
             (tmp_path / f"siesta-foo.{ext}").write_text(f"fake {ext}")
 
-        proc = subprocess.run(
-            ["bash", str(wrapper), "--cold"],
-            cwd=tmp_path,
-            capture_output=True, text=True, timeout=20,
-            # U10's launch-door gate: these tests exercise the SWEEP;
-            # the claim is the deliberate manual door
-            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
-        )
-        assert proc.returncode == 0, (
-            f"wrapper exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}"
-        )
-        # Originals -- SystemLabel-keyed names -- must be gone.
+        proc, named = _cold(wrapper, tmp_path)
+        assert proc.returncode == 1, proc.stderr
+        # SystemLabel-keyed names must be NAMED -- pre-fix the glob only
+        # matched siesta-foo-stage2.{ext} (basename-keyed) and silently
+        # missed these, which under the old behaviour meant they were not
+        # moved and under this one means they are overwritten unannounced.
         for ext in ("DM", "CG", "XV", "LWF", "ZM"):
-            f = tmp_path / f"siesta-foo.{ext}"
-            assert not f.exists(), (
-                f"siesta-foo.{ext} (SystemLabel-keyed) should "
-                f"have been moved aside by --cold.  Pre-fix the "
-                f"glob only matched siesta-foo-stage2.{ext} "
-                f"(basename-keyed) and silently missed this file."
-            )
-        # Aside dir contains them.
-        asides = list(tmp_path.glob("siesta-foo-stage2-restart-aside-*"))
-        assert len(asides) == 1
-        aside = asides[0]
-        for ext in ("DM", "CG", "XV", "LWF", "ZM"):
-            assert (aside / f"siesta-foo.{ext}").exists(), (
-                f"aside dir missing siesta-foo.{ext}"
-            )
+            assert f"siesta-foo.{ext}" in named, (
+                f"siesta-foo.{ext} (SystemLabel-keyed) was not named")
+        assert _no_aside(tmp_path)
 
     def test_both_systemlabel_and_basename_files_move(self, tmp_path):
         """Defensive: if BOTH naming patterns exist (a project
@@ -638,26 +645,12 @@ class TestColdBehaviourSystemLabelMismatch:
         (tmp_path / "job-stage3.DM").write_text("fake")
         (tmp_path / "job-stage3.XV").write_text("fake")
 
-        proc = subprocess.run(
-            ["bash", str(wrapper), "--cold"],
-            cwd=tmp_path,
-            capture_output=True, text=True, timeout=20,
-            # U10's launch-door gate: these tests exercise the SWEEP;
-            # the claim is the deliberate manual door
-            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
-        )
-        assert proc.returncode == 0
-        # All four should be gone.
+        proc, named = _cold(wrapper, tmp_path)
+        assert proc.returncode == 1, proc.stderr
+        # All four -- both keyings -- must be named.
         for name in ("job.DM", "job.XV", "job-stage3.DM", "job-stage3.XV"):
-            assert not (tmp_path / name).exists(), (
-                f"{name} should have been moved aside under --cold"
-            )
-        # And present in the aside.
-        asides = list(tmp_path.glob("job-stage3-restart-aside-*"))
-        assert len(asides) == 1
-        aside = asides[0]
-        for name in ("job.DM", "job.XV", "job-stage3.DM", "job-stage3.XV"):
-            assert (aside / name).exists()
+            assert name in named, f"{name} was not named by --cold"
+        assert _no_aside(tmp_path)
 
     def test_quoted_systemlabel_stripped_in_glob(self, tmp_path):
         """SIESTA accepts ``SystemLabel "my job"`` (quoted, with
@@ -676,24 +669,15 @@ class TestColdBehaviourSystemLabelMismatch:
         (tmp_path / "foo.DM").write_text("fake")
         (tmp_path / "foo.XV").write_text("fake")
 
-        proc = subprocess.run(
-            ["bash", str(wrapper), "--cold"],
-            cwd=tmp_path,
-            capture_output=True, text=True, timeout=20,
-            # U10's launch-door gate: these tests exercise the SWEEP;
-            # the claim is the deliberate manual door
-            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
-        )
-        assert proc.returncode == 0, (
-            f"wrapper exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}"
-        )
-        assert not (tmp_path / "foo.DM").exists(), (
+        proc, named = _cold(wrapper, tmp_path)
+        assert proc.returncode == 1, proc.stderr
+        assert "foo.DM" in named, (
             "quoted SystemLabel must be quote-stripped before globbing "
             "-- pre-fix the glob looked for ``\"foo\".DM`` and missed "
-            "the unquoted filename SIESTA actually wrote."
+            "the unquoted filename SIESTA actually wrote, so the file "
+            "would be overwritten with no warning."
         )
-        assert not (tmp_path / "foo.XV").exists()
+        assert "foo.XV" in named
 
     def test_lowercase_systemlabel_keyword_still_matched(
             self, tmp_path):
@@ -723,16 +707,9 @@ class TestColdBehaviourSystemLabelMismatch:
         wrapper.write_text(text[:end] + "\nexit 0\n")
         (tmp_path / "foo.DM").write_text("fake")
 
-        proc = subprocess.run(
-            ["bash", str(wrapper), "--cold"],
-            cwd=tmp_path,
-            capture_output=True, text=True, timeout=20,
-            # U10's launch-door gate: these tests exercise the SWEEP;
-            # the claim is the deliberate manual door
-            env={**os.environ, "MB_LAUNCHED_BY": "manual"},
-        )
-        assert proc.returncode == 0
-        assert not (tmp_path / "foo.DM").exists(), (
+        proc, named = _cold(wrapper, tmp_path)
+        assert proc.returncode == 1, proc.stderr
+        assert "foo.DM" in named, (
             "lowercase ``systemlabel`` keyword must still be matched "
             "by the awk (uses tolower($1) for portability across "
             "gawk / mawk / BSD awk)"
@@ -788,16 +765,11 @@ class TestNameSweep:
         (tmp_path / "myjob.DM").write_text("x")
         (tmp_path / "myjob.NEWFANGLED_STATE").write_text("x")
         (tmp_path / "myjob.orbdata.v99").write_text("x")
-        proc = subprocess.run(
-            ["bash", str(wrapper), "--cold"], cwd=tmp_path,
-            capture_output=True, text=True, timeout=20,
-            env={**os.environ, "MB_LAUNCHED_BY": "manual"})
-        assert proc.returncode == 0, proc.stderr
-        aside = list(tmp_path.glob("myjob-restart-aside-*"))
-        assert len(aside) == 1
-        moved = {p.name for p in aside[0].iterdir()}
+        proc, named = _cold(wrapper, tmp_path)
+        assert proc.returncode == 1, proc.stderr
         assert {"myjob.DM", "myjob.NEWFANGLED_STATE",
-                "myjob.orbdata.v99"} <= moved
+                "myjob.orbdata.v99"} <= named
+        assert _no_aside(tmp_path)
 
     def test_what_molbuilder_wrote_survives_the_sweep(self, tmp_path):
         """§ 4.1's exception: everything molbuilder wrote stays put, and
@@ -808,8 +780,8 @@ class TestNameSweep:
         claimed prior outputs "survive by construction (hyphen-joined)"
         -- false for a FLAT STAGED calculation, whose
         ``myjob_01_coarse-run0.out`` matches the ``myjob_*`` glob:
-        ``--cold`` on stage 2 moved stage 1's stdout and timing history
-        into the aside dir."""
+        ``--cold`` on stage 2 counted stage 1's stdout and timing history
+        as engine state."""
         wrapper = _truncated_siesta(tmp_path)
         (tmp_path / "myjob.template.toml").write_text("x")
         (tmp_path / "myjob.molwatch.log").write_text("x")
@@ -821,20 +793,22 @@ class TestNameSweep:
         (tmp_path / "myjob.util.csv").write_text("samples")
         (tmp_path / "myjob.runwrap-20260813-000000.log").write_text("session")
         (tmp_path / "myjob.DM").write_text("state")
-        proc = subprocess.run(
-            ["bash", str(wrapper), "--cold"], cwd=tmp_path,
-            capture_output=True, text=True, timeout=20,
-            env={**os.environ, "MB_LAUNCHED_BY": "manual"})
-        assert proc.returncode == 0, proc.stderr
+        proc, named = _cold(wrapper, tmp_path)
+        # The engine state IS named -- that is the whole point of the run.
+        assert proc.returncode == 1, proc.stderr
+        assert "myjob.DM" in named
         for kept in ("myjob.fdf", "myjob.run.sh", "myjob.template.toml",
                      "myjob.molwatch.log", "myjob-run0.out", "myjob.out",
                      "myjob_01_coarse-run0.out",
                      "myjob-run0.scf-timing.log", "myjob.monitor.log",
                      "myjob.util.csv", "myjob.runwrap-20260813-000000.log"):
-            assert (tmp_path / kept).is_file(), (
-                f"{kept} went into the aside dir -- molbuilder's own "
-                f"history treated as engine state")
-        assert not (tmp_path / "myjob.DM").exists()
+            assert kept not in named, (
+                f"{kept} was named as prior engine state -- molbuilder's own "
+                f"history is the § 4.1 exception and is not what --cold is "
+                f"warning about")
+            assert (tmp_path / kept).is_file(), f"{kept} was touched"
+        # And the engine state is still on disk: a refusal changes nothing.
+        assert (tmp_path / "myjob.DM").is_file()
 
 
 def test_the_exception_is_anchored_on_the_id_not_widened_to_a_star():
@@ -862,9 +836,9 @@ def test_the_exception_is_anchored_on_the_id_not_widened_to_a_star():
     element-named, not run-named, and the aside directories are what the sweep
     must never recurse into.
     """
-    from molbuilder.runwrap import _cold_restart_aside_block
+    from molbuilder.runwrap import _cold_restart_block
 
-    block = _cold_restart_aside_block("myjob", engine="pyscf")
+    block = _cold_restart_block("myjob", engine="pyscf")
     line = [l for l in block.splitlines()
             if l.strip().endswith(") continue ;;")]
     assert len(line) == 1, "the exception case arm moved or multiplied"
@@ -880,3 +854,89 @@ def test_the_exception_is_anchored_on_the_id_not_widened_to_a_star():
     # ...and both spellings are present, because the sweep visits both.
     assert any("_warm_label" in p for p in pats)
     assert any(p.startswith("myjob") for p in pats)
+
+
+# --------------------------------------------------------------------- #
+#  The --help text is part of the contract, and it drifted              #
+# --------------------------------------------------------------------- #
+
+def _usage(engine: str) -> str:
+    """The USAGE heredoc a generated wrapper prints for ``-h``.
+
+    Rendered, not read out of the generator's source: the defect this guards
+    was in the *emitted* text, and a test that reads the f-strings would have
+    passed just as happily.
+    """
+    from molbuilder.runwrap import render_run_wrapper
+    from molbuilder.jobset.model import Resources
+
+    deck = "deck.fdf" if engine == "siesta" else "deck.py"
+    text = render_run_wrapper(deck, resources=Resources(mpi_np=1), env="e")
+    start = text.index("cat <<USAGE")
+    return text[start:text.index("\nUSAGE\n", start)]
+
+
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_the_help_does_not_promise_a_backup_the_launcher_never_makes(engine):
+    """**The one way this text can be wrong that costs a user their data.**
+
+    ``--cold`` moved the prior state into a timestamped aside directory until
+    2026-08-18, when it became a refusal (`job-contracts.md` § 4.1: *"the
+    safety net for the other direction is a REFUSAL, not a copy"*).  SIESTA's
+    help was not swept and went on promising the backup for a day -- while
+    citing § 4.1, the section stating its opposite.  A reader who believed it
+    would pass ``--cold --force`` expecting a copy and get an overwrite.
+
+    Nothing read the generated help, which is why only one of the two engines
+    was corrected.  This reads it.
+    """
+    text = _usage(engine)
+    for promise in ("backup dir", "aside", "restart-aside",
+                    "move EVERYTHING", "moves EVERYTHING"):
+        assert promise not in text, (
+            f"{engine}: --help offers `{promise}`; the launcher names the "
+            f"files and refuses, and --force overwrites them "
+            f"(job-contracts.md § 4.1)")
+
+
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_the_help_says_what_cold_actually_does(engine):
+    """The other half: absence of the wrong claim is not presence of the
+    right one.  A reader must be able to learn from ``-h`` that ``--cold``
+    alone changes nothing, and that keeping a state is a separate verb."""
+    text = _usage(engine)
+    assert "REFUSES" in text and "--force then" in text, (
+        f"{engine}: --help does not say that --cold refuses and --force "
+        f"proceeds")
+    assert "molbuilder\n                   checkpoint save" in text, (
+        f"{engine}: --help does not point at the tool that keeps a state; "
+        f"`checkpointing.md` § 2 -- it is never automatic, so the one place "
+        f"a user is told about discarding state must name it")
+
+
+def test_both_engines_get_that_entry_from_one_writer():
+    """**The structural half, and the reason the drift was possible.**
+
+    The sweep is engine-independent *by construction* -- it reads no list of
+    extensions -- so the entry describing it is one fact.  Written out per
+    engine, the two copies disagreed for a day.  Here the shared body is
+    identical and only the EXAMPLE of what a run leaves behind differs.
+    """
+    import re as _re
+    si, py = _usage("siesta"), _usage("pyscf")
+
+    def entry(text):
+        start = text.index("  --cold,")
+        rest = text[start:]
+        # the entry ends where the next flag begins
+        m = _re.search(r"\n  -(?!-cold|-from-scratch)\S", rest)
+        return rest[:m.start()] if m else rest
+
+    a, b = entry(si), entry(py)
+    assert ".DM/.CG/.XV among them" in a
+    assert ".chk and _optimized.xyz among them" in b
+    # everything except the example line is character-for-character shared
+    strip = lambda t: [l for l in t.splitlines() if "among them" not in l]
+    assert strip(a) == strip(b), (
+        "the two engines' --cold entries have diverged again; the rule has "
+        "one writer, `runwrap._cold_usage_entry`")

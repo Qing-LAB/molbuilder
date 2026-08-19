@@ -535,10 +535,15 @@ list, so the ladder lives in `task.json`, never in the config
   decide what to do about it — which is what you were doing between stages
   anyway.
 
-  > **PySCF is different, and the asymmetry is real.** Its ladder runs as a
-  > loop inside one process (§ 4.2), so its `on_nonconvergence` is ordinary
-  > control flow in the emitted script. SIESTA's stages are separate jobs
-  > started by a person, so there is no equivalent for it to control.
+  > **PySCF was different while its ladder ran as a loop inside one process**
+  > (§ 4.2): its `on_nonconvergence` was ordinary control flow in the emitted
+  > script, where SIESTA's stages are separate jobs started by a person and so
+  > have no equivalent for it to control.
+  >
+  > ⚠ **The asymmetry is retired 2026-08-18**
+  > ([`stages.md § 1.1a`](?doc=engines/stages.md)): both engines run N decks as
+  > N jobs, so what happens after a rung fails to converge is once again the gap
+  > between two jobs for both of them.
 - **The warm-file declaration is chosen for correctness, not convenience.**
   Each stage declares what it would take from a run it is continued from — and
   **a stage whose description says `restart: clean` declares nothing at all**,
@@ -619,8 +624,12 @@ heading named `bench/to_jobset.py::sweep_to_jobset` as the builder until
 > `.py`** (see [`engines/tuning.md`](?doc=engines/tuning.md)), not as separate
 > scheduled jobs. So **"a ladder of separately-scheduled jobs" is a SIESTA-only
 > reality right now** — and the two are genuinely different objects, not two
-> spellings of one: PySCF's stages advance in memory inside a single process,
+> spellings of one: PySCF's stages advanced in memory inside a single process,
 > SIESTA's advance because a person prepped the next one.
+>
+> ⚠ **One object as of 2026-08-18** ([`stages.md § 1.1a`](?doc=engines/stages.md)):
+> a PySCF ladder is N separately-prepped jobs too, so *"a ladder of
+> separately-scheduled jobs"* is no longer SIESTA-only.
 > PySCF, transport, and spectra producers are planned (§ 8).
 
 ---
@@ -1085,7 +1094,7 @@ stalled stage is visible without waiting for it to finish.
 > covering the root and every stage beneath it — because a history rooted inside
 > `01_coarse/` cannot restore the pseudopotentials that live one level up, and
 > *"go back to coarse and try a different tight"* needs a history containing
-> both. Tagging a converged stage is `molbuilder snapshot tag` at the
+> both. Tagging a converged stage is `molbuilder checkpoint tag` at the
 > calculation; the tag names a state of the whole folder, which is the only thing
 > a restore can put back.
 
@@ -1261,7 +1270,7 @@ The `JobSet` model and persistence; the description-to-plan derivation at
 verbs (`describe` / `prep` / `plan` / `submit` / `summarize` / `status`) in
 both `submit` and `direct` modes; SLURM submission with routing domains, **one
 job per invocation**; and the full benchmark workflow through the same loop
-(§ 7). Saving and re-entering a calculation's states is `molbuilder snapshot`
+(§ 7). Saving and re-entering a calculation's states is `molbuilder checkpoint`
 ([`running-a-job.md § 6`](?doc=execution/running-a-job.md)). *(Until
 2026-08-12 this paragraph shipped "the SIESTA ladder producer
 (`stages_to_jobset`) and the benchmark sweep producer" and counted four verbs
