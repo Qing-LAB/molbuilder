@@ -538,7 +538,7 @@ def _stub_pyscf_summary(out_path):
     # PySCFConfig CLI override coverage.  Same shape as the SIESTA
     # version but spans method / SCF / opt / runtime tiers.
     ("--job-name",         "demo",       "job_name",          "demo"),
-    ("--charge",           "-2",         "charge",            -2),
+    ("--net-charge",       "-2",         "net_charge",        -2),
     ("--spin",             "1",          "spin",              1),
     ("--method",           "UKS",        "method",            "UKS"),
     ("--functional",       "PBE",        "functional",        "PBE"),
@@ -616,40 +616,38 @@ def test_pyscf_cli_bool_flags_round_trip(
 # ---- Layer 3: default values render in the generated FDF -------- #
 
 
-@pytest.mark.parametrize("expected_substr", [
-    "MeshCutoff 300.0 Ry",
-    "PAO.BasisSize DZP",
-    "PAO.EnergyShift 0.01 Ry",
-    "XC.functional GGA",
-    "XC.authors    PBE",
-    "SCF.Mixer.Weight   0.02",
-    "SCF.Mixer.History    8",
-    "DM.Tolerance      1e-05",
-    "DM.EnergyTolerance 1e-04 eV",
-    "MaxSCFIterations  1000",
-    "ElectronicTemperature 300.0 K",
-    "SolutionMethod    diagon",
-    "MD.TypeOfRun CG",
-    "MD.Steps 200",
-    "MD.MaxForceTol 0.02 eV/Ang",
-    "MD.MaxDispl 0.05 Ang",
-    "WriteForces        .true.",
-    "WriteCoorStep      .true.",
-    "WriteCoorXmol      .true.",
-    "WriteMDhistory     .true.",
-    # The three UseSave lines are NOT here any more, and their absence is the
-    # assertion: the shipped default is `restart='clean'`, so a default deck
-    # carries none of SIESTA's restart group (run-identity.md § 4).  They used
-    # to appear because three booleans defaulted True and the renderer never
-    # read `restart` at all -- a default deck that resumed without anyone
-    # asking.  What the group does now is pinned in
-    # tests/test_restart_group.py, both halves in one test.
+@pytest.mark.parametrize("keyword,expected", [
+    ("MeshCutoff", "300.0 Ry"),
+    ("PAO.BasisSize", "DZP"),
+    ("PAO.EnergyShift", "0.01 Ry"),
+    ("XC.functional", "GGA"),
+    ("XC.authors", "PBE"),
+    ("SCF.Mixer.Weight", "0.02"),
+    ("SCF.Mixer.History", "8"),
+    ("DM.Tolerance", "1e-05"),
+    ("DM.EnergyTolerance", "1e-04 eV"),
+    ("MaxSCFIterations", "1000"),
+    ("ElectronicTemperature", "300.0 K"),
+    ("SolutionMethod", "diagon"),
+    ("MD.TypeOfRun", "CG"),
+    ("MD.Steps", "200"),
+    ("MD.MaxForceTol", "0.02 eV/Ang"),
+    ("MD.MaxDispl", "0.05 Ang"),
+    ("WriteForces", ".true."),
+    ("WriteCoorStep", ".true."),
+    ("WriteCoorXmol", ".true."),
+    ("WriteMDhistory", ".true."),
 ])
-def test_siesta_default_values_render_in_fdf(expected_substr):
-    """Each scalar/bool default in SiestaConfig must appear with the
-    expected label/value in the rendered FDF.  Catches "field is wired
-    to the CLI but the FDF generator ignores its value" mutations
-    (e.g. mesh_cutoff 300 -> 100 with no test failure)."""
+def test_siesta_default_values_render_in_fdf(keyword, expected):
+    """Each scalar/bool default in SiestaConfig must reach the FDF with the
+    expected VALUE.  Catches "field is wired to the CLI but the FDF generator
+    ignores its value" mutations (e.g. mesh_cutoff 300 -> 100 with no test
+    failure).
+
+    Asked through ``_deck.assert_fdf``, which compares the way ``fdf_get``
+    does.  These were exact substrings including the column padding until
+    2026-08-19, so widening one field by a single space -- a change libfdf
+    cannot perceive -- failed thirteen of them."""
     from molbuilder.siesta import SiestaConfig, render_fdf
     from molbuilder.structure import Structure
     s = Structure(
@@ -657,10 +655,8 @@ def test_siesta_default_values_render_in_fdf(expected_substr):
         positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
         title="h2", vacuum=(12.0, 12.0, 12.0))
     fdf = render_fdf(s, SiestaConfig())
-    assert expected_substr in fdf, (
-        f"missing default substring {expected_substr!r}.\n"
-        f"FDF output (first 4kB):\n{fdf[:4000]}"
-    )
+    from _deck import assert_fdf
+    assert_fdf(fdf, keyword, expected)
 
 
 # ---- Modify electrode-spec parser is case-insensitive on key ----- #

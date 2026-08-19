@@ -18,6 +18,10 @@ design misleads at the file's most-read lines.)*
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:                      # annotations only
+    from .shape import Shape
+
 import json
 import os
 import re

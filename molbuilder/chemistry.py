@@ -46,10 +46,11 @@ are NOT counted.
 
 from __future__ import annotations
 
+
 import fnmatch
 import math
 from dataclasses import dataclass, field
-from typing import (Any, Dict, List, Literal, Optional, Protocol, Sequence,
+from typing import (Any, Dict, Iterable, List, Literal, Optional, Protocol, Sequence,
                     Tuple, Type)
 
 import numpy as np
@@ -792,7 +793,6 @@ def analyze_structure(struct: Structure) -> ChemistryAnalysis:
     """
     n_e = total_electrons(struct, 0)
     elements_sorted = sorted({el.capitalize() for el in struct.elements})
-    metal_set = set(elements_sorted)
 
     # Categorize present metals.  Iterate the SORTED element list, NOT the
     # frozensets: a frozenset yields hash-order, which CPython randomizes per
@@ -1032,7 +1032,7 @@ def expected_pH7_peptide_charge(struct: Structure) -> Optional[int]:
            ``formal_charge_from_phosphates`` instead.
 
     Used by validators to surface the gap between
-    ``cfg.charge = 0`` (default neutral build) and the physiological
+    ``cfg.net_charge = 0`` (default neutral build) and the physiological
     charge state the user often actually wants.  Never raises; never
     silently mutates the input.
     """
@@ -1128,7 +1128,7 @@ def resolve_net_charge(struct: Structure,
 
     The rule lives here so the SIESTA and PySCF generators (which
     name their dataclass fields differently -- ``cfg.net_charge`` vs
-    ``cfg.charge``) don't each carry their own copy:
+    ``cfg.net_charge``) don't each carry their own copy:
 
       1. Explicit override wins.  ``0`` is meaningful (forces neutral,
          disables auto-detection); only ``None`` triggers the

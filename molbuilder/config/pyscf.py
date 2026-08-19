@@ -176,19 +176,32 @@ class PySCFConfig:
         # shared helper so the regex has ONE home.
         "validate": _validate_basename("job_name"),
     })
-    charge: Optional[int] = field(default=None, metadata={
+    # RENAMED from ``charge`` 2026-08-19, when the catalogue merged this with
+    # SIESTA's ``net_charge``: one question, one name.  ``net_charge`` is the
+    # survivor because ``charge`` is overloaded in this codebase -- atomic
+    # partial charges, formal charges, MolView's per-atom charge -- and reusing
+    # it for the whole system's charge invites exactly the fusing-things-that-
+    # sound-alike risk `template.md` § 6.3's merge gate exists to catch.
+    net_charge: Optional[int] = field(default=None, metadata={
         "category": ("system",),
         "section": "System",
         # Run-profile identity — molecule's charge state.
         "workflow_group": "profile",
         "label":   "Net charge",
-        "engine_key":  'gto.M(charge=...)',
-        "null_label": "(auto)",
-        "help": ("net charge.  Default (auto) only deduces a value "
-                 "for DNA / RNA — one negative charge per backbone "
-                 "phosphate.  For everything else (peptide, SMILES, "
-                 "PDB load) auto resolves to 0; set this explicitly "
-                 "when working with a charged species."),
+        "engine_key":  "NetCharge (SIESTA) | gto.M(charge=...) (PySCF)",
+        "item_kind": "deck",
+        "expands": ("NetCharge", "gto.M"),
+        "null_label": "(auto-detect from phosphates)",
+        "range": (-10, 10),
+        "help": ("Net charge of the system, in units of |e|.  Default "
+                 "(blank) auto-detects from phosphate protonation -- one "
+                 "negative charge per backbone phosphate, which is right "
+                 "for DNA/RNA from tleap.  For everything else (peptide, "
+                 "SMILES, PDB load) auto resolves to 0, so set this "
+                 "EXPLICITLY for a charged species: carboxylates "
+                 "(Asp/Glu), protonated amines (Lys/Arg/His+), "
+                 "sulfonates.  Sign convention: -1 = one extra electron; "
+                 "+1 = one missing electron."),
     })
     spin: int = field(default=0, metadata={
         "category": ("system",),

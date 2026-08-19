@@ -603,7 +603,7 @@ class TestPseudosEndpoint:
         assert body["ok"] is True
         assert body["metals"] == []
         sug = body["suggested"]["pyscf"]
-        assert sug["charge"] == 0
+        assert sug["net_charge"] == 0
         assert sug["spin"]   == 0
         assert sug["method"] == "RKS"
 

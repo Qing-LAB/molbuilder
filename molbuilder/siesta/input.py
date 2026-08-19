@@ -910,7 +910,6 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # before any FDF text is generated so error-severity issues block
     # emission cleanly.  Warnings print to stderr but the run proceeds.
     # See molbuilder.validation and docs/design.md for the check list.
-    from ..validation import validate, report
     # The validation_struct mirrors the input struct but uses the FINAL
     # post-positioning ``positions`` array (so geometry-based checks
     # see what SIESTA will actually read).  CRITICAL: must carry the
@@ -951,7 +950,11 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         vacuum        = struct.vacuum,
         pbc           = struct.pbc,
     )
-    report(validate(validation_struct, cfg, cell=cell))
+    # The gate is NOT run here.  `render_deck` owns step 3.3 and applies it
+    # to the subject this spec names -- the wrapped coordinates and the
+    # resolved cell, which is what the deck actually expresses.  Running it
+    # here as well gave the step two owners judging two different
+    # structures (`script-preparation.md` § 4.3).
 
     # WHAT THE DECK DERIVED — the per-render context, filled in as the writer
     # works each value out and read by everything downstream of it: the ONE
@@ -1028,6 +1031,11 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                       lambda s, c: _troubleshooting(s, c)),
         ),
         line=_deck_line,
+        # W10's context, DECLARED rather than only closed over: the same dict
+        # `_deck_line`, the layout and the record blocks read.  Handing it to
+        # the form costs nothing and is what lets a reader outside this module
+        # see where `block_size` came from.
+        derived=_derived,
         note_lead=_layout.note_lead,
         # section_title: the framework's default.  Both engines write a
         # heading as a `#` comment, so both restated the default verbatim
@@ -1054,6 +1062,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                                emitted=_derived.get("block_size"))),
         created_by="molbuilder render_fdf",
         check_rules=_layout.check_rules,
+        # WHAT the settings gate judges: the structure as this deck
+        # expresses it, not as it arrived.
+        validate_subject=lambda s, c: (validation_struct, {"cell": cell}),
     )
     def _science(struct, cfg) -> str:
         """The deck, built in the order SIESTA reads it.

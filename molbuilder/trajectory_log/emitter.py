@@ -254,7 +254,16 @@ class MolwatchEmitter:
                       * self.HARTREE_BOHR_TO_EV_ANG  # eV/Ang
         f_mag    = _mw_np.sqrt((F * F).sum(axis=1))
         max_f    = float(f_mag.max()) if f_mag.size else 0.0
-        scf      = list(self._scf_buf)
+        # `_mw_`-PREFIXED LIKE EVERYTHING ELSE THIS CLASS BINDS.  The
+        # deck is a PROGRAM: it does `from pyscf import gto, scf, dft`,
+        # and a bare `scf` here rebinds that module to a list for the
+        # rest of this function.  Nothing in this function reads the
+        # module today, so nothing breaks today -- and that is exactly
+        # the state in which the next edit inside it reaches for
+        # `scf.RHF` and silently gets a list of dicts.  The convention
+        # this class already follows (`_mw_np`, `_mw_time`) exists so
+        # molbuilder's machinery cannot take a name the engine owns.
+        _mw_scf  = list(self._scf_buf)
         idx      = self._step
         with open(self.path, 'a') as fh:
             fh.write(f"==== molwatch step {idx} begin ====\n")
@@ -273,7 +282,7 @@ class MolwatchEmitter:
             fh.write(f"max_force (eV/Ang): {max_f:.8f}\n")
             fh.write("scf_history begin\n")
             fh.write("#  cycle      energy(eV)         delta_E(eV)        gnorm(eV/Ang)            ddm        wall_time(s)\n")
-            for c in scf:
+            for c in _mw_scf:
                 g_str = (f"{c['gnorm']:.8e}" if c['gnorm'] is not None
                          else 'None')
                 d_str = (f"{c['ddm']:.8e}" if c['ddm'] is not None

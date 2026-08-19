@@ -20,7 +20,6 @@ identifier, never a parser target (`job-contracts.md` § 6.3).
 from __future__ import annotations
 
 import datetime
-import json
 import re
 from pathlib import Path
 from typing import Dict, List, Optional

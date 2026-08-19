@@ -804,12 +804,22 @@ optional = true
 help = "comma-separated species order (e.g. 'C,H,S,Au')"
 
 [item.net_charge]
-kind = "engine"
+# MERGED 2026-08-19.  This was two items -- `net_charge` (SIESTA) and `charge`
+# (PySCF) -- two names for one question, which is the defect § 6.3's merge rule
+# was rewritten to end and named as its own worked example.  All seven fields
+# rule 4 gates on already agreed; only the spellings differed.
+#
+# `kind = "deck"` with no anchor is what § 6.3 says a merged item becomes, and
+# it is not a new shape: `relax_steps` and `spin_total` already declare several
+# keywords and let the writer pick which one this run calls for.  The check
+# gate demands only the keyword the emitted line actually names, so SIESTA is
+# asked for `NetCharge` and PySCF for `gto.M` -- never each other's.
+kind = "deck"
 category = ["system"]
-engines = ["siesta"]
-anchor = "NetCharge"
-engine_key = "NetCharge"
-manual = "SIESTA 5.4.2 §6.23 'Systems with net charge or dipole, and electric fields'"
+engines = ["siesta", "pyscf"]
+expands = ["NetCharge", "gto.M"]
+engine_key = "NetCharge (SIESTA) | gto.M(charge=...) (PySCF)"
+manual = "SIESTA 5.4.2 §6.23 'Systems with net charge or dipole, and electric fields'; PySCF 2.13 pyscf.gto.mole.MoleBase 'charge'"
 type = "int"
 range = [-10, 10]
 group = "profile"
@@ -817,7 +827,7 @@ label = "Net charge"
 null_label = "(auto-detect from phosphates)"
 optional = true
 tier = "basic"
-help = "Net charge of the system, in units of |e|.  Default (blank) auto-detects from phosphate protonation -- fine for DNA/RNA from tleap.  Set EXPLICITLY for charged side chains the heuristic doesn't see: carboxylates (Asp/Glu), protonated amines (Lys/Arg/His+), sulfonates.  Sign convention: -1 = one extra electron; +1 = one missing electron."
+help = "Net charge of the system, in units of |e|.  Default (blank) auto-detects from phosphate protonation -- one negative charge per backbone phosphate, which is right for DNA/RNA from tleap.  For everything else (peptide, SMILES, PDB load) auto resolves to 0, so set this EXPLICITLY for a charged species: carboxylates (Asp/Glu), protonated amines (Lys/Arg/His+), sulfonates.  Sign convention: -1 = one extra electron; +1 = one missing electron."
 
 [item.spin_treatment]
 kind = "engine"
@@ -860,20 +870,6 @@ group = "setup"
 label = "Job name"
 pattern = "^[A-Za-z0-9_\\-]+$"
 help = "job name; output files get this prefix.  Must match [A-Za-z0-9_-]+ (job-layout v1; no dots)."
-
-[item.charge]
-kind = "engine"
-category = ["system"]
-engines = ["pyscf"]
-anchor = "gto.M"
-engine_key = "gto.M(charge=...)"
-manual = "PySCF 2.13 pyscf.gto.mole.MoleBase 'charge'"
-type = "int"
-group = "profile"
-label = "Net charge"
-null_label = "(auto)"
-optional = true
-help = "net charge.  Default (auto) only deduces a value for DNA / RNA — one negative charge per backbone phosphate.  For everything else (peptide, SMILES, PDB load) auto resolves to 0; set this explicitly when working with a charged species."
 
 [item.spin]
 kind = "engine"

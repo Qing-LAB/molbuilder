@@ -805,9 +805,15 @@ def _resolve_stage(js, stage, verb: str):
 @click.option("--sbatch/--no-sbatch", "emit_sbatch", default=True,
               help="emit .sbatch wrappers (default on; auto-skipped when no "
                    "scheduler is configured).")
+@click.option("--pipeline-log", "pipeline_log", is_flag=True, default=False,
+              help="write a step-by-step record of what each step received, "
+                   "decided and produced, beside this prep's STAGE-PLAN.md. "
+                   "Answers 'where did this value come from?' without "
+                   "re-running anything. Off by default; no generated file "
+                   "differs either way.")
 def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
              mpi_np, cpus_per_task, gres, time_, mem, max_memory_mb,
-             domain, target, emit_sbatch: bool) -> None:
+             domain, target, emit_sbatch: bool, pipeline_log: bool) -> None:
     """Set a stage up to run, and report what was done.
 
     Renders the wrappers, then makes that stage's next ``run-<n>``, links the
@@ -940,7 +946,8 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             dirs = prep_calculation(base, stage, allocation=allocation,
                                     env=env, emit_sbatch=emit_sbatch,
                                     sweep=sweep, pins=pins,
-                                    translation=translation, target=target)
+                                    translation=translation, target=target,
+                                    pipeline_log=pipeline_log)
         except UnknownTarget as exc:
             raise click.ClickException(str(exc))
         # `prep` WROTE floor 3 as part of those five steps; read it back

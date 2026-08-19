@@ -36,7 +36,10 @@ def deck(tmp_path) -> Path:
 
 
 def test_both_engines_write_the_same_fence(deck):
-    """One reader, either engine — which is the point of sharing the name."""
+    """**W8** (`script-preparation.md` § 4.2b) — the record covers every
+    parameter and is generated, so one reader serves either engine.
+
+    One reader, either engine — which is the point of sharing the name."""
     from molbuilder.pyscf.input import render_script
 
     siesta = _effective_parameters_block(deck)
@@ -222,7 +225,10 @@ def test_both_engines_now_answer_the_check_question():
 # ------------------------------------------------- one writer, every artifact
 
 def test_the_wrapper_keeps_what_a_reader_put_in_their_own_section(tmp_path):
-    """The wrapper INVITES an edit, so it must not delete one.
+    """**W4** (`script-preparation.md` § 3.2) — one deck, one writer, and the
+    writer keeps the reader's own section.
+
+    The wrapper INVITES an edit, so it must not delete one.
 
     It emits a USER-CUSTOM block -- the one part of a generated file a person
     is meant to touch -- and wrote itself with a plain ``write_text``, so every
@@ -249,7 +255,10 @@ def test_the_wrapper_keeps_what_a_reader_put_in_their_own_section(tmp_path):
 
 
 def test_the_shared_package_is_named_by_the_engine_that_put_it_there(tmp_path):
-    """Not guessed from a suffix in shared code.
+    """**W5** (`script-preparation.md` § 4.1) — "nothing" is an answer, and it
+    is recorded: PySCF's empty package is the ANSWER, not a gap.
+
+    Not guessed from a suffix in shared code.
 
     `_shared_for` globbed ``*.psml`` -- a SIESTA fact stated a floor below
     where SIESTA may speak -- so a second engine with data files of its own

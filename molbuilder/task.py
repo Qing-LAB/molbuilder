@@ -426,7 +426,6 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 "(job-contracts.md 4.2a)")
 
     has_stages = "stages" in obj
-    has_varies = "varies" in obj
 
     # THIS REFUSAL COMES FIRST, and that ordering is the whole point.  Until
     # 2026-08-16 a ``'varies' without 'stages'`` check sat above it and fired

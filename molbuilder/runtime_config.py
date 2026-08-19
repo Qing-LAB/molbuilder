@@ -1011,14 +1011,11 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     machine_path, machine_via = machine_config_path()
     sources = [{"scope": "machine", "path": str(machine_path.resolve()),
                 "found": machine_path.is_file(), "via": machine_via}]
-    machine_raw = _read_scope(machine_path)
 
-    bundle_raw: Dict[str, Any] = {}
     if project_dir is not None:
         bundle_path = Path(project_dir) / PROJECT_CONFIG_FILENAME
         sources.append({"scope": "bundle", "path": str(bundle_path),
                         "found": bundle_path.is_file(), "via": "bundle"})
-        bundle_raw = _read_project(Path(project_dir))
 
     # RAW file bytes decide what a file "supplied" (R10, 2026-08-12: the
     # normalized scopes injected validator defaults, and provenance then

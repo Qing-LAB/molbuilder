@@ -61,6 +61,14 @@ _L1_MODULES = {
     "chemistry", "residues",
     "config",            # siesta / pyscf / spectra / transport config dataclasses
     "trajectory_log",    # format + emitter (data-shape, no domain logic)
+    "pipeline_log",      # the prep pipeline's own record
+                         # (script-preparation.md § 4.5).  L1 for the same
+                         # reason as ``trajectory_log``: a format plus a
+                         # writer, stdlib only, no domain knowledge at all --
+                         # which is what lets the L2 conductor and the L2
+                         # framework both write to ONE of them.  A log that
+                         # imported the things it describes could not be
+                         # called from inside them.
     "selection",         # atom-selection rule dataclasses + evaluator (no domain deps)
     "runtime_info",      # cross-cutting threading / GPU / runtime-info emitters
                          # (string emitters + physical_core_count -- L1 because no

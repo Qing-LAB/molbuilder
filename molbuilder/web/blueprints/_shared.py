@@ -977,6 +977,29 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p") -> Dict[str, Any
     return {"config": engine, "id_prefix": id_prefix, "sections": sections}
 
 
+def engine_key_for(item) -> str:
+    """How this item is spelled for the engine — the string a SURFACE shows.
+
+    **One writer, because two surfaces disagreed.**  The parameter form used
+    this precedence; the task-setup column chooser (`build.py`) read
+    ``item.anchor`` directly and published it under the same JSON name.  An
+    ``anchor`` is DERIVED — ``_bare_anchor`` takes the leading token of
+    ``engine_key`` and nothing checks that the token is a keyword — so for an
+    item whose ``engine_key`` leads with a VALUE the column chooser showed the
+    value: ``method`` appeared as ``RKS`` (one of its four choices) and
+    ``optimizer`` as ``geomeTRIC``, while the form showed the full spelling.
+
+    The order is the honest one: the full spelling if the item has it, then
+    the keywords a ``deck`` item expands to, and the bare anchor only when
+    there is nothing better (`template.md` § 5).
+    """
+    if getattr(item, "engine_key", ""):
+        return item.engine_key
+    if getattr(item, "expands", ()):
+        return " + ".join(item.expands)
+    return getattr(item, "anchor", "") or ""
+
+
 def _item_to_field(item, id_prefix: str) -> Dict[str, Any]:
     """One catalogue item as one form field (`form-schema.md` § 1.1)."""
     out: Dict[str, Any] = {
@@ -1006,12 +1029,9 @@ def _item_to_field(item, id_prefix: str) -> Dict[str, Any]:
     # setting never reaches the deck, which `web/form-schema.md` § 1a requires
     # always be present.  `expands` remains the fallback for a `deck` item
     # whose several keywords are the honest answer.
-    if item.engine_key:
-        out["engine_key"] = item.engine_key
-    elif item.expands:
-        out["engine_key"] = " + ".join(item.expands)
-    elif item.anchor:
-        out["engine_key"] = item.anchor
+    spelled = engine_key_for(item)
+    if spelled:
+        out["engine_key"] = spelled
     if item.choices:
         out["choices"] = list(item.choices)
     elif out["kind"] == "tri-select":

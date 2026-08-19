@@ -44,6 +44,7 @@ from typing import Callable, List, Optional
 
 from .. import script_emit as _sc
 from .materialize import job_dir_names, shape_of, materialize, relink
+from ..issues import calling as _calling
 from .model import Job, JobSet, Resources
 
 
@@ -64,14 +65,20 @@ def _user_error_as_prep():
     deck render) and an unset ``script_generation.activation``
     (``RuntimeConfigError`` out of the wrapper render) -- escaped the CLI as
     raw tracebacks (A8, 2026-08-12).  Only the NAMED classes translate: a
-    ``TypeError`` here is a bug and should look like one."""
-    from ..issues import ValidationError
+    ``TypeError`` here is a bug and should look like one.
+
+    **The hook boundary's attribution is carried across** (§ 4.6). ``str(exc)``
+    does not include an exception's notes, so a refusal that came out of a
+    named engine hook would arrive at the CLI saying what went wrong and not
+    whose it was -- and the note would reach a traceback nobody sees."""
+    from ..issues import ValidationError, notes_of
     from ..runtime_config import RuntimeConfigError
     from ..runwrap import WrapperError
     try:
         yield
     except (ValidationError, RuntimeConfigError, WrapperError) as exc:
-        raise PrepError(str(exc)) from exc
+        note = notes_of(exc)
+        raise PrepError(str(exc) + (f"\n  ({note})" if note else "")) from exc
 
 
 def resolve_target(base_dir, target: Optional[str] = None) -> Path:
@@ -125,7 +132,8 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
 
 
 def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
-                emit_sbatch: bool = True, record_dir=None) -> List[Path]:
+                emit_sbatch: bool = True, record_dir=None,
+                log=None) -> List[Path]:
     """Render launchers + lay out the per-job tree under ``base_dir``.
 
     Steps, in order:
@@ -167,9 +175,14 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     resolve_target(base)
 
     # ---- 1. render wrappers once per distinct script (in the root) ------ #
+    if log is not None:
+        log.phase("STEP 4 · WRAPPERS — how each deck is launched")
     rendered: set = set()
     for job in jobset.jobs:
         if job.script in rendered:
+            if log is not None:
+                log.note(f"{job.name}: shares {job.script}'s wrapper, "
+                         f"already rendered")
             continue
         script_path = base / job.script
         if not script_path.is_file():
@@ -199,9 +212,30 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 emit_sbatch=emit_sbatch,
             )
         rendered.add(job.script)
+        if log is not None:
+            _stem = Path(job.script).stem
+            log.received(job.script, _flat_resources(job.resources)
+                         + (f", env={env}" if env else ""))
+            for _w in (f"{_stem}.run.sh", f"{_stem}.sbatch"):
+                if (base / _w).is_file():
+                    log.produced(_w, f"{len((base / _w).read_text().splitlines())}"
+                                     f" lines")
+                elif _w.endswith(".sbatch"):
+                    log.note(f"{_w}: not written "
+                             + ("(emit_sbatch off)" if not emit_sbatch
+                                else "(no scheduler configured)"))
 
     # ---- 2. data symlinks ---------------------------------------------- #
     dirs = materialize(jobset, base)
+    if log is not None:
+        log.phase("STEP 5 · RUN DIRECTORY — where each job will be launched")
+        log.received("shape", str(shape_of(jobset, base_dir)))
+        log.received("shared package",
+                     ", ".join(jobset.shared) or "nothing (W5)")
+        for _d in dirs:
+            log.produced(_d.name if _d.resolve() != base.resolve() else ".",
+                         "the bundle root — flat runs here, nothing is linked"
+                         if _d.resolve() == base.resolve() else str(_d))
 
     # ---- 3. link the rendered wrappers (+ monitor) into each job dir ---- #
     has_monitor = (base / "mb_monitor.py").exists()
@@ -250,6 +284,8 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
         render_plan(jobset) + "\n\n" + _vocab
         + format_provenance(config_provenance(project_dir=base)) + "\n",
         encoding="utf-8")
+    if log is not None:
+        log.produced("STAGE-PLAN.md", str(plan_dir / "STAGE-PLAN.md"))
     return dirs
 
 
@@ -588,7 +624,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                      allocation=None, env: str = None,
                      emit_sbatch: bool = True,
                      sweep=None, pins=None, translation=None,
-                     target: Optional[str] = None) -> List[Path]:
+                     target: Optional[str] = None,
+                     pipeline_log: bool = False) -> List[Path]:
     """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
     the order it calls *forced rather than chosen*.
 
@@ -607,12 +644,25 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     steps 1 and 3 are now on the same side of the split, which is what
     § 2.3.1's *"step 3 cannot precede step 1"* was always about.
 
+    ``pipeline_log`` writes a step-by-step record of what each step received,
+    decided and produced, beside this prep's ``STAGE-PLAN.md``. Off by
+    default: it is an observer of the pipeline, never a step in it, and no
+    generated artifact differs either way (`script-preparation.md` § 4.5).
+
     Returns the per-job directories. Raises :class:`PrepError`.
     """
+    from ..pipeline_log import PipelineLog, config_rows
     from ..resolve import ResolveError, resolve
     from ..task import FILENAME as TASK_FILENAME
     from ..task import read_task
     from ..template import template_path as _template_path
+    # The container spelling is materialize's (the naming authority): ONE
+    # function places the sweep's record and the trials' directories, so the
+    # two can never disagree (A-1/A-2).  Imported once for the whole function
+    # -- the log's own home is the same container, and a second import site
+    # would be a second chance to spell it differently.
+    from .materialize import bench_container
+    from .shape import Shape
 
     base = Path(base_dir).resolve()
     if not base.is_dir():
@@ -628,6 +678,36 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 
     # ---- 2. resolve the parameters ------------------------------------- #
     task = read_task(desc)
+    # THE LOG OPENS HERE, and not before: its NAME carries the stage token, and
+    # the token needs the description.  Everything step 1 did is still in hand,
+    # so nothing is lost by writing that phase a moment later than it ran.
+    #
+    # It is not closed on a refusal and does not need to be: every line is
+    # flushed as it is written, so a prep that dies leaves a file ending at the
+    # step that refused -- which is the step a reader is looking for.
+    log = None
+    if pipeline_log:
+        _token = token_for(task, stage)
+        _record = (base / bench_container(Shape.named(task.shape), _token)
+                   if sweep is not None else base)
+        _record.mkdir(parents=True, exist_ok=True)
+        log = PipelineLog.open(_record, label=task.label, token=_token,
+                               engine=task.engine, shape=task.shape)
+        log.phase("STEP 1 · MACHINE — where this job will run")
+        log.received("calculation", str(base))
+        log.received(TASK_FILENAME, f"{task.label} · {task.engine} · "
+                                    f"{task.shape} · "
+                                    f"{len(task.stages or ())} stage(s)")
+        for _group, _line in _environment_rows(environment):
+            log.produced(_group, _line)
+        # WHICH FILE supplied each execution setting -- through the ONE
+        # formatter that already answers this, not a second table of the same
+        # facts.  It is also the security boundary: `config_provenance`
+        # publishes only the sections marked provenance-safe
+        # (`configuration.md` § 4), so nothing else may be printed here.
+        from ..runtime_config import config_provenance, format_provenance
+        log.produced("config", "which file supplied each setting")
+        log.text(format_provenance(config_provenance(project_dir=base)))
     # THE one place this name is formed (`template.template_path`).  Six
     # call sites spelled it in two incompatible ways until 2026-08-17.
     template_path = _template_path(base, task.label)
@@ -644,6 +724,22 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                        translation=translation, environment=environment)
     except ResolveError as exc:
         raise PrepError(str(exc)) from exc
+    if log is not None:
+        log.phase("STEP 2 · RESOLVE — the values for this rung")
+        log.received(template_path.name, f"{len(pset[0].provenance)} fields")
+        log.received("stage", pset.stage or "(no ladder)")
+        log.received("allocation", _flat_resources(allocation or Resources()))
+        for _el in pset:
+            _rows = config_rows(_el.values, _el.provenance,
+                                _el.render_config())
+            _decided = [r for r in _rows if r[2] != "template"]
+            log.step(f"{_el.label} — what this rung decided")
+            for _n, _v, _s in _decided:
+                log.chose(_n, _v, _s)
+            log.step(f"{_el.label} — the rest, as the template declares")
+            for _n, _v, _s in _rows[len(_decided):]:
+                log.chose(_n, _v, _s)
+        log.produced("ParameterSet", f"{len(pset)} element(s) -> spec_for")
 
     # ---- 3. render the deck(s) ----------------------------------------- #
     struct = _structure_for(task, base)
@@ -653,7 +749,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # already in the folder is left alone.  The elements come from the
     # structure, which has just been checked against the description's witness.
     if seam.provide_data is not None:
-        with _user_error_as_prep():
+        with _user_error_as_prep(), _calling(
+                "provide_data", engine=task.engine, log=log):
             seam.provide_data(struct, pset[0].render_config(), base)
     token = token_for(task, pset.stage)
     jobs: List[Job] = []
@@ -675,7 +772,9 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             # The deck's OWN identity line carries the trial label -- this,
             # not the filename, is what keys SIESTA's warm files away from
             # the real run's (project-layout.md § 2.3.2).
-            cfg = seam.relabel(cfg, element.label)
+            with _calling("relabel", engine=task.engine,
+                          where=element.label, log=log):
+                cfg = seam.relabel(cfg, element.label)
             # AND forced cold -- `project-layout.md` § 7 invariant 5 states
             # both halves and only the relabel was implemented (found
             # 2026-08-14).  The relabel alone does NOT cover the case that
@@ -699,17 +798,36 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         # block), then read the file back and refuse one that does not say what
         # it was meant to say.  The conductor says WHEN; the framework owns the
         # order (`script-preparation.md` § 4.3).
+        if log is not None:
+            log.phase(f"STEP 3 · DECK — {script}")
+            log.received("config", f"{type(cfg).__name__}"
+                                   + (f", stage_token={token}" if token else "")
+                                   + (f", trial {element.label}"
+                                      if element.is_trial else ""))
         with _user_error_as_prep():
-            _sc.prepare_deck(
-                seam.spec_for(struct, cfg, stage_token=(token or None)),
-                struct, cfg, base / script)
+            with _calling("spec_for", engine=task.engine,
+                          where=script, log=log):
+                spec = seam.spec_for(struct, cfg,
+                                     stage_token=(token or None))
+            _sc.prepare_deck(spec, struct, cfg, base / script, log=log)
         if seam.sibling_artifacts is not None:
-            seam.sibling_artifacts(struct, cfg, base / script)
+            with _calling("sibling_artifacts", engine=task.engine,
+                          where=script, log=log):
+                seam.sibling_artifacts(struct, cfg, base / script)
+        with _calling("label_of", engine=task.engine, log=log):
+            _label = seam.label_of(cfg)
         _seed_trajectory_log(struct, cfg, base, engine=task.engine,
-                             label=seam.label_of(cfg),
-                             token=(token or None))
+                             label=_label, token=(token or None))
+        if log is not None:
+            log.step("what this deck's text PROMISES, kept")
+            log.produced("sibling_artifacts",
+                         "written" if seam.sibling_artifacts is not None
+                         else "nothing (W5)")
+            log.produced("trajectory log",
+                         "seeded" if getattr(cfg, "write_molwatch_log", False)
+                         else "not asked for")
         jobs.append(_job_for(element, script, task, pset.stage, seam,
-                             base))
+                             base, log=log))
 
     # ---- 4 + 5, and the record floor 3 leaves behind -------------------- #
     # ``kind`` is INTENT, not length (review 2026-08-12: a one-point grid is
@@ -722,13 +840,10 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # pair rule needs the source job on file, read the whole ladder.
     kind = "sweep" if sweep is not None else "ladder"
     js = JobSet(name=task.label, engine=task.engine, kind=kind,
-                shared=_shared_for(base, seam), jobs=jobs)
+                shared=_shared_for(base, seam,
+                                   engine=task.engine, log=log),
+                jobs=jobs)
     if kind == "sweep":
-        # The container spelling is materialize's (the naming authority):
-        # ONE function places the record here and the trials in
-        # job_dir_names, so the two can never disagree again (A-1/A-2).
-        from .materialize import bench_container
-        from .shape import Shape
         record_dir = base / bench_container(Shape.named(task.shape), token)
         record_dir.mkdir(parents=True, exist_ok=True)
     else:
@@ -740,13 +855,23 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             ladder=frozenset(s.name for s in (task.stages or ())) or
                    frozenset({task.label}))
     js.write(record_dir / "job-set.json")
+    if log is not None:
+        log.phase("FLOOR 3 · THE JOB-SET — what was declared to the runner")
+        log.received("kind", kind)
+        for _j in js.jobs:
+            log.produced(_j.name, f"{_j.script}  "
+                                  f"{_flat_resources(_j.resources)}")
+        log.produced("job-set.json", str(record_dir / "job-set.json"))
     # The allocation is NOT passed on: every job already carries its own
     # resolved resources, per element (generator.md § 5).  Passing it made
     # prep_jobset re-apply the BASE allocation over every job — the review's
     # "stomp": each trial's wrapper rendered with the base rank count
     # instead of its own translated G·K.
-    return prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
-                       record_dir=record_dir)
+    dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
+                       record_dir=record_dir, log=log)
+    if log is not None:
+        log.close()
+    return dirs
 
 
 def _merge_run_jobset(path: Path, new: JobSet,
@@ -791,6 +916,51 @@ def _merge_run_jobset(path: Path, new: JobSet,
     return dataclasses.replace(
         merged, jobs=sorted(merged.jobs,
                             key=lambda j: (refs[j.name].token or "", j.name)))
+
+
+def _flat_resources(resources) -> str:
+    """One allocation as one line — the fields it actually carries.
+
+    ``None`` means *not asked for* and is left out rather than printed as a
+    null: a line of ``domain=None, time=None, gres=None`` is noise in a file
+    whose whole value is that a person can read it.
+    """
+    return ", ".join(f"{k}={v}" for k, v in
+                     dataclasses.asdict(resources).items() if v is not None) \
+        or "(nothing asked for)"
+
+
+def _environment_rows(environment) -> "List[tuple]":
+    """Floor 1's answer as ``[(group, one line)]``.
+
+    ONE ROW PER GROUP, not one line for the whole record: the probe's answer
+    nests (topology, site, source), and flattening it produced a single line
+    of nested dict reprs -- unreadable, in the one file whose whole claim is
+    that a person can read it.
+    """
+    if environment is None:
+        return [("environment", "none — this machine was not probed")]
+    raw = (dataclasses.asdict(environment)
+           if dataclasses.is_dataclass(environment)
+           else environment if isinstance(environment, dict)
+           else {"environment": environment})
+    scalars, rows = [], []
+    for k, v in raw.items():
+        if v is None or v == {} or v == []:
+            continue
+        if isinstance(v, dict):
+            # A group whose every member is None was PROBED and came back
+            # empty (a workstation has no partition, no QOS, no account).
+            # A bare heading with nothing after it says less than no row.
+            line = ", ".join(f"{a}={b}" for a, b in v.items() if b is not None)
+            rows.append((k, line or "nothing — probed, and this machine "
+                                    "has none"))
+        elif isinstance(v, (list, tuple)):
+            rows.append((k, ", ".join(str(x) for x in v)))
+        else:
+            scalars.append(f"{k}={v}")
+    return ([("environment", ", ".join(scalars) or "(no scalar facts)")]
+            + sorted(rows))
 
 
 def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
@@ -858,7 +1028,7 @@ def token_for(task, stage_name: Optional[str]) -> str:
 
 
 def _job_for(element, script: str, task, stage_name: Optional[str],
-             seam: EngineSeam, base_dir=None) -> Job:
+             seam: EngineSeam, base_dir=None, log=None) -> Job:
     """One element of the parameter set as one :class:`Job`.
 
     ``resources`` is **copied from the element**, never re-derived: the element
@@ -879,10 +1049,13 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
     else:
         name = task.label
 
+    with _calling("warm_for", engine=task.engine, where=name, log=log):
+        warm = seam.warm_for(element.label, element.values,
+                             task.calculation, base_dir)
+    with _calling("traits_for", engine=task.engine, where=name, log=log):
+        traits = seam.traits_for(element.values)
     return Job(name=name, script=script, resources=element.resources,
-               warm=seam.warm_for(element.label, element.values,
-                                  task.calculation, base_dir),
-               traits=seam.traits_for(element.values))
+               warm=warm, traits=traits)
 
 
 def _siesta_shared_package(base: Path) -> List[str]:
@@ -894,7 +1067,8 @@ def _siesta_shared_package(base: Path) -> List[str]:
     return sorted(p.name for p in base.glob("*.psml"))
 
 
-def _shared_for(base: Path, seam: "EngineSeam" = None) -> List[str]:
+def _shared_for(base: Path, seam: "EngineSeam" = None, *, engine: str = "",
+                log=None) -> List[str]:
     """The static package every job links (`project-layout.md` § 2.1).
 
     **Asked of the engine, not guessed from the folder.**  An engine that puts
@@ -903,6 +1077,7 @@ def _shared_for(base: Path, seam: "EngineSeam" = None) -> List[str]:
     """
     if seam is None or seam.shared_package is None:
         return []
-    return list(seam.shared_package(base))
+    with _calling("shared_package", engine=engine, log=log):
+        return list(seam.shared_package(base))
 
 __all__ = ["prep_calculation", "prep_jobset", "PrepError", "resolve_target"]

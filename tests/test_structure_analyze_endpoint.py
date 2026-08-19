@@ -92,7 +92,7 @@ def test_suggested_pyscf_shape(web):
     xyz = "1\nFe\nFe 0 0 0\n"
     _, body = _post_analyze(web, {"structure_text": xyz})
     py = body["suggested"]["pyscf"]
-    assert set(py.keys()) == {"charge", "spin", "method", "rationale"}
+    assert set(py.keys()) == {"net_charge", "spin", "method", "rationale"}
     assert isinstance(py["spin"], int)
     assert py["method"] in {"UKS", "RKS"}
 

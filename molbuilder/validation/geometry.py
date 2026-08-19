@@ -73,17 +73,32 @@ def validate_geometry(struct: Structure,
     # an external protonator with different residue assumptions).  The
     # warning surfaces the issue prominently so they don't accidentally
     # ship a broken structure to a calculation.
+    #
+    # **CONDITIONED, NOT GATED** (2026-08-19).  The ratio fires on any
+    # structure with few hydrogens, so it also fires on every metal, oxide
+    # and semiconductor -- and it used to tell a gold slab that "DFT will
+    # compute the wrong electron count without explicit H", which is false:
+    # Au12 has no hydrogens to be missing.  The fix is the SENTENCE, not a
+    # molecule/crystal test: we cannot categorise reliably (a periodic
+    # organic crystal is molecular; C60 and graphene are hydrogen-free by
+    # construction), and a gate we get wrong silently drops the warning for
+    # the DNA skeleton this exists to catch.  Say something true either way
+    # and let the scientist decide whether it applies -- that judgement is
+    # theirs, and a warning that hedges honestly costs them one line.
     if n >= 1:
         n_h     = sum(1 for e in struct.elements if e == "H")
         n_heavy = sum(1 for e in struct.elements if e != "H")
         if n_heavy > 0 and (n_h / n_heavy) < 0.3:
             issues.append(Issue(
                 "warn",
-                f"H/heavy ratio is {n_h}/{n_heavy}={n_h/n_heavy:.2f} -- "
-                f"structure looks like a heavy-atom skeleton (typical "
-                f"organic molecules: H/heavy ~ 0.6-1.5).  DFT will "
-                f"compute the wrong electron count without explicit H. "
-                f"Did you mean to add hydrogens?",
+                f"H/heavy ratio is {n_h}/{n_heavy}={n_h/n_heavy:.2f}.  "
+                f"IF THIS IS A MOLECULAR SYSTEM that is a heavy-atom "
+                f"skeleton (typical organic molecules sit at H/heavy ~ "
+                f"0.6-1.5), and DFT will compute the wrong electron count "
+                f"without explicit H -- did you mean to add hydrogens?  "
+                f"For a metal, an oxide, or anything else with no hydrogens "
+                f"by construction, this ratio says nothing about the "
+                f"structure and there is nothing to fix.",
                 "geometry.h_ratio",
             ))
 

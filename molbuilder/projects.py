@@ -33,10 +33,11 @@ the web UI.  Those concerns live in their own modules
 
 from __future__ import annotations
 
+
 import logging
 import re
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Mapping, Optional, Tuple
 
 _log = logging.getLogger(__name__)
 

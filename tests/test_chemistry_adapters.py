@@ -163,7 +163,7 @@ def test_pyscf_adapter_open_shell_metal_path():
     """Fe → spin=2 + method='UKS' + rationale."""
     a = analyze_structure(_mk(["Fe"]))
     p = PyscfAdapter.to_params(a)
-    assert p.charge == 0
+    assert p.net_charge == 0
     assert p.spin   == 2
     assert p.method == "UKS"
     assert "Fe" in p.rationale
@@ -182,9 +182,9 @@ def test_pyscf_field_names_match_pyscf_config():
     must all exist on the PySCF Config dataclass."""
     from molbuilder.pyscf.input import PySCFConfig
     cfg_fields = {f.name for f in PySCFConfig.__dataclass_fields__.values()}
-    assert {"charge", "spin", "method"} <= cfg_fields, (
+    assert {"net_charge", "spin", "method"} <= cfg_fields, (
         f"PySCF adapter exports fields not in PySCFConfig: "
-        f"{{'charge','spin','method'}} − {cfg_fields}"
+        f"{{'net_charge','spin','method'}} − {cfg_fields}"
     )
 
 
@@ -234,7 +234,10 @@ def test_all_adapters_agree_on_treatment(elements):
     )
 
     # Same charge (universal)
-    assert si.net_charge == py.charge
+    # ONE NAME since 2026-08-19: this line read `si.net_charge == py.charge`
+    # and existed to bridge two spellings of one question.  The catalogue
+    # merged them (`template.md` § 6.3), so the bridge is now an identity.
+    assert si.net_charge == py.net_charge
 
 
 # --------------------------------------------------------------------- #
@@ -254,7 +257,7 @@ def test_asdict_round_trip_for_each_adapter():
         "spin_total":     2.0,
         "rationale":      si_d["rationale"],   # value-agnostic
     }
-    assert py_d["charge"] == 0
+    assert py_d["net_charge"] == 0
     assert py_d["spin"]   == 2
     assert py_d["method"] == "UKS"
 

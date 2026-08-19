@@ -237,7 +237,7 @@ def test_auto_detect_button_populates_both_engine_forms(
     )
 
     # PySCF: charge=0, spin=2 (Fe(II) intermediate), method=UKS
-    assert pyscf_vals.get("charge") == 0
+    assert pyscf_vals.get("net_charge") == 0
     assert pyscf_vals.get("spin")   == 2
     assert pyscf_vals.get("method") == "UKS"
 
@@ -510,6 +510,9 @@ def test_spectrum_auto_detect_button_populates_form(
         "  return fs.collectForm(c, sch);"
         "}"
     )
+    # SPECTRA keeps its own `charge` field: `SpectraConfig` is a separate
+    # config and does not feed the siesta/pyscf catalogue, so the 2026-08-19
+    # net_charge merge did not reach it.
     assert vals.get("charge") == 0
     assert vals.get("spin")   == 2
     assert vals.get("method") == "UKS"

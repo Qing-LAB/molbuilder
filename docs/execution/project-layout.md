@@ -1667,6 +1667,7 @@ how a folder stops being trustworthy.
 | `<label>_<NN>_<name>.fdf` | derived | `prep` step 3, from the template ⊕ the allocation | re-prep |
 | `<label>_<NN>_<name>.run.sh` / `.sbatch` | derived | prep, from the deck + the machine's config | re-prep |
 | `job-set.json`, `STAGE-PLAN.md` | derived | the producer / prep | regenerate |
+| `*.pipeline.log` | **record** | `prep --pipeline-log`, when asked | nothing the next prep cannot write again — but the record of the prep that ALREADY ran is gone, which is the one you wanted |
 | `*.psml`, `mb_monitor.py` | **input**, copied in | the producer | re-resolve from the project's cache |
 | stage outputs (④) | **result** | the engine | gone — this is what the history is for |
 | trial outputs (the stage's `bench/`) | **scratch** | the engine | nothing lost; `bench-result.json` is the answer |

@@ -32,12 +32,12 @@ from ._helpers import _peptide_struct, _vacuum_cell
 
 def test_peptide_with_asp_glu_warns_on_zero_charge():
     """ARNDCEQGHI has 1 Arg(+1), 1 Asp(-1), 1 Glu(-1), 1 His (skipped),
-    others neutral.  Expected pH-7 charge = -1.  cfg.charge = 0
+    others neutral.  Expected pH-7 charge = -1.  cfg.net_charge = 0
     (default) should warn."""
     s = _peptide_struct(["ALA","ARG","ASN","ASP","CYS","GLU","GLN","GLY","HIS","ILE"])
-    cfg = PySCFConfig()  # charge default = None -> auto-detect -> 0 for non-nucleic
+    cfg = PySCFConfig()  # net_charge default = None -> auto-detect -> 0 for non-nucleic
     issues = validate(s, cfg)
-    msgs = [i for i in issues if i.where == "config.charge"]
+    msgs = [i for i in issues if i.where == "config.net_charge"]
     assert len(msgs) == 1
     assert "-1" in msgs[0].message
     assert "neutral" in msgs[0].message.lower()
@@ -48,9 +48,9 @@ def test_peptide_with_explicit_charge_no_warn():
     """When the user explicitly sets cfg.charge = -1, the validator
     treats them as having opted in and stays silent."""
     s = _peptide_struct(["ALA","ARG","ASP","GLU","GLY"])
-    cfg = PySCFConfig(charge=-1)
+    cfg = PySCFConfig(net_charge=-1)
     issues = validate(s, cfg)
-    assert [i for i in issues if i.where == "config.charge"] == []
+    assert [i for i in issues if i.where == "config.net_charge"] == []
 
 
 
@@ -60,7 +60,7 @@ def test_peptide_neutral_residues_no_warn():
     s = _peptide_struct(["GLY","ALA","VAL","LEU","ILE"])
     cfg = PySCFConfig()
     issues = validate(s, cfg)
-    assert [i for i in issues if i.where == "config.charge"] == []
+    assert [i for i in issues if i.where == "config.net_charge"] == []
 
 
 
@@ -75,7 +75,7 @@ def test_non_peptide_skips_protonation_check():
                   residue_ids=list(range(1, n + 1)))
     cfg = PySCFConfig()
     issues = validate(s, cfg)
-    assert [i for i in issues if i.where == "config.charge"] == []
+    assert [i for i in issues if i.where == "config.net_charge"] == []
 
 
 

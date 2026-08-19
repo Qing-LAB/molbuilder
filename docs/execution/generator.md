@@ -578,7 +578,7 @@ that an absent `engines` key means every engine.)*
 
 | | SIESTA | PySCF |
 |---|---|---|
-| catalogue rows | 43 items | **44 items** |
+| catalogue rows | 42 items | **43 items** | *(each engine's EXCLUSIVE rows; `net_charge` now names both and so counts in neither, `template.md` § 6.3)*
 | every row maps to a config field | yes | **yes** |
 | `warm-files.toml` in its package | yes | **yes** — `base` · `optimization` · `vibration` |
 | identity literal declared | `SystemLabel` | **`JOB`** (`config/pyscf.py`) |

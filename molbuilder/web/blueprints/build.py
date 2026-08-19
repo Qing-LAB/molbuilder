@@ -76,6 +76,7 @@ from flask import Blueprint, jsonify, request
 from ._shared import (
     config_from_params as _config_from_params,
     catalogue_to_form_schema as _catalogue_to_form_schema,
+    engine_key_for as _engine_key_for,
     issues_to_json as _issues_to_json,
     ok_structure_response,
     struct_from_body as _struct_from_body,
@@ -1659,7 +1660,12 @@ def api_task_setup_columns():
             "unit":    it.unit or "",
             "default": it.default,
             "group":   it.group or "",
-            "engine_key": it.anchor or "",
+            # THE SAME WRITER THE FORM USES.  This read `it.anchor`
+            # until 2026-08-19, and an anchor is derived by taking the
+            # leading token of `engine_key` -- so an item whose spelling
+            # leads with a VALUE published the value: `method` showed as
+            # `RKS`, one of its four choices, where the keyword belongs.
+            "engine_key": _engine_key_for(it),
         })
     return jsonify({"ok": True, "engine": engine, "items": out})
 

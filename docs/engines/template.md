@@ -238,7 +238,7 @@ than off the catalogue: the legacy form builder that Spectra and Transport use,
 and the code that decides which card a validator finding lands on.
 
 **That duplication is the debt, and it is measured and guarded rather than
-tolerated quietly.** **449 facts live in two places** (measured 2026-08-18;
+tolerated quietly.** **450 facts live in two places** (measured 2026-08-19;
 307 when this was written, and the growth is the point — the debt compounds
 with every parameter added).
 `tests/test_catalogue_agreement.py` compares every one of them on every run, so
@@ -629,7 +629,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
 | `range` · `unit` · `choices` | bounds, unit label, enum members |
 | `group` | **which card**, from the closed vocabulary `template.GROUPS`, in render order: `setup` (what the run is called and where its pseudopotentials come from — nothing can be built without these, so they come first) · `profile` (what you're computing) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
-| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 15 optional items only 11 carry one, so five would silently lose the option (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
+| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 14 optional items only 10 carry one, so four would silently lose the option (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
 | `tier` | `basic` or `advanced`. A judgement about the **parameter**, not about the widget: a surface dims the advanced ones so a first-time reader is not asked to weigh every knob at once |
 | `pattern` | a regex the value must match. Two items have one — `system_label`, `job_name` — and nothing else in the vocabulary can express *"letters, digits, hyphens, underscores; no dots"* |
 | `help` | what this is, in prose. Multi-line is ordinary TOML |
@@ -838,6 +838,125 @@ never something it silently drops (§ 3).
 not try to emit a `wrapper` item as a keyword** — SIESTA would not understand
 it. An item a layer cannot place is not a fault in the template; it belongs to a
 different layer, and the item says so on its own face.
+
+### 6.0 How `kind` and `anchor` are DECIDED — the rule, and the two homes
+
+§ 6's table says what each `kind` *means*. This says how a reader arrives at
+one, because the item is authored in **two places** and they must agree.
+
+**`anchor` is derived, never authored — from `engine_key`.** That is the rule
+nobody can guess from the table above, and getting it wrong is the commonest
+way to be refused:
+
+```python
+kind   = metadata["item_kind"] or "engine"          # engine is the DEFAULT
+anchor = _bare_anchor(metadata["engine_key"] or field_name)
+```
+
+`_bare_anchor` takes the **leading keyword** of `engine_key` — `%block Foo` or
+a bare word — and returns `""` when it leads with none. So the *shape* of
+`engine_key` decides which `kind` is legal:
+
+| `engine_key` shape | example (real, from this catalogue) | derived `anchor` | the `kind` you must declare |
+|---|---|---|---|
+| **a bare keyword** | `MeshCutoff` | `MeshCutoff` | `engine` — the default, declare nothing |
+| **a conjunction** `A + B` | `Spin.Fix + Spin.Total` | `Spin.Fix` | `deck`, **explicitly** — and list every keyword in `expands` |
+| **an alternation** `A \| B` | `MD.Steps (CG / Broyden / FIRE) \| MD.FinalTimeStep (Verlet / Nosé)` | `MD.Steps` | `deck`, **explicitly** — `expands` lists every keyword it *may* write |
+| **a note** `(molbuilder: …)` | `(molbuilder: .run.sh mpirun -np N only)` | `""` | anything but `engine` — `deck`, `wrapper`, `produce` or `monitor` |
+
+> **Why a conjunction and an alternation are both `deck`.** The difference is
+> whether the item writes *all* of them or *one* of them, and neither is a
+> single keyword the deck writer can look up — which is exactly what `deck`
+> means. `spin_total` writes both of its keywords, always; `relax_steps` writes
+> whichever the run mode calls for, never both.
+
+**The refusal, and what it is telling you.** Leave the kind at its default with
+an `engine_key` that leads with no keyword and the reader says:
+
+```
+field 'net_charge': kind defaults to 'engine' but its engine_key names no
+keyword ('(molbuilder: …)'). Give it an explicit metadata['item_kind'] …
+```
+
+It is not asking for an anchor. It is saying *this item is not an engine
+keyword, so tell me what it is.*
+
+#### The two homes, and why both must be edited
+
+| | authored where | how `kind` / `anchor` arrive |
+|---|---|---|
+| **the catalogue** (`data/catalogue.template.toml`) | by hand, as TOML | **verbatim** — you write `kind`, and `anchor` when the kind is `engine` |
+| **the config class** (`SiestaConfig` / `PySCFConfig`) | field `metadata` | **derived** — from `engine_key`, plus `item_kind` when the shape needs it |
+
+The catalogue is the master (§ 2.1), but the live form still reads the
+dataclass, so the same fact has two homes until that debt is paid (§ 2.1a).
+`tests/test_template_roundtrip.py` derives items from the classes and compares;
+`tests/test_catalogue_agreement.py` compares the mirrored facts. **Editing one
+home and not the other is caught, loudly, by name** — which is the only reason
+the duplication is survivable.
+
+#### Recipes — the four cases, end to end
+
+**1 · A plain engine keyword.** Nothing to declare beyond the spelling.
+
+```toml
+[item.mesh_cutoff]
+kind = "engine"          # catalogue: explicit
+anchor = "MeshCutoff"    # catalogue: explicit; DERIVED from engine_key in the class
+engine_key = "MeshCutoff"
+category = ["accuracy"]
+engines = ["siesta"]
+type = "float"
+unit = "Ry"
+help = "The real-space integration grid, in Ry."
+```
+
+**2 · One question, several keywords written together.**
+
+```toml
+[item.spin_total]
+kind = "deck"            # NOT engine: two keywords, no single anchor
+engine_key = "Spin.Fix + Spin.Total"
+expands = ["Spin.Fix", "Spin.Total"]
+category = ["system"]
+engines = ["siesta"]
+type = "float"
+optional = true
+help = "Target total spin moment in Bohr magnetons.  SIESTA ignores the number unless Spin.Fix is also set, which is why one item writes both."
+```
+```python
+"engine_key": "Spin.Fix + Spin.Total",
+"item_kind":  "deck",
+"expands":    ("Spin.Fix", "Spin.Total"),
+```
+
+**3 · One question, a keyword chosen at render time.** Same shape, `|` instead
+of `+`. The deck writer picks; the check gate asks only for the line it
+actually wrote, so declaring both costs nothing.
+
+**4 · One question, a different spelling per engine — a MERGED item (§ 6.3).**
+This is case 3 with the alternation running across engines rather than across
+run modes:
+
+```toml
+[item.net_charge]
+kind = "deck"                    # NOT engine: neither spelling is THE anchor
+engines = ["siesta", "pyscf"]
+engine_key = "NetCharge (SIESTA) | gto.M(charge=...) (PySCF)"
+expands = ["NetCharge", "gto.M"]
+category = ["system"]
+type = "int"
+range = [-10, 10]
+optional = true
+help = "Net charge of the system, in units of |e|.  Blank auto-detects from phosphate protonation."
+```
+
+> **A merged item is an alternation, and that is why § 6.3's anchor exemption
+> works.** *"A merged item keeps no anchor"* is not a special case bolted on for
+> merges — it is what `kind = "deck"` already meant, and the machinery that
+> serves `relax_steps` serves a merge unchanged. *(Established 2026-08-19, while
+> merging `net_charge`/`charge`: the merge was first attempted as `kind =
+> "engine"` with a `(molbuilder: …)` note and was refused, correctly.)*
 
 ### 6.1 `read_by` — who else derives from the value
 

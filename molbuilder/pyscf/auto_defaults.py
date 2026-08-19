@@ -19,7 +19,6 @@ from dataclasses import dataclass
 
 from molbuilder.chemistry import (
     ChemistryAnalysis,
-    EngineParameterAdapter,
     register_adapter,
 )
 
@@ -37,7 +36,7 @@ class PyscfSuggestedParams:
     ``method`` is the SCF method string PySCF accepts —
     ``"UKS"`` for open-shell DFT, ``"RKS"`` for closed-shell DFT.
     """
-    charge:    int
+    net_charge: int
     spin:      int
     method:    str       # "UKS" | "RKS"
     rationale: str
@@ -60,7 +59,7 @@ class PyscfAdapter:
     def to_params(cls, analysis: ChemistryAnalysis) -> PyscfSuggestedParams:
         method = "UKS" if analysis.suggested_treatment == "open" else "RKS"
         return PyscfSuggestedParams(
-            charge    = analysis.suggested_charge,
+            net_charge = analysis.suggested_charge,
             spin      = analysis.suggested_spin,
             method    = method,
             rationale = analysis.rationale,

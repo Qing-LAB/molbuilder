@@ -273,7 +273,7 @@ def test_siesta_peptide_protonation_warn(water_struct):
     s = _peptide_struct(["ALA","LYS","ASP","ASP","GLY"])  # +1 -2 = -1
     cfg = SiestaConfig(net_charge=None)   # auto -> 0 for non-nucleic
     issues = validate(s, cfg)
-    msgs = [i for i in issues if i.where == "config.charge"]
+    msgs = [i for i in issues if i.where == "config.net_charge"]
     assert len(msgs) == 1
     assert "-1" in msgs[0].message
 

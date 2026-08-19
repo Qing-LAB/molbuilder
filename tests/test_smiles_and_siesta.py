@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from _deck import assert_fdf, fdf_sets, fdf_value
+
 import re
 
 import os
@@ -58,8 +60,8 @@ def test_render_fdf_dna_4mer():
                        kgrid=(4, 4, 1), mesh_cutoff=350.0,
                        relax_type="none")
     fdf = render_fdf(dna, cfg)
-    assert "SystemName        test_dna" in fdf
-    assert "MeshCutoff 350.0 Ry" in fdf
+    assert_fdf(fdf, "SystemName", "test_dna")
+    assert_fdf(fdf, "MeshCutoff", "350.0 Ry")
     assert "%block kgrid_Monkhorst_Pack" in fdf
     assert "MD.TypeOfRun" not in fdf      # relax_type='none' must drop MD block
     # ChemicalSpeciesLabel for the elements DNA contains: C, H, N, O, P
@@ -272,7 +274,7 @@ def test_fdf_charged_system_emits_makov_payne_notice():
     cfg = SiestaConfig(net_charge=-1, relax_type="none")
     fdf = render_fdf(s, cfg)
     # NetCharge line emitted as before.
-    assert "NetCharge       -1" in fdf
+    assert_fdf(fdf, "NetCharge", "-1")
     # Informational block: name the artefact, the formula, the
     # typical magnitude order.
     assert "Makov-Payne" in fdf
@@ -547,9 +549,9 @@ def test_paralleloverk_auto_from_kgrid(tmp_path):
         positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
         title="h2", vacuum=(12.0, 12.0, 12.0))
     gamma = render_fdf(s, SiestaConfig(system_label="h2", kgrid=(1, 1, 1)))
-    assert "Diag.ParallelOverK .false." in gamma
+    assert_fdf(gamma, "Diag.ParallelOverK", ".false.")
     multi = render_fdf(s, SiestaConfig(system_label="h2", kgrid=(4, 4, 4)))
-    assert "Diag.ParallelOverK .true." in multi
+    assert_fdf(multi, "Diag.ParallelOverK", ".true.")
 
 
 def _h2_in_a_box():
@@ -644,7 +646,7 @@ def test_convert_xyz_to_fdf(tmp_path):
     assert summary["n_atoms"] == dna.n_atoms
     assert os.path.isfile(str(fdf_path))
     text = fdf_path.read_text()
-    assert "SystemLabel       dna4" in text
+    assert_fdf(text, "SystemLabel", "dna4")
 
 
 # --------------------------------------------------------------------- #
@@ -678,8 +680,8 @@ def test_spin_treatment_emits_v4_keyword_for_aux_compat():
     # When spin_total is unset, neither constraint LINE is emitted
     # (the keywords may still appear in verbose-comments / template
     # banners; we only check the actual key-value emissions).
-    assert "Spin.Fix          .true." not in fdf
-    assert "Spin.Total       " not in fdf and "Spin.Total        " not in fdf
+    assert not fdf_sets(fdf, "Spin.Fix")
+    assert not fdf_sets(fdf, "Spin.Total")
 
 
 def test_spin_total_emits_constraint_pair():
@@ -693,8 +695,8 @@ def test_spin_total_emits_constraint_pair():
         SiestaConfig(spin_treatment="polarized", spin_total=2.0),
     )
     assert re.search(r"^Spin\s+polarized\s*$", fdf, re.M), fdf
-    assert "Spin.Fix          .true." in fdf
-    assert "Spin.Total        2.0" in fdf
+    assert_fdf(fdf, "Spin.Fix", ".true.")
+    assert_fdf(fdf, "Spin.Total", "2.0")
 
 
 def test_spin_total_ignored_without_polarization():
@@ -721,8 +723,8 @@ def test_spin_total_zero_with_polarization_emits_constrained_singlet_note():
                      verbose_comments=True),
     )
     assert "constrained singlet" in fdf
-    assert "Spin.Fix          .true." in fdf
-    assert "Spin.Total        0.0"    in fdf
+    assert_fdf(fdf, "Spin.Fix", ".true.")
+    assert_fdf(fdf, "Spin.Total", "0.0")
 
 
 def test_spin_total_nonzero_does_not_emit_constrained_singlet_note():
@@ -768,10 +770,10 @@ def test_verlet_uses_config_temperature_and_timestep():
         md_length_timestep=0.5,
     )
     fdf = render_fdf(_h2_struct(), cfg)
-    assert "MD.InitialTemperature 500.0 K" in fdf
-    assert "MD.LengthTimeStep 0.5 fs"      in fdf
+    assert_fdf(fdf, "MD.InitialTemperature", "500.0 K")
+    assert_fdf(fdf, "MD.LengthTimeStep", "0.5 fs")
     # Verlet is NVE: no thermostat target.
-    assert "MD.TargetTemperature" not in fdf
+    assert not fdf_sets(fdf, "MD.TargetTemperature")
 
 
 def test_nose_emits_md_target_temperature_default_to_initial():
@@ -784,8 +786,8 @@ def test_nose_emits_md_target_temperature_default_to_initial():
         md_target_temperature=None,
     )
     fdf = render_fdf(_h2_struct(), cfg)
-    assert "MD.InitialTemperature 400.0 K" in fdf
-    assert "MD.TargetTemperature  400.0 K" in fdf
+    assert_fdf(fdf, "MD.InitialTemperature", "400.0 K")
+    assert_fdf(fdf, "MD.TargetTemperature", "400.0 K")
 
 
 def test_nose_target_temperature_explicit_override():
@@ -796,8 +798,8 @@ def test_nose_target_temperature_explicit_override():
         md_target_temperature=298.15,
     )
     fdf = render_fdf(_h2_struct(), cfg)
-    assert "MD.InitialTemperature 400.0 K"  in fdf
-    assert "MD.TargetTemperature  298.15 K" in fdf
+    assert_fdf(fdf, "MD.InitialTemperature", "400.0 K")
+    assert_fdf(fdf, "MD.TargetTemperature", "298.15 K")
 
 
 def test_cg_relax_does_not_emit_md_temperature_block():
@@ -944,7 +946,9 @@ def test_pyscf_frozen_atoms_emit_constraints_file_and_optimize_kwarg():
     # 1-based atom numbers in xyz line.
     assert "xyz 2,5" in script
     # The optimize() call gets the constraints= kwarg.
-    assert "constraints           = _FROZEN_CONSTRAINTS_PATH" in script
+    # NOT `assert_fdf`: this is a PySCF deck, and `_deck` reads fdf.  The
+    # kwarg's alignment is the emitter's own and no engine normalises it.
+    assert "constraints" in script and "_FROZEN_CONSTRAINTS_PATH" in script
 
 
 def test_pyscf_no_frozen_atoms_no_constraints_emission():
@@ -1017,7 +1021,7 @@ def test_relaxation_emits_universal_md_step_count(relax_type):
                        psml_lib=None)
     text = render_fdf(s, cfg)
     # The recognized keyword IS emitted with the user value.
-    assert "MD.Steps 42" in text, (
+    assert fdf_value(text, "MD.Steps") == "42", (
         f"relax_type={relax_type}: generator must emit "
         f"MD.Steps (universal in SIESTA 5.4.2 -- silent "
         f"single-point fallback if missing)")
@@ -1064,7 +1068,7 @@ def test_relaxation_emits_universal_md_displ_cap(relax_type):
     cfg = SiestaConfig(relax_type=relax_type, relax_max_displ=0.07,
                        psml_lib=None)
     text = render_fdf(s, cfg)
-    assert "MD.MaxDispl 0.07 Ang" in text, (
+    assert fdf_value(text, "MD.MaxDispl") == "0.07 Ang", (
         f"relax_type={relax_type}: generator must emit MD.MaxDispl, the "
         f"current spelling of the per-step displacement cap")
     # Asked of the CODE, not the raw text.  libfdf reads keywords, not
@@ -1111,7 +1115,7 @@ def test_savehs_keyword_emitted_always():
 
     # write_hs=True: SaveHS .true. lands.
     text_on = render_fdf(s, SiestaConfig(write_hs=True, psml_lib=None))
-    assert "SaveHS             .true." in text_on
+    assert_fdf(text_on, "SaveHS", ".true.")
     assert not _has_active_writehs(text_on), (
         "WriteHS is a phantom keyword in SIESTA 5.4.2 (silently "
         "dropped, no warning).  Emit SaveHS only as an ACTIVE "
@@ -1120,7 +1124,7 @@ def test_savehs_keyword_emitted_always():
     # write_hs=False: SaveHS .false. lands -- proves the override
     # actually reaches SIESTA (pre-fix this was silently no-op).
     text_off = render_fdf(s, SiestaConfig(write_hs=False, psml_lib=None))
-    assert "SaveHS             .false." in text_off
+    assert_fdf(text_off, "SaveHS", ".false.")
     assert not _has_active_writehs(text_off)
 
 

@@ -1599,17 +1599,24 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         # fundamental property of WHAT you're computing.
         "workflow_group": "profile",
         "label": "Net charge",
-        "engine_key":  'NetCharge',
+        # MERGED with PySCF's `charge` 2026-08-19 -- one question, one name.
+        # The engine_key names both spellings because the item now belongs to
+        # both engines and neither spelling is THE answer (`template.md` § 6.3).
+        "engine_key":  "NetCharge (SIESTA) | gto.M(charge=...) (PySCF)",
+        "item_kind": "deck",
+        "expands": ("NetCharge", "gto.M"),
         "null_label": "(auto-detect from phosphates)",
         "range": (-10, 10),
         "tier": "basic",
         "help": ("Net charge of the system, in units of |e|.  Default "
-                  "(blank) auto-detects from phosphate protonation -- "
-                  "fine for DNA/RNA from tleap.  Set EXPLICITLY for "
-                  "charged side chains the heuristic doesn't see: "
-                  "carboxylates (Asp/Glu), protonated amines (Lys/Arg/"
-                  "His+), sulfonates.  Sign convention: -1 = one extra "
-                  "electron; +1 = one missing electron."),
+                 "(blank) auto-detects from phosphate protonation -- one "
+                 "negative charge per backbone phosphate, which is right "
+                 "for DNA/RNA from tleap.  For everything else (peptide, "
+                 "SMILES, PDB load) auto resolves to 0, so set this "
+                 "EXPLICITLY for a charged species: carboxylates "
+                 "(Asp/Glu), protonated amines (Lys/Arg/His+), "
+                 "sulfonates.  Sign convention: -1 = one extra electron; "
+                 "+1 = one missing electron."),
     })
 
     # HOW SPIN IS TREATED.  Four states, not a boolean (2026-08-15).

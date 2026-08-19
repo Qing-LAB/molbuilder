@@ -485,6 +485,38 @@ both kinds live in one place:
 > derived value, so the context could carry nothing the door did not also
 > declare — and the layout's own facts had nowhere to live.*
 
+### 4.2a1 What is fixed, and what is the engine's to choose
+
+An engine author needs to know which half is which. Measured against both
+shipped writers, not asserted:
+
+| | |
+|---|---|
+| **Fixed — the framework does it, identically, for every engine** | the ORDER (`prepare_deck`: validate → render → write → check); the walk down `spec.layout`; turning each `Section` item into a `Parameter` through the one door and writing `param.note()` above whatever the engine returns; the reader's `USER-CUSTOM` block; the do-not-edit banner; the three record blocks; and `write_script`, which is the only thing that touches the disk |
+| **Yours — declared, not branched** | what is in the layout and in what order; whether a part is a `Section` or a `Block`; how one setting is spelled (`line`); what heads a note (`note_lead`) and how a heading is written (`section_title`); the values your record rows carry (`provenance_defaults`, `bench_marks`); what a finished deck of yours must satisfy (`check_rules`); and everything inside a `Block` |
+
+What you declare is also **all the pipeline log can say about you** — it reads the spec, and an engine never writes to it. § 4.5.2 is that table.
+
+> **W11 · A `Block` is free text, and freedom is exactly what it costs.** The
+> framework cannot see inside one. A keyword written there gets **no note from
+> the catalogue** (W2 does not reach it) and is **invisible to the check gate**
+> (it contributes no line to compare). That is the price of the freedom, and it
+> is worth paying only where the value genuinely is not a catalogue item.
+
+**Where SIESTA stands today**, counting every catalogue item whose keyword
+reaches the deck: **26, of which 24 go through the door.** The two that do not
+are the contract working rather than failing — `SystemLabel` belongs to the
+**identity** sub-step (3.4), a different question from parameters (3.6); and
+`restart` expands one field into three keys from its own declaration.
+
+*No equivalent count is given for PySCF, and the reason is worth stating: a
+Python deck cannot be counted the same way. Matching a keyword against the text
+catches occurrences inside string literals and docstrings, and matching against
+assignments misses every setting this particular configuration leaves unset.
+Three different methods gave three different totals, which is a measurement not
+worth quoting. What IS established is the rule above and the named exceptions
+below.*
+
 ### 4.2b The record the run leaves behind
 
 The parameters step emits its values **twice**: once for a person, as the value
@@ -577,7 +609,7 @@ spec is a small form the engine fills in, and it has nine slots:
 | asks | *is this a sound calculation?* | *does this deck say what it was meant to say?* |
 | reads | the resolved settings and the structure | **the written file**, reopened from disk |
 | when | before a line of text exists | after the deck is written |
-| catches | a restricted method with unpaired electrons; a missing pseudopotential; a vacuum too thin | a generated program that does not parse; an identity that is not the one stamped; a keyword written twice, where libfdf silently takes the first; a value the layout said to write that is not in the file |
+| catches | a restricted method with unpaired electrons; a missing pseudopotential; a vacuum too thin | a generated program that does not parse; an identity that is not the one stamped; a keyword written twice, where libfdf silently takes the first; **a line the layout said to write that is not in the file, verbatim** — so a dropped setting AND a mangled value, both |
 | whose | the existing validation framework, shared with the form's preflight | the engine's `check_rules` plus the shared rules |
 
 **The second one is the genuinely new capability.** Every other validator in
@@ -675,6 +707,161 @@ owner; it was stated once per caller before.
 > the record blocks alike. An engine that derives nothing keeps an empty one.
 
 ---
+
+## 4.4 The pipeline, and where each engine plugs into it
+
+§ 4 says what an engine is asked. This says it as a **structure**: one
+top-down sequence, and for each step the hook an engine fills in. It is here
+because a reader comparing two engines needs the steps to line up — code that
+does the same job in a different order cannot be compared at all, only read.
+
+```mermaid
+flowchart TB
+    subgraph FIXED["the sequence — the framework's, identical for every engine"]
+      direction TB
+      S1["<b>resolve</b><br/>template ⊕ overrides ⊕ sweep ⊕ pins"]
+      S2["<b>spec_for</b><br/><i>ask the engine for its FORM</i>"]
+      S3["<b>validate</b><br/>the settings gate"]
+      S4["<b>render</b><br/><i>walk spec.layout in order</i>"]
+      S5["<b>write</b><br/>write_script — merges the reader's block"]
+      S6["<b>check</b><br/>the artifact gate — read the file back"]
+      S1 --> S2 --> S3 --> S4 --> S5 --> S6
+    end
+    subgraph HOOKS["the hooks — each engine fills these in, and nothing else"]
+      direction TB
+      H2["<code>spec.layout</code> · <code>spec.line</code><br/><code>note_lead</code> · <code>section_title</code>"]
+      H3["<code>validation.validate</code><br/><i>shared</i>"]
+      H5["<code>provenance_defaults</code> · <code>bench_marks</code>"]
+      H6["<code>spec.check_rules</code>"]
+    end
+    S2 -.-> H2
+    S3 -.-> H3
+    S4 -.-> H5
+    S6 -.-> H6
+```
+
+**The rule this picture exists to state:**
+
+> **W12 · One sequence, and an engine substitutes steps in it — it never
+> brings its own sequence.** A step that does not apply to some engine is a
+> hook that answers *nothing* (W5), not a step that engine is excused from.
+> Two engines that each run their own order cannot be compared, and a rule
+> proved of one says nothing about the other.
+
+### Where the four writers actually stand
+
+**There are four script writers in this tree, and only two are on the sequence
+above.** Stating it rather than leaving it to be discovered:
+
+| | catalogue rows | seam entry | on `prepare_deck` | the artifact gate | reader's block | values carry their reason (W2) |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|
+| **SIESTA** | 44 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **PySCF** | 45 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **TranSIESTA** (`transport/`) | **0** | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Spectra** (`spectra/`) | **0** | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+The two on the right-hand side are not on a *worse* pipeline; they are on a
+**different** one — a `Protocol` registry in `spectra/engine_base.py` and
+`transport/engine_base.py` whose central method is
+`render_script(struct, cfg) -> str`. That returns finished **text**, which is
+exactly the shape this seam had until 2026-08-18 and gave up for the reason
+§ 4.3 records: given text, the conductor has nothing to pass on, so the order
+is written down once per route and is free to drift.
+
+**Why they are not simply migrated, stated plainly.** The seam has two halves
+(§ 4) and those engines have neither. `parameter()` — the door that makes W2
+structural — reads a catalogue declaration, and the catalogue carries no
+`transport` or `spectra` rows at all. So the door is shut before the code
+question is even reached, which is why a parallel abstraction was the only way
+to build them. Opening it is `template.md`'s own unification direction —
+*a template describes a CALCULATION, not an engine* — and is a scheduled
+piece of work, not a sweep.
+
+> **What this costs today, concretely.** `transport/_cli.py` writes an `.fdf`
+> with a plain `write_text`, so W4's one-writer rule does not hold there; those
+> decks carry no `USER-CUSTOM` block, no provenance record, and are never read
+> back after writing. And `render_checks` on both engine bases is named as
+> though it were the artifact gate and is not — it takes `(struct, cfg)` and
+> runs before any text exists, which makes it a second config gate with a
+> misleading name.
+
+## 4.5 The pipeline log — reading the run back afterwards
+
+Every record in a bundle answers a different question, and until 2026-08-19
+none of them answered the one asked most: **where did this value come from?**
+`STAGE-PLAN.md` says what the plan *is*; `jobset-decisions.log` says which
+decisions a verb took; the deck's own `PROVENANCE` block says what the writer
+assumed. None says *through which step, out of which file, folded with what* —
+which is what you need when one rung of a ladder converges and the next does
+not.
+
+`molbuilder jobset prep --pipeline-log` writes that record.
+
+> **W13 · The log observes the pipeline; it is never a step in it.** Off by
+> default, and with it on **every generated artifact is byte-identical**. A
+> record that perturbs what it records is worse than no record.
+>
+> It follows that no engine may write to it. There is ONE writer
+> (`molbuilder/pipeline_log.py`), and exactly two callers: the framework
+> (`script_emit`), for what happens inside a deck, and the conductor
+> (`jobset/prep`), for everything around it — written from what the steps
+> already return. That is the layering `jobset/ledger` states: *library layers
+> RETURN decision data, and the surface that acted on it appends the line.*
+> § 4.5.1 is the format they both write in, § 4.5.2 what an engine owes them,
+> and a test refuses any other module that imports the log at all.
+
+**Where it lands.** Beside this prep's `STAGE-PLAN.md` — the bundle root for a
+run, the stage's `bench/` container for a sweep. Inside the bundle, because the
+bundle is what is still there when a job misbehaves on a cluster hours later.
+
+**What it is called.** `<label>_<token>.<engine>.<flat|hierarchical>.pipeline.log`.
+The stem is the deck's own, and the **token is load-bearing in a flat
+calculation**: flat is depth 1, every rung preps into one directory, and a name
+per calculation would have `tight` overwrite `coarse` — destroying exactly the
+run whose provenance was wanted. Engine and shape follow so the file still says
+what it is once copied off the machine.
+
+**What it contains.** A banner per step, events indented under it, and every
+line saying what it is in its first column — `in` received, `⊕` decided, `out`
+produced, `!!` raised. So it reads top to bottom, and searching one column
+gives one answer across the whole file: every value with its source, or every
+hook that blew up.
+
+```
+═══════════════════════════════════════════════════════════════════════
+  STEP 2 · RESOLVE — the values for this rung
+═══════════════════════════════════════════════════════════════════════
+  in   BDT.template.toml      47 fields
+  in   allocation             mpi_np=8
+  ⊕    relax_type             CG                      <- stage
+  ⊕    mpi_np                 8                       <- allocation
+  ⊕    mesh_cutoff            300.0                   <- template
+  out  ParameterSet           1 element(s) -> spec_for
+```
+
+Two things carry its weight, and both are cheap only because the seam was
+already built this way:
+
+* **Every value is written with the source it came from, not just the number
+  it ended up being.** `ResolvedConfig.provenance` has recorded `template` /
+  `stage` / `sweep` / `pin` per field since floor 2 existed and had no reader
+  on the production route; the allocation fold (`render_config()`) is the
+  fourth source. A log that prints only the answer is a dump. *Where the
+  answer came from* is what makes it provenance — and it is the difference
+  between reading a file and re-running the prep with a debugger.
+* **It states what each `Block` produced** — the visibility **W11** says the
+  check gate structurally cannot give. A `Block` is free text: no catalogue
+  note reaches inside it and it contributes no line to compare. Hundreds of a
+  SIESTA deck's lines come out of blocks, and nothing else can say what is in
+  them.
+
+It also writes down the answers that are *nothing*: a `DeckSpec` slot
+answering `None` is recorded as `nothing (W5)`, not left blank.
+
+**A refusal ends the file at the step that refused.** Every line is flushed as
+it is written, and the settings gate is logged **before** it is reported —
+`report` raises on an error-severity issue, and a log written afterwards would
+be missing exactly the run that most needed explaining.
 
 ## 5. Where space and time meet
 

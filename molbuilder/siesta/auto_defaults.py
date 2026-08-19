@@ -16,7 +16,6 @@ from dataclasses import dataclass
 
 from molbuilder.chemistry import (
     ChemistryAnalysis,
-    EngineParameterAdapter,
     register_adapter,
 )
 

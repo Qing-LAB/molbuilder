@@ -1,97 +1,163 @@
-# Handoff — the preparation layer
+# Handoff — committed; nothing has actually been run
 
-## Read these first, in this order. They are the source of truth; the code is not.
+## SCOPE
 
-1. `docs/execution/script-preparation.md` — **the contract.** The three
-   questions (space / time / the seam), the seven floors, `prep`'s five steps,
-   the thirteen sub-steps of step 3, and W1–W10.
-2. `docs/execution/generator.md` — the other half of the layer: what every value
-   *is* and where it came from. § 7 owns the catalogue half of the engine seam;
-   § 4 of the contract owns the code half.
-3. `docs/engines/stages.md` § 1.1a — a ladder is N decks and N jobs for **both**
-   engines. Its five consequences are all in place and each names the file that
-   holds it.
-4. `docs/engines/tuning.md` § 2.4 / § 2.5 — the per-tier convergence tables.
-   **These tables are the authority for those numbers, not any code**, and
-   `test_doc_claims.py` checks the presets against them. § 4's ladder table is a
-   convenience restatement and loses to them.
-5. `docs/roadmap.md` § 6 — **status lives here, never in a contract.** The
-   preparation-layer debts are P1–P6 and all six have landed.
+**Structure-optimization tab, SIESTA and PySCF.** `molbuilder/transport/` and
+`molbuilder/spectra/` are deferred and byte-identical to `HEAD`. Do not touch,
+analyse, or fold them into a finding.
 
-The programme that built this is archived at
-`docs/archive/2026-08-18-preparation-backend-plan.md`. Open it for history, not
-to decide what is open now.
+| | |
+|---|---|
+| suite | **6888 passed, 0 failed** — `python tools/testrun.py run none2e`, ~22 min |
+| reference decks | **36 cases, digest `149ac0714089ab85`**, harness `<scratch>/refgen.py` |
+| uncommitted | nothing — this session's 58 files are the commit this file rides in |
+| server | the user runs it; do not start one. `https://qlabsrv.physics.asu.edu:8888` |
 
-## Where the work stands
+---
 
-The layer is built and both engines are on it. `prep`, `siesta convert` and
-`pyscf convert` all reach the deck through one call —
-`script_emit.prepare_deck(spec, struct, cfg, path)` — which runs **validate →
-render → write → check** in that order, once, for every route.
+## What remains, in priority order
 
-**What the seam carries is the engine's FORM, not finished text.** `spec_for`
-returns a `DeckSpec`: the deck's layout as an ordered table of `Section`s and
-`Block`s, plus how this engine spells one setting. The framework walks it, so it
-knows what the deck was supposed to contain and can compare that against the
-file it just wrote — which is what the check gate needs and what no validator in
-this tree could do before.
+### 1. Commit — DONE. One commit in the house shape; this file rides in it.
 
-**Two rules make that work, and they are the ones to keep in mind when touching
-either engine's writer:**
+### 2. The end-to-end run — the original ask, never done.
 
-- **W9 — the layout's MEMBERSHIP is settled when the spec is built; each
-  member's TEXT is settled when the framework walks it.** A section only some
-  calculations have is *left out* of the layout for the others, never chosen
-  inside a `Block`. `spec_for` holds `(struct, cfg)` and can answer that.
-- **W10 — an engine keeps ONE per-render context** (`_derived`), and every
-  reader takes it whole: the layout for membership, the syntax door for a
-  derived value's spelling, the record blocks to quote one.
+**Everything so far validates generated scripts. Not one calculation has been
+run.** That is the whole remaining half.
 
-## What a review on 2026-08-19 found and fixed
+Through the browser, not a driver script calling internal functions:
 
-The full findings are in `docs/execution/script-preparation.md`'s own history
-notes; three are worth carrying forward because they are the shapes that recur.
+> Structure optimization tab → *Send to Task setup* → Task setup → save →
+> `jobset prep` → `jobset submit`, **one job at a time, never in parallel**.
 
-- **Both engines rendered their sections from inside a `Block`**, by calling the
-  framework's section walk themselves — nine times in one SIESTA deck. So the
-  layout could not name them, `render_deck` could not collect what they wrote,
-  and the check gate's loop-closing rule ran on an empty list and passed: a
-  728-line SIESTA deck reported **zero** written keywords. It reports 24 now,
-  PySCF 13, and the walk has one owner (`_render_sections` is private).
-- **SIESTA's wrapper `--help` promised a timestamped backup directory** that the
-  launcher had stopped creating the day before, while citing the section that
-  says the opposite. PySCF's copy had been corrected and SIESTA's had not. The
-  entry has one writer now (`runwrap._cold_usage_entry`) and a test reads the
-  *generated* help.
-- **A test that proves the framework against a stub proves nothing about the
-  engines.** `test_deck_runner.py` used a stub whose layout was already the
-  table the contract describes, so every promise held for it while both real
-  engines violated them. It now asks the real forms too.
+Ready for it:
 
-## How to work (these were the repeated failures)
+* a `claude-e2e` project exists on the server with the canonical subdirs.
+  **Nothing has been written into the user's own projects.**
+* machine config resolves to `source ~/miniconda3/etc/profile.d/conda.sh` +
+  `conda activate`; no mamba on PATH.
+* generated wrappers target `molbuilder-siesta` and `molbuilder-pySCF`, and
+  both envs have their engines installed.
+* a bare non-interactive `bash <script>.run.sh` **refuses by design** — that is
+  the launch-door gate, and `MB_LAUNCHED_BY=manual` is its documented override.
+  Not a bug; do not "fix" it.
 
-- **Code top-down from the contract. Do not read the old implementation for
-  guidance and do not preserve its behaviour by default.** Three convergence
-  values in PySCF's tight rung were wrong because they were copied from
-  `config/pyscf.py` instead of read from `tuning.md` § 2.4.
-- **The contract may itself be stale — sweep it, don't work around it.** Fix the
-  document that owns the concept, then sweep the restatements. A retraction
-  stapled over a live table is harder to read than either version.
-- **Prove a restructure output-neutral before believing it.** Render a matrix of
-  decks across both engines and several configurations, normalise the timestamp
-  and the git sha, and hash it. Every step of the 2026-08-19 restructure was
-  gated on that digest; the one deliberate change (naming a section that had
-  none) was measured at exactly one added line per deck.
-- **Mutation-test every new guard.** Break the code, watch the test fail, put it
-  back. A green test proves nothing until you have seen it go red.
-- **Static analysis, not poking.** Read the code and the contract side by side.
-  Tests would not have caught the wrong convergence numbers.
-- **Targeted test runs**, not the 6800-test suite: `python tools/testrun.py run
-  none2e <files>` then `status --fails`. Never edit source while a batch runs —
-  it silently corrupts the result.
-- **No obsolete claims in comments.** A comment describing the old mechanism is
-  worse than none.
-- SIESTA and PySCF must end up identical except their parameters and their
-  engine — same stage names (`coarse`/`medium`/`tight`), same ladder shape, same
-  framework for prep/bench/submit, both directory shapes. A rule that holds for
-  one and is untested on the other is where they drift apart.
+Model systems already exercised at the *generation* level (water, BDT, BDT⁻,
+O₂ triplet, an Au(111) slab) across both engines and both directory shapes.
+All prepped clean. None has been executed.
+
+### 3. Collapse the instance tests. This is my mess.
+
+35 test functions generate **332 cases that re-run one rule with different
+nouns** — `test_siesta_default_values_render_in_fdf` runs 20 times to prove one
+walk works. This is why every problem this session was found by inspecting
+outputs: the tests inspect outputs.
+
+The rule for what to keep, proportionate rather than absolute:
+
+| | needs |
+|---|---|
+| **Declared data** — the layout table, item lists, record values | nothing of its own; the walk is tested once |
+| **A step that selects** — simple if/else over a value: `line`, `note_lead`, `section_title`, `validate_subject`, `provenance_defaults`, `bench_marks`, `check_rules` | nothing of its own; **the rule is enough** |
+| **A step that emits CODE** — `Block.render`, and what it reaches: `runtime_info.emit_threading_setup_lines` · `emit_gpu_probe_lines` · `emit_pyscf_post_import_lines` · `emit_runtime_info_capture_lines` · `trajectory_log.MolwatchEmitter` | **its own test** — it introduces statements, scopes and names nothing models |
+
+Worked through: `line` returns one deck line, and the rule *"every line the
+parameters step wrote is in the file"* already covers it whatever it returns.
+`bench_marks` returns values for a block the framework writes. `check_rules`
+returns issues the framework reports uniformly, and what they SAY is engine
+science with its own validator tests. **`Block.render` is the only hook handing
+back text nothing models** — which is exactly where the `scf` collision came
+from.
+
+Start with the instance tests I added today (spin, charge and k-grid appearing
+in a deck); they are the wrong shape by this rule.
+
+### 4. Optional — give the PySCF deck's namespace an owner.
+
+A SIESTA deck is a keyword list; names cannot collide. **A PySCF deck is a
+Python program**, and five independent pieces of molbuilder write 1003 lines
+into its one namespace: `pyscf/input.py`, four `runtime_info.emit_*` functions,
+and the whole `MolwatchEmitter` class injected verbatim via
+`inspect.getsource`. Nothing coordinates the names; they coexist by a prefix
+convention — molbuilder's imports are `_mw_np`, `_mb_socket`, `_os`, while the
+unprefixed `gto` / `scf` / `dft` / `mol` / `mf` belong to the engine and the
+reader.
+
+**The one place that broke it is fixed** — the molwatch callback bound a bare
+`scf`, rebinding the pyscf module to a list of dicts in 32 of 64
+configurations. Whether to make collision *impossible* rather than *detected*
+is a judgement: for, because being correct currently requires an emitter to
+know what the other four are called; against, because one place out of the
+whole surface broke it. If it is done, it is one place that owns the reserved
+names — not a framework.
+
+`tests/test_emitted_program_namespace.py` currently detects collisions across
+the configuration space. That is a smoke alarm standing in for a design.
+
+---
+
+## What was actually wrong this session, and is fixed
+
+* **Every spin-polarized SIESTA deck with a fixed spin was refused.** One
+  setting legitimately emits a *pair* (`Spin.Fix` + `Spin.Total`) and the check
+  gate compared the two-line emission as one blob against single lines.
+* **The reference harness was pinning a `TypeError` as an expected deck.** Its
+  spin case passed `spin_polarized`, which `SiestaConfig` does not have, so it
+  guarded 28 decks while reporting 32 — spin and GPU were never rendered by it.
+  Now 34 real decks plus 2 deliberate refusals.
+* **`geometry.h_ratio` told a gold slab it was missing hydrogens.** Now
+  conditioned on "if this is a molecular system" rather than gated on a
+  molecule/crystal test that cannot be made reliably.
+* **One name collision in the emitted PySCF program** (`scf` → `_mw_scf`).
+* Three dead imports.
+
+## What was landed as new capability
+
+* **The pipeline provenance log** — `molbuilder/pipeline_log.py`, one writer,
+  two callers. `jobset prep --pipeline-log`, off by default, **byte-identical
+  output either way**. Records what each step received, decided and produced,
+  with a source per value. In flat layout each rung gets its own file; a
+  sweep's goes to the `bench/` container.
+* **The hook boundary** — `issues.calling` over all 16 engine callables.
+  Annotates with `add_note` rather than replacing, so the exception type and
+  message survive and an engine's deliberate refusal is not buried; always
+  re-raises. `issues.notes_of` carries the attribution into `prep`'s
+  user-facing error, because `str(exc)` drops notes.
+* Contract sections for both, in `docs/execution/script-preparation.md`.
+
+## Things I raised that turned out NOT to be defects
+
+Recorded so nobody spends time on them again. I reported all three as problems
+before checking; each took one measurement to settle.
+
+1. **19 PySCF settings written as free text.** I set a non-default value for
+   each and rendered the deck: **all 19 reach the generated code correctly.**
+   Nothing is broken. It was a preference about how they are written.
+2. **Five settings recording the wrong keyword.** The reader that uses those
+   records has two callers and **both pass `engine="siesta"`**, whose records
+   are all correct. PySCF's readback uses an explicit table. Nothing reads them.
+3. **PySCF's settings check emits no hard errors.** True, but there is no
+   example of a calculation that should be refused and isn't. An observation.
+
+---
+
+## How to work here
+
+- **Design so the bad state cannot occur, then state the rule. Testing is
+  last.** Mutation testing is not evidence about the system — it only says
+  whether a test notices damage, which is poking an output one level up.
+- **Read the code; do not poke it.** Every problem this session was found by
+  inspecting an output. That is the symptom the test cleanup addresses.
+- **Check before reporting.** Three of my findings were preferences rather than
+  defects, and three more were artifacts of my own measuring: a grep capped at
+  three lines that hid the k-grid, a substring check that called a live import
+  dead, a harness that pinned a `TypeError` as a deck.
+- **Never call a defect "harmless".** The `scf` collision broke nothing on the
+  day it was written, which is precisely why it survived.
+- **Warn, never decide the user's science.** Stating a fact, or an
+  inconsistency between two things the user set, is the job. Judging their
+  choice is not — metallicity is a *result*, so nothing may warn that a k-grid
+  is too coarse for a metal. A warning that states something FALSE is
+  different: that is a defect.
+- **The tests here are ours.** Cleaning up redundant ones is part of the work.
+- Copy `molbuilder/ tests/ pyproject.toml` (~40 MB) for scratch runs, never the
+  whole tree. Never edit source while a test batch is running.

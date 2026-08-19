@@ -7,6 +7,10 @@ one does -- the engine knows, and the `jobset` layer must not.
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:                      # annotations only
+    from ..task import Stage
+
 from typing import Dict, List
 
 from ..jobset.model import WarmFile

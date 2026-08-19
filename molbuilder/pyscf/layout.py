@@ -215,7 +215,7 @@ def check_rules(text: str, struct=None, cfg=None):
 #: arguments, so their anchor is the constructor rather than a path; the
 #: molecule keeps them under its own names.
 _READBACK = {
-    "charge":        "mol.charge",
+    "net_charge":    "mol.charge",
     "spin":          "mol.spin",
     "basis":         "mol.basis",
     "symmetry":      "mol.symmetry",

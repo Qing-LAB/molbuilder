@@ -222,7 +222,7 @@ def test_charge_default_uses_phosphate_heuristic(deprotonated_diester):
 def test_charge_explicit_zero_overrides_heuristic(deprotonated_diester):
     """Spec: 'If cfg.charge is not None, it wins (including
     cfg.charge=0)'."""
-    text = render_script(deprotonated_diester, PySCFConfig(charge=0))
+    text = render_script(deprotonated_diester, PySCFConfig(net_charge=0))
     assert "charge     = 0," in text
 
 
@@ -234,7 +234,7 @@ def test_charge_explicit_zero_overrides_heuristic(deprotonated_diester):
 @pytest.mark.parametrize("cfg", [
     PySCFConfig(),
     PySCFConfig(optimize=False),
-    PySCFConfig(method="UKS", spin=1, charge=1),
+    PySCFConfig(method="UKS", spin=1, net_charge=1),
     PySCFConfig(write_trajectory=False),
     PySCFConfig(solvent="water"),
     PySCFConfig(dispersion=None),

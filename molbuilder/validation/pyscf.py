@@ -291,7 +291,7 @@ def _validate_pyscf(struct: Structure, cfg,
                 f"return the wrong electronic state.  Switch to UKS / "
                 f"UHF and set spin = 1 (or higher for multi-radical "
                 f"systems).  If the count is wrong because charge auto-"
-                f"detection missed something, set cfg.charge explicitly",
+                f"detection missed something, set cfg.net_charge explicitly",
                 "config.method",
             ))
 
@@ -308,8 +308,8 @@ def _validate_pyscf(struct: Structure, cfg,
     # NEUTRAL form (Asp / Glu protonated, Lys / Arg neutral, etc.).
     # For sequences containing charged side chains, the physiological
     # charge differs.  Surface the gap so the user knows the script
-    # is using neutral defaults; they can override with cfg.charge.
-    issues += _check_peptide_protonation(struct, getattr(cfg, "charge", None))
+    # is using neutral defaults; they can override with cfg.net_charge.
+    issues += _check_peptide_protonation(struct, getattr(cfg, "net_charge", None))
 
     # Inverse case: UKS / UHF with spin = 0 is almost always a mistake.
     # The unrestricted formalism on a closed-shell system runs at ~2x

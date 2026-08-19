@@ -48,8 +48,13 @@ import dataclasses as _dataclasses
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional,
-                    Tuple)
+from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Mapping,
+                    Optional, Tuple)
+
+# The HOOK BOUNDARY (§ 4.6).  A real import, not a TYPE_CHECKING one: this is
+# called, not annotated.  `issues` is L1 and imports nothing, so there is no
+# cycle to worry about.
+from .issues import calling as _calling
 
 if TYPE_CHECKING:                       # annotations only -- `issues`
     from .issues import Issue           # is L1 and imports nothing
@@ -1185,9 +1190,38 @@ class DeckSpec:
     #: ``(struct, cfg) -> dict`` of :func:`emit_bench_marks` keyword
     #: arguments, or ``None`` for an engine that declares no anchors.
     bench_marks: Optional[Callable] = None
+    #: **W10's one per-render context** — *what this deck derived* — carried on
+    #: the form so it can be READ, not only closed over.
+    #:
+    #: Both engines already keep exactly this dict: SIESTA fills it before the
+    #: layout (its MEMBERSHIP depends on ``spin_polarized`` and ``relax_kind``),
+    #: PySCF fills it as its blocks render.  Until it was declared here, the
+    #: only readers were the engine's own closures — the syntax door, the
+    #: layout, the record blocks — so a value like ``block_size = 8`` reached
+    #: the deck with no way for anything outside the engine to say where 8 came
+    #: from.  W10 says *"every reader takes it whole"*; a reader that
+    #: re-derived these numbers instead would be W10's forbidden second
+    #: channel, so the context is exposed rather than re-computed.
+    #:
+    #: The framework never WRITES it and never branches on it — it is a value
+    #: the form carries, like ``provenance_defaults``, not a door.
+    derived: Mapping[str, Any] = _dataclasses.field(default_factory=dict)
     #: ``(text, struct, cfg) -> [Issue]`` — this engine's answer to *what must
     #: a finished deck of mine satisfy?*  Runs on the file as written.
     check_rules: Optional[Callable] = None
+    #: ``(struct, cfg) -> (struct, kwargs)`` — WHAT the settings gate should
+    #: judge, when that is not the structure as it arrived.  SIESTA wraps
+    #: coordinates into the cell and resolves a box before writing, so the deck
+    #: expresses a structure the caller never handed in; judging the input
+    #: would judge something nobody runs.
+    #:
+    #: **It exists so step 3.3 has ONE owner.**  Both engines ran the gate
+    #: themselves inside ``spec_for`` while ``prepare_deck`` ran it again --
+    #: two owners, and on different subjects: the engine's call saw the wrapped
+    #: coordinates and the resolved cell, the framework's saw neither.  The
+    #: order is the framework's (§ 4.3); what the order is applied TO can be
+    #: the engine's, and that is what this carries.
+    validate_subject: Optional[Callable] = None
     #: How a section title is written as a comment.  **Neither shipped
     #: engine overrides this** -- both write `#` comments -- and that is
     #: worth knowing rather than assuming: the slot is unexercised, kept
@@ -1237,8 +1271,8 @@ class RenderedDeck(str):
         return str(self)
 
 
-def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True
-                    ) -> Tuple[List[str], List[str]]:
+def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
+                     log=None) -> Tuple[List[str], List[str]]:
     """The **parameters** sub-step: walk the layout, one Parameter at a time.
 
     Returns ``(lines, emitted)``.  A section whose parameters all decline to
@@ -1264,38 +1298,48 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True
         if isinstance(section, Block):
             continue          # a Block is text, not parameters -- render_deck
         body: List[str] = []
+        # WHICH items spoke and which declined -- the log's business, and only
+        # this walk knows.  A conditional item that quietly emitted nothing
+        # looks exactly like one that was never in the layout, and telling
+        # those apart is most of what a reader comes to the log for.
+        spoke: List[str] = []
+        silent: List[str] = []
         for name in section.items:
             param = parameter(name, spec.engine, config=cfg)
-            text = spec.line(param)
+            # EVERY ENGINE HOOK IS CALLED THROUGH THE BOUNDARY (§ 4.6).  This
+            # walk is a walk over the engine's functions, so an exception with
+            # no owner on it is the ordinary failure here, not an exotic one.
+            with _calling("line", engine=spec.engine,
+                          where=f"item {name!r}", log=log):
+                text = spec.line(param)
             if text is None:
+                silent.append(name)
                 continue
+            spoke.append(name)
             if verbose:
-                body.extend(param.note(*spec.note_lead(param)))
+                with _calling("note_lead", engine=spec.engine,
+                              where=f"item {name!r}", log=log):
+                    lead = spec.note_lead(param)
+                body.extend(param.note(*lead))
             body.append(text)
-            # WHICH KEYWORD THIS PARAMETER COMMITTED THE DECK TO.
+            # WHAT THIS PARAMETER PUT IN THE DECK -- the LINE, verbatim.
             #
-            # An item may declare several and choose between them:
-            # ``relax_steps`` declares ``MD.Steps`` and ``MD.FinalTimeStep``
-            # and writes whichever the run mode calls for, never both.  Only
-            # the TEXT knows which branch was taken, so where the line names
-            # one of them, that is the answer.
+            # Not the keyword.  A keyword search cannot tell a setting from a
+            # READ of that setting, and a deck that is a program does both: the
+            # effective-parameters record reads ``mf.conv_tol`` back to report
+            # it (W8), and that read satisfied the gate for a
+            # ``mf.conv_tol = …`` line a writer bug had dropped -- measured
+            # 2026-08-19, deleting the setting left the deck passing.  Two
+            # features cancelling: the record that makes a deck honest about
+            # what the engine holds was what let a writer bug through.
             #
-            # **Where it names none, the single declared keyword is still the
-            # answer** *(2026-08-19)*.  A deck that is a PROGRAM binds the
-            # value here and hands it to the engine further down --
-            # ``_GEOM_ETOL = 1e-06`` at the top, ``convergence_energy =
-            # _GEOM_ETOL`` at the ``optimize()`` call -- so the keyword is in
-            # the FILE, which is what the gate reads, and not in this line.
-            # Asking the line alone made every PySCF geometry target invisible
-            # to the gate.  With one candidate there is nothing to resolve; the
-            # parameter emitted, so the deck claims that keyword and the file
-            # has to show it.  With several and no match the line has told us
-            # nothing, and inventing an answer is what the gate exists to stop.
-            chosen = [k for k in param.writes if _mentions_keyword(text, k)]
-            emitted.extend(
-                chosen if chosen
-                else param.writes if len(param.writes) == 1
-                else ())
+            # The line is exact evidence and needs no matching rules at all --
+            # no case folding, no separator folding, no stripping comments or
+            # (in a Python deck) string literals, and no deciding WHICH of an
+            # item's declared keywords this run took.  All of that existed only
+            # to feed this check.  The file is what molbuilder wrote moments
+            # earlier, so a verbatim compare is the honest one.
+            emitted.append(text)
         if body:
             out.append("")
             # A SECTION WITH NO TITLE GETS NO HEADING, and the engine is not
@@ -1304,7 +1348,10 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True
             # pass a suppressing ``section_title`` -- which meant its OTHER
             # sections could not share the spec, which is why one deck needed
             # eight of them.
-            title = spec.section_title(section.title) if section.title else ""
+            with _calling("section_title", engine=spec.engine,
+                          where=f"section {section.title!r}", log=log):
+                title = (spec.section_title(section.title)
+                         if section.title else "")
             # A falsy title means the caller has already written its own
             # heading -- a section whose explanation must sit between the
             # heading and the values, which the walk has no way to interleave.
@@ -1316,11 +1363,18 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True
             if verbose:
                 out.extend(section.note)
             out.extend(body)
+        if log is not None:
+            log.produced("Section", f"{section.title!r}  "
+                                    f"{len(body)} lines  "
+                                    f"{', '.join(spoke) or '(none)'}")
+            if silent:
+                log.note(f"declined for this configuration: "
+                         f"{', '.join(silent)}")
     return out, emitted
 
 
-def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True
-                ) -> "RenderedDeck":
+def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
+                log=None) -> "RenderedDeck":
     """Sub-steps **structure** through **record**, in that order.
 
     **The layout is walked in order**, and a member of it is either a
@@ -1335,11 +1389,44 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True
     two engines cannot drift about what a generated file looks like below the
     science.
     """
+    # STEP 3.3, HERE, AND ONLY HERE.  The gate belongs to rendering because
+    # its whole job is to refuse before a line exists -- and every route that
+    # produces deck text must be gated, not only the one that also writes.
+    # It ran in TWO places until 2026-08-19: each engine called it inside
+    # `spec_for` and `prepare_deck` called it again, on a different subject.
+    from .validation import report as _report, validate as _validate
+    with _calling("validate_subject", engine=spec.engine, log=log):
+        _subject, _kw = ((spec.validate_subject(struct, cfg))
+                         if spec.validate_subject else (struct, {}))
+    _issues = _validate(_subject, cfg, **_kw)
+    if log is not None:
+        log.step("STEP 3.3 · VALIDATE — the settings gate")
+        log.received("subject", ("the spec's own subject" if spec.validate_subject
+                                 else "the structure as it arrived")
+                     + (f"  ({', '.join(sorted(_kw))})" if _kw else ""))
+        log.produced("verdict",
+                     f"{sum(1 for i in _issues if i.severity == 'error')} error, "
+                     f"{sum(1 for i in _issues if i.severity != 'error')} warn")
+        for i in _issues:
+            log.note(f"{i.severity}: [{i.where}] {i.message}")
+    # LOGGED BEFORE REPORTED, so a refusal is IN the file with its reason.
+    # `report` raises on an error-severity issue; a log written afterwards
+    # would be missing exactly the run that most needed explaining.
+    _report(_issues)
+
     parts: List[str] = []
     emitted: List[str] = []
+    if log is not None:
+        log.step("STEP 3.6 · RENDER — walking the layout in order")
     for member in spec.layout:
         if isinstance(member, Block):
-            text = member.render(struct, cfg)
+            with _calling("Block.render", engine=spec.engine,
+                          where=f"block {member.title!r}", log=log):
+                text = member.render(struct, cfg)
+            if log is not None:
+                log.produced("Block", f"{member.title!r}  " + (
+                    f"{len(text.splitlines())} lines" if text is not None
+                    else "nothing to say for this configuration"))
             # ``None`` is *nothing to say*; ``""`` is a blank line the block
             # meant to write.  Testing truthiness conflates them, and a block
             # whose whole content is one blank line joins to "" -- so the
@@ -1348,20 +1435,38 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True
                 parts.append(text)
             continue
         lines, names = _render_sections(
-            _dataclasses.replace(spec, layout=(member,)), cfg, verbose=verbose)
+            _dataclasses.replace(spec, layout=(member,)), cfg,
+            verbose=verbose, log=log)
         parts.extend(lines)
         emitted.extend(names)
     science = "\n".join(parts)
 
+    # AFTER THE WALK, because that is when both engines' context is complete:
+    # SIESTA fills its own before the layout (membership depends on it), PySCF
+    # fills part of it as its blocks render.  Printing at spec time would show
+    # one engine's answers and an empty dict for the other.
+    if log is not None and spec.derived:
+        log.step("this deck's own derived context (W10)")
+        for _k in sorted(spec.derived):
+            log.chose(_k, spec.derived[_k], "derived from (struct, cfg)")
+
+    with _calling("provenance_defaults", engine=spec.engine, log=log):
+        _defaults = (spec.provenance_defaults(cfg)
+                     if spec.provenance_defaults else None)
     record: List[str] = [emit_provenance(
         generator_version=molbuilder_git_sha(),
         generated_at=generated_at_now(),
-        resolved_defaults=(spec.provenance_defaults(cfg)
-                           if spec.provenance_defaults else None))]
+        resolved_defaults=_defaults)]
+    # NAMED AS THEY GO IN, not counted afterwards.  Re-deriving which blocks
+    # a list of three strings holds is the guess this file exists to replace,
+    # and the first version of it got the answer wrong.
+    in_record: List[str] = ["PROVENANCE"]
     if spec.bench_marks is not None:
-        marks = spec.bench_marks(struct, cfg)
+        with _calling("bench_marks", engine=spec.engine, log=log):
+            marks = spec.bench_marks(struct, cfg)
         if marks:
             record.append(emit_bench_marks(**marks))
+            in_record.append("BENCH-MARKS")
     atoms = emit_atom_metadata(
         regions=dict(getattr(struct, "regions", {}) or {}),
         annotations=dict(getattr(struct, "annotations", {}) or {}),
@@ -1370,10 +1475,24 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True
         created_at=generated_at_now())
     if atoms:
         record.append(atoms)
+        in_record.append("ATOM-METADATA")
 
     text = (science + "\n\n" + emit_user_custom_placeholder()
             + "\n\n" + machine_record_banner()
             + "\n\n" + "\n\n".join(record) + "\n")
+    if log is not None:
+        log.produced("record", ", ".join(in_record))
+        if spec.bench_marks is None:
+            log.note("BENCH-MARKS: nothing — this engine declares no "
+                     "anchors, and that is a recorded answer (W5)")
+        elif "BENCH-MARKS" not in in_record:
+            log.note("BENCH-MARKS: this engine declares anchors but had "
+                     "none to state for this configuration")
+        if "ATOM-METADATA" not in in_record:
+            log.note("ATOM-METADATA: nothing — this structure carries no "
+                     "regions or annotations")
+        log.produced("deck", f"{len(text.splitlines())} lines, "
+                             f"{len(emitted)} recorded for the gate")
     return RenderedDeck(text=text, emitted=tuple(emitted))
 
 
@@ -1383,7 +1502,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True
 
 
 def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
-               struct=None, cfg=None) -> List["Issue"]:
+               struct=None, cfg=None, *, log=None) -> List["Issue"]:
     """Read the WRITTEN file back and report what is wrong with it.
 
     **The subject is the artifact, and that is what is new.**  Every other
@@ -1429,41 +1548,45 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
                 f"{label} appears {n} times in {p.name}, expected once",
                 where=f"deck.{block}"))
 
-    # THE LOOP CLOSED: every keyword the parameters sub-step says it wrote must
-    # be in the file.  Without this the two halves are only related by hope --
-    # which is how a deck came to state values nobody had read.
-    for key in dict.fromkeys(emitted):
-        if not _mentions_keyword(text, key):
+    # THE LOOP CLOSED: every LINE the parameters sub-step produced must be in
+    # the file, verbatim.  Without this the two halves are related only by
+    # hope -- which is how a deck came to state values nobody had read.
+    #
+    # Verbatim, and not a keyword search.  A keyword can appear because the
+    # deck READS it (the effective-parameters record reads every setting back,
+    # by design), and that read satisfied this check for a setting a writer bug
+    # had dropped.  A line is the assignment itself, so it cannot be confused
+    # with a mention of it -- and it catches a mangled VALUE too, which a
+    # keyword search never could.
+    present = set(text.splitlines())
+    # ONE EMISSION MAY BE SEVERAL LINES, and each of them is evidence.
+    # ``line`` returns ``str | None`` and a str may hold a pair: a FIXED total
+    # spin needs ``Spin.Fix`` and ``Spin.Total`` together, and the free-energy
+    # section is titled *"a PAIR: the value + its switch"* for the same reason.
+    # Comparing the emission whole meant a two-line answer could never equal
+    # any member of a set of single lines, so the gate refused a deck that was
+    # correct -- every spin-polarized SIESTA run, from the moment this rule
+    # replaced the keyword search on 2026-08-19 until 2026-08-19.  It went
+    # unseen because the reference harness's own spin case was passing a field
+    # name ``SiestaConfig`` does not have and pinning the TypeError.
+    for line in dict.fromkeys(
+            ln for e in emitted for ln in e.splitlines() if ln.strip()):
+        if line not in present:
             out.append(Issue(
                 "error",
-                f"{p.name} was written with {key!r} but the file does not "
-                f"contain it",
-                where="deck.missing_keyword"))
+                f"{p.name}: the parameters step wrote {line!r} and the file "
+                f"does not contain that line",
+                where="deck.missing_line"))
 
     if rules is not None:
-        out.extend(rules(text, struct, cfg) or [])
+        with _calling("check_rules", engine=spec.engine, where=p.name,
+                      log=log):
+            out.extend(rules(text, struct, cfg) or [])
     return out
 
 
-def _mentions_keyword(text: str, key: str) -> bool:
-    """Whether a deck names this engine keyword, ignoring comments.
-
-    Compared loosely on purpose -- SIESTA's fdf reader itself ignores case and
-    the ``.``/``_``/``-`` separators, so a check that insisted on one spelling
-    would report a deck the engine reads perfectly well.
-    """
-    want = key.lower().replace(".", "").replace("_", "").replace("-", "")
-    for line in text.splitlines():
-        code = line.split("#", 1)[0]
-        for tok in code.replace("=", " ").split():
-            if tok.lower().replace(".", "").replace("_", "").replace(
-                    "-", "") == want:
-                return True
-    return False
-
-
 def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
-                 verbose: bool = True):
+                 verbose: bool = True, log=None):
     """**Validate → render → write → check**, in that order, for one deck.
 
     The shared spine of `script-preparation.md` § 3's per-deck sub-steps. The
@@ -1479,9 +1602,61 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
     meant to say?* -- a question that can only be asked of an artifact, which is
     why no validator in this tree could ask it before.
     """
-    from .validation import report, validate
-    report(validate(struct, cfg))                      # 3.3 validate
-    rendered = render_deck(spec, struct, cfg, verbose=verbose)
+    from .validation import report
+    if log is not None:
+        _log_spec(spec, log)
+    # 3.3 validate now runs inside `render_deck`, on the subject the SPEC
+    # names -- one owner for the step, and the same one for every route that
+    # renders (`render_fdf` / `render_script` gate too, not just this one).
+    rendered = render_deck(spec, struct, cfg, verbose=verbose, log=log)
     written = write_script(path, rendered.text)        # 3.10 write
-    report(check_deck(written, spec, rendered, struct, cfg))   # 3.11 check
+    if log is not None:
+        log.step("STEP 3.10 · WRITE")
+        log.produced(written.name,
+                     f"{len(written.read_text(encoding='utf-8').splitlines())} "
+                     f"lines -> {written}")
+    issues = check_deck(written, spec, rendered, struct, cfg,
+                        log=log)                                # 3.11 check
+    if log is not None:
+        log.step("STEP 3.11 · CHECK — the artifact gate")
+        log.received(written.name, "read back from disk")
+        log.produced("compared", f"{len(dict.fromkeys(rendered.emitted))} "
+                                 f"distinct lines the parameters step wrote")
+        log.produced("verdict", f"{len(issues)} issue(s)")
+        for i in issues:
+            log.note(f"{i.severity}: [{i.where}] {i.message}")
+    report(issues)
     return written
+
+
+def _log_spec(spec: "DeckSpec", log) -> None:
+    """Write down the FORM the engine handed over, before anything runs on it.
+
+    **This is readable only because a form crosses the seam.**  While engines
+    handed back finished text there was nothing here to describe: the layout,
+    the record's values and the check rules existed only as whatever the
+    writer had already done with them.  The same property that lets the check
+    gate re-derive what a deck was supposed to contain lets the log state it
+    (`script-preparation.md` § 4.3).
+    """
+    log.step("STEP 3.4 · SPEC_FOR — the engine describes its deck")
+    log.received("engine", spec.engine)
+    n_sec = sum(1 for m in spec.layout if isinstance(m, Section))
+    n_blk = sum(1 for m in spec.layout if isinstance(m, Block))
+    log.produced("layout", f"{len(spec.layout)} members "
+                           f"({n_sec} Section, {n_blk} Block)")
+    for member in spec.layout:
+        if isinstance(member, Block):
+            # W11: free text, so this is ALL the framework can say about it
+            # until it renders -- no catalogue note reaches inside, and it
+            # contributes no line to the gate.
+            log.note(f"Block    {member.title!r}  (free text, W11)")
+        else:
+            log.note(f"Section  {member.title!r}  "
+                     f"{', '.join(member.items)}")
+    # W5: a slot answering None is answering NOTHING, and that is a real
+    # answer -- so it is written down rather than left as a blank.
+    for slot in ("provenance_defaults", "bench_marks", "check_rules",
+                 "validate_subject"):
+        log.produced(slot, "answered" if getattr(spec, slot) is not None
+                     else "nothing (W5)")

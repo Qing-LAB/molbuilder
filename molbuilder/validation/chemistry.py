@@ -34,7 +34,7 @@ def _check_peptide_protonation(struct: Structure,
       * the structure looks like a peptide (has standard amino-acid
         residue names);
       * the estimated pH-7 charge is non-zero;
-      * the user hasn't explicitly set cfg.charge to a non-zero
+      * the user hasn't explicitly set cfg.net_charge to a non-zero
         value (None or 0 means "auto / default neutral").
 
     Severity: warn (not error).  The neutral build may be exactly
@@ -56,12 +56,12 @@ def _check_peptide_protonation(struct: Structure,
     return [Issue(
         "warn",
         f"peptide has charged side chains (estimated charge at "
-        f"pH 7.4: {expected:+d}) but cfg.charge = 0; the script "
+        f"pH 7.4: {expected:+d}) but cfg.net_charge = 0; the script "
         f"will build the gas-phase neutral form (Asp/Glu protonated, "
         f"Lys/Arg neutral).  For physiological-state runs set "
-        f"cfg.charge = {expected} (and adjust spin / basis: open "
+        f"cfg.net_charge = {expected} (and adjust spin / basis: open "
         f"shells need diffuse functions like aug-cc-pVDZ for anions)",
-        "config.charge",
+        "config.net_charge",
     )]
 
 

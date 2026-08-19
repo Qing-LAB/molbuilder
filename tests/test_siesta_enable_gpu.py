@@ -16,6 +16,8 @@ loudly.
 """
 from __future__ import annotations
 
+from _deck import assert_fdf
+
 import json
 from pathlib import Path
 
@@ -154,7 +156,7 @@ def test_render_fdf_emits_gpu_keyword_when_enabled():
     one form keeps the contract simple."""
     cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf = render_fdf(_mk_struct(), cfg)
-    assert "Diag.ELPA.GPU      .true." in fdf
+    assert_fdf(fdf, "Diag.ELPA.GPU", ".true.")
 
 
 def test_render_fdf_emits_diag_algorithm_with_gpu():
@@ -166,7 +168,7 @@ def test_render_fdf_emits_diag_algorithm_with_gpu():
     iterating happily on CPU."""
     cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf = render_fdf(_mk_struct(), cfg)
-    assert "Diag.Algorithm     ELPA-1STAGE" in fdf
+    assert_fdf(fdf, "Diag.Algorithm", "ELPA-1STAGE")
 
 
 def test_render_fdf_diag_algorithm_choice_propagates():
@@ -174,7 +176,7 @@ def test_render_fdf_diag_algorithm_choice_propagates():
     Pin that the choice flows through to the rendered keyword."""
     cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-2STAGE")
     fdf = render_fdf(_mk_struct(), cfg)
-    assert "Diag.Algorithm     ELPA-2STAGE" in fdf
+    assert_fdf(fdf, "Diag.Algorithm", "ELPA-2STAGE")
     assert "Diag.Algorithm     ELPA-1STAGE" not in fdf
 
 
@@ -201,8 +203,8 @@ def test_render_fdf_cpu_elpa_emits_algorithm_and_gpu_false():
     This is the behavior the old 'ELPA only when GPU' model wrongly denied."""
     cfg = SiestaConfig(enable_gpu=False, diag_algorithm="ELPA-2STAGE")
     fdf = render_fdf(_mk_struct(), cfg)
-    assert "Diag.Algorithm     ELPA-2STAGE" in fdf
-    assert "Diag.ELPA.GPU      .false." in fdf
+    assert_fdf(fdf, "Diag.Algorithm", "ELPA-2STAGE")
+    assert_fdf(fdf, "Diag.ELPA.GPU", ".false.")
     assert "Diag.ELPA.GPU      .true." not in fdf
 
 

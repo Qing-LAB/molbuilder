@@ -190,7 +190,7 @@ def test_pyscf_validator_warns_on_odd_electrons_with_rks_spin0():
     """R3: a system with an odd electron count run with method=RKS and
     spin=0 is silently the wrong electronic state -- the validator
     must emit a warn pointing at UKS / spin=1."""
-    cfg = PySCFConfig(method="RKS", spin=0, charge=0)
+    cfg = PySCFConfig(method="RKS", spin=0, net_charge=0)
     issues = validate(_ch3_radical_struct(), cfg)
     odd_warns = [i for i in issues
                  if i.severity == "warn" and "odd electron" in i.message]
@@ -203,7 +203,7 @@ def test_pyscf_validator_warns_on_odd_electrons_with_rks_spin0():
 def test_pyscf_validator_silent_on_odd_electrons_with_uks_spin1():
     """The legitimate fix (UKS + spin=1 on the same odd-electron
     system) must NOT trip the new R3 warn."""
-    cfg = PySCFConfig(method="UKS", spin=1, charge=0)
+    cfg = PySCFConfig(method="UKS", spin=1, net_charge=0)
     issues = validate(_ch3_radical_struct(), cfg)
     odd_warns = [i for i in issues if "odd electron" in i.message]
     assert odd_warns == []
@@ -221,7 +221,7 @@ def test_pyscf_validator_silent_on_even_electrons_with_rks():
         ]),
         title="water",
     )
-    cfg = PySCFConfig(method="RKS", spin=0, charge=0)
+    cfg = PySCFConfig(method="RKS", spin=0, net_charge=0)
     issues = validate(s, cfg)
     odd_warns = [i for i in issues if "odd electron" in i.message]
     assert odd_warns == []
@@ -232,7 +232,7 @@ def test_pyscf_validator_silent_when_user_overrode_charge_to_make_even():
     """If the user explicitly set cfg.charge to a value that makes the
     electron count even (e.g. methyl cation CH3+ with charge=+1, n_e=8,
     a closed-shell carbocation), R3 must NOT warn."""
-    cfg = PySCFConfig(method="RKS", spin=0, charge=1)
+    cfg = PySCFConfig(method="RKS", spin=0, net_charge=1)
     issues = validate(_ch3_radical_struct(), cfg)
     odd_warns = [i for i in issues if "odd electron" in i.message]
     assert odd_warns == []

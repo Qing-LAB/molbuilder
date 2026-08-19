@@ -176,7 +176,7 @@ def test_geometric_optparams_accepts_pyscf_optimize_kwargs():
 
 
 def test_charge_explicit_overrides_auto(h2o):
-    text = render_script(h2o, PySCFConfig(charge=-1))
+    text = render_script(h2o, PySCFConfig(net_charge=-1))
     assert "charge     = -1," in text
 
 
@@ -322,7 +322,7 @@ def test_solvent_emits_pcm_block(h2o):
 
 
 def test_uks_for_radicals(h2o):
-    text = render_script(h2o, PySCFConfig(method="UKS", spin=1, charge=1))
+    text = render_script(h2o, PySCFConfig(method="UKS", spin=1, net_charge=1))
     assert "mf = dft.UKS(mol)" in text
     assert "spin       = 1," in text
     assert "charge     = 1," in text

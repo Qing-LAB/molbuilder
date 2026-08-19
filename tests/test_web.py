@@ -2165,7 +2165,10 @@ def test_engine_key_pins_load_bearing_siesta_keywords():
         # references them.
         "mesh_cutoff":    "MeshCutoff",
         "basis_size":     "PAO.BasisSize",
-        "net_charge":     "NetCharge",
+        # MERGED with PySCF's `charge` 2026-08-19: one question, one
+        # item, and the spelling names both engines because neither is
+        # THE answer (`template.md` § 6.3).
+        "net_charge":     "NetCharge (SIESTA) | gto.M(charge=...) (PySCF)",
         "xc_authors":     "XC.authors",
         "xc_functional":  "XC.functional",
         "solution_method": "SolutionMethod",
@@ -2188,7 +2191,7 @@ def test_engine_key_pins_load_bearing_pyscf_keywords():
     sch = catalogue_to_form_schema("pyscf", "py")
     fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
     expected = {
-        "charge":   "gto.M(charge=...)",
+        "net_charge": "NetCharge (SIESTA) | gto.M(charge=...) (PySCF)",
         "spin":     "gto.M(spin=...)  # 2S, # of unpaired electrons",
         "symmetry": "gto.M(symmetry=...)",
         "basis":    "gto.M(basis=...)",

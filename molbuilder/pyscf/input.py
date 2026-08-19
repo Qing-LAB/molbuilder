@@ -160,7 +160,7 @@ def _resolve_charge(struct: Structure, cfg: PySCFConfig) -> int:
     render_script doesn't have to know the chemistry import path.
     """
     from ..chemistry import resolve_net_charge
-    return resolve_net_charge(struct, cfg.charge)
+    return resolve_net_charge(struct, cfg.net_charge)
 
 
 def spec_for(struct: Structure,
@@ -220,8 +220,9 @@ def spec_for(struct: Structure,
     # checks and run only the structure / config-side validators.
     # Warnings print to stderr; errors raise ValidationError before
     # any script text is emitted.
-    from ..validation import validate, report
-    report(validate(struct, cfg))
+    # The gate is NOT run here -- `render_deck` owns step 3.3.  PySCF's
+    # subject is the structure as it arrived, which is the framework's
+    # default, so this spec names no `validate_subject`.
 
     # EVERYTHING THE PARAMETERS SUB-STEP WRITES, collected as it is written.
     # The CHECK gate reads the finished file back and asks whether each of
@@ -428,7 +429,7 @@ def spec_for(struct: Structure,
             # still written together with the reason it holds
             # (`script-preparation.md` § 3.2, W2), and the reason is still read from
             # the declaration rather than typed beside it.
-            for _item in ("spin", "charge", "symmetry", "max_memory_mb"):
+            for _item in ("spin", "net_charge", "symmetry", "max_memory_mb"):
                 out += _sc.parameter(_item, "pyscf").note()
         # Effective Core Potential.  Why one is worth declaring: for an
         # element like Pt (78 electrons) an ECP replaces the inner 60 with a
@@ -946,6 +947,11 @@ def spec_for(struct: Structure,
                 *((_layout.GEOMETRY_SECTION,) if cfg.optimize else ()),
                 _sc.Block("the run itself", _science_d)),
         line=_layout.line(cfg, is_dft=is_dft),
+        # W10's context, DECLARED.  The SAME dict the blocks above write into
+        # as they render -- passed by reference, so what the log prints after
+        # the walk is what the blocks actually agreed on, not a copy taken
+        # before they ran.
+        derived=_derived,
         # section_title: the framework's default.  Both engines write a
         # heading as a `#` comment, so both restated the default verbatim
         # until 2026-08-19 -- two more copies of one string, and a slot

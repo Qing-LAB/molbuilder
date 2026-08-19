@@ -11,6 +11,7 @@ Spec: docs/design.md § "Pre-emission geometry validation" + §
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterable, List, Literal, Optional
 
@@ -112,4 +113,59 @@ class ValidationError(ValueError):
         super().__init__("\n".join(lines))
 
 
-__all__ = ["Issue", "ValidationError"]
+# --------------------------------------------------------------------- #
+#  The HOOK BOUNDARY -- an engine's callable, and whose it was when it    #
+#  raises (`execution/script-preparation.md` § 4.6)                       #
+# --------------------------------------------------------------------- #
+
+
+@contextmanager
+def calling(hook: str, *, engine: str = "", where: str = "", log=None):
+    """Run an ENGINE-SUPPLIED callable, and make any exception say whose.
+
+    **The failure this exists for is not a crash; it is an UNATTRIBUTED
+    crash.**  Nearly every step of the preparation pipeline is a hook the
+    engine supplied, so a mistake in one arrives as
+    ``TypeError: __init__() got an unexpected keyword argument`` from a
+    traceback twelve frames deep -- and the first question, *which engine,
+    which hook, which item?*, costs a debugging session.  It cost two on
+    2026-08-19.
+
+    **The exception is ANNOTATED, never replaced.**  Its type and message are
+    what every ``except`` clause and every test already match on, and a
+    wrapper class would break all of them.  Worse, it would bury a refusal an
+    engine raised deliberately -- SIESTA refuses GPU without an ELPA
+    diagonaliser from inside a hook, and that message is written for a person.
+    ``add_note`` attaches the attribution and leaves the exception alone;
+    nested hooks each add one, so the chain reads innermost-first.
+
+    **It never swallows.**  A hook that raised did not do its job, and a deck
+    written anyway is the defect class this layer exists to prevent.  The
+    re-raise is unconditional -- the only thing gained here is knowing who.
+
+    ``log`` is the pipeline log when one is open (§ 4.5): the failure lands in
+    the file under the phase it happened in, with its traceback, so a run that
+    died is explained by the same file that explains a run that worked.
+    """
+    try:
+        yield
+    except Exception as exc:
+        owner = f"{engine}.{hook}" if engine else hook
+        exc.add_note(f"raised inside {owner}" + (f" -- {where}" if where else ""))
+        if log is not None:
+            log.failed(owner, exc, where=where)
+        raise
+
+
+def notes_of(exc: BaseException) -> str:
+    """An exception's attribution chain as one string, or ``""``.
+
+    A conductor turns a hook failure into a user-facing refusal with
+    ``str(exc)``, and ``str`` does not include notes -- so without this the
+    attribution reaches a traceback and never reaches the person who ran the
+    command.
+    """
+    return "\n".join(getattr(exc, "__notes__", ()) or ())
+
+
+__all__ = ["Issue", "ValidationError", "calling", "notes_of"]

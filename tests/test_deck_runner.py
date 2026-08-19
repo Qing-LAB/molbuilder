@@ -67,7 +67,10 @@ def _spec(**over) -> se.DeckSpec:
 # --------------------------------------------------------------- render --
 
 def test_the_engine_never_sees_a_bare_value_so_the_reason_travels_with_it():
-    """A value and its reason are ONE act, not a value plus a habit.
+    """**W2** (`script-preparation.md` § 3.2) — a value is written together
+    with the reason it holds.
+
+    A value and its reason are ONE act, not a value plus a habit.
 
     The stub's ``line`` receives a ``Parameter`` and can only reach the number
     through it -- so the catalogue's note is written above the value by the
@@ -88,13 +91,20 @@ def test_a_section_whose_parameters_all_decline_gets_no_heading():
     out = se.render_deck(_spec(), _struct(), _Cfg())
     assert "--- Grid ---" in out.text
     assert "--- Relaxation ---" not in out.text
-    assert "MD.Steps" not in out.emitted
+    assert not any("MD.Steps" in l for l in out.emitted)
 
 
 def test_the_runner_reports_what_it_emitted_so_check_can_close_the_loop():
+    """It reports the LINES it wrote, not the keywords.
+
+    A keyword cannot tell a setting from a READ of that setting; a line is the
+    assignment itself (`script-preparation.md` § 4.3).
+    """
     out = se.render_deck(_spec(), _struct(), _Cfg())
-    assert "MeshCutoff" in out.emitted
-    assert "MaxSCFIterations" in out.emitted
+    assert any(l.startswith("MeshCutoff") for l in out.emitted)
+    assert any(l.startswith("MaxSCFIterations") for l in out.emitted)
+    assert all(l in out.text for l in out.emitted), (
+        "a reported line that is not in the deck makes the gate's input a lie")
 
 
 def test_the_record_sits_below_the_banner_and_the_science_above_it():
@@ -111,6 +121,61 @@ def test_verbose_false_drops_the_notes_and_keeps_the_values():
 
 
 # ---------------------------------------------------------------- check --
+
+def test_rendering_touches_no_disk(tmp_path, monkeypatch):
+    """**W7**: floor 3 returns TEXT.  It does not touch the disk.
+
+    ``render_fdf`` / ``render_script`` hand back a deck; the only thing that
+    writes one is ``write_script`` (W4).  That is what keeps *one deck, one
+    writer* true no matter which route rendered it -- a renderer that also
+    wrote would be a second writer with no USER-CUSTOM merge and no gate.
+
+    Run in an empty directory so a stray write has nowhere to hide.
+    """
+    monkeypatch.chdir(tmp_path)
+    before = set(tmp_path.rglob("*"))
+    out = se.render_deck(_spec(), _struct(), _Cfg())
+    assert isinstance(out, str) and out.strip(), "no text came back"
+    assert set(tmp_path.rglob("*")) == before, (
+        f"rendering wrote to disk: "
+        f"{sorted(p.name for p in set(tmp_path.rglob('*')) - before)}")
+
+
+def test_only_a_surface_imports_the_conductor():
+    """**W1**: the conductor may call, but it may never decide -- and
+    *"only a surface may import the conductor"* is the enforceable half.
+
+    Anything below L3 importing `jobset.prep` means something inside the
+    stack is driving the sequence, and the sequence has two owners again --
+    which is the shape of the "stomp" failures the rule names.
+
+    ``jobset/__init__.py`` is exempt for the reason `test_layering` exempts
+    every package init: re-exporting a name into the package namespace is
+    not driving anything.
+    """
+    import ast
+    import pathlib as _pl
+    root = _pl.Path(__file__).resolve().parents[1] / "molbuilder"
+    surfaces = {"cli.py", "web", "__init__.py", "__main__.py"}
+    offenders = []
+    for f in sorted(root.rglob("*.py")):
+        rel = f.relative_to(root)
+        if f.name in surfaces or rel.parts[0] in surfaces:
+            continue
+        if rel.as_posix() in ("jobset/prep.py", "jobset/_cli.py"):
+            continue                    # the conductor itself, and its verb
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8",
+                                                   errors="replace"))):
+            mod = node.module if isinstance(node, ast.ImportFrom) else None
+            names = ([a.name for a in node.names]
+                     if isinstance(node, (ast.Import, ast.ImportFrom)) else [])
+            if (mod and mod.endswith("prep")) or any(
+                    n.endswith("jobset.prep") for n in names):
+                offenders.append(f"{rel.as_posix()}:{node.lineno}")
+    assert not offenders, (
+        "these modules import the conductor, which only a surface may do "
+        "(W1):\n  " + "\n  ".join(offenders))
+
 
 def test_check_passes_a_deck_the_runner_itself_wrote(tmp_path):
     spec, struct, cfg = _spec(), _struct(), _Cfg()
@@ -132,6 +197,38 @@ def test_check_catches_a_value_that_never_reached_the_file(tmp_path):
     issues = se.check_deck(p, spec, out, struct, cfg)
     assert [i for i in issues
             if i.severity == "error" and "MeshCutoff" in i.message], issues
+
+
+def test_a_parameter_that_writes_a_PAIR_still_closes_the_loop(tmp_path):
+    """One `Parameter` may legitimately emit SEVERAL lines, and each of them
+    is evidence.
+
+    A fixed total spin needs ``Spin.Fix`` and ``Spin.Total`` together, and
+    SIESTA's free-energy section is titled *"a PAIR: the value + its switch"*
+    for the same reason -- ``line`` returns ``str | None`` and nothing says
+    one line.  Comparing the emission WHOLE meant a two-line answer could
+    never equal any member of a set of single lines, so the gate refused
+    every spin-polarized SIESTA deck while the deck itself was correct
+    (2026-08-19).
+
+    Both halves are asserted: the pair passes when the file has it, and the
+    gate still names the half a writer bug drops.
+    """
+    spec = _spec(line=lambda p: ("Spin.Fix          .true.\n"
+                                 "Spin.Total        2.0")
+                 if p.name == "relax_steps" else _line(p))
+    struct, cfg = _struct(), _Cfg()
+    out = se.render_deck(spec, struct, cfg)
+    good = se.write_script(tmp_path / "pair.fdf", out.text)
+    assert se.check_deck(good, spec, out, struct, cfg) == [], \
+        "a correct deck whose parameter wrote a pair was refused"
+
+    # and the loop is really closed over BOTH halves, not just the first
+    half = out.text.replace("Spin.Total        2.0", "")
+    p2 = se.write_script(tmp_path / "half.fdf", half)
+    issues = se.check_deck(p2, spec, out, struct, cfg)
+    assert [i for i in issues
+            if i.severity == "error" and "Spin.Total" in i.message], issues
 
 
 def test_check_catches_a_missing_reader_section(tmp_path):
@@ -196,6 +293,8 @@ def test_prepare_deck_refuses_a_broken_engine_rather_than_shipping_it(tmp_path):
 
 
 def test_prepare_deck_keeps_what_a_reader_put_in_their_own_section(tmp_path):
+    """**W4** — one deck is written by one writer, and the writer keeps what
+    the reader put in their own section (`script-preparation.md` § 3.2)."""
     path = tmp_path / "keep.fdf"
     se.prepare_deck(_spec(), _struct(), _Cfg(), path)
     edited = path.read_text(encoding="utf-8").replace(
@@ -240,7 +339,10 @@ def _real(engine, **over):
 
 @pytest.mark.parametrize("engine", _ENGINES)
 def test_a_real_engines_layout_is_a_table_and_not_one_opaque_block(engine):
-    """**§ 4.1: three rows say `spec.layout`, and that is the shape of a deck.**
+    """**W11** (`script-preparation.md` § 4.2a1) — a `Block` is free text, so a
+    deck that is all Block is a deck the framework cannot read.
+
+    **§ 4.1: three rows say `spec.layout`, and that is the shape of a deck.**
 
     A layout of one `Block` satisfies the type and answers none of the
     question.  What makes the form READABLE — § 4.3's *"a function can only be
@@ -271,14 +373,14 @@ def test_a_real_engine_reports_the_keywords_its_deck_writes(engine):
     seam, struct, cfg = _real(engine)
     deck = se.render_deck(seam.spec_for(struct, cfg), struct, cfg)
     assert len(deck.emitted) >= 10, (
-        f"{engine}: the deck reports {len(deck.emitted)} written keywords for "
+        f"{engine}: the deck reports {len(deck.emitted)} written lines for "
         f"{len(str(deck).splitlines())} lines. An empty or near-empty list "
         f"makes the check gate vacuous.")
-    text = str(deck)
-    for key in deck.emitted:
-        assert se._mentions_keyword(text, key), (
-            f"{engine}: reported writing {key!r} and the rendered deck does "
-            f"not contain it -- the report is the gate's only input")
+    present = set(str(deck).splitlines())
+    for line in deck.emitted:
+        assert line in present, (
+            f"{engine}: reported writing {line!r} and the rendered deck does "
+            f"not contain that line -- the report is the gate's only input")
 
 
 @pytest.mark.parametrize("engine", _ENGINES)
@@ -309,7 +411,10 @@ def test_the_gate_names_a_keyword_a_writer_bug_dropped(engine, tmp_path):
 @pytest.mark.parametrize("engine", _ENGINES)
 def test_a_conditional_section_is_omitted_from_the_layout_not_hidden_in_a_block(
         engine):
-    """**A branch is a reason to OMIT a member, not to hide one.**
+    """**W9** (`script-preparation.md` § 4.2) — what the layout CONTAINS is
+    settled when the spec is built.
+
+    **A branch is a reason to OMIT a member, not to hide one.**
 
     Both engines nested a section inside a branch on the reasoning that a
     section which only sometimes appears could not be a top-level member.

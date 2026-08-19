@@ -33,6 +33,8 @@ authoritative one per docs/execution/job-contracts.md).
 
 from __future__ import annotations
 
+from _deck import assert_fdf
+
 import os
 import shutil
 import subprocess
@@ -297,7 +299,10 @@ def test_savehs_value_lands_in_fdf_echo(tmp_path):
     # cleanly.
     fdf_path = _minimal_h2_fdf(tmp_path, "CG", write_hs=False)
     text = fdf_path.read_text()
-    assert "SaveHS             .false." in text, (
+    # The 2026-06-23 WriteHS->SaveHS regression: the generator must emit
+    # ``SaveHS .false.`` for cfg.write_hs=False.  `assert_fdf` names the
+    # keyword and the value it found, so no separate message is needed.
+    assert_fdf(text, "SaveHS", ".false."), (
         f"Generator must emit ``SaveHS .false.`` for cfg.write_hs="
         f"False, but the rendered fdf does not contain it.  This is "
         f"the 2026-06-23 WriteHS->SaveHS regression returning.  "

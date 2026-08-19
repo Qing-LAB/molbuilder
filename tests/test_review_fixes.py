@@ -85,7 +85,7 @@ def test_s2_pyscf_charge_override():
     s = Structure(
         elements=["O", "H"],
         positions=np.array([[0,0,0],[0.957,0,0]]), vacuum=(12.0, 12.0, 12.0))
-    text = render_script(s, PySCFConfig(charge=-1, verbose_comments=False))
+    text = render_script(s, PySCFConfig(net_charge=-1, verbose_comments=False))
     assert "charge     = -1," in text
 
 

@@ -181,7 +181,7 @@ def test_c4_restricted_method_with_nonzero_spin_raises(small_struct, method):
 @pytest.mark.parametrize("method", ["UKS", "UHF"])
 def test_c4_unrestricted_method_with_nonzero_spin_ok(small_struct, method):
     """UKS / UHF must accept any spin without raising."""
-    text = render_script(small_struct, PySCFConfig(method=method, spin=1, charge=1))
+    text = render_script(small_struct, PySCFConfig(method=method, spin=1, net_charge=1))
     # Sanity: the method appears in the script.
     assert method in text
 
@@ -215,7 +215,7 @@ def test_user_charge_override_consistent_across_engines(deprotonated_diester):
     fdf = render_fdf(deprotonated_diester,
                      SiestaConfig(net_charge=-3, verbose_comments=False))
     py  = render_script(deprotonated_diester,
-                        PySCFConfig(charge=-3, verbose_comments=False))
+                        PySCFConfig(net_charge=-3, verbose_comments=False))
 
     assert "NetCharge       -3" in fdf
     assert "charge     = -3," in py

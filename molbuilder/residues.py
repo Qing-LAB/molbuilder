@@ -125,10 +125,6 @@ MODIFIED_RESIDUES = {
 }
 
 
-def is_modified_residue(name: str) -> bool:
-    return name.upper() in MODIFIED_RESIDUES
-
-
 # ---------------------------------------------------------------------- #
 #  DNA / RNA bases                                                       #
 # ---------------------------------------------------------------------- #
