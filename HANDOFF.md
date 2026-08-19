@@ -1,4 +1,4 @@
-# Handoff — committed; nothing has actually been run
+# Handoff — committed, and the workflow has now actually been run
 
 ## SCOPE
 
@@ -8,9 +8,10 @@ analyse, or fold them into a finding.
 
 | | |
 |---|---|
-| suite | **6888 passed, 0 failed** — `python tools/testrun.py run none2e`, ~22 min |
+| suite | **6882 passed, 0 failed** — `python tools/testrun.py run none2e`, ~22 min |
 | reference decks | **36 cases, digest `149ac0714089ab85`**, harness `<scratch>/refgen.py` |
-| uncommitted | nothing — this session's 58 files are the commit this file rides in |
+| committed | `00d9d8e7` (the 58 files) on `feature/generator-jobset-ui`; nothing pushed |
+| E2E | **done 2026-08-19** — both engines ran real water calculations through the browser workflow; see § 2 |
 | server | the user runs it; do not start one. `https://qlabsrv.physics.asu.edu:8888` |
 
 ---
@@ -19,31 +20,53 @@ analyse, or fold them into a finding.
 
 ### 1. Commit — DONE. One commit in the house shape; this file rides in it.
 
-### 2. The end-to-end run — the original ask, never done.
+### 2. The end-to-end run — DONE, and it earned four findings.
 
-**Everything so far validates generated scripts. Not one calculation has been
-run.** That is the whole remaining half.
+Executed 2026-08-19 through the real workflow, nothing hand-driven:
+Molbuilder (SMILES `O` → RDKit water, vacuum set 8 Å in Modify → Cell) →
+Structure optimization → *Send to Task setup* → Task setup (shape, note,
+save) → `jobset prep run coarse --pipeline-log` → `jobset submit run coarse`,
+one job per invocation.  All inside `projects/claude-e2e/`; the user's own
+projects untouched.
 
-Through the browser, not a driver script calling internal functions:
+| leg | engine · shape | result |
+|---|---|---|
+| `optimization/water` | siesta · flat | relaxed in 8 CG steps, max force 0.0022 < 0.02 eV/Å, E = −481.005 eV, O–H 0.974 Å, ∠ 104.3° |
+| same, attempt 2 | manual door | `MB_LAUNCHED_BY=manual` → `-run1.out`, warm continue from `.XV`/`.DM`: **1 SCF iteration, 5.5 s** |
+| gate check | — | bare non-interactive `bash *.run.sh` refused, exit 2 |
+| `optimization/water-pyscf` | pyscf · hierarchical | geomeTRIC converged, E = −76.3589 Ha, O–H 0.967 Å, ∠ 103.1°, molwatch wrote 4 live steps |
 
-> Structure optimization tab → *Send to Task setup* → Task setup → save →
-> `jobset prep` → `jobset submit`, **one job at a time, never in parallel**.
+The pipeline log was the validation instrument: every `⊕` fact checked traced
+to deck text; the render walk, the W10 derived context, the declined-items
+line, the W5 recorded nothings, and the 24-line check gate all appear as the
+contract says.  Results tab: live plots and trajectories for both runs.
 
-Ready for it:
+**Findings — each found only by executing, none decided yet.  Decide, then fix
+the owning rule first.**
 
-* a `claude-e2e` project exists on the server with the canonical subdirs.
-  **Nothing has been written into the user's own projects.**
-* machine config resolves to `source ~/miniconda3/etc/profile.d/conda.sh` +
-  `conda activate`; no mamba on PATH.
-* generated wrappers target `molbuilder-siesta` and `molbuilder-pySCF`, and
-  both envs have their engines installed.
-* a bare non-interactive `bash <script>.run.sh` **refuses by design** — that is
-  the launch-door gate, and `MB_LAUNCHED_BY=manual` is its documented override.
-  Not a bug; do not "fix" it.
-
-Model systems already exercised at the *generation* level (water, BDT, BDT⁻,
-O₂ triplet, an Au(111) slab) across both engines and both directory shapes.
-All prepped clean. None has been executed.
+1. **Flat SIESTA clobbers the structure source.**  `WriteCoorXmol` writes
+   `<SystemLabel>.xyz`; with label = structure stem (the natural choice) that
+   is `structure.source` itself.  `water.xyz` now holds the relaxed, wrapped
+   coordinates; `prep` reads geometry from that file (`prep.py:593`), so a
+   re-prep would silently use them.  No contract, validator or preflight
+   covers the collision.
+2. **The emitted PySCF program disobeys the attempt contract.**
+   `_mb_outfile` anchors at `_MB_Path(__file__).resolve().parent` — through
+   the symlink, the BUNDLE ROOT — so chk/molwatch/xyz/log land outside
+   `run-0/`, and a second attempt overwrites the first.  `project-layout.md`
+   § ⑤: an attempt is "everything one invocation produced — a run,
+   immutable".  SIESTA (cwd-relative) honours it; the emitted program does
+   not.  (Note the tension before fixing: `mf.init_guess = "chkfile"` warm
+   restart currently *relies* on finding the shared chk.)
+3. **`jobset status` never sees a PySCF attempt finish.**
+   `parse/dirs/job.py::_enumerate_files` classifies SIESTA suffixes only, so
+   a completed PySCF run reports "running — no .out file yet" forever, while
+   the Results page (molwatch-based, engine-agnostic) says Finished for the
+   same directory.
+4. **The PySCF molwatch header omits the convergence targets.**  SIESTA's
+   seed writes `# convergence.*`; PySCF's emitted header writes `runtime.*`
+   only, so the Results convergence card is empty against the page's own
+   hint that the header carries the targets.
 
 ### 3. Collapse the instance tests. This is my mess.
 
