@@ -260,6 +260,24 @@ INNER loop: the most self-consistency cycles SIESTA will run inside ONE geometry
 1000 is SIESTA's own default, and it is the right guard HERE because this catalogue ships mixing_weight 0.02 against SIESTA's 0.25: the manual says a low weight "may result in high number of SCF steps but is more likely to converge", so a run that is converging normally needs more cycles than a stock one.
 This is a RUNAWAY GUARD, not a budget -- the budget is wall time and continue_retries.  The two failure modes are not symmetric: too high wastes some CPU on a run that was going to fail anyway, while too low KILLS A CONVERGING RUN at the cap and throws away that whole geometry step, which compounds over 200 outer steps.  With a 0.02 mixing weight, several hundred cycles is normal for a metal junction -- do not read this number as a target."""
 
+[item.scf_must_converge]
+kind = "engine"
+category = ["convergence"]
+engines = ["siesta"]
+anchor = "SCF.MustConverge"
+engine_key = "SCF.MustConverge"
+manual = "SIESTA 5.4.2 \u00a76.9 'The self-consistent-field loop'"
+type = "bool"
+group = "budget"
+label = "Abort if the SCF hits its cycle cap"
+null_label = "(SIESTA default: abort)"
+optional = true
+tier = "advanced"
+help = """
+What SIESTA does when a geometry step's SCF loop hits max_scf_iter without meeting its tolerances: abort the run (SIESTA's own default, true), or accept the unconverged density and CONTINUE with a warning (false).
+Leave it unset for ordinary work -- an unconverged density means the forces are noise, and a relaxation that keeps walking on noise wastes every step after the first bad one.  The abort is protecting your budget, not enforcing bureaucracy.
+THE ONE ORDINARY REASON TO SET false: a run that is a MEASUREMENT rather than a result.  A benchmark trial deliberately caps the SCF at a few cycles to time an iteration (project-layout.md section 3.2's pins); with the abort left on, every properly-capped trial ends in ABNORMAL_TERMINATION and the timing machinery must read a 'failed' run.  The bench pins set this false so a capped trial ends cleanly as the single-point measurement it is.  Until 2026-08-19 this keyword had no catalogue item at all -- the retired deck-splicer used to invent the line -- so no described trial could say it, and no sweep could ever produce a verdict (its every point classified incomplete)."""
+
 [item.electronic_temperature]
 kind = "engine"
 category = ["system", "accuracy"]

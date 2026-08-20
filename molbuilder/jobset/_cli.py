@@ -450,103 +450,119 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
             "stopped at your request -- nothing was re-rendered.")
 
 
-def _offer_bench_verdict(base, allocation, stage=None):
+def _apply_run_config(base, allocation, stage=None, engine=None):
     """§ 2.3.2: a verdict can always be FOUND — finding is not permission.
 
-    A benchmark lives inside the calculation it measured, so `prep run` can
-    always see ``bench-result.json``; it shows the choice and ASKS, every
-    time, and a non-interactive shell's silence is No (same doctrine as the
-    checkpoint question).  On yes, the measured machine half fills only the
+    Permission is ``run-config.toml``, the editable proposal `summarize`
+    writes beside the record: `prep run` applies what the file says to the
     allocation fields the user did NOT state — your explicit flags stay
-    yours — and the winning engine's eigensolver arrives as pins.  Returns
-    ``(allocation, pins)``.
+    yours — and the file's ``[pins]`` arrive as engine pins.  Editing the
+    file is the answer; deleting it declines.  *(Until 2026-08-19 this was
+    an interactive ``use it? [y/N]`` — the doctrine is unchanged, the
+    answer moved into the tree where a scripted prep can carry it and a
+    re-prep weeks later still finds it.)*
+
+    With neither file nor flags, the wrapper's runtime policy sizes the
+    launch (`running-a-job.md` § 3) — and that is SAID, per engine, never
+    implied (user, 2026-08-19).  Returns ``(allocation, pins)``.
     """
     import dataclasses as _dc
     import json as _json
+    from .summarize import RUN_CONFIG_NAME, read_run_config
     container, _ = _stage_bench_dir(base, stage)
-    path = ((container / "bench-result.json") if container is not None
-            else Path(base) / "bench-result.json")
-    if not path.is_file():
+    root = container if container is not None else Path(base)
+    cfg_path = root / RUN_CONFIG_NAME
+    result_path = root / "bench-result.json"
+
+    def _policy_note(applied_any):
+        # The explicit no-input default: nothing applied and no
+        # launch-shape flag stated -> the wrapper's runtime policy
+        # decides, and prep names the policy instead of going quiet.
+        if applied_any or any(getattr(allocation, f) is not None
+                              for f in ("mpi_np", "cpus_per_task", "gres")):
+            return
+        if engine == "pyscf":
+            click.echo(
+                "  no benchmark verdict and no thread flags -- PySCF's "
+                "wrapper resolves the OMP thread count at\n"
+                "  run time (-omp flag > OMP_NUM_THREADS > the scheduler's "
+                "allocation > this node's physical\n"
+                "  cores; running-a-job.md § 3).")
+        else:
+            click.echo(
+                "  no benchmark verdict and no rank/thread flags -- the "
+                "wrapper sizes the launch at run time on\n"
+                "  the machine it lands on (SIESTA: MPI over all physical "
+                "cores, clamped to the atom count; a\n"
+                "  GPU deck follows the ELPA-CUDA placement policy -- "
+                "running-a-job.md § 3)."
+                + (f"\n  To measure instead of guess:  molbuilder jobset "
+                   f"prep bench {stage}" if stage else ""))
+
+    if not cfg_path.is_file():
+        if result_path.is_file():
+            # A record with no proposal beside it is one of two stories:
+            # summarize concluded nothing (say the census -- roadmap
+            # § 0.1 B4), or a verdict exists and the proposal was deleted
+            # or never written (deleting declined it; point at summarize).
+            from ..bench.result import BenchResult
+            try:
+                res = BenchResult.from_dict(
+                    _json.loads(result_path.read_text(encoding="utf-8")))
+            except ValueError as e:
+                click.echo(f"  (bench-result.json unreadable -- ignored: "
+                           f"{e})", err=True)
+                _policy_note(False)
+                return allocation, {}
+            whose = ("stage " + repr(stage)) if stage else "this calculation"
+            if res.choice:
+                click.echo(
+                    f"  (a bench verdict exists for {whose} but no "
+                    f"{RUN_CONFIG_NAME} -- if you deleted it, that "
+                    f"declined it;\n   `jobset summarize bench` writes a "
+                    f"fresh proposal, or state flags yourself)")
+            else:
+                by_state = {}
+                for p_ in res.points:
+                    by_state[p_.state] = by_state.get(p_.state, 0) + 1
+                census = ", ".join(f"{n} {s}"
+                                   for s, n in sorted(by_state.items()))
+                click.echo(
+                    f"  (a benchmark record exists for {whose} but "
+                    f"concludes nothing -- {census or 'no points'}; "
+                    f"submit its trials and `jobset summarize bench` "
+                    f"again)")
+        _policy_note(False)
         return allocation, {}
-    # Through the TYPED reader (U13): from_dict checks the schema by name
-    # and major (persist.check_schema), so a stray artifact of the same
-    # major cannot masquerade as a verdict -- raw json.loads checked
-    # nothing.
-    from ..bench.result import BenchResult
+
     try:
-        res = BenchResult.from_dict(
-            _json.loads(path.read_text(encoding="utf-8")))
+        cfg = read_run_config(cfg_path)
     except ValueError as e:
-        click.echo(f"  (bench-result.json unreadable -- ignored: {e})",
-                   err=True)
-        return allocation, {}
-    choice = res.choice or {}
-    rec = res.recommend or {}
-    if not choice:
-        return allocation, {}
-    knobs = choice.get("knobs") or {}
-    click.echo(f"a benchmark result exists for "
-               f"{'stage ' + repr(stage) if stage else 'this calculation'}:")
-    click.echo(f"    {choice.get('rationale', choice)}")
-    if rec:
-        click.echo(f"    sizing (measured on THAT machine -- a starting "
-                   f"point, not a guarantee): {rec}")
-    # `generated_at` is the artifact's own key -- this read `generated`
-    # (a key nobody writes) until U13, so the measured-when line never
-    # showed.
-    when = res.generated_at or (res.environment or {}).get("detected_at")
-    if when:
-        click.echo(f"    measured: {when}")
-    try:
-        accepted = click.confirm("  use it?", default=False)
-    except click.exceptions.Abort:
-        # EOF / no stdin: SILENCE IS NO.  confirm() aborts on EOF, which
-        # would kill a scripted prep outright -- the doctrine is that the
-        # question is asked and an unanswered question declines.
-        click.echo("")
-        accepted = False
-    try:
-        _src = str(path.relative_to(Path(base)))
-    except ValueError:
-        _src = str(path)
-    _ledger(base, "prep", "bench-verdict",
-            stage=stage, source=_src, accepted=accepted)
-    if not accepted:
-        click.echo("  not applied -- your flags and defaults stand.")
-        return allocation, {}
+        # A file the user edited into an unreadable state STOPS the prep:
+        # skipping it would silently discard a decision they wrote down.
+        raise click.ClickException(str(e))
     stated = {}
-    # The knobs already speak the exchange vocabulary (U13: summarize
-    # writes the job-set's own field names), so this is a fill-in of what
-    # the user did NOT state -- no renaming.
-    for field_name in ("mpi_np", "cpus_per_task", "gres"):
-        if (knobs.get(field_name) is not None
+    for field_name in ("mpi_np", "cpus_per_task", "gres", "mem", "time"):
+        if (cfg["resources"].get(field_name) is not None
                 and getattr(allocation, field_name) is None):
-            stated[field_name] = knobs[field_name]
-    if rec.get("mem_gb") and allocation.mem is None:
-        stated["mem"] = f"{rec['mem_gb']}GB"
-    if rec.get("time") and allocation.time is None:
-        stated["time"] = rec["time"]
+            stated[field_name] = cfg["resources"][field_name]
     if stated:
         allocation = _dc.replace(allocation, **stated)
-    # The MECHANISM comes from the winner's own deck, recorded by
-    # summarize (U13b) -- until then this pinned ELPA-1STAGE from
-    # `engine == "gpu"` alone, inventing the mechanism the measurement
-    # never named.
-    mech = choice.get("mechanism") or {}
-    if mech:
-        pins = {k: v for k, v in (("enable_gpu", mech.get("enable_gpu")),
-                                  ("diag_algorithm",
-                                   mech.get("diag_algorithm")))
-                if v is not None}
-    else:
-        pins = {}
-        click.echo("  (this bench-result predates the mechanism record -- "
-                   "no engine pins applied; re-run `jobset summarize "
-                   "bench` to refresh it)", err=True)
-    click.echo("  applied: "
-               + (", ".join(f"{k}={v}" for k, v in stated.items()) or "(all "
-                  "machine fields were stated explicitly -- flags win)")
-               + f"; pins: {pins}")
+    pins = dict(cfg["pins"])
+    try:
+        _src = str(cfg_path.relative_to(Path(base)))
+    except ValueError:
+        _src = str(cfg_path)
+    _ledger(base, "prep", "run-config", stage=stage, source=_src,
+            applied=stated, pins=pins)
+    click.echo(f"  applied {_src}: "
+               + (", ".join(f"{k}={v}" for k, v in stated.items())
+                  or "(every field it names was stated explicitly -- "
+                     "flags win)")
+               + (f"; pins: "
+                  + ", ".join(f"{k}={v}" for k, v in pins.items())
+                  if pins else "")
+               + "\n  (edit or delete the file to change this)")
     return allocation, pins
 
 
@@ -558,12 +574,16 @@ def _bench_inputs(base, target=None):
     `prep`'s five steps — receives a longer list and never asks why
     (`generator.md` § 2).
 
-    **The grid is enumerated HERE, at prep, and not read from the
-    description** — `generator.md` § 4.3: *a sweep and an allocation are both
-    inputs to `prep`, never fields of the description*, and § 10's class 3
-    puts ``mpi_np`` / ``omp_threads`` / ``max_memory_mb`` at prep, *"never
-    floor 2"*.  That is what keeps one portable folder benchmarkable on a
-    cluster it has never met.
+    **The grid is RESOLVED here, at prep — and the description may DECLARE
+    it** (`generator.md` § 4.3a, user-settled 2026-08-17, wired 2026-08-19).
+    ``task.json``'s ``bench`` names the points to try — *"try 4, 8 and 16
+    ranks"* is true on every cluster, so it is portable and belongs with the
+    calculation; what those points MEAN on this machine is resolved here.
+    With no declaration the machine proposes: the grid is enumerated from
+    the probed topology, exactly as before.  (Until 2026-08-19 the
+    declaration was read by nothing — this function always enumerated, so
+    declaring ``{mpi_np: [1,2,3]}`` produced eleven machine-chosen K×C
+    trials, and the user had no say in what was measured.)
 
     **Whether this is a GPU grid is the DESCRIPTION's answer, not this
     function's assumption** (2026-08-17).  `web/task-setup.md` § 6.2 —
@@ -639,12 +659,52 @@ def _bench_inputs(base, target=None):
             f"target it is meant to measure -- the comparison is by node "
             f"type (asu-sol.md § 5.2).")
 
-    ks = sweep_K(topo) or list(_FALLBACK_KS)
-    # ONE enumeration, both grids (`bench/grid.py`: the single source of truth
-    # for the sweep grid, so no two consumers can define it differently).  On
-    # CPU there is no device to range over, so G is held at 1 and dropped from
-    # the coordinate -- the axes become the two that mean something.
-    raw = list(sweep_grid(gpn if on_gpu else 1, cps, ks, None))
+    declared = {k: list(v) for k, v in (task.bench or {}).items() if v}
+    _KNOWN_AXES = ("mpi_np", "omp_threads")
+    unknown_axes = sorted(k for k in declared if k not in _KNOWN_AXES)
+    if unknown_axes:
+        raise click.ClickException(
+            f"task.json declares bench axes this machine translation does "
+            f"not know: {', '.join(unknown_axes)}.  The axes a sweep can "
+            f"resolve today are {', '.join(_KNOWN_AXES)} "
+            f"(generator.md § 4.3a).")
+    sockets = getattr(topo, "sockets", None) or 1
+    cores_total = (sockets * cps) if cps else None
+    if declared:
+        # THE DECLARED GRID (§ 4.3a).  ``mpi_np`` is the TOTAL rank count a
+        # point runs -- the same meaning it has everywhere else -- and
+        # ``omp_threads`` the cores per rank.  A point the machine cannot
+        # hold is refused BY NAME, not clamped: a clamped point would
+        # measure a configuration nobody declared.
+        ranks = [int(v) for v in declared.get("mpi_np") or [1]]
+        cores = [int(v) for v in declared.get("omp_threads") or [1]]
+        for r in ranks:
+            for c in cores:
+                if cores_total and r * c > cores_total:
+                    raise click.ClickException(
+                        f"declared bench point mpi_np={r}, omp_threads={c} "
+                        f"needs {r * c} cores and this machine's probe "
+                        f"found {cores_total} "
+                        f"({sockets} socket(s) x {cps} cores).  Trim the "
+                        f"declaration in task.json, or benchmark on the "
+                        f"machine it is meant to measure.")
+        if on_gpu:
+            # A GPU point still runs the DECLARED total ranks; the device
+            # count G ranges over the divisors of each rank count (so
+            # G*K == mpi_np exactly), bounded by what the probe found.
+            raw = sorted({(g, r // g, c)
+                          for r in ranks for c in cores
+                          for g in range(1, gpn + 1) if r % g == 0})
+        else:
+            raw = [(1, r, c) for r in ranks for c in cores]
+    else:
+        ks = sweep_K(topo) or list(_FALLBACK_KS)
+        # ONE enumeration, both grids (`bench/grid.py`: the single source of
+        # truth for the sweep grid, so no two consumers can define it
+        # differently).  On CPU there is no device to range over, so G is
+        # held at 1 and dropped from the coordinate -- the axes become the
+        # two that mean something.
+        raw = list(sweep_grid(gpn if on_gpu else 1, cps, ks, None))
     if on_gpu:
         points = [{"G": g, "K": k, "C": c} for g, k, c in raw]
         translation = MachineTranslation(
@@ -661,10 +721,12 @@ def _bench_inputs(base, target=None):
     # The trial pins -- what `transform_fdf` used to SPLICE into a finished
     # deck, now schema values resolved like any other (`template.md` § 8.1:
     # rebuild and render, never splice): capped SCF, single point, forced
-    # cold.  ``SCF.MustConverge`` has NO schema field (the splice invented
-    # it); a capped trial therefore reports its nonconvergence honestly rather
-    # than being silenced -- adding the field is a recorded vocabulary gap
-    # (template.md § 7), not this unit's scope.
+    # cold -- and ``scf_must_converge: False``, the switch that makes the
+    # cap CLEAN (item added 2026-08-19: until then the keyword had no
+    # schema field, the retired splicer used to invent the line, and every
+    # properly-capped trial ended ABNORMAL_TERMINATION, classified
+    # incomplete, and could never win -- `choose_winner` ranks only
+    # completed points, so a sweep could not produce a verdict at all).
     #
     # What is pinned here is what makes a trial a MEASUREMENT rather than a
     # run.  What the calculation IS -- the GPU, the eigensolver, the block
@@ -681,7 +743,7 @@ def _bench_inputs(base, target=None):
     # run was also WARM, so the second measurement was of a different
     # calculation as well as a different run.)
     pins = {"max_scf_iter": 5, "relax_steps": 0, "restart": "clean",
-            "continue_retries": 0}
+            "continue_retries": 0, "scf_must_converge": False}
     return points, pins, translation
 
 
@@ -918,11 +980,13 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                     "prep bench measures ONE stage's configuration; "
                     "name it:\n    molbuilder jobset prep bench <stage>")
             sweep, pins, translation = _bench_inputs(base, target)
-        elif stage is not None:
-            # § 2.3.2's other half: a run prepped where a verdict sits
-            # is OFFERED it -- asked, never applied silently.
-            allocation, verdict_pins = _offer_bench_verdict(
-                base, allocation, stage=stage)
+        elif kind == "run":
+            # § 2.3.2's other half: the stage's run-config.toml (the
+            # editable proposal summarize wrote) fills the allocation
+            # fields the user did not state; with neither file nor
+            # flags, the wrapper's runtime policy is NAMED, not implied.
+            allocation, verdict_pins = _apply_run_config(
+                base, allocation, stage=stage, engine=_pf_task.engine)
             pins = verdict_pins or None
         if kind == "run":
             # § 6's say-what-is-there, and the A3 ask when a run already
@@ -1138,17 +1202,17 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
         raise click.ClickException(
             f"this sweep carries no description, so it has no stage named "
             f"{stage!r} -- run `molbuilder jobset summarize bench` bare.")
-    res, out_path = run_summarize_jobset(
+    res, out_path, run_config = run_summarize_jobset(
         js, base,
         out=(container / "bench-result.json") if container is not None
             else None,
-        now_iso=utc_now_iso())
-    click.echo(summary_text(res, out_path))
+        now_iso=utc_now_iso(), stage=stage)
+    click.echo(summary_text(res, out_path, run_config=run_config,
+                            stage=stage))
     _ledger(base, "summarize", "verdict-written", stage=stage,
             out=str(out_path), points=len(res.points),
-            choice=(res.choice or None))
-    click.echo("next: molbuilder jobset prep run <stage>   (it will FIND "
-               "this verdict and ASK)")
+            choice=(res.choice or None),
+            run_config=str(run_config[0]), run_config_status=run_config[1])
 
 
 @jobset_group.command("submit", short_help="launch a prepped stage")

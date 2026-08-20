@@ -534,6 +534,26 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "tier":  "advanced",
         "help": 'INNER loop: the most self-consistency cycles SIESTA will run inside ONE geometry step.  A relaxation runs at most relax_steps outer steps, and each of those runs at most this many inner cycles (or until DM.Tolerance is met).\n1000 is SIESTA\'s own default, and it is the right guard HERE because this catalogue ships mixing_weight 0.02 against SIESTA\'s 0.25: the manual says a low weight "may result in high number of SCF steps but is more likely to converge", so a run that is converging normally needs more cycles than a stock one.\nThis is a RUNAWAY GUARD, not a budget -- the budget is wall time and continue_retries.  The two failure modes are not symmetric: too high wastes some CPU on a run that was going to fail anyway, while too low KILLS A CONVERGING RUN at the cap and throws away that whole geometry step, which compounds over 200 outer steps.  With a 0.02 mixing weight, several hundred cycles is normal for a metal junction -- do not read this number as a target.',
     })
+    # A MEASUREMENT'S SWITCH, adjacent to the cap it modifies: what SIESTA
+    # does when max_scf_iter is hit without convergence -- abort (its own
+    # default) or accept the unconverged density and continue with a
+    # warning.  Optional and unset for ordinary work (the abort protects
+    # the budget); the bench pins set False so a capped trial ends cleanly
+    # as the single-point measurement it is (project-layout.md 3.2).  This
+    # keyword had NO item until 2026-08-19 -- the retired deck-splicer used
+    # to invent the line -- so every properly-capped trial ended in
+    # ABNORMAL_TERMINATION and no sweep could ever produce a verdict.
+    scf_must_converge: Optional[bool] = field(default=None, metadata={
+        "category": ("convergence",),
+        "section": "SCF",
+        "workflow_group": "budget",
+        "label": "Abort if the SCF hits its cycle cap",
+        "null_label": "(SIESTA default: abort)",
+        "optional": True,
+        "engine_key":  'SCF.MustConverge',
+        "tier":  "advanced",
+        "help": "What SIESTA does when a geometry step's SCF loop hits max_scf_iter without meeting its tolerances: abort the run (SIESTA's own default, true), or accept the unconverged density and CONTINUE with a warning (false).\nLeave it unset for ordinary work -- an unconverged density means the forces are noise, and a relaxation that keeps walking on noise wastes every step after the first bad one.  The abort is protecting your budget, not enforcing bureaucracy.\nTHE ONE ORDINARY REASON TO SET false: a run that is a MEASUREMENT rather than a result.  A benchmark trial deliberately caps the SCF at a few cycles to time an iteration (project-layout.md section 3.2's pins); with the abort left on, every properly-capped trial ends in ABNORMAL_TERMINATION and the timing machinery must read a 'failed' run.  The bench pins set this false so a capped trial ends cleanly as the single-point measurement it is.  Until 2026-08-19 this keyword had no catalogue item at all -- the retired deck-splicer used to invent the line -- so no described trial could say it, and no sweep could ever produce a verdict (its every point classified incomplete).",
+    })
     electronic_temperature: float = field(default=300.0, metadata={
         # PRIMARY category `system`, not `accuracy` (2026-08-15, user).  The
         # smearing width answers *what kind of system is this* -- does it

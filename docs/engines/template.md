@@ -238,7 +238,7 @@ than off the catalogue: the legacy form builder that Spectra and Transport use,
 and the code that decides which card a validator finding lands on.
 
 **That duplication is the debt, and it is measured and guarded rather than
-tolerated quietly.** **450 facts live in two places** (measured 2026-08-19;
+tolerated quietly.** **454 facts live in two places** (measured 2026-08-19;
 307 when this was written, and the growth is the point — the debt compounds
 with every parameter added).
 `tests/test_catalogue_agreement.py` compares every one of them on every run, so
@@ -629,7 +629,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
 | `range` · `unit` · `choices` | bounds, unit label, enum members |
 | `group` | **which card**, from the closed vocabulary `template.GROUPS`, in render order: `setup` (what the run is called and where its pseudopotentials come from — nothing can be built without these, so they come first) · `profile` (what you're computing) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
-| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 14 optional items only 10 carry one, so four would silently lose the option (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
+| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 15 optional items only 11 carry one, so four would silently lose the option (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
 | `tier` | `basic` or `advanced`. A judgement about the **parameter**, not about the widget: a surface dims the advanced ones so a first-time reader is not asked to weigh every knob at once |
 | `pattern` | a regex the value must match. Two items have one — `system_label`, `job_name` — and nothing else in the vocabulary can express *"letters, digits, hyphens, underscores; no dots"* |
 | `help` | what this is, in prose. Multi-line is ordinary TOML |

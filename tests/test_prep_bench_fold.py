@@ -261,41 +261,49 @@ def _describe_cpu(calc):
                  + text[j:])
 
 
-def test_prep_run_offers_the_verdict_and_silence_is_no(calc):
-    """§ 2.3.2: it asks; it does not just take it — and a non-interactive
-    shell's silence is No, so nothing is ever applied by default."""
+def test_prep_run_deleting_the_file_declines_the_verdict(calc):
+    """§ 2.3.2: finding a verdict is not permission — permission is
+    `run-config.toml`, and deleting it is the No.  Prep says what that
+    means instead of going quiet, and nothing is applied."""
     import re
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.summarize import RUN_CONFIG_NAME
     _finished_trial_and_verdict(calc)
     _describe_cpu(calc)
+    (calc / "01_coarse" / "bench" / RUN_CONFIG_NAME).unlink()
     r = CliRunner().invoke(jobset_group,
                            ["prep", "run", "coarse", "--bundle", str(calc),
                             "--no-sbatch"])
     assert r.exit_code == 0, r.output
-    assert "a benchmark result exists" in r.output
-    assert "use it?" in r.output
-    assert "not applied" in r.output
+    assert "a bench verdict exists" in r.output
+    assert RUN_CONFIG_NAME in r.output
+    assert "declined" in r.output
+    # and with nothing stated, the wrapper's runtime policy is NAMED
+    assert "wrapper sizes the launch at run time" in r.output
+    assert "running-a-job.md" in r.output
     deck = (calc / "JOB_01_coarse.fdf").read_text()
     assert not re.search(r"^Diag\.ELPA\.GPU\s+\.true\.", deck, re.M)
 
 
-def test_prep_run_applies_an_accepted_verdict_but_flags_win(calc):
-    """On yes, the measured machine half fills only what the user did NOT
-    state, and the winner's eigensolver arrives as pins."""
+def test_prep_run_applies_the_proposal_file_but_flags_win(calc):
+    """The file summarize wrote fills only what the user did NOT state,
+    and the winner's eigensolver arrives as pins — no question asked,
+    because the file IS the answer (§ 2.3.2, 2026-08-19)."""
     import re
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.summarize import RUN_CONFIG_NAME
     from molbuilder.parse.scripts.bench_marks import _extract_bench_marks_dict
     name = _finished_trial_and_verdict(calc)
     g = int(name[1])
     k = int(name[name.index("K") + 1:name.index("C")])
     r = CliRunner().invoke(jobset_group,
                            ["prep", "run", "coarse", "--bundle", str(calc),
-                            "--cpus-per-task", "3", "--no-sbatch"],
-                           input="y\n")
+                            "--cpus-per-task", "3", "--no-sbatch"])
     assert r.exit_code == 0, r.output
-    assert "applied:" in r.output
+    assert f"applied 01_coarse/bench/{RUN_CONFIG_NAME}" in r.output
+    assert "edit or delete the file" in r.output
     deck = (calc / "JOB_01_coarse.fdf").read_text()
     marks = _extract_bench_marks_dict(deck)
     assert marks.get("mpi_np") == g * k          # measured, user said nothing
@@ -1242,3 +1250,272 @@ def test_a_trial_deck_is_forced_cold_not_only_relabelled():
         "otherwise warm-start from its own first attempt")
     assert _as_prepped(run).restart == "continue", (
         "a RUN keeps what the description asked for; only trials are forced")
+
+
+# --------------------------------------------------------------------- #
+#  The declared grid drives the sweep (roadmap § 0.1 B1)                 #
+# --------------------------------------------------------------------- #
+# generator.md § 4.3a: `task.json`'s `bench` DECLARES what to measure —
+# portable points, resolved here.  Until 2026-08-19 nothing read it: the
+# machine enumerated its own grid regardless, so a user declaring
+# {mpi_np: [1,2,3]} got eleven machine-chosen K×C trials.
+
+
+def _declare_bench(calc, axes):
+    import json as _json
+    p = calc / "task.json"
+    obj = _json.loads(p.read_text())
+    obj["bench"] = axes
+    p.write_text(_json.dumps(obj, indent=2) + "\n")
+
+
+def test_the_declared_grid_is_the_sweep(calc):
+    """Declared axes produce exactly those points — nothing enumerated."""
+    _describe_cpu(calc)
+    _declare_bench(calc, {"mpi_np": [1, 2], "omp_threads": [1]})
+    sweep, _pins, translation = _bench_inputs(calc)
+    assert sweep == [{"K": 1, "C": 1}, {"K": 2, "C": 1}]
+    assert translation.axes == ("K", "C")
+
+
+def test_a_declared_point_over_capability_is_refused_by_name(calc):
+    """A point the machine cannot hold is refused naming the point and the
+    bound — never clamped, because a clamped point measures a configuration
+    nobody declared."""
+    import click
+    _describe_cpu(calc)
+    _declare_bench(calc, {"mpi_np": [4096], "omp_threads": [2]})
+    with pytest.raises(click.ClickException) as e:
+        _bench_inputs(calc)
+    assert "mpi_np=4096" in str(e.value) and "omp_threads=2" in str(e.value)
+
+
+def test_an_unknown_declared_axis_is_refused_by_name(calc):
+    import click
+    _describe_cpu(calc)
+    _declare_bench(calc, {"block_size": [64, 128]})
+    with pytest.raises(click.ClickException) as e:
+        _bench_inputs(calc)
+    assert "block_size" in str(e.value)
+
+
+def test_a_declared_gpu_point_runs_the_declared_total_ranks(calc):
+    """On a GPU description, G ranges over the divisors of each declared
+    rank count, so G*K equals the declared mpi_np exactly."""
+    _declare_bench(calc, {"mpi_np": [4], "omp_threads": [1]})
+    sweep, _pins, _tr = _bench_inputs(calc)
+    assert all(p["G"] * p["K"] == 4 for p in sweep)
+    assert {p["G"] for p in sweep} == {1}          # fixture probes one a100
+
+
+def test_the_cap_is_clean_scf_must_converge_is_pinned_off(calc):
+    """B2: the pins include scf_must_converge False, so a capped trial ends
+    as the single-point measurement it is instead of ABNORMAL_TERMINATION —
+    which is what lets `choose_winner` ever see a completed point."""
+    _sweep, pins, _tr = _bench_inputs(calc)
+    assert pins["scf_must_converge"] is False
+    assert pins["max_scf_iter"] == 5
+
+
+# --------------------------------------------------------------------- #
+#  The summary CONNECTS to the run (roadmap § 0.1 B3/B5) and the offer   #
+#  explains an empty verdict (B4)                                        #
+# --------------------------------------------------------------------- #
+
+
+def _mk_point(label, state="completed", spi=None, knobs=None):
+    from molbuilder.bench.result import BenchPoint
+    return BenchPoint(label=label, engine="siesta", state=state,
+                      knobs=knobs or {},
+                      metrics=({"s_per_iter": spi} if spi is not None else {}))
+
+
+def test_the_summary_closes_with_the_verdict_and_the_commands():
+    """B5 (file-based since 2026-08-19): the summary ends with what to do —
+    edit the proposal file, prep, submit — and the coverage clause keeps a
+    partial sweep honest."""
+    from pathlib import Path
+    from molbuilder.bench.result import build_bench_result
+    from molbuilder.jobset.summarize import RUN_CONFIG_NAME, summary_text
+    res = build_bench_result(
+        [_mk_point("K1C1", spi=1.9, knobs={"mpi_np": 1}),
+         _mk_point("K2C1", spi=1.1, knobs={"mpi_np": 2}),
+         _mk_point("K5C1", state="unknown")])
+    out = summary_text(
+        res, Path("/x/bench-result.json"),
+        run_config=(Path("/x") / RUN_CONFIG_NAME, "written"), stage="tight")
+    assert f"edit {RUN_CONFIG_NAME}" in out
+    assert "the file is the decision" in out
+    assert "prep run tight" in out                # the stage, by name
+    assert "coverage: 2 of 3" in out              # the honesty clause
+    assert "the proposal -- yours to edit" in out
+
+
+def test_a_verdictless_summary_says_so_with_the_census():
+    """B3/B4's surface: 'no winner' and 'nothing ran yet' are different
+    situations, and the census is what separates them."""
+    from pathlib import Path
+    from molbuilder.bench.result import build_bench_result
+    from molbuilder.jobset.summarize import summary_text
+    res = build_bench_result([_mk_point("K1C1", state="incomplete"),
+                              _mk_point("K2C1", state="unknown")])
+    out = summary_text(res, Path("/x/bench-result.json"))
+    assert "NO VERDICT" in out
+    assert "1 incomplete" in out and "1 unknown" in out
+    assert "prep run <stage>" not in out          # no command without a verdict
+
+
+def test_the_offer_explains_an_empty_verdict_instead_of_silence(calc, capsys):
+    """B4: prep run in a folder whose bench-result concludes nothing names
+    the file and the census — silence made 'no benchmark' and 'benchmark
+    that failed to conclude' look identical."""
+    import json as _json
+    from molbuilder.bench.result import build_bench_result
+    from molbuilder.jobset._cli import _apply_run_config, _stage_bench_dir
+    from molbuilder.jobset.model import Resources
+    container, _tok = _stage_bench_dir(calc, "coarse")
+    container.mkdir(parents=True, exist_ok=True)
+    res = build_bench_result([_mk_point("K1C1", state="incomplete")])
+    (container / "bench-result.json").write_text(res.to_json() + "\n")
+    alloc, pins = _apply_run_config(calc, Resources(), stage="coarse")
+    assert pins == {}
+    out = capsys.readouterr().out
+    assert "concludes nothing" in out and "1 incomplete" in out
+
+
+# --------------------------------------------------------------------- #
+#  The proposal file (run-config.toml) — § 2.3.2, 2026-08-19            #
+# --------------------------------------------------------------------- #
+
+
+def test_summarize_writes_the_proposal_and_never_overwrites_yours(calc):
+    """`summarize` materialises the verdict as `run-config.toml`; the file
+    parses back to the verdict's values.  Once it exists it is the USER's
+    — a re-summarize keeps it (edits and all) and says so."""
+    import tomllib
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.summarize import RUN_CONFIG_NAME
+    _finished_trial_and_verdict(calc)
+    cfg = calc / "01_coarse" / "bench" / RUN_CONFIG_NAME
+    assert cfg.is_file()
+    raw = tomllib.loads(cfg.read_text())
+    assert raw["schema"] == "molbuilder/run-config@1"
+    rec = json.loads(
+        (calc / "01_coarse" / "bench" / "bench-result.json").read_text())
+    assert raw["resources"]["mpi_np"] == rec["choice"]["knobs"]["mpi_np"]
+    assert raw["resources"]["time"] == rec["recommend"]["time"]
+    # the fixture's trial has no util.csv -> no measured peak -> the
+    # proposal honestly carries NO mem line (absent, not invented)
+    assert "mem_gb" not in rec["recommend"] and "mem" not in raw["resources"]
+    assert raw["pins"]["enable_gpu"] == \
+        rec["choice"]["mechanism"]["enable_gpu"]
+    # the user edits it; a re-summarize must not clobber the edit
+    cfg.write_text(cfg.read_text().replace(
+        f"mpi_np = {raw['resources']['mpi_np']}", "mpi_np = 1"))
+    r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
+                                          "--bundle", str(calc)])
+    assert r.exit_code == 0, r.output
+    assert "kept:" in r.output and "not\n" not in r.output[:0] + ""
+    assert "delete it and summarize again" in r.output
+    assert tomllib.loads(cfg.read_text())["resources"]["mpi_np"] == 1
+
+
+def test_a_verdictless_summarize_writes_no_proposal(calc):
+    """No verdict, no proposal — a file would be an instruction to run
+    with nothing measured behind it."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.summarize import RUN_CONFIG_NAME
+    _prep_bench(calc)
+    r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
+                                          "--bundle", str(calc)])
+    assert r.exit_code == 0, r.output
+    assert "NO VERDICT" in r.output
+    assert not (calc / "01_coarse" / "bench" / RUN_CONFIG_NAME).exists()
+
+
+def test_run_config_refuses_what_it_does_not_know(tmp_path):
+    """An unknown key or a mistyped value is refused BY NAME — a
+    silently-dropped edit is a decision the user wrote down and nobody
+    obeyed (the bench grid's unknown-axis doctrine)."""
+    import pytest
+    from molbuilder.jobset.summarize import read_run_config
+    head = 'schema = "molbuilder/run-config@1"\n'
+
+    def _write(body):
+        f = tmp_path / "run-config.toml"
+        f.write_text(head + body)
+        return f
+
+    assert read_run_config(_write("[resources]\nmpi_np = 2\n")) == {
+        "resources": {"mpi_np": 2}, "pins": {}}
+    with pytest.raises(ValueError, match="no section named alloc"):
+        read_run_config(_write("[alloc]\nmpi_np = 2\n"))
+    with pytest.raises(ValueError, match="no field named np_total"):
+        read_run_config(_write("[resources]\nnp_total = 4\n"))
+    with pytest.raises(ValueError, match="mpi_np must be int"):
+        read_run_config(_write("[resources]\nmpi_np = true\n"))
+    with pytest.raises(ValueError, match="mem must be str"):
+        read_run_config(_write("[resources]\nmem = 29\n"))
+    with pytest.raises(ValueError, match="enable_gpu must be bool"):
+        read_run_config(_write("[pins]\nenable_gpu = 1\n"))
+    with pytest.raises(ValueError, match="not valid TOML"):
+        read_run_config(_write("= what ="))
+    f = tmp_path / "run-config.toml"
+    f.write_text('schema = "molbuilder/other@1"\n')
+    with pytest.raises(ValueError, match="schema"):
+        read_run_config(f)
+
+
+def test_the_wrapper_policy_note_is_engine_aware_and_yields_to_flags(
+        tmp_path, capsys):
+    """With neither file nor flags the wrapper's runtime policy is NAMED,
+    per engine (user, 2026-08-19); any stated launch-shape flag, or an
+    applied file, silences it — the note is for the all-defaults case."""
+    from molbuilder.jobset._cli import _apply_run_config
+    from molbuilder.jobset.model import Resources
+    _apply_run_config(tmp_path, Resources(), engine="siesta")
+    out = capsys.readouterr().out
+    assert "MPI over all physical cores" in out
+    assert "ELPA-CUDA placement policy" in out
+    _apply_run_config(tmp_path, Resources(), engine="pyscf")
+    out = capsys.readouterr().out
+    assert "OMP thread count" in out and "OMP_NUM_THREADS" in out
+    assert "MPI over all physical cores" not in out
+    _apply_run_config(tmp_path, Resources(mpi_np=4), engine="siesta")
+    assert capsys.readouterr().out == ""
+
+
+def test_the_table_measures_beside_the_ask_and_gates_gpu_columns():
+    """The summary table: knobs beside measurements, `--` where nothing
+    was measured, and GPU columns only when the sweep ASKED for a GPU —
+    the monitor samples gpu0_* as zeros on GPU-less runs and three
+    columns of 0 on a CPU sweep are noise."""
+    from pathlib import Path
+    from molbuilder.bench.result import BenchPoint, build_bench_result
+    from molbuilder.jobset.summarize import _fmt_wall, summary_text
+    cpu = BenchPoint(
+        label="K2C1", engine="cpu",
+        knobs={"mpi_np": 2, "cpus_per_task": 1},
+        metrics={"s_per_iter": 1.0, "iters_measured": 3, "wall_s": 41,
+                 "peak_rss_gb": 24.73, "cpu_mean_pct": 96.2},
+        bound="host", state="completed",
+        effective={"diag_algorithm": "D&C"})
+    out = summary_text(build_bench_result([cpu]), Path("/x/b.json"))
+    row = next(l for l in out.splitlines() if "K2C1" in l)
+    for cell in ("2", "1", "D&C", "3", "41s", "24.7G", "96", "host",
+                 "completed"):
+        assert cell in row.split(), (cell, row)
+    assert "gpu-sm%" not in out and "vram" not in out
+    gpu = BenchPoint(
+        label="G1K4C6", engine="gpu",
+        knobs={"mpi_np": 4, "cpus_per_task": 6, "gres": "gpu:1"},
+        metrics={"s_per_iter": 2.3}, state="completed")
+    out = summary_text(build_bench_result([cpu, gpu]), Path("/x/b.json"))
+    assert "gpu-sm%" in out and "vram" in out
+    row = next(l for l in out.splitlines() if "G1K4C6" in l)
+    assert row.split().count("--") >= 4      # unmeasured cells say so
+    assert _fmt_wall(41) == "41s"
+    assert _fmt_wall(245) == "4m05s"
+    assert _fmt_wall(7523) == "2h05m"

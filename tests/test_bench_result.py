@@ -9,8 +9,8 @@ import pytest
 from molbuilder.bench.result import (
     BenchPoint, BenchResult, build_bench_result, choose_winner,
     compare_asked_to_ran, parse_effective_run, parse_mpi_ranks,
-    parse_sacct_mem, parse_scf_timing, parse_util_csv_peak_mem,
-    parse_util_summary, recommend_resources,
+    parse_sacct_mem, parse_scf_timing, parse_util_bound,
+    parse_util_csv, recommend_resources,
 )
 
 
@@ -48,40 +48,43 @@ def test_parse_scf_timing_too_few():
     assert parse_scf_timing("")["s_per_iter"] is None
 
 
-@pytest.mark.parametrize("log,cpu,sm,bound", [
-    ("[t] [UTIL-SUMMARY] cpu mean=40% (35-45); gpu0 sm mean=91% (80-97) "
-     "-> GPU-bound (GPU saturated)", 40.0, 91.0, "gpu"),
-    ("[t] [UTIL-SUMMARY] cpu mean=95% (90-99); gpu0 sm mean=48% (10-70) "
-     "-> host/CPU-bound (GPU starved)", 95.0, 48.0, "host"),
+@pytest.mark.parametrize("log,bound", [
+    ("[t] [UTIL-SUMMARY] cpu mean=20% (10-30); gpu0 sm mean=91% (88-95) "
+     "-> GPU-bound (host has headroom)", "gpu"),
+    ("[t] [UTIL-SUMMARY] cpu mean=95% (90-99); gpu0 sm mean=48% (40-55) "
+     "-> host/CPU-bound (GPU starved)", "host"),
     ("[t] [UTIL-SUMMARY] cpu mean=60% (50-70); gpu0 sm mean=70% (60-80) "
-     "-> mixed (GPU not saturated)", 60.0, 70.0, "mixed"),
+     "-> mixed (GPU not saturated)", "mixed"),
 ])
-def test_parse_util_summary(log, cpu, sm, bound):
-    r = parse_util_summary(log)
-    assert r["cpu_mean_pct"] == cpu
-    assert r["gpu_sm_mean_pct"] == sm
-    assert r["bound"] == bound
+def test_parse_util_bound_reads_the_verdict_only(log, bound):
+    """The monitor's summary line contributes exactly its VERDICT — the
+    utilisation numbers on it are a digest of util.csv's raw samples and
+    are read from there (`parse_util_csv`), one home per fact."""
+    assert parse_util_bound(log) == bound
 
 
-def test_parse_util_summary_multi_gpu_takes_max():
-    r = parse_util_summary(
-        "[UTIL-SUMMARY] cpu mean=30% (20-40); gpu0 sm mean=80% (..); "
-        "gpu1 sm mean=92% (..) -> GPU-bound (..)")
+def test_parse_util_bound_absent():
+    assert parse_util_bound("nothing here") is None
+
+
+def test_parse_util_csv_reads_all_five_metrics():
+    csv = ("epoch,iso,cpu_pct,mem_gb,gpu0_sm,gpu0_memutil,gpu0_vram_gb,"
+           "gpu1_sm,gpu1_vram_gb\n"
+           "100,a,30,137.2,80,10,10.0,90,11.5\n"
+           "105,b,50,260.9,70,10,12.5,92,11.0\n"
+           "141,c,40,180.0,90,10,11.0,94,10.0\n")
+    r = parse_util_csv(csv)
+    assert r["peak_rss_gb"] == 260.9
+    assert r["wall_s"] == 41.0                    # last epoch - first
+    assert r["cpu_mean_pct"] == 40.0
+    # per-GPU mean first, then the max ACROSS GPUs: gpu0 mean 80, gpu1 92
     assert r["gpu_sm_mean_pct"] == 92.0
-
-
-def test_parse_util_summary_absent():
-    assert parse_util_summary("nothing here")["bound"] is None
-
-
-def test_parse_util_csv_peak_mem():
-    csv = ("epoch,iso,cpu_pct,mem_gb,gpu0_sm,gpu0_memutil,gpu0_vram_gb\n"
-           "1,a,3,137.2,0,0,0\n"
-           "2,b,5,260.9,0,0,0\n"
-           "3,c,4,180.0,0,0,0\n")
-    assert parse_util_csv_peak_mem(csv) == 260.9
-    assert parse_util_csv_peak_mem("epoch,mem_gb\n") is None
-    assert parse_util_csv_peak_mem("no_mem_col\n1\n") is None
+    assert r["gpu_vram_peak_gb"] == 12.5          # peak anywhere
+    # missing pieces are absent, not zero
+    assert parse_util_csv("epoch,mem_gb\n") == {}
+    assert parse_util_csv("") == {}
+    slim = parse_util_csv("epoch,cpu_pct\n7,3\n9,5\n")
+    assert slim == {"wall_s": 2.0, "cpu_mean_pct": 4.0}
 
 
 @pytest.mark.parametrize("text,expect", [
@@ -175,8 +178,9 @@ def test_from_dict_rejects_major_mismatch():
 
 def test_choice_survives_a_json_round_trip_for_the_offer():
     """RETIRED 2026-08-12: `adapter.format_run` no longer exists -- a
-    verdict reaches production prep through `_offer_bench_verdict`
-    (allocation + pins; pinned end-to-end in test_prep_bench_fold).  What
+    verdict reaches production prep through `run-config.toml` (written
+    by summarize, applied by `_apply_run_config`; pinned end-to-end in
+    test_prep_bench_fold).  What
     THIS file still owns is the artifact: the `choice` written here must
     carry the knobs that offer reads back.
     """

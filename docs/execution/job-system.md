@@ -1154,7 +1154,7 @@ flowchart LR
     P["jobset prep bench &lt;stage&gt;<br/>(target)<br/>probe → environment.json<br/>+ the grid as trial decks in<br/>&lt;NN&gt;_&lt;stage&gt;/bench/"]
     R["jobset submit bench &lt;stage&gt;<br/>one trial per invocation<br/>(next unlaunched by default)"]
     S["jobset summarize bench &lt;stage&gt;<br/>trials → bench/bench-result.json<br/>(winner + mechanism + sizing)"]
-    PR["jobset prep run &lt;stage&gt;<br/>FINDS the verdict and ASKS"]
+    PR["jobset prep run &lt;stage&gt;<br/>APPLIES run-config.toml — your edit is the answer"]
     D --> P --> R --> S --> PR
 ```
 

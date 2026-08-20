@@ -982,40 +982,116 @@ in-shell, waiting for each. When the queue has drained,
 `bench-result.json` — a recommendation, not a decision:
 
 ```jsonc
-{ "choice":    { "label": "G1K4C6", "engine": "siesta",
+{ "choice":    { "label": "G1K4C6", "engine": "gpu",
                  "knobs": { "mpi_np": 4, "cpus_per_task": 6, "gres": "gpu:a100:1" },
                  "mechanism": { "enable_gpu": true,
                                 "diag_algorithm": "ELPA-1STAGE" },
                  "rationale": "G1K4C6 fastest (2.3 s/iter); gpu-bound; vs G1K8C2 3.1 s/iter" },
-  "recommend": { "mem_gb": 96, "time": "0-02:52:00",
+  "recommend": { "mem_gb": 97, "time": "0-00:11:29",
                  "time_basis": "2.3s/iter x 200 iters x 1.5 (adjust to your run)" } }
 ```
 *(the sample tracks `bench/result.py`'s writer — `choice.label` is the
 winning trial's id, its knobs ride under `knobs`, and `recommend` is
 measured sizing, not prose; the flat-key sample that stood here until
-2026-08-12 was the retired pre-fold shape)*
+2026-08-12 was the retired pre-fold shape.  This sample, the table above
+and the toml below are ONE dataset, rendered by the real code —
+regenerate all three together if the writers change)*
 
-**You read it. You decide.** Nothing acts on it until you hand it back.
+The summary itself is a table — one row per point, the sweep's knobs beside
+what the monitor measured — so the scaling is visible in one look rather
+than one JSON dig per trial:
+
+```
+  point   np  thr  gpu         algorithm    s/iter  iters  wall  peak-mem  cpu%  gpu-sm%   vram  bound  state
+  G1K4C6   4    6  gpu:a100:1  ELPA-1stage     2.3      3   41s     83.5G    34       91  18.2G  gpu    completed
+  G1K8C2   8    2  gpu:a100:1  ELPA-1stage     3.1      3   58s     85.1G    52       64  18.9G  mixed  completed
+```
+
+*(columns come from the record: `s/iter` is the steady-state SCF mean;
+`wall`, `peak-mem`, `cpu%` and the GPU columns are the monitor's raw
+samples in `util.csv`; `algorithm` is what the trial **actually ran** — a
+silent eigensolver fallback shows in the table itself, not only in the
+excluded-row note. A value nothing measured prints `--`, and the GPU
+columns appear only when the sweep has GPU points.)*
+
+And beside the record it writes **the proposal, as a file you edit** —
+`run-config.toml`:
+
+```toml
+schema = "molbuilder/run-config@1"
+# What `jobset prep run tight` will use for this stage.
+# Written by `jobset summarize bench` from the measured winner:
+#   G1K4C6 fastest (2.3 s/iter); gpu-bound; vs G1K8C2 3.1 s/iter
+# Every value is yours to edit -- these are recommendations, not
+# decisions.  Delete a line to leave that field to your
+# flags/defaults; delete the file to decline the benchmark
+# entirely (`jobset summarize bench` writes a fresh one).
+
+[resources]
+mpi_np = 4            # MPI ranks
+cpus_per_task = 6     # cores per rank (OMP threads follow this)
+gres = "gpu:a100:1"   # scheduler GPU request
+mem = "97GB"          # the winner's measured peak RSS x safety margin
+time = "0-00:11:29"   # 2.3s/iter x 200 iters x 1.5 (adjust to your run)
+
+[pins]                # HOW the winner computed, read from its own deck
+enable_gpu = true
+diag_algorithm = "ELPA-1STAGE"
+```
+
+**You read the table. You edit the file. The file is the decision.**
+`bench-result.json` stays what it is — the measurement record,
+schema-checked and never edited by hand — and the toml is the proposal
+built from it. A verdict-less sweep (no completed, timed trial) writes no
+proposal, and the summary prints the state census that explains why
+instead.
 
 #### 2.3.3 Job two — the real run, with what you measured
 
 ```
 molbuilder jobset prep run tight
 
-  a benchmark result exists for this stage:
-      elpa · G=1 K=4 C=6 · mem 96G     (measured here, 2026-08-06)
-  use it?  [y/N]
+  applied 02_tight/bench/run-config.toml: mpi_np=4, cpus_per_task=6,
+  gres=gpu:a100:1, mem=97GB, time=0-00:11:29; pins: enable_gpu=True,
+  diag_algorithm=ELPA-1STAGE
+  (edit or delete the file to change this)
 ```
 
-**It asks; it does not just take it.** A benchmark lives inside the stage it
-measured, so prep can always *find* one — but finding is not permission. You
-measured it in order to look at it, and a prep that silently applied a verdict
-from three weeks ago on a different node would be deciding the thing you asked
-to be shown. Same rule as the checkpoint question
-([`checkpointing.md`](?doc=execution/checkpointing.md) § 9): explicit, every
-time.
+**The question is a file, and editing it — or deleting it — is your
+answer.** A benchmark lives inside the stage it measured, so prep can
+always *find* one — but finding is not permission. Permission is
+`run-config.toml`: `summarize` writes the proposal, you change what you
+disagree with, and `prep run` applies what the file says **to the fields
+your flags did not state** — an explicit flag always wins over the file,
+exactly as it won over the machine before. Delete the file and the
+benchmark is declined; `summarize bench` writes it afresh should you change
+your mind. *(Until 2026-08-19 this was an interactive question — `use it?
+[y/N]`, asked at every prep, silence-is-no. The doctrine is unchanged —
+nothing is applied that you did not hand back — but the answer now lives in
+the tree, where a scripted prep can carry it, a re-prep three weeks later
+still finds it, and the ledger can cite it.)*
 
-Say yes and step 2 has a third input, which wins over the defaults. The measured
+**And when there is neither file nor flags, the wrapper's runtime policy
+sizes the launch — and `prep` says so out loud:**
+
+```
+  no benchmark verdict (no run-config.toml) and no rank/thread flags --
+  the wrapper sizes the launch at run time on the machine it lands on
+  (SIESTA: MPI over all physical cores, clamped to the atom count; a GPU
+  deck follows the ELPA-CUDA placement policy -- running-a-job.md § 3).
+  To measure instead of guess:  molbuilder jobset prep bench tight
+```
+
+The policy itself is [`running-a-job.md`](?doc=execution/running-a-job.md)
+§ 3's, stated once there: SIESTA is launched as MPI over all physical cores
+clamped to the atom count (OMP stays 1); a deck that asks for the GPU gets
+the ELPA-CUDA placement defaults; **PySCF has no rank count** — its wrapper
+resolves the OMP thread count at run time (`-omp` flag → `OMP_NUM_THREADS`
+→ the scheduler's allocation → this node's physical cores). The engine's
+own bare default — `siesta` on one core of a 128-core node — is exactly
+what the wrapper exists to prevent; nothing here falls through to it.
+
+With the file applied, step 2 has a third input, which wins over the defaults. The measured
 rank count flows into step 3, where it changes `BlockSize`; the measured
 eigensolver changes `Diag.Algorithm`; and whether the GPU was worth it changes
 `Diag.ELPA.GPU`, which in step 4 changes **which environment the wrapper
@@ -1032,7 +1108,7 @@ environment. It does not — the packaged SIESTA runs ELPA on CPU, so
 `prep` prints what it resolved, and that report is the point:
 
 ```
-  reading      02_tight/bench/bench-result.json  (measured here, 2026-08-06)
+  reading      02_tight/bench/run-config.toml  (from the bench measured here, 2026-08-06)
   resources    elpa · G=1 K=4 C=6 · mem 96G
   02_tight/bdt_au.fdf   rendered   BlockSize 8, Diag.Algorithm elpa
                                    (500 orbitals / 32 ranks = 15 -> 8)
@@ -1171,11 +1247,11 @@ sequenceDiagram
     C->>E: run the trials
     E-->>T: timings
     U->>C: jobset summarize bench tight
-    C->>T: bench-result.json
+    C->>T: bench-result.json + run-config.toml
 
-    Note over U: you read it and decide
+    Note over U: you read the table, edit run-config.toml
 
-    U->>C: jobset prep run tight --from 01_coarse/run-0 (offered the verdict — answers yes)
+    U->>C: jobset prep run tight --from 01_coarse/run-0 (applies run-config.toml)
     C->>T: 02_tight/<label>_02_tight.fdf · run-0/ · copied .XV
     C-->>U: what it resolved, and what it copied
     U->>C: submit tight
@@ -1407,6 +1483,8 @@ benchmark's **pins** laid over the resolved values
   the chemistry;
 - **relaxation steps zeroed** — a single point, not a geometry;
 - **cold start forced** (`restart: clean`);
+- **the cap made clean** (`scf_must_converge: false` — SIESTA accepts the
+  deliberately-unconverged density instead of aborting; added 2026-08-19);
 - **relabelled per trial** — the calculation's label with the point's token
   appended.
 
@@ -1450,10 +1528,13 @@ directory at all.
 > derived a measurable variant by editing a *finished* deck, relabelled
 > `job-gpu` / `job-cpu`, with `SCF.MustConverge` forced off. It was deleted in
 > the fold (step 6 u5) with the two-point bundle around it. Two consequences
-> worth recording: `SCF.MustConverge` has **no schema field** (the splice
-> invented the line), so a capped trial now reports its nonconvergence honestly
-> rather than being silenced — adding the field is a recorded vocabulary gap
-> (`template.md § 7`); and the closing note here — *"the manifest records the
+> worth recording: `SCF.MustConverge` had **no schema field** until
+> 2026-08-19 (the splice used to invent the line), so every properly-capped
+> trial ended `ABNORMAL_TERMINATION`, classified incomplete, and no sweep
+> could produce a verdict — the vocabulary gap is closed
+> (`scf_must_converge`, optional, unset for ordinary work; the pins set it
+> false so a capped trial ends cleanly as the measurement it is); and the
+> closing note here — *"the manifest records the
 > source deck's hash so a stale answer can be recognised"* — died with
 > `bench-manifest.json`: nothing records a source hash today, and how a surface
 > shows a verdict whose science has since changed remains § 8's open question.
@@ -1971,13 +2052,15 @@ than no invariant, because it fails a directory that is working correctly.
 ## 8. What is not settled
 
 1. ~~**Does a trial's answer feed the stage automatically?**~~ **Answered
-   2026-08-07: no — `prep run <stage>` asks.** `bench-result.json` sits beside
-   the stage that was measured, so prep can always *find* one; finding is not
-   permission. It reports the verdict and waits, because you measured it in order
-   to look at it (§ 2.3.3). What a *surface* does with the same information — how
-   it shows a verdict whose environment or source deck has since changed — is
-   still the surface's to decide, but the rule underneath is settled: explicit,
-   every time.
+   2026-08-07: no — nothing is applied that the user did not hand back.**
+   `bench-result.json` sits beside the stage that was measured, so prep can
+   always *find* one; finding is not permission. Permission is
+   `run-config.toml`, the editable proposal `summarize` writes beside the
+   record and `prep run <stage>` reads (§ 2.3.3) *(2026-08-19 — the hand-back
+   was an interactive `use it? [y/N]` until then; the doctrine held, the
+   answer moved into the tree)*. What a *surface* does with the same
+   information — how it shows a verdict whose environment or source deck has
+   since changed — is still the surface's to decide.
 2. **Must every stage be measured?** Measuring each of five stages costs five
    sweeps. In practice a user measures one representative stage and reuses the
    answer for the rest. The layout allows both; nothing says which is expected,

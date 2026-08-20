@@ -68,7 +68,7 @@ SCF_TAIL_SECTION = Section(
     # that stops saying what that part of the deck IS, which is the one thing
     # a layout is for (`script-preparation.md` § 4.1).
     "SCF iteration limit and smearing",
-    ("max_scf_iter", "electronic_temperature"),
+    ("max_scf_iter", "scf_must_converge", "electronic_temperature"),
 )
 
 

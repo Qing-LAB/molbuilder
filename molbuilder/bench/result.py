@@ -6,9 +6,9 @@ measured point's artifacts (timing log, utilization, peak memory) and
 writes ``bench-result@1``.  Its ``choice`` block is the decision as DATA
 (U13, 2026-08-12): the winner's ``label``, its ``knobs`` in the job-set's
 own exchange vocabulary (mpi_np / cpus_per_task / gres), and its
-``mechanism`` read from the winning trial's deck -- consumed by
-`jobset prep run`'s verdict offer, which ASKS before applying
-(§ 2.3.2).  The adapter re-resolution this paragraph used to describe
+``mechanism`` read from the winning trial's deck -- materialised by
+`summarize` into the editable ``run-config.toml`` that `jobset prep run`
+applies (§ 2.3.2; interactive ask until 2026-08-19).  The adapter re-resolution this paragraph used to describe
 died with `prep-run` (step 6 u5).
 
 **Stdlib-only** (parsers + json + dataclasses): ships to the target with
@@ -70,57 +70,83 @@ def parse_scf_timing(text: str) -> Dict[str, Optional[float]]:
             "iters_measured": len(measured)}
 
 
-_CPU_MEAN = re.compile(r"cpu mean=([0-9.]+)%")
-_GPU_MEAN = re.compile(r"gpu\d+ sm mean=([0-9.]+)%")
 _VERDICT = re.compile(r"->\s*(GPU-bound|host/CPU-bound|mixed)")
 _BOUND_MAP = {"GPU-bound": "gpu", "host/CPU-bound": "host", "mixed": "mixed"}
 
 
-def parse_util_summary(monitor_log: str) -> Dict[str, Optional[object]]:
-    """Read the ``[UTIL-SUMMARY]`` line from a ``.monitor.log``: mean
-    cpu%, the highest per-GPU mean sm%, and the bound verdict
-    (``gpu`` | ``host`` | ``mixed``).  Missing pieces -> ``None``."""
+def parse_util_bound(monitor_log: str) -> Optional[str]:
+    """The bound VERDICT (``gpu`` | ``host`` | ``mixed``) from the
+    ``[UTIL-SUMMARY]`` line of a ``.monitor.log``, or ``None``.
+
+    The verdict is the monitor's own call — it encodes the monitor's
+    thresholds, so it is read from the monitor and nowhere else.  The
+    utilisation NUMBERS on the same line are deliberately NOT read here
+    any more (2026-08-19): they are a digest of the same samples
+    ``util.csv`` records raw, the digest line can be missing entirely
+    (a trial that exits before the monitor's final write has a csv but
+    no summary), and two readers of one fact had already diverged once.
+    :func:`parse_util_csv` reads the samples; this reads the verdict.
+    """
     line = ""
     for ln in monitor_log.splitlines():
         if "[UTIL-SUMMARY]" in ln:
             line = ln                                # last one wins
-    out: Dict[str, Optional[object]] = {
-        "cpu_mean_pct": None, "gpu_sm_mean_pct": None, "bound": None}
-    if not line:
-        return out
-    m = _CPU_MEAN.search(line)
-    if m:
-        out["cpu_mean_pct"] = float(m.group(1))
-    gpus = [float(x) for x in _GPU_MEAN.findall(line)]
-    if gpus:
-        out["gpu_sm_mean_pct"] = max(gpus)
     v = _VERDICT.search(line)
-    if v:
-        out["bound"] = _BOUND_MAP.get(v.group(1))
-    return out
+    return _BOUND_MAP.get(v.group(1)) if v else None
 
 
-def parse_util_csv_peak_mem(csv_text: str) -> Optional[float]:
-    """Peak ``mem_gb`` over a ``util.csv`` (workstation fallback for peak
-    RSS when there is no scheduler accounting)."""
+#: util.csv columns -> metric keys.  ``gpu<N>_sm`` / ``gpu<N>_vram_gb``
+#: are matched per GPU index; the metric takes the max across GPUs
+#: (mean per GPU first for sm%, peak anywhere for VRAM).
+_CSV_GPU_SM = re.compile(r"^gpu\d+_sm$")
+_CSV_GPU_VRAM = re.compile(r"^gpu\d+_vram_gb$")
+
+
+def parse_util_csv(csv_text: str) -> Dict[str, float]:
+    """One reader for the monitor's raw samples (``util.csv``): peak
+    RSS, sampled wall window, mean CPU%, per-GPU mean SM% (max across
+    GPUs) and peak VRAM.
+
+    Returns only the keys it could derive — an empty dict for an empty
+    or headerless file — so a caller can fold the result straight into a
+    point's metrics.  Keys: ``peak_rss_gb``, ``wall_s`` (last sample −
+    first sample; the monitor runs for the life of the job, so this is
+    the job's wall time to sampling resolution), ``cpu_mean_pct``,
+    ``gpu_sm_mean_pct``, ``gpu_vram_peak_gb``.
+    """
     lines = [ln for ln in csv_text.splitlines() if ln.strip()]
     if len(lines) < 2:
-        return None
+        return {}
     header = [h.strip() for h in lines[0].split(",")]
-    try:
-        idx = header.index("mem_gb")
-    except ValueError:
-        return None
-    peak = None
+    cols: Dict[str, List[float]] = {h: [] for h in header}
     for row in lines[1:]:
         cells = row.split(",")
-        if idx < len(cells) and cells[idx].strip():
-            try:
-                v = float(cells[idx])
-            except ValueError:
-                continue
-            peak = v if peak is None else max(peak, v)
-    return peak
+        for i, h in enumerate(header):
+            if i < len(cells) and cells[i].strip():
+                try:
+                    v = float(cells[i])
+                except ValueError:
+                    continue
+                if math.isfinite(v):
+                    cols[h].append(v)
+    out: Dict[str, float] = {}
+    if cols.get("mem_gb"):
+        out["peak_rss_gb"] = max(cols["mem_gb"])
+    epochs = cols.get("epoch") or []
+    if len(epochs) >= 2 and epochs[-1] > epochs[0]:
+        out["wall_s"] = round(epochs[-1] - epochs[0], 1)
+    if cols.get("cpu_pct"):
+        out["cpu_mean_pct"] = round(
+            sum(cols["cpu_pct"]) / len(cols["cpu_pct"]), 1)
+    sm_means = [sum(v) / len(v) for h, v in cols.items()
+                if _CSV_GPU_SM.match(h) and v]
+    if sm_means:
+        out["gpu_sm_mean_pct"] = round(max(sm_means), 1)
+    vram_peaks = [max(v) for h, v in cols.items()
+                  if _CSV_GPU_VRAM.match(h) and v]
+    if vram_peaks:
+        out["gpu_vram_peak_gb"] = round(max(vram_peaks), 2)
+    return out
 
 
 _MPI_RANKS = re.compile(r"Running on\s+(\d+)\s+nodes", re.IGNORECASE)
@@ -458,7 +484,7 @@ def build_bench_result(points: List[BenchPoint], *,
 
 __all__ = [
     "SCHEMA", "BenchPoint", "BenchResult",
-    "parse_scf_timing", "parse_util_summary", "parse_util_csv_peak_mem",
+    "parse_scf_timing", "parse_util_bound", "parse_util_csv",
     "parse_sacct_mem", "parse_mpi_ranks",
     "parse_effective_run", "compare_asked_to_ran",
     "mismatch_phrase", "choose_winner",

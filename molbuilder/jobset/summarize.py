@@ -27,7 +27,7 @@ from typing import Dict, List, Optional
 from ..bench.result import (
     BenchPoint, BenchResult, build_bench_result, compare_asked_to_ran,
     mismatch_phrase, parse_effective_run, parse_mpi_ranks, parse_scf_timing,
-    parse_util_csv_peak_mem, parse_util_summary,
+    parse_util_bound, parse_util_csv,
 )
 
 # "the run finished" markers in a SIESTA .out (best-effort; a capped bench
@@ -142,17 +142,13 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     bound = None
     mon = d / f"{basename}.monitor.log"
     if mon.is_file():
-        u = parse_util_summary(_read(mon))
-        bound = u.get("bound")
-        for key in ("gpu_sm_mean_pct", "cpu_mean_pct"):
-            if u.get(key) is not None:
-                metrics[key] = u[key]
+        bound = parse_util_bound(_read(mon))
 
+    # Utilisation NUMBERS come from the raw samples, the verdict from the
+    # monitor (parse_util_bound's docstring owns the why).
     util = d / f"{basename}.util.csv"
     if util.is_file():
-        peak = parse_util_csv_peak_mem(_read(util))
-        if peak is not None:
-            metrics["peak_rss_gb"] = peak
+        metrics.update(parse_util_csv(_read(util)))
 
     # The .out is read TWICE, one window each, because its two answers
     # live at opposite ends: the end-of-run markers in the tail, and the
@@ -340,9 +336,18 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
 
 
 def run_summarize_jobset(jobset, bundle, *,
-                         out=None, now_iso: Optional[str] = None):
-    """Summarize a described sweep through the data-keyed reader and write
-    ``bench-result.json``; returns ``(BenchResult, out_path)``."""
+                         out=None, now_iso: Optional[str] = None,
+                         stage: Optional[str] = None):
+    """Summarize a described sweep through the data-keyed reader: write
+    ``bench-result.json`` (the record) and, when there is a verdict,
+    ``run-config.toml`` beside it (the editable proposal — § 2.3.2).
+
+    Returns ``(BenchResult, out_path, (config_path, status))`` with
+    status ``"written"`` (fresh proposal), ``"kept"`` (a file already
+    exists — it is the USER's, possibly edited, so it is never
+    overwritten; delete it and summarize again for a fresh one), or
+    ``"none"`` (no verdict, nothing proposed).
+    """
     res = build_bench_result(
         discover_points_from_jobset(bundle, jobset),
         environment=_read_environment(Path(bundle)),
@@ -354,26 +359,243 @@ def run_summarize_jobset(jobset, bundle, *,
             res.choice["mechanism"] = mech
     out_path = Path(out) if out else Path(bundle) / "bench-result.json"
     out_path.write_text(res.to_json() + "\n", encoding="utf-8")
-    return res, out_path
+    cfg_path = out_path.parent / RUN_CONFIG_NAME
+    text = run_config_text(res, stage=stage)
+    if text is None:
+        status = "none"
+    elif cfg_path.exists():
+        status = "kept"
+    else:
+        cfg_path.write_text(text, encoding="utf-8")
+        status = "written"
+    return res, out_path, (cfg_path, status)
 
 
 
-def summary_text(res: BenchResult, out_path: Path) -> str:
-    lines = ["bench-summarize: ranked points (fastest first)"]
+RUN_CONFIG_SCHEMA = "molbuilder/run-config@1"
+RUN_CONFIG_NAME = "run-config.toml"
+
+#: The proposal's whole vocabulary, typed.  ``bool`` is checked exactly
+#: (a TOML ``true`` must not satisfy an int field and vice versa).
+_RC_RESOURCES = {"mpi_np": int, "cpus_per_task": int,
+                 "gres": str, "mem": str, "time": str}
+_RC_PINS = {"enable_gpu": bool, "diag_algorithm": str}
+
+
+def run_config_text(res: BenchResult, *, stage: Optional[str] = None
+                    ) -> Optional[str]:
+    """The editable proposal (``run-config.toml``) built from a verdict,
+    or ``None`` when the result concludes nothing.
+
+    THE WRITER CHECKS ITSELF (``template.py``'s doctrine): ``tomllib``
+    reads TOML and does not write it, so the text is composed by hand
+    and re-read before it is returned — a composed line that does not
+    parse back to the same values never leaves this function.
+    """
+    import tomllib
+    choice = res.choice or {}
+    if not choice:
+        return None
+    knobs = choice.get("knobs") or {}
+    rec = res.recommend or {}
+    mech = choice.get("mechanism") or {}
+    stage_word = stage or "<stage>"
+    lines = [
+        f'schema = "{RUN_CONFIG_SCHEMA}"',
+        f"# What `jobset prep run {stage_word}` will use for this stage.",
+        "# Written by `jobset summarize bench` from the measured winner:",
+        f"#   {choice.get('rationale', choice.get('label', '?'))}",
+        "# Every value is yours to edit -- these are recommendations, not",
+        "# decisions.  Delete a line to leave that field to your",
+        "# flags/defaults; delete the file to decline the benchmark",
+        "# entirely (`jobset summarize bench` writes a fresh one).",
+        "",
+        "[resources]",
+    ]
+    expect: Dict = {"resources": {}, "pins": {}}
+    rows = []                     # (assignment, comment) -> aligned below
+    if knobs.get("mpi_np") is not None:
+        v = int(knobs["mpi_np"])
+        rows.append((f"mpi_np = {v}", "MPI ranks"))
+        expect["resources"]["mpi_np"] = v
+    if knobs.get("cpus_per_task") is not None:
+        v = int(knobs["cpus_per_task"])
+        rows.append((f"cpus_per_task = {v}",
+                     "cores per rank (OMP threads follow this)"))
+        expect["resources"]["cpus_per_task"] = v
+    if knobs.get("gres"):
+        v = str(knobs["gres"])
+        rows.append((f'gres = "{v}"', "scheduler GPU request"))
+        expect["resources"]["gres"] = v
+    if rec.get("mem_gb"):
+        v = f"{rec['mem_gb']}GB"
+        rows.append((f'mem = "{v}"',
+                     "the winner's measured peak RSS x safety margin"))
+        expect["resources"]["mem"] = v
+    if rec.get("time"):
+        v = str(rec["time"])
+        rows.append((f'time = "{v}"', rec.get("time_basis") or ""))
+        expect["resources"]["time"] = v
+    width = max((len(a) for a, _ in rows), default=0)
+    lines += [f"{a:<{width}}   # {c}" if c else a for a, c in rows]
+    if mech:
+        lines += ["",
+                  "[pins]                # HOW the winner computed, "
+                  "read from its own deck"]
+        if mech.get("enable_gpu") is not None:
+            v = bool(mech["enable_gpu"])
+            lines.append(f"enable_gpu = {'true' if v else 'false'}")
+            expect["pins"]["enable_gpu"] = v
+        if mech.get("diag_algorithm") is not None:
+            v = str(mech["diag_algorithm"])
+            lines.append(f'diag_algorithm = "{v}"')
+            expect["pins"]["diag_algorithm"] = v
+    text = "\n".join(lines) + "\n"
+    got = tomllib.loads(text)
+    got.pop("schema", None)
+    expect = {k: v for k, v in expect.items() if v}
+    if got != expect:
+        raise AssertionError(
+            f"run-config writer self-check failed: composed {got!r}, "
+            f"intended {expect!r}")
+    return text
+
+
+def read_run_config(path: Path) -> Dict:
+    """Read and validate a ``run-config.toml`` the user may have edited.
+
+    Returns ``{"resources": {...}, "pins": {...}}`` (either may be
+    empty).  Raises ``ValueError`` naming the exact problem — an unknown
+    key or a mistyped value is refused BY NAME, never skipped, because a
+    silently-dropped edit is a decision the user made and nobody obeyed
+    (the same doctrine as the bench grid's unknown axis).
+    """
+    import tomllib
+    from ..persist import check_schema
+    try:
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as e:
+        raise ValueError(f"{path.name} is not valid TOML: {e}") from e
+    check_schema(str(raw.pop("schema", "")), RUN_CONFIG_SCHEMA,
+                 label=path.name)
+    unknown = sorted(set(raw) - {"resources", "pins"})
+    if unknown:
+        raise ValueError(
+            f"{path.name} has no section named {', '.join(unknown)} -- "
+            f"it knows [resources] and [pins]")
+    out: Dict = {"resources": {}, "pins": {}}
+    for section, types in (("resources", _RC_RESOURCES), ("pins", _RC_PINS)):
+        body = raw.get(section) or {}
+        if not isinstance(body, dict):
+            raise ValueError(f"{path.name}: [{section}] must be a table")
+        bad = sorted(set(body) - set(types))
+        if bad:
+            raise ValueError(
+                f"{path.name}: [{section}] has no field named "
+                f"{', '.join(bad)} -- it knows {', '.join(sorted(types))}")
+        for k, v in body.items():
+            want = types[k]
+            ok = (isinstance(v, bool) if want is bool
+                  else isinstance(v, int) and not isinstance(v, bool)
+                  if want is int else isinstance(v, str))
+            if not ok:
+                raise ValueError(
+                    f"{path.name}: [{section}] {k} must be "
+                    f"{want.__name__}, got {type(v).__name__} ({v!r})")
+            out[section][k] = v
+    return out
+
+
+def _fmt_wall(seconds: float) -> str:
+    """``41`` -> ``41s``, ``245`` -> ``4m05s``, ``7523`` -> ``2h05m``."""
+    s = int(round(seconds))
+    if s < 60:
+        return f"{s}s"
+    m, sec = divmod(s, 60)
+    if m < 60:
+        return f"{m}m{sec:02d}s"
+    h, m = divmod(m, 60)
+    return f"{h}h{m:02d}m"
+
+
+def _point_table(points: List[BenchPoint]):
+    """The measurement table: header line + one row per point, columns
+    sized to their content.  What was ASKED (np/thr/gpu) sits beside what
+    was MEASURED (s/iter, wall, peak memory, mean utilisation) so the
+    scaling is readable across rows; ``algorithm`` is what the trial
+    ACTUALLY ran (``effective``), so a silent eigensolver fallback shows
+    in the table itself.  A value nothing measured prints ``--``; the
+    GPU columns appear only when the sweep has any GPU signal.
+    """
+    # GPU columns key off what the sweep ASKED to be (engine/gres), not
+    # off metric presence: the monitor samples gpu0_* as zeros on a
+    # GPU-less run, and three columns of 0 on a CPU sweep are noise --
+    # while a genuine GPU trial showing sm% 0 is exactly worth seeing.
+    gpu = any(p.engine == "gpu" or p.knobs.get("gres") for p in points)
+
+    def _num(v, fmt="{:g}"):
+        return fmt.format(v) if isinstance(v, (int, float)) else "--"
+
+    cols = [
+        ("point", "l", lambda p: p.label or "--"),
+        ("np", "r", lambda p: _num(p.knobs.get("mpi_np"))),
+        ("thr", "r", lambda p: _num(p.knobs.get("cpus_per_task"))),
+        *([("gpu", "l", lambda p: str(p.knobs.get("gres") or "--"))]
+          if gpu else []),
+        ("algorithm", "l",
+         lambda p: str(p.effective.get("diag_algorithm") or "--")),
+        ("s/iter", "r", lambda p: _num(p.s_per_iter())),
+        ("iters", "r", lambda p: _num(p.metrics.get("iters_measured"))),
+        ("wall", "r",
+         lambda p: (_fmt_wall(p.metrics["wall_s"])
+                    if isinstance(p.metrics.get("wall_s"), (int, float))
+                    else "--")),
+        ("peak-mem", "r",
+         lambda p: _num(p.metrics.get("peak_rss_gb"), "{:.1f}G")),
+        ("cpu%", "r",
+         lambda p: _num(p.metrics.get("cpu_mean_pct"), "{:.0f}")),
+        *([("gpu-sm%", "r",
+            lambda p: _num(p.metrics.get("gpu_sm_mean_pct"), "{:.0f}")),
+           ("vram", "r",
+            lambda p: _num(p.metrics.get("gpu_vram_peak_gb"), "{:.1f}G"))]
+          if gpu else []),
+        ("bound", "l", lambda p: p.bound or "--"),
+        ("state", "l", lambda p: p.state),
+    ]
+    header = [name for name, _, _ in cols]
+    body = [[fn(p) for _, _, fn in cols] for p in points]
+    widths = [max(len(header[i]), *(len(r[i]) for r in body))
+              if body else len(header[i]) for i in range(len(cols))]
+
+    def _row(cells):
+        return ("  " + "  ".join(
+            cells[i].rjust(widths[i]) if cols[i][1] == "r"
+            else cells[i].ljust(widths[i])
+            for i in range(len(cols)))).rstrip()
+
+    return _row(header), [_row(r) for r in body]
+
+
+def summary_text(res: BenchResult, out_path: Path, *,
+                 run_config=None, stage: Optional[str] = None) -> str:
+    """The verb's stdout: the measurement table, the verdict, and what to
+    do next.  ``run_config`` is ``run_summarize_jobset``'s third return
+    (``(path, status)``); ``stage`` names the stage in the next-commands.
+    """
+    lines = ["bench-summarize: measured points (fastest first)"]
     ranked = sorted(
         res.points,
         key=lambda p: (p.s_per_iter() if p.s_per_iter() is not None
                        else float("inf")))
-    for p in ranked:
-        spi = p.s_per_iter()
-        spi_s = f"{spi:g}s/iter" if spi is not None else "n/a"
-        lines.append(f"  {p.label:<12} {p.engine:<4} {spi_s:<12} "
-                     f"{p.state:<11} bound={p.bound}")
+    head, rows = _point_table(ranked)
+    lines.append(head)
+    for p, row in zip(ranked, rows):
+        lines.append(row)
         # A trial that ran something else is not a slower trial, it is a
         # different experiment.  Say so on its own line rather than
         # leaving the reader to find it in the JSON.
         if p.mismatch:
-            lines.append(f"  {'':<12} !! ran something other than asked: "
+            lines.append(f"    !! ran something other than asked: "
                          f"{mismatch_phrase(p.mismatch)} "
                          f"-- excluded from the choice")
     if res.choice:
@@ -383,9 +605,59 @@ def summary_text(res: BenchResult, out_path: Path) -> str:
                      "than it was asked to.  The times are real but they do "
                      "not measure the settings on their labels -- fix the "
                      "cause and re-run before trusting a choice.")
+    elif not res.choice:
+        # B4's sibling on THIS surface: an empty verdict is said, with the
+        # state census that explains it -- "no winner" and "no trial has
+        # run yet" are different situations wearing one empty dict.
+        by_state = {}
+        for p_ in res.points:
+            by_state[p_.state] = by_state.get(p_.state, 0) + 1
+        census = ", ".join(f"{n} {s}" for s, n in sorted(by_state.items()))
+        lines.append(f"  NO VERDICT: no completed, timed trial to rank "
+                     f"({census}).  Submit trials and summarize again.")
     if res.recommend:
-        lines.append(f"  recommend: {res.recommend}")
-    lines.append(f"  wrote: {out_path}")
+        rec = res.recommend
+        bits = ([f"mem={rec['mem_gb']}GB"] if rec.get("mem_gb") else []) \
+            + ([f"time={rec['time']}"] if rec.get("time") else [])
+        line = "  recommend: " + (", ".join(bits) or str(rec))
+        if rec.get("time_basis"):
+            line += f"   ({rec['time_basis']})"
+        lines.append(line)
+    # The coverage clause (honesty on a partial sweep): a verdict drawn
+    # from three of eleven prepped points says so on its face.
+    if res.choice:
+        timed = sum(1 for p_ in res.points
+                    if p_.state == "completed" and p_.s_per_iter() is not None)
+        if timed < len(res.points):
+            lines.append(f"  coverage: {timed} of {len(res.points)} prepped "
+                         f"points measured -- the verdict ranks what ran.")
+    lines.append(f"  wrote: {out_path}  (the record)")
+    # THE CONNECTION SURFACE (roadmap § 0.1 B5, file-based since
+    # 2026-08-19): the summary ends with what to do, not only what was
+    # found.  The proposal is a FILE -- edit it and the next prep applies
+    # your edit; delete it and the verdict is declined (§ 2.3.2).
+    if res.choice:
+        stage_word = stage or "<stage>"
+        cfg_name = RUN_CONFIG_NAME
+        if run_config:
+            cfg_path, status = run_config
+            cfg_name = cfg_path.name
+            if status == "written":
+                lines.append(f"  wrote: {cfg_path}  "
+                             f"(the proposal -- yours to edit)")
+            elif status == "kept":
+                lines.append(f"  kept:  {cfg_path}  (already exists -- "
+                             f"yours, possibly edited, so it is not "
+                             f"overwritten; delete it and summarize again "
+                             f"for a fresh proposal from this verdict)")
+        lines.append("  next:")
+        lines.append(f"    1. edit {cfg_name} where you disagree -- "
+                     f"the file is the decision")
+        lines.append(f"    2. molbuilder jobset prep run {stage_word}"
+                     f"     # applies the file to fields your flags "
+                     f"do not state")
+        lines.append(f"    3. molbuilder jobset submit run {stage_word}"
+                     f" --mode submit|direct")
     return "\n".join(lines)
 
 
@@ -400,4 +672,6 @@ def utc_now_iso() -> str:
 __all__ = [
     "parse_point", "discover_points_from_jobset", "run_summarize_jobset",
     "summary_text", "utc_now_iso",
+    "RUN_CONFIG_NAME", "RUN_CONFIG_SCHEMA",
+    "run_config_text", "read_run_config",
 ]

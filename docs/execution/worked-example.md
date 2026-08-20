@@ -245,14 +245,16 @@ this benchmark measures* is structural, not a hand-composed pairing.  (The
 `bench generate` this gap was written against is deleted — the whole legacy
 stack followed on 2026-08-13.)
 
-✅ **Gap 4 — CLOSED 2026-08-12** (§ 2.3.2's verdict offer). The measured
+✅ **Gap 4 — CLOSED 2026-08-12** (§ 2.3.2's verdict). The measured
 answer reaches **the next `prep`**, not the description — deliberately:
 a rank count is a machine fact the description must never carry
 (`engines/template.md` § 7).  `summarize bench` writes the verdict into the
-stage's container, and `prep run <stage>` *finds it and asks*; on yes the
-measured machine half fills the allocation fields you did not state, and
-the winning eigensolver arrives as pins.  Silence is No.  (The
-`bench prep-run`/`run-production.sh` chain this gap described is deleted.)
+stage's container as the editable `run-config.toml`, and `prep run <stage>`
+applies what the file says to the allocation fields you did not state, the
+winning eigensolver arriving as pins; deleting the file declines it
+*(interactive `use it? [y/N]` until 2026-08-19 — the answer moved into the
+tree)*.  (The `bench prep-run`/`run-production.sh` chain this gap described
+is deleted.)
 
 ---
 
@@ -473,7 +475,7 @@ describing #5's fix in terms the layout contract had already ruled out.
 | 1 | **Saving the structure into the tree is a step nobody owns.** The description points at a path; a workspace geometry has none | small, but it is the first thing a user hits |
 | 2 | ~~**Produce/prep boundary is undefined locally.**~~ **Closed 2026-08-11** (plan steps 3–4, § 4's own ✅ above): `prep` owns the containers on EVERY machine — host-equals-target is the same call | ✅ closed |
 | 3 | ~~**Nothing connects a benchmark to the stage it measures.**~~ **Closed 2026-08-12** (the fold): `prep bench <stage>` renders trials into the stage's own container — the connection is structural | ✅ closed |
-| 4 | ~~**The measured answer reaches a script, never the description.**~~ **Closed 2026-08-12** (§ 2.3.2): `prep run` finds the stage's verdict and ASKS; the answer reaches the next prep's allocation + pins — never the description, which may not carry machine facts (§ 7) | ✅ closed |
+| 4 | ~~**The measured answer reaches a script, never the description.**~~ **Closed 2026-08-12** (§ 2.3.2): `summarize` writes the stage's verdict as the editable `run-config.toml` and `prep run` applies what the file says (interactive ask until 2026-08-19); the answer reaches the next prep's allocation + pins — never the description, which may not carry machine facts (§ 7) | ✅ closed |
 | 5 | ~~**Stage-to-stage carry is broken.**~~ **Closed 2026-08-10.** The producer stopped emitting `depends_on` and `Carry` entirely, so nothing dangles. ⚠ This row used to say *"fixed by resolving the attempt at **submit**"* — which contradicted `project-layout.md § 2.3.4`, where the copy is made **at `prep`, from the run you name with `--from`**. The contract was right: by then the source has already finished, so there is nothing to resolve later | ✅ closed |
 | 6 | ~~**Stage directories are named `point-<name>`.**~~ **Closed 2026-08-10.** `job_dir_names` branches on `JobSet.kind`; a ladder gets `01_coarse/`, a sweep keeps `point-*` | ✅ closed |
 | 7 | ~~**No hand-run entry point for one stage.**~~ **Closed 2026-08-10.** The grammar was already fixed in `job-system.md` and used by two other documents; this file had not caught up. `jobset prep run <stage> --from <run>` / `jobset submit run <stage>`, stage as the positional (user, 2026-08-10). ⚠ *This row also said `--chain` runs a ladder unattended; it does not — line 327 of this same document records it deleted on that date, and stages do not chain (`project-layout.md` § 1.6). Corrected 2026-08-11.* The ordering constraint stands: it must exist before the wrapper's directory-making prologue is retired | ✅ closed |

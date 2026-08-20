@@ -67,19 +67,26 @@ below proceeds around them; the two named deferrals follow the section.
 
 **Goal.** A scientist benchmarks a stage and the system carries the answer to
 the run: `summarize` prints what was measured, a **verdict with its
-rationale**, and the exact next commands; the next `prep run` **offers** the
-verdict (ask, never apply — the user's flags always win); nothing is ever
-hand-copied. The editable artifact is `bench-result.json` itself.
+rationale**, and the exact next commands; `summarize` materialises the
+verdict as **`run-config.toml`** — a commented, editable file the next
+`prep run` applies to the fields the user's flags did not state (flags
+always win; deleting the file declines); nothing is ever hand-copied.
+*(Refined by the user 2026-08-19, mid-delivery: the interactive offer became
+the file, the summary became a full measurement table — knobs beside wall,
+peak memory, CPU/GPU utilisation, and the eigensolver actually run — and
+the no-input default is now stated out loud: with neither file nor flags
+the wrapper's runtime policy sizes the launch, named per engine.)*
 
-**Measured state (2026-08-19, water fixture, driven end to end).** Working:
-trial isolation (per-trial relabel, forced cold, own directories, `run.json`),
-one-trial-per-invocation submission with a helpful unknown-trial refusal,
-`summarize`'s ranked s/iter table with honest `incomplete`/`unknown` marks,
-the `bench-result@1` write, and the offer machinery itself
-(`_offer_bench_verdict`: asks every time, silence-is-no, fills only the
-allocation fields the user did not state, ledger-recorded).
+✅ **DELIVERED 2026-08-19** — all five rows below, proven live on the
+water fixture: declared `{mpi_np: [1,2]}` → exactly two trials → both
+complete cleanly (`scf_must_converge` pinned false) → `summarize` prints
+the measurement table, writes `bench-result.json` + `run-config.toml` →
+`prep run` applies the file (`applied … mpi_np=2 …`), an edited file is
+honoured, a stated flag wins, a deleted file declines with the wrapper
+policy named.  Contract: `project-layout.md § 2.3.2–2.3.3`; pins:
+`test_prep_bench_fold.py` / `test_bench_result.py`.
 
-**The four breaks, each found by running:**
+**The five rows, each found by running:**
 
 | # | break | done when |
 |---|---|---|
@@ -89,9 +96,10 @@ allocation fields the user did not state, ledger-recorded).
 | **B4** | **an unusable verdict is silent** — `prep run` says nothing when `bench-result.json` exists but carries no choice; the user cannot tell "no benchmark" from "benchmark that failed to conclude" | `prep run` names the artifact and says *why* it is not offering |
 | **B5** | **the connection surface** — `summarize` ends with `next: prep run <stage>` but not the verdict's own values or the fact that the artifact is editable | the summary closes with the verdict, the exact commands, and the sentence naming `bench-result.json` as the editable proposal |
 
-**Test-pin shape:** the water fixture's loop, pinned at each row above; the
-offer's ask/decline/fill-only-unstated behaviour is already shaped in
-`_offer_bench_verdict` and keeps its doctrine.
+**Test-pin shape:** the water fixture's loop, pinned at each row above;
+the fill-only-unstated doctrine lives on in `_apply_run_config` (the file
+replaced the ask, 2026-08-19 — nothing is applied that the user did not
+hand back).
 
 ### 0.2 The probe writes the machine record — Task II
 

@@ -344,17 +344,21 @@ because both halves are real and they are different acts:
 > IS an allocation"* conflates the two; an axis is the set you want measured,
 > and the allocation is what you then ask for.
 >
-> **Without the declaration there is no way for a person to say what to
-> measure at all** — `_bench_inputs` enumerates a grid from the probed
-> topology, so the machine chooses the points and the user has no input. That
-> is the concrete cost of removing the key, and it is why it stays.
+> **The declaration DRIVES the sweep** *(wired 2026-08-19 — until then
+> `_bench_inputs` enumerated from the probed topology regardless, so the
+> machine chose the points and the user had no input)*: declared axes become
+> exactly those trials, a point the machine cannot hold is refused by name
+> (never clamped — a clamped point measures a configuration nobody
+> declared), and an ABSENT declaration keeps the machine's enumeration as
+> the proposal. On a GPU description a declared `mpi_np` is the point's
+> total rank count, and the device count ranges over its divisors.
 
 **Per stage, and that is the second half of the decision.** What runs fastest
 changes between a coarse stage and a tight one — different mesh cutoff and
 basis size mean a different grid and matrix, so a different best rank count
 ([`project-layout.md § 2.3.2`](?doc=execution/project-layout.md)). `prep bench`
 therefore takes a stage name, writes into that stage's own `bench/` container,
-and that stage's next run is offered the verdict.
+and that stage's next run reads the proposal `summarize` wrote there (`run-config.toml` — `project-layout.md` § 2.3.3).
 
 ---
 
@@ -578,7 +582,7 @@ that an absent `engines` key means every engine.)*
 
 | | SIESTA | PySCF |
 |---|---|---|
-| catalogue rows | 42 items | **43 items** | *(each engine's EXCLUSIVE rows; `net_charge` now names both and so counts in neither, `template.md` § 6.3)*
+| catalogue rows | 43 items | **43 items** | *(each engine's EXCLUSIVE rows; `net_charge` now names both and so counts in neither, `template.md` § 6.3)*
 | every row maps to a config field | yes | **yes** |
 | `warm-files.toml` in its package | yes | **yes** — `base` · `optimization` · `vibration` |
 | identity literal declared | `SystemLabel` | **`JOB`** (`config/pyscf.py`) |
