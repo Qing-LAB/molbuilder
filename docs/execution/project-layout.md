@@ -979,7 +979,15 @@ trial keeps writing into its own `bench-<POINT>/` directory exactly as
 before. The allocation is the **union envelope**: the widest trial's ranks,
 cores and GPUs, and a wall of Σ per-trial bounds plus margin. A trial that
 hits its bound is killed and reads `incomplete` in the summary's census;
-the walk continues — one bad point says nothing about the next. Naming a
+the walk continues — one bad point says nothing about the next. The
+container's `bench-group.log` is the explicit record: the allocation the
+group ran in (job id, node, envelope), then per trial *when it started,
+when it finished, with what exit code and duration* — so both the ordering
+and any environment question are answered by the log itself. And every
+trial rides with its **own explicit `-np/-omp`** — enforced at generation —
+because inside the allocation the `SLURM_*` variables describe the
+envelope, and a flag-less wrapper falling back to them would silently
+measure the widest point instead of its own. Naming a
 trial (`jobset submit bench tight G1K8C2`) still submits that one alone
 (how a single point is re-run).
 

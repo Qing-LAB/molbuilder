@@ -445,6 +445,14 @@ def test_the_group_sequencer_runs_every_trial_and_survives_failures(
     assert proc.returncode != 0, "a sweep with failures must say so"
     if len(js.jobs) >= 3:
         assert "hit the 2s per-trial bound" in log, log
+    # The explicit record (user, 2026-08-20): when each trial started,
+    # finished, with what rc and duration -- and the allocation the group
+    # ran in, so an env-inheritance question is answered by the log itself.
+    assert "alloc_ntasks=" in log and "job=" in log, log
+    for job in js.jobs:
+        assert f"-> {job.name} starts" in log, log
+        assert f"<- {job.name} finished rc=" in log, log
+    assert "took=" in log and "s" in log
     for job in js.jobs:
         assert was_launched(base / dirs[job.name]), (
             f"{job.name} has no launch record"
@@ -1675,3 +1683,26 @@ def test_prep_writes_an_executable_jobset_launcher_that_works(calc,
     repo = str(Path(_pkg.__file__).resolve().parent.parent)
     assert f"PYPATH={repo}" in out.replace(repo + ":", repo + "\n")[:10**6] \
         or repo in out, "the repo must ride PYTHONPATH"
+
+
+def test_the_group_refuses_a_trial_without_an_explicit_shape(calc):
+    """The env-inheritance shield (user, 2026-08-20): inside the allocation
+    SLURM_NTASKS/SLURM_CPUS_PER_TASK describe the ENVELOPE, and a wrapper
+    with no flags falls back to them -- so a trial that cannot state its
+    own -np/-omp would silently measure the widest point.  Refused BY NAME
+    at generation, never mis-measured."""
+    import dataclasses
+
+    import pytest as _pytest
+
+    from molbuilder.jobset._cli import _load_bench_set
+    from molbuilder.jobset.submit import SubmitError, submit_bench_group
+
+    _prep_bench(calc)
+    js, base = _load_bench_set(calc, "coarse")
+    stripped = js.jobs[0]
+    js.jobs[0] = dataclasses.replace(
+        stripped, resources=dataclasses.replace(stripped.resources,
+                                                cpus_per_task=None))
+    with _pytest.raises(SubmitError, match=stripped.name):
+        submit_bench_group(js, base, dry_run=True)

@@ -531,6 +531,22 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
             f"all {len(jobset.jobs)} trials are launched.  next: "
             f"molbuilder jobset summarize bench <stage>")
 
+    # THE ENV-INHERITANCE SHIELD (user concern, 2026-08-20).  Inside the
+    # allocation, SLURM_NTASKS / SLURM_CPUS_PER_TASK describe the ENVELOPE
+    # (the widest trial), and the wrappers fall back to SLURM variables when
+    # no flag is passed (running-a-job.md § 3.1-3.2) -- so a trial without
+    # explicit knobs would silently measure the envelope's shape instead of
+    # its own point.  Explicit -np/-omp flags win over every inherited
+    # variable, so the sequencer passes both for every trial, and a trial
+    # that cannot state them is refused BY NAME rather than mis-measured.
+    unshaped = [j.name for j in pending
+                if not (j.resources.mpi_np and j.resources.cpus_per_task)]
+    if unshaped:
+        raise SubmitError(
+            "a grouped bench needs every trial's explicit rank/core shape "
+            "(-np/-omp shield the trial from the allocation's SLURM_* "
+            f"envelope); missing on: {', '.join(unshaped)}")
+
     trial_dirs = [base / dirs[j.name] for j in pending]
     containers = {d.parent for d in trial_dirs}
     if len(containers) != 1:
@@ -555,11 +571,15 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
         "set -u",
         'LOG="bench-group.log"',
         f'echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') start '
-        f'trials={len(pending)} per-trial-bound={trial_timeout_s}s" >> "$LOG"',
+        f'trials={len(pending)} per-trial-bound={trial_timeout_s}s '
+        'job=${SLURM_JOB_ID:-none} node=$(hostname) '
+        'alloc_ntasks=${SLURM_NTASKS:-unset} '
+        'alloc_cpus=${SLURM_CPUS_PER_TASK:-unset}" >> "$LOG"',
         "fails=0",
         "run_trial() {",
         '    _name="$1"; _dir="$2"; shift 2',
-        '    echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') -> ${_name}" >> "$LOG"',
+        "    _t0=$(date +%s)",
+        '    echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') -> ${_name} starts" >> "$LOG"',
         f'    ( cd "${{_dir}}" && timeout -k 30 {trial_timeout_s} '
         'bash "$@" ) >> "$LOG" 2>&1',
         "    _rc=$?",
@@ -568,8 +588,9 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
         'per-trial bound -- killed; its artifacts read incomplete" >> "$LOG"',
         "    fi",
         '    if [ "${_rc}" -ne 0 ]; then fails=$((fails+1)); fi',
+        "    _t1=$(date +%s)",
         '    echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') <- ${_name} '
-        'rc=${_rc}" >> "$LOG"',
+        'finished rc=${_rc} took=$(( _t1 - _t0 ))s" >> "$LOG"',
         "    return 0    # one bad point says nothing about the next",
         "}",
     ]
