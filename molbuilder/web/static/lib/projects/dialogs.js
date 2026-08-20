@@ -495,6 +495,41 @@ export function confirmDestructive(opts) {
   return p;
 }
 
+/**
+ * The one "save it WHERE, as WHAT" question — the move-to dialog composed
+ * with the name dialog, from the project root, on any tab
+ * (docs/web/projects.md § 5).
+ *
+ * A UNIFIED surface on purpose (user, 2026-08-19): every future flow that
+ * deposits or consolidates artifacts under the project root — the MolView
+ * exports today, a transport calculation assembling several results
+ * tomorrow — asks this one question through this one door, so "where may
+ * files go" never grows a second implementation.
+ *
+ * @param opts {title?, nameTitle?, initial?, hint?}
+ * @returns "<dir>/<name>" (no extension appended), or null on cancel.
+ * @throws when the project root is not available on this page yet — said,
+ *         never a silent nothing.
+ */
+export async function chooseSavePath(opts) {
+  opts = opts || {};
+  if (!getProjectsRoot()) {
+    throw new Error("the project tree is not available on this page yet");
+  }
+  const dir = await chooseDestinationDir({
+    title: opts.title || "Save where?",
+  });
+  if (!dir) return null;
+  const name = await chooseName({
+    title: opts.nameTitle || "Save as",
+    label: "Name",
+    initial: opts.initial || "",
+    hint: opts.hint || "",
+  });
+  if (!name) return null;
+  return String(dir).replace(/\/+$/, "") + "/" + name;
+}
+
 // ─── Test seam ─────────────────────────────────────────────────────── //
 
 export function _resetDialogsForTests() {

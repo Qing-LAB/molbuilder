@@ -19,9 +19,9 @@
  */
 "use strict";
 
-import { chooseDestinationDir, chooseName, confirmDestructive }
-    from "./dialogs.js";
+import { chooseSavePath, confirmDestructive } from "./dialogs.js";
 import { apiUpload } from "./api.js";
+import { storeZip } from "../zip-store.js";
 
 async function _postJSON(url, body) {
     const r = await fetch(url, {
@@ -48,21 +48,15 @@ function _download(filename, blob) {
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/* Ask the user WHERE and AS WHAT — § 11.3: a project save is named by the
- * user, in a dialog.  Returns "<dir>/<name>" or null on cancel. */
-async function _askProjectPath(stem, what) {
-    const dir = await chooseDestinationDir({
+/* WHERE and AS WHAT is the unified question (`chooseSavePath`,
+ * projects.md § 5) — this door only phrases it for an export. */
+function _askProjectPath(stem, what) {
+    return chooseSavePath({
         title: "Save " + what + " where?",
-    });
-    if (!dir) return null;
-    const name = await chooseName({
-        title: "Save " + what + " as",
-        label: "Name",
+        nameTitle: "Save " + what + " as",
         initial: stem,
         hint: "The extension is added for you.",
     });
-    if (!name) return null;
-    return String(dir).replace(/\/+$/, "") + "/" + name;
 }
 
 export const molviewFiles = {
@@ -90,13 +84,27 @@ export const molviewFiles = {
                         || ("HTTP " + res.http) };
                 }
                 // BOTH files — the coordinates and the metadata that has to
-                // travel with them.  One without the other is a structure
-                // whose labels were quietly dropped (§ 11.3).
-                for (const f of res.body.files) {
-                    _download(f.name,
-                              new Blob([f.text], { type: "text/plain" }));
+                // travel with them (§ 11.3).  As ONE artifact when there are
+                // two: a second programmatic download is exactly what
+                // browsers silently swallow (Chrome's multiple-download
+                // policy), and "the .json was missing" is how that loss was
+                // reported.  A store-zip named by the stem cannot lose its
+                // half.
+                const files = res.body.files;
+                if (files.length === 1) {
+                    _download(files[0].name,
+                              new Blob([files[0].text],
+                                       { type: "text/plain" }));
+                    return { ok: true, files: [files[0].name] };
                 }
-                return { ok: true, files: res.body.files.map((f) => f.name) };
+                const enc = new TextEncoder();
+                const archive = storeZip(files.map((f) => ({
+                    name: f.name, bytes: enc.encode(f.text) })));
+                _download(stem + ".zip", archive);
+                return { ok: true,
+                         files: [stem + ".zip ("
+                                 + files.map((f) => f.name).join(" + ")
+                                 + ")"] };
             }
             if (destination === "project") {
                 const path = await _askProjectPath(stem, "structure");

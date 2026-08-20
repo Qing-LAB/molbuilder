@@ -300,11 +300,23 @@ and `projects.parser.saveMolecule(path, {overwrite})` (§ 3).
 implementation of the `files` option every MolView mount hands in
 (`molview.md` § 11.4). `save(destination, stem, {structure, frames})` turns
 the viewer's truth into the `.xyz` + `.molstruct.json` pair — `"download"`
-through `POST /api/structure/export` (the browser saves **both** files),
-`"project"` through this module's own dialogs and `POST /api/structure/save`
-(the overwrite flow included). `saveBinary(destination, filename, blob)` is
+through `POST /api/structure/export`, delivered as **one `<stem>.zip`**
+when it is a pair (a second programmatic download is what browsers
+silently swallow; a single file downloads bare), `"project"` through
+`chooseSavePath` and `POST /api/structure/save` (the overwrite flow
+included). `saveBinary(destination, filename, blob)` is
 the picture half — a download, or `writeFile` into a dialog-chosen folder.
 MolView holds no file route; this door is where its exports become files.
+
+**The unified save-where question — `projects.chooseSavePath(opts)`**
+*(2026-08-19, user)*: the move-to dialog composed with the name dialog, from
+the project root, on any tab — `{title?, nameTitle?, initial?, hint?}` →
+`"<dir>/<name>"` or `null` on cancel (throws, never a silent nothing, when
+the page has no project root yet). **One door for every flow that deposits
+artifacts under the root**: the MolView exports ride it today, and a flow
+that consolidates several results into one task's inputs — the transport
+calculation is the named future consumer — asks the same question through
+the same door rather than growing its own.
 
 *(Whole-file **download** is not a method here — it is a direct browser download
 from the row's `⋯` menu.)*

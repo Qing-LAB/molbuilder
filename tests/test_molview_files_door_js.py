@@ -55,29 +55,67 @@ def _run(snippet: str):
     return run_node([], prelude + snippet, globals_js=_DOM)
 
 
-def test_a_download_hands_the_browser_both_files():
+def test_a_pair_downloads_as_one_archive_holding_both_files():
+    """The pair leaves as ONE artifact (§ 11.3, 2026-08-19): two programmatic
+    downloads is exactly what the browser's multiple-download policy
+    swallows, and "the .json was missing" was the user's live report.  The
+    archive is opened HERE with Python's own zipfile — the store-zip is a
+    real zip or this test fails, not a blob with the right name."""
+    import base64
+    import io
+    import zipfile
+
     out = _run(
         """
         globalThis.__replies = [{ match: "/api/structure/export", body: {
             ok: true,
             files: [{ name: "wire.xyz", text: "2..." },
-                    { name: "wire.molstruct.json", text: "{}" }],
+                    { name: "wire.molstruct.json", text: '{"cell": 1}' }],
         }}];
+        globalThis.__blobs = [];
+        const RealBlob = Blob;
+        globalThis.Blob = class extends RealBlob {
+            constructor(parts, opts) { super(parts, opts); __blobs.push(this); }
+        };
         const out = await molviewFiles.save("download", "wire",
             { structure: { elements: ["C"], positions: [[0,0,0]],
                            metadata: {} } });
+        const last = __blobs[__blobs.length - 1];
+        const b64 = Buffer.from(await last.arrayBuffer()).toString("base64");
         console.log(JSON.stringify({
-            out, downloads: __downloads,
-            sent: __calls[0].body,
+            out, downloads: __downloads, sent: __calls[0].body, b64,
         }));
         """
     )
     assert out["out"]["ok"] is True
-    assert out["downloads"] == ["wire.xyz", "wire.molstruct.json"], (
-        f"the metadata must travel with the coordinates: {out['downloads']}"
+    assert out["downloads"] == ["wire.zip"], (
+        f"a pair must leave as one archive: {out['downloads']}"
     )
     assert out["sent"]["name"] == "wire"
     assert "frames" not in out["sent"], "a one-frame export carries no frames"
+    with zipfile.ZipFile(io.BytesIO(base64.b64decode(out["b64"]))) as z:
+        assert sorted(z.namelist()) == ["wire.molstruct.json", "wire.xyz"], (
+            f"the archive lost a half: {z.namelist()}"
+        )
+        assert z.read("wire.molstruct.json") == b'{"cell": 1}', (
+            "the metadata bytes did not survive the archive"
+        )
+
+
+def test_a_single_file_downloads_bare():
+    out = _run(
+        """
+        globalThis.__replies = [{ match: "/api/structure/export", body: {
+            ok: true, files: [{ name: "plain.xyz", text: "2..." }],
+        }}];
+        const out = await molviewFiles.save("download", "plain",
+            { structure: { elements: ["C"] } });
+        console.log(JSON.stringify({ out, downloads: __downloads }));
+        """
+    )
+    assert out["downloads"] == ["plain.xyz"], (
+        "a metadata-less export needs no archive around one file"
+    )
 
 
 def test_a_range_export_sends_its_frames():

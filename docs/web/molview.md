@@ -3398,7 +3398,12 @@ holds no file route at all.
 But where those bytes land decides what happens next.
 
 **A download leaves the application.** It is for the user — a file on their
-machine, for a paper, a colleague, another tool. Nothing here will read it again.
+machine, for a paper, a colleague, another tool. Nothing here will read it
+again. **When the export is a pair, it leaves as one archive**
+(`<stem>.zip`, store-mode, both files inside — 2026-08-19): a second
+programmatic download is exactly what browsers silently swallow, and *"the
+`.json` was missing"* is how that loss was reported. One artifact cannot
+lose its half; a single-file export downloads bare.
 
 **The project is the scientific record.** A structure saved there — the `.xyz`
 and its `.json` together — is what the rest of the app builds on: it is the

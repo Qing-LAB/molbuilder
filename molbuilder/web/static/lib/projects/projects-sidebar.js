@@ -33,6 +33,7 @@ import { initForms } from "./mutation-bar.js";
 import { initPreview } from "./preview.js";
 import { parser } from "./parser.js";
 import { molviewFiles } from "./molview-doors.js";
+import { chooseSavePath } from "./dialogs.js";
 import { initCheckpointPanel,
          status as ckStatus, init as ckInit, saveState as ckSaveState }
     from "./checkpoint.js";
@@ -47,6 +48,10 @@ projects.parser = parser;
 // of the `files` option every viewer mount hands in -- exports become files
 // here, never inside the viewer (molview.md § 11.4).
 projects.molviewFiles = molviewFiles;
+// The unified "save it WHERE, as WHAT" question (projects.md § 5): one door
+// for every flow that deposits artifacts under the project root -- MolView's
+// exports today, multi-result consolidation (e.g. transport inputs) tomorrow.
+projects.chooseSavePath = chooseSavePath;
 // The checkpoint sub-namespace (`docs/web/projects.md` § 5), attached beside
 // `parser` for the same reason: the whole surface a tab may use lives under ONE
 // `projects` namespace.  Restore and tag are deliberately absent -- they are

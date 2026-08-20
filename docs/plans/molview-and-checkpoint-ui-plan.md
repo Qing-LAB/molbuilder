@@ -339,7 +339,16 @@ frames with the on-screen style; the same menu works on a read-only viewer
 | **4** | Part 3 export (door → Data → Image) | ✅ delivered 2026-08-19 (`c49b9c07`) |
 
 All four phases: contract first, executing tests, mutations red, page-boot
-suite green.  **Open before this plan archives:** the live browser
+suite green.
+
+**Live-test findings folded in the same day** (user, on the dev server):
+the pair's download arrived one file short — not a server loss (the round
+trip carries regions/cell/origin/axis/vacuum, probed) but the browser's
+multiple-download policy swallowing the second programmatic click; a pair
+now leaves as one `<stem>.zip` (store-zip extracted to `lib/zip-store.js`,
+one home, VibrationView swapped onto it verbatim).  The save-where question
+became the unified `projects.chooseSavePath` — named future consumer:
+transport-input consolidation.  **Open before this plan archives:** the live browser
 walk-throughs (the Claude-in-Chrome extension was not connected during the
 build) — checkpoint swap at narrow/wide widths, a reload round-trip on each
 tab, a real Data download + Image png/webm on the dev server.
