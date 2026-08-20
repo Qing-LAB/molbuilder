@@ -24,7 +24,6 @@
  */
 "use strict";
 
-
 const root = (typeof window !== "undefined") ? window : globalThis;
 
 const FORMATS = ["gif", "webm", "png-zip"];
@@ -77,16 +76,22 @@ function gifEncoder() {
 }
 
 
-/* A store-mode zip -- local headers, a central directory naming them, and an
- * end record pointing at that directory.  The timestamp is a constant rather
- * than the clock, so exporting the same animation twice produces the same
- * bytes.
+/* ── A zip, with nothing compressed ──────────────────────────────────────────
+ *
+ * PNGs are already compressed, so storing them costs nothing and saves pulling in
+ * a compressor. This is the whole of the format that a reader needs: a local
+ * header before each file, a central directory listing them, and an end record
+ * pointing at that directory.
+ *
+ * The timestamp is a constant rather than the clock, so exporting the same
+ * animation twice produces the same bytes. Nothing here needs to know when it ran.
  *
  * PRIVATE ON PURPOSE: this package is sealed (its module-boundary tests
  * forbid imports in either direction), so it carries its own copy even
  * though lib/zip-store.js now holds the same code for the rest of the app.
  * Consolidating the two is this package's own future migration, not an
- * import through the wall. */
+ * import through the wall.
+ */
 const ZIP_TIME = 0;      // 00:00:00
 const ZIP_DATE = 0x21;   // 1980-01-01, the epoch the format was born with
 
@@ -149,7 +154,6 @@ function zip(entries) {
 
     return new root.Blob(parts, { type: "application/zip" });
 }
-
 
 
 /* WHAT AN EXPORT IS, written once (§ 12).
