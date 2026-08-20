@@ -1220,10 +1220,10 @@ async function save() {
          * exactly the folders that need it, and the save then died on
          * `saveState`'s "not a checkpoint folder; run init first" -- a message
          * about a step the page had decided to skip.  What this branch needs
-         * is the question `initialised` already answers; `error` separates a
+         * is the question `initialized` already answers; `error` separates a
          * real failure from a fine answer. */
         const st = await projects0.checkpoint.status(_dir).catch(() => null);
-        if (st && !st.error && !st.initialised) {
+        if (st && !st.error && !st.initialized) {
             const started = await projects0.checkpoint
                 .init(_dir, { engine: (_task && _task.engine
                                        && _task.engine.name) || undefined })

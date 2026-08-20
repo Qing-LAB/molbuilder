@@ -590,10 +590,19 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  * shorthand for extension match (".xyz" matches ``*.xyz``).  See
  * ``applyFilter`` in lib/projects/list.js. */
 .ps-filter-bar {
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   padding: 0.3rem 0.7rem 0.2rem;
   background: var(--ps-bg, #181818);
   border-bottom: 1px solid var(--ps-border, #2a2a2a);
+}
+/* The input + its overlay clear share one positioning context, so the
+ * run-history toggle can sit beside them without the × drifting onto it. */
+.ps-filter-input-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .ps-filter-input {
   width: 100%;
@@ -610,7 +619,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 .ps-filter-clear {
   position: absolute;
-  right: 0.95rem;
+  right: 0.25rem;
   top: 50%;
   transform: translateY(-50%);
   appearance: none;
@@ -1295,39 +1304,68 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   }
 }
 
-/* ---------------------------------------------------------------- */
-/*  Run-history panel (PR-B Phase 2, 2026-06-25)                    */
-/*                                                                  */
-/*  Mounts inside the projects sidebar BELOW the file tree.         */
-/*  Hidden via [hidden] until checkpoint.js detects a selected      */
-/*  directory; populated from the /api/checkpoint/* routes.         */
-/*  See lib/projects/checkpoint.js + docs/execution/               */
-/*  running-a-job.md § 6 for the design.                            */
-/* ---------------------------------------------------------------- */
+/* Run-history toggle (2026-08-19): lives in the filter bar, exists only
+ * for a run dir, and its color IS the folder's checkpoint status -- the
+ * same data-state vocabulary and tokens as the sensor pill, so the two
+ * cannot drift.  aria-pressed mirrors which view holds the list space. */
+.ps-checkpoint-toggle {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 1px solid var(--ps-border);
+  background: transparent;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.ps-checkpoint-toggle[aria-pressed="true"] {
+  outline: 1px solid var(--ps-accent);
+  outline-offset: 1px;
+}
+.ps-checkpoint-toggle[data-state="clean"] {
+  background: var(--ps-ck-clean-bg);
+  color: var(--ps-ck-clean-fg);
+  border-color: var(--ps-ck-clean-border);
+}
+.ps-checkpoint-toggle[data-state="dirty"] {
+  background: var(--ps-ck-dirty-bg);
+  color: var(--ps-ck-dirty-fg);
+  border-color: var(--ps-ck-dirty-border);
+}
+.ps-checkpoint-toggle[data-state="uninit"] {
+  background: var(--ps-ck-uninit-bg);
+  color: var(--ps-ck-uninit-fg);
+  border-color: var(--ps-ck-uninit-border);
+}
+.ps-checkpoint-toggle[data-state="error"] {
+  background: var(--ps-ck-error-bg);
+  color: var(--ps-ck-error-fg);
+  border-color: var(--ps-ck-error-border);
+}
 
-/* Standalone dock panel (2026-07-25): the checkpoint UI used to be a section
- * pinned to the bottom of the projects sidebar (border-top, max-height:40vh).
- * It is now a sibling ``.dock-panel`` in the rail -- full rail height, its own
- * width + right-edge divider, scrolls internally.  The flex-column + in-flow
- * desktop geometry come from ``.dock-panel`` (page-shell.css); this owns only
- * the checkpoint-specific chrome.  Starts ``hidden`` (zero width) until
- * checkpoint.js unhides it for a run dir with git history. */
+/* ---------------------------------------------------------------- */
+/*  Run-history view (2026-08-19)                                   */
+/*                                                                  */
+/*  Shares the file-list space inside the projects sidebar: the     */
+/*  toggle in the filter bar swaps #ps-list and this section, and   */
+/*  checkpoint.js owns that exclusivity.  Populated from the        */
+/*  /api/checkpoint/* routes.  (It was a fixed-width sibling dock   */
+/*  panel in the rail from 2026-07-25 to 2026-08-19 -- a second     */
+/*  column with no way to reclaim its space.)                       */
+/* ---------------------------------------------------------------- */
 .ps-checkpoint {
-    width:             var(--ck-w);
+    flex:              1 1 auto;
+    min-height:        0;
     padding:           0.5rem 0.75rem;
-    border-right:      1px solid var(--ps-border);
     background:        var(--ps-bg);
     font-size:         0.85rem;
     color:             var(--ps-fg);
-    overflow-y:        auto;       /* scrolls within its full height (overrides dock-panel) */
+    overflow-y:        auto;       /* the view scrolls where the list did */
 }
-
-/* Narrow viewports keep a single drawer (projects); the checkpoint dock panel
- * is a desktop affordance, hidden below the drawer breakpoint. */
-@media (max-width: 640px) {
-    .ps-checkpoint {
-        display: none;
-    }
+.ps-checkpoint[hidden] {
+    display: none;
 }
 
 .ps-checkpoint-header {
@@ -1355,9 +1393,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     border:            1px solid transparent;
 }
 
-/* Sensor state colours.  Matches docs/execution/                   */
-/* running-a-job.md § 6 -- green=clean, yellow=dirty,               */
-/* blue=running, gray=uninit, red=error.                            */
+/* Sensor state colours -- green=clean, amber=dirty, gray=uninit,   */
+/* red=error; the toggle above wears the same four.                 */
 .ps-checkpoint-sensor[data-state="clean"] {
     background:        var(--ps-ck-clean-bg);
     color:             var(--ps-ck-clean-fg);
@@ -1377,19 +1414,6 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     background:        var(--ps-ck-error-bg);
     color:             var(--ps-ck-error-fg);
     border-color:      var(--ps-ck-error-border);
-}
-
-.ps-checkpoint-collapse {
-    background:        transparent;
-    border:            none;
-    color:             var(--ps-fg);
-    cursor:            pointer;
-    padding:           0.1rem 0.3rem;
-    font-size:         0.75rem;
-}
-.ps-checkpoint-collapse:hover {
-    background:        var(--ps-hover);
-    border-radius:     3px;
 }
 
 .ps-checkpoint-empty {
@@ -1456,6 +1480,13 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     margin-right:      0.4rem;
 }
 
+/* Which state a row came from ("from a1b2c3d") -- quiet, like the sha. */
+.ps-checkpoint-row-parent {
+    font-size:         0.7rem;
+    color:             var(--ps-fg-dim);
+    font-family:       ui-monospace, "SF Mono", Menlo, monospace;
+}
+
 .ps-checkpoint-row-summary {
     color:             var(--ps-fg);
 }
@@ -1482,12 +1513,6 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     background:        var(--ps-ref-branch-bg);
 }
 
-.ps-checkpoint-row-archive {
-    color:             var(--ps-fg);
-    opacity:           0.6;
-    font-size:         0.7rem;
-    margin-left:       0.4rem;
-}
 
 .ps-checkpoint-row-actions {
     display:           none;

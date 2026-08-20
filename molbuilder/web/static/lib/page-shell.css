@@ -222,11 +222,12 @@ body.is-projects-sidebar-collapsed[data-sidebars] .sidebar-rail {
 }
 
 /* ---- Dock panel — the shared rail-child geometry (§4.2) --------------------
- * The rail now holds TWO panels (projects + checkpoint), so the dock geometry
- * they share is a real pattern (appears twice, §2.1) and lives here once
- * instead of being hand-copied per sidebar.  A ``.dock-panel`` is a
- * full-height flex COLUMN that scrolls internally; each instance sets only its
- * own WIDTH + palette (projects: var(--ps-w); checkpoint: var(--ck-w)).
+ * A ``.dock-panel`` is a full-height flex COLUMN that scrolls internally;
+ * an instance sets only its own WIDTH + palette (projects: var(--ps-w)).
+ * The rail held two of them (projects + checkpoint) from 2026-07-25 to
+ * 2026-08-19; the checkpoint UI now lives INSIDE the projects sidebar as a
+ * view of the file-list space, so the projects aside is the one dock panel
+ * left -- the geometry stays shared here for the next panel that docks.
  *
  * Desktop (>=641px) is where panels dock IN-FLOW side by side; the geometry is
  * scoped there so the narrow-viewport projects DRAWER (position:fixed, its own

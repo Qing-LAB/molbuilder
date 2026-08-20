@@ -1104,20 +1104,20 @@ def test_the_sidebar_cursor_is_not_in_the_payload():
 
 
 def test_a_folder_with_no_history_gets_one_before_the_first_save():
-    """`checkpoint.status` answers `ok:false` for a folder that has no history
-    yet — `ok` means "this folder is under checkpointing", not "the query
-    worked".  Gating `init` on `ok` skipped it for exactly the folders that
+    """A folder that has no history yet must get `init` before the first
+    save.  Gating `init` on `st.ok` skipped it for exactly the folders that
     needed it, and the save then failed on `saveState`'s "not a checkpoint
     folder; run init first": a refusal naming a step the page had chosen to
-    skip.  Seen in a real folder, where saving was impossible with the
-    checkpoint box ticked."""
+    skip.  The question is `initialized` — the server's own field
+    (2026-08-19: `status()` now really asks `/api/checkpoint/state`, whose
+    `ok` means "the query worked")."""
     src = VIEWER.read_text()
     body = src.split("checkpoint.status(_dir)", 1)[1].split("saveState", 1)[0]
     body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
     assert "st.ok &&" not in body, (
         "init is still gated on `ok`, which is false for every folder that "
         "has never been checkpointed — the ones that need init")
-    assert "!st.initialised" in body, "nothing asks whether a history exists"
+    assert "!st.initialized" in body, "nothing asks whether a history exists"
 
 
 def test_save_is_blocked_while_the_checkpoint_has_no_note():

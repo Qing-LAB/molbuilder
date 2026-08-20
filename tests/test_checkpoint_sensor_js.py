@@ -415,17 +415,103 @@ _PANEL = (Path(__file__).resolve().parent.parent / "molbuilder" / "web"
 _RUN_DIR = "/p/BDT-Au/optimization/relax"      # rel-depth 3: the gate opens
 
 
-def test_entering_a_run_dir_reads_the_state_then_the_list():
-    """The panel's whole job on directory-enter, executed.
+def test_entering_a_run_dir_reads_the_state_only_until_opened():
+    """Directory-enter with the view closed: ONE request.
 
-    Two requests in a fixed order and no more: the cheap state read that draws
-    the pill, then the list -- and the list ONLY when the folder is set up.
-    A third request here would be the background polling the refresh model
-    forbids; the grep above can only tell you `setInterval` is absent, not that
-    nothing else fires.
+    The state read is what colors the toggle -- it must be honest without
+    the view ever opening -- but the fifty list rows nobody is looking at
+    are not fetched (docs/web/projects.md, 2026-08-19).  A second request
+    here would be paying for a view that is not on screen.
     """
     out = run_node([_PANEL], r"""
-      __replies = [
+      globalThis.__replies = [
+        {match: "/state", body: {ok: true, initialized: true, clean: true,
+                                 unsaved: [], changed: [], added: [], deleted: [],
+                                 standing_at: {id: "abc1234", short: "abc1234",
+                                               note: "set up", parent: null,
+                                               tags: []}}},
+        {match: "/list",  body: {ok: true, states: [
+            {id: "abc1234", short: "abc1234", note: "set up",
+             parent: null, tags: []}]}},
+      ];
+      const m = await import(process.env.PANEL_URL);
+      m.initCheckpointPanel();
+      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+      await new Promise(r => setTimeout(r, 30));
+      console.log(JSON.stringify({
+        calls:  __calls.map(c => c.method + " " + c.url.split("?")[0]),
+        toggleHidden: __els["ps-checkpoint-toggle"].hidden,
+        toggleState:  __els["ps-checkpoint-toggle"].dataset["attr_data-state"],
+        panelHidden:  __els["ps-checkpoint"].hidden,
+        filesHidden:  __els["ps-list"].hidden,
+      }));
+    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    assert out["calls"] == ["GET /api/checkpoint/state"], out["calls"]
+    assert out["toggleHidden"] is False
+    assert out["toggleState"] == "clean"          # the color IS the status
+    assert out["panelHidden"] is True             # files hold the space
+    assert out["filesHidden"] is False
+
+
+def test_the_toggle_swaps_the_space_and_only_then_reads_the_list():
+    """The swap, executed: open -> the checkpoint view takes the list's
+    space (exclusively), the filter disables, and the list is fetched;
+    close -> the files return and the filter re-enables."""
+    out = run_node([_PANEL], r"""
+      globalThis.__replies = [
+        {match: "/state", body: {ok: true, initialized: true, clean: true,
+                                 unsaved: [], changed: [], added: [], deleted: [],
+                                 standing_at: {id: "abc1234", short: "abc1234",
+                                               note: "set up", parent: null,
+                                               tags: []}}},
+        {match: "/list",  body: {ok: true, states: [
+            {id: "abc1234", short: "abc1234", note: "set up",
+             parent: null, tags: []}]}},
+      ];
+      const m = await import(process.env.PANEL_URL);
+      m.initCheckpointPanel();
+      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+      await new Promise(r => setTimeout(r, 10));
+      __els["ps-checkpoint-toggle"].click();
+      await new Promise(r => setTimeout(r, 30));
+      const open = {
+        calls: __calls.map(c => c.method + " " + c.url.split("?")[0]),
+        panelHidden: __els["ps-checkpoint"].hidden,
+        filesHidden: __els["ps-list"].hidden,
+        filterDisabled: __els["ps-filter-input"].disabled === true,
+        rows: __els["ps-checkpoint-list"].children.length,
+        pref: sessionStorage.getItem("ps.checkpoint.open"),
+      };
+      __els["ps-checkpoint-toggle"].click();
+      await new Promise(r => setTimeout(r, 10));
+      const closed = {
+        panelHidden: __els["ps-checkpoint"].hidden,
+        filesHidden: __els["ps-list"].hidden,
+        filterDisabled: __els["ps-filter-input"].disabled === true,
+        pref: sessionStorage.getItem("ps.checkpoint.open"),
+      };
+      console.log(JSON.stringify({open, closed}));
+    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    o = out["open"]
+    assert o["calls"] == ["GET /api/checkpoint/state",
+                          "GET /api/checkpoint/state",
+                          "GET /api/checkpoint/list"], o["calls"]
+    assert o["panelHidden"] is False and o["filesHidden"] is True
+    assert o["filterDisabled"] is True            # it filters FILES
+    assert o["rows"] == 1
+    assert o["pref"] == "1"                       # the choice survives
+    c = out["closed"]
+    assert c["panelHidden"] is True and c["filesHidden"] is False
+    assert c["filterDisabled"] is False
+    assert c["pref"] is None
+
+
+def test_a_stored_open_preference_greets_a_run_dir_with_the_view():
+    """The sessionStorage pref is read at wiring, so a reload -- or stepping
+    out of a run dir and back -- returns the view you had, list included."""
+    out = run_node([_PANEL], r"""
+      sessionStorage.setItem("ps.checkpoint.open", "1");
+      globalThis.__replies = [
         {match: "/state", body: {ok: true, initialized: true, clean: true,
                                  unsaved: [], changed: [], added: [], deleted: [],
                                  standing_at: {id: "abc1234", short: "abc1234",
@@ -441,14 +527,46 @@ def test_entering_a_run_dir_reads_the_state_then_the_list():
       await new Promise(r => setTimeout(r, 30));
       console.log(JSON.stringify({
         calls: __calls.map(c => c.method + " " + c.url.split("?")[0]),
-        pill:  __els["ps-checkpoint-sensor"].textContent,
-        rows:  __els["ps-checkpoint-list"].children.length,
+        panelHidden: __els["ps-checkpoint"].hidden,
+        rows: __els["ps-checkpoint-list"].children.length,
       }));
     """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
     assert out["calls"] == ["GET /api/checkpoint/state",
                             "GET /api/checkpoint/list"], out["calls"]
-    assert out["pill"] == "saved"
+    assert out["panelHidden"] is False
     assert out["rows"] == 1
+
+
+def test_leaving_the_run_dir_hides_the_toggle_and_restores_the_files():
+    """A non-run dir has no history surface at all: the button goes, the
+    files return, the filter re-enables -- but the OPEN PREFERENCE survives,
+    so coming back keeps your view."""
+    out = run_node([_PANEL], r"""
+      sessionStorage.setItem("ps.checkpoint.open", "1");
+      globalThis.__replies = [
+        {match: "/state", body: {ok: true, initialized: true, clean: true,
+                                 unsaved: [], changed: [], added: [], deleted: [],
+                                 standing_at: null}},
+        {match: "/list",  body: {ok: true, states: []}},
+      ];
+      const m = await import(process.env.PANEL_URL);
+      m.initCheckpointPanel();
+      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+      await new Promise(r => setTimeout(r, 20));
+      await m.onDirectoryChange("/p/BDT-Au/optimization");
+      console.log(JSON.stringify({
+        toggleHidden: __els["ps-checkpoint-toggle"].hidden,
+        panelHidden:  __els["ps-checkpoint"].hidden,
+        filesHidden:  __els["ps-list"].hidden,
+        filterDisabled: __els["ps-filter-input"].disabled === true,
+        pref: sessionStorage.getItem("ps.checkpoint.open"),
+      }));
+    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    assert out["toggleHidden"] is True
+    assert out["panelHidden"] is True
+    assert out["filesHidden"] is False
+    assert out["filterDisabled"] is False
+    assert out["pref"] == "1"
 
 
 def test_a_shallower_directory_never_reaches_the_network():

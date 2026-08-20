@@ -203,14 +203,23 @@ touch it. The parts:
   concurrent change on disk is caught ("file changed on disk; reload") instead
   of being silently overwritten. This is *raw file* editing — not the structure
   Save panel (§ 3).
-- **The run-history panel** — for a run folder (three levels deep:
-  `projects/PROJECT/TOPIC/RUN`), a checkpoint panel appears with git-snapshot
-  controls: a status pill, the checkpoint list, a **commit-graph viewer**, and
-  Checkpoint-now / Tag / Restore. It refreshes only when asked (no polling). Its
-  behavior is owned by
+- **The run-history view** — for a run folder (three levels deep:
+  `projects/PROJECT/TOPIC/RUN`), a small round **status button appears beside
+  the filter box**, colored by the folder's checkpoint state (gray = no
+  history, green = saved, amber = unsaved changes, red = error). Clicking it
+  **swaps the file list for the checkpoint view** — status line, the
+  checkpoint list, a **commit-graph viewer**, and Checkpoint-now / Tag /
+  Restore — in the same space, and clicking again returns the files; the
+  choice survives a reload. While the checkpoint view is showing, the filter
+  input is disabled — it filters files, and a control acting on a hidden
+  list would act invisibly. Outside a run folder the button does not exist.
+  It refreshes only when asked (no polling; entering a run folder reads the
+  state once so the button's color is honest). Its behavior is owned by
   [`execution/running-a-job.md`](?doc=execution/running-a-job.md) `§ 6` (the
   workflow) and [`execution/checkpointing.md`](?doc=execution/checkpointing.md)
-  (the invariants); this doc just notes the panel exists.
+  (the invariants); this doc owns where it sits.
+  *(Until 2026-08-19 this was a separate fixed-width panel to the right of
+  the sidebar, with no way to reclaim its space.)*
 - **Layout** — a drag handle resizes the sidebar (double-click resets), a toggle
   collapses it on desktop, and on a narrow screen it becomes a drawer. A lock
   banner covers the sidebar while an operation is in flight.
@@ -245,7 +254,7 @@ the panel's DOM.
 
 | Call | What it does |
 |---|---|
-| `checkpoint.status(dir)` | `{ok, initialised, clean, ...}` — does this folder have a history, and does it differ from where it stands? Read-only |
+| `checkpoint.status(dir)` | `{ok, initialized, clean, ...}` — does this folder have a history, and does it differ from where it stands? Read-only. *(Served by `GET /api/checkpoint/state`; until 2026-08-19 this called a route that never existed and answered `ok:false` forever)* |
 | `checkpoint.init(dir, {engine})` | start a history here. Refuses with a reason a caller can show (a nested repository, a folder that declares nothing) |
 | `checkpoint.saveState(dir, note)` | save the folder's current state. **A note is required** — `checkpointing.md` **L4** retired automatic messages, so nothing writes one on your behalf. Returns `{ok, changed}`; **`changed: false` is honest, not a failure** — nothing differed from the state the folder already stands at |
 

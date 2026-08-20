@@ -1,8 +1,13 @@
-/* projects/checkpoint.js -- Run-history panel inside the projects sidebar.
+/* projects/checkpoint.js -- the run-history VIEW of the projects sidebar.
  *
- * Mounts the panel declared in templates/_projects_sidebar.html
- * (#ps-checkpoint).  Subscribes to projects.onChange to react when
- * the user navigates into a directory.  For each directory:
+ * The checkpoint UI shares the file-list space (2026-08-19, user): a small
+ * status-colored button beside the filter box (#ps-checkpoint-toggle)
+ * exists only for a run directory, and clicking it swaps #ps-list for
+ * #ps-checkpoint in place -- one column, one owner for the swap (this
+ * module).  While the checkpoint view shows, the filter input is disabled:
+ * it filters files, and a control acting on a hidden list would act
+ * invisibly.  Subscribes to projects.onChange to react when the user
+ * navigates into a directory.  For each run directory:
  *
  *   1. GET  /api/checkpoint/state    -> sensor pill + visibility decision
  *   2. GET  /api/checkpoint/list     -> the states, when the folder has any
@@ -24,8 +29,9 @@
  *
  * Refresh model (docs/web/projects.md): explicit only --
  * NO background polling.  State refreshes on (a) directory-enter into
- * such a run dir, and (b) the manual Refresh control.  There is no
- * setInterval and no visibility-driven timer.
+ * such a run dir (so the toggle's color is honest without opening the
+ * view), (b) opening the view, and (c) the manual Refresh control.
+ * There is no setInterval and no visibility-driven timer.
  *
  * Graph viewer: lazy-loaded @gitgraph/js (see _ensureGitgraph() below).
  *
@@ -44,14 +50,18 @@ const _state = {
     repoState:     null,
     /** The states this folder has, newest first. */
     states:        [],
-    /** True if the user has collapsed the panel via the chevron. */
-    userCollapsed: false,
+    /** True while the checkpoint view occupies the list space.  The
+     *  preference survives dir changes and reloads (sessionStorage), so
+     *  stepping out of a run dir and back returns the view you had. */
+    open:          false,
 };
 
-// DOM handles, populated by _attach().
-let elPanel, elSensor, elCollapse, elEmpty, elInitBtn, elActions,
+// DOM handles, populated by _attach().  elFileList / elFilterInput are the
+// OTHER half of the swap -- same module (the sidebar is one module in nine
+// files), one owner for the exclusivity.
+let elPanel, elSensor, elToggle, elEmpty, elInitBtn, elActions,
     elCommitBtn, elTagBtn, elRefreshBtn, elList, elGraph, elAdvisory,
-    elViewListBtn, elViewGraphBtn;
+    elViewListBtn, elViewGraphBtn, elFileList, elFilterInput;
 
 // Current view mode: "list" (default) or "graph".  Persisted in
 // sessionStorage so a refresh keeps the user's preference.
@@ -67,7 +77,7 @@ let _gitgraphPromise = null;
 function _attach() {
     elPanel      = document.getElementById("ps-checkpoint");
     elSensor     = document.getElementById("ps-checkpoint-sensor");
-    elCollapse   = document.getElementById("ps-checkpoint-collapse");
+    elToggle     = document.getElementById("ps-checkpoint-toggle");
     elEmpty      = document.getElementById("ps-checkpoint-empty");
     elInitBtn    = document.getElementById("ps-checkpoint-init");
     elActions    = document.getElementById("ps-checkpoint-actions");
@@ -79,6 +89,8 @@ function _attach() {
     elAdvisory     = document.getElementById("ps-checkpoint-advisory");
     elViewListBtn  = document.getElementById("ps-checkpoint-view-list");
     elViewGraphBtn = document.getElementById("ps-checkpoint-view-graph");
+    elFileList     = document.getElementById("ps-list");
+    elFilterInput  = document.getElementById("ps-filter-input");
 
     if (!elPanel) return false;   // template not loaded; skip wiring
 
@@ -100,20 +112,17 @@ function _attach() {
     } catch (_) { /* sessionStorage disabled — fall through to default */ }
     _updateViewButtons();
 
-    // Restore collapse preference from sessionStorage -- the SAME mechanism as the
-    // view-mode pref above.  (This used to read
-    // ws.readPersistedSnapshot().state.ui.checkpoint.collapsed, but MolView's session
-    // snapshot has no `ui` slot and nothing ever wrote it -- the restore was dead code
-    // AND a projects-sidebar module reaching into MolView's persisted session, which
-    // the workspace contract forbids.  A UI pref is per-origin sessionStorage, owned
-    // here, not smuggled through the workspace.)
+    // Restore the open-view preference -- the SAME mechanism as the
+    // view-mode pref above.  A UI pref is per-origin sessionStorage, owned
+    // here, never smuggled through the workspace.
     try {
-        if (sessionStorage.getItem("ps.checkpoint.collapsed") === "1") {
-            _state.userCollapsed = true;
+        if (sessionStorage.getItem("ps.checkpoint.open") === "1") {
+            _state.open = true;
         }
-    } catch (_) { /* sessionStorage disabled -- default to expanded */ }
+    } catch (_) { /* sessionStorage disabled -- default to files */ }
 
-    elCollapse.addEventListener("click", _onCollapseClick);
+    if (elToggle) elToggle.addEventListener("click",
+        () => _setOpen(!_state.open));
     elInitBtn.addEventListener("click", _onInitClick);
     elCommitBtn.addEventListener("click", _onCommitClick);
     elTagBtn.addEventListener("click", _onTagClick);
@@ -182,30 +191,61 @@ export function onDirectoryChange(dirPath) {
     // is exactly the "don't rewrite on a no-op tick" rule.
     if (dirPath === _state.currentDir) return;
     _state.currentDir = dirPath;
-    if (_state.userCollapsed) {
-        elPanel.hidden = false;
-        _renderCollapsedHeader();
-        return;
-    }
-    elPanel.hidden = false;
+    if (elToggle) elToggle.hidden = false;
+    // The stored preference decides which view greets a run dir; the state
+    // fetch happens either way, because the BUTTON's color must be honest
+    // without the view ever opening.
+    _applyOpen();
     _refresh();
 }
 
-/* ---------- Internal: state-driven rendering ---------- */
+/* ---------- Internal: the view swap ---------- */
 
 function _hide() {
+    // Not a run dir: the button does not exist and the files are back.
+    // The open PREFERENCE survives (stepping out and back keeps your view).
     if (!elPanel) return;
     elPanel.hidden = true;
+    if (elToggle) elToggle.hidden = true;
+    if (elFileList) elFileList.hidden = false;
+    _setFilterDisabled(false);
 }
 
-function _renderCollapsedHeader() {
-    // Show only the header + sensor pill; hide the rest.  Used when
-    // the user has explicitly collapsed the panel.
-    elEmpty.hidden    = true;
-    elActions.hidden  = true;
-    elList.hidden     = true;
-    if (elGraph) elGraph.hidden = true;
-    elAdvisory.hidden = true;
+function _setOpen(open) {
+    _state.open = !!open;
+    try {
+        if (_state.open) sessionStorage.setItem("ps.checkpoint.open", "1");
+        else sessionStorage.removeItem("ps.checkpoint.open");
+    } catch (_) { /* sessionStorage disabled -- pref just won't persist */ }
+    _applyOpen();
+    if (_state.open) _refresh();
+}
+
+function _applyOpen() {
+    // ONE place decides the exclusivity: exactly one of the file list and
+    // the checkpoint view occupies the space below the filter bar.
+    const open = _state.open;
+    if (elPanel)    elPanel.hidden    = !open;
+    if (elFileList) elFileList.hidden = open;
+    if (elToggle)   elToggle.setAttribute("aria-pressed", String(open));
+    _setFilterDisabled(open);
+}
+
+function _setFilterDisabled(disabled) {
+    // The filter acts on the FILE list.  Acting on a hidden list is acting
+    // invisibly, so the input says it is out of scope instead.
+    if (!elFilterInput) return;
+    elFilterInput.disabled = disabled;
+    elFilterInput.title = disabled
+        ? "Filtering applies to files -- close the run history to filter"
+        : "";
+}
+
+function _paintToggle(state, text) {
+    if (!elToggle) return;
+    elToggle.setAttribute("data-state", state);
+    elToggle.title = "Run history -- " + text
+        + (_state.open ? " (click for files)" : " (click to open)");
 }
 
 function _renderState(repoState) {
@@ -213,6 +253,7 @@ function _renderState(repoState) {
     if (!repoState || !repoState.initialized) {
         elSensor.textContent = "no states saved";
         elSensor.setAttribute("data-state", "uninit");
+        _paintToggle("uninit", "no states saved");
         // Clear the tooltip too.  The other two branches SET it, so without
         // this the pill kept the previous folder's list of unsaved files while
         // reading "no states saved" -- naming files that are not in this
@@ -234,12 +275,14 @@ function _renderState(repoState) {
         elSensor.textContent = `${unsaved} unsaved`;
         elSensor.setAttribute("data-state", "dirty");
         elSensor.title = (repoState.unsaved || []).join("\n");
+        _paintToggle("dirty", `${unsaved} unsaved`);
     } else {
         elSensor.textContent = "saved";
         elSensor.setAttribute("data-state", "clean");
         elSensor.title = repoState.standing_at
             ? `standing at ${repoState.standing_at.short}`
             : "";
+        _paintToggle("clean", "saved");
     }
     elEmpty.hidden   = true;
     elActions.hidden = false;
@@ -262,6 +305,7 @@ function _renderState(repoState) {
 function _renderError(message) {
     elSensor.textContent = "error";
     elSensor.setAttribute("data-state", "error");
+    _paintToggle("error", "error");
     _showAdvisory("Sensor error: " + message);
 }
 
@@ -542,7 +586,10 @@ async function _refresh(opts = {}) {
         // be called that (§ 5).
         _renderState(stRes.body);
 
-        if (stRes.body.initialized) {
+        if (stRes.body.initialized && _state.open) {
+            // The list is fetched only while the view is showing -- a
+            // closed view needs the STATE (the button's color), never the
+            // fifty rows nobody is looking at.
             const lsRes = await _fetchJSON("GET",
                 `/api/checkpoint/list?path=${encodeURIComponent(_state.currentDir)}&limit=50`);
             if (lsRes.body && lsRes.body.ok && lsRes.body.states) {
@@ -558,23 +605,6 @@ async function _refresh(opts = {}) {
 }
 
 /* ---------- Action handlers ---------- */
-
-function _onCollapseClick() {
-    _state.userCollapsed = !_state.userCollapsed;
-    elCollapse.textContent = _state.userCollapsed ? "▸" : "▾";
-    elCollapse.setAttribute("aria-expanded", String(!_state.userCollapsed));
-    // Persist the preference (per-origin sessionStorage; mirrors the view-mode pref)
-    // so it survives a reload -- the restore in _attach reads this key.
-    try {
-        if (_state.userCollapsed) sessionStorage.setItem("ps.checkpoint.collapsed", "1");
-        else sessionStorage.removeItem("ps.checkpoint.collapsed");
-    } catch (_) { /* sessionStorage disabled -- pref just won't persist */ }
-    if (_state.userCollapsed) {
-        _renderCollapsedHeader();
-    } else {
-        _refresh();
-    }
-}
 
 /**
  * Set the folder up -- and, when its own name cannot be used, ask for one.
@@ -838,15 +868,21 @@ export function initCheckpointPanel() {
  * the panel, looking at the history.
  */
 
-/** Does this folder have a history, and does it differ from where it stands? */
+/** Does this folder have a history, and does it differ from where it stands?
+ *
+ * Served by GET /api/checkpoint/state and speaking ITS field names
+ * (`initialized`).  Until 2026-08-19 this called /api/checkpoint/status --
+ * a route that never existed -- and read a British-spelled field the server
+ * never wrote, so every caller got `{ok:false}` forever and survived only
+ * where `init` happened to be idempotent. */
 export async function status(dir) {
     if (!dir) return { ok: false, error: "no folder given" };
     const res = await _fetchJSON("GET",
-        "/api/checkpoint/status?path=" + encodeURIComponent(dir));
+        "/api/checkpoint/state?path=" + encodeURIComponent(dir));
     const b = (res && res.body) || {};
     return {
         ok:          !!b.ok,
-        initialised: !!b.initialised,
+        initialized: !!b.initialized,
         clean:       b.clean !== false,
         error:       b.error || null,
     };

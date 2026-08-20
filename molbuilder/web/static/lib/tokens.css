@@ -123,7 +123,6 @@
      * :root block on 2026-06-13.  Authors that previously wrote raw
      * hex inside this file should reach for these tokens instead. */
     --ps-w:               18rem;
-    --ck-w:               20rem;     /* checkpoint dock panel — sibling of the projects rail */
     --ps-bg:              #181818;
     --ps-bg-deep:         #141414;   /* code-input bg in sidebar */
     --ps-bg-tile:         #1c1c1c;   /* tile / hover-shaded surfaces */

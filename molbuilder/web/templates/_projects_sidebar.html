@@ -129,54 +129,51 @@
       always stay visible (navigation).  State persists per
       origin in sessionStorage so a refresh keeps the filter. -#}
   <div class="ps-filter-bar">
-    <input type="search" id="ps-filter-input"
-           class="ps-filter-input"
-           placeholder="Filter files (e.g. .xyz)"
-           autocomplete="off" spellcheck="false"
-           aria-label="Filter files in this directory">
-    <button type="button" id="ps-filter-clear"
-            class="ps-filter-clear"
-            title="Clear filter"
-            aria-label="Clear filter" hidden>×</button>
+    <span class="ps-filter-input-wrap">
+      <input type="search" id="ps-filter-input"
+             class="ps-filter-input"
+             placeholder="Filter files (e.g. .xyz)"
+             autocomplete="off" spellcheck="false"
+             aria-label="Filter files in this directory">
+      <button type="button" id="ps-filter-clear"
+              class="ps-filter-clear"
+              title="Clear filter"
+              aria-label="Clear filter" hidden>×</button>
+    </span>
+    {#- Run-history toggle (2026-08-19): exists only for a run dir
+        (rel-depth 3).  Its color IS the checkpoint status (uninit /
+        clean / dirty / error -- the same tokens as the sensor pill),
+        so the state is visible without opening the view.  Clicking
+        swaps the file list below for the checkpoint view and back.
+        Wiring: lib/projects/checkpoint.js. -#}
+    <button type="button" id="ps-checkpoint-toggle"
+            class="ps-checkpoint-toggle" data-state="uninit"
+            aria-pressed="false" hidden
+            title="Run history">●</button>
   </div>
 
   <ul class="ps-list" id="ps-list" aria-live="polite">
     <!-- Current-directory entries inserted by projects-sidebar.js. -->
   </ul>
 
-  <section class="ps-actions" id="ps-actions"
-           aria-label="Current selection">
-    <!-- Status display only.  Per-file actions (preview / delete)
-         live ON the entries themselves -- hover-revealed buttons in
-         the list rows.  Tabs that need the selection inquire via
-         window.molbuilder.projects.getCurrentFile(). -->
-    <p class="ps-selection">No file selected.</p>
-  </section>
-
-
-</aside>
-
-  {#- Run-history panel (PR-B Phase 2, 2026-06-25).  Surfaces the
-      checkpoint repo state + commit history for the currently-
-      selected directory.  Hidden when no dir is selected OR when
-      the dir has no .git/.  Drives:
-        * sensor badge (clean / dirty / N changes / uninit / running)
+  {#- Run-history view (2026-08-19): shares the file-list space --
+      #ps-checkpoint-toggle in the filter bar swaps this section and
+      #ps-list.  Surfaces the checkpoint repo state + history for the
+      current run directory.  Drives:
+        * sensor badge (clean / dirty / N unsaved / uninit / error)
         * list view of past checkpoints with tag chips
+        * commit-graph view (lazy @gitgraph/js)
         * "Initialise run history" CTA when not yet initialised
         * "Checkpoint now" / "Restore" / "Tag" action buttons
       See lib/projects/checkpoint.js for the wiring and
       docs/execution/running-a-job.md § 6 for the design contract. -#}
-  <section class="ps-checkpoint dock-panel" id="ps-checkpoint"
+  <section class="ps-checkpoint" id="ps-checkpoint"
            aria-label="Run history" hidden>
     <header class="ps-checkpoint-header">
       <h3 class="ps-checkpoint-title">Run history</h3>
       <span class="ps-checkpoint-sensor" id="ps-checkpoint-sensor"
             aria-live="polite"
             title="Click to refresh">…</span>
-      <button type="button" id="ps-checkpoint-collapse"
-              class="ps-checkpoint-collapse"
-              aria-label="Collapse run history panel"
-              aria-expanded="true" title="Collapse">▾</button>
     </header>
 
     <!-- Empty-state CTA: shown when the selected dir has no .git/.
@@ -248,6 +245,19 @@
          hidden role="status" aria-live="polite">
     </div>
   </section>
+
+  <section class="ps-actions" id="ps-actions"
+           aria-label="Current selection">
+    <!-- Status display only.  Per-file actions (preview / delete)
+         live ON the entries themselves -- hover-revealed buttons in
+         the list rows.  Tabs that need the selection inquire via
+         window.molbuilder.projects.getCurrentFile(). -->
+    <p class="ps-selection">No file selected.</p>
+  </section>
+
+
+</aside>
+
 </div>{#- /.sidebar-rail -#}
 
 <!-- File-preview modal (lives outside the sidebar so it can float
