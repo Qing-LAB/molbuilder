@@ -710,22 +710,23 @@ def test_submit_accepts_exactly_these_options(tmp_path):
     """
     from molbuilder.jobset._cli import submit_cmd
     assert {q.name for q in submit_cmd.params} == {
-        "kind", "stage", "trial", "bundle", "mode", "domain", "dry_run"}
+        "kind", "stage", "trial", "bundle", "mode", "domain", "dry_run",
+        "trial_timeout_min"}
 
 
-def test_cli_submit_of_a_whole_sweep_picks_the_next_unlaunched(tmp_path):
-    """One job per scheduler invocation, kept by SELECTION rather than
-    refusal (§ 2.3.2, decided 2026-08-12): a bare `submit bench` picks the
-    NEXT UNLAUNCHED trial, says which and how many remain, and plans
-    exactly ONE launch."""
+def test_cli_submit_of_a_whole_sweep_groups_it_into_one_job(tmp_path):
+    """One LAUNCH ACT for the sweep (§ 2.3.2, user 2026-08-20, amending the
+    2026-08-12 one-per-invocation form by keeping what it protected): a bare
+    `submit bench` plans exactly ONE sbatch -- the group sequencer -- and
+    every trial rides it."""
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
     r = runner.invoke(grp, ["submit", "bench", "--bundle", str(tmp_path),
                             "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
-    assert "next unlaunched trial: G1K1C4" in r.output
-    assert "2 of 2 remain" in r.output
+    assert "bench-group" in r.output
     assert r.output.count("WOULD run") == 1
+    assert r.output.count("rides the group") == 2
 
 
 def test_cli_submit_refuses_when_no_mode_is_set_anywhere(tmp_path, monkeypatch):
@@ -795,7 +796,7 @@ def test_cli_submit_falls_back_to_the_configs_mode(tmp_path, monkeypatch):
     r = runner.invoke(grp, ["submit", "bench", "--bundle", str(tmp_path),
                             "--dry-run"])
     assert r.exit_code == 0, r.output
-    assert "next unlaunched trial" in r.output
+    assert "bench-group" in r.output      # the grouped plan proves mode=submit
 
 
 def test_cli_submit_surfaces_a_broken_config_as_its_own_error(

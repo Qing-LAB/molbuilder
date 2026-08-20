@@ -438,6 +438,203 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
     return results
 
 
+def _slurm_time(seconds: int) -> str:
+    """``4500`` -> ``0-01:15:00`` (SLURM's D-HH:MM:SS)."""
+    d, rem = divmod(int(seconds), 86400)
+    h, rem = divmod(rem, 3600)
+    m, s = divmod(rem, 60)
+    return f"{d}-{h:02d}:{m:02d}:{s:02d}"
+
+
+def _group_envelope(jobs) -> "Resources":
+    """The UNION allocation a grouped sweep runs in (user, 2026-08-20):
+    the widest trial's ranks, cores and GPUs -- each trial then launches
+    with its OWN ``mpirun -np`` inside it, and a narrower trial simply
+    leaves part of the allocation idle for its minute.
+
+    Mixed GPU *types* are refused by name: an envelope cannot ask for two
+    kinds of card at once, and guessing which the sweep meant is the kind
+    of silent repair this module never makes.
+    """
+    n = max((j.resources.mpi_np or 1) for j in jobs)
+    c = max((j.resources.cpus_per_task or 1) for j in jobs)
+    gres = None
+    prefixes = set()
+    counts = []
+    for j in jobs:
+        g = j.resources.gres
+        if not g:
+            continue
+        head, _, tail = str(g).rpartition(":")
+        try:
+            counts.append(int(tail))
+            prefixes.add(head or "gpu")
+        except ValueError:
+            prefixes.add(str(g))
+            counts.append(1)
+    if counts:
+        if len(prefixes) > 1:
+            raise SubmitError(
+                "the sweep's trials ask for different GPU specs "
+                f"({', '.join(sorted(prefixes))}) -- one grouped job cannot "
+                "hold both; submit those trials by name instead")
+        gres = f"{next(iter(prefixes))}:{max(counts)}"
+    exclusive = any(j.resources.exclusive for j in jobs)
+    return Resources(mpi_np=n, cpus_per_task=c, gres=gres,
+                     exclusive=exclusive)
+
+
+def _dc_replace_time(r: "Resources", time_str: str) -> "Resources":
+    """The envelope with its wall set -- dataclasses.replace, named so the
+    call site reads as what it does."""
+    import dataclasses as _dc
+    return _dc.replace(r, time=time_str)
+
+
+def submit_bench_group(jobset: JobSet, base_dir, *,
+                       domain: Optional[str] = None,
+                       dry_run: bool = False,
+                       trial_timeout_s: int = 900) -> List[JobResult]:
+    """ONE scheduler job for the whole sweep (user, 2026-08-20).
+
+    The standing rule -- *a scheduler is handed one job at a time* -- is kept
+    by construction: this IS one job.  What it replaces is one job PER TRIAL,
+    which made an N-point sweep cost N queue waits; on an HPC a submission
+    is expensive and unpredictable, and a benchmark's output is timing data,
+    not the structure, so the trials ride one allocation in sequence.
+
+    The pieces:
+
+    * **the envelope** -- :func:`_group_envelope`: max ranks / cores / GPUs
+      across the pending trials; wall = pending x ``trial_timeout_s`` x 1.1
+      plus five minutes of startup margin;
+    * **the sequencer** -- ``bench-group.run.sh``, written into the stage's
+      ``bench/`` container (the parent that sees every trial), regenerated
+      from the trials STILL UNLAUNCHED at this submission.  Each trial runs
+      in its own directory through its own ``.run.sh`` (per-trial relabel,
+      pins, monitor -- one home, untouched) under ``timeout``; a trial that
+      hits the bound is killed and its artifacts read ``incomplete``; the
+      walk continues -- one bad point says nothing about the next.  The
+      script exits nonzero when any trial failed, so the scheduler's job
+      state prompts a look at ``bench-group.log``;
+    * **the launch records** -- every included trial's directory gets its
+      ``run.json`` stamped with the ONE job id, so `status`, the picker and
+      a later single-trial re-run all see the truth.
+    """
+    from .materialize import job_dir_names, shape_of, was_launched
+    dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
+    base = Path(base_dir)
+    pending = [j for j in jobset.jobs
+               if not was_launched(base / dirs[j.name])]
+    if not pending:
+        raise SubmitError(
+            f"all {len(jobset.jobs)} trials are launched.  next: "
+            f"molbuilder jobset summarize bench <stage>")
+
+    trial_dirs = [base / dirs[j.name] for j in pending]
+    containers = {d.parent for d in trial_dirs}
+    if len(containers) != 1:
+        raise SubmitError(
+            "the sweep's trials do not share one container -- a grouped "
+            f"submission needs the one parent that sees them all; found "
+            f"{sorted(str(c) for c in containers)}")
+    container = next(iter(containers))
+
+    envelope = _group_envelope(pending)
+    total_s = int(len(pending) * trial_timeout_s * 1.1) + 300
+
+    lines = [
+        "#!/usr/bin/env bash",
+        "# bench-group.run.sh -- ONE allocation, the sweep's unlaunched",
+        "# trials in sequence (project-layout.md § 2.3.2, user 2026-08-20).",
+        "# Regenerated at each grouped submission.  THE TWO-LAYER MODEL",
+        "# HOLDS (job-system.md § 6): this file is the launcher layer only",
+        "# -- ordering and bounds.  Env activation and the engine launch",
+        "# stay in each trial's own .run.sh, exactly as when a trial runs",
+        "# alone; nothing here re-implements module load / source activate.",
+        "set -u",
+        'LOG="bench-group.log"',
+        f'echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') start '
+        f'trials={len(pending)} per-trial-bound={trial_timeout_s}s" >> "$LOG"',
+        "fails=0",
+        "run_trial() {",
+        '    _name="$1"; _dir="$2"; shift 2',
+        '    echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') -> ${_name}" >> "$LOG"',
+        f'    ( cd "${{_dir}}" && timeout -k 30 {trial_timeout_s} '
+        'bash "$@" ) >> "$LOG" 2>&1',
+        "    _rc=$?",
+        '    if [ "${_rc}" -eq 124 ]; then',
+        f'        echo "[group] ${{_name}} hit the {trial_timeout_s}s '
+        'per-trial bound -- killed; its artifacts read incomplete" >> "$LOG"',
+        "    fi",
+        '    if [ "${_rc}" -ne 0 ]; then fails=$((fails+1)); fi',
+        '    echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') <- ${_name} '
+        'rc=${_rc}" >> "$LOG"',
+        "    return 0    # one bad point says nothing about the next",
+        "}",
+    ]
+    for j in pending:
+        run_name = _wrapper_name(j.script, ".run.sh")
+        rel = (base / dirs[j.name]).name
+        args = " ".join(_run_sh_args(j.resources))
+        lines.append(
+            f'run_trial "{j.name}" "{rel}" "{run_name}"'
+            + (f" {args}" if args else ""))
+    lines += [
+        'echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') done '
+        'fails=${fails}" >> "$LOG"',
+        'exit $(( fails > 0 ))',
+        "",
+    ]
+    script = container / "bench-group.run.sh"
+    envelope = _dc_replace_time(envelope, _slurm_time(total_s))
+
+    cmd = ["sbatch", "-J", f"{jobset.name}_bench-group"]
+    gpu = any(_job_wants_gpu(base / dirs[j.name], j) for j in pending)
+    pq = _resolve_domain(domain, gpu=gpu, project_dir=base)
+    if pq:
+        cmd += ["-p", pq[0], "-q", pq[1]]
+    # The same shape as a single job: the rendered .sbatch header carries
+    # the SITE directives (partition/qos/account/mail -- runwrap's one
+    # header emitter, so the group cannot drift from what every trial
+    # gets), and the CLI flags carry the envelope as overrides, exactly
+    # the flags-win-over-header rule _sbatch_resource_flags documents.
+    cmd += _sbatch_resource_flags(envelope)
+    cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-submit"]
+    cmd.append("bench-group.sbatch")
+
+    if dry_run:
+        return [JobResult("bench-group", cmd, "planned")] + [
+            JobResult(j.name, [], "rides the group") for j in pending]
+
+    script.write_text("\n".join(lines), encoding="utf-8")
+    from ..runwrap import _render_sbatch_for
+    header = _render_sbatch_for(container / "bench-group.sh",
+                                resources=envelope, env=None)
+    if header is None:
+        raise SubmitError(
+            "submit mode needs a scheduler and this machine has none "
+            "configured -- use --mode direct, or add a scheduler block "
+            "(running-a-job.md § 5.3).")
+    (container / "bench-group.sbatch").write_text(header, encoding="utf-8")
+    cp = subprocess.run(cmd, cwd=str(container),
+                        capture_output=True, text=True,
+                        env={**os.environ,
+                             "MB_LAUNCHED_BY": "jobset-submit"})
+    if cp.returncode != 0:
+        raise SubmitError(
+            f"sbatch failed for the bench group (rc={cp.returncode}):\n"
+            f"{cp.stderr.strip()}")
+    jid = _parse_sbatch_id(cp.stdout)
+    results = [JobResult("bench-group", cmd, "submitted", job_id=jid)]
+    for j in pending:
+        _record_launch(base / dirs[j.name], mode="submit",
+                       command=cmd, job_id=jid)
+        results.append(JobResult(j.name, [], "rides the group",
+                                 job_id=jid))
+    return results
+
+
 def _record_launch(attempt: Path, *, mode: str, command: List[str],
                    job_id: Optional[str] = None) -> None:
     """Write ``run.json`` into the attempt, carrying its provenance.

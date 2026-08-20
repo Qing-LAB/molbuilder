@@ -314,11 +314,13 @@ def test_prep_run_applies_the_proposal_file_but_flags_win(calc):
     assert js["jobs"][0]["resources"]["cpus_per_task"] == 3
 
 
-def test_cli_submit_bench_is_one_trial_per_invocation(calc):
-    """`submit bench <stage> [<trial>]` (§ 2.3.2, decided 2026-08-12): no
-    stage refuses by name; a bare stage picks the NEXT UNLAUNCHED trial and
-    says how many remain; naming a trial launches THAT one.  Either way ONE
-    launch per invocation -- direct mode stays exempt (not submission)."""
+def test_cli_submit_bench_groups_the_sweep_into_one_job(calc):
+    """`submit bench <stage>` under submit mode (§ 2.3.2, user 2026-08-20):
+    ONE scheduler job for the whole sweep -- the trials ride a single
+    allocation in sequence, each under the per-trial bound.  Naming a trial
+    still submits that one alone (a single point's re-run); a trial name on
+    `submit run` still refuses.  The 2026-08-12 rule survives as what it
+    protected: one LAUNCH ACT, never a queue flood."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     js = _prep_bench(calc)
@@ -331,23 +333,125 @@ def test_cli_submit_bench_is_one_trial_per_invocation(calc):
                                      "--bundle", str(calc),
                                      "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
-    assert "next unlaunched trial" in r.output
-    assert f"({len(js['jobs'])} of {len(js['jobs'])} remain" in r.output
+    # exactly ONE sbatch is planned, for the group sequencer, with the
+    # union envelope and a wall derived from the per-trial bound
     assert r.output.count("WOULD run") == 1
+    assert "bench-group" in r.output
+    # the submitted payload is the RENDERED header (runwrap's one emitter,
+    # so the group carries the same site directives every trial gets); the
+    # header's body delegates to bench-group.run.sh
+    assert "bench-group.sbatch" in r.output
+    assert " -t 0-" in r.output, "the wall must ride the sbatch command"
+    # the UNION envelope: the widest trial's ranks ride -n
+    max_np = max((j["resources"].get("mpi_np") or 1) for j in js["jobs"])
+    assert f" -n {max_np} " in r.output, (
+        f"the envelope must ask for the widest trial ({max_np} ranks)"
+    )
+    assert r.output.count("rides the group") == len(js["jobs"])
+    assert "next unlaunched trial" not in r.output
     r = runner.invoke(jobset_group, ["submit", "bench", "coarse", trial,
                                      "--bundle", str(calc),
                                      "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
     assert r.output.count("WOULD run") == 1
-    # a trial name is a bench concept: run refuses it.  --mode is stated
-    # (I6, 2026-08-13): without it this invocation passed GREEN off the
-    # developer's own execution.mode -- the isolation sandbox exposed it,
-    # and the subject here is the TRIAL refusal, not mode resolution.
+    assert "bench-group" not in r.output
     r = runner.invoke(jobset_group, ["submit", "run", "coarse", trial,
                                      "--bundle", str(calc),
                                      "--mode", "submit", "--dry-run"])
     assert r.exit_code != 0 and "TRIAL names a benchmark point" in r.output
 
+
+def test_the_group_sequencer_runs_every_trial_and_survives_failures(
+        calc, monkeypatch):
+    """The generated bash, EXECUTED: every pending trial runs in its own
+    directory in order; a failing trial does not stop the walk; a trial
+    that hits the per-trial bound is killed (rc=124, named in the log) and
+    the rest still run; the script exits nonzero because something failed;
+    and every included trial's run.json carries the ONE job id."""
+    import json as _json
+    import stat
+    import subprocess as _sp
+    from pathlib import Path
+
+    from molbuilder.jobset._cli import _load_bench_set
+    from molbuilder.jobset.materialize import (job_dir_names, shape_of,
+                                               was_launched)
+    from molbuilder.jobset.submit import submit_bench_group
+
+    _prep_bench(calc)
+    js, base = _load_bench_set(calc, "coarse")
+    dirs = job_dir_names(js, shape_of(js, base))
+
+    # Stub each trial's wrapper: first succeeds and leaves a marker,
+    # second fails, third (if any) sleeps past the bound.
+    behaviours = ["ok", "fail", "sleep"]
+    for n, job in enumerate(js.jobs):
+        d = base / dirs[job.name]
+        wrapper = d / (Path(job.script).stem + ".run.sh")
+        kind = behaviours[min(n, 2)]
+        body = {"ok":    "#!/usr/bin/env bash\ntouch ran.marker\nexit 0\n",
+                "fail":  "#!/usr/bin/env bash\ntouch ran.marker\nexit 3\n",
+                "sleep": "#!/usr/bin/env bash\ntouch ran.marker\nsleep 30\n",
+                }[kind]
+        wrapper.write_text(body)
+        wrapper.chmod(wrapper.stat().st_mode | stat.S_IEXEC)
+
+    # sbatch is faked; the sequencer is then run HERE with bash.
+    calls = {}
+
+    def fake_run(cmd, **kw):
+        calls["cmd"] = cmd
+        calls["cwd"] = kw.get("cwd")
+        class R:
+            returncode = 0
+            stdout = "Submitted batch job 4242"
+            stderr = ""
+        return R()
+    # Rebind ONLY the submit module's `subprocess` name -- patching the
+    # global module would also fake the REAL bash run below.
+    import types
+
+    import molbuilder.jobset.submit as submod
+    monkeypatch.setattr(submod, "subprocess",
+                        types.SimpleNamespace(run=fake_run))
+    # This box has no queue, so the real header render answers None (and
+    # the group rightly refuses).  The header is not under test here -- the
+    # sequencer is -- so stub the emitter the way sbatch is stubbed.
+    import molbuilder.runwrap as _rw
+    monkeypatch.setattr(_rw, "_render_sbatch_for",
+                        lambda *a, **k: "#!/bin/bash\n"
+                        "#SBATCH stub\nbash bench-group.run.sh \"$@\"\n")
+
+    results = submit_bench_group(js, base, dry_run=False, trial_timeout_s=2)
+    assert results[0].name == "bench-group"
+    assert results[0].job_id == "4242"
+
+    container = Path(calls["cwd"])
+    script = container / "bench-group.run.sh"
+    assert script.is_file(), "the sequencer must live in the container"
+    assert container.name == "bench", (
+        f"the group runs at the parent that sees every trial: {container}"
+    )
+
+    # EXECUTE the generated bash for real.
+    proc = _sp.run(["bash", script.name], cwd=str(container),
+                   capture_output=True, text=True, timeout=120)
+    log = (container / "bench-group.log").read_text()
+    ran = [job.name for job in js.jobs
+           if (base / dirs[job.name] / "ran.marker").exists()]
+    assert ran == [j.name for j in js.jobs], (
+        f"a failure stopped the walk: only {ran} ran\n{log}"
+    )
+    assert proc.returncode != 0, "a sweep with failures must say so"
+    if len(js.jobs) >= 3:
+        assert "hit the 2s per-trial bound" in log, log
+    for job in js.jobs:
+        assert was_launched(base / dirs[job.name]), (
+            f"{job.name} has no launch record"
+        )
+        rec = _json.loads(
+            (base / dirs[job.name] / "run.json").read_text())
+        assert rec.get("job_id") == "4242"
 
 def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
     """The root ``job-set.json`` is the RUN plan and MERGES per stage
@@ -417,15 +521,15 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
              (calc / LEDGER_FILE).read_text().splitlines()]
     got = [(e["verb"], e["decision"]) for e in lines]
     assert got == [("prep", "prepped"),
-                   ("submit", "trial-picked"),
+                   ("submit", "bench-grouped"),
                    ("submit", "launched"),
                    ("summarize", "verdict-written")]
     prep = lines[0]
     assert prep["kind"] == "bench" and prep["stage"] == "coarse"
     assert "provenance" in prep            # WHERE each setting came from
-    pick = lines[1]
-    assert pick["picked_by"].startswith("next unlaunched")
-    assert pick["total"] == pick["remaining"] == len(
+    group = lines[1]
+    assert group["trial_timeout_s"] == 15 * 60
+    assert len(group["trials"]) == len(
         json.loads((calc / "01_coarse" / "bench"
                     / "job-set.json").read_text())["jobs"])
     launch = lines[2]
@@ -1206,7 +1310,10 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
                                   "--bundle", str(calc),
                                   "--mode", "submit", "--dry-run"])
     assert res.exit_code == 0, res.output
-    assert f"next unlaunched trial: {second}" in res.output
+    # the bare form groups the REMAINDER: the launched trial does not ride
+    assert "bench-group" in res.output
+    assert res.output.count("rides the group") == len(js["jobs"]) - 1
+    assert f"rides      {first}" not in res.output
 
 
 def test_a_trial_deck_is_forced_cold_not_only_relabelled():
@@ -1519,3 +1626,52 @@ def test_the_table_measures_beside_the_ask_and_gates_gpu_columns():
     assert _fmt_wall(41) == "41s"
     assert _fmt_wall(245) == "4m05s"
     assert _fmt_wall(7523) == "2h05m"
+
+
+def test_prep_writes_an_executable_jobset_launcher_that_works(calc,
+                                                              monkeypatch,
+                                                              tmp_path):
+    """workflow.md § 6.1 (user, 2026-08-20), EXECUTED: prep leaves
+    `jobset.sh` at the bundle root; running it from ANYWHERE activates
+    nothing twice, stands in the bundle, puts the repo on PYTHONPATH and
+    hands the verb through -- so `--bundle .` means the calculation.  A
+    stub `python` on PATH records what actually reached it."""
+    import os
+    import stat
+    import subprocess
+    from pathlib import Path
+
+    _prep_bench(calc)
+    launcher = calc / "jobset.sh"
+    assert launcher.is_file(), "prep must write the launcher"
+    assert launcher.stat().st_mode & stat.S_IXUSR, "and make it executable"
+    text = launcher.read_text()
+    assert 'python -m molbuilder jobset "$@"' in text
+    assert "PYTHONPATH" in text and "_REPO" in text
+
+    # A PATH shim records cwd/PYTHONPATH/args; conda's absence is survived
+    # by shimming the activation command the config baked in.
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    (shim / "python").write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "CWD=$(pwd)"\n'
+        'echo "PYPATH=${PYTHONPATH:-}"\n'
+        'echo "ARGS=$*"\n')
+    (shim / "python").chmod(0o755)
+    (shim / "conda").write_text("#!/usr/bin/env bash\nexit 0\n")
+    (shim / "conda").chmod(0o755)
+    env = {**os.environ, "PATH": f"{shim}:{os.environ['PATH']}"}
+    # invoked FROM ELSEWHERE, deliberately
+    proc = subprocess.run(["bash", str(launcher), "status", "--fails"],
+                          cwd=str(tmp_path), env=env,
+                          capture_output=True, text=True, timeout=60)
+    out = proc.stdout
+    assert f"CWD={calc.resolve()}" in out, (
+        f"the launcher must stand in the bundle:\n{out}\n{proc.stderr}"
+    )
+    assert "ARGS=-m molbuilder jobset status --fails" in out
+    import molbuilder as _pkg
+    repo = str(Path(_pkg.__file__).resolve().parent.parent)
+    assert f"PYPATH={repo}" in out.replace(repo + ":", repo + "\n")[:10**6] \
+        or repo in out, "the repo must ride PYTHONPATH"

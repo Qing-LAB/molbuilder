@@ -328,6 +328,17 @@ supported invocation). An evaluation that goes looking for `molbuilder` on
 `PATH` is testing an assumption this design never makes — made once,
 2026-08-19, which is why this section exists.
 
+**And from inside a calculation, the launcher `prep` writes there**
+*(user, 2026-08-20)*: `./jobset.sh <verb> …` is the same supported form,
+carried to where the data lives. The dilemma it closes: from the bundle the
+module is nowhere to be found, and from the repo the bundle is not the cwd —
+so every prep writes `jobset.sh` at the bundle root, baking THIS machine's
+repo path and env at generation (the wrappers' own two-layer premise:
+configured preamble + activation verbatim, no runtime discovery). It
+activates, stands in the bundle, and runs `python -m molbuilder` with the
+repo on `PYTHONPATH` — the cwd stays the bundle, so `--bundle .` and every
+other verb default keep their meaning.
+
 **Verified against the scripts, not assumed** (2026-08-19): both engines'
 wrappers were run in a pure shell — `env -i`, no conda on `PATH`, no rc
 files — and bootstrapped from nothing but their baked hook line: activation,

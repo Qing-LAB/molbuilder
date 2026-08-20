@@ -314,11 +314,12 @@ def _stage_bench_dir(base, stage):
 
 
 def _pick_trial(js, base, trial, mode):
-    """Which trial this invocation launches — § 2.3.2, decided 2026-08-12:
-    ONE per invocation under submit.  Named → that one; bare → the NEXT
-    UNLAUNCHED (launch recorded as run.json in the trial's dir), with the
-    remaining count said out loud.  `--mode direct` is not submission and
-    runs the set sequentially, as ever."""
+    """Which trial this invocation launches.  NAMED → that one (how a single
+    point is re-run).  Bare under submit no longer reaches here — the sweep
+    is grouped into ONE job (§ 2.3.2, user 2026-08-20; the 2026-08-12
+    one-per-invocation rule survives as what it protected: one launch act).
+    `--mode direct` is not submission and runs the set sequentially, as
+    ever."""
     from .materialize import job_dir_names, shape_of, was_launched
     if trial is not None:
         if not any(j.name == trial for j in js.jobs):
@@ -1237,8 +1238,14 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
 @click.option("--dry-run", is_flag=True,
               help="print the exact command each job WOULD get; launch "
                    "nothing.")
+@click.option("--trial-timeout", "trial_timeout_min", default=15,
+              show_default=True, metavar="MINUTES",
+              help="bench + submit mode: the hard per-trial time bound "
+                   "inside the grouped job (project-layout.md § 2.3.2, "
+                   "2026-08-20).  A trial that hits it is killed and reads "
+                   "incomplete; the walk continues.")
 def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
-               dry_run: bool) -> None:
+               dry_run: bool, trial_timeout_min: int) -> None:
     """Launch a prepped stage: local ``bash`` (direct) or the machine's
     submission system (submit).  Run ``prep`` first.  ``--dry-run`` shows the
     exact command before anything is irreversible.
@@ -1309,13 +1316,27 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     from ..runtime_config import config_provenance, format_provenance
     prov = config_provenance(project_dir=base)
     click.echo(format_provenance(prov))
-    if kind == "bench" and js.kind == "sweep":
-        only = _pick_trial(js, base, trial, mode)
-    else:
-        only = _resolve_stage(js, stage, "submit")
     try:
-        results = submit_jobset(js, base, mode=mode, domain=domain,
-                                dry_run=dry_run, only=only)
+        if (kind == "bench" and js.kind == "sweep"
+                and mode == "submit" and trial is None):
+            # ONE job for the whole sweep (§ 2.3.2, user 2026-08-20): the
+            # trials ride a single allocation in sequence, each under the
+            # per-trial bound.  A named trial still submits alone below --
+            # how a single point is re-run.
+            from .submit import submit_bench_group
+            _ledger(base, "submit", "bench-grouped",
+                    trial_timeout_s=trial_timeout_min * 60,
+                    trials=[j.name for j in js.jobs])
+            results = submit_bench_group(
+                js, base, domain=domain, dry_run=dry_run,
+                trial_timeout_s=trial_timeout_min * 60)
+        else:
+            if kind == "bench" and js.kind == "sweep":
+                only = _pick_trial(js, base, trial, mode)
+            else:
+                only = _resolve_stage(js, stage, "submit")
+            results = submit_jobset(js, base, mode=mode, domain=domain,
+                                    dry_run=dry_run, only=only)
     except SubmitError as e:
         _ledger(base, "submit", "refused", kind=kind, stage=stage,
                 trial=trial, mode=mode, mode_source=mode_source,
@@ -1331,8 +1352,11 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     for r in results:
         tail = (f"job {r.job_id}" if r.job_id else
                 (f"rc={r.returncode}" if r.returncode is not None else ""))
-        # a skipped trial was not run and WOULD not be -- its verb says so
-        v = "skip     " if r.status.startswith("skipped") else verb
+        # a skipped trial was not run and WOULD not be -- its verb says so;
+        # a trial riding the group is launched BY the group's one command
+        v = ("skip     " if r.status.startswith("skipped")
+             else "rides    " if r.status == "rides the group"
+             else verb)
         click.echo(f"  {v}  {r.name:<12} {' '.join(r.command)}  "
                    f"[{r.status}] {tail}".rstrip())
     if not dry_run:

@@ -969,15 +969,29 @@ machine, not relaxing the molecule**.
 > different `SystemLabel` and SIESTA will not read them into the real stage; and
 > they are **forced cold**, so they cannot pick anything up either. See § 4.
 
-You submit them with `jobset submit bench tight` — **one trial per
-invocation**, the next unlaunched one, and it tells you how many remain;
-naming a trial (`jobset submit bench tight G1K8C2`) submits that one.
-Nothing submits the whole set: submission is manual and one by one, the same
-rule as every other launch *(decided 2026-08-12, user — the earlier reading
-of this sentence, one command queueing every trial, was residue of the
-retired `run-bench` batch launcher)*. `--mode direct` on a workstation is
-not submission and is exempt as ever: it runs the trials sequentially,
-in-shell, waiting for each. When the queue has drained,
+You submit them with `jobset submit bench tight` — and under `--mode
+submit` that is **one scheduler job for the whole sweep** *(user,
+2026-08-20)*: the trials run **sequentially inside a single allocation**,
+each under a hard per-trial time bound (default 15 minutes,
+`--trial-timeout`), driven by a generated sequencer that lives in the
+stage's `bench/` container — the parent that sees every trial — while each
+trial keeps writing into its own `bench-<POINT>/` directory exactly as
+before. The allocation is the **union envelope**: the widest trial's ranks,
+cores and GPUs, and a wall of Σ per-trial bounds plus margin. A trial that
+hits its bound is killed and reads `incomplete` in the summary's census;
+the walk continues — one bad point says nothing about the next. Naming a
+trial (`jobset submit bench tight G1K8C2`) still submits that one alone
+(how a single point is re-run).
+
+> *This amends the 2026-08-12 decision by keeping what it protected: **one
+> launch act, never a queue flood**. The earlier form — one trial per
+> invocation — made an N-point sweep cost N queue waits, and on an HPC a
+> submission is expensive and unpredictable; the grouped sweep is still
+> exactly one job handed to the scheduler.*
+
+`--mode direct` on a workstation is not submission and is exempt as ever:
+it runs the trials sequentially, in-shell, waiting for each. When the
+sweep has finished,
 `jobset summarize bench tight` reads the timings and writes
 `bench-result.json` — a recommendation, not a decision:
 

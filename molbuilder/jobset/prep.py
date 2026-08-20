@@ -286,6 +286,30 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
         encoding="utf-8")
     if log is not None:
         log.produced("STAGE-PLAN.md", str(plan_dir / "STAGE-PLAN.md"))
+
+    # ---- 4b. the jobset launcher (user, 2026-08-20) ------------------- #
+    # `./jobset.sh <verb> ...` from inside the bundle, with no molbuilder
+    # installed: the launcher bakes THIS machine's repo path and env at
+    # generation (runwrap.render_jobset_launcher -- the shell home), so it
+    # is regenerated on every prep and always describes the machine that
+    # prepped.  Written at the BUNDLE root: one per calculation, serving
+    # every verb, since the verbs' own --bundle defaults to the cwd it
+    # establishes.
+    try:
+        import stat as _stat
+
+        from ..runwrap import render_jobset_launcher
+        _launcher = base / "jobset.sh"
+        _launcher.write_text(render_jobset_launcher(base), encoding="utf-8")
+        _launcher.chmod(_launcher.stat().st_mode
+                        | _stat.S_IXUSR | _stat.S_IXGRP | _stat.S_IXOTH)
+        if log is not None:
+            log.produced("jobset.sh", str(_launcher))
+    except Exception:
+        # A bundle without a launcher is inconvenient, not broken -- the
+        # activation config may legitimately be absent on a dev checkout,
+        # and prep's real products must not fail on the convenience.
+        pass
     return dirs
 
 
