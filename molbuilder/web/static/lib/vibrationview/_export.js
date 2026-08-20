@@ -24,7 +24,6 @@
  */
 "use strict";
 
-import { storeZip as zip } from "../zip-store.js";
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
@@ -78,9 +77,79 @@ function gifEncoder() {
 }
 
 
-/* The zip machinery moved to lib/zip-store.js on 2026-08-19 (a second
- * consumer — the MolView files door — made it a shared module).  Same
- * bytes: extracted verbatim, STORE mode, fixed epoch timestamp. */
+/* A store-mode zip -- local headers, a central directory naming them, and an
+ * end record pointing at that directory.  The timestamp is a constant rather
+ * than the clock, so exporting the same animation twice produces the same
+ * bytes.
+ *
+ * PRIVATE ON PURPOSE: this package is sealed (its module-boundary tests
+ * forbid imports in either direction), so it carries its own copy even
+ * though lib/zip-store.js now holds the same code for the rest of the app.
+ * Consolidating the two is this package's own future migration, not an
+ * import through the wall. */
+const ZIP_TIME = 0;      // 00:00:00
+const ZIP_DATE = 0x21;   // 1980-01-01, the epoch the format was born with
+
+const CRC_TABLE = (function () {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        t[n] = c >>> 0;
+    }
+    return t;
+})();
+
+function crc32(bytes) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) {
+        c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    }
+    return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function zip(entries) {
+    const enc   = new TextEncoder();
+    const parts = [];
+    const dir   = [];
+    let offset  = 0;
+
+    function u16(v) { return [v & 0xFF, (v >>> 8) & 0xFF]; }
+    function u32(v) {
+        return [v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF];
+    }
+
+    for (const e of entries) {
+        const name = enc.encode(e.name);
+        const crc  = crc32(e.bytes);
+        const head = new Uint8Array([].concat(
+            u32(0x04034b50), u16(20), u16(0), u16(0),
+            u16(ZIP_TIME), u16(ZIP_DATE),
+            u32(crc), u32(e.bytes.length), u32(e.bytes.length),
+            u16(name.length), u16(0)));
+        parts.push(head, name, e.bytes);
+        dir.push({ name: name, crc: crc, size: e.bytes.length, offset: offset });
+        offset += head.length + name.length + e.bytes.length;
+    }
+
+    const cdStart = offset;
+    for (const d of dir) {
+        const head = new Uint8Array([].concat(
+            u32(0x02014b50), u16(20), u16(20), u16(0), u16(0),
+            u16(ZIP_TIME), u16(ZIP_DATE),
+            u32(d.crc), u32(d.size), u32(d.size),
+            u16(d.name.length), u16(0), u16(0), u16(0), u16(0), u32(0),
+            u32(d.offset)));
+        parts.push(head, d.name);
+        offset += head.length + d.name.length;
+    }
+    parts.push(new Uint8Array([].concat(
+        u32(0x06054b50), u16(0), u16(0), u16(dir.length), u16(dir.length),
+        u32(offset - cdStart), u32(cdStart), u16(0))));
+
+    return new root.Blob(parts, { type: "application/zip" });
+}
+
 
 
 /* WHAT AN EXPORT IS, written once (§ 12).

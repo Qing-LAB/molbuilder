@@ -9,9 +9,10 @@
  *           download is exactly what browsers silently swallow — one archive
  *           is the delivery that cannot lose its half).
  *
- * Extracted verbatim from lib/vibrationview/_export.js on 2026-08-19, where
- * it lived private since the animation export shipped — the second consumer
- * is what made it a shared module (one home, not one copy per exporter).
+ * A DELIBERATE second copy (2026-08-19): the animation exporter carries the
+ * same code privately inside its own sealed package — whose module-boundary
+ * tests forbid imports in either direction — so sharing across that wall is
+ * not an import, and consolidation is that package's own future migration.
  */
 "use strict";
 
