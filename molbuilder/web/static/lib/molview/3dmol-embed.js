@@ -587,6 +587,19 @@ export function create(hostEl, opts) {
             try { swap = state.viewer.setFrame(i); } catch (_) { return; }
             const settled = () => {
                 if (state.disposed) return;
+                /* CARRIED KNOWLEDGE (5 of 5).  setFrame swaps the model's
+                 * active atom array for the FRAME'S OWN atom objects (the
+                 * library's setFrame: `s.atoms = s.frames[e]`), and
+                 * setClickable stamps clickable + callback on the objects
+                 * active at wiring time -- so every frame but the wired one
+                 * held zero clickable atoms and clicks fell straight
+                 * through (found 2026-08-20: the window selected only on
+                 * frame 0 while the atom list kept working).  Clickability
+                 * is re-established after every settled swap, before the
+                 * paint; it stamps flags on n atoms and rebuilds no
+                 * geometry. */
+                state.pickWired = false;
+                wirePick();
                 replaceOverlays();
                 paint();
             };

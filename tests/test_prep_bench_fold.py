@@ -537,7 +537,7 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
     assert "provenance" in prep            # WHERE each setting came from
     group = lines[1]
     assert group["trial_timeout_s"] == 15 * 60
-    assert len(group["trials"]) == len(
+    assert len(group["sweep"]) == len(
         json.loads((calc / "01_coarse" / "bench"
                     / "job-set.json").read_text())["jobs"])
     launch = lines[2]

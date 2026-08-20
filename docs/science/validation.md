@@ -340,7 +340,7 @@ either nagging or dangerous:
   | the sampled axis says | finding |
   |---|---|
   | `isolated` / `transport` | **warn** — sampling a direction declared not to repeat (isolated: wasted cost) or one that must not carry fake Bloch periodicity (transport) |
-  | `periodic`, but the **geometric gap** (cell extent − atom span) on that axis is ≥ 5 Å | **hint** — the gap is the real vacuum whether or not the `vacuum` field was set; images that far apart are usually meant to interact weakly or not at all, so the finding names the gap and says *"if deliberate, carry on"* — a minor-image-interaction setup is a legitimate choice only the user can judge |
+  | `periodic`, but the **geometric gap** (cell extent − atom span) on that axis is ≥ 5 Å | **hint** — the gap is the real vacuum whether or not the `vacuum` field was set; images that far apart are usually meant to interact weakly or not at all, so the finding names the gap and says *"if deliberate, carry on"* — a minor-image-interaction setup is a legitimate choice only the user can judge. *(The arithmetic is exact for orthogonal cells with unwrapped coordinates — the common case here; a skewed cell's axis norm overstates the perpendicular image distance, and wrapped coordinates can suppress the hint. Both err on the quiet side of a hint-only check.)* |
   | `periodic`, tightly packed | silent — everything checks out |
 
   *(This retired two earlier rules on 2026-08-20: a span-ratio heuristic

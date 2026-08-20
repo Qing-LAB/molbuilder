@@ -264,3 +264,45 @@ def test_a_handoff_lands_in_the_target_tabs_own_slot():
     assert out["ok"] is True
     assert out["dir"] == "/p/proj/optimization/run-1"
     assert out["file"] == "/p/proj/optimization/run-1/out.xyz"
+
+
+# --------------------------------------------------------------------- #
+#  Source-text invariant: the raw selection keys have ONE home           #
+# --------------------------------------------------------------------- #
+
+def test_nothing_touches_the_raw_selection_keys_outside_state_js():
+    """projects.md § 2: *"nothing reads the raw storage keys directly,
+    because a second reader is how the keying would silently fork"* — and
+    state.js's own header extends it to any second SITE touching the raw
+    keys, writers included.
+
+    2026-08-20: three raw readers in ``list.js`` (the row marker, the
+    re-list preservation rule, and ``restoreSelection``'s file half) had
+    survived the per-tab migration, so a returning tab restored its own
+    folder but the most-recent-anywhere FILE — the exact fork the sentence
+    predicts.  This pins the door shut: any ``sessionStorage`` get/set of
+    the selection keys (by constant or by literal) outside ``state.js``
+    fails the build.
+    """
+    import re
+
+    static = ROOT / "molbuilder/web/static"
+    call_re = re.compile(
+        r"sessionStorage\s*\.\s*(?:getItem|setItem)\s*\(\s*([^)]*)")
+    key_re = re.compile(r"SS_FILE|SS_DIR|current_file|current_dir")
+    offenders: list[str] = []
+    for js in static.rglob("*.js"):
+        rel = js.relative_to(static).as_posix()
+        if rel.startswith("vendor/") or rel.endswith(".min.js"):
+            continue
+        if rel == "lib/projects/state.js":   # the one home
+            continue
+        text = js.read_text(encoding="utf-8")
+        for m in call_re.finditer(text):
+            if key_re.search(m.group(1)):
+                line = text.count("\n", 0, m.start()) + 1
+                offenders.append(f"{rel}:{line}: {m.group(0).strip()}")
+    assert offenders == [], (
+        "raw selection-key touches outside state.js (route them through "
+        "readSelectionSlot / the projects API — projects.md § 2):\n  "
+        + "\n  ".join(offenders))

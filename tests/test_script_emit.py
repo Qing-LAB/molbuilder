@@ -635,8 +635,10 @@ def test_extract_script_source_empty_blocks_present_but_empty():
     src = sc.extract_script_source(text)
     assert src["regions"] == {}        # present, empty
     assert src["frozen_atoms"] == []   # nothing carries the label
-    from molbuilder.sidecars.molstruct import SCHEMA_VERSION as _SV
-    assert src["schema_version"] == _SV
+    # The fixture is a v7 block, and v7 is in the READABLE SET (schema 8
+    # added only optional identity columns): read whole, version reported
+    # as what the block SAYS.
+    assert src["schema_version"] == 7
 
 
 # --------------------------------------------------------------------- #

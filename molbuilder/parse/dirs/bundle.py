@@ -83,6 +83,7 @@ def _iso_z() -> str:
 #: The atom-metadata schema this build WRITES (script_emit stamps it from the
 #: same constant). Compared against rather than a literal: a version written
 #: down in two places is how the block came to claim v4 while carrying v7.
+from molbuilder.sidecars.molstruct import READABLE_VERSIONS as _READABLE
 from molbuilder.sidecars.molstruct import SCHEMA_VERSION as _CURRENT_SCHEMA
 
 
@@ -112,9 +113,12 @@ def _extract_script_source(text: str) -> Dict[str, Any]:
         sv = atom_md.get("schema_version")
         if isinstance(sv, int):
             schema_version = sv
-            if sv != _CURRENT_SCHEMA:
-                # REFUSED, NOT READ (2026-08-01, by decision).  This build
-                # writes v{_CURRENT_SCHEMA} and reads that alone.
+            if sv not in _READABLE:
+                # REFUSED, NOT READ (2026-08-01, by decision; amended
+                # 2026-08-20 to the READABLE SET -- v8 added only optional
+                # identity columns, so a v7 block reads whole and refusing
+                # it would have made every existing finished run's labels
+                # unreadable for a change that loses nothing).
                 #
                 # It used to READ an older block and attach a warning, on the
                 # reasoning that a finished run cannot be re-exported the way a
@@ -131,7 +135,8 @@ def _extract_script_source(text: str) -> Dict[str, Any]:
                 # nobody can reason about.
                 notes.append(
                     f"atom-metadata schema_version {sv}, but this molbuilder "
-                    f"writes and reads v{_CURRENT_SCHEMA} only. The block was "
+                    f"writes v{_CURRENT_SCHEMA} and reads "
+                    f"{sorted(_READABLE)} only. The block was "
                     f"NOT read -- an older one keeps the same facts in "
                     f"different places (before v7 the frozen atoms sat in a "
                     f"top-level key rather than in `regions`), so reading it "

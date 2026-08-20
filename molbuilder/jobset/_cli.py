@@ -1324,9 +1324,14 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             # per-trial bound.  A named trial still submits alone below --
             # how a single point is re-run.
             from .submit import submit_bench_group
+            # The decision entry records the SWEEP considered -- the group's
+            # actual members are the still-unlaunched subset, which the
+            # "launched" entry below records per job ("rides the group").
+            # The key said `trials` until 2026-08-20 and read as the ride
+            # list, which it was not (milestone review, N1).
             _ledger(base, "submit", "bench-grouped",
                     trial_timeout_s=trial_timeout_min * 60,
-                    trials=[j.name for j in js.jobs])
+                    sweep=[j.name for j in js.jobs])
             results = submit_bench_group(
                 js, base, domain=domain, dry_run=dry_run,
                 trial_timeout_s=trial_timeout_min * 60)

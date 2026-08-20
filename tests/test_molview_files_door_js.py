@@ -154,3 +154,23 @@ def test_failures_and_nonsense_come_back_as_envelopes_never_throws():
     assert out["empty"]["ok"] is False
     assert "unknown destination" in out["where"]["error"]
     assert out["binEmpty"]["ok"] is False
+
+
+def test_the_gates_verdicts_ride_the_doors_result():
+    """§ 11.3 / projects.md § 5 (2026-08-20): the server judges what leaves
+    (`checked_periodicity`) and sends `notices` beside the files — and the
+    door carries them in its result instead of dropping them, which was the
+    one place the whole chain went quiet."""
+    out = _run(
+        "__replies.push({ match: '/api/structure/export', body: { ok: true,"
+        " files: [{ name: 's.xyz', text: '3\\n\\n' }],"
+        " notices: [{ level: 'warn', message: 'the origin is user-owned',"
+        " about: 'cell.edit' }] } });\n"
+        "const r = await molviewFiles.save('download', 's',"
+        " { structure: { elements: ['O'] } });\n"
+        "console.log(JSON.stringify(r));\n"
+    )
+    assert out["ok"] is True
+    assert out["notices"] == [{"level": "warn",
+                               "message": "the origin is user-owned",
+                               "about": "cell.edit"}]

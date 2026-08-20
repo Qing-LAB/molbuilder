@@ -746,8 +746,16 @@ function buildExportMenu(doc, card, model, handle, files) {
     function report(out, did) {
         if (!out) { say("", false); return; }
         if (out.ok) {
-            say(did + (out.path ? " " + out.path
-                : (out.files ? " " + out.files.join(", ") : "")), false);
+            let line = did + (out.path ? " " + out.path
+                : (out.files ? " " + out.files.join(", ") : ""));
+            // The gate's verdicts, on the same line the outcome uses
+            // (2026-08-20): the save stood, so this is not painted as an
+            // error -- but the sentence the server attached is said.
+            if (Array.isArray(out.notices) && out.notices.length) {
+                line += " \u2014 " + out.notices
+                    .map((n) => n && n.message).filter(Boolean).join("; ");
+            }
+            say(line, false);
         } else if (out.cancelled) {
             say("", false);
         } else {

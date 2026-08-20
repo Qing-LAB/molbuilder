@@ -88,7 +88,22 @@ except ImportError:                  # pragma: no cover - Windows branch
 #: were free to relax; the run converged and was wrong.  A version gate that admits
 #: a version the code cannot honour is worse than no gate: it turns a loud failure
 #: into a quiet one.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8   # 8 (2026-08-20): + the OPTIONAL identity columns
+#                      (structure.IDENTITY_FIELDS, canonical-dict spellings,
+#                      written only when real -- user ruling: additive
+#                      "extra", never conflicting).  A 7 file simply lacks
+#                      them and reads as before; an OLDER reader meeting an
+#                      8 file that carries them refuses with the stray-key
+#                      message, which names exactly what it does not know.
+
+#: The versions THIS build reads whole.  v8 (2026-08-20) only ADDED the
+#: optional identity columns, so a v7 file loses nothing read under v8 rules
+#: (absent identity = the synthesized defaults, which is what v7 meant).
+#: Everything older stores the same facts in DIFFERENT places (v3's top-level
+#: ``frozen_atoms``), and partial reads of those are the silent-loss case the
+#: strict gate exists for -- so the set widens only when an addition is
+#: provably additive.
+READABLE_VERSIONS = frozenset({7, 8})
 
 #: The sidecar LAYER's own keys -- everything in a payload that is not a
 #: Structure metadata field.  Named so :func:`apply_to_structure` can hand the
@@ -239,6 +254,7 @@ def normalise_selection_rules(
 def to_dict(
     fields: Optional[Dict[str, Any]] = None,
     *,
+    identity: Optional[Dict[str, Any]] = None,
     n_atoms_total: int,
     structure_hash: str,
     selection_rules: Optional[Dict[str, Any]] = None,
@@ -278,6 +294,38 @@ def to_dict(
     # authority (a scratch N-atom Structure IS the schema).  Shared verbatim with
     # the read side + apply_to_structure, so no field can drift between them.
     fields = structure_fields_via_dataclass(n_atoms_total, fields or {})
+    # The OPTIONAL identity columns (schema 8): validated the same way --
+    # through the ONE dataclass authority.  A scratch Structure carrying them
+    # re-runs __post_init__'s own length/type checks, and what comes back is
+    # exactly what a reader will reconstruct; only REAL columns are handed in
+    # (Structure.identity_to_dict already skipped the synthesized defaults).
+    identity = dict(identity or {})
+    if identity:
+        from molbuilder.structure import IDENTITY_FIELDS, Structure
+        stray_id = [k for k in identity if k not in IDENTITY_FIELDS]
+        if stray_id:
+            raise MolstructJsonError(
+                f"identity carries {sorted(stray_id)!r}; the identity "
+                f"columns are {list(IDENTITY_FIELDS)!r}")
+        try:
+            scratch = Structure(
+                elements=["X"] * n_atoms_total,
+                positions=[[0.0, 0.0, 0.0]] * n_atoms_total,
+                title=identity.get("title", ""),
+                atom_names=identity.get("atom_names"),
+                residue_ids=identity.get("residue_ids"),
+                residue_names=identity.get("residue_names"),
+                chain_ids=identity.get("chain_ids"),
+            )
+        except (ValueError, TypeError) as exc:
+            raise MolstructJsonError(str(exc)) from exc
+        identity = {k: v for k, v in {
+            "title":         scratch.title or "",
+            "atom_names":    list(scratch.atom_names),
+            "residue_ids":   [int(v) for v in scratch.residue_ids],
+            "residue_names": list(scratch.residue_names),
+            "chain_ids":     list(scratch.chain_ids),
+        }.items() if k in identity and (k != "title" or v)}
     # selection_rules -- a sidecar-only pass-through (not a Structure field),
     # validated against the normalised region set (one shared validator).
     normed_rules = normalise_selection_rules(
@@ -295,6 +343,10 @@ def to_dict(
         # dataclass rides onto the sidecar automatically and this layer can no
         # longer drop or drift one (structure-authority.md § 3.4).
         **fields,
+        # The identity columns (schema 8) -- absent entirely when nothing is
+        # real, so an xyz-born sidecar is byte-identical to a schema-7 one
+        # apart from the version stamp.
+        **identity,
         # selection_rules -- a sidecar-only pass-through (not a Structure field).
         "selection_rules": normed_rules,
         "created_by":      str(created_by),
@@ -452,15 +504,30 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             f"indices no longer point at the right atoms; re-export "
             f"the sidecar from /modify after structural edits."
         )
-    from molbuilder.structure import METADATA_FIELDS
+    from molbuilder.structure import IDENTITY_FIELDS, METADATA_FIELDS
     stray = [k for k in sidecar_data
-             if k not in METADATA_FIELDS and k not in ENVELOPE_KEYS]
+             if k not in METADATA_FIELDS and k not in ENVELOPE_KEYS
+             and k not in IDENTITY_FIELDS]
     if stray:
         raise MolstructJsonError(
             f"sidecar carries {sorted(stray)!r}, which is neither a structure "
             f"metadata field {list(METADATA_FIELDS)!r} nor an envelope key "
             f"{list(ENVELOPE_KEYS)!r}.  Refused rather than ignored: a key "
             f"nobody reads is metadata the writer thinks it saved.")
+    # Identity first (schema 8), FULL-REPLACE -- the same semantics
+    # apply_metadata_dict documents for the metadata block: an absent key
+    # resets the field to its default (post_init refills the placeholders).
+    # This is what makes the sidecar the identity AUTHORITY for a pair: the
+    # xyz half's comment line is provenance, and without the reset the
+    # loader's comment-as-title lift would round-trip a "Built by
+    # molbuilder" the user never stated into the next sidecar.  Plain
+    # attribute sets, so the apply_metadata_dict call below re-runs
+    # __post_init__ over them -- one validator, one message.
+    for k in IDENTITY_FIELDS:
+        if k in sidecar_data:
+            setattr(struct, k, sidecar_data[k])
+        else:
+            setattr(struct, k, "" if k == "title" else None)
     try:
         struct.apply_metadata_dict(
             {k: v for k, v in sidecar_data.items() if k in METADATA_FIELDS})
@@ -496,6 +563,7 @@ def load_text(text, *, source="<sidecar>"):
 
 __all__ = [
     "SCHEMA_VERSION",
+    "READABLE_VERSIONS",
     "frozen_atoms",
     "dumps",
     "MolstructJsonError",

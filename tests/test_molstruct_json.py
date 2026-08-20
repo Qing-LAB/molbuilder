@@ -420,11 +420,12 @@ class TestApplyToStructure:
 
 
 class TestSchemaVersioning:
-    """v3 is the only schema this build reads.  v1/v2 sidecars
-    (which used the older ``fixed_atoms`` key) must be re-exported
-    from /modify -- the parser refuses them rather than silently
-    coercing.  The reader-version list is the single source of
-    truth for which on-disk schemas this build accepts."""
+    """``READABLE_VERSIONS`` is the single source of truth for which on-disk
+    schemas this build accepts: {7, 8} since 2026-08-20.  v8 only ADDED the
+    optional identity columns, so a v7 file reads whole (absent identity is
+    the synthesized defaults, which is exactly what v7 meant); everything
+    older stores the same facts in DIFFERENT places (v3's top-level frozen
+    atoms) and is refused rather than silently coerced."""
 
     @pytest.mark.parametrize("version, why", [
         (2, "v2 kept a `fixed_atoms` key"),
@@ -453,8 +454,28 @@ class TestSchemaVersioning:
             payload["schema_version"] = version
         p = tmp_path / "old.molstruct.json"
         p.write_text(_json.dumps(payload))
-        with pytest.raises(msj.MolstructJsonError, match="reads version 7 only"):
+        with pytest.raises(msj.MolstructJsonError,
+                           match=r"reads versions \[7, 8\] only"):
             msj.load(p)
+
+    def test_a_v7_file_reads_whole_under_v8(self, tmp_path):
+        """The additive-bump rule (2026-08-20): v8 added only the OPTIONAL
+        identity columns, so every fact a v7 file states lands in the same
+        place -- and the absent identity means the synthesized defaults,
+        which is what v7 always meant.  This is the case that makes the
+        readable SET a set; a strict single-version gate here would have
+        refused every pair on disk the day the schema learned a new word."""
+        payload = {
+            "schema_version": 7,
+            "n_atoms_total":  3,
+            "structure_hash": "b" * 32,
+            "regions":        {"L-electrode": [0]},
+        }
+        p = tmp_path / "old.molstruct.json"
+        p.write_text(_json.dumps(payload))
+        loaded = msj.load(p)
+        assert loaded["regions"] == {"L-electrode": [0]}
+        assert "atom_names" not in loaded
 
     def test_writes_the_reserved_label_into_the_one_label_store(self, tmp_path):
         """Canonical write (schema 7): the reserved label is a label. Neither

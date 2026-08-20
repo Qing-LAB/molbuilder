@@ -336,7 +336,13 @@ def topology_field_types() -> Dict[str, type]:
     for f in fields(Topology):
         args = [a for a in typing.get_args(hints[f.name])
                 if a is not type(None)]
-        out[f.name] = args[0] if args else str
+        # A plain (non-Optional) annotation has no args -- the hint IS the
+        # type.  str was the fallback for that branch too, which would have
+        # silently text-typed the first plain field ever added (milestone
+        # review N3; unreachable today, every field is Optional).
+        hint = hints[f.name]
+        out[f.name] = args[0] if args else (
+            hint if isinstance(hint, type) else str)
     return out
 
 

@@ -822,16 +822,17 @@
         function _forceRescan() {
             if (disposed) return;
             if (!proj || typeof proj.onChange !== "function") return;
+            // ONE reader owns the per-tab keying (projects.md § 2) --
+            // projects.getCurrentDir()/getCurrentFile().  When that reader
+            // is absent (the sidebar module never mounted) there is nothing
+            // compliant to ask: a raw shared-key read here was the fork the
+            // contract forbids, and it answered with another tab's place.
             const cur = (typeof proj.getCurrentDir === "function")
                 ? proj.getCurrentDir()
-                : (root.sessionStorage
-                    ? root.sessionStorage.getItem(C.SS_DIR)
-                    : "");
+                : "";
             const curFile = (typeof proj.getCurrentFile === "function")
                 ? proj.getCurrentFile()
-                : (root.sessionStorage
-                    ? root.sessionStorage.getItem(C.SS_FILE)
-                    : "");
+                : "";
             if (!cur) return;
             // Unconditional: an unchanged dir must still get a fresh listing,
             // which is the whole point of a force-rescan.

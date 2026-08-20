@@ -625,3 +625,27 @@ def test_the_app_namespace_is_never_typed_in_the_source():
                 line.strip() for line in code.splitlines() if "molbuilder." in line
             ]
     assert offenders == {}, f"the app's global namespace is named in: {offenders}"
+
+
+def test_every_shown_frame_is_clickable_not_just_the_wired_one():
+    """CARRIED KNOWLEDGE (5 of 5) — the frame swap invalidates picking.
+
+    The library's ``setFrame`` swaps the model's active atom array for the
+    frame's OWN atom objects (``s.atoms = s.frames[e]`` in the vendored
+    source), and ``setClickable`` stamps its flags on the objects active at
+    wiring time — so the flags set at load live on frame 0 alone, and every
+    other frame had zero clickable atoms: clicks in the window fell through
+    while the atom list kept working (found 2026-08-20).  The embed must
+    re-establish clickability after every settled swap.
+    """
+    out = _run("""
+        const e = fresh();
+        const before = globalThis.__countCalls("setClickable");
+        e.showFrame(1);
+        const after = globalThis.__countCalls("setClickable");
+        console.log(JSON.stringify({ before: before, after: after }));
+    """)
+    assert out["before"] >= 1, "load never wired picking at all"
+    assert out["after"] == out["before"] + 1, (
+        "the frame swap did not re-establish clickability -- every frame "
+        "but the wired one is click-dead")

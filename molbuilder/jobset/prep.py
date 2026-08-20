@@ -305,11 +305,17 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                         | _stat.S_IXUSR | _stat.S_IXGRP | _stat.S_IXOTH)
         if log is not None:
             log.produced("jobset.sh", str(_launcher))
-    except Exception:
+    except Exception as _exc:
         # A bundle without a launcher is inconvenient, not broken -- the
         # activation config may legitimately be absent on a dev checkout,
-        # and prep's real products must not fail on the convenience.
-        pass
+        # and prep's real products must not fail on the convenience.  But
+        # the skip is SAID (milestone review N2, 2026-08-20): silence here
+        # let a stale jobset.sh -- another machine's baked repo path --
+        # survive a re-prep without a word.
+        if log is not None:
+            log.note("jobset.sh: not regenerated (" + str(_exc) + "); a "
+                     "launcher already on disk is a previous prep's and "
+                     "may bake another machine's paths")
     return dirs
 
 

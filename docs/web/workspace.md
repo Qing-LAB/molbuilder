@@ -140,6 +140,13 @@ workspace folds that name into both the browser key and the server id. Two tags
 are two slots. Nothing is merged, so there is no moment where one writer's copy
 sits half over another's.
 
+**And the tag is ALL that separates them** *(said plainly, 2026-08-20)*: the
+workspace id is a pure function of the tag — no page, no pathname, no window
+enters it — so isolation between pages rests entirely on the owner literals
+staying distinct. Seven owners exist today and all differ; a future page that
+reuses one shares that page's saved state (camera, frame, switches) with zero
+warning. Picking a new owner string means checking it against the ones in use.
+
 **Two things the workspace promises:**
 
 1. **There is one way to save and one way to load — the calls in § 5.** If you

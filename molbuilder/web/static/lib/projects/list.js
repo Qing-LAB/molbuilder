@@ -616,7 +616,7 @@ function _renderList(entries, currentPath) {
   elList.innerHTML = "";
   elList.classList.toggle("is-empty", entries.length === 0);
   if (entries.length === 0) return;
-  const selectedFile = sessionStorage.getItem(SS_FILE) || "";
+  const selectedFile = readSelectionSlot(SS_FILE);
   for (const e of entries) {
     const fullPath = currentPath.replace(/\/$/, "") + "/" + e.name;
     const li = document.createElement("li");
@@ -742,7 +742,7 @@ export async function openDir(absPath) {
   // selected.  Otherwise blank.  Comparison is by exact full-path match,
   // not by basename, so file rename / replace correctly drops the stale
   // selection.
-  const prevFile = sessionStorage.getItem(SS_FILE) || "";
+  const prevFile = readSelectionSlot(SS_FILE);
 
   // Last-call-wins: abort any in-flight listing, then own the current one.  A slow
   // response from an earlier dir click must not paint the DOM after a newer click.
@@ -808,12 +808,14 @@ export async function openDir(absPath) {
 
 /**
  * Re-mark the current file selection + show its status, called after
- * the initial directory listing so a cross-tab persistent selection
- * survives a page navigation.
+ * the initial directory listing so THIS tab's own selection survives a
+ * page navigation (projects.md § 2: both slots are per-tab; until
+ * 2026-08-20 the file half read the shared most-recent key, so a
+ * returning tab restored its own folder but another tab's file).
  */
 export function restoreSelection() {
   const projectsRoot = getProjectsRoot();
-  const file = sessionStorage.getItem(SS_FILE) || "";
+  const file = readSelectionSlot(SS_FILE);
   const dir  = readSelectionSlot(SS_DIR);
   if (!file || !projectsRoot || !file.startsWith(projectsRoot)) return;
   // 2026-05-31 #166: render via the shared subscriber so the

@@ -1450,6 +1450,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     margin-bottom:     0.4rem;
     flex-wrap:         wrap;
 }
+.ps-checkpoint-actions[hidden] {
+    display: none;     /* author display:flex would beat the UA [hidden] rule */
+}
 
 .ps-checkpoint-list {
     list-style:        none;

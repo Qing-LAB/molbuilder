@@ -223,7 +223,16 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
         # not launched" because its .out is one level down.
         attempt = latest_attempt(d)
         observed = attempt or d
-        launch = _launch_record(attempt)
+        # WHERE the launch record lives mirrors where submit WRITES it
+        # (submit.py `_resolve_launch`): the attempt when one exists, and
+        # for a sweep trial the attempt-less dir is ITS OWN attempt, so
+        # its `run.json` sits at the trial's top.  Until 2026-08-20 this
+        # read the attempt only, so a grouped-submitted trial answered
+        # § 1.6's exact forbidden line ("prepped, not launched") while
+        # its record sat one level up from where anyone looked.
+        launch = _launch_record(
+            attempt if attempt is not None
+            else (d if jobset.kind == "sweep" else None))
         # WHICH FILES are this stage's, asked of the layout (§ 9's `Shape`).
         # In the hierarchy the directory already answered; in flat every stage
         # shares one, and the deck's token in each filename is the answer.

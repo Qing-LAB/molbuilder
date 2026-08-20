@@ -113,6 +113,50 @@ export function structureFromServer(payload) {
     const parallel = (name) => (Array.isArray(payload[name])
         && payload[name].length === atoms.length) ? payload[name] : null;
     const residueNames = parallel("residue_names");
+    const atomNames    = parallel("atom_names");
+    const residueIds   = parallel("residue_ids");
+    const chainIds     = parallel("chain_ids");
+
+    /* THE PER-ATOM CHANNELS (the sidecar's `annotations` block;
+     * structure.py `AtomChannel`).  Two halves that live in two places:
+     * kind/color/fdf are CHANNEL-level facts and ride verbatim under
+     * `channelDefs` (like periodicity — the viewer edits none of it);
+     * the atom-indexed half folds onto each atom's facts, so an edit
+     * remaps it with its atom instead of leaving a stale index list.
+     * Until 2026-08-20 this block was never read: channels died at
+     * adoption and a pair that carried them lost them on any trip
+     * through the viewer. */
+    const chanIn = (payload.annotations
+        && typeof payload.annotations === "object")
+        ? payload.annotations : null;
+    const channelDefs = {};
+    const perAtomChannels = atoms.map(() => null);
+    if (chanIn) {
+        for (const name of Object.keys(chanIn)) {
+            const c = chanIn[name];
+            if (!c || typeof c !== "object" || !c.kind) continue;
+            const def = { kind: c.kind };
+            if (c.color != null) def.color = c.color;
+            if (c.fdf != null) def.fdf = c.fdf;
+            channelDefs[name] = def;
+            if (c.kind === "value") {
+                for (const k of Object.keys(c.data || {})) {
+                    const i = Number(k);
+                    if (i >= 0 && i < atoms.length) {
+                        (perAtomChannels[i] = perAtomChannels[i] || {})
+                            [name] = c.data[k];
+                    }
+                }
+            } else {            // tag | flag: a membership index list
+                for (const i of (Array.isArray(c.data) ? c.data : [])) {
+                    if (i >= 0 && i < atoms.length) {
+                        (perAtomChannels[i] = perAtomChannels[i] || {})
+                            [name] = true;
+                    }
+                }
+            }
+        }
+    }
 
     const elements = atoms.map((a) => a.element);
     const annotations = atoms.map((a, i) => {
@@ -135,6 +179,19 @@ export function structureFromServer(payload) {
             : (residueNames ? residueNames[i] : null);
         const facts = { labels: labels };
         if (residue != null && residue !== "") facts.residue = residue;
+        // The other identity columns, folded the same way residue is —
+        // per atom, so an edit carries them with their atom.  The server
+        // synthesizes defaults when a format has none (structure.py
+        // __post_init__: names = elements, resid 1, chain "A"), so these
+        // are simply what the structure says, placeholders included.
+        if (atomNames && atomNames[i] != null && atomNames[i] !== "") {
+            facts.name = atomNames[i];
+        }
+        if (residueIds && residueIds[i] != null) facts.resid = residueIds[i];
+        if (chainIds && chainIds[i] != null && chainIds[i] !== "") {
+            facts.chain = chainIds[i];
+        }
+        if (perAtomChannels[i]) facts.channels = perAtomChannels[i];
         return facts;
     });
 
@@ -154,6 +211,21 @@ export function structureFromServer(payload) {
              * triad, and an export carried no cell. Nothing failed, because a
              * missing key reads as "this structure is not periodic". */
             periodicity: payload.periodicity || null,
+            /* Structure-level identity + the channel definitions, carried
+             * verbatim (§ 6.2 — the viewer interprets none of it).  The
+             * title comes from the CANONICAL envelope (payload.structure —
+             * the structure's own dict), never the flat display key: the
+             * load door decorates that one with a filename fallback
+             * (build.py: "override via extra rather than mutating
+             * struct.title"), and adopting the decoration manufactured a
+             * title the user never stated — caught by the disk→disk
+             * pipeline pin. */
+            title: (payload.structure
+                    && typeof payload.structure.title === "string")
+                ? payload.structure.title
+                : (typeof payload.title === "string" ? payload.title : ""),
+            channelDefs: Object.keys(channelDefs).length
+                ? channelDefs : null,
         },
         coordinates: {
             frames: [atoms.map((a) => [Number(a.x) || 0,
@@ -248,7 +320,66 @@ export function structureForServer(structure, positions) {
      * disguised as a read. */
     const clone = (v) => (v == null ? null : JSON.parse(JSON.stringify(v)));
     const per = structure.periodicity || {};
-    return {
+
+    /* THE IDENTITY COLUMNS, unfolded from the per-atom facts back into the
+     * envelope's parallel lists (`Structure.from_dict` reads them at the
+     * top level).  Carried VERBATIM whenever any atom holds the fact —
+     * placeholders included: whether "MOL"/chain "A" is a default is the
+     * server's judgment, not this module's (§ 6.2).  Until 2026-08-20
+     * nothing here emitted them, so the first edit round-trip replaced
+     * every real residue name with the server's re-synthesized
+     * placeholder. */
+    const ann = structure.annotations;
+    const column = (pick, empty) => {
+        let any = false;
+        const list = ann.map((f) => {
+            const v = pick(f || {});
+            if (v != null && v !== "") { any = true; return v; }
+            return empty;
+        });
+        return any ? list : null;
+    };
+    const atomNames    = column((f) => f.name, "");
+    const residueIds   = column((f) => f.resid, 0);
+    const residueNames = column((f) => f.residue, "");
+    const chainIds     = column((f) => f.chain, "");
+
+    /* THE CHANNELS, rebuilt from the two halves: defs (kind/color/fdf,
+     * carried verbatim) + each atom's own membership/value.  A channel
+     * every atom has dropped comes out empty and is omitted — the same
+     * rule the server's remap applies (structure.py remap_annotations:
+     * "channels that end up empty are dropped"). */
+    const defs = structure.channelDefs || null;
+    let channelsOut = null;
+    if (defs) {
+        for (const name of Object.keys(defs)) {
+            const def = defs[name] || {};
+            let data;
+            if (def.kind === "value") {
+                data = {};
+                let n = 0;
+                ann.forEach((f, i) => {
+                    if (f && f.channels && name in f.channels) {
+                        data[i] = f.channels[name];
+                        n += 1;
+                    }
+                });
+                if (!n) continue;
+            } else {
+                data = [];
+                ann.forEach((f, i) => {
+                    if (f && f.channels && f.channels[name]) data.push(i);
+                });
+                if (!data.length) continue;
+            }
+            const c = { kind: def.kind, data: data };
+            if (def.color != null) c.color = def.color;
+            if (def.fdf != null) c.fdf = def.fdf;
+            (channelsOut = channelsOut || {})[name] = c;
+        }
+    }
+
+    const out = {
         elements:  structure.elements.slice(),
         positions: positions.map((p) => [p[0], p[1], p[2]]),
         /* METADATA IS NESTED, because that is where the envelope keeps it
@@ -266,6 +397,13 @@ export function structureForServer(structure, positions) {
             vacuum:      clone(per.vacuum),
         },
     };
+    if (structure.title) out.title = structure.title;
+    if (atomNames)    out.atom_names    = atomNames;
+    if (residueIds)   out.residue_ids   = residueIds;
+    if (residueNames) out.residue_names = residueNames;
+    if (chainIds)     out.chain_ids     = chainIds;
+    if (channelsOut)  out.metadata.annotations = channelsOut;
+    return out;
 }
 
 

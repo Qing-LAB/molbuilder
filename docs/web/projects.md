@@ -316,8 +316,15 @@ through `POST /api/structure/export`, delivered as **one `<stem>.zip`**
 when it is a pair (a second programmatic download is what browsers
 silently swallow; a single file downloads bare), `"project"` through
 `chooseSavePath` and `POST /api/structure/save` (the overwrite flow
-included). `saveBinary(destination, filename, blob)` is
-the picture half — a download, or `writeFile` into a dialog-chosen folder.
+included). Both `save` shapes carry the periodicity gate's verdicts in the
+result — `notices`, verbatim from the server *(2026-08-20: one gate, two
+doors — `/api/structure/save` runs the same `checked_periodicity` as
+export, refuses the same 400, and says the same warnings; the door drops
+none of it)*. `saveBinary(destination, filename, blob)` is
+the picture half — a download, or an upload into a dialog-chosen folder —
+and the `path` it reports is built from **the server's answer**, because
+`auto_rename` may have written `<stem>-2<ext>` and confirming the name we
+merely asked for would name a file that does not exist.
 MolView holds no file route; this door is where its exports become files.
 
 **The unified save-where question — `projects.chooseSavePath(opts)`**

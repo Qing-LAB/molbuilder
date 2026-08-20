@@ -168,3 +168,57 @@ def test_one_frame_is_the_request_it_always_was(web):
     text = (web._root / "one.xyz").read_text(encoding="utf-8")
     assert text.count("Lattice=") == 0, "a single frame stays a plain .xyz"
     assert text.splitlines()[0].strip() == "2"
+
+
+def test_the_gate_judges_a_save_exactly_as_an_export(web):
+    """2026-08-20: a save and a download cannot produce different bytes — and
+    they must not disagree about a refusal either.  Until this landed,
+    ``/api/structure/save`` wrote the left-handed cell that
+    ``/api/structure/export`` refuses, without a word."""
+    client, tmp_path = web, web._root
+    body = {
+        "structure": {
+            "elements": ["O"],
+            "positions": [[0.0, 0.0, 0.0]],
+            "metadata": {
+                "cell": [[3, 0, 0], [0, 3, 0], [0, 0, -3]],   # det < 0
+                "axis_kind": ["periodic", "periodic", "periodic"],
+            },
+        },
+    }
+    exp = client.post("/api/structure/export",
+                      json=dict(body, name="bad"))
+    sav = client.post("/api/structure/save",
+                      json=dict(body, path=str(tmp_path / "bad.xyz")))
+    assert exp.status_code == 400 and sav.status_code == 400
+    assert exp.get_json()["error"] == sav.get_json()["error"]
+    assert not (tmp_path / "bad.xyz").exists(), "the refused save wrote"
+
+
+def test_a_saves_notices_match_an_exports_for_the_same_structure(web):
+    """The verdicts ride BOTH doors' responses, and they are the same
+    verdicts — one gate, two doors (2026-08-20)."""
+    client, tmp_path = web, web._root
+    body = {
+        "structure": {
+            "elements": ["O"],
+            "positions": [[1.0, 1.0, 1.0]],
+            "metadata": {
+                # A box the atom sits OUTSIDE of (spans 4..12 per axis) with a
+                # user-owned corner: legal, kept, and WARNED about
+                # (cell.py "atoms_outside") -- so the doors have a verdict to
+                # disagree over if one of them stops asking the gate.
+                "cell": [[8, 0, 0], [0, 8, 0], [0, 0, 8]],
+                "cell_origin": [4.0, 4.0, 4.0],
+                "axis_kind": ["isolated", "isolated", "isolated"],
+            },
+        },
+    }
+    exp = client.post("/api/structure/export",
+                      json=dict(body, name="warned")).get_json()
+    sav = client.post("/api/structure/save",
+                      json=dict(body,
+                                path=str(tmp_path / "warned.xyz"))).get_json()
+    assert exp["ok"] and sav["ok"], (exp, sav)
+    assert exp["notices"], "precondition: the gate must have something to say"
+    assert sav["notices"] == exp["notices"]

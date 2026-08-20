@@ -754,8 +754,10 @@ def api_structure_save():
     (``molstruct.to_dict``), so the pair the load door reads back is VALID.  The browser
     never authors the sidecar envelope (the drift that made a browser-written sidecar
     unloadable).  Body: ``{"path": "<project-relative .xyz>", "structure": {...},
-    "overwrite": bool}``.  Returns ``{ok:true, path}`` | ``{ok:false, needsOverwrite:true}``
-    (409, drives the tab's overwrite dialog) | ``{ok:false, error}``."""
+    "overwrite": bool}``.  Returns ``{ok:true, path, notices}`` | ``{ok:false, needsOverwrite:true}``
+    (409, drives the tab's overwrite dialog) | ``{ok:false, error}`` -- and the
+    periodicity gate runs here exactly as on export (2026-08-20): the same
+    refusal is the same 400, the same verdicts ride ``notices``."""
     from molbuilder.web.blueprints.files import _resolve_within_roots, _PickerError
     from molbuilder.workingcopy_structure import StructureCodec
     body = request.get_json(silent=True) or {}
@@ -772,6 +774,15 @@ def api_structure_save():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+    # THE SAME GATE THE EXPORT DOOR RUNS (2026-08-20): a save and a download
+    # cannot produce different bytes -- and they must not disagree about a
+    # refusal either.  Until this line the same structure export refuses (a
+    # left-handed cell, an uncontainable origin) was written here without a
+    # word.  Runs BEFORE the overwrite gate, so nobody is asked to confirm
+    # an overwrite for a save that will be refused; the verdicts ride the
+    # response as `notices`, exactly as they do on export.
+    from ._shared import checked_periodicity
+    struct, notices = checked_periodicity(struct)
     try:
         resolved = _resolve_within_roots(path)   # save-as target need not exist yet
     except _PickerError as exc:
@@ -791,7 +802,7 @@ def api_structure_save():
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001 -- disk / permission -> 500
         return jsonify({"ok": False, "error": f"could not save {path}: {exc}"}), 500
-    return jsonify({"ok": True, "path": path})
+    return jsonify({"ok": True, "path": path, "notices": notices})
 
 
 @bp.route("/api/structure/export", methods=["POST"])

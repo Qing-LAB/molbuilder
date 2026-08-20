@@ -450,10 +450,16 @@ classDiagram
       +string[] elements
       +AtomFacts[] annotations
       +Periodicity periodicity
+      +string title
+      +ChannelDefs channelDefs
     }
     class AtomFacts {
       +string[] labels
       +string residue
+      +string name
+      +int resid
+      +string chain
+      +Map channels
     }
     class Coordinates {
       +Frame[] frames
@@ -512,8 +518,9 @@ classDiagram
 | Field | Shape | What it is |
 |---|---|---|
 | `elements` | `string[]` | element per atom. **Shared by every frame.** |
-| `annotations` | per atom: the labels it carries, and its residue name — a real one from a format that has them, or the model's `MOL` placeholder from one that does not (§ 6.1) | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them, writes them and filters on them (§ 9.5); the drawing does not use them. Writing one is a change to the structure, gated like any other (§ 9.4). Some label names are **reserved** and mean something downstream (§ 6.6) |
+| `annotations` | per atom: the labels it carries, its identity — residue name, atom name, residue id, chain, real ones from a format that has them or the server's synthesized placeholders from one that does not (§ 6.1) — and its per-atom channel values (the sidecar's `annotations` block, atom-indexed half) | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them, writes them and filters on them (§ 9.5); the drawing does not use them. Writing one is a change to the structure, gated like any other (§ 9.4). Some label names are **reserved** and mean something downstream (§ 6.6) |
 | `periodicity` | the a/b/c vectors, the corner the box is anchored at, how each axis is treated — repeating, isolated, or a transport lead — how much empty space an isolated axis should have, and beside each of those the **resolved** answer the server worked out. `null` when the structure has none | **One fact that travels together**, which is why there is one door to change it (§ 9.3). **Carried under the field names it arrives with** — `cell`, `cell_origin`, `axis_kind`, `vacuum` — which are the same names the sidecar on disk uses, because both are the codec's. MolView holds the block, offers it, edits it through that one door, and interprets none of it. Those names and the rules for resolving them belong to [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) |
+| `title` + `channelDefs` | the structure's title, and per channel its `kind`/`color`/`fdf` — the channel-LEVEL half of the sidecar's `annotations` block | **Carried verbatim, like `periodicity`** *(2026-08-20)*: the viewer edits neither, so neither is per-atom — the atom-indexed half of each channel rides on the atoms (above), and the two doors (§ 11.1's adoption, the one outbound read) fold and unfold between this split and the wire's shape. Whether an identity value is a placeholder is the **server's** judgment; this module carries what it is given |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no labels |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
 
@@ -3213,6 +3220,20 @@ leaves the earlier ones alone.
 
 The last two are exports, and they split for a different reason: 3 is the truth
 and 4 is a view of it, which is the line § 11.2 draws.
+
+**What an export of the truth carries** *(2026-08-20)*: everything the
+structure says — elements, the frame range's coordinates, labels (as
+`regions`), the identity columns (title, atom names, residue ids/names,
+chains), the per-atom channels, and the periodicity block. There is no
+narrower "export subset": the envelope is built by the ONE outbound read
+(§ 9.3's `structureForServer`), whose fields mirror the ONE adoption
+(§ 11.1), so a pair that enters the viewer leaves with all of it — edits
+included, because the per-atom halves ride each atom and the server remaps
+them with the geometry. And since sidecar schema 8
+*(2026-08-20)* the pair persists all of it too: the `.molstruct.json`
+carries the identity columns when they are real, so nothing an export
+says stops at the file boundary any more
+([`model/structure-molstruct.md`](?doc=model/structure-molstruct.md) § 1).
 
 ```mermaid
 flowchart LR

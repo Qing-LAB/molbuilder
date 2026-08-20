@@ -91,11 +91,17 @@ export const molviewFiles = {
                 // reported.  A store-zip named by the stem cannot lose its
                 // half.
                 const files = res.body.files;
+                // The gate's verdicts ride the result (2026-08-20): the
+                // server judged what is leaving, and dropping the sentence
+                // here was the one place the whole chain went quiet.
+                const notices = Array.isArray(res.body.notices)
+                    ? res.body.notices : null;
                 if (files.length === 1) {
                     _download(files[0].name,
                               new Blob([files[0].text],
                                        { type: "text/plain" }));
-                    return { ok: true, files: [files[0].name] };
+                    return { ok: true, files: [files[0].name],
+                             notices: notices };
                 }
                 const enc = new TextEncoder();
                 const archive = storeZip(files.map((f) => ({
@@ -104,7 +110,8 @@ export const molviewFiles = {
                 return { ok: true,
                          files: [stem + ".zip ("
                                  + files.map((f) => f.name).join(" + ")
-                                 + ")"] };
+                                 + ")"],
+                         notices: notices };
             }
             if (destination === "project") {
                 const path = await _askProjectPath(stem, "structure");
@@ -135,7 +142,9 @@ export const molviewFiles = {
                         || ("HTTP " + res.http) };
                 }
                 _refreshSidebar();
-                return { ok: true, path: path + ".xyz" };
+                return { ok: true, path: path + ".xyz",
+                         notices: Array.isArray(res.body.notices)
+                             ? res.body.notices : null };
             }
             return { ok: false, error: "unknown destination " + destination };
         } catch (e) {
@@ -172,7 +181,13 @@ export const molviewFiles = {
                              error: (out && out.error) || "write failed" };
                 }
                 _refreshSidebar();
-                return { ok: true, path: dir + "/" + name };
+                // The NAME comes from the server's answer: auto_rename may
+                // have written `<stem>-2<ext>`, and reporting the name we
+                // ASKED for would confirm a file that does not exist.
+                const wrote = String(out.path || "");
+                const finalName = wrote
+                    ? wrote.slice(wrote.lastIndexOf("/") + 1) : name;
+                return { ok: true, path: dir + "/" + finalName };
             }
             return { ok: false, error: "unknown destination " + destination };
         } catch (e) {

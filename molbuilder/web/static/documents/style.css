@@ -131,6 +131,9 @@
     padding: 0 1em 0.35em;
     border-bottom: 1px solid var(--border-subtle);
 }
+.docs-view-bar[hidden] {
+    display: none;  /* author display:flex would beat the UA [hidden] rule */
+}
 
 .docs-theme-btn {
     background: none;

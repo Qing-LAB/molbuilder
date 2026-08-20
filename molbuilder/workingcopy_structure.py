@@ -209,13 +209,22 @@ class StructureCodec:
         document = (struct.to_extxyz(frames=frames) if frames
                     else struct.to_xyz())
         meta = struct.metadata_to_dict()
+        # The REAL identity columns ride the sidecar (schema 8, 2026-08-20):
+        # additive "extra" -- an xyz-born structure's synthesized placeholders
+        # come back empty here and the sidecar is unchanged; a PDB-born
+        # residue identity stops being erased by a save.  And real identity is
+        # by itself a reason for the sidecar to EXIST: it is exactly the
+        # "something to say" the keep rule asks about.
+        identity = struct.identity_to_dict()
         payload = molstruct.to_dict(
             meta,
+            identity       = identity,
             n_atoms_total  = struct.n_atoms,
             structure_hash = _sha256_bytes(document.encode("utf-8")),
         )
         return StructurePair(document=document, sidecar=payload,
-                             keep_sidecar=not _metadata_is_default(meta),
+                             keep_sidecar=(not _metadata_is_default(meta)
+                                           or bool(identity)),
                              suffix=self.GEOMETRY_SUFFIX)
 
     # ---- the pair as NAMED bytes: <stem>.xyz + <stem>.molstruct.json -- #

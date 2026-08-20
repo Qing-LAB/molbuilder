@@ -301,3 +301,158 @@ def test_every_metadata_field_survives_the_whole_export_pipeline(tmp_path,
         f"metadata changed crossing the pipeline: {diffs}"
     )
     assert side_out["pbc"] == [True, True, False]
+
+
+def test_channels_survive_the_pipeline_through_the_real_translators(
+        tmp_path, monkeypatch):
+    """The 2026-08-20 widening, proven disk -> disk: a pair whose sidecar
+    carries per-atom annotation CHANNELS goes ``/api/build/load`` -> the
+    browser's REAL translations (``structureFromServer`` ->
+    ``structureForServer``, executed under node — not a Python mirror) ->
+    ``/api/structure/export`` -> sidecar again, EQUAL apart from
+    provenance.  Until the widening the fold never read the wire's
+    ``annotations`` block, so any trip through the viewer erased them.
+
+    KILL SITES, verified red at introduction: the fold skipping
+    ``payload.annotations``; the unfold dropping a column.
+    """
+    import json
+
+    from molbuilder import diagnostics
+    from molbuilder.structure import Structure
+    from molbuilder.web.app import create_app
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    from tests._node_esm import run_node
+
+    caps = diagnostics.Capabilities(
+        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
+    )
+    monkeypatch.setattr(
+        type(caps), "file_picker_roots",
+        lambda self: ((tmp_path.resolve(), "projects"),),
+    )
+    diagnostics.set_capabilities(caps)
+
+    struct = Structure.from_dict({
+        "elements": ["O", "H", "H"],
+        "positions": [[0, 0, 0], [0.96, 0, 0], [0, 0.96, 0]],
+        "metadata": {
+            "regions": {"frozen": [0]},
+            "cell": [[5, 0, 0], [0, 5, 0], [0, 0, 30]],
+            "axis_kind": ["periodic", "periodic", "isolated"],
+            "annotations": {
+                "spin_up": {"kind": "tag", "data": [0, 2],
+                            "color": "#f00"},
+                "charge": {"kind": "value",
+                           "data": {"0": -0.8, "1": 0.4},
+                           "fdf": "net-charge"},
+            },
+        },
+    })
+    StructureCodec().write(struct, tmp_path / "wet.xyz")
+    side_in = json.loads((tmp_path / "wet.molstruct.json").read_text())
+    assert set(side_in["annotations"]) == {"spin_up", "charge"}, (
+        "precondition: the sidecar holds the channels")
+
+    client = create_app(config={}).test_client()
+    wire = client.post("/api/build/load",
+                       json={"path": str(tmp_path / "wet.xyz")}).get_json()
+    assert wire.get("ok"), wire
+
+    jobs = (Path(__file__).resolve().parents[1]
+            / "molbuilder/web/static/lib/molview/model-jobs.js")
+    env = run_node([], (
+        "const m = await import(" + json.dumps(jobs.as_uri()) + ");\n"
+        "const adopted = m.structureFromServer("
+        + json.dumps(wire) + ");\n"
+        "console.log(JSON.stringify(m.structureForServer("
+        "adopted.structure, adopted.coordinates.frames[0])));\n"
+    ))
+
+    out = client.post("/api/structure/export",
+                      json={"structure": env, "name": "wet"}).get_json()
+    assert out["ok"], out
+    side_out = json.loads(next(f["text"] for f in out["files"]
+                               if f["name"].endswith(".json")))
+
+    volatile = {"created_at", "structure_hash", "schema_version"}
+    diffs = {k: (side_in.get(k), side_out.get(k))
+             for k in set(side_in) | set(side_out)
+             if k not in volatile and side_in.get(k) != side_out.get(k)}
+    assert diffs == {}, f"the pipeline changed the sidecar: {diffs}"
+    assert side_out["annotations"]["charge"]["data"] == {"0": -0.8,
+                                                         "1": 0.4}
+
+
+def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
+        tmp_path):
+    """The user's 2026-08-20 contract, executed: per-atom information rides
+    the atom list and SURVIVES atom edits; system information is stored
+    separately.  A pair carrying real identity columns (schema 8) and a
+    per-atom channel is read back, an atom is deleted through the one edit
+    layer (modify.delete_atoms, whose header promises per-atom metadata
+    preservation), and the re-written pair still says everything -- sliced
+    to the survivors, placeholders nowhere.
+
+    KILL SITES, verified red at introduction: the sidecar writer dropping
+    the identity spread; the reader skipping the identity apply."""
+    import json
+
+    from molbuilder.modify import delete_atoms
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    s = Structure(
+        elements=["Au", "S", "C"],
+        positions=[[0, 0, 0], [2.0, 0, 0], [3.5, 0, 0]],
+        title="hemeC anchor",
+        atom_names=["AU1", "SG", "CA"],
+        residue_ids=[1, 14, 14],
+        residue_names=["AUX", "CYS", "CYS"],
+        chain_ids=["A", "B", "B"],
+    )
+    s.apply_metadata_dict({
+        "regions": {"anchor": [1]},
+        "annotations": {"charge": {"kind": "value",
+                                   "data": {"1": -0.4, "2": 0.1}}},
+    })
+    StructureCodec().write(s, tmp_path / "a.xyz")
+    side = json.loads((tmp_path / "a.molstruct.json").read_text())
+    assert side["schema_version"] == 8
+    assert side["residue_names"] == ["AUX", "CYS", "CYS"]
+
+    back = StructureCodec().read(tmp_path / "a.xyz")
+    assert back.title == "hemeC anchor"
+    assert back.atom_names == ["AU1", "SG", "CA"]
+
+    # The edit: drop the Au anchor.  Per-atom facts must follow their atoms.
+    edited = delete_atoms(back, [0])
+    StructureCodec().write(edited, tmp_path / "b.xyz")
+    again = StructureCodec().read(tmp_path / "b.xyz")
+    assert again.elements == ["S", "C"]
+    assert again.atom_names == ["SG", "CA"]
+    assert again.residue_ids == [14, 14]
+    assert again.residue_names == ["CYS", "CYS"]
+    assert again.chain_ids == ["B", "B"]
+    assert again.title == "hemeC anchor"
+    ch = again.annotations["charge"]
+    assert ch.kind == "value" and ch.data == {0: -0.4, 1: 0.1}, (
+        "the channel did not remap with its atoms")
+
+
+def test_an_xyz_born_pairs_sidecar_carries_no_identity_keys(tmp_path):
+    """The other half of the write rule: synthesized placeholders (names =
+    elements, resid 1, residue MOL, chain A, empty title) are the server's
+    own defaults, not statements -- persisting them would make every
+    xyz-born sidecar claim an identity nobody gave it."""
+    import json
+
+    from molbuilder.structure import IDENTITY_FIELDS, Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    s = Structure(elements=["O"], positions=[[0, 0, 0]])
+    s.apply_metadata_dict({"regions": {"top": [0]}})
+    StructureCodec().write(s, tmp_path / "p.xyz")
+    side = json.loads((tmp_path / "p.molstruct.json").read_text())
+    assert not [k for k in IDENTITY_FIELDS if k in side], side.keys()

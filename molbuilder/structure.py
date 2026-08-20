@@ -124,6 +124,15 @@ FROZEN_LABEL = "frozen_atoms"
 METADATA_FIELDS = ("regions", "cell", "cell_origin", "pbc", "axis_kind",
                    "vacuum", "annotations")
 
+#: The per-atom IDENTITY columns + the title -- the canonical-dict spellings
+#: (``to_dict`` / ``from_dict`` carry them at the TOP level, beside
+#: ``metadata``).  Persisted by the sidecar since schema 8 (2026-08-20, user:
+#: "extra for the package where it is needed" -- additive, never conflicting),
+#: and only when a column is REAL (see ``identity_to_dict``): an xyz-born
+#: structure's synthesized placeholders stay out of the file.
+IDENTITY_FIELDS = ("title", "atom_names", "residue_ids", "residue_names",
+                   "chain_ids")
+
 #: Containment tolerance in FRACTIONAL units (§ 6.1): loose enough to forgive a
 #: round-tripped float, tight enough that "half the molecule outside the box"
 #: can never pass.  Shared with periodicity_gate, which delegates containment
@@ -760,6 +769,32 @@ class Structure:
                              if self.vacuum is not None else None),
             "annotations":  annotations_to_json(self.annotations),
         }
+
+    def identity_to_dict(self) -> dict:
+        """The identity columns that are REAL -- {} when everything is the
+        placeholder ``__post_init__`` synthesizes (names = elements, resid 1,
+        residue ``MOL``, chain ``A``, empty title).  The default test lives
+        HERE, beside the synthesis it mirrors, so the two cannot drift: a
+        writer that persisted the placeholders would make every xyz-born
+        sidecar claim an identity nobody stated.  Column-granular -- a format
+        that names residues but not chains persists exactly what it said."""
+        n = len(self.elements)
+        out: dict = {}
+        if self.title:
+            out["title"] = self.title
+        if self.atom_names is not None \
+                and list(self.atom_names) != list(self.elements):
+            out["atom_names"] = list(self.atom_names)
+        if self.residue_ids is not None \
+                and list(self.residue_ids) != [1] * n:
+            out["residue_ids"] = [int(v) for v in self.residue_ids]
+        if self.residue_names is not None \
+                and list(self.residue_names) != ["MOL"] * n:
+            out["residue_names"] = list(self.residue_names)
+        if self.chain_ids is not None \
+                and list(self.chain_ids) != ["A"] * n:
+            out["chain_ids"] = list(self.chain_ids)
+        return out
 
     def apply_metadata_dict(self, data: Optional[dict]) -> None:
         """Apply a sidecar metadata dict onto this structure IN PLACE, then

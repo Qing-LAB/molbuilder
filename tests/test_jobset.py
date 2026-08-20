@@ -1902,6 +1902,35 @@ def test_status_prints_the_seq_not_the_row(tmp_path):
     assert [l.split()[0] for l in out.splitlines() if "tight" in l] == ["3"]
 
 
+def test_a_launched_sweep_trial_reports_queued_not_pending(tmp_path):
+    """`project-layout.md` § 1.6: `run.json` is the honest answer to "has
+    this been launched?" -- a queued job has produced nothing, so "no
+    output" and "never started" look identical without it.  A sweep trial
+    is ITS OWN attempt (submit.py's rule), so its record sits at the
+    trial's top, not in a `run-<n>`/.  Until 2026-08-20 the status reader
+    looked only inside attempts, and a grouped-submitted trial answered
+    the exact false line § 1.6 forbids."""
+    from molbuilder.jobset.materialize import (job_dir_names, shape_of,
+                                               write_run_launch)
+    from molbuilder.jobset.model import Job, JobSet
+    js = JobSet(name="JOB", engine="siesta", kind="sweep",
+                jobs=[Job(name="p1", script="JOB_p1.fdf"),
+                      Job(name="p2", script="JOB_p2.fdf")])
+    dirs = job_dir_names(js, shape_of(js, tmp_path))
+    for name in dirs.values():
+        (tmp_path / name).mkdir(parents=True)
+    # p1 rides a grouped submission; p2 was never launched.
+    write_run_launch(tmp_path / dirs["p1"], mode="submit",
+                     command=["sbatch", "bench-group.sbatch"],
+                     job_id="48213")
+    st = jobset_status(js, tmp_path)
+    by = {s_.ref.name: s_ for s_ in st.stages}
+    assert by["p1"].state == "queued", by["p1"]
+    assert "queued as job 48213" in by["p1"].detail
+    assert by["p1"].launch and by["p1"].launch.get("job_id") == "48213"
+    assert by["p2"].state == "pending"
+
+
 def test_status_seq_is_none_for_a_sweep_point():
     """A sweep point has no order, so it has no seq -- and says so rather than
     borrowing a row number's authority."""

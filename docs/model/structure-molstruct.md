@@ -30,7 +30,7 @@ plus the structure's **metadata fields** spread in alongside them.
 
 ```json
 {
-  "schema_version": 7,
+  "schema_version": 8,
   "n_atoms_total": 2,
   "structure_hash": "9f2c…(sha256 hex)",
   "created_by": "molbuilder",
@@ -44,9 +44,22 @@ plus the structure's **metadata fields** spread in alongside them.
   "vacuum": [0.0, 0.0, 12.0],
   "annotations": {"charge": {"kind": "value", "data": {"0": 0.1}}},
 
+  "title": "hemeC anchor",
+  "atom_names": ["CA", "SG"],
+  "residue_ids": [14, 14],
+  "residue_names": ["CYS", "CYS"],
+  "chain_ids": ["B", "B"],
+
   "selection_rules": {}
 }
 ```
+
+The identity block (schema 8, 2026-08-20) is **optional and real-only**: a
+column appears only when it says something the server would not have
+synthesized itself (names ≠ elements, residues ≠ `MOL`, chains ≠ `A`,
+resids ≠ 1, a non-empty title — `Structure.identity_to_dict` owns that
+judgment, beside the synthesis it mirrors).  An xyz-born pair carries none
+of them and its sidecar is a v7 sidecar plus a version stamp.
 
 | Envelope key | Meaning |
 |---|---|
@@ -55,6 +68,15 @@ plus the structure's **metadata fields** spread in alongside them.
 | `structure_hash` | sha256 content hash of the paired geometry (hex, ≥16 chars) — the integrity pin (§ 3) |
 | `created_by` / `created_at` | provenance stamp (`created_at` is ISO-8601 UTC, `…Z`) |
 | `selection_rules` | a sidecar-**only** pass-through, **not** a `Structure` field (§ 4) |
+
+**Two kinds of information, one contract** *(user, 2026-08-20)*: a fact is
+**per-atom** — it rides the atom list, one entry per atom, and survives
+atom edits because every edit layer carries it with its atom (`regions`
+membership, the identity columns, each channel's atom-indexed half) — or it
+is **system** — stored separately, whole (`cell`, `cell_origin`, `pbc`,
+`axis_kind`, `vacuum`, `title`, each channel's kind/color/fdf).  Everything
+in this file is one or the other, and every layer (the codec, the wire, the
+viewer's two translation doors) folds and unfolds along exactly that line.
 
 The **metadata fields** (`regions`, `cell`, `cell_origin`,
 `pbc`, `axis_kind`, `vacuum`, `annotations`) are exactly the set `Structure`'s
@@ -78,17 +100,23 @@ is `structure.md § 2.2`.
 
 ---
 
-## 2. Schema versioning — one version, strictly
+## 2. Schema versioning — a readable SET, strict about shape
 
-**Current schema: v7. The reader accepts v7 and nothing else.**
+**Current schema: v8. The reader accepts {7, 8} and nothing else.**
 
 ```python
-SCHEMA_VERSION            = 7          # sidecars/molstruct.py
-_READABLE_SCHEMA_VERSIONS = (SCHEMA_VERSION,)
+SCHEMA_VERSION    = 8                  # sidecars/molstruct.py
+READABLE_VERSIONS = frozenset({7, 8})
 ```
 
-A payload at any other version — older *or* newer — is refused with an error
-naming what changed and what to do. It is never partially read.
+*(Amended 2026-08-20, user ruling.)*  The strictness rule is about **where
+facts live**, not about the number: v8 only **added** the optional identity
+columns, so a v7 file reads whole under v8 rules — its absent identity IS
+the synthesized defaults, which is what v7 always meant.  Refusing v7 would
+have invalidated every pair on disk for a change that loses nothing.  A
+version whose facts moved homes (v3's top-level frozen atoms) stays
+refused, with an error naming what changed and what to do — never
+partially read.
 
 **This is deliberate, and it is not a transitional state.** molbuilder is a new
 product with no installed base to protect. Accepting several schemas costs more
@@ -140,13 +168,20 @@ at any of them is refused, not upgraded.
 | v4 | adds the extensible annotation channels (`structure-annotations.md`) |
 | v5 | drops `kgrid` — a `SiestaConfig` sampling knob, not geometry |
 | v6 | `cell_origin` persisted |
-| **v7** | **current** — the reserved `frozen_atoms` label moves **into** `regions` with every other label, and the top-level key is no longer written. One store, one designated accessor (`molstruct.frozen_atoms(payload)`), interpreted where it means something |
+| v7 | the reserved `frozen_atoms` label moves **into** `regions` with every other label, and the top-level key is no longer written. One store, one designated accessor (`molstruct.frozen_atoms(payload)`), interpreted where it means something. **Still readable** — v8 changed nothing it states |
+| **v8** | **current** *(2026-08-20)* — the optional **identity columns** (`title`, `atom_names`, `residue_ids`, `residue_names`, `chain_ids`), written only when real, applied **full-replace** on read (an absent column resets to the synthesized default, same as the metadata block) — so a PDB-born residue identity stops being erased by a save, and an xyz-born sidecar does not grow a byte |
 
 ### Changing the schema
 
-Bump `SCHEMA_VERSION`. There is no readable-versions list to extend — it is
-derived from the constant — so a bump automatically refuses everything older.
-Then regenerate the data: re-save structures, re-generate scripts.
+Bump `SCHEMA_VERSION`, then decide which kind of change it was — the
+decision the reader enforces:
+
+- **Additive** (new optional fields; every old fact stays where it was):
+  add the old version to `READABLE_VERSIONS` — old files read whole, and
+  refusing them would invalidate data for no protection.
+- **Shape-changing** (a fact moves or changes meaning): do **not** extend
+  the set — the old version is refused with a message naming the move, and
+  the data is regenerated (re-save structures, re-generate scripts).
 
 ---
 

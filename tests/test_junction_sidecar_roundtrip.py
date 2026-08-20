@@ -194,7 +194,7 @@ def test_the_pair_is_written_at_the_current_schema_version(tmp_path, junction):
     target = tmp_path / "junction.xyz"
     StructureCodec().write(junction, target)
     payload = molstruct.load(molstruct.sidecar_path_for(target))
-    assert payload["schema_version"] == molstruct.SCHEMA_VERSION == 7
+    assert payload["schema_version"] == molstruct.SCHEMA_VERSION == 8
 
 
 # --------------------------------------------------------------------- #

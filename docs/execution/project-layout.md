@@ -988,8 +988,10 @@ trial rides with its **own explicit `-np/-omp`** — enforced at generation —
 because inside the allocation the `SLURM_*` variables describe the
 envelope, and a flag-less wrapper falling back to them would silently
 measure the widest point instead of its own. Naming a
-trial (`jobset submit bench tight G1K8C2`) still submits that one alone
-(how a single point is re-run).
+trial (`jobset submit bench tight G1K8C2`) still submits that one alone —
+how a single point is **re-measured, after moving the old trial's
+directory aside** (§ 1.5: a trial measures its point once; molbuilder
+never deletes results).
 
 > *This amends the 2026-08-12 decision by keeping what it protected: **one
 > launch act, never a queue flood**. The earlier form — one trial per

@@ -555,14 +555,21 @@ def test_a_bundled_structure_keeps_every_metadata_field(tmp_path):
     assert "bundled from h2.fdf" in xyz_path.read_text(encoding="utf-8")
 
 
-def test_a_bundled_structure_with_nothing_to_keep_gets_no_sidecar(tmp_path):
-    """The codec's rule — "no `.json` means no metadata" — now applies here too.
-    The bundle path used to write a sidecar unconditionally, so a plain molecule
-    got a file saying nothing, which the load door then read as "this structure
-    definitely has no labels" rather than "nobody said"."""
+def test_a_bundled_structure_with_nothing_but_its_title_says_only_that(tmp_path):
+    """The codec's rule — a sidecar exists only when there is something to say —
+    still holds here, but since schema 8 the bundle's own provenance title IS
+    something said: the writer stamps it deliberately ("bundled from …"), the
+    identity columns persist when real (the 2026-08-20 ruling), so the pair
+    keeps it and a reloaded handoff still says where it came from.  What must
+    NOT come back is anything the bundle did not state: no labels, no cell, no
+    channels, no per-atom identity — the sidecar says the title and nothing
+    else.  (Until schema 8 this asserted "no sidecar at all"; the premise
+    moved with the format, the spirit — no empty statements — did not.)"""
+    import json
+
     from molbuilder.bundle_writer import write_bundle_as_handoff
     from molbuilder.parse.types import BundleResult
-    from molbuilder.structure import Structure
+    from molbuilder.structure import IDENTITY_FIELDS, Structure
 
     bundle = BundleResult(
         schema_version=1, parsed_at="2026-01-01T00:00:00Z", parser_name="t",
@@ -576,4 +583,11 @@ def test_a_bundled_structure_with_nothing_to_keep_gets_no_sidecar(tmp_path):
         bundle, tmp_path, stem="plain")
 
     assert xyz_path.exists()
-    assert sidecar_path is None, "a sidecar was written for a plain structure"
+    assert sidecar_path is not None, (
+        "the bundle stamped a provenance title -- a statement the pair keeps")
+    side = json.loads(sidecar_path.read_text())
+    assert side["title"] == "bundled from opt.py (pyscf/log)"
+    assert [k for k in IDENTITY_FIELDS if k in side] == ["title"], (
+        "per-atom identity was never stated and must not appear")
+    assert side["regions"] == {} and side["annotations"] == {}
+    assert side["cell"] is None

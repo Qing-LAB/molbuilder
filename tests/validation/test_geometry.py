@@ -344,16 +344,19 @@ def test_kgrid_on_isolated_axis_is_warn():
                for i in msgs)
 
 
-def test_kgrid_one_on_periodic_axis_is_warn():
-    """k == 1 on a PERIODIC axis while another axis is sampled is the
-    slab-with-forgotten-axis case -- flagged off axis_kind, NOT the atom
-    span (a crystal axis need not reach the cell edge)."""
+def test_kgrid_one_on_a_periodic_axis_is_silent():
+    """k == 1 states NOTHING (user rule, 2026-08-20;
+    `science/validation.md`): correct for an isolated axis and a
+    legitimate Gamma-only choice for a periodic one, so it is validated
+    not at all -- even beside a sampled sibling.  (This replaces the
+    retired forgotten-axis warn, which validated an axis about which the
+    user had stated nothing.)"""
     s, cell = _axis_struct(("periodic", "isolated", "isolated"),
-                           extent=3.0, cell_len=6.0)   # atoms span 50%
-    cfg = SiestaConfig(kgrid=(1, 4, 1))   # k=1 on the periodic x; k=4 on y
+                           extent=3.0, cell_len=6.0)
+    cfg = SiestaConfig(kgrid=(1, 4, 1))   # k=1 on the periodic x
     msgs = [i for i in validate(s, cfg, cell=cell)
             if i.where == "config.kgrid"]
-    assert any("kgrid[0]" in i.message for i in msgs)
+    assert not any("kgrid[0]" in i.message for i in msgs)
 
 
 def test_kgrid_periodic_crystal_partial_span_no_false_positive():
@@ -362,8 +365,15 @@ def test_kgrid_periodic_crystal_partial_span_no_false_positive():
     be flagged 'k>1 wasted'.  The old span-ratio heuristic (periodic iff
     atoms span >85%) mis-read such axes as vacuum -- the false positive that
     told users to drop the k-points a crystal actually needs."""
-    s, cell = _axis_struct(("periodic", "periodic", "periodic"),
-                           extent=3.0, cell_len=6.0)   # atoms span 50%
+    # A block spanning ~50% of the cell on EVERY axis (the old fixture
+    # was a z-line: x/y extents 0, so those axes really did hold 6 A of
+    # emptiness -- a geometry the 2026-08-20 statement rule legitimately
+    # hints on, and not the crystal this docstring names).
+    corners = np.array([[x, y, z] for x in (0.0, 3.0)
+                        for y in (0.0, 3.0) for z in (0.0, 3.0)])
+    cell = np.diag([6.0, 6.0, 6.0])
+    s = Structure(elements=["C"] * 8, positions=corners, cell=cell,
+                  axis_kind=("periodic", "periodic", "periodic"))
     cfg = SiestaConfig(kgrid=(4, 4, 4))
     msgs = [i for i in validate(s, cfg, cell=cell)
             if i.where == "config.kgrid"]

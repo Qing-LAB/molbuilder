@@ -1777,3 +1777,69 @@ def test_a_count_changing_edit_clears_the_selection():
         f"an edit that changed the atom count must clear the selection: "
         f"{out['afterShrink']}"
     )
+
+
+# ---------------------------------------------------------------------------
+# § 6.2 / § 11.3 — the two doors carry the WHOLE structure (2026-08-20)
+# ---------------------------------------------------------------------------
+
+def test_identity_columns_and_channels_ride_the_two_doors_whole():
+    """§ 11.3: an export of the truth carries everything the structure says —
+    identity columns and per-atom channels included.  Both translations run
+    REAL: the payload a server sends goes through ``structureFromServer``
+    (the per-atom fold) and back out through ``structureForServer`` (the
+    envelope unfold).  Until 2026-08-20 the fold read five fields and the
+    unfold rebuilt four, so channels died at adoption and the first edit
+    round-trip replaced every real residue name with the server's
+    re-synthesized placeholder."""
+    jobs_url = (MODULE_DIR / "model-jobs.js").resolve().as_uri()
+    payload = {
+        "title": "hemeC junction",
+        "atoms": [
+            {"element": "Au", "x": 0, "y": 0, "z": 0,
+             "regions": ["L-electrode"]},
+            {"element": "S", "x": 1, "y": 0, "z": 0, "regions": []},
+            {"element": "C", "x": 2, "y": 0, "z": 0, "regions": []},
+        ],
+        "atom_names": ["AU1", "SG", "CA"],
+        "residue_ids": [1, 2, 2],
+        "residue_names": ["AUX", "CYS", "CYS"],
+        "chain_ids": ["A", "B", "B"],
+        "periodicity": {"cell": [[10, 0, 0], [0, 10, 0], [0, 0, 10]],
+                        "axis_kind": ["periodic", "periodic", "isolated"]},
+        "annotations": {
+            "spin_up": {"kind": "tag", "data": [0, 2], "color": "#f00"},
+            "charge": {"kind": "value", "data": {"1": -0.4, "2": 0.1},
+                       "fdf": "some-strategy"},
+        },
+    }
+    snippet = (
+        "const m = await import(" + json.dumps(jobs_url) + ");\n"
+        "const adopted = m.structureFromServer("
+        + json.dumps(payload) + ");\n"
+        "const s = adopted.structure;\n"
+        "const env = m.structureForServer(s, adopted.coordinates.frames[0]);\n"
+        "console.log(JSON.stringify({ facts1: s.annotations[1],"
+        " title: s.title, defs: s.channelDefs, env: env }));\n"
+    )
+    out = run_node([], snippet)
+
+    # The FOLD: every column lands on its own atom, channels included.
+    assert out["facts1"] == {"labels": [], "residue": "CYS", "name": "SG",
+                             "resid": 2, "chain": "B",
+                             "channels": {"charge": -0.4}}
+    assert out["title"] == "hemeC junction"
+    assert out["defs"]["spin_up"] == {"kind": "tag", "color": "#f00"}
+
+    # The UNFOLD: the envelope carries every column back, verbatim.
+    env = out["env"]
+    assert env["title"] == "hemeC junction"
+    assert env["atom_names"] == ["AU1", "SG", "CA"]
+    assert env["residue_ids"] == [1, 2, 2]
+    assert env["residue_names"] == ["AUX", "CYS", "CYS"]
+    assert env["chain_ids"] == ["A", "B", "B"]
+    ch = env["metadata"]["annotations"]
+    assert ch["spin_up"] == {"kind": "tag", "data": [0, 2], "color": "#f00"}
+    assert ch["charge"]["data"] == {"1": -0.4, "2": 0.1}
+    assert ch["charge"]["fdf"] == "some-strategy"
+    assert env["metadata"]["regions"] == {"L-electrode": [0]}

@@ -25,6 +25,7 @@ from molbuilder.parse.types import SidecarResult
 # constant) and ``MolstructJsonError`` is the write-side module so
 # read and write surfaces stay in lock-step.
 from molbuilder.sidecars.molstruct import (
+    READABLE_VERSIONS,
     SCHEMA_VERSION,
     ENVELOPE_KEYS,
     MolstructJsonError,
@@ -67,6 +68,7 @@ def _normalised_dict(
     axis_kind: Optional[Any] = None,
     vacuum: Optional[Any] = None,
     annotations: Optional[Dict[str, Any]] = None,
+    identity: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -109,6 +111,27 @@ def _normalised_dict(
     normed_rules = normalise_selection_rules(
         selection_rules, set(fields["regions"]))
 
+    # The identity columns (schema 8) -- validated through the SAME dataclass
+    # authority as everything else: a scratch Structure carrying them re-runs
+    # __post_init__'s own length/type checks, so a hand-edited sidecar whose
+    # residue_ids no longer match the atom count fails HERE, with the file
+    # named, not at engine-load time.
+    identity = dict(identity or {})
+    if identity:
+        from molbuilder.structure import Structure as _Structure
+        try:
+            _scratch = _Structure(
+                elements=["X"] * n_atoms_total,
+                positions=[[0.0, 0.0, 0.0]] * n_atoms_total,
+                title=identity.get("title", ""),
+                atom_names=identity.get("atom_names"),
+                residue_ids=identity.get("residue_ids"),
+                residue_names=identity.get("residue_names"),
+                chain_ids=identity.get("chain_ids"),
+            )
+        except (ValueError, TypeError) as exc:
+            raise MolstructJsonError(str(exc)) from exc
+
     return {
         "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
@@ -119,6 +142,7 @@ def _normalised_dict(
         # field, which is why it had to be touched at all when the reserved
         # label stopped being one.
         **fields,
+        **identity,
         "selection_rules": normed_rules,
         "created_by":      str(created_by),
         "created_at":      created_at,
@@ -156,7 +180,7 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
         )
 
     sv = data.get("schema_version")
-    if sv != SCHEMA_VERSION:
+    if sv not in READABLE_VERSIONS:
         # REFUSED, NOT READ PARTIALLY.  An older sidecar does not store the same
         # facts in the same places, so reading it here would not recover them --
         # it would return a payload that LOOKS complete and quietly is not.  The
@@ -166,7 +190,9 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
         # ``Geometry.Constraints`` block in a generated SIESTA input.
         raise MolstructJsonError(
             f"sidecar {source}: schema_version is {sv!r}, but this molbuilder "
-            f"build reads version {SCHEMA_VERSION} only.\n"
+            f"build reads versions {sorted(READABLE_VERSIONS)} only (v8 "
+            f"added only the OPTIONAL identity columns, so a v7 file reads "
+            f"whole; older versions do not).\n"
             f"Older sidecars are NOT read: they store the same facts in "
             f"different places (before v{SCHEMA_VERSION}, frozen atoms sat in a "
             f"top-level 'frozen_atoms' key rather than in 'regions'), so reading "
@@ -204,8 +230,8 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
     # the hole the v3 frozen-atom loss went through: the guard was real, correct,
     # and downstream of the leak.  It is checked HERE now, where the payload is
     # still whole.
-    from molbuilder.structure import METADATA_FIELDS
-    known = set(METADATA_FIELDS) | set(ENVELOPE_KEYS)
+    from molbuilder.structure import IDENTITY_FIELDS, METADATA_FIELDS
+    known = set(METADATA_FIELDS) | set(IDENTITY_FIELDS) | set(ENVELOPE_KEYS)
     stray = sorted(k for k in data if k not in known)
     if stray:
         raise MolstructJsonError(
@@ -232,6 +258,8 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
             axis_kind       = data.get("axis_kind"),
             vacuum          = data.get("vacuum"),
             annotations     = data.get("annotations"),
+            identity        = {k: data[k] for k in IDENTITY_FIELDS
+                               if k in data},
             created_by      = data.get("created_by", "unknown"),
             created_at      = data.get("created_at"),
         )

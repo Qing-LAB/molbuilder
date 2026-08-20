@@ -107,6 +107,31 @@ _PROP_GET_RE = re.compile(
     re.VERBOSE,
 )
 
+# 2026-08-20: a FOURTH idiom -- module-level ``let``s declared in a batch and
+# bound later by BARE assignment inside an attach step:
+#
+#     let elPanel, elToggle, elActions, ...;
+#     function _attach() {
+#         elActions = document.getElementById("ps-checkpoint-actions");
+#     }
+#
+# ``checkpoint.js`` binds its whole element table this way, and none of the
+# three patterns above match it (no declaration keyword, no property chain) --
+# so the audit was blind to the entire panel, and ``.ps-checkpoint-actions``
+# shipped unguarded THROUGH this test (caught by the 2026-08-20 milestone
+# review, not by this file).  The optional ``document.`` prefix also covers
+# ``const x = document.getElementById(...)``, which _VAR_GET_RE never matched.
+_BARE_ASSIGN_GET_RE = re.compile(
+    r"""
+    (?<! [.\w] ) ([a-zA-Z_]\w*) \s* = \s*
+    (?: document \s* \. \s* )?
+    (?: getElementById | \$ | _\$ )
+    \(\s* ["']([a-zA-Z0-9_\-]+)["'] \s*\)
+    """,
+    re.VERBOSE,
+)
+
+
 
 def _scan_js_for_hidden_ids() -> set[str]:
     """Return the set of HTML element ids that some JS file assigns
@@ -129,6 +154,8 @@ def _scan_js_for_hidden_ids() -> set[str]:
             var_to_id[m.group(1)] = m.group(2)
         # ...and the property-table form the tab controllers actually use.
         for m in _PROP_GET_RE.finditer(src):
+            var_to_id.setdefault(m.group(1), m.group(2))
+        for m in _BARE_ASSIGN_GET_RE.finditer(src):
             var_to_id.setdefault(m.group(1), m.group(2))
         for m in _VAR_HIDDEN_ASSIGNMENT_RE.finditer(src):
             name = m.group(1)
@@ -521,7 +548,22 @@ def test_a_class_on_a_hideable_element_does_not_defeat_the_hidden_attribute():
                 continue
             if "[hidden]" in selector:
                 continue
-            named = set(re.findall(r"\.([A-Za-z][\w-]*)", selector))
+            # THE SUBJECT DECIDES (2026-08-20).  A display rule un-hides the
+            # element only when its LAST compound targets it: `.bar {}` and
+            # `.panel .bar {}` style the element itself, while
+            # `.bar table {}` styles a DESCENDANT and `.bar::before {}` a
+            # pseudo-element -- both live inside the element's box, so the
+            # parent's `[hidden] -> display:none` already removes them and a
+            # guard there would gate nothing.  Before this refinement the
+            # matcher read class names anywhere in the selector, and closing
+            # the id-scan's idiom gap (the bare-assignment fix that finally
+            # collected checkpoint.js's and page.js's tables) surfaced four
+            # such cascade-safe rules as false alarms beside the one real
+            # `.docs-view-bar` bug.
+            if "::" in selector:
+                continue
+            subject = re.split(r"[\s>+~]+", selector.strip())[-1]
+            named = set(re.findall(r"\.([A-Za-z][\w-]*)", subject))
             for el_id, classes in id_classes.items():
                 if not (named & classes):
                     continue
