@@ -220,6 +220,12 @@ def test_every_metadata_field_survives_the_whole_export_pipeline(tmp_path,
     envelope.  ``pbc`` itself never rides the wire: it is derived from
     ``axis_kind`` by the one deserialiser, which is why preserving the
     axis kinds preserves it.
+
+    KILL SITE, verified red: ``structure.py``'s ``apply_metadata_dict``
+    dropping ``axis_kind`` fails this test.  (The commit that introduced
+    the test named ``_stated_periodicity`` as the checked mutation — that
+    reader serves the modify-wire path, not this envelope, and mutating it
+    leaves this green; the record is corrected here.)
     """
     import json
 
