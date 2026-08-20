@@ -57,11 +57,13 @@ deferred with rationale, and named architecture seams.)
 > migrating it means giving that kind a first-class representation, not
 > bending it into a ladder.
 
-## 0. The immediate two  *(the active priority — user, 2026-08-19)*
+## 0. The immediate two  *(user, 2026-08-19 — **both delivered the same
+day**)*
 
-Two workflow completions come before everything else, both specified from a
-loop that was **driven end to end today** rather than read. Everything else
-below proceeds around them; the two named deferrals follow the section.
+Two workflow completions came before everything else, both specified from a
+loop that was **driven end to end** rather than read, and both are now
+delivered and pinned (§ 0.1, § 0.2). What proceeds next is the deferrals
+table below: the remote-HPC proof first, the tab migrations next period.
 
 ### 0.1 Connect the benchmark to the run — Task I
 

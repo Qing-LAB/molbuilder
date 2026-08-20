@@ -394,6 +394,11 @@
           "subtitle": "The preparation backend — building step 3 new, and migrating onto it"
         },
         {
+          "path": "archive/2026-08-19-handoff-e2e-session.md",
+          "label": "Handoff — committed, and the workflow has now actually been run",
+          "subtitle": "Handoff — committed, and the workflow has now actually been run"
+        },
+        {
           "path": "archive/2026-08-19-server-reload-plan.md",
           "label": "Reloading a running server — a plan",
           "subtitle": "Reloading a running server — a plan"

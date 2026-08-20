@@ -29,7 +29,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 
 SCAN_DIRS = ("molbuilder", "tests", "scripts")
-SCAN_ROOT_FILES = ("README.md", "HANDOFF.md", "pyproject.toml")
+SCAN_ROOT_FILES = ("README.md", "pyproject.toml")
 EXTS = {".py", ".js", ".html", ".css", ".md", ".toml", ".sh", ".json",
         ".cfg", ".yaml", ".yml"}
 

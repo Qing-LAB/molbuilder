@@ -1,5 +1,13 @@
 # Handoff — committed, and the workflow has now actually been run
 
+**Role:** session handoff (**served — archived 2026-08-19.** Every priority
+below was delivered: the commit, the E2E, the four findings' fixes, the doc
+review, and the two follow-on tasks the findings earned — bench→run
+(`roadmap.md` § 0.1) and the probe workflow (§ 0.2), both delivered
+2026-08-19. The persistent plan this file pointed at IS
+[`roadmap.md`](?doc=roadmap.md) § 0; the suite/deck counts below are the
+2026-08-19 snapshot, not current.)
+
 ## SCOPE
 
 **Structure-optimization tab, SIESTA and PySCF.** `molbuilder/transport/` and
