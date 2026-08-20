@@ -362,6 +362,57 @@ def _atom_metadata_json(
 _ITER_WALLTIME_BUFFER_CAP = 16
 
 
+def _run_periodicity_json(
+    search_dir: Optional[str],
+    data: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """The run's periodicity, composed ON THE SERVER (2026-08-20).
+
+    Two facts from two places, merged where both are visible: the CELL from
+    the run's own output logs (the frames' real box -- ``data["lattice"]``),
+    and the AXIS KINDS / origin / vacuum from the run directory's
+    ``.source`` pair when one exists (job-contracts § 6.3: the structure the
+    calculation was prepped from, carrying the user's stated intent).
+
+    Until this existed the browser composed ``{cell}`` alone, the axis
+    kinds never reached the viewer, and an export from the Results tab
+    stamped a lattice-bearing junction ``isolated`` on every axis -- the
+    BDT-Au111 frame38 export that surfaced the hole.  A run made before the
+    ``.source`` convention has no pair; the cell still travels, and the
+    load door's own rule (a stated cell over never-stated axes derives
+    periodic) covers the rest.
+
+    Returns ``None`` when neither source knows anything; never raises -- a
+    broken pair degrades to the lattice-only block rather than taking the
+    load down.
+    """
+    out: Dict[str, Any] = {}
+    lattice = (data or {}).get("lattice")
+    if isinstance(lattice, list) and len(lattice) == 3:
+        out["cell"] = lattice
+    try:
+        if search_dir:
+            import glob as _glob
+            pairs = sorted(_glob.glob(
+                os.path.join(search_dir, "*.source.xyz")))
+            if pairs:
+                from pathlib import Path as _Path
+
+                from molbuilder.workingcopy_structure import StructureCodec
+                s = StructureCodec().read(_Path(pairs[0]))
+                if s.axis_kind:
+                    out["axis_kind"] = list(s.axis_kind)
+                if s.cell_origin is not None:
+                    out["cell_origin"] = [float(v) for v in s.cell_origin]
+                if s.vacuum is not None:
+                    out["vacuum"] = [float(v) for v in s.vacuum]
+                if "cell" not in out and s.cell is not None:
+                    out["cell"] = [[float(x) for x in row] for row in s.cell]
+    except Exception:                        # noqa: BLE001
+        pass
+    return out or None
+
+
 def _attach_iter_walltime(
     new_data: Dict[str, Any],
     mtime: float,
@@ -914,6 +965,12 @@ def api_load():
             # apply_to_structure); None when the run carries no block.
             "atom_metadata":
                 _atom_metadata_json(resolved_from_dir, merged),
+            # The run's periodicity, composed here (the cell from the output
+            # logs, the axis kinds from the run's .source pair) -- the viewer
+            # passes it through verbatim; guessing periodicity in the browser
+            # is the one thing the Cell rules refuse.
+            "periodicity":
+                _run_periodicity_json(resolved_from_dir, merged),
         })
 
     with _lock:
@@ -947,6 +1004,8 @@ def api_load():
         "uploaded":         False,
         "atom_metadata":
             _atom_metadata_json(_md_dir, state["data"]),
+        "periodicity":
+            _run_periodicity_json(_md_dir, state["data"]),
     })
 
 

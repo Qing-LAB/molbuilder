@@ -327,7 +327,13 @@ You just ran a SIESTA geometry optimization; its `*_optim.molwatch.log` sits in
 `projects/BDT/opt/`. Open the **Results** tab. The picker scans that folder, sees
 the log is a trajectory-class file, and auto-selects it. The controller mounts the
 **trajectory** viewer — a 3D movie of the relaxation plus energy and max-force
-plots. Because the run is still going, the viewer polls `/api/watch/data` every
+plots. The structure the viewer holds carries the run's own periodicity,
+composed on the server (`/api/watch/load`: the cell from the output logs, the
+axis kinds from the run's `.source` pair when one exists) — so what the Cell
+page shows, and what an Export → Data writes, is the run's stated intent
+rather than a browser guess *(2026-08-20; before this, every trajectory
+export claimed all-isolated beside its own lattice)*. Because the run is
+still going, the viewer polls `/api/watch/data` every
 15 seconds and appends new frames live. When it converges you click **Bundle**,
 and Results writes `handoff.xyz` + `handoff.molstruct.json` into
 `projects/BDT/opt/handoff/`; the sidebar jumps there so you can load the

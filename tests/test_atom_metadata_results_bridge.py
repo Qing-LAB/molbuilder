@@ -291,3 +291,67 @@ class TestWatchLoadSurfacesMetadata:
         d = client.post("/api/watch/load", json={"path": str(run)}).get_json()
         assert d["ok"] is True
         assert d.get("atom_metadata") is None
+
+
+class TestRunPeriodicityBridge:
+    """Seam 5 (2026-08-20): the run's PERIODICITY reaches the viewer,
+    composed on the server — the cell from the output logs, the axis kinds
+    / origin / vacuum from the run directory's ``.source`` pair
+    (job-contracts § 6.3, the structure the calculation was prepped from).
+
+    Until this existed the browser composed ``{cell}`` alone: the axis
+    kinds never reached the viewer, and an export from the Results tab
+    stamped a lattice-bearing Au junction ``isolated`` on every axis (the
+    BDT-Au111 frame38 export that surfaced it)."""
+
+    def test_a_runs_source_pair_supplies_the_axis_kinds(
+            self, client, tmp_path, monkeypatch):
+        import json as _json
+
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
+
+        _register_tmp_as_picker_root(tmp_path, monkeypatch)
+        run = tmp_path / "run-src"
+        run.mkdir()
+        (run / "run.fdf").write_text("SystemLabel run\n")
+        (run / "run_geom_optim.xyz").write_text(_XYZ_MULTIFRAME_3)
+        StructureCodec().write(Structure.from_dict({
+            "elements": ["C", "O", "H"],
+            "positions": [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+            "metadata": {
+                "cell": [[5, 0, 0], [0, 5, 0], [0, 0, 30]],
+                "axis_kind": ["periodic", "periodic", "transport"],
+                "vacuum": [0, 0, 8],
+            },
+        }), run / "label.source.xyz")
+
+        d = client.post("/api/watch/load",
+                        json={"path": str(run)}).get_json()
+        assert d["ok"] is True
+        per = d.get("periodicity")
+        assert per, "the run's periodicity must ride the load response"
+        assert per["axis_kind"] == ["periodic", "periodic", "transport"], (
+            f"the source pair's axis kinds did not reach the viewer: {per!r}"
+        )
+        assert per["vacuum"] == [0.0, 0.0, 8.0]
+        # No output lattice in this fixture, so the source's cell fills in.
+        assert per["cell"] == [[5, 0, 0], [0, 5, 0], [0, 0, 30]]
+
+    def test_a_pairless_run_degrades_to_what_it_knows(
+            self, client, tmp_path, monkeypatch):
+        """A run made before the .source convention has no pair: nothing is
+        invented — the block carries whatever the outputs stated (here:
+        nothing), never a guessed periodicity."""
+        _register_tmp_as_picker_root(tmp_path, monkeypatch)
+        run = tmp_path / "run-bare"
+        run.mkdir()
+        (run / "run.fdf").write_text("SystemLabel run\n")
+        (run / "run_geom_optim.xyz").write_text(_XYZ_MULTIFRAME_3)
+        d = client.post("/api/watch/load",
+                        json={"path": str(run)}).get_json()
+        assert d["ok"] is True
+        per = d.get("periodicity")
+        assert per is None or "axis_kind" not in per, (
+            f"a pair-less run invented axis kinds: {per!r}"
+        )

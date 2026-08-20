@@ -240,6 +240,13 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // no ATOM-METADATA block.  Per-file (survives polls of the same
             // file; cleared on a fresh load like path/label).
             atomMetadata: null,
+            // The run's periodicity, COMPOSED ON THE SERVER (watch.py: the
+            // cell from the output logs, the axis kinds / origin / vacuum
+            // from the run dir's .source pair).  Passed to installMolecule
+            // verbatim -- guessing periodicity in the browser is the one
+            // thing the Cell rules refuse.  null = the run knows nothing.
+            // Same per-file lifecycle as atomMetadata.
+            periodicity: null,
         },
 
         viewState: {
@@ -328,6 +335,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         alias("label",        "fileState");
         alias("data",         "fileState");
         alias("atomMetadata", "fileState");
+        alias("periodicity",  "fileState");
         alias("firstFit",     "viewState");
         alias("pollTimer",    "lifecycle");
         alias("pollInFlight", "lifecycle");
@@ -381,6 +389,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             state.fileState.label  = null;
             state.fileState.data   = null;
             state.fileState.atomMetadata = null;
+            state.fileState.periodicity  = null;
             // Reset viewState per matrix: refit the camera on the next render.  The
             // playhead is NOT reset here -- MolView owns it, and a fresh load resets it
             // there (setData lands on frame 0).
@@ -420,6 +429,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             state.fileState.label  = null;
             state.fileState.data   = null;
             state.fileState.atomMetadata = null;
+            state.fileState.periodicity  = null;
             state.viewState.firstFit     = true;
             state.derived.scfPollHistory.length = 0;
             state.machine = "IDLE";
@@ -498,6 +508,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // metadata the initial load recovered).
             if (payload.atomMetadata !== undefined)
                 state.fileState.atomMetadata = payload.atomMetadata;
+            if (payload.periodicity !== undefined)
+                state.fileState.periodicity = payload.periodicity;
             return;
         }
         // Unknown target: silent no-op.  Future targets (the
@@ -966,14 +978,19 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * INPUT script and this comes from its OUTPUT logs, so they are two facts
      * from two places and travel as two fields.
      *
-     * No `pbc` and no `axis_kind`: a run's 3x3 says nothing about which axes
-     * repeat, and guessing periodicity in the browser is the one thing the Cell
-     * rules refuse (molview.md § 9.5).  `Structure`'s own rule -- a lattice
-     * implies periodicity -- resolves it in the one place that owns it.
+     * COMPOSED ON THE SERVER (watch.py::_run_periodicity_json, 2026-08-20):
+     * the cell from the output logs, the axis kinds / origin / vacuum from
+     * the run's own .source pair.  This tab passes the block through
+     * verbatim -- guessing periodicity in the browser is the one thing the
+     * Cell rules refuse (molview.md § 9.5).  (Until 2026-08-20 this composed
+     * `{cell}` alone and a comment claimed the Structure's lattice-implies-
+     * periodicity rule would resolve the axes -- it could not: the parse
+     * builds the structure cell-less first, so the isolated default was
+     * already concretised, and a lattice-bearing junction exported as
+     * isolated on every axis.)
      */
     function _runPeriodicity() {
-        const lat = state.data && state.data.lattice;
-        return (Array.isArray(lat) && lat.length === 3) ? { cell: lat } : null;
+        return state.periodicity || null;
     }
 
     /* Whether the box on screen came from the run rather than from the user --
@@ -981,8 +998,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * (molview.md § 6.7: the viewer tracks contents, not where they came from).
      * Read by the status line after a load. */
     function _cellCameFromTheRun() {
-        const lat = state.data && state.data.lattice;
-        return Array.isArray(lat) && lat.length === 3;
+        const per = state.periodicity;
+        return !!(per && Array.isArray(per.cell) && per.cell.length === 3);
     }
 
     async function rebuildModel(seekIdx) {
@@ -2518,6 +2535,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // undefined on watch-data polls → keep existing (metadata is
             // per-file and doesn't change mid-run); set on a fresh load.
             atomMetadata: r.atomMetadata,
+            periodicity:  r.periodicity,
         });
         _renderRuntimeInfo(state.data && state.data.runtime_info);
         _renderParseWarnings(state.data && state.data.parse_warnings);
@@ -2870,6 +2888,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // below.  Only the LOAD response carries it -- watch-data
                 // polls omit it and keep the value (APPLY keep-existing).
                 atomMetadata: r.atom_metadata || null,
+                periodicity:  r.periodicity || null,
             });
             // Directory mode: show the user which file the loader
             // picked, and update the input with the resolved path so

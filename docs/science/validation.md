@@ -328,6 +328,29 @@ either nagging or dangerous:
   written on `pbc` alone could not tell a lead from a crystal axis, which
   `cell.kgrid` depends on.
 
+* **Does the k-grid contradict the axes?** — `config.kgrid`, **warnings**,
+  under one rule *(user, 2026-08-20)*: **`k > 1` is the user's explicit
+  statement — "sample a supercell along this axis" — so that is the only
+  place a consistency question exists. `k = 1` states nothing** (correct for
+  an isolated axis, a legitimate Γ-only choice for a periodic one) **and is
+  validated not at all.**
+
+  Where `k > 1`, two of the user's own statements can contradict it:
+
+  | the sampled axis says | finding |
+  |---|---|
+  | `isolated` / `transport` | **warn** — sampling a direction declared not to repeat (isolated: wasted cost) or one that must not carry fake Bloch periodicity (transport) |
+  | `periodic`, but the **geometric gap** (cell extent − atom span) on that axis is ≥ 5 Å | **hint** — the gap is the real vacuum whether or not the `vacuum` field was set; images that far apart are usually meant to interact weakly or not at all, so the finding names the gap and says *"if deliberate, carry on"* — a minor-image-interaction setup is a legitimate choice only the user can judge |
+  | `periodic`, tightly packed | silent — everything checks out |
+
+  *(This retired two earlier rules on 2026-08-20: a span-ratio heuristic
+  that judged intent geometrically even at `k = 1`, and an
+  "under-converged" warning on `k = 1` periodic axes — both validated an
+  axis about which the user had stated nothing. The historical failure
+  this rule exists for: a junction whose axis kinds were lost between
+  tabs kept its `2 2 1` k-grid, and nothing cross-checked the two — with
+  the rule, wrongly-isolated axes under `k = 2` earn two warnings.)*
+
 * **Can this cell exist at all?** — `cell.no_volume` and `cell.left_handed`,
   both **errors**, from the one checker (`molbuilder/cell.py`). Upstream of
   them the gate refuses the edit outright (§ 6.1). Not a judgement about

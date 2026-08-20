@@ -1293,3 +1293,73 @@ class TestSiestaStageOverlay:
     #       -- test_prep_calculation.py::
     #       test_the_deck_carries_its_stages_token_and_header, added with
     #       this retirement so the property never lost a producer-side gate.
+
+
+# --------------------------------------------------------------------- #
+#  kgrid vs the axes — the 2026-08-20 rule (user):                      #
+#  k>1 is the user's explicit statement; k=1 states nothing and is      #
+#  validated not at all.                                                #
+# --------------------------------------------------------------------- #
+
+
+def _kgrid_struct(axis_kind):
+    from molbuilder.structure import Structure
+    meta = {"cell": [[5, 0, 0], [0, 5, 0], [0, 0, 30]]}
+    if axis_kind:
+        meta["axis_kind"] = axis_kind
+    return Structure.from_dict({
+        "elements": ["Au"] * 4 + ["S", "C"],
+        "positions": [[0, 0, 0], [2.5, 0, 0], [0, 2.5, 0], [2.5, 2.5, 0],
+                      [1, 1, 5], [1, 1, 7]],
+        "metadata": meta,
+    })
+
+
+def _kgrid_findings(struct, kgrid):
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.validation import validate
+    return [i for i in validate(struct, SiestaConfig(kgrid=kgrid))
+            if "kgrid[" in i.message]
+
+
+def test_k_equal_one_is_never_validated():
+    """k=1 states nothing: correct for an isolated axis, a legitimate
+    Gamma-only choice for a periodic one.  Whatever the axes say, k=1 is
+    silent — the retired rules nagged 'under-converged' at a statement
+    the user never made."""
+    for kinds in (["periodic"] * 3, ["isolated"] * 3,
+                  ["periodic", "periodic", "transport"]):
+        assert _kgrid_findings(_kgrid_struct(kinds), (1, 1, 1)) == [], kinds
+
+
+def test_k_above_one_on_isolated_or_transport_warns_by_axis():
+    """Sampling a direction the user said does not repeat (isolated) or
+    must not carry fake Bloch periodicity (transport) is a contradiction
+    between two of their own statements — said per axis."""
+    found = _kgrid_findings(
+        _kgrid_struct(["isolated", "isolated", "isolated"]), (2, 2, 1))
+    assert len(found) == 2, [i.message for i in found]
+    assert all("not Brillouin-zone sampled" in i.message for i in found)
+    found = _kgrid_findings(
+        _kgrid_struct(["periodic", "periodic", "transport"]), (2, 2, 4))
+    assert len(found) == 1 and "fake periodicity" in found[0].message
+
+
+def test_k_above_one_across_a_wide_gap_is_a_hint_not_silence():
+    """A periodic axis whose images sit >= 5 A apart, sampled with k>1:
+    the geometric gap (cell minus atom span) is the real vacuum whether or
+    not the field was set, and a weak-image-interaction setup can be
+    deliberate — so a HINT that names the gap and carries on."""
+    found = _kgrid_findings(_kgrid_struct(["periodic"] * 3), (2, 2, 2))
+    assert len(found) == 1, [i.message for i in found]
+    assert "images sit ~" in found[0].message
+    assert "carry on" in found[0].message
+    # tight packing on the sampled axes: fully consistent, silent
+    assert _kgrid_findings(_kgrid_struct(["periodic"] * 3), (2, 2, 1)) == []
+
+
+def test_intended_transport_setup_is_silent():
+    """The BDT-Au shape that raised this: x,y periodic sampled 2x2, the
+    transport z at k=1 — every statement consistent, nothing said."""
+    assert _kgrid_findings(
+        _kgrid_struct(["periodic", "periodic", "transport"]), (2, 2, 1)) == []

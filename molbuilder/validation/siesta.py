@@ -561,91 +561,57 @@ def _validate_siesta(struct: Structure, cfg,
     if cell is None:
         return issues
 
-    # k-grid vs cell extent: distinguish three cases per axis:
-    #   * vacuum direction (atoms span < 85% of axis) -> k=1 correct,
-    #     k>1 wasted
-    #   * periodic direction (atoms span > 85% of axis) -> k=1
-    #     under-converged when other axes are sampled
-    #   * indeterminate (no atoms or single-axis tiny molecule) ->
-    #     fall back to the cell-extent heuristic
+    # k-grid vs the axes (user rule, 2026-08-20): ``k > 1`` is the USER'S
+    # EXPLICIT statement -- "sample a supercell along this axis" -- so that is
+    # the only place a consistency question exists.  ``k == 1`` states
+    # nothing (correct for an isolated axis, and a legitimate Gamma-only
+    # choice for a periodic one) and is validated NOT AT ALL.
     #
-    # Pre-fix the heuristic used cell-extent alone, which mis-flagged
-    # vacuum-padded long axes (e.g. a 12-mer DNA in an 80 Å cell with
-    # kgrid (4, 4, 1) along the molecular axis is correct vacuum, not
-    # periodic).  Atoms spanning < 85% of an axis means there's
-    # vacuum padding at the ends -> the user opted for vacuum on
-    # that axis, k=1 is right.
+    # Where k > 1, two facts can contradict the statement:
+    #   * the axis is declared ``isolated`` / ``transport`` -- sampling a
+    #     direction the user said does not repeat (isolated) or must not be
+    #     given fake Bloch periodicity (transport);
+    #   * the axis is periodic on paper but its periodic images sit far
+    #     apart -- the GEOMETRIC gap (cell extent minus atom span) is the
+    #     real vacuum, whether or not the vacuum field was ever set.  A gap
+    #     >= 5 A usually means the images are meant to interact weakly or
+    #     not at all, so k > 1 earns a HINT, not a refusal: minor-image
+    #     interaction can be a deliberate setup, and the user knows which.
+    #
+    # (This replaces two earlier rules the 2026-08-20 decision retired: a
+    # span-ratio heuristic that judged intent geometrically even at k == 1,
+    # and an "under-converged" warning on k == 1 periodic axes -- both were
+    # validating an axis about which the user had stated nothing.)
+    VACUUM_HINT_A = 5.0
     diag_lengths = [float(np.linalg.norm(cell[i])) for i in range(3)]
     if struct.n_atoms > 0:
         atom_extent = struct.positions.max(axis=0) - struct.positions.min(axis=0)
     else:
         atom_extent = np.zeros(3)
-    # The AUTHORITATIVE per-axis periodicity is ``struct.axis_kind``
-    # (structure-periodicity.md) -- "periodic" / "isolated" / "transport".
-    # Trust it when present; the span-ratio geometry heuristic below is only
-    # the fallback for structures that carry no axis_kind.  (The heuristic
-    # alone mis-flagged real crystals whose atoms don't reach the cell edge:
-    # a rocksalt cell spans ~50%, so its periodic axes read as "vacuum" and
-    # got a spurious "k>1 wasted" warn, while a genuinely under-sampled
-    # periodic axis with atoms below the 85% span was MISSED.)
     axis_kind = getattr(struct, "axis_kind", None)
     for axis, (k, length) in enumerate(zip(cfg.kgrid, diag_lengths)):
+        if k == 1:
+            continue                       # nothing stated, nothing checked
         kind = axis_kind[axis] if (axis_kind and axis < len(axis_kind)) else None
         if kind in ("isolated", "transport"):
-            # A vacuum (isolated) or NEGF-open (transport) axis must NOT be
-            # Brillouin-zone sampled; k>1 there is wasted (isolated) or wrong
-            # (transport imposes a fake Bloch periodicity along the lead).
-            if k != 1:
-                issues.append(Issue(
-                    "warn",
-                    f"kgrid[{axis}] = {k} on a {kind} axis; a {kind} axis is "
-                    f"not Brillouin-zone sampled (k must be 1) -- k>1 adds "
-                    f"cost" + ("" if kind == "isolated"
-                              else " and imposes a fake periodicity"),
-                    "config.kgrid",
-                ))
-            continue
-        if kind == "periodic":
-            if k == 1 and any(kk > 1 for kk in cfg.kgrid):
-                issues.append(Issue(
-                    "warn",
-                    f"kgrid[{axis}] = 1 on a periodic axis while another "
-                    f"axis uses k > 1; likely under-converged sampling on "
-                    f"this axis",
-                    "config.kgrid",
-                ))
-            continue
-
-        # --- fallback (axis_kind unknown): span-ratio geometry heuristic ---
-        # Span ratio: how much of the cell axis the atoms cover.
-        # Near 1.0 -> atoms reach edge -> periodic intent.
-        # Near 0.0 -> atoms cluster, edges are vacuum -> vacuum intent.
-        span_ratio = (atom_extent[axis] / length) if length > 0 else 0.0
-        is_periodic_axis = span_ratio > 0.85
-
-        if k != 1 and not is_periodic_axis and length >= 5.0:
-            # User asked for k-points on a vacuum-padded axis; rare
-            # and almost always wasted cost.  Don't warn for tiny
-            # cells (length < 5 Å) where the heuristic is unreliable.
             issues.append(Issue(
                 "warn",
-                f"kgrid[{axis}] = {k} along an axis of {length:.1f} Å "
-                f"where atoms span only {atom_extent[axis]:.1f} Å "
-                f"({span_ratio*100:.0f}%); this looks like a vacuum-padded "
-                f"axis -- k>1 there adds cost without improving accuracy",
+                f"kgrid[{axis}] = {k} on a {kind} axis; a {kind} axis is "
+                f"not Brillouin-zone sampled (k must be 1) -- k>1 adds "
+                f"cost" + ("" if kind == "isolated"
+                          else " and imposes a fake periodicity"),
                 "config.kgrid",
             ))
-        elif k == 1 and is_periodic_axis and any(kk > 1 for kk in cfg.kgrid):
-            # An axis where atoms span the full extent (slab / wire /
-            # crystal direction) with k=1 while another axis is
-            # sampled -- almost always a forgotten k-grid value.
+            continue
+        gap = max(0.0, length - float(atom_extent[axis]))
+        if gap >= VACUUM_HINT_A:
             issues.append(Issue(
                 "warn",
-                f"kgrid[{axis}] = 1 along an axis where atoms span "
-                f"{atom_extent[axis]:.1f} of {length:.1f} Å "
-                f"({span_ratio*100:.0f}%, looks periodic) while "
-                f"another axis uses k > 1; likely under-converged "
-                f"sampling on this axis",
+                f"kgrid[{axis}] = {k} samples a supercell along an axis "
+                f"whose periodic images sit ~{gap:.1f} A apart; if the "
+                f"images are meant not to interact, k = 1 is the usual "
+                f"choice -- if a weak image interaction is deliberate, "
+                f"carry on",
                 "config.kgrid",
             ))
 
