@@ -187,3 +187,80 @@ class TestSetSharedWhenLocked:
         assert out["allowed"] == {"ok": True}
         assert out["final_dir"] == "/c"
         assert out["final_file"] == "/c/d"
+
+
+# ------------------------------------------------------------------ #
+#  Per-tab selection memory (projects.md § 2, 2026-08-19)            #
+# ------------------------------------------------------------------ #
+
+
+def test_each_tab_keeps_its_own_place_and_a_fresh_tab_inherits():
+    """The user's 2026-08-19 ask, executed: Results keeps its run folder
+    while Modify keeps structure/, switching back returns each to its own
+    place — and a tab never visited starts at the most recent place
+    anywhere (the old shared behaviour, demoted to fallback)."""
+    out = _run_node(
+        """
+        global.location = { pathname: "/results" };
+        const m = state;
+        m.projects.setShared("/p/proj/optimization/run-1", "");
+        const resultsSees = m.projects.getCurrentDir();
+
+        // The user switches to Modify and works somewhere else.
+        global.location = { pathname: "/molbuilder" };
+        m.projects.setShared("/p/proj/structure", "/p/proj/structure/a.xyz");
+        const modifySees = m.projects.getCurrentDir();
+
+        // Back to Results: its own place, not Modify's.
+        global.location = { pathname: "/results" };
+        const resultsAgain = m.projects.getCurrentDir();
+
+        // A tab never visited inherits the most recent place anywhere.
+        global.location = { pathname: "/spectrum-calculation" };
+        const freshTab = m.projects.getCurrentDir();
+
+        console.log(JSON.stringify({
+            resultsSees, modifySees, resultsAgain, freshTab,
+        }));
+        """
+    )
+    assert out["resultsSees"] == "/p/proj/optimization/run-1"
+    assert out["modifySees"] == "/p/proj/structure"
+    assert out["resultsAgain"] == "/p/proj/optimization/run-1", (
+        "switching back lost the tab's own place — the per-tab slot did "
+        "not hold"
+    )
+    assert out["freshTab"] == "/p/proj/structure", (
+        "a first visit must start at the most recent place anywhere"
+    )
+
+
+def test_a_handoff_lands_in_the_target_tabs_own_slot():
+    """'Open in Molbuilder' writes the TARGET page's slots — raw shared-key
+    writes only feed the fallback, which the target's own memory shadows
+    (the silent break the door exists to prevent)."""
+    out = _run_node(
+        """
+        // Modify has its own place already — the shadow case.
+        global.location = { pathname: "/molbuilder" };
+        const m = state;
+        m.projects.setShared("/p/old/place", "");
+
+        // Results hands a file across.
+        global.location = { pathname: "/results" };
+        const r = m.projects.handOffSelection(
+            "/molbuilder", "/p/proj/optimization/run-1",
+            "/p/proj/optimization/run-1/out.xyz");
+
+        // Modify opens: the handoff won over its old place.
+        global.location = { pathname: "/molbuilder" };
+        console.log(JSON.stringify({
+            ok: r.ok,
+            dir: m.projects.getCurrentDir(),
+            file: m.projects.getCurrentFile(),
+        }));
+        """
+    )
+    assert out["ok"] is True
+    assert out["dir"] == "/p/proj/optimization/run-1"
+    assert out["file"] == "/p/proj/optimization/run-1/out.xyz"

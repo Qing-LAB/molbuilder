@@ -24,7 +24,7 @@
 
 import { apiRoots } from "./api.js";
 import {
-  projects, setProjectsRoot, SS_DIR, setNavigateToImpl,
+  projects, setProjectsRoot, SS_DIR, setNavigateToImpl, readSelectionSlot,
 } from "./state.js";
 import {
   initList, initLockUI, openDir, restoreSelection,
@@ -375,7 +375,7 @@ async function init() {
 
   // Navigate to the previously-visited dir if it's still inside
   // projects/, else start at the root.
-  const lastDir = sessionStorage.getItem(SS_DIR) || "";
+  const lastDir = readSelectionSlot(SS_DIR);
   const start = (lastDir && lastDir.startsWith(roots[0].path))
               ? lastDir : roots[0].path;
   await openDir(start);

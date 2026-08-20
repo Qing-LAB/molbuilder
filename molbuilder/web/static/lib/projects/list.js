@@ -17,7 +17,7 @@
 import { apiList, apiDelete } from "./api.js";
 import {
   setShared, publishCommit, getProjectsRoot, setRefreshHandler,
-  SS_FILE, SS_DIR,
+  SS_FILE, SS_DIR, readSelectionSlot,
   projects as _projectsApi,
 } from "./state.js";
 import { showPreview } from "./preview.js";
@@ -814,7 +814,7 @@ export async function openDir(absPath) {
 export function restoreSelection() {
   const projectsRoot = getProjectsRoot();
   const file = sessionStorage.getItem(SS_FILE) || "";
-  const dir  = sessionStorage.getItem(SS_DIR)  || "";
+  const dir  = readSelectionSlot(SS_DIR);
   if (!file || !projectsRoot || !file.startsWith(projectsRoot)) return;
   // 2026-05-31 #166: render via the shared subscriber so the
   // entry-marker + status-line code lives in exactly one place.

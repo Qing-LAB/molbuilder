@@ -100,22 +100,16 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // sessionStorage keys the Projects sidebar uses (see
             // ``lib/projects/state.js`` SS_FILE / SS_DIR).  Closes #117.
             modifyLink.addEventListener("click", () => {
-                try {
-                    const C = (root.molbuilder || {}).constants || {};
-                    root.sessionStorage.setItem(
-                        C.SS_FILE || "molbuilder.current_file", file);
-                    // Derive the parent dir from the file path so
-                    // the sidebar lands on the right folder.
+                // Through the door (projects.md § 5): the selection slots
+                // are per-tab now, so the handoff must write the TARGET
+                // page's slot -- raw key writes only feed the fallback a
+                // page's own memory shadows.  Failure is non-fatal: the
+                // link still navigates and /molbuilder keeps its state.
+                const proj = (root.molbuilder || {}).projects;
+                if (proj && typeof proj.handOffSelection === "function") {
                     const i = file.lastIndexOf("/");
-                    if (i >= 0) {
-                        root.sessionStorage.setItem(
-                            C.SS_DIR || "molbuilder.current_dir",
-                            file.slice(0, i));
-                    }
-                } catch (_) {
-                    // sessionStorage may throw under private-browsing
-                    // / quota-exceeded; the link still navigates and
-                    // /modify falls back to its previous state.
+                    proj.handOffSelection("/molbuilder",
+                        i >= 0 ? file.slice(0, i) : "", file);
                 }
             });
             actions.appendChild(modifyLink);

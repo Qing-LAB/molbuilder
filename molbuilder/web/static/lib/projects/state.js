@@ -32,6 +32,65 @@ import {
 export const SS_DIR  = "molbuilder.current_dir";
 export const SS_FILE = "molbuilder.current_file";
 
+/* ── The per-tab keying (docs/web/projects.md § 2, 2026-08-19) ─────────
+ *
+ * Each TAB keeps its own place: the slot actually read and written is
+ * `<base>.<page>`, keyed by the route, so Results stays in its run folder
+ * while Modify stays in structure/.  The bare key doubles as the shared
+ * "most recent place anywhere" -- written on every set, read only when a
+ * page has no slot of its own yet (a first visit starts where you last
+ * were, which is the pre-2026-08-19 behaviour, demoted to fallback).
+ *
+ * ONE reader and ONE writer, exported for the module's own files -- a
+ * second site touching the raw keys is how the keying would silently
+ * fork (the same rule as workspace tags: isolation holds only if the
+ * identity has one home). */
+function _pageKey() {
+  try {
+    return _routeKey(
+        (typeof location !== "undefined" && location.pathname) || "/");
+  } catch (_) { return "root"; }
+}
+
+function _routeKey(route) {
+  return String(route || "/").replace(/[^A-Za-z0-9-]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "root";
+}
+
+/**
+ * Hand the selection to ANOTHER tab (docs/web/projects.md § 5): write the
+ * TARGET page's own slots, so its per-tab memory shows `dir`/`file` when
+ * it next opens.  The cross-tab "Open in Molbuilder" link is the caller;
+ * writing the raw keys stopped working the day the slots became per-tab,
+ * because a page's own slot shadows the shared fallback.
+ */
+export function handOffSelection(route, dir, file) {
+  const key = _routeKey(route);
+  try {
+    sessionStorage.setItem(SS_DIR + "." + key, dir || "");
+    sessionStorage.setItem(SS_FILE + "." + key, file || "");
+    // The shared most-recent follows, as with any deliberate move.
+    sessionStorage.setItem(SS_DIR, dir || "");
+    sessionStorage.setItem(SS_FILE, file || "");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+}
+
+export function readSelectionSlot(base) {
+  try {
+    const own = sessionStorage.getItem(base + "." + _pageKey());
+    if (own !== null) return own;
+    return sessionStorage.getItem(base) || "";
+  } catch (_) { return ""; }
+}
+
+function _writeSelectionSlot(base, value) {
+  sessionStorage.setItem(base + "." + _pageKey(), value);
+  sessionStorage.setItem(base, value);          // the shared most-recent
+}
+
 // Module-private state.
 let projectsRoot = null;
 const selectionSubscribers = new Set();
@@ -131,8 +190,8 @@ function publishSelectionChange(payload) {
   // threw).  When omitted, read live from sessionStorage.
   if (!payload) {
     payload = {
-      dir:  sessionStorage.getItem(SS_DIR)  || "",
-      file: sessionStorage.getItem(SS_FILE) || "",
+      dir:  readSelectionSlot(SS_DIR),
+      file: readSelectionSlot(SS_FILE),
     };
   }
   _publishToSet(selectionSubscribers, payload);
@@ -189,8 +248,8 @@ export function publishCommit(dir, path) {
   let currentDir  = "";
   let currentFile = "";
   try {
-    currentDir  = sessionStorage.getItem(SS_DIR)  || "";
-    currentFile = sessionStorage.getItem(SS_FILE) || "";
+    currentDir  = readSelectionSlot(SS_DIR);
+    currentFile = readSelectionSlot(SS_FILE);
   } catch (_) { /* private-mode SecurityError; treat as mismatch */ }
   if (currentDir !== dirSafe || currentFile !== fileSafe) {
     setShared(dirSafe, fileSafe);
@@ -226,8 +285,8 @@ export function setShared(dir, file) {
   // subscribers still update; the cursor just won't survive a reload.
   const payload = { dir: dir || "", file: file || "" };
   try {
-    sessionStorage.setItem(SS_DIR,  payload.dir);
-    sessionStorage.setItem(SS_FILE, payload.file);
+    _writeSelectionSlot(SS_DIR,  payload.dir);
+    _writeSelectionSlot(SS_FILE, payload.file);
   } catch (e) {
     // Logged loud-but-non-fatal so a developer notices in DevTools.
     // No user-facing error -- the page keeps working.
@@ -298,7 +357,7 @@ async function readCurrentFile(opts) {
   //   * {ok:false, error}       — read failed
   // The null case is INTENTIONALLY distinct from a failure so callers
   // can render "no file selected" vs "read failed" differently.
-  const path = sessionStorage.getItem(SS_FILE) || "";
+  const path = readSelectionSlot(SS_FILE);
   if (!path) return null;
   const j = await apiRead(path, opts);
   if (!j.ok) return { ok: false, error: j.error || "read failed" };
@@ -309,7 +368,7 @@ async function refresh(opts) {
   // Per design § C6: returns {ok:true} | {ok:false, error}.  The
   // earlier void-return contract violated Principle 6 (every async
   // public method returns an envelope or null).
-  const dir = sessionStorage.getItem(SS_DIR) || projectsRoot;
+  const dir = readSelectionSlot(SS_DIR) || projectsRoot;
   if (!dir) {
     return { ok: false, error: "no current directory to refresh" };
   }
@@ -400,7 +459,7 @@ export async function writeFile(path, text, opts) {
       return err;
     }
     try {
-      const cur = sessionStorage.getItem(SS_DIR);
+      const cur = readSelectionSlot(SS_DIR);
       if (cur && path.startsWith(cur.replace(/\/$/, "") + "/")
           && refreshHandler) {
         await refreshHandler(cur);
@@ -435,7 +494,7 @@ export async function writeFile(path, text, opts) {
   // Refresh the sidebar listing if we wrote into its current dir.
   // Harmless if not (no-op).  We don't await refresh's own failures.
   try {
-    const cur = sessionStorage.getItem(SS_DIR);
+    const cur = readSelectionSlot(SS_DIR);
     if (cur && path.startsWith(cur.replace(/\/$/, "") + "/")
         && refreshHandler) {
       await refreshHandler(cur);
@@ -461,7 +520,7 @@ export async function writeFile(path, text, opts) {
  *     ``{ok:false, error}``).
  */
 async function saveToWorkspace(text, filename, opts) {
-  const dir = sessionStorage.getItem(SS_DIR) || "";
+  const dir = readSelectionSlot(SS_DIR);
   if (atProjectsRoot(dir)) return null;
   const path = dir.replace(/\/$/, "") + "/" + filename;
   return await writeFile(path, text, opts);
@@ -784,8 +843,8 @@ function cancelLockedOperation() {
 }
 
 export const projects = {
-  getCurrentDir:       () => sessionStorage.getItem(SS_DIR)  || "",
-  getCurrentFile:      () => sessionStorage.getItem(SS_FILE) || "",
+  getCurrentDir:       () => readSelectionSlot(SS_DIR),
+  getCurrentFile:      () => readSelectionSlot(SS_FILE),
   // The resolved projects/ root path (Capabilities.file_picker_roots[0]).
   // Used by the Build form's psml_lib live-resolution caption so the
   // user sees that ``pseudopotential`` resolves to
@@ -800,15 +859,15 @@ export const projects = {
   // saveToWorkspace would silently return null and the click would
   // produce a confusing "no current_dir" error.
   atRoot:              () => atProjectsRoot(
-                          sessionStorage.getItem(SS_DIR) || ""),
+                          readSelectionSlot(SS_DIR)),
   onChange: (cb) => {
     _registerSubscriber(selectionSubscribers, cb, "onChange");
     // Fire once immediately so subscribers can initialise from the
     // current state without a separate getCurrent* call.
     try {
       cb({
-        dir:  sessionStorage.getItem(SS_DIR)  || "",
-        file: sessionStorage.getItem(SS_FILE) || "",
+        dir:  readSelectionSlot(SS_DIR),
+        file: readSelectionSlot(SS_FILE),
       });
     } catch (_) { /* swallow */ }
     return () => selectionSubscribers.delete(cb);
@@ -830,6 +889,7 @@ export const projects = {
   // setShared's pattern: the mutator + the subscription live in
   // the same namespace.
   publishCommit,
+  handOffSelection,
   readCurrentFile,
   relativeToProjects,
   refresh,

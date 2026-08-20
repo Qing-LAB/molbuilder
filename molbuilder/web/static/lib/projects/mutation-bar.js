@@ -24,14 +24,14 @@ import {
   chooseName, chooseUploadFile,
 } from "./dialogs.js";
 import {
-  projects, getProjectsRoot, SS_DIR, atProjectsRoot,
+  projects, getProjectsRoot, SS_DIR, atProjectsRoot, readSelectionSlot,
 } from "./state.js";
 import { openDir } from "./list.js";
 
 let elProjBtn, elFolderBtn, elUploadBtn;
 
 function _updateButtonEnablement() {
-  const dir = sessionStorage.getItem(SS_DIR) || getProjectsRoot() || "";
+  const dir = readSelectionSlot(SS_DIR) || getProjectsRoot() || "";
   const root = atProjectsRoot(dir);
   // "New project" always enabled (it lands at projects/ root).
   // "New folder" + "Upload" require a project context.
@@ -68,7 +68,7 @@ async function _doNewProject() {
 }
 
 async function _doNewFolder() {
-  const currentDir = sessionStorage.getItem(SS_DIR) || getProjectsRoot();
+  const currentDir = readSelectionSlot(SS_DIR) || getProjectsRoot();
   if (!currentDir || atProjectsRoot(currentDir)) {
     window.alert(
       "Cannot create a folder at the projects root.  "
@@ -95,7 +95,7 @@ async function _doNewFolder() {
 }
 
 async function _doUpload() {
-  const currentDir = sessionStorage.getItem(SS_DIR) || getProjectsRoot();
+  const currentDir = readSelectionSlot(SS_DIR) || getProjectsRoot();
   if (!currentDir || atProjectsRoot(currentDir)) {
     window.alert(
       "Cannot upload to the projects root.  Pick a project in the "

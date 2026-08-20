@@ -60,6 +60,17 @@ storage (`state.js`):
 
 That is the whole selection — one folder, one file. There is no multi-select.
 
+**And the place is remembered PER TAB** *(user, 2026-08-19: "switching back
+and forth should not be trouble")*: each slot is keyed by the page, so the
+Results tab keeps its run folder while Modify keeps its structure folder,
+and switching between them returns each to its own place. A tab you have
+never visited starts at the **most recent place anywhere** — every write
+also refreshes a shared most-recent slot, which is exactly the old
+behaviour, now the fallback. One reader owns the keying
+(`projects.getCurrentDir()` / the module's own slot helpers); nothing reads
+the raw storage keys directly, because a second reader is how the keying
+would silently fork.
+
 **The one rule to remember: a single click is a *preview*, a double click is
 *use it*.**
 
@@ -241,6 +252,7 @@ a uniform `{ ok, … }` result — they never throw.
 | `onCommit(cb)` | a file was committed (double-clicked) — does not fire on subscribe |
 | `publishCommit(dir, path)` | commit a file from code (also moves the selection). **`path` is the file's FULL path**, not its name — subscribers use it as one |
 | `setShared(dir, file)` | move the selection without re-listing |
+| `handOffSelection(route, dir, file)` | write ANOTHER tab's per-tab slots (§ 2), so "Open in Molbuilder"-style links land the target where they point |
 | `navigateTo(path)` / `refresh()` | list a folder + move there / re-list the current folder |
 | `onProjectsRootResolved(cb)` / `onLockChange(cb)` | one-shot / lock notifications |
 
