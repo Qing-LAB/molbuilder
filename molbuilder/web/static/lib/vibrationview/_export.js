@@ -85,12 +85,6 @@ function gifEncoder() {
  *
  * The timestamp is a constant rather than the clock, so exporting the same
  * animation twice produces the same bytes. Nothing here needs to know when it ran.
- *
- * PRIVATE ON PURPOSE: this package is sealed (its module-boundary tests
- * forbid imports in either direction), so it carries its own copy even
- * though lib/zip-store.js now holds the same code for the rest of the app.
- * Consolidating the two is this package's own future migration, not an
- * import through the wall.
  */
 const ZIP_TIME = 0;      // 00:00:00
 const ZIP_DATE = 0x21;   // 1980-01-01, the epoch the format was born with

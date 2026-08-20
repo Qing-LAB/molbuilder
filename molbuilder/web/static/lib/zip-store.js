@@ -4,15 +4,9 @@
  * directory naming them, and an end record pointing at that directory.  No
  * clock: the same input twice is the same bytes.
  * Owns:     nothing but the format.
- * Called by: VibrationView's animation export (png-zip) and the MolView files
- *           door (a Data download is a PAIR, and a second programmatic
- *           download is exactly what browsers silently swallow — one archive
- *           is the delivery that cannot lose its half).
- *
- * A DELIBERATE second copy (2026-08-19): the animation exporter carries the
- * same code privately inside its own sealed package — whose module-boundary
- * tests forbid imports in either direction — so sharing across that wall is
- * not an import, and consolidation is that package's own future migration.
+ * Called by: the MolView files door — a Data download is a PAIR, and a
+ *           second programmatic download is exactly what browsers silently
+ *           swallow; one archive is the delivery that cannot lose its half.
  */
 "use strict";
 
