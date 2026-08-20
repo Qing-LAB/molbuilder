@@ -18,7 +18,7 @@ door** every other module uses to open a structure or save one. It is passive:
 it *publishes* what you picked and *tabs listen* — the sidebar never decides
 which tab wants which file.
 
-It is a plain ES module (all nine of its files) — nothing here is waiting on a
+It is a plain ES module (all ten of its files) — nothing here is waiting on a
 conversion.
 
 ## 1. The one door, and the pieces behind it
@@ -27,7 +27,7 @@ Everything a tab uses is on **`window.molbuilder.projects`**. Tabs call that and
 subscribe to it; they never reach into the sidebar's HTML. (A tab waits for it
 with `runtime.whenReady("projects")` instead of polling.)
 
-Behind that one door are nine small files, each with one concern:
+Behind that one door are ten small files, each with one concern:
 
 | File | What it does |
 |---|---|
@@ -40,6 +40,7 @@ Behind that one door are nine small files, each with one concern:
 | `preview.js` | the file preview/edit pop-up (any file, view or edit) |
 | `checkpoint.js` | the run-history panel (git snapshots of a run folder) |
 | `parser.js` | the **one** door that understands molecules — open and save |
+| `molview-doors.js` | the `files` door every MolView mount hands in — export to project or download |
 
 There are really **two layers**: a **content-blind file layer** (read/write raw
 bytes, list folders, rename — it doesn't care what's in a file) that every tab
@@ -294,6 +295,16 @@ Cancel hook.
 
 **The molecule door** — `projects.parser.openMolecule(path, {confirmDiscard})`
 and `projects.parser.saveMolecule(path, {overwrite})` (§ 3).
+
+**The MolView files door** — `projects.molviewFiles` *(2026-08-19)*: the one
+implementation of the `files` option every MolView mount hands in
+(`molview.md` § 11.4). `save(destination, stem, {structure, frames})` turns
+the viewer's truth into the `.xyz` + `.molstruct.json` pair — `"download"`
+through `POST /api/structure/export` (the browser saves **both** files),
+`"project"` through this module's own dialogs and `POST /api/structure/save`
+(the overwrite flow included). `saveBinary(destination, filename, blob)` is
+the picture half — a download, or `writeFile` into a dialog-chosen folder.
+MolView holds no file route; this door is where its exports become files.
 
 *(Whole-file **download** is not a method here — it is a direct browser download
 from the row's `⋯` menu.)*

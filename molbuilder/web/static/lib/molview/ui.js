@@ -80,7 +80,7 @@ export function mountControls(card, model, handle, files) {
     const frameBar = mountFrameBar(doc, card, model, handle);
     off.push(frameBar.dispose);
 
-    const menus = mountMenus(doc, card, model, files);
+    const menus = mountMenus(doc, card, model, handle, files);
     off.push(menus.dispose);
 
     const badge = mountBadge(doc, card, model);
@@ -355,14 +355,14 @@ function placementFor(el) {
     };
 }
 
-function mountMenus(doc, card, model, files) {
+function mountMenus(doc, card, model, handle, files) {
     const bar = doc.createElement("div");
     bar.className = "molviewer-menu-bar";
     bar.setAttribute("role", "toolbar");
     bar.setAttribute("aria-label", "Viewer controls");
 
     const view = buildViewMenu(doc, model);
-    const exportMenu = buildExportMenu(doc, model, files);
+    const exportMenu = buildExportMenu(doc, card, model, handle, files);
     bar.appendChild(view.root);
     bar.appendChild(exportMenu.root);
     // The playback bar is the third thing in this row (§ 8.5). The scaffold owns
@@ -688,7 +688,7 @@ function buildViewMenu(doc, model) {
  * Save-to-project and download differ ONLY in that destination (§ 11.3), so they
  * are one call with an argument, not two paths to keep in step.
  */
-function buildExportMenu(doc, model, files) {
+function buildExportMenu(doc, card, model, handle, files) {
     const root = doc.createElement("details");
     root.className = "molviewer-menu";
     const summary = doc.createElement("summary");
@@ -698,18 +698,25 @@ function buildExportMenu(doc, model, files) {
     const body = doc.createElement("div");
     body.className = "molviewer-menu-body";
     root.appendChild(body);
-    const section = doc.createElement("div");
-    section.className = "molviewer-export-section";
-    const label = doc.createElement("div");
-    label.className = "molviewer-export-section-label";
-    label.textContent = "Structure";
-    section.appendChild(label);
-    const row = doc.createElement("div");
-    row.className = "molviewer-export-row";
-    section.appendChild(row);
-    body.appendChild(section);
 
-    const item = (text, onClick) => {
+    /* § 11.3's menu: TWO sections, because truth-or-view is the one axis
+     * that changes what the thing IS.  Each row asks WHICH FRAMES as a
+     * range (a quantity, so a dialog and not more menu items), Image also
+     * asks a resolution and -- for a range -- webm or gif. */
+    const section = (labelText) => {
+        const s = doc.createElement("div");
+        s.className = "molviewer-export-section";
+        const label = doc.createElement("div");
+        label.className = "molviewer-export-section-label";
+        label.textContent = labelText;
+        s.appendChild(label);
+        const row = doc.createElement("div");
+        row.className = "molviewer-export-row";
+        s.appendChild(row);
+        body.appendChild(s);
+        return row;
+    };
+    const item = (row, text, onClick) => {
         const button = doc.createElement("button");
         button.type = "button";
         button.className = "molviewer-export-btn";
@@ -718,6 +725,35 @@ function buildExportMenu(doc, model, files) {
         row.appendChild(button);
         return button;
     };
+
+    const dataRow  = section("Data");
+    const imageRow = section("Image");
+
+    // What happened, said where the click was made -- a silent no-op row is
+    // exactly the failure this menu is recovering from.
+    const status = doc.createElement("div");
+    status.className = "molviewer-export-status";
+    status.hidden = true;
+    body.appendChild(status);
+    function say(text, isError) {
+        status.textContent = text;
+        status.hidden = !text;
+        // State rides a data attribute -- the stylesheet's own idiom; a bare
+        // modifier class here would collide with any page defining one too.
+        if (isError) status.setAttribute("data-error", "");
+        else status.removeAttribute("data-error");
+    }
+    function report(out, did) {
+        if (!out) { say("", false); return; }
+        if (out.ok) {
+            say(did + (out.path ? " " + out.path
+                : (out.files ? " " + out.files.join(", ") : "")), false);
+        } else if (out.cancelled) {
+            say("", false);
+        } else {
+            say(out.error || "the export failed", true);
+        }
+    }
 
     /* WHAT LEAVES, AND WHERE IT GOES — and nothing about how it becomes bytes.
      * MolView hands over the STRUCTURE and names a destination; the door turns
@@ -729,17 +765,96 @@ function buildExportMenu(doc, model, files) {
      * and both halves had already drifted from Python's -- the coordinate
      * document in its decimals, the sidecar in the version key that makes one
      * loadable at all. */
-    function send(destination) {
-        const file = model.exportFile();
+    async function sendData(destination) {
+        if (!files || typeof files.save !== "function") {
+            say("no file door was handed to this viewer", true);
+            return;
+        }
+        let range = null;
+        if (model.frameCount() > 1) {
+            // The dialog opens on the frame you are looking at (§ 11.3):
+            // accepting it unchanged is the common case.
+            range = await askExportDialog(doc, card, model, { kind: "data" });
+            if (!range) return;
+        }
+        const file = model.exportFile(range || undefined);
         // It REFUSES rather than exporting a structure it cannot vouch for
         // (§ 9.3), and a refusal is not something to paper over with an empty
         // file.
-        if (!file || !files || typeof files.save !== "function") return;
-        files.save(destination, defaultStem(model, file.name), file.structure);
+        if (!file) { say("the structure cannot be exported", true); return; }
+        say("exporting\u2026", false);
+        const out = await files.save(
+            destination,
+            exportStem(model, file.name, range),
+            { structure: file.structure, frames: file.frames });
+        report(out, destination === "project" ? "saved" : "downloaded");
     }
 
-    item("Save to project", () => send("project"));
-    item("Download",        () => send("download"));
+    /* A picture has to be THE VIEW (§ 11.3): rendered from the drawing as it
+     * is set -- the isolate, the style, the camera.  One frame is a .png; a
+     * range is a movie, stepped through the same frame write everything else
+     * uses and captured through the handle's one window-asking (§ 9.7). */
+    async function sendImage(destination) {
+        if (!files || typeof files.saveBinary !== "function") {
+            say("no file door was handed to this viewer", true);
+            return;
+        }
+        if (!handle || typeof handle.capture !== "function") {
+            say("this viewer cannot capture its window", true);
+            return;
+        }
+        const ask = await askExportDialog(doc, card, model, { kind: "image" });
+        if (!ask) return;
+        const canvas = card.canvas || {};
+        const width  = Math.max(1, Math.round(
+            (canvas.clientWidth || 640) * ask.scale));
+        const height = Math.max(1, Math.round(
+            (canvas.clientHeight || 480) * ask.scale));
+        const single = !ask.range || ask.range.from === ask.range.to;
+        const stem = exportStem(model, (model.exportFile() || {}).name,
+                                ask.range);
+        try {
+            if (single) {
+                if (ask.range) model.setCurrentFrame(ask.range.from);
+                say("rendering\u2026", false);
+                const blob = await handle.capture({ width, height });
+                report(await files.saveBinary(destination, stem + ".png",
+                                              blob),
+                       destination === "project" ? "saved" : "downloaded");
+                return;
+            }
+            /* The movie plays at the viewer's own playback speed -- the rate
+             * the frame bar is set to is the rate the file plays at: one
+             * fact, one home (§ 11.3). */
+            const fps = 1000 / handle.getSpeed();
+            const { createFrameEncoder } =
+                await import("../media-export.js");
+            const encoder = await createFrameEncoder({
+                format: ask.format, width, height, fps });
+            const original = model.currentFrame();
+            const lo = ask.range.from, hi = ask.range.to;
+            for (let n = lo; n <= hi; n += 1) {
+                model.setCurrentFrame(n);
+                say("rendering frame " + (n - lo + 1) + "/" + (hi - lo + 1)
+                    + "\u2026", false);
+                const blob = await handle.capture({ width, height });
+                await encoder.addFrame(blob);
+            }
+            model.setCurrentFrame(original);
+            say("encoding\u2026", false);
+            const out = await encoder.finish();
+            report(await files.saveBinary(destination,
+                                          stem + "." + ask.format, out),
+                   destination === "project" ? "saved" : "downloaded");
+        } catch (e) {
+            say(String((e && e.message) || e), true);
+        }
+    }
+
+    item(dataRow,  "Save to project", () => sendData("project"));
+    item(dataRow,  "Download",        () => sendData("download"));
+    item(imageRow, "Save to project", () => sendImage("project"));
+    item(imageRow, "Download",        () => sendImage("download"));
 
     return {
         root, summary, body,
@@ -747,20 +862,147 @@ function buildExportMenu(doc, model, files) {
     };
 }
 
-/* THE DEFAULT NAME (§ 11.4's `wire_frame50.xyz`), which is two facts joined:
- * WHAT it came from, and WHICH FRAME. The first is the structure's — the model
- * kept it from the load — and the second is this menu's, because the menu is
- * what knows the export is one frame out of many.
+/* ── The export dialog (§ 11.3) ──────────────────────────────────────────────
  *
- * A single-frame export out of a trajectory names its frame so the file says
- * which one it is without anyone having to remember; a static structure gets no
- * suffix, there being nothing to disambiguate. A structure that arrived with no
- * name — pasted text — falls back to a generic stem rather than borrowing one. */
-function defaultStem(model, source) {
+ * One small modal over the card: the frame range (only when there is more
+ * than one frame -- "a one-frame structure never asks"), and for Image a
+ * resolution and, when the range spans, the movie format.  It opens on the
+ * DISPLAYED frame, so accepting it unchanged is the common case and costs
+ * one keystroke; widening it is what the dialog is for.
+ *
+ * Resolves to null on cancel; for "data", `{from, to}` (0-based, inclusive);
+ * for "image", `{range|null, scale, format}`.
+ */
+function askExportDialog(doc, card, model, opts) {
+    const kind = opts.kind;
+    const count = model.frameCount();
+    const multi = count > 1;
+    if (kind === "data" && !multi) return Promise.resolve({});
+
+    return new Promise((resolve) => {
+        const overlay = doc.createElement("div");
+        overlay.className = "molviewer-export-dialog-overlay";
+        const box = doc.createElement("div");
+        box.className = "molviewer-export-dialog";
+        overlay.appendChild(box);
+
+        const h = doc.createElement("div");
+        h.className = "molviewer-export-dialog-title";
+        h.textContent = kind === "data" ? "Export data" : "Export image";
+        box.appendChild(h);
+
+        const field = (labelText, input) => {
+            const w = doc.createElement("label");
+            w.className = "molviewer-export-dialog-field";
+            const s = doc.createElement("span");
+            s.textContent = labelText;
+            w.appendChild(s);
+            w.appendChild(input);
+            box.appendChild(w);
+            return input;
+        };
+        const numberInput = (value) => {
+            const input = doc.createElement("input");
+            input.type = "number";
+            // 1-based on screen, like every atom and frame number (§ 11.5).
+            input.min = "1";
+            input.max = String(count);
+            input.value = String(value);
+            return input;
+        };
+        const select = (options, value) => {
+            const sel = doc.createElement("select");
+            for (const [v, label] of options) {
+                const o = doc.createElement("option");
+                o.value = v;
+                o.textContent = label;
+                sel.appendChild(o);
+            }
+            sel.value = value;
+            return sel;
+        };
+
+        let fromEl = null, toEl = null, scaleEl = null, formatEl = null;
+        if (multi) {
+            const shown = toDisplay(model.currentFrame());
+            fromEl = field("From frame", numberInput(shown));
+            toEl   = field("To frame",   numberInput(shown));
+        }
+        if (kind === "image") {
+            scaleEl = field("Resolution", select(
+                [["1", "1\u00d7 (window size)"], ["2", "2\u00d7"],
+                 ["4", "4\u00d7"]], "1"));
+            if (multi) {
+                formatEl = field("Movie format", select(
+                    [["webm", "webm (video)"], ["gif", "gif"]], "webm"));
+            }
+        }
+
+        const actions = doc.createElement("div");
+        actions.className = "molviewer-export-dialog-actions";
+        const mkBtn = (label, cls) => {
+            const b = doc.createElement("button");
+            b.type = "button";
+            b.className = "molviewer-export-btn " + cls;
+            b.textContent = label;
+            actions.appendChild(b);
+            return b;
+        };
+        const cancel = mkBtn("Cancel", "is-cancel");
+        const okBtn  = mkBtn("Export", "is-confirm");
+        box.appendChild(actions);
+
+        const done = (answer) => { overlay.remove(); resolve(answer); };
+        cancel.addEventListener("click", () => done(null));
+        overlay.addEventListener("click", (ev) => {
+            if (ev.target === overlay) done(null);
+        });
+        okBtn.addEventListener("click", () => {
+            let range = null;
+            if (multi) {
+                // Back across the numbering boundary exactly once (§ 11.5),
+                // clamped to the range that exists -- reversed ends are the
+                // user saying "between these", so they are ordered, not
+                // refused.
+                const raw = [Number(fromEl.value), Number(toEl.value)]
+                    .map((n) => (Number.isFinite(n) ? Math.round(n) - 1 : 0))
+                    .map((n) => Math.min(Math.max(0, n), count - 1))
+                    .sort((a, b) => a - b);
+                range = { from: raw[0], to: raw[1] };
+            }
+            if (kind === "data") { done(range || {}); return; }
+            done({
+                range,
+                scale: Number(scaleEl.value) || 1,
+                format: (range && range.from !== range.to && formatEl)
+                    ? formatEl.value : "png",
+            });
+        });
+
+        (card.root || doc.body).appendChild(overlay);
+        try { (fromEl || scaleEl || okBtn).focus(); } catch (_) {}
+    });
+}
+
+/* THE DEFAULT NAME (§ 11.4's `wire_frame50` / `wire_frame40-120`), which is
+ * two facts joined: WHAT it came from, and WHICH FRAMES. The first is the
+ * structure's — the model kept it from the load — and the second is the
+ * export's, because only the export knows which frames it took.
+ *
+ * A single-frame export out of a trajectory names its frame; a range names
+ * both ends; a static structure gets no suffix, and neither does a range
+ * covering the whole run — in both cases there is nothing to disambiguate
+ * (§ 11.4). A structure that arrived with no name — pasted text — falls back
+ * to a generic stem rather than borrowing one. */
+function exportStem(model, source, range) {
     const base = source || "structure";
-    return model.frameCount() > 1
-        ? base + "_frame" + toDisplay(model.currentFrame())
-        : base;
+    const count = model.frameCount();
+    if (count <= 1) return base;
+    const lo = range ? range.from : model.currentFrame();
+    const hi = range ? range.to : model.currentFrame();
+    if (lo === 0 && hi === count - 1) return base;
+    if (lo === hi) return base + "_frame" + toDisplay(lo);
+    return base + "_frame" + toDisplay(lo) + "-" + toDisplay(hi);
 }
 
 

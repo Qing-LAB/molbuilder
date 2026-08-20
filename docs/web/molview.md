@@ -3278,7 +3278,12 @@ So the menu offers **two** things, and each asks **which frames** as a range:
 | The menu item | Reads from | Asks | Produces |
 |---|---|---|---|
 | **Data** | the master copy | a frame range | one frame → a plain `.xyz` + `.json`; more → an extended `.xyz` + `.json` |
-| **Image** | the drawing | a frame range | one frame → `.png`; more → `.webm` / `.gif` |
+| **Image** | the drawing | a frame range, a **resolution** (1×/2×/4× of the window), and — for a range — **webm or gif** | one frame → `.png`; more → the chosen `.webm` / `.gif` |
+
+*(The resolution and the movie-format choice are the user's additions,
+2026-08-19.  A movie plays at the viewer's own playback speed — the rate you
+set the frame bar to is the rate the file plays at, one fact with one home
+rather than a second slider in a dialog.)*
 
 **A range is strictly more than the grid could say.** Frames 40–120 of a
 400-frame optimization is an ordinary thing to want — the converged tail without
@@ -3468,9 +3473,13 @@ That is not an academic distinction — it is exactly where this went wrong:
 > have. The menu is MolView's now and hands the whole structure to the door, so
 > the pair is written by the one generator and cannot come apart.
 >
-> **Left:** the Image row, and Data's frame range. Both are controls that were
-> never drawn rather than rules that are broken — the sealed layer can already
-> produce a picture (§ 9.8) and the model already reads any frame (§ 9.3).
+> ~~**Left:** the Image row, and Data's frame range.~~ **Drawn 2026-08-19** —
+> and the same change closed the larger hole the rows sat in: the `files`
+> door the menu sends through was a mount option NO production page passed,
+> so both Data rows were silent no-ops everywhere but the demo (the mount
+> test injected its own door, which is how it shipped green).  The door is
+> the projects module's now — `projects.molviewFiles`, one implementation,
+> handed to every mount — and the menu is § 11.3's menu.
 >
 > One question this menu still does not ask: `.pdb` cannot carry this metadata at
 > all, so a format that cannot hold the truth probably belongs on the download row

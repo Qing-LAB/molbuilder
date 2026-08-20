@@ -32,6 +32,7 @@ import {
 import { initForms } from "./mutation-bar.js";
 import { initPreview } from "./preview.js";
 import { parser } from "./parser.js";
+import { molviewFiles } from "./molview-doors.js";
 import { initCheckpointPanel,
          status as ckStatus, init as ckInit, saveState as ckSaveState }
     from "./checkpoint.js";
@@ -42,6 +43,10 @@ window.molbuilder = window.molbuilder || {};
 // whole file-handling surface lives under ONE `projects` namespace
 // (docs/model/structure.md).
 projects.parser = parser;
+// The MolView files door (`docs/web/projects.md` § 5): the ONE implementation
+// of the `files` option every viewer mount hands in -- exports become files
+// here, never inside the viewer (molview.md § 11.4).
+projects.molviewFiles = molviewFiles;
 // The checkpoint sub-namespace (`docs/web/projects.md` § 5), attached beside
 // `parser` for the same reason: the whole surface a tab may use lives under ONE
 // `projects` namespace.  Restore and tag are deliberately absent -- they are

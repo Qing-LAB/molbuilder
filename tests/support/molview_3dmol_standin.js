@@ -144,6 +144,17 @@ globalThis.$3Dmol = {
                 __rec("pngURI", [w, h]);
                 return "data:image/png;base64,aGk=";
             },
+
+            // The vendor's camera pair (GLViewer.getView/setView) -- the
+            // sealed layer's pose read rides these (molview.md § 9.6).
+            getView: function () {
+                __rec("getView", []);
+                return (v._view || [0, 0, 0, 40, 0, 0, 0, 1]).slice();
+            },
+            setView: function (arr) {
+                __rec("setView", [arr]);
+                v._view = Array.isArray(arr) ? arr.slice() : v._view;
+            },
         };
         return v;
     },

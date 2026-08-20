@@ -265,6 +265,14 @@ export async function mount(hostEl, workspace, opts) {
          * second home for anything.) */
         resetView() { engine.resetView(); },
 
+        /* A picture of the window as drawn (§ 11.3's Image; § 9.2: the
+         * handle owns actions on the window).  `{width, height}` asks for a
+         * size; omitted, the window's own. */
+        capture(size) {
+            const s = size || {};
+            return engine.capture(s.width, s.height);
+        },
+
         dispose() {
             for (const p of parts.slice().reverse()) {
                 try { p(); } catch (_) {}

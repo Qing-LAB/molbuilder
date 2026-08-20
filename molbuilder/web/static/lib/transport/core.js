@@ -235,8 +235,15 @@ const WORKSPACE_TAG = "transport";
         if (_mvHandle && _mvHandle.ok) return Promise.resolve(_mvHandle);
         /* EDITABLE, and said the way MolView says it: editable is the ABSENCE
          * of the mode flag.  Designating an electrode is a label write, which
-         * is exactly what this tab exists for. */
-        return mount(host, ws, { owner: WORKSPACE_TAG })
+         * is exactly what this tab exists for.
+         *
+         * The files door comes off the namespace (this file is a classic
+         * script and cannot import it); both mount paths run at
+         * projects-ready moments -- the commit channel by construction, the
+         * init-restore because it awaits whenReady("projects"). */
+        var _proj = root.molbuilder && root.molbuilder.projects;
+        return mount(host, ws, { owner: WORKSPACE_TAG,
+                                 files: _proj && _proj.molviewFiles })
             .then(function (h) {
                 _mvHandle = (h && h.ok) ? h : null;
                 return _mvHandle;
@@ -253,8 +260,15 @@ const WORKSPACE_TAG = "transport";
      */
     function _restoreSession() {
         var ws = root.molbuilder && root.molbuilder.workspace;
-        if (!ws) return;
-        _ensureViewer().then(function (viewer) {
+        var runtime = root.molbuilder && root.molbuilder.runtime;
+        if (!ws || !runtime
+                || typeof runtime.whenReady !== "function") return;
+        // Projects first: the viewer's files door rides the namespace, and a
+        // restore that mounts before the sidebar module ran would capture an
+        // undefined door for the life of the viewer.
+        runtime.whenReady("projects").then(function () {
+            return _ensureViewer();
+        }).then(function (viewer) {
             if (!viewer || !viewer.data
                     || typeof viewer.data.load !== "function") return null;
             return viewer.data.load(0);

@@ -39,6 +39,7 @@ import { mount, formula as mvFormula } from "/static/lib/molview/index.js";
 // Who this tab's saved work belongs to (workspace.md § 4): the viewer's `owner`
 // and the tag on any workspace call, so the two cannot name different slots.
 const WORKSPACE_TAG = "spectra";
+import { molviewFiles } from "../lib/projects/molview-doors.js";
 (function () {
     "use strict";
 
@@ -203,7 +204,8 @@ const WORKSPACE_TAG = "spectra";
                     // {ok:false}); a failed mount must not stick, so the next
                     // structure load retries instead of staying viewer-less.
                     const _h = await mount(host, ws,
-                        { mode: "readonly", owner: WORKSPACE_TAG });
+                        { mode: "readonly", owner: WORKSPACE_TAG,
+                          files: molviewFiles });
                     mvHandle = (_h && _h.ok) ? _h : null;
                     if (!mvHandle) throw new Error("the viewer could not be built");
                     /* The page mounted the viewer, so the page hands it on:

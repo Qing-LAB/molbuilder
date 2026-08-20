@@ -145,11 +145,14 @@ under its own tag, and reads them at mount. No new API, no change to MolView, no
 change to the workspace, no change to the server. It closes the Load-button bug
 in § 3.1 by construction.
 
-**One contract question**, which is not this document's to answer: is *Save to
-project* a fifth kind of saving, or Export → Data with a destination (§ 2)?
-molview.md § 11.3 names four and this is a fifth door onto the same act. It
-belongs with task #39, which is already about those two doors disagreeing over
-the sidecar.
+~~**One contract question**, which is not this document's to answer: is *Save
+to project* a fifth kind of saving, or Export → Data with a destination
+(§ 2)?~~ **Answered 2026-08-19, with task #39's delivery**: it is Export →
+Data with a destination — § 11.3 now states the destination as its own axis
+(*"Every export goes either into the project or to a download"*), and the
+two doors stopped disagreeing about the sidecar because they became ONE door
+(`projects.molviewFiles`) that always carries it. The Save panel remains a
+second front onto the same act, which § 2 already judged legitimate.
 
 **One nicety, worth a sentence if it is wanted:** a restore and a re-read of the
 file currently read identically on screen. They have different consequences, and

@@ -29,6 +29,7 @@ import { mount } from "/static/lib/molview/index.js";
  * viewer's `owner` and as the tag on every workspace call, so the two cannot
  * drift into naming different slots. */
 const WORKSPACE_TAG = "results:structure";
+import { molviewFiles } from "../projects/molview-doors.js";
 
 /* NO NOTE ANY MORE (2026-08-03).
  *
@@ -182,6 +183,7 @@ const WORKSPACE_TAG = "results:structure";
                     handle = await mount(molviewHost, ws, {
                         mode:  "readonly",
                         owner: WORKSPACE_TAG,
+                        files: molviewFiles,
                     });
                     if (disposed) {
                         if (handle && typeof handle.dispose === "function") {

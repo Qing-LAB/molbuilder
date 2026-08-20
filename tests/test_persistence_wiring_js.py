@@ -92,3 +92,29 @@ def test_every_mounted_viewer_gets_the_view_context():
     src = _stripped(MOUNT)
     assert "attachUiContext({" in src
     assert 'hasTruthLane: opts.mode !== "readonly"' in src
+
+
+def test_every_production_mount_hands_in_the_one_files_door():
+    """molview.md § 11.4 (2026-08-19): the `files` door is the projects
+    module's ONE implementation.  Until then no production page passed one,
+    so every Export row was a silent no-op — and the guard `if (!files)
+    return` made the silence total.  ES-module sites import the singleton
+    (the same object `projects.molviewFiles` publishes); the one classic
+    script (transport) takes it off the namespace at a projects-ready
+    moment."""
+    es_sites = [
+        STATIC / "modify" / "selection-bootstrap.js",
+        STATIC / "lib" / "inspectors" / "structure.js",
+        STATIC / "lib" / "trajectory" / "core.js",
+        STATIC / "spectra" / "viewer.js",
+        STATIC / "structure-optimization" / "viewer.js",
+    ]
+    for site in es_sites:
+        src = site.read_text()
+        assert "molview-doors.js" in src, f"{site.name} imports no door"
+        assert "files: molviewFiles" in src.replace("\n", " ")             or "files: molviewFiles" in src, f"{site.name} passes no door"
+    tsrc = _stripped(TRANSPORT)
+    assert "molviewFiles" in tsrc, "transport passes no door"
+    sidebar = (STATIC / "lib" / "projects" / "projects-sidebar.js").read_text()
+    assert "projects.molviewFiles = molviewFiles" in sidebar, (
+        "the namespace does not publish the door (projects.md § 5)")

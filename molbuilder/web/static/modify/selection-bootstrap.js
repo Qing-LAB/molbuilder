@@ -20,6 +20,7 @@
 import { mount } from "/static/lib/molview/index.js";
 import { init as startOpControls } from "./viewer.js";
 import { init as startCellPanel }  from "./periodicity.js";
+import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
 /* THIS FILE IS THE MOLBUILDER TAB'S OWNER. It mounts the one viewer this page
  * has and hands it to everything else on the page.
@@ -92,6 +93,7 @@ import { init as startCellPanel }  from "./periodicity.js";
          * silently read-only. */
         const _mounted = await mount(host, window.molbuilder.workspace, {
             owner: WORKSPACE_TAG,
+            files: molviewFiles,
         });
         if (!_mounted || !_mounted.ok) return;   // mount contract: failure -> {ok:false}; it warned already
 

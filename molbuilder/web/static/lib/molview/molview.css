@@ -2042,3 +2042,74 @@
     padding:    0;
     margin:     0;
 }
+
+
+/* ── The export dialog + status (§ 11.3; drawn 2026-08-19) ─────────────────
+ * One small modal over the card: the frame range, Image's resolution and
+ * movie format.  Everything below speaks the card's own token system --
+ * the overlay is the busy cover's pattern (ground washed over the surface,
+ * a layer token, never a literal), the fields are the control tokens. */
+.molviewer-export-status {
+    margin-top:     var(--molviewer-space-xs);
+    font:           var(--molviewer-text-2xs)/var(--molviewer-line-snug)
+                    var(--molviewer-font-ui);
+    color:          var(--molviewer-color-text-dim);
+    max-width:      18rem;              /* the menu-body's own min/max band */
+    overflow-wrap:  anywhere;
+}
+.molviewer-export-status[data-error] {
+    color:          var(--molviewer-color-danger-text);
+}
+.molviewer-export-dialog-overlay {
+    position:       absolute;
+    inset:          0;
+    z-index:        var(--molviewer-layer-overlay);
+    display:        flex;
+    align-items:    center;
+    justify-content: center;
+    background:     color-mix(in srgb,
+                        var(--molviewer-color-surface) 60%, transparent);
+}
+.molviewer-export-dialog {
+    background:     var(--molviewer-color-surface-elevated);
+    color:          var(--molviewer-color-text);
+    border:         1px solid var(--molviewer-color-edge);
+    border-radius:  var(--molviewer-radius-md);
+    box-shadow:     var(--molviewer-shadow-popover);
+    padding:        var(--molviewer-space-lg);
+    min-width:      var(--molviewer-size-panel-min);
+    display:        flex;
+    flex-direction: column;
+    gap:            var(--molviewer-space-sm);
+}
+.molviewer-export-dialog-title {
+    font:           600 var(--molviewer-text-sm)/var(--molviewer-line-snug)
+                    var(--molviewer-font-ui);
+}
+.molviewer-export-dialog-field {
+    display:        flex;
+    align-items:    center;
+    justify-content: space-between;
+    gap:            var(--molviewer-space-sm);
+    font:           var(--molviewer-text-xs)/var(--molviewer-line-normal)
+                    var(--molviewer-font-ui);
+}
+.molviewer-export-dialog-field input,
+.molviewer-export-dialog-field select {
+    box-sizing:     var(--molviewer-control-box);
+    height:         var(--molviewer-control-height);
+    padding:        var(--molviewer-control-pad-y)
+                    var(--molviewer-control-pad-x);
+    width:          8rem;               /* two fields side by label, § 8.2's band */
+    background:     var(--molviewer-color-panel-well);
+    color:          inherit;
+    border:         1px solid var(--molviewer-color-edge-soft);
+    border-radius:  var(--molviewer-radius-sm);
+    font:           var(--molviewer-control-font);
+}
+.molviewer-export-dialog-actions {
+    display:        flex;
+    justify-content: flex-end;
+    gap:            var(--molviewer-space-xs);
+    margin-top:     var(--molviewer-space-xs);
+}

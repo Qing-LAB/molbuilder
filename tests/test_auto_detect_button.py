@@ -278,16 +278,17 @@ def test_auto_detect_button_disabled_without_loaded_structure(
     failed in the full suite.  ``prune`` with ``above_index = -1`` drops the
     whole timeline using the server's own resolution, so it cannot miss.
 
-    The id is deterministic: ``workspaceId("structure-opt")`` -> the tag with
-    unsafe characters dashed (dispatcher.js), and this tab's tag is
-    ``WORKSPACE_TAG = "structure-opt"`` (structure-optimization/viewer.js:22).
+    The id is deterministic: ``workspaceId("structure-opt:panel")`` -> the tag
+    with unsafe characters dashed (dispatcher.js).  The tab's note moved to
+    its own ``:panel`` tag on 2026-08-19 (off the history's key shape --
+    test_persistence_wiring_js.py), so that is the slot to clear.
     """
     import json as _json
     import urllib.request as _rq
 
     _rq.urlopen(_rq.Request(
         f"{flask_server}/api/workspace-storage/prune",
-        data=_json.dumps({"workspace_id": "ws-structure-opt",
+        data=_json.dumps({"workspace_id": "ws-structure-opt-panel",
                           "above_index": -1}).encode(),
         headers={"Content-Type": "application/json"},
     ), timeout=10).read()

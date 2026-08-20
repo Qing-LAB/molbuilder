@@ -32,6 +32,7 @@
  */
 
 import { mount } from "/static/lib/molview/index.js";
+import { molviewFiles } from "../projects/molview-doors.js";
 (function (root) {
     "use strict";
 
@@ -614,6 +615,7 @@ import { mount } from "/static/lib/molview/index.js";
             _mv = await mount(host, ws, {
                 mode:  "readonly",
                 owner: "results:trajectory",
+                files: molviewFiles,
             });
         } catch (e) {
             setStatus("Viewer failed: "

@@ -34,6 +34,7 @@
  */
 import { mount as mvMount, formula as mvFormula }
     from "/static/lib/molview/index.js";
+import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
 (function () {
     "use strict";
@@ -1389,7 +1390,8 @@ import { mount as mvMount, formula as mvFormula }
         if (!ws) return null;
         if (_mvHandle) return _mvHandle;
         return mvMount($("viewer-host"), ws,
-                { mode: "readonly", owner: WORKSPACE_TAG })
+                { mode: "readonly", owner: WORKSPACE_TAG,
+                  files: molviewFiles })
             .then(function (h) { _mvHandle = (h && h.ok) ? h : null; return _mvHandle; })
             .catch(function (e) {
                 // #load-status is the page's real load/viewer status slot (there is

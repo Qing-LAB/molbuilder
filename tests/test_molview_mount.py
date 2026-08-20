@@ -938,6 +938,10 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
     separate download path is how the sidecar came to be dropped from one of
     them. Whether a sidecar is written at all is the codec's rule now, applied
     server-side on the one generator both destinations go through.
+
+    Since 2026-08-19 the menu is § 11.3's two sections; the DATA rows are the
+    truth's, the payload is `{structure, frames}`, and a one-frame structure
+    asks no range (the dialog exists for a quantity there is only one of).
     """
     out = _run(
         """
@@ -945,8 +949,13 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
         const host = globalThis.__makeHost();
         const viewer = await MV.mount(host, workspace, {
             owner: "x",
-            files: { save: (destination, stem, structure) =>
-                        saved.push({ destination, stem, structure }) },
+            files: {
+                save: async (destination, stem, payload) => {
+                    saved.push({ destination, stem, payload });
+                    return { ok: true };
+                },
+                saveBinary: async () => ({ ok: true }),
+            },
         });
         await viewer.data.installMolecule({ text: "x", filename: "x.xyz" });
 
@@ -955,18 +964,26 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
         viewer.data.selection.writeLabel("L-electrode");
 
         const card = host.querySelector(".molviewer-card");
-        const items = card.querySelectorAll(".molviewer-export-btn");
-        for (const item of items) item.click();
+        const sections = card.querySelectorAll(".molviewer-export-section");
+        const dataButtons = sections[0].querySelectorAll(".molviewer-export-btn");
+        for (const item of dataButtons) item.click();
+        await new Promise((r) => setTimeout(r, 20));   // the sends are async
 
         console.log(JSON.stringify({
+            sections: sections.length,
             destinations: saved.map(s => s.destination),
             stems:        saved.map(s => s.stem),
-            keys:         Object.keys(saved[0].structure).sort(),
-            regions:      saved[0].structure.metadata.regions,
-            identical:    JSON.stringify(saved[0].structure)
-                          === JSON.stringify(saved[1].structure),
+            keys:         Object.keys(saved[0].payload.structure).sort(),
+            regions:      saved[0].payload.structure.metadata.regions,
+            framesSent:   saved.map(s => s.payload.frames !== undefined),
+            dialogOpen:   !!card.querySelector(".molviewer-export-dialog"),
+            identical:    JSON.stringify(saved[0].payload.structure)
+                          === JSON.stringify(saved[1].payload.structure),
         }));
         """
+    )
+    assert out["sections"] == 2, (
+        f"§ 11.3's menu is Data and Image — {out['sections']} section(s) found"
     )
     assert out["destinations"] == ["project", "download"], (
         "both destinations must go through the same door, differing only in the "
@@ -974,6 +991,12 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
     )
     assert out["stems"] == ["x", "x"], (
         f"the stem is the name the structure came in under (§ 11.4): {out['stems']}"
+    )
+    assert out["dialogOpen"] is False, (
+        "a one-frame structure never asks (§ 11.3) — a range dialog opened"
+    )
+    assert out["framesSent"] == [False, False], (
+        "a one-frame export carries no frames array"
     )
     assert out["identical"] is True, (
         "the two destinations handed over different structures"
@@ -989,6 +1012,168 @@ def test_the_structure_leaves_through_the_door_and_its_facts_go_with_it():
     assert out["regions"] == {"L-electrode": [0]}, (
         f"the labels did not leave with the atoms: {out['regions']}"
     )
+
+
+def test_a_picture_is_the_view_and_leaves_through_saveBinary():
+    """§ 11.3's Image, single frame: the dialog asks a RESOLUTION (the user's
+    2026-08-19 addition; no range — one frame never asks one), the picture is
+    asked of the drawing (§ 9.7's bounded asking), and the bytes leave
+    through the door's binary half named `<stem>.png`."""
+    out = _run(
+        """
+        const saved = [];
+        const host = globalThis.__makeHost();
+        const viewer = await MV.mount(host, workspace, {
+            owner: "x",
+            files: {
+                save: async () => ({ ok: true }),
+                saveBinary: async (destination, filename, blob) => {
+                    saved.push({ destination, filename,
+                                 isBlob: typeof blob === "object" && !!blob });
+                    return { ok: true };
+                },
+            },
+        });
+        await viewer.data.installMolecule({ text: "x", filename: "wire.xyz" });
+
+        const card = host.querySelector(".molviewer-card");
+        const imageRow = card.querySelectorAll(".molviewer-export-section")[1];
+        imageRow.querySelectorAll(".molviewer-export-btn")[1].click(); // Download
+        await new Promise((r) => setTimeout(r, 10));
+        const dialog = card.querySelector(".molviewer-export-dialog");
+        const rangeInputs = dialog ? dialog.querySelectorAll("input").length : -1;
+        const actions = dialog.querySelectorAll(".molviewer-export-btn");
+        actions[actions.length - 1].click();          // Export at defaults
+        await new Promise((r) => setTimeout(r, 30));
+
+        console.log(JSON.stringify({
+            rangeInputs,
+            saved,
+        }));
+        """
+    )
+    assert out["rangeInputs"] == 0, (
+        "a one-frame Image export asked a frame range (§ 11.3: it never asks)"
+    )
+    assert out["saved"] == [{"destination": "download",
+                             "filename": "wire.png", "isBlob": True}], (
+        f"the picture did not leave as <stem>.png through saveBinary: "
+        f"{out['saved']}"
+    )
+
+
+def test_a_picture_is_the_view_and_leaves_through_saveBinary():
+    """§ 11.3's Image, single frame: the dialog asks a RESOLUTION (the user's
+    2026-08-19 addition; no range — one frame never asks one), the picture is
+    asked of the drawing (§ 9.7's bounded asking), and the bytes leave
+    through the door's binary half named `<stem>.png`."""
+    out = _run(
+        """
+        const saved = [];
+        const host = globalThis.__makeHost();
+        const viewer = await MV.mount(host, workspace, {
+            owner: "x",
+            files: {
+                save: async () => ({ ok: true }),
+                saveBinary: async (destination, filename, blob) => {
+                    saved.push({ destination, filename,
+                                 isBlob: typeof blob === "object" && !!blob });
+                    return { ok: true };
+                },
+            },
+        });
+        await viewer.data.installMolecule({ text: "x", filename: "wire.xyz" });
+
+        const card = host.querySelector(".molviewer-card");
+        const imageRow = card.querySelectorAll(".molviewer-export-section")[1];
+        imageRow.querySelectorAll(".molviewer-export-btn")[1].click(); // Download
+        await new Promise((r) => setTimeout(r, 10));
+        const dialog = card.querySelector(".molviewer-export-dialog");
+        const rangeInputs = dialog ? dialog.querySelectorAll("input").length : -1;
+        const actions = dialog.querySelectorAll(".molviewer-export-btn");
+        actions[actions.length - 1].click();          // Export at defaults
+        await new Promise((r) => setTimeout(r, 30));
+
+        console.log(JSON.stringify({ rangeInputs, saved }));
+        """
+    )
+    assert out["rangeInputs"] == 0, (
+        "a one-frame Image export asked a frame range (§ 11.3: it never asks)"
+    )
+    assert out["saved"] == [{"destination": "download",
+                             "filename": "wire.png", "isBlob": True}], (
+        f"the picture did not leave as <stem>.png through saveBinary: "
+        f"{out['saved']}"
+    )
+
+
+def test_a_trajectorys_data_export_asks_the_range_and_sends_it():
+    """§ 11.3: the dialog opens ON THE DISPLAYED FRAME (accepting it unchanged
+    is the common case), widening it is what the dialog is for, and the range
+    reaches `exportFile` — frames ride the payload, and the stem names both
+    ends (§ 11.4's `_frameA-B`, which existed only in prose until 2026-08-19).
+    """
+    out = _run(
+        """
+        const saved = [];
+        const host = globalThis.__makeHost();
+        const viewer = await MV.mount(host, workspace, {
+            owner: "x",
+            files: {
+                save: async (destination, stem, payload) => {
+                    saved.push({ destination, stem, payload });
+                    return { ok: true };
+                },
+                saveBinary: async () => ({ ok: true }),
+            },
+        });
+        await viewer.data.installMolecule({ text: "x", filename: "wire.xyz" });
+        viewer.data.addFrames([
+            [[0,0,1],[1,0,1]], [[0,0,2],[1,0,2]], [[0,0,3],[1,0,3]],
+        ]);
+        viewer.data.setCurrentFrame(1);
+
+        const card = host.querySelector(".molviewer-card");
+        const dataRow = card.querySelectorAll(".molviewer-export-section")[0];
+        dataRow.querySelectorAll(".molviewer-export-btn")[1].click();  // Download
+        await new Promise((r) => setTimeout(r, 10));
+
+        const dialog = card.querySelector(".molviewer-export-dialog");
+        const opened = {
+            exists: !!dialog,
+            defaults: dialog
+                ? Array.from(dialog.querySelectorAll("input"))
+                      .map((i) => i.value)
+                : null,
+        };
+        // Widen: frames 2..4 on screen = 1..3 in code.
+        const inputs = dialog.querySelectorAll("input");
+        inputs[0].value = "2";
+        inputs[1].value = "4";
+        const actions = dialog.querySelectorAll(".molviewer-export-btn");
+        actions[actions.length - 1].click();          // Export
+        await new Promise((r) => setTimeout(r, 20));
+
+        console.log(JSON.stringify({
+            opened,
+            stem: saved[0] && saved[0].stem,
+            frameCount: saved[0] && saved[0].payload.frames
+                ? saved[0].payload.frames.length : null,
+            dialogGone: !card.querySelector(".molviewer-export-dialog"),
+        }));
+        """
+    )
+    assert out["opened"]["exists"] is True
+    assert out["opened"]["defaults"] == ["2", "2"], (
+        f"the dialog must open on the DISPLAYED frame: {out['opened']['defaults']}"
+    )
+    assert out["stem"] == "wire_frame2-4", (
+        f"the stem names both ends (§ 11.4): {out['stem']!r}"
+    )
+    assert out["frameCount"] == 3, (
+        f"the chosen range did not reach exportFile: {out['frameCount']}"
+    )
+    assert out["dialogGone"] is True
 
 
 def test_the_browser_writes_no_coordinate_document():

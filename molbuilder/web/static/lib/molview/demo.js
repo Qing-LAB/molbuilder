@@ -111,7 +111,20 @@ function memoryWorkspace() {
  * The browser writes no coordinate document (molview.md § 11.7). */
 function demoFiles(say) {
     return {
-        async save(destination, stem, structure) {
+        async saveBinary(destination, filename, blob) {
+            if (destination === "download") {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url; a.download = filename;
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+                say("downloaded " + filename);
+                return { ok: true, files: [filename] };
+            }
+            say("would save " + filename + " to the project");
+            return { ok: true, path: filename };
+        },
+        async save(destination, stem, payload) {
             let answer;
             try {
                 const r = await fetch("/api/structure/export", {
@@ -121,7 +134,11 @@ function demoFiles(say) {
                      * -- which structure, which frames; the server knows what
                      * the files are CALLED, because the extension follows the
                      * format and the format follows the frame count. */
-                    body:    JSON.stringify({ structure: structure, name: stem }),
+                    body:    JSON.stringify({
+                        structure: payload && payload.structure,
+                        frames:    (payload && payload.frames) || undefined,
+                        name:      stem,
+                    }),
                 });
                 answer = await r.json();
                 if (!answer || answer.ok !== true) {

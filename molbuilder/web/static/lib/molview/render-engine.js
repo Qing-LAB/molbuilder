@@ -781,6 +781,15 @@ export function createRenderEngine(embed) {
             return embed.setCamera ? embed.setCamera(pose) : false;
         },
 
+        /* "Hand over the image" -- § 9.7's other bounded asking of the
+         * window (§ 11.3: the drawing library already has the image, so it
+         * is asked for it).  A Promise of a PNG Blob at the asked size. */
+        capture(width, height) {
+            return embed.capture
+                ? embed.capture(width, height)
+                : Promise.reject(new Error("capture: not available"));
+        },
+
         // "Throw it away."
         dispose() {
             source = null;
