@@ -20,6 +20,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 STATIC = REPO / "molbuilder" / "web" / "static"
 
+MOUNT = STATIC / "lib" / "molview" / "mount.js"
 TRANSPORT = STATIC / "lib" / "transport" / "core.js"
 STRUCTOPT = STATIC / "structure-optimization" / "viewer.js"
 DEMO = STATIC / "lib" / "molview" / "demo.js"
@@ -80,3 +81,14 @@ def test_the_demo_stand_in_speaks_the_real_persist_signature():
     assert "readPersistedSnapshot" not in src, (
         "no such member exists on the real surface — a stand-in shaped "
         "like a wish proves the wish")
+
+
+def test_every_mounted_viewer_gets_the_view_context():
+    """mount.js attaches the lane (molview.md § 11.2b) for every viewer —
+    one implementation, zero per-tab code.  The lane's behavior executes in
+    test_molview_ui_context.py; this pins that mounting is where it is
+    wired, with the truth-lane fact derived from the same mode flag the
+    history gate reads."""
+    src = _stripped(MOUNT)
+    assert "attachUiContext({" in src
+    assert 'hasTruthLane: opts.mode !== "readonly"' in src

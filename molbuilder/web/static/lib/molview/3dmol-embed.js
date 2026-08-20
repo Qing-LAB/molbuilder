@@ -677,13 +677,36 @@ export function create(hostEl, opts) {
 
         /* ── The window itself ─────────────────────────────────────────── */
 
-        // The camera. Held here and nowhere above (§ 9.6), and there is
-        // deliberately no way to ask where it is pointing — a reload fits it to
-        // the structure rather than restoring an angle.
+        // The camera. Held here and nowhere above (§ 9.6): the pair below
+        // REPORTS and POINTS it for the view context (§ 11.2b) -- the lane
+        // stores what was read at one instant, and no layer above keeps a
+        // copy.  A reload without a matching context still fits it to the
+        // structure rather than restoring an angle.
         fitCamera() {
             if (state.disposed) return;
             try { state.viewer.zoomTo(); } catch (_) {}
             paint();
+        },
+
+        // "Report the pose" -- § 9.7's bounded asking of the WINDOW.  The
+        // answer is the library's own opaque view array, carried verbatim;
+        // null when there is nothing to report.
+        getCamera() {
+            if (state.disposed) return null;
+            try {
+                const v = state.viewer.getView();
+                return Array.isArray(v) ? v.slice() : null;
+            } catch (_) { return null; }
+        },
+
+        // "Point the camera here" -- the same array back, and nothing else
+        // accepted: a pose from another library version that fails to apply
+        // degrades to the fit the caller falls back to anyway.
+        setCamera(pose) {
+            if (state.disposed || !Array.isArray(pose)) return false;
+            try { state.viewer.setView(pose); } catch (_) { return false; }
+            paint();
+            return true;
         },
 
         // Show or hide the "Updating view…" cover. A string shows it with that

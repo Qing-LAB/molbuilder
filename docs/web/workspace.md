@@ -134,7 +134,8 @@ viewer holding a molecule *and* its own panel state. All of them want to survive
 reload, and none of them should be able to tread on another.
 
 **The tag is what separates them.** Every save and every load names who it belongs
-to — `"results:structure"`, `"results:trajectory"`, `"modify:panel"` — and the
+to — `"results:structure"`, `"results:trajectory"`, `"modify:panel"`, a
+viewer's `"<owner>:ui"` view context (molview.md § 11.2b) — and the
 workspace folds that name into both the browser key and the server id. Two tags
 are two slots. Nothing is merged, so there is no moment where one writer's copy
 sits half over another's.

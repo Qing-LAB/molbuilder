@@ -773,6 +773,14 @@ export function createRenderEngine(embed) {
          * and no frame moves. */
         resetView() { embed.fitCamera(); },
 
+        /* The pose pair (§ 9.6 / § 11.2b): passthroughs with no derivation --
+         * the view context reads the pose at a gesture's end and points the
+         * camera back on a matching restore.  Nothing here keeps a copy. */
+        getCamera() { return embed.getCamera ? embed.getCamera() : null; },
+        setCamera(pose) {
+            return embed.setCamera ? embed.setCamera(pose) : false;
+        },
+
         // "Throw it away."
         dispose() {
             source = null;

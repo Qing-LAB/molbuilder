@@ -31,6 +31,7 @@
 import { createModel } from "./model.js";
 import { createRenderEngine } from "./render-engine.js";
 import { create as createEmbed } from "./3dmol-embed.js";
+import { attachUiContext } from "./ui-context.js";
 import { mountControls, SPEED_MIN_MS, SPEED_MAX_MS, SPEED_DEFAULT_MS }
     from "./ui.js";
 
@@ -153,6 +154,17 @@ export async function mount(hostEl, workspace, opts) {
      * merely happen to agree is the second home § 7 forbids. */
     engine.drawingChanged(model.view.get());
     parts.push(model.view.subscribe((settings) => engine.drawingChanged(settings)));
+
+    /* The view context (§ 11.2b): how the user was looking, restored on the
+     * first structure and written back debounced -- never a state, never the
+     * badge, never the draft.  A read-only viewer has no truth lane, so the
+     * lane carries its selection too. */
+    parts.push(attachUiContext({
+        model, engine, workspace,
+        owner: opts.owner,
+        canvasEl: card.canvas,
+        hasTruthLane: opts.mode !== "readonly",
+    }));
 
     // A click in the window arrives at the bottom and is the selection's
     // business, not the drawing's (§ 9.5). Under isolate the drawn numbering no

@@ -2064,25 +2064,30 @@ control the user touched, wherever that control happens to sit (§ 11.4), and
 MolView holds them like any other input. Nothing has to be read back to know
 which style is active: the answer is whatever was last set.
 
-**Nothing above the 3D window keeps the camera.** The window itself has one — a
-view of a 3D scene must have a point of view, and § 9.9 lists it among the things
-the sealed layer holds. What no layer above it does is *track* it. It is the one
-thing a user changes without telling MolView — a drag rotates it directly in the
-window — and MolView never records where it ended up, never reads it back, and
-never saves it. On load, and on Reset, the
-camera is **fitted to the structure**, which is the only orientation guaranteed
-to show the molecule.
+**Nothing above the 3D window keeps the camera** — no store, no model field,
+no handle read. The window itself has one — a view of a 3D scene must have a
+point of view, and § 9.9 lists it among the things the sealed layer holds.
+What no layer above it does is *track* it: it is the one thing a user changes
+without telling MolView (a drag rotates it directly in the window), and no
+saved **state** ever carries it. On load, and on Reset, the camera is
+**fitted to the structure**, which is the only orientation guaranteed to show
+the molecule.
 
-That is a deliberate trade. Restoring an orientation across a session sounds
-useful and mostly is not: after the structure changes, an old camera can leave
-the molecule off-screen, which is exactly why a reload re-fits. What matters
-across a session is the **structure and the selection** (§ 11.2); the angle you
-happened to be looking from is cheap to recreate and easy to get wrong.
+**It is, however, recorded — in the view context, not in any state**
+*(user-decided 2026-08-19, reversing the earlier refusal that stood here)*.
+§ 11.2b's lane keeps *how you were looking* beside the truth without ever
+entering it: on a camera gesture's end the pose is **read once from the
+sealed layer** and written to the lane, and on reopening it is put back —
+**only when the structure matches the one the pose belonged to**. That guard
+is the old refusal's argument, kept: after the structure changes, an old
+camera can leave the molecule off-screen, so a mismatch falls back to the
+fit. Reset still re-fits, and what a saved state holds is unchanged — the
+structure and the selection (§ 11.2).
 
-What that costs is one sentence. What it buys is the removal of an entire
-mechanism: without it, nothing ever asks the sealed layer a question (§ 9.9),
-there is no separate trigger for saving a view-only change, and no persisted
-slot that has to be patched independently of the structure it belongs to.
+The price the old paragraph named is now paid knowingly, and it is exactly
+two passthrough commands (§ 9.7): *report the pose* and *point the camera
+here*. Nothing above the window holds a copy — the lane stores what was
+read at one instant, and the window remains the only place a camera lives.
 
 **Why these are not the switches of § 9.5**, when both are things a user turns
 on. The test is: *does working out what a frame contains require reading it?*
@@ -2104,8 +2109,13 @@ column, because it is in neither place.
 "Here is the data", "here is where to read it from", "a switch changed", "draw it
 this way", "here is the cell", "add these frames", "the forces changed", "show
 this frame", "draw", "point the camera at it again", "throw it away". Every one
-of them is an instruction. None of them is a question, because the renderEngine
-is told what to draw and is never consulted about what the data is.
+of them is an instruction. None of them is a question **about the data** — the
+renderEngine is told what to draw and is never consulted about what the data
+is. The two exceptions are askings of the *window*, not the data, and both are
+bounded: *report the camera pose* (§ 9.6's lane reads it at a gesture's end)
+and *hand over the image* (§ 11.3's picture — "the drawing library already has
+the image, so it is asked for it"). Neither answer feeds a derivation; each is
+carried out of the viewer verbatim.
 
 Three of those are worth naming, because each is the seam a rule elsewhere needs:
 *a switch changed* is what makes § 10.5's cost decision reachable at all; *draw
@@ -2800,8 +2810,11 @@ that is one rule rather than a list to maintain.
 
 **This is true of the code today.** A saved state carries the structure with
 every frame it had and the selection, and nothing about looking: there is no
-page-hide flush, and neither the camera nor the switches nor the displayed frame
-is written anywhere.
+page-hide flush, and neither the camera nor the switches nor the displayed
+frame is written into any **state**. *(They are recorded — in the view
+context, § 11.2b, a separate lane that no state, draft or export ever reads;
+until 2026-08-19 this sentence said "written anywhere", and the lane is why
+it no longer can.)*
 
 **No POINT is laid down on a timer, and none is laid down because something
 changed.** The sequence grows from exactly three things: opening a structure
@@ -2918,6 +2931,46 @@ rather than sent.
 The mechanism is blind to the file format: the model hands it a way to record a
 state and a way to put one back, and nothing else.
 
+### 11.2b The view context — how you were looking, kept beside the truth
+
+*(User-decided 2026-08-19: "similar/same view/state as much as possible" on
+returning to a tab — and explicitly "not a change of data, just UI
+persistency".)*
+
+**One more slot per viewer, and it is not a state.** Under the tag
+**`<owner>:ui`** (workspace.md § 4's multi-saver rule — two tags, two slots)
+a viewer keeps what § 11.2 deliberately keeps out of the truth:
+
+| Field | What it is |
+|---|---|
+| `view` | style, radius, background, projection — § 9.6's four settings |
+| `switches` | isolate, atom numbers, forces + scale, cell, axes — § 9.5's switches |
+| `camera` | the pose, read from the sealed layer at a gesture's end (§ 9.6) |
+| `frame` | the displayed frame |
+| `selection` | the picked atoms — **read back only by a viewer with no truth lane** (read-only); where a draft exists it owns the selection, and two lanes restoring one fact is § 5.2's drift |
+| `match` | the structure this context belonged to (atom + frame counts) |
+
+**Writing it is never an edit.** The lane's writer is MolView's own, debounced,
+triggered by view/switch/frame changes and by the end of a camera gesture — and
+it does not touch the timeline, does not rewrite the draft, and does not raise
+the badge. That is the whole of the user's rule: *looking is not changing.*
+A saved state, the draft, and both exports read nothing from it.
+
+**Restoring is guarded by `match`.** On the first structure a viewer holds
+(installed or adopted, either mode), the context is read back: the view
+settings and switches apply unconditionally — they are the user's standing
+preferences; the camera, the frame and (where it applies) the selection apply
+**only when the structure is the one they belonged to**, because a stale pose
+can leave a molecule off-screen and a stale frame number has no meaning in a
+different trajectory. On a mismatch the camera falls back to the fit, exactly
+as before the lane existed. The restore runs after the truth lane's (a draft's
+`view.reset()` must not stomp what the context is about to put back — order,
+stated so a test can pin it).
+
+**A read-only viewer writes and reads this lane.** § 9.4 gates the history —
+a read-only viewer still has a user looking at it, and this lane is exactly
+where that user's selection survives a reload (§ 11.2a).
+
 ### 11.2a Loading and saving, start to restart
 
 The two machines above — the viewer's own state and the write machine — meet at
@@ -3006,8 +3059,11 @@ down no point — while rewriting the draft, so nothing is lost to a reload —
 
 **Starting, in a read-only viewer.** `mount` → EMPTY → `installMolecule(input)`
 → HOLDING, and **no point 0 is laid down at all**: a read-only viewer has no
-history (§ 9.4), so nothing is written to storage, the badge never appears, and
-`save` / `load` / `undo` are no-ops. Its frames keep arriving, so it follows a
+history (§ 9.4), so no state or draft is ever written, the badge never
+appears, and `save` / `load` / `undo` are no-ops. *(The view context —
+§ 11.2b — is the one thing it does write: how you were looking is not a
+state, and a read-only viewer is exactly where the selection has no other
+way to survive a reload.)* Its frames keep arriving, so it follows a
 running job and scrubs a finished one. That is the whole of its lifecycle: one
 load, then delivery, for as long as it lives.
 
