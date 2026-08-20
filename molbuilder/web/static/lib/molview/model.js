@@ -177,6 +177,12 @@ export function createModel(opts) {
                 frames = state.coordinates ? state.coordinates.frames : null;
                 forcesPerFrame = state.coordinates ? state.coordinates.forcesPerFrame : null;
             }, { resetFrame: true });
+            // A restored structure IS a held structure: adoption re-enters
+            // HOLDING exactly as an install does (§ 11.2a's state machine).
+            // Left EMPTY, a restored session refused addFrames/setForces
+            // ("nothing loaded -- there is no atom identity") and the
+            // read-only replace-guard misread the viewer as empty.
+            if (structure) unit = HOLDING;
             // It opens at the first frame, fitted, with the switches off and the
             // drawing back at its defaults — because none of that was ever part
             // of what you were working on (§ 11.2).

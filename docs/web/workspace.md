@@ -184,16 +184,14 @@ two callers can disagree about whose slot they are in.
 | `pruneStatesAbove(id, index)` | Drop server steps above `index` (used when Undo-then-a-new-edit throws away the redo tail); `-1` clears the whole history. |
 | `workspaceId(tag)` | The stable id this tag's draft is saved under (survives a same-tab reload). |
 | `onPersistError(fn)` | Be told when a background save fails — never silent. Returns an unsubscribe. |
-| `STORAGE_KEY` | The base browser-storage key, `molbuilder.workspace.v1`. A tag's slot is that name plus its tag. |
 
 **This is the whole of it.** There is no second way to save or load, and the
 browser-storage helper underneath is not part of the surface — reaching it
 directly is what § 4's first guarantee rules out.
 
-> **Not yet true of the code.** `useNamespace(owner)` still exists and is how the
-> tag is set today, the calls above still take no tag, and the helper is still
-> published as `window.molbuilder.workspaceSnapshot` (`{setNamespace, read,
-> write}`) with one internal file reading it directly on reload. Task **#44**.
+> *(Task #44 landed: `useNamespace` is gone, every call takes its tag, and
+> the browser-storage helper is no longer published.  The box that stood here
+> described the pre-2026-08-02 code and outlived its truth by two weeks.)*
 
 ## 6. What the workspace does, and what you have to do
 
@@ -259,8 +257,9 @@ You open the Molbuilder tab. Two things can be true at the same time:
 The tab has to show one of them. Load the highlighted file and yesterday's work
 is gone; bring back yesterday's work and the highlighted file is ignored.
 
-**The tab decides, and it decides by reading its own saved bytes.** It calls
-`readPersistedSnapshot(tag)`, looks at what comes back, and asks itself whether
+**The tab decides, and it decides by reading its own saved bytes.** It reads
+its draft back (`readState` on the tag's own draft identity — or, for a
+MolView-held structure, `load(0)`), looks at what comes back, and asks itself whether
 there is work in there worth keeping. If there is, that wins and the highlighted
 file is left alone — opening a file is something you do on purpose, by clicking
 Load, not something that happens because a name was still highlighted.
@@ -341,9 +340,9 @@ asked for is not there, which the caller must report as *there is nothing
 further back* rather than as a move. "Retracted to state #45" when nothing moved
 is worse than silence.
 
-> **Not yet true of the code.** `modify/viewer.js::retractState` discards
-> `load`'s answer and prints success unconditionally (`viewer.js:407`), so at
-> the floor it claims a retraction that did not happen. Task **#47**.
+> *(Task #47 landed: `retractState` reads `load`'s answer and reports "there
+> is nothing further back" at the floor instead of a move that did not
+> happen.)*
 
 **An id belongs to a tag, and is remembered per tag.** `workspaceId(tag)` works
 the answer out once and keeps it, because it has to be the same across a reload.
@@ -357,10 +356,9 @@ hold for the identity as well as for the content.** Separate slots in the browse
 and a shared id on the server is not "mostly isolated" — it is broken in the half
 that survives a crash, which is the half the timeline exists for.
 
-> **Not yet true of the code.** The memory is a single variable today, and
-> `useNamespace` clearing it is what keeps it honest. Removing that setter
-> without making the memory per tag would take the guarantee away silently.
-> Task **#44**.
+> *(Resolved with task #44: the id is DERIVED from the tag —
+> `"ws-" + tag`, sanitised — so there is no memory to share and nothing to
+> clear.  Per-tag isolation of the identity holds by construction.)*
 
 Two small ordering rules keep the history consistent:
 
@@ -373,9 +371,15 @@ Two small ordering rules keep the history consistent:
 
 ## 10. Test map
 
-- `test_workspace_dispatcher_js.py` — the front-door surface + the
-  persistence-only guard.
+- `test_workspace_tag_isolation.py` — the front-door surface (tag as an
+  argument, `useNamespace` stays dead) + two tags stay two slots.
 - `test_workspace_storage_api.py` — the server `/api/workspace-storage/*` routes.
-- `test_workspace_dispatcher_mount_e2e.py`,
-  `test_workspace_dispatcher_canvas_mount_js.py` — restore-at-mount.
-- `test_no_legacy_store_consumers.py` — the deleted data globals stay deleted.
+- `test_molview_model.py` / `test_molview_stores_history.py` — restore-at-mount
+  through the real model (`load(0)` adopts; a restored session still receives
+  frames).
+- `test_persistence_wiring_js.py` — each tab reads back what it writes, under
+  its own tag.
+
+*(Four rows here used to name files that do not exist —
+`test_workspace_dispatcher_js.py` and kin.  A test map that names phantom
+files fails the reader exactly when they need it: corrected 2026-08-19.)*

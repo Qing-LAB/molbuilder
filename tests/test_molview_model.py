@@ -1162,6 +1162,64 @@ def test_a_read_only_seed_anchors_no_history():
     assert out["at"] == 0
 
 
+def test_a_restored_session_still_receives_frames():
+    """§ 11.2a's state machine, at the restore door: adoption re-enters
+    HOLDING exactly as an install does.
+
+    Until 2026-08-19 `restoreState` set the structure inside `settle` and
+    never touched the unit state, so a reopened session sat in EMPTY while
+    plainly holding a structure -- `addFrames`/`setForces` refused with
+    "nothing loaded -- there is no atom identity", live on the Modify tab
+    the moment anything appended frames after a reload.
+    """
+    out = _run(
+        """
+        // A workspace stand-in that actually STORES, so session two has
+        // something to adopt (the real front door's shape, workspace.md § 5).
+        const files = new Map();
+        const store = {
+            workspaceId: (tag) => "id-" + tag,
+            persist: (tag, bytes, identity) => {
+                files.set(identity.workspace_id + ":" + identity.state_index,
+                          JSON.parse(JSON.stringify(bytes)));
+                return true;
+            },
+            readState: async (identity) => {
+                const key = identity.workspace_id + ":" + identity.state_index;
+                return files.has(key) ? files.get(key) : null;
+            },
+            pruneStatesAbove: () => {},
+        };
+
+        // Session one: open a structure (anchors point 0 + the draft).
+        const one = createModel({ owner: "s", workspace: store });
+        await one.installMolecule({ text: "x", filename: "x.xyz" });
+        await new Promise((r) => setTimeout(r, 0));
+
+        // Session two: a FRESH viewer over the same store, as a reopened
+        // page builds one; load(0) adopts the draft.
+        const two = createModel({ owner: "s", workspace: store });
+        const adopted = await two.load(0);
+        let refused = null;
+        try {
+            two.addFrames([[[0, 0, 1], [1, 0, 1]]]);
+        } catch (e) { refused = String((e && e.message) || e); }
+
+        console.log(JSON.stringify({
+            adopted: adopted !== null && adopted !== undefined,
+            refused,
+            frames: two.frameCount(),
+        }));
+        """
+    )
+    assert out["adopted"] is True, "load(0) found nothing to adopt"
+    assert out["refused"] is None, (
+        f"a restored session refused arriving frames: {out['refused']!r} — "
+        f"the viewer holds a structure and must say so (HOLDING)"
+    )
+    assert out["frames"] >= 2, out
+
+
 # ---------------------------------------------------------------------------
 # § 9.3 / § 11.3 — writing the structure out
 # ---------------------------------------------------------------------------

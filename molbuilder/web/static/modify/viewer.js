@@ -1084,11 +1084,11 @@ export function init(viewer) {
     })();
 
     // State persistence across tab navigation is owned by the workspace
-    // PERSISTENCE layer under sessionStorage["molbuilder.workspace.v1"]
-    // (sole persistence key).  This module's role is restore-only: read
-    // the persisted snapshot, then hand the structure to the unified
-    // load door so the WHOLE model (canvas + selection-store atoms +
-    // render) rehydrates coherently.
+    // module -- server-side state files, one per step (workspace.md § 2;
+    // the browser-storage copy this comment used to cite is gone).  This
+    // module's role is restore-only: `load(0)` adopts the stored sequence
+    // and puts back the draft, so the WHOLE model (canvas + selection-store
+    // atoms + render) rehydrates coherently.
 
 
     async function restoreModifyState() {

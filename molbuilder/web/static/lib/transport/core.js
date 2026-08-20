@@ -199,8 +199,85 @@ const WORKSPACE_TAG = "transport";
         el.textContent = "Committed: " + name;
     }
 
-    // The mounted MolView handle (null until the first structure is committed).
+    // The mounted MolView handle (null until the first structure is committed
+    // or a saved session is restored at init).
     var _mvHandle = null;
+
+    // The tab's own context, kept under its own tag beside the viewer's
+    // (workspace.md § 4 -- the modify:panel pattern): which FILE is committed.
+    // The viewer persists the structure + labels; the file is a fact about an
+    // operation the TAB performed, so the tab remembers it (molview.md § 6.7).
+    var PANEL_TAG = WORKSPACE_TAG + ":panel";
+
+    function _panelIdentity(ws) {
+        return { workspace_id: ws.workspaceId(PANEL_TAG), state_index: 0 };
+    }
+
+    function _writePanelNote(file) {
+        var ws = root.molbuilder && root.molbuilder.workspace;
+        if (!ws || typeof ws.persist !== "function") return;
+        ws.persist(PANEL_TAG, { v: 1, structureFile: file || "" },
+                   _panelIdentity(ws));
+    }
+
+    /**
+     * Mount the viewer if it is not already up; resolves to the handle or
+     * null.  Split out of _showInMolview (2026-08-19) so the init-restore
+     * can mount WITHOUT a file -- a reload has no commit to ride on, and a
+     * restore that waits for one can never run.
+     */
+    function _ensureViewer() {
+        var ws   = root.molbuilder && root.molbuilder.workspace;
+        var host = _$("transport-molview-host");
+        if (!ws || !host || typeof mount !== "function") {
+            return Promise.resolve(null);
+        }
+        if (_mvHandle && _mvHandle.ok) return Promise.resolve(_mvHandle);
+        /* EDITABLE, and said the way MolView says it: editable is the ABSENCE
+         * of the mode flag.  Designating an electrode is a label write, which
+         * is exactly what this tab exists for. */
+        return mount(host, ws, { owner: WORKSPACE_TAG })
+            .then(function (h) {
+                _mvHandle = (h && h.ok) ? h : null;
+                return _mvHandle;
+            });
+    }
+
+    /**
+     * Coming back to a session (molview.md § 11.2a): mount and `load(0)`.
+     * A non-null answer means the draft was adopted -- the structure, the
+     * user's electrode labels, the position on the sequence -- so the tab
+     * shows it exactly as a commit would have.  Until 2026-08-19 this tab
+     * wrote its draft on every label edit and NEVER read it back: the
+     * labels were saved and lost anyway (write-only persistence).
+     */
+    function _restoreSession() {
+        var ws = root.molbuilder && root.molbuilder.workspace;
+        if (!ws) return;
+        _ensureViewer().then(function (viewer) {
+            if (!viewer || !viewer.data
+                    || typeof viewer.data.load !== "function") return null;
+            return viewer.data.load(0);
+        }).then(function (at) {
+            if (at === null || at === undefined) return;
+            // The viewer is back; now the tab's own note, under its own tag.
+            return Promise.resolve(ws.readState(_panelIdentity(ws)))
+                .then(function (note) {
+                    var f = note && note.v === 1 ? (note.structureFile || "") : "";
+                    if (!f) return;
+                    _currentStructureFile = f;
+                    _setCurrentStructureReadout(f);
+                    _refreshGenerateButton();
+                    _refreshAutoDetectButton();
+                    _setStatus("Restored your last session: "
+                        + f.split("/").pop() + " -- Generate enabled.");
+                });
+        }).catch(function (e) {
+            if (root.console) {
+                root.console.error("[transport] session restore failed", e);
+            }
+        });
+    }
 
     /**
      * Display the committed structure in the concealed MolView component so the
@@ -217,12 +294,8 @@ const WORKSPACE_TAG = "transport";
      * failed to load, the tab still works as a form generator (the viewer is an aid).
      */
     function _showInMolview(path) {
-        var ws   = root.molbuilder && root.molbuilder.workspace;
         var proj = root.molbuilder && root.molbuilder.projects;
-        var host = _$("transport-molview-host");
-        if (!ws || !host
-                || typeof mount !== "function"
-                || !proj || !proj.parser
+        if (!proj || !proj.parser
                 || typeof proj.parser.openMolecule !== "function") {
             return;
         }
@@ -230,29 +303,7 @@ const WORKSPACE_TAG = "transport";
          * structure (molview.md § 8), and the load door needs somewhere to put
          * what it reads. This ran the other way round, which only worked while
          * the load door could find a viewer by name in a global. */
-        var ready = (_mvHandle && _mvHandle.ok)
-            ? Promise.resolve(_mvHandle)
-            // Cache ONLY a live handle (mount contract: failure -> {ok:false}),
-            // so a failed mount doesn't permanently block a later remount.
-            /* EDITABLE, and said the way MolView says it. A viewer is
-             * "readonly" or it is editable, and editable is the default -- so
-             * editable is the ABSENCE of the flag, not a third word.
-             *
-             * This asked for `mode: "modify"`, which MolView has never had. It
-             * worked, and only by luck: the gate reads `opts.mode ===
-             * "readonly"`, and any other string is not that. Written the other
-             * way round -- `!== "editable"` -- this tab would have silently
-             * become read-only, and designating an electrode is a LABEL WRITE,
-             * so the whole point of the tab would have gone quiet.
-             *
-             * Editable is right here: this is where a user tags the atoms that
-             * are the leads. */
-            : mount(host, ws, { owner: WORKSPACE_TAG })
-                .then(function (h) {
-                    _mvHandle = (h && h.ok) ? h : null;
-                    return _mvHandle;
-                });
-        ready.then(function (viewer) {
+        _ensureViewer().then(function (viewer) {
             if (!viewer) return;
             return proj.parser.openMolecule(viewer, path).then(function (r) {
                 if (r && r.ok === false && root.console) {
@@ -312,6 +363,7 @@ const WORKSPACE_TAG = "transport";
                 }
                 _formDirty = false;
                 _currentStructureFile = f;
+                _writePanelNote(f);
                 // Show the structure in the MolView inspection card (viewer +
                 // selection/cell panel + view toggles).  Fire-and-forget: runs in
                 // parallel with the auto-analyze below.  MolView reads the sidecar
@@ -662,6 +714,7 @@ const WORKSPACE_TAG = "transport";
         }
         _fetchAndRender(formContainer, formSchema);
         _wireCommitChannel();
+        _restoreSession();
         _wireGenerateButton(formContainer);
         _wireCopyButton();
         _wireAutoDetectButton();

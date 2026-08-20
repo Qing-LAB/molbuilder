@@ -163,7 +163,13 @@ import { mount as mvMount, formula as mvFormula }
      * replace what you had; the structure comes back as you left it, and the
      * Load button is what goes and gets the new bytes.
      */
-    const _SAVED = () => ({ workspace_id: _ws().workspaceId(WORKSPACE_TAG),
+    /* Under the tab's OWN tag (the modify:panel pattern, workspace.md § 4;
+     * hardened 2026-08-19): the bare-tag identity at state_index 0 is the
+     * exact key MolView's history writes point 0 to, so this note was safe
+     * only while the viewer stayed read-only -- one accident away from two
+     * writers on one file. */
+    const PANEL_TAG = WORKSPACE_TAG + ":panel";
+    const _SAVED = () => ({ workspace_id: _ws().workspaceId(PANEL_TAG),
                             state_index:  0 });
 
     function _rememberStructure() {
@@ -174,7 +180,7 @@ import { mount as mvMount, formula as mvFormula }
         // exactly what it can be handed back (molview.md § 9.3).
         const out = d.exportFile();
         if (!out || !out.structure) return;
-        ws.persist(WORKSPACE_TAG,
+        ws.persist(PANEL_TAG,
                    { v: 1, structure: out.structure, loadedFrom: _sidebarLastFile || "" },
                    _SAVED());
     }

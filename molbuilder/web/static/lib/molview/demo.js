@@ -74,14 +74,18 @@ function memoryWorkspace() {
             if (!ids.has(tag)) ids.set(tag, "demo-" + tag);
             return ids.get(tag);
         },
-        persist(tag, sessionBytes, snapshotBlob, identity) {
-            if (sessionBytes) sessions.set(tag, sessionBytes);
-            // A point only when one was offered — a routine write sends none.
-            if (snapshotBlob && identity) {
+        // THE REAL SIGNATURE (dispatcher.js): persist(tag, bytes, identity).
+        // The four-arg shape this carried until 2026-08-19 was the
+        // pre-2026-08-02 surface -- `identity` landed in the third slot, the
+        // guard never fired, no point was ever stored, and the demo timeline
+        // was silently dead.  A stand-in shaped like a wish proves the wish.
+        persist(tag, bytes, identity) {
+            if (bytes) sessions.set(tag, bytes);
+            if (identity) {
                 points.set(identity.workspace_id + ":" + identity.state_index,
-                           snapshotBlob);
+                           bytes);
             }
-            return true;                       // the session copy was kept
+            return true;
         },
         async readState(identity) {
             const key = identity.workspace_id + ":" + identity.state_index;
@@ -93,9 +97,7 @@ function memoryWorkspace() {
                 if (owner === id && Number(step) > index) points.delete(key);
             }
         },
-        readPersistedSnapshot(tag) {
-            return sessions.has(tag) ? sessions.get(tag) : null;
-        },
+        onPersistError() { return () => {}; },
     };
 }
 
