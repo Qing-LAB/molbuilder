@@ -35,7 +35,7 @@ import os
 import re
 import shutil
 import subprocess
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
@@ -322,6 +322,22 @@ def _run(cmd: List[str], timeout: float = 10.0) -> Optional[str]:
         return r.stdout if r.returncode == 0 else None
     except (OSError, subprocess.SubprocessError):
         return None
+
+
+def topology_field_types() -> Dict[str, type]:
+    """The declared-fact vocabulary: each :class:`Topology` field and the
+    type its value must parse as -- derived from the dataclass, so a field
+    added to the schema is automatically declarable and one that is renamed
+    cannot linger here (one home; M-1's ``flag`` door is typed by this).
+    """
+    import typing
+    hints = typing.get_type_hints(Topology)
+    out: Dict[str, type] = {}
+    for f in fields(Topology):
+        args = [a for a in typing.get_args(hints[f.name])
+                if a is not type(None)]
+        out[f.name] = args[0] if args else str
+    return out
 
 
 def detect_scheduler() -> Tuple[str, str]:

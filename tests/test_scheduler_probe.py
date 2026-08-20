@@ -168,3 +168,141 @@ def test_the_preference_deriving_helpers_are_gone(gone):
     """
     import molbuilder.scheduler_probe as probe
     assert not hasattr(probe, gone)
+
+
+# --------------------------------------------------------------------- #
+#  The probe VERB — declared facts and per-difference consent           #
+#  (roadmap § 0.2, N3+; configuration.md § 5 M-1/M-6)                   #
+# --------------------------------------------------------------------- #
+
+
+def _cli(args, **kw):
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    return CliRunner().invoke(jobset_group, ["probe", *args], **kw)
+
+
+def test_set_declares_typed_facts_and_the_source_says_flag(tmp_path):
+    """M-1's declared door: a fact the probe cannot see from here arrives
+    by --set, typed by the schema itself, and the record's source admits
+    it (`flag`)."""
+    import json
+    r = _cli(["--set", "gpus_per_node=4", "--set", "gpu_type=a100",
+              "--set", "mem_total_gb=1536.5",
+              "--write", "--yes", "--out", str(tmp_path)])
+    assert r.exit_code == 0, r.output
+    d = json.loads((tmp_path / "environment.json").read_text())
+    assert d["topology"]["gpus_per_node"] == 4
+    assert d["topology"]["gpu_type"] == "a100"
+    assert d["topology"]["mem_total_gb"] == 1536.5
+    assert d["source"]["topology"].endswith("flag")
+
+
+def test_set_refuses_unknown_keys_and_mistyped_values_by_name(tmp_path):
+    r = _cli(["--set", "max_gpus=4"])
+    assert r.exit_code != 0
+    assert "no topology field 'max_gpus'" in r.output
+    assert "gpus_per_node" in r.output          # the vocabulary, offered
+    r = _cli(["--set", "gpus_per_node=four"])
+    assert r.exit_code != 0 and "'four' is not int" in r.output
+    r = _cli(["--set", "gpus_per_node"])
+    assert r.exit_code != 0 and "KEY=VALUE" in r.output
+
+
+def test_scheduler_flag_forces_the_kind_and_names_the_named_file(tmp_path):
+    """--scheduler declares the kind (source `flag`); --name lands the
+    record in <out>/<name>.json — how a workstation holds a cluster."""
+    import json
+    r = _cli(["--name", "sol-x", "--scheduler", "slurm",
+              "--set", "cores_per_socket=64",
+              "--write", "--yes", "--out", str(tmp_path)])
+    assert r.exit_code == 0, r.output
+    d = json.loads((tmp_path / "sol-x.json").read_text())
+    assert d["scheduler"] == "slurm"
+    assert d["source"]["scheduler"] == "flag"
+    assert d["topology"]["cores_per_socket"] == 64
+    assert "--target sol-x" in r.output
+
+
+def _two_envs():
+    from molbuilder.environment import Domain, Environment, Topology
+    before = Environment(scheduler="workstation",
+                         topology=Topology(gpus_per_node=4, gpu_type="a100"),
+                         detected_at="2026-08-01T00:00:00+00:00")
+    probed = Environment(scheduler="workstation",
+                         topology=Topology(gpus_per_node=1, gpu_type="rtx"),
+                         detected_at="2026-08-19T00:00:00+00:00")
+    return before, probed
+
+
+def test_consent_no_keeps_the_record_yes_takes_the_probe(monkeypatch,
+                                                         capsys):
+    """Per difference the user picks which value survives; No (the
+    default) keeps the record, so a weaker probe cannot erase a declared
+    fact."""
+    import click
+    from molbuilder.jobset._cli import _probe_consent_merge
+    before, probed = _two_envs()
+    monkeypatch.setattr(click, "confirm", lambda *a, **k: False)
+    out = _probe_consent_merge(before, probed, yes=False)
+    assert out.topology.gpus_per_node == 4 and out.topology.gpu_type == "a100"
+    assert out.detected_at == "2026-08-19T00:00:00+00:00"   # stamp follows
+    assert "kept recorded" in capsys.readouterr().out
+    before, probed = _two_envs()
+    monkeypatch.setattr(click, "confirm", lambda *a, **k: True)
+    out = _probe_consent_merge(before, probed, yes=False)
+    assert out.topology.gpus_per_node == 1 and out.topology.gpu_type == "rtx"
+
+
+def test_consent_eof_keeps_everything_silence_is_no(monkeypatch, capsys):
+    """A scripted probe without --yes gets EOF at the first question and
+    the record survives whole — an unanswered question declines."""
+    import click
+    from molbuilder.jobset._cli import _probe_consent_merge
+    before, probed = _two_envs()
+
+    def _abort(*a, **k):
+        raise click.exceptions.Abort()
+    monkeypatch.setattr(click, "confirm", _abort)
+    out = _probe_consent_merge(before, probed, yes=False)
+    assert out.topology.gpus_per_node == 4 and out.topology.gpu_type == "a100"
+    text = capsys.readouterr().out
+    assert "silence is no" in text
+
+
+def test_consent_yes_flag_asks_nothing(monkeypatch):
+    import click
+    from molbuilder.jobset._cli import _probe_consent_merge
+
+    def _explode(*a, **k):
+        raise AssertionError("--yes must not ask")
+    monkeypatch.setattr(click, "confirm", _explode)
+    before, probed = _two_envs()
+    out = _probe_consent_merge(before, probed, yes=True)
+    assert out.topology.gpus_per_node == 1
+
+
+def test_an_unchanged_record_is_said_not_reasked(capsys):
+    from molbuilder.jobset._cli import _probe_consent_merge
+    before, _ = _two_envs()
+    before2, _ = _two_envs()
+    out = _probe_consent_merge(before, before2, yes=False)
+    assert out.topology.gpus_per_node == 4
+    assert "already says this" in capsys.readouterr().out
+
+
+def test_domains_diff_as_one_fact(monkeypatch, capsys):
+    """The reachable-domain SET is one question, not one per row."""
+    import click
+    from molbuilder.environment import Domain
+    from molbuilder.jobset._cli import _probe_consent_merge
+    before, probed = _two_envs()
+    probed.topology = before.topology            # isolate the domains diff
+    probed.domains = [Domain(name="short", partition="p", qos="q",
+                             max_time="1:00:00")]
+    asked = []
+    monkeypatch.setattr(click, "confirm",
+                        lambda msg, **k: (asked.append(msg), True)[1])
+    out = _probe_consent_merge(before, probed, yes=False)
+    assert len(asked) == 1 and "domains" in asked[0]
+    assert [d.name for d in out.domains] == ["short"]

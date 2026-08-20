@@ -269,7 +269,9 @@ is the clearest statement of the rule.)*
 > The model already carried the right answer and it was not read:
 > `Environment.source`'s vocabulary is `scontrol` / `lscpu` / **`flag`**, and
 > `flag` *is* the declared case; `resolve_environment(overrides=…)` is its
-> door.
+> door — fed by `jobset probe --set key=value` (typed by the `Topology`
+> schema itself, unknown keys refused by name) and `--scheduler`
+> *(2026-08-19)*.
 
 **Probed beats declared where both exist** — standing on the machine beats a
 hand-written note about it — so `scheduler.routing` is read as declared
@@ -382,11 +384,28 @@ through `tomllib` and comparing (*"the writer checks itself"*).
 a backend env with no molbuilder on it — so it could not import that emitter and
 would have to carry a second one.
 
-**If a declared-override door is added later** — `resolve_environment` already
-takes an `overrides` argument that no caller has ever passed, which is today's
-answer to *"how do I tell it this machine has 4 GPUs"* — that file is edited by a
-person, and the rule then chooses TOML for it. It is the *chosen* side of M-1,
-and a separate file from this one.
+**The declared-override door is fed by flags, not a file** *(2026-08-19)*:
+`jobset probe --set gpus_per_node=4` answers *"how do I tell it this machine
+has 4 GPUs"*, and what persists is the probe's own record — this file, with
+`source: flag` admitting how the fact arrived. If a *standing* declared file
+is ever added instead, it is edited by a person, and § 3's rule then chooses
+TOML for it — the *chosen* side of M-1, and a separate file from this one.
+
+### M-6 — the probe asks before it overwrites *(2026-08-19)*
+
+`jobset probe --write` over an **existing** record shows each place the probe
+disagrees with the record and asks, **per difference**, which value survives.
+The default is No — the record stays — so a weaker probe cannot erase a
+declared fact: a login node that sees no GPUs probes `null`, and keeping the
+recorded `4` is one keystroke. EOF keeps everything — a scripted probe
+without `--yes` changes nothing (silence is no, the standing doctrine) —
+and `--yes` takes every probed value. The reachable-domain **set** is one
+question, not one per row. `detected_at`/`source` follow the new probe
+either way: the kept values were re-confirmed now, and the stamp says when
+the record was last looked at.
+
+Creating a record where none exists is one consent — there is nothing to
+clobber.
 
 ### The schema is `molbuilder/environment@2`
 

@@ -111,12 +111,16 @@ capability they plan within. Declared facts enter through the same door
 (`resolve_environment(overrides=…)`, `source="flag"` — the door and its
 caller exist; the flags do not).
 
-**Measured state (2026-08-19).** `jobset probe` calls `resolve_environment`
-(`_cli.py:1336`) and the machine-scope record on this workstation is read by
-every `prep` (the E2E's config provenance listed it). The contract is settled
-and stated: `configuration.md § 5` M-1…M-5 + the `@2` schema. The planned
-units N1–N5 already exist in workstream 6 (machine facts — one shape, one
-door); **this task is those units plus the interactive layer**:
+✅ **DELIVERED 2026-08-19** — proven live on this workstation: declared
+facts enter by `--set` (typed by the `Topology` schema, unknown keys and
+mistyped values refused by name, `source: flag`), `--scheduler` forces the
+kind, and `--write` over an existing record asks **per difference** which
+value survives (No/EOF keeps the record — a weaker probe cannot erase a
+declared fact; `--yes` takes all; domains diff as one set).  N4 turned out
+already delivered (2026-08-17: `get_routing` sources `domains`,
+`get_scheduler` fills `gpu.default_type` from the record).  Contract:
+`configuration.md § 5` M-1/M-5 updated + **M-6** added; pins:
+`test_scheduler_probe.py`'s verb section:
 
 | piece | what it is |
 |---|---|

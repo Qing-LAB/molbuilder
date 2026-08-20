@@ -1351,6 +1351,84 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
 #  verb now lives under `jobset` (user, 2026-08-17).                     #
 # --------------------------------------------------------------------- #
 
+def _probe_consent_merge(before, probed, *, yes: bool):
+    """N3+ (roadmap § 0.2): a probe over an EXISTING record asks per
+    difference which value survives -- consent, never a clobber.
+
+    ``--yes`` takes every probed value (scripts).  Otherwise each
+    difference is a question defaulting to No, and EOF -- a scripted
+    probe without ``--yes`` -- keeps the record for that and every
+    remaining difference: an unanswered question declines, the standing
+    doctrine.  The record's declared facts survive a weaker probe the
+    same way (a login node that cannot see GPUs probes ``None``, and No
+    keeps your declared 4).  ``detected_at``/``source`` follow the new
+    probe either way: the kept values were re-CONFIRMED now, and the
+    stamp says when the record was last looked at.
+
+    Returns the record to write.
+    """
+    import dataclasses as _dc
+
+    diffs = []                                # (name, recorded, probed, keep)
+    if before.scheduler != probed.scheduler:
+        diffs.append(("scheduler", before.scheduler, probed.scheduler,
+                      lambda: setattr(probed, "scheduler",
+                                      before.scheduler)))
+    for f in _dc.fields(probed.topology):
+        b = getattr(before.topology, f.name)
+        pv = getattr(probed.topology, f.name)
+        if b != pv:
+            diffs.append((
+                f"topology.{f.name}", b, pv,
+                lambda n=f.name, v=b: setattr(probed.topology, n, v)))
+    if before.site.partition != probed.site.partition:
+        diffs.append(("site.partition", before.site.partition,
+                      probed.site.partition,
+                      lambda: setattr(probed.site, "partition",
+                                      before.site.partition)))
+    # The reachable-domain SET is one fact -- a per-row question would ask
+    # about a menu nobody composed row by row.
+    if [d.to_row() for d in before.domains] != \
+            [d.to_row() for d in probed.domains]:
+        diffs.append((
+            "domains",
+            [d.name for d in before.domains],
+            [d.name for d in probed.domains],
+            lambda: setattr(probed, "domains", list(before.domains))))
+
+    if not diffs:
+        click.echo("\nthe record already says this -- refreshing "
+                   "detected_at only.")
+        return probed
+
+    click.echo(f"\nthe record disagrees with this probe in {len(diffs)} "
+               f"place(s).  Per difference: take the probed value?  "
+               f"(No keeps the record)")
+    took, kept, dead = [], [], False
+    for fname_, b, pv, keep in diffs:
+        if yes:
+            take = True
+        elif dead:
+            take = False
+        else:
+            try:
+                take = click.confirm(
+                    f"  {fname_}: recorded {b!r} -> probed {pv!r} -- "
+                    f"take probed?", default=False)
+            except click.exceptions.Abort:
+                click.echo("\n  no answer -- keeping the record for this "
+                           "and every remaining difference (silence is "
+                           "no; --yes takes them all).")
+                dead, take = True, False
+        (took if take else kept).append(fname_)
+        if not take:
+            keep()
+    click.echo("  " + "; ".join(filter(None, [
+        f"took probed: {', '.join(took)}" if took else "",
+        f"kept recorded: {', '.join(kept)}" if kept else ""])))
+    return probed
+
+
 @jobset_group.command("probe",
                      short_help="probe this machine's capability -> "
                                 "environment.json")
@@ -1365,8 +1443,22 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                    "instead of as this machine, so a workstation can hold a "
                    "cluster's capability and `prep --target NAME` use it.")
 @click.option("--yes", is_flag=True, default=False,
-              help="skip the confirmation prompt when --write.")
-def cmd_probe_scheduler(out, do_write: bool, name, yes: bool) -> None:
+              help="with --write: take every probed value without asking "
+                   "(scripts).  Without it, each difference against an "
+                   "existing record is asked about, and silence keeps the "
+                   "record.")
+@click.option("--set", "sets", multiple=True, metavar="KEY=VALUE",
+              help="declare a topology fact the probe cannot see from here "
+                   "(M-1's declared door -- e.g. describing a cluster from a "
+                   "workstation): --set gpus_per_node=4 --set gpu_type=a100. "
+                   "Repeatable; wins over detection; the record's source "
+                   "says 'flag'.")
+@click.option("--scheduler", "scheduler_flag", default=None,
+              type=click.Choice(["slurm", "workstation"]),
+              help="force the scheduler kind instead of detecting it "
+                   "(source 'flag').")
+def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
+                        sets, scheduler_flag) -> None:
     """Probe this machine and record what it IS -- cores, GPUs, scheduler, and
     on a cluster every (partition, QoS) you may actually submit to, with its
     wall.  Writes ``environment.json`` at the machine scope, so one probe
@@ -1394,10 +1486,35 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool) -> None:
     user = getpass.getuser()
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+    # The DECLARED half of M-1, typed by the schema itself: a fact you
+    # cannot probe from here (the ordinary case is describing a cluster
+    # from a workstation) arrives by flag and wins over detection, and the
+    # record's source says so.  An unknown key or a mistyped value is
+    # refused by name -- a silently-dropped declaration is a decision the
+    # user wrote down and nobody obeyed.
+    from ..environment import topology_field_types
+    types = topology_field_types()
+    overrides = {}
+    for s in sets:
+        key, sep, raw = s.partition("=")
+        if not sep:
+            raise click.ClickException(
+                f"--set takes KEY=VALUE, got {s!r}")
+        if key not in types:
+            raise click.ClickException(
+                f"--set knows no topology field {key!r} -- it knows "
+                f"{', '.join(sorted(types))}")
+        try:
+            overrides[key] = types[key](raw)
+        except ValueError:
+            raise click.ClickException(
+                f"--set {key}: {raw!r} is not {types[key].__name__}")
+
     # The NODE probe first -- scheduler, topology, default partition.  It is
     # the same call `prep` step 1 makes, so the two cannot disagree about what
     # this machine is.
-    env = resolve_environment(now_iso=now)
+    env = resolve_environment(now_iso=now, overrides=overrides or None,
+                              scheduler_override=scheduler_flag)
 
     notes = []
     sinfo_txt = _run(["sinfo", "-h", "-o", "%P|%30l|%D|%40G"])
@@ -1405,8 +1522,18 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool) -> None:
         # NOT a refusal.  M-2: a workstation records its capability in the same
         # shape a cluster does.  This verb used to exit 2 here, which left the
         # one machine that most needs a stated ceiling with no record at all.
-        notes.append("no sinfo, so no scheduler domains -- this is a "
-                     "workstation record (topology only).")
+        if env.scheduler == "slurm":
+            # Declared-slurm from a machine without sinfo (describing a
+            # cluster from a workstation): the domains are not probeable
+            # from here, and saying "workstation record" would contradict
+            # the scheduler the user just declared.
+            notes.append("no sinfo reachable from here, so no domains "
+                         "were probed -- run `jobset probe` on the "
+                         "cluster's login node to fill them, or the "
+                         "record rides with none.")
+        else:
+            notes.append("no sinfo, so no scheduler domains -- this is a "
+                         "workstation record (topology only).")
     else:
         parts = parse_sinfo(sinfo_txt)
         qos = parse_qos(_run(["sacctmgr", "-nP", "show", "qos",
@@ -1450,11 +1577,18 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool) -> None:
         return
 
     before = read_environment(target / fname)
-    old = [d.name for d in before.domains] if before else None
-    click.echo(f"\nDIFF domains: {old if old is not None else '(no record)'} "
-               f"-> {[d.name for d in env.domains]}")
-    if not yes:
-        click.confirm(f"Write this record to {target / fname}?", abort=True)
+    if before is None:
+        # Nothing to clobber: one consent creates the record.
+        if not yes:
+            try:
+                click.confirm(f"Write this record to {target / fname}?",
+                              abort=True)
+            except click.exceptions.Abort:
+                click.echo("\n  no answer -- nothing written "
+                           "(silence is no).")
+                return
+    else:
+        env = _probe_consent_merge(before, env, yes=yes)
     target.mkdir(parents=True, exist_ok=True)
     path = write_environment(env, target / fname)
     if name:
