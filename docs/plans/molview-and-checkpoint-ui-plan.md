@@ -331,12 +331,18 @@ frames with the on-screen style; the same menu works on a read-only viewer
 
 ## Order, and what is deferred
 
-| Phase | Scope | Why this order |
+| Phase | Scope | Status |
 |---|---|---|
-| **1** | Part 1 (checkpoint view + `status()` fix) | self-contained, no MolView surface |
-| **2** | Part 2A truth-lane fixes (HOLDING bug, transport restore, tag hardening, stale notes) | small, unblocks honest testing of the lane |
-| **3** | Part 2B view-context lane (+ § 9.6 amendment) | needs 2A's restore correctness |
-| **4** | Part 3 export (door → Data → Image) | largest; uses the capture/pose seam Part 2B opens |
+| **1** | Part 1 (checkpoint view + `status()` fix) | ✅ delivered 2026-08-19 (`e16eb043`) |
+| **2** | Part 2A truth-lane fixes (HOLDING bug, transport restore, tag hardening, stale notes) | ✅ delivered 2026-08-19 (`bfb40920`) |
+| **3** | Part 2B view-context lane (+ § 9.6 amendment) | ✅ delivered 2026-08-19 (`5f306ab8`) |
+| **4** | Part 3 export (door → Data → Image) | ✅ delivered 2026-08-19 (`c49b9c07`) |
+
+All four phases: contract first, executing tests, mutations red, page-boot
+suite green.  **Open before this plan archives:** the live browser
+walk-throughs (the Claude-in-Chrome extension was not connected during the
+build) — checkpoint swap at narrow/wide widths, a reload round-trip on each
+tab, a real Data download + Image png/webm on the dev server.
 
 Each phase: contract first, code, tests (mutation-checked), targeted batches,
 then the browser walk-through on the dev server.
