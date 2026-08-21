@@ -145,15 +145,17 @@ class TestOptimizationTabContract:
 
 
 class TestSpectrumTabContract:
-    """lib/spectra/core.js drives /api/spectra/render, reading labels
-    off molview.data at Generate time."""
+    """lib/spectra/core.js hands over through lib/task-handover.js,
+    reading the structure off molview.data at Send time (P3: the
+    render POST retired with its route)."""
 
-    def test_post_body_is_one_read_of_the_viewer(self, spectra_src):
-        """The render POST carries the envelope and no second copy of it."""
-        assert "/api/spectra/render" in spectra_src
-        ix = spectra_src.find("const body = {")
-        assert ix > 0, "the render body literal moved; this test cannot see it"
-        _assert_one_read(spectra_src[ix:ix + 900], "spectra render")
+    def test_send_is_one_read_of_the_viewer(self, spectra_src):
+        """The send carries the envelope and no second copy of it."""
+        ix = spectra_src.find("async function sendToTaskSetup")
+        assert ix > 0, "the send handler moved; this test cannot see it"
+        body = spectra_src[ix:ix + 1600]
+        assert "taskHandover.send" in body
+        _assert_one_read(body, "spectra send")
 
     def test_no_stale_committed_label_cache(self, spectra_src):
         """The old load-time ``_committed*`` cache was removed with the

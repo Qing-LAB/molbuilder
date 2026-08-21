@@ -217,39 +217,9 @@ def test_pyscf_preflight_issues_carry_workflow_group(web_client):
     )
 
 
-# --------------------------------------------------------------------- #
-#  /api/spectra/render  (the BLOCKER that motivated this file)           #
-# --------------------------------------------------------------------- #
-
-
-def test_spectra_render_issues_carry_workflow_group(web_client):
-    """Pre-fix this test FAILED — spectra.py:434 called
-    ``_issues_to_json(issues)`` without ``cfg=cfg``.  Every issue
-    went out with ``workflow_group: None`` and the F4b client-side
-    fan-out routed zero issues to the per-card panels.
-
-    Post-fix it passes because spectra.py now mirrors build.py's
-    enrichment.  A regression that drops the kwarg again fails
-    this loudly.
-    """
-    # THE STRUCTURE ARRIVES AS DATA (web-api.md § 1).  `structure_text` was
-    # retired from this route: the viewer holds no coordinate document and
-    # writes none (molview.md § 11.7), so the field's only caller could not
-    # produce it.  Sending it got a 400 -- which is why this test reported
-    # "zero issues" and blamed its own payload for not tripping a validator.
-    from molbuilder.structure import Structure
-    body = _post(web_client, "/api/spectra/render", {
-        "structure": Structure.from_xyz(_BENZENE_XYZ).to_dict(),
-        # SpectraConfig.scf_max_cycle range=(10, 1000),
-        # workflow_group="budget" (config/spectra.py:581).  Value 5
-        # is below the floor -> reliable warn.
-        "params": {"scf_max_cycle": 5},
-    })
-    # spectra preflight either succeeds-with-warnings or fails-with-errors;
-    # both branches must carry the workflow_group on warns.
-    issues = body.get("issues") or []
-    _assert_workflow_group_enrichment(issues, "/api/spectra/render")
-
+# The /api/spectra/render section retired with the route (P3).
+# It was the blocker that motivated this file; the contract it
+# forced now lives on every preflight door (tested above).
 
 # --------------------------------------------------------------------- #
 #  /api/transport/render  (the OTHER BLOCKER)                            #

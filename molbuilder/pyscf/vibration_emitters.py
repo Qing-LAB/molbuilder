@@ -1,18 +1,21 @@
-"""Script-template generator for :class:`PySCFSpectraEngine`.
+"""The vibration deck's emission library -- PySCF block emitters.
 
-``render_spectra_script(struct, cfg)`` produces the runnable
-``<job>.spectra.py`` script as a single string.  The script is
-self-contained: ``python <job>.spectra.py`` on any machine with
-the required PySCF stack reproduces the run end-to-end.
+MOVED 2026-08-21 (spectra-migration plan P3) from
+``spectra/pyscf_script.py``, where these emitters were the old
+standalone generator's body; the P1 lift composed them into
+:func:`molbuilder.pyscf.vibration_deck.vibration_spec` call-for-call,
+and P3 retired the old generator (``render_spectra_script``) around
+them.  The lift is a move, not a rewrite -- the science below is the
+2026-05 validated code.
 
-The script writes ``<job>.spectra.json`` incrementally, atomically
-replacing the file at each phase boundary so a live-watch
-poller can pick up partial state without ever seeing a torn
-document (spec § 6.1).  The wire format is the engine-agnostic
+Each ``_emit_*`` function returns lines of the runnable deck.  The
+deck writes ``<job>.spectra.json`` incrementally, atomically replacing
+the file at each phase boundary so a live-watch poller never sees a
+torn document (spec § 6.1).  The wire format is the engine-agnostic
 :class:`SpectraResults` shape (spec § 5 / § 6).
 
-This module is the only place where the actual scientific
-choices land in code form:
+This module is the only place where the actual scientific choices
+land in code form:
 
   * frozen-atom partial Hessian by row/col deletion of the full
     analytic Hessian, mass-weighted on the free-atom subspace;
@@ -27,33 +30,33 @@ choices land in code form:
     mode eigenvector for the modes selected by
     :func:`spectra.selection.select_modes`.
 
-The emitted script's header docstring is the Methods paragraph
-from :func:`spectra.methods.render_methods_md` plus a
-bibliography listing -- so a user reading the file can distil a
-Methods section verbatim (spec § 11.2).
+The emitted deck's header docstring is the Methods paragraph from
+:func:`spectra.methods.render_methods_md` (the engine-specific
+fragment is :func:`pyscf_methods_fragment` below) plus a bibliography
+listing -- so a user reading the file can distil a Methods section
+verbatim (spec § 11.2).
 
-The atomic JSON writer is INLINED into every emitted script
+The atomic JSON writer is INLINED into every emitted deck
 (no molbuilder import at runtime) so cluster nodes need only
-the PySCF stack.  It mirrors the safety rules of
-:func:`molbuilder.parsers.spectra_json.dump_spectra_json`
-(``allow_nan=False``, ``ensure_ascii=False``, tempfile + replace,
-no BOM).
+the PySCF stack.
 """
-
 from __future__ import annotations
 
 from typing import List
 
 from ..config.spectra import SpectraConfig
 from ..structure import Structure
+from ..runtime_info import GPU4PYSCF_MIN_COMPUTE_CAPABILITY  # noqa: F401  (deck header + GPU probe agree on one number)
+
+#: The engine display string for deck headers -- was
+#: ``PySCFSpectraEngine.label`` until P3 retired that class.
+PYSCF_ENGINE_LABEL = "PySCF (analytic Hessian + dα/dR)"
 # Eager imports were lazy before to break a circular dep, but only one
 # direction actually cycles (pyscf_engine.render_script -> pyscf_script,
 # which stays lazy inside that method body).  Importing pyscf_engine +
 # methods at module load here loads the engine class without touching
 # pyscf_script, so no cycle.
-from .methods import render_methods_md, extract_citation_keys
-from .pyscf_engine import PySCFSpectraEngine
-from .results import SCHEMA_VERSION
+from ..spectra.results import SCHEMA_VERSION
 
 
 # Conversion factors used in the script.  Pinned here so the
@@ -83,125 +86,6 @@ _BOHR_TO_ANG     = 0.529177210903
 _RAMAN_FD_STEP_ANG = 0.005
 
 
-def render_spectra_script(struct: Structure, cfg: SpectraConfig) -> str:
-    """Emit the complete ``<job>.spectra.py`` script as a string.
-
-    The order of emitted blocks matters -- earlier blocks define
-    state used by later ones.  Each block is its own
-    ``_emit_<name>`` helper so the structure stays inspectable
-    and the unit tests can assert on individual block contents.
-    """
-    # v1 IR constraint: IR rides on the same displaced SCFs that
-    # Raman runs (dipole moment is essentially free after each
-    # converged mf), so compute_ir requires compute_raman.  A
-    # standalone IR FD loop would just duplicate that work; if a
-    # user ever wants IR-without-Raman the right answer is to enable
-    # both flags, accept the polarizability cost, and revisit later.
-    if cfg.compute_ir and not cfg.compute_raman:
-        raise ValueError(
-            "compute_ir=True requires compute_raman=True in v1 "
-            "(IR piggybacks on the Raman finite-difference loop; a "
-            "standalone IR-only FD path is a future feature)."
-        )
-
-    # Cross-cutting validation (open-shell metal, parity, frozen-atom-
-    # consumed, peptide protonation, config-metadata range checks).
-    # SIESTA + PySCF generators have always called this from inside
-    # render_fdf / render_script; the spectra generator was missing
-    # the call so CLI / library callers bypassed every check (the
-    # web /api/spectra/render endpoint runs ``engine.preflight`` so
-    # the web path was covered).  Mirror the SIESTA pattern: validate
-    # the struct + cfg, surface warnings to stderr via ``report``,
-    # raise ValidationError on hard-error issues so the caller can
-    # catch + display.  Caught by the 2026-05-26 fresh-eyes review.
-    from ..validation import validate, report
-    report(validate(struct, cfg))
-
-    # Compute the Methods prose + bibliography ONCE -- the header
-    # docstring and the constants block both inline the same prose,
-    # so calling render_methods_md three times (as the earlier code
-    # did) was wasted work and a consistency risk.
-    methods_md = render_methods_md(
-        cfg, engine=PySCFSpectraEngine, struct=struct,
-    )
-    bibliography_keys = extract_citation_keys(methods_md)
-
-    # Threading + runtime-info + GPU probe are CROSS-CUTTING -- they
-    # live in molbuilder.runtime_info and are shared verbatim with
-    # Build's PySCF script generator (pyscf/input.py).  Single source
-    # of truth for the OMP/BLAS recipe + GPU detection so the two
-    # generators can't drift.
-    from ..runtime_info import (
-        emit_threading_setup_lines,
-        emit_runtime_info_capture_lines,
-        emit_pyscf_post_import_lines,
-        emit_gpu_probe_lines,
-    )
-    lines: List[str] = []
-    lines += _emit_header_docstring(struct, cfg, methods_md=methods_md)
-    lines += emit_threading_setup_lines(cfg.threads)
-    lines += emit_runtime_info_capture_lines(
-        use_gpu=bool(cfg.use_gpu),
-        max_memory_mb=int(cfg.max_memory_mb) if cfg.max_memory_mb else None,
-    )
-    lines += _emit_imports(cfg)
-    lines += emit_pyscf_post_import_lines()
-    lines.append("_RUNTIME_INFO['n_threads_pyscf'] = int(_pyscf_lib.num_threads())")
-    lines += _emit_constants(
-        struct, cfg,
-        methods_md=methods_md,
-        bibliography_keys=bibliography_keys,
-    )
-    lines += emit_gpu_probe_lines(
-        use_gpu=bool(cfg.use_gpu),
-        min_compute_capability=int(
-            __import__("molbuilder.spectra.pyscf_engine",
-                       fromlist=["PySCFSpectraEngine"]
-                      ).PySCFSpectraEngine.GPU4PYSCF_MIN_COMPUTE_CAPABILITY
-        ),
-    )
-    # Legacy compat: the existing spectra script uses _scf / _dft
-    # pointer rebind for GPU dispatch.  Keep that pattern (it's how
-    # _emit_build_mol picks SCF class) by aliasing.
-    lines.append("if _USING_GPU:")
-    lines.append("    from gpu4pyscf import scf as _gpu_scf")
-    if cfg.method.upper() in ("RKS", "UKS"):
-        lines.append("    from gpu4pyscf import dft as _gpu_dft")
-        lines.append("    _scf = _gpu_scf")
-        lines.append("    _dft = _gpu_dft")
-    else:
-        lines.append("    _scf = _gpu_scf")
-        lines.append("    _dft = None")
-    lines.append("else:")
-    lines.append("    _scf = scf")
-    if cfg.method.upper() in ("RKS", "UKS"):
-        lines.append("    _dft = dft")
-    else:
-        lines.append("    _dft = None")
-    lines.append("")
-    lines += _emit_atomic_writer()
-    lines += _emit_build_mol(struct, cfg)
-    lines += _emit_frozen_mask()
-    lines += _emit_initial_state()
-    lines += _emit_equilibrium_scf(cfg, struct)
-    lines += _emit_gpu_coverage_probe(cfg)
-    lines += _emit_hessian_block(cfg)
-    # Shared helpers for L3 and L4: both phases run SCFs at displaced
-    # geometries via _build_mf_at(coords).  Emit ONCE whenever
-    # either L3 or L4 will run -- previously _build_mf_at lived
-    # inside the Raman block, so `compute_raman=False` with
-    # `es_mode_selection != "skip"` crashed the script with NameError.
-    needs_displaced_scf = cfg.compute_raman or cfg.es_mode_selection != "skip"
-    if needs_displaced_scf:
-        lines += _emit_displaced_scf_helpers(cfg)
-    if cfg.compute_raman:
-        lines += _emit_raman_block(cfg)
-    if cfg.es_mode_selection != "skip":
-        lines += _emit_es_loop(cfg)
-    lines += _emit_final_summary()
-    return "\n".join(lines) + "\n"
-
-
 # --------------------------------------------------------------------- #
 # Header docstring + Methods paragraph                                  #
 # --------------------------------------------------------------------- #
@@ -223,7 +107,7 @@ def _emit_header_docstring(struct: Structure,
     out.append('"""PySCF Spectra input script generated by molbuilder.')
     out.append("")
     out.append(f"System    : {getattr(struct, 'title', None) or 'untitled'}")
-    out.append(f"Engine    : PySCF ({PySCFSpectraEngine.label})")
+    out.append(f"Engine    : {PYSCF_ENGINE_LABEL}")
     out.append(f"Method    : {cfg.method} / {cfg.functional} / {cfg.basis}")
     if cfg.dispersion and cfg.dispersion.lower() != "none":
         out.append(f"Dispersion: {cfg.dispersion}")
@@ -244,21 +128,20 @@ def _emit_header_docstring(struct: Structure,
     out.append("                                          (see spec § 5 / § 6)")
     out.append("")
     if cfg.compute_ir:
-        out.append("*** IR INTENSITY SCAFFOLD -- NOT YET VALIDATED ***")
+        out.append("*** IR INTENSITIES -- BAND-LEVEL VALIDATED ***")
         out.append("    `ir_intensity_km_mol` values in the JSON are computed")
         out.append("    from finite-difference dipole derivatives + the")
         out.append("    Gaussian/ORCA 42.2561 km/mol per (D/Å)²/amu prefactor.")
-        out.append("    The math is textbook, but absolute magnitudes have NOT")
-        out.append("    been cross-checked against an external code the way")
-        # Both pointers must NAME a document that exists.  This cited
-        # "§ 13.1" with no document after the 2026-07 docs migration retired
-        # the spec that owned that section -- so a scientist told to check the
-        # validation status before quoting absolute IR magnitudes had nowhere
-        # to go.  Caught by test_ir_validation_banner_in_header.
-        out.append("    Raman was (see docs/web/spectra.md for")
-        out.append("    the Raman validation, and docs/roadmap.md for the IR")
-        out.append("    validation status + its closure plan).")
-        out.append("    Use for relative IR intensities + qualitative work;")
+        out.append("    Band-level validation 2026-08-20: water at")
+        out.append("    B3LYP/def2-SVP lands in the literature windows with")
+        # Both pointers must NAME a document that exists.  A prior wording
+        # cited "§ 13.1" with no document after the 2026-07 docs migration
+        # retired the spec that owned that section -- so a scientist told to
+        # check the validation status had nowhere to go.
+        out.append("    the right band ordering (docs/roadmap.md § 5 records")
+        out.append("    the closure; docs/web/spectra.md holds the Raman")
+        out.append("    validation).  A mode-by-mode cross-check against an")
+        out.append("    external code has not been run;")
         out.append("    quote absolute values only with the caveat.")
         out.append("    For CHARGED molecules (charge != 0) IR intensities")
         out.append("    are origin-dependent and physically ill-defined; the")
@@ -1138,17 +1021,17 @@ def _emit_ir_projection() -> List[str]:
     activity loop has run -- it relies on ``DMU_DR`` and the
     canonical normal modes already being in scope.
 
-    SCIENTIFIC VALIDATION STATUS: NOT YET VALIDATED against an
-    external code (Gaussian / ORCA / Turbomole).  The projection
-    math + Gaussian/ORCA km/mol prefactor are textbook, but the
-    absolute magnitudes have not been cross-checked the way the
-    Raman path was (see ``docs/web/spectra.md``).
-    Use for relative IR intensities and qualitative analysis;
-    quote absolute values only with the caveat.
+    SCIENTIFIC VALIDATION STATUS: BAND-LEVEL VALIDATED
+    (2026-08-20, water at B3LYP/def2-SVP against literature
+    windows with the right band ordering -- docs/roadmap.md § 5
+    records the closure).  The projection math + Gaussian/ORCA
+    km/mol prefactor are textbook; a mode-by-mode cross-check
+    against an external code (Gaussian / ORCA / Turbomole) has
+    not been run, so quote absolute values with that caveat.
     """
     out: List[str] = []
     out.append("")
-    out.append("# ----- IR (scaffold; absolute magnitudes not yet validated) -----")
+    out.append("# ----- IR (band-level validated; see header banner) -----")
     out.append("# Standard IR intensity formula for a normal mode of frequency ν_n")
     out.append("# in km/mol, given the dipole-moment derivative dμ/dQ_n (3-vector):")
     out.append("#")
@@ -1555,3 +1438,90 @@ def _emit_final_summary() -> List[str]:
 
 
 __all__ = ["render_spectra_script"]
+
+# --------------------------------------------------------------------- #
+# Methods paragraph (engine-specific fragment)                          #
+# --------------------------------------------------------------------- #
+
+
+def pyscf_methods_fragment(cfg: SpectraConfig) -> str:
+    """Engine-specific paragraph for the Methods section.
+
+    MOVED at P3 from ``PySCFSpectraEngine.methods_fragment`` (the class
+    retired with the old generator); the unused ``modes`` parameter was
+    dropped.  Names PySCF + the specific Hessian /
+    polarizability-derivative APIs used, with citation keys that
+    resolve against ``docs/science/references.bib`` and bubble up into
+    the trailing bibliography of the full Methods text
+    (:func:`spectra.methods.render_methods_md` composes it in).
+    """
+    # Method-class-specific Hessian module name -- the PySCF
+    # API splits hessian.RKS / UKS / RHF / UHF.  Sun2020 +
+    # Sun2018 cite the package itself; the analytic Hessian
+    # API is covered by both.
+    method = cfg.method.upper()
+    hessian_module = {
+        "RKS": "pyscf.hessian.rks",
+        "UKS": "pyscf.hessian.uks",
+        "RHF": "pyscf.hessian.rhf",
+        "UHF": "pyscf.hessian.uhf",
+    }.get(method, "pyscf.hessian")
+
+    parts = [
+        "All electronic-structure calculations were performed "
+        "with PySCF [Sun2020, Sun2018], a Python-based ab "
+        "initio package."
+    ]
+
+    # Mention the analytic Hessian explicitly -- the choice of
+    # analytic over finite-difference is a load-bearing claim
+    # for the Methods reader (no FD noise on frequencies).
+    parts.append(
+        f"The harmonic Hessian was obtained analytically via "
+        f"`{hessian_module}` and mass-weighted, then "
+        f"diagonalized after projection of the six "
+        f"translational/rotational eigenvectors."
+    )
+
+    # Raman path: cite the analytic dα/dR + Komornicki1979.
+    if cfg.compute_raman:
+        parts.append(
+            "Polarizability derivatives dα/dR were computed "
+            "analytically with `pyscf.prop.polarizability` "
+            "and projected onto the mass-weighted mode "
+            "eigenvectors to obtain Raman activities in "
+            "Å⁴/amu [Komornicki1979]."
+        )
+
+    # Density fitting note.  The emitted deck applies DF to the SCF
+    # + Hessian path only; when Raman is computed the polarizability
+    # points are forced NON-DF (pyscf-properties 0.1.x has no DF
+    # polarizability -- see ``_emit_raman_block`` above), so the
+    # Methods text must not claim DF across the board.  The Raman
+    # caveat rides ONLY when compute_raman is on (mirrors the Raman
+    # prose above) so a non-Raman run's Methods never mentions Raman.
+    if cfg.density_fit:
+        df_note = (
+            f"Density fitting (RIJK) was used for the SCF and analytic "
+            f"Hessian; the auxiliary basis was selected automatically by "
+            f"PySCF for the production {cfg.basis} basis."
+        )
+        if cfg.compute_raman:
+            df_note += (
+                "  The polarizability evaluations that yield Raman "
+                "activities are run without density fitting "
+                "(pyscf-properties 0.1.x has no DF polarizability "
+                "implementation)."
+            )
+        parts.append(df_note)
+
+    # Grid level for DFT runs.
+    if method.endswith("KS"):
+        parts.append(
+            f"DFT integration used PySCF's grid level "
+            f"{cfg.grid_level} (production setting for hybrid "
+            f"functionals; the v1 spec § 11.4 sets level 4 as "
+            f"the recommended minimum)."
+        )
+
+    return " ".join(parts)

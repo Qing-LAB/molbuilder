@@ -34,7 +34,7 @@ from .sidecar import _check_frozen_atoms_consumed
 #  level 4 a meta-GGA's oscillatory integrand picks up grid noise that  #
 #  dominates forces / frequencies.  The SAME gate matters at two call   #
 #  sites: geometry-opt FORCES (_validate_pyscf) and spectra HESSIAN     #
-#  frequencies (spectra/pyscf_engine.render_checks).  Both used to      #
+#  frequencies (the retired spectra engine's render_checks).  Both     #
 #  carry a duplicated copy keyed WRONGLY on "hybrid" (V4 dedup; the     #
 #  meta-GGA re-key + corrected rationale is the scientific-audit fix).  #
 #  One detector-pair + one gate now; message context-selected.          #

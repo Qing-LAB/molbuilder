@@ -1552,25 +1552,9 @@ class TestARefusedCellIsA400:
             "structure": _env_per(self.XYZ, {"cell": self.LEFT_HANDED}), "engine": "siesta",
             "params": {}}), "/api/build/preflight")
 
-    def test_the_spectra_door_refuses(self, client):
-        """The spectra door takes the structure AS DATA, like every other one.
-
-        It used to take `structure_text`, and this test posted that -- so after
-        the route changed it was refused for the wrong reason ("no 'structure'
-        provided") and still passed the status check while never reaching the
-        periodicity gate at all.  The subject here is the gate, so the body has
-        to be one the route accepts.
-        """
-        s = Structure(elements=["H"], positions=np.zeros((1, 3)))
-        s.cell = self.LEFT_HANDED
-        s.__post_init__()
-        # IN the envelope.  This stated the bad cell in a top-level
-        # `periodicity` block BESIDE the envelope, and passed because the emit
-        # doors applied that block over the structure -- a second source for the
-        # cell, the same shape the labels had (#41).  The doors check now and
-        # apply nothing, so the cell has to be where the structure keeps it.
-        self._assert_refused(client.post("/api/spectra/render", json={
-            "structure": s.to_dict(), "params": {}}), "/api/spectra/render")
+    # The /api/spectra/render arm retired with the route (P3);
+    # the hand-over door runs the same gate and is pinned in
+    # test_task_setup_tab.py.
 
     def test_the_export_door_refuses(self, client):
         """The export door reads the cell off the ENVELOPE rather than a

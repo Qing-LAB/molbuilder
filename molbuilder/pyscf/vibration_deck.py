@@ -47,7 +47,8 @@ from .. import script_emit as _sc
 from ..structure import FROZEN_LABEL, Structure
 
 # The lifted emitters — the old generator's proven blocks, composed anew.
-from ..spectra.pyscf_script import (
+from .vibration_emitters import (
+    pyscf_methods_fragment,
     _emit_atomic_writer,
     _emit_build_mol,
     _emit_constants,
@@ -372,15 +373,15 @@ def vibration_spec(struct: Structure, cfg, *,
         report(validate(struct, view))
         from ..spectra.methods import (extract_citation_keys,
                                        render_methods_md)
-        from ..spectra.pyscf_engine import PySCFSpectraEngine
-        methods_md = render_methods_md(view, engine=PySCFSpectraEngine,
-                                       struct=struct)
+        methods_md = render_methods_md(
+            view, fragment_md=pyscf_methods_fragment(view), struct=struct)
         bibliography_keys = extract_citation_keys(methods_md)
         from ..runtime_info import (
             emit_threading_setup_lines,
             emit_runtime_info_capture_lines,
             emit_pyscf_post_import_lines,
             emit_gpu_probe_lines,
+            GPU4PYSCF_MIN_COMPUTE_CAPABILITY,
         )
         out: List[str] = []
         out += _emit_header_docstring(struct, view, methods_md=methods_md)
@@ -400,7 +401,7 @@ def vibration_spec(struct: Structure, cfg, *,
         out += emit_gpu_probe_lines(
             use_gpu=bool(view.use_gpu),
             min_compute_capability=int(
-                PySCFSpectraEngine.GPU4PYSCF_MIN_COMPUTE_CAPABILITY),
+                GPU4PYSCF_MIN_COMPUTE_CAPABILITY),
         )
         out.append("if _USING_GPU:")
         out.append("    from gpu4pyscf import scf as _gpu_scf")

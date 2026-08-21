@@ -17,7 +17,7 @@ What it pins (in order):
       endpoint was removed.
   3.  /api/selection/atoms re-read picks up the sidecar (atoms now
       carry the new region tags + is_frozen flags).
-  4.  GET /api/build/schema/spectra?structure_path=<.pdb> pre-fills
+  (4-5 retired at P3: the spectra schema/render routes are gone;
       the form's ``frozen_indices`` default from the sidecar.
   5.  POST /api/spectra/render with the PDB content + structure_path
       emits a script + surfaces Pattern A (sidecar's frozen atoms
@@ -271,164 +271,13 @@ class TestPdbWorkflowEndToEnd:
 
     # ----- Step 4: /spectra schema pre-fills frozen_indices ----- #
 
-    def test_step_4_schema_endpoint_prefills_from_pdb_sidecar(
-        self, web, pdb_under_root,
-    ):
-        pdb_path, n_atoms, _ = pdb_under_root
-        _seed_sidecar_for(pdb_path, n_atoms=n_atoms, frozen=[0, 1, 2])
-
-        r = web.get(
-            f"/api/build/schema/spectra?structure_path={self._path(pdb_path)}"
-        )
-        assert r.status_code == 200, r.data
-        body = r.get_json()
-        # No "notice" on the happy path -- the schema endpoint read
-        # the sidecar cleanly and applied the pre-fill.
-        assert "notice" not in body, body.get("notice")
-        # The frozen_indices field's default IS the comma-separated
-        # form of the sidecar's frozen_atoms.
-        default = None
-        for sect in body["schema"]["sections"]:
-            for field in sect["fields"]:
-                if field["name"] == "frozen_indices":
-                    default = field["default"]
-        assert default == "0, 1, 2", (
-            f"schema endpoint did NOT pre-fill frozen_indices from "
-            f"the PDB sidecar.  Got default={default!r}; expected '0, 1, 2'."
-        )
-
-    # ----- Step 5: /spectra render fires Pattern A + B ---------- #
-
-    def test_step_5_render_emits_pattern_a_and_b_warns(
-        self, web, pdb_under_root,
-    ):
-        pdb_path, n_atoms, _ = pdb_under_root
-        # Sidecar with frozen + a region.
-        _seed_sidecar_for(pdb_path, n_atoms=n_atoms,
-                          regions={"L-electrode": [3, 4]}, frozen=[0, 1, 2])
-
-        r = web.post("/api/spectra/render", json={
-            # F2 (docs/science/validation.md 4.1): the STRUCTURE's labels reach
-            # the server WITH the structure, as the tab sends them.  Pattern A is
-            # the divergence between this structure-side claim and the FORM's
-            # (params.frozen_indices, absent here) -- the delivery moved, the
-            # two-sided comparison under test did not.
-            "structure": self._envelope(
-                pdb_path,
-                regions={"L-electrode": [3, 4], "frozen_atoms": [0, 1, 2]}),
-            "structure_path": self._path(pdb_path),
-            # Both PDB fixtures (synthetic tripeptide + user's 1c75)
-            # have odd electron counts at charge=0, so spin=0 fails
-            # the parity check added 2026-05-22.  Pass charge=0,
-            # spin=1, method=UKS so the render reaches the
-            # Pattern A/B preflight branches we're actually testing.
-            "params":         {"charge": 0, "spin": 1, "method": "UKS"},
-        })
-        assert r.status_code == 200, r.data
-        body = r.get_json()
-        assert body["ok"] is True, body
-
-        issues = body["issues"]
-        # Pattern A: sidecar has [0,1,2], cfg has [] -> divergence WARN.
-        pat_a = [i for i in issues
-                 if i["severity"] == "warn"
-                 and i["where"] == "config.frozen_indices"
-                 and "sidecar" in i["message"]]
-        assert pat_a, (
-            "Pattern A divergence WARN did NOT fire.  The script will "
-            "freeze NOTHING while the sidecar says freeze [0,1,2]; "
-            "the user must be warned.  Issues: "
-            + str([(i["where"], i["severity"], i["message"][:60]) for i in issues])
-        )
-        # Pattern B: sidecar has a region; spectra engine doesn't
-        # consume regions -> WARN naming them.
-        pat_b = [i for i in issues
-                 if i["where"] == "structure.regions"]
-        assert pat_b, (
-            "Pattern B unrecognized-label WARN did NOT fire.  "
-            f"Issues: "
-            + str([(i["where"], i["severity"], i["message"][:60]) for i in issues])
-        )
-        assert "L-electrode" in pat_b[0]["message"], (
-            f"Pattern B WARN doesn't name the unconsumed label.  "
-            f"Got: {pat_b[0]['message']}"
-        )
-
-    # ----- Step 6: script faithfully delivers cfg.frozen_indices  #
-
-    def test_step_6_script_inlines_form_values_not_sidecar(
-        self, web, pdb_under_root,
-    ):
-        pdb_path, n_atoms, _ = pdb_under_root
-        # Sidecar says [0,1,2]; form says [5,6].  The script MUST
-        # honor the FORM, not the sidecar (form is authoritative
-        # per the three-stage contract).
-        _seed_sidecar_for(pdb_path, n_atoms=n_atoms, frozen=[0, 1, 2])
-        r = web.post("/api/spectra/render", json={
-            "structure": self._envelope(pdb_path),
-            "structure_path": self._path(pdb_path),
-            "params":         {"frozen_indices": "5, 6",
-                                 "charge": 0, "spin": 1, "method": "UKS"},
-        })
-        assert r.status_code == 200, r.data
-        body = r.get_json()
-        assert body["ok"] is True
-        script = body["script"]
-        # The runtime variable FROZEN_INDICES_USER reflects what
-        # cfg.frozen_indices held, not what the sidecar said.
-        assert "FROZEN_INDICES_USER        = [5, 6]" in script, (
-            "The emitted script does NOT inline the form's "
-            "frozen_indices verbatim -- a silent absorption bug.  "
-            "Script snippet:\n"
-            + "\n".join(
-                line for line in script.split("\n")
-                if "FROZEN" in line
-            )
-        )
-        # And does NOT inline the sidecar's [0,1,2] -- that would be
-        # silent absorption of config.
-        assert "FROZEN_INDICES_USER        = [0, 1, 2]" not in script, (
-            "The emitted script inlined the SIDECAR's frozen_atoms "
-            "instead of the form's -- contradicts design.md's "
-            "three-stage contract."
-        )
-
-    # ----- Step 7: form pre-fill can be CLEARED to override ----- #
-
-    def test_step_7_user_can_clear_prefill(
-        self, web, pdb_under_root,
-    ):
-        pdb_path, n_atoms, _ = pdb_under_root
-        # Sidecar marks atoms 0,1,2 frozen.  User clears the form
-        # field deliberately.  Render must honor "no atoms frozen"
-        # AND fire Pattern A so the user can't be surprised later.
-        _seed_sidecar_for(pdb_path, n_atoms=n_atoms, frozen=[0, 1, 2])
-        r = web.post("/api/spectra/render", json={
-            # F2: the structure-side claim rides WITH the structure; the FORM
-            # is cleared in params.  The whole point is that these DISAGREE and
-            # the user is told, rather than the override being absorbed.
-            "structure": self._envelope(
-                pdb_path, regions={"frozen_atoms": [0, 1, 2]}),
-            "structure_path": self._path(pdb_path),
-            "params":         {"frozen_indices": "",
-                                 "charge": 0, "spin": 1, "method": "UKS"},
-        })
-        body = r.get_json()
-        assert body["ok"] is True
-        # Script: no atoms frozen.
-        assert "FROZEN_INDICES_USER        = []" in body["script"], (
-            "User cleared the form but the script still freezes atoms "
-            "-- contradicts 'form is authoritative'."
-        )
-        # Divergence WARN fired -- the user was told.
-        pat_a = [i for i in body["issues"]
-                 if i["severity"] == "warn"
-                 and i["where"] == "config.frozen_indices"
-                 and "sidecar" in i["message"]]
-        assert pat_a, (
-            "User cleared the form (deliberate override) but the "
-            "divergence WARN didn't fire -- silent absorption."
-        )
+    # Steps 4-7 (schema pre-fill -> render -> prefill-clear)
+    # retired with their routes (spectra-migration plan P3,
+    # 2026-08-21): frozen atoms are STRUCTURE-side facts now --
+    # they ride the sidecar into the hand-over's codec pair
+    # (pinned by test_task_setup_tab.py's byte-compat test and
+    # TestBuildSiestaHonorsSidecarFrozenAtoms below), never a
+    # form field.
 
 
 # --------------------------------------------------------------------- #

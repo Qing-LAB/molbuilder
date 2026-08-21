@@ -353,7 +353,7 @@ class TestExplainMetalSpin:
 
 # --------------------------------------------------------------------- #
 #  PySCF ECP (pseudopotential) resolution                              #
-#  Shared between Build's pyscf/input.py and spectra/pyscf_script.py.   #
+#  Shared between Build's pyscf/input.py and pyscf/vibration_emitters.  #
 #  Tests below pin the cross-engine rule so the two emitters can't     #
 #  drift on ECP handling.                                              #
 # --------------------------------------------------------------------- #

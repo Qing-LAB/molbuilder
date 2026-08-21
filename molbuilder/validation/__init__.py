@@ -60,7 +60,7 @@ from ..structure import Structure
 # Re-export the public + cross-module-imported names so the package
 # is a drop-in replacement for the pre-split ``validation.py``.  The
 # underscore-prefixed names are explicitly part of this surface
-# because external modules (spectra/pyscf_engine, transport/transiesta,
+# because external modules (pyscf/vibration_deck, transport/transiesta,
 # tests/test_validation) imported them by name pre-split; renaming
 # them is the follow-up promotion proposed in
 # scientific-validation.md § 10 and is out of scope for this commit.

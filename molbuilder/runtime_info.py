@@ -258,7 +258,7 @@ def emit_runtime_info_capture_lines(use_gpu: bool,
 
 # Minimum NVIDIA GPU compute capability gpu4pyscf supports.  7.0 = Volta;
 # below that the runtime imports of gpu4pyscf raise.  Defined as a module
-# constant so engine emitters (pyscf/input.py + spectra/pyscf_engine.py)
+# constant so engine emitters (pyscf/input.py + pyscf/vibration_emitters.py)
 # import from one place instead of duplicating the literal.  The previous
 # arrangement had ``7`` hard-coded in pyscf/input.py + as a class constant
 # on PySCFSpectraEngine + as a default kwarg here -- three sources, easy

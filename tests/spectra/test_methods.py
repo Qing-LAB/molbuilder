@@ -274,78 +274,54 @@ class TestRenderMethodsMdPostRun:
         assert "1 modes received" in md or "In the present run" in md
 
 
-class TestRenderMethodsMdEngineFragment:
-    """The composer is engine-agnostic but accepts an engine class
-    whose `methods_fragment(cfg, modes)` returns engine-specific
-    prose.  The fragment is interleaved between the L2 and L4
-    paragraphs; citation keys from the fragment flow into the
-    trailing bibliography just like the generic prose's keys."""
-
-    def _make_engine_with_fragment(self, frag: str):
-        """Build a minimal engine whose methods_fragment returns
-        ``frag``.  Other Protocol methods are stubs."""
-        class _E:
-            name = "test-frag-engine"
-            label = "test engine"
-        _E.render_script    = classmethod(lambda c, s, cfg: "")
-        _E.parse_output     = classmethod(lambda c, p: None)
-        _E.preflight        = classmethod(lambda c, s, cfg, prior=None: [])
-        _E.methods_fragment = classmethod(lambda c, cfg, modes: frag)
-        return _E
+class TestRenderMethodsMdFragment:
+    """The composer is engine-IGNORANT: the caller supplies the
+    engine-specific paragraph as TEXT (``fragment_md``), and the
+    composer interleaves it between the generic paragraphs.  P3
+    retired the engine-class hook: the registry it looked up died
+    with the old generator, and the one remaining producer (the
+    vibration deck) knows its own engine -- it passes
+    :func:`molbuilder.pyscf.vibration_emitters.pyscf_methods_fragment`.
+    A raising callable cannot exist any more: text does not raise.
+    Citation keys from the fragment flow into the trailing
+    bibliography just like the generic prose's keys."""
 
     def test_fragment_appears_in_output(self):
         from molbuilder.spectra import render_methods_md
-        eng = self._make_engine_with_fragment(
-            "The analytic Hessian was obtained via `pyscf.hessian.rks` [Sun2020]."
-        )
-        md = render_methods_md(SpectraConfig(), engine=eng)
+        md = render_methods_md(SpectraConfig(), fragment_md=(
+            "The analytic Hessian was obtained via "
+            "`pyscf.hessian.rks` [Sun2020]."))
         assert "pyscf.hessian.rks" in md
 
     def test_fragment_citations_join_bibliography(self):
-        """A citation key that appears only in the engine fragment
-        must still land in the trailing **Bibliography** list."""
+        """A citation key that appears only in the fragment must
+        still land in the trailing **Bibliography** list."""
         from molbuilder.spectra import render_methods_md
-        eng = self._make_engine_with_fragment(
-            "Custom citation only here: [Sun2018]."
-        )
-        md = render_methods_md(SpectraConfig(), engine=eng)
-        # Sun2018 isn't cited in any generic prose path -- it appears
-        # *only* in the engine fragment.  It must still be listed.
+        md = render_methods_md(SpectraConfig(), fragment_md=(
+            "Custom citation only here: [Sun2018]."))
         bib_section = md.split("**Bibliography**", 1)[1]
         assert "Sun2018" in bib_section
 
-    def test_engine_raising_in_fragment_does_not_crash(self):
-        """A buggy engine shouldn't break the Methods preview --
-        the composer swallows fragment exceptions defensively
-        (live form re-renders on every keystroke)."""
+    def test_empty_fragment_is_omitted_whole(self):
+        """No fragment means no engine paragraph and no placeholder --
+        the default, and what a stripped test environment sees."""
         from molbuilder.spectra import render_methods_md
-
-        class _Broken:
-            name = "broken"
-            label = "broken"
-        _Broken.render_script    = classmethod(lambda c, s, cfg: "")
-        _Broken.parse_output     = classmethod(lambda c, p: None)
-        _Broken.preflight        = classmethod(lambda c, s, cfg, prior=None: [])
-        def _boom(cls, cfg, modes):
-            raise RuntimeError("fragment generator exploded")
-        _Broken.methods_fragment = classmethod(_boom)
-
-        md = render_methods_md(SpectraConfig(), engine=_Broken)
-        # Generic prose still rendered.
-        assert "## Methods" in md
-        assert "B3LYP" in md
-
-    def test_unknown_engine_in_cfg_does_not_crash(self):
-        """If cfg.engine isn't registered (e.g. test environment
-        with no engines imported) the composer omits the fragment
-        silently rather than raising UnknownEngineError."""
-        from molbuilder.spectra import render_methods_md
-        # Default SpectraConfig has engine="pyscf"; in this test
-        # environment the PySCF engine module isn't imported, so the
-        # registry doesn't know it -- the composer should still work.
         md = render_methods_md(SpectraConfig())
-        assert "## Methods" in md
+        assert "pyscf.hessian" not in md
 
+    def test_the_deck_s_real_fragment_composes(self):
+        """The one production caller's fragment: PySCF named with its
+        package citations, the Hessian module matched to the method
+        class, Raman prose riding only when compute_raman is on."""
+        from molbuilder.spectra import render_methods_md
+        from molbuilder.pyscf.vibration_emitters import pyscf_methods_fragment
+        cfg = SpectraConfig(method="UKS", compute_raman=True)
+        md = render_methods_md(cfg, fragment_md=pyscf_methods_fragment(cfg))
+        assert "pyscf.hessian.uks" in md
+        assert "[Sun2020, Sun2018]" in md
+        assert "Komornicki1979" in md
+        bib = md.split("**Bibliography**", 1)[1]
+        assert "Sun2018" in bib and "Komornicki1979" in bib
 
 class TestRenderMethodsMdWithStruct:
     """Atom-count phrasing is gated on Structure availability."""

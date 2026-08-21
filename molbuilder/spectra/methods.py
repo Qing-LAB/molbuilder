@@ -32,11 +32,10 @@ trailing bibliography and the ``bibliography_keys`` field of
 from __future__ import annotations
 
 import re
-from typing import List, Optional, Type
+from typing import List, Optional
 
 from ..config.spectra import SpectraConfig
 from ..structure import Structure
-from .engine_base import SpectraEngine, UnknownEngineError, get_engine
 from .results import SpectraResults
 
 
@@ -61,7 +60,7 @@ def render_methods_md(
     cfg: SpectraConfig,
     *,
     results: Optional[SpectraResults] = None,
-    engine: Optional[Type[SpectraEngine]] = None,
+    fragment_md: str = "",
     struct: Optional[Structure] = None,
 ) -> str:
     """Compose the Markdown Methods paragraph for the given config.
@@ -77,12 +76,15 @@ def render_methods_md(
         pass ``None`` and get the "what will be done" form; post-run
         callers pass the parsed results and get real mode counts
         and frequency ranges interpolated into the prose.
-    engine
-        Optional engine class.  If ``None`` the composer looks up
-        ``cfg.engine`` in the registry; if that fails (engine not
-        registered, e.g. in a stripped test environment) the
-        engine-specific fragment is omitted with a placeholder
-        comment.  Pass an explicit class to bypass the registry.
+    fragment_md
+        Optional engine-specific paragraph, supplied by the caller
+        (the vibration deck passes
+        :func:`molbuilder.pyscf.vibration_emitters.
+        pyscf_methods_fragment`).  Empty means no engine paragraph.
+        The registry lookup this replaced retired with the old
+        generator (P3): this module is engine-IGNORANT by design
+        (its own header line 21), and the one remaining producer
+        knows its own engine.
     struct
         Optional :class:`Structure`.  Used to phrase "N free atoms,
         3N-6 modes" etc. when available; falls back to generic
@@ -108,9 +110,8 @@ def render_methods_md(
     # ------------------------------------------------------------------ #
     # Engine-specific fragment (optional)
     # ------------------------------------------------------------------ #
-    fragment = _engine_fragment(cfg, engine=engine, results=results)
-    if fragment:
-        parts.append(fragment)
+    if fragment_md:
+        parts.append(fragment_md)
 
     # ------------------------------------------------------------------ #
     # Paragraph 2: per-mode electronic structure (skipped when
@@ -334,31 +335,6 @@ def _selected_modes_line(cfg: SpectraConfig,
              for m in picked]
     return "**Selected modes:** " + "; ".join(parts) + "."
 
-
-def _engine_fragment(cfg: SpectraConfig,
-                     *,
-                     engine: Optional[Type[SpectraEngine]],
-                     results: Optional[SpectraResults]) -> str:
-    """Resolve the engine and call its ``methods_fragment``.  Falls
-    back to "" silently when the engine isn't registered or its
-    method raises -- the composer is best-effort and never crashes
-    the form preview just because an engine module isn't importable
-    in the current context."""
-    cls = engine
-    if cls is None:
-        try:
-            cls = get_engine(cfg.engine)
-        except UnknownEngineError:
-            return ""
-    if cls is None:
-        return ""
-    modes = list(results.modes) if results is not None else []
-    try:
-        return cls.methods_fragment(cfg, modes) or ""
-    except Exception:
-        # Defensive: a stub engine in a test or a partial engine
-        # under development shouldn't break the Methods preview.
-        return ""
 
 
 def _count_structure_atoms(struct: Structure) -> int:

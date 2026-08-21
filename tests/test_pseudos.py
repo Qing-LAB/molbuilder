@@ -725,21 +725,22 @@ class TestMetalAwareScriptTemplates:
         assert "Hard SCF (typical for open-shell metals" not in text
 
     def test_spectra_pyscf_fe_emits_level_shift_template(self):
-        from molbuilder.spectra.pyscf_script import render_spectra_script
+        # P3: the generator retired; the hint lives in the surviving
+        # equilibrium-SCF emitter the vibration deck composes.
+        from molbuilder.pyscf.vibration_emitters import _emit_equilibrium_scf
         from molbuilder.config.spectra import SpectraConfig
-        text = render_spectra_script(self._fe(), SpectraConfig(
+        text = "\n".join(_emit_equilibrium_scf(SpectraConfig(
             method="UKS", spin=2,
-        ))
+        ), self._fe()))
         assert "Hard SCF (typical for open-shell metals like Fe)" in text
         assert "# mf.level_shift = 0.2" in text
-        compile(text, "<fe-spectra>", "exec")
 
     def test_spectra_pyscf_organic_skips_level_shift_template(self):
-        from molbuilder.spectra.pyscf_script import render_spectra_script
+        from molbuilder.pyscf.vibration_emitters import _emit_equilibrium_scf
         from molbuilder.config.spectra import SpectraConfig
-        text = render_spectra_script(self._water(), SpectraConfig(
+        text = "\n".join(_emit_equilibrium_scf(SpectraConfig(
             method="RKS", spin=0,
-        ))
+        ), self._water()))
         assert "Hard SCF (typical for open-shell metals" not in text
 
 

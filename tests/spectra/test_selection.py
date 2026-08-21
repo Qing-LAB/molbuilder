@@ -376,7 +376,11 @@ class TestSelectorEquivalence:
     ])
     def test_inlined_selector_matches_select_modes(self, cfg_overrides):
         from molbuilder.spectra import select_modes
-        from molbuilder.spectra.pyscf_script import render_spectra_script
+        # P3: the generator retired; the inlined selector lives in the
+        # surviving emitter the vibration deck composes -- the drift
+        # gate now reads THAT (one selector, two spellings, still
+        # provably equal).
+        from molbuilder.pyscf.vibration_emitters import _emit_es_loop
         cfg = SpectraConfig(**cfg_overrides)
         modes = _modes_fixture()
 
@@ -390,8 +394,8 @@ class TestSelectorEquivalence:
             assert py_selected == []
             return
 
-        # Script's inlined result: render, slice, exec.
-        script = render_spectra_script(_struct_water(), cfg)
+        # The emitter's inlined result: emit, slice, exec.
+        script = "\n".join(_emit_es_loop(cfg))
         ns = self._build_selector_namespace(
             cfg, self._modes_payload_for_fixture()
         )

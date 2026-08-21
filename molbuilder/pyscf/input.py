@@ -824,7 +824,7 @@ def spec_for(struct: Structure,
             # geomeTRIC optimizer (only one with constraint support), write
             # a sibling <JOB>.constraints.txt at run time and pass it via
             # the ``constraints=`` kwarg.  Indices are 1-based per geomeTRIC.
-            # See molbuilder/structure.py + spectra/pyscf_script.py for the
+            # See molbuilder/structure.py + pyscf/vibration_emitters.py for the
             # cross-engine carrier; the spectra path uses cfg.frozen_indices
             # while Build PySCF reads struct.frozen_atoms directly so /modify
             # sidecar flows through without an explicit form field.

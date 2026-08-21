@@ -1,32 +1,29 @@
-"""Post-relaxation harmonic vibrational analysis + per-mode electronic
-structure for the Spectra tab.
+"""The spectra ARTIFACT layer -- results, mode selection, Methods prose.
 
 See ``docs/web/spectra.md`` for the full design contract.
 
-Public surface (engine-agnostic L1):
+Public surface (engine-agnostic):
 
   * :class:`molbuilder.spectra.results.SpectraResults`
   * :class:`molbuilder.spectra.results.ModeData`
   * :class:`molbuilder.spectra.results.ModeElectronicStructure`
 
-Engine-specific implementations (L2) register themselves on import
-via :func:`molbuilder.spectra.engine_base.register_engine`.  The
-PySCF engine is the only one shipped in v1; the SIESTA engine slot
-is reserved.
+THE PRODUCER LEFT (spectra-migration plan P3, 2026-08-21): the old
+engine registry (``engine_base``), the PySCF engine class
+(``pyscf_engine``) and the standalone generator (``pyscf_script``)
+retired when the vibration calculation KIND became the one producer --
+``molbuilder.pyscf.vibration_deck`` renders the deck through the
+ordinary ``spec_for`` seam, composing the emitters that moved to
+``molbuilder.pyscf.vibration_emitters``.  Every module left in this
+package serves the ARTIFACT: ``results`` (the ``.spectra.json``
+shape), ``selection`` (which modes get per-mode ES), ``methods``
+(the Methods paragraph the deck header carries).
 """
 
 # Config re-export matches the pattern at molbuilder/{siesta,pyscf}/__init__.py
 # so callers can do `from molbuilder.spectra import SpectraConfig` without
 # reaching into the config/ subpackage explicitly.
 from ..config.spectra import SpectraConfig
-from .engine_base import (
-    SpectraEngine,
-    UnknownEngineError,
-    register_engine,
-    get_engine,
-    registered_engines,
-    unregister_engine,
-)
 from .results import (
     ModeData,
     ModeElectronicStructure,
@@ -38,35 +35,20 @@ from .results import (
 from .selection import select_modes, validate_selection
 from .methods import render_methods_md, extract_citation_keys
 
-# Import the PySCF engine for its side effect: the module's
-# @register_engine decorator runs and the engine becomes
-# discoverable via get_engine("pyscf").  Keep this AFTER the
-# engine_base import (which defines the registry) and AFTER the
-# `register_engine` re-export above (so the registry contract is
-# stable by the time the engine imports it).
-from . import pyscf_engine as _pyscf_engine  # noqa: F401
-
 __all__ = [
-    # Config (L1) -- re-exported from molbuilder.config.spectra
+    # Config -- re-exported from molbuilder.config.spectra
     "SpectraConfig",
-    # Result types (L1)
+    # Result types
     "ModeData",
     "ModeElectronicStructure",
     "SpectraResults",
     "PHASE_EMPTY",
     "PHASE_RUNNING",
     "PHASE_COMPLETE",
-    # Engine plug-in surface (L2)
-    "SpectraEngine",
-    "UnknownEngineError",
-    "register_engine",
-    "get_engine",
-    "registered_engines",
-    "unregister_engine",
-    # Mode-selection logic (L2)
+    # Mode-selection logic
     "select_modes",
     "validate_selection",
-    # Methods-paragraph composer (L2)
+    # Methods-paragraph composer
     "render_methods_md",
     "extract_citation_keys",
 ]

@@ -47,7 +47,7 @@ def _make_mode(index: int = 1,
     # Tests don't exercise the canonical-vs-display distinction (no
     # Placzek formula evaluation here), so we feed the same toy array
     # into both eigenvector slots.  In a real run from
-    # render_spectra_script these would differ by a per-mode scaling.
+    # the emitted ES loop these would differ by a per-mode scaling.
     _ev = np.array([[0.7, 0.0, 0.0],
                     [-0.7, 0.0, 0.0]])
     return ModeData(

@@ -515,7 +515,7 @@ def resolve_pyscf_ecp(struct: Structure,
     """Which elements get which ECP -- the ONE place the rule lives.
 
     Called from BOTH Build (``pyscf/input.py::_resolve_ecp``) and Spectra
-    (``spectra/pyscf_script.py::_emit_build_mol``) so the two generators
+    (``pyscf/vibration_emitters.py::_emit_build_mol``) so the two generators
     cannot drift.
 
     Inputs:
