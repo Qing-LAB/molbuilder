@@ -626,7 +626,15 @@ each an economy rule:
   plausible operating points land first and the narrow tail only refines
   the curve. Watch `bench-group*.log` (per-trial start/finish/duration,
   live) or run `summarize bench` **mid-flight — it is safe and honest
-  while the bench runs**: finished trials are summarized consistently,
+  while the bench runs**. *Queue waits are per shelf, not per bench*
+  *(user, 2026-08-21)*: the shelves are independent jobs with no ordering
+  dependency, so a four-device group waiting in the queue delays
+  **nothing** — the one-device shelves run in the meantime (short-wall
+  small jobs backfill well), and widest-first *submission* just starts
+  the longest wait ticking earliest, overlapping it with the narrow
+  shelves' runs. A verdict need not wait for the wide shelf: the coverage
+  clause names what has not landed, and skipping a hard-to-schedule shelf
+  outright is a legitimate answer — its absence is recorded, not hidden: finished trials are summarized consistently,
   unfinished ones are listed as `incomplete`/`unknown` (never a failure
   of the set), and the coverage clause says how partial the verdict is;
   a later summarize refreshes the record over the fuller evidence
