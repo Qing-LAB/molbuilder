@@ -251,7 +251,7 @@ review-and-validation round when these land.
 
 - **U0 (DONE, 49a0c15f):** the two same-day regressions — ECP double
   emission (+ compile probes in both gates), _formDirty writers.
-- **U1 (IN PROGRESS, user-ordered):** consolidate the launcher work
+- **U1 (DONE, 346b58b7):** consolidate the launcher work
   with the review's findings on the same path —
   (a) a Task-setup UI control + endpoint to (re)write the portable
   `jobset.sh` into an EXISTING described folder (their current dirs
