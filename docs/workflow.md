@@ -26,7 +26,7 @@ in none.
 | this document owns | it does not own |
 |---|---|
 | **which parts exist**, and the one name each is called by | what any one part contains — the settings an entry may carry, the keys a description may have |
-| **what flows into what** — every arrow in § 3 | the format of the thing on either end of an arrow |
+| **what flows into what** — every arrow in § 3, and the whole road with its validation gates in § 9 | the format of the thing on either end of an arrow |
 | **the doors** — that each file has one reader and one writer, and which they are | what those functions do internally |
 | **the order**, and which step depends on which | the mechanics of any single step |
 | **the invariants that only make sense across parts** — the machine never enters the portable folder; a door takes a whole object; two files made from one object are checked against each other | the reasoning behind each, which stays where it was argued |
@@ -415,3 +415,62 @@ internals.** When you need a part's own rules rather than how it fits:
 | running one job, day to day | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
 | the whole thing done once, with a real molecule | [`execution/worked-example.md`](?doc=execution/worked-example.md) |
 | what is left to build | [`roadmap.md`](?doc=roadmap.md) |
+
+---
+
+## 9. The whole road, one picture — and where validation stands on it
+
+**Every stage below is owned by one document (§ 8); this picture owns only
+how they chain.** The circled numbers are the validation gates — a
+calculation cannot reach the next stage without passing the gate between
+them, and each gate refuses with the *reason*, never a stack trace.
+
+```mermaid
+flowchart TB
+    subgraph DESCRIBE["describe it — the browser (or the CLI)"]
+        CAT["<b>the catalogue</b> — <code>catalogue.template.toml</code><br/>every parameter defined ONCE; kinds narrow it<br/>(<code>engines</code> / <code>calculations</code> keys — template.md § 6.3)"]
+        STRUCT["<b>structure preparation</b> — Build · Modify · MolView<br/>labels, regions (frozen atoms), cell ride the model<br/>and its sidecar (model/structure-molstruct.md)"]
+        FORM["<b>the calculation's form</b> — Build tab (optimization) ·<br/>Spectrum tab (vibration)<br/><code>/api/build/schema/&lt;engine&gt;?calculation=…</code>,<br/>one shared renderer (web/form-schema.md)"]
+        DETECT["auto-detect — <code>/api/structure/analyze</code><br/>chemistry suggests (charge, spin, method)<br/>(science/validation.md § 2–3)"]
+        SEND["<b>Send to Task setup</b> — <code>lib/task-handover.js</code>,<br/>ONE door for every tab (web/handover-procedure.md)<br/>writes template + structure pair + <code>task.1st.json</code>"]
+        TS["<b>Task setup</b> — shape, stages, bench axes<br/>(web/task-setup.md); saving writes <code>task.json</code><br/>— the described calculation (job-contracts.md)"]
+    end
+    subgraph MACHINE["run it — the machine that will compute"]
+        PREP["<b>prep</b> — the conductor renders the deck<br/>(execution/script-preparation.md § 5’s five steps;<br/>workflow.md § 5); wrapper + dirs follow the deck"]
+        RUN["<b>submit → run</b> — one wrapper, <code>jobset.sh</code><br/>(execution/running-a-job.md); the deck<br/>phase-writes its artifact atomically"]
+    end
+    subgraph READ["read it — results presentation"]
+        ART["<b>the artifacts</b> — trajectory · logs ·<br/><code>.spectra.json</code> (schema-versioned;<br/>readable sets, one home per format)"]
+        RES["<b>Results tab</b> — phase chips, charts,<br/>thermo plots, mode viewer (web/results.md,<br/>web/spectra.md)"]
+    end
+
+    CAT --> FORM
+    STRUCT --> FORM
+    DETECT --> FORM
+    FORM -->|"① live science preflight"| SEND
+    SEND -->|"② the cell gate"| TS
+    TS -->|"③ task preflight"| PREP
+    PREP -->|"④ the science gate — STEP 3.3"| RUN
+    RUN --> ART
+    ART -->|"⑤ the parse gates"| RES
+```
+
+**The five gates, and what each refuses** *(“science validation is a must” —
+user, 2026-08-21; a gate that exists but does not run is the failure class
+this table exists to rule out)*:
+
+| gate | fires | refuses / warns on | owner |
+|---|---|---|---|
+| **① live preflight** | on every form edit, Build tab (`/api/build/preflight`) | the same `validate(struct, cfg)` verdict gate ④ will give — surfaced while the person is still at the form | [`science/validation.md`](?doc=science/validation.md) § 4 |
+| **② the cell gate** | at Send, on the exported envelope | a box the calculation cannot use (degenerate cell, left-handed axes); *notices* (thin vacuum) hold the navigation, never the write | [`web/handover-procedure.md`](?doc=web/handover-procedure.md) |
+| **③ task preflight** | at Task-setup save, `describe`, and dispatch | a description that is not one: unknown keys, empty ladders, identity clashes, bench entries no machine answers | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6.6 |
+| **④ the science gate** | at `prep`, inside the conductor’s STEP 3.3 — **“here, and only here”**, so no deck route can forget it | cell + geometry + field ranges (`validation/metadata.py`) + the engine’s science (grid, parity, open-shell, amplitude — `validation/{siesta,pyscf,spectra}.py`); errors refuse the deck, warns reach stderr | [`execution/script-preparation.md`](?doc=execution/script-preparation.md) § 3.3 |
+| **⑤ the parse gates** | at every artifact read (Results tab, CLI) | a file the reader cannot vouch for: unknown schema version (readable **sets**, additive bumps read old files whole), malformed fields — each a **typed** refusal the UI can react to | [`web/spectra.md`](?doc=web/spectra.md) § 6, the parse layer |
+
+Two honest asymmetries, recorded rather than smoothed over: the **vibration
+kind has no gate ① today** — its science first speaks at gate ④, on the
+machine; the kind-aware preflight that would close this is a recorded
+proposal (the P3 review’s F-B), not a landed fact.  And **transport** still
+rides its own pre-JobSet render path (script-preparation.md § “the four
+writers”), so its gates are its own until that migration.
+
