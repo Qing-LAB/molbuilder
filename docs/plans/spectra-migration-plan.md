@@ -88,9 +88,20 @@ Results / Spectra tab                →  reads it, unchanged
 - **`task.calculation = "vibration"`** — the word the warm-file section
   already declares. (The *tab* keeps its name, Spectra; the calculation kind
   is the physics.)
-- **One stage, named `freq`.** A vibration job is a single measurement at a
-  given geometry — today's tab premise ("assumed pre-relaxed") kept.
-  The opt→freq *compound* ladder is a recorded follow-up (§ 6 D3), not v1.
+- **Two stages: `opt` → `freq`, and `opt` is skippable** *(user ruling,
+  2026-08-20 — reversing this plan's first draft)*: a harmonic analysis is
+  only valid at a stationary point, so relaxation belongs INSIDE the
+  calculation, not in a premise about its input. The framework makes the
+  ruling cheap: the ladder is just stages; **the skip flag is the existing
+  per-stage enable** (the Task-setup stage table's toggle — "I already
+  relaxed this" = disable `opt`); the optimized geometry reaches `freq`
+  through the same warm-file carry every continuing stage uses; and the
+  frozen set flows to BOTH stages from the one structure-side source —
+  constraining the relaxation and selecting the partial-Hessian subspace,
+  one fact, two consumers. When `opt` is skipped, the freq deck CHECKS the
+  gradient at the input geometry and **warns, never refuses** (names the
+  max force, says frequencies may be unreliable off a stationary point) —
+  skipping is a deliberate choice the user is entitled to make.
 - **The template**: same `template@2` file, generated for the vibration kind:
   - **shared items stay shared** — method/functional/basis/charge/spin/ecp/
     dispersion/density-fit, SCF knobs, grid, and the whole execution
@@ -182,7 +193,13 @@ migration is workstation-scoped by ruling and touches no submit-layer code).
 - **D2 — thermo subsumption**: retire `compute_frequencies`/`thermo.txt` in
   favor of the vibration kind (this plan's default: one Hessian door), with
   RRHO as vibration-template items — or keep the cheap in-deck check?
-- **D3 — the compound ladder** (opt stages + freq stage in one description):
-  recorded follow-up, not v1. Confirm.
+- **D3 — the compound ladder**: **SETTLED (user, 2026-08-20): IN v1** —
+  `opt` → `freq` with `opt` skippable via the per-stage enable; frozen
+  atoms constrain both stages from the structure's one declaration; a
+  skipped `opt` earns a gradient warning in the freq deck, never a
+  refusal. (The first draft deferred this on the old tab's
+  "assumed pre-relaxed" premise; the physics says otherwise, and the
+  framework's existing stages/warm-carry/enable machinery makes the right
+  design the cheap one.)
 - **D4 — `.spectra.json` v5**: only if thermo output needs a first-class
   block; otherwise `engine_metadata` carries it and v4 stands.
