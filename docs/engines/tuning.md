@@ -468,41 +468,42 @@ those ([`job-system.md § 7`](?doc=execution/job-system.md)).
 
 *(Consolidated 2026-08-21 from a live investigation for the Au–BDT–Au
 benchmark: the code paths, the manuals shipped inside this machine's own
-`molbuilder-siesta-gpu` build, and the literature.  The mechanics live in
-[`running-a-job.md § 3.3`](?doc=execution/running-a-job.md); the declaration
-rule in [`generator.md § 4.3a`](?doc=execution/generator.md); this section is
-the* **why**, *so a benchmark matrix is designed rather than guessed.)*
+`molbuilder-siesta-gpu` build, and the literature.  The launch mechanics
+live in [`running-a-job.md § 3.3`](?doc=execution/running-a-job.md); the
+declaration rule in [`generator.md § 4.3a`](?doc=execution/generator.md);
+this section is the* **why**, *so a benchmark matrix is designed rather
+than guessed.  Vocabulary used below, once: an MPI* **rank** *is one
+process of the parallel calculation; the* **deck** *is the engine input
+file (the `.fdf`); a* **trial** *is one short benchmark run at one
+combination of settings; and* **s/iter** *is the measured wall-clock
+seconds per SCF iteration — the number every comparison ranks on.)*
 
-**What the GPU actually accelerates — one step, not the run.** SIESTA offloads
-exactly the dense generalized eigenproblem, and only through ELPA
-(`enable_gpu` requires an ELPA `diag_algorithm`; the deck writes
-`Diag.Algorithm` + `Diag.ELPA.GPU` — [`siesta.md § 7`](?doc=engines/siesta.md)).
-Building the Hamiltonian and overlap on the real-space grid, the density
-update and the forces all stay on the CPU ranks. So a "GPU run" is a CPU MPI
-run whose O(N³) diagonalization is farmed to the devices, **and the CPU ranks
-are never passengers**: for a ~400-atom junction the grid work is a large
-share of every SCF step and scales with rank count, while the eigensolve
-scales with GPU throughput. That tension — more ranks help one half, fewer
-ranks per device help the other — is the whole reason the GPU grid has a
-ranks-per-device axis instead of a fixed rule.
+**What the GPU actually accelerates — one step, not the run.** SIESTA
+offloads exactly one thing to the GPU: solving the dense eigenvalue
+problem at the heart of each SCF iteration, and only through the ELPA
+solver (`enable_gpu` requires an ELPA `diag_algorithm`; the deck writes
+`Diag.Algorithm` + `Diag.ELPA.GPU` —
+[`siesta.md § 7`](?doc=engines/siesta.md)). Everything else — building
+the Hamiltonian and overlap matrices on the real-space grid, updating the
+density, computing forces — stays on the CPU ranks. So a "GPU run" is
+really a CPU parallel run whose most expensive step (the O(N³)
+diagonalization) is handed to the devices, **and the CPU ranks are never
+idle passengers**: for a ~400-atom junction the grid work is a large
+share of every SCF step and speeds up with MORE ranks, while the
+eigensolver speeds up with GPU throughput and prefers FEWER ranks per
+device. That tension — more ranks help one half of the step, fewer ranks
+per device help the other — is the whole reason the number of ranks
+sharing each GPU is something the benchmark *measures* instead of a fixed
+rule.
 
-**The coordinate, and how the machine is asked.** A GPU trial is a point
-`G × K × C`: G devices, K MPI ranks *per device*, C cores per rank. The
-scheduler is asked for `-n G·K` ranks, `-c C` cores each, and `--gres` carries
-G — ranks and devices are independent asks. **G is declared with
-`gpu_count`** *(user ruling, 2026-08-21: "explicit is what we need" — G
-was divisor-derived until then)*: `bench.gpu_count = [1, 2, 4]` measures
-exactly those device counts, one exact-fit shelf group each, and nothing
-the machine invents. The rules around it are refusals and named drops,
-never repairs: a count beyond the recorded device count **refuses**; an
-`(mpi_np, G)` pair that cannot split evenly is **dropped by name** (ELPA's
-equal-share rule — never rounded); `gpu_count` on a bench whose
-`enable_gpu` resolves false **refuses** (it would be silently ignored);
-and with `gpu_count` absent, the machine *proposes* — G ranges over each
-declared rank count's divisors, bounded by the recorded device count.
-The device count itself comes from `environment.json`: the topology where
-the GPUs are, or the domain row's probed inventory (`gpu: {"a100": 4}`)
-behind a login node.  The whole declaration, concretely:
+**The coordinate: G × K × C, and what you declare.** A GPU trial is
+described by three numbers: **G** devices, **K** ranks *per device*, and
+**C** cores per rank. The scheduler is asked for `-n G·K` ranks (the
+total), `-c C` cores each, and — through `--gres`, the scheduler's
+request line for special resources such as GPUs — G devices. Ranks and
+devices are independent requests. In `task.json` you declare the portable
+half, and since 2026-08-21 that includes the device count itself
+(*"explicit is what we need"* — until then G was derived from divisors):
 
 ```json
 "bench": {
@@ -513,9 +514,22 @@ behind a login node.  The whole declaration, concretely:
 }
 ```
 
-— CPU trials at 32 and 64 ranks; GPU trials at exactly 1, 2 and 4
-devices with even rank shares; both solvers rendered into every trial's
-deck; every distinct ask its own exact-fit group.
+— CPU trials at 32 and 64 total ranks; GPU trials at exactly 1, 2 and 4
+devices; both solvers rendered into every trial's input file. `mpi_np` is
+always the TOTAL rank count (`G·K`), so K follows as `mpi_np / G`. The
+rules around `gpu_count` are refusals and named drops, never silent
+repairs: a device count the machine's record does not hold **refuses**; a
+`(mpi_np, gpu_count)` pair that cannot split into equal shares is
+**dropped, and the dropped pair is printed by name** — ELPA's own rule is
+the same rank count on every device, and a benchmark must never round
+your numbers; `gpu_count` on a bench whose `enable_gpu` resolves to false
+**refuses** rather than being silently ignored; and with `gpu_count`
+absent, the machine *proposes* — G ranges over each declared rank count's
+divisors, bounded by the recorded device count. The device count itself
+comes from `environment.json`: the hardware record probed where the GPUs
+are, or — behind a login node that has none — the partition's GPU
+inventory (`gpu: {"a100": 4}`) that `jobset probe` reads from the
+scheduler and stores on the domain row.
 
 **The whole picture, one diagram:**
 
@@ -523,246 +537,252 @@ deck; every distinct ask its own exact-fit group.
 flowchart TD
     subgraph YOU["task.json — what YOU declare (portable, no machine facts)"]
         MP["bench.mpi_np = [32, 64]<br/>TOTAL ranks per trial"]
-        EG["bench.enable_gpu = [true, false]<br/>the cpu-vs-gpu family axis"]
+        EG["bench.enable_gpu = [true, false]<br/>run the bench on CPU, GPU, or both"]
         GC["bench.gpu_count = [1, 2, 4]<br/>devices per trial — EXPLICIT<br/>(absent → machine proposes divisors)"]
-        VA["bench.diag_algorithm, block_size, …<br/>value axes → every trial's deck"]
+        VA["bench.diag_algorithm, block_size, …<br/>value settings → every trial's input file"]
     end
     subgraph MACHINE["environment.json — what the machine RECORDS"]
-        TOPO["topology: sockets × cores/socket,<br/>gpus_per_node + gpu_type<br/>(probed where the GPUs are)"]
-        DOM["domains menu: partition/qos,<br/>GPU inventory {a100: 4} (probed),<br/>max_cores = 48 (curated)"]
+        TOPO["hardware: sockets × cores/socket,<br/>GPUs per node + GPU type<br/>(probed where the GPUs are)"]
+        DOM["submission menu: partition/qos,<br/>GPU inventory {a100: 4} (probed),<br/>max_cores = 48 (probed from the GPU<br/>nodes' own row; yours to edit)"]
     end
-    PREP["prep bench — the grid"]
+    PREP["prep bench — builds the grid of trials"]
     MP --> PREP
     EG --> PREP
     GC --> PREP
     VA --> PREP
-    TOPO -->|"device count + type<br/>(login node: the inventory answers)"| PREP
-    DOM -->|"gpu-capable? core cap?"| PREP
-    PREP --> CPU["CPU family (G = 0)<br/>one cell per mpi_np × omp_threads"]
-    PREP --> GPU["GPU family<br/>G = declared gpu_count (exact)<br/>K = mpi_np / G — must divide,<br/>else dropped BY NAME<br/>C = omp_threads (default 1)"]
-    GPU -->|"G·K·C > domain max_cores<br/>→ dropped BY NAME"| GPU
-    CPU --> TRIALS["× the value axes → trials,<br/>each deck carrying its coordinates"]
+    TOPO -->|"device count + type<br/>(on a login node: the inventory answers)"| PREP
+    DOM -->|"which partitions have GPUs?<br/>how many cores per node?"| PREP
+    PREP --> CPU["CPU trials (G = 0)<br/>one per mpi_np × omp_threads"]
+    PREP --> GPU["GPU trials<br/>G = your gpu_count, exactly<br/>K = mpi_np / G — must divide evenly,<br/>else that pair is dropped BY NAME<br/>C = omp_threads (default 1)"]
+    GPU -->|"needs more cores than the<br/>GPU nodes have → dropped BY NAME"| GPU
+    CPU --> TRIALS["× the value settings = the trials,<br/>each input file carrying its own values"]
     GPU --> TRIALS
-    TRIALS --> SHELF["submit: one exact-fit GROUP per shelf<br/>(same ranks × cores × gres) —<br/>independent jobs, widest first,<br/>CPU groups hold no device"]
-    SHELF --> SUMM["summarize — any time, async:<br/>finished ranked, unfinished named,<br/>winner's mpi_np/cpus/gres/value pins<br/>→ run-config.toml (yours to edit)"]
-    SUMM --> RUN["prep run + submit run:<br/>the file fills what flags don't state;<br/>at launch the wrapper counts the devices<br/>actually granted and load-balances<br/>K = ranks/devices (MPS if K > 1)"]
-``` At launch the wrapper counts the
-visible GPUs, pins each rank to a device and to the NUMA node that owns it,
-pins BLAS to one thread so MPI×BLAS never oversubscribes, and — whenever
-ranks outnumber devices — starts a per-job **NVIDIA MPS** daemon and tears it
-down on exit ([`running-a-job.md § 3.3`](?doc=execution/running-a-job.md)).
-
-**How G reaches the actual RUN** *(user question, 2026-08-21)*. The bench
-measures G; the run *inherits* it — there is no fixed CPU-to-GPU ratio
-anywhere: **(1)** the winner's whole shape, `gres = "gpu:a100:G"`
-included, is written into `run-config.toml`'s `[resources]`, and
-`prep run` applies it to every field your flags leave unstated — **the
-file is also the override**: edit the `gres` line (or any other) and your
-edit is what runs, since no CLI flag states a device count; **(2)** with
-no verdict on file, a GPU deck's rendered header asks for **one** device
-(the deliberate floor default); **(3)** at launch the wrapper counts the
-devices actually granted and load-balances K = ranks/devices over them,
-MPS included — so the run adapts to the real allocation either way.
-
-**Ranks per device: what the sources say.** ELPA's own performance guide (the
-`documentation/PERFORMANCE_TUNING.md` inside this stack's ELPA source tree)
-states three rules: map the **same number of ranks to each GPU** (on a
-34-core/3-GPU node, use 33 ranks — 11 per device — never 34); more than one
-rank per GPU is "the very common situation"; and with sharing, running the
-MPS daemon (once per node) improves performance "quite dramatically". The
-regime is the measured territory of the ELPA2 GPU paper
-(`references.bib: Yu2021` — Yu et al., *Comput. Phys. Commun.* **262**,
-107808, 2021), and the hard ceiling is 48 MPS clients per device on
-Volta/Ampere (`references.bib: NvidiaMPS`). **This stack's ELPA is built
-without NCCL** (checked in its `config.log`), which is why the wrapper's
-default lands near ~4 ranks per GPU with MPS — the no-NCCL sweet spot; an
-NCCL build would instead favour one rank per device with GPU-direct
-collectives. Wrong when the build changes: a rebuilt ELPA with NCCL retires
-this paragraph's default, not the grid.
-
-**Would `WITH_NVIDIA_NCCL` help?** *(user question, 2026-08-21; read from
-the stack's own source, ELPA 2023.11.001.)* **What it does, plainly**:
-when several GPUs must exchange data mid-solve, the normal path copies
-each piece back to the CPU, passes it through MPI, and copies it to the
-next GPU; NCCL lets the **GPUs send to each other directly**, no CPU
-round trip. **What it would buy *us* — one narrow thing**: in this exact
-ELPA version the NCCL path exists **only in the 1-stage solver**
-(`src/elpa1/`: tridiagonalization, back-transformation and their vector
-transposes; nothing under `src/elpa2/`), one release after the changelog
-called it a "PoC … not production ready". So a single-GPU trial gains
-**nothing** (there is no GPU-to-GPU traffic), an `ELPA-2STAGE` trial
-gains nothing in this version, and only **multi-GPU `ELPA-1STAGE`**
-cells could — by shrinking the inter-device cost that decides whether
-`G2`/`G4` beat `G1` at all, with the gain sized by the wiring
-(NVLink ≫ plain PCIe). Enabling it is a **build experiment, not a flag
-flip**: configure needs `--enable-gpu-ccl=nccl` (+ NVIDIA streams) and a
-NCCL library matching the CUDA toolkit at build time, and it shifts the
-tuned regime toward device-owning ranks — away from the MPS rank-sharing
-this build's defaults are tuned for — so its bench is its own round, and
-§ 4.3a's comparability rule already covers the honesty: GPU numbers
-belong to the build that produced them.
-
-```mermaid
-flowchart TD
-    Q1{"Do the bench verdicts keep favouring<br/>multi-GPU ELPA-1STAGE cells?<br/>(G2/G4 winning over G1)"}
-    Q1 -->|"no — G1 or CPU wins"| STOP1["Leave NCCL off.<br/>It has nothing to accelerate:<br/>no inter-GPU traffic (G1),<br/>or no ELPA1 path (2STAGE)."]
-    Q1 -->|"yes"| Q2{"On a GPU node:<br/>nvidia-smi topo -m<br/>— GPU-to-GPU cells?"}
-    Q2 -->|"PHB / PXB / SYS<br/>(PCIe hops)"| STOP2["Gains are modest over PCIe —<br/>probably not worth a rebuild."]
-    Q2 -->|"NV#<br/>(NVLink)"| Q3{"module spider nccl<br/>— a NCCL matching the<br/>CUDA toolkit available?"}
-    Q3 -->|"no"| STOP3["Nothing to build against<br/>without adding it — an env<br/>change, the user's call."]
-    Q3 -->|"yes"| GO["Rebuild molbuilder-siesta-gpu with<br/>--enable-gpu-ccl=nccl as an EXPERIMENT<br/>(user-approved env change), then bench<br/>it as its own round — its numbers are<br/>its build's (§ 4.3a)."]
+    TRIALS --> SHELF["submit: trials with the SAME resource ask<br/>share one scheduler job sized to fit them<br/>exactly — independent jobs, biggest first,<br/>CPU jobs hold no GPU"]
+    SHELF --> SUMM["summarize — run it any time:<br/>finished trials ranked, unfinished named,<br/>winner's ranks/cores/devices/values<br/>→ run-config.toml (yours to edit)"]
+    SUMM --> RUN["prep run + submit run:<br/>the file fills in whatever your flags<br/>don't state; at launch the wrapper uses<br/>the devices actually granted"]
 ```
 
-**VRAM is usually not the constraint.** A ~440-heavy-atom DZP junction is a
-~6–7k basis; one dense double-precision matrix is ~0.4–0.8 GB, so even
-several ranks' panels and workspace sit far below an 80 GB A100. What
-saturates first is SM occupancy and host↔device transfer — and *where* it
-saturates is hardware- and size-dependent, which is why K is measured, not
-assumed. The same logic gave `block_size` its treatment in § 2.11.
+**How many ranks should share one GPU — what the sources say.** ELPA's
+own performance guide (the `documentation/PERFORMANCE_TUNING.md` inside
+this stack's ELPA source tree) states three rules: give **every GPU the
+same number of ranks** (on a 34-core, 3-GPU node use 33 ranks — 11 per
+device — never 34); more than one rank per GPU is "the very common
+situation"; and when ranks share a device, run **MPS** — NVIDIA's
+Multi-Process Service, the mechanism that lets several processes compute
+on one GPU *concurrently* instead of taking turns — which the guide says
+improves performance "quite dramatically" (started once per node; the
+molbuilder wrapper starts and stops a per-job MPS automatically).  This
+sharing regime is the measured territory of the ELPA2 GPU paper
+(`references.bib: Yu2021` — Yu et al., *Comput. Phys. Commun.* **262**,
+107808, 2021), and MPS admits at most **48 processes per device** on the
+A100's generation (`references.bib: NvidiaMPS`). **This stack's ELPA is
+built without NCCL** (checked in its build log), which is why the
+wrapper's default lands near ~4 ranks per GPU with MPS — the tuned point
+for this kind of build; what NCCL is and when it would change this is
+answered at the end of this section.
+
+**The node arithmetic — the 48 is a ceiling, not a target.** Per device,
+K ranks each holding C cores must fit the node: **K × C ≤ cores / G**.
+On a 48-core, 4-GPU node that is 12 cores per device, so `G4 K12 C1`
+fills the node exactly — while a 24-ranks-on-one-A100 layout
+(`G1 K24 C2`) spends the *whole node's* cores on one device and leaves
+three idle. The MPS limit of 48 is what *can attach*, not what is fast:
+once the GPU's compute units are fully busy, extra processes only wait in
+line on the device. **Threads are not required for GPU sharing** — one
+core per rank is a complete layout; giving each rank more cores (C > 1)
+helps only the CPU phases of the step, and only as far as this SIESTA
+build's OpenMP threading actually scales. **Is one thread per rank the
+standing assumption?** For CPU SIESTA yes — the shipped default, because
+mainline SIESTA's threading is not reliable enough to beat simply using
+more ranks (and the math libraries are pinned to one thread in every
+mode, so threads can never oversubscribe the cores). In GPU mode, no:
+when few ranks run, the wrapper widens each rank's threads to use the
+node's spare cores, unless you state a number. Either way it is an
+assumption you can replace with a measurement — declare `omp_threads` as
+an axis, and the winning C rides `run-config.toml` into the run.  One
+declaration measures all the full-node layouts: `mpi_np: [24, 48]` ×
+`omp_threads: [1, 2]` enumerates `G4 K12`, `G2 K24`, `G1 K48` (at the
+MPS ceiling) and their two-thread variants — and the verdict, not the
+ceiling, picks.
+
+**Memory on the card is usually not the limit.** A ~440-heavy-atom
+junction with a DZP basis is roughly a 6–7 thousand orbital problem; one
+dense double-precision matrix of that size is ~0.4–0.8 GB, so even
+several ranks' working copies sit far below an 80 GB A100. What fills up
+first is the GPU's compute capacity and the CPU↔GPU data transfers — and
+*where* that happens depends on the hardware and the problem size, which
+is exactly why the ranks-per-device number is measured by the bench
+rather than assumed. The same reasoning gave `block_size` its treatment
+in § 2.11.
+
+**How the winner's G reaches the actual run.** The bench measures G; the
+run *inherits* it — there is no fixed CPU-to-GPU ratio anywhere:
+**(1)** the winner's whole shape, `gres = "gpu:a100:G"` included, is
+written into `run-config.toml`, and `prep run` applies the file to every
+field your flags leave unstated. **The file is also your override**: no
+command-line flag states a device count, on purpose — edit the `gres`
+line (or any line) and your edit is what runs. **(2)** With no verdict on
+file, a GPU calculation's submission header asks for **one** device — a
+deliberate floor, not a scaling rule. **(3)** At launch, the wrapper
+counts the devices the scheduler actually granted, assigns ranks to
+devices in equal shares, pins each rank's memory to the socket that owns
+its GPU, and starts MPS when ranks outnumber devices — so the run adapts
+to the real allocation whatever the paperwork said.
 
 #### Spending the benchmark budget — how to cut points without losing the answer
 
-A trial costs `setup + 3 capped SCF iterations`, bounded by the per-trial
-timeout (`--trial-timeout`, default 15 min), and the grouped job runs trials
-in sequence inside ONE allocation sized to the **widest** trial — so narrow
-trials idle the rest of that allocation while they run. Three consequences,
-each an economy rule:
+A trial costs its setup time plus 3 capped SCF iterations, and is killed
+if it exceeds the per-trial time bound (`--trial-timeout`, default
+15 minutes). The rules below are each an economy: how to get the answer —
+which configuration to run at — for the least machine time.
 
-- **Warm-up is already excluded *inside* one run — never pay for a second.**
-  The timing is the mean of the later inter-iteration deltas (iterations 3–5;
-  the first delta is dropped — [`job-system.md § 7`](?doc=execution/job-system.md)),
-  so engine start-up, grid initialisation and the first iteration's setup
-  never enter s/iter. Re-running a trial "warmed" to measure the second run
-  would double the cost and measure a *different* calculation: a warm-started
-  SCF converges along another trajectory, which is exactly why trials are
-  forced cold and relabelled in the first place. The concern behind
-  "use the later run" is real, and it is answered at the iteration level,
-  where it costs seconds instead of a second run.
-- **Why the cap is three iterations — and why not two** *(settled by the
-  user, 2026-08-21, from measured experience)*. The instrument stamps a
-  wall-clock time as each ``scf:`` line prints
-  ([`running-a-job.md § 4.1`](?doc=execution/running-a-job.md)), so N capped
-  iterations give N−1 deltas — and **iteration 1's own duration, where the
-  one-time setup lives, never forms a delta at all**. Capping at 2 would
-  therefore measure exactly ONE delta: iteration 2's, the warm-up-adjacent
-  one the reader discards. **Three is the faithful minimum**: setup
-  excluded structurally, the iter-2 delta dropped, iteration 3 the one
-  clean sample. The cap stood at five (a three-sample mean) for two days
-  on a jitter argument; the user's own five-iteration runs answered it —
-  iterations 3–5 agree within seconds on a 444-atom junction, and **the
-  bench reads scaling and dependency — where the knee is — not tight
-  rankings**, so configurations within a few seconds of each other are a
-  tie to be broken by other criteria (queue, memory), never a ranking to
-  defend with more samples. Older 5-iteration records still parse and
-  average; the reader is shape-blind.
-- **Do not declare rank counts far below where the run will live.** s/iter
-  grows roughly as 1/ranks until scaling saturates, so a far-too-narrow trial
-  of a large system can outlast its bound — killed, `incomplete`, allocation
-  spent, nothing learned. Bracket `mpi_np` around the intended operating
-  range. Small ranks-per-device do **not** require small totals: K = mpi_np/G,
-  so on 4-GPU nodes `mpi_np: [16, 32]` already samples K = 4…8 — the guide's
-  regime — while `mpi_np: 4` would buy only a slow CPU-family trial nobody
-  plans to run.
-- **Cut the cartesian, keep the coverage.** Every value axis multiplies the
-  whole grid ([`generator.md § 4.3a`](?doc=execution/generator.md)), so:
-  (a) leave `block_size` undeclared first — § 2.11's auto pick adapts it to
-  each trial's rank count, and the axis is worth declaring only when the
-  verdict is close; (b) **stage the rounds**: round 1 declares the machine
-  axes with the value knobs pinned to one point each → a shape verdict;
-  round 2 declares the winning shape plus the value axes → a solver/block
-  verdict at that shape. A re-prep *replaces* the stage's sweep record, so
-  each round's verdict is self-contained — round 2 re-measures the winning
-  cell under each value, which is precisely the comparison wanted; (c) when
-  one family's extra cells are the cost, run one-sided rounds
-  (`enable_gpu` with a single point per round) instead of the two-sided
-  axis. Worked on the § 6 junction's declared matrix: the full cartesian is
-  36 trials; dropping `block_size` to auto makes it 12; staging makes it
-  6 + 6 with the second round already pinned to the shape that won.
-- **Nothing idles inside a group** *(user, 2026-08-21: "lighter tasks
-  scheduled for heavy resource idling for hours is not a good use of cpu
-  time")*. Trials group **per resource shelf** — one exact-fit allocation
-  per distinct ask — so a 32-rank trial never idles 96 cores of a
-  128-rank envelope and a G1 trial never holds four devices. The value
-  axes are what make shelves populous (every solver × block combo shares
-  its shape's shelf), so queue waits stay at #shelves, not #trials.
+- **Warm-up is already excluded *inside* one run — never pay for a second
+  run to skip it.** The timing keeps only the later iteration-to-iteration
+  intervals ([`job-system.md § 7`](?doc=execution/job-system.md)), so
+  program start-up, grid initialisation and the first iteration's one-time
+  work never enter s/iter. Running each trial twice and keeping the second
+  would double the cost and measure a *different* calculation — a run
+  continued from existing files converges along another path, which is
+  exactly why every trial is forced to start from scratch. The concern is
+  real; it is answered inside one run, where it costs seconds.
+- **Why exactly three iterations — and why not two** *(settled by the
+  user, 2026-08-21, from measured experience)*. The instrument stamps the
+  wall clock as each `scf:` line prints, so N iterations give N−1
+  intervals — and **iteration 1's own duration, where the one-time setup
+  lives, never forms an interval at all**. A cap of 2 would measure
+  exactly ONE interval: iteration 2's, the one still adjacent to warm-up,
+  which the reader discards whenever it can. **Three is the faithful
+  minimum**: setup excluded by construction, the iteration-2 interval
+  dropped, iteration 3 the one clean sample. The cap stood at five (an
+  average of three samples) for two days on a noise argument; the user's
+  own five-iteration runs answered it — iterations 3–5 agree within
+  seconds on a 444-atom junction, and **the bench reads scaling and
+  dependency — where the curve bends — not tight rankings**, so two
+  configurations within a few seconds of each other are a tie to break by
+  other criteria (queue time, memory), never a ranking to defend with
+  more samples. Older five-iteration records still parse and average.
+- **Do not declare rank counts far below where the run will live.**
+  Seconds per iteration grows roughly as 1/ranks until the scaling
+  saturates, so a much-too-small trial of a large system can outlast its
+  time bound — killed, recorded `incomplete`, machine time spent, nothing
+  learned. Bracket `mpi_np` around where you intend to run. Small
+  ranks-per-device does **not** require small totals: K = mpi_np/G, so on
+  4-GPU nodes `mpi_np: [16, 32]` already samples K = 4…8 — the ELPA
+  guide's territory — while `mpi_np: 4` would buy only a slow CPU trial
+  nobody plans to run.
+- **Cut the cross product, keep the coverage.** Every value setting you
+  declare with several points multiplies the whole grid
+  ([`generator.md § 4.3a`](?doc=execution/generator.md)), so:
+  (a) leave `block_size` undeclared first — § 2.11's automatic pick
+  adapts it to each trial's rank count, and the axis is worth declaring
+  only when the verdict is close; (b) **stage the rounds**: round 1
+  declares only the machine settings (ranks, devices) with the value
+  settings held at one point each — that answers *what shape is fastest* —
+  and round 2 declares the winning shape plus the value settings — that
+  answers *which solver and block size at that shape*. Re-running `prep
+  bench` replaces the stage's sweep record, so each round's verdict
+  stands on its own; round 2 re-measures the winning shape under each
+  value, which is precisely the comparison wanted; (c) when one side's
+  extra trials are the cost, bench one side at a time (`enable_gpu` with
+  a single point per round). Worked on the § 6 junction's declared
+  matrix: the full cross product is 36 trials; dropping `block_size` to
+  automatic makes it 12; staging makes it 6 + 6 with the second round
+  already pinned to the shape that won.
+- **Nothing idles inside a submitted job** *(user, 2026-08-21: "lighter
+  tasks scheduled for heavy resource idling for hours is not a good use
+  of cpu time")*. Trials that ask for exactly the same resources — the
+  same ranks, cores and devices; call that shared ask a **shelf** — ride
+  ONE scheduler job together, sized to fit them exactly. So a 32-rank
+  trial never sits inside a 128-core allocation idling 96 cores, and a
+  1-GPU trial never holds a 4-GPU grant. The value settings are what
+  make shelves well-populated — every solver × block-size combination
+  shares its shape's shelf — which is what keeps the number of queue
+  submissions at the number of shelves, not the number of trials.
 - **Declare the ladder, stop when the trend is clear** *(user,
   2026-08-21: "if we know that the performance downgrades dramatically
   in the middle, we already know the answer")*. The shelves submit
-  **widest-first** — exact-fit groups cost the same in any order, so the
-  plausible operating points land first and the narrow tail only refines
-  the curve. Watch `bench-group*.log` (per-trial start/finish/duration,
-  live) or run `summarize bench` **mid-flight — it is safe and honest
-  while the bench runs**. *Queue waits are per shelf, not per bench*
-  *(user, 2026-08-21)*: the shelves are independent jobs with no ordering
-  dependency, so a four-device group waiting in the queue delays
-  **nothing** — the one-device shelves run in the meantime (short-wall
-  small jobs backfill well), and widest-first *submission* just starts
-  the longest wait ticking earliest, overlapping it with the narrow
-  shelves' runs. A verdict need not wait for the wide shelf: the coverage
-  clause names what has not landed, and skipping a hard-to-schedule shelf
-  outright is a legitimate answer — its absence is recorded, not hidden: finished trials are summarized consistently,
-  unfinished ones are listed as `incomplete`/`unknown` (never a failure
-  of the set), and the coverage clause says how partial the verdict is;
-  a later summarize refreshes the record over the fuller evidence
-  (`run-config.toml`, once written, is *yours* — delete it and summarize
-  again for a proposal refreshed from the fuller record). When the knee
-  is visible, `scancel` the remaining shelves — or skip summarize
-  entirely and set the run parameters directly: explicit flags are the
-  top of the precedence chain, and the record still holds whatever
-  completed. The declared matrix is an *upper bound* on cost, not a
-  commitment. One honest caveat: submission stamps every rider
-  `launched`, so a stopped remainder is re-measured per trial by name
-  (move the old trial directory aside —
+  **biggest ask first** — they are independent scheduler jobs with no
+  ordering dependency, so this costs nothing and starts the
+  longest queue wait ticking earliest, overlapping it with the smaller
+  shelves' runs (short small jobs slot into scheduler gaps quickly). A
+  four-device job waiting in the queue therefore delays **nothing**, and
+  a verdict need not wait for it. Watch `bench-group*.log` (each trial's
+  start, finish, exit code and duration, live) or run `summarize bench`
+  at any moment — **it is safe and honest while the bench runs**:
+  finished trials are ranked, unfinished ones are listed as
+  `incomplete`/`unknown` (never a failure of the set), and the coverage
+  line states how partial the verdict is; a later summarize refreshes
+  the record over the fuller evidence (`run-config.toml`, once written,
+  is *yours* — delete it and summarize again for a proposal built from
+  the fuller record). When the curve has clearly bent, `scancel` the
+  remaining jobs — or skip the formal verdict entirely and set the run
+  parameters yourself: explicit flags outrank everything, and the record
+  keeps whatever completed. The declared matrix is an *upper bound* on
+  cost, not a commitment. One honest caveat: submission marks every
+  included trial as launched, so a trial you stopped before it ran is
+  re-measured individually by name (move its old directory aside first —
   [`project-layout.md § 2.3.2`](?doc=execution/project-layout.md)),
-  never by re-submitting its group.
+  never by re-submitting its job.
 
-**The node arithmetic — the MPS limit is a ceiling, not a target**
-*(user question, 2026-08-21)*. Per device, K ranks each with C cores must
-fit the node: **K × C ≤ cores / G** — on a 48-core, 4-GPU node that is 12
-cores per device, so `G4 K12 C1` fills it exactly, and a 24-ranks-on-one-
-A100 layout (`G1 K24 C2`) spends the *whole node's* cores on one device
-while three idle. MPS admits up to 48 client processes per device
-(`references.bib: NvidiaMPS`), but that is what *can attach*, not what is
-fast — the measured ELPA-no-NCCL regime sits near ~4 ranks per device,
-and past SM saturation extra clients only queue. **Threads are not an MPS
-requirement**: one core per rank is a complete layout; C > 1 helps only
-the CPU phases, and only as far as this SIESTA build's OpenMP actually
-scales (the wrapper pins BLAS to one thread either way,
-[`running-a-job.md § 3.3`](?doc=execution/running-a-job.md)). **Is OMP=1
-the standing assumption?** For CPU SIESTA yes — the shipped default,
-because mainline SIESTA is not reliably OpenMP-aware, so ranks beat
-threads. In GPU mode, no: with few ranks the wrapper **auto-widens**
-each rank's threads to fill the per-rank core budget unless `-omp` (or
-the scheduler's `-c`) states one. Either way it is an assumption you can
-replace with a measurement — declare `omp_threads` as an axis and the
-winning C rides `run-config.toml` into the run's `-c`, which the wrapper
-exports as `OMP_NUM_THREADS`. All of
-which is measurable in one declaration: `mpi_np: [24, 48]` ×
-`omp_threads: [1, 2]` under the 48-core cap enumerates exactly the
-full-node layouts — `G4 K12`, `G2 K24`, `G1 K48` (at the MPS ceiling),
-and their two-thread halves — and the verdict, not the ceiling, picks.
+**The record keeps what was asked AND what actually ran** *(user
+question, 2026-08-21)*. Values you never typed are not lost: every
+trial's rendered input file (kept forever in its `bench-…/` directory)
+holds each value molbuilder set, whether you stated it or prep derived
+it — and `bench-result.json` records, per trial, the *asked* side (the
+requested ranks/cores/devices, the declared values, the input file's
+eigensolver and requested BlockSize) **beside the *ran* side, read back
+from the run's own output**: the rank count SIESTA itself reported, the
+thread count the wrapper exported, **the block size SIESTA settled on** —
+recovered even when the input file carried no `BlockSize` line at all
+(§ 2.11's *automatic* state) — the eigensolver actually used, and ELPA's
+GPU marker. Where the two sides disagree on ranks, threads or solver, the
+trial is flagged and **barred from winning** — a trial that quietly fell
+back from the GPU must not be ranked as a GPU number. The block size is
+deliberately recorded but *not* treated as a disagreement, because SIESTA
+shrinking it to fit the rank count, and ELPA rounding it to a power of
+two, are documented behaviour of the engine — adaptation, not a lie
+(`bench/result.py::parse_effective_run` / `compare_asked_to_ran`).
 
-**The record carries what was asked AND what actually ran** *(user
-question, 2026-08-21)*. Implicit values are not lost: every trial's
-rendered deck (kept forever in its `bench-…/` directory) holds each value
-molbuilder set, explicitly or derived at prep — and `bench-result.json`
-records, per trial, the *asked* side (the machine knobs, the declared
-coordinates, the deck's eigensolver and requested BlockSize) **beside the
-*ran* side, parsed from the run's own output**: the rank count SIESTA
-itself reported, the threads the wrapper exported, **the block size SIESTA
-settled on** — read back even when the deck carried no `BlockSize` line at
-all (§ 2.11's *automatic* state) — the eigensolver actually used, and
-ELPA's GPU key. Where the two sides disagree on ranks, threads or solver,
-the trial is marked and **barred from winning** (a fallen-back ELPA trial
-must not be ranked as a GPU number); the block size is deliberately
-recorded-but-not-compared, because SIESTA shrinking it to the rank count
-and ELPA rounding it to a power of two are documented adaptation, not a
-lie (`bench/result.py::parse_effective_run` / `compare_asked_to_ran`).
+**Would `WITH_NVIDIA_NCCL` help?** *(user question, 2026-08-21; read from
+the stack's own source, ELPA 2023.11.001.)* **What it does, plainly**:
+when several GPUs must exchange data in the middle of a solve, the normal
+path copies each piece back to the CPU, passes it through MPI, and copies
+it to the next GPU; NCCL (NVIDIA's inter-GPU communication library) lets
+the **GPUs send to each other directly**, no CPU round trip. **What it
+would buy *us* — one narrow thing**: in this exact ELPA version the NCCL
+path exists **only inside the 1-stage solver** (`src/elpa1/`: the
+tridiagonalization, the back-transformation and their vector exchanges;
+nothing under `src/elpa2/`), one release after the changelog called it a
+"proof of concept … not production ready". So a single-GPU trial gains
+**nothing** (there is no GPU-to-GPU traffic to speed up), an
+`ELPA-2STAGE` trial gains nothing in this version, and only **multi-GPU
+`ELPA-1STAGE`** trials could — by shrinking the between-device cost that
+decides whether 2 or 4 devices beat 1 at all, with the gain sized by the
+wiring (NVLink, NVIDIA's direct GPU-to-GPU link, ≫ plain PCIe). Enabling
+it is a **build experiment, not a switch**: the configure step needs
+`--enable-gpu-ccl=nccl` and a NCCL library matching the CUDA toolkit at
+build time, and it shifts the tuned regime toward one rank owning each
+device — away from the MPS sharing this build's defaults are tuned for —
+so its benchmark is its own round, and the rule below already covers the
+honesty: GPU numbers belong to the build that produced them.
 
-**Comparability, stated once more** ([`generator.md § 4.3a`](?doc=execution/generator.md)):
-CPU numbers carry across same-silicon partitions; GPU numbers belong to the
-build that produced them; and the verdict is a *proposal* (`run-config.toml`)
-— the trade between fastest and soonest-scheduled stays yours.
+```mermaid
+flowchart TD
+    Q1{"Do the bench verdicts keep favouring<br/>multi-GPU ELPA-1STAGE trials?<br/>(2 or 4 devices winning over 1)"}
+    Q1 -->|"no — 1 device or CPU wins"| STOP1["Leave NCCL off.<br/>It has nothing to accelerate:<br/>no GPU-to-GPU traffic (1 device),<br/>or no 1-stage path (2STAGE)."]
+    Q1 -->|"yes"| Q2{"On a GPU node:<br/>nvidia-smi topo -m<br/>— the GPU-to-GPU cells?"}
+    Q2 -->|"PHB / PXB / SYS<br/>(the GPUs talk over PCIe)"| STOP2["Gains are modest over PCIe —<br/>probably not worth a rebuild."]
+    Q2 -->|"NV#<br/>(NVLink — direct GPU wiring)"| Q3{"module spider nccl<br/>— a NCCL matching the<br/>CUDA toolkit available?"}
+    Q3 -->|"no"| STOP3["Nothing to build against<br/>without installing it — an<br/>environment change, the user's call."]
+    Q3 -->|"yes"| GO["Rebuild molbuilder-siesta-gpu with<br/>--enable-gpu-ccl=nccl as an EXPERIMENT<br/>(user-approved environment change), then<br/>bench it as its own round — its numbers<br/>are its build's (§ 4.3a)."]
+```
+
+**One last rule, stated once more**
+([`generator.md § 4.3a`](?doc=execution/generator.md)): CPU numbers carry
+across partitions built from the same silicon; GPU numbers belong to the
+build that produced them; and the verdict is a *proposal*
+(`run-config.toml`) — the trade between *fastest* and *soonest scheduled*
+stays yours.
 
 ---
 

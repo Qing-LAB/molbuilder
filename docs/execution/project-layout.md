@@ -982,10 +982,12 @@ hits its bound is killed and reads `incomplete` in the summary's census;
 the walk continues — one bad point says nothing about the next. A sweep
 submits **one group per side and resource shelf**
 ([`generator.md`](?doc=execution/generator.md) § 4.3a, 2026-08-21): trials
-sharing one exact ask ride one exact-fit allocation — the CPU groups ask
-no `gres`, a G1 trial never holds a `gres:4` envelope, and a narrow trial
-never idles a wide one's cores; shelves submit widest-first, as
-independent jobs the queue may run concurrently. The
+asking for identical resources (a *shelf* — same ranks, cores and GPU
+request) ride one scheduler job sized to fit them exactly — the CPU
+groups ask for no GPU, a one-device trial never holds a four-device
+grant, and a narrow trial never idles a wide allocation's cores; the
+shelves submit biggest-first, as independent jobs the queue may run
+concurrently. The
 container's `bench-group.log` is the explicit record: the allocation the
 group ran in (job id, node, envelope), then per trial *when it started,
 when it finished, with what exit code and duration* — so both the ordering
