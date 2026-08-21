@@ -77,11 +77,31 @@ def test_every_item_this_engine_has_reaches_the_form(engine):
     form at all. Filtering on the declaration rather than on a name means a
     second such parameter needs no edit to this test.
     """
-    items = {i.name for i in T.select(T.read_template(T.load_catalogue()),
-                                      engine=engine) if i.group != "staging"}
-    fields = {f["name"] for s in catalogue_to_form_schema(engine)["sections"]
-              for f in s["fields"]}
-    assert fields == items
+    items = [i for i in T.select(T.read_template(T.load_catalogue()),
+                                 engine=engine) if i.group != "staging"]
+
+    # Membership is total PER KIND since the vibration items landed
+    # (template.md § 6.3): an item carrying `calculations` reaches the
+    # form of exactly those kinds; an item without the key reaches every
+    # kind.  The kinds to check come from the items themselves, so a new
+    # kind needs no edit here.
+    kinds = {"optimization"} | {k for i in items for k in i.calculations}
+    for kind in sorted(kinds):
+        expect = {i.name for i in items
+                  if not i.calculations or kind in i.calculations}
+        got = {f["name"]
+               for sec in catalogue_to_form_schema(
+                   engine, calculation=kind)["sections"]
+               for f in sec["fields"]}
+        assert got == expect, (engine, kind)
+
+    # And the no-argument call IS the optimization form -- the default
+    # spelled out, so the two spellings cannot drift.
+    default_fields = {f["name"]
+                      for sec in catalogue_to_form_schema(engine)["sections"]
+                      for f in sec["fields"]}
+    assert default_fields == {i.name for i in items if not i.calculations
+                              or "optimization" in i.calculations}
 
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])

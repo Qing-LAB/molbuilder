@@ -740,6 +740,13 @@ class TestPartialSpectraInspectorEndpoint:
         "watch-stop-btn",
         "watch-status",
         "phase-indicator",
+        # Thermochemistry tab (v5 `thermo`; spectra-migration-plan § 2b):
+        # the tab button + panel + the two Plotly boxes + the words.
+        "mode-tabbtn-thermo",
+        "mode-tab-thermo",
+        "thermo-note",
+        "thermo-curves",
+        "thermo-decomp",
         # Results summary + chart
         "results-summary",
         "results-summary-list",

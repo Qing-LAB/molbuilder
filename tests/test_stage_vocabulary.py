@@ -98,6 +98,14 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "mechanism 1 finally being the same shape on both engines, and the "
         "numbers in it are `tuning.md` § 2.4's, guarded by "
         "test_doc_claims.py rather than restated anywhere"),
+    "vibration_stages": (
+        2, "molbuilder/pyscf/stages.py",
+        "the vibration kind's ONE-STAGE ladder (`stages.md` § 6.8, "
+        "spectra-migration P1): a `freq` stage with no overrides, so a "
+        "vibration description is an ordinary § 6.5 ladder rather than a "
+        "stage-less special shape.  `jobset describe` selects it by "
+        "`--calculation vibration` and refuses --stage-strategy beside it "
+        "-- the tiers are an optimization vocabulary"),
     "--stage-strategy": (
         2, "molbuilder/jobset/_cli.py",
         "named presets over the *enable* flags, on `jobset describe` -- "

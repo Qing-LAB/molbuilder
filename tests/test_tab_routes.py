@@ -39,7 +39,7 @@ def web():
 @pytest.mark.parametrize("path,expected_in_body", [
     ("/molbuilder",              "molview-host"),
     ("/structure-optimization",  "load-from-sidebar-btn"),
-    ("/spectrum-calculation",    "generate-btn"),
+    ("/spectrum-calculation",    "send-to-task-setup"),
     ("/transport-calculation",   "Transport calculation"),
     ("/results",                 "results-current-file"),
 ])
