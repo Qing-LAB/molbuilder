@@ -295,7 +295,10 @@ oversubscribing cores.
 ### 3.3 GPU mode: load-balance, MPS, and pinning
 
 When the `.fdf` runs on GPU (ELPA-CUDA), the wrapper does substantially more at
-launch (all in `molbuilder/runwrap.py`):
+launch (all in `molbuilder/runwrap.py`).  *This section is the MECHANICS; the
+background — what actually offloads, why ranks share a device, what the
+sources recommend, and how to design a benchmark matrix around it — is
+[`engines/tuning.md § 2.12`](?doc=engines/tuning.md).*
 
 - **Load-balance.** Counts allocated GPUs (preferring `CUDA_VISIBLE_DEVICES`
   over `nvidia-smi -L`), sets `ranks_per_gpu = mpi_np / ngpu` (≥ 1), and prints a

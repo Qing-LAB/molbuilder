@@ -464,6 +464,107 @@ those ([`job-system.md § 7`](?doc=execution/job-system.md)).
 > is *right here*. For accuracy knobs the table is enough because physics is
 > portable. For a parallel-efficiency knob it is not, because the hardware is not.
 
+### 2.12 GPU + CPU coordination (SIESTA) — the background that guides a benchmark
+
+*(Consolidated 2026-08-21 from a live investigation for the Au–BDT–Au
+benchmark: the code paths, the manuals shipped inside this machine's own
+`molbuilder-siesta-gpu` build, and the literature.  The mechanics live in
+[`running-a-job.md § 3.3`](?doc=execution/running-a-job.md); the declaration
+rule in [`generator.md § 4.3a`](?doc=execution/generator.md); this section is
+the* **why**, *so a benchmark matrix is designed rather than guessed.)*
+
+**What the GPU actually accelerates — one step, not the run.** SIESTA offloads
+exactly the dense generalized eigenproblem, and only through ELPA
+(`enable_gpu` requires an ELPA `diag_algorithm`; the deck writes
+`Diag.Algorithm` + `Diag.ELPA.GPU` — [`siesta.md § 7`](?doc=engines/siesta.md)).
+Building the Hamiltonian and overlap on the real-space grid, the density
+update and the forces all stay on the CPU ranks. So a "GPU run" is a CPU MPI
+run whose O(N³) diagonalization is farmed to the devices, **and the CPU ranks
+are never passengers**: for a ~400-atom junction the grid work is a large
+share of every SCF step and scales with rank count, while the eigensolve
+scales with GPU throughput. That tension — more ranks help one half, fewer
+ranks per device help the other — is the whole reason the GPU grid has a
+ranks-per-device axis instead of a fixed rule.
+
+**The coordinate, and how the machine is asked.** A GPU trial is a point
+`G × K × C`: G devices, K MPI ranks *per device*, C cores per rank. The
+scheduler is asked for `-n G·K` ranks, `-c C` cores each, and `--gres` carries
+G — ranks and devices are independent asks. At launch the wrapper counts the
+visible GPUs, pins each rank to a device and to the NUMA node that owns it,
+pins BLAS to one thread so MPI×BLAS never oversubscribes, and — whenever
+ranks outnumber devices — starts a per-job **NVIDIA MPS** daemon and tears it
+down on exit ([`running-a-job.md § 3.3`](?doc=execution/running-a-job.md)).
+
+**Ranks per device: what the sources say.** ELPA's own performance guide (the
+`documentation/PERFORMANCE_TUNING.md` inside this stack's ELPA source tree)
+states three rules: map the **same number of ranks to each GPU** (on a
+34-core/3-GPU node, use 33 ranks — 11 per device — never 34); more than one
+rank per GPU is "the very common situation"; and with sharing, running the
+MPS daemon (once per node) improves performance "quite dramatically". The
+regime is the measured territory of the ELPA2 GPU paper
+(`references.bib: Yu2021` — Yu et al., *Comput. Phys. Commun.* **262**,
+107808, 2021), and the hard ceiling is 48 MPS clients per device on
+Volta/Ampere (`references.bib: NvidiaMPS`). **This stack's ELPA is built
+without NCCL** (checked in its `config.log`), which is why the wrapper's
+default lands near ~4 ranks per GPU with MPS — the no-NCCL sweet spot; an
+NCCL build would instead favour one rank per device with GPU-direct
+collectives. Wrong when the build changes: a rebuilt ELPA with NCCL retires
+this paragraph's default, not the grid.
+
+**VRAM is usually not the constraint.** A ~440-heavy-atom DZP junction is a
+~6–7k basis; one dense double-precision matrix is ~0.4–0.8 GB, so even
+several ranks' panels and workspace sit far below an 80 GB A100. What
+saturates first is SM occupancy and host↔device transfer — and *where* it
+saturates is hardware- and size-dependent, which is why K is measured, not
+assumed. The same logic gave `block_size` its treatment in § 2.11.
+
+#### Spending the benchmark budget — how to cut points without losing the answer
+
+A trial costs `setup + 5 capped SCF iterations`, bounded by the per-trial
+timeout (`--trial-timeout`, default 15 min), and the grouped job runs trials
+in sequence inside ONE allocation sized to the **widest** trial — so narrow
+trials idle the rest of that allocation while they run. Three consequences,
+each an economy rule:
+
+- **Warm-up is already excluded *inside* one run — never pay for a second.**
+  The timing is the mean of the later inter-iteration deltas (iterations 3–5;
+  the first delta is dropped — [`job-system.md § 7`](?doc=execution/job-system.md)),
+  so engine start-up, grid initialisation and the first iteration's setup
+  never enter s/iter. Re-running a trial "warmed" to measure the second run
+  would double the cost and measure a *different* calculation: a warm-started
+  SCF converges along another trajectory, which is exactly why trials are
+  forced cold and relabelled in the first place. The concern behind
+  "use the later run" is real, and it is answered at the iteration level,
+  where it costs seconds instead of a second run.
+- **Do not declare rank counts far below where the run will live.** s/iter
+  grows roughly as 1/ranks until scaling saturates, so a far-too-narrow trial
+  of a large system can outlast its bound — killed, `incomplete`, allocation
+  spent, nothing learned. Bracket `mpi_np` around the intended operating
+  range. Small ranks-per-device do **not** require small totals: K = mpi_np/G,
+  so on 4-GPU nodes `mpi_np: [16, 32]` already samples K = 4…8 — the guide's
+  regime — while `mpi_np: 4` would buy only a slow CPU-family trial nobody
+  plans to run.
+- **Cut the cartesian, keep the coverage.** Every value axis multiplies the
+  whole grid ([`generator.md § 4.3a`](?doc=execution/generator.md)), so:
+  (a) leave `block_size` undeclared first — § 2.11's auto pick adapts it to
+  each trial's rank count, and the axis is worth declaring only when the
+  verdict is close; (b) **stage the rounds**: round 1 declares the machine
+  axes with the value knobs pinned to one point each → a shape verdict;
+  round 2 declares the winning shape plus the value axes → a solver/block
+  verdict at that shape. A re-prep *replaces* the stage's sweep record, so
+  each round's verdict is self-contained — round 2 re-measures the winning
+  cell under each value, which is precisely the comparison wanted; (c) when
+  one family's extra cells are the cost, run one-sided rounds
+  (`enable_gpu` with a single point per round) instead of the two-sided
+  axis. Worked on the § 6 junction's declared matrix: the full cartesian is
+  36 trials; dropping `block_size` to auto makes it 12; staging makes it
+  6 + 6 with the second round already pinned to the shape that won.
+
+**Comparability, stated once more** ([`generator.md § 4.3a`](?doc=execution/generator.md)):
+CPU numbers carry across same-silicon partitions; GPU numbers belong to the
+build that produced them; and the verdict is a *proposal* (`run-config.toml`)
+— the trade between fastest and soonest-scheduled stays yours.
+
 ---
 
 ## 3. Cross-engine parameter map
@@ -690,3 +791,12 @@ Walking the 2026-06-23 case through the framework:
 - **Surface-DFT force convention** (`EDIFFG = -0.01`) — VASP documentation; Hammer &
   Nørskov, *Adv. Catal.* **45**, 71 (2000).
 - **PySCF** — Sun et al., *J. Chem. Phys.* **153**, 024109 (2020).
+- **ELPA2 GPU port** (the multi-rank-per-GPU + MPS regime § 2.12 samples) — Yu
+  et al., *Comput. Phys. Commun.* **262**, 107808 (2021).
+  (`science/references.bib: Yu2021` carries the full entry.)
+- **NVIDIA MPS** (concurrent kernel execution for ranks sharing a device; the
+  48-client ceiling) — NVIDIA, *CUDA Multi-Process Service: Overview*.
+  (`science/references.bib: NvidiaMPS`.)  The equal-ranks-per-GPU and
+  daemon-once-per-node rules are ELPA's own, in the
+  `documentation/PERFORMANCE_TUNING.md` of the ELPA source tree shipped
+  inside the `molbuilder-siesta-gpu` build.

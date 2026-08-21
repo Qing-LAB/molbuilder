@@ -430,6 +430,11 @@ framework rule, not a script patch)*:
   verdict reports per-combination facts and choosing stays yours
   (`run-config.toml` is a proposal).
 
+> **Designing the matrix — the background with references** (what the GPU
+> actually accelerates, ranks-per-device and MPS, and how to cut points
+> without losing the answer) is
+> [`engines/tuning.md § 2.12`](?doc=engines/tuning.md).
+
 **Per stage, and that is the second half of the decision.** What runs fastest
 changes between a coarse stage and a tight one — different mesh cutoff and
 basis size mean a different grid and matrix, so a different best rank count

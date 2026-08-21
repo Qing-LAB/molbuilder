@@ -332,3 +332,33 @@
   doi     = {10.1063/1.4901304}
   % ddCOSMO -- PySCF's default fast solvation back-end.
 }
+
+@article{Yu2021,
+  author  = {Yu, Victor Wen-zhe and Moussa, Jonathan and K{\r{u}}s, Pavel
+             and Marek, Andreas and Messmer, Peter and Yoon, Mina and
+             Lederer, Hermann and Blum, Volker},
+  title   = {{GPU}-acceleration of the {ELPA2} distributed eigensolver
+             for dense symmetric and hermitian eigenproblems},
+  journal = {Computer Physics Communications},
+  volume  = {262},
+  pages   = {107808},
+  year    = {2021},
+  doi     = {10.1016/j.cpc.2020.107808}
+  % The ELPA2 GPU port that SIESTA's enable_gpu rides (ELSI -> ELPA).
+  % Benchmarks the multi-rank-per-GPU + MPS regime the G x K x C grid's
+  % K axis samples; ELPA's own in-tree PERFORMANCE_TUNING.md cites it
+  % for the MPS recommendation.  Cite when explaining the GPU grid or
+  % a GPU-vs-CPU benchmark verdict (engines/tuning.md 2.12).
+}
+
+@misc{NvidiaMPS,
+  author       = {{NVIDIA Corporation}},
+  title        = {{CUDA} Multi-Process Service ({MPS}): Overview},
+  howpublished = {\url{https://docs.nvidia.com/deploy/pdf/CUDA_Multi_Process_Service_Overview.pdf}},
+  note         = {Living document; accessed 2026-08.  48-client-per-GPU
+                  limit on Volta and later; one control daemon per node}
+  % The mechanism that lets several MPI ranks execute concurrently on
+  % one GPU.  The run wrapper starts and tears down a per-job daemon
+  % (running-a-job.md 3.3).  Cite beside Yu2021 wherever the
+  % ranks-per-GPU choice is discussed.
+}
