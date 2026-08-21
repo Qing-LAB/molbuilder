@@ -45,9 +45,12 @@ def parse_scf_timing(text: str) -> Dict[str, Optional[float]]:
 
     Each line starts with an epoch timestamp; consecutive deltas are the
     per-iteration durations.  We drop the first delta (iter 1->2, which can
-    still carry warm-up) when >=3 iterations are present, matching the
-    "mean of iters 3-5" rule (job-system.md § 7).  Returns
-    ``{"s_per_iter": float|None, "iters_measured": int}``.
+    still carry warm-up) when >=2 deltas are present and average the rest
+    (job-system.md § 7).  Under the capped 3-iteration trial (2026-08-21)
+    that is ONE clean sample -- iteration 3 -- which the user's measured
+    experience says reads the scaling story as well as the older
+    5-iteration three-sample mean; records of either shape parse the same
+    way.  Returns ``{"s_per_iter": float|None, "iters_measured": int}``.
     """
     epochs: List[float] = []
     for line in text.splitlines():

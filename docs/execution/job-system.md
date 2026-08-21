@@ -1206,8 +1206,11 @@ flowchart LR
   > directory grows with the grid**, which § 6.3's *a sweep has no order, so the
   > name carries what was tried* already anticipates.
 - **Measure → `bench-result.json`** (`molbuilder/bench-result@1`): each point is
-  parsed for its SCF wall-time **per iteration** (averaged over iterations 3–5 to
-  skip warm-up), plus a utilisation reading and peak memory.
+  parsed for its SCF wall-time **per iteration** (the first inter-iteration
+  delta is dropped as warm-up and the rest averaged — under the capped
+  3-iteration trial that is iteration 3's one clean sample, the user's
+  2026-08-21 economy: the bench reads scaling, not tight rankings), plus a
+  utilisation reading and peak memory.
   > **A trial is also asked what it actually ran, and a trial that ran
   > something else cannot win** *(2026-08-13)*. Each point's own artifacts are
   > read back — SIESTA's `* Running on N nodes in parallel.`, its

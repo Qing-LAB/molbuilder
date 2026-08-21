@@ -108,7 +108,7 @@ def test_the_users_matrix_enumerates_both_families(sol_calc, capsys):
     assert "'general'" in out and "48 cores/node" in out
     assert "G1K64C1" in out and "G1K128C1" in out
     # an axis is never a pin; the measurement pins still ride
-    assert "block_size" not in pins and pins["max_scf_iter"] == 5
+    assert "block_size" not in pins and pins["max_scf_iter"] == 3
 
 
 def test_the_gpu_family_answers_from_the_domain_inventory(sol_calc):

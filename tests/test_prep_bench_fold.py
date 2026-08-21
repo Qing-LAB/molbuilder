@@ -1421,7 +1421,7 @@ def test_a_multi_point_value_entry_is_a_value_axis(calc):
     assert len(sweep) == 2
     assert sorted(p["block_size"] for p in sweep) == [64, 128]
     assert "block_size" not in pins, "an axis is not a pin"
-    assert pins["max_scf_iter"] == 5, "the measurement pins still ride"
+    assert pins["max_scf_iter"] == 3, "the measurement pins still ride"
 
 
 def test_a_value_axis_naming_a_measurement_pin_is_refused(calc):
@@ -1474,7 +1474,7 @@ def test_a_one_point_declaration_is_a_pin_and_decides_the_grid(calc):
     sweep, pins, _tr = _bench_inputs(calc)
     assert pins["enable_gpu"] is True
     assert pins["diag_algorithm"] == "ELPA-2STAGE"
-    assert pins["max_scf_iter"] == 5, "the measurement pins still ride"
+    assert pins["max_scf_iter"] == 3, "the measurement pins still ride"
     assert all("G" in p for p in sweep), (
         "a declared enable_gpu=true must enumerate the GPU grid")
 
@@ -1526,7 +1526,7 @@ def test_the_cap_is_clean_scf_must_converge_is_pinned_off(calc):
     which is what lets `choose_winner` ever see a completed point."""
     _sweep, pins, _tr = _bench_inputs(calc)
     assert pins["scf_must_converge"] is False
-    assert pins["max_scf_iter"] == 5
+    assert pins["max_scf_iter"] == 3
 
 
 # --------------------------------------------------------------------- #

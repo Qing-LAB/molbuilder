@@ -520,7 +520,7 @@ assumed. The same logic gave `block_size` its treatment in § 2.11.
 
 #### Spending the benchmark budget — how to cut points without losing the answer
 
-A trial costs `setup + 5 capped SCF iterations`, bounded by the per-trial
+A trial costs `setup + 3 capped SCF iterations`, bounded by the per-trial
 timeout (`--trial-timeout`, default 15 min), and the grouped job runs trials
 in sequence inside ONE allocation sized to the **widest** trial — so narrow
 trials idle the rest of that allocation while they run. Three consequences,
@@ -536,25 +536,23 @@ each an economy rule:
   forced cold and relabelled in the first place. The concern behind
   "use the later run" is real, and it is answered at the iteration level,
   where it costs seconds instead of a second run.
-- **Why the cap is five iterations, not two** *(user question, 2026-08-21)*.
-  The instrument stamps a wall-clock time as each ``scf:`` line prints
+- **Why the cap is three iterations — and why not two** *(settled by the
+  user, 2026-08-21, from measured experience)*. The instrument stamps a
+  wall-clock time as each ``scf:`` line prints
   ([`running-a-job.md § 4.1`](?doc=execution/running-a-job.md)), so N capped
   iterations give N−1 deltas — and **iteration 1's own duration, where the
   one-time setup lives, never forms a delta at all**. Capping at 2 would
-  therefore measure exactly ONE delta: iteration 2's, the one the reader
-  discards as still warm-up-adjacent when it can. Three iterations is the
-  smallest faithful version of "use the later iteration" — one clean sample
-  — but a single ~30–60 s sample is exposed to node jitter of the same
-  order as the differences the verdict ranks (solver vs solver, block vs
-  block are often 10–30 % apart), so one bad sample inverts a ranking.
-  **Five = two discarded + three averaged**: the minimum that gives a mean
-  at all. The saving from cutting 5 → 3 is two iterations per trial while
-  the un-cuttable setup + iteration 1 still dominate a trial's wall — on a
-  ~40 s/iter cell that is ~80 s × trials, minutes across a lean matrix —
-  so the iteration cap is the wrong lever; the trial count above is the
-  right one. *(The capped window also feeds the monitor: utilisation
-  classification and the peak-RSS memory recommendation read the same few
-  minutes, and two iterations would starve them too.)*
+  therefore measure exactly ONE delta: iteration 2's, the warm-up-adjacent
+  one the reader discards. **Three is the faithful minimum**: setup
+  excluded structurally, the iter-2 delta dropped, iteration 3 the one
+  clean sample. The cap stood at five (a three-sample mean) for two days
+  on a jitter argument; the user's own five-iteration runs answered it —
+  iterations 3–5 agree within seconds on a 444-atom junction, and **the
+  bench reads scaling and dependency — where the knee is — not tight
+  rankings**, so configurations within a few seconds of each other are a
+  tie to be broken by other criteria (queue, memory), never a ranking to
+  defend with more samples. Older 5-iteration records still parse and
+  average; the reader is shape-blind.
 - **Do not declare rank counts far below where the run will live.** s/iter
   grows roughly as 1/ranks until scaling saturates, so a far-too-narrow trial
   of a large system can outlast its bound — killed, `incomplete`, allocation

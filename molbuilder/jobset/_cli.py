@@ -662,7 +662,14 @@ def _declared_execution_pins(base, engine):
 #: value AXIS naming one of these is refused -- its trials would be one
 #: measurement under many labels.  One spelling for both uses (the pins
 #: and that refusal); the per-key whys sit at the application site.
-_MEASUREMENT_PINS = {"max_scf_iter": 5, "relax_steps": 0, "restart": "clean",
+#: ``max_scf_iter: 3`` since 2026-08-21 (user, from measured experience:
+#: iterations 3-5 agree within seconds on a 444-atom junction, and the
+#: bench reads SCALING and DEPENDENCY -- the knee -- not tight rankings):
+#: iteration 1 never forms a timing delta, the iter-2 delta is dropped as
+#: warm-up-adjacent, iteration 3 is the one clean sample.  It was 5 (a
+#: three-sample mean) from 2026-08-19; older 5-iteration records still
+#: average, the reader is shape-blind (tuning.md § 2.12).
+_MEASUREMENT_PINS = {"max_scf_iter": 3, "relax_steps": 0, "restart": "clean",
                      "continue_retries": 0, "scf_must_converge": False}
 
 

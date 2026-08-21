@@ -1319,7 +1319,9 @@ def _siesta_scf_timing_func() -> str:
     it tees SIESTA stdout to the ``.out`` AND timestamps every ``scf:``
     iteration line into a per-run ``.scf-timing.log`` as
     ``<epoch.ns> <iter#> <full scf line>``, so per-iteration wall time =
-    consecutive-stamp delta (report mean of iters 3–5; running-a-job.md § 4.1).
+    consecutive-stamp delta (first delta dropped, rest averaged --
+    one clean sample under the capped 3-iteration bench trial;
+    running-a-job.md § 4.1).
 
     EXPECTED OUTPUT: `<basename>-runN.scf-timing.log`, one line per SCF
     iteration; subtracting adjacent epochs gives the steady-state
