@@ -443,17 +443,14 @@ def _emit_build_mol(struct: Structure, cfg: SpectraConfig) -> List[str]:
     # either side means no ECP.  Nothing is auto-picked.
     from ..chemistry import resolve_pyscf_ecp
     ecp_chosen = resolve_pyscf_ecp(struct, cfg.ecp, cfg.ecp_atoms)
-    # ECP: the user's own declaration (`ecp` + `ecp_atoms`), resolved
-    # through the ONE resolver the optimization deck uses
-    # (chemistry.resolve_pyscf_ecp -> {element: name} | None).  Heavy
-    # elements without their ECP get bond lengths and gaps visibly
-    # wrong, and a vibration on a wrong geometry is a wrong spectrum.
-    # Honored 2026-08-21 -- the render-probe honesty gate found both
-    # fields displayed and ignored (the attr-regex audit had been
-    # fooled by this very comment class).
-    from ..chemistry import resolve_pyscf_ecp as _resolve_ecp
-    _ecp_chosen = _resolve_ecp(struct, getattr(cfg, "ecp", ""),
-                               getattr(cfg, "ecp_atoms", ()))
+    # ECP is resolved ONCE above (`ecp_chosen`) and emitted once below.
+    # A second resolution+emission landed here 2026-08-21 when the
+    # render-probe honesty gate flagged the fields "silent" -- they were
+    # silent only because the water probe holds no ECP candidate; the
+    # gold-dimer probe then saw MY added lines change the text while the
+    # original pair emitted too, and `gto.M(ecp=..., ecp=...)` is a
+    # SyntaxError in every ECP deck.  Caught by the full-text review's
+    # compile probe the same day; the gate now compiles every render.
     # symmetry (category 2, probed 2026-08-21): honored ONLY on the
     # already-relaxed path.  The equilibrium Hessian runs fine under
     # the point group (with PCM too), but a geomeTRIC step or an FD
@@ -466,8 +463,6 @@ def _emit_build_mol(struct: Structure, cfg: SpectraConfig) -> List[str]:
     out.append("mol = gto.M(")
     if _use_symmetry:
         out.append("    symmetry   = True,")
-    if _ecp_chosen:
-        out.append(f"    ecp        = {_ecp_chosen!r},")
     out.append("    atom       = [[a[0], (a[1], a[2], a[3])] for a in ATOMS],")
     out.append("    basis      = BASIS,")
     if ecp_chosen is not None:

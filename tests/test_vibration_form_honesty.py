@@ -116,8 +116,14 @@ def _render(_struct: str = "water", **over) -> str:
     # density_fit ON in the baseline so auxbasis's ride is probeable.
     cfg = PySCFConfig(density_fit=True, **over)
     s = _gold() if _struct == "gold" else _water()
-    return render_deck(spec_for(s, cfg, calculation="vibration"),
+    text = render_deck(spec_for(s, cfg, calculation="vibration"),
                        s, cfg, verbose=False)
+    # Every probe render must be RUNNABLE python -- a knob that changes
+    # the text into a SyntaxError is not honored, it is broken (the
+    # 2026-08-21 duplicated-ECP crash passed the text-diff and died at
+    # compile; this line is that lesson).
+    compile(text, "<honesty-probe>", "exec")
+    return text
 
 
 def _vibration_items():

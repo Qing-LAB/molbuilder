@@ -88,3 +88,19 @@ def test_the_gpu_advisory_path_renders_and_speaks():
         sys.stderr = old
     assert "Hessian" in text
     assert "gpu4pyscf" in err.getvalue() or "compute capability" in err.getvalue()
+
+
+def test_an_ecp_deck_compiles_and_carries_one_ecp_kwarg():
+    """The gold-dimer ECP deck: exactly ONE `ecp        =` kwarg in the
+    gto.M call and the whole deck compiles.  A duplicated
+    resolution+emission pair shipped 2026-08-21 made every ECP deck a
+    SyntaxError (`keyword argument repeated`) while the text-diff
+    honesty gate stayed green -- this pin is that failure's shape."""
+    s = Structure(elements=["Au", "Au"],
+                  positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 2.47]]))
+    cfg = PySCFConfig(ecp="lanl2dz", ecp_atoms=["Au"])
+    text = render_deck(spec_for(s, cfg, calculation="vibration"),
+                       s, cfg, verbose=False)
+    assert text.count("ecp        =") == 1, "the ECP kwarg must appear once"
+    assert "'Au': 'lanl2dz'" in text
+    compile(text, "<ecp-deck>", "exec")

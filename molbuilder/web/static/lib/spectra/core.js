@@ -2931,21 +2931,16 @@
         const hasGenerateSide = Boolean(els.formContainer);
         if (hasGenerateSide) {
             _on(els.sendBtn, "click", sendToTaskSetup);
-            // Form-dirty tracking (B.5.3): user-driven input on
-            // the param form flips the flag; Send clears it (the
-            // parameters have been handed over).  Delegated
-            // listeners on the container so re-renders of the
-            // form schema don't need to re-wire each field.
-            _on(els.formContainer, "input",
-                () => { _formDirty = true; });
-            _on(els.formContainer, "change",
-                () => { _formDirty = true; });
+            // The old form-dirty tracking left with its one reader
+            // (the discard-confirm died at P2); the P3 sweep removed
+            // the declaration but left three writers, which threw a
+            // strict-mode ReferenceError on every edit -- caught by
+            // the 2026-08-21 full-text review.
             // Live science check on every edit (and on auto-detect's
             // programmatic fills -- setValues dispatches input).
             _on(els.formContainer, "input",  refreshPreflightDebounced);
             _on(els.formContainer, "change", refreshPreflightDebounced);
-            _on(els.sendBtn, "click",
-                () => { _formDirty = false; });
+
         }
 
         // --- Inspect-side wiring -----------------------------------
