@@ -140,7 +140,15 @@ Results / Spectra tab                →  reads it, unchanged
   vibration deck form, and the existing `pyscf_script.py` block emitters are
   **lifted in** as its emission library — the old code transitioning onto
   the new framework, exactly as ruled. The deck keeps the phase-writing
-  atomic `.spectra.json` writer, so live-watch works unchanged.
+  atomic `.spectra.json` writer, so live-watch works unchanged — **and the
+  relaxation precondition becomes a TRACKED phase** *(user, 2026-08-20:
+  the viewer tracks all the steps — a silent gap while geomeTRIC works,
+  likely the longest part of the run, would betray that)*:
+  `phase_relaxation` written like the others, carrying the step count and
+  current max force so the indicator shows convergence live; under
+  `already_relaxed = true` it reads complete-by-assertion with the
+  gradient-check number attached — the warning made visible where the
+  phases live, not only in a log.
 - **The collision resolves to one door**: the in-deck `compute_frequencies`
   → `thermo.txt` path **retires**. Thermochemistry (RRHO,
   `temperature_K`/`pressure_atm`) becomes items of the vibration template
@@ -151,7 +159,8 @@ Results / Spectra tab                →  reads it, unchanged
 
 ## 3. The UI — the same translation, the same hand-over
 
-The tab's **display half does not change**. Its compute half substitutes:
+The tab's **display half does not change** — with one additive
+exception: the phase indicator gains the relaxation chip (§ 2, D4). Its compute half substitutes:
 
 - steps "Set the parameters" + "Generate/Save" are replaced by the pattern
   the structure-optimization flow uses: the form rendered **from the
@@ -206,5 +215,11 @@ migration is workstation-scoped by ruling and touches no submit-layer code).
   warning, never a refusal. (Draft one deferred relaxation on the old
   tab's premise; draft two made it a skippable stage; this is the final
   form.)
-- **D4 — `.spectra.json` v5**: only if thermo output needs a first-class
-  block; otherwise `engine_metadata` carries it and v4 stands.
+- **D4 — the artifact goes to v5, additive**: **SETTLED (2026-08-20,
+  by the user's tracking point)** — `phase_relaxation` is a new field, so
+  the schema bumps, under the readable-set rule the molstruct sidecar
+  established: the reader accepts {4, 5}, a v4 file lacks the relaxation
+  phase and reads whole. If D2 confirms, the `thermo` block rides the
+  same bump — one additive version, both new facts. The Results/Spectra
+  display gains exactly one thing: the relaxation chip on the phase
+  indicator (additive, its own pin).
