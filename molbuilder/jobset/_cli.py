@@ -249,7 +249,7 @@ def status_cmd(stage, bundle: str) -> None:
     informs; you decide whether to continue or switch (job-system.md
     § 5.3).  Reuses the same directory decoder as the Results tab.
 
-    With a STAGE -- by name, number or token, like every other verb -- it
+    With a STAGE -- its name, or #N its number, like every other verb -- it
     answers the other question instead: *what happened to this one*, with its
     attempts, its launch record and what it continued from.  That form is only
     answerable because a try is a directory and a launch is a record
@@ -1274,6 +1274,20 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         from ..template import SUFFIX as _TPL_SUFFIX
         from ..validation.task import preflight as _preflight
         _pf_task = _rt_preflight(base / _TASK)
+        # THE stage grammar, at the door (user-settled 2026-08-21): a
+        # ladder stage is named by its NAME, or by `#N` (its assigned
+        # number -- the NN in its 02_tight directory).  Resolved here,
+        # pre-produce, through the ONE resolver with refs built from the
+        # FULL ladder (token_for's own ordinal rule), so `prep run #2`
+        # and `status #2` cannot disagree about which stage that is.
+        if stage is not None and getattr(_pf_task, "stages", None):
+            from ..identity import StageRef, resolve_stage_ref
+            _refs = [StageRef(seq=_i, name=_s.name)
+                     for _i, _s in enumerate(_pf_task.stages, start=1)]
+            try:
+                stage = resolve_stage_ref(_refs, stage).name
+            except ValueError as _e:
+                raise click.ClickException(str(_e))
         # The template rides along when it is where prep will look for it,
         # which adds § 6.4/§ 6.6a's SEQUENCE warnings (resolved stages) to
         # the preflight -- reachable on a production path since 2026-08-13

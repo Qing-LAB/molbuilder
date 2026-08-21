@@ -1082,29 +1082,38 @@ def test_a_sweep_point_prints_a_dash_not_its_row_under_seq(tmp_path):
     assert [l.split()[0] for l in out.splitlines() if "p2" in l] == ["-"]
 
 
-def test_prepare_attempt_takes_the_same_three_spellings_as_every_surface():
-    """It had its own lookup and its own refusal until 2026-08-10, so `prep run
-    3` failed where `submit run 3` worked -- one question, two vocabularies."""
+def test_prepare_attempt_takes_the_same_two_spellings_as_every_surface():
+    """One vocabulary everywhere (2026-08-10's fix, re-ruled 2026-08-21):
+    a stage is its NAME, or `#N` its assigned number.  The bare number and
+    the token were retired the same day -- both are legal stage NAMES
+    ([A-Za-z0-9_]+), so `2` was ambiguous with an ordinal; `#` cannot
+    appear in a name."""
     import tempfile
+    import pytest as _pt
     from molbuilder.jobset.materialize import prepare_attempt
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
     with tempfile.TemporaryDirectory() as td:
-        for spelling in ("tight", "3", "03", "03_tight"):
+        for spelling in ("tight", "#3"):
             rep = prepare_attempt(js, td, spelling)
             assert rep.stage == "tight"           # the NAME, always
             assert rep.dir.parent.name == "03_tight"
+        for retired in ("3", "03", "03_tight"):
+            with _pt.raises(ValueError, match="coarse \\(#1\\)"):
+                prepare_attempt(js, td, retired)
 
 
 def test_prepare_attempt_refuses_with_the_one_listing_that_carries_ordinals():
     """decision 28's gap verbatim: the refusal listed 'coarse, medium, tight'
-    with no order, at the one moment you are choosing which stage to run."""
+    with no order, at the one moment you are choosing which stage to run.
+    The listing offers the TYPEABLE spellings -- name and #N (user-settled
+    2026-08-21) -- not the on-disk token nobody can type any more."""
     import tempfile
     from molbuilder.jobset.materialize import prepare_attempt
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
     with tempfile.TemporaryDirectory() as td:
         with pytest.raises(ValueError) as e:
             prepare_attempt(js, td, "bogus")
-    assert "01_coarse, 03_tight" in str(e.value)
+    assert "coarse (#1), tight (#3)" in str(e.value)
 
 
 def test_an_unlaunched_attempt_is_reused_and_a_launched_one_is_never_touched():
@@ -1395,9 +1404,9 @@ def test_plan_and_status_take_the_bundle_the_same_way_every_verb_does(tmp_path):
     # ...and the positional is a STAGE, resolved the way every other verb
     # resolves one.  A NUMBER, deliberately: an exact name would pass even if
     # the command took the string verbatim and never reached the resolver.
-    r = runner.invoke(grp, ["status", "3", "--bundle", str(tmp_path)])
+    r = runner.invoke(grp, ["status", "#3", "--bundle", str(tmp_path)])
     assert r.exit_code == 0, r.output
-    # The CONTENT property (3 resolved to 03_tight), not its line position --
+    # The CONTENT property (#3 resolved to 03_tight), not its line position --
     # pinning splitlines()[0] made any banner a false failure (2026-08-12).
     assert "STAGE 03_tight" in r.output
 
@@ -1749,16 +1758,21 @@ def test_prepare_links_resolve_from_two_levels_down(tmp_path):
             f"{name} points at {os.readlink(link)!r}, which does not resolve"
 
 
-def test_a_name_beats_a_number_when_a_stage_is_called_one(tmp_path):
-    """Stage names are ``[A-Za-z0-9_]+``, so a stage may legitimately be named
-    ``3``.  The name is the stage's identity (`engines/stages.md` R5), so it
-    wins -- the resolver checks names and tokens before it reads anything as an
-    ordinal."""
+def test_the_grammar_is_unambiguous_even_for_a_stage_named_3(tmp_path):
+    """Stage names are ``[A-Za-z0-9_]+``, so a stage may legitimately be
+    named ``3`` -- which is exactly why the bare-number spelling died
+    (user-settled 2026-08-21): ``3`` is ONLY ever the name, ``#3`` is ONLY
+    ever the assigned number, and the two can never collide because ``#``
+    cannot appear in a name."""
+    import pytest as _pt
     from molbuilder.identity import StageRef, resolve_stage_ref
     refs = [StageRef(1, "3"), StageRef(3, "tight")]
     assert resolve_stage_ref(refs, "3").name == "3"      # the NAME, seq 1
-    assert resolve_stage_ref(refs, "03_tight").name == "tight"
+    assert resolve_stage_ref(refs, "#3").name == "tight"  # the NUMBER
+    assert resolve_stage_ref(refs, "#1").name == "3"
     assert resolve_stage_ref(refs, "tight").seq == 3
+    with _pt.raises(ValueError, match="no stage named"):
+        resolve_stage_ref(refs, "03_tight")              # tokens retired
 
 
 def test_run_launch_omits_continued_from_rather_than_writing_null(tmp_path):
@@ -1854,32 +1868,31 @@ def test_a_corrupt_run_json_still_reads_as_launched(tmp_path):
     assert st.state == "queued"                  # launched, details lost
 
 
-def test_submit_only_takes_the_same_three_spellings_as_every_surface(tmp_path):
+def test_submit_only_takes_the_same_two_spellings_as_every_surface(tmp_path):
     """`only` is a library entry point, and it had its own lookup and its own
-    listing -- the same defect prepare_attempt had (§ 8f)."""
+    listing -- the same defect prepare_attempt had (§ 8f).  The grammar is
+    the one resolver's: name, or #N (user-settled 2026-08-21)."""
     from molbuilder.jobset.submit import submit_jobset, SubmitError
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    res = submit_jobset(js, tmp_path, mode="direct", dry_run=True, only="3")
+    res = submit_jobset(js, tmp_path, mode="direct", dry_run=True, only="#3")
     assert [r.name for r in res] == ["tight"]
 
     with pytest.raises(SubmitError) as e:
         submit_jobset(js, tmp_path, mode="direct", dry_run=True, only="bogus")
-    assert "01_coarse, 03_tight" in str(e.value)
+    assert "coarse (#1), tight (#3)" in str(e.value)
 
 
 def test_a_number_resolves_to_the_seq_and_never_to_the_row():
-    """R5's whole point, and the two differ the moment a stage is disabled: the
-    ladder is 01/03, so `1` is coarse (row 1 would be tight) and `3` is tight
-    (there is no row 3 at all)."""
+    """R5's whole point, and the two differ the moment a stage is disabled:
+    the ladder is 01/03, so `#1` is coarse (row 1 would be tight) and `#3`
+    is tight (there is no row 3 at all)."""
     from molbuilder.identity import StageRef, resolve_stage_ref
     refs = [StageRef(1, "coarse"), StageRef(3, "tight")]
-    assert resolve_stage_ref(refs, "1").name == "coarse"
-    assert resolve_stage_ref(refs, "3").name == "tight"
-    assert resolve_stage_ref(refs, "03").name == "tight"        # zero-padded
-    assert resolve_stage_ref(refs, "03_tight").name == "tight"  # the whole token
+    assert resolve_stage_ref(refs, "#1").name == "coarse"
+    assert resolve_stage_ref(refs, "#3").name == "tight"
     assert resolve_stage_ref(refs, "tight").name == "tight"     # its identity
     with pytest.raises(ValueError):
-        resolve_stage_ref(refs, "2")            # the row of tight; not its seq
+        resolve_stage_ref(refs, "#2")           # the row of tight; not its seq
 
 
 def test_resolver_refuses_a_number_a_sweep_cannot_have():

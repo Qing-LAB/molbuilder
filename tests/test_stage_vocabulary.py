@@ -165,12 +165,19 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "sweep point), never filled in from a position"),
     "resolve_stage_ref": (
         None, "molbuilder/identity.py",
-        "`tight` | `3` | `03` | `03_tight` -> one StageRef.  A NUMBER "
-        "MATCHES seq AND NEVER A ROW, which is R5's whole point"),
+        "`tight` | `#3` -> one StageRef (user-settled 2026-08-21: a bare "
+        "number and the token are legal NAMES, so both retired as "
+        "ordinal spellings).  #N MATCHES seq AND NEVER A ROW, which is "
+        "R5's whole point"),
     "render_stage_refs": (
         None, "molbuilder/identity.py",
-        "the one listing format, so a refusal, a status table and a help "
-        "string cannot show three vocabularies for one set of jobs"),
+        "the on-disk listing format (tokens) for tables, so a status "
+        "table and a directory cannot show two vocabularies"),
+    "render_stage_choices": (
+        None, "molbuilder/identity.py",
+        "the TYPEABLE listing format for refusals -- name (#N) -- split "
+        "from render_stage_refs on purpose: a refusal must not offer the "
+        "on-disk spelling the resolver no longer accepts"),
     #  `identity.seq_text` -- what a `seq` column prints -- belongs to this
     #  group but is NOT a row here: it carries no "stage" in its name, so the
     #  detector cannot see it and the reverse check would call the row stale.

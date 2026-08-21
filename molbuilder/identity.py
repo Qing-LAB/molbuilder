@@ -388,41 +388,67 @@ class StageRef:
 def resolve_stage_ref(refs: Sequence["StageRef"], text: str) -> "StageRef":
     """The one job ``text`` names, or ``ValueError`` naming every candidate.
 
-    Three spellings, because all three are what a person reasonably types::
+    TWO spellings, each unambiguous (user-settled 2026-08-21)::
 
-        tight        the name          — its identity
-        3  /  03     the seq           — what sorts, and what a listing shows
-        03_tight     the whole token   — copied from a directory or a filename
+        tight        the name           — an EXACT match, nothing else
+        #3           the stage's number — '#' then its assigned ``seq``
 
-    A number is matched against ``seq`` and **never** against a position in the
-    list. That distinction is the one `engines/stages.md` R5 exists to protect:
-    with stage 2 disabled the ladder is ``01`` and ``03``, so ``3`` must mean
-    *tight* and can never mean *"the third row"*.
+    Until then a bare number and the whole token (``03_tight``) resolved
+    too — but both are LEGAL STAGE NAMES (`engines/stages.md` § 2 allows
+    ``[A-Za-z0-9_]+``), so a stage literally named ``2`` was ambiguous
+    with an ordinal.  ``#`` cannot appear in a name, which is what makes
+    the prefix collision-free; everything without it is a name, full stop.
+
+    ``#N`` is matched against ``seq`` and **never** against a position in
+    the list. That distinction is the one `engines/stages.md` R5 exists to
+    protect: with stage 2 disabled the ladder is ``01`` and ``03``, so
+    ``#3`` must mean *tight* and can never mean *"the third row"* — the
+    same number the directory (``03_tight``) shows.
 
     A set with no ordinals — a sweep — resolves by name through this same
     function, and the refusal stops offering numbers it does not have. One
-    resolver for both kinds is the point: a second lookup for the kind without
-    ordinals is a second refusal wording and a second listing format waiting to
-    disagree with this one.
+    resolver for both kinds is the point: a second lookup for the kind
+    without ordinals is a second refusal wording and a second listing
+    format waiting to disagree with this one.
     """
     want = str(text).strip()
     if not want:
-        raise ValueError("no stage named; pass a name, a number, or a token")
+        raise ValueError(
+            "no stage named; pass its name, or #N for its number")
+    if want.startswith("#"):
+        num = want[1:]
+        if num.isdigit():
+            for r in refs:
+                if r.seq is not None and int(num) == r.seq:
+                    return r
+        if not refs:
+            raise ValueError(
+                f"no stage {text!r}: this job-set has no jobs")
+        raise ValueError(
+            f"no stage numbered {text!r} in this job-set; it has: "
+            f"{render_stage_choices(refs)}.")
     for r in refs:
-        if want == r.name or want == r.token:
+        if want == r.name:
             return r
-    if want.isdigit():
-        for r in refs:
-            if r.seq is not None and int(want) == r.seq:
-                return r
     if not refs:
         raise ValueError(f"no stage named {text!r}: this job-set has no jobs")
-    how = ("Name it by its name (tight), its number (3), or its token "
-           "(03_tight)." if any(r.seq is not None for r in refs)
-           else "Name it by its name.")
     raise ValueError(
         f"no stage named {text!r} in this job-set; it has: "
-        f"{render_stage_refs(refs)}. {how}")
+        f"{render_stage_choices(refs)}.")
+
+
+def render_stage_choices(refs: Sequence["StageRef"]) -> str:
+    """What a refusal offers — the TYPEABLE spellings: ``coarse (#1),
+    tight (#3)``; bare names where there are no ordinals.
+
+    A sibling of :func:`render_stage_refs`, split on purpose: the table
+    format shows what is ON DISK (the token, ``03_tight``), this shows
+    what the resolver ACCEPTS (name or ``#N`` — user-settled 2026-08-21),
+    and printing the on-disk form in a refusal would offer a spelling
+    that no longer resolves.
+    """
+    return ", ".join(f"{r.name} (#{r.seq})" if r.seq is not None else r.name
+                     for r in refs)
 
 
 def render_stage_refs(refs: Sequence["StageRef"]) -> str:
@@ -581,5 +607,5 @@ def run_id(label: str, formula: str = "", *,
 
 __all__ = ["MAX_LABEL_BYTES", "OUR_FILE_PATTERNS", "RestartGroup", "StageRef",
            "continues", "is_ours", "normalise_id", "parse_stage_token",
-           "render_stage_refs", "resolve_stage_ref", "run_id", "seq_text",
+           "render_stage_choices", "render_stage_refs", "resolve_stage_ref", "run_id", "seq_text",
            "stage_token"]
