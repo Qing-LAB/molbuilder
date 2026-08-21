@@ -1639,6 +1639,50 @@ def api_task_setup_save():
     })
 
 
+@bp.route("/api/task-setup/launcher", methods=["POST"])
+def api_task_setup_launcher():
+    """(Re)write the PORTABLE ``jobset.sh`` into a described folder.
+
+    The save door ships it automatically for NEW descriptions; this door
+    exists for the folders that predate that (and for a bundle carried
+    to another machine, where a prep-baked launcher describes the wrong
+    machine and the bootstrap is the correct downgrade).  An explicit
+    user action, so it OVERWRITES -- the next `prep` re-bakes on top,
+    exactly as always (workflow.md § 6.1's two generations).
+
+    Body: ``{"dest": "<folder>"}``.  Refuses a folder that is not a
+    described calculation (no task.json and no task.1st.json): a
+    launcher belongs beside a description, not scattered.
+    """
+    body = request.get_json(silent=True) or {}
+    dest_raw = str(body.get("dest") or "")
+    if not dest_raw:
+        return jsonify({"ok": False, "error": "no destination folder given"}), 400
+    try:
+        dest = _resolve_within_roots(dest_raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    if not dest.is_dir():
+        return jsonify({"ok": False, "error": f"not a directory: {dest_raw}"}), 400
+    from molbuilder.task import FILENAME as _TASKF
+    if not ((dest / _TASKF).is_file()
+            or (dest / TASK_HANDOVER_NAME).is_file()):
+        return jsonify({
+            "ok": False,
+            "error": "this folder holds no description (no task.json / "
+                     "task.1st.json) -- the launcher belongs beside one.",
+        }), 400
+    from molbuilder.runwrap import render_jobset_bootstrap
+    launcher = dest / "jobset.sh"
+    try:
+        launcher.write_text(render_jobset_bootstrap(), encoding="utf-8")
+        launcher.chmod(0o755)
+    except OSError as exc:
+        return jsonify({"ok": False, "error": f"could not write: {exc}"}), 500
+    return jsonify({"ok": True, "wrote": "jobset.sh",
+                    "generation": "bootstrap"})
+
+
 @bp.route("/api/task-setup/sweepable", methods=["GET"])
 def api_task_setup_sweepable():
     """The parameters a benchmark may sweep, for the Task-setup picker.

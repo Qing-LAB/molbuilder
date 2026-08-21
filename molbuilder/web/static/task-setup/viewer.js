@@ -355,9 +355,24 @@ function renderMachine(task) {
                                        title: "Stop measuring " + name }, "\u00d7");
         dropRow.addEventListener("click", () => removeSetting(name));
 
+        // A VALUE axis with several points is refused at prep ("a
+        // multi-point value axis is not built yet" -- generator.md
+        // § 4.3a's recorded 2β extension; hit live on Sol 2026-08-21).
+        // Say it HERE, at declaration time, instead of letting the
+        // refusal land on the machine: machine axes sweep; a value
+        // entry pins with ONE point (or two one-point benches).
+        const _isMachine = (_sweep || []).some(
+            (it) => it.name === name && it.machine_answers);
+        const _tooMany = (!_isMachine && pts.length > 1)
+            ? el("small", { class: "ts-row-warn" },
+                 "\u26a0 " + pts.length + " points on a VALUE setting: "
+                 + "prep will refuse (multi-point value axes are not "
+                 + "built yet \u2014 2\u03b2). Keep ONE point to pin "
+                 + "it, or run two one-point benches.")
+            : null;
         host.appendChild(el("div", { class: "ts-row", "data-kind": kind },
             el("div", { class: "ts-row-name", title: helpText(name) }, name,
-                el("small", null, rowNote(name))),
+                el("small", null, rowNote(name)), _tooMany),
             el("div", { class: "ts-points" }, ...chips, add),
             el("div", { class: "ts-verdict" }, verdict, dropRow)));
     }
@@ -575,7 +590,10 @@ async function loadFolder(projects, dir) {
     setShape(_shape);                            // shows which one it carries
     renderStages(task);
     renderNext(task);
-    await loadSweepChoices(String(task.engine || "siesta"));
+    // Through the ONE accessor -- `String({name})` is "[object Object]",
+    // which 400s the sweepable fetch and sticks an empty cache for the
+    // whole page-load (2026-08-21 review, E-A1).
+    await loadSweepChoices(_handoverEngine(task));
     renderMachine(task);
     refreshPickers();
     await setEditorText(taskText);
@@ -594,7 +612,7 @@ async function syncFromModel() {
     // written into the JSON on screen, and the row it belonged to went on
     // showing the old chips: the panel looked inert while the file underneath
     // it was changing.
-    await loadSweepChoices(String((_task && _task.engine) || "siesta"));
+    await loadSweepChoices(_handoverEngine(_task || {}));
     renderMachine(_task);
     renderNext(_task);
     refreshPickers();
@@ -1024,19 +1042,51 @@ function renderNext(task) {
     const host = $("ts-next");
     if (!card || !host) return;
     host.textContent = "";
-    const stages = ((task && task.stages) || []).filter(
-        (st) => st && st.enabled !== false);
-    if (!stages.length) { card.hidden = true; return; }
+    // ORDINALS COME FROM THE FULL LADDER (`stages.md` § 6.5: seq is
+    // assigned once and never renumbered), so a disabled stage still
+    // occupies its number -- the enabled-filtered index mis-named the
+    // previous attempt's directory whenever one was skipped
+    // (2026-08-21 review, E-T4).
+    const ladder = (task && task.stages) || [];
+    const enabled = [];
+    ladder.forEach((st, full) => {
+        if (st && st.enabled !== false) enabled.push({ st: st, full: full });
+    });
+    if (!enabled.length) { card.hidden = true; return; }
 
-    stages.forEach((st, i) => {
-        const name = st.name || "";
-        const ov = st.overrides || {};
+    // The bench lane, when the description PLANS a measurement
+    // (`task.bench` non-empty -- stages.md § 6.8): the whole sequence,
+    // taught once with the first stage as the example.  summarize
+    // writes bench-result.json (the record) AND run-config.toml (the
+    // editable proposal); `prep run` then applies what the accepted
+    // proposal says -- template < declaration < run-config < flags.
+    const benchKeys = Object.keys((task && task.bench) || {});
+    if (benchKeys.length) {
+        const bs = enabled[0].st.name || "";
+        host.appendChild(el("div", { class: "ts-next-step" },
+            el("div", { class: "ts-next-stage" },
+               "bench first \u2014 " + benchKeys.join(", ")),
+            el("pre", { class: "ts-cmd" },
+               "./jobset.sh prep bench " + bs + "\n"
+               + "./jobset.sh submit bench " + bs
+               + "      # one grouped job; wait for the queue\n"
+               + "./jobset.sh summarize bench " + bs
+               + "   # writes bench-result.json + run-config.toml\n"
+               + "# read run-config.toml \u2014 the editable proposal; "
+               + "accept or edit it,\n"
+               + "# then the run below applies it automatically.")));
+    }
+
+    enabled.forEach((e, i) => {
+        const name = e.st.name || "";
+        const ov = e.st.overrides || {};
         // `continue` carries from the stage before it — and `prep` is TOLD
         // which attempt, never left to guess (`project-layout.md` § 1.6).
         let from = "";
         if (i > 0 && String(ov.restart || "") === "continue") {
-            const prev = stages[i - 1];
-            const token = String(i).padStart(2, "0") + "_" + (prev.name || "");
+            const prev = enabled[i - 1];
+            const token = String(prev.full + 1).padStart(2, "0")
+                        + "_" + (prev.st.name || "");
             from = " --from " + token + "/run-0";
         }
         const runs = _runs[name];
@@ -1050,6 +1100,36 @@ function renderNext(task) {
                "./jobset.sh prep run " + name + from + "\n"
                + "./jobset.sh submit run " + name)));
     });
+
+    // (Re)write the launcher -- for folders described before the save
+    // door shipped it, and for bundles carried to another machine where
+    // a prep-baked launcher names the wrong machine.  Explicit action:
+    // overwrites; the next prep re-bakes on top (workflow.md § 6.1).
+    const btn = el("button", { type: "button", class: "ts-launcher-btn",
+                               title: "Write the portable jobset.sh into "
+                                    + "this folder (prep re-bakes it for "
+                                    + "the machine on the next prep)." },
+                   "(Re)write jobset.sh");
+    const say = el("span", { class: "status" }, "");
+    btn.addEventListener("click", async () => {
+        const proj = (window.molbuilder || {}).projects;
+        const dir = proj && proj.getCurrentDir && proj.getCurrentDir();
+        if (!dir) { say.textContent = "pick the folder first"; return; }
+        say.textContent = "writing\u2026";
+        try {
+            const r = await fetch("/api/task-setup/launcher", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ dest: dir }),
+            }).then((x) => x.json());
+            say.textContent = r.ok
+                ? "wrote jobset.sh (portable) \u2014 ./jobset.sh <verb> works here now"
+                : (r.error || "failed");
+        } catch (e) {
+            say.textContent = "could not reach the server";
+        }
+    });
+    host.appendChild(el("div", { class: "ts-launcher-row" }, btn, say));
     card.hidden = false;
 }
 

@@ -196,7 +196,11 @@ def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
                             "--no-sbatch"])
     assert r.exit_code == 0, r.output
     assert "trial dir(s) for stage 'coarse'" in r.output
-    assert "one trial per invocation" in r.output
+    # the hint teaches the REAL grammar + the launcher (E-J2 fix,
+    # 2026-08-21): grouped submission, then summarize -> run-config.
+    assert "./jobset.sh submit bench" in r.output
+    assert "one grouped job" in r.output
+    assert "summarize bench" in r.output
     assert "config:" in r.output          # provenance rides every prep
 
 

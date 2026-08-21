@@ -1162,8 +1162,16 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         click.echo(f"prepped {len(dirs)} trial dir(s){where} under {base}:")
         for d in dirs:
             click.echo(f"  {d.name}")
-        click.echo("next: molbuilder jobset submit bench <trial> "
-                   "-- one trial per invocation")
+        # The REAL grammar (E-J2, 2026-08-21 review): `submit bench
+        # <stage>` -- typed with a trial name, the trial binds as the
+        # STAGE and is refused; and the shipped submission is the
+        # grouped one, not one-per-invocation.  prep just wrote
+        # jobset.sh, so the hint speaks the launcher.
+        click.echo(f"next: ./jobset.sh submit bench "
+                   f"{stage or '<stage>'}   (one grouped job)")
+        click.echo(f"then: ./jobset.sh summarize bench {stage or '<stage>'}"
+                   f"  -- writes bench-result.json + run-config.toml "
+                   f"(the editable proposal `prep run` applies)")
         return
 
     # `stage` is not None here: § 6.5 gives every description a ladder, so a
@@ -1190,7 +1198,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         click.echo(f"prepped {len(dirs)} job dir(s) under {base}  "
                    "(flat: no attempt to open; runs are told apart by "
                    "the wrapper's output index)")
-        click.echo("next: molbuilder jobset submit run "
+        click.echo("next: ./jobset.sh submit run "
                    + (f"{stage} " if stage is not None else "")
                    + "--mode submit|direct")
         return
@@ -1211,7 +1219,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     else:
         click.echo("  nothing carried in (first stage, or none named)")
     _echo_resolved(js, base, rep.stage, rep.dir)
-    click.echo("next: molbuilder jobset submit run "
+    click.echo("next: ./jobset.sh submit run "
                + (f"{stage} " if stage is not None else "")
                + "--mode submit|direct")
 

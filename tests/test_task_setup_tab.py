@@ -1731,3 +1731,51 @@ def test_the_save_door_ships_the_bootstrap_launcher(web_client, tmp_path):
             "a re-save downgraded the prep-baked launcher")
     finally:
         _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+
+
+def test_the_launcher_door_rewrites_only_beside_a_description(web_client):
+    """U1(a): the explicit (re)write door -- refuses a folder with no
+    description, writes the executable bootstrap beside one, and
+    OVERWRITES on the user's explicit click (prep re-bakes on top)."""
+    import stat as _stat
+    d = _fresh_calc_dir()
+    try:
+        r = web_client.post("/api/task-setup/launcher",
+                            json={"dest": str(d)})
+        assert r.status_code == 400
+        assert "no description" in r.get_json()["error"]
+
+        (d / "task.1st.json").write_text("{}")
+        r = web_client.post("/api/task-setup/launcher",
+                            json={"dest": str(d)})
+        assert r.status_code == 200 and r.get_json()["wrote"] == "jobset.sh"
+        sh = d / "jobset.sh"
+        assert sh.stat().st_mode & _stat.S_IXUSR
+        assert "BOOTSTRAP" in sh.read_text()
+
+        sh.write_text("#!/bin/bash\n# baked sentinel\n")
+        r = web_client.post("/api/task-setup/launcher",
+                            json={"dest": str(d)})
+        assert r.status_code == 200
+        assert "BOOTSTRAP" in sh.read_text(), (
+            "the explicit door must overwrite -- that is its purpose")
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+
+
+def test_the_next_steps_teach_the_bench_lane_and_true_ordinals():
+    """U1(b)+(d): the tab's notes teach the whole bench flow through
+    the launcher, and the --from ordinal comes from the FULL ladder
+    (a disabled stage still occupies its number)."""
+    src = VIEWER.read_text()
+    body = src.split("function renderNext", 1)[1].split(
+        "what has already run", 1)[0]
+    for needle in ("./jobset.sh prep bench", "./jobset.sh submit bench",
+                   "summarize bench", "run-config.toml",
+                   "prev.full + 1", "task.bench"):
+        assert needle in body, f"next-steps lost {needle!r}"
+    assert 'String(i).padStart' not in body, (
+        "the enabled-filtered ordinal is back (E-T4)")
+    # U1's declaration-time warning for multi-point VALUE axes (2β).
+    assert "multi-point value axes are not" in src.lower() or \
+           "2\\u03b2" in src, "the value-axis warning left the bench table"

@@ -353,7 +353,7 @@ Set on every response by an `after_request` hook (`app.py`):
   live in [`ops/deployment.md § 4`](?doc=ops/deployment.md).
 - The global upload cap is **50 MB** (`MAX_CONTENT_LENGTH`).
 
-## 3. Endpoint index — all 79 routes
+## 3. Endpoint index — all 80 routes
 
 > **Three routes below no longer exist** (found 2026-08-10 while correcting this
 > heading, which said 80): `/api/files/result-list`,
@@ -401,6 +401,7 @@ owned by [`molview.md`](?doc=web/molview.md):
 | POST `/api/task-setup/save` | Validate a description through `task.read_task` and write `task.json`. A **content-aware door**, for the same reason `/api/structure/save` is one: a browser-authored schema-stamped file the loader would reject is the save-then-reload trap. It reports a hand-over rather than deleting it — moving bytes is the file layer's job |
 | GET `/api/task-setup/sweepable` | Which parameters a stage may vary — the catalogue's `execution`/`stage` items for one engine, so the tab's columns are **picked from the catalogue** rather than from a list in the browser ([`template.md § 6.2`](?doc=engines/template.md)) |
 | GET `/api/task-setup/columns` | Which settings may become a column of the stage table — everything the description is allowed to hold, with the settings the machine answers left out ([`stages.md § 6.2`](?doc=engines/stages.md)). Separate from `sweepable`, which answers what a benchmark may MEASURE: filtering a panel and limiting a table are different questions, and borrowing one answer for the other cost the table `restart` |
+| POST `/api/task-setup/launcher` | (Re)write the portable `jobset.sh` bootstrap beside a description — for folders described before the save door shipped it, and for bundles carried to a machine whose prep-baked launcher names the wrong one ([`workflow.md § 6.1`](?doc=workflow.md)'s two generations) |
 | GET `/api/task-setup/presets` | A shipped tier's values for one stage (`coarse` / `medium` / `tight`), so a row can be filled from [`tuning.md § 4`](?doc=engines/tuning.md) instead of typed |
 | GET `/api/task-setup/template-values` | The FOLDER's `<label>.template.toml`, parsed by `read_template` — the same reader `prep` opens it with. It is what an empty stage cell shows, so the number on screen is the one the job will run rather than the catalogue's recommendation ([`task-setup.md § 5.1`](?doc=web/task-setup.md)). Server-side because TOML is a format, and [`projects.md § 3`](?doc=web/projects.md) keeps a format's correctness off the browser |
 
