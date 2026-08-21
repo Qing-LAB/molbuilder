@@ -419,6 +419,14 @@ framework rule, not a script patch)*:
   machine cannot launch stays pending, and a later `submit bench`
   collects exactly the unlaunched side — which is the cross-cluster lane:
   each machine submits what it reaches, results ride the folder back.
+  **Each group runs its trials widest-first** *(user, 2026-08-21)*: the
+  allocation is already the widest trial's, so wide→narrow costs nothing
+  extra, banks the expensive measurements first, and lets a person watch
+  the trend (`bench-group*.log`; `summarize` mid-flight) and stop early —
+  an early `scancel` still summarizes to a verdict over what completed.
+  *(An early stop's un-run riders are already stamped `launched`, so the
+  remainder is re-measured per trial by name — the move-aside path —
+  never by re-submitting the group.)*
 - **`summarize` is unchanged in kind** — allocation-blind, spanning
   whichever trials have landed.  What it gains is data: `job-set.json`
   records each trial's point (the coordinate as data, never parsed back

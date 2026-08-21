@@ -256,6 +256,20 @@ def test_only_submits_one_side_and_domain_overrides(sol_calc):
     assert "bench-group-cpu" not in out
 
 
+def test_the_group_runs_widest_first(sol_calc):
+    """User rule, 2026-08-21: the group's allocation is already the widest
+    trial's, so the sequencer runs wide -> narrow -- the expensive
+    measurements land first and an early scancel still summarizes to a
+    verdict.  Declared ASCENDING here, so the sort must flip it; the GPU
+    family's equal-width G-variants keep their stable enumeration order."""
+    _declare(sol_calc, {"mpi_np": [2, 4], "omp_threads": [1],
+                        "enable_gpu": [False]})
+    _prep(sol_calc)
+    out = _submit_dry(sol_calc)
+    riders = [l.split()[1] for l in out.splitlines() if "rides the group" in l]
+    assert riders == ["K4C1", "K2C1"], riders
+
+
 # --------------------------------------------------------------------- #
 #  summarize: the coordinate rides the record and the proposal           #
 # --------------------------------------------------------------------- #

@@ -578,6 +578,19 @@ each an economy rule:
   axis. Worked on the § 6 junction's declared matrix: the full cartesian is
   36 trials; dropping `block_size` to auto makes it 12; staging makes it
   6 + 6 with the second round already pinned to the shape that won.
+- **Declare the ladder, stop when the trend is clear** *(user, 2026-08-21)*.
+  The grouped sequencer runs its trials **widest-first** — the allocation
+  is already sized to the widest trial, so the order costs nothing — which
+  means the plausible operating points land first and the narrow tail only
+  refines the curve. Watch `bench-group*.log` (per-trial start/finish/
+  duration, live) or run `summarize bench` mid-flight (it is async and
+  reports over whatever has completed); when the s/iter trend has
+  flattened, `scancel` the group and summarize — the declared matrix is an
+  *upper bound* on cost, not a commitment. One honest caveat: the group
+  stamps every rider `launched` at submission, so a stopped remainder is
+  re-measured per trial by name (move the old trial directory aside —
+  [`project-layout.md § 2.3.2`](?doc=execution/project-layout.md)), never
+  by re-submitting the group.
 
 **The record carries what was asked AND what actually ran** *(user
 question, 2026-08-21)*. Implicit values are not lost: every trial's

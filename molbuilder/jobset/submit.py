@@ -593,13 +593,29 @@ def _preferred_domain(base: Path, gpu_side: bool) -> Optional[tuple]:
     return None
 
 
+def _trial_width(job: "Job") -> int:
+    """A trial's core footprint -- the widest-first sort key."""
+    return (job.resources.mpi_np or 0) * (job.resources.cpus_per_task or 1)
+
+
 def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
                        name: str, *, gpu_side: bool,
                        domain: Optional[str], dry_run: bool,
                        trial_timeout_s: int) -> List[JobResult]:
     """One side's grouped submission -- the whole of the pre-split
     `submit_bench_group` body, run once per side with its own envelope,
-    sequencer, and ``-p/-q`` resolution."""
+    sequencer, and ``-p/-q`` resolution.
+
+    **The sequencer runs WIDEST FIRST** (user, 2026-08-21; `generator.md`
+    § 4.3a): the group's allocation is already sized to the widest trial,
+    so wide-to-narrow costs nothing extra, banks the expensive
+    measurements first, and makes the trend readable while the group is
+    still running -- `summarize bench` is async and concludes over
+    whatever has completed, so a person who sees the curve flatten can
+    `scancel` the group and still get a verdict.  Stable sort:
+    equal-width trials keep the enumeration (declaration) order.
+    """
+    pending = sorted(pending, key=_trial_width, reverse=True)
 
     # THE ENV-INHERITANCE SHIELD (user concern, 2026-08-20).  Inside the
     # allocation, SLURM_NTASKS / SLURM_CPUS_PER_TASK describe the ENVELOPE
