@@ -327,6 +327,41 @@ review-and-validation round when these land.
   checks every declared POINT's shape (the live 'ELPA-1Stage' casing
   their saved matrix carries was first refused only at prep on Sol —
   their task.json still spells it and needs the one-line fix).
+  **THE SAME-DAY RULING WAVE (2026-08-21, all delivered, each its own
+  commit + tests + § 2.12/§ 4.3a updates)** — the user drove seven
+  refinements on top of the delivery, all built:
+  1. routing preference (a CPU group MAY run on a gpu-capable cluster,
+     but a cpu-only domain is preferred; --domain overrides, --only
+     picks a side);
+  2. widest-first ordering, then lifted to the shelf level;
+  3. the SCF measurement cap 5 → 3 (their measured experience:
+     iterations 3-5 agree within seconds; the bench reads scaling and
+     the knee, not tight rankings; 2 would measure the discarded
+     warm-up delta);
+  4. one exact-fit group per RESOURCE SHELF (nothing idles inside a
+     group; queue waits stay at #shelves because value-axis combos
+     share shelves by construction; independent jobs the queue may run
+     concurrently — a wide group's wait delays nothing);
+  5. mid-flight summarize pinned by test (finished ranked, unfinished
+     named, coverage clause, kept-proposal teaches delete-to-refresh);
+  6. **gpu_count** — the device count is DECLARED, never derived
+     ("explicit is what we need"): exact counts, one shelf each;
+     uneven (mpi_np, G) dropped by name (ELPA equal-share); beyond
+     the record refuses; on a CPU-resolved bench refuses; absent =
+     divisor proposal (old behaviour intact); machine-answered set is
+     now four;
+  7. the GPU/CPU background consolidated as `tuning.md § 2.12` with
+     references (`Yu2021`, `NvidiaMPS` joined references.bib), the
+     full-picture mermaid diagram (declaration + environment.json →
+     G/K/C grid → shelves → summarize → run), the node arithmetic
+     (K×C ≤ cores/G; 48 MPS clients is a ceiling, not a target), the
+     WITH_NVIDIA_NCCL assessment read from the stack's own source
+     (ELPA1-only in 2023.11.001) with a decision diagram, and the
+     matrix-economy guidance (trim, stage rounds, stop at the knee).
+  Open from the wave: the user's live task.json still spells
+  'ELPA-1Stage' (preflight now flags it; one-line fix theirs), and
+  their environment.json on Sol wants a re-probe (inventory) + the
+  curated max_cores=48 row.
   ORIGINAL DESIGN NOTES (kept for history): multi-point
   value axes, integrated across placements under ONE bench.  The
   user's question ("gpu vs cpu separately submitted to different
