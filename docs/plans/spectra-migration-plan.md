@@ -157,6 +157,25 @@ Results / Spectra tab                →  reads it, unchanged
 - **The artifact gate** learns the vibration deck's expected outputs
   (`.spectra.json` present + schema-valid), the same shape every stage has.
 
+## 2b. The thermo presentation — the viewer gains plots *(user, 2026-08-20)*
+
+The deck computes, the viewer draws — never the reverse. Because a single
+(T, P) point is not plottable, the deck evaluates the RRHO functions over a
+**temperature grid** (arithmetic over frequencies it already holds; the
+grid is a documented presentation default, not a scientific knob) and
+writes the arrays into the v5 `thermo` block beside the headline numbers
+at the requested (T, P). The viewer then adds, following the existing
+chart conventions:
+
+- **G(T), H(T), S(T) curves** over the grid, the requested T marked;
+- **the free-energy decomposition bar** — electronic + ZPE + thermal
+  enthalpy − T·S → G — showing where the number comes from;
+- the **regime note on the plot itself** (full RRHO vs vibrational-only
+  for frozen systems), not buried in a log.
+
+Mode-resolved entropy contributions (which soft modes dominate S — telling
+for anchored systems) are recorded as the optional follow-up, not v1.
+
 ## 3. The UI — the same translation, the same hand-over
 
 The tab's **display half does not change** — with one additive
@@ -204,9 +223,15 @@ migration is workstation-scoped by ruling and touches no submit-layer code).
 
 - **D1 — the kind word**: **SETTLED (user, 2026-08-20): `vibration`** —
   the warm-file section's word; the tab keeps its user-facing name.
-- **D2 — thermo subsumption**: retire `compute_frequencies`/`thermo.txt` in
-  favor of the vibration kind (this plan's default: one Hessian door), with
-  RRHO as vibration-template items — or keep the cheap in-deck check?
+- **D2 — thermo subsumption**: **SETTLED (user, 2026-08-20): retire** the
+  in-deck `compute_frequencies` → `thermo.txt` path; the vibration kind is
+  the one Hessian door. The CONTENT survives and grows: ZPE and G(T, P)
+  are standard, publishable numbers that are ~free once the Hessian
+  exists, so `temperature_K`/`pressure_atm` re-home to the vibration
+  template and the results land in the v5 `thermo` block — with the
+  honesty note on regime: full RRHO for a free molecule; **vibrational
+  contributions only** (stated, not refused) when atoms are frozen, since
+  a molecule anchored to an electrode does not rotate.
 - **D3 — where relaxation lives**: **SETTLED (user, 2026-08-20, twice
   refined)** — relaxation is the freq deck's mandatory precondition,
   in-process, NOT a stage: a stage toggle would present "skip it" as an
