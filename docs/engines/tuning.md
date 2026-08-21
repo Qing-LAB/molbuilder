@@ -511,6 +511,31 @@ NCCL build would instead favour one rank per device with GPU-direct
 collectives. Wrong when the build changes: a rebuilt ELPA with NCCL retires
 this paragraph's default, not the grid.
 
+**Would `WITH_NVIDIA_NCCL` help?** *(user question, 2026-08-21; read from
+the stack's own source, ELPA 2023.11.001.)* NCCL replaces host-staged MPI
+with device-to-device collectives — but in this ELPA version the path
+exists **only in the 1-stage solver** (`src/elpa1/`: tridiagonalization,
+back-transformation and their vector transposes; nothing under
+`src/elpa2/`), matching the changelog's "currently in parts of ELPA" —
+one release after it was a "PoC … not production ready". So: a `G1` trial
+gains **nothing** (no inter-GPU traffic exists); an `ELPA-2STAGE` trial
+gains nothing in this version; only multi-GPU `ELPA-1STAGE` cells could —
+by shrinking the inter-device cost that decides whether `G2`/`G4` beat
+`G1` at all, with the gain sized by the interconnect (NVLink ≫ PCIe).
+Enabling it is a **build experiment, not a flag flip**: configure needs
+`--enable-gpu-ccl=nccl` (+ NVIDIA streams), a NCCL library matching the
+CUDA toolkit at build time, and it shifts the tuned regime toward
+device-owning ranks — away from the MPS rank-sharing this build's
+defaults are tuned for — so its bench must be its own round, and § 4.3a's
+comparability rule already covers the honesty: GPU numbers belong to the
+build that produced them. **To find out what Sol's A100 nodes offer**,
+run on a GPU node (`salloc … --gres=gpu:a100:2`): `nvidia-smi topo -m` —
+`NV#` entries between GPUs mean NVLink (NCCL's best case), `PHB`/`PXB`/
+`SYS` mean PCIe hops (it still works, gains are modest) — and
+`module spider nccl` for the library to build against.  Worth trying only
+if the verdicts keep favouring multi-GPU 1-stage cells *and* the topology
+shows NVLink; not a default.
+
 **VRAM is usually not the constraint.** A ~440-heavy-atom DZP junction is a
 ~6–7k basis; one dense double-precision matrix is ~0.4–0.8 GB, so even
 several ranks' panels and workspace sit far below an 80 GB A100. What
