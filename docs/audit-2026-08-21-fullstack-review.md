@@ -303,9 +303,31 @@ review-and-validation round when these land.
   dresser (M1.2) and one GPU mechanism (M1.4); refs rendering
   (pass `f.refs` through the long-help path) + legend casing;
   T1-T3 test retirements; the auto-detect trio extraction.
-- **U7 (2β — IN PROGRESS; user-prioritized 2026-08-21 AHEAD of U2-U5:
+- **U7 (2β — DONE 2026-08-21; user-prioritized AHEAD of U2-U5:
   "I need this to test on Sol… a framework level treatment rather than
-  a hack in script"):** multi-point
+  a hack in script"):**
+  **DELIVERED — the full § 4.3a rule is the record** (`generator.md`
+  § 4.3a states it; `job-contracts.md` § 6.3 the token grammar;
+  `tests/test_value_axes.py` pins every clause with the user's Relax
+  matrix as the acceptance fixture; all guards mutation-tested).  What
+  landed beyond the reconnaissance: the resolver's EXISTING parameter
+  lane carries the coordinates (no per-trial pins overlay was needed);
+  `Job.point` records the coordinate as data; the probe writes each
+  partition's gres inventory onto its domain row and the GPU family
+  falls back to it on a GPU-less login node; the per-family cap reads
+  the gpu-capable row's CURATED `max_cores` and DROPS cells by name;
+  `submit bench` partitions by `_job_wants_gpu` into `bench-group-cpu`
+  / `bench-group-gpu` with per-side routing PREFERENCE (user ruling
+  mid-build: a CPU group may run on a gpu-capable cluster but a
+  cpu-only domain is preferred; `--domain` overrides; `--only cpu|gpu`
+  picks a side); `run-config.toml`'s [pins] vocabulary is
+  catalogue-driven (the hand table would have refused summarize's own
+  `block_size` output) and the winner is matched by label (the
+  knobs-match bug under value axes); the describe-time preflight now
+  checks every declared POINT's shape (the live 'ELPA-1Stage' casing
+  their saved matrix carries was first refused only at prep on Sol —
+  their task.json still spells it and needs the one-line fix).
+  ORIGINAL DESIGN NOTES (kept for history): multi-point
   value axes, integrated across placements under ONE bench.  The
   user's question ("gpu vs cpu separately submitted to different
   clusters — how does bench integrate these under one framework?")

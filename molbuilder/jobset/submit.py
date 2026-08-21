@@ -494,16 +494,31 @@ def _dc_replace_time(r: "Resources", time_str: str) -> "Resources":
 def submit_bench_group(jobset: JobSet, base_dir, *,
                        domain: Optional[str] = None,
                        dry_run: bool = False,
-                       trial_timeout_s: int = 900) -> List[JobResult]:
-    """ONE scheduler job for the whole sweep (user, 2026-08-20).
+                       trial_timeout_s: int = 900,
+                       only: Optional[str] = None) -> List[JobResult]:
+    """ONE scheduler job per SIDE of the sweep (user, 2026-08-20; split
+    per side 2026-08-21, `generator.md` § 4.3a).
 
     The standing rule -- *a scheduler is handed one job at a time* -- is kept
-    by construction: this IS one job.  What it replaces is one job PER TRIAL,
-    which made an N-point sweep cost N queue waits; on an HPC a submission
-    is expensive and unpredictable, and a benchmark's output is timing data,
-    not the structure, so the trials ride one allocation in sequence.
+    by construction: each side IS one job.  What the grouping replaces is one
+    job PER TRIAL, which made an N-point sweep cost N queue waits; on an HPC
+    a submission is expensive and unpredictable, and a benchmark's output is
+    timing data, not the structure, so the trials ride one allocation in
+    sequence.
 
-    The pieces:
+    **The split** (§ 4.3a): trials partition by the DECK's own GPU answer
+    (:func:`_job_wants_gpu`, the one door) -- a sweep whose trials all
+    answer one way submits the single ``bench-group``; a sweep spanning
+    both submits ``bench-group-cpu`` and ``bench-group-gpu``, so the CPU
+    group's envelope asks no ``gres`` and devices are never held while CPU
+    trials run.  The names come from the SET's composition, not from what
+    is pending, so a side keeps its name across resubmissions.  ``domain``
+    applies to both sides through :func:`_resolve_domain` (a GPU side
+    prefers the domain's ``gpu_partition``); ``only`` (``"cpu"``/``"gpu"``)
+    submits one side -- and a side this machine cannot launch simply stays
+    pending for a later `submit bench`, which is the cross-cluster lane.
+
+    The per-group pieces:
 
     * **the envelope** -- :func:`_group_envelope`: max ranks / cores / GPUs
       across the pending trials; wall = pending x ``trial_timeout_s`` x 1.1
@@ -524,12 +539,67 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     from .materialize import job_dir_names, shape_of, was_launched
     dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
     base = Path(base_dir)
-    pending = [j for j in jobset.jobs
-               if not was_launched(base / dirs[j.name])]
-    if not pending:
+    if only not in (None, "cpu", "gpu"):
+        raise SubmitError(f"--only takes cpu or gpu, not {only!r}")
+    sides = {"cpu": [], "gpu": []}
+    for j in jobset.jobs:
+        sides["gpu" if _job_wants_gpu(base / dirs[j.name], j)
+              else "cpu"].append(j)
+    if only and not sides[only]:
+        raise SubmitError(f"this sweep has no {only} trials to submit")
+    mixed = bool(sides["cpu"]) and bool(sides["gpu"])
+    results: List[JobResult] = []
+    for side in ("cpu", "gpu"):
+        jobs = sides[side]
+        if not jobs or (only and side != only):
+            continue
+        pending = [j for j in jobs if not was_launched(base / dirs[j.name])]
+        if not pending:
+            continue                    # this side already rode a group
+        name = f"bench-group-{side}" if mixed else "bench-group"
+        results += _submit_side_group(
+            jobset, base, dirs, pending, name, gpu_side=(side == "gpu"),
+            domain=domain, dry_run=dry_run, trial_timeout_s=trial_timeout_s)
+    if not results:
         raise SubmitError(
-            f"all {len(jobset.jobs)} trials are launched.  next: "
+            f"all {len(sides[only]) if only else len(jobset.jobs)} "
+            f"{only + ' ' if only else ''}trials are launched.  next: "
             f"molbuilder jobset summarize bench <stage>")
+    return results
+
+
+def _preferred_domain(base: Path, gpu_side: bool) -> Optional[tuple]:
+    """The per-side routing PREFERENCE (user, 2026-08-21; `generator.md`
+    § 4.3a): a CPU group MAY run on a gpu-capable cluster, but when the
+    menu holds a cpu-only domain it is preferred -- idle devices cost --
+    and a GPU group prefers the first gpu-capable row (its
+    ``gpu_partition`` when declared).  The menu's own order rule applies
+    (`get_routing`: cheapest ceiling first, the first fitting row is the
+    recommendation).  No fitting row -> ``None``: the rendered header's
+    default directives stand, which is also every pre-2β behaviour.
+
+    ``--domain`` OVERRIDES this for both sides (through
+    :func:`_resolve_domain`); ``--only`` + ``--domain`` places one side at
+    a time, which is the fully explicit form.
+    """
+    from ..environment import domain_serves_gpu
+    from .. import runtime_config as _rc
+    for row in _rc.get_routing(project_dir=base):
+        if bool(domain_serves_gpu(row)) != bool(gpu_side):
+            continue
+        part = ((row.get("gpu_partition") or row["partition"])
+                if gpu_side else row["partition"])
+        return (part, row["qos"])
+    return None
+
+
+def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
+                       name: str, *, gpu_side: bool,
+                       domain: Optional[str], dry_run: bool,
+                       trial_timeout_s: int) -> List[JobResult]:
+    """One side's grouped submission -- the whole of the pre-split
+    `submit_bench_group` body, run once per side with its own envelope,
+    sequencer, and ``-p/-q`` resolution."""
 
     # THE ENV-INHERITANCE SHIELD (user concern, 2026-08-20).  Inside the
     # allocation, SLURM_NTASKS / SLURM_CPUS_PER_TASK describe the ENVELOPE
@@ -561,15 +631,16 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
 
     lines = [
         "#!/usr/bin/env bash",
-        "# bench-group.run.sh -- ONE allocation, the sweep's unlaunched",
-        "# trials in sequence (project-layout.md § 2.3.2, user 2026-08-20).",
+        f"# {name}.run.sh -- ONE allocation, this side's unlaunched",
+        "# trials in sequence (project-layout.md § 2.3.2, user 2026-08-20;",
+        "# split per cpu/gpu side 2026-08-21, generator.md § 4.3a).",
         "# Regenerated at each grouped submission.  THE TWO-LAYER MODEL",
         "# HOLDS (job-system.md § 6): this file is the launcher layer only",
         "# -- ordering and bounds.  Env activation and the engine launch",
         "# stay in each trial's own .run.sh, exactly as when a trial runs",
         "# alone; nothing here re-implements module load / source activate.",
         "set -u",
-        'LOG="bench-group.log"',
+        f'LOG="{name}.log"',
         f'echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') start '
         f'trials={len(pending)} per-trial-bound={trial_timeout_s}s '
         'job=${SLURM_JOB_ID:-none} node=$(hostname) '
@@ -607,12 +678,16 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
         'exit $(( fails > 0 ))',
         "",
     ]
-    script = container / "bench-group.run.sh"
+    script = container / f"{name}.run.sh"
     envelope = _dc_replace_time(envelope, _slurm_time(total_s))
 
-    cmd = ["sbatch", "-J", f"{jobset.name}_bench-group"]
-    gpu = any(_job_wants_gpu(base / dirs[j.name], j) for j in pending)
-    pq = _resolve_domain(domain, gpu=gpu, project_dir=base)
+    cmd = ["sbatch", "-J", f"{jobset.name}_{name}"]
+    # The side IS the GPU answer -- partitioned by the deck's own word in
+    # `submit_bench_group`, so nothing is re-derived here.  A named
+    # --domain overrides; otherwise each side takes its capability-fitting
+    # preference from the menu (`_preferred_domain`).
+    pq = (_resolve_domain(domain, gpu=gpu_side, project_dir=base)
+          if domain else _preferred_domain(base, gpu_side))
     if pq:
         cmd += ["-p", pq[0], "-q", pq[1]]
     # The same shape as a single job: the rendered .sbatch header carries
@@ -622,32 +697,48 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     # the flags-win-over-header rule _sbatch_resource_flags documents.
     cmd += _sbatch_resource_flags(envelope)
     cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-submit"]
-    cmd.append("bench-group.sbatch")
+    cmd.append(f"{name}.sbatch")
 
     if dry_run:
-        return [JobResult("bench-group", cmd, "planned")] + [
+        return [JobResult(name, cmd, "planned")] + [
             JobResult(j.name, [], "rides the group") for j in pending]
 
     script.write_text("\n".join(lines), encoding="utf-8")
     from ..runwrap import _render_sbatch_for
-    header = _render_sbatch_for(container / "bench-group.sh",
+    header = _render_sbatch_for(container / f"{name}.sh",
                                 resources=envelope, env=None)
     if header is None:
         raise SubmitError(
             "submit mode needs a scheduler and this machine has none "
             "configured -- use --mode direct, or add a scheduler block "
             "(running-a-job.md § 5.3).")
-    (container / "bench-group.sbatch").write_text(header, encoding="utf-8")
+    (container / f"{name}.sbatch").write_text(header, encoding="utf-8")
     cp = subprocess.run(cmd, cwd=str(container),
                         capture_output=True, text=True,
                         env={**os.environ,
                              "MB_LAUNCHED_BY": "jobset-submit"})
     if cp.returncode != 0:
+        hint = ""
+        if gpu_side and not domain:
+            # Failure-time teaching, not a decision: when the default
+            # directives cannot place a GPU group, name the menu rows
+            # that could (generator.md § 4.3a) -- choosing one stays
+            # the user's call, via --domain.
+            from ..environment import domain_serves_gpu
+            from .. import runtime_config as _rc
+            able = [d["name"] for d in _rc.get_routing(project_dir=base)
+                    if domain_serves_gpu(d)]
+            if able:
+                hint = (f"\n  The GPU group used the header's default "
+                        f"directives; gpu-capable domains reachable here: "
+                        f"{', '.join(able)} -- retry with --domain <name>.  "
+                        f"The other side's launch stands; this side stays "
+                        f"pending.")
         raise SubmitError(
-            f"sbatch failed for the bench group (rc={cp.returncode}):\n"
-            f"{cp.stderr.strip()}")
+            f"sbatch failed for {name} (rc={cp.returncode}):\n"
+            f"{cp.stderr.strip()}" + hint)
     jid = _parse_sbatch_id(cp.stdout)
-    results = [JobResult("bench-group", cmd, "submitted", job_id=jid)]
+    results = [JobResult(name, cmd, "submitted", job_id=jid)]
     for j in pending:
         _record_launch(base / dirs[j.name], mode="submit",
                        command=cmd, job_id=jid)

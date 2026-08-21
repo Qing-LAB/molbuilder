@@ -163,7 +163,7 @@ each with its recorded home)*:
 | open | recorded |
 |---|---|
 | **D7's cluster half** — the described route through SLURM on Sol | the deferrals table below — **next** |
-| **2β** — multi-point *value* axes (measured GPU-vs-CPU in one sweep) | `generator.md § 4.3a` (refused by name until built) |
+| ~~**2β** — multi-point *value* axes (measured GPU-vs-CPU in one sweep)~~ **delivered 2026-08-21** | `generator.md § 4.3a` states the built rule (value axes ride the sweep; `enable_gpu` is the grid-family axis; split per-side grouped submission) |
 | **the live browser walk-throughs** — checkpoint swap at narrow/wide widths, per-tab reload round-trips, a real Data/Image export, click-selection on frames ≥ 1 | here *(moved from the archived molview-and-checkpoint plan — its § 6 was the only part still open)* |
 | **N6** — the standing `test_system_load_monitor_e2e` failure (broken-driver card) | `audit-2026-08-20-milestone-review.md § 2` |
 | **VibrationView → shared media/zip** | task #104's note, § 3 below |

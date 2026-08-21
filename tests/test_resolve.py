@@ -315,15 +315,26 @@ def test_a_translation_may_only_answer_with_allocation_fields(template):
                     to_resources=lambda p, env: {"mesh_cutoff": 300.0}))
 
 
-def test_a_value_that_leaves_the_label_charset_is_refused(template):
-    """`job-contracts.md` § 6.3: the token becomes a SystemLabel and a
-    directory name, and a ``-`` inside it would announce a qualifier that is
-    not there.  ``G-2`` is refused, never smuggled."""
-    with pytest.raises(ResolveError, match=r"charset"):
-        point_token({"G": -2})
-    with pytest.raises(ResolveError, match=r"charset"):
+def test_a_value_outside_the_label_charset_is_spelled_into_it(template):
+    """`job-contracts.md` § 6.3 (2026-08-21): a value's out-of-set characters
+    are DROPPED, not refused -- a value axis carries an engine's own spelling
+    ("ELPA-1Stage"), which the user cannot re-spell.  ``.`` still spells
+    ``p``; what makes dropping safe is the duplicate-label guard below."""
+    assert point_token({"G": -2}) == "G2"
+    assert point_token({"diag_algorithm": "ELPA-1Stage"}) \
+        == "diag_algorithmELPA1Stage"
+    assert point_token({"mesh_cutoff": 300.5}) == "mesh_cutoff300p5"
+
+
+def test_two_points_rendering_one_label_refuse_the_sweep(template):
+    """The guard that makes § 6.3's dropping safe: distinct values that slug
+    identically would share a trial directory and a SystemLabel -- the second
+    point would overwrite the first's warm files and results.  Refused by
+    point, not deduped: both were declared."""
+    with pytest.raises(ResolveError, match=r"same label"):
         resolve(template, _task(), SiestaConfig, allocation=ALLOC,
-                sweep=[{"mpi_np": -8}], stage=STAGE)
+                sweep=[{"diag_algorithm": "ELPA-1STAGE"},
+                       {"diag_algorithm": "ELPA1STAGE"}], stage=STAGE)
 
 
 def test_a_ladder_needs_a_stage_named(template):

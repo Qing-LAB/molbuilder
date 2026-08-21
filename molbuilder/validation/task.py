@@ -95,6 +95,7 @@ def preflight(task, config_cls=None, *,
     # comparison the benchmark exists to make says nothing, and it says
     # nothing silently, which is why this is an error rather than a warning.
     out.extend(_bench_names_a_speed_knob(task, cls))
+    out.extend(_bench_points_fit_their_items(task))
 
     # -- 2. the schema fingerprint -- the ONE non-refusal ------------------
 
@@ -151,6 +152,54 @@ def _bench_names_a_speed_knob(task, cls) -> List[Issue]:
             f"different calculation at each point and the comparison would "
             f"mean nothing. Sweepable here: {known}",
             where=f"task.bench.{name}"))
+    return out
+
+
+def _bench_points_fit_their_items(task) -> List[Issue]:
+    """`generator.md` § 4.3a's shape half at DESCRIBE time: every declared
+    point must fit its item -- a bool item takes true/false, an enum point
+    must be one of the item's choices, and a repeated point would measure
+    one configuration twice.  The same refusals `prep` makes
+    (`jobset/_cli.py::_declared_execution_pins`), surfaced here so a typo'd
+    declaration fails at save, not after a queue on the cluster.  (Found
+    live 2026-08-21: a matrix saved through the pre-U1 UI spelled
+    'ELPA-1Stage' where the catalogue's choice is 'ELPA-1STAGE', and the
+    first surface to say so was `prep bench` on Sol.)
+
+    Membership is the sibling's question; an unknown name is skipped here
+    because `_bench_names_a_speed_knob` already reported it.
+    """
+    plan = getattr(task, "bench", None)
+    if not plan:
+        return []
+    from ..template import catalogue, select
+    items = {i.name: i for i in select(catalogue(), engine=task.engine)
+             if "execution" in (i.category or ())}
+    out: List[Issue] = []
+    for name in sorted(plan):
+        it = items.get(name)
+        if it is None:
+            continue
+        pts = list(plan[name])
+        for v in pts:
+            if it.type == "bool" and not isinstance(v, bool):
+                out.append(Issue(
+                    "error",
+                    f"bench declares {name!r} = {v!r}; the item is a bool "
+                    f"-- write true or false.",
+                    where=f"task.bench.{name}"))
+            elif it.type == "enum" and it.choices and v not in it.choices:
+                out.append(Issue(
+                    "error",
+                    f"bench declares {name!r} = {v!r}; the choices are "
+                    f"{', '.join(it.choices)}.",
+                    where=f"task.bench.{name}"))
+        if len(pts) != len(set(pts)):
+            out.append(Issue(
+                "error",
+                f"bench declares {name!r} = {pts!r}; a repeated point "
+                f"would measure one configuration twice.",
+                where=f"task.bench.{name}"))
     return out
 
 

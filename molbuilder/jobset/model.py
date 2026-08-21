@@ -158,15 +158,26 @@ class Job:
     resources:  Resources       = field(default_factory=Resources)
     warm:       List[WarmFile]  = field(default_factory=list)
     traits:     Dict[str, str]  = field(default_factory=dict)
+    #: A TRIAL's sweep coordinate, as data (`job-contracts.md` § 6.3: the
+    #: name is an identifier, never a parser target -- what varied travels
+    #: here).  ``{}`` for a rung or a whole calculation.  `summarize` reads
+    #: it to table value coordinates and to carry the winner's value pins
+    #: into ``run-config.toml`` (`generator.md` § 4.3a).
+    point:      Dict[str, Any]  = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "name": self.name,
             "script": self.script,
             "resources": self.resources.to_dict(),
             "warm": [w.to_dict() for w in self.warm],
             "traits": dict(self.traits),
         }
+        # ABSENT, not empty, when this is no trial -- same reading as
+        # WarmFile.requires_same above.
+        if self.point:
+            d["point"] = dict(self.point)
+        return d
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Job":
@@ -176,6 +187,7 @@ class Job:
             resources=Resources.from_dict(d.get("resources")),
             warm=[WarmFile.from_dict(w) for w in (d.get("warm") or [])],
             traits=dict(d.get("traits") or {}),
+            point=dict(d.get("point") or {}),
         )
 
 

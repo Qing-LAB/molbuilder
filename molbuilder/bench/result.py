@@ -331,6 +331,11 @@ class BenchPoint:
     #: comparable agreed, OR that nothing was comparable; ``effective``
     #: is what tells those two apart.
     mismatch: Dict = field(default_factory=dict)
+    #: The trial's sweep coordinate, read from `job-set.json`'s per-trial
+    #: ``point`` (data, never parsed from the label -- job-contracts.md
+    #: § 6.3).  Carries the VALUE coordinates a 2β sweep declared
+    #: (`generator.md` § 4.3a); ``{}`` for pre-2β records.
+    point:   Dict = field(default_factory=dict)
 
     def s_per_iter(self) -> Optional[float]:
         v = self.metrics.get("s_per_iter")
@@ -429,9 +434,12 @@ def choose_winner(points: List[BenchPoint]) -> Dict:
     # ``label`` is DATA (U13, 2026-08-12): it identified the winner only
     # inside the rationale prose, so anything needing the winning trial
     # back -- the mechanism read, a human's cross-check -- had to parse a
-    # sentence.  The id is the id.
+    # sentence.  The id is the id.  ``point`` rides for the same reason
+    # (§ 4.3a): the winner's VALUE coordinates become `run-config.toml`
+    # pins, and they must come from the record, not from its name.
     return {"label": win.label, "engine": win.engine,
-            "knobs": dict(win.knobs), "rationale": "; ".join(bits)}
+            "knobs": dict(win.knobs), "point": dict(win.point),
+            "rationale": "; ".join(bits)}
 
 
 def recommend_resources(points: List[BenchPoint], choice: Dict, *,
@@ -446,9 +454,11 @@ def recommend_resources(points: List[BenchPoint], choice: Dict, *,
     point, not a guarantee)."""
     if not choice:
         return {}
-    win = next((p for p in points
-                if p.engine == choice.get("engine")
-                and p.knobs == choice.get("knobs")), None)
+    # By LABEL, the id (U13).  This matched (engine, knobs) until 2026-08-21
+    # -- machine facts only -- so under a value axis two trials sharing a
+    # rank shape (same knobs, different deck) matched the FIRST, and the
+    # mem/time recommendation could be sized from the wrong trial's run.
+    win = next((p for p in points if p.label == choice.get("label")), None)
     rec: Dict = {}
     if win is not None:
         rss = win.metrics.get("peak_rss_gb")

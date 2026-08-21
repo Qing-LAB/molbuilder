@@ -199,7 +199,7 @@ def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
     # the hint teaches the REAL grammar + the launcher (E-J2 fix,
     # 2026-08-21): grouped submission, then summarize -> run-config.
     assert "./jobset.sh submit bench" in r.output
-    assert "one grouped job" in r.output
+    assert "grouped" in r.output and "per side" in r.output
     assert "summarize bench" in r.output
     assert "config:" in r.output          # provenance rides every prep
 
@@ -1409,20 +1409,37 @@ def test_a_declared_point_over_capability_is_refused_by_name(calc):
     assert "mpi_np=4096" in str(e.value) and "omp_threads=2" in str(e.value)
 
 
-def test_a_multi_point_value_entry_is_the_recorded_extension_not_a_sweep(
-        calc):
-    """A non-machine entry with SEVERAL points is a value axis, and that
-    extension is recorded in § 4.3a, not built -- refused by name (this
-    test asserted "unknown axis" until 2026-08-20; under the override-lane
-    rule `block_size` is a known value item, and the refusal now says what
-    is actually missing)."""
+def test_a_multi_point_value_entry_is_a_value_axis(calc):
+    """§ 4.3a, BUILT 2026-08-21 (this test pinned the refusal while the
+    extension was recorded-not-built): a non-machine entry with SEVERAL
+    points multiplies the machine grid, each point carries its coordinate,
+    and the trial names carry it too."""
+    _describe_cpu(calc)
+    _declare_bench(calc, {"block_size": [64, 128],
+                          "mpi_np": [4], "omp_threads": [1]})
+    sweep, pins, _tr = _bench_inputs(calc)
+    assert len(sweep) == 2
+    assert sorted(p["block_size"] for p in sweep) == [64, 128]
+    assert "block_size" not in pins, "an axis is not a pin"
+    assert pins["max_scf_iter"] == 5, "the measurement pins still ride"
+
+
+def test_a_value_axis_naming_a_measurement_pin_is_refused(calc):
+    """§ 4.3a: the pins make a trial a MEASUREMENT and win over every
+    declared value, so an AXIS on one would render identical decks under
+    different labels -- one measurement, twice.  ``continue_retries`` is
+    the live case: an *execution* item (it passes the membership
+    preflight) that the bench pins to 0 on every trial.  The non-execution
+    pins (``max_scf_iter``...) are barred upstream by
+    `_bench_names_a_speed_knob`, so they never reach this refusal."""
     import click
     _describe_cpu(calc)
-    _declare_bench(calc, {"block_size": [64, 128]})
+    _declare_bench(calc, {"continue_retries": [0, 2],
+                          "mpi_np": [4], "omp_threads": [1]})
     with pytest.raises(click.ClickException) as e:
         _bench_inputs(calc)
-    assert "block_size" in str(e.value)
-    assert "recorded" in str(e.value) or "not built" in str(e.value)
+    assert "continue_retries" in str(e.value)
+    assert "measurement" in str(e.value)
 
 
 def test_a_name_outside_the_execution_category_is_refused(calc):
@@ -1643,24 +1660,25 @@ def test_run_config_refuses_what_it_does_not_know(tmp_path):
         f.write_text(head + body)
         return f
 
-    assert read_run_config(_write("[resources]\nmpi_np = 2\n")) == {
+    assert read_run_config(_write("[resources]\nmpi_np = 2\n"),
+                           engine="siesta") == {
         "resources": {"mpi_np": 2}, "pins": {}}
     with pytest.raises(ValueError, match="no section named alloc"):
-        read_run_config(_write("[alloc]\nmpi_np = 2\n"))
+        read_run_config(_write("[alloc]\nmpi_np = 2\n"), engine="siesta")
     with pytest.raises(ValueError, match="no field named np_total"):
-        read_run_config(_write("[resources]\nnp_total = 4\n"))
+        read_run_config(_write("[resources]\nnp_total = 4\n"), engine="siesta")
     with pytest.raises(ValueError, match="mpi_np must be int"):
-        read_run_config(_write("[resources]\nmpi_np = true\n"))
+        read_run_config(_write("[resources]\nmpi_np = true\n"), engine="siesta")
     with pytest.raises(ValueError, match="mem must be str"):
-        read_run_config(_write("[resources]\nmem = 29\n"))
+        read_run_config(_write("[resources]\nmem = 29\n"), engine="siesta")
     with pytest.raises(ValueError, match="enable_gpu must be bool"):
-        read_run_config(_write("[pins]\nenable_gpu = 1\n"))
+        read_run_config(_write("[pins]\nenable_gpu = 1\n"), engine="siesta")
     with pytest.raises(ValueError, match="not valid TOML"):
-        read_run_config(_write("= what ="))
+        read_run_config(_write("= what ="), engine="siesta")
     f = tmp_path / "run-config.toml"
     f.write_text('schema = "molbuilder/other@1"\n')
     with pytest.raises(ValueError, match="schema"):
-        read_run_config(f)
+        read_run_config(f, engine="siesta")
 
 
 def test_the_wrapper_policy_note_is_engine_aware_and_yields_to_flags(

@@ -441,6 +441,22 @@ def resolve(template_text: str, task, config_cls, *,
             provenance=prov,
         ))
 
+    # Two points may render ONE label -- the token drops out-of-set
+    # characters (`job-contracts.md` § 6.3), so "ELPA-1" and "ELPA1" would
+    # collide -- and a shared label is a shared trial directory and a shared
+    # ``SystemLabel``: the second point overwrites the first's warm files
+    # and results.  Refused by point, not deduped: both were declared.
+    _seen: dict = {}
+    for el in elements:
+        if el.label in _seen:
+            raise ResolveError(
+                f"two sweep points render the same label {el.label!r}: "
+                f"{dict(_seen[el.label])!r} and {dict(el.point)!r}.  The "
+                f"coordinate token stays inside [A-Za-z0-9_] by dropping "
+                f"other characters (job-contracts.md 6.3), so distinct "
+                f"values can collide -- drop one point or re-spell a "
+                f"declared value.")
+        _seen[el.label] = el.point
     return ParameterSet(elements=tuple(elements),
                         axes=_axes_of(sweep, points),
                         stage=(stage_obj.name if stage_obj else None))
@@ -679,12 +695,15 @@ def point_token(point: Mapping[str, Any]) -> str:
     for k, v in point.items():
         part = f"{k}{_flat(v)}"
         if not _TOKEN_RE.fullmatch(part):
+            # Values were slugged by ``_flat``, so what still fails here is
+            # the AXIS name itself, or a value that slugged to nothing while
+            # its axis is also empty -- caller errors, not user spellings.
             raise ResolveError(
                 f"axis {k}={v!r} renders as {part!r}, which leaves the label "
                 f"charset [A-Za-z0-9_] (job-contracts.md 6.3; the token "
                 f"becomes a SystemLabel and a directory name, and `-` inside "
                 f"it would announce a qualifier that is not there). Spell the "
-                f"value inside the charset, or drop the point.")
+                f"axis inside the charset, or drop the point.")
         parts.append(part)
     return "".join(parts)
 
@@ -696,7 +715,16 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9_]+\Z")
 
 
 def _flat(v: Any) -> str:
-    return str(v).replace(".", "p").replace(" ", "")
+    # ``.`` is SPELLED (``p``) because a number's dot carries meaning; every
+    # other out-of-set character is DROPPED (`job-contracts.md` § 6.3,
+    # 2026-08-21): a value axis carries an engine's own spelling
+    # ("ELPA-1Stage"), which the user cannot re-spell, so refusing it would
+    # be unactionable.  Dropping is safe because `resolve` refuses two
+    # points whose rendered labels collide (the guard below).
+    return _DROP_RE.sub("", str(v).replace(".", "p").replace(" ", ""))
+
+
+_DROP_RE = re.compile(r"[^A-Za-z0-9_]")
 
 
 __all__ = ["ParameterSet", "ResolvedConfig", "ResolveError", "ALLOCATION_FIELDS",

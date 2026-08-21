@@ -343,8 +343,10 @@ because both halves are real and they are different acts:
 > `run-config.toml` pins → explicit CLI flags.  The measured verdict refines
 > the declaration (the decision file is yours to edit or delete), and flags
 > beat everything, exactly as they do today.  A **multi-point** non-machine
-> entry is refused by name for now — a value axis needs the grid duplicated
-> per value with per-trial pins, and that extension is recorded, not built.
+> entry is a **value axis** — the rule below *(built 2026-08-21; it was
+> refused by name until then)*.  At `prep run` a multi-point entry pins
+> nothing: the verdict's `run-config.toml` answers, and without one the
+> template's value stands.
 
 > **§ 4.3 above forbids a MACHINE'S OPINION in the description, not a
 > QUESTION.** *"Use 16 ranks"* is true on one cluster and is refused. *"Try 4,
@@ -361,6 +363,72 @@ because both halves are real and they are different acts:
 > declared), and an ABSENT declaration keeps the machine's enumeration as
 > the proposal. On a GPU description a declared `mpi_np` is the point's
 > total rank count, and the device count ranges over its divisors.
+
+**A value axis multiplies the grid, and the point carries its coordinates**
+*(user-settled 2026-08-21: GPU-vs-CPU measured under ONE bench, split
+submission so neither side's resources idle while the other runs; a
+framework rule, not a script patch)*:
+
+- **Enumeration.** The trials are the machine grid × the cartesian product
+  of the value axes, in declaration order.  Each point carries its value
+  coordinates **on the point itself**, and the resolver's existing split
+  applies them to that trial's config exactly like any parameter axis
+  (provenance `sweep`) — no second lane exists, which is the point: a value
+  axis is the sweep the resolver always understood, fed by the declaration.
+- **The measurement pins still win** (capped SCF, forced cold, run-once):
+  they are applied *over* the point's coordinates, so a trial stays a
+  measurement whatever it measures.  A value axis that **names a
+  measurement pin** is refused by name — its trials would render identical
+  decks under different labels, the same measurement twice.
+- **`enable_gpu` with two points is the grid-family axis.**  The machine
+  grid is enumerated once per flag: the CPU family holds the device count
+  at `G = 0` (plain ranks), the GPU family ranges `G` over each rank
+  count's divisors, and the flag rides each point as an ordinary value
+  coordinate — so the deck's answer and the point's family agree by
+  construction, and `submit`'s placement (below) needs no new declaration.
+  The GPU family's device count and type come from the probed topology
+  when this node has one, else from the **domain menu's GPU inventory**
+  (`jobset probe` records each partition's `gres` types on its domain row)
+  — a login node can therefore enumerate the GPU family for the cluster
+  behind it.  Several inventory types on the row is a question the machine
+  may not answer: refused by name, with the remedy of curating the row.
+- **Caps at prep, per family.**  When the menu's gpu-capable row carries
+  `max_cores`, a GPU-family cell whose `ranks × cores` exceeds it is
+  **dropped by name** (echoed, never silent) rather than refusing the
+  prep — refusal would deny the CPU family a rank count that only the GPU
+  nodes cannot hold.  `max_cores` is a curated limit (a partition may mix
+  node types, so the probe cannot measure it; the row is yours to edit —
+  on Sol, `gpu` nodes take 48 cores where standard nodes take 128).  The
+  probe-topology refusal for a cell no core count here can hold stands
+  unchanged.  *(Known edge, recorded: that refusal reads the probing
+  node's shape, so a mixed matrix prepped ON a GPU node over-refuses the
+  CPU family; prep on a login/standard node.)*
+- **Submission splits by the deck's own answer** (`_job_wants_gpu`, the
+  one door): one grouped job per side.  A sweep whose trials all answer
+  one way keeps the single `bench-group`; a sweep spanning both submits
+  `bench-group-cpu` and `bench-group-gpu`, so the CPU group's envelope
+  asks **no `gres`** and devices are never held while CPU trials run —
+  the waste the split exists to stop.  **Routing** *(user, 2026-08-21)*:
+  a CPU group MAY run on a gpu-capable cluster, but when the menu holds a
+  cpu-only domain it is **preferred** — idle devices cost — and the GPU
+  group prefers the first gpu-capable row (its `gpu_partition` when
+  declared); the menu's own order rule applies (cheapest ceiling first).
+  `--domain` **overrides** the preference for both sides through the one
+  resolution, and `--only cpu|gpu` submits one side — so `--only` +
+  `--domain` places each side wherever the user says.  A side this
+  machine cannot launch stays pending, and a later `submit bench`
+  collects exactly the unlaunched side — which is the cross-cluster lane:
+  each machine submits what it reaches, results ride the folder back.
+- **`summarize` is unchanged in kind** — allocation-blind, spanning
+  whichever trials have landed.  What it gains is data: `job-set.json`
+  records each trial's point (the coordinate as data, never parsed back
+  from a name), the winner is matched by its label, and the proposal's
+  `[pins]` carry the winner's value coordinates — already pin-shaped for
+  the precedence overlay above.
+- **Comparability is stated, not assumed**: CPU trials compare across
+  same-silicon partitions; GPU numbers are the GPU build's own; the
+  verdict reports per-combination facts and choosing stays yours
+  (`run-config.toml` is a proposal).
 
 **Per stage, and that is the second half of the decision.** What runs fastest
 changes between a coarse stage and a tight one — different mesh cutoff and

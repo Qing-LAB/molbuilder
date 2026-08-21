@@ -122,7 +122,7 @@ def _trial_deck(d: Path, basename: str) -> Path:
 
 
 def parse_point(label: str, d: Path, basename: str, engine: str,
-                knobs: Dict) -> BenchPoint:
+                knobs: Dict, point: Optional[Dict] = None) -> BenchPoint:
     """Parse one point's artifacts (in directory ``d``, output basename
     ``basename``) into a :class:`BenchPoint`."""
     metrics: Dict = {}
@@ -198,7 +198,8 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
 
     return BenchPoint(label=label, engine=engine, knobs=knobs,
                       metrics=metrics, bound=bound, state=state,
-                      effective=effective, mismatch=mismatch)
+                      effective=effective, mismatch=mismatch,
+                      point=dict(point or {}))
 
 
 
@@ -298,7 +299,8 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
             knobs["gres"] = j.resources.gres
         pts.append(parse_point(
             j.name, bundle / dirs[j.name], Path(j.script).stem,
-            "gpu" if j.resources.gres else "cpu", knobs))
+            "gpu" if j.resources.gres else "cpu", knobs,
+            point=dict(j.point)))
     return pts
 
 
@@ -375,11 +377,36 @@ def run_summarize_jobset(jobset, bundle, *,
 RUN_CONFIG_SCHEMA = "molbuilder/run-config@1"
 RUN_CONFIG_NAME = "run-config.toml"
 
-#: The proposal's whole vocabulary, typed.  ``bool`` is checked exactly
+#: The [resources] vocabulary, typed.  ``bool`` is checked exactly
 #: (a TOML ``true`` must not satisfy an int field and vice versa).
 _RC_RESOURCES = {"mpi_np": int, "cpus_per_task": int,
                  "gres": str, "mem": str, "time": str}
-_RC_PINS = {"enable_gpu": bool, "diag_algorithm": str}
+
+#: Catalogue item type -> the python type its TOML value must carry.
+#: Non-scalar types (lists, text) are absent on purpose: nothing sweeps
+#: them, so no proposal writes them.
+_ITEM_TYPES = {"bool": bool, "int": int, "pow2": int, "float": float,
+               "str": str, "enum": str}
+
+
+def _pins_vocabulary(engine: str) -> Dict[str, type]:
+    """The [pins] section's legal fields: every non-machine ``execution``
+    item of this engine, typed from its catalogue declaration -- the SAME
+    one-door membership rule the declaration lane uses
+    (`_declared_execution_pins`, `generator.md` § 4.3a).  A hand table
+    (``enable_gpu``/``diag_algorithm``) stood here until 2026-08-21, so
+    the proposal writer could emit a swept knob -- ``block_size`` -- that
+    this reader then refused: summarize's own output failing `prep run`.
+    """
+    from ..template import catalogue, select
+    vocab: Dict[str, type] = {}
+    for it in select(catalogue(), engine=engine):
+        if "execution" not in (it.category or ()) or it.allocation:
+            continue
+        py = _ITEM_TYPES.get(it.type)
+        if py is not None:
+            vocab[it.name] = py
+    return vocab
 
 
 def run_config_text(res: BenchResult, *, stage: Optional[str] = None
@@ -438,18 +465,28 @@ def run_config_text(res: BenchResult, *, stage: Optional[str] = None
         expect["resources"]["time"] = v
     width = max((len(a) for a, _ in rows), default=0)
     lines += [f"{a:<{width}}   # {c}" if c else a for a, c in rows]
-    if mech:
+    # HOW the winner computed: the deck-read mechanism, then the winner's
+    # own VALUE coordinates over it (§ 4.3a) -- the coordinate is what was
+    # DECLARED and swept, so where both answer, the coordinate speaks.
+    # Membership through the one vocabulary door, so the writer can never
+    # emit a pin the reader refuses.
+    vocab = _pins_vocabulary(str((res.system or {}).get("engine")
+                                 or "siesta"))
+    pin_vals = dict(mech)
+    pin_vals.update({k: v for k, v in (choice.get("point") or {}).items()
+                     if k in vocab})
+    if pin_vals:
         lines += ["",
                   "[pins]                # HOW the winner computed, "
-                  "read from its own deck"]
-        if mech.get("enable_gpu") is not None:
-            v = bool(mech["enable_gpu"])
-            lines.append(f"enable_gpu = {'true' if v else 'false'}")
-            expect["pins"]["enable_gpu"] = v
-        if mech.get("diag_algorithm") is not None:
-            v = str(mech["diag_algorithm"])
-            lines.append(f'diag_algorithm = "{v}"')
-            expect["pins"]["diag_algorithm"] = v
+                  "read from its own deck + coordinate"]
+        for k, v in pin_vals.items():
+            if isinstance(v, bool):
+                lines.append(f"{k} = {'true' if v else 'false'}")
+            elif isinstance(v, (int, float)):
+                lines.append(f"{k} = {v}")
+            else:
+                lines.append(f'{k} = "{v}"')
+            expect["pins"][k] = v
     text = "\n".join(lines) + "\n"
     got = tomllib.loads(text)
     got.pop("schema", None)
@@ -461,7 +498,7 @@ def run_config_text(res: BenchResult, *, stage: Optional[str] = None
     return text
 
 
-def read_run_config(path: Path) -> Dict:
+def read_run_config(path: Path, *, engine: str) -> Dict:
     """Read and validate a ``run-config.toml`` the user may have edited.
 
     Returns ``{"resources": {...}, "pins": {...}}`` (either may be
@@ -484,7 +521,8 @@ def read_run_config(path: Path) -> Dict:
             f"{path.name} has no section named {', '.join(unknown)} -- "
             f"it knows [resources] and [pins]")
     out: Dict = {"resources": {}, "pins": {}}
-    for section, types in (("resources", _RC_RESOURCES), ("pins", _RC_PINS)):
+    for section, types in (("resources", _RC_RESOURCES),
+                           ("pins", _pins_vocabulary(engine))):
         body = raw.get(section) or {}
         if not isinstance(body, dict):
             raise ValueError(f"{path.name}: [{section}] must be a table")
@@ -497,7 +535,9 @@ def read_run_config(path: Path) -> Dict:
             want = types[k]
             ok = (isinstance(v, bool) if want is bool
                   else isinstance(v, int) and not isinstance(v, bool)
-                  if want is int else isinstance(v, str))
+                  if want is int
+                  else isinstance(v, (int, float)) and not isinstance(v, bool)
+                  if want is float else isinstance(v, str))
             if not ok:
                 raise ValueError(
                     f"{path.name}: [{section}] {k} must be "

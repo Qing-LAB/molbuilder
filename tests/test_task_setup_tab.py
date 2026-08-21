@@ -1776,6 +1776,12 @@ def test_the_next_steps_teach_the_bench_lane_and_true_ordinals():
         assert needle in body, f"next-steps lost {needle!r}"
     assert 'String(i).padStart' not in body, (
         "the enabled-filtered ordinal is back (E-T4)")
-    # U1's declaration-time warning for multi-point VALUE axes (2β).
-    assert "multi-point value axes are not" in src.lower() or \
-           "2\\u03b2" in src, "the value-axis warning left the bench table"
+    # The declaration-time note for multi-point VALUE axes: the 2β rule
+    # is BUILT (generator.md § 4.3a, 2026-08-21), so the U1 refusal
+    # warning became teaching -- the sweep multiplies, and enable_gpu
+    # splits the grouped submission per side.
+    assert "sweep as a value axis" in src, \
+        "the value-axis note left the bench table"
+    assert "cpu-vs-gpu axis" in src, \
+        "the enable_gpu family note left the bench table"
+    assert "one grouped job per side" in src

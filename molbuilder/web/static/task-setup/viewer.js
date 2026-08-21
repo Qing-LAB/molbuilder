@@ -355,20 +355,24 @@ function renderMachine(task) {
                                        title: "Stop measuring " + name }, "\u00d7");
         dropRow.addEventListener("click", () => removeSetting(name));
 
-        // A VALUE axis with several points is refused at prep ("a
-        // multi-point value axis is not built yet" -- generator.md
-        // § 4.3a's recorded 2β extension; hit live on Sol 2026-08-21).
-        // Say it HERE, at declaration time, instead of letting the
-        // refusal land on the machine: machine axes sweep; a value
-        // entry pins with ONE point (or two one-point benches).
+        // A VALUE axis with several points SWEEPS (generator.md § 4.3a,
+        // built 2026-08-21 -- it was refused by name until then): the
+        // points multiply the machine grid and every trial's deck
+        // carries its coordinate.  enable_gpu is the grid-family axis:
+        // two points make `submit bench` launch one grouped job per
+        // cpu/gpu side, so devices are never held while CPU trials run.
         const _isMachine = (_sweep || []).some(
             (it) => it.name === name && it.machine_answers);
         const _tooMany = (!_isMachine && pts.length > 1)
-            ? el("small", { class: "ts-row-warn" },
-                 "\u26a0 " + pts.length + " points on a VALUE setting: "
-                 + "prep will refuse (multi-point value axes are not "
-                 + "built yet \u2014 2\u03b2). Keep ONE point to pin "
-                 + "it, or run two one-point benches.")
+            ? el("small", { class: "ts-row-note" },
+                 name === "enable_gpu"
+                   ? (pts.length + " points \u2014 the cpu-vs-gpu axis: "
+                      + "the grid enumerates per flag and submit bench "
+                      + "launches one grouped job per side (the cpu "
+                      + "group asks for no GPU).")
+                   : (pts.length + " points sweep as a value axis \u2014 "
+                      + "the machine grid multiplies per value; the "
+                      + "winning combination lands in run-config.toml."))
             : null;
         host.appendChild(el("div", { class: "ts-row", "data-kind": kind },
             el("div", { class: "ts-row-name", title: helpText(name) }, name,

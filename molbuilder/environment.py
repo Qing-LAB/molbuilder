@@ -145,6 +145,18 @@ class Domain:
         return row
 
 
+def domain_serves_gpu(row: Mapping[str, Any]) -> bool:
+    """Whether a routing row (a :class:`Domain` as `to_row` speaks it) can
+    place a GPU job -- the ONE predicate for both consumers (`prep`'s
+    per-family cap and `submit`'s side routing, `generator.md` § 4.3a).
+
+    True when the row records a GPU inventory (the probe writes each
+    partition's gres types onto its row) or declares a ``gpu_partition``
+    (the hand-curated column `_resolve_domain` already honours).
+    """
+    return bool(row.get("gpu")) or bool(row.get("gpu_partition"))
+
+
 @dataclass
 class Environment:
     """The portable target description (§ 5.2).  Produced by probes,

@@ -979,7 +979,11 @@ trial keeps writing into its own `bench-<POINT>/` directory exactly as
 before. The allocation is the **union envelope**: the widest trial's ranks,
 cores and GPUs, and a wall of Σ per-trial bounds plus margin. A trial that
 hits its bound is killed and reads `incomplete` in the summary's census;
-the walk continues — one bad point says nothing about the next. The
+the walk continues — one bad point says nothing about the next. A sweep
+whose trials span CPU **and** GPU (2β's grid-family axis,
+[`generator.md`](?doc=execution/generator.md) § 4.3a) submits **one group
+per side** — `bench-group-cpu` / `bench-group-gpu` — so the CPU group's
+envelope asks no `gres` and devices are never held while CPU trials run. The
 container's `bench-group.log` is the explicit record: the allocation the
 group ran in (job id, node, envelope), then per trial *when it started,
 when it finished, with what exit code and duration* — so both the ordering

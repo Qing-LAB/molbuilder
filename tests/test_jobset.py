@@ -89,21 +89,28 @@ def test_validate_catches_duplicate_names():
     assert any("duplicate" in e for e in js.validate())
 
 
-def test_a_job_declares_exactly_these_five_things():
+def test_a_job_declares_exactly_these_six_things():
     """A `Job` is a name, a script, resources, what it would warm-start from,
-    and the traits a warm-start condition is compared against.
+    the traits a warm-start condition is compared against -- and, for a
+    TRIAL, its sweep coordinate as data (``point``, 2026-08-21,
+    `generator.md` § 4.3a).
 
     Asserted as an EQUALITY on the field set, in both the dataclass and the
     wire form.  An equality is the whole rule in one line: any field added
     without a decision fails, including one that would let a job name another
     job -- and the test never has to spell out what such a field would be
-    called, so a retired vocabulary stays out of the suite.
+    called, so a retired vocabulary stays out of the suite.  On the wire a
+    RUNG carries no ``point`` at all: absent, never empty (the same
+    absent-vs-null reading as ``requires_same``).
     """
     import dataclasses
     assert {f.name for f in dataclasses.fields(Job)} == {
-        "name", "script", "resources", "warm", "traits"}
+        "name", "script", "resources", "warm", "traits", "point"}
     assert set(_ladder().to_dict()["jobs"][1]) == {
         "name", "script", "resources", "warm", "traits"}
+    trial = Job("G1K4C6", "t.fdf", point={"G": 1, "K": 4, "C": 6})
+    assert trial.to_dict()["point"] == {"G": 1, "K": 4, "C": 6}
+    assert Job.from_dict(trial.to_dict()).point == {"G": 1, "K": 4, "C": 6}
 
 
 
@@ -711,7 +718,7 @@ def test_submit_accepts_exactly_these_options(tmp_path):
     from molbuilder.jobset._cli import submit_cmd
     assert {q.name for q in submit_cmd.params} == {
         "kind", "stage", "trial", "bundle", "mode", "domain", "dry_run",
-        "trial_timeout_min"}
+        "trial_timeout_min", "only_side"}
 
 
 def test_cli_submit_of_a_whole_sweep_groups_it_into_one_job(tmp_path):

@@ -1086,7 +1086,7 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
     with _calling("traits_for", engine=task.engine, where=name, log=log):
         traits = seam.traits_for(element.values)
     return Job(name=name, script=script, resources=element.resources,
-               warm=warm, traits=traits)
+               warm=warm, traits=traits, point=dict(element.point))
 
 
 def _siesta_shared_package(base: Path) -> List[str]:

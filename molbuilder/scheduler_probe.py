@@ -248,10 +248,25 @@ def derive_domains(
 
     # A debug domain iff the user actually holds the debug QoS.  It rides on
     # the cheapest partition because a debug QoS is a wall, not a place.
+    def _row(name, max_time, part):
+        row = {"name": name, "max_time": max_time, "partition": part.name,
+               "qos": None}
+        # The partition's GPU INVENTORY rides the row (`generator.md`
+        # § 4.3a, 2026-08-21): sinfo's gres column is a measurement, and
+        # without it a login node could not enumerate the GPU grid family
+        # for the cluster behind it.  Facts only -- which type a run WANTS
+        # stays the person's, and per-node core limits stay curated (a
+        # partition may mix node types, so %G is probeable and max_cores
+        # is not).
+        if part.gpu_types:
+            row["gpu"] = dict(part.gpu_types)
+        return row
+
     if "debug" in allowed and "debug" in qos:
         mw_str, _ = qos["debug"]
-        domains.append({"name": "debug", "max_time": mw_str or "0-00:15:00",
-                        "partition": parts[0].name, "qos": "debug"})
+        row = _row("debug", mw_str or "0-00:15:00", parts[0])
+        row["qos"] = "debug"
+        domains.append(row)
 
     for p in parts:
         q = _pick_qos(allowed, p.name)
@@ -268,8 +283,9 @@ def derive_domains(
                 notes.append(f"partition {p.name!r} has no time limit "
                              f"(infinite); capped the domain at "
                              f"{_INFINITE_STR} -- adjust if needed.")
-        domains.append({"name": p.name, "max_time": max_time,
-                        "partition": p.name, "qos": q})
+        row = _row(p.name, max_time, p)
+        row["qos"] = q
+        domains.append(row)
 
     seen: Set[Tuple[str, str]] = set()
     uniq: List[dict] = []

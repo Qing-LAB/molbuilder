@@ -555,7 +555,7 @@ def _apply_run_config(base, allocation, stage=None, engine=None):
         return allocation, {}
 
     try:
-        cfg = read_run_config(cfg_path)
+        cfg = read_run_config(cfg_path, engine=engine)
     except ValueError as e:
         # A file the user edited into an unreadable state STOPS the prep:
         # skipping it would silently discard a decision they wrote down.
@@ -593,15 +593,19 @@ def _declared_execution_pins(base, engine):
     alike.  Nothing migrates between files: the description stays exactly
     as edited, and prep is where a declaration is resolved.
 
-    Returns ``(pins, axes)``: the one-point non-machine values as a pins
-    dict, and the machine-answered entries untouched (the grid's axes).
+    Returns ``(pins, axes, value_axes)``: the one-point non-machine values
+    as a pins dict, the machine-answered entries untouched (the grid's
+    axes), and the MULTI-point non-machine entries as value axes --
+    ``{name: [points...]}`` -- which `_bench_inputs` crosses with the
+    machine grid so every trial's deck carries its coordinates
+    (§ 4.3a's built rule, 2026-08-21; refused by name until then).
 
     Refused BY NAME, never repaired:
       * an enum value outside the item's choices, or a non-bool on a bool
-        item -- a typo'd declaration must fail at prep, not after a queue;
-      * a MULTI-point non-machine entry -- a value axis needs the grid
-        duplicated per value with per-trial pins; that extension is
-        recorded in § 4.3a, not built.
+        item -- each POINT of a multi-point entry too: a typo'd
+        declaration must fail at prep, not after a queue;
+      * a repeated point inside one entry -- two identical trials would
+        measure one configuration twice under one label.
 
     MEMBERSHIP is not this function's question (one door): every bench key
     must be an ``execution`` item, and `validation/task.py`'s
@@ -617,11 +621,11 @@ def _declared_execution_pins(base, engine):
     task = read_task(Path(base) / TASK_FILENAME)
     declared = {k: list(v) for k, v in (task.bench or {}).items()}
     if not declared:
-        return {}, {}
+        return {}, {}, {}
 
     items = {i.name: i for i in _T.select(_T.catalogue(), engine=engine)
              if "execution" in (i.category or ())}
-    pins, axes = {}, {}
+    pins, axes, value_axes = {}, {}, {}
     for name, pts in declared.items():
         it = items.get(name)
         if it is None:
@@ -629,23 +633,76 @@ def _declared_execution_pins(base, engine):
         if it.allocation:
             axes[name] = pts                 # machine-answered: the grid's
             continue                         # business, never a value
+        for v in pts:
+            if it.type == "bool" and not isinstance(v, bool):
+                raise click.ClickException(
+                    f"task.json declares {name!r} = {v!r}; the item is a "
+                    f"bool -- write true or false.")
+            if it.type == "enum" and it.choices and v not in it.choices:
+                raise click.ClickException(
+                    f"task.json declares {name!r} = {v!r}; the choices are "
+                    f"{', '.join(it.choices)}.")
+        if len(pts) != len(set(pts)):
+            raise click.ClickException(
+                f"task.json declares {name!r} = {pts!r}; a repeated point "
+                f"would measure one configuration twice.  Drop the "
+                f"duplicate.")
         if len(pts) > 1:
+            value_axes[name] = pts           # a VALUE AXIS (§ 4.3a): the
+            continue                         # grid multiplies per point
+        pins[name] = pts[0]
+    return pins, axes, value_axes
+
+
+#: What makes a trial a MEASUREMENT rather than a run -- schema values
+#: resolved like any other (`template.md` § 8.1: rebuild and render, never
+#: splice): capped SCF, single point, forced cold, run-once, and
+#: ``scf_must_converge: False`` so the cap ends CLEAN.  Applied OVER every
+#: declared value (one-point pins and value-axis coordinates alike), and a
+#: value AXIS naming one of these is refused -- its trials would be one
+#: measurement under many labels.  One spelling for both uses (the pins
+#: and that refusal); the per-key whys sit at the application site.
+_MEASUREMENT_PINS = {"max_scf_iter": 5, "relax_steps": 0, "restart": "clean",
+                     "continue_retries": 0, "scf_must_converge": False}
+
+
+def _gpu_inventory(base):
+    """The cluster's GPU ``(per-node count, type)`` from the domain menu --
+    § 4.3a's fallback when THIS node's probe has none (a login node).
+
+    ``(None, None)`` when no row records an inventory.  Refuses when a row
+    records SEVERAL types: choosing one would be a ranking, and the probe
+    buried ``best_gpu_type`` for exactly that (scheduler_probe.py, N3) --
+    the remedy is curating the row down to the type this bench measures.
+    """
+    from ..runtime_config import get_routing
+    for row in get_routing(project_dir=Path(base)):
+        inv = row.get("gpu") or {}
+        if not inv:
+            continue
+        if len(inv) > 1:
             raise click.ClickException(
-                f"task.json declares {len(pts)} points for {name!r}; a "
-                f"multi-point value axis is not built yet (generator.md "
-                f"§ 4.3a records the extension).  Declare ONE point to pin "
-                f"the value, or measure it by hand one value at a time.")
-        v = pts[0]
-        if it.type == "bool" and not isinstance(v, bool):
-            raise click.ClickException(
-                f"task.json declares {name!r} = {v!r}; the item is a bool "
-                f"-- write true or false.")
-        if it.type == "enum" and it.choices and v not in it.choices:
-            raise click.ClickException(
-                f"task.json declares {name!r} = {v!r}; the choices are "
-                f"{', '.join(it.choices)}.")
-        pins[name] = v
-    return pins, axes
+                f"domain {row.get('name')!r} records several GPU types "
+                f"({', '.join(sorted(inv))}), and choosing one is not the "
+                f"machine's call.  Edit that row in environment.json to "
+                f"keep the type this benchmark should measure.")
+        gtype, count = next(iter(inv.items()))
+        return (int(count) or None), gtype
+    return None, None
+
+
+def _gpu_core_cap(base):
+    """``(max_cores, domain name)`` of the first gpu-capable row that
+    states one; ``(None, None)`` otherwise.  A CURATED limit, not probed
+    (§ 4.3a): a partition may mix node types, so the row is the user's to
+    edit -- on Sol, gpu nodes take 48 cores where standard nodes take 128.
+    """
+    from ..environment import domain_serves_gpu
+    from ..runtime_config import get_routing
+    for row in get_routing(project_dir=Path(base)):
+        if domain_serves_gpu(row) and row.get("max_cores"):
+            return int(row["max_cores"]), str(row.get("name"))
+    return None, None
 
 
 def _bench_inputs(base, target=None):
@@ -678,6 +735,14 @@ def _bench_inputs(base, target=None):
     and on a machine with no GPU the whole verb refused, which made a
     CPU benchmark impossible to run at all.  Both pins are gone: the
     description answers, and the grid follows its answer.
+
+    **A multi-point non-machine entry is a VALUE AXIS** (§ 4.3a, built
+    2026-08-21): its points multiply the machine grid, each point carries
+    its coordinates (the resolver's parameter lane applies them per
+    trial), and ``enable_gpu`` with two points is the grid-FAMILY axis --
+    the grid enumerates once per flag, G=0 holding the CPU family's
+    device coordinate.  See the section for the cap, naming, and
+    split-submission halves of the rule.
     """
     from ..bench.grid import _FALLBACK_KS, sweep_K, sweep_grid
     from ..resolve import MachineTranslation
@@ -734,25 +799,62 @@ def _bench_inputs(base, target=None):
     # grid's axes.  A declared enable_gpu pin OVERRIDES the template's
     # answer below, which is what makes the machine card's choice reach
     # the sweep without touching the template file.
-    declared_pins, declared_axes = _declared_execution_pins(base, task.engine)
+    declared_pins, declared_axes, value_axes = _declared_execution_pins(
+        base, task.engine)
 
     on_gpu = any(i.name == "enable_gpu" and bool(i.value)
                  for i in template_select(tmpl, engine=task.engine))
     if "enable_gpu" in declared_pins:
         on_gpu = bool(declared_pins["enable_gpu"])
 
-    if on_gpu and (not gpn or not gtype):
+    # THE GRID-FAMILY AXIS (§ 4.3a, user 2026-08-21): enable_gpu with two
+    # points enumerates the machine grid once per flag -- the CPU family
+    # holds the device count at G=0, the GPU family ranges it -- and the
+    # flag rides each point as an ordinary value coordinate, so the deck's
+    # answer and the point's family agree by construction (submit reads
+    # the deck, `_job_wants_gpu`, and splits the groups from that answer).
+    gpu_flags = None
+    if "enable_gpu" in value_axes:
+        gpu_flags = [bool(v) for v in value_axes.pop("enable_gpu")]
+    families = gpu_flags if gpu_flags is not None else [bool(on_gpu)]
+    mixed = gpu_flags is not None
+
+    # What makes a trial a MEASUREMENT (the pins below) must win over what
+    # it measures -- so an axis NAMING a measurement pin would render its
+    # trials identical under different labels: one measurement, twice.
+    _measured = sorted(set(value_axes) & set(_MEASUREMENT_PINS))
+    if _measured:
         raise click.ClickException(
-            f"this description asks for the GPU (enable_gpu = true), so the "
-            f"benchmark enumerates a GPU grid (G × ranks-per-GPU × cores) -- "
-            f"and this machine's probe found no GPU topology "
-            f"(gpus_per_node={gpn!r}, gpu_type={gtype!r}).  Delete "
-            f"environment.json to re-probe, or run the benchmark on the "
-            f"target it is meant to measure -- the comparison is by node "
-            f"type (asu-sol.md § 5.2).")
+            f"task.json declares {', '.join(_measured)} as a value axis, "
+            f"and the benchmark pins "
+            f"{'it' if len(_measured) == 1 else 'them'} on every trial (a "
+            f"trial is a measurement -- generator.md § 4.3a).  Its points "
+            f"would render identical decks under different labels.  Drop "
+            f"the entry.")
+
+    if any(families) and (not gpn or not gtype):
+        # No GPU on THIS node -- but the cluster behind a login node may
+        # still have one: the probe records each partition's gres
+        # inventory on its domain row (§ 4.3a), and that answers here.
+        _gpn, _gtype = _gpu_inventory(base)
+        if _gpn:
+            gpn, gtype = _gpn, _gtype
+        else:
+            raise click.ClickException(
+                f"this description asks for the GPU (enable_gpu = "
+                f"{'a cpu-vs-gpu axis' if mixed else 'true'}), so the "
+                f"benchmark enumerates a GPU grid (G × ranks-per-GPU × "
+                f"cores) -- and this machine's probe found no GPU topology "
+                f"(gpus_per_node={gpn!r}, gpu_type={gtype!r}) and no "
+                f"domain row with a recorded GPU inventory.  Delete "
+                f"environment.json to re-probe, run `jobset probe --write` "
+                f"on the cluster's login node, or run the benchmark on "
+                f"the target it is meant to measure -- the comparison is "
+                f"by node type (asu-sol.md § 5.2).")
 
     # The axes come from the split above -- the value entries already left
-    # as pins, so what remains is machine-answered by construction.  (The
+    # as pins or value axes, so what remains is machine-answered by
+    # construction.  (The
     # raw read + unknown-axes refusal that stood here moved into
     # `_declared_execution_pins`, which refuses by name with the § 4.3a
     # story: non-execution items, bad enum/bool values, and the
@@ -791,32 +893,97 @@ def _bench_inputs(base, target=None):
                         f"({sockets} socket(s) x {cps} cores).  Trim the "
                         f"declaration in task.json, or benchmark on the "
                         f"machine it is meant to measure.")
-        if on_gpu:
-            # A GPU point still runs the DECLARED total ranks; the device
-            # count G ranges over the divisors of each rank count (so
-            # G*K == mpi_np exactly), bounded by what the probe found.
-            raw = sorted({(g, r // g, c)
-                          for r in ranks for c in cores
-                          for g in range(1, gpn + 1) if r % g == 0})
-        else:
-            raw = [(1, r, c) for r in ranks for c in cores]
-    else:
+
+    def _family_cells(fam):
+        """The machine cells of ONE family, as (G, K, C) -- G=0 is the CPU
+        family's held coordinate (plain ranks), G>=1 the device count with
+        G*K == the total rank count."""
+        if declared:
+            if fam:
+                # A GPU point still runs the DECLARED total ranks; the
+                # device count G ranges over the divisors of each rank
+                # count (so G*K == mpi_np exactly), bounded by the probe.
+                return sorted({(g, r // g, c)
+                               for r in ranks for c in cores
+                               for g in range(1, gpn + 1) if r % g == 0})
+            return [(0, r, c) for r in ranks for c in cores]
         ks = sweep_K(topo) or list(_FALLBACK_KS)
-        # ONE enumeration, both grids (`bench/grid.py`: the single source of
-        # truth for the sweep grid, so no two consumers can define it
+        # ONE enumeration, both grids (`bench/grid.py`: the single source
+        # of truth for the sweep grid, so no two consumers can define it
         # differently).  On CPU there is no device to range over, so G is
-        # held at 1 and dropped from the coordinate -- the axes become the
-        # two that mean something.
-        raw = list(sweep_grid(gpn if on_gpu else 1, cps, ks, None))
-    if on_gpu:
-        points = [{"G": g, "K": k, "C": c} for g, k, c in raw]
+        # held at 0 and dropped from a single-family coordinate below.
+        return [(g if fam else 0, k, c)
+                for g, k, c in sweep_grid(gpn if fam else 1, cps, ks, None)]
+
+    # THE PER-FAMILY CAP (§ 4.3a): when the menu's gpu-capable row states
+    # max_cores (curated -- a partition may mix node types, so the probe
+    # cannot measure it), a GPU cell that exceeds it is DROPPED BY NAME,
+    # never silently and never by refusing the prep -- refusal would deny
+    # the CPU family a rank count only the GPU nodes cannot hold.
+    cap, cap_dom = (_gpu_core_cap(base) if any(families) else (None, None))
+    cells = []
+    for fam in families:
+        fcells = _family_cells(fam)
+        if fam and cap:
+            dropped = [(g, k, c) for g, k, c in fcells if g * k * c > cap]
+            fcells = [(g, k, c) for g, k, c in fcells if g * k * c <= cap]
+            if dropped:
+                click.echo(
+                    f"  dropped from the GPU family (domain {cap_dom!r} "
+                    f"allows {cap} cores/node): "
+                    + ", ".join(f"G{g}K{k}C{c} ({g * k * c} cores)"
+                                for g, k, c in dropped))
+            if not fcells:
+                if mixed:
+                    click.echo(
+                        f"  NOTE: every GPU cell exceeds domain "
+                        f"{cap_dom!r}'s {cap} cores/node -- this sweep "
+                        f"measures only the CPU family.")
+                else:
+                    raise click.ClickException(
+                        f"every declared cell exceeds domain {cap_dom!r}'s "
+                        f"{cap} cores/node (generator.md § 4.3a).  Trim "
+                        f"the declaration, or benchmark where the GPU "
+                        f"nodes are larger.")
+        cells.extend((fam, cell) for cell in fcells)
+    # THE VALUE-AXIS CARTESIAN (§ 4.3a): every machine cell is crossed
+    # with the remaining declared value axes, in declaration order, and
+    # each point CARRIES its coordinates -- the resolver's ordinary
+    # parameter lane applies them to that trial's config (provenance
+    # "sweep"), and the coordinate rides the trial's name and, as data,
+    # `job-set.json`'s per-trial ``point``.
+    combos = [{}]
+    for name, vals in value_axes.items():
+        combos = [{**c, name: v} for c in combos for v in vals]
+
+    points = []
+    for fam, (g, k, c) in cells:
+        if mixed:
+            coord = {"G": g, "K": k, "C": c, "enable_gpu": fam}
+        elif on_gpu:
+            coord = {"G": g, "K": k, "C": c}
+        else:
+            coord = {"K": k, "C": c}
+        points.extend({**coord, **vc} for vc in combos)
+
+    if mixed:
+        # ONE translation serves both families: G=0 maps to plain ranks
+        # and NO gres, G>=1 to G*K ranks plus the device ask -- which is
+        # what lets `submit` put the CPU group on an allocation that
+        # holds no device (§ 4.3a's split submission).
+        translation = MachineTranslation(
+            axes=("G", "K", "C"),
+            to_resources=lambda p, _env: (
+                {"mpi_np": p["G"] * p["K"], "cpus_per_task": p["C"],
+                 "gres": f"gpu:{gtype}:{p['G']}"} if p["G"] else
+                {"mpi_np": p["K"], "cpus_per_task": p["C"]}))
+    elif on_gpu:
         translation = MachineTranslation(
             axes=("G", "K", "C"),
             to_resources=lambda p, _env: {
                 "mpi_np": p["G"] * p["K"], "cpus_per_task": p["C"],
                 "gres": f"gpu:{gtype}:{p['G']}"})
     else:
-        points = [{"K": k, "C": c} for _g, k, c in raw]
         translation = MachineTranslation(
             axes=("K", "C"),
             to_resources=lambda p, _env: {
@@ -845,13 +1012,12 @@ def _bench_inputs(base, target=None):
     # `restart: clean` group was written out rather than omitted, the second
     # run was also WARM, so the second measurement was of a different
     # calculation as well as a different run.)
-    pins = {"max_scf_iter": 5, "relax_steps": 0, "restart": "clean",
-            "continue_retries": 0, "scf_must_converge": False}
     # The declared values ride UNDER the measurement pins: what makes a
     # trial a measurement (capped SCF, forced cold, run-once) must win
-    # over any declaration -- and the two sets cannot overlap anyway,
-    # because the helper admits only `execution` items.
-    pins = {**declared_pins, **pins}
+    # over any declaration -- one-point declarations and value-axis
+    # coordinates alike (the resolver applies pins over a point's
+    # parameters, and the overlap refusal above bars an AXIS on a pin).
+    pins = {**declared_pins, **_MEASUREMENT_PINS}
     return points, pins, translation
 
 
@@ -1098,7 +1264,10 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             # The declaration's one-point values pin the run too (user
             # rule, 2026-08-20), UNDER the measured verdict: template <
             # declaration < run-config < flags (§ 4.3a's precedence).
-            declared_pins, _axes = _declared_execution_pins(
+            # value_axes pin nothing at `prep run` (§ 4.3a): the
+            # verdict's run-config answers; absent one, the template
+            # stands.
+            declared_pins, _axes, _value_axes = _declared_execution_pins(
                 base, _pf_task.engine)
             pins = {**declared_pins, **(verdict_pins or {})} or None
         if kind == "run":
@@ -1168,7 +1337,8 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         # grouped one, not one-per-invocation.  prep just wrote
         # jobset.sh, so the hint speaks the launcher.
         click.echo(f"next: ./jobset.sh submit bench "
-                   f"{stage or '<stage>'}   (one grouped job)")
+                   f"{stage or '<stage>'}   (grouped; a cpu+gpu matrix "
+                   f"submits one job per side)")
         click.echo(f"then: ./jobset.sh summarize bench {stage or '<stage>'}"
                    f"  -- writes bench-result.json + run-config.toml "
                    f"(the editable proposal `prep run` applies)")
@@ -1353,8 +1523,11 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                    "in molbuilder.json**, which is what running-a-job.md § 5.4 "
                    "says gates submission; pass it only to override that.")
 @click.option("--domain", default=None,
-              help="probed domain (environment.json) -> -p/-q (submit mode; EXPLICIT, "
-                   "never auto-picked).")
+              help="probed domain (environment.json) -> -p/-q (submit mode). "
+                   "OVERRIDES the per-side preference a grouped bench applies "
+                   "(cpu group prefers a cpu-only domain, gpu group a "
+                   "gpu-capable one -- generator.md § 4.3a); combine with "
+                   "--only to place one side at a time.")
 @click.option("--dry-run", is_flag=True,
               help="print the exact command each job WOULD get; launch "
                    "nothing.")
@@ -1364,8 +1537,14 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                    "inside the grouped job (project-layout.md § 2.3.2, "
                    "2026-08-20).  A trial that hits it is killed and reads "
                    "incomplete; the walk continues.")
+@click.option("--only", "only_side", default=None,
+              type=click.Choice(["cpu", "gpu"]),
+              help="bench + submit mode: submit just this side of a sweep "
+                   "that spans CPU and GPU trials (generator.md § 4.3a).  "
+                   "The other side stays pending; a later `submit bench` "
+                   "collects it -- here or on the cluster that reaches it.")
 def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
-               dry_run: bool, trial_timeout_min: int) -> None:
+               dry_run: bool, trial_timeout_min: int, only_side) -> None:
     """Launch a prepped stage: local ``bash`` (direct) or the machine's
     submission system (submit).  Run ``prep`` first.  ``--dry-run`` shows the
     exact command before anything is irreversible.
@@ -1420,6 +1599,12 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         # is not.
         domain = _execn["domain"]
         domain_source = "execution.domain (config)"
+    if only_side and (kind != "bench" or mode != "submit"):
+        # Mirrors the domain refusal below: a side filter rides the GROUPED
+        # submission and nothing else (generator.md § 4.3a).
+        raise click.ClickException(
+            "--only picks a side of a grouped bench submission; it has no "
+            "meaning for `submit run` or --mode direct.")
     if kind == "bench":
         # the stage's own sweep record, from its bench container (§ 6.3)
         js, base = _load_bench_set(bundle, stage)
@@ -1451,10 +1636,11 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             # list, which it was not (milestone review, N1).
             _ledger(base, "submit", "bench-grouped",
                     trial_timeout_s=trial_timeout_min * 60,
+                    only=only_side,
                     sweep=[j.name for j in js.jobs])
             results = submit_bench_group(
                 js, base, domain=domain, dry_run=dry_run,
-                trial_timeout_s=trial_timeout_min * 60)
+                trial_timeout_s=trial_timeout_min * 60, only=only_side)
         else:
             if kind == "bench" and js.kind == "sweep":
                 only = _pick_trial(js, base, trial, mode)

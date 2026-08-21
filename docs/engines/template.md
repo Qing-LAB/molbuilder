@@ -2316,7 +2316,7 @@ closing one is a visible act. Measured 2026-08-17.
 | **6** | **PySCF's `threads` is not flagged `allocation`** | § 6.4 | nothing sizes a PySCF job from what the machine granted |
 | **7** | **BENCH-MARKS is SIESTA-only** | § 9 | a PySCF deck declares no override surface, so a sweep has nothing to read from it |
 | **8** | **`required` is not an item** | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1 | a stage cannot declare the warm files it needs, because a description names fields and never defines them |
-| **9** | **`enable_gpu` → `use_gpu` is ruled and un-renamed** | § 6.3 | two names answer one question, so any caller asking *"does this want a GPU?"* must name an engine's spelling. `jobset/_cli.py::_bench_inputs` does, and is correct only while the seam refuses non-SIESTA engines |
+| **9** | **`enable_gpu` → `use_gpu` is ruled and un-renamed** | § 6.3 | two names answer one question, so any caller asking *"does this want a GPU?"* must name an engine's spelling. `jobset/_cli.py::_bench_inputs` does — for the template read AND for 2β's declared grid-family axis (`generator.md` § 4.3a), so the un-landed rename now has two spellings to collect there — and is correct only while the seam refuses non-SIESTA engines |
 
 **Rows 1, 2 and 8 are the same shape and it is worth naming.** Each is a
 *carrier* that the contract assumes and the catalogue lacks. § 7's membership

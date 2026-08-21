@@ -105,7 +105,8 @@ def test_the_wall_is_the_smaller_of_partition_and_qos():
     assert doms["htc"]["max_time"] == "4:00:00"
     # debug's QoS ceiling (15 min) is smaller than any partition limit
     assert doms["debug"] == {"name": "debug", "max_time": "00:15:00",
-                             "partition": "htc", "qos": "debug"}
+                             "partition": "htc", "qos": "debug",
+                             "gpu": {"a100": 4, "a100.20gb": 16}}
     assert doms["general"]["max_time"] == "14-00:00:00"
 
 
@@ -126,8 +127,15 @@ def test_a_domain_is_never_a_preference():
     domains, _ = derive_domains(*_sol())
     assert domains, "expected some domains from the Sol fixture"
     for d in domains:
-        assert set(d) == {"name", "partition", "qos", "max_time"}, \
+        # ``gpu`` joined 2026-08-21 (`generator.md` § 4.3a) and it IS a
+        # measurement: the partition's gres inventory from sinfo, present
+        # only where sinfo reported one.  A default_type-style RANKING of
+        # that inventory would be the preference this test bars.
+        assert set(d) <= {"name", "partition", "qos", "max_time", "gpu"}, \
             f"a domain gained a field that is not a measurement: {sorted(d)}"
+    by = {d["name"]: d for d in domains}
+    assert by["htc"]["gpu"] == {"a100": 4, "a100.20gb": 16}
+    assert "gpu" not in by["fpga"], "no inventory -> no key, never null"
 
 
 def test_the_qos_assumption_is_stated_not_hidden():
