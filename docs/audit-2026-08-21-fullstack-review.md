@@ -154,8 +154,100 @@ deleted-machinery citations ×8).
 - **C-autodetect** the auto-detect panel trio is three near-verbatim
   copies across three tabs — extraction meets the ≥2-caller bar.
 
-## Pending
+## The engine-emission reader's findings (landed after the snapshot)
 
-The engine-emission reader (script_emit + the two decks + layout +
-catalogue vs engines/*.md) had not reported at the time of this
-snapshot; its findings extend this record when they land.
+**New errors on reachable paths (bucket 2 additions):**
+- **E-M4.7** any RHF/UHF vibration deck with `compute_raman=true` (the
+  default) dies with a NameError at the Raman phase — `_build_mf_at`
+  evaluates the `dft` name on its `force_cpu` branch, but the imports
+  emit `dft` only for RKS/UKS.  The failure lands AFTER the full
+  Hessian is paid for.  (Lifted code; latent since the old generator.)
+- **E-M3.1** `_LiftView.charge` = `net_charge or 0` — the vibration
+  deck DROPS the phosphate auto-detection the optimization deck runs
+  (`resolve_net_charge`): a nucleic-acid vibration with charge unset is
+  silently a different calculation than its optimization sibling.
+  (Same fact as validation V-3c; two readers, one finding.)
+- **E-M7.1** Pattern-B falsely warns on the reserved `frozen_atoms`
+  label itself ("the engine does NOT consume") — since schema 7 the
+  frozen set lives INSIDE regions; exclude `FROZEN_LABEL`.  And on the
+  vibration path Pattern-A is structurally vacuous (the view's frozen
+  set IS the sidecar's — it compares the sidecar to itself).
+- **E-M1.5** the `use_gpu` catalogue help — the form-facing text — still
+  advertises the retired CPU fallback ("falls back to CPU"), directly
+  contradicting the stop-not-fallback rule the emitted probe enforces;
+  the same stale sentence is EMITTED into every vibration deck.
+- **E-M4.6r** the residual behind the fixed ECP crash: the vibration
+  spec sets `check_rules=None`, so a non-compiling vibration deck is
+  never parse-checked at prep — the optimization deck's
+  `layout.check_rules` (`ast.parse`) is one line to reuse.
+- **E-M5.2** the optimization deck passes geomeTRIC-named convergence
+  kwargs to berny UNCONDITIONALLY — whichever way pyberny reacts
+  (error or silent ignore) is wrong.
+- **E-M6.3** the vibration spec's `line=` slot carries a wrong DFT test
+  (`method != "HF"` classifies RHF/UHF as DFT) — a no-op today (zero
+  Sections), a latent bug the day a Section is added.
+- **E-M4.1** `vibration_emitters.__all__` names the deleted generator —
+  same class as validation's finding on `validation/spectra.py`.
+
+**Contract-vs-code on the fresh § 7a work (bucket 2/3 additions):**
+- **M1.3** the role table promises "GPU promotion; newton() wrap" at
+  the relaxation site; `_build_mf_at` applies neither — a
+  `scf_soscf=true` vibration run relaxes under DIIS.  Honor or amend.
+- **M1.1** `init_guess = "chkfile"` (the continuation read) is a
+  sanctioned-but-unstated second spelling of an SCF_SECTION knob —
+  name it in § 7a or route it through the dresser.
+- **M1.2** the DFT trio (xc / grids.level / disp) has two spellings —
+  layout's for optimization, hand-constants for vibration; the same
+  drift class § 7a closed for SCF, one section over.  A DFT dresser is
+  the symmetric fix.
+- **M1.4** two GPU-consumption mechanisms in one engine (promotion
+  helper vs import-time class selection), the promotion helper emitted
+  DEAD in vibration decks.
+
+**Simplification/dead (bucket 5 additions):** `scf_setup.
+density_fit_line` has zero callers (added 2026-08-21, dead on
+arrival); the emitted artifact carries TWO `_mb_outfile` definitions
+(the dead first being the known-wrong `resolve()` form); the IR-only
+block nests a complete per-mode loop inside its own per-mode loop
+(N² idempotent work + a redundant second kernel per displaced point);
+the retry loop and geomeTRIC kwarg spellings are two-home copies;
+`frozen_elements`/`frozen_residue_names` are pinned `[]` so every deck
+carries inert union machinery; `emit_solvent_lines`' `mf_var`
+parameter is never varied; an unused constant import rides
+vibration_emitters with a no-longer-true justifying comment.
+
+**Doc drift (bucket 4 additions):** the emitted header still teaches
+`python <job>.spectra.py` + the retired layout/topics vocabulary; the
+deck's IR banner and its constants comment contradict each other on
+validation status; the Methods fragment overclaims (rot/trans
+projection unconditional — false on the partial-Hessian path;
+"analytically" for FD polarizability derivatives); `_LiftView`'s
+"dissolves at P3" note predates P3 landing; siesta.md § 5's spin
+contract names a deleted field and a measured-false premise;
+pyscf.md's intro/§ 2 staged-loop and `cfg.stage` claims; template.md's
+"three items carry allocation" (four), "twelve vibration items" (14),
+§ 12.2's overtaken PySCFConfig.stages claims; script-preparation's
+four-writers counts (SIESTA 48 not 44; the Spectra row's W2/artifact
+✅ overstate what a one-Block layout can enforce); the catalogue's
+solvent `mf.SMD()` engine_key (no SMD path), log_file's forbidden
+`mol.stdout` pattern, auxbasis's stale anchor; the vibration items'
+`expands` carrying prose where the key means engine keywords; the
+unsuffixed vibration `.log` vs its own rung-naming comment.
+
+**Verified clean by the reader:** the one-spelling rule holds for every
+SCF_SECTION knob, density_fit, and PCM; the shared-emitter set
+(threading, GPU probe, save helper, molwatch, dresser, DF-kw, solvent)
+is genuinely one-home.
+
+## The consolidated priority head (all five readers in)
+
+1. **E-M4.7** HF+Raman NameError (a paid-for Hessian then a crash).
+2. **E-M3.1 / V-3c** the charge-heuristic bypass (silent wrong science).
+3. **E-M7.1 / V-2e** the frozen-atoms contradiction + the science
+   decision (constrain the relaxation or state why not).
+4. **E-M4.6r** vibration `check_rules=None` (the shipped-crash class
+   stays uncatchable at prep).
+5. **E-M1.5** the CPU-fallback lie in form help + emitted decks.
+6. **E-A1** the task-setup sweepable poisoning.
+7. The rest of bucket 2, then the bucket-3 dedup ruling, then the
+   mechanical sweeps.
