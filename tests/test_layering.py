@@ -72,6 +72,10 @@ _L1_MODULES = {
                          # imported the things it describes could not be
                          # called from inside them.
     "selection",         # atom-selection rule dataclasses + evaluator (no domain deps)
+    "references",        # the bibliography reader (references.bib -> citation
+                         # dicts); pure stdlib + a data file, no domain deps --
+                         # the catalogue's `refs` surfacing and its CI pin both
+                         # read it (2026-08-21).
     "runtime_info",      # cross-cutting threading / GPU / runtime-info emitters
                          # (string emitters + physical_core_count -- L1 because no
                          # domain deps; siesta + pyscf + spectra + runwrap all use it)

@@ -1,5 +1,14 @@
 # The 22 shown-but-unread parameters — categories, integration paths, and the hint mechanism
 
+**Role:** plan
+**Domain:** engines (PySCF) + validation
+**Started:** 2026-08-21
+**Companions:** [`engines/pyscf.md`](?doc=engines/pyscf.md) § 7a (the SCF
+dresser contract this plan's code is checked against);
+[`science/validation.md`](?doc=science/validation.md) (the layers the kind
+validator joins); `docs/science/references.bib` (every citation named here
+resolves there, by test).
+
 *(2026-08-21; follows the science-validation review.  The user's ruling:
 these are not clutter to hide — they mark a GAP in the minimum
 implementation.  Categorize them, work out the scientifically correct way
