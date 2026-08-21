@@ -102,7 +102,18 @@ Results / Spectra tab                →  reads it, unchanged
     carried over): `compute_raman`, `compute_ir`,
     `displacement_amplitude_ang`, the `es_*` mode-selection family,
     `freq_min_cm1`/`freq_max_cm1` — category `procedure`/`profile` as each
-    warrants. The frozen-atom *selectors* stay structure-side (the sidecar
+    warrants. **IR and Raman are one calculation, one UI, two independent
+    toggles** *(user, 2026-08-20)*: one Hessian, one mode set, one shared
+    displaced-geometry loop computing whichever properties are ticked.
+    The old `compute_ir`-requires-`compute_raman` refusal
+    (`pyscf_script.py:96`) was an implementation artifact — and backwards
+    on cost, since IR alone (a dipole read per displacement) is far
+    cheaper than Raman (a response calculation per displacement) — so the
+    lifted emitters gain the dipole-only loop mode and the coupling
+    retires. With IR first-class, its NOT-VALIDATED intensity prefactor
+    (roadmap § 5) stops being carried: **P1's E2E validates IR
+    intensities against a water reference** and resolves the flag.
+    The frozen-atom *selectors* stay structure-side (the sidecar
     three-stage contract, `engines/overview.md` § 3) — frozen atoms are a
     fact about the structure, not a template value;
   - **which-kind is template-visible**: the vibration template exists
@@ -166,8 +177,8 @@ migration is workstation-scoped by ruling and touches no submit-layer code).
 
 ## 6. Decisions for review *(each blocks its phase, none blocks P0's start)*
 
-- **D1 — the kind word**: `vibration` (matches the warm-file section; this
-  plan's default) vs `spectra`. One word, used everywhere.
+- **D1 — the kind word**: **SETTLED (user, 2026-08-20): `vibration`** —
+  the warm-file section's word; the tab keeps its user-facing name.
 - **D2 — thermo subsumption**: retire `compute_frequencies`/`thermo.txt` in
   favor of the vibration kind (this plan's default: one Hessian door), with
   RRHO as vibration-template items — or keep the cheap in-deck check?
