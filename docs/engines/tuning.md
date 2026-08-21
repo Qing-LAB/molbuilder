@@ -506,6 +506,18 @@ pins BLAS to one thread so MPI×BLAS never oversubscribes, and — whenever
 ranks outnumber devices — starts a per-job **NVIDIA MPS** daemon and tears it
 down on exit ([`running-a-job.md § 3.3`](?doc=execution/running-a-job.md)).
 
+**How G reaches the actual RUN** *(user question, 2026-08-21)*. The bench
+measures G; the run *inherits* it — there is no fixed CPU-to-GPU ratio
+anywhere: **(1)** the winner's whole shape, `gres = "gpu:a100:G"`
+included, is written into `run-config.toml`'s `[resources]`, and
+`prep run` applies it to every field your flags leave unstated — **the
+file is also the override**: edit the `gres` line (or any other) and your
+edit is what runs, since no CLI flag states a device count; **(2)** with
+no verdict on file, a GPU deck's rendered header asks for **one** device
+(the deliberate floor default); **(3)** at launch the wrapper counts the
+devices actually granted and load-balances K = ranks/devices over them,
+MPS included — so the run adapts to the real allocation either way.
+
 **Ranks per device: what the sources say.** ELPA's own performance guide (the
 `documentation/PERFORMANCE_TUNING.md` inside this stack's ELPA source tree)
 states three rules: map the **same number of ranks to each GPU** (on a
@@ -662,7 +674,15 @@ and past SM saturation extra clients only queue. **Threads are not an MPS
 requirement**: one core per rank is a complete layout; C > 1 helps only
 the CPU phases, and only as far as this SIESTA build's OpenMP actually
 scales (the wrapper pins BLAS to one thread either way,
-[`running-a-job.md § 3.3`](?doc=execution/running-a-job.md)). All of
+[`running-a-job.md § 3.3`](?doc=execution/running-a-job.md)). **Is OMP=1
+the standing assumption?** For CPU SIESTA yes — the shipped default,
+because mainline SIESTA is not reliably OpenMP-aware, so ranks beat
+threads. In GPU mode, no: with few ranks the wrapper **auto-widens**
+each rank's threads to fill the per-rank core budget unless `-omp` (or
+the scheduler's `-c`) states one. Either way it is an assumption you can
+replace with a measurement — declare `omp_threads` as an axis and the
+winning C rides `run-config.toml` into the run's `-c`, which the wrapper
+exports as `OMP_NUM_THREADS`. All of
 which is measurable in one declaration: `mpi_np: [24, 48]` ×
 `omp_threads: [1, 2]` under the 48-core cap enumerates exactly the
 full-node layouts — `G4 K12`, `G2 K24`, `G1 K48` (at the MPS ceiling),
