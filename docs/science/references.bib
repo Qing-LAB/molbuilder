@@ -188,3 +188,147 @@
   % chosen in the script (the default for the Spectra tab).
 }
 % @verified 2026-05-11 QQ
+
+% ----- SCF convergence machinery (vibration-parameter-integration-plan) -----
+% Added 2026-08-21 for the catalogue's `refs` keys.  NOT yet @verified --
+% that stamp is granted by a person after checking the entry against the
+% publisher's record.
+
+@article{Pulay1980,
+  author  = {Pulay, Peter},
+  title   = {Convergence acceleration of iterative sequences.
+             The case of {SCF} iteration},
+  journal = {Chemical Physics Letters},
+  volume  = {73},
+  pages   = {393--398},
+  year    = {1980},
+  doi     = {10.1016/0009-2614(80)80396-4}
+  % DIIS -- the default SCF accelerator.  Cite for the diis_space
+  % parameter: the subspace this paper's extrapolation works in.
+}
+
+@article{Pulay1982,
+  author  = {Pulay, Peter},
+  title   = {Improved {SCF} convergence acceleration},
+  journal = {Journal of Computational Chemistry},
+  volume  = {3},
+  pages   = {556--560},
+  year    = {1982},
+  doi     = {10.1002/jcc.540030413}
+  % The refinement of DIIS to the form modern codes implement.
+}
+
+@article{Saunders1973,
+  author  = {Saunders, V. R. and Hillier, I. H.},
+  title   = {A ``Level-Shifting'' method for converging closed shell
+             {Hartree--Fock} wave functions},
+  journal = {International Journal of Quantum Chemistry},
+  volume  = {7},
+  pages   = {699--705},
+  year    = {1973},
+  doi     = {10.1002/qua.560070407}
+  % The level-shift technique: raise the virtual orbitals to damp
+  % oscillatory SCF.  Cite for the level_shift parameter; the
+  % converged minimum is unchanged once convergence is reached.
+}
+
+@article{Bacskay1981,
+  author  = {Bacskay, George B.},
+  title   = {A quadratically convergent {Hartree--Fock} ({QC-SCF})
+             method. Application to closed shell systems},
+  journal = {Chemical Physics},
+  volume  = {61},
+  pages   = {385--404},
+  year    = {1981},
+  doi     = {10.1016/0301-0104(81)85156-7}
+  % Second-order (Newton) SCF -- what scf_soscf switches on
+  % (PySCF's mf.newton()).  Quadratic convergence near the
+  % solution at a higher cost per step.
+}
+
+@article{Lehtola2019,
+  author  = {Lehtola, Susi},
+  title   = {Assessment of initial guesses for self-consistent field
+             calculations. Superposition of atomic potentials:
+             simple yet efficient},
+  journal = {Journal of Chemical Theory and Computation},
+  volume  = {15},
+  pages   = {1593--1604},
+  year    = {2019},
+  doi     = {10.1021/acs.jctc.8b01089}
+  % The systematic comparison of SCF starting guesses.  Cite for
+  % scf_init_guess: why 'atom'-type guesses rescue cases where the
+  % default minao guess stalls (open-shell transition metals).
+}
+
+@article{Weigend2002,
+  author  = {Weigend, Florian},
+  title   = {A fully direct {RI-HF} algorithm: implementation, optimised
+             auxiliary basis sets, demonstration of accuracy and
+             efficiency},
+  journal = {Physical Chemistry Chemical Physics},
+  volume  = {4},
+  pages   = {4285--4291},
+  year    = {2002},
+  doi     = {10.1039/B204199P}
+  % Density-fitting (RI) auxiliary basis sets.  Cite for auxbasis:
+  % the optimized aux sets the automatic selection draws from.
+}
+
+% ----- Implicit solvation (category 2 of the same plan) -----
+
+@article{Tomasi2005,
+  author  = {Tomasi, Jacopo and Mennucci, Benedetta and Cammi, Roberto},
+  title   = {Quantum mechanical continuum solvation models},
+  journal = {Chemical Reviews},
+  volume  = {105},
+  pages   = {2999--3094},
+  year    = {2005},
+  doi     = {10.1021/cr9904009}
+  % THE continuum-solvation review.  Cite as the umbrella reference
+  % for the solvent parameter and the equilibrium-solvation caveat
+  % on solvated frequencies.
+}
+
+@article{Cances1997,
+  author  = {Canc{\`e}s, E. and Mennucci, B. and Tomasi, J.},
+  title   = {A new integral equation formalism for the polarizable
+             continuum model: theoretical background and applications
+             to isotropic and anisotropic dielectrics},
+  journal = {Journal of Chemical Physics},
+  volume  = {107},
+  pages   = {3032--3041},
+  year    = {1997},
+  doi     = {10.1063/1.474659}
+  % IEF-PCM -- the formulation behind PySCF's PCM implementation.
+}
+
+@article{Marenich2009,
+  author  = {Marenich, Aleksandr V. and Cramer, Christopher J. and
+             Truhlar, Donald G.},
+  title   = {Universal solvation model based on solute electron density
+             and on a continuum model of the solvent defined by the bulk
+             dielectric constant and atomic surface tensions},
+  journal = {Journal of Physical Chemistry B},
+  volume  = {113},
+  pages   = {6378--6396},
+  year    = {2009},
+  doi     = {10.1021/jp810292n}
+  % SMD.  Cite when solvent_method = "SMD" is the choice.
+}
+
+@article{Lipparini2014,
+  author  = {Lipparini, Filippo and Scalmani, Giovanni and Lagard{\`e}re,
+             Louis and Stamm, Benjamin and Canc{\`e}s, Eric and Maday,
+             Yvon and Piquemal, Jean-Philip and Frisch, Michael J. and
+             Mennucci, Benedetta},
+  title   = {Quantum, classical, and hybrid {QM/MM} calculations in
+             solution: general implementation of the {ddCOSMO} linear
+             scaling strategy},
+  journal = {Journal of Chemical Physics},
+  volume  = {141},
+  pages   = {184108},
+  year    = {2014},
+  doi     = {10.1063/1.4901304}
+  % ddCOSMO -- PySCF's default fast solvation back-end.
+}

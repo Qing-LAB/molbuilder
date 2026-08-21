@@ -470,7 +470,7 @@
         return help.length > 80;
     }
 
-    function makeHelpDetails(help) {
+    function makeHelpDetails(help, refs) {
         const det = document.createElement("details");
         det.className = "schema-help";
         const sum = document.createElement("summary");
@@ -484,6 +484,28 @@
         body.className = "schema-help-body";
         body.textContent = help;
         det.appendChild(body);
+        // References -- resolved server-side from the one bibliography
+        // (docs/science/references.bib); each renders as title + a DOI
+        // link the user can follow to the paper.
+        if (Array.isArray(refs) && refs.length) {
+            const list = document.createElement("ul");
+            list.className = "schema-help-refs";
+            for (const c of refs) {
+                const li = document.createElement("li");
+                li.textContent = (c.title ? c.title + " — " : "") + (c.text || "");
+                if (c.doi) {
+                    const a = document.createElement("a");
+                    a.href = "https://doi.org/" + c.doi;
+                    a.target = "_blank";
+                    a.rel = "noopener";
+                    a.textContent = "doi:" + c.doi;
+                    li.appendChild(document.createTextNode("  "));
+                    li.appendChild(a);
+                }
+                list.appendChild(li);
+            }
+            det.appendChild(list);
+        }
         // Click-anywhere-on-summary toggles the details; stop the
         // event from bubbling to the parent <label> (which would
         // forward clicks to the input -- e.g. a checkbox label
@@ -510,7 +532,7 @@
         if (badge) heading.appendChild(badge);
         section.appendChild(heading);
         if (f.help && helpIsLong(f.help)) {
-            section.appendChild(makeHelpDetails(f.help));
+            section.appendChild(makeHelpDetails(f.help, f.refs));
         } else if (f.help) {
             section.title = f.help;
         }

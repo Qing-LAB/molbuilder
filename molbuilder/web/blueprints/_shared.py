@@ -1065,6 +1065,16 @@ def _item_to_field(item, id_prefix: str) -> Dict[str, Any]:
     if item.optional:
         out["null_option"] = True
         out["null_label"] = item.null_label or "(auto)"
+    if item.refs:
+        # RESOLVED here, server-side, from the one bibliography
+        # (molbuilder/references.py) -- the form shows a real title and
+        # DOI, never a bare key.  An unknown key is silently omitted
+        # HERE because the test suite is where it must fail
+        # (tests/test_catalogue_refs.py); the form is not the CI.
+        from molbuilder.references import citation_for
+        cites = [c for c in (citation_for(k) for k in item.refs) if c]
+        if cites:
+            out["refs"] = cites
     return out
 
 

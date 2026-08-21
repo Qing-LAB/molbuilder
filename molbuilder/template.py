@@ -272,6 +272,15 @@ class Item:
     #: assumed.
     calculations: Tuple[str, ...] = ()
 
+    #: Citation keys into ``docs/science/references.bib`` -- the one
+    #: bibliography the whole validation design argues from (user,
+    #: 2026-08-21).  Surfaced under the form's help expander (resolved
+    #: to title/DOI server-side) and pinned by test: a key that does
+    #: not resolve in the bib fails CI, so an invented citation cannot
+    #: reach a user.  The engine-manual half of a citation is the
+    #: sibling ``manual`` key above.
+    refs: Tuple[str, ...] = ()
+
     #: **THE machine-answered flag.  One parameter, written to the file.**
     #:
     #: True means the scheduler answers this, not the person -- so a portable
@@ -320,6 +329,10 @@ class Item:
         for _c in self.calculations:
             if not isinstance(_c, str) or not _c.strip():
                 _refuse("'calculations' entries must be non-empty strings",
+                        where=self.name)
+        for _r in self.refs:
+            if not isinstance(_r, str) or not _r.strip():
+                _refuse("'refs' entries must be non-empty citation keys",
                         where=self.name)
         if self.kind == "engine" and not self.anchor:
             _refuse("kind='engine' needs an 'anchor' -- an engine item that "
@@ -711,7 +724,7 @@ def _toml_value(v: Any) -> str:
 #: The order keys appear inside an item.  Fixed so two templates of the same
 #: calculation diff cleanly, and so the file reads the way § 4.2's example does:
 #: what it is, then what it is worth, then what bounds it, then the prose.
-_ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "anchor", "engine_key",
+_ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "type",
                    "choices", "value", "default", "optional", "allocation",
                    "unit", "range", "tier", "pattern",
@@ -755,6 +768,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["engines"] = list(it.engines)
     if it.calculations:
         out["calculations"] = list(it.calculations)
+    if it.refs:
+        out["refs"] = list(it.refs)
     if it.allocation:
         out["allocation"] = True
     if it.label:
@@ -1212,6 +1227,7 @@ def _item_from(name: str, body: Any) -> Item:
         category=tuple(body.get("category", ()) or ()),
         engines=tuple(body.get("engines", ()) or ()),
         calculations=tuple(body.get("calculations", ()) or ()),
+        refs=tuple(body.get("refs", ()) or ()),
         allocation=bool(body.get("allocation", False)),
         null_label=str(body.get("null_label", "") or ""),
     )
