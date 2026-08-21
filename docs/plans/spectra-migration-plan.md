@@ -88,20 +88,25 @@ Results / Spectra tab                →  reads it, unchanged
 - **`task.calculation = "vibration"`** — the word the warm-file section
   already declares. (The *tab* keeps its name, Spectra; the calculation kind
   is the physics.)
-- **Two stages: `opt` → `freq`, and `opt` is skippable** *(user ruling,
-  2026-08-20 — reversing this plan's first draft)*: a harmonic analysis is
-  only valid at a stationary point, so relaxation belongs INSIDE the
-  calculation, not in a premise about its input. The framework makes the
-  ruling cheap: the ladder is just stages; **the skip flag is the existing
-  per-stage enable** (the Task-setup stage table's toggle — "I already
-  relaxed this" = disable `opt`); the optimized geometry reaches `freq`
-  through the same warm-file carry every continuing stage uses; and the
-  frozen set flows to BOTH stages from the one structure-side source —
-  constraining the relaxation and selecting the partial-Hessian subspace,
-  one fact, two consumers. When `opt` is skipped, the freq deck CHECKS the
-  gradient at the input geometry and **warns, never refuses** (names the
-  max force, says frequencies may be unreliable off a stationary point) —
-  skipping is a deliberate choice the user is entitled to make.
+- **One stage (`freq`), and relaxation is its mandatory PRECONDITION**
+  *(user rulings, 2026-08-20 — twice refined: first from "deferred" on the
+  physics — a harmonic analysis is only valid at a stationary point — and
+  then from "a skippable stage" to this, because optimization is not a
+  peer rung you toggle among others; without it the measurement means
+  nothing)*: the vibration deck performs the relaxation as its first act,
+  then the Hessian on the result, **in one process** — geomeTRIC straight
+  into `mf.Hessian()`, the standard PySCF pattern, no cross-stage
+  geometry hand-off at all. The ONLY way relaxation does not run is the
+  user's explicit statement: the template item **`already_relaxed`**
+  (bool, default **false**, `procedure` category), whose help text names
+  the responsibility being assumed. When it is set, the deck still checks
+  the gradient at the input geometry and **warns with the numbers, never
+  refuses** — the statement is the user's to make. The frozen set
+  constrains BOTH the in-deck relaxation and the partial-Hessian subspace
+  from the one structure-side declaration; the relaxation's convergence
+  knobs are the existing geometry items (`geom_gmax` family) selected
+  into the vibration template, **defaulting to the tight tier** — a
+  frequency deserves a properly converged stationary point.
 - **The template**: same `template@2` file, generated for the vibration kind:
   - **shared items stay shared** — method/functional/basis/charge/spin/ecp/
     dispersion/density-fit, SCF knobs, grid, and the whole execution
@@ -193,13 +198,13 @@ migration is workstation-scoped by ruling and touches no submit-layer code).
 - **D2 — thermo subsumption**: retire `compute_frequencies`/`thermo.txt` in
   favor of the vibration kind (this plan's default: one Hessian door), with
   RRHO as vibration-template items — or keep the cheap in-deck check?
-- **D3 — the compound ladder**: **SETTLED (user, 2026-08-20): IN v1** —
-  `opt` → `freq` with `opt` skippable via the per-stage enable; frozen
-  atoms constrain both stages from the structure's one declaration; a
-  skipped `opt` earns a gradient warning in the freq deck, never a
-  refusal. (The first draft deferred this on the old tab's
-  "assumed pre-relaxed" premise; the physics says otherwise, and the
-  framework's existing stages/warm-carry/enable machinery makes the right
-  design the cheap one.)
+- **D3 — where relaxation lives**: **SETTLED (user, 2026-08-20, twice
+  refined)** — relaxation is the freq deck's mandatory precondition,
+  in-process, NOT a stage: a stage toggle would present "skip it" as an
+  ordinary choice when it is an assertion. The user's explicit
+  `already_relaxed = true` is the one skip, and it earns a gradient
+  warning, never a refusal. (Draft one deferred relaxation on the old
+  tab's premise; draft two made it a skippable stage; this is the final
+  form.)
 - **D4 — `.spectra.json` v5**: only if thermo output needs a first-class
   block; otherwise `engine_metadata` carries it and v4 stands.
