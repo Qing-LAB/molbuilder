@@ -26,11 +26,12 @@ from molbuilder.structure import Structure
 #: the category that owns it; deleting a row is the proof its knob
 #: landed.  (Category 2 = the physical model, pending the PySCF
 #: support-matrix investigation; category 3 = workflow knobs.)
-STILL_OPEN = {
-    "solvent":        "category 2 -- solvation support matrix",
-    "solvent_method": "category 2 -- solvation support matrix",
-    "symmetry":       "category 2 -- mode irrep labeling",
-}
+#: EMPTY -- and the emptiness is the point: every parameter the
+#: vibration form shows is now read by the render or refused by name
+#: with the reason and references (category 2 landed 2026-08-21 on the
+#: probed PySCF support matrix; PCM honored end to end, SMD/ddCOSMO
+#: informed refusals, symmetry honored on the already-relaxed path).
+STILL_OPEN = {}
 
 _PROBES = {
     "bool":  lambda d: (not d),
@@ -65,6 +66,13 @@ def _gold() -> Structure:
 #: which the baseline already enables).
 _COMPANIONS = {
     "geom_continue_retries": {"on_nonconvergence": "continue"},
+    # solvent alone -> the PCM decoration lines; symmetry is honored
+    # on the already-relaxed path (elsewhere it refuses, which also
+    # counts as honored).
+    "symmetry": {"already_relaxed": True},
+    # a method methods nothing without a solvent (the validator warns
+    # standalone); its deck effect is probed beside one.
+    "solvent_method": {"solvent": "water"},
     # An ECP only speaks when both halves are named AND the structure
     # holds the element -- probe them together, on gold (below).
     "ecp":       {"ecp_atoms": ["Au"]},

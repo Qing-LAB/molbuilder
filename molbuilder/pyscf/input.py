@@ -71,17 +71,10 @@ _STABILITY_ENERGY_TOL = 1e-8
 # --------------------------------------------------------------------- #
 
 
-_SOLVENTS = {
-    "water":      78.3553,
-    "methanol":   32.613,
-    "ethanol":    24.852,
-    "acetone":    20.493,
-    "dmso":       46.826,
-    "thf":        7.4257,
-    "chloroform": 4.7113,
-    "toluene":    2.3741,
-    "hexane":     1.8819,
-}
+# The PCM dielectric table MOVED to scf_setup.SOLVENTS
+# (2026-08-21, one home for both decks); this alias keeps
+# this module's readers and the error message below working.
+from .scf_setup import SOLVENTS as _SOLVENTS
 
 
 
@@ -593,22 +586,12 @@ def spec_for(struct: Structure,
         """
         out: List[str] = []
         if cfg.solvent:
-            eps = _SOLVENTS.get(cfg.solvent.lower())
-            if eps is None:
-                raise ValueError(
-                    f"unknown solvent {cfg.solvent!r}; "
-                    f"valid: {sorted(_SOLVENTS)}"
-                )
-            out.append("# PCM solvation -- continuum model (cheaper than ddCOSMO).")
-            # Use the SCF-method form ``mf.PCM()`` instead of the bare
-            # ``pcm.PCM(mf)`` constructor (P1).  In PySCF 2.x ``mf.PCM()``
-            # returns a PCM-decorated SCF object that exposes
-            # ``.with_solvent``; ``pcm.PCM(mf)`` returns a bare solvent
-            # object (no .with_solvent), so the next two lines used to crash.
-            out.append("mf = mf.PCM()")
-            out.append(f'mf.with_solvent.method = "{cfg.solvent_method}"')
-            out.append(f"mf.with_solvent.eps = {eps}    "
-                       f"# {cfg.solvent} dielectric")
+            # ONE spelling for both decks (scf_setup.emit_solvent_lines;
+            # 2026-08-21).  The mf.PCM() form -- not pcm.PCM(mf) -- is
+            # load-bearing: only the decorated-SCF form exposes
+            # .with_solvent (the bare constructor crashed here once, P1).
+            from .scf_setup import emit_solvent_lines
+            out += emit_solvent_lines(cfg)
         out.append("")
         # THE SCF SETTINGS GO THROUGH THE ONE DOOR
         # (`execution/script-preparation.md` § 4.2).  ``layout.SCF_SECTION`` names

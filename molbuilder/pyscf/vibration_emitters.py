@@ -454,7 +454,18 @@ def _emit_build_mol(struct: Structure, cfg: SpectraConfig) -> List[str]:
     from ..chemistry import resolve_pyscf_ecp as _resolve_ecp
     _ecp_chosen = _resolve_ecp(struct, getattr(cfg, "ecp", ""),
                                getattr(cfg, "ecp_atoms", ()))
+    # symmetry (category 2, probed 2026-08-21): honored ONLY on the
+    # already-relaxed path.  The equilibrium Hessian runs fine under
+    # the point group (with PCM too), but a geomeTRIC step or an FD
+    # displacement leaves the group, and PySCF's re-symmetrization
+    # would fight the very coordinates the derivative is taken at --
+    # so the relax-enabled path refuses upstream (kind validator) and
+    # the displaced builder forces symmetry off below.
+    _use_symmetry = bool(getattr(cfg, "symmetry", False)) and bool(
+        getattr(cfg, "already_relaxed", False))
     out.append("mol = gto.M(")
+    if _use_symmetry:
+        out.append("    symmetry   = True,")
     if _ecp_chosen:
         out.append(f"    ecp        = {_ecp_chosen!r},")
     out.append("    atom       = [[a[0], (a[1], a[2], a[3])] for a in ATOMS],")
@@ -644,6 +655,7 @@ def _emit_equilibrium_scf(cfg: SpectraConfig, struct: Structure) -> List[str]:
         out.append(f"mf = _scf.{scf_class}(mol)")
     out.append("if DENSITY_FIT:")
     out.append("    mf = mf.density_fit(**_MB_DF_KW)")
+    out.append("mf = _mb_apply_solvent(mf)")
     out.append("mf = _mb_configure_scf(mf)")
     # Hard-SCF hint when an open-shell metal is present.  Commented
     # template -- discoverable without being prescriptive; the user
@@ -1014,6 +1026,10 @@ def _emit_displaced_scf_helpers(cfg: SpectraConfig) -> List[str]:
     out.append("                         because gpu4pyscf doesn't yet expose")
     out.append("                         analytic CPHF polarizability.'''")
     out.append("    _mol_new = mol.copy()")
+    out.append("    # displacements leave the point group; re-symmetrization")
+    out.append("    # would reorient the frame under the derivative (probed:")
+    out.append("    # C2v -> Cs on a 0.005 A displacement).  Always off here.")
+    out.append("    _mol_new.symmetry = False")
     out.append("    _mol_new.atom = [[ELEMENTS[_i], tuple(coords[_i])]")
     out.append("                     for _i in range(N_ATOMS)]")
     out.append("    _mol_new.unit = 'Angstrom'")
@@ -1036,6 +1052,7 @@ def _emit_displaced_scf_helpers(cfg: SpectraConfig) -> List[str]:
     out.append("    _use_df = DENSITY_FIT if density_fit is None else density_fit")
     out.append("    if _use_df:")
     out.append("        _mf2 = _mf2.density_fit(**_MB_DF_KW)")
+    out.append("    _mf2 = _mb_apply_solvent(_mf2)")
     out.append("    # The one SCF dresser (pyscf.md § 7a): the displaced and")
     out.append("    # relaxation cycles run the same machinery the equilibrium")
     out.append("    # one does -- init guess, level shift, damping, DIIS.")

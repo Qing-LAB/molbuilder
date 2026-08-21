@@ -85,3 +85,74 @@ def emit_density_fit_kw(cfg) -> List[str]:
         "# auxbasis rides the density-fitting call as its argument.",
         f"_MB_DF_KW = {{'auxbasis': {aux!r}}} if {aux!r} else {{}}",
     ]
+
+
+#: Dielectric constants for the PCM continuum -- MOVED here 2026-08-21
+#: from input.py's module table so both decks read one home (input.py
+#: aliases it).  Values are the standard PCM defaults.
+SOLVENTS = {
+    "water":      78.3553,
+    "methanol":   32.613,
+    "ethanol":    24.852,
+    "acetone":    20.493,
+    "dmso":       46.826,
+    "thf":        7.4257,
+    "chloroform": 4.7113,
+    "toluene":    2.3741,
+    "hexane":     1.8819,
+}
+
+
+def emit_solvent_lines(cfg, mf_var: str = "mf") -> List[str]:
+    """The PCM decoration, ONE spelling for both decks.
+
+    Category 2 of the integration plan (2026-08-21, PROBED live against
+    pyscf 2.13): PCM supports the full derivative chain a vibration
+    needs -- analytic gradient, analytic Hessian (RKS and UKS, with and
+    without density fitting), and the CPHF polarizability WITH the
+    solvent in the response (measured: the tensor shifts, it is not a
+    gas-phase number under a solvent label).  SMD is compiled out of
+    this build (-DENABLE_SMD) and ddCOSMO has no analytic Hessian --
+    both refuse upstream in the kind validator with the reason and the
+    references; only PCM reaches this emitter for a vibration deck.
+    Empty ``solvent`` -> no lines (gas phase).
+    """
+    solvent = str(getattr(cfg, "solvent", "") or "").lower()
+    if not solvent:
+        return []
+    eps = SOLVENTS.get(solvent)
+    if eps is None:
+        raise ValueError(
+            f"unknown solvent {solvent!r}; valid: {sorted(SOLVENTS)}")
+    method = str(getattr(cfg, "solvent_method", "IEF-PCM") or "IEF-PCM")
+    return [
+        "# PCM solvation -- continuum model (cheaper than ddCOSMO).",
+        f"{mf_var} = {mf_var}.PCM()",
+        f'{mf_var}.with_solvent.method = "{method}"',
+        f"{mf_var}.with_solvent.eps = {eps}    # {solvent} dielectric",
+    ]
+
+
+def emit_solvent_apply_fn(cfg) -> List[str]:
+    """``_mb_apply_solvent(mf)`` for a multi-site deck -- the same
+    lines :func:`emit_solvent_lines` writes inline for a one-``mf``
+    deck, wrapped once so the vibration deck's equilibrium, displaced
+    and relaxation constructions decorate identically.  CONSISTENCY IS
+    THE SCIENCE here: mixing gas-phase derivatives with a solvated
+    energy is not an approximation, it is an inconsistency -- every
+    ``mf`` passes through this function or none does.  Gas phase ->
+    an identity function, so call sites never branch."""
+    lines = emit_solvent_lines(cfg, mf_var="mf")
+    out = [
+        "",
+        "",
+        "def _mb_apply_solvent(mf):",
+        '    """Solvent decoration, identical at EVERY construction',
+        '    (equilibrium / displaced / relaxation) -- pyscf.md § 7a."""',
+    ]
+    if lines:
+        out += ["    " + ln for ln in lines]
+    else:
+        out.append("    pass  # gas phase")
+    out.append("    return mf")
+    return out

@@ -454,6 +454,110 @@ def spectra_render_checks(struct: Structure,
         ))
 
 
+    # --- The solvation matrix (category 2; PROBED live against pyscf
+    # 2.13 on 2026-08-21 -- every verdict below is a measured fact,
+    # not a recalled one).  PCM carries the FULL derivative chain a
+    # vibration needs: analytic gradient, analytic Hessian (RKS and
+    # UKS, with and without density fitting), and the CPHF
+    # polarizability WITH the solvent in the response.  SMD is
+    # compiled out of this build; ddCOSMO has no analytic Hessian.
+    _solv = str(getattr(cfg, "solvent", "") or "").lower()
+    _smethod = str(getattr(cfg, "solvent_method", "") or "").upper()
+    if _solv:
+        if "SMD" in _smethod:
+            issues.append(Issue(
+                severity="error",
+                message=(
+                    "solvent_method = SMD: this PySCF build was compiled "
+                    "without the SMD module (probe: RuntimeError 'compile "
+                    "with -DENABLE_SMD=ON', 2026-08-21).  Use a PCM "
+                    "variant (IEF-PCM / C-PCM), which carries the full "
+                    "analytic-derivative chain here, or rebuild PySCF "
+                    "with SMD enabled.  SMD reference: Marenich, Cramer "
+                    "& Truhlar, J. Phys. Chem. B 113, 6378 (2009) "
+                    "[Marenich2009]."),
+                where="config.solvent_method",
+            ))
+        elif "DDCOSMO" in _smethod or "COSMO" == _smethod:
+            issues.append(Issue(
+                severity="error",
+                message=(
+                    "solvent_method = ddCOSMO: pyscf 2.13 provides its "
+                    "gradient but NOT its analytic Hessian (probed "
+                    "2026-08-21: Hessian raises AttributeError), and a "
+                    "vibration IS a Hessian.  Use IEF-PCM / C-PCM, whose "
+                    "Hessian is analytic here.  ddCOSMO reference: "
+                    "Lipparini et al., J. Chem. Phys. 141, 184108 (2014) "
+                    "[Lipparini2014]."),
+                where="config.solvent_method",
+            ))
+        else:
+            issues.append(Issue(
+                severity="info",
+                message=(
+                    f"PCM solvation ({_solv}): relaxation, Hessian, IR "
+                    f"and Raman all run under the SAME solvated "
+                    f"Hamiltonian -- consistent by construction (the "
+                    f"polarizability response includes the solvent; "
+                    f"measured).  The numbers use the EQUILIBRIUM-"
+                    f"solvation approximation: the continuum relaxes "
+                    f"fully at every displaced geometry, so fast "
+                    f"non-equilibrium solvent response is not in the "
+                    f"line shapes.  Tomasi, Mennucci & Cammi, Chem. Rev. "
+                    f"105, 2999 (2005) [Tomasi2005]; Cances, Mennucci & "
+                    f"Tomasi, J. Chem. Phys. 107, 3032 (1997) "
+                    f"[Cances1997]."),
+                where="config.solvent",
+            ))
+        if bool(getattr(cfg, "use_gpu", False)):
+            issues.append(Issue(
+                severity="error",
+                message=(
+                    "solvent + use_gpu: the solvated derivative chain has "
+                    "been validated on the CPU path only (2026-08-21); "
+                    "gpu4pyscf's PCM has not been probed with this deck's "
+                    "to_gpu promotion.  Run this calculation on CPU, or "
+                    "ask for the GPU+PCM validation to be scheduled."),
+                where="config.use_gpu",
+            ))
+
+    elif _smethod and _smethod not in ("IEF-PCM",):
+        # A method with no solvent methods nothing -- say so rather
+        # than letting the field sit inert (the honesty gate's rule:
+        # every shown knob speaks).
+        issues.append(Issue(
+            severity="warn",
+            message=(
+                f"solvent_method = {_smethod} is set but `solvent` is "
+                f"empty, so no solvation model is applied and the "
+                f"method choice does nothing.  Pick a solvent (the PCM "
+                f"dielectric table: water, methanol, ethanol, acetone, "
+                f"dmso, thf, chloroform, toluene, hexane) or clear the "
+                f"method."),
+            where="config.solvent_method",
+        ))
+
+    # --- symmetry (category 2; probed 2026-08-21) -------------------
+    if bool(getattr(cfg, "symmetry", False)) and not bool(
+            getattr(cfg, "already_relaxed", False)):
+        issues.append(Issue(
+            severity="error",
+            message=(
+                "symmetry = true with in-deck relaxation: a geomeTRIC "
+                "step leaves the point group, and PySCF's "
+                "re-symmetrization would reorient the frame under the "
+                "optimizer (probed: C2v -> Cs on a 0.005 A "
+                "displacement).  Symmetry is honored on the "
+                "already_relaxed path, where the equilibrium SCF and "
+                "Hessian run under the group (PCM included) and the "
+                "displaced points force it off.  Set already_relaxed = "
+                "true (relax first, without symmetry), or drop "
+                "symmetry.  Wilson, Decius & Cross (1955) [Wilson1955] "
+                "for the symmetry classification of modes -- irrep "
+                "labels in the results are a planned follow-up."),
+            where="config.symmetry",
+        ))
+
     # optimizer: geomeTRIC by REFUSAL, and the refusal is informed
     # (the user's 2026-08-21 ruling: an educated suggestion, with the
     # source).  Probed against the run environment on 2026-08-21:

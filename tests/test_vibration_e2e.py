@@ -133,3 +133,49 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(
     # Raman was NOT requested: its phase closes as complete-with-nothing.
     assert d["phase_raman"] == "complete"
     assert all(m["raman_activity_a4_amu"] in (None, 0.0) for m in modes)
+
+
+def test_water_in_water_runs_the_solvated_chain_end_to_end(
+        tmp_path, monkeypatch):
+    """Category 2's live bar (integration plan, 2026-08-21): PCM water,
+    the WHOLE chain under one solvated Hamiltonian -- relaxation,
+    Hessian, IR and Raman -- because pyscf 2.13's PCM carries every
+    analytic derivative (probed; the polarizability response includes
+    the solvent).  The physics pins are deliberately loose: PCM shifts
+    water's bands by tens of cm^-1, so the gas windows widen; what is
+    being proven is the CONSISTENT solvated run completing with real
+    numbers, plus the solvated deck actually differing from gas
+    (the eps line is in the deck; the energy is the solvated one)."""
+    bundle = _describe(tmp_path, monkeypatch)
+    tpl = bundle / "W.template.toml"
+    t = tpl.read_text()
+    # An optional-empty item emits NO value line at all -- the edit
+    # INSERTS one (an escape-hatch assert here let a silent no-op
+    # through on the first landing; now the write is verified).
+    anchor = '[item.solvent]\n'
+    assert t.count(anchor) == 1
+    t = t.replace(anchor, anchor + 'value = "water"\n', 1)
+    assert 'value = "water"' in t
+    # BOTH lanes on: the solvated proof covers IR and Raman under one
+    # Hamiltonian (compute_ir defaults false; the first landing of
+    # this test asserted IR without enabling it).
+    i = t.index("[item.compute_ir]"); j = t.index("[item.", i + 1)
+    t = t[:i] + t[i:j].replace("value = false", "value = true", 1) + t[j:]
+    assert t[t.index("[item.compute_ir]"):t.index("[item.", t.index("[item.compute_ir]") + 1)].count("value = true") == 1
+    tpl.write_text(t)
+
+    deck = (bundle / "W_01_freq.py")
+    d = _prep_and_run(bundle)
+    text = deck.read_text()
+    assert "mf = mf.PCM()" in text or "_mb_apply_solvent" in text
+    assert "78.3553" in text, "the water dielectric never reached the deck"
+
+    assert d["phase_relaxation"] == "complete"
+    assert d["phase_frequencies"] == "complete"
+    modes = sorted(d["modes"], key=lambda m: m["frequency_cm1"])
+    freqs = [m["frequency_cm1"] for m in modes]
+    assert 1500.0 < freqs[0] < 1800.0, f"solvated bend {freqs[0]}"
+    assert 3400.0 < freqs[1] < 4100.0 and 3400.0 < freqs[2] < 4100.0, freqs
+    assert all(m["raman_activity_a4_amu"] is not None for m in modes)
+    assert all(m["ir_intensity_km_mol"] is not None for m in modes)
+    assert d["thermo"]["grid"]["temperatures_K"], "thermo grid missing"

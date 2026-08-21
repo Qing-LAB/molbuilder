@@ -506,9 +506,12 @@ def vibration_spec(struct: Structure, cfg, *,
         # deck builds calls _mb_configure_scf, so the machinery knobs
         # apply identically at the equilibrium, displaced and
         # relaxation sites.
-        from .scf_setup import emit_scf_configure_fn, emit_density_fit_kw
+        from .scf_setup import (emit_scf_configure_fn,
+                                emit_density_fit_kw,
+                                emit_solvent_apply_fn)
         out += emit_scf_configure_fn(cfg, verbose=bool(getattr(cfg, 'verbose_comments', True)))
         out += [""] + emit_density_fit_kw(cfg)
+        out += emit_solvent_apply_fn(cfg)
         out += emit_gpu_probe_lines(
             use_gpu=bool(view.use_gpu),
             min_compute_capability=int(

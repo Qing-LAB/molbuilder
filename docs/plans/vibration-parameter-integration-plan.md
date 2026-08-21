@@ -39,7 +39,48 @@ pass-through into the two `mf`-construction sites, catalogue help gains the
 hint sentence + `refs`, and the honesty test (below) turns each row green as
 it lands.
 
-## Category 2 — the physical model (3 items): these change the ANSWER; integrate consistently or refuse with a reason
+## Category 2 — the physical model (3 items): ✅ DELIVERED 2026-08-21 on the measured support matrix
+
+**The matrix, probed live against pyscf 2.13** (every verdict measured,
+none recalled; water/STO-3G/B3LYP probes, then the full E2E):
+
+| model | SCF | grad | analytic Hessian | polarizability (Raman) | verdict |
+|---|---|---|---|---|---|
+| gas | ok | ok | ok | ok | baseline |
+| **PCM** (IEF-PCM/C-PCM) | ok | ok | **ok** — RKS *and* UKS, *and* with density fitting | **ok, and the solvent ENTERS the response** (tensor shifts 9e-2 a.u.; not a gas-phase number under a water label) | **HONORED end to end** |
+| SMD | FAIL — this build compiled without `-DENABLE_SMD` | — | — | — | informed refusal naming the build flag + [Marenich2009] |
+| ddCOSMO | ok | ok | FAIL — no analytic Hessian (`AttributeError`) | — | informed refusal + [Lipparini2014], suggests PCM |
+
+Also measured: the dielectric parameter reaches the model (eps 78 vs
+2.27 shifts E); a 0.005 Å displacement drops water's group C2v → Cs,
+so re-symmetrization under a derivative would move the frame.
+
+**What landed:**
+- one spelling for the PCM decoration in `pyscf/scf_setup.py`
+  (`SOLVENTS` table + `emit_solvent_lines`), the optimization deck's
+  inline block switched onto it, and the vibration deck emits
+  `_mb_apply_solvent(mf)` once and decorates EVERY construction —
+  equilibrium, displaced, relaxation — because consistency is the
+  science;
+- `symmetry` honored on the **already-relaxed path only** (equilibrium
+  SCF + Hessian under the group, PCM included; the displaced builder
+  forces it off; with in-deck relaxation the kind validator refuses
+  with the measured C2v→Cs reason).  Mode irrep labels remain the
+  planned follow-up;
+- the kind validator carries the whole matrix as guidance: PCM → an
+  info note with the equilibrium-solvation caveat + [Tomasi2005,
+  Cances1997]; SMD/ddCOSMO → the refusals above; solvent+use_gpu →
+  refused pending a GPU-side probe; a method with no solvent → a warn
+  that it methods nothing;
+- **the live bar**: `test_water_in_water_runs_the_solvated_chain_end_
+  to_end` — relax, Hessian, IR *and* Raman under one PCM Hamiltonian;
+  the bands red-shift (1622 vs 1639 cm⁻¹ bend) and the Raman
+  activities shift (65.5 vs 76.9 Å⁴/amu) — the solvent is in the
+  physics, not the label.
+
+**The honesty gate's open list is now EMPTY.**
+
+### The original analysis (kept for the record)
 
 | item | the scientific requirement | the honest path |
 |---|---|---|
