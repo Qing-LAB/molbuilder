@@ -30,6 +30,7 @@ from molbuilder.spectra import (
     SpectraResults,
 )
 from molbuilder.spectra.results import (
+    READABLE_SCHEMA_VERSIONS,
     PHASE_COMPLETE,
     PHASE_EMPTY,
     PHASE_RUNNING,
@@ -266,10 +267,23 @@ class TestSpectraResults:
             ``frozen_atom_idxs`` (terminology unification).
         v4 (2026-05-22): add ``runtime_info`` (n_threads, GPU info,
             hostname); same "no backward compat" rule.
+        v5 (2026-08-20): + the OPTIONAL relaxation/thermo blocks
+            (spectra-migration plan D4) -- and the rule CHANGES here:
+            additive bumps read the old version whole
+            (READABLE_SCHEMA_VERSIONS is a set, the molstruct sidecar's
+            own doctrine), so "no backward compat" now applies only to
+            facts that MOVED.
         """
         r = _make_results()
-        assert r.schema_version == 4
-        assert SCHEMA_VERSION == 4
+        assert r.schema_version == SCHEMA_VERSION == 5
+        assert READABLE_SCHEMA_VERSIONS == {4, 5}
+        # The additive rule, executed: a v4 payload reads whole.
+        d = r.to_dict(); d["schema_version"] = 4
+        for k in ("phase_relaxation", "relaxation", "thermo"):
+            d.pop(k, None)
+        back = SpectraResults.from_dict(d)
+        assert back.schema_version == 4
+        assert back.phase_relaxation == "empty" and back.thermo == {}
 
     def test_engine_metadata_passes_through(self):
         """engine_metadata is the escape valve for engine-specific

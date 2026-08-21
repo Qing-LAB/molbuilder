@@ -26,7 +26,8 @@ from typing import Any, Dict, Union
 
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import SidecarResult
-from molbuilder.spectra.results import SCHEMA_VERSION, SpectraResults
+from molbuilder.spectra.results import (READABLE_SCHEMA_VERSIONS,
+                                        SCHEMA_VERSION, SpectraResults)
 # Canonical home for the exception classes is the write-side
 # module so read and write surfaces stay in lock-step.
 from molbuilder.sidecars.spectra import (
@@ -78,7 +79,11 @@ def _strict_finite_float(s: str) -> float:
 # dropping support.  Per-version read-time handling lives in the typed-
 # class ``from_dict`` methods (see ``ModeData.from_dict`` for the
 # v1 -> v2 eigenvector remap).
-_READABLE_SCHEMA_VERSIONS = {4}
+# ONE home for the readable set: `spectra/results.py` owns it (v5's own
+# introduction found this hardcoded {4} here -- the parse gate refused the
+# writer's current version while quoting it in its own error, "expected 5,
+# got 5").
+_READABLE_SCHEMA_VERSIONS = READABLE_SCHEMA_VERSIONS
 
 
 def _validate_schema_version(actual: Any) -> None:

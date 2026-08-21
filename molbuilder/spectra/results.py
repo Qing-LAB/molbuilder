@@ -83,7 +83,14 @@ import numpy as np
 #          CC 8.9)" so a user can verify the run matched their
 #          configuration intent.  No backward compatibility: v3
 #          documents fail with a clear schema-version error.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5   # 5 (2026-08-20, spectra-migration plan D4): + the
+#                    OPTIONAL `phase_relaxation` + `relaxation` progress
+#                    block (the in-deck relaxation is a TRACKED step) and
+#                    the OPTIONAL `thermo` block (RRHO re-homed from the
+#                    retiring thermo.txt path; D2).  ADDITIVE -- a v4 file
+#                    lacks them and reads whole, which is why the reader
+#                    accepts a SET (the molstruct sidecar's own rule).
+READABLE_SCHEMA_VERSIONS = frozenset({4, 5})
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -557,6 +564,21 @@ class SpectraResults:
     phase_frequencies:         str = PHASE_EMPTY
     phase_raman:               str = PHASE_EMPTY
     phase_es:                  str = PHASE_EMPTY
+    #: v5: the in-deck relaxation is a tracked step (user, 2026-08-20 --
+    #: the viewer tracks ALL the steps; a silent gap while geomeTRIC works
+    #: would betray that).  Complete-by-assertion under already_relaxed,
+    #: with the gradient-check number in `relaxation` beside it.
+    phase_relaxation:          str = PHASE_EMPTY
+    #: v5: relaxation progress/result -- {enabled, already_relaxed,
+    #: n_steps, max_force_eh_a, converged, warning?}.  Written live so the
+    #: chip can show "step 14, max force 0.0042" ticking down.
+    relaxation:                Dict[str, Any] = field(default_factory=dict)
+    #: v5: RRHO thermochemistry (D2's re-homing) -- headline numbers at
+    #: (temperature_K, pressure_atm), the T-grid arrays the viewer's
+    #: G/H/S curves draw, and `regime`: "rrho" for a free molecule,
+    #: "vibrational-only" (stated, never refused) when atoms are frozen --
+    #: an anchored molecule does not rotate.
+    thermo:                    Dict[str, Any] = field(default_factory=dict)
 
     # Equilibrium geometry -- element symbols + Cartesian positions
     # in Å.  Optional in the wire format (older results from
@@ -648,7 +670,8 @@ class SpectraResults:
         # Phase status validation.
         for name, val in (("phase_frequencies", self.phase_frequencies),
                           ("phase_raman",       self.phase_raman),
-                          ("phase_es",          self.phase_es)):
+                          ("phase_es",          self.phase_es),
+                          ("phase_relaxation",  self.phase_relaxation)):
             if val not in _VALID_PHASE_STATES:
                 raise ValueError(
                     f"SpectraResults.{name}={val!r} is not a valid "
@@ -749,6 +772,9 @@ class SpectraResults:
             "bibliography_keys":    [str(k) for k in self.bibliography_keys],
 
             "phase_frequencies":    str(self.phase_frequencies),
+            "phase_relaxation":     str(self.phase_relaxation),
+            "relaxation":           dict(self.relaxation),
+            "thermo":               dict(self.thermo),
             "phase_raman":          str(self.phase_raman),
             "phase_es":             str(self.phase_es),
             "engine_metadata":      dict(self.engine_metadata),
@@ -763,11 +789,13 @@ class SpectraResults:
         # being silently reconstituted at whatever version the payload
         # claims.
         sv = d.get("schema_version")
-        if sv is None or int(sv) != SCHEMA_VERSION:
+        if sv is None or int(sv) not in READABLE_SCHEMA_VERSIONS:
             raise ValueError(
                 f"SpectraResults: schema_version {sv!r} is not "
-                f"supported; this molbuilder build requires "
-                f"{SCHEMA_VERSION}."
+                f"supported; this molbuilder build reads "
+                f"{sorted(READABLE_SCHEMA_VERSIONS)} (v5 added only the "
+                f"optional relaxation/thermo blocks, so a v4 file reads "
+                f"whole; older versions do not)."
             )
         eq = d["equilibrium"]
         return cls(
@@ -808,6 +836,9 @@ class SpectraResults:
             bibliography_keys    = [str(k) for k in d.get("bibliography_keys", [])],
 
             phase_frequencies    = str(d.get("phase_frequencies", PHASE_EMPTY)),
+            phase_relaxation     = str(d.get("phase_relaxation", PHASE_EMPTY)),
+            relaxation           = dict(d.get("relaxation") or {}),
+            thermo               = dict(d.get("thermo") or {}),
             phase_raman          = str(d.get("phase_raman",       PHASE_EMPTY)),
             phase_es             = str(d.get("phase_es",          PHASE_EMPTY)),
             engine_metadata      = dict(d.get("engine_metadata", {})),

@@ -103,3 +103,19 @@ def default_pyscf_stages(strategy: str = "publishable") -> List["Stage"]:
                          enabled=bool(enables[i]) if i < len(enables) else False,
                          overrides=overrides))
     return out
+
+
+def vibration_stages() -> List["Stage"]:
+    """The vibration calculation's ladder: ONE stage, named ``freq``
+    (spectra-migration plan § 2, user rulings 2026-08-20).
+
+    One stage because the calculation is one measurement whose
+    precondition -- the relaxation -- lives INSIDE the deck (D3's final
+    form: geomeTRIC straight into the Hessian, in-process; the user's
+    explicit ``already_relaxed = true`` is the one skip, answered with a
+    gradient check and a warning).  A tier ladder makes no sense here:
+    tiers grade an optimization's convergence, and the freq deck already
+    defaults the geometry criteria to the tight tier via the template.
+    """
+    from ..task import Stage
+    return [Stage(name="freq", enabled=True, overrides={})]

@@ -164,9 +164,27 @@ def describe_cmd(structure: str, dest: str, shape: str,
         _ladder = {"siesta": default_siesta_stages,
                    "pyscf": default_pyscf_stages}[engine]
         _one = SIESTA_STAGE_NAMES[1]        # the shared ladder vocabulary
-        stages = (tuple(_ladder(stage_strategy))
-                  if stage_strategy
-                  else (Stage(name=_one, enabled=True, overrides={}),))
+        if calculation == "vibration":
+            # The vibration kind's own ladder (spectra-migration plan § 2):
+            # ONE freq stage, PySCF first.  A --stage-strategy names the
+            # optimization ladder's tiers, which grade nothing here.
+            from ..pyscf.stages import vibration_stages
+            if engine != "pyscf":
+                raise click.ClickException(
+                    f"calculation 'vibration' is PySCF-first (the plan's "
+                    f"engine-agnostic shape admits others later); engine "
+                    f"{engine!r} has no vibration deck yet.")
+            if stage_strategy:
+                raise click.ClickException(
+                    "--stage-strategy names the optimization ladder's "
+                    "tiers; a vibration calculation has one `freq` stage "
+                    "whose geometry criteria default to the tight tier "
+                    "in its template.")
+            stages = tuple(vibration_stages())
+        else:
+            stages = (tuple(_ladder(stage_strategy))
+                      if stage_strategy
+                      else (Stage(name=_one, enabled=True, overrides={}),))
         # The label goes through the SAME normaliser Task.label uses, so the
         # template's SystemLabel and the description's id cannot disagree
         # about what this calculation is called.
