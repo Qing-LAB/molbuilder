@@ -499,7 +499,7 @@
     function setStatus(el, msg, kind) {
         if (!el) return;
         el.textContent = msg || "";
-        el.classList.remove("ok", "error", "muted");
+        el.classList.remove("ok", "error", "muted", "warn");
         if (kind) el.classList.add(kind);
     }
 
@@ -535,134 +535,39 @@
                 + 'before this script in the template.</p>';
             return;
         }
-        await _reloadSchemaForCurrentStructure(fs);
-
-        // Re-fetch + re-render when the sidebar's pick changes to
-        // a different .xyz, so the sidecar's frozen_atoms surfaces
-        // in the form for the new structure.  Non-xyz picks
-        // (peeking a .log, .fdf, etc.) don't touch the form.
-        //
-        // ``projects.onChange`` fires its callback IMMEDIATELY on
-        // subscribe (its contract -- gives subscribers a free
-        // initial fire so they don't need a separate
-        // getCurrentFile() call).  If the current file is a .xyz
-        // we'll end up doing a duplicate render right after the
-        // ``await`` above; the ``_schemaFetchSeq`` race guard
-        // makes that correct but wastes one fetch.  Track the
-        // unsubscribe in ``_cleanups`` so dispose() actually
-        // breaks the subscription (parity with every other
-        // long-lived hook in this file).
-        // Subscribe via the module-init contract (design.md "Module
-        // init contract").  The projects-sidebar module loads as
-        // ``<script type="module">`` (deferred), so its API isn't
-        // available at DOMContentLoaded -- ``runtime.whenReady`` is
-        // the structural way to await it without polling.  Falls
-        // back to a direct capture when the runtime isn't loaded
-        // (legacy / isolation tests) so this code still works
-        // without it.
-        const _rt = (window.molbuilder || {}).runtime;
-        const _projP = (_rt && typeof _rt.whenReady === "function")
-            ? _rt.whenReady("projects")
-            : Promise.resolve((window.molbuilder || {}).projects);
-        _projP.then((proj) => {
-        if (!proj) return;
-        // The "use this file in Spectra" handler — schema reload
-        // for the picked structure.  Defined once and wired to
-        // both the universal commit channel AND the page-mount
-        // cross-tab handoff (a structure file already in
-        // sessionStorage when /spectrum-calculation mounts should
-        // be treated as a commit; the user picked it on another
-        // tab and navigated here to configure spectra for it).
-        async function _commitStructureForSpectra(sel) {
-            const f = (sel && sel.file) ? String(sel.file) : "";
-            const lc = f.toLowerCase();
-            if (!lc.endsWith(".xyz") && !lc.endsWith(".pdb")) return;
-            // Form-dirty gate: if the user has typed parameter
-            // edits since the last commit/Generate, ask before
-            // discarding via the shared warning modal.
-            const modal = window.molbuilder
-                       && window.molbuilder.warningModal;
-            if (_formDirty && modal
-                && typeof modal.confirmDiscardUnsaved === "function") {
-                const proceed = await modal.confirmDiscardUnsaved();
-                if (!proceed) return;
-            }
-            _formDirty = false;
-            // Pin the committed-load file path so the Generate
-            // POST sends the file the user ACTUALLY loaded into the
-            // viewer, not whatever they happen to be hovering over
-            // in the sidebar at click-time.  2026-06-14 viewer-is-
-            // truth contract: same bug class as /structure-
-            // optimization's prior ``getCurrentFile()`` read.
-            _committedStructureFile = f;
-            // The committed structure's labels are read off the MODEL at Generate time
-            // (generateScript), not fetched here -- no out-of-band sidecar read.  We only
-            // pin the committed PATH above (for the server-side sidecar fallback).
-            await _reloadSchemaForCurrentStructure(fs).catch(() => {});
-        }
-        // Universal commit subscription — dblclick on a structure
-        // file in the sidebar.  Falls back to onChange for older
-        // deployments without onCommit.
-        const _subscribe = (typeof proj.onCommit === "function")
-            ? proj.onCommit.bind(proj)
-            : proj.onChange.bind(proj);
-        const unsub = _subscribe(_commitStructureForSpectra);
-        if (typeof unsub === "function") {
-            _cleanups.push(unsub);
-        }
-        // Cross-tab handoff: if a structure is already in
-        // sessionStorage when this tab mounts, treat it as a commit
-        // so the user doesn't have to re-click in the sidebar.
-        // Only fires once on mount; onCommit itself doesn't fire-
-        // on-subscribe.
-        const _initFile = (typeof proj.getCurrentFile === "function")
-            ? proj.getCurrentFile() : "";
-        if (_initFile) {
-            const _initDir = (typeof proj.getCurrentDir === "function")
-                ? proj.getCurrentDir() : "";
-            _commitStructureForSpectra({ dir: _initDir, file: _initFile });
-        }
-        });   // close _projP.then(...)
+        await _reloadVibrationSchema(fs);
+        // No structure-commit subscription any more: the schema does
+        // not depend on the picked structure (the sidecar pre-fill it
+        // re-fetched for is gone -- see _reloadVibrationSchema), so a
+        // sidebar pick no longer wipes typed parameters, and the
+        // discard-confirm that guarded the wipe has nothing to guard.
     }
 
-    async function _reloadSchemaForCurrentStructure(fs) {
-        // Resolve the current sidebar .xyz, if any.  The schema
-        // endpoint tolerates a missing / invalid path (it returns
-        // the static schema with a ``_notice`` describing why the
-        // pre-fill was skipped), so this branch is just "best-
-        // effort hint to the server"; nothing here can fail the
-        // form mount.
-        const proj = (window.molbuilder || {}).projects;
-        let structurePath = "";
-        if (proj && typeof proj.getCurrentFile === "function") {
-            const f = proj.getCurrentFile() || "";
-            const lc = f.toLowerCase();
-            if (lc.endsWith(".xyz") || lc.endsWith(".pdb")) {
-                structurePath = f;
-            }
-        }
+    async function _reloadVibrationSchema(fs) {
+        // The vibration form comes from the CATALOGUE, narrowed to the
+        // vibration calculation kind (template.md § 6.3) -- the same
+        // door the Build tab reads, so a parameter is defined once and
+        // rendered the same on every tab (spectra-migration-plan.md
+        // P2's substitution).
+        //
+        // The schema does NOT depend on the picked structure any more:
+        // the old per-structure re-fetch existed to let the server
+        // seed ``frozen_indices`` from the .molstruct.json sidecar,
+        // and frozen atoms are STRUCTURE-side facts now -- they ride
+        // the hand-over's structure files straight off the model
+        // (plan § 2), never a form field.
         const mySeq = ++_schemaFetchSeq;
         try {
             const schema = await fs.fetchSchema(
-                "spectra", { structurePath: structurePath },
+                "pyscf", { calculation: "vibration" },
             );
-            // Race guard: if a newer fetch was issued during our
-            // await, drop our continuation -- otherwise an older
-            // response would overwrite the newer one in
-            // state.schema + the rendered form, and the user
-            // would see the wrong structure's pre-fill.
+            // Race guard: a rapid remount can issue a newer fetch
+            // during our await; the older response must not
+            // overwrite the newer one in state.schema.
             if (mySeq !== _schemaFetchSeq) return;
             state.schema = schema;
             els.formContainer.innerHTML = "";
             fs.renderForm(els.formContainer, schema);
-            // Surface the optional server-side notice (e.g. "sidecar
-            // atom count differs -- re-export from /modify").
-            // Non-enumerable property; only set when the server
-            // sent one.
-            const notice = schema._notice;
-            if (notice && els.generateStatus) {
-                setStatus(els.generateStatus, notice, "warn");
-            }
             wireCompatibilityListeners();
             applyCompatibility();
         } catch (exc) {
@@ -687,13 +592,31 @@
     // exactly ONE active value field.  Locking the rest matches the
     // Build tab's pattern -- the user can't enter a top_n value
     // when threshold is selected, etc.
+    function _fieldIdByName(name) {
+        // The catalogue owns id derivation (`_item_to_field`); this
+        // module never spells an id.  The previous hardcoded
+        // spellings ("s-es_top_n") had drifted from the real ids
+        // ("s-es-top-n"), so the lock below had never fired.
+        const sections = (state.schema && state.schema.sections) || [];
+        for (const sect of sections) {
+            for (const f of (sect.fields || [])) {
+                if (f.name === name) return f.id || "";
+            }
+        }
+        return "";
+    }
+
+    function _esSelectionEl() {
+        const id = _fieldIdByName("es_mode_selection");
+        return id ? els.formContainer.querySelector("#" + id) : null;
+    }
+
     function wireCompatibilityListeners() {
-        const sel = els.formContainer.querySelector("#s-es-selection");
-        _on(sel, "change", applyCompatibility);
+        _on(_esSelectionEl(), "change", applyCompatibility);
     }
 
     function applyCompatibility() {
-        const sel = els.formContainer.querySelector("#s-es-selection");
+        const sel = _esSelectionEl();
         if (!sel) return;
         const which = sel.value;
         // Map selector value -> the field that's active for it.  All
@@ -702,18 +625,20 @@
         const activeByMode = {
             "skip":      null,
             "all":       null,
-            "top_n":     "s-es_top_n",
-            "threshold": "s-es_threshold",
-            "explicit":  "s-es_explicit_indices",
+            "top_n":     "es_top_n",
+            "threshold": "es_threshold",
+            "explicit":  "es_explicit_indices",
         };
-        const allValueIds = [
-            "s-es_top_n", "s-es_threshold", "s-es_explicit_indices",
+        const valueFields = [
+            "es_top_n", "es_threshold", "es_explicit_indices",
         ];
         const active = activeByMode[which] || null;
-        for (const id of allValueIds) {
-            const f = $(id);
+        for (const name of valueFields) {
+            const id = _fieldIdByName(name);
+            const f = id
+                ? els.formContainer.querySelector("#" + id) : null;
             if (!f) continue;
-            const isActive = (id === active);
+            const isActive = (name === active);
             f.disabled = !isActive;
             // Visually fade the field set so it's obvious which one
             // is in play -- the disabled attr does some of this, but
@@ -738,6 +663,38 @@
 
     function getTheStructure() {
         return _viewer ? _viewer.data.getStructure() : null;
+    }
+
+    // ----- Send to Task setup (the hand-over) -------------------
+    //
+    // The P2 substitution (spectra-migration-plan.md § 4): this tab
+    // DESCRIBES a vibration calculation and hands the description to
+    // Task setup -- it renders no deck.  Guards, write order and
+    // notice handling live in lib/task-handover.js, ONE door shared
+    // with /structure-optimization; this tab contributes only what it
+    // alone knows: its structure door, the engine, the kind, its form.
+    async function sendToTaskSetup() {
+        const mb = window.molbuilder || {};
+        const say = (kind, msg) => setStatus(els.sendStatus, msg, kind);
+        if (!mb.taskHandover) {
+            say("error", "lib/task-handover.js is not loaded.");
+            return;
+        }
+        /* ONE READ OF THE VIEWER (molview.md § 9.3): `exportFile()` is
+         * the viewer's own producer and emits the exact envelope the
+         * hand-over door reads -- atoms, positions at the displayed
+         * frame, labels, regions (frozen atoms) and cell in one read.
+         * Frozen atoms REACH THE CALCULATION THIS WAY: they ride the
+         * structure's own files, not a form field (plan § 2). */
+        const _out = _viewer ? _viewer.data.exportFile() : null;
+        await mb.taskHandover.send({
+            projects:    mb.projects,
+            say:         say,
+            structure:   (_out && _out.structure) ? _out.structure : null,
+            engine:      "pyscf",
+            params:      collectParams(),
+            calculation: "vibration",
+        });
     }
 
     // ----- Render button: POST /api/spectra/render -------------
@@ -1366,7 +1323,15 @@
 
     function _watchProgressLine(results) {
         // One-line summary of where the run is RIGHT NOW so the
-        // user knows what to expect.
+        // user knows what to expect.  Relaxation runs FIRST (it is
+        // the in-deck precondition, plan D3): frequencies of an
+        // unrelaxed structure would be wrong, so it gates the rest.
+        const rx = results.relaxation || {};
+        if (rx.enabled && results.phase_relaxation !== "complete") {
+            const n = (rx.n_steps != null)
+                ? " (step " + rx.n_steps + ")" : "";
+            return "Relaxing the geometry" + n;
+        }
         const f = results.phase_frequencies;
         const r = results.phase_raman;
         const e = results.phase_es;
@@ -1388,6 +1353,11 @@
     function allPhasesComplete(results) {
         // A run is "complete" when every phase the CONFIG asked for
         // is complete.  L2 (frequencies) is always required.
+        // Relaxation counts only when the deck ran it (v4 files and
+        // `already_relaxed` runs carry enabled: false / no block).
+        const rx = results.relaxation || {};
+        if (rx.enabled && results.phase_relaxation !== "complete")
+            return false;
         if (results.phase_frequencies !== "complete") return false;
         const cfg = results.config || {};
         if (cfg.compute_raman && results.phase_raman !== "complete") return false;
@@ -1401,7 +1371,7 @@
         els.phaseIndicator.hidden = false;
         const dots = els.phaseIndicator.querySelectorAll(".phase-dot");
         dots.forEach(dot => {
-            const ph = dot.dataset.phase;            // "frequencies"|"raman"|"es"
+            const ph = dot.dataset.phase;   // relaxation|frequencies|raman|es
             const v  = results["phase_" + ph] || "empty";
             dot.className = "phase-dot phase-" + v;
             dot.title = ph + ": " + v;
@@ -1477,6 +1447,7 @@
             ["CPU / threads",      cpu],
             ["GPU",                gpu],
             ["Host",               rt.hostname || "—"],
+            ["Relaxation",                _relaxSummary(results)],
             ["Frequencies (Hessian)",     results.phase_frequencies],
             ["Raman activities",           results.phase_raman],
             ["Per-mode orbital energies",  results.phase_es],
@@ -1529,6 +1500,7 @@
         renderSpectrumChart(results.modes || []);
         renderModesTable();
         renderESPanel();
+        renderThermoPanel(results);
         // Geometry changed (new results loaded) -- discard the old
         // VibrationView mode viewer so the next render rebuilds with the
         // fresh structure.
@@ -1543,6 +1515,23 @@
             if (els.modeViewer) els.modeViewer.innerHTML = "";
         }
         renderModeViewer();
+    }
+
+    function _relaxSummary(results) {
+        // The tracked relaxation phase (v5; plan D3/D4): what the
+        // deck recorded, in one line.  v4 files carry no block.
+        const rx = results.relaxation || {};
+        if (rx.already_relaxed) return "skipped (already relaxed)";
+        if (!rx.enabled) return results.phase_relaxation || "\u2014";
+        let out = results.phase_relaxation || "empty";
+        if (rx.n_steps != null) out += " \u2014 " + rx.n_steps + " steps";
+        if (rx.max_force_eh_a != null) {
+            out += ", max |F| "
+                 + Number(rx.max_force_eh_a).toExponential(1)
+                 + " Eh/\u00c5";
+        }
+        if (rx.warning) out += " \u26a0 " + rx.warning;
+        return out;
     }
 
     function _resultsFingerprint(results, selectedMode) {
@@ -1594,6 +1583,11 @@
             results.phase_raman || "",
             results.phase_ir || "",
             results.phase_es || "",
+            results.phase_relaxation || "",
+            String((results.relaxation
+                    && results.relaxation.n_steps) || ""),
+            (((results.thermo || {}).grid || {}).temperatures_K
+                ? "thermo" : ""),
             selectedMode == null ? "-" : String(selectedMode),
         ].join("|");
     }
@@ -2877,7 +2871,7 @@
      * told to re-measure: the viewer re-fits its camera to the box
      * (vibrationview.md § 8 `refit`), the chart re-runs Plotly's resize.
      */
-    const MODE_TABS = ["table", "viewer", "es"];
+    const MODE_TABS = ["table", "viewer", "es", "thermo"];
 
     function _activateModeTab(name) {
         if (MODE_TABS.indexOf(name) === -1) return;
@@ -2898,6 +2892,11 @@
         }
         if (name === "es" && typeof Plotly !== "undefined" && els.esBarDiagram) {
             try { Plotly.Plots.resize(els.esBarDiagram); } catch (_) {}
+        }
+        if (name === "thermo" && typeof Plotly !== "undefined") {
+            for (const el of [els.thermoCurves, els.thermoDecomp]) {
+                if (el) { try { Plotly.Plots.resize(el); } catch (_) {} }
+            }
         }
     }
 
@@ -3021,6 +3020,132 @@
         }));
     }
 
+    // ----- Thermochemistry panel (v5 `thermo`; plan § 2b) -------
+    //
+    // The DECK computes, this panel draws: the headline (T, P)
+    // numbers, the regime sentence and the T-grid arrays are all read
+    // off `results.thermo`.  The ONE derived quantity is the
+    // electronic reference E_elec, recovered exactly from the grid's
+    // own construction  h = E_elec + zpe + u_vib + kB*T  (how the
+    // deck builds `h_eh`), so no thermochemistry formula lives here.
+    //
+    // Tab-owned Plotly, same rules as the ES level diagram: colours
+    // from _esTheme()'s CSS tokens, NO `height` in the layout (the
+    // .thermo-chart box owns it), and a plain degrade when Plotly is
+    // not on the page (/results loads it; /spectra does not mount
+    // this panel at all).
+    var _KB_EH      = 3.166811563e-6;   // Boltzmann, Eh/K -- the deck's value
+    var _EH_TO_KCAL = 627.509474;
+
+    function renderThermoPanel(results) {
+        const th   = (results && results.thermo) || {};
+        const grid = th.grid || {};
+        const T    = grid.temperatures_K || [];
+        const has  = T.length > 0;
+        if (els.thermoTabBtn) els.thermoTabBtn.hidden = !has;
+        if (!has) {
+            // A v4 file, or a run that has not reached the thermo
+            // stage yet.  If the user was ON the tab when such a run
+            // loaded, land them somewhere real.
+            if (state.modeTab === "thermo") _activateModeTab("table");
+            return;
+        }
+
+        // --- The words: headline numbers + the deck's regime note --
+        if (els.thermoNote) {
+            const bits = [];
+            let head = "At T = " + th.temperature_K + " K, P = "
+                     + th.pressure_atm + " atm: ZPE "
+                     + Number(th.zpe_eh).toFixed(6) + " Eh ("
+                     + (th.zpe_eh * _EH_TO_KCAL).toFixed(1) + " kcal/mol)";
+            if (th.g_eh != null) {
+                head += "; H " + Number(th.h_eh).toFixed(6) + " Eh"
+                      + "; S " + Number(th.s_eh_k).toExponential(4) + " Eh/K"
+                      + "; G " + Number(th.g_eh).toFixed(6)
+                      + " Eh (full RRHO)";
+            }
+            bits.push(head + ".");
+            if (th.note) bits.push(String(th.note) + ".");
+            bits.push("Curves show the harmonic VIBRATIONAL contributions "
+                + "above the electronic minimum"
+                + (th.regime === "rrho"
+                   ? "; rotational/translational terms enter only the "
+                     + "headline RRHO numbers above."
+                   : "."));
+            els.thermoNote.textContent = bits.join("  ");
+        }
+        if (typeof Plotly === "undefined") {
+            if (els.thermoCurves) {
+                els.thermoCurves.textContent =
+                    "(chart library unavailable on this page)";
+            }
+            return;
+        }
+
+        const t = _esTheme();
+        // E_elec off the grid identity -- exact, not a fit.
+        const eRef = grid.h_eh[0] - grid.zpe_eh[0] - grid.u_vib_eh[0]
+                   - _KB_EH * T[0];
+        const gRel = grid.g_eh.map((g) => (g - eRef) * _EH_TO_KCAL);
+        const hRel = grid.h_eh.map((h) => (h - eRef) * _EH_TO_KCAL);
+        const ts   = T.map((Ti, i) => Ti * grid.s_eh_k[i] * _EH_TO_KCAL);
+        const config = {
+            displaylogo: false, responsive: true,
+            modeBarButtonsToRemove: ["select2d", "lasso2d",
+                                     "toggleSpikelines"],
+        };
+        Plotly.react(els.thermoCurves, [
+            { x: T, y: gRel, name: "G − E_elec", mode: "lines",
+              line: { color: t.homo, width: 2 } },
+            { x: T, y: hRel, name: "H − E_elec", mode: "lines",
+              line: { color: t.stick, width: 2 } },
+            { x: T, y: ts, name: "T·S", mode: "lines",
+              line: { color: t.lumo, width: 2 } },
+        ], {
+            // NO height -- the .thermo-chart box owns it.
+            margin: { t: 8, r: 8, b: 34, l: 52 },
+            plot_bgcolor: t.paper, paper_bgcolor: t.paper,
+            font: { color: t.ink, size: 10 },
+            showlegend: true,
+            legend: { orientation: "h",
+                      font: { color: t.ink, size: 10 } },
+            xaxis: { title: { text: "T (K)", font: { size: 10 } },
+                     gridcolor: t.grid, zeroline: false },
+            yaxis: { title: { text: "kcal/mol above E_elec",
+                              font: { size: 10 } },
+                     gridcolor: t.grid, zeroline: false },
+        }, config);
+
+        // --- Decomposition at the grid point nearest the headline T --
+        let i0 = 0, dmin = Infinity;
+        for (let i = 0; i < T.length; i++) {
+            const d = Math.abs(T[i] - th.temperature_K);
+            if (d < dmin) { dmin = d; i0 = i; }
+        }
+        const zpe  = grid.zpe_eh[i0] * _EH_TO_KCAL;
+        const uth  = (grid.u_vib_eh[i0] + _KB_EH * T[i0]) * _EH_TO_KCAL;
+        const mts  = -T[i0] * grid.s_eh_k[i0] * _EH_TO_KCAL;
+        const gnet = (grid.g_eh[i0] - eRef) * _EH_TO_KCAL;
+        Plotly.react(els.thermoDecomp, [{
+            type: "bar",
+            x: ["ZPE", "U_vib + kT", "−T·S",
+                "G − E_elec"],
+            y: [zpe, uth, mts, gnet],
+            marker: { color: [t.stick, t.homo, t.lumo, t.stickSel] },
+        }], {
+            margin: { t: 8, r: 8, b: 34, l: 52 },
+            plot_bgcolor: t.paper, paper_bgcolor: t.paper,
+            font: { color: t.ink, size: 10 },
+            showlegend: false,
+            xaxis: { gridcolor: t.grid, zeroline: false },
+            yaxis: { title: { text: "kcal/mol (at "
+                              + Math.round(T[i0]) + " K)",
+                              font: { size: 10 } },
+                     gridcolor: t.grid, zeroline: true,
+                     zerolinecolor: t.axis },
+        }, config);
+    }
+
     function renderSpectrumChart(modes) {
         if (!els.spectrumChart) return;
         if (!chartReady) {
@@ -3096,6 +3221,8 @@
         // (sidebar took over file selection).  loadXyzFile() is also
         // gone; see the comment at the els declaration above.
         els.formContainer  = $("spectra-form-container");
+        els.sendBtn        = $("send-to-task-setup");
+        els.sendStatus     = $("send-status");
         els.generateBtn    = $("generate-btn");
         els.methodsBtn     = $("methods-preview-btn");
         els.generateStatus = $("generate-status");
@@ -3127,6 +3254,10 @@
         els.esModeIdx         = $("es-mode-idx");
         els.esModeFreq        = $("es-mode-freq");
         els.esBarDiagram      = $("es-bar-diagram");
+        els.thermoTabBtn      = $("mode-tabbtn-thermo");
+        els.thermoNote        = $("thermo-note");
+        els.thermoCurves      = $("thermo-curves");
+        els.thermoDecomp      = $("thermo-decomp");
         els.esSummary         = $("es-summary");
         // Load-by-path + live-watch.
         els.watchPath         = $("watch-path");
@@ -3173,37 +3304,18 @@
         // /results-side mount stays a clean inspect-only inspector.
         const hasGenerateSide = Boolean(els.formContainer);
         if (hasGenerateSide) {
-            _on(els.generateBtn,  "click", generateScript);
-            _on(els.methodsBtn,   "click", openMethodsModal);
-            _on(els.downloadBtn,  "click", downloadScript);
-            _on(els.copyBtn,      "click", copyScript);
-            _on(els.methodsClose, "click", closeMethodsModal);
-            _on(els.methodsCopy,  "click", copyMethods);
-            if (els.saveBtn) {
-                _on(els.saveBtn, "click", saveSpectraToCurrentDir);
-            }
+            _on(els.sendBtn, "click", sendToTaskSetup);
             // Form-dirty tracking (B.5.3): user-driven input on
-            // the param form flips the flag; Generate / Save
-            // clear it (params have been emitted).  Delegated
+            // the param form flips the flag; Send clears it (the
+            // parameters have been handed over).  Delegated
             // listeners on the container so re-renders of the
             // form schema don't need to re-wire each field.
             _on(els.formContainer, "input",
                 () => { _formDirty = true; });
             _on(els.formContainer, "change",
                 () => { _formDirty = true; });
-            _on(els.generateBtn, "click",
+            _on(els.sendBtn, "click",
                 () => { _formDirty = false; });
-            if (els.saveBtn) {
-                _on(els.saveBtn, "click",
-                    () => { _formDirty = false; });
-            }
-            // Live re-evaluate save-button enable state on sidebar pick.
-            const proj = (window.molbuilder || {}).projects;
-            if (proj && typeof proj.onChange === "function") {
-                const unsub = proj.onChange(refreshSaveSpectraButtonAvailability);
-                if (typeof unsub === "function") _cleanups.push(unsub);
-            }
-            refreshSaveSpectraButtonAvailability();
         }
 
         // --- Inspect-side wiring -----------------------------------

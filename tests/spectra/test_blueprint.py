@@ -114,9 +114,9 @@ class TestSpectraPage:
         # 3Dmol mount is gone; the module builds a ``.viewer`` CLASS inside).
         assert 'id="spectra-molview-host"'      in body
         assert 'id="load-from-sidebar-btn"'     in body
-        assert 'id="generate-btn"'              in body
-        # Methods-preview modal present (dialog element + handles).
-        assert 'id="methods-modal"'           in body
+        assert 'id="send-to-task-setup"'        in body
+        # P2 substitution: the tab hands over, it renders no script.
+        assert 'id="send-status"'             in body
         # Static assets pinned in the template.
         assert 'spectra/style.css'            in body
         assert 'spectra/viewer.js'            in body

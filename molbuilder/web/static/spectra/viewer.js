@@ -303,9 +303,10 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
         //
         // POST /api/structure/analyze with the currently-loaded
         // structure path, then apply the PySCF adapter's
-        // (charge, spin, method) translation onto the spectra form
-        // (SpectraConfig has the same three field names as
-        // PySCFConfig, so the wire shape matches 1:1).
+        // (net_charge, spin, method) translation onto the vibration
+        // form.  The adapter's field names ARE catalogue item names
+        // (pyscf/auto_defaults.py's PyscfSuggestedParams), and
+        // setValues matches by field name -- one vocabulary, no map.
         //
         // Why a separate handler from /structure-optimization's:
         // single form to fill (not SIESTA + PySCF), no SIESTA
@@ -412,11 +413,11 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
         }
 
         /**
-         * Fetch the spectra schema (so we don't have to reach
-         * into the inspector's private state) and call
-         * formSchema.setValues with the PySCF adapter's output.
-         * SpectraConfig has charge / spin / method matching the
-         * PySCF adapter output 1:1.
+         * Fetch the same catalogue schema the form renders from
+         * (so we don't have to reach into the inspector's private
+         * state) and call formSchema.setValues with the PySCF
+         * adapter's output -- adapter field names are catalogue
+         * item names, so values land by name.
          */
         async function _applyAutoDetectToSpectraForm(resp) {
             const fs = (window.molbuilder || {}).formSchema;
@@ -427,7 +428,8 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
             if (!sug) return;
             let schema;
             try {
-                schema = await fs.fetchSchema("spectra");
+                schema = await fs.fetchSchema(
+                    "pyscf", { calculation: "vibration" });
             } catch (e) {
                 console.warn("[spectra] auto-detect: schema fetch failed:",
                               e);

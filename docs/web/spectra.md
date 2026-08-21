@@ -46,7 +46,7 @@ flowchart TD
   ENG["lib/spectra/core.js — the whole spectra viewer<br/>form · chart · mode table · excited-state panel · 3D mode animation"]
   TAB["/spectrum-calculation<br/>(spectra/viewer.js — compute + view)"] --> ENG
   RES["Results tab<br/>(inspectors/spectra.js — view a *.spectra.json)"] --> ENG
-  ENG --> API["POST /api/spectra/render — build the run script<br/>POST /api/spectra/load — read a finished .spectra.json"]
+  ENG --> API["POST /api/task-setup/handover — hand the description to Task setup<br/>POST /api/spectra/load — read a finished .spectra.json"]
 ```
 
 ## 2. The spectrum chart
@@ -144,6 +144,17 @@ Beside the diagram sits a **panel of numbers**, grouped by the question
 each answers: where the levels sit, how the gap moves, and the electron–phonon
 coupling ΔE/(2A). The displacement A itself is in the panel header, since it is
 the input every number below depends on rather than a result among them.
+
+**A fourth, run-level tab: Thermochemistry** *(v5 artifacts)*. Beside the
+three per-mode views sits a tab that appears when the results carry a
+`thermo` block ([`plans/spectra-migration-plan.md`](?doc=plans/spectra-migration-plan.md)
+§ 2b): the headline (T, P) numbers with the regime sentence, G/H/T·S curves
+over the deck's temperature grid, and the free-energy decomposition bar at the
+headline temperature. The **deck computes, the viewer draws** — the only
+derived number in JS is the electronic reference, recovered exactly from the
+grid's own construction (`h = E_elec + zpe + u_vib + k_B·T`). The phase
+indicator gained a **Relaxation** dot the same way (data-driven off
+`phase_relaxation`); a v4 file simply shows it empty and hides the thermo tab.
 
 ## 4. Clicking a mode — the 3D animation
 
@@ -379,15 +390,21 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    (`POST /api/structure/analyze`) for a sensible charge, spin, and method for
    this molecule and fills them into the form, with a one-line rationale. You can
    override anything.
-3. **Set the parameters.** The rest of the form is **built from a schema** the
-   server hands back (`GET /api/build/schema/spectra`) — so the form always
-   matches the calculation's real options without being hand-maintained here.
-4. **Generate.** Clicking generate posts to `POST /api/spectra/render`, which
-   reads the structure *off the loaded model* and returns a **runnable script**
-   plus a human-readable "Methods" summary and its citations. **Render does not
-   run anything** — it writes the script. **Save** then writes a
-   `<job>.spectra.py` into your project and installs a run wrapper so you can
-   launch it like any other job.
+3. **Set the parameters.** The rest of the form is **built from the
+   CATALOGUE**, narrowed to the vibration kind
+   (`GET /api/build/schema/pyscf?calculation=vibration`) — the same door and
+   the same renderer as the Build tab, so a parameter is defined once and
+   rendered the same everywhere
+   ([`engines/template.md`](?doc=engines/template.md) § 6.3).
+4. **Send to Task setup.** The Send button runs the general hand-over
+   ([`handover-procedure.md`](?doc=web/handover-procedure.md), via
+   `lib/task-handover.js` — the same door `/structure-optimization` uses):
+   the server renders the parameter template, the structure pair and
+   `task.1st.json` (carrying `calculation: "vibration"`), the browser writes
+   them into the selected folder, and Task setup finishes shape and stages.
+   **This tab renders no deck** — the deck is written by `prep`, on the
+   machine that runs it
+   ([`execution/script-preparation.md`](?doc=execution/script-preparation.md)).
 
 When the job runs it writes a `.spectra.json`; loading that (here, or on the
 Results tab) is what fills the chart.
@@ -399,12 +416,13 @@ The engine talks to exactly two spectra routes (full shapes in
 
 | Route | Does | Returns |
 |---|---|---|
-| `POST /api/spectra/render` | turns *structure + parameters* into a run script (does **not** execute it) | `{ok, script, methods_md, bibliography_keys, job_name, issues}` |
+| `POST /api/spectra/render` | **retiring at P3** (the tab no longer calls it — the compute half hands over instead); turns *structure + parameters* into a run script | `{ok, script, methods_md, bibliography_keys, job_name, issues}` |
 | `POST /api/spectra/load` | parses an existing `.spectra.json` into display data | `{ok, results}` — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
 
-Both follow the app's `{ok: …}` envelope convention. A third route,
-`GET /api/build/schema/spectra`, returns the form schema (and can **pre-fill the
-frozen-atom list** — see §8).
+Both follow the app's `{ok: …}` envelope convention. The form schema comes
+from the catalogue door (`GET /api/build/schema/pyscf?calculation=vibration`);
+the old `GET /api/build/schema/spectra` route stands until P3 but the tab no
+longer reads it (frozen atoms travel with the structure now — § 8).
 
 ## 7. Live updating, and what a refresh does
 
@@ -424,15 +442,23 @@ held **in memory for the life of the mount only** — a page reload starts them
 back at their defaults. (Persisting them to session storage is wired as a
 follow-up, not shipped.)
 
-## 8. Frozen atoms come from the structure's sidecar
+## 8. Frozen atoms travel with the structure
 
-If the structure you loaded carries a `.molstruct.json` sidecar with a
-frozen-atom set (say, atoms you fixed in a previous relaxation), the schema route
-reads it and **pre-fills the "frozen indices" field** so those atoms are held
-fixed in the spectrum calculation too. This only sets the *default* — the form
-stays authoritative, so you can still edit the list. If the sidecar can't be read
-the field is simply left blank and a short notice explains why; it never fails
-the page.
+Frozen atoms are **structure-side facts**: they live in the model as a region
+and ride the structure's own files — the `.molstruct.json` half of the codec
+pair the hand-over writes — never a form field
+([`plans/spectra-migration-plan.md`](?doc=plans/spectra-migration-plan.md)
+§ 2). Set them in the viewer, or load a structure whose sidecar already
+carries them; the Send button exports the model **in one read**
+(`exportFile()`), so what you see frozen is what the calculation holds fixed.
+The deck states the regime honestly downstream: a frozen-atom system gets a
+partial Hessian and *vibrational-only* thermochemistry (an anchored molecule
+does not rotate).
+
+The old form field (`frozen_indices`, pre-filled by the schema route from the
+sidecar) retired with the P2 substitution: a form default was a **second
+copy** of a structure fact, editable into disagreement with the structure it
+described.
 
 ## 9. Where the module stands — ESM status
 
@@ -464,6 +490,8 @@ emitted script), `test_selection.py` (which modes get computed),
 `test_atom_index_contract.py` (the free-atom invariant).
 
 Viewer + integration: `test_results_state_contract_spectra_js.py` (the state
-buckets), `test_spectra_phase_indicator_js.py` (the phase indicator),
-`test_spectrum_generate_e2e.py` (the end-to-end render flow),
+buckets), `test_spectra_phase_indicator_js.py` (the phase indicator, the
+relaxation dot included), `test_task_setup_tab.py` (the send flow: the shared
+door, the kind, and the browser-vs-CLI byte-compat pin),
+`test_spectrum_generate_e2e.py` (the render route — retiring with it at P3),
 `test_vibrationview_mode_math_js.py` (the animation's eigenvector math).

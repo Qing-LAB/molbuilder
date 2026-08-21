@@ -427,7 +427,7 @@ def test_spectrum_auto_detect_markup_present():
         'id="auto-detect-rationale"',
         '2. Analyze chemistry',
         '3. Parameters',
-        '4. Generate',
+        '4. Send to Task setup',
     ):
         assert needle in body, (
             f"Spectrum page missing {needle!r} — Auto-detect or "
@@ -506,15 +506,15 @@ def test_spectrum_auto_detect_button_populates_form(
     vals = page.evaluate(
         "async () => {"
         "  const fs = (window.molbuilder || {}).formSchema;"
-        "  const sch = await fs.fetchSchema('spectra');"
+        "  const sch = await fs.fetchSchema("
+        "      'pyscf', { calculation: 'vibration' });"
         "  const c = document.getElementById('spectra-form-container');"
         "  return fs.collectForm(c, sch);"
         "}"
     )
-    # SPECTRA keeps its own `charge` field: `SpectraConfig` is a separate
-    # config and does not feed the siesta/pyscf catalogue, so the 2026-08-19
-    # net_charge merge did not reach it.
-    assert vals.get("charge") == 0
+    # The tab is catalogue-fed since P2 (spectra-migration-plan.md), so
+    # the adapter's names ARE the form's names -- net_charge included.
+    assert vals.get("net_charge") == 0
     assert vals.get("spin")   == 2
     assert vals.get("method") == "UKS"
     # Rationale panel visible + carries Fe + open-shell language.

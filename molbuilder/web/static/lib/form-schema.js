@@ -963,10 +963,20 @@
         // don't pass it (or pass an empty value) get the static
         // schema, same as before.
         const structurePath = (opts && opts.structurePath) || "";
+        // ``opts.calculation`` (optional) narrows the form to the
+        // parameters that apply to that calculation KIND
+        // (template.md § 6.3's `calculations` key); absent means
+        // optimization, exactly as the server defaults it.
+        const calculation = (opts && opts.calculation) || "";
         let url = "/api/build/schema/" + encodeURIComponent(engine);
+        const q = [];
         if (structurePath) {
-            url += "?structure_path=" + encodeURIComponent(structurePath);
+            q.push("structure_path=" + encodeURIComponent(structurePath));
         }
+        if (calculation) {
+            q.push("calculation=" + encodeURIComponent(calculation));
+        }
+        if (q.length) url += "?" + q.join("&");
         const r = await fetch(url);
         const body = await r.json();
         if (!r.ok || !body.ok) {

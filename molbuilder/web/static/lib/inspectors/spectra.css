@@ -601,3 +601,16 @@ so #phase-indicator was
 100% { opacity: 1; }
     50% { opacity: 0.45; }
 }
+
+/* ---- Thermochemistry tab (v5 `thermo`; plan § 2b) ---------------
+   The BOX owns the chart height (same rule as .es-bar-diagram):
+   Plotly layouts carry no `height`. */
+.thermo-charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.thermo-chart { min-height: 260px; }
+@media (max-width: 900px) {
+    .thermo-charts { grid-template-columns: 1fr; }
+}

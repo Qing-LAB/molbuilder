@@ -247,6 +247,33 @@ def test_missing_phase_field_defaults_to_empty():
     assert by_phase["es"]["className"]    == "phase-dot phase-empty"
 
 
+def test_relaxation_dot_is_data_driven():
+    """v5 adds the tracked relaxation phase (spectra-migration-plan.md
+    D3/D4) as a FOURTH dot -- and updatePhaseIndicator needs no code
+    for it: the dot's ``data-phase="relaxation"`` resolves
+    ``results.phase_relaxation`` through the same generic read.  A v4
+    blob without the field leaves the dot at phase-empty."""
+    out = _run_with_results(
+        {
+            "phase_relaxation":  "complete",
+            "phase_frequencies": "running",
+            "phase_raman":       "empty",
+            "phase_es":          "empty",
+        },
+        dot_phases=["relaxation", "frequencies", "raman", "es"],
+    )
+    by_phase = {d["phase"]: d for d in out["dot_states"]}
+    assert by_phase["relaxation"]["className"] == "phase-dot phase-complete"
+    assert by_phase["frequencies"]["className"] == "phase-dot phase-running"
+
+    v4 = _run_with_results(
+        {"phase_frequencies": "complete"},
+        dot_phases=["relaxation", "frequencies", "raman", "es"],
+    )
+    by_phase = {d["phase"]: d for d in v4["dot_states"]}
+    assert by_phase["relaxation"]["className"] == "phase-dot phase-empty"
+
+
 def test_dot_title_carries_human_readable_status():
     """Title attribute drives the hover tooltip — pin the format
     ``<phase>: <status>`` so a future refactor doesn't quietly

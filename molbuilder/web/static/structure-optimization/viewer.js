@@ -1663,159 +1663,26 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     }
 
     async function _sendToTaskSetup() {
-        const projects = window.molbuilder && window.molbuilder.projects;
-        const dest = (projects && typeof projects.getCurrentDir === "function")
-            ? projects.getCurrentDir() : "";
-        if (!dest) {
-            _handoverSay("warn", "Pick the folder to write into, in the "
-                + "sidebar first — this button writes into the selected "
-                + "folder and creates none of its own.");
+        /* The guards, the render call, the write order and the notice
+         * handling live in lib/task-handover.js -- ONE door shared with
+         * the spectra tab (spectra-migration-plan.md P2).  The dest
+         * guards and write order are CONTRACT (`job-contracts.md`
+         * § 2.1 / § 2.5), and two copies of a contract drift.  This
+         * tab contributes only what it alone knows: its structure door,
+         * its engine, its form. */
+        const mb = window.molbuilder || {};
+        if (!mb.taskHandover) {
+            _handoverSay("error", "lib/task-handover.js is not loaded.");
             return;
         }
-        const structure = _structureForRequest();
-        if (!structure) {
-            _handoverSay("warn", "Load a structure first — a description is "
-                + "of something.");
-            return;
-        }
-        /* A CALCULATION LIVES UNDER A TOPIC (`job-contracts.md` § 2.5): the
-         * tree is project / topic / calculation, and the three levels above
-         * the calculation are organisational.  `safeSave` refuses only at the
-         * projects ROOT, so without this a Send into a bare project or topic
-         * folder would put a calculation where one may not live.
-         *
-         * Measured against the projects root rather than by counting slashes,
-         * because the root is configurable — `relativeToProjects` is the
-         * sidebar's own answer to "where am I". */
-        const rel = (typeof projects.relativeToProjects === "function")
-            ? String(projects.relativeToProjects(dest) || "") : "";
-        const depth = rel.split("/").filter(Boolean).length;
-        if (depth < 3) {
-            _handoverSay("warn",
-                "That folder is too high in the tree — a calculation lives "
-                + "under a topic (projects / project / topic / your folder). "
-                + "Pick or make one further down in the sidebar.");
-            return;
-        }
-
-        /* ONE JOB PER FOLDER (`job-contracts.md` § 2.1 Rule 1).  Send writes
-         * with `overwrite: true`, so without this it would silently replace
-         * another calculation's template.  The check goes through the file
-         * layer like every other read -- `missingOk` makes "no description
-         * here" a 200 rather than a logged 404, which is the normal case.
-         *
-         * This guard EXISTED as a 409 in the hand-over endpoint and was lost
-         * on 2026-08-16 when that endpoint stopped resolving the destination
-         * to become render-only.  Restored on the side that chooses where to
-         * write, which is where it belongs. */
-        try {
-            const prior = await projects.readFile(dest + "/task.json",
-                                                  { missingOk: true });
-            if (prior && prior.ok !== false && prior.exists !== false
-                && typeof prior.text === "string" && prior.text.trim()) {
-                _handoverSay("error",
-                    "That folder already holds a task.json — it is a described "
-                    + "calculation. Sending here would overwrite it. Pick or "
-                    + "make another folder in the sidebar; one job per folder.");
-                return;
-            }
-        } catch (e) {
-            _handoverSay("error", "Could not check the folder: "
-                + (e && e.message ? e.message : e));
-            return;
-        }
-
         const engine = _activeEngine();
-        const params = collectParams(engine);
-
-        _handoverSay("muted", "Rendering…");
-        let out;
-        try {
-            const r = await fetch("/api/task-setup/handover", {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    structure, engine, params,
-                    name: (dest.split("/").filter(Boolean).pop() || ""),
-                    // No `structure_path`.  It used to send the projects
-                    // sidebar's selected file, which is a SECOND fact read at a
-                    // second moment -- `molview.md` § 9.3a's rule is that the
-                    // facts which leave together were read together, and this
-                    // one was read from a cursor rather than from the
-                    // structure.  The server names the files it writes from the
-                    // structure that is right here in this body.
-                }),
-            });
-            out = await r.json();
-            if (!r.ok || !out || out.ok === false) {
-                _handoverSay("error",
-                    (out && out.error) || ("render failed (" + r.status + ")"));
-                return;
-            }
-        } catch (e) {
-            _handoverSay("error", "Could not reach the server: "
-                + (e && e.message ? e.message : e));
-            return;
-        }
-
-        /* The BYTES go through the content-blind file layer, never a fetch of
-         * our own (`web/projects.md` § 1).  `safeSave` writes into the folder
-         * the user selected, refuses at the projects root, re-lists the
-         * sidebar afterwards, and returns the four-way shape below -- the
-         * canonical caller pattern, as `lib/spectra/core.js` uses it. */
-        _handoverSay("muted", "Writing…");
-        /* The STRUCTURE goes first, and the order is deliberate: the hand-over
-         * NAMES those files, so writing it before them would leave a folder
-         * whose description points at nothing if the next write fails. */
-        const parts = (out.structure_files || []).map((f) => [f.name, f.text]);
-        parts.push([out.template_name, out.template_text],
-                   [out.handover_name, out.handover_text]);
-        for (const [name, text] of parts) {
-            // safeSave(TEXT, FILENAME, opts) -- text first.
-            const wrote = await projects.safeSave(text, name, { overwrite: true })
-                .catch((e) => ({ ok: false, error: String(e && e.message || e) }));
-            if (wrote && wrote.cancelled) {
-                _handoverSay("muted", "Cancelled — nothing written.");
-                return;
-            }
-            if (!wrote || !wrote.ok) {
-                _handoverSay("error", "Could not write " + name + ": "
-                    + ((wrote && wrote.error) || "no folder selected"));
-                return;
-            }
-        }
-        const body = { files: parts.map(([n]) => n) };
-
-        /* WHAT THE CELL GATE SAID.  The same gate every structure door runs
-         * answers with notices as well as refusals: a refusal is the 400 above,
-         * but a notice is a box it accepted and wants read — an axis it could
-         * not tell was periodic, a vacuum thinner than it expects.  These came
-         * back on every send and were dropped on the floor, so a person whose
-         * cell was questioned found out from the run.
-         *
-         * A notice does NOT hold the write back: the files are the person's own
-         * parameters and refusing to save them helps nobody.  It holds back the
-         * NAVIGATION, because a page that jumps away is a page whose warning
-         * was never read (`tabs.md` — a tab does not decide for its user). */
-        const notices = Array.isArray(out.notices) ? out.notices : [];
-        if (notices.length) {
-            const worst = notices.some((n) => n && n.severity === "error")
-                ? "error" : "warn";
-            _handoverSay(worst,
-                "Wrote " + body.files.join(", ") + ". The cell was checked and "
-                + (notices.length === 1 ? "one thing" : notices.length + " things")
-                + " came back — read them, then open Task setup:\n"
-                + notices.map((n) => "• "
-                    + ((n && n.where) ? "[" + n.where + "] " : "")
-                    + ((n && n.message) || String(n))).join("\n"));
-            return;
-        }
-
-        _handoverSay("ok", "Wrote " + (body.files || []).join(" and ")
-            + " — opening Task setup…");
-        // The sidebar's selection is shared through sessionStorage, so Task
-        // setup opens on the same folder without this handing it anything.
-        window.location.href = "/task-setup";
+        await mb.taskHandover.send({
+            projects:  mb.projects,
+            say:       _handoverSay,
+            structure: _structureForRequest(),
+            engine:    engine,
+            params:    collectParams(engine),
+        });
     }
 
     /** Which engine's form is showing — the one the user has been filling. */

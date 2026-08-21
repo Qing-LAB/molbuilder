@@ -80,6 +80,10 @@
       <div id="phase-indicator" class="phase-indicator" hidden
            aria-label="Run-phase progress">
         <span class="phase">
+          <span class="phase-label">Relaxation</span>
+          <span class="phase-dot" data-phase="relaxation"></span>
+        </span>
+        <span class="phase">
           <span class="phase-label">Frequencies</span>
           <span class="phase-dot" data-phase="frequencies"></span>
         </span>
@@ -161,6 +165,11 @@
         <button type="button" id="mode-tabbtn-es" class="panel-tab"
                 role="tab" aria-selected="false" aria-controls="mode-tab-es"
                 data-mode-tab="es">Electronic structure</button>
+        {#- Hidden until results carry a v5 `thermo.grid` -- core.js's
+            renderThermoPanel unhides it (a v4 file has no grid). -#}
+        <button type="button" id="mode-tabbtn-thermo" class="panel-tab"
+                role="tab" aria-selected="false" aria-controls="mode-tab-thermo"
+                data-mode-tab="thermo" hidden>Thermochemistry</button>
       </nav>
 
       <div id="mode-tab-table" class="panel-tabpanel" role="tabpanel"
@@ -384,6 +393,24 @@
               <div id="es-summary" class="es-summary"></div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div id="mode-tab-thermo" class="panel-tabpanel" role="tabpanel"
+           aria-labelledby="mode-tabbtn-thermo" hidden>
+        {#- v5 `thermo` (spectra-migration-plan.md § 2b): the DECK computes
+            the headline numbers and the T-grid; this panel only draws
+            them.  Two figures: G/H/T·S over the grid, and the
+            free-energy decomposition at the headline temperature. -#}
+        <p id="thermo-note" class="hint"></p>
+        <div class="thermo-charts">
+          <div id="thermo-curves" class="thermo-chart"
+               aria-label="Gibbs free energy, enthalpy and T times entropy
+                           versus temperature, relative to the electronic
+                           minimum"></div>
+          <div id="thermo-decomp" class="thermo-chart"
+               aria-label="Free-energy decomposition at the headline
+                           temperature"></div>
         </div>
       </div>
     </div>

@@ -301,14 +301,18 @@ def test_handover_renders_and_writes_nothing(web_client):
 
 
 def test_the_tab_moves_bytes_through_the_file_layer():
-    """No hand-rolled writes or deletes on either surface."""
+    """No hand-rolled writes or deletes on any surface.  The send moved to
+    lib/task-handover.js at P2 (spectra-migration-plan.md) -- ONE door two
+    tabs share -- so the write lives there now."""
     opt = (STATIC / "structure-optimization/viewer.js").read_text()
+    lib = (STATIC / "lib/task-handover.js").read_text()
     ts  = VIEWER.read_text()
-    assert "projects.safeSave(text, name," in opt, (
+    assert "projects.safeSave(text, name," in lib, (
         "the hand-over does not write through safeSave(TEXT, FILENAME, opts)")
     assert "projects.deleteEntry(" in ts, (
         "the hand-over is not removed through the file layer")
-    for surface, src in (("optimization", opt), ("task-setup", ts)):
+    for surface, src in (("optimization", opt), ("task-handover", lib),
+                         ("task-setup", ts)):
         assert "/api/files/write" not in src, (
             f"{surface} calls the write route directly instead of the door")
 
@@ -611,7 +615,7 @@ def test_a_state_needs_a_note():
 def test_send_refuses_onto_a_described_calculation():
     """F1 — this guard was a 409 in the endpoint and was LOST when it became
     render-only.  Restored on the side that chooses where to write."""
-    src = (STATIC / "structure-optimization/viewer.js").read_text()
+    src = (STATIC / "lib/task-handover.js").read_text()
     assert "one job per folder" in src, "Send can overwrite another calculation"
     assert re.search(r'readFile\(dest \+ "/task\.json",\s*\n?\s*\{ missingOk: true \}',
                      src), "the check does not go through the file layer"
@@ -1088,7 +1092,7 @@ def test_the_sidebar_cursor_is_not_in_the_payload():
     """`molview.md` § 9.3a: the facts that leave together were read together.
     `getCurrentFile()` is a second fact sampled at a second moment, and it is
     what made a calculation claim to be OF its own parameter file."""
-    src = (ROOT / "molbuilder/web/static/structure-optimization/viewer.js").read_text()
+    src = (ROOT / "molbuilder/web/static/lib/task-handover.js").read_text()
     # Anchored on the CALL, not on any mention of the route: the file
     # header names its endpoints (fixed 2026-08-17), so splitting on the
     # bare path started the slice in the header and swept in an
@@ -1371,8 +1375,8 @@ def test_the_cell_gate_s_notices_reach_the_person():
     A notice does not hold the WRITE back — the files are the person's own
     parameters.  It holds back the NAVIGATION, because a page that jumps to the
     next tab is a page whose warning was never read."""
-    src = (ROOT / "molbuilder/web/static/structure-optimization/viewer.js").read_text()
-    body = src.split("const body = { files:", 1)[1].split("_refreshLoadButton", 1)[0]
+    src = (ROOT / "molbuilder/web/static/lib/task-handover.js").read_text()
+    body = src.split("const written = parts.map", 1)[1]
     assert "out.notices" in body, "the gate's notices are still dropped"
     i_notice = body.index("out.notices")
     i_nav = body.index('window.location.href = "/task-setup"')
@@ -1573,3 +1577,103 @@ def test_the_hand_over_carries_the_vibration_kind_end_to_end(web_client):
     src = (STATIC / "task-setup" / "viewer.js").read_text()
     assert '"freq"' in src and 'kind === "vibration"' in src, (
         "the receiver must propose the kind's own one-stage ladder")
+
+
+def test_the_spectra_tab_sends_through_the_shared_door():
+    """P2's substitution (spectra-migration-plan.md § 4): the spectra tab
+    renders the CATALOGUE's vibration form and hands over through the
+    same lib/task-handover.js door as /structure-optimization -- one
+    spelling of the guards and the write order, two tabs."""
+    core = (STATIC / "lib" / "spectra" / "core.js").read_text()
+    assert '"pyscf", { calculation: "vibration" }' in core, (
+        "the tab no longer fetches the catalogue's vibration schema")
+    send_body = core.split("async function sendToTaskSetup", 1)[1]\
+                    .split("// ----- Render button", 1)[0]
+    assert 'calculation: "vibration"' in send_body, (
+        "the send does not carry the kind (matching the string anywhere "
+        "in the file is vacuous -- the schema fetch spells it too)")
+    assert "taskHandover.send" in send_body, (
+        "the tab bypasses the shared door")
+    assert "/api/spectra/render" not in send_body, (
+        "the send path still touches the retiring render route")
+
+    lib = (STATIC / "lib" / "task-handover.js").read_text()
+    assert 'o.calculation !== "optimization"' in lib, (
+        "the lib must ride the kind only when it is not the default "
+        "(absent IS the optimization state, handover-procedure § 6)")
+
+    for page in ("spectra.html", "index.html"):
+        html = (ROOT / "molbuilder/web/templates" / page).read_text()
+        assert "lib/task-handover.js" in html, (
+            f"{page} does not load the shared send door")
+    spectra_html = (ROOT / "molbuilder/web/templates/spectra.html").read_text()
+    assert "generate-btn" not in spectra_html, (
+        "the retiring Generate flow is still offered next to Send")
+
+
+def test_the_browser_hand_over_writes_the_cli_s_files(web_client, tmp_path):
+    """P2's bar (spectra-migration-plan.md § 4): the files the browser's
+    Send writes are the CLI's own.  The same water + defaults through
+    (a) /api/task-setup/handover and (b) describe.build_description /
+    write_description must agree BYTE-FOR-BYTE on the template and the
+    structure pair, and on every identity field of the description head
+    (run.created is the send's timestamp and is excluded by name)."""
+    import json as _json
+    import numpy as _np
+    from molbuilder import describe as _D
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.pyscf.stages import vibration_stages
+    from molbuilder.structure import Structure
+    from molbuilder.identity import normalise_id
+
+    elements = ["O", "H", "H"]
+    positions = [[0.0, 0.0, 0.119], [0.0, 0.757, -0.477],
+                 [0.0, -0.757, -0.477]]
+
+    # (a) the browser door
+    r = web_client.post("/api/task-setup/handover", json={
+        "engine": "pyscf", "calculation": "vibration", "name": "vib",
+        "structure": {"elements": elements, "positions": positions},
+        "params": {},
+    }).get_json()
+    assert r["ok"], r
+    browser_files = {f["name"]: f["text"] for f in r["structure_files"]}
+    browser_files[r["template_name"]] = r["template_text"]
+    over = _json.loads(r["handover_text"])
+
+    # (b) the CLI door, for the identical inputs
+    struct = Structure(elements=elements,
+                       positions=_np.array(positions, dtype=float))
+    src = tmp_path / "vib.xyz"
+    src.write_text(struct.to_xyz())
+    # The CLI arm folds the calculation's name into the engine's own
+    # identity field BEFORE describing (jobset/_cli.py: "the template's
+    # SystemLabel and the description's id cannot disagree") -- the
+    # hand-over route holds the same rule, so the comparison must too.
+    stages = vibration_stages()
+    label = normalise_id("vib", what="name",
+                         stage_names=tuple(s.name for s in stages))
+    desc = _D.build_description(
+        struct, PySCFConfig(job_name=label), stages,
+        engine="pyscf", shape="flat", name="vib", source=str(src),
+        calculation="vibration")
+    dest = tmp_path / "calc"
+    _D.write_description(desc, dest, struct=struct)
+
+    cli_task = _json.loads((dest / "task.json").read_text())
+    cli_files = {p.name: p.read_text() for p in dest.iterdir()
+                 if p.name != "task.json"}
+
+    for name, text in browser_files.items():
+        assert name in cli_files, (
+            f"the browser writes {name!r}; the CLI writes "
+            f"{sorted(cli_files)}")
+        assert text == cli_files[name], (
+            f"{name} differs between the browser's send and the CLI")
+
+    # The description head: same identity, same kind, same structure.
+    assert over["engine"] == cli_task["engine"]
+    assert over["calculation"] == cli_task["calculation"] == "vibration"
+    assert over["run"]["id"] == cli_task["run"]["id"]
+    assert over["structure"]["formula"] == cli_task["structure"]["formula"]
+    assert over["structure"]["atoms"] == cli_task["structure"]["atoms"]

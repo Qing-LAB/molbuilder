@@ -14,9 +14,12 @@ and the content-aware doors;
 artifact registry.
 
 **This is the general procedure, named once so every generating tab uses the
-same one** (user, 2026-08-16). Structure optimization is the worked case. **Spectrum is next in ORDER but not
-ready** — its UI and template have not been migrated (§ 6). **Transport waits**
-beyond that: it is a multi-component job and needs the extension in § 6 first.
+same one** (user, 2026-08-16). Structure optimization is the worked case.
+**Spectrum sends since 2026-08-20** — the § 6 prerequisites landed with the
+spectra migration's P0–P2
+([`plans/spectra-migration-plan.md`](?doc=plans/spectra-migration-plan.md)).
+**Transport waits**: it is a multi-component job and needs its own § 6-shaped
+work (catalogue rows for its kind, a decision on its description shape) first.
 
 ---
 
@@ -152,13 +155,11 @@ words.
 
 ---
 
-## 6. Extending it — Spectrum next, Transport after
+## 6. Extending it — the Spectrum case (landed 2026-08-20), Transport after
 
 **Nothing in §§ 1–5 is specific to a relaxation.** The sender is *whatever tab
 collected parameters*; the hand-over carries the engine, the structure and the
 name; the receiver asks for what is missing.
-
-**Spectrum is NOT ready, and the work is upstream of this procedure.**
 
 > ⚠ **This section claimed on 2026-08-16 that Spectrum's "rows in the catalogue
 > are already read by `catalogue_to_form_schema`". That is false**, and it was
@@ -168,20 +169,31 @@ name; the receiver asks for what is missing.
 > correction is recorded rather than quietly edited because the claim would
 > have made the next piece of work look like wiring a button.
 
-What Spectrum needs first, and none of it is this procedure's:
+The three prerequisites named here landed with the spectra migration
+([`plans/spectra-migration-plan.md`](?doc=plans/spectra-migration-plan.md)):
 
-1. **Its parameters in the catalogue** — `SpectraConfig`'s fields become items
-   with `group`, `category`, `engines`, `kind`, `anchor`, the way the SIESTA and
-   PySCF sets did at the unification
-   ([`archive/2026-08-19-template-unification-plan.md`](?doc=archive/2026-08-19-template-unification-plan.md)).
-2. **Its form off `dataclass_to_form_schema`** and onto the catalogue, which is
-   what retires `section` for it ([`web/form-schema.md`](?doc=web/form-schema.md)
-   § 1a's note).
-3. **A decision this document cannot make**: whether a spectrum run is a
-   description with stages at all, or one parameter set with no ladder.
+1. **Its parameters are in the catalogue** (P0) — twelve items carrying
+   `calculations = ["vibration"]` beside the shared PySCF set
+   ([`engines/template.md`](?doc=engines/template.md) § 6.3: the key is
+   `engines`' exact sibling; absent = every kind).
+2. **Its form is off the catalogue** (P2) — the tab renders
+   `GET /api/build/schema/pyscf?calculation=vibration` through the same
+   shared renderer as Build, and `dataclass_to_form_schema`'s spectra route
+   retires at P3.
+3. **The decision was made** — a vibration calculation IS a description with
+   a ladder: one `freq` stage ([`engines/stages.md`](?doc=engines/stages.md)
+   § 6.8), with relaxation an in-deck precondition rather than a stage.
 
-**Only then** is the hand-over a Send button on the same endpoint. The procedure
-does not change; the tab has to reach it first.
+**And the hand-over is now exactly what this section predicted**: a Send
+button on the same endpoint. One extension rode along — the body may carry
+`calculation`, and the hand-over file records it **only when it is not
+`optimization`** (absent IS the default state, § 2's economy). The sender
+itself moved into `lib/task-handover.js` when the second tab arrived: the
+guards, the write order and the notice handling are this procedure's contract,
+and two copies of a contract drift.
+
+**Transport still waits**: a multi-component job needs its own catalogue rows,
+its own kind, and its own § 6.3-shaped decision before this procedure applies.
 
 **Transport is not, and that is why it waits.** It is a **multi-component job**
 — *"it involves multiple results and the transportation needs to combine all of

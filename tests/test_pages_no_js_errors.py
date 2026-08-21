@@ -85,7 +85,7 @@ _PAGES = [
     # for the selection panel's host.
     ("/molbuilder", "#molview-host"),
     # Spectrum-calculation tab: PySCF spectra script generator.
-    ("/spectrum-calculation", "#generate-btn"),
+    ("/spectrum-calculation", "#send-to-task-setup"),
     # Transport-calculation tab: placeholder; pin its boot too so
     # silent JS errors don't hide in the placeholder.
     ("/transport-calculation", "h2"),
@@ -158,7 +158,7 @@ def test_spectra_form_populates_after_init(page, flask_server):
     rendering step (i.e. nothing silently swallowed the schema fetch)."""
     errors = _collect_js_errors(page)
     page.goto(f"{flask_server}/spectrum-calculation")
-    page.wait_for_selector("#generate-btn", timeout=_PAGE_BOOT_TIMEOUT_MS)
+    page.wait_for_selector("#send-to-task-setup", timeout=_PAGE_BOOT_TIMEOUT_MS)
     # init() does:  fetch schema -> render fields into #spectra-form-container
     # Wait for ANY <input>/<select> to appear inside that container.
     # If init() throws before this, the wait_for_selector times out
