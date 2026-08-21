@@ -119,6 +119,14 @@ class _LiftView:
         return getattr(self._cfg, name)
 
 
+def science_view(cfg, struct: Structure) -> "_LiftView":
+    """The vibration deck's config view, for the KIND's validation step
+    (validation/__init__._validate_vibration_kind).  One adapter, two
+    readers: the emitters and the science speak the same vocabulary,
+    so a check and the deck it checks cannot disagree about a value."""
+    return _LiftView(cfg, struct)
+
+
 def _vib_constants(cfg) -> List[str]:
     """The vibration deck's own constants, beside the lifted ones."""
     out = ["",
@@ -369,15 +377,13 @@ def vibration_spec(struct: Structure, cfg, *,
         # relaxation's driver needs `_build_mf_at` early), the relaxation
         # before the equilibrium SCF, the gradient check after it, the
         # thermochemistry after the Hessian, and the IR-only arm.
-        from ..validation import validate, report
-        from ..validation.spectra import spectra_render_checks
-        # BOTH gates, explicitly: validate() runs the generic passes
-        # (cell / geometry / field metadata), but its engine dispatch is
-        # keyed on type(cfg) and `view` is an ADAPTER, not a
-        # SpectraConfig -- so the spectra science gate is composed here
-        # by name.  Between P1 and P3 it silently skipped for exactly
-        # this reason (found 2026-08-21 while retiring the registry).
-        report(validate(struct, view) + list(spectra_render_checks(struct, view)))
+        # NO validation call here -- deliberately.  The settings gate is
+        # ONE step of the pipeline (render_deck STEP 3.3), and it reads
+        # `calculation` off this spec to compose the kind's science
+        # (validation/__init__._KIND_VALIDATORS).  The old generator
+        # validated inside its own body because it WAS the whole
+        # pipeline; under the framework a second call here is the
+        # two-gates drift the 2026-08-19 rule abolished.
         from ..spectra.methods import (extract_citation_keys,
                                        render_methods_md)
         methods_md = render_methods_md(
@@ -456,6 +462,7 @@ def vibration_spec(struct: Structure, cfg, *,
     from . import layout as _layout
     return _sc.DeckSpec(
         engine="pyscf",
+        calculation="vibration",
         layout=(_sc.Block("the vibration deck (lifted emitters + the "
                           "relaxation/thermo/IR blocks)", _vib_deck),),
         # The engine's own line/provenance answers, shared with the

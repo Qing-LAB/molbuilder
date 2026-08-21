@@ -117,6 +117,8 @@ class TestSpectraPage:
         assert 'id="send-to-task-setup"'        in body
         # P2 substitution: the tab hands over, it renders no script.
         assert 'id="send-status"'             in body
+        # Gate ① -- the live science panel beside the form.
+        assert 'id="spectra-issues"'          in body
         # Static assets pinned in the template.
         assert 'spectra/style.css'            in body
         assert 'spectra/viewer.js'            in body

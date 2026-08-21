@@ -139,6 +139,19 @@
     <div id="spectra-form-container" class="param-grid">
       <p class="status">Loading form schema&hellip;</p>
     </div>
+
+    <h3>Checks</h3>
+    {#- Gate ① (workflow.md § 9): the live science verdict -- the same
+        gate `prep` runs, answered while the person is still at the
+        form.  Per-card findings land on the workflow-group cards the
+        shared form renderer emits; everything else lands here.
+        lib/validation-findings.js owns the contents. -#}
+    <ul id="spectra-issues" class="issues-panel">
+      <li class="issues-empty">
+        No findings yet &mdash; checks run live as you edit, against
+        the same gate <code>prep</code> runs on the machine.
+      </li>
+    </ul>
   </section>
 
   <!-- ============== 4. Send to Task setup ============== -->

@@ -1115,6 +1115,17 @@ generated per-calculation template serves ONE kind, so no item in it
 carries the key — the selection already happened, in
 `template_with_values(…, calculation=…)`.
 
+**And that is the design protocol for every future kind** *(user,
+2026-08-21)*: a new calculation kind — transport is next — means **new rows
+in this one catalogue, never a second template file**. The kind declares its
+own rows with `calculations = [...]`, shares everything genuinely shared by
+leaving the key off, and every door (the schema route, `template_with_values`,
+the columns endpoint) narrows the same one source to (engine, kind). The
+vibration kind proved the shape: its template IS the optimization template
+plus twelve declared rows, because one of its steps *is* an optimization. A
+second catalogue per kind would be § 2.1a's two-homes drift all over again,
+one axis over.
+
 #### An item both engines hold, answered differently by each
 
 **One question, one item — even when the two engines implement it differently.**

@@ -1198,6 +1198,12 @@ def api_build_preflight():
     body = request.get_json(silent=True) or {}
     engine = (body.get("engine") or "").strip().lower()
     params: Dict[str, Any] = body.get("params") or {}
+    # The calculation KIND rides the same live check (absent =
+    # optimization, as everywhere): validate() composes the kind's own
+    # science from it, so the Spectrum tab's panel shows the SAME
+    # verdict prep's settings gate gives later -- the browser hears it
+    # while the person is still at the form.
+    calculation = str(body.get("calculation") or "optimization")
 
     if engine not in ("siesta", "pyscf"):
         return jsonify({
@@ -1251,7 +1257,8 @@ def api_build_preflight():
 
     return jsonify({
         "ok": True,
-        "issues": _issues_to_json(validate(struct, cfg), cfg=cfg),
+        "issues": _issues_to_json(
+            validate(struct, cfg, calculation=calculation), cfg=cfg),
     })
 
 

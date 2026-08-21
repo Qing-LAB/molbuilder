@@ -81,6 +81,7 @@
         formContainer:  null,
         sendBtn:        null,
         sendStatus:     null,
+        preflightPanel: null,
         // resultsFile / loadResultsBtn / resultsStatus removed for the
         // same reason as xyz* above; loadResults() also gone.  The
         // /api/spectra/load endpoint stays -- it's still used by the
@@ -622,6 +623,50 @@
     function getTheStructure() {
         return _viewer ? _viewer.data.getStructure() : null;
     }
+
+    // ----- Live preflight: gate ① for the vibration kind ---------
+    //
+    // The SAME verdict prep's settings gate gives later, surfaced
+    // while the person is still at the form (Build's pattern,
+    // structure-optimization/viewer.js::refreshPreflight): debounced
+    // POST /api/build/preflight with calculation="vibration"; the
+    // shared findings renderer places each finding on its
+    // workflow-group card and the rest on the summary panel below
+    // the form.  No structure loaded -> no call: warnings that
+    // haven't been earned yet don't show.
+    function _debouncePreflight(fn, wait) {
+        let t = null;
+        return function () {
+            if (t) clearTimeout(t);
+            t = setTimeout(fn, wait);
+        };
+    }
+
+    async function refreshPreflight() {
+        const _out = _viewer ? _viewer.data.exportFile() : null;
+        if (!_out || !_out.structure) return;
+        try {
+            const r = await fetch("/api/build/preflight", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    structure:   _out.structure,
+                    engine:      "pyscf",
+                    calculation: "vibration",
+                    params:      collectParams(),
+                }),
+            }).then(x => x.json());
+            const vf = (window.molbuilder || {}).validationFindings;
+            if (vf && Array.isArray(r.issues)) {
+                vf.render(r.issues, { panel: els.preflightPanel,
+                                      formScope: els.formContainer });
+            }
+        } catch (e) {
+            // Network hiccup: the panel keeps its previous state; the
+            // settings gate at prep is the canonical refusal anyway.
+        }
+    }
+    const refreshPreflightDebounced = _debouncePreflight(refreshPreflight, 250);
 
     // ----- Send to Task setup (the hand-over) -------------------
     //
@@ -2819,6 +2864,7 @@
         els.formContainer  = $("spectra-form-container");
         els.sendBtn        = $("send-to-task-setup");
         els.sendStatus     = $("send-status");
+        els.preflightPanel = $("spectra-issues");
         // results-file / load-results-btn / results-status lookups
         // dropped for the same reason as xyz* above.
         els.resultsSummary = $("results-summary");
@@ -2894,6 +2940,10 @@
                 () => { _formDirty = true; });
             _on(els.formContainer, "change",
                 () => { _formDirty = true; });
+            // Live science check on every edit (and on auto-detect's
+            // programmatic fills -- setValues dispatches input).
+            _on(els.formContainer, "input",  refreshPreflightDebounced);
+            _on(els.formContainer, "change", refreshPreflightDebounced);
             _on(els.sendBtn, "click",
                 () => { _formDirty = false; });
         }

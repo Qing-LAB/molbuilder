@@ -277,9 +277,10 @@ class TestOneRendererOnly:
     _CONSUMERS = (
         "molbuilder/web/static/structure-optimization/viewer.js",
         "molbuilder/web/static/lib/transport/core.js",
-        # lib/spectra/core.js left this list at P3: its findings
-        # panel retired with the Generate flow (parameter checks
-        # run in Task setup / at prep now).
+        # lib/spectra/core.js left this list at P3 and RETURNED the
+        # same day: the live-preflight panel (gate ① for the
+        # vibration kind) renders through the shared module.
+        "molbuilder/web/static/lib/spectra/core.js",
     )
 
     def test_consumers_delegate_and_do_not_build_issue_rows(self):

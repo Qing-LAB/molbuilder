@@ -142,7 +142,8 @@ def _structure_declares_a_box(struct: Structure) -> bool:
 def validate(struct: Structure, cfg, *,
              cell: Optional[np.ndarray] = None,
              dest_dir: "Optional[object]" = None,
-             prior: "Optional[object]" = None) -> List[Issue]:
+             prior: "Optional[object]" = None,
+             calculation: str = "optimization") -> List[Issue]:
     """Run every applicable validation check and return the findings.
 
     Parameters
@@ -152,6 +153,13 @@ def validate(struct: Structure, cfg, *,
     cfg
         SiestaConfig or PySCFConfig (or any dataclass; the generic
         config-field metadata pass runs on anything dataclass-shaped).
+    calculation
+        The described KIND this configuration is for ("optimization"
+        unless the description says otherwise).  The kind's own science
+        joins the same pass through ``_KIND_VALIDATORS`` — a fact-keyed
+        step of the pipeline, not a hook a caller may forget: the deck
+        conductor reads the kind off the spec (a declared fact) and
+        every calculation type flows through this one function.
     cell
         Optional pre-computed (3, 3) lattice the generator is going
         to use.  **Omit it and the gate resolves the structure's own
@@ -250,6 +258,15 @@ def validate(struct: Structure, cfg, *,
         if isinstance(cfg, cfg_cls):
             issues += fn(struct, cfg, cell, **engine_kw)
             break
+
+    # The CALCULATION KIND's own science — the same step, keyed by the
+    # described fact.  Between P1 and P3 the vibration science silently
+    # skipped because it hung off a per-deck call instead of this
+    # dispatch (found 2026-08-21); a kind registered here cannot be
+    # forgotten, because every deck route ends in this function.
+    kind_fn = _KIND_VALIDATORS.get(calculation)
+    if kind_fn is not None:
+        issues += kind_fn(struct, cfg, cell, **engine_kw)
     return issues
 
 
@@ -306,6 +323,28 @@ def _validate_spectra(struct: Structure, cfg, cell, *, prior=None, **_) -> List[
     return list(spectra_render_checks(struct, cfg))
 
 
+#: The calculation KIND's science, keyed by the described fact
+#: (``task.calculation``).  "optimization" deliberately has no entry:
+#: its science IS the engine validators above.  A new kind registers
+#: here and its checks run for every deck of that kind, on every
+#: route, with nothing for a deck author to remember.
+_KIND_VALIDATORS: dict = {}
+
+
+def _validate_vibration_kind(struct: Structure, cfg, cell, *,
+                             prior=None, **_) -> List[Issue]:
+    """The vibration kind's science (grid / amplitude / parity /
+    method / open-shell), over the deck's own config view.  Lazy
+    imports at call time, same cycle-avoidance as the engine
+    validators above."""
+    from ..config.pyscf import PySCFConfig
+    if not isinstance(cfg, PySCFConfig):
+        return []          # the seam refuses non-PySCF vibration by name
+    from ..pyscf.vibration_deck import science_view
+    from .spectra import spectra_render_checks
+    return list(spectra_render_checks(struct, science_view(cfg, struct)))
+
+
 def _validate_transport(struct: Structure, cfg, cell, *, prior=None, **_) -> List[Issue]:
     from ..transport import get_engine
     return list(get_engine(cfg.engine).preflight(struct, cfg, prior=prior))
@@ -339,6 +378,7 @@ def _register_default_engines() -> None:
         _ENGINE_VALIDATORS[TransportConfig] = _validate_transport
     except ImportError:
         pass
+    _KIND_VALIDATORS["vibration"] = _validate_vibration_kind
 
 
 _register_default_engines()

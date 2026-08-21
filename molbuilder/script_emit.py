@@ -1206,6 +1206,11 @@ class DeckSpec:
     #: The framework never WRITES it and never branches on it — it is a value
     #: the form carries, like ``provenance_defaults``, not a door.
     derived: Mapping[str, Any] = _dataclasses.field(default_factory=dict)
+    #: The described calculation KIND this deck renders — a FACT the
+    #: settings gate reads (validate(..., calculation=…) composes the
+    #: kind's science from it).  A fact, not a hook: the spec states
+    #: what it is; the framework decides what that implies.
+    calculation: str = "optimization"
     #: ``(text, struct, cfg) -> [Issue]`` — this engine's answer to *what must
     #: a finished deck of mine satisfy?*  Runs on the file as written.
     check_rules: Optional[Callable] = None
@@ -1398,7 +1403,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     with _calling("validate_subject", engine=spec.engine, log=log):
         _subject, _kw = ((spec.validate_subject(struct, cfg))
                          if spec.validate_subject else (struct, {}))
-    _issues = _validate(_subject, cfg, **_kw)
+    _issues = _validate(_subject, cfg, calculation=spec.calculation, **_kw)
     if log is not None:
         log.step("STEP 3.3 · VALIDATE — the settings gate")
         log.received("subject", ("the spec's own subject" if spec.validate_subject
