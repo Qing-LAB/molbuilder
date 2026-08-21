@@ -1631,6 +1631,15 @@ def api_task_setup_sweepable():
             "label":           it.label or it.name,
             "help":            it.help or "",
             "machine_answers": it.allocation,
+            # THE VALUE SHAPE (user, 2026-08-20): the machine card births
+            # a row at its value in force and offers an enum's choices or
+            # a bool's two values from a dropdown -- it can only do either
+            # by asking the catalogue.  Until this the payload carried no
+            # type at all, and every added setting was born as the number
+            # 1, whatever the parameter was.
+            "type":            it.type or "",
+            "choices":         list(it.choices) if it.choices else None,
+            "default":         it.default,
         })
     return jsonify({"ok": True, "engine": engine, "items": out})
 
@@ -1678,6 +1687,12 @@ def api_task_setup_columns():
             "unit":    it.unit or "",
             "default": it.default,
             "group":   it.group or "",
+            # THE VALUE SHAPE (user, 2026-08-20): the stage table's cell
+            # editor renders a dropdown for an enum or a bool, and it can
+            # only ask the catalogue -- inventing a widget from the value's
+            # look is how `enable_gpu` became a number box.
+            "type":    it.type or "",
+            "choices": list(it.choices) if it.choices else None,
             # THE SAME WRITER THE FORM USES.  This read `it.anchor`
             # until 2026-08-19, and an anchor is derived by taking the
             # leading token of `engine_key` -- so an item whose spelling

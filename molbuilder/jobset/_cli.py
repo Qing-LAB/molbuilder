@@ -567,6 +567,69 @@ def _apply_run_config(base, allocation, stage=None, engine=None):
     return allocation, pins
 
 
+def _declared_execution_pins(base, engine):
+    """`task.json` ``bench``, read as the OVERRIDE LANE it is (user rule,
+    2026-08-20; `generator.md` § 4.3a): every non-machine entry overrides
+    the template -- several points = an axis to try, ONE point = the value
+    in force, applied at prep as a pin for the bench's trials and the run
+    alike.  Nothing migrates between files: the description stays exactly
+    as edited, and prep is where a declaration is resolved.
+
+    Returns ``(pins, axes)``: the one-point non-machine values as a pins
+    dict, and the machine-answered entries untouched (the grid's axes).
+
+    Refused BY NAME, never repaired:
+      * an enum value outside the item's choices, or a non-bool on a bool
+        item -- a typo'd declaration must fail at prep, not after a queue;
+      * a MULTI-point non-machine entry -- a value axis needs the grid
+        duplicated per value with per-trial pins; that extension is
+        recorded in § 4.3a, not built.
+
+    MEMBERSHIP is not this function's question (one door): every bench key
+    must be an ``execution`` item, and `validation/task.py`'s
+    ``_bench_names_a_speed_knob`` owns that rule -- the dispatch runs the
+    preflight BEFORE this helper, so a non-execution name was refused
+    upstream and an unknown name here is simply skipped.  Point SHAPES are
+    `read_task`'s (task.py `_bench_from_obj`): every value arrives as a
+    non-empty tuple of scalars, so no scalar/empty arms exist here.
+    """
+    from ..task import FILENAME as TASK_FILENAME, read_task
+    from .. import template as _T
+
+    task = read_task(Path(base) / TASK_FILENAME)
+    declared = {k: list(v) for k, v in (task.bench or {}).items()}
+    if not declared:
+        return {}, {}
+
+    items = {i.name: i for i in _T.select(_T.catalogue(), engine=engine)
+             if "execution" in (i.category or ())}
+    pins, axes = {}, {}
+    for name, pts in declared.items():
+        it = items.get(name)
+        if it is None:
+            continue     # membership is the preflight's refusal, upstream
+        if it.allocation:
+            axes[name] = pts                 # machine-answered: the grid's
+            continue                         # business, never a value
+        if len(pts) > 1:
+            raise click.ClickException(
+                f"task.json declares {len(pts)} points for {name!r}; a "
+                f"multi-point value axis is not built yet (generator.md "
+                f"§ 4.3a records the extension).  Declare ONE point to pin "
+                f"the value, or measure it by hand one value at a time.")
+        v = pts[0]
+        if it.type == "bool" and not isinstance(v, bool):
+            raise click.ClickException(
+                f"task.json declares {name!r} = {v!r}; the item is a bool "
+                f"-- write true or false.")
+        if it.type == "enum" and it.choices and v not in it.choices:
+            raise click.ClickException(
+                f"task.json declares {name!r} = {v!r}; the choices are "
+                f"{', '.join(it.choices)}.")
+        pins[name] = v
+    return pins, axes
+
+
 def _bench_inputs(base, target=None):
     """The benchmark specialisation's three inputs — `project-layout.md`
     § 2.3.1a's split, stated as data: WHERE the values come from (the grid,
@@ -647,8 +710,18 @@ def _bench_inputs(base, target=None):
     # at the seam (`prep.py::_engine_seam`) -- so when that arm lands, THIS
     # LINE MUST READ THE MERGED ITEM, or a GPU PySCF sweep silently enumerates
     # a CPU grid.  Recorded as § 12.1 row 9.
+    # THE DECLARED OVERRIDE LANE, split before anything is decided (user
+    # rule, 2026-08-20): one-point non-machine entries are pins -- values
+    # in force for every trial -- and the machine-answered entries are the
+    # grid's axes.  A declared enable_gpu pin OVERRIDES the template's
+    # answer below, which is what makes the machine card's choice reach
+    # the sweep without touching the template file.
+    declared_pins, declared_axes = _declared_execution_pins(base, task.engine)
+
     on_gpu = any(i.name == "enable_gpu" and bool(i.value)
                  for i in template_select(tmpl, engine=task.engine))
+    if "enable_gpu" in declared_pins:
+        on_gpu = bool(declared_pins["enable_gpu"])
 
     if on_gpu and (not gpn or not gtype):
         raise click.ClickException(
@@ -660,13 +733,24 @@ def _bench_inputs(base, target=None):
             f"target it is meant to measure -- the comparison is by node "
             f"type (asu-sol.md § 5.2).")
 
-    declared = {k: list(v) for k, v in (task.bench or {}).items() if v}
+    # The axes come from the split above -- the value entries already left
+    # as pins, so what remains is machine-answered by construction.  (The
+    # raw read + unknown-axes refusal that stood here moved into
+    # `_declared_execution_pins`, which refuses by name with the § 4.3a
+    # story: non-execution items, bad enum/bool values, and the
+    # multi-point value axis that is recorded rather than built.)
+    declared = {k: list(v) for k, v in declared_axes.items()}
     _KNOWN_AXES = ("mpi_np", "omp_threads")
-    unknown_axes = sorted(k for k in declared if k not in _KNOWN_AXES)
-    if unknown_axes:
+    _unresolvable = sorted(k for k in declared if k not in _KNOWN_AXES)
+    if _unresolvable:
+        # `max_memory_mb` (and PySCF's `threads`) are machine-answered
+        # execution items TOO -- the helper hands every allocation item
+        # through as an axis, and the grid resolves exactly these two.
+        # Without this refusal a declared memory axis was silently ignored
+        # (the static review's catch; the pre-split code refused it here).
         raise click.ClickException(
             f"task.json declares bench axes this machine translation does "
-            f"not know: {', '.join(unknown_axes)}.  The axes a sweep can "
+            f"not know: {', '.join(_unresolvable)}.  The axes a sweep can "
             f"resolve today are {', '.join(_KNOWN_AXES)} "
             f"(generator.md § 4.3a).")
     sockets = getattr(topo, "sockets", None) or 1
@@ -745,6 +829,11 @@ def _bench_inputs(base, target=None):
     # calculation as well as a different run.)
     pins = {"max_scf_iter": 5, "relax_steps": 0, "restart": "clean",
             "continue_retries": 0, "scf_must_converge": False}
+    # The declared values ride UNDER the measurement pins: what makes a
+    # trial a measurement (capped SCF, forced cold, run-once) must win
+    # over any declaration -- and the two sets cannot overlap anyway,
+    # because the helper admits only `execution` items.
+    pins = {**declared_pins, **pins}
     return points, pins, translation
 
 
@@ -988,7 +1077,12 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             # flags, the wrapper's runtime policy is NAMED, not implied.
             allocation, verdict_pins = _apply_run_config(
                 base, allocation, stage=stage, engine=_pf_task.engine)
-            pins = verdict_pins or None
+            # The declaration's one-point values pin the run too (user
+            # rule, 2026-08-20), UNDER the measured verdict: template <
+            # declaration < run-config < flags (§ 4.3a's precedence).
+            declared_pins, _axes = _declared_execution_pins(
+                base, _pf_task.engine)
+            pins = {**declared_pins, **(verdict_pins or {})} or None
         if kind == "run":
             # § 6's say-what-is-there, and the A3 ask when a run already
             # happened here (U14).

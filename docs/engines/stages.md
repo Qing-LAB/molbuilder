@@ -923,9 +923,12 @@ rather than inventing a second mechanism.
                      "relax_type": "Broyden", "restart": "continue" } }
   ],
 
-  // WHAT TO MEASURE before committing (§ 6.8).  Optional; absent means
-  // no benchmark is planned.  Points to TRY, never an answer.
-  "bench": { "mpi_np": [4, 8, 16], "omp_threads": [1, 2] }
+  // WHAT TO MEASURE before committing, and what is CHOSEN outright
+  // (§ 6.8).  Optional.  A machine-answered entry is points to TRY,
+  // never an answer; a non-machine execution entry with ONE point is a
+  // chosen override, applied at prep as a pin (user rule, 2026-08-20).
+  "bench": { "mpi_np": [4, 8, 16], "omp_threads": [1, 2],
+             "enable_gpu": [true] }
 }
 ```
 
@@ -1318,13 +1321,23 @@ it belongs in the description, and nothing else in `task.json` could hold it:
 
 **The rule, and it is the same one § 6 already rests on:**
 
-> `task.json` records **points to try**. It never records what was found.
+> `task.json` records what the person **asked** — points to try, or a value
+> they chose. It never records what a machine **found**.
 
 That keeps the description portable in exactly the way `template.md` § 7
 requires. *"Measure ranks at 4, 8, 16"* is true on every machine. *"Use 16"* is
 true on one, and writing it here would make the file a machine's opinion rather
 than a calculation's description — the same reason an allocation item is
 declared **valueless** and `read_template` refuses a hand-edited `mpi_np`.
+
+**And a non-machine execution entry with ONE point is a chosen value**
+*(user rule, 2026-08-20 — the override lane, `generator.md` § 4.3a)*:
+`enable_gpu: [true]` is the person's portable intent, applied at prep as a
+pin over the template for the bench's trials and the run alike — and
+refused by name on a machine that cannot honor it, which is the
+declaration staying a *question to the target* rather than an answer about
+one. The machine-answered entries can never carry a value this way; for
+them, one point is still just a short list to try.
 
 **Where the answer goes instead.** `bench` runs on the target and writes
 `bench-result.json`, whose `choice` carries the measured value alongside the

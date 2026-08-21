@@ -1405,13 +1405,89 @@ def test_a_declared_point_over_capability_is_refused_by_name(calc):
     assert "mpi_np=4096" in str(e.value) and "omp_threads=2" in str(e.value)
 
 
-def test_an_unknown_declared_axis_is_refused_by_name(calc):
+def test_a_multi_point_value_entry_is_the_recorded_extension_not_a_sweep(
+        calc):
+    """A non-machine entry with SEVERAL points is a value axis, and that
+    extension is recorded in § 4.3a, not built -- refused by name (this
+    test asserted "unknown axis" until 2026-08-20; under the override-lane
+    rule `block_size` is a known value item, and the refusal now says what
+    is actually missing)."""
     import click
     _describe_cpu(calc)
     _declare_bench(calc, {"block_size": [64, 128]})
     with pytest.raises(click.ClickException) as e:
         _bench_inputs(calc)
     assert "block_size" in str(e.value)
+    assert "recorded" in str(e.value) or "not built" in str(e.value)
+
+
+def test_a_name_outside_the_execution_category_is_refused(calc):
+    """Pinning or sweeping a non-execution item changes the ANSWER, not the
+    speed (§ 6.8).  ONE door owns membership -- the preflight's
+    `_bench_names_a_speed_knob` (validation/task.py), which the dispatch
+    runs before any pins are computed -- so this pins the CLI surface, not
+    the helper (whose first version duplicated the rule; the holistic
+    review removed the second door, and this § 6.8 error had no test at
+    all until then)."""
+    from click.testing import CliRunner
+
+    from molbuilder.jobset._cli import jobset_group
+
+    _describe_cpu(calc)
+    _declare_bench(calc, {"mesh_cutoff": [300]})
+    r = CliRunner().invoke(jobset_group, ["prep", "bench", "coarse",
+                                          "--bundle", str(calc)])
+    assert r.exit_code != 0
+    assert "mesh_cutoff" in r.output and "execution" in r.output
+
+
+def test_a_one_point_declaration_is_a_pin_and_decides_the_grid(calc):
+    """The override lane's ONE-point half (user rule, 2026-08-20): a CPU
+    description with `bench: {enable_gpu: [true]}` enumerates the GPU grid
+    -- the declaration overrides the template's answer -- and the value
+    rides every trial as a pin, under the measurement pins."""
+    _describe_cpu(calc)                       # template says enable_gpu=false
+    _declare_bench(calc, {"enable_gpu": [True],
+                          "diag_algorithm": ["ELPA-2STAGE"],
+                          "mpi_np": [4], "omp_threads": [1]})
+    sweep, pins, _tr = _bench_inputs(calc)
+    assert pins["enable_gpu"] is True
+    assert pins["diag_algorithm"] == "ELPA-2STAGE"
+    assert pins["max_scf_iter"] == 5, "the measurement pins still ride"
+    assert all("G" in p for p in sweep), (
+        "a declared enable_gpu=true must enumerate the GPU grid")
+
+
+def test_a_declared_pin_reaches_the_trial_deck(calc):
+    """Executed, not assumed: the pinned eigensolver lands in the rendered
+    trial deck, replacing the template's (`ELPA-1STAGE` in the fixture)."""
+    _declare_bench(calc, {"diag_algorithm": ["ELPA-2STAGE"],
+                          "mpi_np": [4], "omp_threads": [1]})
+    _prep_bench(calc)
+    decks = list((calc / "01_coarse" / "bench").glob("bench-*/*.fdf"))
+    assert decks, "no trial decks rendered"
+    text = decks[0].read_text()
+    # The VALUE line, not the catalogue help comments -- those name
+    # every choice, so a substring match passes with the pin broken
+    # (this assertion's own first version did; its mutation run
+    # caught it).
+    import re as _re
+    assert _re.search(r"^Diag\.Algorithm\s+ELPA-2STAGE", text, _re.M), (
+        [ln for ln in text.splitlines()
+         if ln.startswith("Diag.Algorithm")])
+
+
+def test_a_bad_enum_value_and_a_non_bool_are_refused_with_the_choices(calc):
+    import click
+    _describe_cpu(calc)
+    _declare_bench(calc, {"diag_algorithm": ["ELPA-9STAGE"]})
+    with pytest.raises(click.ClickException) as e:
+        _bench_inputs(calc)
+    assert "ELPA-9STAGE" in str(e.value) and "ScaLAPACK" in str(e.value)
+    _declare_bench(calc, {"enable_gpu": [1]})
+    with pytest.raises(click.ClickException) as e:
+        _bench_inputs(calc)
+    assert "true or false" in str(e.value)
 
 
 def test_a_declared_gpu_point_runs_the_declared_total_ranks(calc):
@@ -1706,3 +1782,49 @@ def test_the_group_refuses_a_trial_without_an_explicit_shape(calc):
                                                 cpus_per_task=None))
     with _pytest.raises(SubmitError, match=stripped.name):
         submit_bench_group(js, base, dry_run=True)
+
+
+def test_a_declared_pin_reaches_the_run_deck_and_the_verdict_outranks_it(
+        calc):
+    """The run half of the override lane (user rule, 2026-08-20), with
+    § 4.3a's precedence executed: template < one-point declaration <
+    run-config verdict.  `prep run` on a calc declaring
+    `diag_algorithm: [ELPA-2STAGE]` renders the declared value into the
+    stage deck; write a run-config whose pins say ScaLAPACK, re-prep, and
+    the verdict's value stands instead."""
+    from click.testing import CliRunner
+
+    from molbuilder.jobset._cli import jobset_group
+
+    _describe_cpu(calc)      # GPU + ScaLAPACK is an invalid pair, and the
+    _declare_bench(calc, {"diag_algorithm": ["ELPA-2STAGE"]})
+    runner = CliRunner()     # verdict half of this test pins ScaLAPACK
+    r = runner.invoke(jobset_group, ["prep", "run", "coarse",
+                                     "--bundle", str(calc)])
+    assert r.exit_code == 0, r.output
+    import re as _re
+    deck = next((calc / "01_coarse").glob("run-*/JOB*.fdf"))
+    assert _re.search(r"^Diag\.Algorithm\s+ELPA-2STAGE",
+                      deck.read_text(), _re.M), (
+        "the declared pin did not reach the run deck (the value "
+        "line, not the help comments)")
+
+    # The measured verdict outranks the declaration.
+    bench = calc / "01_coarse" / "bench"
+    bench.mkdir(parents=True, exist_ok=True)
+    (bench / "run-config.toml").write_text(
+        'schema = "molbuilder/run-config@1"\n'
+        "[pins]\n"
+        'diag_algorithm = "ScaLAPACK"\n')
+    r = runner.invoke(jobset_group, ["prep", "run", "coarse",
+                                     "--bundle", str(calc)])
+    assert r.exit_code == 0, r.output
+    decks = sorted((calc / "01_coarse").glob("run-*/JOB*.fdf"))
+    text = decks[-1].read_text()
+    # ScaLAPACK EMITS NOTHING -- omitting the keyword IS the deliberate
+    # emission for SIESTA's own default (`siesta/input.py`; siesta.md § 7).
+    # So the verdict outranking the declaration shows as the declared ELPA
+    # value line GONE, not as a ScaLAPACK line appearing.  (This assertion
+    # first expected the line -- the emit rule says otherwise.)
+    assert not _re.search(r"^Diag\.Algorithm\s", text, _re.M), (
+        [ln for ln in text.splitlines() if ln.startswith("Diag.")])

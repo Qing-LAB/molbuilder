@@ -1087,7 +1087,11 @@ always *find* one — but finding is not permission. Permission is
 `run-config.toml`: `summarize` writes the proposal, you change what you
 disagree with, and `prep run` applies what the file says **to the fields
 your flags did not state** — an explicit flag always wins over the file,
-exactly as it won over the machine before. Delete the file and the
+exactly as it won over the machine before. Beneath the file sits the
+description's own one-point declaration lane (`generator.md` § 4.3a:
+template < declaration < this file < flags) — the verdict refines what you
+declared, and deleting the file falls back to the declaration, not to
+silence. Delete the file and the
 benchmark is declined; `summarize bench` writes it afresh should you change
 your mind. *(Until 2026-08-19 this was an interactive question — `use it?
 [y/N]`, asked at every prep, silence-is-no. The doctrine is unchanged —

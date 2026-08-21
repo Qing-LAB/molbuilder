@@ -159,6 +159,21 @@ def cmd_list() -> None:
 # --------------------------------------------------------------------- #
 
 
+def _fix_cmd(action: str, recipe_name: str, *flags: str) -> str:
+    """The ONE spelling of an env fix command -- the shell launcher form.
+
+    ``bash scripts/install-env.sh <verb> ...`` works from a bare shell (it
+    finds conda, requires the host env, and dispatches), which is exactly
+    the situation a person with a broken env is in -- and it is the form
+    every hint in this file already taught.  ``doctor`` alone said
+    ``molbuilder envs install`` (user, 2026-08-20: a detected problem must
+    carry its exact fix command; two spellings of the same fix is how a
+    reader ends up touring the docs instead).
+    """
+    return " ".join(["bash scripts/install-env.sh", action,
+                     recipe_name, *flags])
+
+
 def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
     """Print the doctor report.  Returns a process exit code:
     0 when every present env verified ok (or is verify-skipped),
@@ -185,8 +200,8 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
             )
         if not rep.present:
             click.echo("    state:   MISSING")
-            click.echo("    install: molbuilder envs install "
-                       f"{rep.recipe.name}")
+            click.echo("    next:    "
+                       + _fix_cmd("install", rep.recipe.name, "--yes"))
             continue
         click.echo("    state:   present")
         if rep.verify_ok is None:
@@ -202,6 +217,12 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                     for ln in rep.verify_output.strip().splitlines()[:8]
                 )
                 click.echo(indented)
+            click.echo("    next:    "
+                       + _fix_cmd("repair", rep.recipe.name))
+            click.echo("             (if repair finds nothing to fix, "
+                       "rebuild from the recipe: "
+                       + _fix_cmd("install", rep.recipe.name,
+                                  "--clean", "--yes") + ")")
         # Package audit (real check, not just verify smoke test).
         # Required-missing -> FAILED + exits 1; optional-missing
         # (e.g. GPU-only cupy + gpu4pyscf) -> info-only, env still
@@ -235,6 +256,11 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                         f"        [{issue.kind}] {issue.spec}  "
                         f"(installed: {issue.found})"
                     )
+                click.echo("    enable:  "
+                           + _fix_cmd("repair", rep.recipe.name,
+                                      "--include-optional")
+                           + "   (installs these; the gated features "
+                             "turn on)")
             else:
                 any_failed = True
                 click.echo(
@@ -258,11 +284,29 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                     click.echo(
                         f"        ... and {n_required - 15} more required"
                     )
+                _version_kinds = ("conda-version", "conda-build")
+                _has_missing = any(i.kind not in _version_kinds
+                                   for i in required_issues)
+                _has_version = any(i.kind in _version_kinds
+                                   for i in required_issues)
+                # Bare `repair` installs the MISSING packages and skips
+                # version/build mismatches by design -- so the command
+                # offered must actually fix what was just listed.
+                _flags = (("--include-version-fix",) if _has_version
+                          else ())
+                click.echo("    next:    "
+                           + _fix_cmd("repair", rep.recipe.name, *_flags))
+
+                if _has_version and not _has_missing:
+                    click.echo("             (only version/build pins "
+                               "differ; --include-version-fix is what "
+                               "makes repair rebuild those)")
 
     click.echo("")
     if any_failed:
         click.echo("doctor: one or more envs failed verify or package "
-                   "audit.  See above + docs/ops/installation.md.", err=True)
+                   "audit -- each carries its `next:` fix command above.",
+                   err=True)
         return 1
     return 0
 
@@ -323,7 +367,7 @@ def cmd_repair(name: str, include_optional: bool,
             err=True,
         )
         click.echo(
-            f"    bash scripts/install-env.sh install {recipe.name} --yes",
+            "    " + _fix_cmd("install", recipe.name, "--yes"),
             err=True,
         )
         sys.exit(2)
@@ -1011,14 +1055,13 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         )
         click.echo("")
         click.echo(
-            f"    bash scripts/install-env.sh install {name} "
-            f"--force-resume --yes"
+            "    " + _fix_cmd("install", name, "--force-resume", "--yes")
         )
         click.echo("")
         click.echo("Copy-paste to fix (wipes + reinstalls):")
         click.echo("")
         click.echo(
-            f"    bash scripts/install-env.sh install {name} --clean --yes"
+            "    " + _fix_cmd("install", name, "--clean", "--yes")
         )
         click.echo("")
         click.echo("Or the manual equivalent:")
@@ -1028,7 +1071,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         # would fail with "mamba: command not found" in that case.
         click.echo(f"    {caps.conda_binary} env remove -n {name} -y")
         click.echo(
-            f"    bash scripts/install-env.sh install {name} --yes"
+            "    " + _fix_cmd("install", name, "--yes")
         )
         sys.exit(2)
     if state.state_label == "PRESENT" and not clean:
@@ -1506,11 +1549,11 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
         click.echo("# Install GPU SIESTA (source-built, ~45 min, ~12 GB disk;")
         click.echo("# host env from this bootstrap is the prerequisite):")
         click.echo(
-            "bash scripts/install-env.sh install molbuilder-siesta-gpu --yes"
+            _fix_cmd("install", "molbuilder-siesta-gpu", "--yes")
         )
     click.echo("")
     click.echo("# Repair any REQUIRED package gaps doctor's audit surfaced:")
-    click.echo("bash scripts/install-env.sh repair <recipe-name>")
+    click.echo(_fix_cmd("repair", "<recipe-name>"))
     click.echo("")
     click.echo("# Re-verify env health after any change:")
     click.echo("bash scripts/install-env.sh doctor")

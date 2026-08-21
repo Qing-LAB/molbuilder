@@ -334,9 +334,9 @@ its point count:
 
 | | goes to | why |
 |---|---|---|
-| a parameter's value, and a setting with **one** point | `<label>.template.toml` | the template holds every parameter with the value in force |
+| a parameter's value | `<label>.template.toml` | the template holds every parameter with the value in force |
 | a column, its cells, the shape, the id | `task.json` | what *changes* |
-| a setting with **several** points | `task.json`'s `bench` | points to try — never an answer |
+| a machine-card setting — **any** point count | `task.json`'s `bench` | **an override lane on the template** *(user rule, 2026-08-20)*: several points = values to **try** (a bench axis); **one point = the value in force**, applied at prep as a pin — for the bench's trials and the run alike. Nothing migrates between files; the description stays exactly as edited, and prep is where a declaration is resolved (`generator.md` § 4.3a) |
 
 ```jsonc
 // task.json — molbuilder/task@1

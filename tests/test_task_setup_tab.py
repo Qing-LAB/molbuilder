@@ -1468,3 +1468,48 @@ def test_changing_the_shape_does_not_discard_the_table():
         "the rebuild runs before the guard, so the table is discarded first")
     guard = body[i_guard:i_build]
     assert "_task.shape = shape" in guard, "the shape is not simply edited"
+
+
+# --------------------------------------------------------------------- #
+#  The value SHAPE reaches the tab (user, 2026-08-20)                    #
+# --------------------------------------------------------------------- #
+
+def test_both_pickers_payloads_carry_the_value_shape(web_client):
+    """A bool or enum parameter edits through a dropdown of its legal
+    values, and the tab can only build one by asking the catalogue -- so
+    BOTH payloads carry `type`/`choices` (+ the sweepable's `default`,
+    which births a row at its value in force).  Until 2026-08-20 the
+    sweepable payload had no type at all, and every added setting was born
+    as the number 1 -- `enable_gpu` included."""
+    sw = web_client.get("/api/task-setup/sweepable?engine=siesta").get_json()
+    items = {i["name"]: i for i in sw["items"]}
+    assert items["enable_gpu"]["type"] == "bool"
+    assert items["diag_algorithm"]["type"] == "enum"
+    assert items["diag_algorithm"]["choices"] == [
+        "ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
+    assert items["diag_algorithm"]["default"] == "ScaLAPACK"
+
+    cols = web_client.get("/api/task-setup/columns?engine=siesta").get_json()
+    citems = {i["name"]: i for i in cols["items"]}
+    assert citems["diag_algorithm"]["type"] == "enum"
+    assert citems["diag_algorithm"]["choices"] == [
+        "ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
+
+
+def test_the_viewer_dispatches_widgets_on_the_shape_not_the_look():
+    """Source-text pins (this page has no node harness -- the live browser
+    walk covers behavior; these keep the structure from regressing):
+
+      * the ONE widget rule exists (`legalValues`) and BOTH surfaces ask
+        it -- the machine card's adder and the stage table's cell;
+      * a new row is born at its value in force, never the literal "1";
+      * a bool cell writes a real boolean (the declared type decides the
+        coercion, not the value's look)."""
+    src = (STATIC / "task-setup" / "viewer.js").read_text()
+    assert "function legalValues(" in src
+    assert src.count("legalValues(") >= 3, (
+        "both surfaces must ask the one widget rule")
+    assert 'addPoint(sel.value, "1")' not in src, (
+        "a row born as the literal 1 is the bug this closed")
+    assert "String(valueInForce(sel.value))" in src
+    assert 'ov[col] = text === "true"' in src

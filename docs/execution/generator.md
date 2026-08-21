@@ -334,8 +334,17 @@ because both halves are real and they are different acts:
 | | | |
 |---|---|---|
 | **what to measure** | `task.json`'s `bench` — *"try 4, 8, 16 ranks"* | **declared**, floor 2, portable |
+| **what is chosen outright** | a `bench` entry with **one** point — *"enable_gpu: [true]"* | **declared**, and applied at prep as a **pin** over the template, for the bench's trials and the run alike *(user rule, 2026-08-20: every non-machine `bench` entry is an override lane — several points = try them, one = the value in force; the machine-answered axes can never be "in force")* |
 | **what those points mean on this machine** | `prep bench <stage>` | **resolved**, floor 3, on the target |
 | **what was fastest** | `<stage>/bench/bench-result.json` | **measured**, and offered back to that stage's next `prep run` |
+
+> **Precedence when three sources name one knob** *(weakest to strongest)*:
+> the template → a one-point `bench` declaration → the benchmark verdict's
+> `run-config.toml` pins → explicit CLI flags.  The measured verdict refines
+> the declaration (the decision file is yours to edit or delete), and flags
+> beat everything, exactly as they do today.  A **multi-point** non-machine
+> entry is refused by name for now — a value axis needs the grid duplicated
+> per value with per-trial pins, and that extension is recorded, not built.
 
 > **§ 4.3 above forbids a MACHINE'S OPINION in the description, not a
 > QUESTION.** *"Use 16 ranks"* is true on one cluster and is refused. *"Try 4,

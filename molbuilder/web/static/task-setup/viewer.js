@@ -253,13 +253,37 @@ function renderStages(task) {
             // the word "template" is what makes "adding a column changes
             // nothing on screen" (§ 9) visible instead of merely true.
             const fallback = defaultText(col);
-            const cell = el("input", {
-                class: "ts-cell", value: has ? String(ov[col]) : "",
-                placeholder: fallback || "template",
-                title: helpText(col),
-                "aria-label": name + " " + col,
-                "data-template": has ? null : "yes",
-            });
+            // The cell follows the value SHAPE (user, 2026-08-20): an
+            // enum or bool column edits through a dropdown of its legal
+            // values -- the empty option IS the template state, labeled
+            // with the value it means -- and every other column keeps the
+            // free input.  One rule with the machine card's adder
+            // (`legalValues`); a value's look never picks the widget.
+            const legal = legalValues(col);
+            let cell;
+            if (legal) {
+                cell = el("select", {
+                    class: "ts-cell",
+                    title: helpText(col),
+                    "aria-label": name + " " + col,
+                    "data-template": has ? null : "yes",
+                });
+                cell.appendChild(el("option", { value: "" },
+                    "(" + (fallback || "template") + ")"));
+                for (const v of legal) {
+                    cell.appendChild(el("option", { value: String(v) },
+                                        String(v)));
+                }
+                cell.value = has ? String(ov[col]) : "";
+            } else {
+                cell = el("input", {
+                    class: "ts-cell", value: has ? String(ov[col]) : "",
+                    placeholder: fallback || "template",
+                    title: helpText(col),
+                    "aria-label": name + " " + col,
+                    "data-template": has ? null : "yes",
+                });
+            }
             cell.addEventListener("change", () => setCell(i, col, cell.value));
             tr.appendChild(el("td", { "data-template": has ? null : "yes" }, cell));
         }
@@ -299,9 +323,33 @@ function renderMachine(task) {
             return el("span", { class: "ts-pt" }, String(p), drop);
         });
 
-        const add = el("input", { class: "ts-pt-add", placeholder: "+ add",
-                                  "aria-label": "add a point to " + name });
-        add.addEventListener("change", () => { addPoint(name, add.value); add.value = ""; });
+        // The adder follows the value SHAPE (user, 2026-08-20): a bool or
+        // an enum offers exactly the legal values not already listed -- a
+        // dropdown, never a number box -- and a numeric axis keeps the
+        // free input it always had.
+        const legal = legalValues(name);
+        let add;
+        if (legal) {
+            const left = legal.filter(
+                (v) => !pts.some((p) => String(p) === String(v)));
+            add = el("select", { class: "ts-pt-add",
+                                 "aria-label": "add a point to " + name });
+            add.appendChild(el("option", { value: "" },
+                               left.length ? "+ add" : "all values listed"));
+            for (const v of left) {
+                add.appendChild(el("option", { value: String(v) },
+                                   String(v)));
+            }
+            add.disabled = !left.length;
+            add.addEventListener("change", () => {
+                if (add.value) addPoint(name, add.value);
+            });
+        } else {
+            add = el("input", { class: "ts-pt-add", placeholder: "+ add",
+                                "aria-label": "add a point to " + name });
+            add.addEventListener("change",
+                () => { addPoint(name, add.value); add.value = ""; });
+        }
 
         const dropRow = el("button", { type: "button", class: "ts-rowbtn ts-rowbtn-drop",
                                        title: "Stop measuring " + name }, "\u00d7");
@@ -603,6 +651,11 @@ function setCell(i, col, raw) {
         // Empty means "this stage uses the template's value" — a real state,
         // expressed by the key being ABSENT (`stages.md` § 6.2).
         delete ov[col];
+    } else if ((_meta[col] || {}).type === "bool") {
+        // The DECLARED type decides the coercion (the resolve layer's own
+        // rule) -- a bool cell writing the string "true" into an override
+        // is a type the reader then has to guess at.
+        ov[col] = text === "true";
     } else {
         const n = Number(text);
         ov[col] = (text !== "" && Number.isFinite(n)) ? n : text;
@@ -681,9 +734,10 @@ async function loadColumnChoices(engine) {
  * for one (`template.md` § 6.4) -- so an empty bench leaves the card with
  * nothing in it and the user typing point lists from scratch.  These are the
  * shipped starting points, and `stages.md` § 6.8's rule is what makes them
- * safe to propose: `bench` records POINTS TO TRY and never an answer, so a
- * proposed grid costs nothing but a measurement, and every row can be edited
- * or dropped.
+ * safe to propose: a MACHINE-ANSWERED `bench` entry records points to try
+ * and never an answer (stages.md § 6.8 -- the one-point-is-a-pin rule is
+ * for the non-machine entries only), so a proposed grid costs nothing but
+ * a measurement, and every row can be edited or dropped.
  *
  * Powers of two for ranks because that is how the block distributes
  * (`tuning.md` § 2.11); 1 and 2 threads because hybrid runs are the comparison
@@ -703,10 +757,35 @@ async function loadSweepChoices(engine) {
     // only place their note arrives -- fold it in so the table hovers work.
     for (const i of _sweep) {
         if (!_meta[i.name]) {
-            _meta[i.name] = { name: i.name, label: i.label, help: i.help };
+            _meta[i.name] = { name: i.name, label: i.label, help: i.help,
+                              type: i.type, choices: i.choices,
+                              default: i.default };
         }
     }
     return _sweep;
+}
+
+/* The LEGAL VALUES of a bool/enum parameter, from the catalogue meta --
+ * null for a free-typed (numeric) one.  The one place the widget question
+ * is answered (user, 2026-08-20): a value's look must never pick the
+ * widget, which is how enable_gpu became a number box. */
+function legalValues(name) {
+    const m = _meta[name] || {};
+    if (m.type === "bool") return [true, false];
+    if (m.type === "enum" && Array.isArray(m.choices)) return m.choices;
+    return null;
+}
+
+/* The value IN FORCE for a parameter -- what a new machine-card row is
+ * born holding: this folder's template answer first, else the catalogue
+ * default, else 1 (the numeric axes' old birth value).  RAW value --
+ * `defaultText` below is its DISPLAY sibling (rendered, with the unit);
+ * conflating the two puts "300 Ry" into a point list. */
+function valueInForce(name) {
+    if (name in _tmpl.values) return _tmpl.values[name];
+    const m = _meta[name] || {};
+    if (m.default !== undefined && m.default !== null) return m.default;
+    return 1;
 }
 
 /** Fill a <select> with what is NOT already used. */
@@ -1320,7 +1399,11 @@ function start(projects) {
     const addSetting = () => {
         const sel = $("ts-add-setting");
         if (!sel || !sel.value) return;
-        addPoint(sel.value, "1");       // a row starts as ONE point: a choice
+        // A row starts as ONE point -- a choice -- and the choice starts
+        // at the value IN FORCE (template, else catalogue default).  It
+        // started as the literal 1 for every type until 2026-08-20, which
+        // for enable_gpu or diag_algorithm was not a value at all.
+        addPoint(sel.value, String(valueInForce(sel.value)));
         sel.value = "";
     };
     const goBtn = $("ts-add-setting-go");
