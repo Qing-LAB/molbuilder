@@ -128,7 +128,7 @@ def test_the_pins_land_as_rendered_schema_values_not_splices(calc):
     import re
     js = _prep_bench(calc)
     deck = (calc / f"JOB-{js['jobs'][0]['name']}_01_coarse.fdf").read_text()
-    assert re.search(r"^MaxSCFIterations\s+5\s*$", deck, re.M)
+    assert re.search(r"^MaxSCFIterations\s+3\s*$", deck, re.M)
     assert re.search(r"^Diag\.Algorithm\s+ELPA-1STAGE\s*$", deck, re.M)
     assert re.search(r"^Diag\.ELPA\.GPU\s+\.true\.\s*$", deck, re.M)
     assert re.search(r"^MD\.Steps\s+0\s*$", deck, re.M)
