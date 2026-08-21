@@ -536,6 +536,25 @@ each an economy rule:
   forced cold and relabelled in the first place. The concern behind
   "use the later run" is real, and it is answered at the iteration level,
   where it costs seconds instead of a second run.
+- **Why the cap is five iterations, not two** *(user question, 2026-08-21)*.
+  The instrument stamps a wall-clock time as each ``scf:`` line prints
+  ([`running-a-job.md § 4.1`](?doc=execution/running-a-job.md)), so N capped
+  iterations give N−1 deltas — and **iteration 1's own duration, where the
+  one-time setup lives, never forms a delta at all**. Capping at 2 would
+  therefore measure exactly ONE delta: iteration 2's, the one the reader
+  discards as still warm-up-adjacent when it can. Three iterations is the
+  smallest faithful version of "use the later iteration" — one clean sample
+  — but a single ~30–60 s sample is exposed to node jitter of the same
+  order as the differences the verdict ranks (solver vs solver, block vs
+  block are often 10–30 % apart), so one bad sample inverts a ranking.
+  **Five = two discarded + three averaged**: the minimum that gives a mean
+  at all. The saving from cutting 5 → 3 is two iterations per trial while
+  the un-cuttable setup + iteration 1 still dominate a trial's wall — on a
+  ~40 s/iter cell that is ~80 s × trials, minutes across a lean matrix —
+  so the iteration cap is the wrong lever; the trial count above is the
+  right one. *(The capped window also feeds the monitor: utilisation
+  classification and the peak-RSS memory recommendation read the same few
+  minutes, and two iterations would starve them too.)*
 - **Do not declare rank counts far below where the run will live.** s/iter
   grows roughly as 1/ranks until scaling saturates, so a far-too-narrow trial
   of a large system can outlast its bound — killed, `incomplete`, allocation
@@ -559,6 +578,23 @@ each an economy rule:
   axis. Worked on the § 6 junction's declared matrix: the full cartesian is
   36 trials; dropping `block_size` to auto makes it 12; staging makes it
   6 + 6 with the second round already pinned to the shape that won.
+
+**The record carries what was asked AND what actually ran** *(user
+question, 2026-08-21)*. Implicit values are not lost: every trial's
+rendered deck (kept forever in its `bench-…/` directory) holds each value
+molbuilder set, explicitly or derived at prep — and `bench-result.json`
+records, per trial, the *asked* side (the machine knobs, the declared
+coordinates, the deck's eigensolver and requested BlockSize) **beside the
+*ran* side, parsed from the run's own output**: the rank count SIESTA
+itself reported, the threads the wrapper exported, **the block size SIESTA
+settled on** — read back even when the deck carried no `BlockSize` line at
+all (§ 2.11's *automatic* state) — the eigensolver actually used, and
+ELPA's GPU key. Where the two sides disagree on ranks, threads or solver,
+the trial is marked and **barred from winning** (a fallen-back ELPA trial
+must not be ranked as a GPU number); the block size is deliberately
+recorded-but-not-compared, because SIESTA shrinking it to the rank count
+and ELPA rounding it to a power of two are documented adaptation, not a
+lie (`bench/result.py::parse_effective_run` / `compare_asked_to_ran`).
 
 **Comparability, stated once more** ([`generator.md § 4.3a`](?doc=execution/generator.md)):
 CPU numbers carry across same-silicon partitions; GPU numbers belong to the
