@@ -326,7 +326,7 @@ class TestEnvManagerAutodetect:
             "micromamba": "/opt/mm/bin/micromamba",
             "conda":      "/opt/conda/bin/conda",
         })
-        assert diagnostics._find_conda_binary() == "/opt/mamba/bin/mamba"
+        assert diagnostics._find_conda_binary() == ("/opt/mamba/bin/mamba", "PATH (mamba)")
 
     def test_micromamba_preferred_over_conda(self, monkeypatch):
         monkeypatch.delenv("MAMBA_EXE", raising=False)
@@ -335,13 +335,13 @@ class TestEnvManagerAutodetect:
             "micromamba": "/opt/mm/bin/micromamba",
             "conda":      "/opt/conda/bin/conda",
         })
-        assert diagnostics._find_conda_binary() == "/opt/mm/bin/micromamba"
+        assert diagnostics._find_conda_binary() == ("/opt/mm/bin/micromamba", "PATH (micromamba)")
 
     def test_conda_only_works_as_fallback(self, monkeypatch):
         monkeypatch.delenv("MAMBA_EXE", raising=False)
         monkeypatch.delenv("CONDA_EXE", raising=False)
         self._set_which(monkeypatch, {"conda": "/opt/conda/bin/conda"})
-        assert diagnostics._find_conda_binary() == "/opt/conda/bin/conda"
+        assert diagnostics._find_conda_binary() == ("/opt/conda/bin/conda", "PATH (conda)")
 
     @staticmethod
     def _exe(tmp_path, name):
@@ -361,7 +361,7 @@ class TestEnvManagerAutodetect:
         monkeypatch.setenv("MAMBA_EXE", mamba)
         monkeypatch.delenv("CONDA_EXE", raising=False)
         self._set_which(monkeypatch, {})
-        assert diagnostics._find_conda_binary() == mamba
+        assert diagnostics._find_conda_binary() == (mamba, "$MAMBA_EXE")
 
     def test_mamba_exe_wins_over_conda_exe(self, monkeypatch, tmp_path):
         """Both env vars set -- ``$MAMBA_EXE`` wins (faster manager,
@@ -371,7 +371,7 @@ class TestEnvManagerAutodetect:
         monkeypatch.setenv("MAMBA_EXE", mamba)
         monkeypatch.setenv("CONDA_EXE", conda)
         self._set_which(monkeypatch, {})
-        assert diagnostics._find_conda_binary() == mamba
+        assert diagnostics._find_conda_binary() == (mamba, "$MAMBA_EXE")
 
     def test_a_stale_env_var_does_not_beat_a_good_one(self, monkeypatch,
                                                        tmp_path):
@@ -386,7 +386,7 @@ class TestEnvManagerAutodetect:
         monkeypatch.setenv("MAMBA_EXE", str(tmp_path / "removed-mamba"))
         monkeypatch.setenv("CONDA_EXE", conda)
         self._set_which(monkeypatch, {})
-        assert diagnostics._find_conda_binary() == conda
+        assert diagnostics._find_conda_binary() == (conda, "$CONDA_EXE")
 
     def test_a_directory_is_not_an_env_manager(self, monkeypatch, tmp_path):
         """os.access(X_OK) is true for a directory; isfile is what makes
@@ -394,7 +394,7 @@ class TestEnvManagerAutodetect:
         monkeypatch.setenv("MAMBA_EXE", str(tmp_path))
         monkeypatch.delenv("CONDA_EXE", raising=False)
         self._set_which(monkeypatch, {})
-        assert diagnostics._find_conda_binary() is None
+        assert diagnostics._find_conda_binary() == (None, None)
 
     def test_a_non_executable_file_is_not_an_env_manager(self, monkeypatch,
                                                          tmp_path):
@@ -404,10 +404,10 @@ class TestEnvManagerAutodetect:
         monkeypatch.setenv("CONDA_EXE", str(p))
         monkeypatch.delenv("MAMBA_EXE", raising=False)
         self._set_which(monkeypatch, {})
-        assert diagnostics._find_conda_binary() is None
+        assert diagnostics._find_conda_binary() == (None, None)
 
     def test_no_manager_returns_none(self, monkeypatch):
         monkeypatch.delenv("MAMBA_EXE", raising=False)
         monkeypatch.delenv("CONDA_EXE", raising=False)
         self._set_which(monkeypatch, {})
-        assert diagnostics._find_conda_binary() is None
+        assert diagnostics._find_conda_binary() == (None, None)

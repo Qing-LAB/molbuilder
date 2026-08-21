@@ -382,6 +382,8 @@ def cmd_repair(name: str, include_optional: bool,
     prefix = Path(prefix_str)
     click.echo(f"[repair] {effective}", err=True)
     click.echo(f"[repair]   env prefix: {prefix}", err=True)
+    click.echo(f"[repair]   package manager: {caps.conda_binary}  "
+               f"(from {caps.conda_binary_source})", err=True)
     audit = _doctor.audit_packages(prefix, recipe)
     # Partition issues by what we'll act on.
     to_install_conda: list = []
@@ -441,6 +443,22 @@ def cmd_repair(name: str, include_optional: bool,
         else:
             failures.extend(to_install_conda)
             click.echo(f"[repair]   conda install: FAILED (rc={rc})", err=True)
+            if rc in (137, -9):
+                # SIGKILL mid-solve: the classic login-node memory cap
+                # (seen on ASU Sol 2026-08-21 -- mamba's "Resolving
+                # Environment" stage is the hungry part).  Say the fix,
+                # not just the number (ops/installation.md's rule: a
+                # defect line carries its remedy).
+                click.echo(
+                    "[repair]   rc=137 means the process was KILLED, "
+                    "usually by a login node's memory cap during the "
+                    "dependency solve.  Re-run this exact command inside "
+                    "a short interactive allocation, e.g. on Sol:\n"
+                    "[repair]     salloc -p htc -q public -t 00:30:00 "
+                    "-c 4 --mem=16G\n"
+                    "[repair]   then, in that shell, the same "
+                    "`python -m molbuilder envs repair ...` again.",
+                    err=True)
     if to_install_pip:
         click.echo(
             f"[repair]   {len(to_install_pip)} pip package(s) "
@@ -723,6 +741,25 @@ def cmd_doctor(no_verify: bool) -> None:
     is usable in CI / startup health checks.
     """
     caps = get_capabilities()
+    # WHICH manager, and WHY -- the one door's answer, first line of
+    # every doctor run ("the script did not follow the correct
+    # pathway" must never again be a silent condition; ASU Sol,
+    # 2026-08-21).  A recorded-but-unusable manager is a defect line
+    # with its remedy, and the run stops here rather than reporting
+    # env states probed through nothing.
+    if caps.conda_binary:
+        click.echo(f"[doctor] package manager: {caps.conda_binary}  "
+                   f"(from {caps.conda_binary_source})", err=True)
+    else:
+        click.echo(f"[doctor] package manager: NONE -- "
+                   f"{caps.conda_binary_source or 'no manager found'}",
+                   err=True)
+        click.echo("[doctor]   fix: record it once as "
+                   "`\"envs\": {\"manager\": \"/abs/path\"}` in "
+                   "molbuilder.json, or load/install one "
+                   "(on ASU Sol: `module load mamba` in the shell that "
+                   "runs molbuilder).", err=True)
+        sys.exit(1)
     reports = _doctor.report_all(caps, run_verify=not no_verify)
     sys.exit(_render_doctor(reports))
 

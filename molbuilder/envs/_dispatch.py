@@ -47,9 +47,11 @@ def run_in_env(env_name: str,
     if caps.conda_binary is None:
         raise RuntimeError(
             f"conda CLI not found.  Cannot dispatch `{' '.join(argv)}` "
-            f"into env `{env_name}` because there's no `conda` on host "
-            f"PATH and $CONDA_EXE is unset.  Install conda (or activate "
-            f"a parent env that has it) before invoking molbuilder."
+            f"into env `{env_name}`: "
+            f"{caps.conda_binary_source or 'no manager on PATH and no $MAMBA_EXE/$CONDA_EXE'}.  "
+            f"Record this machine's manager once as `envs.manager` in "
+            f"molbuilder.json (an absolute path), or install/activate "
+            f"one before invoking molbuilder."
         )
     full = [caps.conda_binary, "run", "-n", env_name,
             "--no-capture-output", *argv]

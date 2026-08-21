@@ -1217,6 +1217,7 @@ tier = "advanced"
 help = "Roothaan damping factor; 0.3-0.5 helps when DIIS alone isn't enough"
 
 [item.optimize]
+calculations = ["optimization"]
 kind = "produce"
 category = ["procedure"]
 engines = ["pyscf"]

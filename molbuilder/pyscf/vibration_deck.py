@@ -140,6 +140,7 @@ def _vib_constants(cfg) -> List[str]:
            f"GEOM_DMAX      = {float(cfg.geom_dmax)!r}",
            f"GEOM_DRMS      = {float(cfg.geom_drms)!r}",
            f"GEOM_MAX_STEPS = {int(cfg.geom_max_steps)}",
+           f"GEOM_ETOL      = {float(cfg.geom_etol)!r}",
            f"THERMO_T_K     = {float(cfg.temperature_K)!r}",
            f"THERMO_P_ATM   = {float(cfg.pressure_atm)!r}",
            f"THERMO_T_GRID  = {_THERMO_GRID_K}",
@@ -175,13 +176,25 @@ def _vib_state_init() -> List[str]:
     ]
 
 
-def _vib_relax_block() -> List[str]:
+def _vib_relax_block(cfg, stage_token=None) -> List[str]:
     """The mandatory precondition (D3's final form): geomeTRIC, in-process,
     BEFORE the equilibrium SCF — which then runs on the relaxed geometry
     unchanged, because this block rebinds ``mol`` and ``COORDS_EQ_ANG``.
     Every step writes the artifact, so the viewer's chip shows
-    'step N, max force F' ticking down."""
-    return [
+    'step N, max force F' ticking down.
+
+    Category 3 of the integration plan (2026-08-21): the workflow knobs
+    are honored here — ``geom_etol`` joins the convergence dict,
+    ``on_nonconvergence='continue'`` wraps the call in the SAME retry
+    budget the optimization deck uses, ``write_trajectory`` hands
+    geomeTRIC its streaming-XYZ prefix, ``write_molwatch_log`` composes
+    the molwatch hooks beside the artifact callback, and the two
+    ``save_*_xyz`` flags write their standalone files.  ``optimizer``
+    is geomeTRIC by REFUSAL upstream (the kind validator: pyberny is
+    absent from the run environment, probed 2026-08-21, and its solver
+    has no step callback for the tracked phase)."""
+    _rung = f"_{stage_token}" if stage_token else ""
+    out: List[str] = [
         "",
         "# ============================================================",
         "#  Phase 0: relaxation -- the measurement's precondition",
@@ -192,6 +205,15 @@ def _vib_relax_block() -> List[str]:
         "    _atomic_write_json(state, JSON_PATH)",
         "    from pyscf.geomopt.geometric_solver import optimize as _geom_opt",
         "    _mf_relax = _build_mf_at(COORDS_EQ_ANG)",
+    ]
+    if getattr(cfg, "write_molwatch_log", False):
+        out += [
+            "    # Live-watch: the relaxation phase streams the same",
+            "    # molwatch log the optimization deck writes, so the",
+            "    # browser's watcher covers this run's first phase too.",
+            "    _mf_relax.callback = _molwatch.scf_cycle_hook",
+        ]
+    out += [
         "    def _relax_cb(envs):",
         "        # Tolerant by design: geomeTRIC's callback dict has varied",
         "        # across versions; a missing key must not kill the run.",
@@ -205,14 +227,81 @@ def _vib_relax_block() -> List[str]:
         "        if _mx is not None:",
         "            state['relaxation']['max_force_eh_a'] = _mx",
         "        _atomic_write_json(state, JSON_PATH)",
-        "    _conv = {'convergence_gmax': GEOM_GMAX,",
-        "             'convergence_grms': GEOM_GRMS,",
-        "             'convergence_dmax': GEOM_DMAX,",
-        "             'convergence_drms': GEOM_DRMS}",
-        "    mol = _geom_opt(_mf_relax, maxsteps=GEOM_MAX_STEPS,",
-        "                    callback=_relax_cb, **_conv)",
+    ]
+    if getattr(cfg, "write_molwatch_log", False):
+        out += [
+            "    def _relax_cb_both(envs):",
+            "        _molwatch.opt_step_hook(envs)",
+            "        _relax_cb(envs)",
+        ]
+        _cb = "_relax_cb_both"
+    else:
+        _cb = "_relax_cb"
+    out += [
+        "    _conv = {'convergence_gmax':   GEOM_GMAX,",
+        "             'convergence_grms':   GEOM_GRMS,",
+        "             'convergence_dmax':   GEOM_DMAX,",
+        "             'convergence_drms':   GEOM_DRMS,",
+        "             'convergence_energy': GEOM_ETOL}",
+    ]
+    _opt_kw = f"maxsteps=GEOM_MAX_STEPS, callback={_cb}"
+    if getattr(cfg, "write_trajectory", False):
+        out += [
+            "    # geomeTRIC streams its own multi-frame XYZ under this",
+            "    # prefix (<prefix>_optim.xyz) -- the same file the",
+            "    # optimization deck's rungs write.",
+        ]
+        _opt_kw += f", prefix=str(_mb_outfile(JOB + '_geom{_rung}'))"
+    # The on_nonconvergence policy is the RELAXATION's (its catalogue
+    # help says so: what to do when geomeTRIC's criteria are not met).
+    # proceed = accept the last geometry UNASSERTED; continue = retry
+    # the same budget; halt = raise.  The mechanism is the same
+    # `assert_convergence` kwarg the optimization deck uses.
+    _policy = str(getattr(cfg, "on_nonconvergence", "halt") or "halt").lower()
+    if _policy == "continue":
+        _retries = int(getattr(cfg, "geom_continue_retries", 0) or 0)
+        out += [
+            f"    _budget = 1 + {_retries}",
+            "    for _attempt in range(_budget):",
+            "        try:",
+            f"            mol = _geom_opt(_mf_relax, {_opt_kw},",
+            "                            assert_convergence=True, **_conv)",
+            "            break",
+            "        except RuntimeError as _e:",
+            "            if 'not converged' not in str(_e).lower():",
+            "                raise            # a genuinely different error",
+            "            if _attempt == _budget - 1:",
+            "                raise            # exhausted -> halt",
+            "            print(f'WARN: relaxation did not converge in '",
+            "                  f'{GEOM_MAX_STEPS} steps; retrying '",
+            "                  f'({_budget - 1 - _attempt} left)')",
+            "    state['relaxation']['converged'] = True",
+        ]
+    elif _policy == "proceed":
+        out += [
+            f"    mol = _geom_opt(_mf_relax, {_opt_kw},",
+            "                    assert_convergence=False, **_conv)",
+            "    # UNASSERTED by policy: the geometry is whatever the step",
+            "    # budget bought.  Recorded as unknown, never claimed True.",
+            "    state['relaxation']['converged'] = None",
+            "    state['relaxation']['warning'] = (",
+            "        'on_nonconvergence=proceed: convergence was not '",
+            "        'asserted; frequencies below are for the geometry the '",
+            "        'step budget produced')",
+        ]
+    else:
+        out += [
+            f"    mol = _geom_opt(_mf_relax, {_opt_kw},",
+            "                    assert_convergence=True, **_conv)",
+            "    state['relaxation']['converged'] = True",
+        ]
+    if getattr(cfg, "save_optimized_xyz", False):
+        out += [
+            "    _save_xyz(mol, _mb_outfile(JOB + '_optimized.xyz'),",
+            "              'Relaxed geometry (vibration deck)')",
+        ]
+    out += [
         "    COORDS_EQ_ANG = mol.atom_coords(unit='Angstrom')",
-        "    state['relaxation']['converged'] = True",
         "    state['phase_relaxation'] = 'complete'",
         "    _atomic_write_json(state, JSON_PATH)",
         "else:",
@@ -223,6 +312,7 @@ def _vib_relax_block() -> List[str]:
         "    state['phase_relaxation'] = 'complete'",
         "    _atomic_write_json(state, JSON_PATH)",
     ]
+    return out
 
 
 def _vib_gradient_check() -> List[str]:
@@ -441,11 +531,28 @@ def vibration_spec(struct: Structure, cfg, *,
             out.append("    _dft = None")
         out += _emit_atomic_writer()
         out += _emit_build_mol(struct, view)
+        # Category 3 (integration plan): the standalone-geometry writer
+        # and the live-watch emitter ride the same homes the
+        # optimization deck uses -- emit_save_helper and
+        # _emit_molwatch_emitter are input.py's own, imported, so the
+        # two decks cannot drift about either text.
+        if getattr(cfg, "save_initial_xyz", False) or getattr(
+                cfg, "save_optimized_xyz", False):
+            from .input import emit_save_helper
+            out += emit_save_helper(bool(getattr(cfg, "verbose_comments", True)))
+        if getattr(cfg, "save_initial_xyz", False):
+            out.append("_save_xyz(mol, _mb_outfile(JOB + '_initial.xyz'),")
+            out.append("          'Input geometry (pre-relaxation)')")
+        if getattr(cfg, "write_molwatch_log", False):
+            from .input import _emit_molwatch_emitter
+            out += _emit_molwatch_emitter(
+                bool(getattr(cfg, "verbose_comments", True)), cfg,
+                stage_token=stage_token)
         out += _emit_frozen_mask()
         out += _emit_initial_state()
         out += _vib_state_init()
         out += _emit_displaced_scf_helpers(view)
-        out += _vib_relax_block()
+        out += _vib_relax_block(cfg, stage_token=stage_token)
         out += _emit_equilibrium_scf(view, struct)
         out += _vib_gradient_check()
         out += _emit_gpu_coverage_probe(view)

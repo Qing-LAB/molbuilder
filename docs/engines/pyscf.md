@@ -635,9 +635,9 @@ generator.
 | site | on top of the dresser | why |
 |---|---|---|
 | optimization `mf` | chkfile + continuation read; GPU promotion; `newton()` wrap; `on_nonconvergence` per config | as today (§ 7) |
-| vibration equilibrium | chkfile WRITE; GPU promotion; `newton()` wrap; `on_nonconvergence` per config — with a science advisory from the kind validator when the policy is `warn` | the equilibrium density seeds everything after it |
+| vibration equilibrium | chkfile WRITE; GPU promotion; `newton()` wrap; halts UNCONDITIONALLY on non-convergence — `on_nonconvergence` is the RELAXATION phase's policy (proceed / continue / halt on geomeTRIC, per its own help text), not an SCF one; a mis-wiring that read it at this site lived for part of 2026-08-21 and this row is its correction | the equilibrium density feeds the Hessian, every intensity and the thermochemistry — no policy makes it optional |
 | vibration displaced point | `scf_init_guess` applies in full (measured 2026-08-21: the lifted code does NOT seed from the equilibrium density — `kernel()` is called bare; `dm0` seeding is a recorded future improvement, not a present fact); **no** chkfile (one file per point is churn); a failed point always halts | a silently-unconverged point poisons one Hessian column; frequencies from it are not frequencies |
-| vibration relaxation | GPU promotion; `newton()` wrap; `on_nonconvergence` per config | the relax loop re-converges many geometries; policy behaves as in optimization |
+| vibration relaxation | GPU promotion; `newton()` wrap; the `on_nonconvergence` policy applies HERE (proceed = `assert_convergence=False`, recorded as `converged: null` + a warning in the artifact; continue = the optimization deck's retry budget; halt = raise) | the policy's own help text names geomeTRIC's criteria — this is the phase it governs |
 
 **The gate that keeps this true**: the honesty test (every parameter the
 vibration form shows is read by the vibration render, or refused by name

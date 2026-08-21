@@ -35,6 +35,40 @@ Each environment is defined by a **recipe** — a frozen data record in
 and (for the GPU env) a from-source build plan. That registry is the single source
 of truth; the `molbuilder envs` command reads it.
 
+
+## The package manager — one recorded fact, one door *(2026-08-21)*
+
+**Resolution order, everywhere in the CLI:**
+
+1. **`envs.manager` in `molbuilder.json`** — this machine's recorded
+   manager, an absolute path to a conda-compatible CLI (mamba /
+   micromamba / conda).  Record it once on machines where the manager
+   arrives via `module load` (ASU Sol), because a PATH probe's answer
+   there changes with the shell's module state:
+
+   ```json
+   "envs": { "manager": "/packages/apps/mamba/2.6.2/bin/mamba" }
+   ```
+
+   A recorded manager that is missing or not executable **refuses with
+   the reason** — it never silently falls back to a probe, because a
+   wrong recorded fact is a defect to surface.
+2. The PATH probe: `mamba` → `micromamba` → `conda`.
+3. `$MAMBA_EXE` / `$CONDA_EXE` (validated executable).
+
+The resolver lives in `molbuilder/diagnostics.py` and NOWHERE else —
+`tests/test_manager_one_door.py`'s architecture gate fails any module
+that probes for a manager by name.  Every consumer reads
+`caps.conda_binary`; `doctor` and `repair` print the resolved manager
+**and its provenance** as their first line, so "which manager did it
+use" is never a mystery to reconstruct from a stack trace.
+
+**Cluster note (ASU Sol):** the module's `mamba` is a shell wrapper,
+and login nodes kill memory-heavy solves — `rc=137` from `repair` means
+the login node's cap killed the dependency resolution, and the repair
+now says so and hands over the `salloc` line.  Run installs and repairs
+inside a short interactive allocation.
+
 ## 2. Installing — one command
 
 **Prerequisite:** a working **conda or mamba** on the host (molbuilder does *not*

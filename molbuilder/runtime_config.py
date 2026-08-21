@@ -642,12 +642,30 @@ def get_tls(cfg: Mapping[str, Any]) -> Dict[str, str]:
 
 
 def get_envs(cfg: Mapping[str, Any]) -> Dict[str, str]:
-    """Return the ``envs`` section, or ``{}``.
+    """Return the ``envs`` section's CATEGORY map, or ``{}``.
 
     Trivial accessor -- type validity is enforced upstream in
-    :func:`_normalise`.
+    :func:`_normalise`.  The ``manager`` key is NOT a category: it is
+    this machine's package-manager fact (:func:`get_env_manager`), so
+    it is excluded here rather than leaking into category iteration.
     """
-    return dict(cfg.get("envs", {}))
+    out = dict(cfg.get("envs", {}))
+    out.pop("manager", None)
+    return out
+
+
+def get_env_manager(cfg: Mapping[str, Any]) -> str:
+    """The RECORDED package manager for this machine, or ``""``.
+
+    ``envs.manager`` in ``molbuilder.json`` -- an absolute path to the
+    conda-compatible CLI this machine should use (mamba / micromamba /
+    conda).  One recorded fact instead of a per-run PATH sniff: on a
+    cluster where the manager arrives via ``module load``, the probe's
+    PATH answer changes with the shell's module state, which is how
+    "the script did not follow the correct pathway" happens (ASU Sol,
+    2026-08-21).  Absent means "probe" -- the historical behavior.
+    """
+    return str(dict(cfg.get("envs", {})).get("manager", "") or "")
 
 
 def get_admin_emails(cfg: Mapping[str, Any]) -> frozenset:

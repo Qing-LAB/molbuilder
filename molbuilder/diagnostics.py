@@ -103,6 +103,12 @@ class Capabilities:
 
     runtime_config: Mapping[str, Any] = field(default_factory=dict)
     conda_binary:   Optional[str]     = None
+    #: WHERE conda_binary came from -- "molbuilder.json envs.manager",
+    #: "PATH (mamba)" etc., or an error sentence when the RECORDED
+    #: manager is unusable (then conda_binary is None and no silent
+    #: fallback happened: a recorded fact that is wrong is a defect to
+    #: surface, not a hint to second-guess).
+    conda_binary_source: Optional[str] = None
     conda_envs:     frozenset         = frozenset()
 
     # ----- env-name resolution (consults config + defaults) --------- #
@@ -190,10 +196,19 @@ class Capabilities:
 # --------------------------------------------------------------------- #
 
 
-def _find_conda_binary() -> Optional[str]:
-    """Locate a conda-compatible env-manager CLI.
+def _find_conda_binary() -> "tuple[Optional[str], Optional[str]]":
+    """Locate a conda-compatible env-manager CLI -> (path, source).
 
-    Search order (each step probes ``PATH`` via ``shutil.which``):
+    THE PROBE HALF of the one manager door.  The RECORDED half wins
+    first: :func:`detect` consults ``envs.manager`` in
+    ``molbuilder.json`` before calling this (ops/installation.md,
+    "one manager, one door", 2026-08-21) -- and a recorded manager
+    that is missing or not executable REFUSES (conda_binary None with
+    the reason in ``conda_binary_source``); it never silently falls
+    back to a probe, because a wrong recorded fact is a defect to
+    surface.
+
+    Probe order (each step checks ``PATH`` via ``shutil.which``):
 
       1. ``mamba``     -- conda-compatible CLI with a much faster
                           (libmamba/libsolv) solver.  Drop-in replacement
@@ -238,7 +253,7 @@ def _find_conda_binary() -> Optional[str]:
     for candidate in ("mamba", "micromamba", "conda"):
         path = shutil.which(candidate)
         if path:
-            return path
+            return path, f"PATH ({candidate})"
     # The env-var fallback must check the path is EXECUTABLE, the way
     # ``shutil.which`` does above and the way install-env.sh's probe
     # already did (``[[ -n "${v}" && -x "${v}" ]]``).  Returning an
@@ -250,8 +265,8 @@ def _find_conda_binary() -> Optional[str]:
     for var in ("MAMBA_EXE", "CONDA_EXE"):
         val = os.environ.get(var)
         if val and os.path.isfile(val) and os.access(val, os.X_OK):
-            return val
-    return None
+            return val, f"${var}"
+    return None, None
 
 
 def _list_conda_envs(conda: str) -> frozenset:
@@ -294,11 +309,28 @@ def detect() -> Capabilities:
     state use :func:`initialize` + :func:`get_capabilities` instead.
     """
     cfg = read_config()
-    conda = _find_conda_binary()
+    # THE RECORDED FACT FIRST (ops/installation.md "one manager, one
+    # door"): a machine that states its manager is not re-probed, and
+    # a stated manager that is unusable is a NAMED defect -- never a
+    # silent fallback to whatever PATH holds today.
+    from .runtime_config import get_env_manager
+    recorded = get_env_manager(cfg)
+    if recorded:
+        if os.path.isfile(recorded) and os.access(recorded, os.X_OK):
+            conda, source = recorded, "molbuilder.json envs.manager"
+        else:
+            conda, source = None, (
+                f"molbuilder.json envs.manager = {recorded!r} is not an "
+                f"executable file on this machine -- fix the recorded "
+                f"path (or remove the key to fall back to the PATH "
+                f"probe)")
+    else:
+        conda, source = _find_conda_binary()
     envs_set = _list_conda_envs(conda) if conda else frozenset()
     return Capabilities(
         runtime_config = cfg,
         conda_binary   = conda,
+        conda_binary_source = source,
         conda_envs     = envs_set,
     )
 

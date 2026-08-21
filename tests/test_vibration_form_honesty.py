@@ -11,6 +11,8 @@ form unhonored fails here on arrival.
 """
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pytest
 
@@ -25,18 +27,9 @@ from molbuilder.structure import Structure
 #: landed.  (Category 2 = the physical model, pending the PySCF
 #: support-matrix investigation; category 3 = workflow knobs.)
 STILL_OPEN = {
-    "solvent":               "category 2 -- solvation support matrix",
-    "solvent_method":        "category 2 -- solvation support matrix",
-    "symmetry":              "category 2 -- mode irrep labeling",
-    "optimize":              "category 3 -- excluded by ruling (already_relaxed is the one skip)",
-    "optimizer":             "category 3 -- relax block hardcodes geomeTRIC today",
-    "geom_etol":             "category 3 -- relax convergence dict",
-    "geom_continue_retries": "category 3 -- relax retry wrapper",
-    "save_initial_xyz":      "category 3 -- standalone geometry files",
-    "save_optimized_xyz":    "category 3 -- standalone geometry files",
-    "write_molwatch_log":    "category 3 -- live-watch for the relax phase",
-    "write_trajectory":      "category 3 -- relax trajectory file",
-    "log_file":              "category 3 -- log naming",
+    "solvent":        "category 2 -- solvation support matrix",
+    "solvent_method": "category 2 -- solvation support matrix",
+    "symmetry":       "category 2 -- mode irrep labeling",
 }
 
 _PROBES = {
@@ -59,10 +52,62 @@ def _water() -> Structure:
                             [0.0, -0.757, -0.477]]))
 
 
-def _render(**over) -> str:
+def _gold() -> Structure:
+    # Au dimer: the ECP-wanting case (a bare heavy metal).
+    return Structure(
+        elements=["Au", "Au"],
+        positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 2.47]]))
+
+
+#: Knobs that only speak when a companion is set -- the probe renders
+#: with these beside the probe value (mirroring real use: retries only
+#: matter under the continue policy; auxbasis rides density fitting,
+#: which the baseline already enables).
+_COMPANIONS = {
+    "geom_continue_retries": {"on_nonconvergence": "continue"},
+    # An ECP only speaks when both halves are named AND the structure
+    # holds the element -- probe them together, on gold (below).
+    "ecp":       {"ecp_atoms": ["Au"]},
+    "ecp_atoms": {"ecp": "lanl2dz"},
+}
+
+#: Knobs whose effect is conditional on the STRUCTURE: probed on a
+#: molecule that can exercise them (water has no ECP candidate).
+_PROBE_STRUCTS = {
+    "ecp":       "gold",
+    "ecp_atoms": "gold",
+}
+
+
+def _strip_config_echo(text: str) -> str:
+    """The deck ECHOES the whole config into its provenance block
+    (``CONFIG = {...}``), so any field flip changes the raw text
+    trivially -- which made this gate VACUOUS for every knob the deck
+    never actually reads (caught 2026-08-21: log_file went silent and
+    the gate stayed green; a first regex fix then swallowed 29 kB to
+    the wrong closing brace).  The span is found by BRACE BALANCE from
+    the one ``CONFIG = {`` anchor -- honesty is measured on the deck
+    minus exactly that dict: a knob must change what the deck DOES,
+    not what it reports it was asked."""
+    anchor = "\nCONFIG = {"
+    i = text.index(anchor) + 1
+    j = text.index("{", i)
+    depth = 0
+    for k in range(j, len(text)):
+        c = text[k]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[:i] + "CONFIG = {…}" + text[k + 1:]
+    raise AssertionError("CONFIG echo never closed -- the emitter changed")
+
+
+def _render(_struct: str = "water", **over) -> str:
     # density_fit ON in the baseline so auxbasis's ride is probeable.
     cfg = PySCFConfig(density_fit=True, **over)
-    s = _water()
+    s = _gold() if _struct == "gold" else _water()
     return render_deck(spec_for(s, cfg, calculation="vibration"),
                        s, cfg, verbose=False)
 
@@ -95,7 +140,8 @@ def _probe_value(item):
 
 
 def test_every_shown_parameter_changes_the_deck_or_is_openly_pending():
-    baseline = _render()
+    baselines = {name: _strip_config_echo(_render(name))
+                 for name in ("water", "gold")}
     silent = []
     skipped = []
     for item in _vibration_items():
@@ -105,12 +151,15 @@ def test_every_shown_parameter_changes_the_deck_or_is_openly_pending():
         if probe is None or probe == item.default:
             skipped.append(item.name)
             continue
+        which = _PROBE_STRUCTS.get(item.name, "water")
         try:
-            text = _render(**{item.name: probe})
+            text = _render(which,
+                           **{item.name: probe,
+                              **_COMPANIONS.get(item.name, {})})
         except Exception:
             # A REFUSAL is an honored parameter: the deck reacted.
             continue
-        if text == baseline:
+        if _strip_config_echo(text) == baselines[which]:
             silent.append(item.name)
     assert not skipped, (
         f"probe generator could not produce a distinct value for: "

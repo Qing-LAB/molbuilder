@@ -96,3 +96,17 @@ def test_the_closing_line_points_at_the_hints_not_the_docs(capsys):
     assert "docs/ops/installation.md" not in out
     assert "`next:` fix command" in out, (
         "the closing line must point at the hints")
+
+
+def test_a_killed_solver_names_the_login_node_cap_and_the_remedy():
+    """rc=137 is SIGKILL -- on a cluster login node that is the memory
+    cap killing mamba's dependency solve (seen on ASU Sol 2026-08-21).
+    The repair line must say so and hand over the interactive-
+    allocation command, not just the number (a defect line carries its
+    remedy)."""
+    src = open("molbuilder/envs/_cli.py").read()
+    body = src.split('conda install: FAILED', 1)[1]
+    head = body[:1600]
+    assert "137" in head and "KILLED" in head
+    assert "salloc" in head, "no allocation command in the hint"
+    assert "memory cap" in head

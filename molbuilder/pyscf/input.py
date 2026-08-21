@@ -434,7 +434,7 @@ def spec_for(struct: Structure,
         # ---- _save_xyz helper, defined EARLY so _initial.xyz can be
         # captured *before* any optimization mutates `mol` ------------
         if cfg.save_initial_xyz or cfg.save_optimized_xyz:
-            out += _emit_save_helper(v)
+            out += emit_save_helper(v)
 
         # ------------------------------------------------------------- molecule
         if v:
@@ -1466,7 +1466,7 @@ def _emit_molwatch_callback_wire(mf_var: str) -> str:
     return f"{mf_var}.callback = _molwatch.scf_cycle_hook"
 
 
-def _emit_save_helper(v: bool) -> List[str]:
+def emit_save_helper(v: bool) -> List[str]:
     """Inline XYZ writer that doesn't require ase / pyscf.tools."""
     out: List[str] = []
     out.append("# ============================================================")

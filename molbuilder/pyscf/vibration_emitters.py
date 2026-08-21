@@ -443,7 +443,20 @@ def _emit_build_mol(struct: Structure, cfg: SpectraConfig) -> List[str]:
     # either side means no ECP.  Nothing is auto-picked.
     from ..chemistry import resolve_pyscf_ecp
     ecp_chosen = resolve_pyscf_ecp(struct, cfg.ecp, cfg.ecp_atoms)
+    # ECP: the user's own declaration (`ecp` + `ecp_atoms`), resolved
+    # through the ONE resolver the optimization deck uses
+    # (chemistry.resolve_pyscf_ecp -> {element: name} | None).  Heavy
+    # elements without their ECP get bond lengths and gaps visibly
+    # wrong, and a vibration on a wrong geometry is a wrong spectrum.
+    # Honored 2026-08-21 -- the render-probe honesty gate found both
+    # fields displayed and ignored (the attr-regex audit had been
+    # fooled by this very comment class).
+    from ..chemistry import resolve_pyscf_ecp as _resolve_ecp
+    _ecp_chosen = _resolve_ecp(struct, getattr(cfg, "ecp", ""),
+                               getattr(cfg, "ecp_atoms", ()))
     out.append("mol = gto.M(")
+    if _ecp_chosen:
+        out.append(f"    ecp        = {_ecp_chosen!r},")
     out.append("    atom       = [[a[0], (a[1], a[2], a[3])] for a in ATOMS],")
     out.append("    basis      = BASIS,")
     if ecp_chosen is not None:
@@ -452,6 +465,13 @@ def _emit_build_mol(struct: Structure, cfg: SpectraConfig) -> List[str]:
         # not a string containing braces (which it rejects as an unknown
         # ECP name).  The str branch retired with the field, 2026-08-13.
         out.append(f"    ecp        = {dict(ecp_chosen)!r},")
+    if getattr(cfg, "log_file", False):
+        # The engine's own verbose log, named like the optimization
+        # deck names its rungs' (stages.md § 1.1a consequence 1).
+        # RE-APPLIED 2026-08-21: the first landing of this branch was
+        # wiped by a baseline restore the same day; the honesty gate
+        # (render-probe, config echo stripped) is what caught the loss.
+        out.append("    output     = str(_mb_outfile(JOB + '.log')),")
     out.append("    verbose    = VERBOSE,")
     out.append("    max_memory = MAX_MEMORY_MB,")
     out.append("    unit       = 'Angstrom',")
@@ -649,17 +669,17 @@ def _emit_equilibrium_scf(cfg: SpectraConfig, struct: Structure) -> List[str]:
         out.append("mf = mf.newton()")
     out.append("E_eq = mf.kernel()")
     out.append("if not mf.converged:")
-    if str(getattr(cfg, "on_nonconvergence", "halt") or "halt").lower() in ("warn", "continue"):
-        out.append("    print('[molbuilder] WARNING: equilibrium SCF did not "
-                   "converge; continuing on the user\\'s on_nonconvergence="
-                   "warn policy.  Every quantity downstream inherits this "
-                   "uncertainty.')")
-    else:
-        out.append("    raise SystemExit(")
-        out.append("        f'SCF did not converge (E={E_eq!r}); '")
-        out.append("        f'increase scf_max_cycle or revisit '")
-        out.append("        f'the input geometry'")
-        out.append("    )")
+    # The equilibrium SCF halts UNCONDITIONALLY on non-convergence --
+    # restored 2026-08-21 after a same-day mis-wiring: on_nonconvergence
+    # is the RELAXATION's policy (its catalogue help says so: what to do
+    # when geomeTRIC's criteria are not met), and no policy makes an
+    # unconverged equilibrium density acceptable HERE -- the Hessian,
+    # every intensity and the thermochemistry are read from it.
+    out.append("    raise SystemExit(")
+    out.append("        f'SCF did not converge (E={E_eq!r}); '")
+    out.append("        f'increase scf_max_cycle or revisit '")
+    out.append("        f'the input geometry'")
+    out.append("    )")
     out.append("MO_ENERGIES_EQ = _as_numpy(mf.mo_energy).copy()")
     out.append("# HOMO index: highest occupied MO.  For UHF/UKS the mo_occ")
     out.append("# is 2-D (alpha, beta) -- we sum to total occupancy and find")
