@@ -661,3 +661,30 @@ def test_help_prose_is_authored_one_paragraph_per_line():
         "re-flows each line as its own paragraph and the note reaches the deck "
         "broken:\n  "
         + "\n  ".join(f"{k}: ...{v!r}" for k, v in sorted(offenders.items())))
+
+
+def test_the_calculation_kind_filters_the_generated_template():
+    """`template.md` § 6.3's sibling rule (spectra-migration P0, 2026-08-20):
+    `calculations` narrows an item to its kinds exactly as `engines` narrows
+    it to its engines — absent means all.  An OPTIMIZATION template carries
+    no vibration item; a VIBRATION template carries them PLUS the shared
+    ones; and the generated file carries the key on no item (the writer
+    strips it, the same rule as `engines`).  The twelve vibration rows
+    leaked into every optimization template the day they were added — this
+    is the pin that keeps the door shut."""
+    from molbuilder import template as T
+    from molbuilder.config.pyscf import PySCFConfig
+
+    cfg = PySCFConfig(job_name="X")
+    opt = T.template_with_values(cfg, engine="pyscf")
+    vib = T.template_with_values(cfg, engine="pyscf",
+                                 calculation="vibration")
+    for name in ("already_relaxed", "compute_raman", "es_mode_selection"):
+        assert f"[item.{name}]" not in opt, (
+            f"{name} leaked into an optimization template")
+        assert f"[item.{name}]" in vib
+    assert "[item.basis]" in opt and "[item.basis]" in vib, (
+        "shared items must ride both kinds")
+    assert "calculations = " not in vib, (
+        "the generated file must not carry the key -- selection already "
+        "happened (the engines-stripping writer rule)")

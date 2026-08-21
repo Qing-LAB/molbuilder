@@ -1513,3 +1513,23 @@ def test_the_viewer_dispatches_widgets_on_the_shape_not_the_look():
         "a row born as the literal 1 is the bug this closed")
     assert "String(valueInForce(sel.value))" in src
     assert 'ov[col] = text === "true"' in src
+
+
+def test_another_kinds_items_stay_out_of_the_optimization_surfaces(
+        web_client):
+    """`template.md` § 6.3's sibling rule at the two web doors
+    (spectra-migration P0, 2026-08-20): the vibration items leaked into
+    the Build form and the column picker the day their catalogue rows
+    landed -- an item another calculation kind owns stays out by its own
+    `calculations` declaration until the vibration surface threads the
+    real kind."""
+    import json as _json
+    schema = _json.dumps(
+        web_client.get("/api/build/schema/pyscf").get_json())
+    cols = _json.dumps(
+        web_client.get("/api/task-setup/columns?engine=pyscf").get_json())
+    for name in ("already_relaxed", "compute_raman", "es_mode_selection",
+                 "displacement_amplitude_ang"):
+        assert f'"{name}"' not in schema, f"{name} leaked into the form"
+        assert f'"{name}"' not in cols, f"{name} leaked into the columns"
+    assert '"basis"' in schema, "shared items must stay"

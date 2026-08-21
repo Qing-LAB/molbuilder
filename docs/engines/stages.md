@@ -241,7 +241,7 @@ have undone that.
 § 1.3's mechanism — *the default selection is a group each engine declares* — is
 already live in the catalogue and already per-engine. Before this landed SIESTA
 declared 11 items in `group = "stage"` and PySCF declared 3, so PySCF's group
-described about a third of its own ladder. **It is 11 and 11 now**, and the
+described about a third of its own ladder. **It is 11 and 18 now**, and the
 same UI, the same `varies` machinery and the same resolver serve both engines.
 
 **No new mechanism is introduced by this decision.** The catalogue is the
@@ -1349,6 +1349,13 @@ description says what to ask, the result says what the machine said.
 not a contradiction. `mpi_np` as a *point to try* is a question; `mpi_np` as an
 item value would be an assertion about a machine the description has not met.
 The two are different claims and only one of them travels.
+
+**The calculation KINDS this vocabulary serves** *(P0 of the
+spectra-migration plan, 2026-08-20)*: `optimization` (the default, absent
+from the file) and **`vibration`** — the described vibrational-spectroscopy
+job, whose template the catalogue narrows by the `calculations` key
+(`template.md` § 6.3's sibling rule) and whose warm-file section
+`pyscf/warm-files.toml` already declares.
 
 **What may be swept is not a free list.** A key must name a field the engine
 already declares sweepable — the `execution` category, which

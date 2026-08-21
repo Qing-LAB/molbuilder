@@ -79,7 +79,7 @@ is where the *data* comes from.
 
 | key | why the form cannot derive it |
 |---|---|
-| `optional` | *unset* is a real state and the control must offer it. It is **not** inferable from `null_label`: of **15** optional items only **11** carry one, so four would silently lose their *(auto)* option |
+| `optional` | *unset* is a real state and the control must offer it. It is **not** inferable from `null_label`: of **17** optional items only **13** carry one, so four would silently lose their *(auto)* option |
 | `tier` | `basic` / `advanced`. A judgement about the parameter, not about the widget — the form dims advanced fields |
 | `pattern` | a regex the value must match. Two items have one (`system_label`, `job_name`) and nothing else can express it |
 

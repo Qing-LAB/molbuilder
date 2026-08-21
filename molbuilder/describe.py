@@ -170,7 +170,8 @@ def build_description(
     # § 4.3: this calculation's template is the CATALOGUE, narrowed to this
     # engine, carrying the values `cfg` holds.  The questions were asked by the
     # catalogue; `describe` supplies the answers, exactly as a surface does.
-    text = template_with_values(cfg, engine=engine)
+    text = template_with_values(cfg, engine=engine,
+                                calculation=calculation)
     return Description(task=task, template=text,
                        pseudo_species=tuple(pseudo_species))
 

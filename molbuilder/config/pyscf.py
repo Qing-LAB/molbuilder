@@ -1022,7 +1022,158 @@ class PySCFConfig:
             "Cost: one analytic Hessian, typically 5-15x a single SCF for "
             "a small molecule and more for larger ones -- no extra SCF, "
             "it reuses the converged one."
+            " RETIRING (spectra-migration plan D2, 2026-08-20): the vibration calculation kind is becoming the one Hessian door -- it relaxes first, computes the same thermochemistry into the .spectra.json thermo block, and adds the full spectroscopy product; this item is removed at that plan's P3."
         ),
+    })
+
+    # ----- Vibrational spectroscopy (the vibration calculation kind; -----
+    # ----- spectra-migration plan P0, 2026-08-20.  Carried from the -----
+    # ----- retiring SpectraConfig; the catalogue is the master. -----
+    already_relaxed: bool = field(default=False, metadata={
+        "category": ("procedure",),
+        "workflow_group": "profile",
+        "section": "Vibration",
+        "label": 'Structure is already relaxed',
+        "tier": "basic",
+        "item_kind": "deck",
+        "expands": ('geomeTRIC optimize()', 'gradient check'),
+        "engine_key": "(molbuilder: skips the deck's built-in relaxation)",
+        "help": "YOUR ASSERTION that this structure sits at a stationary point, so the vibration deck skips its built-in relaxation and goes straight to the Hessian.  A harmonic analysis is only valid at a stationary point -- off one, frequencies shift and spurious imaginary modes appear -- which is why relaxation is the deck's mandatory first act unless you state this.  When set, the deck still checks the gradient at the input geometry and WARNS with the max-force number (never refuses): the statement is yours to make.  The check's number also appears on the viewer's relaxation phase chip.",
+    })
+    compute_raman: bool = field(default=True, metadata={
+        "category": ("procedure",),
+        "workflow_group": "profile",
+        "section": "Vibration",
+        "label": 'Compute Raman activities',
+        "tier": "basic",
+        "item_kind": "deck",
+        "expands": ('finite-difference polarizability loop',),
+        "engine_key": '(molbuilder: finite-diff polarizability path)',
+        "help": 'compute Raman scattering intensity for every mode.  Cost: roughly 6 x (number of free atoms) extra response calculations (one polarizability per +/- finite-difference displacement in each Cartesian direction) -- the expensive optional.  Turn off if you only want frequencies or IR (IR is far cheaper; the two are independent toggles over one shared displacement loop).',
+    })
+    compute_ir: bool = field(default=False, metadata={
+        "category": ("procedure",),
+        "workflow_group": "profile",
+        "section": "Vibration",
+        "label": 'Compute IR intensities',
+        "tier": "basic",
+        "item_kind": "deck",
+        "expands": ('finite-difference dipole loop',),
+        "engine_key": '(molbuilder: finite-diff dipole-moment derivative path)',
+        "help": "compute IR absorption intensities (km/mol) from finite-difference dipole-moment derivatives.  Independent of Raman since 2026-08-20 (one Hessian, one mode set, one shared displacement loop computing whichever properties are ticked) -- and far cheaper: a dipole read per displacement versus Raman's response calculation.  NOTE: the absolute km/mol prefactor is NOT yet validated against an external code; the spectra-migration plan's P1 E2E validates it against a water reference and this sentence is removed when it passes.",
+    })
+    displacement_amplitude_ang: float = field(default=0.02, metadata={
+        "category": ("accuracy",),
+        "workflow_group": "stage",
+        "section": "Vibration",
+        "label": 'Displacement amplitude',
+        "unit": 'Å',
+        "range": (0.02, 0.2),
+        "tier": "advanced",
+        "item_kind": "deck",
+        "expands": ('mode displacement step',),
+        "engine_key": '(molbuilder: finite-difference step amplitude)',
+        "help": 'how far atoms are pushed along each mode eigenvector when probing how the orbitals shift (only used by the per-mode electronic-structure step).  The default 0.02 A sits inside the linear-response regime where the orbital-energy change is proportional to the displacement, so the slope you extract is the physically meaningful number rather than a finite-difference-amplitude artefact.  Trade-off: orbital-energy differences shrink to ~meV at small amplitude and need a tight SCF tolerance (the default scf_conv_tol=1e-9 is sufficient).  Above ~0.10 A anharmonic mixing starts to contaminate the response ([Mills1972] section 2.4); above ~0.20 A the linear-response assumption breaks outright.',
+    })
+    es_mode_selection: str = field(default='skip', metadata={
+        "category": ("procedure",),
+        "workflow_group": "stage",
+        "section": "Vibration",
+        "label": 'Mode selection',
+        "choices": ('skip', 'all', 'top_n', 'threshold', 'explicit'),
+        "tier": "basic",
+        "item_kind": "deck",
+        "expands": ('per-mode displaced-SCF loop',),
+        "engine_key": '(molbuilder: per-mode electronic-structure selector)',
+        "help": "which vibrational modes get the displaced-geometry orbital-energy probe.  Each chosen mode costs two extra SCF calculations (one at +A, one at -A along the mode), so this is the most expensive part of the run and its cost scales linearly with how many modes you pick.\n    skip      -- don't run this step at all; you get a spectrum but no per-mode HOMO/LUMO data.  Use this for first-pass exploration.\n    all       -- every mode (cost ~ 2 N modes).\n    top_n     -- the N modes with the strongest Raman activity.\n    threshold -- every mode whose Raman activity exceeds your cutoff.\n    explicit  -- you list specific mode numbers.\nCaveat: top_n and threshold rank by Raman brightness, which is NOT the same as electron-phonon coupling strength -- a mode that's transport-critical can be Raman-weak ([Galperin2007]).  When in doubt, use explicit (after looking at the spectrum) or all.",
+    })
+    es_top_n: int = field(default=10, metadata={
+        "category": ("procedure",),
+        "workflow_group": "stage",
+        "section": "Vibration",
+        "label": 'Top-N modes',
+        "range": (1, 1000),
+        "tier": "advanced",
+        "item_kind": "deck",
+        "expands": ('per-mode displaced-SCF loop',),
+        "engine_key": '(molbuilder: per-mode selector parameter)',
+        "help": '(only used when selector = top_n) how many of the brightest Raman-active modes to compute orbital-energy data for.  Cost grows linearly: N modes = 2 N SCF calculations.',
+    })
+    es_threshold: float = field(default=1.0, metadata={
+        "category": ("procedure",),
+        "workflow_group": "stage",
+        "section": "Vibration",
+        "label": 'Raman-activity threshold',
+        "unit": 'Å⁴/amu',
+        "range": (0.0, 1000.0),
+        "tier": "advanced",
+        "item_kind": "deck",
+        "expands": ('per-mode displaced-SCF loop',),
+        "engine_key": '(molbuilder: per-mode selector parameter)',
+        "help": '(only used when selector = threshold) Raman activity cutoff in A^4/amu; every mode brighter than this gets orbital-energy data.  Final mode count is unpredictable -- depends on how many modes happen to be above your cutoff.',
+    })
+    es_explicit_indices: str = field(default='', metadata={
+        "category": ("procedure",),
+        "workflow_group": "stage",
+        "section": "Vibration",
+        "label": 'Explicit modes',
+        "tier": "advanced",
+        "item_kind": "deck",
+        "expands": ('per-mode displaced-SCF loop',),
+        "engine_key": '(molbuilder: per-mode selector parameter)',
+        "help": '(only used when selector = explicit) comma-separated list of 1-based mode numbers to compute orbital-energy data for, e.g. "3, 7, 12".  Ranges supported: "3-7, 12".  ONE string format, parsed at the emitter (the T9 precedent: one format, no aliases).  Typical workflow: run with selector = skip first, look at the spectrum, then re-run with selector = explicit and the modes you care about.',
+    })
+    freq_min_cm1: Optional[float] = field(default=None, metadata={
+        "category": ("procedure",),
+        "workflow_group": "stage",
+        "section": "Vibration",
+        "label": 'Min frequency',
+        "unit": 'cm⁻¹',
+        "null_label": '(no lower bound)',
+        "optional": True,
+        "tier": "advanced",
+        "item_kind": "deck",
+        "expands": ('per-mode displaced-SCF loop',),
+        "engine_key": '(molbuilder: per-mode frequency filter)',
+        "help": 'restrict orbital-energy data to modes at or above this frequency.  Useful for skipping low-frequency rocking / librational modes that are often noisy and rarely matter for transport.  Caveat: filtering may skip modes whose strong electron-phonon coupling lies outside your chosen window ([Galperin2007]).  Ignored when selector = explicit.',
+    })
+    freq_max_cm1: Optional[float] = field(default=None, metadata={
+        "category": ("procedure",),
+        "workflow_group": "stage",
+        "section": "Vibration",
+        "label": 'Max frequency',
+        "unit": 'cm⁻¹',
+        "null_label": '(no upper bound)',
+        "optional": True,
+        "tier": "advanced",
+        "item_kind": "deck",
+        "expands": ('per-mode displaced-SCF loop',),
+        "engine_key": '(molbuilder: per-mode frequency filter)',
+        "help": 'restrict orbital-energy data to modes at or below this frequency.  Combine with Min frequency to target a specific spectral window (e.g. 2800-3200 cm^-1 for C-H stretches).  Ignored when selector = explicit.',
+    })
+    es_n_homo_below: int = field(default=5, metadata={
+        "category": ("procedure",),
+        "workflow_group": "output",
+        "section": "Vibration",
+        "label": 'Orbitals below HOMO to save',
+        "range": (0, 50),
+        "tier": "advanced",
+        "item_kind": "deck",
+        "expands": ('orbital-window record',),
+        "engine_key": '(molbuilder: orbital-window record size)',
+        "help": "how many frontier orbitals BELOW the HOMO to record at each displaced geometry.  Five is enough to study HOMO/LUMO behaviour for transport; raise it to see a richer slice of the orbital landscape (e.g. for density-of-states plots).  Doesn't change cost.",
+    })
+    es_n_lumo_above: int = field(default=5, metadata={
+        "category": ("procedure",),
+        "workflow_group": "output",
+        "section": "Vibration",
+        "label": 'Orbitals above LUMO to save',
+        "range": (0, 50),
+        "tier": "advanced",
+        "item_kind": "deck",
+        "expands": ('orbital-window record',),
+        "engine_key": '(molbuilder: orbital-window record size)',
+        "help": "how many frontier orbitals ABOVE the LUMO to record at each displaced geometry.  Five matches the HOMO setting for a symmetric window around the gap.  Doesn't change cost.",
     })
     temperature_K: float = field(default=298.15, metadata={
         "category": ("procedure",),
@@ -1035,7 +1186,8 @@ class PySCFConfig:
         "id_suffix": "temperature",
         "range": (0.0, 5000.0),
         "tier":  "advanced",
-        "help":  "RRHO temperature for thermo.thermo() (standard: 298.15 K)",
+        "help":  "RRHO temperature for thermo.thermo() (standard: 298.15 K)"
+            " Re-homed to the vibration calculation kind (spectra-migration plan D2, 2026-08-20): sets the headline (T, P) for the .spectra.json thermo block; the viewer's G/H/S curves run over a documented default temperature grid beside it.",
     })
     pressure_atm: float = field(default=1.0, metadata={
         "category": ("procedure",),
@@ -1046,7 +1198,8 @@ class PySCFConfig:
         "id_suffix": "pressure",
         "range": (1.0e-6, 1.0e3),
         "tier":  "advanced",
-        "help":  "RRHO pressure for thermo.thermo() (standard: 1 atm = 101325 Pa)",
+        "help":  "RRHO pressure for thermo.thermo() (standard: 1 atm = 101325 Pa)"
+            " Re-homed to the vibration calculation kind (spectra-migration plan D2, 2026-08-20): sets the headline (T, P) for the .spectra.json thermo block; the viewer's G/H/S curves run over a documented default temperature grid beside it.",
     })
 
     # ---------------- Comments ----------------

@@ -262,6 +262,15 @@ class Item:
     category: Tuple[str, ...] = ()
     #: Which engines this item applies to.  EMPTY MEANS ALL (§ 6.3).
     engines:  Tuple[str, ...] = ()
+    #: Which CALCULATION KINDS may select this item (spectra-migration plan
+    #: P0, 2026-08-20) -- the exact symmetry of ``engines``: empty means
+    #: every kind (the 80+ pre-existing items, unchanged), and a generated
+    #: per-calculation template carries the key on no item, because the
+    #: selection already happened (the same writer rule that strips
+    #: ``engines``).  Without this, the twelve vibration items leaked into
+    #: every optimization template the day they were added -- measured, not
+    #: assumed.
+    calculations: Tuple[str, ...] = ()
 
     #: **THE machine-answered flag.  One parameter, written to the file.**
     #:
@@ -308,6 +317,10 @@ class Item:
         # § 3's conditionally-required keys. Each is required *by the item's own
         # declaration*, so the check belongs on the object and not only on the
         # parse -- a producer building Items by hand gets the same refusal.
+        for _c in self.calculations:
+            if not isinstance(_c, str) or not _c.strip():
+                _refuse("'calculations' entries must be non-empty strings",
+                        where=self.name)
         if self.kind == "engine" and not self.anchor:
             _refuse("kind='engine' needs an 'anchor' -- an engine item that "
                     "names no keyword cannot reach the deck", where=self.name)
@@ -698,7 +711,7 @@ def _toml_value(v: Any) -> str:
 #: The order keys appear inside an item.  Fixed so two templates of the same
 #: calculation diff cleanly, and so the file reads the way § 4.2's example does:
 #: what it is, then what it is worth, then what bounds it, then the prose.
-_ITEM_KEY_ORDER = ("kind", "category", "engines", "anchor", "engine_key",
+_ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "anchor", "engine_key",
                    "manual", "expands", "type",
                    "choices", "value", "default", "optional", "allocation",
                    "unit", "range", "tier", "pattern",
@@ -740,6 +753,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["category"] = list(it.category)
     if it.engines:
         out["engines"] = list(it.engines)
+    if it.calculations:
+        out["calculations"] = list(it.calculations)
     if it.allocation:
         out["allocation"] = True
     if it.label:
@@ -838,6 +853,7 @@ def catalogue() -> "Template":
 
 
 def template_with_values(config, *, engine: str = "", catalogue: str = "",
+                         calculation: str = "optimization",
                          title: str = "") -> str:
     """**This calculation's** template: the catalogue, narrowed to one engine,
     carrying the values *config* holds (§ 4.3).
@@ -861,13 +877,17 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
     items = [
         dataclasses.replace(
             it,
-            # A per-calculation template serves ONE engine, so no item narrows
-            # anything and none carries `engines` (§ 6.3's writer rule).
+            # A per-calculation template serves ONE engine AND one kind, so
+            # no item narrows anything and none carries `engines` or
+            # `calculations` (§ 6.3's writer rule) -- the selection already
+            # happened, here.
             engines=(),
+            calculations=(),
             value=(None if it.allocation
                    else getattr(config, it.name, it.value)),
         )
         for it in select(parsed, engine=eng)
+        if not it.calculations or calculation in it.calculations
     ]
     return _emit(items, engines=(eng,), title=title)
 
@@ -1191,6 +1211,7 @@ def _item_from(name: str, body: Any) -> Item:
         label=str(body.get("label", "") or ""),
         category=tuple(body.get("category", ()) or ()),
         engines=tuple(body.get("engines", ()) or ()),
+        calculations=tuple(body.get("calculations", ()) or ()),
         allocation=bool(body.get("allocation", False)),
         null_label=str(body.get("null_label", "") or ""),
     )

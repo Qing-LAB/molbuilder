@@ -1680,6 +1680,11 @@ def api_task_setup_columns():
         # THE membership rule, asked of the item rather than restated here.
         if it.allocation:
             continue
+        # A column belongs to this folder's KIND; until the task-setup
+        # surface threads it (spectra-migration plan § 3), the tab serves
+        # optimization descriptions (template.md § 6.3's sibling rule).
+        if it.calculations and "optimization" not in it.calculations:
+            continue
         out.append({
             "name":    it.name,
             "label":   it.label or it.name,

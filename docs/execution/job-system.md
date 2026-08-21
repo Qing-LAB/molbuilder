@@ -1308,7 +1308,11 @@ web") — and its first phase shipped:
   the ladder end-to-end (describe → prep → submit → monitor) **on a real
   cluster** before broadening. *(PySCF was listed here and crossed early: it
   shares the deck pipeline, its seam landed 2026-08-18, and the 2026-08-19
-  workstation E2E drove it — see `roadmap.md`'s migration box.)* Reaching
+  workstation E2E drove it — see `roadmap.md`'s migration box.  The
+  SPECTRA half opened 2026-08-20 by user ruling, workstation-scoped:
+  `docs/plans/spectra-migration-plan.md` — not a new seam but the PySCF
+  seam learning the `vibration` calculation kind, which is why it may
+  precede the cluster milestone: it touches no submit-layer code.)* Reaching
   transport is also where the single-parent limit (§ 2, design decision #6)
   is lifted to a branching graph.
 

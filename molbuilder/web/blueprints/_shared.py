@@ -960,6 +960,13 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p") -> Dict[str, Any
     # item's own declaration rather than by a name this file would have to
     # keep: a second such parameter needs no edit here.
     items = [it for it in items if it.group != "staging"]
+    # The Build form describes an OPTIMIZATION -- the vibration flow gets
+    # its own surface (spectra-migration plan § 3) -- so an item another
+    # kind owns stays out by its own declaration (`template.md` § 6.3's
+    # sibling rule; the kind threads through here when that surface lands).
+    items = [it for it in items
+             if not it.calculations or "optimization" in it.calculations]
+
 
     by_category: Dict[str, List[Dict[str, Any]]] = {}
     for it in items:
