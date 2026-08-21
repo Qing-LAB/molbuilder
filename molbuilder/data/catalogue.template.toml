@@ -1485,7 +1485,7 @@ group = "profile"
 label = "Compute IR intensities"
 tier = "basic"
 help = """
-compute IR absorption intensities (km/mol) from finite-difference dipole-moment derivatives.  Independent of Raman since 2026-08-20 (one Hessian, one mode set, one shared displacement loop computing whichever properties are ticked) -- and far cheaper: a dipole read per displacement versus Raman's response calculation.  NOTE: the absolute km/mol prefactor is NOT yet validated against an external code; the spectra-migration plan's P1 E2E validates it against a water reference and this sentence is removed when it passes."""
+compute IR absorption intensities (km/mol) from finite-difference dipole-moment derivatives.  Independent of Raman since 2026-08-20 (one Hessian, one mode set, one shared displacement loop computing whichever properties are ticked) -- and far cheaper: a dipole read per displacement versus Raman's response calculation.  VALIDATED at the band level 2026-08-20 (the vibration E2E holds water at B3LYP/def2-SVP to its literature windows: bend ~55 km/mol > asym ~27 > sym ~5, pattern and magnitudes both); an external cross-code digit match would harden it further and is welcome, not owed."""
 
 [item.displacement_amplitude_ang]
 kind = "deck"

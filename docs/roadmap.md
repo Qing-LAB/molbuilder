@@ -704,10 +704,14 @@ hardness table / real-run verification / would risk false positives") and
   avoid false positives).
 - **Basis ↔ pseudo consistency** — PAO l-channels vs the pseudo's
   (deferred in `science/pseudopotentials.md`).
-- **IR intensity validation** — every generated spectra script still ships
-  the "IR INTENSITY SCAFFOLD — NOT YET VALIDATED" banner
-  (`spectra/pyscf_script.py:247,1139`); the four-step closure plan from the
-  archived spec needs to run (or the scaffold retired).
+- **IR intensity validation** — **CLOSED at the band level 2026-08-20**
+  (spectra-migration P1): the vibration E2E holds water at B3LYP/def2-SVP
+  to its literature windows — bend ~55 km/mol > asym ~27 > sym ~5,
+  pattern and magnitudes both (`tests/test_vibration_e2e.py`) — and the
+  catalogue item's help says exactly that.  The OLD generator's banner
+  (`spectra/pyscf_script.py`) rides until P3 retires that entry point; an
+  external cross-code digit match would harden the closure further and is
+  welcome, not owed.
 
 ## 6. Architecture seams (recorded intent → scheduled work)
 

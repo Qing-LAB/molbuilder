@@ -733,7 +733,8 @@ def _relaxation_facts(cfg) -> Optional[dict]:
 
 def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                *, cell: Optional[np.ndarray] = None,
-               stage_token: Optional[str] = None) -> "_sc.RenderedDeck":
+               stage_token: Optional[str] = None,
+               calculation: str = "optimization") -> "_sc.RenderedDeck":
     """Format a Structure as SIESTA .fdf text.
 
     If ``cell`` is None (default), the vacuum cell is derived from the STRUCTURE
@@ -748,6 +749,11 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     case atom coordinates are passed through unchanged, since a user-supplied cell
     typically goes with a known atom frame (e.g. crystallographic positions).
     """
+    if calculation != "optimization":
+        raise ValueError(
+            f"SIESTA has no {calculation!r} deck yet; the vibration kind "
+            f"is PySCF-first (spectra-migration plan § 2 -- the "
+            f"engine-agnostic shape admits a SIESTA arm later).")
     # WHAT THIS DECK WRITES is not collected here.  It is read off the
     # LAYOUT below by the framework, which is the only reading that can
     # close the check gate's loop: a list this writer kept would say what

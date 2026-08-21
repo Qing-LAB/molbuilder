@@ -838,7 +838,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             with _calling("spec_for", engine=task.engine,
                           where=script, log=log):
                 spec = seam.spec_for(struct, cfg,
-                                     stage_token=(token or None))
+                                     stage_token=(token or None),
+                                     calculation=task.calculation)
             _sc.prepare_deck(spec, struct, cfg, base / script, log=log)
         if seam.sibling_artifacts is not None:
             with _calling("sibling_artifacts", engine=task.engine,

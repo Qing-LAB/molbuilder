@@ -166,7 +166,8 @@ def _resolve_charge(struct: Structure, cfg: PySCFConfig) -> int:
 def spec_for(struct: Structure,
                   config: Optional[PySCFConfig] = None,
                   *,
-                  stage_token: Optional[str] = None) -> "_sc.RenderedDeck":
+                  stage_token: Optional[str] = None,
+                  calculation: str = "optimization") -> "_sc.RenderedDeck":
     """Format a Structure as a runnable PySCF script (Python text).
 
     The result is what you'd write by hand if you knew exactly what
@@ -215,6 +216,17 @@ def spec_for(struct: Structure,
     v = cfg.verbose_comments
 
     # ---------- pre-emission validation ----------
+    if calculation == "vibration":
+        # The kind is a RENDER ARGUMENT, like the stage token: the seam
+        # stays ONE per engine, and the vibration deck is this engine
+        # learning a second calculation (spectra-migration plan § 2).
+        from .vibration_deck import vibration_spec
+        return vibration_spec(struct, config or PySCFConfig(),
+                              stage_token=stage_token)
+    if calculation != "optimization":
+        raise ValueError(
+            f"PySCF has no {calculation!r} deck; it renders "
+            f"'optimization' and 'vibration'.")
     # PySCF doesn't have a meaningful cell here (the script builds a
     # gas-phase or PCM-solvent molecule), so we skip the cell-side
     # checks and run only the structure / config-side validators.
