@@ -411,6 +411,14 @@ def vibration_spec(struct: Structure, cfg, *,
         out += _emit_constants(struct, view, methods_md=methods_md,
                                bibliography_keys=bibliography_keys)
         out += _vib_constants(cfg)
+        # The SCF dresser + density_fit kw -- generated from
+        # SCF_SECTION + layout.line (pyscf.md § 7a): every mf this
+        # deck builds calls _mb_configure_scf, so the machinery knobs
+        # apply identically at the equilibrium, displaced and
+        # relaxation sites.
+        from .scf_setup import emit_scf_configure_fn, emit_density_fit_kw
+        out += emit_scf_configure_fn(cfg, verbose=bool(getattr(cfg, 'verbose_comments', True)))
+        out += [""] + emit_density_fit_kw(cfg)
         out += emit_gpu_probe_lines(
             use_gpu=bool(view.use_gpu),
             min_compute_capability=int(

@@ -600,6 +600,50 @@ your run — but do not publish that geometry without looking at it.
 
 ---
 
+## 7a. Every SCF is dressed by the one door *(contract, 2026-08-21)*
+
+**The rule this section exists to state: the framework never spells an SCF
+knob twice.**  It was written before the code that satisfies it (the user's
+process ruling: contract first, code checked against it), after the
+measurement that found the vibration deck showing nine SCF-machinery
+parameters it never read.
+
+**The layers, and who owns what:**
+
+| layer | owner | what lives there |
+|---|---|---|
+| the data | the catalogue (+ `refs` citations) → `PySCFConfig` fields | which knobs exist, their defaults, ranges, hints, references |
+| the membership | `layout.SCF_SECTION` | WHICH items are "the SCF machinery": today `scf_conv_tol`, `scf_conv_tol_grad`, `scf_max_cycle`, `scf_init_guess`, `level_shift`, `diis_space`, `damp`.  A knob joins the set HERE and nowhere else |
+| the spelling | `layout.line` | HOW PySCF spells each item (`auxbasis` deliberately rides `density_fit`'s spelling as its argument — one knob whose line carries a second fact; a multi-site deck reaches the same ride through the emitted `_MB_DF_KW` dict, generated beside the dresser, so both of its `density_fit` calls carry the argument from one home) |
+| the applier | this section's rule | WHERE the spellings are applied to an `mf` |
+
+**The applier rule.**  A deck that constructs ONE `mf` (the optimization
+deck) applies the section inline at that site through the Sections
+machinery, exactly as it does today.  A deck that constructs MANY — the
+vibration deck builds an equilibrium `mf`, a displaced-point `mf` per
+finite-difference point, and a relaxation `mf` — **emits one function,
+`_mb_configure_scf(mf)`, whose body is generated from `SCF_SECTION` +
+`layout.line`, and every construction calls it.**  One definition per deck,
+N call sites; the body's generator is one shared home
+(`pyscf/scf_setup.py`), so the two decks' spellings cannot fork.  A future
+kind with many `mf`s inherits the same function by calling the same
+generator.
+
+**The role table** — what each construction site adds ON TOP of
+`_mb_configure_scf(mf)`, and why it is site-specific rather than shared:
+
+| site | on top of the dresser | why |
+|---|---|---|
+| optimization `mf` | chkfile + continuation read; GPU promotion; `newton()` wrap; `on_nonconvergence` per config | as today (§ 7) |
+| vibration equilibrium | chkfile WRITE; GPU promotion; `newton()` wrap; `on_nonconvergence` per config — with a science advisory from the kind validator when the policy is `warn` | the equilibrium density seeds everything after it |
+| vibration displaced point | `scf_init_guess` applies in full (measured 2026-08-21: the lifted code does NOT seed from the equilibrium density — `kernel()` is called bare; `dm0` seeding is a recorded future improvement, not a present fact); **no** chkfile (one file per point is churn); a failed point always halts | a silently-unconverged point poisons one Hessian column; frequencies from it are not frequencies |
+| vibration relaxation | GPU promotion; `newton()` wrap; `on_nonconvergence` per config | the relax loop re-converges many geometries; policy behaves as in optimization |
+
+**The gate that keeps this true**: the honesty test (every parameter the
+vibration form shows is read by the vibration render, or refused by name
+by the kind validator) and the catalogue-refs test (every citation a knob
+carries resolves in `docs/science/references.bib`).
+
 ## 8. Cross-engine equivalence & versioning
 
 **SIESTA ↔ PySCF.** PySCF/geomeTRIC is **stricter overall** at a given tier, for

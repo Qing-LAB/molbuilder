@@ -905,6 +905,7 @@ label = "Spin (2S)"
 help = "2S (NOT 2S+1); 0=closed shell, 1=doublet, 2=triplet, ..."
 
 [item.symmetry]
+refs = ["Wilson1955"]
 kind = "engine"
 category = ["system"]
 engines = ["pyscf"]
@@ -978,6 +979,7 @@ This help claimed a "30% bond-length error in conjugated systems -- NEVER publis
 Sources: Weigend & Ahlrichs, Phys. Chem. Chem. Phys. 7, 3297 (2005) for the basis sets themselves; Sure & Grimme, J. Comput. Chem. 34, 1672 (2013) for the small-basis error analysis; Bursch et al., Angew. Chem. Int. Ed. 61, e202205735 (2022) for the best-practice recommendation.  See docs/engines/tuning.md § 2.8."""
 
 [item.auxbasis]
+refs = ["Weigend2002"]
 kind = "engine"
 category = ["method"]
 engines = ["pyscf"]
@@ -1096,6 +1098,7 @@ tier = "advanced"
 help = "orbital-gradient convergence threshold; 0 = PySCF's own sqrt(conv_tol) (~3e-5 at conv_tol=1e-9).  The gradient is what the forces come from -- tighten this (1e-6, 1e-7) when forces look noisy"
 
 [item.scf_soscf]
+refs = ["Bacskay1981"]
 kind = "engine"
 category = ["convergence"]
 engines = ["pyscf"]
@@ -1129,6 +1132,7 @@ The most SCF cycles PySCF will run for one single-point before giving up.
 DEVIATION: PySCF's own default is 50; this catalogue starts at 100.  This is a RUNAWAY GUARD, not a target -- the two failure modes are not symmetric.  Too high wastes some CPU on a run that was not going to converge anyway; too low stops a converging SCF at the cap and throws away that geometry step, which then repeats at every step of a relaxation.  A well-behaved closed-shell molecule converges in 10-30."""
 
 [item.scf_init_guess]
+refs = ["Lehtola2019"]
 kind = "engine"
 category = ["convergence"]
 engines = ["pyscf"]
@@ -1162,6 +1166,7 @@ Density of the numerical grid the exchange-correlation energy is integrated on: 
 DEVIATION: PySCF's own default is 3; this catalogue starts at 4.  Level 3 is fine for an energy, but the quadrature error does not cancel in derivatives -- it shows up in forces and, most visibly, in vibrational frequencies, where grid noise produces spurious low-frequency modes.  Since this project exists to run geometry optimisations and Hessians, the grid that supports them is the right default.  Drop to 3 for single-point screening."""
 
 [item.level_shift]
+refs = ["Saunders1973"]
 kind = "engine"
 category = ["convergence"]
 engines = ["pyscf"]
@@ -1179,6 +1184,7 @@ tier = "advanced"
 help = "0.1-0.3 helps hard SCFs; 0 if SCF converges cleanly"
 
 [item.diis_space]
+refs = ["Pulay1980", "Pulay1982"]
 kind = "engine"
 category = ["convergence"]
 engines = ["pyscf"]
@@ -1242,6 +1248,7 @@ Geometry optimizer driver.
 Both are quasi-Newton; both converge tightly near a minimum.  See docs/engines/tuning.md § 2.1."""
 
 [item.solvent]
+refs = ["Tomasi2005", "Cances1997"]
 kind = "engine"
 category = ["system"]
 engines = ["pyscf"]
@@ -1256,6 +1263,7 @@ optional = true
 help = "solvent (water / methanol / dmso / chloroform / ...)"
 
 [item.solvent_method]
+refs = ["Marenich2009", "Lipparini2014"]
 kind = "engine"
 category = ["system"]
 engines = ["pyscf"]

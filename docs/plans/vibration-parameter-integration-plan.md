@@ -31,7 +31,7 @@ single optimization — one stuck displaced point poisons a Hessian column.
 | `scf_soscf` | wrap `mf` in Newton (`mf.newton()`) exactly as the optimization deck does | "quadratic convergence for the last digits; expensive per step" | Bacskay, *Chem. Phys.* **61**, 385 (1981) |
 | `scf_conv_tol_grad` | pass through beside `scf_conv_tol` | interacts with the FD noise floor — the amplitude×tolerance advisory already guards this coupling | — (the existing gate's Mills1972 note) |
 | `on_nonconvergence` | policy for a failed SCF.  **Scientific note:** for vibration the right default is stricter than optimization's — a silently-unconverged displaced point corrupts the Hessian, so `stop` should be the kind's default | "warn-and-continue is for surveys; frequencies from an unconverged point are not frequencies" | — |
-| `chkfile` | equilibrium SCF writes it; displaced SCFs already seed from the equilibrium density in-memory — the chkfile adds CROSS-RUN restart | "restart a killed run without repaying the equilibrium SCF" | — |
+| `chkfile` | equilibrium SCF writes it — cross-run restart.  *(A claim corrected here 2026-08-21: displaced SCFs do NOT seed from the equilibrium density today — measured, `kernel()` runs bare; `dm0` seeding is a worthwhile future improvement, recorded, not assumed.)* | "restart a killed run without repaying the equilibrium SCF" | — |
 | `auxbasis` | pass to `density_fit(auxbasis=…)` where DF is on | "auto-selected aux sets are fine for def2 bases; override for exotic elements" | Weigend, *Phys. Chem. Chem. Phys.* **4**, 4285 (2002) |
 
 **Recommendation: implement the whole category as one unit** — mechanical
@@ -90,6 +90,42 @@ A test (formalizing the measurement that found the 22): **every parameter
 the vibration form shows is read by the vibration render, or carries an
 explicit validator refusal naming the gap.**  It fails when a new item
 leaks in unhonored — the leak class this whole plan exists to close.
+
+## The implementation design — layers first, code checked against them
+
+*(Written before the code, per the user's process ruling 2026-08-21:
+"start from the contract update and the documentation of the design…
+a structured framework that logically organizes things in well-designed
+layers and dependencies and uses data or config files to drive the
+pipeline."  The CONTRACT is `engines/pyscf.md` § 7a; this section only
+sequences the work against it.)*
+
+The discovery that shaped it: the framework ALREADY drives SCF emission
+from data — `layout.SCF_SECTION` names the machinery items and
+`layout.line` spells each one; the optimization deck applies them through
+the Sections machinery.  The vibration deck's gap is not missing
+features, it is a BYPASS: its lifted emitters hand-spell their own SCF
+lines at three `mf`-construction sites.  So the work is un-forking, not
+patching:
+
+1. **`pyscf/scf_setup.py`** — the generator of the emitted
+   `_mb_configure_scf(mf)` function body, from `SCF_SECTION` +
+   `layout.line`.  New module, one producer, no per-knob code anywhere
+   else.
+2. **The vibration emitters call the door**: the three construction
+   sites emit `_mb_configure_scf(mf)` calls plus their role-specific
+   lines per the § 7a role table (chkfile at equilibrium; dm0 seeding
+   and halt-with-index at displaced points; policy advisories from the
+   kind validator).
+3. **The catalogue rows** for the machinery items gain `refs` (the
+   Pulay/Saunders–Hillier/Bacskay/Lehtola/Weigend keys, already in the
+   bib) and the hint sentences of Category 1's table.
+4. **The honesty gate lands as a test** and the audit numbers in this
+   plan update.
+5. Category 3's workflow knobs follow the same shape (the live-watch
+   emitter reused from the optimization deck's one home, the optimizer
+   choice honored, `optimize` excluded by `calculations`), then
+   Category 2's investigation phase.
 
 ## Open decisions (each blocks only its own category)
 

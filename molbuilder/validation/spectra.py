@@ -313,22 +313,15 @@ def spectra_render_checks(struct: Structure,
     # fallback), but checking here lets the user fix things
     # before the run rather than after.
     if cfg.use_gpu:
-        issues.extend(cls._gpu_capability_advisories())
+        issues.extend(_gpu_capability_advisories())
 
-    # compute_ir is a placeholder for a future release; warn
-    # politely if the user toggled it on so they know nothing
-    # will come of it yet.
-    if cfg.compute_ir:
-        issues.append(Issue(
-            severity="warn",
-            message=("IR intensities aren't implemented in this "
-                     "release -- the checkbox is reserved for a "
-                     "future version.  The current run will "
-                     "produce Raman activities (if enabled) but "
-                     "no IR data.  Untick the box to clear this "
-                     "notice."),
-            where="config.compute_ir",
-        ))
+    # compute_ir advisory RETIRED 2026-08-21 -- it warned that IR
+    # was "not implemented", which P1 falsified (the deck computes IR
+    # via dipole derivatives, band-level validated against literature
+    # water intensities; roadmap.md § 5 records the closure).  Found
+    # by the honesty gate's render probe: a validator claiming a
+    # capability is absent is the same drift as a diagram drawing a
+    # file that is gone.
 
     # Method / spin consistency (ports the Build-tab guards from
     # validation.pyscf; the old "cfg doesn't carry spin yet" note here
@@ -460,5 +453,162 @@ def spectra_render_checks(struct: Structure,
             where="structure.regions",
         ))
 
+
+    # on_nonconvergence policy (pyscf.md § 7a's role table): warning
+    # past a failed equilibrium SCF is a legitimate survey-mode choice,
+    # but on a VIBRATION run every downstream quantity -- frequencies,
+    # intensities, thermochemistry -- inherits the unconverged density.
+    _pol = str(getattr(cfg, "on_nonconvergence", "halt") or "halt").lower()
+    if _pol in ("warn", "continue"):
+        issues.append(Issue(
+            severity="warn",
+            message=(
+                "on_nonconvergence is set to warn-and-continue.  On a "
+                "vibration run an unconverged equilibrium SCF poisons "
+                "everything computed after it (Hessian columns, IR/Raman "
+                "intensities, ZPE/G).  Keep 'halt' unless you are "
+                "deliberately surveying hard cases and will inspect the "
+                "convergence flags by hand."),
+            where="config.on_nonconvergence",
+        ))
+
     return issues
 
+
+# The GPU advisory helper -- RECOVERED 2026-08-21.  The P3 move took
+# render_checks' body but left this classmethod behind in the deleted
+# engine file; the surviving `cls._gpu_capability_advisories()` call was
+# a latent NameError guarded by use_gpu -- proven crashing by the probe
+# now pinned in tests/test_vibration_render_gate.py.  The compute-
+# capability minimum comes from its one home, runtime_info.
+def _gpu_capability_advisories() -> List[Issue]:
+    """Return [] if gpu4pyscf + a supported GPU are available,
+    else one warn-severity Issue describing what's missing.
+    Always WARN (not ERROR) -- the generated script falls back
+    to CPU automatically, so an unusable GPU is annoying but
+    not fatal.
+
+    **That is no longer true** (user, 2026-08-17; `engines/overview.md`
+    § 3a G-5): the script STOPS when the GPU is missing.  These stay
+    ``warn`` rather than ``error`` for one reason -- this preflight runs
+    on the SERVER, and the job may run somewhere else.  A missing GPU
+    here is evidence, not a verdict.  What changed is the MESSAGE: it no
+    longer promises a fallback that was removed.
+    """
+    from ..runtime_info import GPU4PYSCF_MIN_COMPUTE_CAPABILITY as _MIN_CC
+    try:
+        import gpu4pyscf  # noqa: F401
+    except ImportError:
+        return [Issue(
+            severity="warn",
+            message=(
+                "GPU acceleration requested, but gpu4pyscf is "
+                "not installed on this server.  There is NO CPU "
+                "fallback: if the machine that runs this job "
+                "also lacks it, the run will STOP.  To get the "
+                "GPU speed-up: "
+                "pip install gpu4pyscf-cuda12x  (or cuda11x for "
+                "older drivers).  Requires an NVIDIA GPU."
+            ),
+            where="config.use_gpu",
+        )]
+
+    # gpu4pyscf is installed; probe the actual device via cupy.
+    try:
+        import cupy
+    except ImportError:
+        return [Issue(
+            severity="warn",
+            message=(
+                "GPU acceleration requested -- gpu4pyscf is "
+                "installed, but cupy (its required dependency) "
+                "isn't.  Reinstall gpu4pyscf.  There is no CPU "
+                "fallback -- the run stops if cupy is missing "
+                "where it executes."
+            ),
+            where="config.use_gpu",
+        )]
+
+    # Count devices.  This will fail if the CUDA runtime isn't
+    # accessible (driver mismatch, no GPU present, etc.).
+    try:
+        n_devs = int(cupy.cuda.runtime.getDeviceCount())
+    except Exception as exc:
+        return [Issue(
+            severity="warn",
+            message=(
+                f"GPU acceleration requested but the CUDA "
+                f"runtime couldn't enumerate devices "
+                f"({type(exc).__name__}: {exc}).  Check that "
+                f"the NVIDIA driver is installed and the CUDA "
+                f"toolkit version matches gpu4pyscf's build.  "
+                f"There is no CPU fallback -- the run stops "
+                f"where this cannot be resolved."
+            ),
+            where="config.use_gpu",
+        )]
+    if n_devs == 0:
+        return [Issue(
+            severity="warn",
+            message=(
+                "GPU acceleration requested but no NVIDIA GPU "
+                "was detected on this host.  There is no CPU "
+                "fallback: if the machine that runs this job "
+                "has none either, the run STOPS.  Untick "
+                "\"Use GPU\" to run on the CPU deliberately."
+            ),
+            where="config.use_gpu",
+        )]
+
+    # Inspect device 0's compute capability.
+    try:
+        props = cupy.cuda.runtime.getDeviceProperties(0)
+    except Exception as exc:
+        return [Issue(
+            severity="warn",
+            message=(
+                f"GPU acceleration requested but the device "
+                f"properties for GPU 0 couldn't be read "
+                f"({type(exc).__name__}: {exc}).  There is no "
+                f"CPU fallback -- the run stops."
+            ),
+            where="config.use_gpu",
+        )]
+    name = props.get("name", "(unknown GPU)")
+    if isinstance(name, bytes):
+        name = name.decode("utf-8", errors="replace")
+    major = int(props.get("major", 0))
+    minor = int(props.get("minor", 0))
+    if major < _MIN_CC:
+        return [Issue(
+            severity="warn",
+            message=(
+                f"GPU acceleration requested, but the detected "
+                f"GPU ({name}, compute capability {major}.{minor}) "
+                f"is older than gpu4pyscf supports.  gpu4pyscf "
+                f"requires compute capability "
+                f"{_MIN_CC}.0 or "
+                f"newer (Volta / Turing / Ampere / Hopper / "
+                f"Blackwell -- typically RTX 20xx, V100, A100, "
+                f"H100 or any consumer GPU from 2018 onward).  "
+                f"Running on a {major}.{minor}-class card will "
+                f"either fail with cryptic CUDA errors or "
+                f"silently fall back to slow paths.  The "
+                f"generated script detects this at runtime and "
+                f"STOPS -- there is no CPU fallback.  Untick "
+                f"\"Use GPU\" to run on the CPU deliberately."
+            ),
+            where="config.use_gpu",
+        )]
+
+    # Everything checks out -- gpu4pyscf is installed and the
+    # detected GPU meets the minimum compute capability.  No
+    # warning.
+    return []
+
+# (_is_hybrid_functional removed 2026-07, V4: the hybrid detector +
+#  grid-floor gate now live once in validation.pyscf.is_hybrid_functional
+#  / check_dft_grid_level, called by preflight() above.)
+
+
+__all__ = ["PySCFSpectraEngine"]

@@ -623,9 +623,8 @@ def _emit_equilibrium_scf(cfg: SpectraConfig, struct: Structure) -> List[str]:
     else:
         out.append(f"mf = _scf.{scf_class}(mol)")
     out.append("if DENSITY_FIT:")
-    out.append("    mf = mf.density_fit()")
-    out.append("mf.conv_tol  = SCF_CONV_TOL")
-    out.append("mf.max_cycle = SCF_MAX_CYCLE")
+    out.append("    mf = mf.density_fit(**_MB_DF_KW)")
+    out.append("mf = _mb_configure_scf(mf)")
     # Hard-SCF hint when an open-shell metal is present.  Commented
     # template -- discoverable without being prescriptive; the user
     # uncomments + tunes if the equilibrium SCF won't converge.
@@ -639,13 +638,28 @@ def _emit_equilibrium_scf(cfg: SpectraConfig, struct: Structure) -> List[str]:
         out.append("# helps when the HOMO-LUMO gap is small / open-shell "
                    "mixing causes oscillation.")
         out.append("# mf.level_shift = 0.2")
+    # Site extras per the § 7a role table: checkpoint write and the
+    # Newton wrap ride the EQUILIBRIUM mf only (render-time branches
+    # on the config -- self-documenting in the emitted text).
+    if getattr(cfg, "chkfile", False):
+        out.append("mf.chkfile = str(_mb_outfile(JOB + '.chk'))")
+    if getattr(cfg, "scf_soscf", False):
+        out.append("# Second-order SCF (engines/pyscf.md § 7): Newton solver;")
+        out.append("# DIIS/damp stop applying under it, by design.")
+        out.append("mf = mf.newton()")
     out.append("E_eq = mf.kernel()")
     out.append("if not mf.converged:")
-    out.append("    raise SystemExit(")
-    out.append("        f'SCF did not converge (E={E_eq!r}); '")
-    out.append("        f'increase scf_max_cycle or revisit '")
-    out.append("        f'the input geometry'")
-    out.append("    )")
+    if str(getattr(cfg, "on_nonconvergence", "halt") or "halt").lower() in ("warn", "continue"):
+        out.append("    print('[molbuilder] WARNING: equilibrium SCF did not "
+                   "converge; continuing on the user\\'s on_nonconvergence="
+                   "warn policy.  Every quantity downstream inherits this "
+                   "uncertainty.')")
+    else:
+        out.append("    raise SystemExit(")
+        out.append("        f'SCF did not converge (E={E_eq!r}); '")
+        out.append("        f'increase scf_max_cycle or revisit '")
+        out.append("        f'the input geometry'")
+        out.append("    )")
     out.append("MO_ENERGIES_EQ = _as_numpy(mf.mo_energy).copy()")
     out.append("# HOMO index: highest occupied MO.  For UHF/UKS the mo_occ")
     out.append("# is 2-D (alpha, beta) -- we sum to total occupancy and find")
@@ -1001,9 +1015,11 @@ def _emit_displaced_scf_helpers(cfg: SpectraConfig) -> List[str]:
     out.append("        _mf2 = _cls(_mol_new)")
     out.append("    _use_df = DENSITY_FIT if density_fit is None else density_fit")
     out.append("    if _use_df:")
-    out.append("        _mf2 = _mf2.density_fit()")
-    out.append("    _mf2.conv_tol  = SCF_CONV_TOL")
-    out.append("    _mf2.max_cycle = SCF_MAX_CYCLE")
+    out.append("        _mf2 = _mf2.density_fit(**_MB_DF_KW)")
+    out.append("    # The one SCF dresser (pyscf.md § 7a): the displaced and")
+    out.append("    # relaxation cycles run the same machinery the equilibrium")
+    out.append("    # one does -- init guess, level shift, damping, DIIS.")
+    out.append("    _mf2 = _mb_configure_scf(_mf2)")
     out.append("    _mf2.kernel()")
     out.append("    if not _mf2.converged:")
     out.append("        raise SystemExit('displaced SCF did not converge at "

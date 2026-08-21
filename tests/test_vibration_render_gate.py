@@ -70,3 +70,21 @@ def test_registry_path_serves_a_real_spectra_config():
     from molbuilder.validation import validate
     issues = validate(_water(), SpectraConfig(es_mode_selection="top_n"))
     assert any("Raman-weak" in i.message for i in issues)
+
+
+def test_the_gpu_advisory_path_renders_and_speaks():
+    """use_gpu=True walks the gate's GPU advisory -- the exact path
+    where the P3 move left a latent NameError (`cls.` in a plain
+    function, guarded by this very flag; found and fixed 2026-08-21).
+    The deck must render AND the advisory must surface on a host
+    without the GPU stack."""
+    import io
+    import sys
+    err, old = io.StringIO(), sys.stderr
+    sys.stderr = err
+    try:
+        text = _render(PySCFConfig(use_gpu=True))
+    finally:
+        sys.stderr = old
+    assert "Hessian" in text
+    assert "gpu4pyscf" in err.getvalue() or "compute capability" in err.getvalue()
