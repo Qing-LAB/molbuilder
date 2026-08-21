@@ -560,7 +560,7 @@ two doors:
 
 | sub-step | who | how |
 |:--:|---|---|
-| 3.3 **validate** | **shared** | `validation.validate(struct, cfg)` |
+| 3.3 **validate** | **shared** | `validation.validate(struct, cfg, calculation=spec.calculation)` — the engine registry by config type, the KIND registry by the declared fact |
 | 3.4 **identity** | engine, as data | `suffix` · `label_of` · `relabel` |
 | 3.5 **structure** | engine | a `Block` in `spec.layout` — door 1 |
 | 3.6 **parameters** | **shared walk**, engine syntax | `Section`s in `spec.layout` + `spec.line` — doors 1 and 2 |

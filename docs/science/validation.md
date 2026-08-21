@@ -428,14 +428,25 @@ directly from the relevant submodule:
 
 ```
 validation/
-├── __init__.py     # public API: validate, report, the engine registry + re-exports
+├── __init__.py     # public API: validate, report; the engine registry
+│                   # (_ENGINE_VALIDATORS, type-keyed) and the calculation-kind
+│                   # registry (_KIND_VALIDATORS, fact-keyed) + re-exports
 ├── geometry.py     # validate_geometry + geometry checks
-├── metadata.py     # dataclass-field-driven config validation
+├── metadata.py     # dataclass-field-driven config validation (range/validate/choices)
 ├── chemistry.py    # check_open_shell_metal, metal-basis adequacy, peptide protonation
+├── identity.py     # names and labels (run identity, basenames)
 ├── sidecar.py      # frozen-atoms-consumed check
+├── stages.py       # stage-ladder checks (shared by describe/dispatch)
+├── task.py         # the TASK preflight — a description that is not one refuses
 ├── siesta.py       # SIESTA preflight aggregator + pseudo/mesh/Makov-Payne/spin checks
-└── pyscf.py        # PySCF preflight aggregator
+├── pyscf.py        # PySCF preflight aggregator
+└── spectra.py      # the vibration kind's render gate (grid/amplitude/parity/
+                    # method/open-shell) — moved whole from the retired engine
+                    # class at the spectra migration's P3
 ```
+
+*(This tree drifted once — it listed seven files while the package held
+eleven; reconciled 2026-08-21 during the diagram-faithfulness review.)*
 
 Two rules make this safe to extend: **the call order inside `_validate_siesta` /
 `_validate_pyscf` is the per-engine public contract** — load-bearing, since
@@ -443,7 +454,9 @@ tests count issues by position — and a helper **loses its `_` prefix when it
 gains a cross-module caller** (e.g. `check_open_shell_metal` is public; the
 others stay private until a PR forces the promotion, no back-compat shim). The
 engine registry (`_ENGINE_VALIDATORS`, populated at import) holds all four
-configs (SIESTA / PySCF / spectra / transport), so `validate(struct, cfg)` is the
+configs (SIESTA / PySCF / spectra / transport), and the calculation-kind
+registry (`_KIND_VALIDATORS`) composes a kind's own science from the
+described fact — `validate(struct, cfg, calculation=…)` is the
 one per-engine gate. Tests mirror the layout under `tests/validation/`.
 
 ---

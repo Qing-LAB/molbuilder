@@ -467,10 +467,30 @@ this table exists to rule out)*:
 | **④ the science gate** | at `prep`, inside the conductor’s STEP 3.3 — **“here, and only here”**, so no deck route can forget it | cell + geometry + field ranges (`validation/metadata.py`) + the engine’s science (grid, parity, open-shell, amplitude — `validation/{siesta,pyscf,spectra}.py`); errors refuse the deck, warns reach stderr | [`execution/script-preparation.md`](?doc=execution/script-preparation.md) § 3.3 |
 | **⑤ the parse gates** | at every artifact read (Results tab, CLI) | a file the reader cannot vouch for: unknown schema version (readable **sets**, additive bumps read old files whole), malformed fields — each a **typed** refusal the UI can react to | [`web/spectra.md`](?doc=web/spectra.md) § 6, the parse layer |
 
-Two honest asymmetries, recorded rather than smoothed over: the **vibration
-kind has no gate ① today** — its science first speaks at gate ④, on the
-machine; the kind-aware preflight that would close this is a recorded
-proposal (the P3 review’s F-B), not a landed fact.  And **transport** still
-rides its own pre-JobSet render path (script-preparation.md § “the four
-writers”), so its gates are its own until that migration.
+One honest asymmetry, recorded rather than smoothed over: **transport**
+still rides its own pre-JobSet render path (script-preparation.md § “the
+four writers”), so its gates are its own until that migration.  *(A second
+stood here for a few hours — the vibration kind had no gate ① — until the
+kind-aware preflight landed on 2026-08-21; the Spectrum tab now runs the
+same live check Build does.)*
+
+### Where the details live — the drill-down for each arrow
+
+The picture above is deliberately a MAP; the details a builder needs are
+each in one owning document:
+
+| you want to see… | open |
+|---|---|
+| how the pipeline **branches per engine** — what each engine supplies at every prep sub-step | [`execution/script-preparation.md`](?doc=execution/script-preparation.md) § 4 (the per-engine table), § 5 (the step table) |
+| the **file-to-file information flow** — which file feeds which, one reader/one writer per file | § 3 of this page (the files diagram), [`execution/job-contracts.md`](?doc=execution/job-contracts.md) (every format) |
+| how **template information flows** — catalogue → per-calculation template → resolved config → deck | [`engines/template.md`](?doc=engines/template.md) § 6 (incl. § 6.3’s kind-narrowing protocol), [`execution/generator.md`](?doc=execution/generator.md) § 4.3 (precedence: template < declaration < run-config < flags) |
+| how the **UI flows** — the catalogue-rendered form, its collected params, the hand-over’s four files, `task.json` | [`web/form-schema.md`](?doc=web/form-schema.md), [`web/handover-procedure.md`](?doc=web/handover-procedure.md) §§ 2–6, [`web/task-setup.md`](?doc=web/task-setup.md) |
+| **which checks run for a given procedure**, and each check’s science | [`science/validation.md`](?doc=science/validation.md) § 1 (the layers), § 7 (where every validator lives — engine registry by config type, kind registry by declared fact) |
+| where a **person’s answers enter** the flow | § 6 of this page |
+
+*(These citations were verified against the code on 2026-08-21 — the
+validators tree in validation.md § 7 was found four files short and
+reconciled in the same pass.  A diagram is a claim like any other:
+reviewing cited diagrams against the code they draw is part of the audit
+playbook.)*
 

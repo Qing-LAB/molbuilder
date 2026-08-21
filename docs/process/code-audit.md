@@ -353,3 +353,14 @@ When a new bug class turns up:
 > terminology was aligned to the current marker scheme (`unit`/`module`/`interface`/
 > `integration` + `e2e`, not the retired "L1–L5"). One precedent commit hash that no
 > longer resolves in history was dropped while keeping its lesson.
+
+## Diagram faithfulness — a standing pass *(user, 2026-08-21)*
+
+**A diagram is a claim like any other, and it drifts like any other.**
+When a review touches an area, every diagram and file-tree the area's
+documents draw is checked AGAINST THE CODE it depicts — nodes that no
+longer exist, files a tree omits, arrows whose direction changed.  A gap
+found is reconciled in the same pass, on whichever side is wrong: fix the
+document when the code is right, fix the code when the document records
+the ruling.  (Found necessary the day it was named: validation.md's § 7
+tree listed seven files while the package held eleven.)
