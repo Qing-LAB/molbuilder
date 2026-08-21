@@ -293,11 +293,16 @@ def picker_root_at_tmp(tmp_path, monkeypatch):
 
 class TestResolvePsmlLib:
     """The user-facing anchoring rule for cfg.psml_lib (introduced
-    2026-05-24).  Relative paths -> ``projects/`` (single root of
-    truth), absolute paths pass through, ``~/...`` expands.  Was
-    motivated by a user typing ``../../../pseudopotential`` and
+    2026-05-24; three-stage since 2026-08-21): a relative path tries the
+    calculation folder first, then the ``projects/`` tree the calculation
+    lives in (walking up from the calculation folder), then
+    ``<cwd>/projects/``; absolute paths pass through, ``~/...`` expands.
+    Was motivated by a user typing ``../../../pseudopotential`` and
     being confused that the validator resolved it against the Flask
-    server's CWD (repo root) rather than anything meaningful."""
+    server's CWD (repo root) rather than anything meaningful — and
+    completed by the 2026-08-21 Sol bug, where the cwd fallback anchored
+    a bare name at ``<calc>/projects/…`` (the module-level walk-up test
+    at the end of this file)."""
 
     def test_absolute_path_passes_through(self, tmp_path):
         from molbuilder.pseudos import resolve_psml_lib

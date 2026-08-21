@@ -275,7 +275,7 @@ configuration the real run asks for, knowing both the speed and the queue cost.
 
 | | stated in | shape |
 |---|---|---|
-| **capability** | `molbuilder.json` — the clusters available in this environment and **the hardware of each** — plus floor-1 detection on a workstation (M6: a workstation needs no file) | `scheduler.routing` is the existing menu of named domains and already carries **limits** (`max_time`, `max_mem_gb`). It does **not** yet carry cores, GPUs or node type per domain — **the shape it needs is drafted in [`asu-sol.md`](?doc=execution/asu-sol.md) § 5.3** (decision 38) |
+| **capability** | `molbuilder.json` — the clusters available in this environment and **the hardware of each** — plus floor-1 detection on a workstation (M6: a workstation needs no file) | the domain menu (probed into `environment.json`; a declared `scheduler.routing` is the workstation fallback) carries **limits** (`max_time`, `max_mem_gb`) and, since 2026-08-21, the **probed GPU inventory and `max_cores`** of each row's own node group — the two facts § 4.3a's GPU family and per-family cap read |
 | **allocation** | the command, at `prep` — *"the actual run would then also provide this parameter for the resources"* | ranks, cores per rank, GPUs (or none), time, and the domain |
 | **sweep** | the command, at benchmark time — *"can we speed through these different combinations … block size, CPU numbers, GPU, and how they combine, or no GPU at all"* | `{axis: [values]}`, checked against the allocation |
 
@@ -436,8 +436,13 @@ framework rule, not a script patch)*:
   machine cannot launch stays pending, and a later `submit bench`
   collects exactly the unlaunched side — which is the cross-cluster lane:
   each machine submits what it reaches, results ride the folder back.
-  **The shelves submit widest-first** *(user, 2026-08-21)*: an exact-fit
-  group costs the same whenever it runs, so wide→narrow order is free —
+  **The shelves submit widest-first, per side** *(user, 2026-08-21)*:
+  the CPU side's shelves submit first, then the GPU side's, and within
+  each side by descending footprint — cores (ranks × cores-per-rank),
+  device count breaking ties.  Only the WITHIN-side order carries the
+  rule; across sides the jobs are independent and often target different
+  domains, so their relative entry order decides nothing.  An exact-fit
+  group costs the same whenever it runs, so the order is free —
   it banks the expensive measurements first and lets a person watch the
   trend (`bench-group*.log`; `summarize` mid-flight) and stop early — an
   early `scancel` of the remaining shelves still summarizes to a verdict
@@ -731,7 +736,7 @@ where two things can disagree, is not this work.
 
 | # | question | why it is not decided here |
 |---|---|---|
-| **38** | `scheduler.routing` has **no cores, GPU count or GPU type** per entry, so *"does this allocation fit this cluster?"* cannot be answered from config | § 4.1a needs it and this document does not design the config's shape — `architecture.md` § 8 owns that |
+| **38** | ~~`scheduler.routing` has no cores, GPU count or GPU type per entry~~ **Closed 2026-08-21**: the probed domain rows carry the GPU inventory and `max_cores` (the node group's own `sinfo` row), and § 4.3a's cap and GPU family consume them | the row stays hand-editable; a declared workstation row may state the same columns |
 | ~~**G3**~~ | ~~whether `bench` keeps a positional in the grammar~~ — **CLOSED 2026-08-17.** It does: `jobset prep <run\|bench> [STAGE]`, and the same positional on `submit` and `summarize`. The `bench` command's four duplicate verbs were deleted in the 2026-08-12 fold, leaving it one unrelated subcommand (`probe-scheduler`); [`process/conventions.md`](?doc=process/conventions.md) carries the before/after. **STAGE is required for `bench`**, because a sweep belongs to one stage rather than to the calculation (§ 4.3a) | — |
 | **37** | ~~whether `transport`'s chained runs become a `ParameterSet`~~ — **decided 2026-08-11 (user): they do not.** Transport is a **separate kind — a multi-component job**: *"it involves multiple results and the transportation needs to combine all of them… a different kind of beast"* | it is not a sweep and not a ladder. **This contract covers single-parameter-set jobs** — structure, optimization, spectra — and a multi-component kind is designed on its own, not folded in here |
 

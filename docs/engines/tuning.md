@@ -448,7 +448,10 @@ finally in hand.
 The plain guidance in the table above (16 · 32 · 64 · 128) remains *guidance* for
 CPU runs: powers of two align with cache lines whatever the solver. Advice and
 enforcement are different things, and only one of them may edit a value — under
-GPU-ELPA neither does, because the request is refused instead.
+GPU-ELPA that one is `prep`, which realigns a non-power-of-two to the nearest
+power of two **and records that it did** (the rule stated earlier in this
+subsection; a silent ELPA fallback to the CPU, not a refusal, is what an
+unaligned value would otherwise buy).
 
 #### Why it is worth benchmarking rather than deriving
 

@@ -970,26 +970,26 @@ machine, not relaxing the molecule**.
 > they are **forced cold**, so they cannot pick anything up either. See § 4.
 
 You submit them with `jobset submit bench tight` — and under `--mode
-submit` that is **one scheduler job for the whole sweep** *(user,
-2026-08-20)*: the trials run **sequentially inside a single allocation**,
+submit` the trials group into **one scheduler job per resource shelf**
+([`generator.md`](?doc=execution/generator.md) § 4.3a; grouped 2026-08-20,
+split per shelf 2026-08-21): trials asking for identical resources (a
+*shelf* — same ranks, cores and GPU request) ride one job together,
+**sized to fit them exactly**.  Within its job the shelf's trials run
+**sequentially**,
 each under a hard per-trial time bound (default 15 minutes,
 `--trial-timeout`), driven by a generated sequencer that lives in the
 stage's `bench/` container — the parent that sees every trial — while each
 trial keeps writing into its own `bench-<POINT>/` directory exactly as
-before. The allocation is the **union envelope**: the widest trial's ranks,
-cores and GPUs, and a wall of Σ per-trial bounds plus margin. A trial that
+before. Each job's allocation is its shelf's own ask — nothing wider —
+so a narrow trial never idles a wide allocation's cores, the CPU groups
+ask for no GPU, and a one-device trial never holds a four-device grant;
+the wall is Σ of its trials' bounds plus margin. A trial that
 hits its bound is killed and reads `incomplete` in the summary's census;
-the walk continues — one bad point says nothing about the next. A sweep
-submits **one group per side and resource shelf**
-([`generator.md`](?doc=execution/generator.md) § 4.3a, 2026-08-21): trials
-asking for identical resources (a *shelf* — same ranks, cores and GPU
-request) ride one scheduler job sized to fit them exactly — the CPU
-groups ask for no GPU, a one-device trial never holds a four-device
-grant, and a narrow trial never idles a wide allocation's cores; the
-shelves submit biggest-first, as independent jobs the queue may run
-concurrently. The
-container's `bench-group.log` is the explicit record: the allocation the
-group ran in (job id, node, envelope), then per trial *when it started,
+the walk continues — one bad point says nothing about the next. The
+shelves submit **biggest ask first**, as independent jobs the queue may
+run concurrently. Each group's
+`bench-group*.log` is the explicit record: the allocation the
+group ran in (job id, node, granted resources), then per trial *when it started,
 when it finished, with what exit code and duration* — so both the ordering
 and any environment question are answered by the log itself. And every
 trial rides with its **own explicit `-np/-omp`** — enforced at generation —
@@ -1001,11 +1001,12 @@ how a single point is **re-measured, after moving the old trial's
 directory aside** (§ 1.5: a trial measures its point once; molbuilder
 never deletes results).
 
-> *This amends the 2026-08-12 decision by keeping what it protected: **one
-> launch act, never a queue flood**. The earlier form — one trial per
+> *This amends the 2026-08-12 decision by keeping what it protected: **few
+> launch acts, never a queue flood**. The earlier form — one trial per
 > invocation — made an N-point sweep cost N queue waits, and on an HPC a
-> submission is expensive and unpredictable; the grouped sweep is still
-> exactly one job handed to the scheduler.*
+> submission is expensive and unpredictable; the shelf grouping keeps the
+> count at the number of distinct resource asks, which the value axes make
+> small (every solver × block combination shares its shape's shelf).*
 
 `--mode direct` on a workstation is not submission and is exempt as ever:
 it runs the trials sequentially, in-shell, waiting for each. When the
@@ -1462,7 +1463,7 @@ inside the other.**
 | Why | to approach an answer in steps — coarse first, then tight | to find out what runs *this* science fastest *here* |
 | The deck | **its own file**, rendered from the shared settings with this stage's values substituted | the stage's science **rendered measurable** — the same resolve, with the benchmark's pins laid over (§ 3.2) |
 | Identity | shares the calculation's label, so it warm-starts from the stage before | **its own label** — relabelled per trial (`<label>-<point>`) |
-| Ordered? | **yes** — each continues the one before | **no** — trials are independent; submitted one per invocation (`job-system.md § 5.3`) |
+| Ordered? | **yes** — each continues the one before | **no** — trials are independent; submitted grouped per resource shelf, or singly by name (`job-system.md § 5.3`) |
 | Outcome | a result you keep | a number; the run is thrown away |
 | Produced by | `prep run`, from the template + this stage's values | `prep bench <stage>` — the same five steps, parameters as a set (§ 2.3.1a) |
 
@@ -1515,7 +1516,7 @@ Its deck is **rendered from the description like any other**, with the
 benchmark's **pins** laid over the resolved values
 (`template.md § 8.1`: rebuild and render, never splice):
 
-- **SCF capped** (5 iterations) — you are timing an iteration, not converging
+- **SCF capped** (3 iterations) — you are timing an iteration, not converging
   the chemistry;
 - **relaxation steps zeroed** — a single point, not a geometry;
 - **cold start forced** (`restart: clean`);
@@ -1548,14 +1549,17 @@ described.**
 > measurement that would settle *"is the GPU worth it here?"* could not be run.
 >
 > **What replaced it:** the description answers, and the grid follows its
-> answer. `enable_gpu = true` → the `(G, K, c)` grid, with `gres`, and a machine
-> whose probe finds no GPU is refused **by name**. `enable_gpu = false` → the
+> answer. `enable_gpu = true` → the `(G, K, c)` grid, with `gres`; the
+> device count and type come from this machine's probe **or, on a
+> GPU-less login node, from the domain row's probed GPU inventory** —
+> only a machine with neither is refused by name
+> (`generator.md § 4.3a`, 2026-08-21). `enable_gpu = false` → the
 > `(K, c)` grid from the same enumerator, no `gres`, no refusal. One
 > enumeration, two shapes.
 
 **The relabel and the forced cold are what make it safe to nest.** A trial that
 kept the stage's label and honoured saved state would read the stage's
-`.XV`/`.DM` and then overwrite them — a five-iteration throwaway destroying the
+`.XV`/`.DM` and then overwrite them — a capped-iteration throwaway destroying the
 state the real run depends on. They are not artefacts of the benchmark once
 having been standalone; they are the reason it can live inside a stage's
 directory at all.
@@ -1901,7 +1905,7 @@ shared package. All text or small, all git's.
 
 **Which runs?** The ones this calculation owns: the calculation root itself when
 it is flat, otherwise each stage's `run-N/`. A benchmark's `bench-*/` is a run of
-a **nested container**, one level deeper, and its `.DM` is a five-iteration
+a **nested container**, one level deeper, and its `.DM` is a capped-iteration
 throwaway — so the calculation's archive does not reach it. What survives a
 benchmark is `bench-result.json`, text, which git tracks wherever it sits.
 

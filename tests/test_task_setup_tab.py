@@ -826,7 +826,8 @@ def test_the_column_picker_offers_restart(web_client):
     names = [i["name"] for i in j["items"]]
     assert "restart" in names
     # ...and the machine's settings are still not the description's to hold
-    assert not ({"mpi_np", "omp_threads", "max_memory_mb"} & set(names))
+    assert not ({"mpi_np", "omp_threads", "max_memory_mb", "gpu_count"}
+                & set(names))
 
 
 def test_only_execution_category_parameters_may_be_swept(web_client):
@@ -847,7 +848,7 @@ def test_the_sweepable_list_says_which_the_machine_answers(web_client):
     (`template.md § 6.4`), so those can only ever be measured."""
     j = web_client.get("/api/task-setup/sweepable?engine=siesta").get_json()
     by = {i["name"]: i["machine_answers"] for i in j["items"]}
-    for machine in ("mpi_np", "omp_threads", "max_memory_mb"):
+    for machine in ("mpi_np", "omp_threads", "max_memory_mb", "gpu_count"):
         assert by.get(machine) is True, f"{machine} not flagged machine-answered"
     assert by.get("enable_gpu") is False, (
         "the GPU is a user decision, not something the machine answers "
@@ -1771,6 +1772,7 @@ def test_the_next_steps_teach_the_bench_lane_and_true_ordinals():
     body = src.split("function renderNext", 1)[1].split(
         "what has already run", 1)[0]
     for needle in ("./jobset.sh prep bench", "./jobset.sh submit bench",
+                   "one job per resource shelf",
                    "summarize bench", "run-config.toml",
                    "prev.full + 1", "task.bench"):
         assert needle in body, f"next-steps lost {needle!r}"
@@ -1778,10 +1780,11 @@ def test_the_next_steps_teach_the_bench_lane_and_true_ordinals():
         "the enabled-filtered ordinal is back (E-T4)")
     # The declaration-time note for multi-point VALUE axes: the 2β rule
     # is BUILT (generator.md § 4.3a, 2026-08-21), so the U1 refusal
-    # warning became teaching -- the sweep multiplies, and enable_gpu
-    # splits the grouped submission per side.
+    # warning became teaching -- the sweep multiplies, and submission
+    # groups by exact resource ask (one job per shelf, 2026-08-21).
     assert "sweep as a value axis" in src, \
         "the value-axis note left the bench table"
     assert "cpu-vs-gpu axis" in src, \
         "the enable_gpu family note left the bench table"
-    assert "one grouped job per side" in src
+    assert "exact resource ask" in src, \
+        "the per-shelf teaching left the bench table"

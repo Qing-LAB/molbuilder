@@ -10,9 +10,11 @@
  *   5. WRITE IT — POST /api/task-setup/save, which puts `task.json` into the
  *      folder.  An offered checkpoint runs first (`checkpointing.md` § 9):
  *      the tick is the offer and clearing it is a real answer.
- *   6. Read three things the page cannot derive: the sweepable set
- *      (`/api/task-setup/sweepable`), the tier presets (`…/presets`) and the
- *      folder's own template values (`…/template-values`).
+ *   6. Read what the page cannot derive: the sweepable set
+ *      (`/api/task-setup/sweepable`), the picker columns (`…/columns`),
+ *      the tier presets (`…/presets`) and the folder's own template
+ *      values (`…/template-values`); write through the save door and the
+ *      launcher door (`…/launcher`).
  *
  * The contract is `docs/web/task-setup.md`; where this disagrees, that wins.
  *
@@ -39,9 +41,9 @@ const TASK_HANDOVER = "task.1st.json";
  * An item whose `resolver` is an allocation resolver may state the question
  * and never the answer (`engines/template.md` § 6.4), so on this page it can
  * only be a point to measure, never a choice.  The server already computes
- * exactly that (`/api/task-setup/sweepable` ships `machine_answers` per item,
- * from `template.ALLOCATION_RESOLVERS`) and this page already reads that field
- * in two other places.
+ * exactly that (`/api/task-setup/sweepable` ships `machine_answers` per
+ * item, from the item's own `allocation` flag) and this page already reads
+ * that field in two other places.
  *
  * It was a hard-coded `new Set(["mpi_np", "omp_threads", "max_memory_mb"])`
  * until 2026-08-17 — a THIRD answer to a question the page already had two
@@ -358,18 +360,18 @@ function renderMachine(task) {
         // A VALUE axis with several points SWEEPS (generator.md § 4.3a,
         // built 2026-08-21 -- it was refused by name until then): the
         // points multiply the machine grid and every trial's deck
-        // carries its coordinate.  enable_gpu is the grid-family axis:
-        // two points make `submit bench` launch one grouped job per
-        // cpu/gpu side, so devices are never held while CPU trials run.
-        const _isMachine = (_sweep || []).some(
-            (it) => it.name === name && it.machine_answers);
+        // carries its coordinate.  enable_gpu decides which trials run
+        // on the GPU at all; submission groups trials by their exact
+        // resource ask (one exact-fit job per shelf), so CPU trials
+        // never hold a device.
+        const _isMachine = machineAnswers(name);
         const _tooMany = (!_isMachine && pts.length > 1)
             ? el("small", { class: "ts-row-note" },
                  name === "enable_gpu"
                    ? (pts.length + " points \u2014 the cpu-vs-gpu axis: "
-                      + "the grid enumerates per flag and submit bench "
-                      + "launches one grouped job per side (the cpu "
-                      + "group asks for no GPU).")
+                      + "the grid enumerates per flag, and submit bench "
+                      + "groups trials by their exact resource ask \u2014 "
+                      + "CPU trials never hold a GPU.")
                    : (pts.length + " points sweep as a value axis \u2014 "
                       + "the machine grid multiplies per value; the "
                       + "winning combination lands in run-config.toml."))
@@ -1073,7 +1075,7 @@ function renderNext(task) {
             el("pre", { class: "ts-cmd" },
                "./jobset.sh prep bench " + bs + "\n"
                + "./jobset.sh submit bench " + bs
-               + "      # one grouped job; wait for the queue\n"
+               + "      # one job per resource shelf; wait for the queue\n"
                + "./jobset.sh summarize bench " + bs
                + "   # writes bench-result.json + run-config.toml\n"
                + "# read run-config.toml \u2014 the editable proposal; "

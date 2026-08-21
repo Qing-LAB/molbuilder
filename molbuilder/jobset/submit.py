@@ -200,6 +200,13 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
             jobset, base_dir, job, ".sbatch")
         gpu = _job_wants_gpu(job_dir, job)
         pq = _resolve_domain(domain, gpu=gpu, project_dir=base_dir)
+        if pq is None and domain is None and jobset.kind == "sweep":
+            # A re-measured trial must land where its group did (review
+            # 2026-08-21): without this, the group followed the per-side
+            # preference while a named trial fell to the header's
+            # defaults -- a different partition, silently breaking the
+            # compare-by-node-type premise.  Ladders keep the defaults.
+            pq = _preferred_domain(Path(base_dir), gpu)
 
         # WHICH CALCULATION, then which stage.  `-J` carried the bare stage
         # name until 2026-08-10, so three concurrent ladders showed
@@ -447,38 +454,30 @@ def _slurm_time(seconds: int) -> str:
 
 
 def _group_envelope(jobs) -> "Resources":
-    """The UNION allocation a grouped sweep runs in (user, 2026-08-20):
-    the widest trial's ranks, cores and GPUs -- each trial then launches
-    with its OWN ``mpirun -np`` inside it, and a narrower trial simply
-    leaves part of the allocation idle for its minute.
+    """The allocation one shelf's grouped job asks for.
 
-    Mixed GPU *types* are refused by name: an envelope cannot ask for two
-    kinds of card at once, and guessing which the sweep meant is the kind
-    of silent repair this module never makes.
+    Since the shelf split (2026-08-21) every caller passes trials sharing
+    ONE exact ask (`_shelf_key`: ranks, cores, gres), so this is the
+    shelf's own ask read off its trials -- nothing is widened and nothing
+    narrower exists inside a group.  The uniformity is ASSERTED rather
+    than assumed: trials disagreeing here mean the shelf partition broke,
+    and launching an allocation that fits only some of them would be the
+    silent repair this module never makes.  *(Until the split this
+    function computed the union of a whole side -- the widest trial's
+    ranks/cores/devices -- and narrower trials idled the difference; the
+    max() folds below survive as identities.)*
     """
+    keys = {((j.resources.mpi_np or 1), (j.resources.cpus_per_task or 1),
+             j.resources.gres or "") for j in jobs}
+    if len(keys) > 1:
+        raise SubmitError(
+            "the group's trials do not share one resource ask "
+            f"({sorted(keys)}) -- the per-shelf partition is broken "
+            "(generator.md § 4.3a); this is a bug, not a declaration "
+            "problem.")
     n = max((j.resources.mpi_np or 1) for j in jobs)
     c = max((j.resources.cpus_per_task or 1) for j in jobs)
-    gres = None
-    prefixes = set()
-    counts = []
-    for j in jobs:
-        g = j.resources.gres
-        if not g:
-            continue
-        head, _, tail = str(g).rpartition(":")
-        try:
-            counts.append(int(tail))
-            prefixes.add(head or "gpu")
-        except ValueError:
-            prefixes.add(str(g))
-            counts.append(1)
-    if counts:
-        if len(prefixes) > 1:
-            raise SubmitError(
-                "the sweep's trials ask for different GPU specs "
-                f"({', '.join(sorted(prefixes))}) -- one grouped job cannot "
-                "hold both; submit those trials by name instead")
-        gres = f"{next(iter(prefixes))}:{max(counts)}"
+    gres = next((j.resources.gres for j in jobs if j.resources.gres), None)
     exclusive = any(j.resources.exclusive for j in jobs)
     return Resources(mpi_np=n, cpus_per_task=c, gres=gres,
                      exclusive=exclusive)
@@ -496,11 +495,13 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
                        dry_run: bool = False,
                        trial_timeout_s: int = 900,
                        only: Optional[str] = None) -> List[JobResult]:
-    """ONE scheduler job per SIDE of the sweep (user, 2026-08-20; split
-    per side 2026-08-21, `generator.md` § 4.3a).
+    """ONE scheduler job per RESOURCE SHELF of the sweep (grouped
+    2026-08-20; split per side, then per shelf, 2026-08-21 --
+    `generator.md` § 4.3a).
 
-    The standing rule -- *a scheduler is handed one job at a time* -- is kept
-    by construction: each side IS one job.  What the grouping replaces is one
+    The standing rule -- *a scheduler is handed few, deliberate jobs* --
+    is kept by construction: each shelf IS one job, and the value axes
+    keep the shelf count small.  What the grouping replaces is one
     job PER TRIAL, which made an N-point sweep cost N queue waits; on an HPC
     a submission is expensive and unpredictable, and a benchmark's output is
     timing data, not the structure, so the trials ride one allocation in
@@ -520,9 +521,9 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
 
     The per-group pieces:
 
-    * **the envelope** -- :func:`_group_envelope`: max ranks / cores / GPUs
-      across the pending trials; wall = pending x ``trial_timeout_s`` x 1.1
-      plus five minutes of startup margin;
+    * **the allocation** -- :func:`_group_envelope`: the shelf's own ask
+      (identical across its trials by construction); wall = pending x
+      ``trial_timeout_s`` x 1.1 plus five minutes of startup margin;
     * **the sequencer** -- ``bench-group.run.sh``, written into the stage's
       ``bench/`` container (the parent that sees every trial), regenerated
       from the trials STILL UNLAUNCHED at this submission.  Each trial runs
@@ -589,28 +590,60 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     return results
 
 
-def _preferred_domain(base: Path, gpu_side: bool) -> Optional[tuple]:
+def gpu_domain_row(routing) -> Optional[dict]:
+    """THE row that speaks for the GPU nodes -- **one selector, three
+    consumers** (2026-08-21 review): `prep`'s device inventory, `prep`'s
+    per-family core cap, and `submit`'s side routing all read THIS row,
+    so the cap can never be taken from one domain while the group is
+    routed to another.  The rule is the menu's own: cheapest ceiling
+    first, the first gpu-capable row is the recommendation."""
+    from ..environment import domain_serves_gpu
+    for row in routing:
+        if domain_serves_gpu(row):
+            return row
+    return None
+
+
+def _preferred_domain(base: Path, gpu_side: bool,
+                      needed_s: Optional[int] = None) -> Optional[tuple]:
     """The per-side routing PREFERENCE (user, 2026-08-21; `generator.md`
     § 4.3a): a CPU group MAY run on a gpu-capable cluster, but when the
     menu holds a cpu-only domain it is preferred -- idle devices cost --
-    and a GPU group prefers the first gpu-capable row (its
-    ``gpu_partition`` when declared).  The menu's own order rule applies
-    (`get_routing`: cheapest ceiling first, the first fitting row is the
-    recommendation).  No fitting row -> ``None``: the rendered header's
-    default directives stand, which is also every pre-2β behaviour.
+    and a GPU group takes THE gpu row (:func:`gpu_domain_row`, its
+    ``gpu_partition`` when declared).  ``needed_s`` is the group's wall:
+    a row whose stated ``max_time`` cannot hold it is skipped (found in
+    review 2026-08-21 -- a 15-minute ``debug`` row sorted first and a
+    three-hour group would have been submitted into it and killed); a
+    row stating no wall counts as fitting.  No fitting row -> ``None``:
+    the rendered header's default directives stand.
 
     ``--domain`` OVERRIDES this for both sides (through
     :func:`_resolve_domain`); ``--only`` + ``--domain`` places one side at
     a time, which is the fully explicit form.
     """
     from ..environment import domain_serves_gpu
+    from ..scheduler_probe import parse_walltime
     from .. import runtime_config as _rc
-    for row in _rc.get_routing(project_dir=base):
-        if bool(domain_serves_gpu(row)) != bool(gpu_side):
+
+    def _fits(row) -> bool:
+        if needed_s is None or not row.get("max_time"):
+            return True
+        try:
+            return parse_walltime(str(row["max_time"])) >= needed_s
+        except ValueError:
+            return True                      # an unreadable wall never bars
+    routing = _rc.get_routing(project_dir=base)
+    if gpu_side:
+        row = gpu_domain_row(routing)
+        if row is not None and _fits(row):
+            return ((row.get("gpu_partition") or row["partition"]),
+                    row["qos"])
+        return None
+    for row in routing:
+        if domain_serves_gpu(row):
             continue
-        part = ((row.get("gpu_partition") or row["partition"])
-                if gpu_side else row["partition"])
-        return (part, row["qos"])
+        if _fits(row):
+            return (row["partition"], row["qos"])
     return None
 
 
@@ -674,6 +707,15 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
             "(-np/-omp shield the trial from the allocation's SLURM_* "
             f"envelope); missing on: {', '.join(unshaped)}")
 
+    # The deck/launch agreement gate guards THIS door too (review
+    # 2026-08-21): a trial refused when submitted by name must not launch
+    # silently by riding its group.
+    for j in pending:
+        try:
+            check_launch_matches_deck(base / dirs[j.name], j)
+        except DeckLaunchMismatch as e:
+            raise SubmitError(str(e)) from e
+
     trial_dirs = [base / dirs[j.name] for j in pending]
     containers = {d.parent for d in trial_dirs}
     if len(containers) != 1:
@@ -688,9 +730,9 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
 
     lines = [
         "#!/usr/bin/env bash",
-        f"# {name}.run.sh -- ONE allocation, this side's unlaunched",
+        f"# {name}.run.sh -- ONE allocation, this shelf's unlaunched",
         "# trials in sequence (project-layout.md § 2.3.2, user 2026-08-20;",
-        "# split per cpu/gpu side 2026-08-21, generator.md § 4.3a).",
+        "# split per resource shelf 2026-08-21, generator.md § 4.3a).",
         "# Regenerated at each grouped submission.  THE TWO-LAYER MODEL",
         "# HOLDS (job-system.md § 6): this file is the launcher layer only",
         "# -- ordering and bounds.  Env activation and the engine launch",
@@ -744,7 +786,8 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     # --domain overrides; otherwise each side takes its capability-fitting
     # preference from the menu (`_preferred_domain`).
     pq = (_resolve_domain(domain, gpu=gpu_side, project_dir=base)
-          if domain else _preferred_domain(base, gpu_side))
+          if domain else _preferred_domain(base, gpu_side,
+                                           needed_s=total_s))
     if pq:
         cmd += ["-p", pq[0], "-q", pq[1]]
     # The same shape as a single job: the rendered .sbatch header carries
@@ -762,7 +805,14 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
 
     script.write_text("\n".join(lines), encoding="utf-8")
     from ..runwrap import _render_sbatch_for
-    header = _render_sbatch_for(container / f"{name}.sh",
+    # Rendered at the BUNDLE's scope, not the container's (review
+    # 2026-08-21): the render derives its config/environment scope from
+    # the script path's parent, and the calculation's .molbuilder.json +
+    # environment.json live at the bundle root -- a container-scoped
+    # render missed both and refused ("no scheduler") or fell to the
+    # machine scope.  The stem alone names the delegated run script, so
+    # the header still runs `bash {name}.run.sh` from the container.
+    header = _render_sbatch_for(base / f"{name}.sh",
                                 resources=envelope, env=None)
     if header is None:
         raise SubmitError(
@@ -866,7 +916,7 @@ def _refuse_batch_submission(jobset: JobSet, base_dir: Path, *,
             "rather than scaling.\n"
             "  Name the one you mean:\n"
             f"    molbuilder jobset submit "
-            f"{'bench <trial>' if jobset.kind == 'sweep' else 'run <stage>'}"
+            f"{'bench <stage> <trial>' if jobset.kind == 'sweep' else 'run <stage>'}"
             " --mode submit\n"
             "  `--mode direct` is not affected: it runs them here, in order, "
             "waiting for each.")

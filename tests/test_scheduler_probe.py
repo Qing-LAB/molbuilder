@@ -1,7 +1,9 @@
 """`jobset probe`: parse live sinfo/sacctmgr -> the reachable domains that go
-into ``environment.json`` (`configuration.md` § 5).  Fixtures are the REAL ASU
-Sol output captured 2026-06-29, so the derivation is validated against the
-actual cluster.
+into ``environment.json`` (`configuration.md` § 5).  Fixtures began as the REAL ASU
+Sol output captured 2026-06-29 and were extended 2026-08-21 with the fifth
+``%c`` cores column (plus a synthetic ``48+`` at-least row), matching the
+probe's current format ``%P|%30l|%D|%40G|%c`` — so the derivation is
+validated against the actual cluster's shape.
 
 Renamed from ``test_bench_probe.py`` on 2026-08-17: the verb it names has not
 been ``molbuilder bench probe-scheduler`` since the `bench` group was deleted,
@@ -133,10 +135,13 @@ def test_the_wall_is_the_smaller_of_partition_and_qos():
     # htc's partition limit is 4h and the public QoS has no ceiling -> 4h
     assert doms["htc"]["max_time"] == "4:00:00"
     # debug's QoS ceiling (15 min) is smaller than any partition limit
-    assert doms["debug"] == {"name": "debug", "max_time": "00:15:00",
-                             "partition": "htc", "qos": "debug",
-                             "gpu": {"a100": 4, "a100.20gb": 16},
-                             "max_cores": 48}
+    # wall-relevant facts only -- the full field set is pinned by
+    # test_a_domain_is_never_a_preference, the cap by
+    # test_the_domain_row_carries_the_probed_core_cap (a dict equality
+    # here broke for every new measured column, twice).
+    assert doms["debug"]["max_time"] == "00:15:00"
+    assert (doms["debug"]["partition"], doms["debug"]["qos"]) == \
+        ("htc", "debug")
     assert doms["general"]["max_time"] == "14-00:00:00"
 
 

@@ -820,7 +820,7 @@ over different parameters (`project-layout.md § 2.3.1a`).
 > | | `run` | `bench` | no kind |
 > |---|:--:|:--:|:--:|
 > | `prep` | ✅ `prep run <stage>` — the stage is **required** ([`engines/stages.md`](?doc=engines/stages.md) § 6.5); with no stage it lists the ladder and refuses | ✅ **LANDED 2026-08-12** (step 6) — `prep bench <stage>`: probe the machine, enumerate the grid, render the trials into the stage's `bench/` | — the kind is required |
-> | `submit` | ✅ | ✅ **LANDED 2026-08-12** (step 6) — `submit bench <stage> [<trial>]`: the named trial, or the next unlaunched, ONE per invocation | — |
+> | `submit` | ✅ | ✅ **LANDED 2026-08-12** (step 6) — `submit bench <stage> [<trial>]`: the whole sweep as one grouped job per resource shelf (2026-08-21, `generator.md § 4.3a`); a named trial submits alone | — |
 > | `summarize` | — refuses: a run's outputs *are* the results, read by `status` and the Watch tab | ✅ **LANDED 2026-08-12** (step 6 u4) — discovery keyed by `job-set.json`, results through the ordinary artifacts, async | — |
 > | `describe` | — | — | ✅ **LANDED 2026-08-11** (plan step 2). Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once |
 > | `status` | — | — | ✅ whole calculation · ✅ per-stage (`status <stage>`) |
@@ -884,8 +884,9 @@ meaning.
 >   so the sweep measures **contention rather than scaling** — and reports a
 >   number that looks fine.
 >
-> So `--mode submit` refuses more than one job per invocation, whatever the
-> kind, and names which jobs it refused. **`--mode direct` is untouched**: it
+> So `--mode submit` hands the scheduler few, deliberate jobs — for a RUN,
+> one stage per invocation, refusing more by name; for a BENCH, one grouped
+> job per resource shelf (`generator.md § 4.3a`) — never a queue flood. **`--mode direct` is untouched**: it
 > runs each job here, in order, waiting for each, which is not submission at
 > all. The refusal lives in `submit_jobset`, not in the CLI, so the web surface
 > and any other caller get it too.
@@ -893,9 +894,10 @@ meaning.
 > The benchmark already worked this way by hand — the old `bench generate`
 > emitted `job-cpu.sbatch` and told you to `sbatch` it yourself — so the rule
 > made the framework agree with the workflow it already recommended. *(That
-> verb is gone — 2026-08-12, step 6 u5 — and its manner of working survives it:
-> `submit bench` hands over one trial per invocation, the next unlaunched by
-> default.)*
+> verb is gone — 2026-08-12, step 6 u5 — and what survives of its manner is
+> the deliberate hand-over: `submit bench` groups the unlaunched trials by
+> resource shelf and hands each group over as one job; a named trial still
+> submits alone.)*
 
 **2. What a stage continues from is something you say.** `--from
 01_coarse/run-0` names the attempt whose results this run starts from. Those
@@ -1152,7 +1154,7 @@ parameters are a set, `project-layout.md` § 2.3.1a)*:
 flowchart LR
     D["jobset describe<br/>(host)<br/>the portable calculation"]
     P["jobset prep bench &lt;stage&gt;<br/>(target)<br/>probe → environment.json<br/>+ the grid as trial decks in<br/>&lt;NN&gt;_&lt;stage&gt;/bench/"]
-    R["jobset submit bench &lt;stage&gt;<br/>one trial per invocation<br/>(next unlaunched by default)"]
+    R["jobset submit bench &lt;stage&gt;<br/>one grouped job per resource shelf<br/>(a named trial submits alone)"]
     S["jobset summarize bench &lt;stage&gt;<br/>trials → bench/bench-result.json<br/>(winner + mechanism + sizing)"]
     PR["jobset prep run &lt;stage&gt;<br/>APPLIES run-config.toml — your edit is the answer"]
     D --> P --> R --> S --> PR
@@ -1168,7 +1170,7 @@ flowchart LR
 - **Trials are the stage's science, made measurable — by pins, not by
   splicing.** Each trial's deck is **rendered from the description** like any
   deck, with the benchmark's pins laid over the resolved values
-  (`template.md § 8.1`: rebuild and render, never splice): SCF capped at 5
+  (`template.md § 8.1`: rebuild and render, never splice): SCF capped at 3
   iterations, relaxation steps zeroed (a single point — you are timing an
   iteration, not converging the chemistry), restart forced clean, and a
   **per-trial relabel** so no trial can read or overwrite the real run's warm
@@ -1182,18 +1184,21 @@ flowchart LR
   comparable CPU/GPU points — the shipped-bundle machinery deleted in step 6
   u5. Nothing writes or reads a manifest now; the pair-of-points comparison
   went with it, and the sweep is the GPU grid below.)*
-- **The `(G, K, c)` grid** — the shape of the sweep, and why: `G` = number of
-  GPUs (1 up to the node's count); `K` = MPI ranks per GPU, tried at the divisors
-  of the socket's core count (so ranks divide evenly); `c` = CPU cores per rank,
-  tried as a **starved / one-socket / cross-socket** triple
-  (`{1, cores//K, 2·cores//K}`) to bracket the useful range. Each point runs in
-  its own `bench-G<g>K<k>C<c>/` folder.
+- **The `(G, K, c)` grid** — `G` devices, `K` MPI ranks per device, `c`
+  cores per rank; each point runs in its own `bench-…/` folder named by its
+  coordinate. **What the points ARE is the declaration's question, and
+  [`generator.md § 4.3a`](?doc=execution/generator.md) is the owner**:
+  declared `bench` entries (`mpi_np`, `gpu_count`, `omp_threads`, and any
+  value settings) drive the trials exactly; only an ABSENT declaration
+  keeps the machine's own enumeration as the proposal (`K` from the probed
+  core ladder, `c` as a starved / one-socket / cross-socket bracket, `G`
+  over each rank count's divisors).
 
-  **`G` is there only when the description asks for the GPU** (2026-08-17). A
-  description with `enable_gpu = false` sweeps the same enumeration with `G`
-  held at one and dropped from the coordinate — the points are `(K, c)`, the
-  folders `bench-K<k>C<c>/`, and no `gres` is asked for, so a CPU trial does
-  not queue behind a GPU node it never uses.
+  **`G` is there only when the description asks for the GPU** (2026-08-17).
+  A CPU-family point holds the device coordinate at `G = 0` — plain ranks,
+  no `gres` — so a CPU trial does not queue behind a GPU node it never
+  uses; a single-family CPU sweep drops `G` from its coordinates entirely
+  (the points are `(K, c)`, the folders `bench-K<k>C<c>/`).
 
   > **`BlockSize` belongs on this grid too** *(decided 2026-08-11, user; not yet
   > built)*. It is a parallel-efficiency knob whose right value depends on the
@@ -1257,7 +1262,8 @@ what that rule removes.)*
 > than `jobset submit`; retiring the inline path once it is cluster-validated
 > is the open follow-up."* The fold retired the inline path — and `bench prep`
 > itself — in step 6 u5: a trial now executes only through `jobset submit
-> bench`, one trial per invocation, with its launch recorded in the trial's
+> bench` (since 2026-08-21 as a rider of its resource shelf's grouped job,
+> or alone when named), with its launch recorded in the trial's
 > own `run.json`.
 
 ---

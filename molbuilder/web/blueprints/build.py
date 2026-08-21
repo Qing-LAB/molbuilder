@@ -1179,8 +1179,11 @@ def api_build_schema(engine: str):
 def api_build_preflight():
     """Cheap validation-only endpoint for the live UI hint panel.
 
-    Body: ``{"xyz": "<text>", "engine": "siesta"|"pyscf",
-             "params": {<config dict>}}``
+    Body: the structure envelope (``structure`` per `_struct_from_body`;
+    a bare ``xyz`` string is the tolerated legacy spelling) plus
+    ``engine`` (``"siesta"``/``"pyscf"``), ``params`` (the config dict),
+    and optionally ``calculation`` (the kind the validators branch on --
+    ``"optimization"`` when absent).
 
     Returns ``{"ok": True, "issues": [{"severity", "message",
     "where"}, ...]}``; on bad input returns ``{"ok": False, "error":

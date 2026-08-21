@@ -480,6 +480,70 @@ review-and-validation round when these land.
 - **U6 (after U1-U5):** the second full R×3 review-and-validation
   round the user has asked for, plus a full `none2e` + live E2Es.
 
+## ROUND 2 (2026-08-21 evening) — the fresh-eye review the user ordered
+
+Four readers (docs / bench-chain code / UI+web / tests), every claim
+verified, transport excluded.  **Fixed in the round** (same-day or
+text-faithfulness under the standing reconcile-on-detection ruling):
+all doc staleness (project-layout's half-updated grouped narrative +
+union-envelope + one-per-invocation residue + the 5-iteration figures +
+the no-GPU-probe refusal box; job-system § 5.3/§ 7's one-trial grammar,
+cap, grid narrative now pointing at § 4.3a as owner, G=0; generator
+§ 4.1a + open-row 38 closed by the probed inventory/max_cores; tuning
+§ 2.11's refuse-vs-realign self-contradiction; workflow § 9's two bad
+citations; job-contracts' unqualified § 1.6); § 4.3a now states the
+width metric (cores, device tie-break) and the per-side-then-shelf
+submission order; all per-side/per-shelf teaching in viewer.js + hints +
+comments + test docstrings; the ONE gpu-domain door (`gpu_domain_row` —
+inventory, cap and routing read the same row; B3); the wall-fit check in
+the routing preference (a 15-min debug row can no longer swallow a
+3-hour group; B4); the deck/launch agreement gate now guards the grouped
+door too (B5); a named sweep trial takes the same side preference as its
+group (B6); the grouped header renders at the BUNDLE scope (B2 — a
+bundle-scoped scheduler block was missed entirely); bare `prep run`
+refuses with the ladder listed instead of the benchmark's question (B1);
+`--only` with a named trial refuses instead of being ignored (B8);
+`_group_envelope` asserts the shelf invariant instead of carrying the
+dead union/mixed-gres arms (B11/B12); the false PySCF-seam-refusal
+comment now records the ACCIDENTAL gate honestly (B15; the real refusal
+stays E-J1/U2); the duplicated template-read paragraph (B16); the
+stale batch-refusal remedy grammar (B14); the vacuous "per side" hint
+pin (false-matched the vacuum warning) and the fragile debug-domain
+dict pin; gpu_count joined the two machine-item test pins; the § 2.12
+worked-example matrix is now enumerated end-to-end.
+
+**AWAITING RULINGS from round 2** (pre-existing; fix shapes named):
+- R2-1 (bug, UI): `loadSweepChoices` and `loadPresets` cache
+  engine-blind — a PySCF folder opened after a SIESTA one gets SIESTA's
+  machine rows and TIER PRESETS (applying one writes SIESTA values into
+  a PySCF description).  The fix shape is settled precedent: key the
+  cache by engine as `_cols` already does (viewer.js:748-754).
+- R2-2 (bug, minor): summarize's "NO WINNER: every timed trial ran
+  something other than asked" fires when NO timed trial exists (the
+  `any(p.mismatch)` scans all points; summarize.py:643).
+- R2-3 (design): prep accepts only exact stage names while
+  status/submit accept name/number/token through the one resolver
+  (resolve_stage_ref) — route prep's stage lookup through it too.
+- R2-4 (dead code): `_pick_trial`'s bare-submit arm is unreachable
+  (its own docstring says so); retire with its imports.
+- R2-5 (duplication): the § 4.3a per-point shape checks live in
+  validation/task.py AND _declared_execution_pins with named
+  divergences (allocation-item duplicates caught only by the preflight;
+  first-refusal vs Issue list) — fold into the U3 dedup ruling.
+- R2-6 (duplication, low): restart="clean" enforced by the measurement
+  pin AND hard-replaced in prep for is_trial elements; the prep copy is
+  invisible to provenance.
+- R2-7 (test): test_pseudos' `../foo` anchoring assertion cannot fail
+  (`"foo" in str(out)`); assert the exact anchored path.
+- R2-8 (tests): three near-identical shelf-grouping pins across three
+  files; the summarize echo sentences pinned twice — consolidation
+  candidates.  Plus reader-recorded gaps: a grouped bench on a FLAT
+  calculation (container form) has no test; a GPU-side winner riding
+  run-config is covered only on the GPU-only grid.
+- R2-9 (residue, wide): docstrings in test_prep_bench_fold's older
+  sections still narrate pre-fold history in present tense in a few
+  spots beyond those fixed; sweep with U4.
+
 ## The consolidated priority head (all five readers in)
 
 1. **E-M4.7** HF+Raman NameError (a paid-for Hessian then a crash).

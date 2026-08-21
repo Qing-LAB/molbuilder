@@ -4,7 +4,8 @@ The acceptance case is the USER's live matrix (their
 ``projects/Au-BDT-Au/optimization/Relax/task.json``, declared 2026-08-21):
 ``mpi_np × enable_gpu × diag_algorithm × block_size``, prepped from a
 Sol-shaped record — a login node with NO local GPU, a menu whose
-gpu-capable row carries the sinfo inventory and the CURATED 48-core cap.
+gpu-capable row carries the sinfo inventory and the probed 48-core cap
+(the GPU node group's own core count; hand-editable).
 Every rule the section states is pinned here: the family split, the
 inventory fallback, the cap drop BY NAME, the per-trial coordinates in the
 decks and in ``job-set.json``, the per-side grouped submission with the
@@ -40,7 +41,7 @@ USERS_MATRIX = {
 def sol_calc(tmp_path):
     """A described calculation on a Sol-shaped machine: 128-core login
     node, no local GPU, and a probed menu — ``htc`` cpu-only, ``general``
-    carrying the a100 inventory and the curated ``max_cores`` cap."""
+    carrying the a100 inventory and the probed ``max_cores`` cap."""
     struct = Structure(elements=["H", "H"],
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]),
@@ -214,7 +215,7 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
 
 
 # --------------------------------------------------------------------- #
-#  split submission: one group per side, preferred domains, override     #
+#  split submission: one group per side and shelf; domains; override    #
 # --------------------------------------------------------------------- #
 
 def _submit_dry(calc, *extra):
@@ -376,6 +377,34 @@ def test_every_cell_uneven_refuses_a_gpu_only_bench(sol_calc):
     with pytest.raises(click.ClickException) as e:
         _bench_inputs(sol_calc)
     assert "every GPU cell was dropped" in str(e.value)
+
+
+def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc,
+                                                                capsys):
+    """tuning.md § 2.12's own worked declaration, end to end: gpu_count
+    filters ONLY the GPU family (the CPU family keeps every declared rank
+    count); enable_gpu as a two-point axis beside gpu_count does NOT
+    trigger the cpu-only refusal; and the probed 48-core cap drops a
+    DECLARED count by name (np64 × G1 = 64 cores) — the cap lane, distinct
+    from the even-split lane."""
+    _declare(sol_calc, {"mpi_np": [32, 64], "omp_threads": [1],
+                        "enable_gpu": [True, False],
+                        "gpu_count": [1, 2, 4]})
+    points, _pins, _tr = _bench_inputs(sol_calc)
+    cpu = [p for p in points if not p["G"]]
+    gpu = [p for p in points if p["G"]]
+    assert sorted({p["K"] for p in cpu}) == [32, 64], \
+        "gpu_count must not touch the CPU family's rank counts"
+    # the cap bounds a trial's TOTAL cores (ranks × cores-per-rank ≤ the
+    # GPU nodes' 48 — § 4.3a's "ranks × cores"), so EVERY np64 GPU cell
+    # drops whatever its G (a 64-rank single-node trial cannot fit a
+    # 48-core node), each named in the echo; np32 keeps all three counts
+    assert sorted((p["G"], p["K"]) for p in gpu) == \
+        [(1, 32), (2, 16), (4, 8)]
+    out = capsys.readouterr().out
+    assert "dropped from the GPU family" in out
+    for cell in ("G1K64C1", "G2K32C1", "G4K16C1"):
+        assert cell in out, f"the dropped cell {cell} must be named"
 
 
 def test_gpu_count_alone_filters_the_proposed_grid(sol_calc):

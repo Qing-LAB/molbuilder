@@ -2,7 +2,7 @@
 
 Contract: `project-layout.md` § 2.3.1a (benchmarking is `prep` whose
 parameters are a set) · § 2.3.2 (trials relabelled + forced cold; submission
-one trial per invocation) · `generator.md` §§ 2, 5 · `template.md` § 8.1
+grouped per resource shelf, a named trial alone) · `generator.md` §§ 2, 5 · `template.md` § 8.1
 (rebuild and render, never splice — the pins land as schema values).
 """
 from __future__ import annotations
@@ -199,7 +199,10 @@ def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
     # the hint teaches the REAL grammar + the launcher (E-J2 fix,
     # 2026-08-21): grouped submission, then summarize -> run-config.
     assert "./jobset.sh submit bench" in r.output
-    assert "grouped" in r.output and "per side" in r.output
+    # the exact hint phrase -- "per side" alone false-matched the vacuum
+    # warning's "8 Å per side" (found green while the hint was wrong,
+    # review 2026-08-21)
+    assert "one job per resource shelf" in r.output
     assert "summarize bench" in r.output
     assert "config:" in r.output          # provenance rides every prep
 
@@ -1025,7 +1028,7 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
     shape that grammar served, so those assertions are retired rather than
     translated -- there is no longer a calculation that owns no stage.
     What survives is the part that was never about stage-less-ness: the
-    verdict offer, and one trial per invocation naming exactly its own."""
+    verdict offer, and a named trial submitting exactly itself."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     struct = Structure(elements=["H", "H"],
@@ -1295,8 +1298,8 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
     """A6 (redo 2026-08-12): direct mode runs the set in order, and the
     launched-trial refusal (R2) made it die at the FIRST record -- an
     interrupted direct sweep could never finish.  The loop now skips a
-    launched trial out loud and runs the rest; submit mode's
-    next-unlaunched pick is untouched."""
+    launched trial out loud and runs the rest; under submit mode the
+    grouped path collects the still-unlaunched remainder the same way."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     from molbuilder.jobset.materialize import write_run_launch
@@ -1311,11 +1314,11 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
     assert res.exit_code == 0, res.output
     assert "skip" in res.output and first in res.output
     assert res.output.count("WOULD run") == len(js["jobs"]) - 1
-    """R2: § 1.5's immutability holds for trials AT THE SEAM -- a named
-    relaunch is refused by the library naming run.json and the next
-    verbs, and the bare form's next-unlaunched pick SKIPS the launched
-    trial (the first test anywhere to exercise selection with a launched
-    trial present)."""
+    # R2: § 1.5's immutability holds for trials AT THE SEAM -- a named
+    # relaunch is refused by the library naming run.json and the next
+    # verbs, and the grouped path collects only the still-unlaunched
+    # remainder (this stray block was a second test's docstring left
+    # mid-function by a merge; kept as the comment it really is).
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     from molbuilder.jobset.materialize import write_run_launch

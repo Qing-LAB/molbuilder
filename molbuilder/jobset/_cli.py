@@ -674,43 +674,47 @@ _MEASUREMENT_PINS = {"max_scf_iter": 3, "relax_steps": 0, "restart": "clean",
 
 
 def _gpu_inventory(base):
-    """The cluster's GPU ``(per-node count, type)`` from the domain menu --
-    § 4.3a's fallback when THIS node's probe has none (a login node).
+    """The cluster's GPU ``(per-node count, type)`` from THE gpu domain
+    row (`submit.gpu_domain_row` -- one selector, shared with the cap and
+    the routing, so the grid's device count, the cap and the submission
+    can never read three different rows) -- § 4.3a's fallback when THIS
+    node's probe has none (a login node).
 
-    ``(None, None)`` when no row records an inventory.  Refuses when a row
+    ``(None, None)`` when that row records no inventory.  Refuses when it
     records SEVERAL types: choosing one would be a ranking, and the probe
     buried ``best_gpu_type`` for exactly that (scheduler_probe.py, N3) --
     the remedy is curating the row down to the type this bench measures.
     """
+    from ..jobset.submit import gpu_domain_row
     from ..runtime_config import get_routing
-    for row in get_routing(project_dir=Path(base)):
-        inv = row.get("gpu") or {}
-        if not inv:
-            continue
-        if len(inv) > 1:
-            raise click.ClickException(
-                f"domain {row.get('name')!r} records several GPU types "
-                f"({', '.join(sorted(inv))}), and choosing one is not the "
-                f"machine's call.  Edit that row in environment.json to "
-                f"keep the type this benchmark should measure.")
-        gtype, count = next(iter(inv.items()))
-        return (int(count) or None), gtype
-    return None, None
+    row = gpu_domain_row(get_routing(project_dir=Path(base)))
+    inv = (row or {}).get("gpu") or {}
+    if not inv:
+        return None, None
+    if len(inv) > 1:
+        raise click.ClickException(
+            f"domain {row.get('name')!r} records several GPU types "
+            f"({', '.join(sorted(inv))}), and choosing one is not the "
+            f"machine's call.  Edit that row in environment.json to "
+            f"keep the type this benchmark should measure.")
+    gtype, count = next(iter(inv.items()))
+    return (int(count) or None), gtype
 
 
 def _gpu_core_cap(base):
-    """``(max_cores, domain name)`` of the first gpu-capable row that
-    states one; ``(None, None)`` otherwise.  Probed since 2026-08-21
+    """``(max_cores, domain name)`` of THE gpu domain row
+    (`submit.gpu_domain_row`; ``(None, None)`` when it states no cap --
+    the queue then teaches).  Probed since 2026-08-21
     (§ 4.3a): sinfo reports one row per node group, so the GPU nodes'
     own core count is on their row even inside a mixed partition -- on
     Sol, GPU nodes take 48 cores where standard nodes take 128.  The
     row stays the user's to edit.
     """
-    from ..environment import domain_serves_gpu
+    from ..jobset.submit import gpu_domain_row
     from ..runtime_config import get_routing
-    for row in get_routing(project_dir=Path(base)):
-        if domain_serves_gpu(row) and row.get("max_cores"):
-            return int(row["max_cores"]), str(row.get("name"))
+    row = gpu_domain_row(get_routing(project_dir=Path(base)))
+    if row is not None and row.get("max_cores"):
+        return int(row["max_cores"]), str(row.get("name"))
     return None, None
 
 
@@ -773,20 +777,14 @@ def _bench_inputs(base, target=None):
     tmpl = read_template(
         template_path(Path(base), task.label).read_text(encoding="utf-8"))
     # THE one read API (`template.md` § 8.0), not a dict comprehension over
-    # `.items`.  The hand-rolled version asked for `enable_gpu` by name with no
-    # engine, which is § 2.2's predicted failure exactly -- a second reader
-    # differing "about the item that does not apply to the engine being asked
-    # about".  On a PySCF description it read the GPU flag as absent and
-    # enumerated a CPU grid, silently.
+    # `.items` -- the hand-rolled version ignored ``engines``, § 2.2's
+    # predicted failure exactly: on a PySCF description it read the GPU
+    # flag as absent and enumerated a CPU grid, silently.
     #
     # TWO names answer one question until § 6.3's settled merge is renamed:
     # SIESTA's `enable_gpu`, PySCF's `use_gpu`.  Spelling both here is the
     # honest encoding of "an un-renamed pair stays two items", and it collapses
     # to one line when the rename lands.
-    # THE one read API (`template.md` § 8.0).  This was a dict comprehension
-    # over ``tmpl.items`` -- a second reader, and § 2.2's predicted failure
-    # exactly: it ignored ``engines``, so it asked a per-engine question as
-    # though it were global.
     #
     # ``select`` rather than ``one`` because the question is *is it on?*: a
     # template that never carried the item answers "no", while ``one`` RAISES
@@ -798,10 +796,13 @@ def _bench_inputs(base, target=None):
     # merge of ``enable_gpu`` / ``use_gpu`` is RULED and not yet renamed, so
     # today two names answer one question.  Writing an engine->name table here
     # would put that un-landed rename in a second place to maintain.  It is
-    # safe only because `prep bench` refuses a non-SIESTA engine moments later
-    # at the seam (`prep.py::_engine_seam`) -- so when that arm lands, THIS
-    # LINE MUST READ THE MERGED ITEM, or a GPU PySCF sweep silently enumerates
-    # a CPU grid.  Recorded as § 12.1 row 9.
+    # safe today only by ACCIDENT (review 2026-08-21): no seam refusal
+    # exists -- a PySCF bench dies later because the measurement pins name
+    # SIESTA-only schema fields, and resolve refuses unknown pins.  The
+    # day PySCFConfig grows any of those fields that gate evaporates and a
+    # `use_gpu` PySCF sweep silently enumerates a CPU grid; the explicit
+    # by-name refusal is E-J1 in the audit's U2 queue.  Recorded as
+    # § 12.1 row 9.
     # THE DECLARED OVERRIDE LANE, split before anything is decided (user
     # rule, 2026-08-20): one-point non-machine entries are pins -- values
     # in force for every trial -- and the machine-answered entries are the
@@ -1214,9 +1215,10 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     **Prep printing what it resolved is what makes submit a plain yes** -- it is
     the only place the chosen geometry and the rendered deck appear together.
 
-    With no STAGE it lays out
-    every stage's container without opening an attempt, which is what a sweep
-    wants and what a ladder needs before its first stage.
+    A STAGE is required on a ladder — bare ``prep run`` is refused by
+    resolve with the ladder listed by name (`engines/stages.md` § 6.5;
+    until 2026-08-21 the stage-less form died earlier, on the BENCHMARK's
+    "which stage's benchmark?" question — review B1).
     """
     # A DESCRIBED calculation is "a template PLUS task.json"
     # (project-layout.md § 2.1), and `prep` builds everything else from the
@@ -1316,8 +1318,16 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             # editable proposal summarize wrote) fills the allocation
             # fields the user did not state; with neither file nor
             # flags, the wrapper's runtime policy is NAMED, not implied.
-            allocation, verdict_pins = _apply_run_config(
-                base, allocation, stage=stage, engine=_pf_task.engine)
+            #
+            # SKIPPED when no stage is named (review 2026-08-21, B1): a
+            # verdict is per stage, and reaching for it stage-less died
+            # with the BENCHMARK's "which stage's benchmark?" question --
+            # falling through instead lets resolve give the right
+            # refusal, the ladder listed by name.
+            verdict_pins = None
+            if stage is not None:
+                allocation, verdict_pins = _apply_run_config(
+                    base, allocation, stage=stage, engine=_pf_task.engine)
             # The declaration's one-point values pin the run too (user
             # rule, 2026-08-20), UNDER the measured verdict: template <
             # declaration < run-config < flags (§ 4.3a's precedence).
@@ -1394,8 +1404,8 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         # grouped one, not one-per-invocation.  prep just wrote
         # jobset.sh, so the hint speaks the launcher.
         click.echo(f"next: ./jobset.sh submit bench "
-                   f"{stage or '<stage>'}   (grouped; a cpu+gpu matrix "
-                   f"submits one job per side)")
+                   f"{stage or '<stage>'}   (grouped: one job per "
+                   f"resource shelf)")
         click.echo(f"then: ./jobset.sh summarize bench {stage or '<stage>'}"
                    f"  -- writes bench-result.json + run-config.toml "
                    f"(the editable proposal `prep run` applies)")
@@ -1656,12 +1666,15 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         # is not.
         domain = _execn["domain"]
         domain_source = "execution.domain (config)"
-    if only_side and (kind != "bench" or mode != "submit"):
+    if only_side and (kind != "bench" or mode != "submit"
+                      or trial is not None):
         # Mirrors the domain refusal below: a side filter rides the GROUPED
-        # submission and nothing else (generator.md § 4.3a).
+        # submission and nothing else (generator.md § 4.3a).  A named
+        # trial IS the selection, so pairing it with --only would be a
+        # filter silently ignored (review 2026-08-21).
         raise click.ClickException(
             "--only picks a side of a grouped bench submission; it has no "
-            "meaning for `submit run` or --mode direct.")
+            "meaning for `submit run`, --mode direct, or a named trial.")
     if kind == "bench":
         # the stage's own sweep record, from its bench container (§ 6.3)
         js, base = _load_bench_set(bundle, stage)
@@ -1681,10 +1694,11 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     try:
         if (kind == "bench" and js.kind == "sweep"
                 and mode == "submit" and trial is None):
-            # ONE job for the whole sweep (§ 2.3.2, user 2026-08-20): the
-            # trials ride a single allocation in sequence, each under the
-            # per-trial bound.  A named trial still submits alone below --
-            # how a single point is re-run.
+            # ONE grouped job per resource shelf (§ 2.3.2 user 2026-08-20;
+            # split per shelf 2026-08-21, generator.md § 4.3a): each
+            # shelf's trials ride one exact-fit allocation in sequence,
+            # each under the per-trial bound.  A named trial still submits
+            # alone below -- how a single point is re-run.
             from .submit import submit_bench_group
             # The decision entry records the SWEEP considered -- the group's
             # actual members are the still-unlaunched subset, which the

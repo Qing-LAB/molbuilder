@@ -1738,7 +1738,7 @@ last paragraph says why).
 | **trajectory log** | `<label>_<NN>_<stage>.molwatch.log` | beside its deck |
 | **stdout** | `<label>_<NN>_<stage>-run<N>.out` — the wrapper's run counter rides the name in EVERY shape (§ 2.3, D18d: one emitter; this row said the hierarchy dropped the counter, against the section that owns the rule AND the code) | flat: beside the deck · hierarchical: inside `run-<n>/` |
 | **warm-restart state** | `<label>.XV` `.DM` `.CG` — **bare** | flat: shared at the root · hierarchical: inside the attempt |
-| **launch record** | `run.json` | inside the attempt (hierarchy) — and inside a LAUNCHED TRIAL's dir in every shape: a trial dir is its own attempt (§ 1.6; the registry row) |
+| **launch record** | `run.json` | inside the attempt (hierarchy) — and inside a LAUNCHED TRIAL's dir in every shape: a trial dir is its own attempt (`project-layout.md` § 1.6; the registry row) |
 
 **One rule generates the whole Name column: who names the file decides whether
 it carries the stage.** A file **SIESTA** names is bare, because SIESTA looks for

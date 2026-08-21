@@ -469,9 +469,10 @@ def test_submit_dry_run_sweep_per_job_flags_vary(tmp_path):
     """The F2 fix: a SHARED-script sweep must still get per-job ``-n`` via the
     CLI flags, so one rendered ``.sbatch`` serves every point.
 
-    Exercised one point per invocation, which is now the only way a point
-    reaches a scheduler — and the invariant is the same one: the flags are
-    per-JOB, so two points of one sweep must come out different.
+    Exercised one point per invocation (a named trial's lane; points also
+    reach the scheduler as riders of their shelf's grouped job) — and the
+    invariant is the same one: the flags are per-JOB, so two points of one
+    sweep must come out different.
     """
     cmds = {}
     for name, want in (("G1K1C4", "1"), ("G1K2C4", "2")):
@@ -797,8 +798,8 @@ def test_sbatch_command_carries_the_claim_explicitly(tmp_path):
 
 def test_cli_submit_falls_back_to_the_configs_mode(tmp_path, monkeypatch):
     """C11: with no flag, ``execution.mode`` serves.  Reaching the
-    next-unlaunched trial pick downstream is the proof the mode resolved
-    to `submit` (direct mode never picks -- it runs the set in order)."""
+    grouped-plan path downstream is the proof the mode resolved to
+    `submit` (direct mode never groups -- it runs the set in order)."""
     import molbuilder.runtime_config as rc
     monkeypatch.setattr(rc, "get_execution", lambda *a, **k: {"mode": "submit"})
     _sweep().write(tmp_path / "job-set.json")

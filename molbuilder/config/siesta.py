@@ -234,9 +234,11 @@ class SiestaConfig:
     # fields cleanly:
     #   * Profile card -- relax_type + MD physics (room/temp/dt)
     #   * Stage card   -- force_tol + max_displ (convergence targets)
-    #   * Budget card  -- relax_steps + mpi_np + omp_threads +
-    #                     BlockSize + ParallelOverK + max_memory_mb +
+    #   * Budget card  -- relax_steps + BlockSize + ParallelOverK +
     #                     diag_algorithm + enable_gpu
+    #   * Staging card -- mpi_np + omp_threads + gpu_count +
+    #                     max_memory_mb + continue_retries (the
+    #                     workflow_group="staging" members)
     _form_section_order = (
         "System",
         "Basis & grid",
@@ -876,8 +878,8 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "label":          "Warm-retry budget",
         # 0 IS A REAL ANSWER: "run once, whatever happens".  The lower bound
         # was 1, so there was no way to say it -- and a BENCHMARK TRIAL is
-        # exactly the run that must not retry.  A trial is capped at 5 SCF
-        # cycles on purpose, so it never converges, so the wrapper retried it
+        # exactly the run that must not retry.  A trial is capped at a few SCF
+        # cycles on purpose (3 since 2026-08-21), so it never converges, so the wrapper retried it
         # every time and `summarize` timed the SECOND run.  The wrapper has
         # always handled 0 (`continue_retries and > 0` gates the whole loop);
         # only this bound refused to express it.
@@ -1257,10 +1259,10 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
     # the form params.  None / 0 / 1 -> single-process (no mpirun).
     # Don't confuse with block_size (BlockSize for ScaLAPACK
     # within a rank); rank count is the OUTER parallelism.
-    # All five Parallel-execution fields tagged workflow_group="budget"
-    # (2026-06-13).  Compute layout (MPI ranks, OMP threads, BlockSize,
-    # parallel-over-k, memory cap) is "how much compute am I willing
-    # to spend on this run" — same category as MaxSCFIterations and
+    # The parallel-execution family (MPI ranks, OMP threads, GPU count,
+    # BlockSize, parallel-over-k, memory cap; the machine-answered ones
+    # moved to workflow_group="staging" on 2026-08-15).  Compute layout
+    # is "how much compute am I willing to spend on this run" — same category as MaxSCFIterations and
     # MD.Steps.  Folds the Parallel-execution section into the
     # Compute & budget workflow-group card.
     mpi_np: Optional[int] = field(default=None, metadata={
