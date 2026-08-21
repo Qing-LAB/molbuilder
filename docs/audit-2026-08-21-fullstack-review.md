@@ -303,7 +303,9 @@ review-and-validation round when these land.
   dresser (M1.2) and one GPU mechanism (M1.4); refs rendering
   (pass `f.refs` through the long-help path) + legend casing;
   T1-T3 test retirements; the auto-detect trio extraction.
-- **U7 (2β — DESIGNED 2026-08-21, build awaiting yes):** multi-point
+- **U7 (2β — IN PROGRESS; user-prioritized 2026-08-21 AHEAD of U2-U5:
+  "I need this to test on Sol… a framework level treatment rather than
+  a hack in script"):** multi-point
   value axes, integrated across placements under ONE bench.  The
   user's question ("gpu vs cpu separately submitted to different
   clusters — how does bench integrate these under one framework?")
@@ -340,10 +342,82 @@ review-and-validation round when these land.
      Sol's partitions (same silicon); GPU numbers are their own
      build's; the verdict reports per-combination facts and choosing
      stays the user's (run-config is a proposal).
-  On the yes: the contract lands in generator.md § 4.3a (replacing
-  the refused-by-name note), then grid enumeration → prep fold →
-  per-domain grouping in submit → summarize's matrix report → the
-  Task-setup bench table's warning flips to describe the real rule.
+  THE YES IS GIVEN (user: gpu as the special axis; split submission
+  to cpu-only vs gpu-enabled clusters to stop wasting resources;
+  framework-level, prioritized ahead of U2-U5 for Sol testing).
+
+  RECONNAISSANCE COMPLETE (2026-08-21; verify anchors before editing,
+  line numbers decay):
+  * `_declared_execution_pins` (jobset/_cli.py ~585-650) returns
+    `(pins, axes)`; the multi-point-value refusal to REPLACE is at
+    ~:635.  Extension: return `(pins, axes, value_axes)` where
+    multi-point non-machine entries become `value_axes[name]=pts`,
+    each point validated with the SAME bool/enum shape checks the
+    one-point arm runs.
+  * `_bench_inputs` (~:651-856) returns `(points, pins, translation)`.
+    `on_gpu` currently comes from the declared enable_gpu PIN
+    (~:735-745) and selects the grid FAMILY: declared machine grid at
+    ~:780-810 (cpu: (1,r,c); gpu: divisor logic g*k==mpi_np), probed
+    grid via `bench/grid.sweep_grid` otherwise.  Extension per the
+    ruling: enable_gpu with 2 points pops out of value_axes as
+    `gpu_flags=[false,true]`; enumerate the machine grid PER FLAG;
+    cross with the cartesian of the remaining value_axes; each point
+    dict gains `value_pins` = its value coordinates (incl. its
+    enable_gpu flag).  `MachineTranslation` (resolve.py:148;
+    constructed ~:813/:820 — gpu adds `gres`) must serve mixed
+    points: one translation whose `to_resources` branches on the
+    point's shape ("G" present → gpu mapping), axes = the union.
+  * The measurement pins (~:840-855) stay shared; per-trial pins =
+    `{**declared_pins, **point.value_pins, **measurement_pins}` —
+    measurement wins, value coords under it, same precedence story.
+  * Consumer: prep bench arm (~:1090) `prep_calculation(base, stage,
+    …, sweep=points, pins=pins, translation=translation, …)`.
+    STILL TO LOCATE (first task after compaction): prep.py's
+    trial-element construction — where each sweep point becomes a
+    trial dir/name and where `pins` are applied to resolve; extend to
+    overlay the point's `value_pins` per trial and to fold value
+    coords into the TRIAL NAME (filesystem-safe slug, e.g.
+    `np32-gpu-diag-ELPA2` — dedupe/ordering deterministic).
+  * Submit: `submit_bench_group` (jobset/submit.py:494) submits ONE
+    grouped job; `_job_wants_gpu(job_dir, job)` (:347) already reads
+    each trial's deck.  Extension: partition trials by that answer →
+    one grouped job per side; the gpu side's sbatch takes the domain
+    whose `Domain.gpu` is truthy, the cpu side the default/configured
+    domain (`get_routing`, runtime_config.py:1693, sourced from
+    environment.json; `Domain` fields environment.py:89+: partition,
+    qos, max_time, node_type, max_cores, max_mem_gb, gpu, extra).
+    Add `--domain` filter to submit one side.  Per-trial cap check
+    against ITS side's `max_cores` — drop/refuse BY NAME with the
+    cell list (Sol: gpu 48 vs standard 128; the gpu×np128 cell).
+  * Summarize: `run_summarize_jobset` + `choose_winner` (ranks
+    completed points) — STILL TO LOCATE: the run-config proposal
+    writer; extend the report to table value coordinates and the
+    proposal to carry the winning value pins (they are already
+    pin-shaped for `prep run`'s existing `{**declared, **verdict}`
+    overlay).  Async/location-blind behavior needs NO change — that
+    is what makes cross-cluster work (results ride the folder; the
+    user's projects dir is a git repo).
+  * UI: the Task-setup value-axis warning (task-setup/viewer.js, the
+    `_tooMany` block landed in U1) flips to describe the real rule
+    once built; sweepable rowNote may say "sweeps (value axis)".
+  * Contract FIRST: generator.md § 4.3a (heading at :324) — replace
+    the recorded-extension note with the rule above (gpu the
+    grid-family axis; per-domain grouped submission; prep-time cap
+    refusal; one bench-result across domains/machines).  Also close
+    § 12.1 row 9's deferred hazard and the roadmap § 0.3 "2β" row on
+    delivery.
+  * Tests: value-axes enumeration + naming; per-trial pins reach the
+    decks (render probe: two trials differ in the Diag.Algorithm
+    line); mixed-translation resources (gres only on gpu points);
+    the domain split (fake environment.json with two domains; the
+    dry-run path `test_cli_submit_dry_run_lists_…` shows the idiom);
+    cap-drop by name; summarize matrix on synthetic artifacts; the
+    honesty of the user's exact matrix (mpi_np×gpu×diag×block from
+    their Relax task.json — a fixture copy of its bench block).
+  * The user's LIVE context: Sol, `projects/Au-BDT-Au/optimization/
+    Relax` (444-atom junction, coarse→tight ladder, preflight-clean);
+    their declared matrix is the acceptance case; workaround
+    (one-point pins per round) given meanwhile.
 
 - **U6 (after U1-U5):** the second full R×3 review-and-validation
   round the user has asked for, plus a full `none2e` + live E2Es.
