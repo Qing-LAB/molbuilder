@@ -698,6 +698,7 @@ function renderCameOver(obj) {
 /* ---------- the pickers: what may be added, from the catalogue ---------- */
 
 let _cols = null;       // every parameter this engine has  {name,label,group}
+let _colsKey = null;
 /* name -> the catalogue's own item, so the table can show what a parameter
  * DEFAULTS to and what it is for.  The catalogue already carries `default`,
  * `unit` and `help`; a second copy here would be the drift the one-source rule
@@ -719,9 +720,19 @@ let _sweep = null;      // the ones a benchmark may sweep
  * whether a ladder is a ladder — so a ladder built here ran every stage clean.
  */
 async function loadColumnChoices(engine) {
-    if (_cols) return _cols;
+    // The folder's KIND narrows the columns (template.md § 6.3's sibling
+    // rule) -- a vibration description's picker offers the vibration
+    // items beside the shared ones; an optimization's never sees them.
+    // The cache is keyed by (engine, kind): a bare `if (_cols)` served an
+    // optimization folder's columns to the vibration folder opened next.
+    const kind = (_task && _task.calculation)
+        || (_handover && _handover.calculation) || "optimization";
+    const key = (engine || "siesta") + ":" + kind;
+    if (_cols && _colsKey === key) return _cols;
+    _colsKey = key;
     const r = await fetch("/api/task-setup/columns?engine="
-                          + encodeURIComponent(engine || "siesta"));
+                          + encodeURIComponent(engine || "siesta")
+                          + "&calculation=" + encodeURIComponent(kind));
     const j = await r.json();
     _cols = (j && j.items) || [];
     for (const it of _cols) _meta[it.name] = it;
@@ -1143,7 +1154,17 @@ function removeSetting(name) {
  */
 function proposedFromHandover(over, shape, varies, bench) {
     const run = (over && over.run) || {};
-    return JSON.stringify({
+    // THE KIND rides the hand-over (absent = optimization, the same
+    // absent-is-a-state rule task.json uses).  A vibration hand-over
+    // proposes the kind's own ladder -- ONE `freq` stage
+    // (spectra-migration plan § 2: the relaxation is the deck's
+    // precondition, not a rung) -- where an optimization proposes the
+    // ordinary `coarse` start.
+    const kind = (over && over.calculation) || "optimization";
+    const stages = kind === "vibration"
+        ? [{ name: "freq", enabled: true, overrides: {} }]
+        : [{ name: "coarse", enabled: true, overrides: {} }];
+    const out = {
         schema:    "molbuilder/task@1",
         engine:    (over && over.engine) || { name: "siesta" },
         shape:     shape,
@@ -1151,9 +1172,11 @@ function proposedFromHandover(over, shape, varies, bench) {
                      created: run.created || "" },
         structure: (over && over.structure) || {},
         varies:    varies || [],
-        stages:    [{ name: "coarse", enabled: true, overrides: {} }],
+        stages:    stages,
         bench:     bench || undefined,
-    }, null, 2) + "\n";
+    };
+    if (kind !== "optimization") out.calculation = kind;
+    return JSON.stringify(out, null, 2) + "\n";
 }
 
 function setShape(shape) {

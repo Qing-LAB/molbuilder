@@ -1533,3 +1533,43 @@ def test_another_kinds_items_stay_out_of_the_optimization_surfaces(
         assert f'"{name}"' not in schema, f"{name} leaked into the form"
         assert f'"{name}"' not in cols, f"{name} leaked into the columns"
     assert '"basis"' in schema, "shared items must stay"
+
+
+def test_the_hand_over_carries_the_vibration_kind_end_to_end(web_client):
+    """handover-procedure § 6, landed (spectra-migration P2, 2026-08-20):
+    the hand-over is a Send button on the SAME endpoint.  With
+    calculation=vibration the response's task.1st.json carries the kind,
+    the template text carries the twelve vibration items, and the
+    schema/columns doors serve the kind's form -- while an optimization
+    hand-over stays byte-for-byte what it was (absent-is-a-state)."""
+    import json as _json
+    body = {
+        "engine": "pyscf", "calculation": "vibration", "name": "V",
+        "structure": {"elements": ["O", "H", "H"],
+                      "positions": [[0, 0, 0.119], [0, 0.757, -0.477],
+                                    [0, -0.757, -0.477]]},
+        "params": {},
+    }
+    r = web_client.post("/api/task-setup/handover", json=body).get_json()
+    assert r["ok"], r
+    over = _json.loads(r["handover_text"])
+    assert over["calculation"] == "vibration"
+    assert "[item.already_relaxed]" in r["template_text"]
+    assert "[item.compute_ir]" in r["template_text"]
+
+    body2 = dict(body); body2.pop("calculation")
+    r2 = web_client.post("/api/task-setup/handover", json=body2).get_json()
+    over2 = _json.loads(r2["handover_text"])
+    assert "calculation" not in over2, "absent IS the optimization state"
+
+    sch = _json.dumps(web_client.get(
+        "/api/build/schema/pyscf?calculation=vibration").get_json())
+    assert '"already_relaxed"' in sch and '"es_mode_selection"' in sch
+    cols = _json.dumps(web_client.get(
+        "/api/task-setup/columns?engine=pyscf&calculation=vibration"
+    ).get_json())
+    assert '"compute_ir"' in cols
+
+    src = (STATIC / "task-setup" / "viewer.js").read_text()
+    assert '"freq"' in src and 'kind === "vibration"' in src, (
+        "the receiver must propose the kind's own one-stage ladder")

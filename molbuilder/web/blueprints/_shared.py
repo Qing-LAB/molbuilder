@@ -930,7 +930,9 @@ def _control_for(item) -> str:
     return _CONTROL_FOR_TYPE.get(item.type, "text")
 
 
-def catalogue_to_form_schema(engine: str, id_prefix: str = "p") -> Dict[str, Any]:
+def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
+                             calculation: str = "optimization",
+                             ) -> Dict[str, Any]:
     """The Build form's schema for *engine*, from the catalogue.
 
     **The two grouping axes** (`form-schema.md` § 1.3), both carried by every
@@ -960,12 +962,12 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p") -> Dict[str, Any
     # item's own declaration rather than by a name this file would have to
     # keep: a second such parameter needs no edit here.
     items = [it for it in items if it.group != "staging"]
-    # The Build form describes an OPTIMIZATION -- the vibration flow gets
-    # its own surface (spectra-migration plan § 3) -- so an item another
-    # kind owns stays out by its own declaration (`template.md` § 6.3's
-    # sibling rule; the kind threads through here when that surface lands).
+    # The form serves ONE calculation kind (`template.md` § 6.3's sibling
+    # rule): an item another kind owns stays out by its own declaration.
+    # P0 hardcoded "optimization" here; P2 threads the caller's kind --
+    # the vibration form is the same renderer over the same catalogue.
     items = [it for it in items
-             if not it.calculations or "optimization" in it.calculations]
+             if not it.calculations or calculation in it.calculations]
 
 
     by_category: Dict[str, List[Dict[str, Any]]] = {}

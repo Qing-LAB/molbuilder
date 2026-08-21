@@ -1168,7 +1168,10 @@ def api_build_schema(engine: str):
     # is unchanged -- it takes whatever schema it is handed.
     return jsonify({
         "ok": True,
-        "schema": _catalogue_to_form_schema(engine, id_prefix),
+        "schema": _catalogue_to_form_schema(
+            engine, id_prefix,
+            calculation=str(request.args.get("calculation")
+                            or "optimization")),
     })
 
 
@@ -1350,6 +1353,15 @@ def api_task_setup_handover():
     if engine not in ("siesta", "pyscf"):
         return jsonify({"ok": False,
                         "error": f"unknown engine {engine!r}"}), 400
+    # The hand-over carries the calculation KIND (handover-procedure § 6:
+    # "the hand-over is a Send button on the same endpoint" -- landed for
+    # the vibration kind, 2026-08-20).  The template narrows by it, and
+    # the receiving tab writes it into task.json.
+    calculation = str(body.get("calculation") or "optimization")
+    if calculation == "vibration" and engine != "pyscf":
+        return jsonify({"ok": False,
+                        "error": "the vibration kind is PySCF-first "
+                                 "(spectra-migration plan § 2)"}), 400
 
     try:
         struct = _struct_from_body(body)
@@ -1406,7 +1418,8 @@ def api_task_setup_handover():
     cfg = _dc.replace(cfg, **{_group.field: label})
 
     try:
-        template_text = template_with_values(cfg, engine=engine)
+        template_text = template_with_values(cfg, engine=engine,
+                                             calculation=calculation)
     except Exception as exc:                      # a bad value, named
         return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -1479,6 +1492,12 @@ def api_task_setup_handover():
         # omitted so a reader of the file knows it is waiting on them.
         "awaiting":  ["shape", "stages"],
     }
+    if calculation != "optimization":
+        # The KIND rides the hand-over (absent = optimization, the same
+        # absent-is-a-state rule task.json itself uses) -- the receiving
+        # tab writes it into task.json and proposes the kind's own ladder
+        # (one `freq` stage for vibration) instead of the tier default.
+        handover["calculation"] = calculation
 
     return jsonify({
         "ok":            True,
@@ -1674,16 +1693,16 @@ def api_task_setup_columns():
         return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
 
     from molbuilder import template as _T
+    _calc_kind = str(request.args.get("calculation") or "optimization")
     parsed = _T.catalogue()
     out = []
     for it in _T.select(parsed, engine=engine):
         # THE membership rule, asked of the item rather than restated here.
         if it.allocation:
             continue
-        # A column belongs to this folder's KIND; until the task-setup
-        # surface threads it (spectra-migration plan § 3), the tab serves
-        # optimization descriptions (template.md § 6.3's sibling rule).
-        if it.calculations and "optimization" not in it.calculations:
+        # A column belongs to this folder's KIND (template.md § 6.3's
+        # sibling rule); the tab passes its description's kind (P2).
+        if it.calculations and _calc_kind not in it.calculations:
             continue
         out.append({
             "name":    it.name,
