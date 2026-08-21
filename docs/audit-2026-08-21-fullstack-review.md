@@ -303,6 +303,48 @@ review-and-validation round when these land.
   dresser (M1.2) and one GPU mechanism (M1.4); refs rendering
   (pass `f.refs` through the long-help path) + legend casing;
   T1-T3 test retirements; the auto-detect trio extraction.
+- **U7 (2β — DESIGNED 2026-08-21, build awaiting yes):** multi-point
+  value axes, integrated across placements under ONE bench.  The
+  user's question ("gpu vs cpu separately submitted to different
+  clusters — how does bench integrate these under one framework?")
+  and the design that answers it, built on three verified hooks
+  (environment.json's `Domain` = a reachable (partition, qos) pair
+  with limits; `submit._job_wants_gpu` already reading per-job GPU
+  placement; the wrapper already choosing its env from the finished
+  deck):
+  1. value axes enumerate into trials exactly like machine axes; each
+     trial's deck carries its point as a PIN through the existing
+     override lane (template < declaration < run-config < flags);
+  2. a trial's PLACEMENT is derived from its own finished deck — the
+     same one door the wrapper uses: a GPU-asking deck needs the gpu
+     domain, else the CPU domain.  No new declaration; the GPU fact
+     keeps its one home;
+  3. `submit bench <stage>` partitions trials by required domain and
+     submits ONE GROUPED JOB PER DOMAIN (the grouped machinery
+     unchanged, run per group; a `--domain` filter submits one side);
+     job-set.json records each trial's group;
+  4. caps are validated per trial against ITS domain at PREP
+     (Sol: gpu 48 cores vs standard 128, from environment.json) — an
+     unschedulable cell (gpu × np128) is refused or dropped BY NAME
+     at prep, never discovered in the queue;
+  5. `summarize` stays allocation-blind (async by design): it reads
+     whichever trials' artifacts have landed → ONE bench-result.json
+     spanning the matrix + one run-config proposal;
+  6. CROSS-CLUSTER is the same design, because environment.json is
+     per-machine and the bundle is one folder (the user's is a git
+     repo): each machine preps/submits only the groups whose domain
+     it reaches; results ride the folder back; summarize on either
+     machine reports unknown/incomplete for the rest — the existing
+     honesty, unchanged;
+  7. comparability stated, not assumed: CPU trials compare across
+     Sol's partitions (same silicon); GPU numbers are their own
+     build's; the verdict reports per-combination facts and choosing
+     stays the user's (run-config is a proposal).
+  On the yes: the contract lands in generator.md § 4.3a (replacing
+  the refused-by-name note), then grid enumeration → prep fold →
+  per-domain grouping in submit → summarize's matrix report → the
+  Task-setup bench table's warning flips to describe the real rule.
+
 - **U6 (after U1-U5):** the second full R×3 review-and-validation
   round the user has asked for, plus a full `none2e` + live E2Es.
 
