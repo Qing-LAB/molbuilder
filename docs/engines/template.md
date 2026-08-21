@@ -238,7 +238,7 @@ than off the catalogue: the legacy form builder that Spectra and Transport use,
 and the code that decides which card a validator finding lands on.
 
 **That duplication is the debt, and it is measured and guarded rather than
-tolerated quietly.** **508 facts live in two places** (measured 2026-08-20;
+tolerated quietly.** **513 facts live in two places** (measured 2026-08-20;
 307 when this was written, and the growth is the point — the debt compounds
 with every parameter added).
 `tests/test_catalogue_agreement.py` compares every one of them on every run, so

@@ -489,18 +489,51 @@ ranks-per-device axis instead of a fixed rule.
 **The coordinate, and how the machine is asked.** A GPU trial is a point
 `G × K × C`: G devices, K MPI ranks *per device*, C cores per rank. The
 scheduler is asked for `-n G·K` ranks, `-c C` cores each, and `--gres` carries
-G — ranks and devices are independent asks. **G is never declared** *(user
-question, 2026-08-21)*: a device count is a machine's shape, and the
-description names no machine
-([`generator.md § 4.3`](?doc=execution/generator.md)). The declaration's
-portable half is `mpi_np` (the TOTAL rank count, `G·K`) plus `enable_gpu`;
-at prep, G enumerates over each declared rank count's divisors, bounded by
-the recorded device count — `environment.json`'s topology on a GPU
-machine, or the domain row's probed inventory (`gpu: {"a100": 4}`) behind
-a login node. To bound which G values run: pick the `mpi_np` values (their
-divisors are the G menu), curate the inventory count down, or submit
-trials by name — each G is its own shelf group now, so skipping one skips
-its whole allocation. At launch the wrapper counts the
+G — ranks and devices are independent asks. **G is declared with
+`gpu_count`** *(user ruling, 2026-08-21: "explicit is what we need" — G
+was divisor-derived until then)*: `bench.gpu_count = [1, 2, 4]` measures
+exactly those device counts, one exact-fit shelf group each, and nothing
+the machine invents. The rules around it are refusals and named drops,
+never repairs: a count beyond the recorded device count **refuses**; an
+`(mpi_np, G)` pair that cannot split evenly is **dropped by name** (ELPA's
+equal-share rule — never rounded); `gpu_count` on a bench whose
+`enable_gpu` resolves false **refuses** (it would be silently ignored);
+and with `gpu_count` absent, the machine *proposes* — G ranges over each
+declared rank count's divisors, bounded by the recorded device count.
+The device count itself comes from `environment.json`: the topology where
+the GPUs are, or the domain row's probed inventory (`gpu: {"a100": 4}`)
+behind a login node.
+
+**The whole picture, one diagram:**
+
+```mermaid
+flowchart TD
+    subgraph YOU["task.json — what YOU declare (portable, no machine facts)"]
+        MP["bench.mpi_np = [32, 64]<br/>TOTAL ranks per trial"]
+        EG["bench.enable_gpu = [true, false]<br/>the cpu-vs-gpu family axis"]
+        GC["bench.gpu_count = [1, 2, 4]<br/>devices per trial — EXPLICIT<br/>(absent → machine proposes divisors)"]
+        VA["bench.diag_algorithm, block_size, …<br/>value axes → every trial's deck"]
+    end
+    subgraph MACHINE["environment.json — what the machine RECORDS"]
+        TOPO["topology: sockets × cores/socket,<br/>gpus_per_node + gpu_type<br/>(probed where the GPUs are)"]
+        DOM["domains menu: partition/qos,<br/>GPU inventory {a100: 4} (probed),<br/>max_cores = 48 (curated)"]
+    end
+    PREP["prep bench — the grid"]
+    MP --> PREP
+    EG --> PREP
+    GC --> PREP
+    VA --> PREP
+    TOPO -->|"device count + type<br/>(login node: the inventory answers)"| PREP
+    DOM -->|"gpu-capable? core cap?"| PREP
+    PREP --> CPU["CPU family (G = 0)<br/>one cell per mpi_np × omp_threads"]
+    PREP --> GPU["GPU family<br/>G = declared gpu_count (exact)<br/>K = mpi_np / G — must divide,<br/>else dropped BY NAME<br/>C = omp_threads (default 1)"]
+    GPU -->|"G·K·C > domain max_cores<br/>→ dropped BY NAME"| GPU
+    CPU --> TRIALS["× the value axes → trials,<br/>each deck carrying its coordinates"]
+    GPU --> TRIALS
+    TRIALS --> SHELF["submit: one exact-fit GROUP per shelf<br/>(same ranks × cores × gres) —<br/>independent jobs, widest first,<br/>CPU groups hold no device"]
+    SHELF --> SUMM["summarize — any time, async:<br/>finished ranked, unfinished named,<br/>winner's mpi_np/cpus/gres/value pins<br/>→ run-config.toml (yours to edit)"]
+    SUMM --> RUN["prep run + submit run:<br/>the file fills what flags don't state;<br/>at launch the wrapper counts the devices<br/>actually granted and load-balances<br/>K = ranks/devices (MPS if K > 1)"]
+``` At launch the wrapper counts the
 visible GPUs, pins each rank to a device and to the NUMA node that owns it,
 pins BLAS to one thread so MPI×BLAS never oversubscribes, and — whenever
 ranks outnumber devices — starts a per-job **NVIDIA MPS** daemon and tears it

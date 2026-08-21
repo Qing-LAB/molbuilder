@@ -326,6 +326,69 @@ def test_the_winners_coordinates_ride_run_config(sol_calc):
     assert cfg["pins"]["enable_gpu"] is False
 
 
+# --------------------------------------------------------------------- #
+#  gpu_count: the device count is DECLARED, not derived                  #
+# --------------------------------------------------------------------- #
+
+def test_declared_gpu_count_is_exact(sol_calc):
+    """User ruling, 2026-08-21 ("explicit is what we need"): declared
+    device counts are measured exactly -- no divisor invention -- and an
+    uneven (mpi_np, G) pair is dropped BY NAME (ELPA's equal-share rule),
+    never rounded."""
+    _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
+                        "enable_gpu": [True], "gpu_count": [1, 2, 3]})
+    points, _pins, _tr = _bench_inputs(sol_calc)
+    assert sorted(p["G"] for p in points) == [1, 2],         "exactly the declared counts that divide -- G4 must NOT appear"
+    assert all(p["G"] * p["K"] == 32 for p in points)
+
+
+def test_uneven_split_is_dropped_by_name(sol_calc, capsys):
+    _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
+                        "enable_gpu": [True], "gpu_count": [2, 3]})
+    _bench_inputs(sol_calc)
+    out = capsys.readouterr().out
+    assert "split EVENLY" in out and "mpi_np=32 x gpu_count=3" in out
+
+
+def test_gpu_count_beyond_the_record_is_refused(sol_calc):
+    import click
+    _declare(sol_calc, {"mpi_np": [32], "enable_gpu": [True],
+                        "gpu_count": [8]})
+    with pytest.raises(click.ClickException) as e:
+        _bench_inputs(sol_calc)
+    assert "gpu_count = [8]" in str(e.value)
+    assert "4 device(s)" in str(e.value)
+
+
+def test_gpu_count_on_a_cpu_bench_is_refused_not_ignored(sol_calc):
+    import click
+    _declare(sol_calc, {"mpi_np": [32], "enable_gpu": [False],
+                        "gpu_count": [2]})
+    with pytest.raises(click.ClickException) as e:
+        _bench_inputs(sol_calc)
+    assert "silently ignored" in str(e.value)
+
+
+def test_every_cell_uneven_refuses_a_gpu_only_bench(sol_calc):
+    import click
+    _declare(sol_calc, {"mpi_np": [32], "enable_gpu": [True],
+                        "gpu_count": [3]})
+    with pytest.raises(click.ClickException) as e:
+        _bench_inputs(sol_calc)
+    assert "every GPU cell was dropped" in str(e.value)
+
+
+def test_gpu_count_alone_filters_the_proposed_grid(sol_calc):
+    """gpu_count without mpi_np does NOT invent a rank grid: the K x C
+    half stays the machine's proposal, filtered to the declared device
+    counts."""
+    _declare(sol_calc, {"enable_gpu": [True], "gpu_count": [2]})
+    points, _pins, _tr = _bench_inputs(sol_calc)
+    assert points, "the probed ladder must survive the filter"
+    assert {p["G"] for p in points} == {2}
+    assert len({p["K"] for p in points}) > 1,         "K must still range over the machine's proposal"
+
+
 def test_summarize_mid_flight_lists_unfinished_and_refreshes(sol_calc):
     """User rule, 2026-08-21: summarize works WHILE the bench runs -- the
     finished trials are summarized consistently, the unfinished ones are

@@ -1303,6 +1303,35 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "skip_cli":   True,
     })
 
+    gpu_count: Optional[int] = field(default=None, metadata={
+        "category": ("execution",),
+        # A machine fact like ``mpi_np`` -- an ALLOCATION ask, never a
+        # template value.  As a bench axis it is EXPLICIT (user,
+        # 2026-08-21: "explicit is what we need"): declare the device
+        # counts to try and the grid enumerates exactly those, one shelf
+        # each; absent, the machine proposes the divisors of ``mpi_np``
+        # bounded by the recorded device count (generator.md 4.3a).
+        "allocation": True,
+        "item_kind":  "wrapper",
+        "workflow_group": "staging",
+        "label":      "GPUs per trial (G)",
+        "engine_key":  "(molbuilder: scheduler ``--gres=gpu:<type>:G``; "
+                       "not in .fdf)",
+        "null_label": "(machine proposes)",
+        "range":      (1, 16),
+        "help":       "How many GPU devices one trial (or run) asks the "
+                      "scheduler for.  Ranks per device follow as "
+                      "mpi_np / G, and the split must be EVEN -- ELPA's "
+                      "own rule is the same rank count on every device "
+                      "(tuning.md 2.12) -- so a bench cell whose mpi_np "
+                      "does not divide by G is dropped by name at prep.  "
+                      "Declared in the bench block it is an axis: "
+                      "gpu_count = [1, 2, 4] measures exactly those "
+                      "device counts.  Leave it out and prep proposes "
+                      "the divisors of each declared rank count.",
+        "skip_cli":   True,
+    })
+
     block_size: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
         # A PLAIN INT.  It was ``decl_type: "pow2"`` until 2026-08-15, and

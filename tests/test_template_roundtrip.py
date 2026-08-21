@@ -595,7 +595,11 @@ def test_the_machine_answered_items_are_flagged_and_nothing_else_is():
     """
     t = _siesta_template()
     answered = {i.name for i in T.select(t, allocation=True)}
-    assert answered == {"mpi_np", "omp_threads", "max_memory_mb"}, answered
+    # ``gpu_count`` joined 2026-08-21 (user: "explicit is what we need") --
+    # the device count is the scheduler's grant exactly like the rank
+    # count, and as a bench axis it is declared, not derived.
+    assert answered == {"mpi_np", "omp_threads", "max_memory_mb",
+                        "gpu_count"}, answered
 
     # `block_size` is the case that made the old registry look necessary: the
     # scheduler does NOT grant it -- a benchmark measures it and `prep`

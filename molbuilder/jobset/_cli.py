@@ -867,7 +867,7 @@ def _bench_inputs(base, target=None):
     # story: non-execution items, bad enum/bool values, and the
     # multi-point value axis that is recorded rather than built.)
     declared = {k: list(v) for k, v in declared_axes.items()}
-    _KNOWN_AXES = ("mpi_np", "omp_threads")
+    _KNOWN_AXES = ("mpi_np", "omp_threads", "gpu_count")
     _unresolvable = sorted(k for k in declared if k not in _KNOWN_AXES)
     if _unresolvable:
         # `max_memory_mb` (and PySCF's `threads`) are machine-answered
@@ -882,7 +882,11 @@ def _bench_inputs(base, target=None):
             f"(generator.md § 4.3a).")
     sockets = getattr(topo, "sockets", None) or 1
     cores_total = (sockets * cps) if cps else None
-    if declared:
+    # gpu_count alone does not declare a RANK grid: without mpi_np /
+    # omp_threads the K x C half stays the machine's proposal, filtered
+    # to the declared device counts below.
+    grid_declared = bool(declared.get("mpi_np") or declared.get("omp_threads"))
+    if grid_declared:
         # THE DECLARED GRID (§ 4.3a).  ``mpi_np`` is the TOTAL rank count a
         # point runs -- the same meaning it has everywhere else -- and
         # ``omp_threads`` the cores per rank.  A point the machine cannot
@@ -901,26 +905,63 @@ def _bench_inputs(base, target=None):
                         f"declaration in task.json, or benchmark on the "
                         f"machine it is meant to measure.")
 
+    # THE DECLARED DEVICE COUNTS (user, 2026-08-21: "explicit is what we
+    # need").  Declared, gpu_count is exact: those G values and no others,
+    # each its own shelf.  A count the machine does not have is refused by
+    # name (the same rule as a rank count the machine cannot hold); a
+    # (mpi_np, G) pair that cannot split EVENLY is dropped by name below
+    # -- ELPA's own rule is the same rank count on every device
+    # (tuning.md § 2.12), and refusing the whole prep would deny the
+    # divisible cells and the CPU family a rank count they hold fine.
+    gpu_counts = ([int(v) for v in declared.get("gpu_count")]
+                  if declared.get("gpu_count") else None)
+    if gpu_counts and not any(families):
+        raise click.ClickException(
+            "task.json declares gpu_count, but this bench resolves to the "
+            "CPU family (enable_gpu is false and not an axis) -- the "
+            "device counts would be silently ignored.  Declare enable_gpu "
+            "= [true] (or the [true, false] axis), or drop gpu_count.")
+    if gpu_counts and any(families):
+        _over = sorted(g for g in gpu_counts if g > (gpn or 0))
+        if _over:
+            raise click.ClickException(
+                f"task.json declares gpu_count = {_over!r} and this "
+                f"machine's record holds {gpn or 0} device(s) per node.  "
+                f"Trim the declaration, or benchmark on the machine it "
+                f"is meant to measure.")
+
     def _family_cells(fam):
         """The machine cells of ONE family, as (G, K, C) -- G=0 is the CPU
         family's held coordinate (plain ranks), G>=1 the device count with
         G*K == the total rank count."""
-        if declared:
+        if grid_declared:
             if fam:
-                # A GPU point still runs the DECLARED total ranks; the
-                # device count G ranges over the divisors of each rank
-                # count (so G*K == mpi_np exactly), bounded by the probe.
-                return sorted({(g, r // g, c)
-                               for r in ranks for c in cores
-                               for g in range(1, gpn + 1) if r % g == 0})
+                counts = gpu_counts or range(1, gpn + 1)
+                cells = sorted({(g, r // g, c)
+                                for r in ranks for c in cores
+                                for g in counts if r % g == 0})
+                if gpu_counts:
+                    bad = sorted({(r, g) for r in ranks for g in gpu_counts
+                                  if r % g})
+                    if bad:
+                        click.echo(
+                            "  dropped (ranks must split EVENLY over the "
+                            "devices -- ELPA's equal-share rule, "
+                            "tuning.md § 2.12): "
+                            + ", ".join(f"mpi_np={r} x gpu_count={g}"
+                                        for r, g in bad))
+                return cells
             return [(0, r, c) for r in ranks for c in cores]
         ks = sweep_K(topo) or list(_FALLBACK_KS)
         # ONE enumeration, both grids (`bench/grid.py`: the single source
         # of truth for the sweep grid, so no two consumers can define it
         # differently).  On CPU there is no device to range over, so G is
         # held at 0 and dropped from a single-family coordinate below.
+        # A declared gpu_count FILTERS the probed grid to exactly those
+        # device counts.
         return [(g if fam else 0, k, c)
-                for g, k, c in sweep_grid(gpn if fam else 1, cps, ks, None)]
+                for g, k, c in sweep_grid(gpn if fam else 1, cps, ks, None)
+                if not (fam and gpu_counts) or g in gpu_counts]
 
     # THE PER-FAMILY CAP (§ 4.3a): when the menu's gpu-capable row states
     # max_cores (curated -- a partition may mix node types, so the probe
@@ -940,18 +981,20 @@ def _bench_inputs(base, target=None):
                     f"allows {cap} cores/node): "
                     + ", ".join(f"G{g}K{k}C{c} ({g * k * c} cores)"
                                 for g, k, c in dropped))
-            if not fcells:
-                if mixed:
-                    click.echo(
-                        f"  NOTE: every GPU cell exceeds domain "
-                        f"{cap_dom!r}'s {cap} cores/node -- this sweep "
-                        f"measures only the CPU family.")
-                else:
-                    raise click.ClickException(
-                        f"every declared cell exceeds domain {cap_dom!r}'s "
-                        f"{cap} cores/node (generator.md § 4.3a).  Trim "
-                        f"the declaration, or benchmark where the GPU "
-                        f"nodes are larger.")
+        if fam and not fcells:
+            # every GPU cell fell to the cap or the even-split rule --
+            # the drops were echoed by name above, so this names the
+            # consequence.
+            if mixed:
+                click.echo(
+                    "  NOTE: no GPU cell survived the drops above -- "
+                    "this sweep measures only the CPU family.")
+            else:
+                raise click.ClickException(
+                    "every GPU cell was dropped (see the lines above: "
+                    "the domain's core cap and/or the even-split rule).  "
+                    "Adjust mpi_np / gpu_count in task.json, or "
+                    "benchmark where the GPU nodes are larger.")
         cells.extend((fam, cell) for cell in fcells)
     # THE VALUE-AXIS CARTESIAN (§ 4.3a): every machine cell is crossed
     # with the remaining declared value axes, in declaration order, and
@@ -959,6 +1002,10 @@ def _bench_inputs(base, target=None):
     # parameter lane applies them to that trial's config (provenance
     # "sweep"), and the coordinate rides the trial's name and, as data,
     # `job-set.json`'s per-trial ``point``.
+    if not cells:
+        raise click.ClickException(
+            "no bench cell survived the declaration on this machine -- "
+            "see the drop/refusal lines above.")
     combos = [{}]
     for name, vals in value_axes.items():
         combos = [{**c, name: v} for c in combos for v in vals]

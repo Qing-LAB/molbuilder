@@ -680,6 +680,19 @@ MPI rank count baked into ``mpirun -np N siesta`` in the generated run-wrapper. 
 
 RUNTIME OVERRIDE: this value bakes a DEFAULT into the wrapper but is not final.  The wrapper accepts ``bash run.sh -np N`` and ``MB_NP=N bash run.sh``, so you can experiment with different rank counts WITHOUT regenerating.  This matters because SIESTA can crash with ``propor: ERROR: IMAX = 0`` for certain mpi_np / molecule combinations -- the crash depends on the ProcessorY x ProcessorX grid SIESTA auto-picks for that rank count, which is hard to predict.  If you hit propor, retry with smaller -np (powers of 2 are usually safe).  The wrapper prints a focused diagnostic on the propor crash with specific suggestions."""
 
+[item.gpu_count]
+kind = "wrapper"
+category = ["execution"]
+engines = ["siesta"]
+engine_key = "(molbuilder: scheduler ``--gres=gpu:<type>:G``; not in .fdf)"
+type = "int"
+allocation = true
+range = [1, 16]
+group = "staging"
+label = "GPUs per trial (G)"
+help = """
+How many GPU devices one trial (or run) asks the scheduler for.  Ranks per device follow as mpi_np / G, and the split must be EVEN -- ELPA's own rule is the same rank count on every device (tuning.md 2.12) -- so a bench cell whose mpi_np does not divide by G is dropped by name at prep.  Declared in the bench block it is an axis: gpu_count = [1, 2, 4] measures exactly those device counts.  Leave it out and prep proposes the divisors of each declared rank count."""
+
 [item.block_size]
 kind = "engine"
 category = ["execution"]

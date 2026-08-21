@@ -362,7 +362,12 @@ because both halves are real and they are different acts:
 > (never clamped — a clamped point measures a configuration nobody
 > declared), and an ABSENT declaration keeps the machine's enumeration as
 > the proposal. On a GPU description a declared `mpi_np` is the point's
-> total rank count, and the device count ranges over its divisors.
+> total rank count, and the device count is **declared with `gpu_count`**
+> — exactly those counts, one shelf each; an uneven `(mpi_np, G)` pair is
+> dropped by name (the equal-share rule), a count beyond the machine's
+> record refuses, and an ABSENT `gpu_count` keeps the divisor enumeration
+> as the proposal *(user, 2026-08-21: "explicit is what we need"; the
+> divisors were the only lane until then)*.
 
 **A value axis multiplies the grid, and the point carries its coordinates**
 *(user-settled 2026-08-21: GPU-vs-CPU measured under ONE bench, split
@@ -681,7 +686,7 @@ that an absent `engines` key means every engine.)*
 
 | | SIESTA | PySCF |
 |---|---|---|
-| catalogue rows | 43 items | **54 items** | *(each engine's EXCLUSIVE rows; `net_charge` now names both and so counts in neither, `template.md` § 6.3)*
+| catalogue rows | 44 items | **54 items** | *(each engine's EXCLUSIVE rows; `net_charge` now names both and so counts in neither, `template.md` § 6.3)*
 | every row maps to a config field | yes | **yes** |
 | `warm-files.toml` in its package | yes | **yes** — `base` · `optimization` · `vibration` |
 | identity literal declared | `SystemLabel` | **`JOB`** (`config/pyscf.py`) |
