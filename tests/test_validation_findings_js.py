@@ -277,7 +277,9 @@ class TestOneRendererOnly:
     _CONSUMERS = (
         "molbuilder/web/static/structure-optimization/viewer.js",
         "molbuilder/web/static/lib/transport/core.js",
-        "molbuilder/web/static/lib/spectra/core.js",
+        # lib/spectra/core.js left this list at P3: its findings
+        # panel retired with the Generate flow (parameter checks
+        # run in Task setup / at prep now).
     )
 
     def test_consumers_delegate_and_do_not_build_issue_rows(self):

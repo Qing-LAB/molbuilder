@@ -299,11 +299,11 @@ def report(issues: List[Issue], *,
 
 def _validate_spectra(struct: Structure, cfg, cell, *, prior=None, **_) -> List[Issue]:
     # RENDER-gate science only (grid / amplitude / parity / method /
-    # open-shell).  The selector-availability check is preflight-only UX
-    # (a top_n script is valid to emit), so it is NOT in this gate -- the
-    # /spectra preflight endpoint adds engine.selector_checks() on top.
-    from ..spectra import get_engine
-    return list(get_engine(cfg.engine).render_checks(struct, cfg))
+    # open-shell).  P3 (2026-08-21): the engine registry retired with the
+    # old generator; the science moved whole to validation/spectra.py and
+    # is called directly -- same body the vibration deck runs.
+    from .spectra import spectra_render_checks
+    return list(spectra_render_checks(struct, cfg))
 
 
 def _validate_transport(struct: Structure, cfg, cell, *, prior=None, **_) -> List[Issue]:

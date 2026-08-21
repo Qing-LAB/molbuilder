@@ -283,8 +283,6 @@ class TestSpectraPage:
         # Selector / compatibility logic present (locks unused
         # ES value fields when the selector changes).
         assert "applyCompatibility" in js
-        # Methods-preview modal handler.
-        assert "openMethodsModal"   in js
         # Mount API export -- the contract both consumers depend on.
         assert "spectraInspector" in js
         assert "mount: mountInspector" in js

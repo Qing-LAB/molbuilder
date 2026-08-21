@@ -1,8 +1,7 @@
 /* molbuilder Spectra-tab styles -- the /spectra PAGE sheet ONLY.
  *
  * Page chrome: header, the .card column container, the page's bare form
- * controls, the Generate-side blocks (.prior-row / .issues-panel /
- * .script-preview / .methods-modal / .is-locked) and .status base.
+ * controls, the .is-locked form fade and the .status base.
  *
  * The spectra-INSPECTOR component classes (.card-section / .section-header /
  * .modes-table / .spectrum-chart / .mode-viewer / .phase-indicator / .es-* /
@@ -108,28 +107,6 @@ button > code {
 
 .primary-actions { margin-top: 0.4rem; }
 
-/* Resume-from-prior collapsible. */
-.prior-row {
-    margin: 0.8rem 0 0;
-    padding: 0.55rem 0.75rem;
-    border: 1px dashed var(--border-soft);
-    border-radius: 6px;
-}
-.prior-row summary {
-    cursor: pointer;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    user-select: none;
-}
-.prior-row p.hint {
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    margin: 0.4rem 0;
-}
-.prior-row input[type="text"] { width: 100%; }
-
-/* ---- Status messages ---- */
-
 .status {
     font-size: 0.85rem;
     color: var(--text-secondary);
@@ -152,71 +129,9 @@ button > code {
 
 /* ---- Generated-script preview ---- */
 
-.script-preview {
-    background: var(--bg-code);
-    color: var(--text-primary);
-    border: 1px solid var(--border-soft);
-    border-radius: 6px;
-    padding: 0.7rem 0.95rem;
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
-    line-height: 1.5;
-    max-height: 320px;
-    overflow: auto;
-    white-space: pre;
-    margin: 0.5rem 0 0;
-}
-.script-preview:empty { display: none; }
-
-
-
-
-/* .sr-only lives in lib/page-shell.css. */
-
-
-
-/* ---- Methods modal ---- */
-
-.methods-modal {
-    background: var(--bg-card);
-    color: var(--text-primary);
-    border: 1px solid var(--border-strong);
-    border-radius: 12px;
-    max-width: 720px;
-    width: 92%;
-    padding: 0;
-    box-shadow: 0 12px 36px rgba(0,0,0,0.55);
-}
-.methods-modal::backdrop {
-    background: rgba(10, 12, 16, 0.7);
-}
-.methods-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.8rem 1.2rem;
-    border-bottom: 1px solid var(--border-soft);
-}
-.methods-modal-header h2 {
-    margin: 0;
-    font: 600 1.05rem/1.2 "Inter", system-ui, sans-serif;
-}
-.methods-modal-actions { display: flex; gap: 0.4rem; }
-.methods-modal-body {
-    padding: 1rem 1.4rem;
-    max-height: 60vh;
-    overflow: auto;
-    font-size: 0.92rem;
-    line-height: 1.55;
-}
-.methods-modal-body p { margin: 0 0 1em; }
-.methods-modal-body code {
-    font-family: var(--font-mono);
-    font-size: 0.85em;
-    background: var(--bg-input);
-    padding: 0.05rem 0.3rem;
-    border-radius: 3px;
-}
+/* The Generate-side blocks (.prior-row / .script-preview /
+ * .methods-modal*) left with their markup at P2/P3 --
+ * the tab describes and hands over; it renders no script. */
 
 /* Selector compatibility: a locked es-* value field gets faded so
  * the user sees which knob is active. */

@@ -1945,7 +1945,7 @@ def test_api_build_schema_returns_pyscf_schema(web_client):
     section_names = [s["name"] for s in sch["sections"]]
     assert section_names == [c for c in _T.CATEGORIES if c in section_names]
     names = {f["name"] for s in sch["sections"] for f in s["fields"]}
-    assert "compute_frequencies" in names, sorted(names)
+    assert "save_optimized_xyz" in names, sorted(names)
 
 
 def test_form_schema_js_is_served(web_client):
@@ -2008,7 +2008,11 @@ def test_pyscf_form_schema_matches_documented_layout():
         # `relax_steps`, the SIESTA knob `tuning.md` § 3.1 pairs it with --
         # not with the inner SCF budget.  It was under `convergence`, which
         # put one cross-engine concept on two different panels.
-        ("procedure",  16),
+        # 16 -> 13 at P3 (2026-08-21): the in-deck compute_frequencies
+        # trio left the OPTIMIZATION form -- the item retired outright,
+        # and temperature_K / pressure_atm re-homed to the vibration
+        # kind (calculations = ["vibration"]).
+        ("procedure",  13),
     ], got
 
     # The stage table is NOT here.  PySCFConfig still has a `stages`
@@ -2066,43 +2070,11 @@ def test_engine_key_present_on_every_spectra_form_field():
     )
 
 
-def test_spectra_molbuilder_only_fields_use_paren_prefix():
-    """Same dimming-rule check as the SIESTA variant: SpectraConfig
-    fields that don't map to a PySCF keyword (frozen-atom filters,
-    per-mode selector, finite-difference knobs, emission control)
-    MUST carry the ``(molbuilder`` prefix so the UI knows to dim
-    the badge."""
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    from molbuilder.config.spectra import SpectraConfig
-    sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
-    molbuilder_only = {
-        "engine",
-        "job_name",
-        "frozen_elements",
-        "frozen_residue_names",
-        "frozen_indices",
-        "compute_raman",
-        "compute_ir",
-        "displacement_amplitude_ang",
-        "es_mode_selection",
-        "es_top_n",
-        "es_threshold",
-        "es_explicit_indices",
-        "freq_min_cm1",
-        "freq_max_cm1",
-        "es_n_homo_below",
-        "es_n_lumo_above",
-        "verbose_comments",
-    }
-    fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
-    for name in molbuilder_only:
-        f = fields_by_name.get(name)
-        assert f is not None, f"missing field {name} in schema"
-        assert f["engine_key"].startswith("(molbuilder"), (
-            f"{name}: engine_key={f['engine_key']!r} should start with "
-            f"``(molbuilder`` so the UI dims the badge"
-        )
-
+# test_spectra_molbuilder_only_fields_use_paren_prefix retired at
+# P3: nothing renders a form from SpectraConfig any more (the
+# form metadata left the dataclass), and the vibration items'
+# engine-key badges are the CATALOGUE's facts, covered by the
+# catalogue schema tests.
 
 def test_engine_key_marks_molbuilder_only_fields_with_paren_prefix():
     """molbuilder-only fields (preprocessing / wrapper / filename

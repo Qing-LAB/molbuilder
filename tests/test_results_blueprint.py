@@ -933,26 +933,12 @@ class TestSpectraIssuesPanelSeverityCoverage:
         ONE stylesheet that owns the row vocabulary.
     """
 
-    def test_the_spectra_page_delegates_to_the_shared_renderer(self):
-        """If the page ever re-grows a private renderer, the severity behaviour
-        pinned in test_validation_findings_js.py stops governing this panel."""
-        from pathlib import Path
-        src = Path(__file__).resolve().parents[1] \
-            / "molbuilder/web/static/lib/spectra/core.js"
-        text = src.read_text()
-        assert "validationFindings" in text, (
-            "spectra/core.js must render findings through "
-            "molbuilder.validationFindings (contract R2); a private renderer "
-            "would escape the severity guarantees pinned for the shared module."
-        )
-        # The tell-tales of a private row builder returning.
-        assert 'className = "issue-item"' not in text
-        assert '"data-severity"' not in text
-        # ...and specifically not the old drop-info-then-reorder shape.
-        assert ".concat(infos)" not in text, (
-            "the hand-rolled severity split is back; the shared module keeps "
-            "server order and coerces unknown severities to info instead."
-        )
+    # test_the_spectra_page_delegates_to_the_shared_renderer retired
+    # at P3: the spectra findings panel left with the Generate flow
+    # (parameter checks run in Task setup now), so there is no
+    # renderer on this page to delegate.  The shared module's own
+    # severity guarantees stay pinned below and in
+    # test_validation_findings_js.py.
 
     def test_info_severity_is_visibly_styled_in_its_one_home(self):
         """The row vocabulary is styled once, in lib/form-components.css.  An

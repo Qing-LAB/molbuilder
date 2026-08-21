@@ -79,15 +79,8 @@
         // wiring are gone too (init had to null-check ``els.xyzLoadBtn``
         // since the id no longer exists; the whole branch was dead).
         formContainer:  null,
-        generateBtn:    null,
-        methodsBtn:     null,
-        generateStatus: null,
-        priorPath:      null,
-        issuesPanel:    null,
-        downloadBtn:    null,
-        copyBtn:        null,
-        scriptPreview:  null,
-        scriptSummary:  null,
+        sendBtn:        null,
+        sendStatus:     null,
         // resultsFile / loadResultsBtn / resultsStatus removed for the
         // same reason as xyz* above; loadResults() also gone.  The
         // /api/spectra/load endpoint stays -- it's still used by the
@@ -95,10 +88,6 @@
         resultsSummary: null,
         resultsMeta:    null,
         modesTbody:     null,
-        methodsModal:   null,
-        methodsBody:    null,
-        methodsClose:   null,
-        methodsCopy:    null,
         // Selection sync + ES panel additions (§ 9.2.2 / § 9.2.4):
         modesFilter:    null,
         modesCsvBtn:    null,
@@ -154,8 +143,6 @@
         // contract.  Kept at the top level of `state` for backward
         // compat; migrates to a future workspace contract.
         schema:         null,
-        lastScript:     null,
-        lastMethodsMd:  null,
         lastJobName:    null,
 
         // Per contract § 2: IDLE / LOADING / LOADED / WATCHING / ERROR.
@@ -207,7 +194,6 @@
             watchInFlight: false,
             watchAbort:    null,
             loadAbort:     null,
-            renderAbort:   null,
             // Consecutive transient-error counter.  After
             // WATCH_MAX_ERRORS in a row, transition to ERROR.
             watchErrors:   0,
@@ -275,7 +261,6 @@
         alias("watchInFlight",  "lifecycle");
         alias("watchAbort",     "lifecycle");
         alias("loadAbort",      "lifecycle");
-        alias("renderAbort",    "lifecycle");
         alias("watchErrors",    "lifecycle");
     })();
 
@@ -341,10 +326,6 @@
             if (state.lifecycle.watchAbort) {
                 try { state.lifecycle.watchAbort.abort(); } catch (_) {}
                 state.lifecycle.watchAbort = null;
-            }
-            if (state.lifecycle.renderAbort) {
-                try { state.lifecycle.renderAbort.abort(); } catch (_) {}
-                state.lifecycle.renderAbort = null;
             }
             state.lifecycle.watchInFlight = false;
             if (state.lifecycle.watchTimer) {
@@ -471,29 +452,6 @@
             target.removeEventListener(event, handler, opts);
         });
     }
-
-    // Form-dirty primitive (B.5.3) — flipped true on any
-    // user-driven input/change inside #spectra-form-container.
-    // Used by the commit handler to fire the shared warning
-    // modal before a sidebar dblclick rebuilds the schema for
-    // a different structure, which would silently discard the
-    // user's parameter edits.  Cleared on commit-accept,
-    // Generate, and Save (the values have been emitted into a
-    // script or written to disk).
-    let _formDirty = false;
-    // 2026-06-14: viewer-is-truth contract.  Tracks the file the
-    // user actually committed (Load / dblclick), not the live
-    // sidebar pick.  Used by the Generate POST to build
-    // ``body.structure_path`` so the sidecar discovery hits the
-    // file the user sees in the viewer regardless of subsequent
-    // sidebar clicks.  Same fix pattern as /structure-optimization
-    // (viewer.js ``_sidebarLastFile``) and parallel to /transport-
-    // calculation (lib/transport/core.js ``_currentStructureFile``).
-    let _committedStructureFile = "";
-    // viewer-is-truth: the committed structure's labels (frozen/regions) are read
-    // straight off the MODEL (molview.data.getFrozen/getRegions) at Generate time -- see
-    // generateScript -- NOT cached from an out-of-band sidecar fetch.  We keep only the
-    // committed PATH above for the server-side sidecar fallback (body.structure_path).
 
     // ----- Status helper ----------------------------------------
     function setStatus(el, msg, kind) {
@@ -697,373 +655,11 @@
         });
     }
 
-    // ----- Render button: POST /api/spectra/render -------------
-    async function generateScript() {
-        const structure = getTheStructure();
-        if (!structure) {
-            setStatus(els.generateStatus,
-                      "Pick a structure file first.", "error");
-            return;
-        }
-        setStatus(els.generateStatus, "Rendering…");
-        clearOutputs();
-
-        /* ONE READ OF THE VIEWER, and everything the request carries comes out of
-         * it. The coordinates, the labels and the cell were read from three
-         * separate calls at three separate moments; one read means the facts that
-         * leave together were read together (molview.md § 9.3).
-         *
-         * IT GOES AS DATA. This used to send an XYZ document in `structure_text`,
-         * which the viewer cannot produce — it writes no coordinate document
-         * (§ 11.7) — so it sent an empty string and the server answered "no
-         * structure provided" with a molecule on the screen. */
-        /* ASKED FOR, NOT ASSEMBLED. `exportFile()` is the viewer's own
-         * producer and emits the exact envelope the door reads. Built by hand
-         * here, the cell went in under a `metadata.periodicity` key the
-         * envelope does not define -- and a receiver that refuses a key it does
-         * not know refuses the whole body with it. */
-        const _out = _viewer ? _viewer.data.exportFile() : null;
-        if (!_out || !_out.structure) return null;
-        /* THE LABELS AND THE CELL ARE ALREADY IN `structure`.  `exportFile()`
-         * assembles the atoms, the positions at the displayed frame, the labels
-         * and the cell in ONE read -- which is the whole of § 9.3's "the facts a
-         * request carries were read together".
-         *
-         * They were sent again beside it, off two more calls: three reads at
-         * three moments for one set of facts, and the server overwrote the
-         * envelope's copy with the later ones. */
-        const body = {
-            structure: _out.structure,
-            params:    collectParams(),
-        };
-        // Pass the current sidebar XYZ path (if any) so the server
-        // can apply the .molstruct.json sidecar to the structure
-        // BEFORE preflight runs.  This is what activates stage-3
-        // of the boundary-condition contract (design.md
-        // "Sidecar-driven boundary conditions") end-to-end:
-        // preflight's Pattern A (divergence) + Pattern B
-        // (unrecognized labels) need struct.frozen_atoms +
-        // struct.regions populated, which only happens via the
-        // sidecar.  Pasted-XYZ-only flows (no sidebar pick) just
-        // skip the sidecar and lose stage-3 guards -- the right
-        // behavior when there genuinely is no sidecar to honor.
-        //
-        // 2026-06-14 viewer-is-truth contract: read the COMMITTED-
-        // load path (set by _commitStructureForSpectra on Load /
-        // dblclick), NOT the live ``projForStruct.getCurrentFile()``.
-        // Pre-fix this read getCurrentFile() at click-time, which
-        // returned whatever-was-last-clicked-in-the-sidebar -- so
-        // navigating to set a dest dir after Load silently
-        // redirected the sidecar lookup to the wrong file.  Same
-        // bug class as the /structure-optimization tab fix.
-        if (_committedStructureFile) {
-            const lc = _committedStructureFile.toLowerCase();
-            if (lc.endsWith(".xyz") || lc.endsWith(".pdb")) {
-                body.structure_path = _committedStructureFile;
-            }
-        }
-        const priorPath = (els.priorPath.value || "").trim();
-        if (priorPath) body.prior_path = priorPath;
-
-        // Supersede any in-flight render (rapid click on Generate
-        // while a previous render is still on the wire).  dispose()
-        // aborts on unmount.
-        if (state.renderAbort) state.renderAbort.abort();
-        state.renderAbort = new AbortController();
-        const signal = state.renderAbort.signal;
-        let r;
-        try {
-            r = await fetch("/api/spectra/render", {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify(body),
-                signal:  signal,
-            }).then(x => x.json().then(b => ({ status: x.status, body: b })));
-        } catch (exc) {
-            // AbortError: a newer Generate click superseded this
-            // call, or dispose() ran.  Silent.
-            if (exc.name === "AbortError") return;
-            setStatus(els.generateStatus,
-                      "Network error: " + exc.message, "error");
-            return;
-        }
-
-        // The /api/spectra/render endpoint includes issues even on
-        // 400; render them so the user sees structured feedback.
-        renderIssues(r.body.issues || []);
-
-        if (!r.body.ok) {
-            setStatus(els.generateStatus,
-                      r.body.error || "Render failed.", "error");
-            return;
-        }
-
-        // Happy path: stash script + methods_md, enable buttons.
-        state.lastScript    = r.body.script;
-        state.lastMethodsMd = r.body.methods_md || "";
-        state.lastJobName   = r.body.job_name || "spectra";
-
-        els.scriptPreview.textContent = state.lastScript;
-        els.downloadBtn.disabled = false;
-        els.copyBtn.disabled     = false;
-
-        const nLines = state.lastScript.split("\n").length;
-        setStatus(els.scriptSummary,
-                  `${nLines} lines · ${state.lastJobName}.spectra.py`,
-                  "muted");
-
-        const warns = (r.body.issues || []).filter(i => i.severity === "warn");
-        const summary = warns.length
-            ? `Generated with ${warns.length} warn(s).`
-            : "Generated.";
-        setStatus(els.generateStatus, summary, "ok");
-
-        // 2026-05-26: Generate is now render-only.  The Save-to-current-
-        // dir button (see saveSpectraToCurrentDir below) is the explicit
-        // disk-commit action.  Mirrors the Build SIESTA / PySCF split
-        // shipped 2026-05-24 (abc8a7c).
-        refreshSaveSpectraButtonAvailability();
-    }
-
-
-    /**
-     * Re-evaluate enable state on the Save-spectra button.  Enabled
-     * when (a) the user has clicked Generate (state.lastScript is
-     * populated) AND (b) the Projects sidebar has a non-root subdir
-     * selected.  Wired to projects.onChange so a sidebar pick toggles
-     * the button live without a page reload.
-     */
-    function refreshSaveSpectraButtonAvailability() {
-        const btn = els.saveBtn;
-        if (!btn) return;
-        const proj = (window.molbuilder || {}).projects;
-        // hasDir uses projects.atRoot() (added 2026-05-26) so the
-        // button doesn't enable at the projects root (where
-        // saveToWorkspace silently returns null + click would
-        // produce a confusing "no current_dir" error).
-        const hasDir = proj && typeof proj.atRoot === "function"
-            ? !proj.atRoot()
-            : !!(proj && proj.getCurrentDir());
-        btn.disabled = !(state.lastScript && hasDir);
-    }
-
-
-    /**
-     * Commit step.  Saves <job>.spectra.py to the sidebar dir + drops
-     * a sibling <job>.spectra.run.sh.  Reentrancy guard prevents
-     * double-click pipelines.  Mirrors the SIESTA + PySCF Save
-     * handlers in viewer.js (commit 084df7e).
-     */
-    async function saveSpectraToCurrentDir() {
-        if (state.savingSpectra) return;
-        const proj = (window.molbuilder || {}).projects;
-        const btn = els.saveBtn;
-        if (!state.lastScript) {
-            setStatus(els.saveStatus, "Click Generate first.", "error");
-            return;
-        }
-        if (!proj) {
-            setStatus(els.saveStatus, "Projects sidebar not loaded.", "error");
-            return;
-        }
-        const destDir = proj.getCurrentDir() || "";
-        if (!destDir) {
-            setStatus(els.saveStatus,
-                "Pick a project subdir in the sidebar first.",
-                "error");
-            return;
-        }
-        state.savingSpectra = true;
-        const _origText = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = "Saving…";
-        // Sidebar lock: same rationale as the SIESTA/PySCF Save
-        // handlers in viewer.js -- a mid-pipeline directory change
-        // would retarget the wrapper install away from where we
-        // just wrote the .spectra.py.
-        state.saveSpectraAbort = new AbortController();
-        const _saveSignal = state.saveSpectraAbort.signal;
-        const _hasLock = typeof proj.lock === "function";
-        if (_hasLock) {
-            try {
-                proj.lock("Saving Spectra + wrapper…",
-                          [() => state.saveSpectraAbort.abort()]);
-            } catch (_) { /* already locked: continue without */ }
-        }
-        try {
-            setStatus(els.saveStatus, "Saving to " + destDir + " …", "muted");
-            // safeSave threads the signal end-to-end and renames
-            // the abort envelope's ``aborted`` flag to
-            // ``cancelled`` — see projects/state.js safeSave.
-            // Without it, callers used to forget either the signal
-            // (BOMB-A, fifth review) or the filter (BOMB-1, fourth
-            // review).  The helper makes both invariants the
-            // default shape.
-            const wrote = await proj.safeSave(
-                state.lastScript, state.lastJobName + ".spectra.py",
-                { overwrite: true, signal: _saveSignal });
-            if (wrote && wrote.cancelled) {
-                setStatus(els.saveStatus, "Save cancelled.", "muted");
-                return;
-            }
-            if (!wrote || !wrote.ok) {
-                setStatus(els.saveStatus,
-                    "Save failed: " + (wrote && wrote.error || "no current_dir"),
-                    "error");
-                return;
-            }
-            let wrapperMsg = "";
-            let wrapperCancelled = false;
-            try {
-                const wr = await fetch("/api/run/install-wrapper", {
-                    method:  "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body:    JSON.stringify({
-                        script_path:   wrote.path,
-                        mpi_np:        null,
-                        omp_threads:   null,
-                        max_memory_mb: null,
-                    }),
-                    signal: _saveSignal,
-                }).then(x => x.json());
-                if (wr.ok) {
-                    const verb = wr.overwritten ? "overwrote" : "wrote";
-                    wrapperMsg = " · " + verb + " " + wr.wrapper_name;
-                } else {
-                    wrapperMsg = " · .run.sh failed: " + (wr.error || "unknown");
-                }
-            } catch (e) {
-                if (proj.isCancelError(e)) {
-                    wrapperCancelled = true;
-                } else {
-                    wrapperMsg = " · .run.sh network error: " + (e && e.message || String(e));
-                }
-            }
-            if (wrapperCancelled) {
-                setStatus(els.saveStatus,
-                    "Save cancelled after writing " + wrote.relPath
-                  + " (wrapper not installed).", "muted");
-                return;
-            }
-            setStatus(els.saveStatus,
-                "Wrote " + wrote.relPath + wrapperMsg, "ok");
-            // Refresh sidebar so the .spectra.py + .run.sh both appear.
-            try { if (proj.refresh) await proj.refresh(); } catch (_) { /* non-fatal */ }
-        } finally {
-            state.savingSpectra = false;
-            btn.disabled = false;
-            btn.textContent = _origText;
-            refreshSaveSpectraButtonAvailability();
-            if (_hasLock) proj.unlock();
-        }
-    }
-
-    function clearOutputs() {
-        state.lastScript    = null;
-        state.lastMethodsMd = null;
-        els.scriptPreview.textContent = "";
-        els.downloadBtn.disabled = true;
-        els.copyBtn.disabled     = true;
-        setStatus(els.scriptSummary, "", "muted");
-    }
-
-    // ----- Issues panel ----------------------------------------
-    //
-    // Show error → warn → info, in that order, so the user reads
-    // blockers first and advisory notices last.  Pre-task-#304 the
-    // renderer concatenated only ``errs + warns`` and dropped
-    // ``info`` silently — the Pattern-B regions notice that
-    // /api/build/{fdf,pyscf} emits as INFO would never reach the
-    // user on the Spectra panel even though the API delivered it.
-    //
-    // 2026-06-14 (F4b cross-tab consistency): SpectraConfig carries
-    // ~50 ``workflow_group``-tagged fields.  Per web-ui-coherence.md
-    // Rule 2 those issues route to the relevant per-card
-    // ``.card-issues[data-workflow-group="<role>"]`` UL inside the
-    // workflow-group card the form-schema renderer drew.  Untagged
-    // issues land in the residual panel.  SIESTA + PySCF already
-    // did this via viewer.js::renderIssues; this brings spectra
-    // into alignment.
-    function renderIssues(issues) {
-        const f = (window.molbuilder || {}).validationFindings;
-        if (!f) return;
-        // ONE renderer for the whole app (contract R2).  The copy that lived
-        // here had drifted furthest: a SECOND row vocabulary for the residual
-        // (div.issue + .badge, built with innerHTML), a severity whitelist that
-        // silently dropped anything outside error/warn/info, a re-order the
-        // other tabs don't do, and no null guard on the panel (it threw AFTER
-        // clearing the cards).  All of it goes; the shared module keeps server
-        // order, coerces an unknown severity to info, and drops nothing.
-        f.render(issues, {
-            panel:     els.issuesPanel,
-            formScope: els.formContainer || null,
-            emptyText: "No issues.",
-        });
-    }
-
-    // ----- Download / copy script ------------------------------
-    function downloadScript() {
-        if (!state.lastScript) return;
-        const blob = new Blob([state.lastScript], { type: "text/x-python" });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement("a");
-        a.href     = url;
-        a.download = (state.lastJobName || "spectra") + ".spectra.py";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-
-    async function copyScript() {
-        if (!state.lastScript) return;
-        try {
-            await navigator.clipboard.writeText(state.lastScript);
-            setStatus(els.generateStatus, "Copied.", "ok");
-        } catch (exc) {
-            setStatus(els.generateStatus,
-                      "Copy failed (browser blocked clipboard).", "error");
-        }
-    }
-
-    // ----- Methods modal ---------------------------------------
-    function openMethodsModal() {
-        const md = state.lastMethodsMd
-            || "Run *Generate* to see the Methods preview.";
-        // Minimal Markdown -> HTML: paragraphs separated by blank
-        // lines.  We deliberately don't load a full Markdown lib --
-        // the content is plain prose with bibliography keys in
-        // backticks, no headings / lists.
-        const html = md
-            .split(/\n\n+/)
-            .map(p => "<p>" + escapeHtml(p).replace(/\n/g, "<br>") + "</p>")
-            .join("\n");
-        els.methodsBody.innerHTML = html;
-        if (typeof els.methodsModal.showModal === "function") {
-            els.methodsModal.showModal();
-        } else {
-            // Fallback for browsers without <dialog>.
-            els.methodsModal.setAttribute("open", "");
-        }
-    }
-
-    function closeMethodsModal() {
-        if (typeof els.methodsModal.close === "function") {
-            els.methodsModal.close();
-        } else {
-            els.methodsModal.removeAttribute("open");
-        }
-    }
-
-    async function copyMethods() {
-        if (!state.lastMethodsMd) return;
-        try {
-            await navigator.clipboard.writeText(state.lastMethodsMd);
-        } catch (_) {
-            // Fall through silently -- the user can still select the
-            // text from the modal manually.
-        }
-    }
+    // The Generate / Save / Methods-modal half of this module was
+    // REMOVED at P3 (spectra-migration plan, 2026-08-21) after the
+    // P2 substitution made it unreachable: the tab DESCRIBES a
+    // vibration calculation and hands it to Task setup
+    // (sendToTaskSetup above); the deck is written by `prep`.
 
     // (loadResults removed 2026-05-18: the in-template multipart-
     // upload affordance is gone, replaced by the server-side path
@@ -3223,28 +2819,12 @@
         els.formContainer  = $("spectra-form-container");
         els.sendBtn        = $("send-to-task-setup");
         els.sendStatus     = $("send-status");
-        els.generateBtn    = $("generate-btn");
-        els.methodsBtn     = $("methods-preview-btn");
-        els.generateStatus = $("generate-status");
-        els.priorPath      = $("prior-path");
-        els.issuesPanel    = $("issues-panel");
-        els.downloadBtn    = $("download-script-btn");
-        els.copyBtn        = $("copy-script-btn");
-        // Save-to-current-dir button (2026-05-26 Generate/Save split).
-        els.saveBtn        = $("save-spectra-btn");
-        els.saveStatus     = $("save-status");
-        els.scriptPreview  = $("script-preview");
-        els.scriptSummary  = $("script-summary");
         // results-file / load-results-btn / results-status lookups
         // dropped for the same reason as xyz* above.
         els.resultsSummary = $("results-summary");
         els.resultsMeta    = $("results-summary-list");
         els.modesTbody     = $("modes-tbody");
         els.spectrumChart  = $("spectrum-chart");
-        els.methodsModal   = $("methods-modal");
-        els.methodsBody    = $("methods-modal-body");
-        els.methodsClose   = $("methods-close-btn");
-        els.methodsCopy    = $("methods-copy-btn");
         // Mode-table interactions + ES panel.
         els.modesFilter       = $("modes-filter");
         els.modesCsvBtn       = $("modes-csv-btn");

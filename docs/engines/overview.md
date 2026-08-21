@@ -131,7 +131,7 @@ flowchart LR
   override). If the sidecar can't be applied (atom-count mismatch, corrupt JSON) the
   response carries a human-readable `notice` instead of silently failing.
 - **Stage 2 — config → script (deliver verbatim).** The emitter writes the user's set
-  exactly — `FROZEN_INDICES_USER = list(cfg.frozen_indices)` (`spectra/pyscf_script.py:370`)
+  exactly — `FROZEN_INDICES_USER = list(cfg.frozen_indices)` (`pyscf/vibration_emitters.py::_emit_constants`)
   — and nothing else. It does **not** silently union with `struct.frozen_atoms` at emit
   time, and the generated script does **not** read the sidecar at run time. Whatever
   the form showed is what lands in the script.
@@ -151,10 +151,11 @@ flowchart LR
   > directive above names — and the Stage-3A divergence check that would report
   > it is spectra-only. Tracked as row 2 of
   > [`template.md`](?doc=engines/template.md) § 12.1.
-- **Stage 3 — preflight (warn on what it can't use).** Two checks live in the engine's
-  render-time checks (`spectra/pyscf_engine.py::render_checks` — A at :576, B at :604);
-  the third runs at the render endpoint (`web/blueprints/spectra.py:408` — C), where the
-  sidecar is applied to the `Structure` before the checks see it:
+- **Stage 3 — preflight (warn on what it can't use).** The two structure checks live
+  in the render gate (`validation/spectra.py::spectra_render_checks` — patterns A and
+  B), which the vibration deck composes at render (P3: the third, endpoint-side check
+  retired with the render route; the hand-over door's cell gate covers the applied
+  structure instead):
 
 | Check | Fires when | Severity |
 |---|---|---|
@@ -360,7 +361,8 @@ say "the runner side", a runner (`render_siesta_stages_runner`) deleted on
 ## 5. Adding a new engine
 
 Engines self-register with an `@register_engine` decorator against a `Protocol`
-(`transport/engine_base.py`, `spectra/engine_base.py`) — the registry is how a future
+(`transport/engine_base.py`; spectra's registry retired at its migration's P3 —
+the vibration kind rides the JobSet seam instead) — the registry is how a future
 backend (e.g. a PySCF-NEGF transport engine) joins without touching the dispatch. To
 satisfy the contracts above, a new engine must:
 

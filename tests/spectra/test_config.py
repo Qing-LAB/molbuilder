@@ -77,25 +77,15 @@ class TestSpectraConfigDefaults:
 
 
 class TestSpectraConfigFieldMetadata:
-    """Every form-exposed field carries the metadata the
-    schema-driven UI + validator + CLI bridge consume."""
+    """The metadata that SURVIVED P3 is the validation vocabulary
+    (range / validate / choices / pattern) -- the form keys moved to
+    the catalogue with the vibration items."""
 
-    def test_every_sectioned_field_has_label_and_help(self):
-        """Spec-required: any field with a ``section`` key must
-        also carry ``label`` + ``help`` so the rendered form has
-        a name and a tooltip and the Methods generator has a
-        human-facing string to compose with."""
-        missing_label = []
-        missing_help  = []
-        for f in dataclasses.fields(SpectraConfig):
-            if "section" not in f.metadata:
-                continue
-            if not f.metadata.get("label"):
-                missing_label.append(f.name)
-            if not f.metadata.get("help"):
-                missing_help.append(f.name)
-        assert missing_label == [], f"missing label on: {missing_label}"
-        assert missing_help  == [], f"missing help on:  {missing_help}"
+    # test_every_sectioned_field_has_label_and_help retired at P3:
+    # the form keys (section/label/help/...) left the dataclass
+    # when the catalogue became the one form source -- only the
+    # VALIDATION keys (range/validate/choices/pattern) remain,
+    # and the two tests below pin exactly those.
 
     def test_basename_validator_attached(self):
         """job_name carries the shared _validate_basename callable
@@ -122,88 +112,10 @@ class TestSpectraConfigFieldMetadata:
             SpectraConfig(es_mode_selection=v)
 
 
-class TestSpectraConfigSchema:
-    """Form-schema shape pin: section names + per-section field
-    counts.  A stray field-reorder or a forgotten metadata addition
-    would silently rearrange the UI; this test catches it."""
-
-    def test_schema_section_layout(self):
-        sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
-        assert sch["config"]    == "SpectraConfig"
-        assert sch["id_prefix"] == "sp"
-
-        expected = [
-            ("System",               2),   # engine, job_name
-            # Method field count timeline:
-            #   5 (original): method, functional, basis, dispersion, density_fit
-            #   7 (2026-05-22 hemeC fix): + charge + spin (spectra script
-            #     was silently using PySCF defaults charge=0/spin=0).
-            #   8 (2026-05-23 ECP gap close): + ecp (spectra script
-            #     was silently dropping ECP -- bites non-def2 basis on
-            #     heavy atoms like Pt + cc-pVDZ).
-            #   9 (2026-08-13): + ecp_atoms.  The ECP question is two --
-            #     WHICH potential and WHICH atoms -- and answering both
-            #     with one field is what made it a `str | dict` nobody
-            #     could render as a control.
-            ("Method",               9),   # method, charge, spin,
-                                           # functional, basis, ecp,
-                                           # ecp_atoms, dispersion,
-                                           # density_fit
-            ("Frozen atoms",         3),   # elements, residue_names, indices
-            ("Spectrum",             3),   # compute_raman, compute_ir,
-                                           # displacement_amplitude_ang
-            ("Electronic structure", 8),   # selection, top_n, threshold,
-                                           # explicit_indices, freq_min_cm1,
-                                           # freq_max_cm1, n_homo_below,
-                                           # n_lumo_above
-            ("SCF",                  3),   # conv_tol, max_cycle, grid_level
-            ("Runtime",              5),   # max_memory_mb, threads,
-                                           # use_gpu, verbose, verbose_comments
-        ]
-        got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
-        assert got == expected, got
-
-    def test_es_selection_choices_match_spec(self):
-        """The Model 2 selector (spec § 8) must offer exactly the
-        five documented options -- none / all / top_n / threshold /
-        explicit -- in that order so the form ordering is stable."""
-        sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
-        es_section = next(s for s in sch["sections"]
-                          if s["name"] == "Electronic structure")
-        sel_field = next(f for f in es_section["fields"]
-                         if f["name"] == "es_mode_selection")
-        assert sel_field["kind"]    == "select"
-        assert sel_field["choices"] == ["skip", "all", "top_n",
-                                        "threshold", "explicit"]
-
-    def test_engine_field_carries_only_pyscf_in_v1(self):
-        """v1 ships PySCF only; the SIESTA slot is reserved but
-        not yet a valid choice.  The schema test pins this so
-        adding SIESTA later is an explicit one-line change to
-        SpectraConfig.engine's choices tuple AND to this test."""
-        sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
-        system_section = next(s for s in sch["sections"]
-                              if s["name"] == "System")
-        engine_field = next(f for f in system_section["fields"]
-                            if f["name"] == "engine")
-        assert engine_field["choices"] == ["pyscf"]
-
-    def test_legacy_id_overrides_preserved(self):
-        """A handful of fields carry id_suffix overrides so the
-        rendered HTML id is shorter / matches the UI affordances.
-        Pinning the mapping so a future rename of the field name
-        doesn't accidentally break the form selectors."""
-        sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
-        fmap = {f["name"]: f
-                for s in sch["sections"]
-                for f in s["fields"]}
-        # All these fields opt out of the default underscore->hyphen
-        # ID transform via id_suffix metadata.
-        assert fmap["job_name"]["id"]          == "sp-job-name"
-        assert fmap["max_memory_mb"]["id"]     == "sp-max-memory"
-        assert fmap["es_mode_selection"]["id"] == "sp-es-selection"
-        assert fmap["es_n_homo_below"]["id"]   == "sp-es-n-homo-below"
-        assert fmap["es_n_lumo_above"]["id"]   == "sp-es-n-lumo-above"
+# TestSpectraConfigSchema retired at P3 with the
+# /api/build/schema/spectra route: nothing renders a form from
+# this dataclass any more -- the catalogue vibration schema is
+# pinned by test_catalogue_form_schema.py per kind.
 
 
 class TestFreqRangeFilter:
@@ -218,25 +130,8 @@ class TestFreqRangeFilter:
         assert cfg.freq_min_cm1 is None
         assert cfg.freq_max_cm1 is None
 
-    def test_freq_fields_in_es_section(self):
-        sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
-        es_section = next(s for s in sch["sections"]
-                          if s["name"] == "Electronic structure")
-        names = [f["name"] for f in es_section["fields"]]
-        assert "freq_min_cm1" in names
-        assert "freq_max_cm1" in names
-
-    def test_freq_fields_render_as_optional_number(self):
-        """Both freq fields are Optional[float] -> the schema
-        emits kind='number' with null_option=True so the form
-        widget can offer "no bound" empty-string mode."""
-        sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
-        fmap = {f["name"]: f
-                for s in sch["sections"]
-                for f in s["fields"]}
-        for fname in ("freq_min_cm1", "freq_max_cm1"):
-            f = fmap[fname]
-            assert f["kind"] == "number"
-            assert f.get("null_option") is True
-            assert f["unit"] == "cm⁻¹"
-
+    # test_freq_fields_in_es_section + test_freq_fields_render_as_
+    # optional_number retired at P3: form placement and widget kind
+    # are the CATALOGUE's facts now (the freq_min/max_cm1 items
+    # carry calculations = ["vibration"] and optional float typing
+    # there, pinned by test_catalogue_form_schema.py).

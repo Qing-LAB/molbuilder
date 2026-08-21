@@ -27,7 +27,7 @@ from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.pyscf.input import render_script
 from molbuilder.structure import Structure
 
-_BASE = dict(basis="sto-3g", optimize=False, compute_frequencies=False,
+_BASE = dict(basis="sto-3g", optimize=False,
              write_molwatch_log=False, write_trajectory=False,
              save_optimized_xyz=False, save_initial_xyz=False,
              chkfile=False, dispersion=None)

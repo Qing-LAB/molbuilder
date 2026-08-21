@@ -230,9 +230,9 @@ class TestKnownAdvisorySitesAreHTTP200:
         # were DELETED with those routes on 2026-08-17 -- a browser renders
         # no deck.  The RULE is unchanged and still pinned at the two live
         # sites below; what went is two of its instances.
-        # spectra.py::api_spectra_render preflight failure.
-        (BLUEPRINT_DIR / "spectra.py",
-         '"errors_only": _issues_to_json(errors_only, cfg=cfg),\n        }), 200'),
+        # spectra.py's advisory site left with api_spectra_render at
+        # the spectra migration's P3 (2026-08-21) -- same rule, one
+        # fewer instance, exactly like the two build.py sites above.
         # transport.py::api_transport_render preflight failure.
         (BLUEPRINT_DIR / "transport.py",
          '"errors_only": _issues_to_json(errors_only, cfg=cfg),\n        }), 200'),

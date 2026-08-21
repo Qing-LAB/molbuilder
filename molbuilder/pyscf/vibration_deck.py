@@ -370,7 +370,14 @@ def vibration_spec(struct: Structure, cfg, *,
         # before the equilibrium SCF, the gradient check after it, the
         # thermochemistry after the Hessian, and the IR-only arm.
         from ..validation import validate, report
-        report(validate(struct, view))
+        from ..validation.spectra import spectra_render_checks
+        # BOTH gates, explicitly: validate() runs the generic passes
+        # (cell / geometry / field metadata), but its engine dispatch is
+        # keyed on type(cfg) and `view` is an ADAPTER, not a
+        # SpectraConfig -- so the spectra science gate is composed here
+        # by name.  Between P1 and P3 it silently skipped for exactly
+        # this reason (found 2026-08-21 while retiring the registry).
+        report(validate(struct, view) + list(spectra_render_checks(struct, view)))
         from ..spectra.methods import (extract_citation_keys,
                                        render_methods_md)
         methods_md = render_methods_md(

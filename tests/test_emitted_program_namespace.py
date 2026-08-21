@@ -47,7 +47,6 @@ _STRUCT = Structure(
 #: a callback, a solvent wrapper or a GPU shim on and off can.
 _AXES = {
     "optimize":            [True, False],
-    "compute_frequencies": [False, True],
     "density_fit":         [True, False],
     "solvent":             [None, "water"],
     "method":              ["RKS", "UKS"],

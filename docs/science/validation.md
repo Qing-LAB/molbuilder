@@ -247,7 +247,7 @@ when the user requests a closed-shell SCF against an open-shell recommendation.
 Four engine surfaces route through this reverse check (a *preflight* = the checks
 run at Generate-time, before engine input is written) — SIESTA + PySCF Build
 preflight (`validation/siesta.py:360`, `validation/pyscf.py:132`), Spectra
-preflight (`spectra/pyscf_engine.py:319`), and Transport preflight
+render gate (`validation/spectra.py`), and Transport preflight
 (`transport/transiesta.py:911`). The UI chip (`lib/detection-chip.js`) reads the
 **forward** side instead — `suggested_treatment` straight off the
 `/api/structure/analyze` response — not this validator. **The invariant**

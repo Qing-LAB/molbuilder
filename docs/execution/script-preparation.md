@@ -758,15 +758,18 @@ above.** Stating it rather than leaving it to be discovered:
 | **SIESTA** | 44 | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **PySCF** | 45 | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **TranSIESTA** (`transport/`) | **0** | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Spectra** (`spectra/`) | **0** | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Spectra** (the `vibration` kind, `pyscf/vibration_deck.py`) | 12 (+ shared PySCF set) | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-The two on the right-hand side are not on a *worse* pipeline; they are on a
-**different** one — a `Protocol` registry in `spectra/engine_base.py` and
-`transport/engine_base.py` whose central method is
-`render_script(struct, cfg) -> str`. That returns finished **text**, which is
-exactly the shape this seam had until 2026-08-18 and gave up for the reason
-§ 4.3 records: given text, the conductor has nothing to pass on, so the order
-is written down once per route and is free to drift.
+**Spectra crossed over** (spectra-migration plan, P0–P3 landed 2026-08-21):
+a vibrational spectrum is the `vibration` calculation KIND — described,
+prepped and run like any stage, with the old `spectra/engine_base.py`
+registry and its `render_script(struct, cfg) -> str` generator deleted.
+TranSIESTA is the one writer still on the old shape — a `Protocol` registry
+in `transport/engine_base.py` whose central method returns finished
+**text**, which is exactly the shape this seam had until 2026-08-18 and
+gave up for the reason § 4.3 records: given text, the conductor has nothing
+to pass on, so the order is written down once per route and is free to
+drift.
 
 **Why they are not simply migrated, stated plainly.** The seam has two halves
 (§ 4) and those engines have neither. `parameter()` — the door that makes W2

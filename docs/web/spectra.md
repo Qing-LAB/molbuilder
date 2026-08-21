@@ -409,14 +409,14 @@ On `/spectrum-calculation` the page is a short vertical workflow:
 When the job runs it writes a `.spectra.json`; loading that (here, or on the
 Results tab) is what fills the chart.
 
-## 6. The two API doors
+## 6. The API door
 
-The engine talks to exactly two spectra routes (full shapes in
-[`web-api.md`](?doc=web/web-api.md)):
+One spectra route remains — the ARTIFACT reader (full shape in
+[`web-api.md`](?doc=web/web-api.md)); the compute half goes through the
+catalogue schema + hand-over doors (§ 5):
 
 | Route | Does | Returns |
 |---|---|---|
-| `POST /api/spectra/render` | **retiring at P3** (the tab no longer calls it — the compute half hands over instead); turns *structure + parameters* into a run script | `{ok, script, methods_md, bibliography_keys, job_name, issues}` |
 | `POST /api/spectra/load` | parses an existing `.spectra.json` into display data | `{ok, results}` — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
 
 Both follow the app's `{ok: …}` envelope convention. The form schema comes
@@ -493,5 +493,6 @@ Viewer + integration: `test_results_state_contract_spectra_js.py` (the state
 buckets), `test_spectra_phase_indicator_js.py` (the phase indicator, the
 relaxation dot included), `test_task_setup_tab.py` (the send flow: the shared
 door, the kind, and the browser-vs-CLI byte-compat pin),
-`test_spectrum_generate_e2e.py` (the render route — retiring with it at P3),
+`test_vibration_render_gate.py` (the deck runs the science gate — and it
+refuses), `tests/test_vibration_e2e.py` (the live water runs),
 `test_vibrationview_mode_math_js.py` (the animation's eigenvector math).

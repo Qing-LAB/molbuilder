@@ -90,7 +90,6 @@ caller holds.
 | `/api/structure/save` | `{structure: <envelope>, path, overwrite, frames?}` |
 | `/api/structure/export` | `{structure: <envelope>, name?, frames?}` |
 | ~~`/api/build/fdf`~~ · ~~`/api/build/pyscf`~~ · `/api/build/preflight` | `{structure: <envelope>, params, structure_path?}` — the **emit** doors. `structure_path` is provenance and a dest-dir anchor, never a source of geometry or labels |
-| `/api/spectra/render` | `{structure: <envelope>, params, structure_path?, prior_path?}` |
 | `/api/transport/render` | `{structure: <envelope>, params, structure_path?}` — the region-labeled device. Took the path as its GEOMETRY with the labels beside it until 2026-08-03; it was the last door on that shape |
 | `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, format?, sidecar?}`. **Not the envelope, and right not to be:** nothing is being sent back, a file or a paste is being *parsed*, and raw text is what a user supplied. It ALSO takes `{structure: <envelope>}` on one branch: a tab **putting back** the structure it was showing before the page was left, which is not a parse — `exportFile`'s exact inverse, through the one entrance so the same checks run |
 | `/api/selection/eval` | `{atoms: [{element, labels, residueName}], rule}`. **Not the envelope:** no rule matches on position (`molview.md` § 9.5), so no coordinates are sent — the cut-down list is the whole of what a filter needs |
@@ -354,7 +353,7 @@ Set on every response by an `after_request` hook (`app.py`):
   live in [`ops/deployment.md § 4`](?doc=ops/deployment.md).
 - The global upload cap is **50 MB** (`MAX_CONTENT_LENGTH`).
 
-## 3. Endpoint index — all 81 routes
+## 3. Endpoint index — all 79 routes
 
 > **Three routes below no longer exist** (found 2026-08-10 while correcting this
 > heading, which said 80): `/api/files/result-list`,
@@ -409,8 +408,10 @@ owned by [`molview.md`](?doc=web/molview.md):
 POST `/api/workspace-storage/{write,read,prune}`.
 
 **Config forms** — owned by [`form-schema.md`](?doc=web/form-schema.md):
-GET `/api/build/schema/<engine>`, GET `/api/build/schema/spectra`,
-GET `/api/transport/schema`.
+GET `/api/build/schema/<engine>` (`?calculation=` narrows to a kind;
+the spectra tab renders `pyscf?calculation=vibration`),
+GET `/api/transport/schema`.  (`/api/build/schema/spectra` and
+`/api/spectra/render` retired at the spectra migration's P3.)
 
 **Results + trajectory + spectra + transport** — the Results/Spectra/Transport
 tabs (their docs, this wave):

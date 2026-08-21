@@ -41,7 +41,7 @@ def core_body():
 
 class TestBucketedStateShape:
     """``state`` carries the same five buckets as trajectory + a
-    ``machine`` field.  Form / calculation fields (schema, lastScript,
+    ``machine`` field.  Form / calculation fields (schema,
     ...) stay at the top level of ``state`` outside the buckets;
     they're owned by a different (workspace) contract."""
 
@@ -97,7 +97,6 @@ class TestBackcompatAliases:
         ("watchInFlight",  "lifecycle"),
         ("watchAbort",     "lifecycle"),
         ("loadAbort",      "lifecycle"),
-        ("renderAbort",    "lifecycle"),
         ("watchErrors",    "lifecycle"),
     ])
     def test_each_legacy_field_aliased(self, core_body, flat, bucket):
