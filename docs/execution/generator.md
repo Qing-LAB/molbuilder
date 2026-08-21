@@ -404,11 +404,19 @@ framework rule, not a script patch)*:
   node's shape, so a mixed matrix prepped ON a GPU node over-refuses the
   CPU family; prep on a login/standard node.)*
 - **Submission splits by the deck's own answer** (`_job_wants_gpu`, the
-  one door): one grouped job per side.  A sweep whose trials all answer
-  one way keeps the single `bench-group`; a sweep spanning both submits
-  `bench-group-cpu` and `bench-group-gpu`, so the CPU group's envelope
-  asks **no `gres`** and devices are never held while CPU trials run —
-  the waste the split exists to stop.  **Routing** *(user, 2026-08-21)*:
+  one door) **and then by RESOURCE SHELF** *(user, 2026-08-21: "lighter
+  tasks scheduled for heavy resource idling for hours is not a good use
+  of cpu time")*: trials sharing one exact ask (ranks × cores × gres)
+  share one exact-fit grouped job, so **nothing idles inside a group** —
+  neither the cores a narrow trial would leave of a wide envelope nor
+  the devices a G1 trial would hold of a `gres:4` one.  The value-axis
+  cartesian shares shelves by construction, which is what keeps queue
+  waits at #shelves instead of #trials — the point of the 2026-08-20
+  grouping, kept.  Naming: qualifiers appear only when needed —
+  `bench-group`, then `-cpu`/`-gpu` when the sweep spans both sides,
+  then a shelf token (`-g2n32c1`) when a side spans several shelves.
+  The CPU side's groups ask **no `gres`**, so devices are never held
+  while CPU trials run — the waste the split exists to stop.  **Routing** *(user, 2026-08-21)*:
   a CPU group MAY run on a gpu-capable cluster, but when the menu holds a
   cpu-only domain it is **preferred** — idle devices cost — and the GPU
   group prefers the first gpu-capable row (its `gpu_partition` when
@@ -419,11 +427,12 @@ framework rule, not a script patch)*:
   machine cannot launch stays pending, and a later `submit bench`
   collects exactly the unlaunched side — which is the cross-cluster lane:
   each machine submits what it reaches, results ride the folder back.
-  **Each group runs its trials widest-first** *(user, 2026-08-21)*: the
-  allocation is already the widest trial's, so wide→narrow costs nothing
-  extra, banks the expensive measurements first, and lets a person watch
-  the trend (`bench-group*.log`; `summarize` mid-flight) and stop early —
-  an early `scancel` still summarizes to a verdict over what completed.
+  **The shelves submit widest-first** *(user, 2026-08-21)*: an exact-fit
+  group costs the same whenever it runs, so wide→narrow order is free —
+  it banks the expensive measurements first and lets a person watch the
+  trend (`bench-group*.log`; `summarize` mid-flight) and stop early — an
+  early `scancel` of the remaining shelves still summarizes to a verdict
+  over what completed, and the queue may even run shelves concurrently.
   *(An early stop's un-run riders are already stamped `launched`, so the
   remainder is re-measured per trial by name — the move-aside path —
   never by re-submitting the group.)*

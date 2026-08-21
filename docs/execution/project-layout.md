@@ -980,10 +980,12 @@ before. The allocation is the **union envelope**: the widest trial's ranks,
 cores and GPUs, and a wall of Σ per-trial bounds plus margin. A trial that
 hits its bound is killed and reads `incomplete` in the summary's census;
 the walk continues — one bad point says nothing about the next. A sweep
-whose trials span CPU **and** GPU (2β's grid-family axis,
-[`generator.md`](?doc=execution/generator.md) § 4.3a) submits **one group
-per side** — `bench-group-cpu` / `bench-group-gpu` — so the CPU group's
-envelope asks no `gres` and devices are never held while CPU trials run. The
+submits **one group per side and resource shelf**
+([`generator.md`](?doc=execution/generator.md) § 4.3a, 2026-08-21): trials
+sharing one exact ask ride one exact-fit allocation — the CPU groups ask
+no `gres`, a G1 trial never holds a `gres:4` envelope, and a narrow trial
+never idles a wide one's cores; shelves submit widest-first, as
+independent jobs the queue may run concurrently. The
 container's `bench-group.log` is the explicit record: the allocation the
 group ran in (job id, node, envelope), then per trial *when it started,
 when it finished, with what exit code and duration* — so both the ordering

@@ -227,19 +227,26 @@ def _submit_dry(calc, *extra):
     return r.output
 
 
-def test_split_submission_one_group_per_side(sol_calc):
-    """One grouped job per side, named by the SET's composition; the CPU
-    group prefers the cpu-only domain, the GPU group the gpu-capable one
-    (user rule, 2026-08-21), and only the GPU group asks for a device."""
+def test_split_submission_one_group_per_side_and_shelf(sol_calc):
+    """One grouped job per side AND resource shelf (user rulings,
+    2026-08-21): the CPU side is one shelf here (one exact-fit group,
+    named by side alone); the GPU side spans three device counts, so it
+    submits three exact-fit groups -- a G1 trial never idles inside a
+    gres:4 envelope.  The CPU group prefers the cpu-only domain, every
+    GPU group the gpu-capable one, and only GPU groups ask for devices."""
     _declare(sol_calc, _small_matrix())
     _prep(sol_calc)
     out = _submit_dry(sol_calc)
     plans = [l for l in out.splitlines() if "WOULD run" in l]
-    assert len(plans) == 2
-    cpu = next(l for l in plans if "bench-group-cpu" in l)
-    gpu = next(l for l in plans if "bench-group-gpu" in l)
+    assert len(plans) == 4
+    cpu = next(l for l in plans if "bench-group-cpu " in l)
     assert "-p htc" in cpu and "--gres" not in cpu
-    assert "-p general" in gpu and "--gres=gpu:a100:" in gpu
+    for g in (1, 2, 4):
+        line = next(l for l in plans if f"bench-group-gpu-g{g}n4c1" in l)
+        assert "-p general" in line and f"--gres=gpu:a100:{g}" in line
+    # widest first ACROSS shelves: the g4 group precedes g2 precedes g1
+    order = [l for l in plans if "bench-group-gpu-" in l]
+    assert ["g4" in order[0], "g2" in order[1], "g1" in order[2]] ==         [True, True, True]
     assert out.count("rides the group") == 8
 
 
@@ -251,21 +258,26 @@ def test_only_submits_one_side_and_domain_overrides(sol_calc):
     _prep(sol_calc)
     out = _submit_dry(sol_calc, "--only", "gpu", "--domain", "htc")
     plans = [l for l in out.splitlines() if "WOULD run" in l]
-    assert len(plans) == 1 and "bench-group-gpu" in plans[0]
-    assert "-p htc" in plans[0], "--domain overrides the preference"
+    assert len(plans) == 3
+    assert all("bench-group-gpu-" in l for l in plans)
+    assert all("-p htc" in l for l in plans), \
+        "--domain overrides the preference for every shelf"
     assert "bench-group-cpu" not in out
 
 
-def test_the_group_runs_widest_first(sol_calc):
-    """User rule, 2026-08-21: the group's allocation is already the widest
-    trial's, so the sequencer runs wide -> narrow -- the expensive
-    measurements land first and an early scancel still summarizes to a
-    verdict.  Declared ASCENDING here, so the sort must flip it; the GPU
-    family's equal-width G-variants keep their stable enumeration order."""
+def test_the_shelves_submit_widest_first(sol_calc):
+    """User rules, 2026-08-21: two declared widths are two exact-fit
+    SHELVES (nothing idles inside a group), submitted widest first so the
+    expensive measurements land first and an early stop still summarizes
+    to a verdict.  Declared ASCENDING here, so the order must flip it."""
     _declare(sol_calc, {"mpi_np": [2, 4], "omp_threads": [1],
                         "enable_gpu": [False]})
     _prep(sol_calc)
     out = _submit_dry(sol_calc)
+    plans = [l for l in out.splitlines() if "WOULD run" in l]
+    assert len(plans) == 2
+    assert "bench-group-n4c1" in plans[0] and " -n 4 " in plans[0]
+    assert "bench-group-n2c1" in plans[1] and " -n 2 " in plans[1]
     riders = [l.split()[1] for l in out.splitlines() if "rides the group" in l]
     assert riders == ["K4C1", "K2C1"], riders
 
@@ -312,6 +324,52 @@ def test_the_winners_coordinates_ride_run_config(sol_calc):
     cfg = read_run_config(cfg_path, engine="siesta")
     assert cfg["pins"]["block_size"] == 128
     assert cfg["pins"]["enable_gpu"] is False
+
+
+def test_summarize_mid_flight_lists_unfinished_and_refreshes(sol_calc):
+    """User rule, 2026-08-21: summarize works WHILE the bench runs -- the
+    finished trials are summarized consistently, the unfinished ones are
+    listed as unfinished (never a failure of the set), the coverage clause
+    says how partial the verdict is, and a later summarize refreshes the
+    record over the fuller evidence."""
+    from molbuilder.jobset._cli import _load_bench_set
+    from molbuilder.jobset.materialize import job_dir_names, shape_of
+    from molbuilder.jobset.summarize import run_summarize_jobset, summary_text
+    _declare(sol_calc, _small_matrix())
+    _prep(sol_calc)
+    js, base = _load_bench_set(str(sol_calc), "coarse")
+    dirs = job_dir_names(js, shape_of(js, sol_calc))
+
+    def finish(name, spi):
+        d = sol_calc / dirs[name]
+        stem = next(d.glob("*.fdf")).name[:-4]
+        (d / f"{stem}-run0.out").write_text(
+            "* Running on 4 nodes in parallel\nx\n"
+            "siesta: Final energy (eV):\nJob completed\n")
+        t0 = 1000000.0
+        (d / f"{stem}-run0.scf-timing.log").write_text(
+            "\n".join(f"{t0 + i * spi} iter" for i in range(4)) + "\n")
+
+    finish("G0K4C1enable_gpuFalseblock_size64", 5.0)
+    res, out_path, rc = run_summarize_jobset(
+        js, sol_calc, now_iso="2026-08-21T00:00:00Z", stage="coarse")
+    text = summary_text(res, out_path, run_config=rc, stage="coarse")
+    states = {p.label: p.state for p in res.points}
+    assert states["G0K4C1enable_gpuFalseblock_size64"] == "completed"
+    assert sum(1 for s in states.values() if s != "completed") == 7
+    assert "coverage: 1 of 8 prepped points measured" in text
+    assert "the verdict ranks what ran" in text
+
+    # more evidence lands; the RECORD refreshes on the next summarize
+    finish("G0K4C1enable_gpuFalseblock_size128", 3.0)
+    res2, _o, rc2 = run_summarize_jobset(
+        js, sol_calc, now_iso="2026-08-21T01:00:00Z", stage="coarse")
+    assert res2.choice["label"] == "G0K4C1enable_gpuFalseblock_size128"
+    # the PROPOSAL file is the user's after first write: kept, with the
+    # refresh taught in the summary text
+    assert rc2[1] == "kept"
+    assert "delete it and summarize again" in summary_text(
+        res2, _o, run_config=rc2, stage="coarse")
 
 
 # --------------------------------------------------------------------- #

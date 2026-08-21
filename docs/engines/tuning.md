@@ -576,19 +576,53 @@ each an economy rule:
   axis. Worked on the § 6 junction's declared matrix: the full cartesian is
   36 trials; dropping `block_size` to auto makes it 12; staging makes it
   6 + 6 with the second round already pinned to the shape that won.
-- **Declare the ladder, stop when the trend is clear** *(user, 2026-08-21)*.
-  The grouped sequencer runs its trials **widest-first** — the allocation
-  is already sized to the widest trial, so the order costs nothing — which
-  means the plausible operating points land first and the narrow tail only
-  refines the curve. Watch `bench-group*.log` (per-trial start/finish/
-  duration, live) or run `summarize bench` mid-flight (it is async and
-  reports over whatever has completed); when the s/iter trend has
-  flattened, `scancel` the group and summarize — the declared matrix is an
-  *upper bound* on cost, not a commitment. One honest caveat: the group
-  stamps every rider `launched` at submission, so a stopped remainder is
-  re-measured per trial by name (move the old trial directory aside —
-  [`project-layout.md § 2.3.2`](?doc=execution/project-layout.md)), never
-  by re-submitting the group.
+- **Nothing idles inside a group** *(user, 2026-08-21: "lighter tasks
+  scheduled for heavy resource idling for hours is not a good use of cpu
+  time")*. Trials group **per resource shelf** — one exact-fit allocation
+  per distinct ask — so a 32-rank trial never idles 96 cores of a
+  128-rank envelope and a G1 trial never holds four devices. The value
+  axes are what make shelves populous (every solver × block combo shares
+  its shape's shelf), so queue waits stay at #shelves, not #trials.
+- **Declare the ladder, stop when the trend is clear** *(user,
+  2026-08-21: "if we know that the performance downgrades dramatically
+  in the middle, we already know the answer")*. The shelves submit
+  **widest-first** — exact-fit groups cost the same in any order, so the
+  plausible operating points land first and the narrow tail only refines
+  the curve. Watch `bench-group*.log` (per-trial start/finish/duration,
+  live) or run `summarize bench` **mid-flight — it is safe and honest
+  while the bench runs**: finished trials are summarized consistently,
+  unfinished ones are listed as `incomplete`/`unknown` (never a failure
+  of the set), and the coverage clause says how partial the verdict is;
+  a later summarize refreshes the record over the fuller evidence
+  (`run-config.toml`, once written, is *yours* — delete it and summarize
+  again for a proposal refreshed from the fuller record). When the knee
+  is visible, `scancel` the remaining shelves — or skip summarize
+  entirely and set the run parameters directly: explicit flags are the
+  top of the precedence chain, and the record still holds whatever
+  completed. The declared matrix is an *upper bound* on cost, not a
+  commitment. One honest caveat: submission stamps every rider
+  `launched`, so a stopped remainder is re-measured per trial by name
+  (move the old trial directory aside —
+  [`project-layout.md § 2.3.2`](?doc=execution/project-layout.md)),
+  never by re-submitting its group.
+
+**The node arithmetic — the MPS limit is a ceiling, not a target**
+*(user question, 2026-08-21)*. Per device, K ranks each with C cores must
+fit the node: **K × C ≤ cores / G** — on a 48-core, 4-GPU node that is 12
+cores per device, so `G4 K12 C1` fills it exactly, and a 24-ranks-on-one-
+A100 layout (`G1 K24 C2`) spends the *whole node's* cores on one device
+while three idle. MPS admits up to 48 client processes per device
+(`references.bib: NvidiaMPS`), but that is what *can attach*, not what is
+fast — the measured ELPA-no-NCCL regime sits near ~4 ranks per device,
+and past SM saturation extra clients only queue. **Threads are not an MPS
+requirement**: one core per rank is a complete layout; C > 1 helps only
+the CPU phases, and only as far as this SIESTA build's OpenMP actually
+scales (the wrapper pins BLAS to one thread either way,
+[`running-a-job.md § 3.3`](?doc=execution/running-a-job.md)). All of
+which is measurable in one declaration: `mpi_np: [24, 48]` ×
+`omp_threads: [1, 2]` under the 48-core cap enumerates exactly the
+full-node layouts — `G4 K12`, `G2 K24`, `G1 K48` (at the MPS ceiling),
+and their two-thread halves — and the verdict, not the ceiling, picks.
 
 **The record carries what was asked AND what actually ran** *(user
 question, 2026-08-21)*. Implicit values are not lost: every trial's

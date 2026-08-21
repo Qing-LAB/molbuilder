@@ -553,13 +553,34 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
         jobs = sides[side]
         if not jobs or (only and side != only):
             continue
-        pending = [j for j in jobs if not was_launched(base / dirs[j.name])]
-        if not pending:
-            continue                    # this side already rode a group
-        name = f"bench-group-{side}" if mixed else "bench-group"
-        results += _submit_side_group(
-            jobset, base, dirs, pending, name, gpu_side=(side == "gpu"),
-            domain=domain, dry_run=dry_run, trial_timeout_s=trial_timeout_s)
+        # ONE GROUP PER RESOURCE SHELF (user, 2026-08-21: "lighter tasks
+        # scheduled for heavy resource idling for hours is not a good use
+        # of cpu time").  A single per-side group sized its allocation to
+        # the WIDEST trial, so every narrower trial idled the difference
+        # -- ~40% of the cores across a 32/64/128-rank matrix, and on the
+        # GPU side idle DEVICES.  Trials sharing an exact resource ask
+        # share one exact-fit allocation instead: nothing idles inside a
+        # group, the value-axis cartesian still groups (its combos share
+        # a shelf by construction, which is what keeps queue waits at
+        # #shelves instead of #trials -- the 2026-08-20 grouping's point),
+        # and the shelves submit WIDEST FIRST as independent jobs the
+        # queue may even run concurrently.
+        shelves: dict = {}
+        for j in jobs:
+            shelves.setdefault(_shelf_key(j), []).append(j)
+        multi = len(shelves) > 1
+        for key in sorted(shelves, key=_shelf_width, reverse=True):
+            pending = [j for j in shelves[key]
+                       if not was_launched(base / dirs[j.name])]
+            if not pending:
+                continue            # this shelf already rode a group
+            name = ("bench-group"
+                    + (f"-{side}" if mixed else "")
+                    + (f"-{_shelf_token(key)}" if multi else ""))
+            results += _submit_side_group(
+                jobset, base, dirs, pending, name,
+                gpu_side=(side == "gpu"), domain=domain, dry_run=dry_run,
+                trial_timeout_s=trial_timeout_s)
     if not results:
         raise SubmitError(
             f"all {len(sides[only]) if only else len(jobset.jobs)} "
@@ -593,9 +614,34 @@ def _preferred_domain(base: Path, gpu_side: bool) -> Optional[tuple]:
     return None
 
 
-def _trial_width(job: "Job") -> int:
-    """A trial's core footprint -- the widest-first sort key."""
-    return (job.resources.mpi_np or 0) * (job.resources.cpus_per_task or 1)
+def _shelf_key(job: "Job"):
+    """The exact resource ask that defines a group (§ 4.3a, 2026-08-21):
+    trials grouped together must fit ONE allocation with nothing idle, so
+    the key is everything the envelope would widen over."""
+    r = job.resources
+    return (r.mpi_np or 0, r.cpus_per_task or 0, r.gres or "")
+
+
+def _gres_count(gres: str) -> int:
+    try:
+        return int(str(gres).rsplit(":", 1)[-1]) if gres else 0
+    except ValueError:
+        return 1
+
+
+def _shelf_width(key) -> tuple:
+    """Widest-first order across shelves: cores, then devices."""
+    n, c, gres = key
+    return (n * max(c, 1), _gres_count(gres))
+
+
+def _shelf_token(key) -> str:
+    """A shelf's name qualifier -- ``g2n32c1`` / ``n128c1`` -- appended
+    when a side spans more than one shelf (`job-contracts.md` § 6.3: the
+    ``-`` announces a qualifier; the token stays in [A-Za-z0-9_])."""
+    n, c, gres = key
+    g = f"g{_gres_count(gres)}" if gres else ""
+    return f"{g}n{n}c{c}"
 
 
 def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
@@ -606,16 +652,11 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     `submit_bench_group` body, run once per side with its own envelope,
     sequencer, and ``-p/-q`` resolution.
 
-    **The sequencer runs WIDEST FIRST** (user, 2026-08-21; `generator.md`
-    § 4.3a): the group's allocation is already sized to the widest trial,
-    so wide-to-narrow costs nothing extra, banks the expensive
-    measurements first, and makes the trend readable while the group is
-    still running -- `summarize bench` is async and concludes over
-    whatever has completed, so a person who sees the curve flatten can
-    `scancel` the group and still get a verdict.  Stable sort:
-    equal-width trials keep the enumeration (declaration) order.
+    Widest-first ordering lives one level up since the shelf split
+    (2026-08-21): every trial in a group shares one exact resource ask by
+    construction, so within a group the enumeration (declaration) order
+    stands, and the SHELVES submit widest first.
     """
-    pending = sorted(pending, key=_trial_width, reverse=True)
 
     # THE ENV-INHERITANCE SHIELD (user concern, 2026-08-20).  Inside the
     # allocation, SLURM_NTASKS / SLURM_CPUS_PER_TASK describe the ENVELOPE

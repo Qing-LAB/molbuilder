@@ -721,18 +721,21 @@ def test_submit_accepts_exactly_these_options(tmp_path):
         "trial_timeout_min", "only_side"}
 
 
-def test_cli_submit_of_a_whole_sweep_groups_it_into_one_job(tmp_path):
-    """One LAUNCH ACT for the sweep (§ 2.3.2, user 2026-08-20, amending the
-    2026-08-12 one-per-invocation form by keeping what it protected): a bare
-    `submit bench` plans exactly ONE sbatch -- the group sequencer -- and
-    every trial rides it."""
+def test_cli_submit_of_a_whole_sweep_groups_it_by_shelf(tmp_path):
+    """One LAUNCH ACT per resource SHELF (§ 2.3.2 user 2026-08-20 grouped
+    the sweep; 2026-08-21 split the groups by exact ask so nothing idles
+    inside one -- generator.md § 4.3a): this fixture's two points differ
+    in rank count, so they are two shelves, submitted widest first, each
+    named by its shelf token."""
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
     r = runner.invoke(grp, ["submit", "bench", "--bundle", str(tmp_path),
                             "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
-    assert "bench-group" in r.output
-    assert r.output.count("WOULD run") == 1
+    plans = [l for l in r.output.splitlines() if "WOULD run" in l]
+    assert len(plans) == 2
+    assert "bench-group-g1n2c4" in plans[0], "widest shelf first"
+    assert "bench-group-g1n1c4" in plans[1]
     assert r.output.count("rides the group") == 2
 
 

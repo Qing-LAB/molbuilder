@@ -318,13 +318,16 @@ def test_prep_run_applies_the_proposal_file_but_flags_win(calc):
     assert js["jobs"][0]["resources"]["cpus_per_task"] == 3
 
 
-def test_cli_submit_bench_groups_the_sweep_into_one_job(calc):
-    """`submit bench <stage>` under submit mode (§ 2.3.2, user 2026-08-20):
-    ONE scheduler job for the whole sweep -- the trials ride a single
-    allocation in sequence, each under the per-trial bound.  Naming a trial
-    still submits that one alone (a single point's re-run); a trial name on
-    `submit run` still refuses.  The 2026-08-12 rule survives as what it
-    protected: one LAUNCH ACT, never a queue flood."""
+def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
+    """`submit bench <stage>` under submit mode: one grouped job per
+    RESOURCE SHELF (user 2026-08-21 -- an exact-fit allocation per group,
+    so a narrow trial never idles a wide envelope; until then one job per
+    SIDE, § 2.3.2 user 2026-08-20).  The probed grid's every point has its
+    own width here, so #groups == #shelves -- still one LAUNCH ACT per
+    shelf, never a queue flood; the value-axis cartesian is what shares
+    shelves in real matrices.  Naming a trial still submits that one alone
+    (a single point's re-run); a trial name on `submit run` still
+    refuses."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     js = _prep_bench(calc)
@@ -337,19 +340,23 @@ def test_cli_submit_bench_groups_the_sweep_into_one_job(calc):
                                      "--bundle", str(calc),
                                      "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
-    # exactly ONE sbatch is planned, for the group sequencer, with the
-    # union envelope and a wall derived from the per-trial bound
-    assert r.output.count("WOULD run") == 1
+    # one sbatch per SHELF, each an exact fit -- and the shelves submit
+    # widest first, so the first planned group asks the widest -n
+    shelves = {(j["resources"].get("mpi_np") or 0,
+                j["resources"].get("cpus_per_task") or 0,
+                j["resources"].get("gres") or "") for j in js["jobs"]}
+    plans = [l for l in r.output.splitlines() if "WOULD run" in l]
+    assert len(plans) == len(shelves)
+    assert len(plans) < len(js["jobs"]) or len(shelves) == len(js["jobs"])
     assert "bench-group" in r.output
-    # the submitted payload is the RENDERED header (runwrap's one emitter,
-    # so the group carries the same site directives every trial gets); the
-    # header's body delegates to bench-group.run.sh
-    assert "bench-group.sbatch" in r.output
-    assert " -t 0-" in r.output, "the wall must ride the sbatch command"
-    # the UNION envelope: the widest trial's ranks ride -n
-    max_np = max((j["resources"].get("mpi_np") or 1) for j in js["jobs"])
-    assert f" -n {max_np} " in r.output, (
-        f"the envelope must ask for the widest trial ({max_np} ranks)"
+    assert ".sbatch" in plans[0]
+    assert " -t 0-" in plans[0], "the wall must ride the sbatch command"
+    # widest = the CORE footprint (ranks x cores-per-rank), not ranks
+    wid = max(js["jobs"], key=lambda j: (j["resources"].get("mpi_np") or 1)
+              * (j["resources"].get("cpus_per_task") or 1))["resources"]
+    assert (f" -n {wid.get('mpi_np') or 1} " in plans[0]
+            and f" -c {wid.get('cpus_per_task')} " in plans[0]), (
+        f"the widest shelf must submit first: {plans[0]}"
     )
     assert r.output.count("rides the group") == len(js["jobs"])
     assert "next unlaunched trial" not in r.output
@@ -382,6 +389,12 @@ def test_the_group_sequencer_runs_every_trial_and_survives_failures(
                                                was_launched)
     from molbuilder.jobset.submit import submit_bench_group
 
+    # A DECLARED one-shelf sweep (one machine point x a block_size value
+    # axis): the walk story needs several trials in ONE group, and since
+    # the shelf split (2026-08-21) only same-ask trials share a group --
+    # exactly what a value axis produces.
+    _declare_bench(calc, {"mpi_np": [4], "omp_threads": [1],
+                          "block_size": [16, 32, 64]})
     _prep_bench(calc)
     js, base = _load_bench_set(calc, "coarse")
     dirs = job_dir_names(js, shape_of(js, base))
