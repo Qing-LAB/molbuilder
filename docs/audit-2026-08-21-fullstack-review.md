@@ -360,8 +360,9 @@ review-and-validation round when these land.
      matrix-economy guidance (trim, stage rounds, stop at the knee).
   Open from the wave: the user's live task.json still spells
   'ELPA-1Stage' (preflight now flags it; one-line fix theirs), and
-  their environment.json on Sol wants a re-probe (inventory) + the
-  curated max_cores=48 row.
+  their environment.json on Sol wants one re-probe — it now fills the
+  GPU inventory AND max_cores from the node groups' own rows
+  (autodetected 2026-08-21 on the user's challenge).
   ORIGINAL DESIGN NOTES (kept for history): multi-point
   value axes, integrated across placements under ONE bench.  The
   user's question ("gpu vs cpu separately submitted to different

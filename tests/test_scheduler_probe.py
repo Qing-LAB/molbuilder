@@ -14,21 +14,25 @@ from molbuilder.scheduler_probe import (derive_domains, parse_allowed_qos,
                                         parse_qos, parse_sinfo)
 
 # Real Sol `sinfo -h -o "%P|%30l|%D|%40G"` (pipe-delimited; untruncated).
+# One row per NODE GROUP -- the 5th column (%c, cores per node) is what
+# lets a mixed partition's GPU nodes report their OWN core count (htc:
+# 48-core a100 nodes + 64-core a100.20gb nodes beside 128-core CPU
+# nodes).  ``48+`` exercises sinfo's at-least marker.
 _SINFO = """\
-arm|7-00:00:00|4|gpu:gh200:1
-fpga|7-00:00:00|4|(null)
-gaudi|7-00:00:00|10|gpu:hl225:8
-general|14-00:00:00|4|gpu:a100:4
-general|14-00:00:00|61|(null)
-general|14-00:00:00|8|gpu:l40:4
-highmem|7-00:00:00|11|(null)
-htc*|4:00:00|51|gpu:a100:4
-htc*|4:00:00|3|gpu:a100.20gb:16
-htc*|4:00:00|134|(null)
-lightwork|1-00:00:00|1|gpu:a100.20gb:16
-public|7-00:00:00|52|gpu:a100:4
-public|7-00:00:00|5|gpu:a30:3
-public|7-00:00:00|107|(null)
+arm|7-00:00:00|4|gpu:gh200:1|72
+fpga|7-00:00:00|4|(null)|64
+gaudi|7-00:00:00|10|gpu:hl225:8|96
+general|14-00:00:00|4|gpu:a100:4|48+
+general|14-00:00:00|61|(null)|128
+general|14-00:00:00|8|gpu:l40:4|64
+highmem|7-00:00:00|11|(null)|128
+htc*|4:00:00|51|gpu:a100:4|48
+htc*|4:00:00|3|gpu:a100.20gb:16|64
+htc*|4:00:00|134|(null)|128
+lightwork|1-00:00:00|1|gpu:a100.20gb:16|64
+public|7-00:00:00|52|gpu:a100:4|48
+public|7-00:00:00|5|gpu:a30:3|64
+public|7-00:00:00|107|(null)|128
 """
 
 # Real Sol `sacctmgr -nP show qos format=Name,MaxWall,Flags` (subset).
@@ -60,6 +64,31 @@ def test_parse_sinfo_merges_partitions_and_gres():
     assert parts["htc"].nodes == 51 + 3 + 134          # node groups summed
     assert parts["fpga"].has_gpu is False
     assert parts["arm"].gpu_types == {"gh200": 1}
+
+
+def test_parse_sinfo_reads_cores_per_node_group():
+    """2026-08-21 (user: "why the max_cores not autodetected?"): sinfo
+    reports one row per node group, so the GPU nodes' own core count is
+    measurable even inside a mixed partition.  The SMALLEST GPU group
+    feeds the cap (it bounds); the widest node feeds max_cpus; a ``48+``
+    at-least marker reads as its base; a 4-column capture (the old
+    format) still parses with the core fields None."""
+    parts = {p.name: p for p in parse_sinfo(_SINFO)}
+    assert parts["htc"].gpu_cores == 48        # min(48 a100, 64 a100.20gb)
+    assert parts["htc"].max_cpus == 128        # the CPU group's nodes
+    assert parts["general"].gpu_cores == 48    # "48+" -> 48
+    assert parts["highmem"].gpu_cores is None and parts["highmem"].max_cpus == 128
+    old = parse_sinfo("htc|4:00:00|51|gpu:a100:4")
+    assert old[0].gpu_cores is None and old[0].max_cpus is None
+
+
+def test_the_domain_row_carries_the_probed_core_cap():
+    """The gpu-capable row's ``max_cores`` is its GPU nodes' cores -- the
+    cap the GPU grid checks at prep -- and a cpu-only row carries its
+    widest node's.  Probed, no longer hand-curated; still yours to edit."""
+    doms = {d["name"]: d for d in derive_domains(*_sol())[0]}
+    assert doms["htc"]["max_cores"] == 48
+    assert doms["highmem"]["max_cores"] == 128
 
 
 def test_parse_qos_maxwall():
@@ -106,7 +135,8 @@ def test_the_wall_is_the_smaller_of_partition_and_qos():
     # debug's QoS ceiling (15 min) is smaller than any partition limit
     assert doms["debug"] == {"name": "debug", "max_time": "00:15:00",
                              "partition": "htc", "qos": "debug",
-                             "gpu": {"a100": 4, "a100.20gb": 16}}
+                             "gpu": {"a100": 4, "a100.20gb": 16},
+                             "max_cores": 48}
     assert doms["general"]["max_time"] == "14-00:00:00"
 
 
@@ -131,7 +161,12 @@ def test_a_domain_is_never_a_preference():
         # measurement: the partition's gres inventory from sinfo, present
         # only where sinfo reported one.  A default_type-style RANKING of
         # that inventory would be the preference this test bars.
-        assert set(d) <= {"name", "partition", "qos", "max_time", "gpu"}, \
+        # ``max_cores`` joined 2026-08-21 too, and it IS a measurement:
+        # the node group's own %c column (the GPU nodes' cores on a
+        # gpu-capable row -- the cap the grid checks -- else the widest
+        # node's).
+        assert set(d) <= {"name", "partition", "qos", "max_time", "gpu",
+                          "max_cores"}, \
             f"a domain gained a field that is not a measurement: {sorted(d)}"
     by = {d["name"]: d for d in domains}
     assert by["htc"]["gpu"] == {"a100": 4, "a100.20gb": 16}

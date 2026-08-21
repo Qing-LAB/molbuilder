@@ -959,3 +959,32 @@ def test_analyze_accepts_the_shape_its_callers_actually_send(tmp_path, monkeypat
     assert body["ok"] is True
     assert body["n_atoms"] == 3
     assert sorted(body["elements"]) == ["H", "O"]
+
+
+def test_a_relative_lib_resolves_through_the_calculations_own_tree(
+        tmp_path, monkeypatch):
+    """The 2026-08-21 Sol bug: `./jobset.sh` runs with the calculation
+    folder as the working directory, and the old fallback anchored a bare
+    ``pseudopotential`` at ``<cwd>/projects/...`` -- "stuck with the pwd".
+    The calculation KNOWS its own tree: resolution walks up from the
+    calculation folder to the nearest ``projects`` ancestor and anchors
+    there, wherever the process happens to be standing."""
+    from molbuilder.pseudos import resolve_psml_lib
+    lib = tmp_path / "projects" / "pseudopotential"
+    lib.mkdir(parents=True)
+    calc = tmp_path / "projects" / "Au-BDT-Au" / "optimization" / "Relax"
+    calc.mkdir(parents=True)
+    elsewhere = tmp_path / "somewhere-else"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    got = resolve_psml_lib("pseudopotential", dest_dir=calc)
+    assert got == lib
+    # dest-relative (stage 1) still wins when the folder carries its own
+    local = calc / "mypseudos"
+    local.mkdir()
+    assert resolve_psml_lib("mypseudos", dest_dir=calc) == local
+    # outside any projects tree, the cwd fallback stands unchanged
+    lone = tmp_path / "lone-calc"
+    lone.mkdir()
+    got = resolve_psml_lib("pseudopotential", dest_dir=lone)
+    assert got == elsewhere / "projects" / "pseudopotential"

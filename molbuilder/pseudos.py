@@ -46,15 +46,23 @@ def resolve_psml_lib(raw: str, *,
 
     Anchoring rule (the question "relative to what?"):
       * Absolute path or ``~/...`` -> use as-is (just ``.expanduser()``).
-      * Relative path -> two-stage resolution:
+      * Relative path -> three-stage resolution:
           1. If ``dest_dir`` is given, try ``dest_dir / raw`` FIRST.
              This is the form persisted by the "Save to current dir"
              button (e.g. ``../../../pseudopotential`` walking back
              from a project's run dir to projects/pseudopotential/).
              Portability + privacy: survives copying the whole tree.
-          2. Otherwise (or if step 1 isn't a directory) fall back to
-             ``projects/`` anchoring, so a bare ``pseudopotential``
-             still resolves to ``projects/pseudopotential/``.
+          2. Walk UP from ``dest_dir`` to the nearest ancestor directory
+             named ``projects`` -- the tree the calculation LIVES in --
+             and anchor there.  This is what makes ``./jobset.sh`` work
+             from inside the calculation folder on a cluster (user bug,
+             2026-08-21: with only the cwd fallback below, a bare
+             ``pseudopotential`` resolved to ``<calc>/projects/…`` --
+             "stuck with the pwd" -- because nothing consulted the
+             bundle's own position).
+          3. Fall back to ``<cwd>/projects/`` anchoring -- the web
+             server's case, which runs from the repo root and has no
+             calculation folder to walk from.
 
     Earlier behaviour was ``Path(raw)`` which lets pathlib resolve
     against ``Path.cwd()`` -- the Flask server's working directory
@@ -80,6 +88,7 @@ def resolve_psml_lib(raw: str, *,
       directory; if neither does, returns the projects/-anchored form
       so the error message points at the canonical location.
     """
+    from .projects import PROJECTS_ROOT_NAME
     p = Path(raw).expanduser()
     if p.is_absolute():
         return p
@@ -88,7 +97,17 @@ def resolve_psml_lib(raw: str, *,
         candidate = (Path(dest_dir) / p)
         if candidate.is_dir():
             return candidate
-    # Stage 2: fall back to projects/-relative.
+        # Stage 2: the calculation knows its own tree -- walk up to the
+        # nearest ``projects`` ancestor and anchor there.  Resolve first
+        # so a relative dest_dir still finds its real ancestry.
+        for anc in Path(dest_dir).resolve().parents:
+            if anc.name == PROJECTS_ROOT_NAME:
+                candidate = anc / p
+                if candidate.is_dir():
+                    return candidate
+                break        # the nearest projects/ IS the tree root;
+                             # deeper ancestors are someone else's
+    # Stage 3: fall back to projects/-relative (cwd-anchored).
     if base is not None:
         return (base / p)
     # Lazy import: pseudos.py is a low-level lib module and projects.py

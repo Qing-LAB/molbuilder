@@ -700,9 +700,11 @@ def _gpu_inventory(base):
 
 def _gpu_core_cap(base):
     """``(max_cores, domain name)`` of the first gpu-capable row that
-    states one; ``(None, None)`` otherwise.  A CURATED limit, not probed
-    (§ 4.3a): a partition may mix node types, so the row is the user's to
-    edit -- on Sol, gpu nodes take 48 cores where standard nodes take 128.
+    states one; ``(None, None)`` otherwise.  Probed since 2026-08-21
+    (§ 4.3a): sinfo reports one row per node group, so the GPU nodes'
+    own core count is on their row even inside a mixed partition -- on
+    Sol, GPU nodes take 48 cores where standard nodes take 128.  The
+    row stays the user's to edit.
     """
     from ..environment import domain_serves_gpu
     from ..runtime_config import get_routing
@@ -964,8 +966,9 @@ def _bench_inputs(base, target=None):
                 if not (fam and gpu_counts) or g in gpu_counts]
 
     # THE PER-FAMILY CAP (§ 4.3a): when the menu's gpu-capable row states
-    # max_cores (curated -- a partition may mix node types, so the probe
-    # cannot measure it), a GPU cell that exceeds it is DROPPED BY NAME,
+    # max_cores (probed since 2026-08-21 from the GPU node group's own
+    # sinfo row; still hand-editable), a GPU cell that exceeds it is
+    # DROPPED BY NAME,
     # never silently and never by refusing the prep -- refusal would deny
     # the CPU family a rank count only the GPU nodes cannot hold.
     cap, cap_dom = (_gpu_core_cap(base) if any(families) else (None, None))
@@ -1906,7 +1909,7 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
                               scheduler_override=scheduler_flag)
 
     notes = []
-    sinfo_txt = _run(["sinfo", "-h", "-o", "%P|%30l|%D|%40G"])
+    sinfo_txt = _run(["sinfo", "-h", "-o", "%P|%30l|%D|%40G|%c"])
     if sinfo_txt is None:
         # NOT a refusal.  M-2: a workstation records its capability in the same
         # shape a cluster does.  This verb used to exit 2 here, which left the

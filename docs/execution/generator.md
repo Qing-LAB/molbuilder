@@ -401,9 +401,12 @@ framework rule, not a script patch)*:
   `max_cores`, a GPU-family cell whose `ranks × cores` exceeds it is
   **dropped by name** (echoed, never silent) rather than refusing the
   prep — refusal would deny the CPU family a rank count that only the GPU
-  nodes cannot hold.  `max_cores` is a curated limit (a partition may mix
-  node types, so the probe cannot measure it; the row is yours to edit —
-  on Sol, `gpu` nodes take 48 cores where standard nodes take 128).  The
+  nodes cannot hold.  `max_cores` is **probed** *(2026-08-21, user: "why
+  not autodetected?" — the scheduler reports one row per node group, so a
+  mixed partition's GPU nodes state their own core count; a gpu-capable
+  row records its GPU nodes' cores, a cpu-only row its widest node's; the
+  row stays yours to edit — on Sol, GPU nodes take 48 cores where
+  standard nodes take 128)*.  The
   probe-topology refusal for a cell no core count here can hold stands
   unchanged.  *(Known edge, recorded: that refusal reads the probing
   node's shape, so a mixed matrix prepped ON a GPU node over-refuses the
@@ -411,8 +414,9 @@ framework rule, not a script patch)*:
 - **Submission splits by the deck's own answer** (`_job_wants_gpu`, the
   one door) **and then by RESOURCE SHELF** *(user, 2026-08-21: "lighter
   tasks scheduled for heavy resource idling for hours is not a good use
-  of cpu time")*: trials sharing one exact ask (ranks × cores × gres)
-  share one exact-fit grouped job, so **nothing idles inside a group** —
+  of cpu time")*: trials sharing one exact ask — the same ranks, cores
+  and GPU request (`gres`) — share one grouped job sized to fit them
+  exactly, so **nothing idles inside a group** —
   neither the cores a narrow trial would leave of a wide envelope nor
   the devices a G1 trial would hold of a `gres:4` one.  The value-axis
   cartesian shares shelves by construction, which is what keeps queue

@@ -69,6 +69,14 @@ class Partition:
     timelimit_secs: int
     nodes: int = 0
     gpu_types: Dict[str, int] = field(default_factory=dict)  # type -> max count
+    #: Cores per node of the GPU-carrying node group(s) -- the SMALLEST
+    #: when they differ, because it feeds a cap (2026-08-21, user: "why
+    #: not autodetected?").  ``sinfo`` reports one row PER NODE GROUP, so
+    #: a partition mixing 128-core CPU nodes with 48-core GPU nodes shows
+    #: the GPU nodes' own cores on the GPU row -- measurable after all.
+    gpu_cores: Optional[int] = None
+    #: The widest node's cores across every group (CPU rows included).
+    max_cpus: Optional[int] = None
 
     @property
     def has_gpu(self) -> bool:
@@ -120,10 +128,13 @@ def _parse_gres(gres: str) -> Dict[str, int]:
 
 
 def parse_sinfo(text: str) -> List[Partition]:
-    """Parse ``sinfo -h -o '%P|%<w>l|%D|%<w>G'`` (pipe-delimited; fields may
-    be space-padded by the width modifier -- we strip).  A partition appears
-    once per node group; merge them (union GPU types, sum nodes, keep the
-    time limit).  The default-partition ``*`` marker is stripped."""
+    """Parse ``sinfo -h -o '%P|%<w>l|%D|%<w>G|%c'`` (pipe-delimited; fields
+    may be space-padded by the width modifier -- we strip).  A partition
+    appears once per node group; merge them (union GPU types, sum nodes,
+    keep the time limit; per-group CPUS feed ``gpu_cores``/``max_cpus``).
+    The default-partition ``*`` marker is stripped.  A 4-column capture
+    (the pre-2026-08-21 format, no ``%c``) still parses -- the core
+    columns simply stay ``None``."""
     parts: Dict[str, Partition] = {}
     for line in (text or "").splitlines():
         cols = [c.strip() for c in line.split("|")]
@@ -135,6 +146,14 @@ def parse_sinfo(text: str) -> List[Partition]:
             nodes = int(nodes_str)
         except ValueError:
             nodes = 0
+        cpus: Optional[int] = None
+        if len(cols) >= 5 and cols[4]:
+            # sinfo prints "48+" when a group's nodes differ; the base is
+            # the smallest, which is the safe reading for a cap.
+            try:
+                cpus = int(cols[4].rstrip("+"))
+            except ValueError:
+                cpus = None
         gpus = _parse_gres(gres)
         p = parts.get(name)
         if p is None:
@@ -144,6 +163,12 @@ def parse_sinfo(text: str) -> List[Partition]:
         p.nodes += nodes
         for t, c in gpus.items():
             p.gpu_types[t] = max(p.gpu_types.get(t, 0), c)
+        if cpus is not None:
+            if gpus:
+                p.gpu_cores = cpus if p.gpu_cores is None \
+                    else min(p.gpu_cores, cpus)
+            p.max_cpus = cpus if p.max_cpus is None \
+                else max(p.max_cpus, cpus)
     return list(parts.values())
 
 
@@ -255,11 +280,20 @@ def derive_domains(
         # § 4.3a, 2026-08-21): sinfo's gres column is a measurement, and
         # without it a login node could not enumerate the GPU grid family
         # for the cluster behind it.  Facts only -- which type a run WANTS
-        # stays the person's, and per-node core limits stay curated (a
-        # partition may mix node types, so %G is probeable and max_cores
-        # is not).
+        # stays the person's.
+        #
+        # ``max_cores`` is probed too (2026-08-21, user: "why not
+        # autodetected?"): sinfo reports one row PER NODE GROUP, so the
+        # GPU nodes' own core count is on their row even inside a mixed
+        # partition.  On a gpu-capable row it is the GPU nodes' cores --
+        # exactly the cap the GPU grid checks -- and on a cpu-only row
+        # the widest node's.  The row stays yours to edit.
         if part.gpu_types:
             row["gpu"] = dict(part.gpu_types)
+            if part.gpu_cores:
+                row["max_cores"] = part.gpu_cores
+        elif part.max_cpus:
+            row["max_cores"] = part.max_cpus
         return row
 
     if "debug" in allowed and "debug" in qos:
