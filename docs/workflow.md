@@ -328,16 +328,29 @@ supported invocation). An evaluation that goes looking for `molbuilder` on
 `PATH` is testing an assumption this design never makes — made once,
 2026-08-19, which is why this section exists.
 
-**And from inside a calculation, the launcher `prep` writes there**
-*(user, 2026-08-20)*: `./jobset.sh <verb> …` is the same supported form,
-carried to where the data lives. The dilemma it closes: from the bundle the
-module is nowhere to be found, and from the repo the bundle is not the cwd —
-so every prep writes `jobset.sh` at the bundle root, baking THIS machine's
-repo path and env at generation (the wrappers' own two-layer premise:
-configured preamble + activation verbatim, no runtime discovery). It
-activates, stands in the bundle, and runs `python -m molbuilder` with the
-repo on `PYTHONPATH` — the cwd stays the bundle, so `--bundle .` and every
-other verb default keep their meaning.
+**And from inside a calculation, the launcher rides the description**
+*(user, 2026-08-20 + 2026-08-21)*: `./jobset.sh <verb> …` is the same
+supported form, carried to where the data lives. The dilemma it closes: from
+the bundle the module is nowhere to be found, and from the repo the bundle is
+not the cwd. The file has TWO GENERATIONS, one name:
+
+- **Bootstrap** — written by the Task-setup save door the moment the folder
+  becomes a described calculation, because the FIRST command a fresh bundle
+  needs is `prep`, and that is exactly the one it could not run.  Nothing is
+  baked: from a bare remote shell it activates the molbuilder env itself
+  (conda → mamba → micromamba, `$MOLBUILDER_ENV` overriding the name),
+  resolves the checkout at run time (`$MOLBUILDER_ROOT` → a real install on
+  `PATH` → walking up from the bundle → `~/molbuilder`), and refuses with the
+  one-line remedy otherwise.  It assumes only that the env installation was
+  done (`ops/installation.md`).
+- **Machine-baked** — every `prep` REPLACES the file with the generation that
+  bakes THIS machine's repo path and env verbatim (the wrappers' own
+  two-layer premise: configured preamble + activation, no runtime
+  discovery) — the right trade once the machine is known.
+
+Both stand in the bundle and run `python -m molbuilder` with the repo on
+`PYTHONPATH` — the cwd stays the bundle, so `--bundle .` and every other verb
+default keep their meaning.
 
 **Verified against the scripts, not assumed** (2026-08-19): both engines'
 wrappers were run in a pure shell — `env -i`, no conda on `PATH`, no rc

@@ -1044,8 +1044,11 @@ function renderNext(task) {
             el("div", { class: "ts-next-stage" }, name,
                (runs ? el("span", { class: "ts-ran" }, runs + "\u00d7 run") : null)),
             el("pre", { class: "ts-cmd" },
-               "molbuilder jobset prep run " + name + from + "\n"
-               + "molbuilder jobset submit run " + name)));
+               // The bootstrap launcher rides the description (the save
+               // door writes jobset.sh), so the command the tab teaches
+               // is the one that works in a bare shell on any machine.
+               "./jobset.sh prep run " + name + from + "\n"
+               + "./jobset.sh submit run " + name)));
     });
     card.hidden = false;
 }

@@ -1608,6 +1608,24 @@ def api_task_setup_save():
     except OSError as exc:
         return jsonify({"ok": False, "error": f"could not write: {exc}"}), 500
 
+    # THE LAUNCHER RIDES THE DESCRIPTION (user, 2026-08-21): the first
+    # command this folder needs is `prep`, and that is exactly the one a
+    # fresh bundle cannot run -- the module lives in the checkout, the
+    # verbs' defaults mean this directory, and the machine-baked
+    # jobset.sh is written BY prep.  So the save door ships the
+    # BOOTSTRAP generation: nothing baked, self-activating from a bare
+    # shell (runwrap.render_jobset_bootstrap's contract).  Written only
+    # when absent -- a prep-baked launcher must never be downgraded by a
+    # re-save.
+    launcher = dest / "jobset.sh"
+    if not launcher.exists():
+        try:
+            from molbuilder.runwrap import render_jobset_bootstrap
+            launcher.write_text(render_jobset_bootstrap(), encoding="utf-8")
+            launcher.chmod(0o755)
+        except OSError:
+            pass    # the description saved; the launcher is a convenience
+
     # The hand-over's REMOVAL is the browser's, through
     # `projects.deleteEntry` -- moving bytes is the content-blind layer's job
     # (`projects.md` § 1), and unlinking here would bypass its guard and the

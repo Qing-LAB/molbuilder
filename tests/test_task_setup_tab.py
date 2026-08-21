@@ -765,7 +765,7 @@ def test_the_tab_hands_you_the_next_command(web_client):
     assert 'id="ts-next-card"' in body and 'id="ts-next"' in body
     src = VIEWER.read_text()
     assert "function renderNext" in src
-    assert "jobset prep run" in src and "jobset submit run" in src
+    assert "jobset.sh prep run" in src and "jobset.sh submit run" in src
 
 
 def test_the_command_names_its_stage_and_what_it_continues_from():
@@ -774,7 +774,7 @@ def test_the_command_names_its_stage_and_what_it_continues_from():
     `prep` is told, never left to guess (`project-layout.md` § 1.6)."""
     src = VIEWER.read_text()
     body = src.split("function renderNext", 1)[1].split("\n/* ", 1)[0]
-    assert '"molbuilder jobset prep run " + name' in body, (
+    assert '"./jobset.sh prep run " + name' in body, (
         "the command does not name its stage")
     assert "--from" in body, "a continuing stage does not name its source"
     assert 'restart' in body and 'continue' in body, (
@@ -1677,3 +1677,57 @@ def test_the_browser_hand_over_writes_the_cli_s_files(web_client, tmp_path):
     assert over["run"]["id"] == cli_task["run"]["id"]
     assert over["structure"]["formula"] == cli_task["structure"]["formula"]
     assert over["structure"]["atoms"] == cli_task["structure"]["atoms"]
+
+
+def test_the_save_door_ships_the_bootstrap_launcher(web_client, tmp_path):
+    """The launcher rides the description (user, 2026-08-21): the first
+    command a fresh bundle needs is `prep`, which is exactly the one it
+    could not run -- so saving a description writes the BOOTSTRAP
+    jobset.sh (self-activating from a bare shell, nothing baked), and a
+    prep-baked launcher is never downgraded by a re-save."""
+    import json as _json
+    import os as _os
+    import stat as _stat
+    import subprocess as _sp
+    from molbuilder.identity import run_id
+    d = _fresh_calc_dir()
+    try:
+        task = {"schema": "molbuilder/task@1", "engine": {"name": "pyscf"},
+                "shape": "flat",
+                "run": {"name": "boot", "id": run_id("boot", "H2O"),
+                        "created": "2026-08-21T00:00:00-07:00"},
+                "structure": {"source": "b.xyz", "formula": "H2O",
+                              "atoms": 3},
+                "varies": [], "calculation": "vibration",
+                "stages": [{"name": "freq", "enabled": True,
+                            "overrides": {}}]}
+        r = web_client.post("/api/task-setup/save",
+                            json={"dest": str(d), "text": _json.dumps(task)})
+        assert r.status_code == 200, r.get_json()
+        sh = d / "jobset.sh"
+        assert sh.is_file(), "the save door did not ship the launcher"
+        assert sh.stat().st_mode & _stat.S_IXUSR, "not executable"
+        text = sh.read_text()
+        for marker in ("BOOTSTRAP", "MOLBUILDER_ROOT", "micromamba",
+                       "module load mamba", 'MOLBUILDER_ENV'):
+            assert marker in text, f"launcher lost its {marker} arm"
+
+        # the bare-shell refusal speaks (a real subprocess, empty PATH)
+        # -- probed BEFORE the sentinel overwrite below, which the first
+        # landing of this test forgot and probed a two-line stub instead.
+        env = {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"}
+        p = _sp.run(["bash", str(sh), "plan"], capture_output=True,
+                    text=True, env=env, cwd=str(d), timeout=30)
+        assert p.returncode == 1, (p.returncode, p.stderr)
+        assert "no conda/mamba" in p.stderr
+
+        # never-downgrade: a prep-baked launcher survives a re-save
+        sh.write_text("#!/usr/bin/env bash\n# MACHINE-BAKED sentinel\n")
+        again = web_client.post("/api/task-setup/save",
+                                json={"dest": str(d),
+                                      "text": _json.dumps(task)})
+        assert again.status_code == 200
+        assert "MACHINE-BAKED sentinel" in sh.read_text(), (
+            "a re-save downgraded the prep-baked launcher")
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)

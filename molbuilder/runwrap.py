@@ -3868,6 +3868,90 @@ def _mem_to_mb(value: Any) -> Optional[int]:
     return int(float(m.group(1)) * mult)
 
 
+def render_jobset_bootstrap() -> str:
+    """``jobset.sh``, GENERATION 1 — written by the Task-setup save door
+    the moment a folder becomes a described calculation (user,
+    2026-08-21: *"when Task setup decides to write to the dir, it needs
+    to provide that script too … no other requirement but mamba/conda
+    available — just like a bare remote shell"*).
+
+    The bootstrap closes the first-prep dilemma: the supported
+    invocation is ``python -m molbuilder`` from the repo checkout, but
+    the FIRST command a fresh bundle needs — ``prep`` — is exactly the
+    one that cannot run from inside it, and the machine-baked launcher
+    below is written BY prep.  So this generation bakes NOTHING: on a
+    bare shell it activates the molbuilder env itself (conda → mamba →
+    micromamba, exactly the manager ladder diagnostics uses in Python),
+    resolves the checkout at run time (override var → a real install →
+    walking up from the bundle → ``~/molbuilder``), and refuses with
+    the remedy in one line otherwise.  The first successful ``prep``
+    REPLACES this file with :func:`render_jobset_launcher`'s
+    machine-baked form, which is the right trade once the machine is
+    known.
+    """
+    return """#!/usr/bin/env bash
+# jobset.sh -- run any `jobset` verb ON THIS calculation from inside it:
+#   ./jobset.sh prep run <stage> | ./jobset.sh status | ./jobset.sh submit run <stage>
+#
+# BOOTSTRAP generation, written by Task setup when this calculation was
+# described.  Requirement: conda/mamba reachable -- a bare remote shell
+# is enough; the script activates the molbuilder env itself when your
+# shell has not.  Nothing about a machine is baked in:
+#   env:      $MOLBUILDER_ENV (default: molbuilder), activated via
+#             conda | mamba | micromamba, whichever the shell has
+#   checkout: $MOLBUILDER_ROOT | `molbuilder` on PATH | walking up
+#             from this folder | ~/molbuilder
+# The first successful `prep` replaces this file with the machine-baked
+# form (repo path + env activation verbatim).
+set -euo pipefail
+_BUNDLE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$_BUNDLE"
+_ENV="${MOLBUILDER_ENV:-molbuilder}"
+
+# ---- the env: activate unless already active ----------------------
+if [[ "${CONDA_DEFAULT_ENV:-}" != "$_ENV" ]]; then
+    if command -v conda >/dev/null 2>&1; then
+        _BASE="$(conda info --base 2>/dev/null)"
+        # shellcheck disable=SC1091
+        [[ -n "$_BASE" ]] && source "$_BASE/etc/profile.d/conda.sh"
+        conda activate "$_ENV" 2>/dev/null || {
+            echo "jobset.sh: conda env '$_ENV' not found -- create it:" >&2
+            echo "  bash <checkout>/scripts/install-env.sh $_ENV" >&2; exit 1; }
+    elif command -v mamba >/dev/null 2>&1; then
+        _BASE="$(mamba info --base 2>/dev/null || true)"
+        # shellcheck disable=SC1091
+        [[ -n "$_BASE" && -f "$_BASE/etc/profile.d/conda.sh" ]] && source "$_BASE/etc/profile.d/conda.sh"
+        { conda activate "$_ENV" 2>/dev/null || mamba activate "$_ENV" 2>/dev/null; } || {
+            echo "jobset.sh: env '$_ENV' not activatable via mamba -- create it or activate manually" >&2; exit 1; }
+    elif command -v micromamba >/dev/null 2>&1; then
+        eval "$(micromamba shell hook -s bash)"
+        micromamba activate "$_ENV" || {
+            echo "jobset.sh: env '$_ENV' not activatable via micromamba" >&2; exit 1; }
+    else
+        echo "jobset.sh: no conda/mamba/micromamba on PATH (on a cluster: module load mamba)" >&2
+        exit 1
+    fi
+fi
+
+# ---- the checkout: resolve, then run with cwd = this bundle -------
+_ok() { [[ -f "$1/molbuilder/__main__.py" ]]; }
+_go() { PYTHONPATH="$1${PYTHONPATH:+:$PYTHONPATH}" exec python -m molbuilder jobset "${@:2}"; }
+
+if [[ -n "${MOLBUILDER_ROOT:-}" ]] && _ok "$MOLBUILDER_ROOT"; then _go "$MOLBUILDER_ROOT" "$@"; fi
+if command -v molbuilder >/dev/null 2>&1; then exec molbuilder jobset "$@"; fi
+_D="$_BUNDLE"
+while [[ "$_D" != "/" ]]; do
+    if _ok "$_D"; then _go "$_D" "$@"; fi
+    _D="$(dirname "$_D")"
+done
+if _ok "$HOME/molbuilder"; then _go "$HOME/molbuilder" "$@"; fi
+echo "jobset.sh: cannot find the molbuilder checkout." >&2
+echo "  fix (either):  export MOLBUILDER_ROOT=/path/to/molbuilder" >&2
+echo "             or  keep this project under the checkout (or at ~/molbuilder)" >&2
+exit 1
+"""
+
+
 def render_jobset_launcher(bundle_dir: Path) -> str:
     """``jobset.sh`` — run any ``jobset`` verb ON THIS calculation, from
     anywhere, with no molbuilder installed (user, 2026-08-20).
