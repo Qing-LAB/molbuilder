@@ -185,10 +185,13 @@ class Task:
     #: try.  Empty means no benchmark is planned, which is what every
     #: description written before 2026-08-15 says by omitting the key.
     #:
-    #: POINTS TO TRY, NEVER AN ANSWER.  ``{"mpi_np": (4, 8, 16)}`` is true on
-    #: every machine; ``mpi_np = 16`` is true on one, and would make this file
-    #: a machine's opinion rather than a calculation's description.  The
-    #: measurement lands in ``bench-result.json`` on the target, whose
+    #: WHAT THE PERSON ASKED, NEVER WHAT A MACHINE FOUND (stages.md § 6.8,
+    #: amended 2026-08-20).  ``{"mpi_np": (4, 8, 16)}`` is true on every
+    #: machine; ``mpi_np = 16`` is true on one, and would make this file a
+    #: machine's opinion rather than a calculation's description.  A
+    #: NON-machine execution entry with ONE point is a chosen value -- the
+    #: override lane (`generator.md` § 4.3a), applied at prep as a pin.
+    #: The measurement lands in ``bench-result.json`` on the target, whose
     #: ``choice`` carries it (`job-system.md` § 7).
     #:
     #: It is also why a field may appear HERE that may never appear as a
