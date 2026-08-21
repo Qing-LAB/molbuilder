@@ -489,7 +489,18 @@ ranks-per-device axis instead of a fixed rule.
 **The coordinate, and how the machine is asked.** A GPU trial is a point
 `G × K × C`: G devices, K MPI ranks *per device*, C cores per rank. The
 scheduler is asked for `-n G·K` ranks, `-c C` cores each, and `--gres` carries
-G — ranks and devices are independent asks. At launch the wrapper counts the
+G — ranks and devices are independent asks. **G is never declared** *(user
+question, 2026-08-21)*: a device count is a machine's shape, and the
+description names no machine
+([`generator.md § 4.3`](?doc=execution/generator.md)). The declaration's
+portable half is `mpi_np` (the TOTAL rank count, `G·K`) plus `enable_gpu`;
+at prep, G enumerates over each declared rank count's divisors, bounded by
+the recorded device count — `environment.json`'s topology on a GPU
+machine, or the domain row's probed inventory (`gpu: {"a100": 4}`) behind
+a login node. To bound which G values run: pick the `mpi_np` values (their
+divisors are the G menu), curate the inventory count down, or submit
+trials by name — each G is its own shelf group now, so skipping one skips
+its whole allocation. At launch the wrapper counts the
 visible GPUs, pins each rank to a device and to the NUMA node that owns it,
 pins BLAS to one thread so MPI×BLAS never oversubscribes, and — whenever
 ranks outnumber devices — starts a per-job **NVIDIA MPS** daemon and tears it
