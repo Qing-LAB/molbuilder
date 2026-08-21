@@ -1,6 +1,9 @@
 # MolView — the stylesheet namespace plan
 
-**Role:** plan
+**Role:** plan — **ARCHIVED 2026-08-20**: all phases ✅ and the guard
+test green (`test_css_molview_namespace.py`); "retired when the last
+phase lands" was this plan's own closing rule.  The live rules are
+`web/molview.md` § 4 / § 8.1.
 **Domain:** web
 **Started:** 2026-08-01
 **Companions:** [`molview.md`](?doc=web/molview.md) — the contract this serves, in

@@ -1,6 +1,10 @@
 # The checkpoint view, the view context, and a working Export — plan
 
-**Role:** plan (open)
+**Role:** plan — **ARCHIVED 2026-08-20**: all four phases delivered;
+the one open item (the live browser walk-throughs) moved to
+`roadmap.md` § 0.3's consolidated open list.  The live rules are
+`web/molview.md` §§ 9.6, 11.2b, 11.3–11.4, `web/projects.md` §§ 2, 4,
+5, and `web/workspace.md` § 4.
 **Domain:** web
 **Started:** 2026-08-19 (user, four items, one batch; reviewed and amended same day — filter-disable rule, transport init-restore, read-only selection ownership, the two re-scoped contract sentences)
 **Companions:** [`web/projects.md`](?doc=web/projects.md) — the sidebar the

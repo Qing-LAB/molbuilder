@@ -62,8 +62,10 @@ day**)*
 
 Two workflow completions came before everything else, both specified from a
 loop that was **driven end to end** rather than read, and both are now
-delivered and pinned (§ 0.1, § 0.2). What proceeds next is the deferrals
-table below: the remote-HPC proof first, the tab migrations next period.
+delivered and pinned (§ 0.1, § 0.2); § 0.3 records what the follow-on
+days added and the consolidated open list. What proceeds next is the
+deferrals table below: the remote-HPC proof first, the tab migrations next
+period.
 
 ### 0.1 Connect the benchmark to the run — Task I
 
@@ -130,6 +132,41 @@ already delivered (2026-08-17: `get_routing` sources `domains`,
 | **flags** | `--set key=value` (feeds `overrides`, stamped `flag`), `--scheduler` (the override that exists unfed) — the declared half of M-1 finally reachable |
 | **N4** | `get_scheduler`/`get_routing` source `routing` + `gpu.default_type` from the record, consumers unchanged |
 | **done when** | probing this workstation round-trips with consent; a named-target record written here is used by `prep --target`; `config_provenance` shows the record supplying the values |
+
+### 0.3 The follow-on days *(2026-08-20 — delivered and committed)*
+
+The period between the immediate two and the next workstream carried its
+own load, all of it landed, reviewed (R×3,
+[`audit-2026-08-20-milestone-review.md`](?doc=audit-2026-08-20-milestone-review.md)
+— every finding fixed with an explicit yes), and pinned:
+
+- **the grouped bench** (one scheduler job per sweep, the sequencer +
+  `bench-group.log`) and **`jobset.sh`** (every bundle runs any verb from
+  inside itself) — `project-layout.md § 2.3.2`, `workflow.md § 6.1`;
+- **the two-kinds contract + sidecar schema 8** (per-atom rides the atom
+  list and survives edits; system stored separately; identity columns
+  persist when real; readable set {7, 8}) —
+  `model/structure-molstruct.md § 1–2`;
+- **the override lane** (`bench`'s one-point non-machine entries pin the
+  bench and the run; precedence template < declaration < run-config <
+  flags) + **type-aware widgets** on the machine card and stage table —
+  `generator.md § 4.3a`, `web/task-setup.md § 7`;
+- **`envs doctor` hands out its fix commands** (every defect line ends
+  with the exact `install-env.sh` invocation) — `ops/installation.md`;
+- **multi-frame click selection fixed at its root** (clickability
+  re-established after every frame swap — the embed's carried knowledge
+  5 of 5).
+
+**The consolidated open list** *(everything else this period left open,
+each with its recorded home)*:
+
+| open | recorded |
+|---|---|
+| **D7's cluster half** — the described route through SLURM on Sol | the deferrals table below — **next** |
+| **2β** — multi-point *value* axes (measured GPU-vs-CPU in one sweep) | `generator.md § 4.3a` (refused by name until built) |
+| **the live browser walk-throughs** — checkpoint swap at narrow/wide widths, per-tab reload round-trips, a real Data/Image export, click-selection on frames ≥ 1 | here *(moved from the archived molview-and-checkpoint plan — its § 6 was the only part still open)* |
+| **N6** — the standing `test_system_load_monitor_e2e` failure (broken-driver card) | `audit-2026-08-20-milestone-review.md § 2` |
+| **VibrationView → shared media/zip** | task #104's note, § 3 below |
 
 ### The deferrals — decided, not drifted *(user, 2026-08-19)*
 
@@ -507,6 +544,11 @@ minimal concealed 3Dmol seal** — just the six doors it actually uses
 (`setStructure`/`setAtomCoords`/`setOverlays`/`refit`/`setAnimationProvider`/
 `dispose`), none of MolView's heavier embed. Real-browser verification
 required. Contract + current state: `web/vibrationview.md § 5`.
+*(2026-08-20 addition: the package also keeps its own private gif/webm
+encoder and store-zip — `lib/media-export.js` and `lib/zip-store.js` exist
+as MolView-side counterparts, and VibrationView's migration onto them is
+recorded HERE, to land only inside this task's own work — the sealed wall
+outranks the one-home rule until then.)*
 
 **Small front-end gaps with a doc-recorded home** *(each doc's note is
 dropped in the same commit that closes its item)*:

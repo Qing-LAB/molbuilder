@@ -1397,7 +1397,7 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
 
 - **the cell, explicit** — the description holds cell *parameters*; the generator
   computes the vectors and shifts the atoms into the frame the deck must carry
-  (`plans/cell-plan.md`).
+  (`model/structure-periodicity.md § 6.2`; design record `archive/2026-08-20-cell-plan.md`).
 - **pseudopotentials resolved** per species, through the path that already
   refuses on `xc_family_mismatch`, and written into the folder. (`job-contracts.md
   § 2.7` says the layout does not *require* co-location; putting them there is

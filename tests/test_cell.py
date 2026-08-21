@@ -1,7 +1,7 @@
 """The one process line for the cell — resolve once, check once.
 
 Contract: docs/model/structure-periodicity.md § 6.1a (both matrices) and
-docs/plans/cell-plan.md § 6a.
+docs/archive/2026-08-20-cell-plan.md § 6a.
 
 WHAT THIS MODULE REPLACED, because it is what these tests are really guarding.
 Before 2026-08-03 the same box was judged in several places at once:

@@ -69,9 +69,6 @@
         },
         {
           "path": "model/parse.md"
-        },
-        {
-          "path": "plans/cell-plan.md"
         }
       ]
     },
@@ -181,11 +178,7 @@
         },
         {
           "path": "web/molview.md",
-          "children": [
-            {
-              "path": "plans/molview-css-namespace-plan.md"
-            }
-          ]
+          "children": []
         },
         {
           "path": "web/vibrationview.md"
@@ -228,9 +221,6 @@
         },
         {
           "path": "web/spectra.md"
-        },
-        {
-          "path": "plans/molview-and-checkpoint-ui-plan.md"
         },
         {
           "path": "plans/editor-module-plan.md"
@@ -424,6 +414,21 @@
           "path": "archive/2026-08-19-template-unification-plan.md",
           "label": "The template unification — plan of record",
           "subtitle": "The template unification — plan of record"
+        },
+        {
+          "path": "archive/2026-08-20-cell-plan.md",
+          "label": "The unit cell, and how a user says what they want — a plan",
+          "subtitle": "The unit cell, and how a user says what they want — a plan"
+        },
+        {
+          "path": "archive/2026-08-20-molview-and-checkpoint-ui-plan.md",
+          "label": "The checkpoint view, the view context, and a working Export — plan",
+          "subtitle": "The checkpoint view, the view context, and a working Export — plan"
+        },
+        {
+          "path": "archive/2026-08-20-molview-css-namespace-plan.md",
+          "label": "MolView — the stylesheet namespace plan",
+          "subtitle": "MolView — the stylesheet namespace plan"
         },
         {
           "path": "archive/MIGRATION.md",

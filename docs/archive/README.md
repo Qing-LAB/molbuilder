@@ -74,6 +74,18 @@ date-prefixed file, you are reading history, not policy.
   T0–T10 all landed with commit hashes in its own table. The contract is
   `engines/template.md`. Its Q6 ruling (`use_gpu` is a USER DECISION, do not
   re-open) is restated live in `engines/overview.md` § 3a.
+- **`2026-08-20-cell-plan.md`** — the unit-cell reconciliation plan; every
+  acceptance row ✅. The live rules are `model/structure-periodicity.md`
+  § 6.1–6.2 and `web/molview.md` § 9.5.
+- **`2026-08-20-molview-css-namespace-plan.md`** — MolView's stylesheet
+  namespace; all phases ✅ and the guard test green
+  (`test_css_molview_namespace.py`). The live rules are `web/molview.md`
+  § 4 / § 8.1.
+- **`2026-08-20-molview-and-checkpoint-ui-plan.md`** — the checkpoint view,
+  the view context, and the working Export; all four phases delivered. The
+  one open item (the live browser walk-throughs) moved to `roadmap.md`
+  § 0.3. The live rules are `web/molview.md` §§ 9.6/11.2b/11.3–11.4,
+  `web/projects.md` §§ 2/4/5, `web/workspace.md` § 4.
 - **`2026-08-19-staged-runs-implementation-plan.md`** — the staged-runs build
   order; milestones M0–M12 landed (M10/M11 are the shipped tabs). The one
   open gate it carried — D7's cluster half — lives in `roadmap.md`, deferred

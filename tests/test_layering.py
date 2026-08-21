@@ -48,7 +48,9 @@ import pytest
 
 _L1_MODULES = {
     "structure", "frame", "issues",
-    "cell",              # the ONE cell resolver + checker (cell-plan.md § 6a).
+    "cell",              # the ONE cell resolver + checker
+                         # (structure-periodicity.md § 3a/6.1 -- design
+                         # record: archive/2026-08-20-cell-plan.md § 6a).
                          # L1 because it imports ``structure`` and ``issues``
                          # and nothing else -- which is what lets the L1 gate,
                          # the L2 validators and the L2 emitter all ask the
