@@ -239,6 +239,73 @@ SCF_SECTION knob, density_fit, and PCM; the shared-emitter set
 (threading, GPU probe, save helper, molwatch, dresser, DF-kw, solvent)
 is genuinely one-home.
 
+## THE EXECUTION PLAN — persistent, resumable *(user, 2026-08-21: "make
+sure all plan is persistently recorded so we can compact context and
+come back to do another full round of review and validation")*
+
+Each unit lists its scope and STATUS.  A fresh session resumes here:
+read this section, pick the first non-done unit, verify its items
+against the code before acting (claims decay), and after the last unit
+run the R×3 protocol again — the user has asked for a second full
+review-and-validation round when these land.
+
+- **U0 (DONE, 49a0c15f):** the two same-day regressions — ECP double
+  emission (+ compile probes in both gates), _formDirty writers.
+- **U1 (IN PROGRESS, user-ordered):** consolidate the launcher work
+  with the review's findings on the same path —
+  (a) a Task-setup UI control + endpoint to (re)write the portable
+  `jobset.sh` into an EXISTING described folder (their current dirs
+  predate the save-door change; on another machine a workstation-baked
+  launcher is wrong and the bootstrap is the fix);
+  (b) the next-step notes teach the WHOLE flow via `./jobset.sh`,
+  including the bench lane when `task.bench` is non-empty:
+  prep bench → submit bench <stage> (grouped) → summarize bench
+  (writes `bench-result.json` + the editable `run-config.toml`
+  proposal) → read/accept → prep run (applies the verdict pins) →
+  submit run;
+  (c) E-A1: the two `String(task.engine)` sweepable-poisoning sites
+  use the one accessor `_handoverEngine`;
+  (d) E-T4/A4: the `--from` hint's token uses full-ladder position,
+  not the enabled-filtered index;
+  (e) E-J2: the CLI's bench success hint teaches the real grammar
+  (`submit bench <stage>`), and prep's hints speak `./jobset.sh`
+  (prep just wrote it).
+- **U2 (awaiting yes):** the correctness unit — E-M4.7 (HF+Raman
+  NameError), E-M3.1/V-3c (charge bypass via `resolve_net_charge`),
+  E-M4.6r (vibration `check_rules` = the optimization deck's
+  `ast.parse` gate), E-M1.5 (the CPU-fallback lie in help + emitted
+  decks), M1.3 (newton at the relax site — honor the role table),
+  G-1c (RKS+spin refusal owned by the gate), G-1d (pyscf parity),
+  E-M6.3 (`is_dft` on the vibration `line=`), E-M4.1 + E-V4a (the two
+  broken `__all__`s), E-J3 (wrapper header None arm), E-B9 (handover
+  `_what` sender), E-B10 (notice `level` key), E-J1 (PySCF bench
+  refusal by name), G-1a (validate_ladder), G-1b (gate ③ at save).
+- **U3 (awaiting ruling):** the double-fire dedup (engine copy
+  suppressed where the kind owns the check; one charge resolver;
+  `where` ids translated to catalogue names) — and the FROZEN-ATOMS
+  SCIENCE DECISION: constrain the vibration relaxation or state why
+  not (E-V2e / E-M7.1's Pattern A/B fixes land with it).
+- **U4 (awaiting yes):** the documentation reconciliation sweep —
+  bucket 4 plus the engine reader's additions (workflow § 7, roadmap
+  ×4, web/spectra.md, engines/pyscf.md, form-schema.md,
+  job-system.md ×3, handover-procedure, script-preparation counts +
+  DeckSpec slots, job-contracts § 6.1 keys, tabs.md, README rows,
+  toc.json plans, siesta.md § 5 spin, template.md counts, line
+  anchors ~30, the emitted header's retired vocabulary, the Methods
+  fragment's two overclaims, the deck-internal IR-banner
+  contradiction).
+- **U5 (awaiting per-item yes):** retirements/consolidations —
+  archive the two delivered plans substance-first; SpectraConfig +
+  selection.py dead half; `_shared.py`'s three zero-caller helpers +
+  the Pattern-B contract re-home; the two orphaned doors; the JS/state
+  dead lists; jobset S1-S7; `density_fit_line`; the doubled
+  `_mb_outfile`; the N² IR-only loop + redundant kernel; the DFT
+  dresser (M1.2) and one GPU mechanism (M1.4); refs rendering
+  (pass `f.refs` through the long-help path) + legend casing;
+  T1-T3 test retirements; the auto-detect trio extraction.
+- **U6 (after U1-U5):** the second full R×3 review-and-validation
+  round the user has asked for, plus a full `none2e` + live E2Es.
+
 ## The consolidated priority head (all five readers in)
 
 1. **E-M4.7** HF+Raman NameError (a paid-for Hessian then a crash).
