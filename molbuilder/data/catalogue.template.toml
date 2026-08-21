@@ -1384,30 +1384,11 @@ group = "output"
 label = "Write the optimisation trajectory"
 help = "stream geomeTRIC's <job>_geom_optim.xyz so molwatch can watch it live"
 
-[item.compute_frequencies]
-kind = "engine"
-category = ["procedure"]
-engines = ["pyscf"]
-anchor = "pyscf.hessian"
-engine_key = "pyscf.hessian + thermo.thermo()"
-manual = "PySCF 2.13 pyscf.hessian.thermo 'harmonic_analysis()'"
-type = "bool"
-value = false
-default = false
-group = "profile"
-label = "Post-relax frequencies + thermochemistry"
-tier = "advanced"
-help = """
-compute analytic Hessian + RRHO thermochemistry (ZPE, H, G, S, Cv, Cp) at temperature_K / pressure_atm
-
-A relaxed geometry that is a true minimum has only REAL vibrational modes; an imaginary mode means the optimizer stopped at a saddle point, which is the cheapest way to find that out. The RRHO thermochemistry is what you add to the electronic energy when reporting reaction or binding free energies. Cost: one analytic Hessian, typically 5-15x a single SCF for a small molecule and more for larger ones -- no extra SCF, it reuses the converged one.
-
-RETIRING (spectra-migration plan D2, 2026-08-20): the vibration calculation kind is becoming the one Hessian door -- it relaxes first, computes the same thermochemistry into the .spectra.json thermo block, and adds the full spectroscopy product; this item is removed at that plan's P3."""
-
 [item.temperature_K]
 kind = "engine"
 category = ["procedure"]
 engines = ["pyscf"]
+calculations = ["vibration"]
 anchor = "thermo.thermo"
 engine_key = "thermo.thermo(temperature=...)"
 manual = "PySCF 2.13 pyscf.hessian.thermo 'thermo(temperature=)'"
@@ -1425,6 +1406,7 @@ help = "RRHO temperature for thermo.thermo() (standard: 298.15 K) Re-homed to th
 kind = "engine"
 category = ["procedure"]
 engines = ["pyscf"]
+calculations = ["vibration"]
 anchor = "thermo.thermo"
 engine_key = "thermo.thermo(pressure=...)"
 manual = "PySCF 2.13 pyscf.hessian.thermo 'thermo(pressure=)'"

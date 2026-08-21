@@ -302,12 +302,6 @@ def spec_for(struct: Structure,
             out.append("                                  coords, energy (eV), forces")
             out.append("                                  (eV/Ang), and SCF cycle history.")
             out.append("                                  Single-file input for molwatch.")
-        if cfg.compute_frequencies:
-            out.append(f"    {label}.thermo.txt       -- post-relax harmonic frequencies")
-            out.append("                                  (cm^-1) + RRHO thermochemistry")
-            out.append("                                  (ZPE, U, H, G, S, Cv, Cp at the")
-            out.append(f"                                  configured T = {cfg.temperature_K} K,")
-            out.append(f"                                  P = {cfg.pressure_atm} atm).")
         out.append("")
         out.append("Dependencies:")
         out.append("    Use the generated molbuilder run wrapper.")
@@ -887,17 +881,13 @@ def spec_for(struct: Structure,
             out.append("mol_eq = mol")
         out.append("")
 
-        # ------------------------------------------------------------- frequencies
-        # Analytic Hessian + RRHO thermochemistry, opt-in.  Runs at mol_eq
-        # using the already-converged mf, so it costs one Hessian
-        # construction (no extra SCF).  Wrapped in try/except so a failure
-        # here does NOT lose the converged energy + optimized geometry
-        # that have already been printed / saved.  Imaginary modes are
-        # reported (count + cm^-1) but the script does not auto-perturb;
-        # the user decides whether to restart the optimization along the
-        # imag coordinate.
-        if cfg.compute_frequencies:
-            out += _emit_frequencies_block(cfg, v)
+        # The post-relax frequencies/thermo block RETIRED here
+        # (spectra-migration plan D2/P3, 2026-08-21): the vibration
+        # calculation kind is the ONE Hessian door on the framework --
+        # it relaxes first, writes the same RRHO numbers into the
+        # .spectra.json thermo block, and adds the full spectroscopy
+        # product.  Two homes for "the Hessian on the framework" would
+        # be drift by construction.
 
         # ------------------------------------------------------------- save
         # _save_xyz is defined early in the script (before mol is built),
@@ -1308,92 +1298,6 @@ def _emit_optimization(cfg: PySCFConfig,
     out.append("mf.reset(mol_eq)")
     out.append("mf.kernel(dm0=dm_prev)")
     out.append('print(f"\\nFinal energy: {mf.e_tot:.8f} Hartree")')
-    return out
-
-
-def _emit_frequencies_block(cfg: PySCFConfig, v: bool) -> List[str]:
-    """Analytic Hessian + RRHO thermochemistry block.
-
-    Inserted between the post-opt SCF (where ``mf`` is converged at
-    ``mol_eq``) and the optimized-geometry save step.  The block is
-    a single try/except so any failure (Hessian unavailable for the
-    functional, OOM, etc.) prints a diagnostic but does NOT lose the
-    converged energy + optimized geometry already on disk.
-    """
-    P_pa = cfg.pressure_atm * 101325.0      # PySCF's thermo() wants Pa
-    out: List[str] = []
-    out.append("")
-    out.append("# ============================================================")
-    out.append("#  Harmonic frequencies + RRHO thermochemistry")
-    out.append("# ============================================================")
-    if v:
-        # WHY and COST are this parameter's own reasons, so they come from
-        # its declaration -- which also puts them in front of whoever is
-        # deciding on the form, where the hand-typed version never reached.
-        # What stays here is guidance about the METHOD: the RRHO
-        # approximation and where it misleads, which no single parameter owns.
-        out += _sc.parameter("compute_frequencies", "pyscf").note()
-        out.append("#")
-        out.append("# Caveats:")
-        out.append("#   * RRHO assumes harmonic vibrations + rigid rotor +")
-        out.append("#     ideal gas.  Low-frequency modes (< ~50 cm^-1) inflate")
-        out.append("#     the entropy artifically; quasi-RRHO (Grimme) tames")
-        out.append("#     this but isn't applied here.")
-        out.append("#   * With mf.disp set, PySCF's Hessian module adds the")
-        out.append("#     dispersion contribution in 2.6+.  For tight phonon")
-        out.append("#     work cross-check against numerical frequencies.")
-        out.append("#   * If the geometry is not a stationary point, expect")
-        out.append("#     translation/rotation modes to leak into low-cm^-1")
-        out.append("#     vibrations; finite-T corrections will be unreliable.")
-    out.append('print("\\n=== Stage: harmonic frequencies + thermochemistry ===")')
-    out.append("try:")
-    out.append("    from pyscf.hessian import thermo as _mb_thermo")
-    out.append("    _mb_hess = mf.Hessian().kernel()")
-    out.append("    _mb_freq = _mb_thermo.harmonic_analysis(mf.mol, _mb_hess)")
-    out.append("    _mb_wn = _mb_freq[\"freq_wavenumber\"]")
-    out.append(f"    _mb_therm = _mb_thermo.thermo(mf, _mb_freq[\"freq_au\"], "
-               f"{cfg.temperature_K!r}, {P_pa!r})")
-    out.append("    _mb_imag = int(sum(1 for _w in _mb_wn if "
-               "getattr(_w, 'imag', 0.0) != 0))")
-    out.append("    with open(_mb_outfile(JOB + \".thermo.txt\"), \"w\") as _mb_fh:")
-    out.append("        _mb_fh.write(\"# molbuilder PySCF harmonic analysis "
-               "+ RRHO thermochemistry\\n\")")
-    out.append(f"        _mb_fh.write(\"# T = {cfg.temperature_K} K, "
-               f"P = {cfg.pressure_atm} atm ({P_pa:.1f} Pa)\\n\")")
-    out.append("        _mb_fh.write(f\"# Method: {mf.__class__.__name__}\"")
-    out.append("                     f\"{(' ' + mf.xc) if hasattr(mf, 'xc') and mf.xc else ''}\"")
-    out.append("                     f\" / {mf.mol.basis}\\n\")")
-    out.append("        _mb_fh.write(f\"# Geometry: mol_eq "
-               "({mf.mol.natm} atoms)\\n\")")
-    out.append("        _mb_fh.write(\"\\n[frequencies] (cm^-1)\\n\")")
-    out.append("        for _i, _w in enumerate(_mb_wn):")
-    out.append("            _mb_v = float(getattr(_w, 'real', _w))")
-    out.append("            _mb_im = getattr(_w, 'imag', 0.0)")
-    out.append("            _mb_tag = '  (imag)' if _mb_im != 0 else ''")
-    out.append("            _mb_fh.write(f\"  mode {_i+1:3d}  "
-               "{_mb_v:12.3f}{_mb_tag}\\n\")")
-    out.append("        _mb_fh.write(\"\\n[thermochemistry]\\n\")")
-    # _mb_therm is a dict[str, (value, unit)] in PySCF 2.x.
-    out.append("        for _k, _v_ in sorted(_mb_therm.items()):")
-    out.append("            if isinstance(_v_, tuple) and len(_v_) == 2:")
-    out.append("                _mb_fh.write(f\"  {_k:18s} = {_v_[0]:18.10f}  "
-               "{_v_[1]}\\n\")")
-    out.append("            else:")
-    out.append("                _mb_fh.write(f\"  {_k:18s} = {_v_!r}\\n\")")
-    out.append("    print(f\"Frequencies: {len(_mb_wn)} modes "
-               "({_mb_imag} imaginary).  Thermo summary -> {JOB}.thermo.txt\")")
-    if cfg.optimize:
-        # Only worth the warn when we expected a minimum.
-        out.append("    if _mb_imag > 0:")
-        out.append("        print(f\"WARN: {_mb_imag} imaginary mode(s) at the "
-                   "relaxed geometry -- this is a saddle, not a minimum.  "
-                   "Perturb along the imag coord and re-optimize, or "
-                   "tighten geom_grms and run this rung again.\")")
-    out.append("except Exception as _mb_exc:")
-    out.append("    print(f\"Frequency analysis FAILED: {_mb_exc}\\n\"")
-    out.append("          f\"Converged energy + optimized geometry are still "
-               "on disk; rerun with --no-compute-frequencies to skip.\")")
-    out.append("")
     return out
 
 

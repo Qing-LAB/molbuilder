@@ -861,76 +861,8 @@ def test_pyscf_molwatch_emitter_unsuffixed_when_stage_is_none(h2o):
 # ---- Post-relax frequencies + RRHO thermochemistry ---------------------- #
 
 
-def test_frequencies_default_off(h2o):
-    """compute_frequencies defaults to False so the existing script
-    shape is unchanged; no Hessian / thermo / thermo.txt appears."""
-    text = render_script(h2o, PySCFConfig())
-    assert "mf.Hessian()" not in text
-    assert "harmonic_analysis" not in text
-    assert "thermo.txt" not in text
-    assert "RRHO" not in text
-
-
-def test_frequencies_block_emitted_when_enabled(h2o):
-    """compute_frequencies=True: the Hessian + thermo block appears
-    AFTER the post-opt SCF (so mf is converged at mol_eq) and BEFORE
-    the optimized-geometry save (so the script keeps writing
-    <job>_optimized.xyz even if Hessian fails).  Block is wrapped in
-    try/except so a failure doesn't lose the converged energy."""
-    text = render_script(h2o, PySCFConfig(compute_frequencies=True))
-    assert "mf.Hessian().kernel()" in text
-    assert "harmonic_analysis" in text
-    assert "_mb_thermo.thermo(mf" in text
-    assert ".thermo.txt" in text
-    # try/except guard so a failed Hessian doesn't lose the run.
-    assert "Frequency analysis FAILED" in text
-    # Block sits between the post-opt SCF (Final energy print) and
-    # the saved optimized-xyz writeout.  Match the actual _save_xyz
-    # call (not the early "Files written" header which also mentions
-    # _optimized.xyz).
-    final_energy_pos    = text.index('Final energy:')
-    hessian_pos         = text.index("mf.Hessian().kernel()")
-    save_optimized_pos  = text.index('_save_xyz(mol_eq')
-    assert final_energy_pos < hessian_pos < save_optimized_pos
-
-
-def test_frequencies_writes_temperature_and_pressure(h2o):
-    """T/P propagate verbatim to the thermo.thermo() call.  Pressure
-    is converted from atm to Pascal (PySCF's thermo() wants Pa)."""
-    text = render_script(h2o, PySCFConfig(compute_frequencies=True,
-                                          temperature_K=400.0,
-                                          pressure_atm=2.0))
-    # The thermo.thermo() call should carry T=400.0 and
-    # P=2.0*101325.0 = 202650.0 Pa.
-    assert "thermo(mf, _mb_freq[\"freq_au\"], 400.0, 202650.0)" in text
-    # Header comment in the .thermo.txt file echoes the user-facing units.
-    assert "T = 400.0 K, P = 2.0 atm" in text
-
-
-def test_frequencies_imag_warn_only_for_optimize(h2o):
-    """The imaginary-mode WARN only fires when the script optimized
-    the geometry (otherwise imag modes at a non-stationary point are
-    expected and not a problem)."""
-    text_opt = render_script(h2o, PySCFConfig(compute_frequencies=True,
-                                              optimize=True))
-    text_sp  = render_script(h2o, PySCFConfig(compute_frequencies=True,
-                                              optimize=False))
-    assert "imaginary mode(s) at the relaxed geometry" in text_opt
-    assert "imaginary mode(s) at the relaxed geometry" not in text_sp
-
-
-def test_frequencies_block_python_parses(h2o):
-    """Sanity: the emitted script with compute_frequencies=True still
-    compiles as valid Python (catches any quoting / f-string bugs in
-    the embedded thermo block)."""
-    text = render_script(h2o, PySCFConfig(compute_frequencies=True))
-    compile(text, "<freq>", "exec")
-
-
-def test_frequencies_list_in_header_files_section(h2o):
-    """When compute_frequencies=True the script's header "Files
-    written" section advertises <job>.thermo.txt so users know
-    what to look for."""
-    text = render_script(h2o, PySCFConfig(compute_frequencies=True))
-    assert ".thermo.txt" in text
-    assert "harmonic frequencies" in text  # in the header description
+# The six frequencies-block tests retired with the in-deck
+# compute_frequencies path (spectra-migration plan D2/P3,
+# 2026-08-21): the vibration calculation kind is the one
+# Hessian door, and its thermochemistry is pinned by
+# tests/test_vibration_e2e.py against a live run.

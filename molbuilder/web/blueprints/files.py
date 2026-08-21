@@ -408,7 +408,7 @@ def api_files_read():
 
     Binary or non-UTF-8 files return a 400 with an explanation -- the
     picker is for previewable text (XYZ, JSON, .py scripts, .molwatch.log,
-    .thermo.txt).  Adding base64-for-binary later is a one-line change
+    .molwatch.log).  Adding base64-for-binary later is a one-line change
     if a real need shows up.
     """
     raw_path = request.args.get("path", "")

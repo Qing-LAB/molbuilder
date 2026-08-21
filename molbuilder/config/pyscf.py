@@ -1004,27 +1004,6 @@ class PySCFConfig:
     # extra cost is explicit.  Imaginary modes are reported but the
     # script does not auto-perturb; the user decides whether to
     # restart the optimization along the imaginary coordinate.
-    compute_frequencies: bool = field(default=False, metadata={
-        "category": ("procedure",),
-        "workflow_group": "profile",
-        "section": "Frequencies / thermochemistry",
-        "label": "Post-relax frequencies + thermochemistry",
-        "engine_key":  'pyscf.hessian + thermo.thermo()',
-        "tier":  "advanced",
-        "help": (
-            "compute analytic Hessian + RRHO thermochemistry (ZPE, H, G, "
-            "S, Cv, Cp) at temperature_K / pressure_atm A relaxed "
-            "geometry that is a true minimum has only REAL vibrational "
-            "modes; an imaginary mode means the optimizer stopped at a "
-            "saddle point, which is the cheapest way to find that out. "
-            "The RRHO thermochemistry is what you add to the electronic "
-            "energy when reporting reaction or binding free energies. "
-            "Cost: one analytic Hessian, typically 5-15x a single SCF for "
-            "a small molecule and more for larger ones -- no extra SCF, "
-            "it reuses the converged one."
-            " RETIRING (spectra-migration plan D2, 2026-08-20): the vibration calculation kind is becoming the one Hessian door -- it relaxes first, computes the same thermochemistry into the .spectra.json thermo block, and adds the full spectroscopy product; this item is removed at that plan's P3."
-        ),
-    })
 
     # ----- Vibrational spectroscopy (the vibration calculation kind; -----
     # ----- spectra-migration plan P0, 2026-08-20.  Carried from the -----
