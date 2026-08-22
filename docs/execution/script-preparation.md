@@ -585,15 +585,18 @@ W2 would stop applying exactly where the reasoning is hardest to reconstruct.
 decks of the same engine with the same settings have identical specs, and a
 deck's identity is a different thing entirely — the `SystemLabel` / `JOB`
 literal, which [`run-identity.md`](?doc=execution/run-identity.md) owns. The
-spec is a small form the engine fills in, and it has nine slots:
+spec is a small form the engine fills in, and it has twelve slots:
 
 | slot | what the engine is saying |
 |---|---|
 | `layout` | **which settings, in what order** — and where the free-form parts sit among them |
 | `line` | **how this engine spells one setting** |
+| `calculation` | **which KIND this deck is** — the settings gate composes the kind's science from it, and prep names artifacts by it |
 | `note_lead` · `section_title` | how a note and a heading are written in this syntax |
 | `provenance_defaults` · `bench_marks` | the values only this engine can supply for two record blocks |
+| `derived` | facts computed once at spec time that later slots read (never re-derived downstream) |
 | `check_rules` | what a finished deck of this engine must satisfy |
+| `validate_subject` | what the settings gate judges, when it is not the structure as it arrived |
 | `engine` · `created_by` | whose catalogue rows to read, and what to record as the producer |
 
 > **Why a form and not a function.** A function can only be *called*; a form can
@@ -750,15 +753,21 @@ flowchart TB
 
 ### Where the four writers actually stand
 
-**There are four script writers in this tree, and only two are on the sequence
+**There are four script writers in this tree, and three are on the sequence
 above.** Stating it rather than leaving it to be discovered:
 
 | | catalogue rows | seam entry | on `prepare_deck` | the artifact gate | reader's block | values carry their reason (W2) |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|
-| **SIESTA** | 44 | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **PySCF** | 45 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **SIESTA** | 49 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **PySCF** | 45 (+ the 14 vibration rows = 59 through `select`) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **TranSIESTA** (`transport/`) | **0** | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Spectra** (the `vibration` kind, `pyscf/vibration_deck.py`) | 12 (+ shared PySCF set) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Spectra** (the `vibration` kind, `pyscf/vibration_deck.py`) | 14 (+ shared PySCF set) | ✅ | ✅ | ✅ | ⚠ one Block | ⚠ one Block |
+
+*The two ⚠ cells state a real limit rather than rounding up: the vibration
+deck's layout is ONE Block, so the reader's-section and
+value-beside-its-reason guarantees that Sections give structurally are
+delivered by the block's own emitters — honest, but enforced by review and
+its render tests rather than by the framework walk.*
 
 **Spectra crossed over** (spectra-migration plan, P0–P3 landed 2026-08-21):
 a vibrational spectrum is the `vibration` calculation KIND — described,

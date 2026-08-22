@@ -10,13 +10,13 @@ registry that picks it for a `.spectra.json`; [`molview.md`](?doc=web/molview.md
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — the run that
 produces the `.spectra.json`.
 
-> **⚠ Migration status (2026-08-19, user).** The compute side of this surface
-> is **pre-framework**: it still generates and runs a standalone script, not a
-> described calculation through `prep`/`submit`. It is deliberately untouched
-> until the structure-optimization loop is fully verified; the statement of
-> record is the migration box at the top of [`roadmap.md`](?doc=roadmap.md).
-> (The *viewing* half — the presenter, the chart, the mode table — is current
-> and unaffected.)
+> **Migration status (2026-08-21).** The compute side of this surface is
+> **framework-native**: the Send button hands over to Task setup, and the
+> vibration deck is a calculation KIND of the PySCF engine, rendered by
+> `render_deck` through the same gates as an optimization deck and run
+> through `prep`/`submit`. (The old standalone-script path retired at the
+> spectra migration's P3.) The *viewing* half — the presenter, the chart,
+> the mode table — is unchanged.
 
 The spectra surface computes a **Raman vibrational spectrum** for a molecule and
 then shows it as an interactive chart: a stick spectrum of frequencies, a
@@ -421,8 +421,8 @@ catalogue schema + hand-over doors (§ 5):
 
 Both follow the app's `{ok: …}` envelope convention. The form schema comes
 from the catalogue door (`GET /api/build/schema/pyscf?calculation=vibration`);
-the old `GET /api/build/schema/spectra` route stands until P3 but the tab no
-longer reads it (frozen atoms travel with the structure now — § 8).
+(the old `GET /api/build/schema/spectra` route retired at P3; frozen atoms
+travel with the structure now — § 8).
 
 ## 7. Live updating, and what a refresh does
 

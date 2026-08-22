@@ -380,7 +380,7 @@ engines     = ["siesta"]                # REQUIRED — which engines this
 | `anchor` | `kind = "engine"` — an engine item that names no keyword cannot reach the deck |
 | `value` | **when the item has been answered.** Its absence is a real state — *explicitly unset* — distinct from the default and from an absent key elsewhere. It was listed as unconditionally required until 2026-08-13, which read as though a valueless item were malformed; § 6.4 makes valueless the **normal** state for anything resolved at `prep` (memory, `block_size`, rank count, threads) |
 | `allocation` | when the **scheduler** answers this item, not a person — § 6.4. It is what makes a `value` on the item a refusal rather than a choice |
-| `expands` | `kind = "deck"` — it is how a reader learns which keywords this item produces |
+| `expands` | `kind = "deck"` — it is how a reader learns what this item produces: the engine keywords when the product is keywords (`restart` → `DM.UseSaveDM`, …), or the deck MECHANISM by name when the product is control flow (`displacement_amplitude_ang` → `finite-difference polarizability loop` — the vibration kind's items generate loops, not lines, and inventing pseudo-keywords for them would send a reader grepping for spellings no engine has) |
 | `choices` | `type = "enum"` — an enum with no members cannot be validated or rendered as a control |
 
 Everything else — `default`, `range`, `unit`, `group`, `read_by` — is present
@@ -580,7 +580,7 @@ flowchart TD
 | surface → template | **only the answers.** The items themselves are not re-invented; the surface is filling in a form whose questions the catalogue already asked |
 | template → config | narrowed to one engine first, **then** read as that schema's fields. Skip the narrowing and a two-engine file is refused for both engines, each seeing the other's items as names it does not know |
 | config → deck | the engine's own writer, which never sees the template. It receives an ordinary config object, which is why a config class is a **translator** and not a source (§ 2.1) |
-| prep ⇢ deck | the three allocation items are answered here, on the machine that granted them — never in the file (§ 6.4, § 7) |
+| prep ⇢ deck | the allocation items (`allocation = true` in the catalogue: `mpi_np`, `omp_threads`, `max_memory_mb`, `gpu_count`, PySCF's `threads`) are answered here, on the machine that granted them — never in the file (§ 6.4, § 7) |
 
 > **⛔ There is no config → template writer, and there must not be one.**
 > `render_template(config)` reflected a Python class into a file, which made the
@@ -602,7 +602,7 @@ engine — and that is the property G2 and G3 both rest on.
 
 **And it is why § 7's machine-fact rule needs no defence inside the file.** The
 catalogue is authored correct and is not modified; a surface supplies values for
-the items that take them; the three allocation items are answered at `prep`. The
+the items that take them; the allocation items are answered at `prep`. The
 file does not have to defend itself against its own author. *(User, 2026-08-14 —
 recorded because the reverse assumption produced a "leak" that was not one.)*
 
@@ -619,7 +619,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `anchor` | the engine keyword this becomes. A bare keyword, never a sentence — it is what a **deck writer** matches on |
 | `engine_key` | how the engine **spells** this, in full — `gto.M(basis=...)`, `mf = mf.density_fit()`, or a `(molbuilder: …)` note when the setting never reaches the deck. A different fact from `anchor`, and a **surface** shows this one. Collapsing the two lost it on 29 items (2026-08-14→15): four PySCF controls all read `gto.M`, three read `mf`, and every molbuilder note vanished — and the note is the only way a reader learns the setting is not an engine keyword at all |
 | `manual` | **where the engine's own documentation defines this keyword** — `SIESTA 5.4.2 §6.9.2 'Mixing options'`. Read by nobody but a person reviewing the catalogue, and **the one key no config class mirrors** — § 5.1. *(It rides into a calculation's own template like every other key; "catalogue-only" said here until 2026-08-17 and meant the second thing, which is the claim that matters)* |
-| `expands` | the engine keywords a `deck` item produces, as a list |
+| `expands` | what a `deck` item produces, as a list — engine keywords, or the deck mechanism's name when the product is control flow (see § 3's row) |
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
 | `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
@@ -1107,7 +1107,7 @@ mental model.
 **And `calculations` is `engines`' exact sibling for the calculation KIND**
 *(spectra-migration plan P0, 2026-08-20)*: an item may declare which kinds
 select it (`calculations = ["vibration"]`), and its absence means every
-kind — so the 80-plus pre-existing items needed no edit, and the twelve
+kind — so the 80-plus pre-existing items needed no edit, and the fourteen
 vibration items stay out of an optimization template by declaration rather
 than by luck (they leaked into one the day they were added; measured, and
 the reason the key exists). The same writer rule applies on emit: a
@@ -1122,7 +1122,7 @@ own rows with `calculations = [...]`, shares everything genuinely shared by
 leaving the key off, and every door (the schema route, `template_with_values`,
 the columns endpoint) narrows the same one source to (engine, kind). The
 vibration kind proved the shape: its template IS the optimization template
-plus twelve declared rows, because one of its steps *is* an optimization. A
+plus fourteen declared rows, because one of its steps *is* an optimization. A
 second catalogue per kind would be § 2.1a's two-homes drift all over again,
 one axis over.
 
@@ -2333,14 +2333,13 @@ are recorded here and planned there.
 - **PySCF's `stages` are declared in `task.json`, like SIESTA's.**
   *(Answered 2026-08-17 — [`stages.md`](?doc=engines/stages.md) § 1.1a.)* Two
   questions had been conflated: **where a ladder is declared** and **how it
-  executes**. Only the second was ever PySCF's difference — its rungs share one
-  SCF process and one checkpoint, so they cannot be separate jobs, and that has
-  not changed. The declaration moved to the description for both engines, the
-  seven geometry knobs became catalogue items, and `PySCFConfig.stages`
-  survives as a field `prep` **derives** on the way to the deck. A structure
-  computed at render time and consumed one step later is not a second
-  declaration: the test is *can a person put a value there the description does
-  not state?*, and here they cannot.
+  executes**. The declaration moved to the description for both engines and
+  the seven geometry knobs became catalogue items. The execution difference
+  then dissolved too *(2026-08-18)*: a PySCF ladder is N decks and N jobs
+  exactly like SIESTA's — each rung its own deck, warm-started from the
+  previous rung's checkpoint — so `PySCFConfig` carries no stage list at
+  all, derived or otherwise. The test held throughout: *can a person put a
+  value there the description does not state?* — and they cannot.
 
   *This section said the opposite until 2026-08-17 — that PySCF's stage list
   "lives in its config", excluded by § 7's ladder row — and cited

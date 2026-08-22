@@ -993,20 +993,6 @@ class PySCFConfig:
             "engine_key":  '(molbuilder: writes <basename>.molwatch.log for the live viewer)',
     })
 
-    # ---------------- Frequencies / thermochemistry (post-relax) ----------------
-    # Opt-in: when True, the script computes the analytic Hessian at
-    # the relaxed (or, for single-point runs, the input) geometry,
-    # runs PySCF's harmonic_analysis to get wavenumbers in cm^-1, and
-    # passes the result through ``thermo.thermo`` for RRHO ZPE / U /
-    # H / G / S / Cv / Cp at (temperature_K, pressure_atm).  The
-    # summary is written to ``<job>.thermo.txt`` so the file lives
-    # alongside the converged log / chkfile.
-    #
-    # Cost: one analytic Hessian -- typically 5-15x a single SCF for
-    # small molecules, more for larger ones.  Default off so the
-    # extra cost is explicit.  Imaginary modes are reported but the
-    # script does not auto-perturb; the user decides whether to
-    # restart the optimization along the imaginary coordinate.
 
     # ----- Vibrational spectroscopy (the vibration calculation kind; -----
     # ----- spectra-migration plan P0, 2026-08-20.  Carried from the -----

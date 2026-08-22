@@ -277,8 +277,10 @@ flowchart LR
   turns each field into a small JSON description — its label, its kind, its
   default, its allowed choices — grouped by section. Only fields that carry a
   `section` tag are exposed, so an option can be kept internal by leaving that
-  tag off. This is served at `GET /api/build/schema/<engine>` (SIESTA, PySCF),
-  `GET /api/build/schema/spectra`, and `GET /api/transport/schema`.
+  tag off. This is served at `GET /api/build/schema/<engine>` (SIESTA, PySCF —
+  `?calculation=vibration` narrows PySCF's to the vibration kind's items;
+  the separate `/api/build/schema/spectra` route retired at the spectra
+  migration's P3) and `GET /api/transport/schema`.
 - **In the browser**, this module takes that JSON and draws the matching
   controls, then — when the user submits — reads every control back into a
   plain values object that goes to the generate step.

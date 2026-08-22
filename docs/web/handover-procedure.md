@@ -81,6 +81,21 @@ uniform `{ok, …}` envelope and the sidebar re-list.
 parameter tab could not know, and on save writes `task.json` — then removes the
 hand-over.
 
+### 2.1 The cell gate — the rule this procedure owns *(workflow.md § 9 gate ②)*
+
+**Step 1's render runs the periodicity gate on the exported envelope, and its
+verdicts split two ways.** A box the calculation cannot use — a degenerate
+cell, left-handed axes — is a **refusal**: the door answers 400 and nothing is
+written. A box the gate accepted but wants read — an axis it could not tell
+was periodic, vacuum thinner than it expects — comes back as **notices**
+(the gate's four-key dicts: `level`, `message`, `where`, `about` —
+`periodicity_gate.py`), and a notice holds back the **navigation, never the
+write**: the files are the person's own parameters and refusing to save them
+helps nobody, but a page that jumps away is a page whose warning was never
+read. The sender (`lib/task-handover.js`) shows every notice, keyed on the
+gate's own `level`, and stays on the page. *(A tab does not decide for its
+user — `tabs.md`.)*
+
 ---
 
 ## 3. The hand-over file
@@ -172,7 +187,7 @@ name; the receiver asks for what is missing.
 The three prerequisites named here landed with the spectra migration
 ([`plans/spectra-migration-plan.md`](?doc=plans/spectra-migration-plan.md)):
 
-1. **Its parameters are in the catalogue** (P0) — twelve items carrying
+1. **Its parameters are in the catalogue** (P0) — fourteen items carrying
    `calculations = ["vibration"]` beside the shared PySCF set
    ([`engines/template.md`](?doc=engines/template.md) § 6.3: the key is
    `engines`' exact sibling; absent = every kind).

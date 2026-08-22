@@ -422,7 +422,7 @@ tabs (their docs, this wave):
 | POST `/api/watch/load` · GET `/api/watch/data` | Register + poll a trajectory. The load response carries `atom_metadata` (the input script's ATOM-METADATA block) and, since 2026-08-20, `periodicity` — composed ON THE SERVER: the cell from the output logs, the axis kinds / origin / vacuum from the run directory's `.source` pair (job-contracts § 6.3). The viewer passes the block through verbatim; until it existed the browser composed `{cell}` alone, and an export from the Results tab stamped a lattice-bearing junction `isolated` on every axis |
 | GET `/partials/{trajectory-inspector,spectra-inspector,selection-panel}` | HTML fragments |
 | POST `/api/results/bundle` | Build a results bundle |
-| POST `/api/spectra/{render,load}` | Spectrum plot data |
+| POST `/api/spectra/load` | Parse an uploaded `<job>.spectra.json` into typed results (`/api/spectra/render` retired at the spectra migration's P3 — the deck computes; the tab only loads) |
 | POST `/api/transport/render` | Generate transport script/data |
 
 **No module-doc home — documented in full in § 5:** the app-level routes

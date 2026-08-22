@@ -214,7 +214,7 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | 6 | Basis & grid | `MeshCutoff`, `PAO.BasisSize`, `PAO.EnergyShift` | |
 | 7 | XC (+ dispersion template) | `XC.functional`, `XC.authors` | commented DFT-D template for non-vdW XC |
 | 8 | SCF | `SolutionMethod`, `SCF.Mixer.Weight`, `SCF.Mixer.History`, `DM.Tolerance`, … | Pulay = the DM-mixing scheme using past iterations |
-| 9 | Spin | `SpinPolarized .true.` + optional `Spin.Fix`/`Spin.Total` | only if `spin_polarized` — § 5 |
+| 9 | Spin | `Spin <option>` (v5 single-line) + optional `Spin.Fix`/`Spin.Total` | only if `spin_treatment` is not `non-polarized` — § 5 |
 | 10 | NetCharge | `NetCharge ±N` | only if resolved charge ≠ 0 — § 4 |
 | 11 | k-grid | `%block kgrid_Monkhorst_Pack` from `cfg.kgrid` | § 6 |
 | 12 | **Parallel (MPI)** | `BlockSize`, `Diag.ParallelOverK` | the ScaLAPACK/ELPA orbital-distribution block. **Tunable, and omitted entirely by default**, which is how SIESTA's own automatic is requested — the two states and the guidance are [`tuning.md § 2.11`](?doc=engines/tuning.md) |
@@ -298,25 +298,29 @@ open-shell system (radical, transition metal, triplet) run without spin
 polarisation **silently produces the wrong electronic structure** — which is why
 the analyzer/preflight warns ([`science/validation.md`](?doc=science/validation.md)).
 
-- `cfg.spin_polarized=False` (default) → no `Spin` block.
-- `cfg.spin_polarized=True` → emit **`SpinPolarized .true.`** — the **v4** form,
-  kept on purpose (`input.py:849`). As of SIESTA 5.4.2 the v5 single-line
-  `Spin polarized` parser does **not** read the auxiliary `Spin.Fix`/`Spin.Total`
-  keys, so an open-shell metal would abort at initial-DM construction
-  (`propor: ERROR: IMAX = 0`, the same failure `science/validation.md` describes).
-  v4 syntax is manual-deprecated but still honored *and* triggers the aux spin reads.
+- `cfg.spin_treatment` (enum: `non-polarized` — the default — `polarized`,
+  `non-colinear`, `spin-orbit`) → the **v5 single-line keyword**
+  `Spin <option>` (the form the current manual recommends; the old
+  `SpinPolarized .true.` v4 spelling is what the generator RETIRED —
+  an earlier revision of this section defended keeping it on a premise
+  later measured false). `non-polarized` emits no spin lines at all.
+  `spin-orbit` REQUIRES fully-relativistic pseudopotentials — the
+  catalogue help says so beside the choice.
 - `cfg.spin_total` (float, μ_B ≈ one per unpaired electron) → **only** when
-  `spin_polarized=True`, emit the **two-line** pin:
+  `spin_treatment = "polarized"` (the one collinear-constrainable
+  treatment), emit the **two-line** pin:
 
   ```fdf
   Spin.Fix    .true.       # without this line, Spin.Total is silently ignored
   Spin.Total  2.0          # target total spin moment in mu_B
   ```
 
-  Set with `spin_polarized=False`, `spin_total` is ignored (meaningless without
-  polarisation). Unlike PySCF there is no method-vs-spin validation — SIESTA
-  accepts `SpinPolarized .true.` with any basis; the only rule is *the user must
-  set it for any open-shell system*.
+  With any other treatment, `spin_total` is not emitted — and the validator
+  warns rather than letting the contradiction ride. The method-vs-spin
+  science is validated for SIESTA exactly as for PySCF: the shared
+  electron-count parity rule (`chemistry.check_spin_charge_parity`) runs in
+  `_validate_siesta`, ERROR when the user asserted the spin, WARN when the
+  default did ([`science/validation.md`](?doc=science/validation.md)).
 
 ---
 

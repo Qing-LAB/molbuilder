@@ -400,12 +400,13 @@ engine edits `runwrap.py` — which is exactly what
 [`generator.md § 7`](?doc=execution/generator.md)'s *"adding an engine adds
 files and edits none"* test exists to catch.
 
-**And two whole workflows have not migrated onto this pipeline at all.**
-Spectra and transport still run the paths built before it — deliberately, so
-the framework is verified on one task (structure optimization) before
-anything else moves. The statement of record is the migration box at the top
-of [`roadmap.md`](?doc=roadmap.md); transport is additionally a different
-KIND of job ([`execution/architecture.md § 0`](?doc=execution/architecture.md)).
+**One whole workflow has not migrated onto this pipeline: transport.**
+Spectra migrated in 2026-08 (the vibration deck is a calculation KIND of the
+PySCF engine — `render_deck` runs it like any other; § 9's gates cover it).
+Transport still runs the path built before the framework, deliberately: it is
+a different KIND of job
+([`execution/architecture.md § 0`](?doc=execution/architecture.md)) and its
+workflow is being designed separately.
 
 **Where this is tracked:** [`roadmap.md § 6`](?doc=roadmap.md).
 

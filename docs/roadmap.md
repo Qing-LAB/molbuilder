@@ -165,7 +165,6 @@ each with its recorded home)*:
 | **D7's cluster half** — the described route through SLURM on Sol | the deferrals table below — **next** |
 | ~~**2β** — multi-point *value* axes (measured GPU-vs-CPU in one sweep)~~ **delivered 2026-08-21** | `generator.md § 4.3a` states the built rule (value axes ride the sweep; `enable_gpu` is the grid-family axis; split per-side grouped submission) |
 | **the live browser walk-throughs** — checkpoint swap at narrow/wide widths, per-tab reload round-trips, a real Data/Image export, click-selection on frames ≥ 1 | here *(moved from the archived molview-and-checkpoint plan — its § 6 was the only part still open)* |
-| **N6** — the standing `test_system_load_monitor_e2e` failure (broken-driver card) | `audit-2026-08-20-milestone-review.md § 2` |
 | **VibrationView → shared media/zip** | task #104's note, § 3 below |
 
 ### The deferrals — decided, not drifted *(user, 2026-08-19)*
@@ -173,7 +172,7 @@ each with its recorded home)*:
 | deferred | until |
 |---|---|
 | **the remote-HPC proof** (D7's cluster half: the described route through SLURM on Sol) | **after the immediate two** |
-| **migration of the other tabs** (spectra + transport onto the framework — workstream 2's producers and the branching kind) | **the follow-up period, not this one** |
+| **migration of the transport tab** (its producer and the branching kind onto the framework; spectra migrated 2026-08 — the vibration deck is a calculation kind of the PySCF engine) | **the follow-up period, not this one** |
 
 ---
 
@@ -312,8 +311,11 @@ PySCF arm (2026-08-18), a PySCF ladder is N decks and N jobs like SIESTA's
 and the 2026-08-19 E2E ran it through the whole loop. Still open from the old
 item: PySCF's big-binary globs for the checkpoint system.
 
-**Spectra (gated on D7).** The `spectra` producer and its tab mirror still run
-the pre-framework path (see the migration box at the top of this file).
+**Spectra: migrated (2026-08).** The vibration deck is a calculation KIND of
+the PySCF engine — `render_deck` runs it through the same gates as an
+optimization deck, and the Spectrum tab hands over through the same
+Task-setup door.  Transport remains on the pre-framework path (see the
+migration box at the top of this file).
 
 **Two decisions this workstream contributed, carried into the plan.** **D10 —
 the activation warning**: on a workstation, detect the conda activation and
@@ -708,10 +710,9 @@ hardness table / real-run verification / would risk false positives") and
   (spectra-migration P1): the vibration E2E holds water at B3LYP/def2-SVP
   to its literature windows — bend ~55 km/mol > asym ~27 > sym ~5,
   pattern and magnitudes both (`tests/test_vibration_e2e.py`) — and the
-  catalogue item's help says exactly that.  The OLD generator's banner
-  (`spectra/pyscf_script.py`) rides until P3 retires that entry point; an
-  external cross-code digit match would harden the closure further and is
-  welcome, not owed.
+  catalogue item's help says exactly that.  (P3 retired the old
+  generator's entry point, banner included.)  An external cross-code digit
+  match would harden the closure further and is welcome, not owed.
 
 ## 6. Architecture seams (recorded intent → scheduled work)
 

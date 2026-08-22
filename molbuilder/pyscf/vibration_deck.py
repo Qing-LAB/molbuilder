@@ -15,11 +15,15 @@ and the phase-writing ``.spectra.json`` the viewer live-watches.
 THE LIFT (the plan's § 2: *"the old code transitions onto the new
 framework"*).  The proven science emitters are IMPORTED from
 ``spectra/pyscf_script.py`` and composed here — a move, not a rewrite.
-At P3 the survivors relocate into this package and the old module is
-deleted; until then this file is the only caller that composes them into
-a framework deck.
+P3 (2026-08-21) deleted the old module; the surviving emitters live in
+this package (`vibration_emitters.py`) and this file is their one
+composer.
 
-THE LIFT BOUNDARY'S ADAPTER (dissolves at P3).  The lifted emitters read
+THE LIFT BOUNDARY'S ADAPTER (kept past P3, deliberately).  P3's plan had
+it dissolving with the old module; what P3 actually showed is that the
+adapter IS the seam's right shape — the kind's science and the emitters
+both read one view, so a check and the deck it checks cannot disagree
+about a value (`science_view`'s contract).  The lifted emitters read
 four names the shared config spells differently or does not hold:
 ``charge`` (the shared item is ``net_charge``) and the three frozen
 SELECTORS — which are structure-side facts here (the sidecar three-stage
@@ -74,8 +78,8 @@ _THERMO_GRID_K = "np.linspace(50.0, 1500.0, 30)"
 
 
 class _LiftView:
-    """The lift boundary's adapter — see the module header.  Dissolves at
-    P3 with the module it adapts.
+    """The lift boundary's adapter — see the module header (kept past P3
+    as the one view both the emitters and the kind's science read).
 
     ``dataclasses.asdict`` works on it (the lifted constants emitter
     records the config into the artifact that way) by advertising the
@@ -118,8 +122,8 @@ class _LiftView:
         # The lifted constants emitter takes an int only; the shared
         # item's UNSET means "the engine's own default", which for PySCF
         # is 4000 MB (gto.M's max_memory).  Supplied at the lift boundary
-        # rather than invented in the deck; dissolves at P3 when the
-        # emitter learns the unset state.
+        # rather than invented in the deck.  (P3 kept the adapter; teaching
+        # the emitter the unset state remains open and small.)
         v = self._cfg.max_memory_mb
         return int(v) if v else 4000
 
@@ -570,7 +574,7 @@ def vibration_spec(struct: Structure, cfg, *,
         else:
             out.append("    _dft = None")
         out += _emit_atomic_writer()
-        out += _emit_build_mol(struct, view)
+        out += _emit_build_mol(struct, view, stage_token=stage_token or "")
         # Category 3 (integration plan): the standalone-geometry writer
         # and the live-watch emitter ride the same homes the
         # optimization deck uses -- emit_save_helper and

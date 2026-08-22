@@ -70,7 +70,12 @@ class Description:
     ``task`` is the mission and ``template`` the parameter catalogue; together
     they are floor 2 entire. ``pseudo_species`` names the elements whose
     ``.psml`` files travel with it — the only *data* files a SIESTA calculation
-    needs beyond the structure, which is referenced rather than copied.
+    needs beyond the structure.  The structure is a REFERENCE in this object
+    (``task.structure.source`` names it; no bytes here) — but
+    :func:`write_description` does lay a travelling copy down beside the
+    description (the ``.source`` pair), so the folder runs anywhere without
+    the original tree.  An earlier wording claimed "referenced rather than
+    copied" of the folder too, which the writer's own comment contradicts.
     """
     task: Task
     template: str

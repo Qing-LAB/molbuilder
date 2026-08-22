@@ -114,14 +114,14 @@ def _emit_header_docstring(struct: Structure,
     out.append(f"Atoms     : {getattr(struct, 'n_atoms', len(struct.elements))}")
     out.append(f"Job name  : {cfg.job_name}")
     out.append("")
-    out.append("Run with:")
-    out.append(f"    python {cfg.job_name}.spectra.py")
-    out.append("")
-    out.append("Recommended layout (one job per directory, see")
-    out.append("docs/execution/job-contracts.md):")
-    out.append(f"    projects/<project>/spectrum/<structure>/{cfg.job_name}.spectra.py")
-    out.append("Canonical topics: optimization, frequency, spectrum,")
-    out.append("                  transport, single-point, scan.")
+    out.append("Run it the way it was prepared (the described route):")
+    out.append("    ./jobset.sh submit <stage>     # from the calculation folder;")
+    out.append("                                   # the wrapper beside this deck")
+    out.append("                                   # activates the env and logs the run")
+    out.append("A bare `python <this file>` also works from this directory for a")
+    out.append("manual run -- the deck is self-contained -- but nothing records it.")
+    out.append("Layout: one job per directory (docs/execution/job-contracts.md);")
+    out.append("this deck was written into its own by `prep`.")
     out.append("")
     out.append("Outputs (atomic-replace at each phase boundary):")
     out.append(f"    {cfg.job_name}.spectra.json     -- typed SpectraResults")
@@ -263,7 +263,8 @@ def _emit_constants(struct: Structure,
     out.append("# Spectrum knobs.")
     out.append(f"COMPUTE_RAMAN              = {bool(cfg.compute_raman)!r}")
     out.append(f"COMPUTE_IR                 = {bool(cfg.compute_ir)!r}  "
-               f"# scaffold; values not yet validated against external code")
+               f"# band-level validated 2026-08-20 (see the IR banner "
+               f"below); no external mode-by-mode cross-check yet")
     out.append(f"DISPLACEMENT_AMPLITUDE_ANG = {float(cfg.displacement_amplitude_ang)!r}  "
                f"# L4 amplitude A; ±A·Q_i along each mode")
     out.append(f"RAMAN_FD_STEP_ANG          = {_RAMAN_FD_STEP_ANG!r}  "
@@ -419,11 +420,14 @@ def _emit_atomic_writer() -> List[str]:
 # --------------------------------------------------------------------- #
 
 
-def _emit_build_mol(struct: Structure, cfg: SpectraConfig) -> List[str]:
+def _emit_build_mol(struct: Structure, cfg: SpectraConfig,
+                    stage_token: str = "") -> List[str]:
     """gto.M(...) molecule construction.  The atom geometry is
     inlined as a Python list-of-lists rather than a multi-line
     string so a user can scroll the script and read coordinates
-    in Å directly."""
+    in Å directly.  ``stage_token`` suffixes the engine log's name
+    (stages.md § 1.1a consequence 1), exactly as the optimization
+    deck's rungs do."""
     out: List[str] = []
     out.append("# ============================================================")
     out.append("#  Build molecule")
@@ -473,11 +477,15 @@ def _emit_build_mol(struct: Structure, cfg: SpectraConfig) -> List[str]:
         out.append(f"    ecp        = {dict(ecp_chosen)!r},")
     if getattr(cfg, "log_file", False):
         # The engine's own verbose log, named like the optimization
-        # deck names its rungs' (stages.md § 1.1a consequence 1).
+        # deck names its rungs' (stages.md § 1.1a consequence 1) --
+        # the token rides the name, so two rungs in one folder cannot
+        # overwrite each other's log.  (The comment claimed this while
+        # the emission stayed unsuffixed until 2026-08-21.)
         # RE-APPLIED 2026-08-21: the first landing of this branch was
         # wiped by a baseline restore the same day; the honesty gate
         # (render-probe, config echo stripped) is what caught the loss.
-        out.append("    output     = str(_mb_outfile(JOB + '.log')),")
+        _logsuf = f"_{stage_token}.log" if stage_token else ".log"
+        out.append(f"    output     = str(_mb_outfile(JOB + {_logsuf!r})),")
     out.append("    verbose    = VERBOSE,")
     out.append("    max_memory = MAX_MEMORY_MB,")
     out.append("    unit       = 'Angstrom',")

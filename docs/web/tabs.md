@@ -25,25 +25,26 @@ There are **seven tabs**, and their order is defined in exactly one place — th
 | Tab | Path | What it's for | Own doc |
 |---|---|---|---|
 | **Molbuilder** | `/molbuilder` | build / edit / assemble a structure | this doc § 2 |
-| **Structure optimization** | `/structure-optimization` | generate a SIESTA/PySCF relaxation script | this doc § 3 |
-| **Spectrum** | `/spectrum-calculation` | compute a Raman spectrum | [`spectra.md`](?doc=web/spectra.md) |
+| **Structure optimization** | `/structure-optimization` | collect a SIESTA/PySCF relaxation's parameters and Send them to Task setup (the deck itself is written by `prep`, on the machine that runs it) | this doc § 3 |
+| **Spectrum** | `/spectrum-calculation` | describe a vibrational-spectrum calculation (the vibration kind) and Send it to Task setup; view any `.spectra.json` | [`spectra.md`](?doc=web/spectra.md) |
 | **Transport** | `/transport-calculation` | generate a TranSIESTA device script | this doc § 4 |
 | **Task setup** | `/task-setup` | read a calculation folder's description — its stages, and the machine settings you chose or measured — and edit `task.json` | [`task-setup.md`](?doc=web/task-setup.md) |
 | **Results** | `/results` | open a finished calculation | [`results.md`](?doc=web/results.md) |
 | **Documents** | `/documents` | read the in-app docs (this page!) | this doc § 5 |
 
-> **The seventh tab is PARTLY built** — Task Setup is a **shared** surface that
-> starts from a calculation folder rather than from a form, so every generating
-> tab above feeds one implementation instead of each growing its own stage
-> table. Its design is [`task-setup.md`](?doc=web/task-setup.md).
+> **Task setup is a shared surface** that starts from a calculation folder
+> rather than from a form, so every describing tab above feeds one
+> implementation instead of each growing its own stage table. Its design is
+> [`task-setup.md`](?doc=web/task-setup.md).
 >
-> **What ships today is read-only.** It follows the projects sidebar's selected
-> folder, reads that folder's `task.json` through the shipped `/api/files/*`
-> API, shows the stages and the machine settings, and puts the file itself in
-> the vendored CodeMirror so you can read and edit it. **It writes nothing** —
-> Save is disabled and says so, and `molbuilder jobset describe` is what writes
-> a description. Pinned by `tests/test_task_setup_tab.py`, which fails if the
-> button is ever enabled without the write path landing with it.
+> **It reads AND writes.** It follows the projects sidebar's selected folder,
+> resolves a hand-over (`task.1st.json`) or an existing description, offers
+> the stage table, the machine card and the benchmark panel as views of the
+> editor buffer, and **Save writes `task.json` through its own door**
+> (`POST /api/task-setup/save`) — the same reader and the same preflight the
+> CLI uses, so a description that fails its own checks is refused with the
+> findings, not repaired. *(It shipped read-only on 2026-08-16; the write
+> door landed with the U1 wave.)* Pinned by `tests/test_task_setup_tab.py`.
 >
 > **Why it is not called "prep".** `prep` is the CLI verb that resolves the
 > machine and renders the deck — *exactly what this tab does not do* — so a user

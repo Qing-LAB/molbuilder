@@ -996,9 +996,9 @@ refs = ["Weigend2002"]
 kind = "engine"
 category = ["method"]
 engines = ["pyscf"]
-anchor = "df.auxbasis"
-engine_key = "df.auxbasis = ..."
-manual = "PySCF 2.13 pyscf.df.df.DF 'auxbasis'"
+anchor = "density_fit"
+engine_key = "mf = mf.density_fit(auxbasis=...)"
+manual = "PySCF 2.13 pyscf.df.addons / scf.hf.SCF.density_fit 'auxbasis' (an argument of the density-fitting call, not a standalone assignment -- pyscf/layout.py reads it there)"
 type = "str"
 group = "profile"
 label = "Auxiliary fitting basis"
@@ -1267,8 +1267,8 @@ kind = "engine"
 category = ["system"]
 engines = ["pyscf"]
 anchor = "mf"
-engine_key = "mf = mf.PCM() / mf.SMD()"
-manual = "PySCF 2.13 pyscf.solvent.pcm 'PCM() / SMD()'"
+engine_key = "mf = mf.PCM()"
+manual = "PySCF 2.13 pyscf.solvent.pcm 'PCM()' (SMD is compiled out of this build -- -DENABLE_SMD; the gate refuses solvent_method=SMD by name)"
 type = "str"
 group = "profile"
 label = "Solvent"
@@ -1360,9 +1360,9 @@ help = "write <job>.chk (DM, mol, energies for restart)"
 kind = "engine"
 category = ["procedure"]
 engines = ["pyscf"]
-anchor = "mol.stdout"
-engine_key = "mol.stdout = open('<path>','w')"
-manual = "PySCF 2.13 pyscf.lib.misc.StreamObject 'stdout'"
+anchor = "output"
+engine_key = "gto.M(output='<job>_<stage>.log')"
+manual = "PySCF 2.13 gto.M 'output' (the constructor argument; assigning mol.stdout by hand bypasses PySCF's own open/close and is the pattern the deck deliberately avoids)"
 type = "bool"
 value = true
 default = true

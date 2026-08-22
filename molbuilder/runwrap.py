@@ -2821,17 +2821,19 @@ def render_run_wrapper(script_path: Path, *,
             f"\n"
             f"  --continue, -c   resume from prior run.  Scans existing\n"
             f"                   -runN.pyscf.log files and writes\n"
-            f"                   -run(N+1).pyscf.log.  PySCF loads the\n"
-            f"                   SCF density matrix from ``<JOB>.chk``\n"
-            f"                   automatically when present (the\n"
-            f"                   generator emits ``mf.chkfile`` by\n"
-            f"                   default and the chkfile-init-guess\n"
-            f"                   shim auto-loads it on continuation).\n"
+            f"                   -run(N+1).pyscf.log.  Whether PySCF\n"
+            f"                   reads the prior ``<JOB>.chk`` is the\n"
+            f"                   DECK's to say: a stage described\n"
+            f"                   ``continue`` gates its init-guess and\n"
+            f"                   geometry reads on it (run-identity.md\n"
+            f"                   § 4 rule 2); one described ``clean``\n"
+            f"                   emits no read at all.\n"
             f"  --force, -f      start over from -run0 even if prior\n"
             f"                   runs exist.  Old files are NOT deleted;\n"
             f"                   the existing -run0.pyscf.log is\n"
             f"                   overwritten.  Prior ``.chk`` warm-start\n"
-            f"                   files STAY on disk -- PySCF still loads.\n"
+            f"                   files STAY on disk -- and are read only\n"
+            f"                   if this deck's ``restart`` says so.\n"
             + _cold_usage_entry(
                 warm_examples=".chk and _optimized.xyz among them")
             + f"  -omp N           OpenMP threads.  Highest precedence;\n"
@@ -3420,10 +3422,12 @@ def render_run_wrapper(script_path: Path, *,
         # fall through this conditional's last arm and receive the
         # PySCF paragraph.
         + (
-            f"#  * PySCF: ``mf.chkfile`` is set by default and the script\n"
-            f"#    resumes from it whenever the .chk exists -- there is no\n"
-            f"#    field that declines it (run-identity.md § 4 rule 2 is\n"
-            f"#    unimplemented for this engine).\n"
+            f"#  * PySCF: the deck decides.  A stage described ``continue``\n"
+            f"#    gates both reads on ``restart`` (the chkfile init-guess\n"
+            f"#    and the previous rung's optimized geometry --\n"
+            f"#    run-identity.md § 4 rule 2, implemented 2026-08); one\n"
+            f"#    described ``clean`` emits no read, so prior state on\n"
+            f"#    disk is simply not consulted.\n"
             if suffix == ".py" else
             f"#  * SIESTA: this deck sets ``DM.UseSaveDM`` /\n"
             f"#    ``MD.UseSaveXV`` / ``MD.UseSaveCG`` .true., so SIESTA\n"

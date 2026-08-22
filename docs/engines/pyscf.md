@@ -13,7 +13,7 @@ This is how molbuilder turns a `Structure` + a `PySCFConfig` into a **runnable
 Python script**. Unlike SIESTA (a compiled binary reading an `.fdf`), PySCF is a
 Python library, so the emitter writes a `.py` file you run directly — which lets
 molbuilder put the whole staged-optimization loop *inside* the script. The one
-entry point is `render_script(struct, config) -> str` (`pyscf/input.py:131`).
+entry point is `render_script(struct, config) -> str` (`pyscf/input.py`).
 
 > **Vocabulary.** Cross-cutting terms (DFT, SCF, open/closed-shell, RKS/UKS, ECP)
 > are in the [`science/overview.md` glossary](?doc=science/overview.md). Key PySCF
@@ -37,12 +37,12 @@ entry point is `render_script(struct, config) -> str` (`pyscf/input.py:131`).
 flowchart LR
     subgraph IN["inputs"]
         S["Structure"]
-        C["PySCFConfig<br/>(config/pyscf.py:395)"]
+        C["PySCFConfig<br/>(config/pyscf.py)"]
     end
     CLI["CLI: molbuilder pyscf …"]
     PREP["CLI: molbuilder jobset prep<br/>(via the template)"]
     WEB["web Structure-optimization tab<br/><i>collects parameters only —<br/>renders no script</i>"]
-    R["render_script(struct, config)<br/>pyscf/input.py:131"]
+    R["render_script(struct, config)<br/>pyscf/input.py"]
     PY["job.py — a runnable script"]
     RUN["running it → job.log · job.chk ·<br/>*_optimized.xyz · job.molwatch.log · …"]
     S --> R
@@ -54,10 +54,10 @@ flowchart LR
 ```
 
 - **Backend.** `render_script` returns the `.py` text; `convert(input_path,
-  py_path, config)` (`:1291`) reads an `.xyz`/`.pdb` and writes the script,
+  py_path, config)` reads an `.xyz`/`.pdb` and writes the script,
   returning `{"py", "n_atoms", "charge", "label"}`. Verbose comments are on by
   default so the script reads as documentation of its own choices. The CLI
-  (`cmd_pyscf`, `cli.py:933`) writes the script from a structure file:
+  (`cmd_pyscf`, `cli.py`) writes the script from a structure file:
 
   ```bash
   # every config field is a flag (--basis, --functional, …), plus --ecp-atoms
@@ -80,10 +80,11 @@ flowchart LR
   > Neither holds: no page calls that route today — script generation left the
   > tab on 2026-08-15 — and the form has been catalogue-driven since
   > ([`template.md`](?doc=engines/template.md) § 2.1, the config class is a
-  > translator on the way out, not the source). **The Spectrum tab is a
-  > different config**: `SpectraConfig` still goes through
-  > `dataclass_to_form_schema`, which is why `section` stays live for it
-  > ([`stages.md`](?doc=engines/stages.md) § 1.2).)*
+  > translator on the way out, not the source). **The Spectrum tab is the same
+  > catalogue door since the spectra migration's P2**: its form comes from
+  > `GET /api/build/schema/pyscf?calculation=vibration` — the vibration kind's
+  > items beside the shared ones — and `SpectraConfig` no longer feeds any
+  > form.)*
 
 ---
 
@@ -101,7 +102,6 @@ by the config flag in column 2):
 | `<job>_geom_<stage>_optim.xyz` | `optimize` + `write_trajectory` + `optimizer=="geometric"` | streaming per-stage trajectory (multi-frame XYZ, one frame per accepted step) |
 | `<job>_geom_<stage>.log` | same | geomeTRIC's own per-stage log |
 | `<job>.molwatch.log` | `write_molwatch_log` + `optimize` + geometric | the unified per-step trajectory log (§ 4); the Results-tab inspector's single-file input |
-| `<job>.thermo.txt` | `compute_frequencies` (default off) | post-relax harmonic frequencies + RRHO (rigid-rotor-harmonic-oscillator) thermochemistry (`_emit_frequencies_block`, `:969`), wrapped in try/except so a Hessian failure never loses the converged energy |
 
 The script's header `Outputs:` block lists **exactly** this set for the active
 config — no under- or over-promising. `job_name` stays unsuffixed so
@@ -258,15 +258,15 @@ runs up to `200 × (1 + 2) = 600` steps before it finally halts.
 
 **Spin / method.** (`cfg.spin` here is 2S = the number of unpaired electrons, *not*
 the multiplicity 2S+1.) `render_script` raises `ValueError` at generation time
-(`input.py:142,151`) if `cfg.method` is unknown, or if it's a **restricted** method
+(`input.py,151`) if `cfg.method` is unknown, or if it's a **restricted** method
 (`RKS`/`RHF`, which assume `mol.spin == 0`, i.e. closed-shell) with `cfg.spin != 0`
 — the message points at `UKS`/`UHF`. This is the PySCF-specific guard SIESTA lacks (SIESTA accepts
 `SpinPolarized` with any method). The shared open-shell-metal check
 ([`science/validation.md`](?doc=science/validation.md)) runs on top of it
-(`validation/pyscf.py:132`); a negative spin is a separate error (`:169`).
+(`validation/pyscf.py`); a negative spin is a separate error.
 
 **Charge.** The `gto.M(...)` charge matches `_resolve_charge(struct, cfg)`
-(`input.py:120`): `cfg.charge` wins if set (including `0`); otherwise
+(`input.py`): `cfg.charge` wins if set (including `0`); otherwise
 `formal_charge_from_phosphates(struct)` (phosphate heuristic — charged side chains
 Asp/Glu/Lys/Arg/His are **not** counted, override via `cfg.charge`).
 
@@ -282,7 +282,7 @@ patterns:
 | `["A*"]` | every symbol beginning with `A` |
 | `["Au", "Pt"]` | both |
 
-`_resolve_ecp` (`input.py:107` → `chemistry.resolve_pyscf_ecp`) matches the
+`_resolve_ecp` (`input.py` → `chemistry.resolve_pyscf_ecp`) matches the
 patterns against the structure's own elements and returns `{element: ecp}`, or
 `None` when either half is empty. **Empty means empty** — it never means *pick
 one for me*.
@@ -306,7 +306,7 @@ one for me*.
 format spec [`engines/siesta.md`](?doc=engines/siesta.md) § 9 points to** (SIESTA
 writes the same format, distinguished by the `# engine:` header). It's **additive**:
 `molwatch_log=False` only suppresses this file, nothing else changes. Emitted by
-the inlined `MolwatchEmitter` (`_emit_molwatch_emitter`, `pyscf/input.py:1059`).
+the inlined `MolwatchEmitter` (`_emit_molwatch_emitter`, `pyscf/input.py`).
 
 Each opt step is one **marker-delimited** block — the parser locates markers by
 prefix, so there's no column-width fragility:
@@ -408,7 +408,7 @@ that a single process running every rung can reach none of.
 ## 6. Publication-quality parameters
 
 The **current generator defaults are screening-tier**: `def2-SVP` basis, `B3LYP`
-functional, **`d3bj` dispersion on** (`config/pyscf.py:491,484,525`) — i.e.
+functional, **`d3bj` dispersion on** (`config/pyscf.py,484,525`) — i.e.
 B3LYP-D3(BJ)/def2-SVP. That's fine for a first pass; for a defensible paper on a
 simple organic molecule (10–60 atoms), the one change that matters is the basis:
 

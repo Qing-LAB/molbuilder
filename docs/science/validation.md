@@ -53,22 +53,22 @@ Three typed boundaries:
 
 | Boundary | Owner | Input → output |
 |---|---|---|
-| `analyze_structure(struct)` | `chemistry.py:669` | `Structure` → `ChemistryAnalysis` |
+| `analyze_structure(struct)` | `chemistry.py` | `Structure` → `ChemistryAnalysis` |
 | `Adapter.to_params(analysis)` | per-engine `auto_defaults.py` | `ChemistryAnalysis` → engine `*SuggestedParams` |
-| `check_open_shell_metal(struct, …)` | `validation/chemistry.py:113` | `Structure` + engine params → `List[Issue]` |
+| `check_open_shell_metal(struct, …)` | `validation/chemistry.py` | `Structure` + engine params → `List[Issue]` |
 
 ---
 
 ## 2. The analyzer (L2)
 
-`chemistry.analyze_structure(struct) → ChemistryAnalysis` (`chemistry.py:669`)
+`chemistry.analyze_structure(struct) → ChemistryAnalysis` (`chemistry.py`)
 is the engine-agnostic middle layer — the single source of truth every
 science-aware surface reads, so two surfaces cannot disagree about the
 chemistry by construction.
 
 ```python
 @dataclass(frozen=True)
-class ChemistryAnalysis:           # chemistry.py:607
+class ChemistryAnalysis:           # chemistry.py
     n_atoms:             int
     elements:            List[str]              # unique, sorted
     n_electrons_neutral: int                    # Σ Z for the neutral system
@@ -92,8 +92,7 @@ re-do parity work.
 
 The flat `OPEN_SHELL_METALS` set (kept only as a back-compat alias) wrongly
 treated gold junctions as open-shell. The analyzer splits metals into three
-physically-grounded sets (`chemistry.py:134-157`; the flat alias follows at
-`:163`):
+physically-grounded sets (`chemistry.py`; the flat alias follows them):
 
 | Set | Elements | Physics | Treatment |
 |---|---|---|---|
@@ -124,7 +123,7 @@ flowchart TD
     Q4 -->|"otherwise (2–3-atom cluster,<br/>or ≥4 atoms with odd e⁻)"| PP["→ PARITY by electron count<br/>(the ambiguous regime)"]
 ```
 
-The 4-atom cutoff (`_NOBLE_METAL_CLUSTER_THRESHOLD = 4`, `chemistry.py:666`) is
+The 4-atom cutoff (`_NOBLE_METAL_CLUSTER_THRESHOLD = 4`, `chemistry.py`) is
 the conservative choice — overwhelmingly what published Au transport / surface
 DFT does. When the noble closed-shell default is wrong (sub-4-atom Au cluster,
 single adatom (one atom on a surface) on an insulator, magnetic 3d co-adsorbate
@@ -133,12 +132,12 @@ single adatom (one atom on a surface) on an insulator, magnetic 3d co-adsorbate
 
 **Two spin defaults, intentionally distinct.** The `spin = per-element default`
 the analyzer emits for an open-d metal comes from `_ANALYZER_DEFAULT_SPIN`
-(`chemistry.py:578`) — the *most-likely-correct* chemistry guess (Fe → 2S = 2,
+(`chemistry.py`) — the *most-likely-correct* chemistry guess (Fe → 2S = 2,
 the intermediate-spin 4-coordinate-porphyrin case). SIESTA's spin-*sweep* starting
-value is a **different** table, `_SPIN_TOTAL_DEFAULTS` (`:304`, Fe → 4.0 high-spin,
+value is a **different** table, `_SPIN_TOTAL_DEFAULTS` (Fe → 4.0 high-spin,
 ramp down from there). Where they disagree (Fe 2 vs 4, Co 1 vs 3) both are correct
 for their own purpose; the code's rule is *don't unify — document*
-(`chemistry.py:550-573`).
+(`chemistry.py`).
 
 **Worked example — the two verdicts, end to end.** The same call decides both
 directions; here is the closed one (an **Au-BDT-Au** junction — gold /
@@ -195,12 +194,12 @@ Adapters translate one `ChemistryAnalysis` into each engine's parameter
 dataclass. The registry (`chemistry.py`):
 
 ```python
-def register_adapter(name): ...          # :883 — decorator
-def registered_adapters() -> dict: ...   # :906 — {name: AdapterClass}
+def register_adapter(name): ...          # decorator
+def registered_adapters() -> dict: ...   # {name: AdapterClass}
 ```
 
 Every adapter satisfies the `EngineParameterAdapter` **Protocol** (the formal
-interface, `chemistry.py:849`): a `name: str` plus a
+interface, `chemistry.py`): a `name: str` plus a
 `to_params(cls, analysis) -> <Engine>SuggestedParams` classmethod — that is the
 *entire* contract a new engine implements.
 
@@ -231,14 +230,14 @@ present (may append one engine-specific sentence). Spectra reuses `PyscfAdapter`
 
 ## 4. The consumers (L4)
 
-**`/api/structure/analyze`** (`build.py:415`) — the UI auto-detect. Returns the
+**`/api/structure/analyze`** (`build.py`) — the UI auto-detect. Returns the
 analysis plus `suggested.<engine> = asdict(adapter.to_params(analysis))` for
 **every** registered adapter (`asdict` turns a dataclass into a plain JSON-able
 dict — the single serialisation point), so a new engine appears the moment its
 adapter module is imported — endpoint code unchanged.
 
 **`check_open_shell_metal(struct, *, is_closed_shell, engine_label)`**
-(`validation/chemistry.py:113`) — the pre-emission validator. It calls the
+(`validation/chemistry.py`) — the pre-emission validator. It calls the
 **same** `analyze_structure` and gates on `analysis.suggested_treatment == "open"`
 (not the flat `metals` list — that's what fired for Au-BDT-Au before the
 category split), returning a `warn` `Issue` carrying the analyzer's rationale
@@ -246,9 +245,9 @@ when the user requests a closed-shell SCF against an open-shell recommendation.
 
 Four engine surfaces route through this reverse check (a *preflight* = the checks
 run at Generate-time, before engine input is written) — SIESTA + PySCF Build
-preflight (`validation/siesta.py:360`, `validation/pyscf.py:132`), Spectra
+preflight (`validation/siesta.py`, `validation/pyscf.py`), Spectra
 render gate (`validation/spectra.py`), and Transport preflight
-(`transport/transiesta.py:911`). The UI chip (`lib/detection-chip.js`) reads the
+(`transport/transiesta.py`). The UI chip (`lib/detection-chip.js`) reads the
 **forward** side instead — `suggested_treatment` straight off the
 `/api/structure/analyze` response — not this validator. **The invariant**
 (`web-ui-coherence.md` Rule 1): chip and validator both derive from the one
@@ -399,9 +398,9 @@ number in the message.
 When `struct.regions` is populated but the engine doesn't consume region labels,
 it must surface an `info` `Issue` so the user knows the labels were noticed but
 unused. One shared helper — `regions_pattern_b_notice(struct, engine_label)`
-(`_shared.py:1377`) — is called from `/api/build/fdf` and `/api/build/pyscf`
-(`build.py:896`, `:968`), so the notice text is identical whichever engine fires
-it. **Transport is deliberately not a caller** (`transport.py:132`): it *is* the
+(`_shared.py`) — is called from `/api/build/fdf` and `/api/build/pyscf`
+(`build.py`), so the notice text is identical whichever engine fires
+it. **Transport is deliberately not a caller** (`transport.py`): it *is* the
 region consumer — the labels drive the whole device/electrode split, so the
 Pattern-B "noticed-but-unused" path doesn't apply. Pinned by
 `test_web.py::test_{fdf,pyscf}_surfaces_info_when_structure_carries_regions`.
@@ -524,6 +523,8 @@ Three decisions produced this structure (fuller provenance in git history):
 > **Note — the GPU eigensolver is not here.** The ELPA-CUDA / NVIDIA-MPS
 > eigensolver machinery (the `molbuilder-siesta-gpu` env, the numerical-
 > equivalence claim, the MPS rank policy, the `envs validate` probes) is a
-> SIESTA-GPU engine/ops concern, documented in `engines/siesta-gpu.md` (engines
-> wave). It rode in the legacy `scientific-validation.md` but is not chemistry
-> validation.
+> SIESTA-GPU engine/ops concern, documented in
+> [`engines/siesta.md`](?doc=engines/siesta.md) § 7.1 and
+> [`ops/installation.md`](?doc=ops/installation.md) (the old
+> `engines/siesta-gpu.md` split into those two on 2026-07-28). It rode in the
+> legacy `scientific-validation.md` but is not chemistry validation.

@@ -40,6 +40,14 @@
         {
           "path": "audit-2026-08-20-milestone-review.md",
           "label": "Milestone Review (R×3)"
+        },
+        {
+          "path": "audit-2026-08-21-fullstack-review.md",
+          "label": "Full-stack Review (live plan)"
+        },
+        {
+          "path": "archive/2026-08-21-review-delivered.md",
+          "label": "2026-08-21 Delivered Record (archive)"
         }
       ]
     },
