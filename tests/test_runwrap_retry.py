@@ -198,51 +198,7 @@ class TestReexecMechanics:
         assert "SECOND_RUN_OK" in r2.stdout
 
 
-# --------------------------------------------------------------------- #
-#  /api/run/install-wrapper — continue_retries validation                #
-# --------------------------------------------------------------------- #
-
-
-class TestInstallWrapperEndpointValidation:
-
-    @pytest.fixture
-    def web(self, tmp_path, monkeypatch):
-        pytest.importorskip("flask")
-        monkeypatch.chdir(tmp_path)
-        script = tmp_path / "projects" / "P" / "opt" / "S"
-        script.mkdir(parents=True)
-        (script / "JOB.fdf").write_text("SystemLabel JOB\n")
-        set_capabilities(Capabilities(runtime_config={},
-                                      conda_binary="/usr/bin/conda"))
-        from molbuilder.web.app import create_app
-        client = create_app(config={}).test_client()
-        yield client, str(script / "JOB.fdf")
-        set_capabilities(None)
-
-    def test_out_of_range_continue_retries_is_a_400(self, web):
-        client, script_path = web
-        r = client.post("/api/run/install-wrapper", json={
-            "script_path": script_path, "continue_retries": 1000000})
-        assert r.status_code == 400
-        assert "between 1 and 5" in r.get_json()["error"]
-
-    def test_non_numeric_continue_retries_is_a_400_not_500(self, web):
-        client, script_path = web
-        r = client.post("/api/run/install-wrapper", json={
-            "script_path": script_path, "continue_retries": "lots"})
-        assert r.status_code == 400
-        assert r.get_json()["ok"] is False
-
-    def test_unconfigured_activation_is_a_400_with_the_fix_text(self, web):
-        """No script_generation.activation configured -> the generator
-        refuses.  That is an OPERATOR-config error whose message IS the
-        fix; it must come back as a 400 carrying it, not a generic 500
-        'wrapper write failed'.  (The qlabsrv missing-.run.sh regression:
-        a pre-v2 molbuilder.json without the section made every wrapper
-        install fail this way.)"""
-        client, script_path = web       # sandbox has no molbuilder.json
-        r = client.post("/api/run/install-wrapper",
-                        json={"script_path": script_path})
-        assert r.status_code == 400
-        err = r.get_json()["error"]
-        assert "script_generation" in err and "activation" in err
+# (TestInstallWrapperEndpointValidation retired 2026-08-21 with its
+#  subject: /api/run/install-wrapper had zero browser callers -- `prep`
+#  writes the wrapper beside every deck it renders, and the wrapper's
+#  own validation is pinned above through render_run_wrapper directly.)

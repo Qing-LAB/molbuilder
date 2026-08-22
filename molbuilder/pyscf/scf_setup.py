@@ -10,10 +10,12 @@ the same section inline through the Sections machinery.  Either way the
 membership is ``layout.SCF_SECTION`` and the spelling is ``layout.line``
 — this module adds NO per-knob code, it only walks the two tables.
 
-``density_fit_line`` is the second export: § 7a's note that ``auxbasis``
-rides ``density_fit``'s spelling as its argument — a caller that builds
-an ``mf`` with density fitting asks HERE for the line, so the auxiliary
-basis cannot be honored in one deck and dropped in another.
+``emit_density_fit_kw`` is the auxbasis door: § 7a's note that
+``auxbasis`` rides ``density_fit``'s call as its argument — the deck's
+density-fit sites all unpack the ONE ``_MB_DF_KW`` it defines, so the
+auxiliary basis cannot be honored at one site and dropped at another.
+(A ``density_fit_line`` helper was added beside it 2026-08-21 and died
+the same day with zero callers.)
 """
 from __future__ import annotations
 
@@ -61,16 +63,6 @@ def emit_scf_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
         out.append("    pass  # every SCF knob at its engine default")
     out.append("    return mf")
     return out
-
-
-def density_fit_line(cfg) -> Optional[str]:
-    """``density_fit``'s one spelling (auxbasis rides it as an argument),
-    for callers building an ``mf`` outside the Sections machinery."""
-    from .. import script_emit as _sc
-    from . import layout as _layout
-    is_dft = str(getattr(cfg, "method", "")).upper() in ("RKS", "UKS")
-    return _layout.line(cfg, is_dft=is_dft)(
-        _sc.parameter("density_fit", "pyscf", config=cfg))
 
 
 def emit_density_fit_kw(cfg) -> List[str]:

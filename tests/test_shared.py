@@ -370,15 +370,11 @@ def _h2o_structure_path(tmp_path):
 
 
 
-def test_apply_companion_labels_returns_none_when_no_companion(tmp_path):
-    """No .fdf / .py next to the .xyz -> companion path is a no-op."""
-    from molbuilder.structure import Structure
-    from molbuilder.web.blueprints._shared import apply_companion_labels_if_present
-    p = _h2o_structure_path(tmp_path)
-    struct = Structure.from_xyz(_h2o_xyz_text())
-    assert apply_companion_labels_if_present(struct, p) is None
-    assert struct.regions == {}
-    assert struct.frozen_atoms == []
+# (test_apply_companion_labels_returns_none_when_no_companion retired
+#  2026-08-21 with its subject: the companion/sidecar-file family lost
+#  its last production caller when the emitting doors moved to the
+#  envelope -- C-shared.  Pattern B's re-homed check is pinned in
+#  tests/validation/.)
 
 
 

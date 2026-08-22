@@ -59,3 +59,34 @@ def _check_frozen_atoms_consumed(struct: Structure, *,
          f"(from struct.frozen_atoms / /modify sidecar)."),
         "config.frozen_atoms",
     )]
+
+
+def check_unconsumed_region_labels(struct: Structure, *,
+                                   engine: str) -> List[Issue]:
+    """Pattern B, re-homed (validation.md § 5; C-shared 2026-08-21): every
+    region label the current engine does NOT consume is named explicitly.
+
+    The /modify selection panel writes ``regions`` for transport workflows
+    (L-electrode, bridge, ...); an optimization deck reads none of them,
+    and silence would let a user believe their labels shaped the run.  The
+    reserved frozen label is EXCLUDED: both engines consume it (SIESTA's
+    ``Geometry.Constraints``, PySCF's geomeTRIC ``$freeze``), so warning
+    about it would be the same false alarm E-M7.1 fixed on the vibration
+    route.  This ran in two web endpoints until they were deleted; living
+    HERE puts it on every deck route through the one settings gate.
+    """
+    from ..structure import FROZEN_LABEL
+    regions = getattr(struct, "regions", None) or {}
+    inert = sorted(name for name, idxs in regions.items()
+                   if idxs and name != FROZEN_LABEL)
+    if not inert:
+        return []
+    return [Issue(
+        "warn",
+        (f"this structure carries region label(s) {inert}, which the "
+         f"{engine} optimization run does NOT consume -- they stay in "
+         f"the sidecar for /transport but do not shape this calculation. "
+         f"If you meant those atoms to be held fixed, assign them to "
+         f"\"frozen_atoms\" in /modify."),
+        "structure.regions",
+    )]

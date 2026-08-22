@@ -239,6 +239,14 @@ def _validate_pyscf(struct: Structure, cfg,
             honored=_opt_geometric,
             reason_when_dropped=_drop_reason,
         )
+    # Pattern B, re-homed here from the deleted web endpoints (C-shared
+    # 2026-08-21): region labels this optimization run does not consume
+    # are named.  The vibration kind runs its own copy over the deck's
+    # view (with the same frozen-label exclusion), so this defers there.
+    if not vibration:
+        from .sidecar import check_unconsumed_region_labels
+        issues += check_unconsumed_region_labels(struct, engine="PySCF")
+
     # Basis adequacy for transition metals.
     issues += _check_metal_basis_adequacy(
         struct, basis=getattr(cfg, "basis", ""),

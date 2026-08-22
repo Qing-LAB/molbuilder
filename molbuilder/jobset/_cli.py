@@ -333,12 +333,14 @@ def _stage_bench_dir(base, stage):
 
 def _pick_trial(js, base, trial, mode):
     """Which trial this invocation launches.  NAMED → that one (how a single
-    point is re-run).  Bare under submit no longer reaches here — the sweep
-    is grouped into ONE job (§ 2.3.2, user 2026-08-20; the 2026-08-12
-    one-per-invocation rule survives as what it protected: one launch act).
-    `--mode direct` is not submission and runs the set sequentially, as
-    ever."""
-    from .materialize import job_dir_names, shape_of, was_launched
+    point is re-run); refused by name against the sweep's own list.  Bare →
+    ``None`` — under `--mode direct` that means the whole set, in order (not
+    submission), and bare-under-submit never reaches here at all: the
+    dispatch routes it to the grouped door (one exact-fit job per resource
+    shelf, § 2.3.2).  A next-unlaunched picker arm stood here for the
+    pre-grouping shape; its own docstring called it unreachable, and it
+    retired 2026-08-21 (R2-4) with its imports.
+    """
     if trial is not None:
         if not any(j.name == trial for j in js.jobs):
             raise click.ClickException(
@@ -347,21 +349,7 @@ def _pick_trial(js, base, trial, mode):
         _ledger(base, "submit", "trial-picked", trial=trial,
                 picked_by="named by the user")
         return trial
-    if mode != "submit":
-        return None                       # direct: the whole set, in order
-    dirs = job_dir_names(js, shape_of(js, base))
-    pending = [j.name for j in js.jobs
-               if not was_launched(Path(base) / dirs[j.name])]
-    if not pending:
-        raise click.ClickException(
-            f"all {len(js.jobs)} trials are launched.  next: "
-            f"molbuilder jobset summarize bench <stage>")
-    click.echo(f"next unlaunched trial: {pending[0]}  "
-               f"({len(pending)} of {len(js.jobs)} remain)")
-    _ledger(base, "submit", "trial-picked", trial=pending[0],
-            picked_by="next unlaunched (run.json absent)",
-            remaining=len(pending), total=len(js.jobs))
-    return pending[0]
+    return None                       # direct: the whole set, in order
 
 
 def _load_bench_set(base, stage):

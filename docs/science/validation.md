@@ -395,15 +395,19 @@ number in the message.
 
 ## 5. Pattern-B — regions the engine doesn't consume
 
-When `struct.regions` is populated but the engine doesn't consume region labels,
-it must surface an `info` `Issue` so the user knows the labels were noticed but
-unused. One shared helper — `regions_pattern_b_notice(struct, engine_label)`
-(`_shared.py`) — is called from `/api/build/fdf` and `/api/build/pyscf`
-(`build.py`), so the notice text is identical whichever engine fires
-it. **Transport is deliberately not a caller** (`transport.py`): it *is* the
-region consumer — the labels drive the whole device/electrode split, so the
-Pattern-B "noticed-but-unused" path doesn't apply. Pinned by
-`test_web.py::test_{fdf,pyscf}_surfaces_info_when_structure_carries_regions`.
+When `struct.regions` carries labels the current run does not consume, the
+gate must NAME them so the user knows the labels were noticed but unused.
+The rule lives in the VALIDATORS since 2026-08-21 (it rode two web endpoints
+that were deleted, which silenced it on every route): one shared body —
+`validation/sidecar.py::check_unconsumed_region_labels` — called by
+`_validate_siesta` and `_validate_pyscf`, so it fires through the one
+settings gate on every deck route, CLI included. The reserved frozen label
+is excluded — both engines consume it (SIESTA's `Geometry.Constraints`,
+PySCF's geomeTRIC `$freeze`) — and the vibration kind runs its own copy
+over the deck's view with the same exclusion (`validation/spectra.py`).
+**Transport is deliberately not a caller**: it *is* the region consumer —
+the labels drive the whole device/electrode split, so the
+"noticed-but-unused" path doesn't apply. Pinned in `tests/validation/`.
 
 ---
 

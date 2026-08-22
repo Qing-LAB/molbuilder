@@ -396,6 +396,13 @@ def _validate_siesta(struct: Structure, cfg,
     """
     issues: List[Issue] = []
 
+    # Pattern B, re-homed here from the deleted web endpoints (C-shared
+    # 2026-08-21): region labels this run does not consume are named --
+    # the frozen label is excluded (SIESTA consumes it as
+    # Geometry.Constraints).
+    from .sidecar import check_unconsumed_region_labels
+    issues += check_unconsumed_region_labels(struct, engine="SIESTA")
+
     # Peptide protonation hint -- same as PySCF side; see
     # _check_peptide_protonation for the full rationale.
     issues += _check_peptide_protonation(struct, getattr(cfg, "net_charge", None))

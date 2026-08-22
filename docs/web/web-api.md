@@ -93,7 +93,6 @@ caller holds.
 | `/api/transport/render` | `{structure: <envelope>, params, structure_path?}` — the region-labeled device. Took the path as its GEOMETRY with the labels beside it until 2026-08-03; it was the last door on that shape |
 | `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, format?, sidecar?}`. **Not the envelope, and right not to be:** nothing is being sent back, a file or a paste is being *parsed*, and raw text is what a user supplied. It ALSO takes `{structure: <envelope>}` on one branch: a tab **putting back** the structure it was showing before the page was left, which is not a parse — `exportFile`'s exact inverse, through the one entrance so the same checks run |
 | `/api/selection/eval` | `{atoms: [{element, labels, residueName}], rule}`. **Not the envelope:** no rule matches on position (`molview.md` § 9.5), so no coordinates are sent — the cut-down list is the whole of what a filter needs |
-| `/api/siesta/install-pseudos` | takes a structure **today**, and should not: it reads `struct.elements` and nothing else, to copy one `.psml` per element. What it needs is the element list. Same reasoning as `selection/eval` — asking for a structure is what grew it two ways to send one |
 
 > **The old shapes are gone, not deprecated.** `/api/structure/periodicity` used
 > to take `{data: {xyz, sidecar}}`; it now answers 400 to that, which is how the
@@ -427,8 +426,10 @@ tabs (their docs, this wave):
 
 **No module-doc home — documented in full in § 5:** the app-level routes
 (`/api/health`, `/api/backends`, the tab pages), the build env/script routes
-(`/api/build/{fdf,pyscf,preflight}`, `/api/structure/{analyze,periodicity}`,
-`/api/run/install-wrapper`, `/api/siesta/install-pseudos`), `/api/checkpoint/*`,
+(`/api/build/{fdf,pyscf,preflight}`, `/api/structure/{analyze,periodicity}`
+— `/api/run/install-wrapper` and `/api/siesta/install-pseudos` retired
+2026-08-21: zero browser callers; `prep` writes the wrapper and installs the
+pseudopotentials on the described route), `/api/checkpoint/*`,
 `/api/system/load`, `/api/docs/*`, `/api/admin/rate_limit/*`, and the optional
 auth routes.
 
@@ -451,8 +452,7 @@ auth routes.
 | POST `/api/build/preflight` | `{ structure, config, engine }` → the pre-run validation report (pseudos + config gates) |
 | POST `/api/structure/analyze` | `{ structure }` → the geometry/chemistry report + summary |
 | POST `/api/structure/periodicity` | `{structure, op, payload}` → `{ok, periodicity, notices}`. The unified periodicity door (`?doc=model/structure-periodicity.md` § 6.2): **four** ops — `vacuum` · `axis_kind` · `cell` · `cell_origin` — through the frame-contract gate. There is deliberately **no** `calibrate`: moving atoms is not a periodicity edit and lives at `/api/modify/calibrate`. The answer is the cell block in the same shape `/api/build/load` sends it — raw values with the `resolved_*` views beside them — so a client adopts it verbatim through the path a load already takes, and `notices` carries `{level, message, where, about}` rows — first what the edit did (RECEIPTS, `where: "cell.edit"`), then what is now true of the result (CONDITIONS, each with its own `cell.*` id) |
-| POST `/api/run/install-wrapper` | install the run-wrapper script into a run dir (optional `continue_retries` 1–5 bakes the SIESTA warm-retry budget — `?doc=execution/running-a-job.md` § 3.5) |
-| POST `/api/siesta/install-pseudos` | install SIESTA pseudopotentials |
+| ~~POST `/api/run/install-wrapper`~~ · ~~POST `/api/siesta/install-pseudos`~~ | **retired 2026-08-21** — zero browser callers; the described route owns both (`prep` writes the wrapper beside every deck and installs the pseudopotentials itself) |
 
 **Checkpoint** — the run-history panel (its behavior is
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) `§ 6`, its
