@@ -38,11 +38,82 @@ same-day regressions of in-flight work, fixable on sight.
 
 ## OPEN — in priority order
 
-*(Consolidated 2026-08-22 after the U6 close, on the user's ruling:
-transport locks NONE of the spectrum-related work.  Everything below
-is independent of transport unless its own line says otherwise.)*
+*(Re-consolidated 2026-08-21 on the user's ruling: the path framework
+comes first.  Transport locks none of the rest.  Everything below is
+independent of transport unless its own line says otherwise.)*
 
-### O1 · retire SpectraConfig — a re-homing, not a delete *(spectrum work; unblocked)*
+### O1 · file and directory knowledge: one anchor rule, one door *(framework; user 2026-08-21 — TOP)*
+
+**What broke.** On Sol, `./jobset.sh prep bench coarse` refused with
+*"the library they should come from is not a directory:
+`…/optimization/Relax/projects/pseudopotential`"* — a folder fabricated
+from wherever the user was standing.  Two layers under one symptom:
+
+1. The walk-up stage (83d84b88) reached `origin/main` only 2026-08-21
+   13:32, and the eight commits after it were unpushed until 9f5995f6,
+   so no Sol run had it.  *(Shipping, not design — closed by the push.)*
+2. Even with it, `resolve_psml_lib` chooses its ANCHOR **by what
+   happens to exist** — try the calculation dir, try the walked-up
+   tree, else cwd`/projects` — so a total miss still reports the cwd
+   form and never names the tree the calculation lives in.
+
+**The rule that is missing.** An anchor must be declared by the
+SPELLING the user wrote, not discovered by probing the disk.  Probing
+means the same string means different folders on different machines,
+and the error message names a place nobody chose.
+
+**Inventory — where file/dir knowledge is handcrafted** *(full sweep,
+2026-08-21)*:
+
+| # | duplicate knowledge | sites |
+|---|---|---|
+| a | "where is the projects tree" — cascade + inline walk-up | `pseudos.py:42–113` (tree discovery homed outside `projects.py`, which owns the tree) |
+| b | "where is the repo root" — private parent-chains | `references.py:25` · `web/blueprints/docs.py:46` · `runwrap.py:4042` · `script_emit.py:691` · `builders/backends/_threedna.py:155,613` |
+| c | `job-set.json` spelled as a literal | `jobset/prep.py:878,884,891` · `checkpoint.py:358` · `jobset/_cli.py:36` (a private `_JOBSET_FILE` — a near-home nobody imports) |
+| d | `task.json` spelled beside its own constant | `checkpoint.py:358` re-spells it while `task.FILENAME` exists |
+| e | two vocabularies for one field | hints say the repo-root form `projects/pseudopotential/` (`jobset/prep.py:494`, `validation/siesta.py:54`, `config/siesta.py:1592`) while the sidebar backend (`files.py`) exchanges projects-root-relative paths — and the prefixed spelling **breaks** the walk-up by joining `projects/projects/…` |
+
+`envs/builds.py:403` also walks a parent chain — that one finds the
+**nvcc toolchain's** root, not ours.  It stays.
+
+**Proposed rules — the spelling declares the anchor; nothing guessed:**
+
+- **R1** · `psml_lib` resolution: absolute or `~` → as-is.  Leading
+  `./` or `../` → relative to the **calculation folder** (the
+  Save-to-current-dir form).  A bare name → relative to the **projects
+  tree the calculation lives in**, found by walk-up.  A miss errors
+  naming that one candidate — never a cwd form.  Callers with no
+  calculation dir (server-side validate) anchor at the server's own
+  `projects_root()`; repo-root cwd is that process's contract.
+- **R2** · tree discovery moves to its owner: `projects.find_projects_root(start)`;
+  `pseudos.py` calls it.
+- **R3** · one `repo_root()` (`molbuilder/__init__.py`); inventory-b's
+  five copies call it.
+- **R4** · one spelling per molbuilder-owned filename: `job-set.json`
+  gets a module constant beside the model it belongs to, `checkpoint.py`
+  imports both it and `task.FILENAME` instead of re-spelling them.
+- **R5** · every hint and help string speaks the **bare** spelling
+  (`pseudopotential`); the long explanation stays in the catalogue text
+  only.
+- **R6** · the psml refusal names what it looked for and where, in the
+  tree's own terms — the message a user acts on without reading code.
+
+No new mechanism: R1 collapses a cascade, R2–R4 re-home, R5–R6 are text.
+
+**What the sweep found already correct — leave it alone.** Topic and
+structure directories go through `projects.py`'s helpers at all 11
+call sites with zero hand-joins; stage-directory naming has one home
+(`identity.py:297`); the "what molbuilder wrote" pattern list has one
+home with its second reader documented in place; the workspace store's
+`SCRATCH_DIR` is a single constant.  The framework is sound — these
+five leaks are where callers went around it.
+
+**Test matrix owed** (R1 is a behaviour change, so it is pinned):
+absolute · `~/x` · `./x` · `../x` · bare-hit via walk-up · bare-miss
+error text · no-dest-dir server path · the `projects/`-prefixed
+spelling that used to double-join.
+
+### O2 · retire SpectraConfig — a re-homing, not a delete *(spectrum work; unblocked)*
 No production constructor; the runtime object is the `_LiftView` over
 PySCFConfig.  The class survives only as the VOCABULARY carrier for
 three readers — the vibration kind's science duck-types its field
@@ -53,62 +124,24 @@ its registry row and the "all four engines registered" pin (a one-line
 test edit; nothing of transport's changes).  *(An earlier note claimed
 a transport lock; that was wrong and is corrected here.)*
 
-### O2 · extract the auto-detect panel for the two describing tabs *(unblocked)*
+### O3 · extract the auto-detect panel for the two describing tabs *(unblocked)*
 Structure-optimization and Spectrum carry near-verbatim copies of the
 auto-detect panel; extract the shared module with those two as its
 callers now.  Transport's third copy joins in transport's own round —
 a shared module with one recorded hold-out beats three copies drifting.
 
-### O3 · one home for the relax retry loop *(spectrum work; small)*
+### O4 · one home for the relax retry loop *(spectrum work; small)*
 The optimization deck's retry budget and the vibration relax block's
 `continue` arm spell the same loop twice; an emitted helper both
 compose ends it.  Sized during the close as structural-but-small.
 
-### O4 · residue the close did not reach *(sweep-scale, low risk)*
+### O5 · residue the close did not reach *(sweep-scale, low risk)*
 The unenumerated leftovers: C-jobset's remaining stage-less residue
 branches + the duplicated read-API comment + two submit.py residues;
 T2/T3 stale test-module docstrings; R2-9's last present-tense pre-fold
 narration.  Plus one ruling to record: `Issue.stage` is write-orphaned
 (its one stamper retired with validate_ladder) — field + serialization
 arm are retirement candidates.
-
-### O5 · project paths: one anchor rule, one door *(framework; user 2026-08-21)*
-From Sol: `./jobset.sh prep bench coarse` refused with *"library … is
-not a directory: `<calc>/projects/pseudopotential`"* — the resolver's
-terminal fallback is `projects_root()` = **cwd**`/projects`, a folder
-fabricated from wherever you stand.  Two layers:
-the walk-up stage (83d84b88) reached origin/main only 2026-08-21
-13:32, so no Sol run before a pull after that time had it; and even
-with it, a total miss still *reports* the cwd form instead of the
-discovered tree's `…/molbuilder/projects/pseudopotential`.
-Under both: `resolve_psml_lib` picks its ANCHOR by what happens to
-exist (dest-dir try → walk-up try → cwd) — resolution by guessing —
-and tree discovery sits inline in `pseudos.py`, not in `projects.py`
-which owns the tree.
-**Handcraft inventory** (sweep 2026-08-21): six private copies of
-"where is the repo root" by parent-chains — `references.py:25`,
-`web/blueprints/docs.py:46`, `runwrap.py:4042`, `script_emit.py:691`,
-`builders/backends/_threedna.py:155/:613` (`envs/builds.py:403` is the
-nvcc toolchain's root, not ours — stays); the inline walk-up; the cwd
-terminal anchor; and hint texts (`jobset/prep.py:494`,
-`validation/siesta.py:54`, `config/siesta.py:1592`) telling users the
-repo-root spelling `projects/pseudopotential/` while the sidebar
-backend (`files.py`) exchanges projects-root-relative paths everywhere
-— two vocabularies for one field.
-**Proposed rule — the spelling declares the anchor; nothing guessed:**
-- R1 · `psml_lib`: absolute / `~` → as-is.  Leading `./` or `../` →
-  calculation-dir-relative (the Save-to-current-dir form).  Bare →
-  relative to the projects tree the calculation LIVES in (walk-up);
-  a miss errors naming that one candidate, never a cwd form.
-  Dest-less callers (server-side validate) anchor at the server's own
-  `projects_root()` — repo-root cwd is that process's contract.
-- R2 · tree discovery is `projects.py`'s: `find_projects_root(start)`;
-  `pseudos.py` calls it.
-- R3 · one `repo_root()` (`molbuilder/__init__.py`); the six copies
-  call it.
-- R4 · every hint/help speaks the bare spelling (`pseudopotential`);
-  the long form lives in the catalogue text only.
-No new mechanism: R1 collapses the cascade, R2/R3 re-home, R4 is text.
 
 ### Transport's own round *(excluded from all of the above, by ruling)*
 The `transport bundle` migration, its engine-base `render_checks`
