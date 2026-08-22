@@ -67,9 +67,21 @@ present-tense pre-fold narration.  Also noted for a ruling:
 validate_ladder) — field + serialization arm are retirement
 candidates.
 
-### U6 — the close *(now)*
-The final full R×3 round over everything P1–P5 changed, plus a clean
-`none2e` and the live E2Es.  Transport excluded throughout.
+*(U6 — the close — ran 2026-08-22: four fresh-eye readers over code /
+UI / tests / docs, every claim self-verified, 80+ findings fixed in
+615dbbc7; the certification sweeps' verdict is stamped in the ledger
+row.  What remains open is D1–D4 above, all deferred with reasons.)*
+
+---
+
+### For the user, found during the close *(no action owed to the code)*
+Your real workspace store — `projects/.molbuilder_workspace/states/` —
+holds TEST junk mixed with your own July workspaces (e.g.
+`ws-structure-opt-panel` is a one-atom "Fe atom for auto-analyze test").
+Tests can no longer write there (isolated per-test since 2026-08-22),
+but the existing files are yours to keep or clean; deleting
+`ws-structure-opt-*.wc.json` and `ws-modify*.wc.json` costs you any
+saved panel state on those tabs.
 
 ---
 
@@ -93,3 +105,4 @@ The final full R×3 round over everything P1–P5 changed, plus a clean
 | U4 documentation back-sweep, every named spot | 6ad9707d |
 | U5 retirements part 1 (zero-caller deletions + Pattern-B re-home) | 46906470 |
 | U5 retirements part 2 (one home per fact in the vibration deck) | df992287 |
+| U6 the close: 4 readers, ~80 verified findings, workspace-store isolation | 615dbbc7 |

@@ -222,6 +222,110 @@
      * The live stage table is Task setup's own, hand-rolled in
      * task-setup/viewer.js over task.json.) */
 
+
+    // The two triple kinds, so the places that special-case a triple ask one
+    // question instead of listing both.
+    const TRIPLE_KINDS = ["int-triple", "float-triple"];
+    function isTriple(kind) { return TRIPLE_KINDS.indexOf(kind) !== -1; }
+
+    function makeTriple(f, isInt) {
+        // Three labelled number inputs sharing one id prefix.  Each
+        // cell carries its own sub-label so kgrid (Tuple[int,int,int])
+        // reads as "kx 1  ky 1  kz 1" instead of three anonymous boxes.
+        // Sub-ids: f.id + "-" + label, e.g. "p-k-x" / "p-k-y" / "p-k-z";
+        // collectForm reassembles into [int, int, int].
+        // ``isInt`` splits the step exactly as makeNumber does for the
+        // scalars.  A float triple stepping by 1 makes the browser call 0.5
+        // invalid before any JS runs, and parseInt then reads it back as 0 --
+        // which is the Gamma-centred grid the user was moving off.
+        const wrap = el("span", { class: "schema-int-triple" });
+        const defaults = Array.isArray(f.default) ? f.default : [0, 0, 0];
+        f.labels.forEach((lab, i) => {
+            const cell = el("span", { class: "schema-int-triple-cell" });
+            cell.appendChild(el("span", {
+                class: "schema-int-triple-label",
+            }, lab));
+            const cellInput = el("input", {
+                id: `${f.id}-${lab}`, type: "number",
+                step: isInt ? "1" : "any",
+                value: defaults[i] != null ? defaults[i] : "",
+            });
+            // Bounds apply PER COMPONENT -- a triple's ``range`` bounds each
+            // axis, not their sum.  Missing until 2026-08-15: makeNumber
+            // honoured f.min/f.max and this did not, so kgrid accepted 0 and
+            // -4 (a Monkhorst-Pack count is a COUNT) and the displacement
+            // accepted anything at all, while both declared no range to
+            // honour either.  Same two lines as the scalar path, so the two
+            // controls cannot drift on what a bound means.
+            if (f.min !== undefined) cellInput.min = f.min;
+            if (f.max !== undefined) cellInput.max = f.max;
+            cell.appendChild(cellInput);
+            wrap.appendChild(cell);
+        });
+        return wrap;
+    }
+
+    /**
+     * Long help-text strings (psml_lib at ~39 lines, basis_size's
+     * convergence advice, etc.) used to live in ``title=`` -- browsers
+     * truncate native tooltips to ~one OS-dependent line and the
+     * paragraph-length contents were unreadable.  For multi-line help
+     * we now render a click-to-expand ``<details>`` element with the
+     * full text in a styled ``.schema-help-body``.  Short help still
+     * goes into ``title=`` (single-line tooltip is fine for one-liners).
+     * Threshold: 80 chars or first newline.
+     */
+    function helpIsLong(help) {
+        if (!help) return false;
+        if (help.indexOf("\n") !== -1) return true;
+        return help.length > 80;
+    }
+
+    function makeHelpDetails(help, refs) {
+        const det = document.createElement("details");
+        det.className = "schema-help";
+        const sum = document.createElement("summary");
+        sum.textContent = "ⓘ help";
+        sum.className = "schema-help-summary";
+        det.appendChild(sum);
+        // Preserve the source's line breaks (browser default for
+        // <pre> would also work; div with white-space:pre-wrap reads
+        // a bit nicer + lets us style border/background).
+        const body = document.createElement("div");
+        body.className = "schema-help-body";
+        body.textContent = help;
+        det.appendChild(body);
+        // References -- resolved server-side from the one bibliography
+        // (docs/science/references.bib); each renders as title + a DOI
+        // link the user can follow to the paper.
+        if (Array.isArray(refs) && refs.length) {
+            const list = document.createElement("ul");
+            list.className = "schema-help-refs";
+            for (const c of refs) {
+                const li = document.createElement("li");
+                li.textContent = (c.title ? c.title + " — " : "") + (c.text || "");
+                if (c.doi) {
+                    const a = document.createElement("a");
+                    a.href = "https://doi.org/" + c.doi;
+                    a.target = "_blank";
+                    a.rel = "noopener";
+                    a.textContent = "doi:" + c.doi;
+                    li.appendChild(document.createTextNode("  "));
+                    li.appendChild(a);
+                }
+                list.appendChild(li);
+            }
+            det.appendChild(list);
+        }
+        // Click-anywhere-on-summary toggles the details; stop the
+        // event from bubbling to the parent <label> (which would
+        // forward clicks to the input -- e.g. a checkbox label
+        // would flip the checkbox just because the user wanted to
+        // read help).
+        sum.addEventListener("click", (e) => e.stopPropagation());
+        return det;
+    }
+
     function renderField(f) {
         // Build a single <label> wrapping the input.  Checkbox lays
         // out as "[x] Label" -- the checkbox comes BEFORE the label
@@ -680,6 +784,7 @@
                     }
                     continue;
                 }
+                const elx = container.querySelector("#" + cssEsc(f.id));
                 if (!elx) continue;
                 if (f.kind === "checkbox") {
                     elx.checked = Boolean(v);
