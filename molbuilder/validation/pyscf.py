@@ -170,7 +170,8 @@ def _check_periodic_structure_in_a_gas_phase_script(
 
 
 def _validate_pyscf(struct: Structure, cfg,
-                    cell: Optional[np.ndarray] = None, **_) -> List[Issue]:
+                    cell: Optional[np.ndarray] = None, *,
+                    calculation: str = "optimization", **_) -> List[Issue]:
     """PySCF-specific checks.
 
     ``cell`` is not used to BUILD anything -- this emitter is gas-phase -- but
@@ -178,7 +179,18 @@ def _validate_pyscf(struct: Structure, cfg,
     reaching a gas-phase emitter is a silent change of calculation
     (``_check_periodic_structure_in_a_gas_phase_script``).  The argument is
     accepted for signature uniformity with the engine-validator registry.
+
+    ``calculation`` is the described kind (the double-fire dedup, ruled
+    2026-08-21): on a VIBRATION deck the kind's science
+    (`validation/spectra.py`, over the deck's own view) owns the parity,
+    open-shell-metal, grid and frozen-atoms verdicts, and the copies here
+    DEFER -- each fired twice otherwise, once reasoned from optimization
+    fields the vibration deck ignores (`cfg.optimize`, grid
+    context="optimisation").  What stays unconditional is what the kind
+    never checks: periodicity, basis adequacy, the ECP hint, and the
+    restricted-method refusal.
     """
+    vibration = calculation == "vibration"
     issues: List[Issue] = []
 
     # Periodicity vs what this emitter can express.  FIRST, because it changes
@@ -187,35 +199,46 @@ def _validate_pyscf(struct: Structure, cfg,
     issues += _check_periodic_structure_in_a_gas_phase_script(struct)
 
     # Open-shell metal + closed-shell SCF: shared rule with SIESTA.
+    # The vibration kind runs the same shared body over the deck's view.
     method_upper = (getattr(cfg, "method", "") or "").upper()
-    issues += check_open_shell_metal(
-        struct,
-        is_closed_shell=(getattr(cfg, "spin", 0) == 0
-                         and method_upper in ("RKS", "RHF")),
-        engine_label=f"PySCF (spin=0, method={cfg.method})",
-    )
+    if not vibration:
+        issues += check_open_shell_metal(
+            struct,
+            is_closed_shell=(getattr(cfg, "spin", 0) == 0
+                             and method_upper in ("RKS", "RHF")),
+            engine_label=f"PySCF (spin=0, method={cfg.method})",
+        )
 
     # Frozen-atom carrier (three-stage contract).  PySCF emits the
     # geomeTRIC constraints file only when ``cfg.optimize`` is True
     # AND ``cfg.optimizer == 'geometric'`` -- berny's API doesn't
     # accept a constraints file in pyscf.geomopt.berny_solver, and
     # single-point runs have nothing to constrain.
-    _opt_geometric = (bool(getattr(cfg, "optimize", False))
-                      and getattr(cfg, "optimizer", "") == "geometric")
-    _drop_reason = ""
-    if not bool(getattr(cfg, "optimize", False)):
-        _drop_reason = "cfg.optimize = False (single-point energy; no relaxation)"
-    elif getattr(cfg, "optimizer", "") != "geometric":
-        _drop_reason = (
-            f"cfg.optimizer = {cfg.optimizer!r}; only the geomeTRIC "
-            f"optimizer accepts a constraints file in PySCF's geomopt API"
+    #
+    # DEFERRED on the vibration kind: the vibration deck ignores both
+    # fields this rationale is keyed on (it always relaxes, always via
+    # geomeTRIC, and constrains the frozen set through its own $freeze
+    # emission -- ruled 2026-08-21); the kind's science states the
+    # frozen regime explicitly instead.
+    if not vibration:
+        _opt_geometric = (bool(getattr(cfg, "optimize", False))
+                          and getattr(cfg, "optimizer", "") == "geometric")
+        _drop_reason = ""
+        if not bool(getattr(cfg, "optimize", False)):
+            _drop_reason = ("cfg.optimize = False (single-point energy; "
+                            "no relaxation)")
+        elif getattr(cfg, "optimizer", "") != "geometric":
+            _drop_reason = (
+                f"cfg.optimizer = {cfg.optimizer!r}; only the geomeTRIC "
+                f"optimizer accepts a constraints file in PySCF's geomopt "
+                f"API"
+            )
+        issues += _check_frozen_atoms_consumed(
+            struct,
+            engine="PySCF",
+            honored=_opt_geometric,
+            reason_when_dropped=_drop_reason,
         )
-    issues += _check_frozen_atoms_consumed(
-        struct,
-        engine="PySCF",
-        honored=_opt_geometric,
-        reason_when_dropped=_drop_reason,
-    )
     # Basis adequacy for transition metals.
     issues += _check_metal_basis_adequacy(
         struct, basis=getattr(cfg, "basis", ""),
@@ -237,7 +260,9 @@ def _validate_pyscf(struct: Structure, cfg,
     # spin = 2S; must be a non-negative integer.  PySCFConfig exposes
     # spin as an int with default 0; a negative value is meaningless
     # (2S is the count of unpaired electrons, never negative).
-    if getattr(cfg, "spin", 0) < 0:
+    # Deferred on the vibration kind: its parity check runs the same
+    # shared helper (negative arm included) over the view's charge.
+    if not vibration and getattr(cfg, "spin", 0) < 0:
         issues.append(Issue(
             "error",
             f"spin = {cfg.spin} is negative; spin counts unpaired "
@@ -245,55 +270,61 @@ def _validate_pyscf(struct: Structure, cfg,
             "config.spin",
         ))
 
-    # spin > 0 with a closed-shell method (RKS/RHF) is silently wrong:
-    # the user wanted open-shell.
+    # spin > 0 with a restricted method (RKS/RHF) is a contradiction the
+    # deck cannot run: PySCF's restricted classes assume mol.spin == 0
+    # and raise at SCF-time.  ERROR, and the GATE owns the refusal
+    # (G-1c, 2026-08-21): the deck door used to raise a bare ValueError
+    # for the same fact, which turned a preflight-visible contradiction
+    # into a stack trace at prep.
     method = (getattr(cfg, "method", "") or "").upper()
-    if cfg.spin > 0 and method.startswith("R") and method in ("RKS", "RHF"):
+    if cfg.spin > 0 and method in ("RKS", "RHF"):
         issues.append(Issue(
-            "warn",
-            f"spin = {cfg.spin} is set but method = {method} is closed-shell; "
-            f"use UKS / UHF for open-shell systems (otherwise SCF "
-            f"either fails to converge or quietly returns wrong "
-            f"electronic structure)",
+            "error",
+            f"method = {method} (restricted) is incompatible with "
+            f"spin = {cfg.spin} (2S, the number of unpaired electrons). "
+            f"For an open-shell system switch to UKS (or UHF) and keep "
+            f"your spin value",
             "config.method",
         ))
 
-    # R3: silent open-shell miss when method=RKS/RHF (closed-shell) AND
-    # spin=0 AND the system has an odd electron count -- a radical the
-    # user didn't recognise (CH3., NO, charged-organic with odd e-).
-    # ``spin=0`` on an odd-electron system is a contradiction: an
-    # unpaired electron MUST exist somewhere, so RKS would either fail
-    # SCF or quietly return the wrong electronic state.  Compute
-    # parity from charge + atomic numbers.
-    if method in ("RKS", "RHF") and cfg.spin == 0:
-        # Lazy import: pyscf/input.py owns _ATOMIC_NUMBER (an L2 sibling
-        # module).  Importing here, not at module top, to avoid a hard
-        # cycle should pyscf/input.py ever start to import this file at
-        # module load.
-        from ..pyscf.input import _ATOMIC_NUMBER, _resolve_charge
-        # ``.capitalize()`` on each element: defense in depth.  Structure.
-        # from_pdb / from_xyz canonicalise to ``Fe`` / ``Cl`` / ``Na`` at
-        # the parser boundary (108c7ff, 2026-05-26), so this rule should
-        # only ever see canonical case in practice -- but a caller
-        # constructing a Structure directly via ``Structure(elements=
-        # ['FE', ...])`` would silently bypass the parser fix and
-        # ``_ATOMIC_NUMBER.get('FE', 0)`` returns 0, mis-counting
-        # electrons and producing wrong parity verdicts.
-        n_e = (sum(_ATOMIC_NUMBER.get(el.capitalize(), 0)
-                   for el in struct.elements)
-               - _resolve_charge(struct, cfg))
-        if n_e % 2 == 1:
-            issues.append(Issue(
-                "warn",
-                f"odd electron count (n_e = {n_e}) with method = {method} "
-                f"and spin = 0 -- the system is a radical and a closed-"
-                f"shell SCF will either fail to converge or quietly "
-                f"return the wrong electronic state.  Switch to UKS / "
-                f"UHF and set spin = 1 (or higher for multi-radical "
-                f"systems).  If the count is wrong because charge auto-"
-                f"detection missed something, set cfg.net_charge explicitly",
-                "config.method",
-            ))
+    # Electron-count parity -- the cross-engine rule
+    # (chemistry.check_spin_charge_parity, shared with _validate_siesta
+    # and the vibration kind): the spin's parity must match the electron
+    # count's (ΣZ - charge).  PySCF raises ``RuntimeError("Mol.nelectron
+    # N is odd, but spin = 0")`` at runtime; this is that refusal at
+    # preflight, while there is still time to act on it.
+    #
+    # Severity mirrors _validate_siesta's explicit-vs-default rule on
+    # the axis PySCF can read: ERROR when the user asserted net_charge
+    # (both numbers are theirs -- a real contradiction), WARN when the
+    # charge came from auto-detection (the phosphate heuristic sees only
+    # phosphates; a missed charged side chain flips the parity, so the
+    # finding nudges toward an explicit charge instead of blocking).
+    if not vibration and cfg.spin >= 0:
+        # Lazy import: pyscf/input.py owns _resolve_charge (an L2
+        # sibling); importing here avoids a module-load cycle.
+        from ..pyscf.input import _resolve_charge
+        from ..chemistry import check_spin_charge_parity
+        err = check_spin_charge_parity(
+            struct, _resolve_charge(struct, cfg), int(cfg.spin))
+        if err:
+            if method in ("RKS", "RHF") and cfg.spin == 0:
+                err += ("  The system is a radical under a closed-shell "
+                        "method: switch to UKS / UHF and set spin = 1 "
+                        "(or higher for multi-radical systems).")
+            # Same severity rule as the kind's parity check: ERROR
+            # whenever either number is the user's own claim (nonzero
+            # spin is always explicit; a set net_charge is explicit);
+            # the both-guesses case (default spin 0 + auto-detected
+            # charge) warns and nudges toward an explicit charge.
+            if (getattr(cfg, "net_charge", None) is None
+                    and int(cfg.spin) == 0):
+                err += ("  The charge here came from auto-detection "
+                        "(phosphates only); if it missed something, set "
+                        "net_charge explicitly.")
+                issues.append(Issue("warn", err, "config.spin"))
+            else:
+                issues.append(Issue("error", err, "config.spin"))
 
     # NO LADDER CHECK HERE, and that is not a gap.  A ladder is declared in
     # task.json for both engines (`stages.md` § 1.1a), so its structural
@@ -334,6 +365,7 @@ def _validate_pyscf(struct: Structure, cfg,
     # grid-sensitive, so forces become noisy at the ~1e-4 Ha/Bohr scale the
     # optimizer cares about.  Warn but allow -- the user may be screening at
     # level 3 deliberately.  ONE shared gate/body (validation.pyscf).
-    issues += check_dft_grid_level(cfg, context="optimisation")
+    if not vibration:      # the kind runs the same gate, context="spectra"
+        issues += check_dft_grid_level(cfg, context="optimisation")
 
     return issues

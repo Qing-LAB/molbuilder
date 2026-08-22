@@ -193,17 +193,11 @@ def spec_for(struct: Structure,
             f"unsupported method {cfg.method!r}; "
             f"expected RKS/UKS/RHF/UHF"
         )
-    # PySCF's RKS / RHF assume closed-shell (mol.spin == 0).  Setting
-    # spin != 0 with a restricted method is silently wrong physics:
-    # PySCF will raise at SCF-time, but only after the user has
-    # invoked Python.  Catch it at script-generation time instead.
-    if method_class in ("RKS", "RHF") and cfg.spin != 0:
-        raise ValueError(
-            f"method={cfg.method!r} (restricted) is incompatible with "
-            f"spin={cfg.spin} (which is 2S, the # unpaired electrons). "
-            f"For an open-shell system, switch to method='UKS' "
-            f"(or 'UHF') and keep your spin value."
-        )
+    # Restricted method + spin != 0 is refused by the GATE
+    # (_validate_pyscf, error-level -- G-1c 2026-08-21), where it
+    # surfaces as a named preflight finding instead of this door's old
+    # bare ValueError.  The render path below runs that gate before any
+    # text is emitted, so the contradiction cannot reach a deck.
     is_dft = method_class.endswith("KS")
     label = cfg.job_name
     v = cfg.verbose_comments

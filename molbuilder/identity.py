@@ -360,6 +360,20 @@ class StageRef:
     seq: Optional[int]
     name: str
 
+    @classmethod
+    def ladder(cls, names: Sequence[str]) -> Tuple["StageRef", ...]:
+        """One ref per stage of the **full** ladder — the pre-produce builder.
+
+        Decision 28's first arm, made callable: *"before a produce it comes
+        from the ladder's full list"*. The ordinal is the stage's place in
+        that list counted from 1, disabled rungs included, so disabling one
+        leaves a gap rather than renumbering what follows (`token_for`'s
+        rule, stated once). The after-produce arm — reading ``seq`` back off
+        the decks — is `jobset/materialize.py::stage_refs`, and A4 allows
+        exactly those two: the owner and the class's own method.
+        """
+        return tuple(cls(i, n) for i, n in enumerate(names, start=1))
+
     @property
     def token(self) -> Optional[str]:
         """``<NN>_<name>`` — or ``None``, when there is no ordinal to put in it.

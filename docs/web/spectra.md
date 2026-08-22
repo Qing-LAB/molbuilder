@@ -451,9 +451,18 @@ pair the hand-over writes — never a form field
 § 2). Set them in the viewer, or load a structure whose sidecar already
 carries them; the Send button exports the model **in one read**
 (`exportFile()`), so what you see frozen is what the calculation holds fixed.
-The deck states the regime honestly downstream: a frozen-atom system gets a
-partial Hessian and *vibrational-only* thermochemistry (an anchored molecule
-does not rotate).
+
+**Frozen means frozen through every phase** (user ruling 2026-08-21). The
+pre-Hessian relaxation holds the same set fixed — the deck writes geomeTRIC's
+`$freeze` constraints file, the same mechanism the optimization deck uses —
+and the Hessian is built over the free atoms only. Which atoms to freeze is
+the user's own call: the tab never second-guesses the set, and nothing warns
+you off a choice you made on purpose. What the calculation DOES say, out
+loud, is what the freeze means for the numbers: the deck states the regime
+(partial Hessian, *vibrational-only* thermochemistry — an anchored molecule
+does not rotate), the preflight names the frozen count, and the Methods
+paragraph spells out that the reported frequencies are those of the free
+atoms moving in the field of the fixed ones.
 
 The old form field (`frozen_indices`, pre-filled by the schema route from the
 sidecar) retired with the P2 substitution: a form default was a **second

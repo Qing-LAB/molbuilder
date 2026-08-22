@@ -159,9 +159,12 @@ def _bench_points_fit_their_items(task) -> List[Issue]:
     """`generator.md` § 4.3a's shape half at DESCRIBE time: every declared
     point must fit its item -- a bool item takes true/false, an enum point
     must be one of the item's choices, and a repeated point would measure
-    one configuration twice.  The same refusals `prep` makes
-    (`jobset/_cli.py::_declared_execution_pins`), surfaced here so a typo'd
-    declaration fails at save, not after a queue on the cluster.  (Found
+    one configuration twice.  THE ONE HOME of those rules (R2-5 dedup,
+    2026-08-21): `jobset/_cli.py::_declared_execution_pins` calls this
+    same function as its backstop instead of carrying a copy -- the copies
+    had diverged (allocation-item duplicates were caught only here).
+    Surfaced at save so a typo'd declaration fails there, not after a
+    queue on the cluster.  (Found
     live 2026-08-21: a matrix saved through the pre-U1 UI spelled
     'ELPA-1Stage' where the catalogue's choice is 'ELPA-1STAGE', and the
     first surface to say so was `prep bench` on Sol.)

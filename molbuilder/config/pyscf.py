@@ -866,10 +866,13 @@ class PySCFConfig:
                      "``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` "
                      "wheels for the project's pinned CUDA toolkit "
                      "(see ``molbuilder envs doctor molbuilder-pySCF``); "
-                     "the script probes gpu4pyscf at runtime and "
-                     "falls back to CPU if the package isn't "
-                     "importable or the GPU is missing / too old "
-                     "(compute capability < 7.0).",
+                     "the script probes gpu4pyscf at run start and "
+                     "STOPS with an actionable message if the "
+                     "package isn't importable or the GPU is "
+                     "missing / too old (compute capability "
+                     "< 7.0) -- there is no silent CPU fallback: "
+                     "a run that changed where it executed would "
+                     "report a CPU time under a GPU label.",
     })
     verbose: int = field(default=4, metadata={
         "category": ("procedure",),

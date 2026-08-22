@@ -177,7 +177,10 @@
          * was never read (`tabs.md` — a tab does not decide for its user). */
         const notices = Array.isArray(out.notices) ? out.notices : [];
         if (notices.length) {
-            const worst = notices.some((n) => n && n.severity === "error")
+            /* The cell gate's notices carry `level` (its four-key contract,
+             * periodicity_gate.py, since 2026-08-03) — reading `severity`
+             * here meant the error arm could never fire. */
+            const worst = notices.some((n) => n && n.level === "error")
                 ? "error" : "warn";
             say(worst,
                 "Wrote " + written.join(", ") + ". The cell was checked and "

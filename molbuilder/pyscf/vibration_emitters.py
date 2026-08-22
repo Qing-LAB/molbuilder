@@ -249,8 +249,8 @@ def _emit_constants(struct: Structure,
     out.append(f"MAX_MEMORY_MB              = {int(cfg.max_memory_mb)!r}")
     out.append(f"VERBOSE                    = {int(cfg.verbose)!r}")
     out.append(f"USE_GPU                    = {bool(cfg.use_gpu)!r}  "
-               f"# try gpu4pyscf at runtime; fall back to CPU if it "
-               f"isn't installed")
+               f"# probe gpu4pyscf at run start; STOP if unusable "
+               f"(no CPU fallback)")
     out.append("")
     out.append("# Frozen-atom mask (UNION of element + residue + explicit).")
     out.append("# The runtime block computes the final FREE_ATOM_IDXS from")
@@ -1029,12 +1029,14 @@ def _emit_displaced_scf_helpers(cfg: SpectraConfig) -> List[str]:
     out.append("                     for _i in range(N_ATOMS)]")
     out.append("    _mol_new.unit = 'Angstrom'")
     out.append("    _mol_new.build()")
-    out.append("    # Pick the right dft / scf module for this call.  _dft / _scf")
-    out.append("    # are gpu4pyscf when _USING_GPU else stock pyscf; force_cpu")
-    out.append("    # overrides to stock pyscf regardless.")
-    out.append("    _dft_mod = dft if force_cpu else _dft")
-    out.append("    _scf_mod = scf if force_cpu else _scf")
+    out.append("    # Pick the right dft / scf module INSIDE the method branch:")
+    out.append("    # _dft / _scf are gpu4pyscf when _USING_GPU else stock pyscf;")
+    out.append("    # force_cpu overrides to stock pyscf regardless.  The name")
+    out.append("    # `dft` only exists on DFT decks (the import is conditional),")
+    out.append("    # so an HF deck must never evaluate it -- not even to pick a")
+    out.append("    # module it would not use.")
     out.append("    if METHOD.upper() in ('RKS', 'UKS'):")
+    out.append("        _dft_mod = dft if force_cpu else _dft")
     out.append("        _cls = _dft_mod.RKS if METHOD.upper() == 'RKS' else _dft_mod.UKS")
     out.append("        _mf2 = _cls(_mol_new)")
     out.append("        _mf2.xc = FUNCTIONAL")
@@ -1042,6 +1044,7 @@ def _emit_displaced_scf_helpers(cfg: SpectraConfig) -> List[str]:
     out.append("            _mf2.disp = DISPERSION")
     out.append("        _mf2.grids.level = GRID_LEVEL")
     out.append("    else:")
+    out.append("        _scf_mod = scf if force_cpu else _scf")
     out.append("        _cls = _scf_mod.RHF if METHOD.upper() == 'RHF' else _scf_mod.UHF")
     out.append("        _mf2 = _cls(_mol_new)")
     out.append("    _use_df = DENSITY_FIT if density_fit is None else density_fit")
@@ -1485,7 +1488,12 @@ def _emit_final_summary() -> List[str]:
     return out
 
 
-__all__ = ["render_spectra_script"]
+# The module's one public name: the deck composes the private
+# emitters via explicit imports, and the Methods paragraph is what
+# spectra/methods.py documents as this engine's fragment.  (The old
+# generator's render_spectra_script died with the class; its name
+# in __all__ made `import *` raise.)
+__all__ = ["pyscf_methods_fragment"]
 
 # --------------------------------------------------------------------- #
 # Methods paragraph (engine-specific fragment)                          #
@@ -1523,22 +1531,49 @@ def pyscf_methods_fragment(cfg: SpectraConfig) -> str:
 
     # Mention the analytic Hessian explicitly -- the choice of
     # analytic over finite-difference is a load-bearing claim
-    # for the Methods reader (no FD noise on frequencies).
-    parts.append(
-        f"The harmonic Hessian was obtained analytically via "
-        f"`{hessian_module}` and mass-weighted, then "
-        f"diagonalized after projection of the six "
-        f"translational/rotational eigenvectors."
-    )
+    # for the Methods reader (no FD noise on frequencies).  The
+    # projection claim is CONDITIONAL: it is true of the full
+    # Hessian only -- on the partial-Hessian path the molecule is
+    # anchored and the six rigid-body modes are not projected out.
+    frozen = list(getattr(cfg, "frozen_indices", []) or [])
+    if frozen:
+        parts.append(
+            f"The harmonic Hessian was obtained analytically via "
+            f"`{hessian_module}` over the free atoms only and "
+            f"mass-weighted (partial Hessian)."
+        )
+        # THE FROZEN SET, SAID OUT LOUD (user ruling 2026-08-21:
+        # freezing is the user's own choice, and the interpretation
+        # must be explicit).  This paragraph is what a reader of the
+        # results sees first, so the regime statement lives here.
+        parts.append(
+            f"{len(frozen)} atom(s) (0-based indices {sorted(frozen)}) "
+            f"were held fixed throughout: the geometry relaxation "
+            f"constrained them (geomeTRIC `$freeze`) and the Hessian "
+            f"excludes them, so the reported frequencies are those of "
+            f"the free atoms moving in the static field of the fixed "
+            f"ones.  Thermochemistry is vibrational-only (an anchored "
+            f"system neither translates nor rotates)."
+        )
+    else:
+        parts.append(
+            f"The harmonic Hessian was obtained analytically via "
+            f"`{hessian_module}` and mass-weighted, then "
+            f"diagonalized after projection of the six "
+            f"translational/rotational eigenvectors."
+        )
 
-    # Raman path: cite the analytic dα/dR + Komornicki1979.
+    # Raman path: α is analytic (CPHF) at each displaced point; the
+    # DERIVATIVE dα/dR is central finite differences over those
+    # points -- claiming an analytic derivative overstated the method.
     if cfg.compute_raman:
         parts.append(
-            "Polarizability derivatives dα/dR were computed "
-            "analytically with `pyscf.prop.polarizability` "
-            "and projected onto the mass-weighted mode "
-            "eigenvectors to obtain Raman activities in "
-            "Å⁴/amu [Komornicki1979]."
+            "Polarizability derivatives dα/dR were computed by "
+            "central finite differences of analytic CPHF "
+            "polarizabilities (`pyscf.prop.polarizability`) at "
+            "displaced geometries, then projected onto the "
+            "mass-weighted mode eigenvectors to obtain Raman "
+            "activities in Å⁴/amu [Komornicki1979]."
         )
 
     # Density fitting note.  The emitted deck applies DF to the SCF

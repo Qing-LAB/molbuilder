@@ -123,11 +123,33 @@ def spectra_render_checks(struct: Structure,
         ))
         parity_err = None
     if parity_err:
-        issues.append(Issue(
-            severity="error",
-            message=parity_err,
-            where="config.charge",
-        ))
+        # Severity is the explicit-vs-guessed rule, shared with the
+        # engine validator (G-1d) and mirroring _validate_siesta's: a
+        # mismatch is an ERROR whenever either number is the user's own
+        # claim -- a nonzero spin is always explicit (the default is 0),
+        # and a set net_charge is explicit.  Only the BOTH-GUESSES case
+        # (default spin 0, auto-detected charge) stays a WARN nudging
+        # toward an explicit charge: the phosphate heuristic sees only
+        # phosphates, so the guess may be what is wrong, not the
+        # physics, and refusing on two guesses would block a legitimate
+        # run.  A config with no `net_charge` field types its charge
+        # directly -- explicit.
+        _raw = getattr(cfg, "net_charge", "typed-directly")
+        if _raw is None and int(getattr(cfg, "spin", 0) or 0) == 0:
+            issues.append(Issue(
+                severity="warn",
+                message=(parity_err
+                         + "  The charge here came from auto-detection "
+                           "(phosphates only); if it missed something, "
+                           "set net_charge explicitly."),
+                where="config.charge",
+            ))
+        else:
+            issues.append(Issue(
+                severity="error",
+                message=parity_err,
+                where="config.charge",
+            ))
 
     # ---- Open-shell metal sanity check ----
     # Delegated to the shared validator so the Spectra preflight,
@@ -394,33 +416,33 @@ def spectra_render_checks(struct: Structure,
     # these two preflight checks make divergence + unconsumed
     # labels visible so nothing is silently absorbed.
 
-    # Pattern A: divergence warn.  If the structure's sidecar
-    # ``frozen_atoms`` (populated via the /modify selection
-    # panel) carries indices NOT in cfg.frozen_indices, the
-    # user is about to generate a script that does NOT freeze
-    # atoms the sidecar said were frozen.  Surface it so the
-    # user can either (a) re-load the structure to pull the
-    # sidecar values into the form, (b) include them
-    # manually, (c) clear them in /modify, or (d) intentionally
-    # override.  Either way: explicit, not silent.
-    sidecar_frozen = getattr(struct, "frozen_atoms", None) or []
-    if sidecar_frozen:
-        in_cfg = set(int(i) for i in cfg.frozen_indices)
-        missing = sorted(set(sidecar_frozen) - in_cfg)
-        if missing:
-            issues.append(Issue(
-                severity="warn",
-                message=(
-                    f"The structure's sidecar has {len(sidecar_frozen)} "
-                    f"frozen atom(s) (indices {sorted(sidecar_frozen)}) "
-                    f"but the form's \"Freeze by atom index\" doesn't "
-                    f"include {missing}.  The generated script will "
-                    f"freeze only what the form lists.  Either "
-                    f"include those indices in the form, clear them "
-                    f"in /modify, or accept the override."
-                ),
-                where="config.frozen_indices",
-            ))
+    # (Pattern A -- the sidecar-vs-form divergence warn -- retired
+    # 2026-08-21 with the frozen-atoms ruling.  Its premise was the old
+    # form field: a SECOND copy of the frozen set that could disagree
+    # with the structure's.  Since P2 the set travels with the structure
+    # (`web/spectra.md` § 8) and the deck's view lifts it from there, so
+    # the comparison had become the sidecar against itself -- a check
+    # that could never fire.)
+
+    # THE FROZEN SET, SAID OUT LOUD (user ruling 2026-08-21: which atoms
+    # to freeze is the user's own call -- honored, never second-guessed
+    # -- and what the freeze MEANS must be explicit).  INFO, not a warn:
+    # nothing is wrong; the reader is told the regime before paying for
+    # the run.  The Methods paragraph restates it beside the results.
+    frozen_now = sorted(int(i) for i in (cfg.frozen_indices or []))
+    if frozen_now:
+        issues.append(Issue(
+            severity="info",
+            message=(
+                f"{len(frozen_now)} atom(s) (indices {frozen_now}) are "
+                f"frozen: the pre-Hessian relaxation holds them fixed "
+                f"(geomeTRIC $freeze) and the Hessian excludes them.  "
+                f"Frequencies will be those of the free atoms moving in "
+                f"the static field of the fixed ones; thermochemistry "
+                f"is vibrational-only."
+            ),
+            where="config.frozen_indices",
+        ))
 
     # Pattern B: unrecognized-label notice.  The selection panel
     # also writes ``regions`` (L-electrode, bridge, interface,
@@ -433,9 +455,16 @@ def spectra_render_checks(struct: Structure,
     # but inert here.  Pinned by the three-stage contract:
     # "every label NOT understood by the current engine MUST
     # be named explicitly in a preflight issue."
+    from ..structure import FROZEN_LABEL
     regions = getattr(struct, "regions", None) or {}
+    # The reserved frozen label is EXCLUDED: since schema 7 the frozen
+    # set lives inside `regions`, and this engine consumes it -- the
+    # relaxation constrains it and the Hessian mask reads it.  Warning
+    # "not consumed" about the one label the whole partial-Hessian path
+    # runs on was E-M7.1's false alarm.
     non_empty_regions = sorted(
-        name for name, idxs in regions.items() if idxs
+        name for name, idxs in regions.items()
+        if idxs and name != FROZEN_LABEL
     )
     if non_empty_regions:
         issues.append(Issue(
@@ -741,4 +770,6 @@ def _gpu_capability_advisories() -> List[Issue]:
 #  / check_dft_grid_level, called by preflight() above.)
 
 
-__all__ = ["PySCFSpectraEngine"]
+# The render-time checks are the module's public door (the retired
+# PySCFSpectraEngine's name here made `import *` raise).
+__all__ = ["spectra_render_checks"]

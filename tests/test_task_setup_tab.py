@@ -1385,7 +1385,11 @@ def test_the_cell_gate_s_notices_reach_the_person():
     guard = body[i_notice:i_nav]
     assert "return;" in guard, (
         "notices are shown and then navigated past — nobody reads them")
-    assert "n.severity" in guard, "every notice reads as the same severity"
+    # The gate's four-key contract spells the badness key `level`
+    # (periodicity_gate.py, since 2026-08-03) -- this pin read `n.severity`
+    # until 2026-08-21, asserting the very bug (E-B10) that kept the error
+    # arm from ever firing.
+    assert "n.level" in guard, "every notice reads as the same severity"
 
 
 def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
@@ -1788,3 +1792,40 @@ def test_the_next_steps_teach_the_bench_lane_and_true_ordinals():
         "the enable_gpu family note left the bench table"
     assert "exact resource ask" in src, \
         "the per-shelf teaching left the bench table"
+
+
+def test_save_runs_gate_three_and_refuses_a_failing_preflight(web_client):
+    """Gate ③ fires at save (G-1b, 2026-08-21): `workflow.md` § 9 names this
+    door beside `describe` and dispatch, and until then only the codec ran
+    here -- a stage override outside its field's bounds saved cleanly and
+    failed at prep, on the cluster, hours later.  The refusal is the SAME
+    function the CLI runs (`validation.task.preflight`), so the two
+    surfaces answer alike."""
+    d = _fresh_calc_dir()
+    try:
+        from molbuilder.identity import run_id
+        bad_bounds = {
+            "schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+            "shape": "hierarchical",
+            "run": {"name": "x", "id": run_id("x", "H2"),
+                    "created": "2026-08-16T00:00:00-07:00"},
+            "structure": {"source": "s.xyz", "formula": "H2", "atoms": 2},
+            "varies": ["mesh_cutoff"],
+            # mesh_cutoff's schema range floors at 50 Ry; the codec has no
+            # opinion about values, so only the preflight can catch this.
+            "stages": [{"name": "coarse", "enabled": True,
+                        "overrides": {"mesh_cutoff": 1.0}}]}
+        r = web_client.post("/api/task-setup/save", json={
+            "dest": str(d), "text": _json.dumps(bad_bounds)})
+        assert r.status_code == 400, r.get_json()
+        body = r.get_json()
+        assert "preflight" in body["error"], body
+        assert "mesh_cutoff" in body["error"], (
+            "the refusal must name the failing field")
+        assert not (d / "task.json").exists(), (
+            "a description that fails its own preflight was written anyway")
+        # The findings ride as data too, for the tab to render.
+        assert any("mesh_cutoff" in f.get("message", "")
+                   for f in body.get("findings", []))
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)

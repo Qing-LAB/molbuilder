@@ -300,7 +300,12 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                 body: JSON.stringify({ structure: _structureForRequest(),
                                        engine, params }),
             }).then(x => x.json());
-            if (r.ok) renderIssues(panelId, r.issues, formContainerId);
+            /* Rendered whenever issues came back, ok or not (E-A3): the
+             * endpoint's bad-params branch answers ok:false WITH the parse
+             * error as an issue precisely so this panel can show it (the
+             * 2026-06-14 change) — gating on ok dropped exactly those.
+             * Same rule as the Spectrum tab (lib/spectra/core.js). */
+            if (Array.isArray(r.issues)) renderIssues(panelId, r.issues, formContainerId);
         } catch (e) {
             // Network error during preflight is not surfaced -- the
             // panel stays in its previous state.  The Generate path

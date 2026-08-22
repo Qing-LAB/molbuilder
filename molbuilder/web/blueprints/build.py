@@ -1473,7 +1473,13 @@ def api_task_setup_handover():
         # is.  It IS read by a person -- Task setup shows it in the editor --
         # and a file whose whole job is to be handed between two surfaces
         # should not need a document open beside it to be understood.
-        "_what":     "A hand-over from the Structure-optimization tab, not a "
+        # The SENDER is the calculation kind's tab (E-B9): both tabs post
+        # through the same shared door (lib/task-handover.js), so naming
+        # one of them here wrote the wrong provenance on every Spectrum
+        # send.
+        "_what":     f"A hand-over from the "
+                     f"{'Spectrum' if calculation == 'vibration' else 'Structure-optimization'} "
+                     f"tab, not a "
                      "description. It carries the parameters (in the .template.toml "
                      "beside it) plus what this calculation is OF. It is missing "
                      "`shape` and `stages` on purpose -- Task setup asks for those, "
@@ -1582,6 +1588,31 @@ def api_task_setup_save():
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
+    # GATE ③ FIRES HERE TOO (G-1b, 2026-08-21).  `workflow.md` § 9 names
+    # this door beside `describe` and dispatch, and until now only the
+    # codec's four checks ran at save: a description naming an unknown
+    # field, a value outside its bounds, or a bench point that fits no
+    # item saved cleanly and failed at prep -- on the cluster, hours
+    # later.  Same function the CLI runs (`validation.task.preflight`),
+    # so the two surfaces cannot disagree; the template beside the
+    # description adds the sequence findings when it is already there.
+    from molbuilder.template import SUFFIX as _TPL_SUFFIX
+    from molbuilder.validation.task import preflight as _task_preflight
+    _tpl_file = dest / f"{task.label}{_TPL_SUFFIX}"
+    _pf = _task_preflight(
+        task,
+        template_text=(_tpl_file.read_text(encoding="utf-8")
+                       if _tpl_file.is_file() else None))
+    _pf_errs = [i for i in _pf if i.severity == "error"]
+    if _pf_errs:
+        return jsonify({
+            "ok": False,
+            "error": "the description fails its own preflight "
+                     "(engines/stages.md § 6.6):\n  - "
+                     + "\n  - ".join(i.message for i in _pf_errs),
+            "findings": _issues_to_json(_pf),
+        }), 400
+
     # ONE JOB PER FOLDER (`job-contracts.md` § 2.1 Rule 1).  A folder already
     # describing a DIFFERENT calculation is not a folder this save may land in:
     # the ids say they are different calculations, and overwriting one with the
@@ -1639,6 +1670,10 @@ def api_task_setup_save():
         "handover_name": TASK_HANDOVER_NAME,
         "handover_here": (dest / TASK_HANDOVER_NAME).is_file(),
         "stages":        [st.name for st in task.stages],
+        # Gate ③'s non-refusing findings (sequence warnings and the
+        # fingerprint note): the save proceeded, and the reader deserves
+        # what the CLI would have echoed.
+        "findings":      _issues_to_json(_pf),
     })
 
 

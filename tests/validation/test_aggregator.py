@@ -144,9 +144,8 @@ def test_render_script_raises_on_negative_spin(water_struct):
     """spin = -1 -> error from validate(), render_script raises
     ValidationError before emitting any Python text.
 
-    Use UKS so the existing hard-coded RKS-with-nonzero-spin guard in
-    pyscf.input doesn't pre-empt the validator -- this test is about
-    the validator's negative-spin catch, not the pre-existing guard.
+    Use UKS so the gate's restricted-method refusal (error-level since
+    G-1c) doesn't pre-empt the negative-spin catch this test is about.
     """
     from molbuilder.pyscf import render_script
     cfg = PySCFConfig(spin=-1, method="UKS")
@@ -160,13 +159,16 @@ def test_render_script_warns_on_open_shell_with_rks(capsys, water_struct):
     """Open-shell spin with closed-shell RKS / RHF method emits a
     warning to stderr but doesn't block emission."""
     from molbuilder.pyscf import render_script
-    # Note: pyscf.input ALSO has a ValueError guard for this case
-    # (RKS + spin != 0 hard-errors in render_script).  The validator
-    # would warn, but the explicit guard takes precedence with an
-    # error.  Check that one or the other catches it.
-    cfg = PySCFConfig(spin=1, method="UKS")  # UKS doesn't trigger the hard guard
-    # For UKS + spin=1 the validator has nothing to flag; this test
-    # documents that a *legitimate* open-shell config doesn't warn.
+    # (The old pyscf.input ValueError guard for RKS+spin retired with
+    # G-1c, 2026-08-21 -- the GATE owns that refusal now, error-level.)
+    # A LEGITIMATE open-shell system: the water cation (9 electrons,
+    # one unpaired).  The old fixture said spin=1 on NEUTRAL water --
+    # 10 electrons, an impossible pair -- and passed only while nothing
+    # on this route checked parity (closed by G-1d, 2026-08-21).
+    cfg = PySCFConfig(spin=1, method="UKS", net_charge=1)
+    # For UKS + spin=1 on an odd-electron system the validator has
+    # nothing to flag; this test documents that a *legitimate*
+    # open-shell config doesn't warn.
     render_script(water_struct, cfg)
     err = capsys.readouterr().err
     # No "config.method" warn for a properly-set UKS config.

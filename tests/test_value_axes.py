@@ -517,3 +517,18 @@ def test_preflight_flags_a_typod_choice_per_point(sol_calc):
     assert any("'ELPA-1Stage'" in m and "ELPA-1STAGE" in m for m in msgs), \
         "the typo'd point must be named WITH the choices"
     assert any("repeated point" in m for m in msgs)
+
+
+def test_a_duplicated_allocation_point_refuses_at_prep(sol_calc):
+    """R2-5's named divergence, closed: the shape rules live ONCE
+    (`validation/task.py::_bench_points_fit_their_items`) and prep's
+    reader calls that same checker.  Before the fold, prep's local copy
+    classified allocation entries before checking them, so
+    ``mpi_np: [8, 8, 16]`` was refused at describe and ACCEPTED at prep
+    -- two identical grid cells measuring one configuration twice."""
+    import click
+    _declare(sol_calc, {"mpi_np": [8, 8, 16]})
+    with pytest.raises(click.ClickException) as e:
+        _bench_inputs(sol_calc)
+    assert "repeated point" in str(e.value)
+    assert "mpi_np" in str(e.value)

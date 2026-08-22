@@ -184,6 +184,7 @@ def check_rules(text: str, struct=None, cfg=None):
     be the one that was stamped -- the name every warm file is keyed by.
     """
     import ast
+    import re
 
     from ..issues import Issue
 
@@ -201,7 +202,12 @@ def check_rules(text: str, struct=None, cfg=None):
         out.append(Issue("error", "the script builds no molecule (no gto.M)",
                          where="deck.molecule"))
     label = getattr(cfg, "job_name", None)
-    if label and f'JOB = "{label}"' not in text:
+    # The FACT is "a JOB literal stamps the right identity" -- both decks
+    # state it, in different spellings (the optimization deck writes
+    # `JOB = "name"`, the vibration deck an aligned repr `JOB   = 'name'`),
+    # so the probe matches the assignment, not one deck's whitespace.
+    if label and not re.search(
+            rf"^JOB\s*=\s*(['\"]){re.escape(label)}\1", text, re.M):
         out.append(Issue(
             "error",
             f"the script's JOB literal is not the identity it was written "

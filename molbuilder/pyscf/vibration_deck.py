@@ -100,10 +100,18 @@ class _LiftView:
         self.frozen_indices = list(frozen)
         self.frozen_elements = []
         self.frozen_residue_names = []
+        # THE one charge rule (chemistry.resolve_net_charge), resolved
+        # once at the lift boundary: explicit wins, 0 included; only an
+        # unset charge runs the phosphate auto-detection.  `net_charge
+        # or 0` silently dropped that detection, so a nucleic-acid
+        # vibration with charge unset was a DIFFERENT calculation than
+        # its optimization sibling.
+        from ..chemistry import resolve_net_charge
+        self._charge = int(resolve_net_charge(struct, cfg.net_charge))
 
     @property
     def charge(self) -> int:
-        return int(self._cfg.net_charge or 0)
+        return self._charge
 
     @property
     def max_memory_mb(self) -> int:
@@ -206,6 +214,14 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
         "    from pyscf.geomopt.geometric_solver import optimize as _geom_opt",
         "    _mf_relax = _build_mf_at(COORDS_EQ_ANG)",
     ]
+    if getattr(cfg, "scf_soscf", False):
+        out += [
+            "    # Second-order SCF at the relax site too (the § 7a role",
+            "    # table): every geometry step's SCF runs the same Newton",
+            "    # solver the equilibrium one does; DIIS/damp stop",
+            "    # applying under it, by design.",
+            "    _mf_relax = _mf_relax.newton()",
+        ]
     if getattr(cfg, "write_molwatch_log", False):
         out += [
             "    # Live-watch: the relaxation phase streams the same",
@@ -245,6 +261,27 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
         "             'convergence_energy': GEOM_ETOL}",
     ]
     _opt_kw = f"maxsteps=GEOM_MAX_STEPS, callback={_cb}"
+    _frozen = list(getattr(cfg, "frozen_indices", []) or [])
+    if _frozen:
+        from ..engine_atom_index import geometric_atom_index
+        _ids_1based = ",".join(str(geometric_atom_index(i)) for i in _frozen)
+        out += [
+            "    # Frozen atoms stay frozen through the pre-Hessian",
+            "    # relaxation (frozen means frozen -- user ruling",
+            "    # 2026-08-21; engines/pyscf.md § 7a role table).  geomeTRIC",
+            "    # takes the set as a $freeze constraints file, the",
+            "    # optimization deck's own mechanism; indices are 1-based",
+            "    # there.  The SAME set is excluded from the Hessian below",
+            "    # (partial Hessian), so the geometry the frequencies are",
+            "    # computed at is one where the fixed atoms never moved.",
+            f"    # Source: frozen set (0-based) = {_frozen!r}",
+            "    _FROZEN_CONSTRAINTS_PATH = _mb_outfile(JOB "
+            "+ '.constraints.txt')",
+            "    with open(_FROZEN_CONSTRAINTS_PATH, 'w') as _fh:",
+            "        _fh.write('$freeze\\n')",
+            f"        _fh.write('xyz {_ids_1based}\\n')",
+        ]
+        _opt_kw += ", constraints=str(_FROZEN_CONSTRAINTS_PATH)"
     if getattr(cfg, "write_trajectory", False):
         out += [
             "    # geomeTRIC streams its own multi-frame XYZ under this",
@@ -555,7 +592,10 @@ def vibration_spec(struct: Structure, cfg, *,
         out += _emit_initial_state()
         out += _vib_state_init()
         out += _emit_displaced_scf_helpers(view)
-        out += _vib_relax_block(cfg, stage_token=stage_token)
+        # The VIEW, not the raw config: the relax block needs the frozen
+        # set (a structure-side fact the view lifted), and the view
+        # forwards every config field it does not bridge.
+        out += _vib_relax_block(view, stage_token=stage_token)
         out += _emit_equilibrium_scf(view, struct)
         out += _vib_gradient_check()
         out += _emit_gpu_coverage_probe(view)
@@ -585,14 +625,21 @@ def vibration_spec(struct: Structure, cfg, *,
                           "relaxation/thermo/IR blocks)", _vib_deck),),
         # The engine's own line/provenance answers, shared with the
         # optimization deck -- one syntax per engine, not per kind.
-        line=_layout.line(cfg, is_dft=(str(cfg.method).upper() != "HF")),
+        # The DFT test is membership, not "anything but HF": RHF/UHF are
+        # Hartree-Fock spellings too, and classifying them as DFT would
+        # emit mf.xc / grids lines into a wavefunction-method deck.
+        line=_layout.line(cfg,
+                          is_dft=(str(cfg.method).upper() in ("RKS", "UKS"))),
         provenance_defaults=lambda c: {
             "use_gpu":     str(bool(getattr(c, "use_gpu", False))).lower(),
             "density_fit": str(bool(getattr(c, "density_fit", True))).lower(),
         },
         created_by="molbuilder vibration deck",
-        # None = the framework's shared checks only; the
-        # vibration deck's REAL gate is the artifact
-        # (.spectra.json, schema-valid) -- P1's E2E bar.
-        check_rules=None,
+        # The engine's own deck gate, shared with the optimization deck:
+        # it parses (a non-compiling deck dies on the queue after the
+        # wait -- the shipped ECP double-kwarg was exactly this class),
+        # it builds a molecule, and its JOB literal is the stamped
+        # identity.  The artifact bar (.spectra.json, schema-valid)
+        # remains the E2E proof; this gate is the prep-time one.
+        check_rules=_layout.check_rules,
     )

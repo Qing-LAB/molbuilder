@@ -46,14 +46,18 @@ def test_pyscf_negative_spin_is_error(water_struct):
 
 
 
-def test_pyscf_open_shell_spin_with_rks_is_warn(water_struct):
-    """Open-shell spin with RKS / RHF (closed-shell methods) is the
-    "I forgot to switch to UKS" foot-gun."""
+def test_pyscf_open_shell_spin_with_rks_is_refused(water_struct):
+    """Open-shell spin with RKS / RHF (restricted methods) is a
+    contradiction the deck cannot run -- since G-1c (2026-08-21) the
+    GATE owns the refusal as an error-level finding (the deck door's
+    bare ValueError for the same fact is gone), so the user meets it
+    as a named preflight issue instead of a stack trace at prep."""
     cfg = PySCFConfig(spin=1, method="RKS")
     issues = validate(water_struct, cfg)
-    warns = [i for i in issues if i.where == "config.method"
-             and i.severity == "warn"]
-    assert len(warns) == 1
+    errs = [i for i in issues if i.where == "config.method"
+            and i.severity == "error"]
+    assert len(errs) == 1
+    assert "UKS" in errs[0].message
 
 
 
@@ -186,17 +190,35 @@ def _ch3_radical_struct():
     )
 
 
-def test_pyscf_validator_warns_on_odd_electrons_with_rks_spin0():
-    """R3: a system with an odd electron count run with method=RKS and
-    spin=0 is silently the wrong electronic state -- the validator
-    must emit a warn pointing at UKS / spin=1."""
+def test_pyscf_validator_refuses_odd_electrons_with_explicit_charge():
+    """A radical (odd electron count) under RKS + spin=0 with the charge
+    EXPLICITLY asserted is a hard contradiction: both numbers are the
+    user's own, and PySCF raises ``RuntimeError("Mol.nelectron N is
+    odd, but spin = 0")`` at runtime.  The shared parity rule
+    (chemistry.check_spin_charge_parity, G-1d) refuses at preflight
+    with the radical advice appended."""
     cfg = PySCFConfig(method="RKS", spin=0, net_charge=0)
     issues = validate(_ch3_radical_struct(), cfg)
-    odd_warns = [i for i in issues
-                 if i.severity == "warn" and "odd electron" in i.message]
-    assert len(odd_warns) == 1
-    assert "UKS" in odd_warns[0].message
-    assert "UHF" in odd_warns[0].message
+    parity = [i for i in issues
+              if i.severity == "error" and "parity" in i.message]
+    assert len(parity) == 1
+    assert "UKS" in parity[0].message
+    assert "UHF" in parity[0].message
+
+
+
+def test_pyscf_validator_nudges_odd_electrons_when_charge_was_guessed():
+    """The same radical with net_charge UNSET: the electron count rests
+    on the phosphate auto-detection, which sees only phosphates -- a
+    missed charged side chain would flip the parity.  The finding
+    stays a WARN nudging toward an explicit charge, so a legitimate
+    run whose real charge is even is not blocked on a guess."""
+    cfg = PySCFConfig(method="RKS", spin=0, net_charge=None)
+    issues = validate(_ch3_radical_struct(), cfg)
+    parity = [i for i in issues if "parity" in i.message]
+    assert len(parity) == 1
+    assert parity[0].severity == "warn"
+    assert "auto-detection" in parity[0].message
 
 
 

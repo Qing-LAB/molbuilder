@@ -254,6 +254,14 @@ def validate(struct: Structure, cfg, *,
         engine_kw["dest_dir"] = dest_dir
     if prior is not None:
         engine_kw["prior"] = prior
+    # The KIND rides along so an engine validator can defer a family the
+    # kind's own science owns (the double-fire dedup, ruled 2026-08-21:
+    # one fact, one finding -- on a vibration deck the parity /
+    # open-shell-metal / grid / frozen verdicts are the kind's, and the
+    # engine copy firing too gave each fact two findings, one of them
+    # reasoned from the wrong calculation).  Validators that do not
+    # branch on it ignore it through **_.
+    engine_kw["calculation"] = calculation
     for cfg_cls, fn in _ENGINE_VALIDATORS.items():
         if isinstance(cfg, cfg_cls):
             issues += fn(struct, cfg, cell, **engine_kw)

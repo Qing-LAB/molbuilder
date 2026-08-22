@@ -3414,7 +3414,17 @@ def render_run_wrapper(script_path: Path, *,
         # copy of one claim in this file, and false for every stage described
         # `clean`, whose deck now says `.false.` three times.  All three copies
         # read `_restart_honoured` now; there is no fourth.
+        # KEYED ON THE SUFFIX FIRST (E-J3): which ENGINE's contract to
+        # print is the script's own fact, not the restart probe's -- a
+        # SIESTA deck whose restart answer could not be read used to
+        # fall through this conditional's last arm and receive the
+        # PySCF paragraph.
         + (
+            f"#  * PySCF: ``mf.chkfile`` is set by default and the script\n"
+            f"#    resumes from it whenever the .chk exists -- there is no\n"
+            f"#    field that declines it (run-identity.md § 4 rule 2 is\n"
+            f"#    unimplemented for this engine).\n"
+            if suffix == ".py" else
             f"#  * SIESTA: this deck sets ``DM.UseSaveDM`` /\n"
             f"#    ``MD.UseSaveXV`` / ``MD.UseSaveCG`` .true., so SIESTA\n"
             f"#    loads the .DM/.XV/.CG left under this SystemLabel.\n"
@@ -3424,10 +3434,10 @@ def render_run_wrapper(script_path: Path, *,
             f"#    from the coordinates in the deck.  Change `restart` in\n"
             f"#    the description and prep again to continue instead.\n"
             if _restart_honoured is False else
-            f"#  * PySCF: ``mf.chkfile`` is set by default and the script\n"
-            f"#    resumes from it whenever the .chk exists -- there is no\n"
-            f"#    field that declines it (run-identity.md § 4 rule 2 is\n"
-            f"#    unimplemented for this engine).\n"
+            f"#  * SIESTA: this deck's restart keywords could not be read;\n"
+            f"#    whether prior .DM/.XV/.CG are loaded is the deck's to\n"
+            f"#    say.  Re-prep (`molbuilder jobset prep`) to restore the\n"
+            f"#    restart group the generator writes.\n"
         )
         + f"#\n"
         f"# IMPORTANT: this wrapper does NOT change cwd (see\n"

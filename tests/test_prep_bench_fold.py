@@ -1904,3 +1904,38 @@ def test_a_declared_pin_reaches_the_run_deck_and_the_verdict_outranks_it(
     # first expected the line -- the emit rule says otherwise.)
     assert not _re.search(r"^Diag\.Algorithm\s", text, _re.M), (
         [ln for ln in text.splitlines() if ln.startswith("Diag.")])
+
+
+def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tmp_path):
+    """E-J1 (restored 2026-08-21): the bench lane speaks SIESTA's
+    vocabulary -- its measurement pins name SiestaConfig fields, and the
+    GPU question is read under `enable_gpu`.  A PySCF description used
+    to be stopped only by ACCIDENT: those pins failing resolve, with a
+    refusal blaming settings the user never wrote.  The seam now refuses
+    by NAME, before any grid is enumerated."""
+    import click
+
+    from molbuilder.config.pyscf import PySCFConfig
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
+    dest = tmp_path / "pycalc"
+    D.write_description(
+        D.build_description(struct, PySCFConfig(job_name="JOB"),
+                            [Stage(name="only", enabled=True, overrides={})],
+                            engine="pyscf", shape="hierarchical", name="JOB",
+                            source=str(tmp_path / "h2.xyz")),
+        dest)
+    (dest / "environment.json").write_text(
+        Environment(scheduler="workstation",
+                    topology=Topology(sockets=1,
+                                      cores_per_socket=4)).to_json() + "\n")
+    with pytest.raises(click.ClickException) as e:
+        _bench_inputs(dest)
+    msg = str(e.value)
+    assert "'pyscf'" in msg and "SIESTA" in msg, (
+        "the refusal must name the engine and the reason")
+    assert "max_scf_iter" not in msg, (
+        "the refusal blames measurement pins the user never wrote")

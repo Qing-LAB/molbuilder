@@ -1322,7 +1322,7 @@ value = false
 default = false
 group = "staging"
 label = "Use GPU (NVIDIA, via gpu4pyscf)"
-help = "run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf extension.  The recipe for ``molbuilder-pySCF`` installs the matching ``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` wheels for the project's pinned CUDA toolkit (see ``molbuilder envs doctor molbuilder-pySCF``); the script probes gpu4pyscf at runtime and falls back to CPU if the package isn't importable or the GPU is missing / too old (compute capability < 7.0)."
+help = "run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf extension.  The recipe for ``molbuilder-pySCF`` installs the matching ``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` wheels for the project's pinned CUDA toolkit (see ``molbuilder envs doctor molbuilder-pySCF``); the script probes gpu4pyscf at run start and STOPS with an actionable message if the package isn't importable or the GPU is missing / too old (compute capability < 7.0) -- there is no silent CPU fallback: a run that changed where it executed would report a CPU time under a GPU label."
 
 [item.verbose]
 kind = "engine"

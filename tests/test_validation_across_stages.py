@@ -24,20 +24,7 @@ from molbuilder.task import Stage
 from molbuilder.validation.stages import (
     check_identical_stages,
     check_ladder_does_not_loosen,
-    validate_ladder,
 )
-
-
-@pytest.fixture
-def h2() -> Structure:
-    return Structure(elements=["H", "H"],
-                     positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
-                     vacuum=(12.0, 12.0, 12.0))
-
-
-@pytest.fixture
-def tpl() -> SiestaConfig:
-    return SiestaConfig(system_label="JOB", mesh_cutoff=300.0)
 
 
 def _ladder(*pairs):
@@ -45,72 +32,15 @@ def _ladder(*pairs):
     return [Stage(name=n, overrides=o) for n, o in pairs]
 
 
-def _seq(issues):
-    return [i for i in issues if i.stage is None]
-
-
-def _per_stage(issues):
-    return [i for i in issues if i.stage is not None]
-
-
 # --------------------------------------------------------------------- #
 #  R2 — each stage, as a resolved whole                                 #
 # --------------------------------------------------------------------- #
-
-def test_a_per_stage_finding_carries_the_stage_beside_where(h2, tpl):
-    """The label rides in its own field.  Folding it into ``where`` would give
-    one check as many ids as the ladder has stages, and the UI binds behaviour
-    to the id (`validation.md § 4.1` R1)."""
-    issues = validate_ladder(h2, tpl, _ladder(("coarse", {}), ("tight", {})))
-    assert _per_stage(issues), "no per-stage findings at all -- test is blind"
-    for i in _per_stage(issues):
-        assert i.stage in ("coarse", "tight")
-        assert "coarse" not in i.where and "tight" not in i.where
-
-
-def test_each_stage_is_judged_on_its_OWN_resolved_values(h2):
-    """R2's substance.  A stage that overrides a value into trouble must be the
-    one reported — if the template were validated instead, a ladder could put
-    any stage anywhere and be told nothing.
-
-    The perturbation is ``mesh_cutoff`` because it fires for **this**
-    structure.  The first version of this test used ``spin_treatment``, which
-    keys on open-shell metals and produces nothing at all for H₂ — a test that
-    could only ever have failed, and did."""
-    tpl = SiestaConfig(system_label="JOB", mesh_cutoff=300.0)
-    issues = validate_ladder(h2, tpl, _ladder(
-        ("sane", {}),
-        ("starved", {"mesh_cutoff": 50.0})))
-    starved = {i.where for i in issues if i.stage == "starved"}
-    sane = {i.where for i in issues if i.stage == "sane"}
-    assert "config.mesh_cutoff" in starved
-    assert "config.mesh_cutoff" not in sane
-
-
-def test_the_shipped_validator_is_what_runs(h2, tpl):
-    """Not a parallel per-stage copy.  The old one drifted into a weaker rule
-    set than a plain calculation got, which is why it was deleted with
-    ``SiestaStageSpec``; this asserts a finding only the shipped validator
-    produces reaches a stage."""
-    from molbuilder.validation import validate
-    single = {i.where for i in validate(h2, tpl)}
-    staged = {i.where for i in validate_ladder(h2, tpl, _ladder(("s", {})))}
-    assert single and single <= staged
-
-
-def test_a_disabled_stage_is_not_validated(h2, tpl):
-    issues = validate_ladder(h2, tpl, [
-        Stage(name="on", enabled=True),
-        Stage(name="off", enabled=False, overrides={"mesh_cutoff": 1.0}),
-    ])
-    assert {i.stage for i in _per_stage(issues)} == {"on"}
-
-
-def test_the_validators_own_issues_are_not_mutated(h2, tpl):
-    """``Issue`` is frozen and the stamp makes a new one, so a caller holding
-    the validator's list cannot find stage labels appearing in it."""
-    issues = validate_ladder(h2, tpl, _ladder(("a", {}), ("b", {})))
-    assert len({id(i) for i in issues}) == len(issues)
+# The per-stage door is the RENDER gate: every rung's deck runs the shipped
+# validator (with the calculation kind) at render_deck step 3.3, one rung at
+# a time.  The batch aggregator `validate_ladder` that this section tested
+# retired 2026-08-21 (G-1a): no production caller, and its validate() call
+# omitted `calculation`.  The gate's own behaviour is pinned where the gate
+# is: tests/test_prep_calculation.py and the engines' render tests.
 
 
 # --------------------------------------------------------------------- #
@@ -297,18 +227,22 @@ def test_stages_that_differ_in_any_setting_do_not_warn():
                                         mesh_cutoff=999.0)) == []
 
 
-def test_the_comparison_is_over_the_RESOLVED_pair_not_the_overrides(h2, tpl):
+def test_the_comparison_is_over_the_RESOLVED_pair_not_the_overrides():
     """Comparing overrides would flag the legitimate case and miss nothing —
     which is how a warning becomes noise people learn to click through.  Here
     the two stages carry DIFFERENT override maps and resolve to the same
     thing, so an overrides-based test would stay silent where this one
-    speaks."""
-    issues = validate_ladder(h2, SiestaConfig(system_label="JOB",
-                                              mesh_cutoff=300.0,
-                                              restart="clean"), _ladder(
-        ("a", {"mesh_cutoff": 300.0}),      # restates the template's value
-        ("b", {"restart": "clean"})))       # a different map, same result
-    assert "stages.recomputes_previous" in [i.where for i in _seq(issues)]
+    speaks.  Resolution runs through the production primitive
+    (`resolve.effective_config` — the same one `resolved_ladder` applies on
+    the preflight route) before the comparison sees the pair."""
+    from molbuilder.resolve import effective_config
+    base = SiestaConfig(system_label="JOB", mesh_cutoff=300.0,
+                        restart="clean")
+    resolved = [
+        ("a", effective_config(base, {"mesh_cutoff": 300.0})),  # restates
+        ("b", effective_config(base, {"restart": "clean"}))]    # same result
+    issues = check_identical_stages(resolved)
+    assert "stages.recomputes_previous" in [i.where for i in issues]
 
 
 def test_only_ADJACENT_stages_are_compared():

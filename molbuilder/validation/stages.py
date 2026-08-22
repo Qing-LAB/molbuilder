@@ -14,10 +14,14 @@ Two questions, and they are genuinely different:
 
 **R2 — is each stage sound?**  Two overrides can each be individually
 reasonable and jointly wrong: a mesh cutoff that is fine, a basis that is fine,
-and a pair that is under-converged together. So the validator is handed the
-*resolved config*, and the stage's name travels beside the finding as a label.
-Nothing here re-implements a single-config check; :func:`validate_ladder` calls
-the shipped one, once per stage.
+and a pair that is under-converged together. So each stage is judged as a
+*resolved whole* -- and the door that judges it is the RENDER gate
+(`script_emit.render_deck`, step 3.3): every rung's deck passes the shipped
+validator, with the calculation kind, before a line of it exists.  A batch
+per-stage aggregator (`validate_ladder`) lived here until 2026-08-21; it had
+no production caller, and its validate() call omitted ``calculation`` -- a
+vibration ladder routed through it would have skipped kind science -- so it
+retired in favor of the gate that was already doing the work per rung.
 
 **R3 — is the ORDER sound?**  R2 makes every stage individually sound and says
 nothing about the order they are in, yet the order is the whole point of having
@@ -28,7 +32,7 @@ stage label: a fact about the description is not a fact about a member of it.
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, Callable, List, Optional, Sequence, Tuple
+from typing import Any, List, Optional, Sequence, Tuple
 
 from ..issues import Issue
 
@@ -190,62 +194,5 @@ def _same_but_for_restart(a, b) -> bool:
 #  R2 + R3 together                                                     #
 # --------------------------------------------------------------------- #
 
-def validate_ladder(
-    struct,
-    template,
-    stages: Sequence[Any],
-    *,
-    cell=None,
-    resolve: Optional[Callable[[Any, Any], Any]] = None,
-    validate: Optional[Callable[..., List[Issue]]] = None,
-) -> List[Issue]:
-    """Every finding a staged calculation has: per stage, then per sequence.
 
-    Each enabled stage is resolved into an ordinary config and handed to the
-    **shipped** validator — the same function a single run goes through, so a
-    stage cannot be checked by a weaker set of rules than a plain calculation
-    (which is what a parallel per-stage validator drifted into being, and why
-    the old one was deleted with ``SiestaStageSpec``).
-
-    Findings come back in ladder order, each stamped with the stage it belongs
-    to, followed by the sequence's own — which carry no stage.
-
-    ``resolve`` and ``validate`` default to SIESTA's. They are arguments
-    because the *shape* of this is engine-agnostic — resolve, validate each,
-    then check the order — and only the two functions are SIESTA's.
-    """
-    # Imported here, not at module scope: ``validation`` is imported by the
-    # emitters, and reaching back up at import time would close a cycle.
-    # The operator moved out of ``siesta/`` on 2026-08-14 (audit § 6.1): it is
-    # floor 3's, and resolving a stage is not something an engine owns.  Bound to local names that shadow the parameters, which
-    # is the point -- the rest of the body does not care which it got.
-    if resolve is None:
-        from ..resolve import effective_config as _resolve
-        resolve = _resolve
-    if validate is None:
-        from . import validate as _validate
-        validate = _validate
-
-    enabled = [s for s in stages if getattr(s, "enabled", True)]
-    resolved = [(s.name, resolve(template, getattr(s, 'overrides', None),
-                                where=f"stage {s.name!r}"))
-                for s in enabled]
-
-    out: List[Issue] = []
-    for name, cfg in resolved:
-        for issue in validate(struct, cfg, cell=cell):
-            # ``dataclasses.replace`` rather than a mutation: Issue is frozen,
-            # and the stamp must not reach a caller that kept a reference to
-            # the validator's list.
-            out.append(_stamped(issue, name))
-    out.extend(check_ladder_does_not_loosen(resolved))
-    out.extend(check_identical_stages(resolved))
-    return out
-
-
-def _stamped(issue: Issue, stage: str) -> Issue:
-    return dataclasses.replace(issue, stage=stage)
-
-
-__all__ = ["check_ladder_does_not_loosen", "check_identical_stages",
-           "validate_ladder"]
+__all__ = ["check_ladder_does_not_loosen", "check_identical_stages"]

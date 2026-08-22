@@ -612,28 +612,40 @@ def _declared_execution_pins(base, engine):
     machine grid so every trial's deck carries its coordinates
     (§ 4.3a's built rule, 2026-08-21; refused by name until then).
 
-    Refused BY NAME, never repaired:
-      * an enum value outside the item's choices, or a non-bool on a bool
-        item -- each POINT of a multi-point entry too: a typo'd
-        declaration must fail at prep, not after a queue;
-      * a repeated point inside one entry -- two identical trials would
-        measure one configuration twice under one label.
+    Refused BY NAME, never repaired -- through the ONE shape checker
+    (`validation/task.py::_bench_points_fit_their_items`, R2-5 dedup
+    2026-08-21): an enum value outside the item's choices, a non-bool on
+    a bool item, a repeated point.  This function carried its own copy
+    of those rules; the copies had already diverged (a duplicated
+    allocation point -- ``mpi_np: [8, 8, 16]`` -- was refused at
+    describe and accepted here, because the local copy classified
+    allocation entries before checking them).  The dispatch runs the
+    full preflight BEFORE this helper, so in the CLI flow the refusal
+    normally lands there with every finding listed; the call here is
+    the backstop for direct callers, first-refusal shaped as the CLI's
+    errors are.
 
     MEMBERSHIP is not this function's question (one door): every bench key
     must be an ``execution`` item, and `validation/task.py`'s
-    ``_bench_names_a_speed_knob`` owns that rule -- the dispatch runs the
-    preflight BEFORE this helper, so a non-execution name was refused
-    upstream and an unknown name here is simply skipped.  Point SHAPES are
-    `read_task`'s (task.py `_bench_from_obj`): every value arrives as a
-    non-empty tuple of scalars, so no scalar/empty arms exist here.
+    ``_bench_names_a_speed_knob`` owns that rule -- a non-execution name
+    was refused upstream and an unknown name here is simply skipped.
+    Point SHAPES are `read_task`'s (task.py `_bench_from_obj`): every
+    value arrives as a non-empty tuple of scalars, so no scalar/empty
+    arms exist here.
     """
     from ..task import FILENAME as TASK_FILENAME, read_task
+    from ..validation.task import _bench_points_fit_their_items
     from .. import template as _T
 
     task = read_task(Path(base) / TASK_FILENAME)
     declared = {k: list(v) for k, v in (task.bench or {}).items()}
     if not declared:
         return {}, {}, {}
+
+    shape_errors = [i for i in _bench_points_fit_their_items(task)
+                    if i.severity == "error"]
+    if shape_errors:
+        raise click.ClickException(shape_errors[0].message)
 
     items = {i.name: i for i in _T.select(_T.catalogue(), engine=engine)
              if "execution" in (i.category or ())}
@@ -645,20 +657,6 @@ def _declared_execution_pins(base, engine):
         if it.allocation:
             axes[name] = pts                 # machine-answered: the grid's
             continue                         # business, never a value
-        for v in pts:
-            if it.type == "bool" and not isinstance(v, bool):
-                raise click.ClickException(
-                    f"task.json declares {name!r} = {v!r}; the item is a "
-                    f"bool -- write true or false.")
-            if it.type == "enum" and it.choices and v not in it.choices:
-                raise click.ClickException(
-                    f"task.json declares {name!r} = {v!r}; the choices are "
-                    f"{', '.join(it.choices)}.")
-        if len(pts) != len(set(pts)):
-            raise click.ClickException(
-                f"task.json declares {name!r} = {pts!r}; a repeated point "
-                f"would measure one configuration twice.  Drop the "
-                f"duplicate.")
         if len(pts) > 1:
             value_axes[name] = pts           # a VALUE AXIS (§ 4.3a): the
             continue                         # grid multiplies per point
@@ -786,6 +784,24 @@ def _bench_inputs(base, target=None):
     gtype = getattr(topo, "gpu_type", None)
 
     task = read_task(Path(base) / TASK_FILENAME)
+    # THE SEAM REFUSAL, BY NAME (E-J1, restored 2026-08-21).  The bench
+    # lane speaks SIESTA's vocabulary today: the measurement pins name
+    # SiestaConfig fields (`max_scf_iter`, `restart`, ...), and the GPU
+    # question is read under SIESTA's `enable_gpu`.  A PySCF description
+    # used to be stopped only by ACCIDENT -- those pins failing resolve
+    # with a message blaming settings the user never wrote -- and the
+    # accident evaporates the day PySCFConfig grows any same-named
+    # field, after which a `use_gpu` sweep silently enumerates a CPU
+    # grid (generator.md § 12.1 row 9's recorded hazard).
+    if str(task.engine) != "siesta":
+        raise click.ClickException(
+            f"this description's engine is {task.engine!r}, and the "
+            f"benchmark lane only speaks SIESTA today: its measurement "
+            f"pins (a capped-SCF probe run) name SIESTA settings, so a "
+            f"{task.engine} bench would measure nothing meaningful.  "
+            f"Benchmark support for other engines is a recorded design "
+            f"(generator.md § 12.1 row 9); for now, size the run from "
+            f"the engine's own scaling guidance in docs/engines/tuning.md.")
     tmpl = read_template(
         template_path(Path(base), task.label).read_text(encoding="utf-8"))
     # THE one read API (`template.md` § 8.0), not a dict comprehension over
@@ -807,14 +823,12 @@ def _bench_inputs(base, target=None):
     # The GPU question has no engine-agnostic name yet: `template.md` § 6.3's
     # merge of ``enable_gpu`` / ``use_gpu`` is RULED and not yet renamed, so
     # today two names answer one question.  Writing an engine->name table here
-    # would put that un-landed rename in a second place to maintain.  It is
-    # safe today only by ACCIDENT (review 2026-08-21): no seam refusal
-    # exists -- a PySCF bench dies later because the measurement pins name
-    # SIESTA-only schema fields, and resolve refuses unknown pins.  The
-    # day PySCFConfig grows any of those fields that gate evaporates and a
-    # `use_gpu` PySCF sweep silently enumerates a CPU grid; the explicit
-    # by-name refusal is E-J1 in the audit's U2 queue.  Recorded as
-    # § 12.1 row 9.
+    # would put that un-landed rename in a second place to maintain.  Reading
+    # SIESTA's name flat is SAFE because the seam refusal above already
+    # stopped every non-SIESTA description by name (E-J1, restored
+    # 2026-08-21) -- the un-renamed pair can no longer make a `use_gpu`
+    # sweep enumerate a CPU grid.  The engine-agnostic bench remains
+    # § 12.1 row 9's recorded design.
     # THE DECLARED OVERRIDE LANE, split before anything is decided (user
     # rule, 2026-08-20): one-point non-machine entries are pins -- values
     # in force for every trial -- and the machine-answered entries are the
@@ -1294,8 +1308,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         # and `status #2` cannot disagree about which stage that is.
         if stage is not None and getattr(_pf_task, "stages", None):
             from ..identity import StageRef, resolve_stage_ref
-            _refs = [StageRef(seq=_i, name=_s.name)
-                     for _i, _s in enumerate(_pf_task.stages, start=1)]
+            _refs = StageRef.ladder([_s.name for _s in _pf_task.stages])
             try:
                 stage = resolve_stage_ref(_refs, stage).name
             except ValueError as _e:
