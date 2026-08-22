@@ -4135,24 +4135,68 @@ _JOBSET_SH = r'''#!/usr/bin/env bash
 #
 # CONTRACT: given a package manager (conda / mamba / micromamba) reachable
 # -- after the baked preamble, if there is one -- this script runs
-# correctly.  It bakes no checkout path and no activation form: both are
-# found here, so the file stays right on a machine that did not write it.
-# Overrides: $MOLBUILDER_ENV, $MOLBUILDER_ROOT.
+# correctly.  The env and the checkout are each TRIED IN ORDER, discovery
+# before anything baked, so the file still works on a machine that did not
+# write it.  Overrides: $MOLBUILDER_ENV, $MOLBUILDER_ROOT.
 set -euo pipefail
 _BUNDLE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$_BUNDLE"
-
-# Where the PACKAGE comes from, before anything asks for it.  The env
-# carries molbuilder's dependencies; molbuilder itself is a source checkout
-# (it is deliberately not pip-installed), so it is reached by PYTHONPATH.
-# Set up FRONT, not as a fallback after a failed probe: then there is one
-# question -- "can python import molbuilder?" -- and one answer, instead of
-# a check that can refuse before the remedy it needs has been applied.
-# Harmless if the package IS in the env; install it there and this line
-# stops mattering.
-export PYTHONPATH="${MOLBUILDER_ROOT:-@BAKEDROOT@}${PYTHONPATH:+:$PYTHONPATH}"
 @ENVBLOCK@
-exec python -m molbuilder jobset "$@"
+# ---- where the PACKAGE comes from ---------------------------------
+# The env carries molbuilder's DEPENDENCIES; molbuilder itself is a source
+# checkout (deliberately not pip-installed), so it is reached by
+# PYTHONPATH.  Candidates in order, each judged by ASKING THE INTERPRETER
+# rather than by looking for a filename:
+#
+#   1. $MOLBUILDER_ROOT   -- you said so
+#   2. nothing added      -- already importable (an env that HAS the
+#                            package; then none of this matters)
+#   3. walking up         -- the bundle sits inside a checkout, or was
+#                            copied along with one.  THIS is what makes a
+#                            bundle work on a machine that did not write
+#                            it; collapsing this block deleted it once by
+#                            accident (found by re-reading, 2026-08-22).
+#   4. the generating checkout, baked in -- right on the machine that
+#                            prepped, wrong everywhere else, hence last
+#                            but one.
+#   5. ~/molbuilder       -- the documented default location.
+#
+# `export` is needed so `python -m molbuilder` sees it; note it is then
+# inherited by every child, including engine processes a run later starts.
+# Installing the package into the env (one .pth) removes this whole block.
+_mb_import_ok() {
+    if [ -n "$1" ]; then
+        PYTHONPATH="$1${PYTHONPATH:+:$PYTHONPATH}" \
+            python -c 'import molbuilder' >/dev/null 2>&1
+    else
+        python -c 'import molbuilder' >/dev/null 2>&1
+    fi
+}
+_mb_go() {
+    _root="$1"; shift
+    [ -n "$_root" ] && export PYTHONPATH="$_root${PYTHONPATH:+:$PYTHONPATH}"
+    exec python -m molbuilder jobset "$@"
+}
+
+if [ -n "${MOLBUILDER_ROOT:-}" ] && _mb_import_ok "$MOLBUILDER_ROOT"; then
+    _mb_go "$MOLBUILDER_ROOT" "$@"
+fi
+if _mb_import_ok ""; then _mb_go "" "$@"; fi
+_D="$_BUNDLE"
+while [ "$_D" != "/" ]; do
+    if _mb_import_ok "$_D"; then _mb_go "$_D" "$@"; fi
+    _D="$(dirname "$_D")"
+done
+if _mb_import_ok "@BAKEDROOT@"; then _mb_go "@BAKEDROOT@" "$@"; fi
+if _mb_import_ok "$HOME/molbuilder"; then _mb_go "$HOME/molbuilder" "$@"; fi
+
+echo "jobset.sh: the environment is usable, but python cannot import" >&2
+echo "  molbuilder from any known location." >&2
+echo "    \$MOLBUILDER_ROOT : ${MOLBUILDER_ROOT:-<unset>}" >&2
+echo "    also tried: the current path, every directory above this one," >&2
+echo "    @BAKEDROOT@, and \$HOME/molbuilder" >&2
+echo "  fix:  export MOLBUILDER_ROOT=/path/to/the/molbuilder/checkout" >&2
+exit 1
 '''
 
 
@@ -4217,8 +4261,12 @@ def render_jobset_launcher(bundle_dir: Optional[Path] = None) -> str:
         # The one question: can this interpreter run molbuilder?  It
         # answers "is the env active" and "is the package reachable"
         # together, so no second, different check is needed downstream.
-        probe="python -c 'import molbuilder' >/dev/null 2>&1",
-        probe_says="python -c 'import molbuilder'",
+        # The ENV's question ONLY: an interpreter with molbuilder's
+        # dependencies.  WHERE the package comes from is the separate
+        # search below -- probing for `molbuilder` here refused before
+        # that search could run (found by re-reading, 2026-08-22).
+        probe="python -c 'import numpy' >/dev/null 2>&1",
+        probe_says="python -c 'import numpy'",
         preamble=preamble,
         configured_form=configured,
         script_name="jobset.sh",
