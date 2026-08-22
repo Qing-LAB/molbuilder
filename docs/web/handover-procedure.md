@@ -17,7 +17,7 @@ artifact registry.
 same one** (user, 2026-08-16). Structure optimization is the worked case.
 **Spectrum sends since 2026-08-20** — the § 6 prerequisites landed with the
 spectra migration's P0–P2
-([`plans/spectra-migration-plan.md`](?doc=plans/spectra-migration-plan.md)).
+([`archive/2026-08-20-spectra-migration-plan.md`](?doc=archive/2026-08-20-spectra-migration-plan.md)).
 **Transport waits**: it is a multi-component job and needs its own § 6-shaped
 work (catalogue rows for its kind, a decision on its description shape) first.
 
@@ -185,7 +185,7 @@ name; the receiver asks for what is missing.
 > have made the next piece of work look like wiring a button.
 
 The three prerequisites named here landed with the spectra migration
-([`plans/spectra-migration-plan.md`](?doc=plans/spectra-migration-plan.md)):
+([`archive/2026-08-20-spectra-migration-plan.md`](?doc=archive/2026-08-20-spectra-migration-plan.md)):
 
 1. **Its parameters are in the catalogue** (P0) — fourteen items carrying
    `calculations = ["vibration"]` beside the shared PySCF set

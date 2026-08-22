@@ -267,7 +267,8 @@ GPU4PYSCF_MIN_COMPUTE_CAPABILITY = 7
 
 
 def emit_gpu_probe_lines(use_gpu: bool,
-                          min_compute_capability: int = GPU4PYSCF_MIN_COMPUTE_CAPABILITY) -> List[str]:
+                          min_compute_capability: int = GPU4PYSCF_MIN_COMPUTE_CAPABILITY,
+                          *, with_promotion_helper: bool = True) -> List[str]:
     """Emit the GPU probe + to_gpu helper.
 
     **No silent fallback** (user, 2026-08-17; `engines/overview.md` § 3a
@@ -290,6 +291,9 @@ def emit_gpu_probe_lines(use_gpu: bool,
       * ``_mb_to_gpu_if_enabled(mf)`` -- helper used by callers to
         promote an mf object to its gpu4pyscf equivalent when
         ``_USING_GPU`` is True; pass-through when the user asked for CPU.
+        Emitted only when ``with_promotion_helper`` (the default): a deck
+        that consumes the GPU by class selection instead (the vibration
+        deck) passes False so its text carries ONE mechanism (M1.4).
 
     Caller responsibility: invoke ``mf = _mb_to_gpu_if_enabled(mf)``
     AFTER the mf is fully assembled (density-fit + dispersion +
@@ -379,6 +383,15 @@ def emit_gpu_probe_lines(use_gpu: bool,
     out.append(f"            '  supported NVIDIA GPU (compute capability >= "
                f"{min_compute_capability}.0), or set use_gpu = false.')")
     out.append("")
+    if not with_promotion_helper:
+        # ONE GPU mechanism per deck (M1.4, 2026-08-21).  The vibration
+        # deck consumes the GPU by CLASS SELECTION (_scf/_dft are the
+        # gpu4pyscf modules when _USING_GPU -- _build_mf_at constructs on
+        # the device, the right shape for a deck that rebuilds mol per
+        # geometry), so the promotion helper below was emitted DEAD into
+        # every vibration deck: a second mechanism the text carried and
+        # nothing called.
+        return out
     out.append("def _mb_to_gpu_if_enabled(mf_obj):")
     out.append("    \"\"\"Promote an mf object to its gpu4pyscf equivalent when")
     out.append("    _USING_GPU is True; pass through unchanged on CPU.  Call")

@@ -32,7 +32,7 @@ from .results import (
     PHASE_RUNNING,
     PHASE_COMPLETE,
 )
-from .selection import select_modes, validate_selection
+from .selection import select_modes
 from .methods import render_methods_md, extract_citation_keys
 
 __all__ = [
@@ -47,7 +47,6 @@ __all__ = [
     "PHASE_COMPLETE",
     # Mode-selection logic
     "select_modes",
-    "validate_selection",
     # Methods-paragraph composer
     "render_methods_md",
     "extract_citation_keys",

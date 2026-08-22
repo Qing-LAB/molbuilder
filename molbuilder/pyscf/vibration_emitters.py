@@ -46,16 +46,10 @@ from typing import List
 
 from ..config.spectra import SpectraConfig
 from ..structure import Structure
-from ..runtime_info import GPU4PYSCF_MIN_COMPUTE_CAPABILITY  # noqa: F401  (deck header + GPU probe agree on one number)
 
 #: The engine display string for deck headers -- was
 #: ``PySCFSpectraEngine.label`` until P3 retired that class.
 PYSCF_ENGINE_LABEL = "PySCF (analytic Hessian + dα/dR)"
-# Eager imports were lazy before to break a circular dep, but only one
-# direction actually cycles (pyscf_engine.render_script -> pyscf_script,
-# which stays lazy inside that method body).  Importing pyscf_engine +
-# methods at module load here loads the engine class without touching
-# pyscf_script, so no cycle.
 from ..spectra.results import SCHEMA_VERSION
 
 
@@ -244,11 +238,11 @@ def _emit_constants(struct: Structure,
                f"# probe gpu4pyscf at run start; STOP if unusable "
                f"(no CPU fallback)")
     out.append("")
-    out.append("# Frozen-atom mask (UNION of element + residue + explicit).")
-    out.append("# The runtime block computes the final FREE_ATOM_IDXS from")
-    out.append("# this triplet against the molecule built below.")
-    out.append(f"FROZEN_ELEMENTS            = {list(cfg.frozen_elements)!r}")
-    out.append(f"FROZEN_RESIDUE_NAMES       = {list(cfg.frozen_residue_names)!r}")
+    out.append("# Frozen atoms: the structure-side set, by 0-based index.")
+    out.append("# (Element / residue selectors resolved to indices upstream --")
+    out.append("# the /modify panel writes indices, and the union machinery")
+    out.append("# that re-derived them here from always-empty lists retired")
+    out.append("# 2026-08-21.)")
     out.append(f"FROZEN_INDICES_USER        = {list(cfg.frozen_indices)!r}  "
                f"# 0-based")
     out.append("")
@@ -502,26 +496,18 @@ def _emit_build_mol(struct: Structure, cfg: SpectraConfig,
 
 
 def _emit_frozen_mask() -> List[str]:
-    """Compute the free-atom index list at runtime from the
-    user-supplied freeze rules (element / residue / indices).
-    Residue-name freezing is a no-op here -- the script has no
-    PDB; the molbuilder wrapper that produced this struct would
-    have resolved residue names to indices before calling
-    render_script (or warned that PDB info wasn't available)."""
+    """Compute the free-atom index list from the frozen indices.
+
+    Indices are the ONE selector: the /modify panel resolves element and
+    residue picks to indices before they reach the structure's label
+    store, so the union machinery that stood here (a loop over an
+    always-empty FROZEN_ELEMENTS, a comment-only residue arm) computed
+    nothing and retired 2026-08-21."""
     out: List[str] = []
     out.append("# ============================================================")
     out.append("#  Frozen-atom mask")
     out.append("# ============================================================")
-    out.append("# Union of three rules; an atom is FROZEN if it matches any:")
-    out.append("#   1. its element is in FROZEN_ELEMENTS")
-    out.append("#   2. its 0-based index is in FROZEN_INDICES_USER")
-    out.append("#   3. (residue freezing is no-op without PDB info -- the")
-    out.append("#       molbuilder layer that emitted this script would have")
-    out.append("#       resolved residue names to indices already.)")
     out.append("_frozen = set(int(i) for i in FROZEN_INDICES_USER if 0 <= int(i) < N_ATOMS)")
-    out.append("for _i, _el in enumerate(ELEMENTS):")
-    out.append("    if _el in FROZEN_ELEMENTS:")
-    out.append("        _frozen.add(_i)")
     out.append("FROZEN_ATOM_IDXS = sorted(_frozen)")
     out.append("FREE_ATOM_IDXS   = [i for i in range(N_ATOMS) if i not in _frozen]")
     out.append("N_FREE           = len(FREE_ATOM_IDXS)")
@@ -642,10 +628,7 @@ def _emit_equilibrium_scf(cfg: SpectraConfig, struct: Structure) -> List[str]:
         # plain pyscf.dft otherwise.  Same RKS / UKS class names in
         # both, so the rest of the SCF setup is identical.
         out.append(f"mf = _dft.{scf_class}(mol)")
-        out.append("mf.xc = FUNCTIONAL")
-        out.append("if DISPERSION and DISPERSION.lower() != 'none':")
-        out.append("    mf.disp = DISPERSION")
-        out.append("mf.grids.level = GRID_LEVEL")
+        out.append("mf = _mb_configure_dft(mf)   # the one DFT spelling (§ 7a)")
     else:
         out.append(f"mf = _scf.{scf_class}(mol)")
     out.append("if DENSITY_FIT:")
@@ -1039,10 +1022,7 @@ def _emit_displaced_scf_helpers(cfg: SpectraConfig) -> List[str]:
     out.append("        _dft_mod = dft if force_cpu else _dft")
     out.append("        _cls = _dft_mod.RKS if METHOD.upper() == 'RKS' else _dft_mod.UKS")
     out.append("        _mf2 = _cls(_mol_new)")
-    out.append("        _mf2.xc = FUNCTIONAL")
-    out.append("        if DISPERSION and DISPERSION.lower() != 'none':")
-    out.append("            _mf2.disp = DISPERSION")
-    out.append("        _mf2.grids.level = GRID_LEVEL")
+    out.append("        _mf2 = _mb_configure_dft(_mf2)  # one DFT spelling (§ 7a)")
     out.append("    else:")
     out.append("        _scf_mod = scf if force_cpu else _scf")
     out.append("        _cls = _scf_mod.RHF if METHOD.upper() == 'RHF' else _scf_mod.UHF")

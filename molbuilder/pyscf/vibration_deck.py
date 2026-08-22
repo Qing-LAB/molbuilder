@@ -1,6 +1,6 @@
 """The vibration calculation's deck — PySCF, on the framework's seam.
 
-Contract: ``docs/plans/spectra-migration-plan.md`` § 2 (the rulings of
+Contract: ``docs/archive/2026-08-20-spectra-migration-plan.md`` § 2 (the rulings of
 2026-08-20) + `script-preparation.md` § 4 (the seam this serves).
 
 WHAT THIS IS.  ``vibration_spec(struct, cfg, stage_token)`` returns the
@@ -258,12 +258,15 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
         _cb = "_relax_cb_both"
     else:
         _cb = "_relax_cb"
+    # The geomeTRIC keyword spellings come from the ONE mapping the
+    # optimization deck's section uses (layout._GEOM_KWARG) -- this dict
+    # was a hand-spelled second copy of five of its six rows.
+    from .layout import _GEOM_KWARG, GEOMETRY_SECTION
+    _conv_rows = [
+        f"'{_GEOM_KWARG[_n]}': GEOM_{_n[5:].upper()}"
+        for _n in GEOMETRY_SECTION.items if _n != "geom_max_steps"]
     out += [
-        "    _conv = {'convergence_gmax':   GEOM_GMAX,",
-        "             'convergence_grms':   GEOM_GRMS,",
-        "             'convergence_dmax':   GEOM_DMAX,",
-        "             'convergence_drms':   GEOM_DRMS,",
-        "             'convergence_energy': GEOM_ETOL}",
+        "    _conv = {" + ",\n             ".join(_conv_rows) + "}",
     ]
     _opt_kw = f"maxsteps=GEOM_MAX_STEPS, callback={_cb}"
     _frozen = list(getattr(cfg, "frozen_indices", []) or [])
@@ -474,20 +477,23 @@ def _vib_ir_only_block(cfg) -> List[str]:
         "        _cm = np.array(COORDS_EQ_ANG, dtype=float)",
         "        _cp[_atom, _a] += _h_ang",
         "        _cm[_atom, _a] -= _h_ang",
-        "        _mfp = _build_mf_at(_cp); _mfp.kernel()",
-        "        _mfm = _build_mf_at(_cm); _mfm.kernel()",
+        "        # _build_mf_at CONVERGES the SCF before returning (and",
+        "        # halts if it cannot) -- a second kernel() here re-ran the",
+        "        # whole SCF per displaced point, doubling the loop's cost",
+        "        # for identical numbers.",
+        "        _mfp = _build_mf_at(_cp)",
+        "        _mfm = _build_mf_at(_cm)",
         "        _dp = _as_numpy(_mfp.dip_moment(unit='Debye', verbose=0))",
         "        _dm = _as_numpy(_mfm.dip_moment(unit='Debye', verbose=0))",
         "        DMU_DR[_k, _a, :] = (_dp - _dm) / (2.0 * _h_ang)",
         "modes_payload = state['modes']",
-        "for _n in range(len(modes_payload)):",
-        "    _L_canonical = np.asarray(",
-        "        modes_payload[_n]['eigenvector_canonical'], dtype=float)",
-        "    if _L_canonical.shape[0] != N_FREE:",
-        "        _L_canonical = _L_canonical.reshape(-1, 3)",
     ]
-    out.extend("    " + ln if ln.strip() else ln
-               for ln in _emit_ir_projection())
+    # The projection emits ITS OWN per-mode loop (reading
+    # NORM_MODES_CANONICAL, which the Hessian block defines on every
+    # path) -- wrapping it in a second per-mode loop here ran the whole
+    # projection once PER MODE: N² idempotent work whose outer loop
+    # variable nothing read.
+    out.extend(_emit_ir_projection())
     out += [
         "_atomic_write_json(state, JSON_PATH)",
     ]
@@ -548,16 +554,24 @@ def vibration_spec(struct: Structure, cfg, *,
         # deck builds calls _mb_configure_scf, so the machinery knobs
         # apply identically at the equilibrium, displaced and
         # relaxation sites.
-        from .scf_setup import (emit_scf_configure_fn,
+        from .scf_setup import (emit_dft_configure_fn,
+                                emit_scf_configure_fn,
                                 emit_density_fit_kw,
                                 emit_solvent_apply_fn)
         out += emit_scf_configure_fn(cfg, verbose=bool(getattr(cfg, 'verbose_comments', True)))
+        # The DFT dresser beside the SCF one (M1.2): functional / grid /
+        # dispersion get ONE spelling, generated from the same section
+        # and line the optimization deck's layout walks.
+        out += emit_dft_configure_fn(cfg, verbose=bool(getattr(cfg, 'verbose_comments', True)))
         out += [""] + emit_density_fit_kw(cfg)
         out += emit_solvent_apply_fn(cfg)
+        # with_promotion_helper=False: this deck's ONE GPU mechanism is
+        # class selection (see runtime_info.emit_gpu_probe_lines).
         out += emit_gpu_probe_lines(
             use_gpu=bool(view.use_gpu),
             min_compute_capability=int(
                 GPU4PYSCF_MIN_COMPUTE_CAPABILITY),
+            with_promotion_helper=False,
         )
         out.append("if _USING_GPU:")
         out.append("    from gpu4pyscf import scf as _gpu_scf")

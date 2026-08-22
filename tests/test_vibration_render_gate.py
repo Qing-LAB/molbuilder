@@ -294,3 +294,51 @@ def test_one_fact_one_finding_on_a_vibration_deck():
                                 calculation="vibration")
             if i.where == "config.grid_level" and "hybrid" in i.message.lower()]
     assert len(grid) == 1, f"{len(grid)} grid findings for one fact"
+
+
+def test_the_ir_only_phase_does_each_units_work_once():
+    """The U5 efficiency pair, pinned structurally: the IR-only phase
+    emits exactly ONE per-mode projection loop (it was nested inside a
+    second per-mode loop -- N² idempotent work), and the displaced
+    builds are not followed by a second kernel() (`_build_mf_at`
+    already converges before returning -- the extra call re-ran every
+    SCF for identical numbers)."""
+    text = _render(PySCFConfig(compute_raman=False, compute_ir=True))
+    ir = text.split("Phase 3-IR", 1)[1]
+    assert ir.count("for _n in range(len(modes_payload)):") == 1
+    assert "_mfp.kernel()" not in ir and "_mfm.kernel()" not in ir
+
+
+def test_each_deck_carries_one_gpu_mechanism():
+    """M1.4: the engine had two GPU-consumption mechanisms and the
+    vibration deck's text carried BOTH -- the promotion helper emitted
+    dead beside the class selection that actually does the work.  Each
+    deck now carries exactly its own: the vibration deck selects
+    gpu4pyscf classes (right for a deck rebuilding mol per geometry),
+    the optimization deck promotes the assembled mf."""
+    from molbuilder.pyscf.input import render_script
+    vib = _render(PySCFConfig())
+    assert "_mb_to_gpu_if_enabled" not in vib
+    assert "_gpu_scf" in vib, "the class-selection mechanism left too"
+    opt = render_script(_water(), PySCFConfig())
+    assert "def _mb_to_gpu_if_enabled" in opt
+    assert "mf = _mb_to_gpu_if_enabled(mf)" in opt
+
+
+def test_the_dft_trio_has_one_spelling_per_deck():
+    """M1.2: the functional / grid / dispersion trio was spelled twice
+    -- layout's for the optimization deck, hand-constants inside the
+    vibration deck's constructions.  The vibration deck now defines
+    `_mb_configure_dft` (generated from the SAME DFT_SECTION + line)
+    and every construction site calls it; the hand spellings are gone."""
+    text = _render(PySCFConfig(functional="b3lyp", dispersion="d3bj",
+                               grid_level=4))
+    assert "def _mb_configure_dft(mf):" in text
+    assert text.count("_mb_configure_dft(") >= 3   # def + 2 call sites
+    assert 'mf.xc = "b3lyp"' in text               # layout's spelling
+    assert "mf.xc = FUNCTIONAL" not in text        # the hand spelling
+    assert "_mf2.grids.level = GRID_LEVEL" not in text
+    # An HF deck keeps uniform call sites through an explicit no-op.
+    hf = _render(PySCFConfig(method="RHF"))
+    assert "def _mb_configure_dft(mf):" in hf
+    assert "not a DFT deck" in hf

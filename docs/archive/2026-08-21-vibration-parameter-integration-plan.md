@@ -1,6 +1,6 @@
 # The 22 shown-but-unread parameters — categories, integration paths, and the hint mechanism
 
-**Role:** plan
+**Role:** plan — **ARCHIVED 2026-08-21, delivered in full.**  The rules this plan built live in the contracts it names (template.md, stages.md, pyscf.md § 7a, web/spectra.md); open nothing here to decide what is current.
 **Domain:** engines (PySCF) + validation
 **Started:** 2026-08-21
 **Companions:** [`engines/pyscf.md`](?doc=engines/pyscf.md) § 7a (the SCF

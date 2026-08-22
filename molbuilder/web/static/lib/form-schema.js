@@ -603,8 +603,11 @@
         if (badge) labelEl.appendChild(badge);
         // Long help: append the click-to-expand <details> AFTER the
         // input + badge so it doesn't push them out of the layout grid.
+        // f.refs rides along (U5, 2026-08-21): this is the path most
+        // fields take, and dropping the parameter here meant the
+        // catalogue's citations rendered nowhere reachable.
         if (helpIsLong(f.help)) {
-            labelEl.appendChild(makeHelpDetails(f.help));
+            labelEl.appendChild(makeHelpDetails(f.help, f.refs));
         }
         return labelEl;
     }

@@ -1,4 +1,4 @@
-"""L2 mode-selection tests: ``select_modes`` + ``validate_selection``.
+"""L2 mode-selection tests: ``select_modes`` (the reference selector).
 
 Spec § 8 + § 8.1 + § 2.5.3.  Pure functions, exhaustively tested:
 
@@ -8,8 +8,6 @@ Spec § 8 + § 8.1 + § 2.5.3.  Pure functions, exhaustively tested:
   * the frequency-range filter composes with each selector by
     INTERSECTION (spec § 8.1);
   * priors / resume behaviour (spec § 2.5.3);
-  * the ``validate_selection`` issue surface that the preflight
-    advisory layer consumes.
 
 Also includes the cross-check that the emitted script's inlined
 selector matches the Python ``select_modes`` for the same (modes,
@@ -209,88 +207,8 @@ class TestSelectModesWithPriorResume:
         assert out == [5, 6]
 
 
-class TestValidateSelection:
-    """validate_selection surfaces preflight errors / warns before
-    the script runs.  See spec § 2.5.3 (soft dep) + § 11.4
-    (scientific warns)."""
-
-    def test_clean_explicit_no_issues(self):
-        from molbuilder.spectra import validate_selection
-        cfg = SpectraConfig(es_mode_selection="explicit",
-                            es_explicit_indices=[2, 3])
-        issues = validate_selection(_modes_fixture(), cfg, l3_done=False)
-        assert issues == []
-
-    def test_top_n_without_l3_errors(self):
-        """Soft dep: top_n REQUIRES the prior Raman activities."""
-        from molbuilder.spectra import validate_selection
-        cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=3)
-        issues = validate_selection(_modes_fixture(), cfg, l3_done=False)
-        errs = [i for i in issues if i.severity == "error"]
-        assert len(errs) == 1
-        # Plain-language reference to Raman + the workaround hint.
-        assert "Raman" in errs[0].message
-        assert "Compute Raman activities" in errs[0].message
-
-    def test_threshold_without_l3_errors(self):
-        from molbuilder.spectra import validate_selection
-        cfg = SpectraConfig(es_mode_selection="threshold",
-                            es_threshold=10.0)
-        issues = validate_selection(_modes_fixture(), cfg, l3_done=False)
-        errs = [i for i in issues if i.severity == "error"]
-        assert len(errs) == 1
-        # Plain-language Raman reference + workaround hint.
-        assert "Raman" in errs[0].message
-
-    def test_top_n_with_l3_passes(self):
-        """With L3 complete, top_n is fine."""
-        from molbuilder.spectra import validate_selection
-        cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=3)
-        issues = validate_selection(_modes_fixture(), cfg, l3_done=True)
-        errs = [i for i in issues if i.severity == "error"]
-        assert errs == []
-
-    def test_explicit_out_of_range_errors(self):
-        from molbuilder.spectra import validate_selection
-        cfg = SpectraConfig(es_mode_selection="explicit",
-                            es_explicit_indices=[3, 99, 200])
-        issues = validate_selection(_modes_fixture(), cfg, l3_done=False)
-        errs = [i for i in issues
-                if i.where == "config.es_explicit_indices"]
-        assert len(errs) == 1
-        assert "99" in errs[0].message
-        assert "200" in errs[0].message
-
-    def test_freq_min_greater_than_max_errors(self):
-        from molbuilder.spectra import validate_selection
-        cfg = SpectraConfig(es_mode_selection="all",
-                            freq_min_cm1=2000.0,
-                            freq_max_cm1=1000.0)
-        issues = validate_selection(_modes_fixture(), cfg, l3_done=False)
-        errs = [i for i in issues
-                if i.severity == "error"
-                and i.where == "config.freq_window"]
-        assert len(errs) == 1
-
-    def test_freq_window_empty_warns(self):
-        """A window that captures zero modes is suspicious but
-        valid -- warn, not error."""
-        from molbuilder.spectra import validate_selection
-        cfg = SpectraConfig(es_mode_selection="all",
-                            freq_min_cm1=4500.0,
-                            freq_max_cm1=5000.0)
-        issues = validate_selection(_modes_fixture(), cfg, l3_done=True)
-        warns = [i for i in issues if i.severity == "warn"]
-        assert any("zero modes" in i.message for i in warns)
-
-    def test_top_n_exceeds_available_warns(self):
-        from molbuilder.spectra import validate_selection
-        cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=20)
-        issues = validate_selection(_modes_fixture(), cfg, l3_done=True)
-        warns = [i for i in issues if i.severity == "warn"]
-        # Plain-language: "only N modes are available"
-        assert any("only" in i.message and "modes are available"
-                   in i.message for i in warns)
+# (TestValidateSelection retired 2026-08-21 with its subject -- see the
+#  tombstone in spectra/selection.py.)
 
 
 class TestSelectorEquivalence:

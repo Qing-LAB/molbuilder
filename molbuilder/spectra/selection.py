@@ -11,11 +11,6 @@ Public surface:
     previous run, return the 1-based indices of modes that should
     get per-mode displaced-geometry SCFs in this run.
 
-  * :func:`validate_selection(modes, cfg, l3_done, prior=None)
-    -> List[Issue]` -- pre-selection preflight; surfaces error /
-    warn issues (selector / prior / soft-dep conflicts) before the
-    script runs.
-
 The five Model-2 selectors:
 
     skip      -> []  (no L4 work)
@@ -44,7 +39,6 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from ..issues import Issue
 from ..config.spectra import SpectraConfig
 from .results import ModeData, SpectraResults
 
@@ -113,7 +107,7 @@ def select_modes(modes: List[ModeData],
         # Unknown selector -- caller should have caught this via
         # SpectraConfig's `choices` metadata + the schema validator.
         # Defensive: produce an empty selection rather than crash;
-        # validate_selection will have already raised an error-Issue.
+        # (the kind's science refuses out-of-range explicit indices upstream)
         base = []
 
     # 2. Drop modes whose ES is already in `prior` (resume / additive
@@ -137,112 +131,12 @@ def select_modes(modes: List[ModeData],
     return out
 
 
-def validate_selection(modes: List[ModeData],
-                       cfg: SpectraConfig,
-                       l3_done: bool,
-                       prior: Optional[SpectraResults] = None) -> List[Issue]:
-    """Pre-selection preflight.  Returns Issues that the form's
-    validation panel renders before script generation:
-
-      * top_n / threshold selectors WITHOUT L3 complete   -> error
-        (soft dep, spec § 2.5.3)
-      * explicit indices out of [1, len(modes)]           -> error
-      * freq_min > freq_max                                -> error
-      * freq window producing 0 matching modes             -> warn
-      * top_n > len(modes after window)                    -> warn
-
-    Caller (the engine's preflight()) merges these with the
-    engine-specific scientific warnings (grid level, displacement
-    amplitude, etc.).
-    """
-    issues: List[Issue] = []
-
-    # Frequency window sanity: ordering.
-    fmin = cfg.freq_min_cm1
-    fmax = cfg.freq_max_cm1
-    if fmin is not None and fmax is not None and fmin > fmax:
-        issues.append(Issue(
-            severity="error",
-            message=(f"freq_min_cm1 ({fmin}) > freq_max_cm1 ({fmax}); "
-                     f"the window is empty by construction"),
-            where="config.freq_window",
-        ))
-        # Don't bother computing the rest of the window-dependent
-        # checks if the window itself is broken.
-        return issues
-
-    sel = cfg.es_mode_selection
-
-    # Soft dep: top_n / threshold filter modes BY Raman activity, so
-    # they require L3 complete (spec § 2.5.3).
-    if sel in ("top_n", "threshold") and not l3_done:
-        issues.append(Issue(
-            severity="error",
-            message=(f"Mode selection '{sel}' ranks modes by Raman "
-                     f"activity, but no prior run with completed Raman "
-                     f"data was found.  Either run once with "
-                     f"\"Compute Raman activities\" enabled first, "
-                     f"or pick a selection that doesn't need Raman "
-                     f"data (skip, all, or explicit)."),
-            where="config.es_mode_selection",
-        ))
-
-    # Explicit-index range check.  Only meaningful when we actually
-    # know the mode count -- pre-render the validator has no upper
-    # bound to check against (modes will exist after the first run),
-    # so skip the check rather than reject every index.  The engine's
-    # runtime loop silently skips out-of-range indices anyway.
-    if sel == "explicit" and modes:
-        valid_range = range(1, len(modes) + 1)
-        bad = [i for i in cfg.es_explicit_indices if i not in valid_range]
-        if bad:
-            issues.append(Issue(
-                severity="error",
-                message=(f"Explicit mode list contains out-of-range "
-                         f"numbers {bad}.  This molecule has {len(modes)} "
-                         f"vibrational modes; valid indices are "
-                         f"1..{len(modes)}."),
-                where="config.es_explicit_indices",
-            ))
-
-    # Window-emptiness check (only when the window is meaningful for
-    # this selector -- explicit ignores it).
-    if sel in ("all", "top_n", "threshold") and (fmin is not None or fmax is not None):
-        n_in_window = sum(1 for m in modes if _passes_freq_window(m, cfg))
-        if n_in_window == 0:
-            issues.append(Issue(
-                severity="warn",
-                message=(f"The frequency window ["
-                         f"{fmin if fmin is not None else '-∞'}, "
-                         f"{fmax if fmax is not None else '+∞'}] cm⁻¹ "
-                         f"contains zero modes -- no orbital-energy "
-                         f"data will be computed.  Widen the window "
-                         f"or remove it to get results."),
-                where="config.freq_window",
-            ))
-
-    # top_n > available modes (after window) -- warn, not error;
-    # we silently clamp but the user might not realise.
-    if sel == "top_n":
-        n_in_window = sum(1 for m in modes if _passes_freq_window(m, cfg))
-        if cfg.es_top_n > n_in_window > 0:
-            issues.append(Issue(
-                severity="warn",
-                message=(f"You asked for the top {cfg.es_top_n} modes "
-                         f"by Raman activity, but only {n_in_window} "
-                         f"modes are available in the current "
-                         f"frequency window.  All {n_in_window} will "
-                         f"be selected."),
-                where="config.es_top_n",
-            ))
-
-    return issues
-
-
-# --------------------------------------------------------------------- #
-#  Helpers                                                              #
-# --------------------------------------------------------------------- #
-
+# (validate_selection retired 2026-08-21, C-SpectraConfig: its caller --
+#  the old engine preflight's advisory layer -- died at P3, and the kind's
+#  science (validation/spectra.py) carries the selector advisories now.
+#  select_modes above stays deliberately: it is the REFERENCE
+#  implementation the deck's inlined selector is parity-tested against,
+#  tests/spectra/test_selection.py::TestSelectorEquivalence.)
 
 def _passes_freq_window(m: ModeData, cfg: SpectraConfig) -> bool:
     """Return True iff the mode's frequency lies in

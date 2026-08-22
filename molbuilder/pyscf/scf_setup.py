@@ -65,6 +65,56 @@ def emit_scf_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
     return out
 
 
+def emit_dft_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
+    """Lines defining ``_mb_configure_dft(mf)`` for this ``cfg`` -- the
+    SCF dresser's symmetric sibling (M1.2, 2026-08-21).
+
+    The DFT trio (functional / grid level / dispersion) had two
+    spellings: the optimization deck's through ``DFT_SECTION`` +
+    ``layout.line``, and hand-written constants inside the vibration
+    deck's constructions -- the same drift class § 7a closed for SCF,
+    one section over.  This body is generated from the SAME section and
+    the SAME ``line``, minus ``density_fit``: the fitting call REBINDS
+    ``mf`` and is per-site conditional (the Raman polarizability path
+    forces non-DF), so it stays at the construction sites.
+
+    On a wavefunction-method deck (RHF/UHF) every knob declines and the
+    function is an explicit pass-through, so call sites stay uniform.
+    """
+    from .. import script_emit as _sc
+    from . import layout as _layout
+
+    is_dft = str(getattr(cfg, "method", "")).upper() in ("RKS", "UKS")
+    spell = _layout.line(cfg, is_dft=is_dft)
+
+    out: List[str] = [
+        "",
+        "",
+        "def _mb_configure_dft(mf):",
+        '    """The one DFT dresser (molbuilder: engines/pyscf.md § 7a).',
+        "",
+        "    The functional / grid / dispersion trio, one spelling for",
+        "    every mf this deck constructs.  density_fit is deliberately",
+        '    NOT here -- it rebinds mf and is per-site conditional."""',
+    ]
+    emitted = 0
+    for name in _layout.DFT_SECTION.items:
+        if name == "density_fit":
+            continue
+        p = _sc.parameter(name, "pyscf", config=cfg)
+        ln = spell(p)
+        if ln is None:
+            continue
+        if verbose:
+            out.extend("    " + n for n in p.note())
+        out.append("    " + ln)
+        emitted += 1
+    if not emitted:
+        out.append("    pass  # not a DFT deck; kept so call sites stay uniform")
+    out.append("    return mf")
+    return out
+
+
 def emit_density_fit_kw(cfg) -> List[str]:
     """Lines defining ``_MB_DF_KW`` — the one home for density_fit's
     keyword arguments in a multi-site deck (pyscf.md § 7a's auxbasis
@@ -95,7 +145,7 @@ SOLVENTS = {
 }
 
 
-def emit_solvent_lines(cfg, mf_var: str = "mf") -> List[str]:
+def emit_solvent_lines(cfg) -> List[str]:
     """The PCM decoration, ONE spelling for both decks.
 
     Category 2 of the integration plan (2026-08-21, PROBED live against
@@ -119,9 +169,9 @@ def emit_solvent_lines(cfg, mf_var: str = "mf") -> List[str]:
     method = str(getattr(cfg, "solvent_method", "IEF-PCM") or "IEF-PCM")
     return [
         "# PCM solvation -- continuum model (cheaper than ddCOSMO).",
-        f"{mf_var} = {mf_var}.PCM()",
-        f'{mf_var}.with_solvent.method = "{method}"',
-        f"{mf_var}.with_solvent.eps = {eps}    # {solvent} dielectric",
+        f"mf = mf.PCM()",
+        f'mf.with_solvent.method = "{method}"',
+        f"mf.with_solvent.eps = {eps}    # {solvent} dielectric",
     ]
 
 
@@ -134,7 +184,7 @@ def emit_solvent_apply_fn(cfg) -> List[str]:
     energy is not an approximation, it is an inconsistency -- every
     ``mf`` passes through this function or none does.  Gas phase ->
     an identity function, so call sites never branch."""
-    lines = emit_solvent_lines(cfg, mf_var="mf")
+    lines = emit_solvent_lines(cfg)
     out = [
         "",
         "",

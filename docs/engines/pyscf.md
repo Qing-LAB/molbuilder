@@ -627,7 +627,12 @@ finite-difference point, and a relaxation `mf` — **emits one function,
 N call sites; the body's generator is one shared home
 (`pyscf/scf_setup.py`), so the two decks' spellings cannot fork.  A future
 kind with many `mf`s inherits the same function by calling the same
-generator.
+generator.  **The DFT trio has its symmetric dresser since 2026-08-21
+(M1.2)**: `_mb_configure_dft(mf)`, generated from `DFT_SECTION` +
+`layout.line` (minus `density_fit`, which rebinds `mf` and is per-site
+conditional — the Raman polarizability path forces non-DF), so the
+functional / grid / dispersion spellings cannot fork either; on an HF deck
+it is an explicit pass-through and call sites stay uniform.
 
 **The role table** — what each construction site adds ON TOP of
 `_mb_configure_scf(mf)`, and why it is site-specific rather than shared:

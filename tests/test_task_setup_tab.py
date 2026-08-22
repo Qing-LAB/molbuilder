@@ -1585,7 +1585,8 @@ def test_the_hand_over_carries_the_vibration_kind_end_to_end(web_client):
 
 
 def test_the_spectra_tab_sends_through_the_shared_door():
-    """P2's substitution (spectra-migration-plan.md § 4): the spectra tab
+    """One door, two tabs (handover-procedure.md § 6; delivered by the
+    archived spectra migration's P2): the spectra tab
     renders the CATALOGUE's vibration form and hands over through the
     same lib/task-handover.js door as /structure-optimization -- one
     spelling of the guards and the write order, two tabs."""
@@ -1617,7 +1618,8 @@ def test_the_spectra_tab_sends_through_the_shared_door():
 
 
 def test_the_browser_hand_over_writes_the_cli_s_files(web_client, tmp_path):
-    """P2's bar (spectra-migration-plan.md § 4): the files the browser's
+    """The one-writer bar (handover-procedure.md § 4; the archived
+    spectra migration's P2 acceptance): the files the browser's
     Send writes are the CLI's own.  The same water + defaults through
     (a) /api/task-setup/handover and (b) describe.build_description /
     write_description must agree BYTE-FOR-BYTE on the template and the

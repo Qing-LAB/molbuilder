@@ -1531,18 +1531,13 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // sessionStorage survives same-tab navigations so the user's
     // typed parameter values aren't lost.
 
-    // Static IDs that aren't part of the schema-driven SIESTA /
-    // PySCF forms but DO need session-storage persistence.  Post
-    // task-295 the in-tab Build form is gone, so the Relaxation-
-    // stage preset selector (a UI shortcut, not a dataclass field)
-    // is the only static survivor.  All other persistent IDs are
-    // derived at save/restore time by walking the rendered
-    // schemas.
-    const STATIC_FORM_IDS = [
-    ];
-
+    // Every persistent ID is derived at save/restore time by walking
+    // the rendered schemas.  (A STATIC_FORM_IDS list stood here for
+    // ids outside the schema forms; its last member -- the old
+    // relaxation-stage preset selector -- left with task-295, and the
+    // empty list rode on under a comment still claiming a survivor.)
     function getFormIds() {
-        const ids = STATIC_FORM_IDS.slice();
+        const ids = [];
         for (const sch of [formSchemas.siesta, formSchemas.pyscf]) {
             if (!sch) continue;
             for (const sect of sch.sections) {
@@ -1586,11 +1581,12 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         });
     }
 
-    // The Relaxation-stage preset selector is static HTML, so the
-    // first restore pass can run synchronously; the schema-driven
-    // SIESTA / PySCF fields get restored a second time inside
-    // initFormsFromSchema() after the renderer fills the containers.
-    restoreFormState();
+    // No synchronous first restore: every persistent id is
+    // schema-derived, and before the schemas load getFormIds() is
+    // empty -- the call that stood here restored nothing, under a
+    // comment justifying it with the static selector that left in
+    // task-295.  The real restore runs inside initFormsFromSchema()
+    // after the renderer fills the containers.
     window.addEventListener("pagehide", saveFormState);
 
     // Kick off the async schema fetch + form render.  Everything

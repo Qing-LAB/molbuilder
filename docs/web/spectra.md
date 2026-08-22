@@ -147,7 +147,7 @@ the input every number below depends on rather than a result among them.
 
 **A fourth, run-level tab: Thermochemistry** *(v5 artifacts)*. Beside the
 three per-mode views sits a tab that appears when the results carry a
-`thermo` block ([`plans/spectra-migration-plan.md`](?doc=plans/spectra-migration-plan.md)
+`thermo` block ([`archive/2026-08-20-spectra-migration-plan.md`](?doc=archive/2026-08-20-spectra-migration-plan.md)
 § 2b): the headline (T, P) numbers with the regime sentence, G/H/T·S curves
 over the deck's temperature grid, and the free-energy decomposition bar at the
 headline temperature. The **deck computes, the viewer draws** — the only
@@ -447,7 +447,7 @@ follow-up, not shipped.)
 Frozen atoms are **structure-side facts**: they live in the model as a region
 and ride the structure's own files — the `.molstruct.json` half of the codec
 pair the hand-over writes — never a form field
-([`plans/spectra-migration-plan.md`](?doc=plans/spectra-migration-plan.md)
+([`archive/2026-08-20-spectra-migration-plan.md`](?doc=archive/2026-08-20-spectra-migration-plan.md)
 § 2). Set them in the viewer, or load a structure whose sidecar already
 carries them; the Send button exports the model **in one read**
 (`exportFile()`), so what you see frozen is what the calculation holds fixed.
