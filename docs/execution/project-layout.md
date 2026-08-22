@@ -414,7 +414,7 @@ prepare  →  01_coarse/run-0/ exists, deck linked, inputs copied
 submit   →  launched there
 ```
 
-Launching in a chosen directory is what `jobset submit` already does one level
+Launching in a chosen directory is what `jobset launch` already does one level
 up: `subprocess.run(cmd, cwd=<job dir>)` for the local path, and `sbatch` from
 the same place for SLURM, which lands the job in `SLURM_SUBMIT_DIR`. Pointing it
 at the attempt instead of the container is a change in the caller, not in the
@@ -896,7 +896,7 @@ Naming them apart is what makes step 1 answerable.
 | **M2a** | **A fact may be PROBED or DECLARED, and the probe wins when there is one.** *What partitions and QoS you can reach* is a fact: detected when you are on the machine, written down by hand when you are not (describing on a workstation for a cluster). *Which one this run wants* is a preference and stays in `molbuilder.json`. `prep` checks the second against the first (M4's capability ⊇ allocation) | *(Rewritten twice on 2026-08-17.)* It first said the partition is the one fact both sides supply and **declaration wins** — a tie-break. The rewrite removed the tie-break by declaring the fact "probed only", which made the workstation-describing-a-cluster case an **error**: you cannot probe a machine you are not on. The third form keeps the split by ROLE (fact vs preference) and settles the overlap by EVIDENCE (a measurement beats a note), which is the only ordering that leaves both cases expressible. Full argument: [`configuration.md` § 5](?doc=configuration.md) M-1 |
 | **M3** | **What was detected and what was declared must both be recoverable from the run directory.** | *"the numbers were wrong"* is unanswerable if you cannot tell a probe from a setting |
 | **M4** | **Allocation is an input to `prep`, not a field of the description and not a decision at submit.** | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *derived from the rank count* (block size), plus the GPU line that picks the environment the wrapper activates. A deck written before the allocation is known has guessed |
-| **M5** | **`submit` decides nothing. It checks that the deck and the launch still agree, refuses if they do not, and starts one job.** | The check already exists (`LaunchAgreement`). A launch that quietly disagrees with its deck is the failure M4 exists to prevent, arriving one step later |
+| **M5** | **`launch` decides nothing. It checks that the deck and the launch still agree, refuses if they do not, and starts one job.** | The check already exists (`LaunchAgreement`). A launch that quietly disagrees with its deck is the failure M4 exists to prevent, arriving one step later |
 | **M6** | ~~A workstation needs no config file~~ — **AMENDED 2026-08-17 (user): a workstation records its capability in a config file too, in the same shape a cluster uses.** Detection still answers *what is here*; the file answers *what a run may have*, and `prep` needs the second to refuse an over-ask rather than discover it at launch | The original reasoning was *nothing is rationed*, which held only while nothing checked. Once `prep` enforces capability ⊇ allocation ([`generator.md § 4.1`](?doc=execution/generator.md)), a workstation with no stated ceiling is the one machine where the check cannot run — so the rule that was sparing the user a file was instead sparing them the error. **One shape for both kinds of machine** also means the probe verb, the config reader and `prep`'s bound have one path rather than a workstation special case. |
 
 ##### What this looks like in practice
@@ -987,7 +987,7 @@ machine, not relaxing the molecule**.
 > by name before launch, because prep bakes the intent but submission
 > determines the run's actual starting state (user ruling). See § 4.
 
-You submit them with `jobset submit bench tight` — and under `--mode
+You submit them with `jobset launch bench tight` — and under `--mode
 submit` the trials group into **one scheduler job per resource shelf**
 ([`generator.md`](?doc=execution/generator.md) § 4.3a; grouped 2026-08-20,
 split per shelf 2026-08-21): trials asking for identical resources (a
@@ -1014,7 +1014,7 @@ trial rides with its **own explicit `-np/-omp`** — enforced at generation —
 because inside the allocation the `SLURM_*` variables describe the
 envelope, and a flag-less wrapper falling back to them would silently
 measure the widest point instead of its own. Naming a
-trial (`jobset submit bench tight G1K8C2`) still submits that one alone —
+trial (`jobset launch bench tight G1K8C2`) still submits that one alone —
 how a single point is **re-measured, after moving the old trial's
 directory aside** (§ 1.5: a trial measures its point once; molbuilder
 never deletes results).
@@ -1170,7 +1170,7 @@ environment. It does not — the packaged SIESTA runs ELPA on CPU, so
   02_tight/run-0/       ready      (nothing carried — cold start)
 ```
 
-**Printing what it resolved is what makes `submit` a plain yes.** It is the only
+**Printing what it resolved is what makes `launch` a plain yes.** It is the only
 place the measured numbers, the chosen geometry and the rendered deck appear
 together, which is exactly where a person should be looking before spending a
 week.
@@ -2175,7 +2175,7 @@ than no invariant, because it fails a directory that is working correctly.
    property the folder drifts into.
 7. ~~**What is the hand-run entry point for one stage?**~~ **Answered**
    (§ 2.3, § 2.5): preparing and submitting are separate steps, each naming its
-   stage — `jobset prep run <stage>` then `jobset submit run <stage>`, with `--cold` on
+   stage — `jobset prep run <stage>` then `jobset launch run <stage>`, with `--cold` on
    prepare because skipping the copy is a setup decision. The exact spelling is
    in [`job-system.md`](?doc=execution/job-system.md); only cosmetic choices
    remain.

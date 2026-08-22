@@ -14,7 +14,7 @@ produces the `.spectra.json`.
 > **framework-native**: the Send button hands over to Task setup, and the
 > vibration deck is a calculation KIND of the PySCF engine, rendered by
 > `render_deck` through the same gates as an optimization deck and run
-> through `prep`/`submit`. (The old standalone-script path retired at the
+> through `prep`/`launch`. (The old standalone-script path retired at the
 > spectra migration's P3.) The *viewing* half — the presenter, the chart,
 > the mode table — is unchanged.
 

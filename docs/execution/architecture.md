@@ -198,7 +198,7 @@ flowchart TB
 
 Solid arrows are the ordinary way down. **Dotted arrows are allowed shortcuts:**
 any floor may reach straight to floor 1, because floor 1 holds plain values and
-keeps no state. `submit` asking `identity` for a name is not a violation — it is
+keeps no state. `launch` asking `identity` for a name is not a violation — it is
 floor 1 doing the job it exists for.
 
 *(The floor-3 nodes drew `bench/to_jobset.py` until 2026-08-12 — deleted with
@@ -387,7 +387,7 @@ A route owns **an order**, not a floor.
 |---|---|---|---|---|
 | **describe** | `jobset describe` | **write** the portable description — the template, `task.json`, the data files | ask → check → write | **2 only** |
 | **prep** | `jobset prep` | assemble a runnable folder **on the machine that will run it** | the five steps below | 1 → 2 → 3 → 5 → 4 |
-| **submit** | `jobset submit` | one job becomes one running program | find the folder → check it agrees → launch → record | 4 → 5 |
+| **submit** | `jobset launch` | one job becomes one running program | find the folder → check it agrees → launch → record | 4 → 5 |
 | **observe** | `jobset status` | answer *where has this got to* | newest attempt → read it → add up | 4 → 6 |
 
 > **The first route is named `describe`, and it stops at floor 2** *(corrected
@@ -562,14 +562,14 @@ sequenceDiagram
     Note over B: names NO machine — this folder is portable
     U->>P: scp to the cluster, then `jobset prep run coarse`
     P->>P: the five steps → 01_coarse/run-0/
-    U->>S: `jobset submit run coarse --mode submit`
+    U->>S: `jobset launch run coarse --mode submit`
     S-->>U: Submitted job 4021
     U->>O: `jobset status`
     O-->>U: coarse · finished · warm files: .XV .DM
     Note over U: YOU LOOK AT IT.<br/>Converged? Geometry sane?
     U->>P: `jobset prep run tight --from 01_coarse/run-0`
     P->>P: copies coarse's .XV/.DM into 02_tight/run-0/
-    U->>S: `jobset submit run tight --mode submit`
+    U->>S: `jobset launch run tight --mode submit`
 ```
 
 **The pause before the last three steps is the design, not a gap in it.** It is
@@ -679,8 +679,8 @@ the project's if set, otherwise the server's.
 | section | read by | reaches | what it decides |
 |---|---|---|---|
 | `script_generation` | `get_script_generation`, `require_activation` | **floor 5**, `prep` step 4 | the lines baked into every wrapper: `preamble` (e.g. `module load mamba/latest`), then `activation` verbatim |
-| `scheduler` | `get_scheduler`, `get_routing` | **floor 5**, at `submit` | the `#SBATCH` header: `directives` (partition, qos, mail), `gpu` (partition, type, memory band), `defaults` (time, cores, memory), `mem_model`, and `routing` — the named domains |
-| `execution` | `get_execution` | **floor 5**, at `submit` | `mode` (`direct` or `submit`), and the default `domain` |
+| `scheduler` | `get_scheduler`, `get_routing` | **floor 5**, at `launch` | the `#SBATCH` header: `directives` (partition, qos, mail), `gpu` (partition, type, memory band), `defaults` (time, cores, memory), `mem_model`, and `routing` — the named domains |
+| `execution` | `get_execution` | **floor 5**, at `launch` | `mode` (`direct` or `submit`), and the default `domain` |
 | `envs` | `get_envs` | **floor 5**, `prep` step 4 | which conda environment each engine runs in |
 | `checkpoint` | `get_checkpoint`, `get_checkpoint_engines` | **outside the stack** — the file protocol | the size at which a file goes to the archive instead of git, and the per-engine hints |
 | `auth` | `get_auth`, `get_providers` | the **server** | who may sign in; the provider list is `auth.providers` (`ops/access-control.md` § 3) |
@@ -723,7 +723,7 @@ an equality both ways, reading `_SECTIONS` directly since U7.)*
 **Read the first four rows as one thing.** They are the whole of what a
 calculation needs from config, and they arrive at exactly two moments:
 `prep` step 4 bakes `script_generation` and `envs` into the wrapper, and
-`submit` reads `scheduler` and `execution` to build the command. **Nothing
+`launch` reads `scheduler` and `execution` to build the command. **Nothing
 reads config at run time** — the wrapper is self-contained by then
 (`job-contracts.md` § 2.1).
 
@@ -872,10 +872,10 @@ molbuilder jobset prep   run coarse
 #   01_coarse/bdt_au_01_coarse.fdf   rendered   BlockSize 32, Diag.Algorithm ScaLAPACK
 #                                    (500 orbitals / 8 ranks = 62 -> 32, the pow2 below it)
 #   01_coarse/run-0/                 ready      (nothing carried — cold start)
-molbuilder jobset submit run coarse --mode direct     # runs here; you wait
+molbuilder jobset launch run coarse --mode direct     # runs here; you wait
 molbuilder jobset status                              # look before deciding
 molbuilder jobset prep   run tight --from 01_coarse/run-0
-molbuilder jobset submit run tight  --mode direct
+molbuilder jobset launch run tight  --mode direct
 ```
 
 **On the cluster**, after `scp -r bdt-relax/ cluster:~/`, with a `scheduler`
@@ -889,10 +889,10 @@ molbuilder jobset prep   run coarse
 #                                    (500 orbitals / 16 ranks = 31 -> 16)
 #   01_coarse/bdt_au_01_coarse.sbatch  written  -p public -q public -n 16 --gres=gpu:a100:1
 #   01_coarse/run-0/                 ready      (nothing carried — cold start)
-molbuilder jobset submit run coarse --mode submit     # Submitted job 4021
+molbuilder jobset launch run coarse --mode submit     # Submitted job 4021
 molbuilder jobset status                              # look before deciding
 molbuilder jobset prep   run tight --from 01_coarse/run-0
-molbuilder jobset submit run tight  --mode submit     # Submitted job 4022
+molbuilder jobset launch run tight  --mode submit     # Submitted job 4022
 ```
 
 **The words you typed are the same. Four values in the printed report are not**,
@@ -919,7 +919,7 @@ job.
 The **flat** and **hierarchical** layouts (`project-layout.md` § 1) are a
 separate choice from where you run — they are `task.json`'s `shape` field, and
 the machine never sees it. Either shape works on either machine: `prep` builds
-what you asked for, and `submit` starts one stage of it.
+what you asked for, and `launch` starts one stage of it.
 
 |  | `--mode direct` | `--mode submit` |
 |---|---|---|
@@ -1051,6 +1051,6 @@ yet.
 | [`project-layout.md`](?doc=execution/project-layout.md) § 2.1 | the portable folder names no machine | floor 2's *must never* |
 | [`project-layout.md`](?doc=execution/project-layout.md) § 2.3.1 | the five steps, in that order | **the `prep` route** |
 | [`project-layout.md`](?doc=execution/project-layout.md) § 2.3.1b | capability at `prep`, allocation as its input | floor 1 resolves capability; floor 5 only checks the agreement |
-| [`project-layout.md`](?doc=execution/project-layout.md) § 1.6 | stages do not chain | floor 3 emits no link; the `submit` route acts on one stage |
+| [`project-layout.md`](?doc=execution/project-layout.md) § 1.6 | stages do not chain | floor 3 emits no link; the `launch` route acts on one stage |
 | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1 | the caller's cwd is the contract | floor 5's wrapper activates and execs, nothing more |
 | [`checkpointing.md`](?doc=execution/checkpointing.md) § 2.1 | saving chooses *how*, never *whether* | **outside this stack** — a file protocol beneath all of it, which knows nothing about stages |

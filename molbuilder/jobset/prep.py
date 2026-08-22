@@ -29,7 +29,7 @@ element's resources.  *(A "legacy sweep whose jobs share one script"
 paragraph stood here promising its own fold "with bench (plan step 6)" —
 the fold landed 2026-08-12 and no producer emits shared-script sets; for a
 HAND-BUILT set that shares one script, the first job's resources still
-become the wrapper defaults and ``submit`` passes each job's own as flags,
+become the wrapper defaults and ``launch`` passes each job's own as flags,
 which is now a property of the fallback rather than a design of its own;
 R8.)*
 """
@@ -141,11 +141,11 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
          ``.sbatch`` when ``emit_sbatch`` and a scheduler is configured) in
          the bundle root, from the real file — reusing
          ``runwrap.write_run_wrapper`` (no reinvention).  The header carries
-         the first-seen job's resources as defaults; ``submit`` overrides
+         the first-seen job's resources as defaults; ``launch`` overrides
          per job via CLI flags, so the defaults never decide the answer.
       2. ``materialize`` — data symlinks (shared package, script, carry).
       3. symlink each job's wrappers (+ shipped ``mb_monitor.py``) into its
-         ``point-<name>/`` dir, so ``submit`` can ``sbatch``/``bash`` them
+         ``point-<name>/`` dir, so ``launch`` can ``sbatch``/``bash`` them
          there.
 
     Returns the per-job directories.  Raises :class:`PrepError` on an

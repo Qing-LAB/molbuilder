@@ -54,7 +54,7 @@ def test_a_bare_noninteractive_call_refuses_with_the_fix(tmp_path):
                         stdin=subprocess.DEVNULL, capture_output=True,
                         text=True, env=env)
     assert cp.returncode == 2
-    assert "jobset submit" in cp.stderr
+    assert "jobset launch" in cp.stderr
     assert "MB_LAUNCHED_BY=manual" in cp.stderr
 
 

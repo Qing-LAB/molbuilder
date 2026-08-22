@@ -222,7 +222,7 @@ def _submit_dry(calc, *extra):
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     r = CliRunner().invoke(
-        jobset_group, ["submit", "bench", "coarse", "--bundle", str(calc),
+        jobset_group, ["launch", "bench", "coarse", "--bundle", str(calc),
                        "--mode", "submit", "--dry-run", *extra])
     assert r.exit_code == 0, r.output
     return r.output
@@ -304,7 +304,7 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
     assert warm_text != text, "the flip must actually land"
     deck.write_text(warm_text)
     r = CliRunner().invoke(
-        jobset_group, ["submit", "bench", "coarse", "--bundle",
+        jobset_group, ["launch", "bench", "coarse", "--bundle",
                        str(sol_calc), "--mode", "submit", "--dry-run"])
     assert r.exit_code != 0
     assert "WARM-start" in r.output and "K4C1block_size64" in r.output
@@ -312,7 +312,7 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
     deck.write_text(re.sub(r"^[ \t]*[A-Za-z.]*UseSave.*$", "",
                            text, flags=re.M))
     r = CliRunner().invoke(
-        jobset_group, ["submit", "bench", "coarse", "--bundle",
+        jobset_group, ["launch", "bench", "coarse", "--bundle",
                        str(sol_calc), "--mode", "submit", "--dry-run"])
     assert r.exit_code != 0
     assert "no restart group" in r.output

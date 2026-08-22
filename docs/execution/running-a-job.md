@@ -12,7 +12,7 @@ framework that runs **batches** of jobs on top of this same wrapper;
 current → target status picture.
 
 **This is the path that works today.** One task is
-`molbuilder jobset prep` then `molbuilder jobset submit --mode direct` — **a
+`molbuilder jobset prep` then `molbuilder jobset launch --mode direct` — **a
 job set of one, through the same commands as a hundred** (there is no
 `molbuilder run`; decided 2026-08-11). The browser's part is the description
 (the hand-over + Task setup — [`web/task-setup.md`](?doc=web/task-setup.md));
@@ -616,7 +616,7 @@ job falls back to the floor and a CPU job to the partition default. An
 ### 5.4 `execution` and `envs`
 
 - **`execution`** — `{mode, submit_via, domain}`. `mode` is `direct` (run in
-  place) or `submit` (through the scheduler); this, not the detected scheduler,
+  place) or `launch` (through the scheduler); this, not the detected scheduler,
   is what gates `.sbatch` submission. `domain` names a `routing` entry.
 - **`envs`** — overrides the conda env name per category
   (`{"siesta": "my-siesta-env", …}`); unset categories use the four defaults
@@ -639,13 +639,13 @@ from:**
 | `molbuilder.json` (no dot) | **this machine** — activation, scheduler, `execution.mode` | the directory the command runs from, else `~/.config/molbuilder/` |
 | `.molbuilder.json` (dotted) | **this calculation** — travels with the folder | inside the calculation, beside `task.json`; **wins on conflict** |
 
-`prep` and `submit` print the provenance — every path consulted, found or
+`prep` and `launch` print the provenance — every path consulted, found or
 absent, and each effective value tagged with its source file — and `prep`
 writes the same block into `STAGE-PLAN.md`, so a behaviour difference between
 two machines is explained by the bundle itself. Secret sections (`auth`,
 `tls`, `secret_key_file`) are excluded by an allowlist, never by care.
 
-**There is ONE launch door.** `molbuilder jobset submit` resolves the mode
+**There is ONE launch door.** `molbuilder jobset launch` resolves the mode
 (flag, else `execution.mode`, else a refusal — never the detected scheduler),
 runs the deck/launch agreement check, records the attempt, and launches
 **one job per invocation**. When it launches, it stamps the claim

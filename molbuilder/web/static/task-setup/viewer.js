@@ -1100,7 +1100,7 @@ function renderNext(task) {
                "bench first \u2014 " + benchKeys.join(", ")),
             el("pre", { class: "ts-cmd" },
                "./jobset.sh prep bench " + bs + "\n"
-               + "./jobset.sh submit bench " + bs
+               + "./jobset.sh launch bench " + bs
                + "      # one job per resource shelf; wait for the queue\n"
                + "./jobset.sh summarize bench " + bs
                + "   # writes bench-result.json + run-config.toml\n"
@@ -1130,7 +1130,7 @@ function renderNext(task) {
                // door writes jobset.sh), so the command the tab teaches
                // is the one that works in a bare shell on any machine.
                "./jobset.sh prep run " + name + from + "\n"
-               + "./jobset.sh submit run " + name)));
+               + "./jobset.sh launch run " + name)));
     });
 
     // (Re)write the launcher -- for folders described before the save

@@ -37,7 +37,7 @@ from .model import JobSet, warm_carry
 #: it has run, so a re-run is a NEW directory rather than an overwrite.
 ATTEMPT_RE = re.compile(r"^run-(\d+)$")
 
-#: Written by ``submit`` into the attempt, AFTER the launch succeeds
+#: Written by ``launch`` into the attempt, AFTER the launch succeeds
 #: (``project-layout.md`` § 1.6).  Its presence is the only honest answer to
 #: *has this been launched?* -- a queued job has produced nothing yet, so
 #: "no output" and "not started" are indistinguishable from the directory alone.
@@ -122,7 +122,7 @@ def bench_container(shape: "Shape", token: str = "") -> str:
     two disagreed in BOTH non-hierarchical layouts: flat trials fell into
     an unqualified shared ``bench/`` while the record sat in
     ``bench_<NN>_<stage>/``, and a stageless sweep's trials sat at the
-    ROOT while its record sat in ``bench/`` — so `submit` launched trials
+    ROOT while its record sat in ``bench/`` — so `launch` launched trials
     in directories the underway-ask never looked at (final review A-1/A-2).
     """
     sd = shape.stage_dir(token) if token else "."
@@ -369,7 +369,7 @@ def attempts(stage_dir: Path) -> List[int]:
 
 
 def was_launched(attempt_dir: Path) -> bool:
-    """Whether ``submit`` has launched this attempt — i.e. ``run.json`` exists.
+    """Whether ``launch`` has launched this attempt — i.e. ``run.json`` exists.
 
     This is the whole reason that file exists. Without it, preparing a stage
     twice could rewrite the setup underneath a job already sitting in a queue,
@@ -587,7 +587,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                 f"of the files this stage would continue from "
                 f"({', '.join(names)}). Did it run?")
 
-    # Leave the provenance where ``submit`` can find it: prep is what knows
+    # Leave the provenance where ``launch`` can find it: prep is what knows
     # which attempt this one continues from, and submit writes run.json.  A
     # marker file beats threading the value through a launch argument that
     # every caller would have to remember to pass.

@@ -266,7 +266,7 @@ starts from the structure. It tells you what it did. Then, on the machine that
 will run it:
 
 ```
-molbuilder jobset submit run coarse --mode direct
+molbuilder jobset launch run coarse --mode direct
 ```
 
 **Why the terminal for this half.** The browser writes a package that names no
@@ -338,7 +338,7 @@ unless you ask for a cold start. `run-0` is byte-identical afterwards. There is
 no `--force`, because there is nothing to reset.
 
 ✅ **Gap 7 — closed 2026-08-10, and it was half-answered already.** It read:
-*how you re-run one stage by hand is unstated*, and offered `jobset submit --only
+*how you re-run one stage by hand is unstated*, and offered `jobset launch --only
 <stage>` or a new top-level run command.
 
 Neither was needed, because **the grammar was specified elsewhere and this
@@ -355,7 +355,7 @@ So the entry point is:
 
 ```bash
 molbuilder jobset prep   run tight --from 01_coarse/run-0   # or --cold
-molbuilder jobset submit run tight --mode direct|submit
+molbuilder jobset launch run tight --mode direct|submit
 ```
 
 `job-system.md` § 5.3 is now the authority for the commands, and the ordering
@@ -478,7 +478,7 @@ describing #5's fix in terms the layout contract had already ruled out.
 | 4 | ~~**The measured answer reaches a script, never the description.**~~ **Closed 2026-08-12** (§ 2.3.2): `summarize` writes the stage's verdict as the editable `run-config.toml` and `prep run` applies what the file says (interactive ask until 2026-08-19); the answer reaches the next prep's allocation + pins — never the description, which may not carry machine facts (§ 7) | ✅ closed |
 | 5 | ~~**Stage-to-stage carry is broken.**~~ **Closed 2026-08-10.** The producer stopped emitting `depends_on` and `Carry` entirely, so nothing dangles. ⚠ This row used to say *"fixed by resolving the attempt at **submit**"* — which contradicted `project-layout.md § 2.3.4`, where the copy is made **at `prep`, from the run you name with `--from`**. The contract was right: by then the source has already finished, so there is nothing to resolve later | ✅ closed |
 | 6 | ~~**Stage directories are named `point-<name>`.**~~ **Closed 2026-08-10.** `job_dir_names` branches on `JobSet.kind`; a ladder gets `01_coarse/`, a sweep keeps `point-*` | ✅ closed |
-| 7 | ~~**No hand-run entry point for one stage.**~~ **Closed 2026-08-10.** The grammar was already fixed in `job-system.md` and used by two other documents; this file had not caught up. `jobset prep run <stage> --from <run>` / `jobset submit run <stage>`, stage as the positional (user, 2026-08-10). ⚠ *This row also said `--chain` runs a ladder unattended; it does not — line 327 of this same document records it deleted on that date, and stages do not chain (`project-layout.md` § 1.6). Corrected 2026-08-11.* The ordering constraint stands: it must exist before the wrapper's directory-making prologue is retired | ✅ closed |
+| 7 | ~~**No hand-run entry point for one stage.**~~ **Closed 2026-08-10.** The grammar was already fixed in `job-system.md` and used by two other documents; this file had not caught up. `jobset prep run <stage> --from <run>` / `jobset launch run <stage>`, stage as the positional (user, 2026-08-10). ⚠ *This row also said `--chain` runs a ladder unattended; it does not — line 327 of this same document records it deleted on that date, and stages do not chain (`project-layout.md` § 1.6). Corrected 2026-08-11.* The ordering constraint stands: it must exist before the wrapper's directory-making prologue is retired | ✅ closed |
 | 8 | ~~**The history cannot be created.**~~ **Closed by the checkpoint rework.** `init` accepts a folder whose root *declares* its subdirectories one calculation (`task.json`), which this tree carries; forking is restore-then-save, which needs no branch route. Saves stay explicit by design, which is § 9, not a gap | ✅ closed |
 
 ### The one that was fixed first, and why
@@ -500,7 +500,7 @@ sentence counted "four open" until 2026-08-13; gaps 2, 3 and 4 closed with
 the plan's steps 3–4 and the fold, and their rows above say how.)*
 
 **The lesson is worth more than the fix.** The system was already built the right
-way — `materialize` lays out directories and links, `submit` picks the working
+way — `materialize` lays out directories and links, `launch` picks the working
 directory and launches, and the wrapper activates and execs. I added a second
 layout implementation in bash without checking whether one existed, then designed
 an elaborate way to make a chained hand-off work when the answer was not to

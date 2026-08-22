@@ -290,7 +290,7 @@ def _apply(cfg, overrides):
 
 `generator.md` § 7 states the test: *"adding an engine adds files and edits
 none. If a new engine requires a change inside `resolve/`, `materialize` or
-`submit`, the seam has leaked and the leak is the bug."* Here the **shared**
+`launch`, the seam has leaked and the leak is the bug."* Here the **shared**
 floor-3 resolver depends on **SIESTA's** package to resolve a PySCF calculation.
 
 The docstring sees it and defends the wrong half: *"`effective_config` lives
@@ -546,7 +546,7 @@ build the run directory — and both restatements agree with it:
 
 `project-layout.md` § 2.3.1: *"the same **five steps** in the same order"* — of
 `prep`. `job-system.md` § 5: *"**one verb** on the host and **five** on the
-target"* — `prep`, `plan`, `submit`, `summarize`, `status`. Different sets, same
+target"* — `prep`, `plan`, `launch`, `summarize`, `status`. Different sets, same
 count, adjacent documents, and `generator.md` § 2 leans on `project-layout.md` § 2.3.1a's phrase
 *"the five steps are general"* to make its framework/specialisation argument.
 
@@ -4000,5 +4000,5 @@ no contract but reorders `prep`'s steps 4 and 5, an order
 |---|---|
 | the catalogue · `read_template` · `select` / `one` | `prep` |
 | `config_from_template` | the wrapper writer |
-| `effective_config` (⊕) and `resolve` — they produce the **resolved config**, which is where this work ends | `materialize` · `submit` |
+| `effective_config` (⊕) and `resolve` — they produce the **resolved config**, which is where this work ends | `materialize` · `launch` |
 | the surface built **from** the template | the scheduler |

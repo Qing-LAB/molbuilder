@@ -106,7 +106,7 @@ shared API.
 
 > **There is no `molbuilder run`** *(decided 2026-08-11, user)*. **Everything
 > about running a job goes through `molbuilder jobset …`**: `prep` writes the
-> directory and its wrapper, and `submit` runs it — `--mode direct` on a
+> directory and its wrapper, and `launch` runs it — `--mode direct` on a
 > workstation, `--mode submit` on a scheduler
 > ([`execution/job-system.md`](?doc=execution/job-system.md)). `run` was the
 > pre-job-system entry point: it emitted a wrapper for one hand-made deck, which
@@ -147,7 +147,7 @@ shared API.
 
 | group | how it runs work | status |
 |---|---|---|
-| **`jobset`** | `prep` → `submit`, one job per invocation, per-attempt directories, `run.json` | the design ([`job-system.md`](?doc=execution/job-system.md)) |
+| **`jobset`** | `prep` → `launch`, one job per invocation, per-attempt directories, `run.json` | the design ([`job-system.md`](?doc=execution/job-system.md)) |
 | **`bench`** | `probe-scheduler` only | **RESOLVED 2026-08-17** — the four duplicate verbs are gone; benchmarking is `jobset prep bench <stage>`. See below |
 | **`transport`** | `bundle` → `bash run-transport.sh`, a driver that **chains** three coupled runs | **the case with no representation** ([`transport.md § 8`](?doc=engines/transport.md)) |
 
@@ -168,7 +168,7 @@ and would have to come back differently.
 | the act | today | the second spelling it replaced |
 |---|---|---|
 | build it | `jobset prep bench <stage>` | ~~`bench generate` + `bench prep`~~ |
-| run it | `jobset submit bench <stage>` | ~~`bench siesta-gpu`~~ |
+| run it | `jobset launch bench <stage>` | ~~`bench siesta-gpu`~~ |
 | read it | `jobset summarize bench <stage>` | ~~`bench summarize`~~ |
 | use the answer | `jobset prep run <stage>` — the verdict is **offered** and waits | ~~`bench prep-run`~~ |
 

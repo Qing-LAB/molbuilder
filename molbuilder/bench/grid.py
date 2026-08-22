@@ -6,7 +6,7 @@ script emitters, "ships to the target", "the next increment" -- none of
 which survived): ``sweep_grid`` (the one G x K x C enumeration
 `_bench_inputs` consumes), ``sweep_K`` (topology-derived rank counts),
 Trials are rendered by `jobset prep bench` and launched by
-`jobset submit` -- no script is formatted here, and nothing ships.
+`jobset launch` -- no script is formatted here, and nothing ships.
 (The adapter classes this module was named for folded away 2026-08-12;
 see the tombstone below.)
 """

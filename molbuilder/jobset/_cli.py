@@ -3,12 +3,12 @@
 
 ``describe`` writes the portable folder (floor 2); on the machine that runs
 it, ``prep`` derives floor 3 and everything below (the five steps of
-project-layout.md § 2.3.1), ``submit`` launches ONE job per invocation, and
+project-layout.md § 2.3.1), ``launch`` launches ONE job per invocation, and
 ``summarize`` reads a sweep's results back.  Nothing is produced on a host
 and shipped — a bundle carrying a pre-made ``job-set.json`` is the legacy
 route, and it narrows with every fold.
 
-The verbs own no policy: ``submit`` PRINTS what it will do and the user
+The verbs own no policy: ``launch`` PRINTS what it will do and the user
 picks the mode and domain explicitly (assistant, not nanny; never a silent
 auto-submit).
 
@@ -57,7 +57,7 @@ def _load(bundle: str) -> tuple:
 def jobset_group() -> None:
     """The calculation's verbs, one grammar (job-system.md § 5.3):
     ``describe`` writes the portable folder; on the machine that runs it,
-    ``prep`` derives everything else and ``submit`` launches one job per
+    ``prep`` derives everything else and ``launch`` launches one job per
     invocation.  Floor 3 (``job-set.json``) is DERIVED at prep, on the
     target -- nothing is produced on a host and shipped."""
 
@@ -65,7 +65,7 @@ def jobset_group() -> None:
 #: The calculation folder, spelled the same way on every verb.
 #:
 #: It was a POSITIONAL on ``plan`` and ``status`` until 2026-08-10 while
-#: ``prep``/``submit`` took ``--bundle``, so one word meant the folder on two
+#: ``prep``/``launch`` took ``--bundle``, so one word meant the folder on two
 #: verbs and the stage on the other two.  `job-system.md` § 5.3 calls that *"a
 #: defect of this section's own making"*: the grammar is
 #: ``jobset <verb> <kind> [<stage>]``, and a positional that is sometimes a
@@ -280,7 +280,7 @@ def _check_kind(kind: str, js=None) -> None:
     """The KIND positional against the bundle's actual kind.
 
     ``bench`` stopped refusing on 2026-08-12 (plan step 6, u2): ``prep
-    bench`` enumerates the grid on this machine and ``submit bench <trial>``
+    bench`` enumerates the grid on this machine and ``launch bench` <trial>``
     launches ONE trial per invocation through the same resolver as
     everything else.  What remains checkable is AGREEMENT: a kind that
     contradicts the bundle's own is a typo about to act on the wrong thing.
@@ -347,7 +347,7 @@ def _pick_trial(js, base, trial):
             raise click.ClickException(
                 f"no trial named {trial!r}. This sweep's trials: "
                 f"{', '.join(j.name for j in js.jobs)}.")
-        _ledger(base, "submit", "trial-picked", trial=trial,
+        _ledger(base, "launch", "trial-picked", trial=trial,
                 picked_by="named by the user")
         return trial
     return None       # bare: --mode direct runs the whole set, in order
@@ -1048,7 +1048,7 @@ def _bench_inputs(base, target=None):
     if mixed:
         # ONE translation serves both families: G=0 maps to plain ranks
         # and NO gres, G>=1 to G*K ranks plus the device ask -- which is
-        # what lets `submit` put the CPU group on an allocation that
+        # what lets `launch` put the CPU group on an allocation that
         # holds no device (§ 4.3a's split submission).
         translation = MachineTranslation(
             axes=("G", "K", "C"),
@@ -1106,7 +1106,7 @@ def _resolve_stage_name(js, stage: str) -> str:
     Split out from :func:`_resolve_stage` because two different questions were
     living in one function: *which job did the user name* (every verb that takes
     a STAGE asks this) and *may this verb act on the whole set* (only ``prep``
-    and ``submit`` ask, and ``status`` legitimately may). Keeping them together
+    and ``launch`` ask, and ``status`` legitimately may). Keeping them together
     would have made ``status <stage>`` either refuse a whole-ladder status or
     grow a second lookup -- and a second lookup is the thing § 8f is about.
     """
@@ -1263,7 +1263,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             f"{base} is not a described calculation -- no task.json + "
             "template pair.  `prep` derives everything from those two "
             "(project-layout.md § 2.1); run `molbuilder jobset describe` "
-            "first.  (Hand-built job-sets remain launchable: `submit` and "
+            "first.  (Hand-built job-sets remain launchable: `launch` and "
             "`status` read job-set.json directly.)")
     if (from_attempt or cold) and stage is None:
         # Every description has a ladder (§ 6.5), so an attempt always
@@ -1432,12 +1432,12 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         click.echo(f"prepped {len(dirs)} trial dir(s){where} under {base}:")
         for d in dirs:
             click.echo(f"  {d.name}")
-        # The REAL grammar (E-J2, 2026-08-21 review): `submit bench
+        # The REAL grammar (E-J2, 2026-08-21 review): `launch bench`
         # <stage>` -- typed with a trial name, the trial binds as the
         # STAGE and is refused; and the shipped submission is the
         # grouped one, not one-per-invocation.  prep just wrote
         # jobset.sh, so the hint speaks the launcher.
-        click.echo(f"next: ./jobset.sh submit bench "
+        click.echo(f"next: ./jobset.sh launch bench "
                    f"{stage or '<stage>'}   (grouped: one job per "
                    f"resource shelf)")
         click.echo(f"then: ./jobset.sh summarize bench {stage or '<stage>'}"
@@ -1469,7 +1469,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         click.echo(f"prepped {len(dirs)} job dir(s) under {base}  "
                    "(flat: no attempt to open; runs are told apart by "
                    "the wrapper's output index)")
-        click.echo("next: ./jobset.sh submit run "
+        click.echo("next: ./jobset.sh launch run "
                    + (f"{stage} " if stage is not None else "")
                    + "--mode submit|direct")
         return
@@ -1490,7 +1490,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     else:
         click.echo("  nothing carried in (first stage, or none named)")
     _echo_resolved(js, base, rep.stage, rep.dir)
-    click.echo("next: ./jobset.sh submit run "
+    click.echo("next: ./jobset.sh launch run "
                + (f"{stage} " if stage is not None else "")
                + "--mode submit|direct")
 
@@ -1499,7 +1499,7 @@ def _echo_resolved(js, base, stage_name: str, attempt) -> None:
     """The resolved half of the prep report (P6 unit 6).
 
     `job-system.md` § 2.3.3: *"**Printing what it resolved is what makes
-    `submit` a plain yes.**  It is the only place the measured numbers, the
+    `launch` a plain yes.**  It is the only place the measured numbers, the
     chosen geometry and the rendered deck appear together, which is exactly
     where a person should be looking before spending a week."*
 
@@ -1510,7 +1510,7 @@ def _echo_resolved(js, base, stage_name: str, attempt) -> None:
     * the **deck's own claim** about the launch it was rendered for, and
       whether the two agree.
 
-    **The second is the point.** P6 unit 2 made `submit` refuse a launch the
+    **The second is the point.** P6 unit 2 made `launch` refuse a launch the
     deck was not rendered for — correctly, and at the last honest moment. But
     a refusal that first appears when you are committing cluster time is a
     surprise, and `prep` is the step that exists so there are none. Both read
@@ -1607,7 +1607,7 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
             run_config=str(run_config[0]), run_config_status=run_config[1])
 
 
-@jobset_group.command("submit", short_help="launch a prepped stage")
+@jobset_group.command("launch", short_help="launch a prepped stage")
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("stage", required=False, default=None)
 @click.argument("trial", required=False, default=None)
@@ -1642,7 +1642,7 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
               type=click.Choice(["cpu", "gpu"]),
               help="bench + submit mode: submit just this side of a sweep "
                    "that spans CPU and GPU trials (generator.md § 4.3a).  "
-                   "The other side stays pending; a later `submit bench` "
+                   "The other side stays pending; a later `launch bench`` "
                    "collects it -- here or on the cluster that reaches it.")
 def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                dry_run: bool, trial_timeout_min: int, only_side) -> None:
@@ -1679,7 +1679,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     if mode is None:
         mode = _execn.get("mode")
         if not mode:
-            # Unset is a refusal, never a derivation: deciding `submit` from
+            # Unset is a refusal, never a derivation: deciding `launch` from
             # a DETECTED scheduler would gate submission on detection, which
             # running-a-job.md § 5.4 forbids.
             raise click.ClickException(
@@ -1708,14 +1708,14 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         # filter silently ignored (review 2026-08-21).
         raise click.ClickException(
             "--only picks a side of a grouped bench submission; it has no "
-            "meaning for `submit run`, --mode direct, or a named trial.")
+            "meaning for `launch run``, --mode direct, or a named trial.")
     if kind == "bench":
         # the stage's own sweep record, from its bench container (§ 6.3)
         js, base = _load_bench_set(bundle, stage)
     else:
         if trial is not None:
             raise click.ClickException(
-                "a TRIAL names a benchmark point; `submit run` takes a "
+                "a TRIAL names a benchmark point; `launch run`` takes a "
                 "stage only (job-system.md § 5.3).")
         js, base = _load(bundle)
     _check_kind(kind, js)
@@ -1739,7 +1739,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             # "launched" entry below records per job ("rides the group").
             # The key said `trials` until 2026-08-20 and read as the ride
             # list, which it was not (milestone review, N1).
-            _ledger(base, "submit", "bench-grouped",
+            _ledger(base, "launch", "bench-grouped",
                     trial_timeout_s=trial_timeout_min * 60,
                     only=only_side,
                     sweep=[j.name for j in js.jobs])
@@ -1750,15 +1750,15 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             if kind == "bench" and js.kind == "sweep":
                 only = _pick_trial(js, base, trial)
             else:
-                only = _resolve_stage(js, stage, "submit")
+                only = _resolve_stage(js, stage, "launch")
             results = submit_jobset(js, base, mode=mode, domain=domain,
                                     dry_run=dry_run, only=only)
     except SubmitError as e:
-        _ledger(base, "submit", "refused", kind=kind, stage=stage,
+        _ledger(base, "launch", "refused", kind=kind, stage=stage,
                 trial=trial, mode=mode, mode_source=mode_source,
                 reason=str(e))
         raise click.ClickException(str(e))
-    _ledger(base, "submit", "launched", kind=kind, stage=stage,
+    _ledger(base, "launch", "launched", kind=kind, stage=stage,
             mode=mode, mode_source=mode_source,
             domain=domain, domain_source=domain_source, dry_run=dry_run,
             provenance=prov,

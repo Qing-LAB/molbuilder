@@ -34,7 +34,7 @@ way. **The five axes** ([`architecture.md`](?doc=execution/architecture.md) § 0
 answer *what varies* — surface, environment, shape, engine, kind. **The nine
 vocabularies** (§ 10 there) answer *what things are called*, and where one naming
 becomes another. Neither says where code lives. **The four routes** — `describe`,
-`prep`, `submit`, `status` — are the ways in, not a layer either.
+`prep`, `launch`, `status` — are the ways in, not a layer either.
 
 **No engine is bent to another.** SIESTA cannot start without a pseudopotential
 for every element; PySCF ships its basis sets inside the library and needs no
@@ -67,7 +67,7 @@ flowchart TB
 Solid arrows are the ordinary way down: **a floor may call down and return up,
 and may never reach across.** One shortcut is allowed and not drawn, to keep the
 picture to one idea — *any* floor may reach straight to floor 1, because floor 1
-holds plain values and keeps no state. `submit` asking `identity` for a name is
+holds plain values and keeps no state. `launch` asking `identity` for a name is
 floor 1 doing the job it exists for, not a violation.
 
 ### 2.2 L1 / L2 / L3 is the same axis, coarsened

@@ -89,7 +89,7 @@ pinned by `test_a_handoff_lands_in_the_target_tabs_own_slot`).
 
 ### F2 — a grouped trial's launch record is invisible to `status`, and the docstring says otherwise
 
-**The scenario.** `jobset submit bench tight` rides six trials on one job.
+**The scenario.** `jobset launch bench tight` rides six trials on one job.
 Every trial's `bench-<POINT>/run.json` is stamped.  Nothing can show it:
 `runstatus._launch_record` reads `run.json` only from `run-<n>` attempt
 subdirectories (`runstatus.py:153-157` via `latest_attempt`), and a sweep
@@ -121,7 +121,7 @@ line.
 ### F1 — § 2.3.2's re-run parenthetical omits the move-aside
 
 **The scenario.** A trial times out inside the group.  § 2.3.2: *"Naming a
-trial (`jobset submit bench tight G1K8C2`) still submits that one alone
+trial (`jobset launch bench tight G1K8C2`) still submits that one alone
 (how a single point is re-run)."*  The user names it — and is refused:
 *"already launched … To measure this point again, move the trial's
 directory aside yourself"* (`submit.py:327-336`).  The refusal is right —

@@ -93,7 +93,7 @@ def render_plan(jobset: JobSet) -> str:
                      "(project-layout.md § 1.6):")
         lines.append("       molbuilder jobset prep   run <stage> "
                      "--from <attempt>")
-        lines.append("       molbuilder jobset submit run <stage> --mode ...")
+        lines.append("       molbuilder jobset launch run <stage> --mode ...")
     else:
         lines.append(f"Order: {len(js.jobs)} independent job(s) -- no ordering "
                      "between them.  Submit one at a time; a scheduler is "

@@ -705,7 +705,7 @@ def test_cli_submit_dry_run_lists_commands(tmp_path):
     gets exactly one.  Naming the point is how you say which."""
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "bench", "G1K1C4", "--bundle",
+    r = runner.invoke(grp, ["launch", "bench", "G1K1C4", "--bundle",
                             str(tmp_path), "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
     assert "planned" in r.output and "sbatch" in r.output
@@ -713,7 +713,7 @@ def test_cli_submit_dry_run_lists_commands(tmp_path):
 
 
 def test_submit_accepts_exactly_these_options(tmp_path):
-    """`jobset submit` takes a kind, a stage, a trial and four options --
+    """`jobset launch` takes a kind, a stage, a trial and four options --
     no more.  TRIAL names one benchmark point (§ 2.3.2, decided
     2026-08-12); `run` refuses it.
 
@@ -734,7 +734,7 @@ def test_cli_submit_of_a_whole_sweep_groups_it_by_shelf(tmp_path):
     named by its shelf token."""
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(tmp_path),
+    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path),
                             "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
     plans = [l for l in r.output.splitlines() if "WOULD run" in l]
@@ -757,7 +757,7 @@ def test_cli_submit_refuses_when_no_mode_is_set_anywhere(tmp_path, monkeypatch):
     monkeypatch.setattr(rc, "get_execution", lambda *a, **k: {})
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(tmp_path)])
+    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path)])
     assert r.exit_code != 0
     assert "execution.mode" in r.output
 
@@ -782,7 +782,7 @@ def test_direct_launch_carries_the_launch_door_claim(tmp_path, monkeypatch):
     prep_jobset(js, tmp_path, emit_sbatch=False)
     monkeypatch.setattr(sub.subprocess, "Popen", fake_popen)
     sub.submit_jobset(js, tmp_path, mode="direct", only=js.jobs[0].name)
-    assert seen["env"]["MB_LAUNCHED_BY"] == "jobset-submit"
+    assert seen["env"]["MB_LAUNCHED_BY"] == "jobset-launch"
 
 
 def test_sbatch_command_carries_the_claim_explicitly(tmp_path):
@@ -797,7 +797,7 @@ def test_sbatch_command_carries_the_claim_explicitly(tmp_path):
                             only=js.jobs[0].name)
     cmd = results[0].command
     assert "--export" in cmd
-    assert cmd[cmd.index("--export") + 1] == "ALL,MB_LAUNCHED_BY=jobset-submit"
+    assert cmd[cmd.index("--export") + 1] == "ALL,MB_LAUNCHED_BY=jobset-launch"
 
 
 def test_cli_submit_falls_back_to_the_configs_mode(tmp_path, monkeypatch):
@@ -808,7 +808,7 @@ def test_cli_submit_falls_back_to_the_configs_mode(tmp_path, monkeypatch):
     monkeypatch.setattr(rc, "get_execution", lambda *a, **k: {"mode": "submit"})
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(tmp_path),
+    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path),
                             "--dry-run"])
     assert r.exit_code == 0, r.output
     assert "bench-group" in r.output      # the grouped plan proves mode=submit
@@ -827,7 +827,7 @@ def test_cli_submit_surfaces_a_broken_config_as_its_own_error(
     monkeypatch.setattr(rc, "get_execution", boom)
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(tmp_path)])
+    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path)])
     assert r.exit_code != 0
     assert "could not be resolved" in r.output
     assert "must be 'direct' or 'submit'" in r.output
@@ -1431,7 +1431,7 @@ def test_a_ladder_refuses_to_act_on_all_of_itself(tmp_path):
         tmp_path / "job-set.json")
     runner, grp = _runner()
 
-    r = runner.invoke(grp, ["submit", "run", "--bundle", str(tmp_path),
+    r = runner.invoke(grp, ["launch", "run", "--bundle", str(tmp_path),
                             "--mode", "direct", "--dry-run"])
     assert r.exit_code != 0
     assert "acts on ONE stage" in r.output
@@ -2778,7 +2778,7 @@ def test_submit_honours_the_bundles_own_execution_block(tmp_path,
     # no --mode: the BUNDLE's direct serves -- direct runs the set, and
     # with nothing prepped that is a missing-wrapper refusal (proof the
     # direct path was taken, not the submit path's scheduler error)
-    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(bundle),
+    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
                             "--dry-run"])
     assert r.exit_code == 0, r.output
     assert "WOULD run" in r.output and "bash" in r.output
@@ -2821,7 +2821,7 @@ def test_submit_defaults_the_domain_from_the_bundles_execution_block(
     # (`execution.domain`) -- the preference half of `configuration.md` § 5 M-1.
     _write_domains(bundle, [("fast", "htc", "express", "0-04:00:00")])
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(bundle),
+    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
                             "--dry-run"])
     assert r.exit_code == 0, r.output
     assert "-p htc" in r.output and "-q express" in r.output
@@ -2855,13 +2855,13 @@ def test_an_explicit_direct_mode_survives_a_configured_domain(
     # (`execution.domain`) -- the preference half of `configuration.md` § 5 M-1.
     _write_domains(bundle, [("fast", "htc", "express", "0-04:00:00")])
     runner, grp = _runner()
-    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(bundle),
+    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
                             "--mode", "direct", "--dry-run"])
     assert r.exit_code == 0, r.output
     assert "WOULD run" in r.output and "bash" in r.output
     assert "domain is a SLURM-submit concept" not in r.output
     # the stated contradiction stays an error
-    r = runner.invoke(grp, ["submit", "bench", "--bundle", str(bundle),
+    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
                             "--mode", "direct", "--domain", "fast",
                             "--dry-run"])
     assert r.exit_code != 0

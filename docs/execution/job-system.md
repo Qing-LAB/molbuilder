@@ -95,7 +95,7 @@ which copies coarse's relaxed coordinates in — and submit that. You check
 > domains, and the whole benchmark workflow — works today from a terminal.
 > The web's half is the description (the Task setup tab writes `task.json` +
 > the template — [`web/task-setup.md`](?doc=web/task-setup.md)) and the
-> Results tab; `prep` and `submit` stay on the terminal **by design** (*the
+> Results tab; `prep` and `launch` stay on the terminal **by design** (*the
 > browser describes and observes; the terminal acts*). What the web still
 > lacks is a plan view and a per-stage status roll-up — § 8.
 
@@ -126,7 +126,7 @@ Six decisions shape everything below. Understanding them makes the rest obvious.
 
 **1. Describe work as data; keep the engine out of it.** A `JobSet` is a plain
 data object (a JSON file), not code. Producers turn engine configs *into* a
-`JobSet`; the orchestration verbs (`prep`/`plan`/`submit`/`status`) operate on
+`JobSet`; the orchestration verbs (`prep`/`plan`/`launch`/`status`) operate on
 the `JobSet` **without knowing or caring which engine it targets**. This is why
 one small set of verbs can drive SIESTA ladders and benchmark sweeps alike, and
 why adding a new engine later means writing one new *producer*, not a new
@@ -168,7 +168,7 @@ neither waits for the other.
 judgement about stage 1's result, and nothing in the data can make it. A stage
 is a long job; one that continues by itself can spend a week refining a geometry
 you would have rejected in a minute. So the order lives where the judgement
-lives — one `prep` and one `submit` at a time.
+lives — one `prep` and one `launch` at a time.
 
 **What this costs, stated plainly.** A branching graph (a "diamond", for a
 two-electrode device) has no representation. If one is ever needed it comes back
@@ -636,14 +636,14 @@ heading named `bench/to_jobset.py::sweep_to_jobset` as the builder until
 
 **One verb on the host** (where you design the calculation) and **five on the
 target** (where it runs). They mirror the design: the host step writes files and
-nothing else, and scheduler contact happens only at `submit`.
+nothing else, and scheduler contact happens only at `launch`.
 
 | where | verb | what it does |
 |---|---|---|
 | **host** | `describe` | write the portable description — § 5.1 |
 | target | `prep` | resolve this machine, render the deck and wrapper, build the run directory |
 | target | `plan` | print the jobs and their resources; change nothing |
-| target | `submit` | start **one** job — `--mode direct` or `--mode submit` |
+| target | `launch` | start **one** job — `--mode direct` or `--mode submit` |
 | target | `summarize` | read a benchmark's trials into a verdict |
 | target | `status` | roll up where the calculation has got to |
 
@@ -823,7 +823,7 @@ over different parameters (`project-layout.md § 2.3.1a`).
 > | | `run` | `bench` | no kind |
 > |---|:--:|:--:|:--:|
 > | `prep` | ✅ `prep run <stage>` — the stage is **required** ([`engines/stages.md`](?doc=engines/stages.md) § 6.5); with no stage it lists the ladder and refuses | ✅ **LANDED 2026-08-12** (step 6) — `prep bench <stage>`: probe the machine, enumerate the grid, render the trials into the stage's `bench/` | — the kind is required |
-> | `submit` | ✅ | ✅ **LANDED 2026-08-12** (step 6) — `submit bench <stage> [<trial>]`: the whole sweep as one grouped job per resource shelf (2026-08-21, `generator.md § 4.3a`); a named trial submits alone | — |
+> | `launch` | ✅ | ✅ **LANDED 2026-08-12** (step 6) — `submit bench <stage> [<trial>]`: the whole sweep as one grouped job per resource shelf (2026-08-21, `generator.md § 4.3a`); a named trial submits alone | — |
 > | `summarize` | — refuses: a run's outputs *are* the results, read by `status` and the Watch tab | ✅ **LANDED 2026-08-12** (step 6 u4) — discovery keyed by `job-set.json`, results through the ordinary artifacts, async | — |
 > | `describe` | — | — | ✅ **LANDED 2026-08-11** (plan step 2). Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once |
 > | `status` | — | — | ✅ whole calculation · ✅ per-stage (`status <stage>`) |
@@ -847,7 +847,7 @@ over different parameters (`project-layout.md § 2.3.1a`).
 >
 > **`status <stage>` landed 2026-08-10**, and with it the last inconsistency in
 > this grammar: `plan` and `status` took the *folder* as their positional while
-> `prep` and `submit` took `--bundle`, so one word meant a path on two verbs and
+> `prep` and `launch` took `--bundle`, so one word meant a path on two verbs and
 > a stage on the other two. `jobset status tight` answered *"Directory 'tight'
 > does not exist"* — a complaint about a path the user never meant to type. All
 > four verbs now take `--bundle`, and the positional is always a stage.
@@ -928,7 +928,7 @@ other.
 
 > `--mode` falls back to `execution.mode` **(C11, landed 2026-08-11)**: flag,
 > then config — and the chain ends there. Unset in both is a **refusal**, not
-> a derivation from the detected scheduler: deciding `submit` from detection
+> a derivation from the detected scheduler: deciding `launch` from detection
 > would gate submission on where you happen to be standing, which
 > `running-a-job.md` § 5.4 forbids (*the mode, not the detected scheduler,
 > gates submission*).
@@ -938,7 +938,7 @@ other.
 > **retired in the 2026-07 migration** (`audit-2026-07-28-document-migration.md`
 > maps it to `execution/running-a-job.md`, whose section numbers did not
 > survive). So `execution` is a config section the code enforces and no live
-> document fully defines. `submit` was wired to it 2026-08-11 (C11, the note
+> document fully defines. `launch` was wired to it 2026-08-11 (C11, the note
 > above); writing the key's own contract is the half that remains — today
 > `running-a-job.md` § 5.4 is its nearest live statement.
 
@@ -960,7 +960,7 @@ flowchart TD
     L -->|"not good — retry differently"| PR
 ```
 
-**`prep` prints what it resolved, which is what makes `submit` a plain yes.** It
+**`prep` prints what it resolved, which is what makes `launch` a plain yes.** It
 is the only place the measured numbers, the chosen starting geometry and the
 rendered deck appear together — exactly where a person should be looking before
 committing cluster time.
@@ -971,21 +971,21 @@ A two-stage relaxation on a **workstation**, `shape: hierarchical`:
 
 ```bash
 molbuilder jobset prep   run coarse                  # 01_coarse/run-0, nothing carried in
-molbuilder jobset submit run coarse --mode direct    # runs here, locally
+molbuilder jobset launch run coarse --mode direct    # runs here, locally
 molbuilder jobset status                             # look before deciding
 
 molbuilder jobset prep   run tight --from 01_coarse/run-0
 #   reading from 01_coarse/run-0  (finished, converged)
 #   02_tight/<label>_02_tight.fdf   rendered   BlockSize 32   (500 orbitals / 8 ranks)
 #   02_tight/run-0/                 ready      copied in: <label>.XV  <label>.DM
-molbuilder jobset submit run tight --mode direct
+molbuilder jobset launch run tight --mode direct
 ```
 
 The same calculation on a **cluster** — same words, different channel:
 
 ```bash
-molbuilder jobset submit run tight --mode submit --domain public --dry-run
-molbuilder jobset submit run tight --mode submit --domain public
+molbuilder jobset launch run tight --mode submit --domain public --dry-run
+molbuilder jobset launch run tight --mode submit --domain public
 ```
 
 Redoing a stage differently — a new attempt, and `run-0` is untouched:
@@ -1041,9 +1041,9 @@ nothing"* (`checkpointing.md` S3).
 - **`plan`** prints the jobs, each one's resources, and what each would take
   from a run it is continued from. It changes nothing — the "look before you
   leap" step.
-- **`submit`** names **one** stage and takes a `--mode` (falling back to
+- **`launch`** names **one** stage and takes a `--mode` (falling back to
   `execution.mode` — C11, 2026-08-11; unset in both is a refusal, § 5.3):
-  - **`submit`** hands that one job to SLURM. One `sbatch`, one invocation, no
+  - **`launch`** hands that one job to SLURM. One `sbatch`, one invocation, no
     dependency flag, nothing queued behind it.
   - **`direct`** runs that one job **locally** (`bash …run.sh`) and waits for
     it. This is the workstation path.
@@ -1063,13 +1063,13 @@ sequenceDiagram
     participant U as you
     participant M as molbuilder
     participant S as the scheduler
-    U->>M: jobset submit run coarse --mode submit
+    U->>M: jobset launch run coarse --mode submit
     M->>S: sbatch … 01_coarse
     S-->>U: Submitted job 4021
     Note over U: coarse runs. YOU LOOK AT IT.<br/>Did it converge? Is the geometry sane?
     U->>M: jobset prep run tight --from 01_coarse/run-0
     Note over M: copies coarse's .XV / .DM into 02_tight/run-0
-    U->>M: jobset submit run tight --mode submit
+    U->>M: jobset launch run tight --mode submit
     M->>S: sbatch … 02_tight
     S-->>U: Submitted job 4022
 ```
@@ -1123,7 +1123,7 @@ system** adds is submission and routing:
 - **Routing domains.** Instead of hard-coding a partition, you name a **domain**
   (`--domain public`, or `execution.domain` in config). A domain is a friendly
   name for a `(partition, qos)` pair (with an optional separate GPU partition);
-  `submit` resolves it and refuses an unknown name with the list of configured
+  `launch` resolves it and refuses an unknown name with the list of configured
   ones. Partition and qos are **required** for a SLURM site — the framework
   refuses to emit a header it knows will be rejected (design decision #4).
 - **Job names read well.** A job's `-J` is `<calculation>/<job>` —
@@ -1157,7 +1157,7 @@ parameters are a set, `project-layout.md` § 2.3.1a)*:
 flowchart LR
     D["jobset describe<br/>(host)<br/>the portable calculation"]
     P["jobset prep bench &lt;stage&gt;<br/>(target)<br/>probe → environment.json<br/>+ the grid as trial decks in<br/>&lt;NN&gt;_&lt;stage&gt;/bench/"]
-    R["jobset submit bench &lt;stage&gt;<br/>one grouped job per resource shelf<br/>(a named trial submits alone)"]
+    R["jobset launch bench &lt;stage&gt;<br/>one grouped job per resource shelf<br/>(a named trial submits alone)"]
     S["jobset summarize bench &lt;stage&gt;<br/>trials → bench/bench-result.json<br/>(winner + mechanism + sizing)"]
     PR["jobset prep run &lt;stage&gt;<br/>APPLIES run-config.toml — your edit is the answer"]
     D --> P --> R --> S --> PR
@@ -1262,9 +1262,9 @@ what that rule removes.)*
 > **The gap this box used to record is closed** *(2026-08-12)*. It read: *"the
 > benchmark already produces a `JobSet` (`bench prep` writes `job-set.json`),
 > but it still executes through its original, proven inline-shell sweep rather
-> than `jobset submit`; retiring the inline path once it is cluster-validated
+> than `jobset launch`; retiring the inline path once it is cluster-validated
 > is the open follow-up."* The fold retired the inline path — and `bench prep`
-> itself — in step 6 u5: a trial now executes only through `jobset submit
+> itself — in step 6 u5: a trial now executes only through `jobset launch
 > bench` (since 2026-08-21 as a rider of its resource shelf's grouped job,
 > or alone when named), with its launch recorded in the trial's
 > own `run.json`.
@@ -1277,7 +1277,7 @@ what that rule removes.)*
 
 The `JobSet` model and persistence; the description-to-plan derivation at
 `prep` (§ 4 — the `ParameterSet`, one deck and wrapper per element); all six
-verbs (`describe` / `prep` / `plan` / `submit` / `summarize` / `status`) in
+verbs (`describe` / `prep` / `plan` / `launch` / `summarize` / `status`) in
 both `submit` and `direct` modes; SLURM submission with routing domains, **one
 job per invocation**; and the full benchmark workflow through the same loop
 (§ 7). Saving and re-entering a calculation's states is `molbuilder checkpoint`

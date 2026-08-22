@@ -196,7 +196,7 @@ Two facts keep the picture honest:
 - **The web's describe half is built; the act half stays on the terminal by
   design.** The parameter tabs write no deck at all — the old deck-rendering
   routes were deleted (2026-08-18) — they hand over to Task setup, which
-  writes the description; `prep`/`submit` run where the machine is. What the
+  writes the description; `prep`/`launch` run where the machine is. What the
   web still lacks is the observe half beyond the Results tab: a plan view
   and a per-stage status roll-up (`roadmap.md` workstream 1).
 - **Both engines' ladders are N decks, N jobs.** A PySCF ladder is declared
@@ -281,7 +281,7 @@ thing at different sizes**, so there is one way in and one vocabulary:
 ```
 describe it   →  molbuilder jobset describe <structure> <dir> --shape flat|hierarchical [--stage-strategy …]
 set it up     →  molbuilder jobset prep     run <stage> [--from <run>]
-run it        →  molbuilder jobset submit   run <stage> [--mode direct|submit]
+run it        →  molbuilder jobset launch   run <stage> [--mode direct|submit]
 look at it    →  molbuilder jobset status
 ```
 

@@ -101,7 +101,7 @@ def _pyscf_wrapper(tmp_path, monkeypatch):
 
 def test_the_wrapper_accepts_the_flags_submit_actually_sends(
         tmp_path, monkeypatch):
-    """`jobset submit` hands EVERY run script `-np N -omp M`
+    """`jobset launch` hands EVERY run script `-np N -omp M`
     (submit._run_sh_args).  The PySCF parser used to reject both as
     unknown and exit 1, so `submit --mode direct` on a PySCF job with
     resources set died before Python started -- on the workstation

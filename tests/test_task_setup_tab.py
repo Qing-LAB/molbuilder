@@ -765,7 +765,7 @@ def test_the_tab_hands_you_the_next_command(web_client):
     assert 'id="ts-next-card"' in body and 'id="ts-next"' in body
     src = VIEWER.read_text()
     assert "function renderNext" in src
-    assert "jobset.sh prep run" in src and "jobset.sh submit run" in src
+    assert "jobset.sh prep run" in src and "jobset.sh launch run" in src
 
 
 def test_the_command_names_its_stage_and_what_it_continues_from():
@@ -1786,7 +1786,7 @@ def test_the_next_steps_teach_the_bench_lane_and_true_ordinals():
     src = VIEWER.read_text()
     body = src.split("function renderNext", 1)[1].split(
         "what has already run", 1)[0]
-    for needle in ("./jobset.sh prep bench", "./jobset.sh submit bench",
+    for needle in ("./jobset.sh prep bench", "./jobset.sh launch bench",
                    "one job per resource shelf",
                    "summarize bench", "run-config.toml",
                    "prev.full + 1", "task.bench"):

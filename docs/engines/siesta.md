@@ -554,7 +554,7 @@ verb names its stage, on a one-rung ladder exactly as on three
   earlier one's geometry with nobody instructing it
   ([`run-identity.md § 1`](?doc=execution/run-identity.md)). How each deck is
   then wrapped, sized and launched is `execution/`'s: `molbuilder jobset prep`
-  renders the wrapper against the target machine, and `jobset submit` starts one
+  renders the wrapper against the target machine, and `jobset launch` starts one
   stage ([`job-system.md § 5.3`](?doc=execution/job-system.md)).
 - **Form widget.** There is none, and its absence is the fix. The form-schema
   generator answers *what settings exist and how is each drawn*; when

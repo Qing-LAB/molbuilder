@@ -224,7 +224,7 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         # policy), and the CLI flag wins over site defaults, so the claim
         # reaches the job's env wherever it runs (job-contracts.md § 2.6,
         # the Launch-door gate row).
-        cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-submit"]
+        cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch"]
         cmd.append(sbatch_name)          # relative; we cd into the job dir
 
         if dry_run:
@@ -240,7 +240,7 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         cp = subprocess.run(cmd, cwd=str(job_dir),
                             capture_output=True, text=True,
                             env={**os.environ,
-                                 "MB_LAUNCHED_BY": "jobset-submit"})
+                                 "MB_LAUNCHED_BY": "jobset-launch"})
         if cp.returncode != 0:
             results.append(JobResult(job.name, cmd, "failed",
                                      returncode=cp.returncode))
@@ -431,7 +431,7 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
         # launched through this verb never meets the gate's prompt.
         proc = subprocess.Popen(cmd, cwd=str(job_dir),
                                 env={**os.environ,
-                                     "MB_LAUNCHED_BY": "jobset-submit"})
+                                     "MB_LAUNCHED_BY": "jobset-launch"})
         # AT START, not after: run.json answers "was this launched?", and a
         # record written on completion left a running attempt reading as
         # never launched for its whole runtime.  A failed START still
@@ -522,7 +522,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     applies to both sides through :func:`_resolve_domain` (a GPU side
     prefers the domain's ``gpu_partition``); ``only`` (``"cpu"``/``"gpu"``)
     submits one side -- and a side this machine cannot launch simply stays
-    pending for a later `submit bench`, which is the cross-cluster lane.
+    pending for a later `launch bench``, which is the cross-cluster lane.
 
     The per-group pieces:
 
@@ -598,7 +598,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
 def gpu_domain_row(routing) -> Optional[dict]:
     """THE row that speaks for the GPU nodes -- **one selector, three
     consumers** (2026-08-21 review): `prep`'s device inventory, `prep`'s
-    per-family core cap, and `submit`'s side routing all read THIS row,
+    per-family core cap, and `launch`'s side routing all read THIS row,
     so the cap can never be taken from one domain while the group is
     routed to another.  The rule is the menu's own: cheapest ceiling
     first, the first gpu-capable row is the recommendation."""
@@ -805,7 +805,7 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     # gets), and the CLI flags carry the envelope as overrides, exactly
     # the flags-win-over-header rule _sbatch_resource_flags documents.
     cmd += _sbatch_resource_flags(envelope)
-    cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-submit"]
+    cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch"]
     cmd.append(f"{name}.sbatch")
 
     if dry_run:
@@ -841,7 +841,7 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     cp = subprocess.run(cmd, cwd=str(container),
                         capture_output=True, text=True,
                         env={**os.environ,
-                             "MB_LAUNCHED_BY": "jobset-submit"})
+                             "MB_LAUNCHED_BY": "jobset-launch"})
     if cp.returncode != 0:
         hint = ""
         if gpu_side and not domain:
@@ -933,7 +933,7 @@ def _refuse_batch_submission(jobset: JobSet, base_dir: Path, *,
             "same cores and interconnect, so the sweep measures contention "
             "rather than scaling.\n"
             "  Name the one you mean:\n"
-            f"    molbuilder jobset submit "
+            f"    molbuilder jobset launch "
             f"{'bench <stage> <trial>' if jobset.kind == 'sweep' else 'run <stage>'}"
             " --mode submit\n"
             "  `--mode direct` is not affected: it runs them here, in order, "

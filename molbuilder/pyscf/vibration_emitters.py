@@ -110,7 +110,7 @@ def _emit_header_docstring(struct: Structure,
     out.append(f"Job name  : {cfg.job_name}")
     out.append("")
     out.append("Run it the way it was prepared (the described route):")
-    out.append("    ./jobset.sh submit <stage>     # from the calculation folder;")
+    out.append("    ./jobset.sh launch <stage>     # from the calculation folder;")
     out.append("                                   # the wrapper beside this deck")
     out.append("                                   # activates the env and logs the run")
     out.append("A bare `python <this file>` also works from this directory for a")

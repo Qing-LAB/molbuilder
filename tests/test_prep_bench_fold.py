@@ -198,7 +198,7 @@ def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
     assert "trial dir(s) for stage 'coarse'" in r.output
     # the hint teaches the REAL grammar + the launcher (E-J2 fix,
     # 2026-08-21): grouped submission, then summarize -> run-config.
-    assert "./jobset.sh submit bench" in r.output
+    assert "./jobset.sh launch bench" in r.output
     # the exact hint phrase -- "per side" alone false-matched the vacuum
     # warning's "8 Å per side" (found green while the hint was wrong,
     # review 2026-08-21)
@@ -322,7 +322,7 @@ def test_prep_run_applies_the_proposal_file_but_flags_win(calc):
 
 
 def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
-    """`submit bench <stage>` under submit mode: one grouped job per
+    """`launch bench <stage>` under submit mode: one grouped job per
     RESOURCE SHELF (user 2026-08-21 -- an exact-fit allocation per group,
     so a narrow trial never idles a wide envelope; until then one job per
     SIDE, § 2.3.2 user 2026-08-20).  The probed grid's every point has its
@@ -336,10 +336,10 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     js = _prep_bench(calc)
     trial = js["jobs"][0]["name"]
     runner = CliRunner()
-    r = runner.invoke(jobset_group, ["submit", "bench", "--bundle", str(calc),
+    r = runner.invoke(jobset_group, ["launch", "bench", "--bundle", str(calc),
                                      "--mode", "submit", "--dry-run"])
     assert r.exit_code != 0 and "name it" in r.output
-    r = runner.invoke(jobset_group, ["submit", "bench", "coarse",
+    r = runner.invoke(jobset_group, ["launch", "bench", "coarse",
                                      "--bundle", str(calc),
                                      "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
@@ -363,13 +363,13 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     )
     assert r.output.count("rides the group") == len(js["jobs"])
     assert "next unlaunched trial" not in r.output
-    r = runner.invoke(jobset_group, ["submit", "bench", "coarse", trial,
+    r = runner.invoke(jobset_group, ["launch", "bench", "coarse", trial,
                                      "--bundle", str(calc),
                                      "--mode", "submit", "--dry-run"])
     assert r.exit_code == 0, r.output
     assert r.output.count("WOULD run") == 1
     assert "bench-group" not in r.output
-    r = runner.invoke(jobset_group, ["submit", "run", "coarse", trial,
+    r = runner.invoke(jobset_group, ["launch", "run", "coarse", trial,
                                      "--bundle", str(calc),
                                      "--mode", "submit", "--dry-run"])
     assert r.exit_code != 0 and "TRIAL names a benchmark point" in r.output
@@ -538,7 +538,7 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
                    ["prep", "bench", "coarse", "--bundle", str(calc),
                     "--np", "8", "--cpus-per-task", "8", "--no-sbatch"])
     assert res.exit_code == 0, res.output
-    res = r.invoke(jobset_group, ["submit", "bench", "coarse",
+    res = r.invoke(jobset_group, ["launch", "bench", "coarse",
                                   "--bundle", str(calc),
                                   "--mode", "submit", "--dry-run"])
     assert res.exit_code == 0, res.output
@@ -549,8 +549,8 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
              (calc / LEDGER_FILE).read_text().splitlines()]
     got = [(e["verb"], e["decision"]) for e in lines]
     assert got == [("prep", "prepped"),
-                   ("submit", "bench-grouped"),
-                   ("submit", "launched"),
+                   ("launch", "bench-grouped"),
+                   ("launch", "launched"),
                    ("summarize", "verdict-written")]
     prep = lines[0]
     assert prep["kind"] == "bench" and prep["stage"] == "coarse"
@@ -880,7 +880,7 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
     assert (rung / "run-0").is_dir()          # its attempt
     assert not (dest / "run-0").exists()      # never at the root
     assert not (dest / "bench-JOB").exists()  # nor named for a benchmark
-    assert "submit run coarse --mode" in res.output
+    assert "launch run coarse --mode" in res.output
     # Every link in the attempt RESOLVES.  The 2026-08-12 redo found the
     # first version of this test asserting existence only, over links that
     # all dangled (prepare_attempt hopped a hardcoded "../.." over a
@@ -893,7 +893,7 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
             f"{link.name} -> {os.readlink(link)} dangles"
     js = json.loads((dest / "job-set.json").read_text())
     assert js["kind"] == "ladder" and len(js["jobs"]) == 1
-    res = r.invoke(jobset_group, ["submit", "run", "coarse", "--bundle",
+    res = r.invoke(jobset_group, ["launch", "run", "coarse", "--bundle",
                                   str(dest), "--mode", "direct", "--dry-run"])
     assert res.exit_code == 0, res.output
     assert res.output.count("WOULD run") == 1
@@ -902,7 +902,7 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
     # "run prep_jobset first" refusal), and run.json is written at start,
     # so the record proves the launch began no matter how the engine's
     # process exits in this environment.
-    res = r.invoke(jobset_group, ["submit", "run", "coarse", "--bundle",
+    res = r.invoke(jobset_group, ["launch", "run", "coarse", "--bundle",
                                   str(dest), "--mode", "direct"])
     assert "run prep_jobset first" not in res.output
     assert (rung / "run-0" / "run.json").is_file(), res.output
@@ -1076,7 +1076,7 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
     # unnamed bench submits one grouped job per resource shelf -- the
     # old one-per-invocation rule survives as one LAUNCH ACT per shelf.
     t0, t1 = js["jobs"][0]["name"], js["jobs"][1]["name"]
-    res = r.invoke(jobset_group, ["submit", "bench", "coarse", t1, "--bundle",
+    res = r.invoke(jobset_group, ["launch", "bench", "coarse", t1, "--bundle",
                                   str(dest), "--mode", "direct", "--dry-run"])
     assert res.exit_code == 0, res.output
     would = [l for l in res.output.splitlines() if "WOULD run" in l]
@@ -1201,7 +1201,7 @@ def test_a_flat_one_stage_calculation_preps_to_completion(tmp_path):
                                   str(dest), "--no-sbatch"])
     assert res.exit_code == 0, res.output
     assert "no attempt to open" in res.output
-    assert "submit run" in res.output
+    assert "launch run" in res.output
     assert not (dest / "run-0").exists()
     # an attempt ASK on flat is still the one refusal, with its story
     res = r.invoke(jobset_group, ["prep", "run", "coarse", "--bundle",
@@ -1286,7 +1286,7 @@ def test_a_stage_without_an_open_attempt_refuses_to_launch(calc):
         emit_sbatch=False)             # library prep: NO attempt opened
     assert not (calc / "01_coarse" / "run-0").exists()
     res = CliRunner().invoke(jobset_group,
-                             ["submit", "run", "coarse",
+                             ["launch", "run", "coarse",
                               "--bundle", str(calc),
                               "--mode", "direct"])
     assert res.exit_code != 0
@@ -1309,7 +1309,7 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
     write_run_launch(calc / "01_coarse" / "bench" / f"bench-{first}",
                      mode="direct", command=["bash", "x"])
     res = CliRunner().invoke(jobset_group,
-                             ["submit", "bench", "coarse",
+                             ["launch", "bench", "coarse",
                               "--bundle", str(calc),
                               "--mode", "direct", "--dry-run"])
     assert res.exit_code == 0, res.output
@@ -1329,13 +1329,13 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
     write_run_launch(calc / "01_coarse" / "bench" / f"bench-{first}",
                      mode="submit", command=["sbatch", "x"], job_id="42")
     r = CliRunner()
-    res = r.invoke(jobset_group, ["submit", "bench", "coarse", first,
+    res = r.invoke(jobset_group, ["launch", "bench", "coarse", first,
                                   "--bundle", str(calc),
                                   "--mode", "submit", "--dry-run"])
     assert res.exit_code != 0
     assert "already launched" in res.output
     assert "summarize" in res.output
-    res = r.invoke(jobset_group, ["submit", "bench", "coarse",
+    res = r.invoke(jobset_group, ["launch", "bench", "coarse",
                                   "--bundle", str(calc),
                                   "--mode", "submit", "--dry-run"])
     assert res.exit_code == 0, res.output

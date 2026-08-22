@@ -11,7 +11,7 @@ engine contract).
 
 > **⚠ Migration status (2026-08-19, user).** This workflow is
 > **pre-framework**: it has NOT migrated onto the described route
-> (describe → `prep` → `submit`) that structure optimization now runs end to
+> (describe → `prep` → `launch`) that structure optimization now runs end to
 > end. It is deliberately untouched until that loop is fully verified — the
 > statement of record is the migration box at the top of
 > [`roadmap.md`](?doc=roadmap.md). Two facts, kept distinct: transport is

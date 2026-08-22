@@ -2821,7 +2821,7 @@ def render_run_wrapper(script_path: Path, *,
             f'    case "$1" in\n'
             f"        --dry-run|--dryrun)\n"
             f'            _dry_run=1; shift ;;\n'
-            # -omp / -np are what `jobset submit` hands EVERY .run.sh
+            # -omp / -np are what `jobset launch` hands EVERY .run.sh
             # (submit._run_sh_args).  This parser used to reject them as
             # unknown and exit 1, so `submit --mode direct` on a PySCF
             # job with resources set died before Python started -- on the
@@ -2883,7 +2883,7 @@ def render_run_wrapper(script_path: Path, *,
             f"                   node's physical cores.\n"
             f"  -np N            accepted and IGNORED -- PySCF is\n"
             f"                   OpenMP-only.  Present because\n"
-            f"                   `jobset submit` passes it to every\n"
+            f"                   `jobset launch` passes it to every\n"
             f"                   run script; N>1 prints a note.\n"
             f"  --dry-run        resolve + log the launch command, then\n"
             f"                   exit WITHOUT running PySCF.\n"
@@ -3559,8 +3559,8 @@ def render_run_wrapper(script_path: Path, *,
         f"# nothing ran.\n"
         f'exec > >(tee -a "$_runwrap_log") 2> >(tee -a "$_runwrap_log" >&2)\n'
         f"\n"
-        f"# --- Launch-door gate (one door: jobset submit) ----------\n"
-        f"# `molbuilder jobset submit` sets MB_LAUNCHED_BY when it launches\n"
+        f"# --- Launch-door gate (one door: jobset launch) ----------\n"
+        f"# `molbuilder jobset launch` sets MB_LAUNCHED_BY when it launches\n"
         f"# this script (direct: child env; sbatch: --export on the command\n"
         f"# line).  A bare invocation is usually an accident: it skips the\n"
         f"# launch bookkeeping, the deck/launch agreement check and the\n"
@@ -3570,7 +3570,7 @@ def render_run_wrapper(script_path: Path, *,
         f"# launches nothing.\n"
         f"if [ -z \"${{MB_LAUNCHED_BY:-}}\" ] && [ \"$_mb_help\" = \"0\" ]; then\n"
         f"  echo \"WARNING: {basename}.run.sh was called directly, not via\" >&2\n"
-        f"  echo \"  'molbuilder jobset submit'.  Direct calls skip launch\" >&2\n"
+        f"  echo \"  'molbuilder jobset launch'.  Direct calls skip launch\" >&2\n"
         f"  echo \"  bookkeeping and the deck/launch agreement check.\" >&2\n"
         f"  if [ -t 0 ]; then\n"
         f"    printf \"  Proceed anyway? [y/N] \" >&2\n"
@@ -3591,7 +3591,7 @@ def render_run_wrapper(script_path: Path, *,
         f"    esac\n"
         f"  else\n"
         f"    echo \"  Non-interactive shell: refusing.  Launch via\" >&2\n"
-        f"    echo \"  'molbuilder jobset submit', or override deliberately:\" >&2\n"
+        f"    echo \"  'molbuilder jobset launch', or override deliberately:\" >&2\n"
         f"    echo \"    MB_LAUNCHED_BY=manual bash {basename}.run.sh   # local\" >&2\n"
         f"    echo \"    sbatch --export=ALL,MB_LAUNCHED_BY=manual ...  # hand-sbatch\" >&2\n"
         f"    echo \"  (the sbatch form matters: a site or config with\" >&2\n"
@@ -3876,7 +3876,7 @@ def _render_sbatch_for(script_path: Path,
         # Refusing here read the wrong record.  On Sol it produced
         # "submit mode needs a scheduler and this machine has none
         # configured" directly under a diagnostic listing NINE probed
-        # domains -- and `submit` had already resolved the very
+        # domains -- and `launch` had already resolved the very
         # partition/qos this header wants, and was passing them to
         # `sbatch` as `-p`/`-q` on the same call (2026-08-21).
         #
@@ -4131,7 +4131,7 @@ def render_jobset_bootstrap() -> str:
 
 _JOBSET_SH = r'''#!/usr/bin/env bash
 # jobset.sh -- run any `jobset` verb ON THIS calculation, from anywhere:
-#   ./jobset.sh prep bench coarse | ./jobset.sh submit bench coarse
+#   ./jobset.sh prep bench coarse | ./jobset.sh launch bench coarse
 #
 # CONTRACT: given a package manager (conda / mamba / micromamba) reachable
 # -- after the baked preamble, if there is one -- this script runs

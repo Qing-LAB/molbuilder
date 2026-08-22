@@ -38,7 +38,7 @@ deferred with rationale, and named architecture seams.)
 >
 > **The framework is being established and verified on ONE task first:
 > structure optimization**, SIESTA and PySCF. That loop — describe in the
-> browser (parameter tab → Task setup), `prep` and `submit` on the machine,
+> browser (parameter tab → Task setup), `prep` and `launch` on the machine,
 > observe on the Results tab — ran **end to end on 2026-08-19**: real water
 > calculations, both engines, both folder shapes, warm restart and the
 > launch-door gate exercised. That is the D7 gate's loop, proven on a
@@ -288,7 +288,7 @@ the full loop end-to-end: produce → prep → submit → monitor. This gate exi
 because the other engines' producers are cheap to add but expensive to debug
 remotely; we validate the pattern once before broadening. **Half passed
 2026-08-19**: the loop ran end to end on a workstation — browser describe →
-`prep --pipeline-log` → `submit` → Results — for **both** engines (water,
+`prep --pipeline-log` → `launch` → Results — for **both** engines (water,
 both shapes, warm restart, the launch-door gate). *(PySCF crossed the gate
 early because it shares the deck pipeline — the seam landed 2026-08-18 and
 the same E2E proved it.)* **What remains of D7 is the cluster half**: the
@@ -856,7 +856,7 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   which exist only because today's reader may answer `None`. **Not started.**
 - **✅ PySCF joins the engine seam — CLOSED 2026-08-18** (contract settled
   2026-08-17, user; execution decision — N decks, N jobs — 2026-08-18, user;
-  proven end to end by the 2026-08-19 E2E: `jobset prep`/`submit` ran a real
+  proven end to end by the 2026-08-19 E2E: `jobset prep`/`launch` ran a real
   PySCF relaxation). Stated in [`engines/stages.md`](?doc=engines/stages.md)
   § 1.1a (the ladder is declared once, in `task.json` — and since 2026-08-18
   executes as N decks and N jobs) and
@@ -914,7 +914,7 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   | 2 description | ✅ | — |
   | 3 plan | ✅ | **the migration LANDED** (2026-08-11, plan steps 3–4): `resolve()` runs at `prep`, on the target, and every element carries its own machine ask. The orphaned producer folded away 2026-08-12 (step 6) |
   | 4 layout | ✅ | — |
-  | 5 launch | ⚠ | `runwrap` **writes** a script and `submit` **starts** one; one floor holds both. Real, harmless, and splitting it costs more than it returns |
+  | 5 launch | ⚠ | `runwrap` **writes** a script and `launch` **starts** one; one floor holds both. Real, harmless, and splitting it costs more than it returns |
   | 6 observe | ⚠ | in the flat layout, one stage's verdict is still read from the whole folder |
   | 7 surfaces | ⚠ | the web DESCRIBES a staged calculation (Task setup, shipped) and observes runs (Results); a web plan view and a per-stage status roll-up remain |
   | — | `bench/` | ~~a second copy of floors 3–6 for sweeps~~ **folded 2026-08-12** (step 6 u1–u5): a sweep is `prep` with a longer step 2; the legacy `siesta-gpu` stack was deleted 2026-08-13 (user: no obsolete paths beside the verb that replaced them) |
@@ -926,7 +926,7 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
 
 - **Capability and allocation reach `prep`** — `project-layout.md § 2.3.1b`
   defines the two and rules M1–M6. Three are held today (M1 the machine is
-  resolved on the target; M5 `submit` only checks the deck and the launch
+  resolved on the target; M5 `launch` only checks the deck and the launch
   agree; M6 a workstation needs no config file). Three are not, and they are
   one change:
   - **M2a — capability is assembled twice and never reconciled.** Topology and
@@ -1001,7 +1001,7 @@ domain doc, not here.
   structure response carries them, and the data model surfaces them through
   `getUnitCellInfo()`; a Cell-page edit re-resolves via
   `/api/structure/resolve-cell`.
-- **JobSet CLI framework** — `plan` / `prep` / `submit` / `status` over a
+- **JobSet CLI framework** — `plan` / `prep` / `launch` / `status` over a
   bundle's `job-set.json`; both execution modes (local `bash`, SLURM
   submit — one job at a time); the SIESTA stage producer; checkpoints and
   re-entering a saved state.

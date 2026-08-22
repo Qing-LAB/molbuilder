@@ -51,7 +51,7 @@ Then, on the machine that will run it:
 ```bash
 molbuilder jobset prep run coarse      # resolves this machine, renders the
                                        # deck and wrapper, builds the attempt
-molbuilder jobset submit run coarse
+molbuilder jobset launch run coarse
 ```
 
 **There is no "run all stages" button, and that is deliberate.** A stage is a

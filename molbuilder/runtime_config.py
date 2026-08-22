@@ -1663,7 +1663,7 @@ def get_execution(
     ``mode`` is the source of truth for HOW a benchmark point is launched,
     decoupled from the DETECTED scheduler (which still drives topology
     detection): you can be *on* slurm yet launch ``direct``, or force
-    ``submit`` from an interactive shell.  A malformed ``mode`` raises.
+    ``launch`` from an interactive shell.  A malformed ``mode`` raises.
     """
     server_raw = _read_server_wide().get("execution") or {}
     project_raw: Dict[str, Any] = {}

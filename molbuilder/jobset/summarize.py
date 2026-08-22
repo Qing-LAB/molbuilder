@@ -707,7 +707,7 @@ def summary_text(res: BenchResult, out_path: Path, *,
         lines.append(f"    2. molbuilder jobset prep run {stage_word}"
                      f"     # applies the file to fields your flags "
                      f"do not state")
-        lines.append(f"    3. molbuilder jobset submit run {stage_word}"
+        lines.append(f"    3. molbuilder jobset launch run {stage_word}"
                      f" --mode submit|direct")
     return "\n".join(lines)
 

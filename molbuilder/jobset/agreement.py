@@ -87,7 +87,7 @@ def launch_agreement(job_dir, job) -> LaunchAgreement:
     failure was diagnosable at all. **Recording is not agreeing**: this is the
     comparison, and a person is owed its answer at the moment they are still
     deciding (`prep`) — not only at the moment they are committing cluster
-    time (`submit`).
+    time (`launch`).
     """
     deck = Path(job_dir) / os.path.basename(job.script)
     if not deck.is_file():
@@ -110,7 +110,7 @@ def launch_agreement(job_dir, job) -> LaunchAgreement:
 
 def disagreement_note(a: LaunchAgreement) -> str:
     """The ONE wording of why a mismatch matters and what to do — embedded
-    by the `prep` warning and the `submit` refusal alike, so the two
+    by the `prep` warning and the `launch` refusal alike, so the two
     surfaces cannot drift into explaining one fact two ways."""
     return (f"a deck derives values from the rank count -- BlockSize above "
             f"all -- so one rendered for a different launch is wrong for "
@@ -122,9 +122,9 @@ def disagreement_note(a: LaunchAgreement) -> str:
 
 class DeckLaunchMismatch(Exception):
     """The deck was rendered for one launch and is meeting another.
-    `submit` translates this into its own refusal (M5: the refusal is
+    `launch` translates this into its own refusal (M5: the refusal is
     submit's); anything else may catch it by name without importing
-    `submit` at all."""
+    `launch` at all."""
 
 
 def check_launch_matches_deck(job_dir, job) -> None:

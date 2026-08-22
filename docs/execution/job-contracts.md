@@ -520,7 +520,7 @@ extension:
 >
 > ⚠ **There is no `molbuilder run`** *(decided 2026-08-11, user)*. Everything
 > about running a job is `molbuilder jobset …` — `prep` builds the directory and
-> its wrapper, `submit` runs it (`--mode direct` locally, `--mode submit` on a
+> its wrapper, `launch` runs it (`--mode direct` locally, `--mode submit` on a
 > scheduler). `run` was the pre-job-system entry point and is **deleted, not
 > deprecated**: a second way in is a second way to lose your results.
 
@@ -541,12 +541,12 @@ wrapper contains these and nothing else:
 | block | what it is for |
 |---|---|
 | **Per-run log file** | where this invocation's log goes — emitted FIRST, before the gate, so even a refused launch leaves a record *(row order corrected 2026-08-13: it sat 8th while emitting first)* |
-| **Launch-door gate** | one launch door (`job-system.md` § 5.3): `submit` sets `MB_LAUNCHED_BY` (direct: child env; sbatch: `--export=ALL,MB_LAUNCHED_BY=jobset-submit`, robust to site export policy). Without it a terminal call warns and asks (a **yes is exported**, so the warm-retry re-exec keeps the answer; **EOF refuses** with the verdict line); a non-interactive call refuses with exit 2 and the fix; `-h`/`--help` is **scanned** before the gate (§ 5.5's verb — the gate steps aside; the usage text itself prints later, in the args loop) with no bootstrap run. `MB_LAUNCHED_BY=manual` is the deliberate, logged override — the verdict is recorded in the job's `.out` **and the runwrap log** either way *(user 2026-08-12; edges repaired U10)* |
+| **Launch-door gate** | one launch door (`job-system.md` § 5.3): `launch` sets `MB_LAUNCHED_BY` (direct: child env; sbatch: `--export=ALL,MB_LAUNCHED_BY=jobset-submit`, robust to site export policy). Without it a terminal call warns and asks (a **yes is exported**, so the warm-retry re-exec keeps the answer; **EOF refuses** with the verdict line); a non-interactive call refuses with exit 2 and the fix; `-h`/`--help` is **scanned** before the gate (§ 5.5's verb — the gate steps aside; the usage text itself prints later, in the args loop) with no bootstrap run. `MB_LAUNCHED_BY=manual` is the deliberate, logged override — the verdict is recorded in the job's `.out` **and the runwrap log** either way *(user 2026-08-12; edges repaired U10)* |
 | **Baked preamble** | the site's own lines, verbatim from `script_generation.preamble` |
 | **Activation** | the one activation statement, verbatim |
 | **Continuation flags** | the shared `--continue` / `--cold` / `--force` handling |
 | **SIESTA-specific argument parsing** | `-np` / `-omp` and friends |
-| **OpenMP thread sizing** | PySCF only. Resolves the thread count — `-omp` flag, else `OMP_NUM_THREADS`, else the scheduler's allocation, else this node's physical cores — and **exports** it, so the wrapper and the script cannot disagree. Deciding, not computing: the node is the last resort, never the first answer. Added 2026-08-13 (P1b) because the wrapper deliberately left the variable unset and the script counted the whole node, so a job holding 8 cores of a 128-core node started 128 threads and time-sliced them onto its 8. PySCF is OpenMP-only, so `-np` is accepted, reported and ignored — `submit` passes it to every run script |
+| **OpenMP thread sizing** | PySCF only. Resolves the thread count — `-omp` flag, else `OMP_NUM_THREADS`, else the scheduler's allocation, else this node's physical cores — and **exports** it, so the wrapper and the script cannot disagree. Deciding, not computing: the node is the last resort, never the first answer. Added 2026-08-13 (P1b) because the wrapper deliberately left the variable unset and the script counted the whole node, so a job holding 8 cores of a 128-core node started 128 threads and time-sliced them onto its 8. PySCF is OpenMP-only, so `-np` is accepted, reported and ignored — `launch` passes it to every run script |
 | **Run index resolution** | picks `-runN` so a re-run never overwrites |
 | **Cold restart: SAY WHAT WOULD BE LOST, THEN STOP** | what `--cold` does — NAMES everything the id names, minus what molbuilder wrote (§ 4.1, U17), and refuses; `--force` proceeds and the engine overwrites them. It moved them into an aside directory until 2026-08-18; keeping a state is `molbuilder checkpoint save` and it is never automatic |
 | **Runtime status banner** | prints what it found — warm files, ranks |

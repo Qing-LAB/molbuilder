@@ -393,7 +393,7 @@ framework rule, not a script patch)*:
   at `G = 0` (plain ranks), the GPU family ranges `G` over each rank
   count's divisors, and the flag rides each point as an ordinary value
   coordinate — so the deck's answer and the point's family agree by
-  construction, and `submit`'s placement (below) needs no new declaration.
+  construction, and `launch`'s placement (below) needs no new declaration.
   The GPU family's device count and type come from the probed topology
   when this node has one, else from the **domain menu's GPU inventory**
   (`jobset probe` records each partition's `gres` types on its domain row)
@@ -626,7 +626,7 @@ left to implement.
 | 3 · `model` | a `ParameterSet` | re-read the template |
 | 4 · `materialize` | a `JobSet` · `Shape` | re-resolve a parameter |
 | 3 · the script writers · `runwrap` | a resolved config · the rendered script · `read_by` items | **re-decide a value it was handed** |
-| 5 · `submit` | the built directory | decide anything (M5) |
+| 5 · `launch` | the built directory | decide anything (M5) |
 
 ### 6.2 The five steps — where they are
 
@@ -740,7 +740,7 @@ where two things can disagree, is not this work.
 | # | question | why it is not decided here |
 |---|---|---|
 | **38** | ~~`scheduler.routing` has no cores, GPU count or GPU type per entry~~ **Closed 2026-08-21**: the probed domain rows carry the GPU inventory and `max_cores` (the node group's own `sinfo` row), and § 4.3a's cap and GPU family consume them | the row stays hand-editable; a declared workstation row may state the same columns |
-| ~~**G3**~~ | ~~whether `bench` keeps a positional in the grammar~~ — **CLOSED 2026-08-17.** It does: `jobset prep <run\|bench> [STAGE]`, and the same positional on `submit` and `summarize`. The `bench` command's four duplicate verbs were deleted in the 2026-08-12 fold, leaving it one unrelated subcommand (`probe-scheduler`); [`process/conventions.md`](?doc=process/conventions.md) carries the before/after. **STAGE is required for `bench`**, because a sweep belongs to one stage rather than to the calculation (§ 4.3a) | — |
+| ~~**G3**~~ | ~~whether `bench` keeps a positional in the grammar~~ — **CLOSED 2026-08-17.** It does: `jobset prep <run\|bench> [STAGE]`, and the same positional on `launch` and `summarize`. The `bench` command's four duplicate verbs were deleted in the 2026-08-12 fold, leaving it one unrelated subcommand (`probe-scheduler`); [`process/conventions.md`](?doc=process/conventions.md) carries the before/after. **STAGE is required for `bench`**, because a sweep belongs to one stage rather than to the calculation (§ 4.3a) | — |
 | **37** | ~~whether `transport`'s chained runs become a `ParameterSet`~~ — **decided 2026-08-11 (user): they do not.** Transport is a **separate kind — a multi-component job**: *"it involves multiple results and the transportation needs to combine all of them… a different kind of beast"* | it is not a sweep and not a ladder. **This contract covers single-parameter-set jobs** — structure, optimization, spectra — and a multi-component kind is designed on its own, not folded in here |
 
 ---

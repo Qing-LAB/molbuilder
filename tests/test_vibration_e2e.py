@@ -56,7 +56,7 @@ def _prep_and_run(bundle):
                            ["prep", "run", "freq", "--bundle", str(bundle)])
     assert r.exit_code == 0, r.output
     r = CliRunner().invoke(jobset_group,
-                           ["submit", "run", "freq", "--bundle", str(bundle),
+                           ["launch", "run", "freq", "--bundle", str(bundle),
                             "--mode", "direct"])
     assert r.exit_code == 0, r.output
     art = bundle / "01_freq" / "run-0" / "W.spectra.json"
