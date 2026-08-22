@@ -1,42 +1,33 @@
-"""End-to-end Playwright tests for the /build (root) tab.
+"""End-to-end Playwright tests for /structure-optimization — the describing tab.
 
-Audit task #190 (2026-06-02).  The /build tab is the primary entry
-point for "build a molecule from sequence/SMILES + emit a SIESTA or
-PySCF script", yet until this commit it had NO browser-level
-coverage.  ``test_pages_no_js_errors.py`` exercised the page-boot
-smoke path; ``test_web.py`` exercised every HTTP endpoint via
-``test_client``; but the actual UI loop -- schema fetch -> form
-render -> structure build -> Generate-button toggle -- only ran in
-production.
+Audit task #190 (2026-06-02) opened this file when the tab had no
+browser coverage at all; the tab has been rebuilt twice since, and this
+docstring describes what the tests cover NOW, not the world of #190:
 
-This file closes that gap.  Scope:
+  * The two parameter forms (SIESTA + PySCF) populate from the CATALOGUE
+    schema door and carry engine_key badges — a silent renderer break
+    leaves the "Loading from schema..." placeholder (the failure class
+    the 2026-08-22 span-cut regression demonstrated: the file parsed,
+    every text pin was green, and only this lane knew the form was dead).
+  * Tab switching between the two engine panels.
+  * The sidebar contract: setShared alone must NOT load (candidate-only);
+    publishCommit is the load; a second commit replaces the first
+    (the #51 `enforce` rule); the form-dirty gate warns before a commit
+    discards typed edits.
+  * Second-visit persistence: the tab keeps its own structure across
+    navigation, and only an explicit Load re-reads changed disk bytes.
+  * Live preflight findings render beside their own control and clear
+    when the value is fixed.
+  * Send to Task setup — the tab's PRIMARY loop since script generation
+    left it (#295, 2026-08-15): the button writes the structure pair,
+    the parameter template and the hand-over into the selected folder
+    through the one shared door (lib/task-handover.js), and the
+    one-job-per-folder guard fails CLOSED.
 
-  * The two parameter forms (SIESTA + PySCF) actually populate from
-    their schema endpoints (a silent ``schema.fields`` regression
-    would leave them stuck on the "Loading from schema..." placeholder
-    -- same failure mode the 2026-05 Spectra parse bug demonstrated).
-  * ``engine_key`` badges render alongside form labels (the
-    2026-05-26 source-of-truth UI contract).
-  * Tab switching between SIESTA + PySCF panels hides + shows the
-    right one (covered as a wiring smoke).
-  * A peptide round-trip: type "ARNDC" -> click Build -> the viewer
-    mounts the structure + Generate-{fdf,pyscf} buttons enable.
-    Pre-#190 a regression in viewer.js's post-build hook (e.g. a
-    stale querySelector after a DOM rename) was invisible to the
-    test_web.py tests because they never load any JS.
-  * Sidebar-driven load: ``projects.setShared(dir, file)`` for a
-    real XYZ on disk renders into the viewer + populates the info
-    line.  Matches the workflow Build expects from the unified
-    projects sidebar (the same flow modify_e2e and spectra use).
-
-NOT covered here (intentional scope split):
-  * Generate.fdf / Generate.py output rendering -- the HTTP layer
-    already pins that in ``test_web.py``; we exercise the button
-    enable/disable only.
-  * Save / install-pseudos / install-wrapper -- those are out of
-    Build's primary user loop (they're post-Generate actions); they
-    have their own coverage in ``test_pseudos.py`` +
-    ``test_runwrap.py``.
+NOT covered here (intentional scope split): the HTTP layer is
+test_web.py's; Task setup's own save door is test_task_setup_tab.py's.
+There is no Generate button and no Build form on this tab any more —
+decks are rendered by `prep` on the machine that runs them.
 """
 from __future__ import annotations
 
@@ -308,15 +299,14 @@ class TestTabSwitching:
 # --------------------------------------------------------------------- #
 
 
-class TestPeptideBuild:
-    """Type a sequence, click Build, verify the structure lands +
-    Generate buttons enable.
+class TestSidebarStructureFlow:
+    """The sidebar is the ONLY way a structure reaches this tab
+    (the typed Build form retired with #295): a commit loads, a bare
+    pick does not, a second commit replaces the first, and typed
+    parameter edits are guarded before a commit discards them.
 
-    Peptide is the cheapest reliable build path (PeptideBuilder is
-    a pure-Python dep, no RDKit / OpenBabel / external binaries
-    needed).  Pre-#190 a regression in viewer.js's post-build hook
-    (e.g. a stale querySelector after a DOM rename, or a fetch URL
-    typo) shipped silently because no test loaded the JS.
+    (This class was ``TestPeptideBuild`` from the #190 era — no test
+    here has typed a sequence or clicked Build since that form left.)
     """
 
     def test_sidebar_load_updates_info_atoms(
@@ -824,3 +814,91 @@ class TestFindingsSitBesideTheirField:
             "() => !document.querySelector('#p-mesh-cutoff')"
             "        .closest('.schema-field').querySelector('.field-issues')",
             timeout=10_000)
+
+
+class TestSendToTaskSetup:
+    """The tab's PRIMARY loop, witnessed in a browser for the first time
+    (U6 close, 2026-08-22): every layer below this one was green while
+    the hand-over ran — the endpoint in test_task_setup_tab.py, the
+    guards in source pins — but nothing ever clicked the button.  That
+    is the exact blindness the 2026-08-22 span-cut regression proved
+    this lane exists for.
+
+    Two halves: a legal send writes the CLI's own files into the
+    selected folder, and a folder already holding a description refuses
+    with nothing overwritten (the one-job-per-folder guard, which since
+    2026-08-22 also fails CLOSED on a read error)."""
+
+    def _calc_dir(self, tmp_path, monkeypatch):
+        """projects/<project>/<topic>/<calc> — the depth the send guard
+        demands (a calculation lives under a topic)."""
+        _register_tmp_as_picker_root(tmp_path, monkeypatch)
+        calc = tmp_path / "proj" / "opt" / "water-run"
+        calc.mkdir(parents=True)
+        xyz = calc / "water.xyz"
+        xyz.write_text(
+            "3\nwater\n"
+            "O 0.000  0.000 0.000\n"
+            "H 0.957  0.000 0.000\n"
+            "H -0.239 0.927 0.000\n"
+        )
+        return calc, xyz
+
+    def _load_and_send(self, page, base_url, calc, xyz):
+        _open_build(page, base_url)
+        page.wait_for_function(
+            "() => window.molbuilder && window.molbuilder.projects"
+            "  && typeof window.molbuilder.projects.publishCommit"
+            "     === 'function'"
+            "  && !!(window.molbuilder.taskHandover)",
+            timeout=_BOOT_TIMEOUT_MS)
+        page.evaluate(
+            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
+            {"dir": str(calc), "file": str(xyz)})
+        page.wait_for_function(
+            "() => document.querySelector('#info-atoms')"
+            ".textContent.trim() === '3'",
+            timeout=_BOOT_TIMEOUT_MS)
+        # The form must be rendered before collectParams reads it.
+        page.wait_for_selector("#siesta-form-container input",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.locator("#send-to-task-setup").click()
+
+    def test_send_writes_the_handover_into_the_selected_folder(
+            self, page, flask_server, tmp_path, monkeypatch):
+        calc, xyz = self._calc_dir(tmp_path, monkeypatch)
+        self._load_and_send(page, flask_server, calc, xyz)
+        # Success either navigates to /task-setup or (with cell notices)
+        # stays put with the written-files status — both mean the files
+        # are on disk, which is the contract that matters.
+        page.wait_for_function(
+            "() => window.location.pathname === '/task-setup'"
+            " || (document.querySelector('#handover-status') || {})"
+            "      .textContent.includes('Wrote')",
+            timeout=10_000)
+        assert (calc / "task.1st.json").is_file(), (
+            "the hand-over never landed")
+        templates = list(calc.glob("*.template.toml"))
+        assert templates, "the parameter template never landed"
+        sources = list(calc.glob("*.source.xyz"))
+        assert sources, "the travelling structure copy never landed"
+        import json as _json
+        over = _json.loads((calc / "task.1st.json").read_text())
+        assert over["engine"]["name"] == "siesta"
+        assert "Structure-optimization" in over["_what"], (
+            "the hand-over's provenance does not name this tab (E-B9)")
+
+    def test_send_refuses_a_folder_that_is_already_described(
+            self, page, flask_server, tmp_path, monkeypatch):
+        calc, xyz = self._calc_dir(tmp_path, monkeypatch)
+        marker = '{"note": "another calculation lives here"}'
+        (calc / "task.json").write_text(marker)
+        self._load_and_send(page, flask_server, calc, xyz)
+        page.wait_for_function(
+            "() => (document.querySelector('#handover-status') || {})"
+            "      .textContent.includes('one job per folder')",
+            timeout=10_000)
+        assert (calc / "task.json").read_text() == marker, (
+            "the refusal still overwrote the existing description")
+        assert not (calc / "task.1st.json").exists(), (
+            "the refusal still wrote the hand-over")
