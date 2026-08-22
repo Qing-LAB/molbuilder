@@ -729,6 +729,7 @@ let _colsKey = null;
  * exists to prevent, so this is a lookup into what the schema returned. */
 const _meta = Object.create(null);
 let _sweep = null;      // the ones a benchmark may sweep
+let _sweepKey = null;
 
 /** Every parameter that may become a column.
  *
@@ -783,9 +784,14 @@ const BENCH_START = { mpi_np: [4, 8, 16], omp_threads: [1, 2] };
  *  A separate read because the FORM filters `staging` out, and those are
  *  exactly the knobs a benchmark measures. */
 async function loadSweepChoices(engine) {
-    if (_sweep) return _sweep;
+    /* Keyed by ENGINE, like `_cols` (R2-1): a bare `if (_sweep)` served
+     * the first folder's engine to every folder opened after it -- a
+     * PySCF description got SIESTA's machine rows. */
+    const key = engine || "siesta";
+    if (_sweep && _sweepKey === key) return _sweep;
+    _sweepKey = key;
     const r = await fetch("/api/task-setup/sweepable?engine="
-                          + encodeURIComponent(engine || "siesta"));
+                          + encodeURIComponent(key));
     const j = await r.json();
     _sweep = (j && j.items) || [];
     // `staging` items are filtered out of the form schema, so this is the
@@ -918,11 +924,16 @@ function helpText(name) {
 /* ---------- the tier presets ---------- */
 
 let _presets = null;
+let _presetsKey = null;
 
 async function loadPresets(engine) {
-    if (_presets) return _presets;
+    /* Keyed by ENGINE, like `_cols` (R2-1): a stale cache here APPLIED
+     * SIESTA tier values into a PySCF description opened second. */
+    const key = engine || "siesta";
+    if (_presets && _presetsKey === key) return _presets;
+    _presetsKey = key;
     const r = await fetch("/api/task-setup/presets?engine="
-                          + encodeURIComponent(engine || "siesta"));
+                          + encodeURIComponent(key));
     const j = await r.json();
     _presets = (j && j.presets) || [];
     return _presets;

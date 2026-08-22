@@ -459,12 +459,14 @@ def test_summarize_mid_flight_lists_unfinished_and_refreshes(sol_calc):
     listed as unfinished (never a failure of the set), the coverage clause
     says how partial the verdict is, and a later summarize refreshes the
     record over the fuller evidence."""
-    from molbuilder.jobset._cli import _load_bench_set
+    from molbuilder.jobset._cli import _load_bench_set, _stage_bench_dir
     from molbuilder.jobset.materialize import job_dir_names, shape_of
     from molbuilder.jobset.summarize import run_summarize_jobset, summary_text
     _declare(sol_calc, _small_matrix())
     _prep(sol_calc)
     js, base = _load_bench_set(str(sol_calc), "coarse")
+    _container, _tok2 = _stage_bench_dir(sol_calc, "coarse")
+    _out_kw = {"out": _container / "bench-result.json"}
     dirs = job_dir_names(js, shape_of(js, sol_calc))
 
     def finish(name, spi):
@@ -479,7 +481,8 @@ def test_summarize_mid_flight_lists_unfinished_and_refreshes(sol_calc):
 
     finish("G0K4C1enable_gpuFalseblock_size64", 5.0)
     res, out_path, rc = run_summarize_jobset(
-        js, sol_calc, now_iso="2026-08-21T00:00:00Z", stage="coarse")
+        js, sol_calc, now_iso="2026-08-21T00:00:00Z", stage="coarse",
+        **_out_kw)
     text = summary_text(res, out_path, run_config=rc, stage="coarse")
     states = {p.label: p.state for p in res.points}
     assert states["G0K4C1enable_gpuFalseblock_size64"] == "completed"
@@ -490,7 +493,8 @@ def test_summarize_mid_flight_lists_unfinished_and_refreshes(sol_calc):
     # more evidence lands; the RECORD refreshes on the next summarize
     finish("G0K4C1enable_gpuFalseblock_size128", 3.0)
     res2, _o, rc2 = run_summarize_jobset(
-        js, sol_calc, now_iso="2026-08-21T01:00:00Z", stage="coarse")
+        js, sol_calc, now_iso="2026-08-21T01:00:00Z", stage="coarse",
+        **_out_kw)
     assert res2.choice["label"] == "G0K4C1enable_gpuFalseblock_size128"
     # the PROPOSAL file is the user's after first write: kept, with the
     # refresh taught in the summary text
@@ -532,3 +536,117 @@ def test_a_duplicated_allocation_point_refuses_at_prep(sol_calc):
         _bench_inputs(sol_calc)
     assert "repeated point" in str(e.value)
     assert "mpi_np" in str(e.value)
+
+
+@pytest.fixture
+def flat_sol_calc(tmp_path):
+    """The same Sol-shaped machine, FLAT calculation shape — the container
+    form the hierarchical fixtures never exercise (R2-8 gap): in flat
+    there is no stage directory, so the bench container is the
+    root-level ``bench_<NN>_<stage>``."""
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
+    dest = tmp_path / "flatcalc"
+    D.write_description(
+        D.build_description(struct,
+                            SiestaConfig(system_label="JOB",
+                                         enable_gpu=False,
+                                         diag_algorithm="ELPA-1STAGE"),
+                            default_siesta_stages("publishable"),
+                            engine="siesta", shape="flat",
+                            name="JOB", source=str(tmp_path / "h2.xyz")),
+        dest)
+    from conftest import write_pseudos
+    write_pseudos(dest, ["H"])
+    (dest / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    env = Environment(
+        scheduler="slurm",
+        topology=Topology(sockets=2, cores_per_socket=64,
+                          gpus_per_node=None, gpu_type=None),
+        domains=[Domain(name="htc", partition="htc", qos="public",
+                        max_time="0-04:00:00"),
+                 Domain(name="general", partition="general", qos="public",
+                        max_time="7-00:00:00", max_cores=48,
+                        gpu={"a100": 4})])
+    (dest / "environment.json").write_text(env.to_json() + "\n")
+    return dest
+
+
+def test_a_grouped_bench_on_a_flat_calculation(flat_sol_calc):
+    """R2-8's first gap: every grouped-bench test rode the hierarchical
+    shape.  In FLAT the trials and the record live in the root-level
+    ``bench_<NN>_<stage>`` container (job-contracts.md § 6.3's flat
+    arm), and the split submission works the same from there."""
+    from molbuilder.jobset._cli import _stage_bench_dir
+    _declare(flat_sol_calc, _small_matrix())
+    _prep(flat_sol_calc)
+    container, token = _stage_bench_dir(flat_sol_calc, "coarse")
+    assert container.name.startswith("bench_"), (
+        f"flat container is {container.name!r}, not the root-level "
+        f"bench_<NN>_<stage> form")
+    assert container.is_dir(), "prep did not lay the flat container down"
+    assert (container / "job-set.json").is_file(), (
+        "the sweep's record is not in the flat container")
+    trials = [d.name for d in container.iterdir() if d.is_dir()]
+    assert trials and all(t.startswith("bench-") for t in trials), (
+        f"trials misplaced: {trials}")
+    out = _submit_dry(flat_sol_calc)
+    plans = [l for l in out.splitlines() if "WOULD run" in l]
+    assert len(plans) == 4, out    # one CPU shelf + three GPU shelves
+    assert any("bench-group-cpu " in l for l in plans)
+    assert sum("bench-group-gpu-" in l for l in plans) == 3
+
+
+def test_a_gpu_winner_rides_run_config_on_a_mixed_sweep(sol_calc):
+    """R2-8's second gap: the GPU-side winner was covered only on a
+    GPU-only grid.  On a MIXED sweep (both families prepped), a GPU
+    trial finishing fastest must become the verdict, and the run's
+    config must apply ITS pins — enable_gpu=true included — not the CPU
+    family's."""
+    from molbuilder.jobset._cli import (_apply_run_config,
+                                        _load_bench_set,
+                                        _stage_bench_dir)
+    from molbuilder.jobset.materialize import job_dir_names, shape_of
+    from molbuilder.jobset.model import Resources
+    from molbuilder.jobset.summarize import run_summarize_jobset
+    _declare(sol_calc, _small_matrix())
+    _prep(sol_calc)
+    js, base = _load_bench_set(str(sol_calc), "coarse")
+    container, _tok = _stage_bench_dir(sol_calc, "coarse")
+    dirs = job_dir_names(js, shape_of(js, sol_calc))
+
+    def finish(name, spi):
+        d = sol_calc / dirs[name]
+        stem = next(d.glob("*.fdf")).name[:-4]
+        (d / f"{stem}-run0.out").write_text(
+            "* Running on 4 nodes in parallel\nx\n"
+            "siesta: Final energy (eV):\nJob completed\n")
+        t0 = 1000000.0
+        (d / f"{stem}-run0.scf-timing.log").write_text(
+            "\n".join(f"{t0 + i * spi} iter" for i in range(4)) + "\n")
+
+    cpu_label = next(l for l in dirs if "enable_gpuFalse" in l)
+    gpu_label = next(l for l in dirs if "enable_gpuTrue" in l)
+    finish(cpu_label, 9.0)
+    finish(gpu_label, 2.0)          # the GPU family wins
+    # `out=` is the CLI's own plumbing (`summarize bench <stage>` writes
+    # the record into the stage's container, where `prep run` looks).
+    res, _out, rc = run_summarize_jobset(
+        js, sol_calc, out=container / "bench-result.json",
+        now_iso="2026-08-21T00:00:00Z", stage="coarse")
+    assert res.choice["label"] == gpu_label
+    rc_path, rc_state = rc
+    assert rc_state == "written"
+    text = rc_path.read_text()
+    assert "enable_gpu = true" in text, (
+        "the proposal does not carry the winner's family")
+    alloc, pins = _apply_run_config(sol_calc, Resources(), stage="coarse")
+    assert pins.get("enable_gpu") is True, (
+        f"the run's pins lost the GPU family: {pins}")
+    assert alloc.gres and "gpu" in str(alloc.gres), (
+        f"the run's allocation carries no GPU ask: {alloc!r}")

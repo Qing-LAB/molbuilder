@@ -1939,3 +1939,29 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tmp_path):
         "the refusal must name the engine and the reason")
     assert "max_scf_iter" not in msg, (
         "the refusal blames measurement pins the user never wrote")
+
+
+def test_no_winner_speaks_only_about_the_timed_set():
+    """R2-2: the "every timed trial ran something other than asked"
+    verdict scanned ALL points -- one unfinished point carrying mismatch
+    data made the summary assert a census of timed trials it never took.
+    With nothing timed, the honest sentence is the NO VERDICT census;
+    the every-timed-mismatched sentence needs a non-empty timed set."""
+    from pathlib import Path
+    from molbuilder.bench.result import build_bench_result
+    from molbuilder.jobset.summarize import summary_text
+    # Nothing timed at all; one incomplete point carries mismatch data.
+    p = _mk_point("K1C1", state="incomplete")
+    p.mismatch = {"mpi_np": {"asked": 4, "ran": 2}}
+    res = build_bench_result([p, _mk_point("K2C1", state="unknown")])
+    out = summary_text(res, Path("/x/bench-result.json"))
+    assert "every timed trial" not in out, (
+        "the summary asserts a census of timed trials it never took")
+    assert "NO VERDICT" in out
+    # And the sentence still fires when the timed set really is all
+    # mismatched.
+    q = _mk_point("K4C1", spi=2.0, knobs={"mpi_np": 4})
+    q.mismatch = {"mpi_np": {"asked": 4, "ran": 2}}
+    res2 = build_bench_result([q])
+    out2 = summary_text(res2, Path("/x/bench-result.json"))
+    assert "every timed trial" in out2

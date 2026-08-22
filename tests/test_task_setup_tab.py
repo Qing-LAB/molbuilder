@@ -1829,3 +1829,20 @@ def test_save_runs_gate_three_and_refuses_a_failing_preflight(web_client):
                    for f in body.get("findings", []))
     finally:
         _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)
+
+
+def test_the_two_engine_caches_are_keyed_by_engine():
+    """R2-1: `loadSweepChoices` and `loadPresets` memoised with a bare
+    `if (_x) return _x` -- the first folder's ENGINE was served to every
+    folder opened after it, so a PySCF description showed SIESTA's
+    machine rows, and applying a tier preset wrote SIESTA values into a
+    PySCF ladder.  Both caches now follow `_cols`' settled pattern: the
+    key is checked before the cache is served."""
+    src = VIEWER.read_text()
+    for fn, key in (("loadSweepChoices", "_sweepKey"),
+                    ("loadPresets", "_presetsKey")):
+        body = src.split(f"async function {fn}(", 1)[1].split(
+            "\nasync function", 1)[0]
+        assert key in body, f"{fn} does not key its cache"
+        assert f"{key} === key" in body, (
+            f"{fn} caches without comparing the engine key")

@@ -334,12 +334,13 @@ class TestResolvePsmlLib:
         them where we looked."""
         from molbuilder.pseudos import resolve_psml_lib
         out = resolve_psml_lib("../foo", base=tmp_path)
-        # pathlib doesn't normalise ".." in non-resolve operations,
-        # so we get a literal ``<projects>/../foo`` back.  The
-        # validator's .is_dir() will fail if the resulting path
-        # doesn't exist; the error message tells the user where we
-        # looked, so they fix it.
-        assert "foo" in str(out)
+        # pathlib doesn't normalise ".." in non-resolve operations, so
+        # the literal ``<base>/../foo`` comes back.  The validator's
+        # .is_dir() will fail if the resulting path doesn't exist; the
+        # error message tells the user where we looked, so they fix it.
+        # The pin is the EXACT anchored path (R2-7: `"foo" in str(out)`
+        # could not fail -- the input itself contains "foo").
+        assert out == tmp_path / ".." / "foo"
 
 
 def _envelope(elements):

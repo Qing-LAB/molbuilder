@@ -638,9 +638,14 @@ def summary_text(res: BenchResult, out_path: Path, *,
             lines.append(f"    !! ran something other than asked: "
                          f"{mismatch_phrase(p.mismatch)} "
                          f"-- excluded from the choice")
+    # "Every timed trial" must be a claim about the TIMED set (R2-2):
+    # `any(p.mismatch)` over ALL points fired this sentence when nothing
+    # had been timed at all -- one unfinished point with mismatch data
+    # and the summary asserted a census it never took.
+    _timed = [p for p in res.points if p.s_per_iter() is not None]
     if res.choice:
         lines.append(f"  winner: {res.choice.get('rationale')}")
-    elif any(p.mismatch for p in res.points):
+    elif _timed and all(p.mismatch for p in _timed):
         lines.append("  NO WINNER: every timed trial ran something other "
                      "than it was asked to.  The times are real but they do "
                      "not measure the settings on their labels -- fix the "
