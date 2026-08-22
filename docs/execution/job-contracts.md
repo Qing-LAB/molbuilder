@@ -457,7 +457,7 @@ wrote it and the cluster that runs it. **The spelling declares the anchor.**
 | The user wrote | It is resolved against | Because |
 |---|---|---|
 | `/data/psml` or `~/psml` | itself | an absolute path is already an answer |
-| `./psml` or `../../psml` | **the calculation folder** | the leading dot is the user saying *"from here"* — and "here", for a path stored in a calculation, is that calculation. This is the form the browser's *Save to current dir* persists, and it survives the whole folder being copied to a cluster |
+| `./psml` or `../../psml` | **the calculation folder** | the leading dot is the user saying *"from here"* — and "here", for a path stored in a calculation, is that calculation. It survives the whole folder being copied to a cluster, which a path anchored anywhere else does not |
 | `pseudopotential` (bare) | **the `projects/` tree this calculation lives in**, found by walking up from the calculation folder | a bare name is the tree's own vocabulary — the same word the topic table above uses. Walking up is what makes it machine-independent: the tree is found from the calculation's position, not from where the user was standing |
 
 **Nothing is tried and discarded.** A spelling names exactly one anchor, and if
@@ -473,6 +473,15 @@ from. It anchors bare and dotted spellings alike at its own `projects_root()`,
 which for the server process is the working directory it was started in. That
 is the one place a working directory is a legitimate anchor, because it is the
 server's own declared root rather than an accident of where a user stood.
+
+> **A claim that did not survive checking, recorded so it is not re-inherited.**
+> The old resolver justified trying the calculation folder FIRST as *"the form
+> the Save-to-current-dir button persists"*. That button's path-writing helper
+> (`static/lib/path-utils.js::relativeFromDir`) has had **no caller since
+> `d1c8a871`**, the migration that took deck-rendering out of the browser — so
+> the flow the rule was bent around had already gone. The dotted spelling
+> stands on its own: *"from here"* is a thing a person means when they type it,
+> whether or not any button writes it.
 
 > ⚠ **Do not write the `projects/` prefix.** `projects/pseudopotential` is a
 > bare spelling that *starts with the tree's own name*, so walking up to the

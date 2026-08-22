@@ -181,7 +181,8 @@ described route the roles split: **`describe --psml-lib` is what copies the
 pseudos into the calculation** (they are its data files and travel with it),
 and **`prep` refuses to render a deck whose pseudos are absent** — the
 render's own validation, surfaced as a clean refusal naming the elements
-(A8, 2026-08-12).  A deck whose pseudopotentials are absent cannot run
+(2026-08-12).  *(That refusal now also names WHERE it looked for the library,
+by the anchor rule the spelling asked for -- `job-contracts.md` § 2.5a.)*  A deck whose pseudopotentials are absent cannot run
 ([`conventions.md § 3`](?doc=process/conventions.md)).  *(Until 2026-08-12
 this sentence claimed "`jobset prep` exits 2 on a non-empty `missing_psml`
 list" — prep never had that list; the copy is describe's and the refusal is
