@@ -34,7 +34,10 @@ from __future__ import annotations
 import re
 from typing import List, Optional
 
-from ..config.spectra import SpectraConfig
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:            # annotation only -- importing
+    # vibration_deck at run time would cycle (it imports this).
+    from .vibration_deck import VibrationConfigView
 from ..structure import Structure
 from .results import SpectraResults
 
@@ -57,7 +60,7 @@ _CITE_RE = re.compile(
 
 
 def render_methods_md(
-    cfg: SpectraConfig,
+    cfg: "VibrationConfigView",
     *,
     results: Optional[SpectraResults] = None,
     fragment_md: str = "",
@@ -68,7 +71,7 @@ def render_methods_md(
     Parameters
     ----------
     cfg
-        The :class:`SpectraConfig` being rendered.  Drives every
+        The vibration deck's config view being rendered.  Drives every
         prose decision: functional / basis / dispersion / selector /
         amplitude / frequency window.
     results
@@ -177,7 +180,7 @@ def extract_citation_keys(text: str) -> List[str]:
 # --------------------------------------------------------------------- #
 
 
-def _paragraph_vibrational(cfg: SpectraConfig,
+def _paragraph_vibrational(cfg: "VibrationConfigView",
                            *,
                            results: Optional[SpectraResults],
                            struct: Optional[Structure]) -> str:
@@ -250,7 +253,7 @@ def _paragraph_vibrational(cfg: SpectraConfig,
     return para
 
 
-def _paragraph_electronic_structure(cfg: SpectraConfig,
+def _paragraph_electronic_structure(cfg: "VibrationConfigView",
                                     *,
                                     results: Optional[SpectraResults]) -> str:
     """Second Methods paragraph: per-mode displaced-geometry SCFs.
@@ -299,7 +302,7 @@ def _paragraph_electronic_structure(cfg: SpectraConfig,
     return para
 
 
-def _frequency_window_clause(cfg: SpectraConfig) -> str:
+def _frequency_window_clause(cfg: "VibrationConfigView") -> str:
     """Inline phrase describing the frequency window when one is in
     effect.  Empty string when no window or selector=explicit
     (window is ignored there per spec § 8.1)."""
@@ -316,7 +319,7 @@ def _frequency_window_clause(cfg: SpectraConfig) -> str:
     return f" with frequency ≤ {fmax:g} cm⁻¹"
 
 
-def _selected_modes_line(cfg: SpectraConfig,
+def _selected_modes_line(cfg: "VibrationConfigView",
                          *,
                          results: Optional[SpectraResults]) -> str:
     """Post-run line listing the actual mode indices that received
@@ -361,28 +364,7 @@ def _count_structure_atoms(struct: Structure) -> int:
     return 0
 
 
-def _structure_element_symbols(struct: Structure) -> List[str]:
-    """Return per-atom element symbols from a Structure-like object.
-
-    Real Structure: ``struct.elements`` is already a list of symbols.
-    Mock-style ``struct.atoms``: per-atom objects expose ``.symbol``
-    or ``.element``.  Returns ``[]`` when neither shape is available
-    (Methods composer treats this as no per-atom info; freezing-by-
-    element gracefully degrades)."""
-    elements = getattr(struct, "elements", None)
-    if elements is not None:
-        return [str(e) for e in elements]
-    atoms = getattr(struct, "atoms", None)
-    if atoms is not None:
-        out: List[str] = []
-        for a in atoms:
-            sym = getattr(a, "symbol", None) or getattr(a, "element", None)
-            out.append(str(sym) if sym is not None else "")
-        return out
-    return []
-
-
-def _count_free_atoms(struct: Structure, cfg: SpectraConfig) -> int:
+def _count_free_atoms(struct: Structure, cfg: "VibrationConfigView") -> int:
     """Approximate the count of unfrozen atoms by element + index
     union (residue-name freezing isn't decidable without parsing the
     PDB).  Returns the total atom count when no freeze rule applies.
@@ -394,15 +376,17 @@ def _count_free_atoms(struct: Structure, cfg: SpectraConfig) -> int:
     n_total = _count_structure_atoms(struct)
     if n_total == 0:
         return 0
-    if not (cfg.frozen_elements or cfg.frozen_indices):
+    # FROZEN ATOMS ARE NAMED BY INDEX, and only by index.  A
+    # freeze-by-ELEMENT arm stood here and was unreachable: the one caller
+    # is the vibration deck, which passes its config view, and that view
+    # supplies `frozen_elements = []` always.  Only the retired
+    # `SpectraConfig` could carry a value, and nothing constructed it
+    # outside tests -- so the arm was exercised by its own fixture and by
+    # nothing else (2026-08-22).  The region store holds indices, and the
+    # deck writes those indices into geomeTRIC's constraints file.
+    if not cfg.frozen_indices:
         return n_total
     frozen: set = set()
-    if cfg.frozen_elements:
-        elem_set = {e.strip() for e in cfg.frozen_elements if e.strip()}
-        symbols = _structure_element_symbols(struct)
-        for i, sym in enumerate(symbols):
-            if sym in elem_set:
-                frozen.add(i)
     if cfg.frozen_indices:
         for i in cfg.frozen_indices:
             if 0 <= int(i) < n_total:

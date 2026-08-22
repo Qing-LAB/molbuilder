@@ -22,6 +22,8 @@ from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.pyscf.input import spec_for
 from molbuilder.script_emit import render_deck
 from molbuilder.structure import Structure
+from tests.spectra._helpers import _spectra_cfg
+
 
 
 def _water() -> Structure:
@@ -63,15 +65,20 @@ def test_amplitude_advisory_reaches_the_person():
         "is not composed into the deck's render")
 
 
-def test_registry_path_serves_a_real_spectra_config():
-    """The registered validator runs the SAME body -- one gate, two
-    doors.  No production code constructs a SpectraConfig any more;
-    this pins the registry ENTRY itself, which stays until the class's
-    deferred retirement lands with transport's round (it shares the
-    four-engine registry)."""
-    from molbuilder.config.spectra import SpectraConfig
-    from molbuilder.validation import validate
-    issues = validate(_water(), SpectraConfig(es_mode_selection="top_n"))
+def test_the_kind_door_runs_the_same_gate_body():
+    """One gate, and the door that reaches it is the CALCULATION KIND.
+
+    This pinned a `SpectraConfig` row in the engine registry until
+    2026-08-22.  That row keyed on a class no production code ever
+    constructed, so it only ever dispatched for a caller holding one by
+    hand -- a test.  A vibration's science is the kind's:
+    `_validate_vibration_kind` runs `spectra_render_checks` against the
+    deck's config view, which is the object the emitters get.  Same body,
+    reached the way production reaches it.
+    """
+    from molbuilder.validation.spectra import spectra_render_checks
+    issues = list(spectra_render_checks(
+        _water(), _spectra_cfg(es_mode_selection="top_n")))
     assert any("Raman-weak" in i.message for i in issues)
 
 

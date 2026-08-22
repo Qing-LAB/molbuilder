@@ -334,7 +334,7 @@ class Structure:
     Some labels are RESERVED -- something downstream acts on the
     name.  ``frozen`` (:data:`FROZEN_LABEL`) marks atoms whose
     positions stay fixed during relaxations and Hessian builds;
-    it is consumed by SpectraConfig (relax + Hessian) and
+    it is consumed by the vibration deck (relax + Hessian) and
     TransportConfig (NEGF lead-fixing).  A reserved label is stored,
     validated, filtered and serialised exactly like any other; the
     only thing it gets of its own is one designated read, the

@@ -448,7 +448,7 @@ def test_spectrum_auto_detect_button_populates_form(
     detect → assert the spectra form's (charge, spin, method)
     fields get filled with the PySCF adapter's output.
 
-    Spectra emits PySCF; SpectraConfig has the same charge / spin
+    Spectra emits PySCF; the same config has the same charge / spin
     / method field names as PySCFConfig.  The PySCF adapter's
     output therefore lands 1:1.
     """

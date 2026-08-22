@@ -19,6 +19,7 @@ from molbuilder.siesta import SiestaConfig
 from molbuilder.structure import Structure
 from molbuilder.validation import report, validate
 from ._helpers import _vacuum_cell
+from tests.spectra._helpers import _spectra_cfg
 
 
 def test_issue_severity_accepts_error_warn_info():
@@ -185,26 +186,31 @@ def test_render_script_warns_on_open_shell_with_rks(capsys, water_struct):
 # --------------------------------------------------------------------- #
 
 
-def test_all_four_engine_configs_are_registered():
+def test_every_engine_config_is_registered():
     from molbuilder.validation import _ENGINE_VALIDATORS
-    from molbuilder.config.spectra import SpectraConfig
     from molbuilder.config.transport import TransportConfig
     registered = {c.__name__ for c in _ENGINE_VALIDATORS}
+    # THREE, not four.  `SpectraConfig` was retired 2026-08-22: a
+    # vibration's science is the KIND's, not an engine row's.
     assert {"SiestaConfig", "PySCFConfig",
-            "SpectraConfig", "TransportConfig"} <= registered, (
+            "TransportConfig"} <= registered, (
         f"an engine validator was dropped from the registry: {registered} "
         "-- /spectra or /transport would silently skip its science")
 
 
-def test_validate_dispatches_spectra_render_science_but_not_selector(water_struct):
-    """validate(struct, spectra_cfg) runs the render-gate SCIENCE (the
-    hybrid grid_level advisory) through the registered SpectraConfig
-    validator, but NOT the selector-availability check -- a top_n script
-    is valid to emit, so the render gate must not block on it (V1/V2)."""
-    from molbuilder.config.spectra import SpectraConfig
-    cfg = SpectraConfig(functional="B3LYP", grid_level=3,
-                        es_mode_selection="top_n")
-    issues = validate(water_struct, cfg)
+def test_the_render_gate_carries_the_science_but_not_the_selector(water_struct):
+    """The render gate runs the SCIENCE (the hybrid grid_level advisory)
+    but NOT the selector-availability check -- a top_n script is valid to
+    emit, so the gate must not block on it (V1/V2).
+
+    Called the way production calls it.  This went through
+    `validate(struct, cfg)` and a `SpectraConfig` registry row until
+    2026-08-22; the row keyed on a class nothing constructed, and the
+    live door is the vibration KIND's."""
+    from molbuilder.validation.spectra import spectra_render_checks
+    cfg = _spectra_cfg(functional="B3LYP", grid_level=3,
+                       es_mode_selection="top_n")
+    issues = list(spectra_render_checks(water_struct, cfg))
     wheres = [i.where for i in issues]
     # render-gate science reached it (hybrid + low grid):
     assert any(w == "config.grid_level" for w in wheres), wheres

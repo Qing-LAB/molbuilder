@@ -108,7 +108,7 @@ def bench_container(shape: "Shape", token: str = "") -> str:
     root of a FLAT calculation; bare ``bench`` for a stageless one.
     `job-contracts.md` § 6.3: *"benchmark | bench/ inside the stage it
     measures"* — in flat there IS no stage directory to sit inside, so the
-    token qualifies the container's own name instead (A5, 2026-08-12:
+    token qualifies the container's own name instead (2026-08-12 plan A5:
     unqualified, two flat stages' benchmarks shared one root ``bench/``
     and each prep overwrote the other's job-set, plan and verdict).  The
     underscore join keeps it apart from a TRIAL's dash-joined

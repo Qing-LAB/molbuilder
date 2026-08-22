@@ -110,7 +110,7 @@ class ByChainId:
 class ByIndexRange:
     """Atoms whose 0-based index matches ``expression``.
 
-    Expression grammar (matches :attr:`SpectraConfig.frozen_indices`
+    Expression grammar (matches the frozen-atom index list
     today): comma-separated tokens, each either a single integer
     (``42``) or a range (``0-35``).  Whitespace around tokens is
     tolerated.  Examples::

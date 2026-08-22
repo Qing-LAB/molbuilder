@@ -27,7 +27,6 @@ import dataclasses
 
 import pytest
 
-from molbuilder.config.spectra import SpectraConfig
 from molbuilder.config.transport import TransportConfig
 from molbuilder.issues import Issue
 from molbuilder.pyscf import PySCFConfig
@@ -329,11 +328,15 @@ class TestEveryExposedFieldIsTagged:
     and the class's ``workflow_group`` must agree with the catalogue's
     ``group`` — the form reads one and finding-placement reads the other.
 
-    **Spectra and Transport still call ``dataclass_to_form_schema``**, so for
-    them the rule is unchanged and still guarded here.
+    **Transport still calls ``dataclass_to_form_schema``**, so for it the
+    rule is unchanged and still guarded here.
     """
 
-    @pytest.mark.parametrize("cfg_cls", [SpectraConfig, TransportConfig])
+    # `SpectraConfig` was the third here until 2026-08-22.  A spectra
+    # calculation is described by PySCFConfig, which the schema rule
+    # above already covers; the retired class was a second vocabulary
+    # for the same fields.
+    @pytest.mark.parametrize("cfg_cls", [TransportConfig])
     def test_section_and_workflow_group_move_together(self, cfg_cls):
         exposed_untagged, tagged_hidden = [], []
         for f in dataclasses.fields(cfg_cls):

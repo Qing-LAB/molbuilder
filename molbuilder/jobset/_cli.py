@@ -505,7 +505,7 @@ def _load_bench_set(base, stage):
     jpath = container / _JOBSET_FILE
     if not jpath.is_file():
         # the bare form is the stageless spelling -- interpolating a None
-        # here told the user to run "prep bench None" (A4, 2026-08-12)
+        # here told the user to run "prep bench None" (2026-08-12 plan A4)
         verb = ("molbuilder jobset prep bench"
                 + (f" {stage}" if stage is not None else ""))
         raise click.ClickException(
@@ -525,7 +525,7 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
     ask before re-rendering over it (A3/U14, 2026-08-12).
 
     ``bench_container`` NARROWS the evidence to a sweep's launched trials
-    (A7, 2026-08-12; narrowed 2026-08-21, user: "bench always starts cold
+    (2026-08-12 plan A7; narrowed 2026-08-21, user: "bench always starts cold
     -- there is no point of asking"): `prep bench` re-renders the very
     decks a QUEUED trial's symlinks point at, so THAT is worth a
     question -- while the run's launched attempts and the root's warm
@@ -570,7 +570,7 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
                     evidence.append(
                         f"{a.relative_to(Path(base))}/ was launched "
                         f"(its run.json)")
-    # (A7, 2026-08-12 added a second arm here for a STAGELESS calculation,
+    # (2026-08-12 plan A7 added a second arm here for a STAGELESS calculation,
     # whose attempts sat at the ROOT where the stage gate above could not
     # see them.  § 6.5 retired that shape on 2026-08-16: every attempt now
     # lives under its stage, so the gate above sees all of them.)
@@ -1480,7 +1480,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                 # is always a stage to name (§ 6.5).  Until 2026-08-16 this
                 # refusal was conditional, because a stage-LESS calculation
                 # had no name to give and its bare bench measured the one
-                # parameter set (A4, 2026-08-12).
+                # parameter set (2026-08-12 plan A4).
                 raise click.ClickException(
                     "prep bench measures ONE stage's configuration; "
                     "name it:\n    molbuilder jobset prep bench <stage>")
@@ -1833,7 +1833,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         # ONLY for the submit mode (mode resolves first, above): domain is
         # a SLURM concept the seam refuses in 'direct', so pouring the
         # config default in unconditionally made `--mode direct` impossible
-        # on any machine whose config records its routing (A3, 2026-08-12).
+        # on any machine whose config records its routing (2026-08-12 plan A3).
         # An EXPLICIT --domain with --mode direct still reaches the seam's
         # refusal -- a stated contradiction is an error, a config default
         # is not.

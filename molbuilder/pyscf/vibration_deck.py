@@ -27,7 +27,7 @@ about a value (`science_view`'s contract).  The lifted emitters read
 four names the shared config spells differently or does not hold:
 ``charge`` (the shared item is ``net_charge``) and the three frozen
 SELECTORS — which are structure-side facts here (the sidecar three-stage
-contract, `engines/overview.md` § 3), so :class:`_LiftView` feeds the
+contract, `engines/overview.md` § 3), so :class:`VibrationConfigView` feeds the
 frozen indices from the STRUCTURE's own label store and everything else
 straight through.  Modifying the old emitters instead would be repatching
 the old path — the direction the rulings forbid.
@@ -77,7 +77,11 @@ from .vibration_emitters import (
 _THERMO_GRID_K = "np.linspace(50.0, 1500.0, 30)"
 
 
-class _LiftView:
+class VibrationConfigView:
+    # Public because it is the SHAPE, not an implementation detail: the
+    # emitters and the Methods fragment annotate against it now that
+    # `SpectraConfig` -- a 33-field dataclass nothing ever constructed --
+    # is retired.  Named `_LiftView` while it was private to this file.
     """The lift boundary's adapter — see the module header (kept past P3
     as the one view both the emitters and the kind's science read).
 
@@ -101,9 +105,10 @@ class _LiftView:
                            (struct.regions or {}).get(FROZEN_LABEL, ()))
         except Exception:  # noqa: BLE001 -- absent store reads as none frozen
             frozen = ()
+        # Indices only.  `frozen_elements` / `frozen_residue_names` were
+        # set here as empty lists and read by one unreachable branch in the
+        # Methods renderer; both went with `SpectraConfig` (2026-08-22).
         self.frozen_indices = list(frozen)
-        self.frozen_elements = []
-        self.frozen_residue_names = []
         # THE one charge rule (chemistry.resolve_net_charge), resolved
         # once at the lift boundary: explicit wins, 0 included; only an
         # unset charge runs the phosphate auto-detection.  `net_charge
@@ -131,12 +136,12 @@ class _LiftView:
         return getattr(self._cfg, name)
 
 
-def science_view(cfg, struct: Structure) -> "_LiftView":
+def science_view(cfg, struct: Structure) -> "VibrationConfigView":
     """The vibration deck's config view, for the KIND's validation step
     (validation/__init__._validate_vibration_kind).  One adapter, two
     readers: the emitters and the science speak the same vocabulary,
     so a check and the deck it checks cannot disagree about a value."""
-    return _LiftView(cfg, struct)
+    return VibrationConfigView(cfg, struct)
 
 
 def _vib_constants(cfg) -> List[str]:
@@ -504,7 +509,7 @@ def vibration_spec(struct: Structure, cfg, *,
                    stage_token: Optional[str] = None) -> "_sc.DeckSpec":
     """The vibration calculation's DeckSpec — the seam's answer for
     ``calculation = 'vibration'`` (PySCF first; the shape admits others)."""
-    view = _LiftView(cfg, struct)
+    view = VibrationConfigView(cfg, struct)
 
     def _vib_deck(struct_, cfg_) -> str:
         # THE COMPOSITION MIRRORS THE OLD GENERATOR'S (render_spectra_script

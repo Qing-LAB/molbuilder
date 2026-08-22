@@ -6,7 +6,7 @@ semantics; this module is the executable form.
 Public surface:
 
   * :func:`select_modes(modes, cfg, prior=None) -> List[int]` --
-    given the full mode list from L2 + the user's :class:`SpectraConfig`
+    given the full mode list from L2 + the user's config view
     + (optionally) the prior :class:`SpectraResults` from a
     previous run, return the 1-based indices of modes that should
     get per-mode displaced-geometry SCFs in this run.
@@ -39,12 +39,14 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from ..config.spectra import SpectraConfig
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ..pyscf.vibration_deck import VibrationConfigView
 from .results import ModeData, SpectraResults
 
 
 def select_modes(modes: List[ModeData],
-                 cfg: SpectraConfig,
+                 cfg: "VibrationConfigView",
                  prior: Optional[SpectraResults] = None) -> List[int]:
     """Return the 1-based mode indices selected for L4 (per-mode
     displaced-geometry SCFs) under the configured selector + filter.
@@ -106,7 +108,7 @@ def select_modes(modes: List[ModeData],
 
     else:
         # Unknown selector -- caller should have caught this via
-        # SpectraConfig's `choices` metadata + the schema validator.
+        # the catalogue's `choices` metadata + the schema validator.
         # Defensive: produce an empty selection rather than crash;
         # (the kind's science refuses out-of-range explicit indices upstream)
         base = []
@@ -132,14 +134,14 @@ def select_modes(modes: List[ModeData],
     return out
 
 
-# (validate_selection retired 2026-08-21, C-SpectraConfig: its caller --
+# (validate_selection retired 2026-08-21, C-spectra-config: its caller --
 #  the old engine preflight's advisory layer -- died at P3, and the kind's
 #  science (validation/spectra.py) carries the selector advisories now.
 #  select_modes above stays deliberately: it is the REFERENCE
 #  implementation the deck's inlined selector is parity-tested against,
 #  tests/spectra/test_selection.py::TestSelectorEquivalence.)
 
-def _passes_freq_window(m: ModeData, cfg: SpectraConfig) -> bool:
+def _passes_freq_window(m: ModeData, cfg: "VibrationConfigView") -> bool:
     """Return True iff the mode's frequency lies in
     ``[freq_min_cm1, freq_max_cm1]`` (either bound = None means no
     constraint on that side; both = None means no filter).

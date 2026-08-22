@@ -317,20 +317,6 @@ def report(issues: List[Issue], *,
 # makes ``validate(struct, cfg, prior=prior)`` the SINGLE per-engine gate,
 # so /spectra and /transport no longer hand-concatenate a second
 # ``engine.preflight()`` pass (the silent-skip risk; V1/V2).  The engine
-# import is LAZY (call-time) because the engine module imports
-# ``check_open_shell_metal`` from this package — a call-time import avoids
-# the register-time cycle.
-
-
-def _validate_spectra(struct: Structure, cfg, cell, *, prior=None, **_) -> List[Issue]:
-    # RENDER-gate science only (grid / amplitude / parity / method /
-    # open-shell).  P3 (2026-08-21): the engine registry retired with the
-    # old generator; the science moved whole to validation/spectra.py and
-    # is called directly -- same body the vibration deck runs.
-    from .spectra import spectra_render_checks
-    return list(spectra_render_checks(struct, cfg))
-
-
 #: The calculation KIND's science, keyed by the described fact
 #: (``task.calculation``).  "optimization" deliberately has no entry:
 #: its science IS the engine validators above.  A new kind registers
@@ -376,11 +362,12 @@ def _register_default_engines() -> None:
         _ENGINE_VALIDATORS[PySCFConfig] = _validate_pyscf
     except ImportError:
         pass
-    try:
-        from ..config.spectra import SpectraConfig
-        _ENGINE_VALIDATORS[SpectraConfig] = _validate_spectra
-    except ImportError:
-        pass
+    # NO SPECTRA ROW.  A vibration's science is the KIND's, keyed by
+    # `task.calculation` below -- `_validate_vibration_kind` runs
+    # `spectra_render_checks` against the deck's config view.  The row that
+    # stood here keyed on `SpectraConfig`, a class nothing in production
+    # ever constructed, so it only ever dispatched for a caller holding one
+    # by hand.  Retired with the class, 2026-08-22.
     try:
         from ..config.transport import TransportConfig
         _ENGINE_VALIDATORS[TransportConfig] = _validate_transport

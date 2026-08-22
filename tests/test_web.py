@@ -2057,7 +2057,7 @@ def test_engine_key_present_on_every_pyscf_form_field():
 
 
 # (test_engine_key_present_on_every_spectra_form_field retired at the
-#  U6 close: dataclass_to_form_schema(SpectraConfig) returns zero
+#  U6 close: dataclass_to_form_schema on a spectra config returns zero
 #  sections since P3 -- the form metadata left the dataclass -- so the
 #  test pinned an empty set and could not fail.  Its sibling was retired
 #  with the route; this one had survived.)

@@ -145,3 +145,44 @@ def _struct_water() -> Structure:
                               [0.96, 0., 0.],
                               [-0.24, 0.93, 0.]]),
     )
+
+
+def _spectra_cfg(struct: "Structure" = None, **overrides):
+    """The config shape the vibration deck and the Methods fragment
+    actually read at run time.
+
+    **There is no `SpectraConfig` any more.**  It was a 33-field dataclass
+    that nothing in production ever constructed: 28 of its fields were
+    `PySCFConfig`'s, four more (`charge`, `frozen_indices`,
+    `frozen_elements`, `frozen_residue_names`) are what the deck's lift
+    boundary bridges, and the last one (`engine`) was read by nobody.  So
+    it was a second vocabulary for one shape -- and a test fixture that
+    could drift from what the emitters are handed for real.
+
+    This builds the real thing: `PySCFConfig` seen through
+    `pyscf.vibration_deck.science_view`, which is the object the emitters
+    and the kind's validation both receive.  A test written against this
+    cannot pass on a shape production never sees.
+    """
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.pyscf.vibration_deck import science_view
+    from molbuilder.structure import FROZEN_LABEL
+
+    if struct is None:
+        struct = _struct_water()
+    # FROZEN ATOMS LIVE ON THE STRUCTURE, not on the config -- the region
+    # store is where the browser puts them and where the deck reads them.
+    # Accepting them here as a keyword and routing them to the store keeps
+    # the call sites short without letting a test pretend the config
+    # carries something it does not.
+    frozen = overrides.pop("frozen_indices", None)
+    if frozen is not None:
+        regions = dict(getattr(struct, "regions", None) or {})
+        regions[FROZEN_LABEL] = list(frozen)
+        # Rebuilt, not `dataclasses.replace`d: replace() comes back with
+        # regions EMPTY on this class, so a frozen set handed to it would
+        # silently vanish and the test would pass against no frozen atoms.
+        struct = type(struct)(elements=list(struct.elements),
+                              positions=struct.positions.copy(),
+                              regions=regions)
+    return science_view(PySCFConfig(**overrides), struct)

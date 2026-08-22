@@ -20,10 +20,11 @@ shape), ``selection`` (which modes get per-mode ES), ``methods``
 (the Methods paragraph the deck header carries).
 """
 
-# Config re-export matches the pattern at molbuilder/{siesta,pyscf}/__init__.py
-# so callers can do `from molbuilder.spectra import SpectraConfig` without
-# reaching into the config/ subpackage explicitly.
-from ..config.spectra import SpectraConfig
+# NO CONFIG RE-EXPORT.  `SpectraConfig` was retired 2026-08-22: a 33-field
+# dataclass that nothing in production constructed, whose fields were
+# PySCFConfig's plus four the vibration deck's config view supplies.  A
+# spectra calculation is described by `PySCFConfig`; the shape the deck and
+# the Methods fragment read is `pyscf.vibration_deck.VibrationConfigView`.
 from .results import (
     ModeData,
     ModeElectronicStructure,
@@ -36,8 +37,6 @@ from .selection import select_modes
 from .methods import render_methods_md, extract_citation_keys
 
 __all__ = [
-    # Config -- re-exported from molbuilder.config.spectra
-    "SpectraConfig",
     # Result types
     "ModeData",
     "ModeElectronicStructure",

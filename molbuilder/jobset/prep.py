@@ -64,7 +64,7 @@ def _user_error_as_prep():
     first-contact failures -- missing pseudos (``ValidationError`` out of the
     deck render) and an unset ``script_generation.activation``
     (``RuntimeConfigError`` out of the wrapper render) -- escaped the CLI as
-    raw tracebacks (A8, 2026-08-12).  Only the NAMED classes translate: a
+    raw tracebacks (2026-08-12 plan A8).  Only the NAMED classes translate: a
     ``TypeError`` here is a bug and should look like one.
 
     **The hook boundary's attribution is carried across** (§ 4.6). ``str(exc)``

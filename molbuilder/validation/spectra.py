@@ -259,22 +259,14 @@ def spectra_render_checks(struct: Structure,
     except Exception:
         n_atoms = None
     if n_atoms is not None:
-        # Conservative n_free estimate: total - explicit-index
-        # freezes - element-match freezes.  Doesn't account for
-        # overlap; the over-estimate of frozen atoms is fine
-        # here (we'd under-warn rather than spam).
-        n_frz_idx = len(cfg.frozen_indices)
-        try:
-            n_frz_elem = sum(
-                1 for el in struct.elements
-                if el in cfg.frozen_elements
-            )
-        except Exception:
-            n_frz_elem = 0
-        n_free_estimate = max(0, n_atoms - n_frz_idx - n_frz_elem)
-        if (n_free_estimate > 30
-                and not cfg.frozen_elements
-                and not cfg.frozen_indices):
+        # FROZEN ATOMS ARE INDICES.  This subtracted an element-match
+        # count as well, which was always zero: the config this receives
+        # is the deck's view, and it supplies indices only.  The
+        # element/residue vocabulary went with `SpectraConfig`
+        # (2026-08-22) -- the region store holds indices, and that is
+        # what the deck writes into the constraints file.
+        n_free_estimate = max(0, n_atoms - len(cfg.frozen_indices))
+        if n_free_estimate > 30 and not cfg.frozen_indices:
             issues.append(Issue(
                 severity="warn",
                 message=(
@@ -299,15 +291,12 @@ def spectra_render_checks(struct: Structure,
     # correspond to rigid-body motion of the free fragment, not
     # real vibrations.  Three non-collinear anchor atoms remove
     # all six translation+rotation DOFs; fewer leaves a residue.
-    # We can't resolve element / residue freezes into actual
-    # atom counts without the Structure's atom list -- but
-    # element / residue freezes typically pin many atoms (a
-    # whole metal slab, a whole residue).  Only warn for the
-    # genuinely-suspect case: frozen_indices has 1 or 2 entries
-    # AND nothing else is being frozen.
-    if (len(cfg.frozen_indices) in (1, 2)
-            and not cfg.frozen_elements
-            and not cfg.frozen_residue_names):
+    # The genuinely-suspect case is one or two frozen atoms: too few to
+    # anchor the free fragment.  (Two further conditions stood here,
+    # excusing the warning when an element or residue freeze was also
+    # in play; both were always true, because the view supplies indices
+    # only -- 2026-08-22.)
+    if len(cfg.frozen_indices) in (1, 2):
         issues.append(Issue(
             severity="warn",
             message=(

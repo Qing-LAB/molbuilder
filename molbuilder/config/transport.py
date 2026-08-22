@@ -1,7 +1,7 @@
 """TransportConfig -- every parameter the Transport-tab engine reads.
 
 Engine-agnostic, dataclass-of-fields with metadata, same architecture
-as :class:`SpectraConfig`.  The metadata drives:
+as the other engine configs.  The metadata drives:
 
   * the schema-driven Transport form;
   * the validator pass;
@@ -117,7 +117,7 @@ def is_electrode_label(label: str) -> bool:
 
 @dataclass
 class TransportConfig:
-    # Form-section render order.  Mirrors SpectraConfig's pattern.
+    # Form-section render order.  The shared pattern.
     _form_section_order = (
         "System",
         "Electrodes",

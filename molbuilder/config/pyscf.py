@@ -324,8 +324,8 @@ class PySCFConfig:
     density_fit: bool = field(default=True, metadata={
         "category": ("method", "execution"),
         "section": "Method",
-        # Profile-level: method-family identity choice; SpectraConfig's
-        # density_fit (config/spectra.py) is also profile.
+        # Profile-level: method-family identity choice; the vibration
+        # deck's density_fit is also profile.
         "workflow_group": "profile",
         "label":   "Density fitting",
         "engine_key":  'mf = mf.density_fit()',
@@ -349,7 +349,7 @@ class PySCFConfig:
     dispersion: Optional[str] = field(default="d3bj", metadata={
         "category": ("method",),
         "section": "Method",
-        # Profile-level: method-family choice; SpectraConfig's
+        # Profile-level: method-family choice; the vibration deck's
         # dispersion is also profile.  Setting once per project.
         "workflow_group": "profile",
         "label":   "Dispersion",
@@ -996,7 +996,7 @@ class PySCFConfig:
 
     # ----- Vibrational spectroscopy (the vibration calculation kind; -----
     # ----- spectra-migration plan P0, 2026-08-20.  Carried from the -----
-    # ----- retiring SpectraConfig; the catalogue is the master. -----
+    # ----- the catalogue is the master. -----
     already_relaxed: bool = field(default=False, metadata={
         "category": ("procedure",),
         "workflow_group": "profile",

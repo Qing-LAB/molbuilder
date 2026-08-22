@@ -44,7 +44,10 @@ from __future__ import annotations
 
 from typing import List
 
-from ..config.spectra import SpectraConfig
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:            # annotation only -- importing
+    # vibration_deck at run time would cycle (it imports this).
+    from .vibration_deck import VibrationConfigView
 from ..structure import Structure
 
 #: The engine display string for deck headers -- was
@@ -86,7 +89,7 @@ _RAMAN_FD_STEP_ANG = 0.005
 
 
 def _emit_header_docstring(struct: Structure,
-                           cfg: SpectraConfig,
+                           cfg: "VibrationConfigView",
                            *,
                            methods_md: str) -> List[str]:
     """Triple-quoted Methods + Outputs + Dependencies block.
@@ -163,7 +166,7 @@ def _emit_header_docstring(struct: Structure,
 # Imports                                                               #
 # --------------------------------------------------------------------- #
 
-def _emit_imports(cfg: SpectraConfig) -> List[str]:
+def _emit_imports(cfg: "VibrationConfigView") -> List[str]:
     out: List[str] = []
     out.append("import json")
     out.append("import math")
@@ -188,7 +191,7 @@ def _emit_imports(cfg: SpectraConfig) -> List[str]:
 
 
 def _emit_constants(struct: Structure,
-                    cfg: SpectraConfig,
+                    cfg: "VibrationConfigView",
                     *,
                     methods_md: str,
                     bibliography_keys: List[str]) -> List[str]:
@@ -201,7 +204,7 @@ def _emit_constants(struct: Structure,
     """
     out: List[str] = []
     out.append("# ============================================================")
-    out.append("#  Constants  (mirrored from SpectraConfig at render time)")
+    out.append("#  Constants  (mirrored from VibrationConfigView at render time)")
     out.append("# ============================================================")
     out.append(f"SCHEMA_VERSION = {int(SCHEMA_VERSION)}")
     out.append(f"JOB            = {cfg.job_name!r}")
@@ -276,7 +279,7 @@ def _emit_constants(struct: Structure,
     out.append("# Verified entries live in docs/science/references.bib.")
     out.append(f"BIBLIOGRAPHY_KEYS          = {list(bibliography_keys)!r}")
     out.append("")
-    out.append("# A snapshot of the SpectraConfig that produced this script,")
+    out.append("# A snapshot of the VibrationConfigView that produced this script,")
     out.append("# round-tripped through plain dict + JSON-safe primitives so")
     out.append("# the value mirrors what lands in spectra.json.config.")
     out.append("# Pretty-printed one key per line so a user opening the script")
@@ -305,8 +308,8 @@ def _emit_constants(struct: Structure,
     return out
 
 
-def _config_to_jsonable_dict(cfg: SpectraConfig) -> dict:
-    """Reduce a SpectraConfig to a plain JSON-safe dict (provenance
+def _config_to_jsonable_dict(cfg: "VibrationConfigView") -> dict:
+    """Reduce a VibrationConfigView to a plain JSON-safe dict (provenance
     payload for spectra.json.config).  Uses dataclasses.asdict so
     new fields land in the snapshot automatically."""
     import dataclasses
@@ -403,7 +406,7 @@ def _emit_atomic_writer() -> List[str]:
 # --------------------------------------------------------------------- #
 
 
-def _emit_build_mol(struct: Structure, cfg: SpectraConfig,
+def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView",
                     stage_token: str = "") -> List[str]:
     """gto.M(...) molecule construction.  The atom geometry is
     inlined as a Python list-of-lists rather than a multi-line
@@ -605,7 +608,7 @@ def _emit_initial_state() -> List[str]:
 # --------------------------------------------------------------------- #
 
 
-def _emit_equilibrium_scf(cfg: SpectraConfig, struct: Structure) -> List[str]:
+def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List[str]:
     """Run the SCF at the input geometry; populate the
     equilibrium sub-dict of state and write the first JSON
     checkpoint."""
@@ -700,7 +703,7 @@ def _emit_equilibrium_scf(cfg: SpectraConfig, struct: Structure) -> List[str]:
 # --------------------------------------------------------------------- #
 
 
-def _emit_gpu_coverage_probe(cfg: SpectraConfig) -> List[str]:
+def _emit_gpu_coverage_probe(cfg: "VibrationConfigView") -> List[str]:
     """Probe what gpu4pyscf can do for the current SCF type.
 
     Sets two flags the downstream stages read:
@@ -755,7 +758,7 @@ def _emit_gpu_coverage_probe(cfg: SpectraConfig) -> List[str]:
     return out
 
 
-def _emit_hessian_block(cfg: SpectraConfig) -> List[str]:
+def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     """Analytic Hessian -> mass-weighted -> diagonalize ->
     frequencies + eigenvectors.
 
@@ -973,7 +976,7 @@ def _emit_hessian_block(cfg: SpectraConfig) -> List[str]:
 # --------------------------------------------------------------------- #
 
 
-def _emit_displaced_scf_helpers(cfg: SpectraConfig) -> List[str]:
+def _emit_displaced_scf_helpers(cfg: "VibrationConfigView") -> List[str]:
     """COORDS_EQ_ANG + _build_mf_at -- shared between L3 (Raman FD)
     and L4 (per-mode ES).  Emit ONCE per script whenever either
     phase will run, so the names exist regardless of which phase
@@ -1106,7 +1109,7 @@ def _emit_ir_projection() -> List[str]:
     return out
 
 
-def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
+def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     """Finite-difference dα/dR_k for k over free Cartesians;
     project onto modes; Raman activity per mode.
 
@@ -1311,7 +1314,7 @@ def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
 # --------------------------------------------------------------------- #
 
 
-def _emit_es_loop(cfg: SpectraConfig) -> List[str]:
+def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     """Per selected mode: displace q ± A·L_n, run SCF at each
     displaced geometry, record the MO window around HOMO/LUMO."""
     out: List[str] = []
@@ -1482,7 +1485,7 @@ __all__ = ["pyscf_methods_fragment"]
 # --------------------------------------------------------------------- #
 
 
-def pyscf_methods_fragment(cfg: SpectraConfig) -> str:
+def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
     """Engine-specific paragraph for the Methods section.
 
     MOVED at P3 from ``PySCFSpectraEngine.methods_fragment`` (the class

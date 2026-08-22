@@ -23,6 +23,8 @@ import re
 
 import pytest
 from pathlib import Path
+from tests.spectra._helpers import _spectra_cfg
+
 
 
 # Minimal PSML body covering the fields the parser reads.  Real
@@ -494,8 +496,7 @@ class TestMetalAwareScriptTemplates:
         # P3: the generator retired; the hint lives in the surviving
         # equilibrium-SCF emitter the vibration deck composes.
         from molbuilder.pyscf.vibration_emitters import _emit_equilibrium_scf
-        from molbuilder.config.spectra import SpectraConfig
-        text = "\n".join(_emit_equilibrium_scf(SpectraConfig(
+        text = "\n".join(_emit_equilibrium_scf(_spectra_cfg(
             method="UKS", spin=2,
         ), self._fe()))
         assert "Hard SCF (typical for open-shell metals like Fe)" in text
@@ -503,10 +504,8 @@ class TestMetalAwareScriptTemplates:
 
     def test_spectra_pyscf_organic_skips_level_shift_template(self):
         from molbuilder.pyscf.vibration_emitters import _emit_equilibrium_scf
-        from molbuilder.config.spectra import SpectraConfig
-        text = "\n".join(_emit_equilibrium_scf(SpectraConfig(
-            method="RKS", spin=0,
-        ), self._water()))
+        text = "\n".join(_emit_equilibrium_scf(
+            _spectra_cfg(method="RKS", spin=0), self._water()))
         assert "Hard SCF (typical for open-shell metals" not in text
 
 

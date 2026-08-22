@@ -525,13 +525,12 @@ class TestWorkflowGroupSchemaConsistency:
         half-applied.
 
         Pre-2026-06-17 this test inspected only SiestaConfig; the
-        other three engines drifted (the round-7 audit found 7+
-        misalignments).  Now it walks all four."""
+        other engines drifted (the round-7 audit found 7+
+        misalignments).  Now it walks every one of them."""
         import dataclasses
         from molbuilder.config.siesta    import SiestaConfig
         from molbuilder.config.pyscf     import PySCFConfig
         from molbuilder.config.transport import TransportConfig
-        from molbuilder.config.spectra   import SpectraConfig
         # Read from the vocabulary itself rather than copied here.  A copy is
         # a second answer to a question with one owner, and it is what made
         # this test fail on 2026-08-15 for `output` and `staging` -- two
@@ -547,7 +546,10 @@ class TestWorkflowGroupSchemaConsistency:
         # card* -- does not apply.  Its sibling in
         # `test_issues_workflow_group.py` was scoped then; this one
         # was missed.
-        for cls in (TransportConfig, SpectraConfig):
+        # `SpectraConfig` was the second here until 2026-08-22; a spectra
+        # calculation is described by PySCFConfig, whose form comes from
+        # the catalogue like SIESTA's.
+        for cls in (TransportConfig,):
             for f in dataclasses.fields(cls):
                 tag = f.metadata.get("workflow_group")
                 if tag is not None and tag not in valid:
@@ -574,9 +576,8 @@ class TestWorkflowGroupSchemaConsistency:
         from molbuilder.config.siesta    import SiestaConfig
         from molbuilder.config.pyscf     import PySCFConfig
         from molbuilder.config.transport import TransportConfig
-        from molbuilder.config.spectra   import SpectraConfig
         untagged = []
-        for cls in (SiestaConfig, PySCFConfig, TransportConfig, SpectraConfig):
+        for cls in (SiestaConfig, PySCFConfig, TransportConfig):
             for f in dataclasses.fields(cls):
                 if "section" in f.metadata and "workflow_group" not in f.metadata:
                     untagged.append((cls.__name__, f.name,

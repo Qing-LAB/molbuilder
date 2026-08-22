@@ -21,9 +21,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from molbuilder.spectra import SpectraConfig
 
-from tests.spectra._helpers import _make_mode, _make_results
+from tests.spectra._helpers import _make_mode, _make_results, _spectra_cfg
 
 
 # --------------------------------------------------------------------- #
@@ -108,10 +107,10 @@ class TestRenderMethodsMdPreRun:
     script."""
 
     def test_minimal_config_produces_paragraph(self):
-        """Default SpectraConfig (selector=none, no ES) -> single
+        """Default config (selector=none, no ES) -> single
         L2 paragraph with functional + basis + dispersion mentions."""
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig()
+        cfg = _spectra_cfg()
         md = render_methods_md(cfg)
         assert "## Methods" in md
         # Default level: B3LYP / def2-SVP / D3BJ.
@@ -123,60 +122,60 @@ class TestRenderMethodsMdPreRun:
 
     def test_dispersion_none_omits_dispersion_clause(self):
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(dispersion="none")
+        cfg = _spectra_cfg(dispersion="none")
         md = render_methods_md(cfg)
         assert "dispersion" not in md.lower()
 
     def test_compute_raman_false_omits_raman_prose(self):
         """diagnostic / Hessian-only run -> no dα/dR clause."""
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(compute_raman=False)
+        cfg = _spectra_cfg(compute_raman=False)
         md = render_methods_md(cfg)
         assert "Raman activities" not in md
         assert "Komornicki1979" not in md
 
     def test_compute_raman_true_cites_komornicki_and_wilson(self):
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(compute_raman=True)
+        cfg = _spectra_cfg(compute_raman=True)
         md = render_methods_md(cfg)
         assert "Komornicki1979" in md
         assert "Wilson1955" in md
 
     def test_selector_all_emits_es_paragraph(self):
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(es_mode_selection="all")
+        cfg = _spectra_cfg(es_mode_selection="all")
         md = render_methods_md(cfg)
         assert "every vibrational mode" in md
         assert "Galperin2007" in md
         assert "Frederiksen2007" in md
         assert "Mills1972" in md
         # Default amplitude 0.02 Å should appear (lowered from 0.10
-        # to 0.02 on 2026-05-19 -- see SpectraConfig docstring).
+        # to 0.02 on 2026-05-19).
         assert "0.02" in md
         assert "A = 0.02" in md or "A=0.02" in md or "0.02 Å" in md
 
     def test_selector_top_n_named_in_prose(self):
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=7)
+        cfg = _spectra_cfg(es_mode_selection="top_n", es_top_n=7)
         md = render_methods_md(cfg)
         assert "top 7" in md
 
     def test_selector_threshold_named_in_prose(self):
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(es_mode_selection="threshold", es_threshold=2.5)
+        cfg = _spectra_cfg(es_mode_selection="threshold", es_threshold=2.5)
         md = render_methods_md(cfg)
         assert "Raman activity > 2.5" in md
 
     def test_selector_explicit_states_count(self):
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(es_mode_selection="explicit",
+        cfg = _spectra_cfg(es_mode_selection="explicit",
                             es_explicit_indices=[3, 5, 8, 12])
         md = render_methods_md(cfg)
         assert "user-specified set of 4 modes" in md
 
     def test_frequency_window_clause_both_bounds(self):
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(es_mode_selection="all",
+        cfg = _spectra_cfg(es_mode_selection="all",
                             freq_min_cm1=500.0, freq_max_cm1=2000.0)
         md = render_methods_md(cfg)
         assert "500" in md and "2000" in md
@@ -184,7 +183,7 @@ class TestRenderMethodsMdPreRun:
 
     def test_frequency_window_one_sided(self):
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(es_mode_selection="all", freq_min_cm1=1500.0)
+        cfg = _spectra_cfg(es_mode_selection="all", freq_min_cm1=1500.0)
         md = render_methods_md(cfg)
         assert "≥ 1500" in md or ">= 1500" in md
 
@@ -193,7 +192,7 @@ class TestRenderMethodsMdPreRun:
         the prose shouldn't claim a window restriction that won't
         actually be enforced."""
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(es_mode_selection="explicit",
+        cfg = _spectra_cfg(es_mode_selection="explicit",
                             es_explicit_indices=[1, 2],
                             freq_min_cm1=1000.0,
                             freq_max_cm1=2000.0)
@@ -207,13 +206,13 @@ class TestRenderMethodsMdPreRun:
         """Becke1993 is the B3-family paper; cite it only when the
         functional is in that family."""
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(functional="PBE0")
+        cfg = _spectra_cfg(functional="PBE0")
         md = render_methods_md(cfg)
         assert "Becke1993" not in md
 
     def test_bibliography_listed_at_end(self):
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(es_mode_selection="all")
+        cfg = _spectra_cfg(es_mode_selection="all")
         md = render_methods_md(cfg)
         assert "**Bibliography**" in md
         # The bibliography section appears AFTER the prose
@@ -232,7 +231,7 @@ class TestRenderMethodsMdPostRun:
 
     def test_frequency_span_appended_when_modes_present(self):
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig()
+        cfg = _spectra_cfg()
         results = _make_results(complete=True)
         md = render_methods_md(cfg, results=results)
         # Real frequencies from _make_results: 412.3, 1023.4, 3656.0
@@ -242,7 +241,7 @@ class TestRenderMethodsMdPostRun:
 
     def test_imaginary_modes_called_out(self):
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig()
+        cfg = _spectra_cfg()
         results = _make_results(complete=True)
         # Inject an imaginary mode.
         results.modes.append(_make_mode(index=4, freq=-150.0, with_es=False))
@@ -254,7 +253,7 @@ class TestRenderMethodsMdPostRun:
         ends with a "Selected modes: ..." line listing the indices
         + frequencies (archived-spec § 11.2)."""
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(es_mode_selection="explicit",
+        cfg = _spectra_cfg(es_mode_selection="explicit",
                             es_explicit_indices=[2])
         results = _make_results(complete=True)
         md = render_methods_md(cfg, results=results)
@@ -268,7 +267,7 @@ class TestRenderMethodsMdPostRun:
         received per-mode electronic-structure data." when results
         exist."""
         from molbuilder.spectra import render_methods_md
-        cfg = SpectraConfig(es_mode_selection="all")
+        cfg = _spectra_cfg(es_mode_selection="all")
         results = _make_results(complete=True)
         md = render_methods_md(cfg, results=results)
         assert "1 modes received" in md or "In the present run" in md
@@ -288,7 +287,7 @@ class TestRenderMethodsMdFragment:
 
     def test_fragment_appears_in_output(self):
         from molbuilder.spectra import render_methods_md
-        md = render_methods_md(SpectraConfig(), fragment_md=(
+        md = render_methods_md(_spectra_cfg(), fragment_md=(
             "The analytic Hessian was obtained via "
             "`pyscf.hessian.rks` [Sun2020]."))
         assert "pyscf.hessian.rks" in md
@@ -297,7 +296,7 @@ class TestRenderMethodsMdFragment:
         """A citation key that appears only in the fragment must
         still land in the trailing **Bibliography** list."""
         from molbuilder.spectra import render_methods_md
-        md = render_methods_md(SpectraConfig(), fragment_md=(
+        md = render_methods_md(_spectra_cfg(), fragment_md=(
             "Custom citation only here: [Sun2018]."))
         bib_section = md.split("**Bibliography**", 1)[1]
         assert "Sun2018" in bib_section
@@ -306,7 +305,7 @@ class TestRenderMethodsMdFragment:
         """No fragment means no engine paragraph and no placeholder --
         the default, and what a stripped test environment sees."""
         from molbuilder.spectra import render_methods_md
-        md = render_methods_md(SpectraConfig())
+        md = render_methods_md(_spectra_cfg())
         assert "pyscf.hessian" not in md
 
     def test_the_deck_s_real_fragment_composes(self):
@@ -315,7 +314,7 @@ class TestRenderMethodsMdFragment:
         class, Raman prose riding only when compute_raman is on."""
         from molbuilder.spectra import render_methods_md
         from molbuilder.pyscf.vibration_emitters import pyscf_methods_fragment
-        cfg = SpectraConfig(method="UKS", compute_raman=True)
+        cfg = _spectra_cfg(method="UKS", compute_raman=True)
         md = render_methods_md(cfg, fragment_md=pyscf_methods_fragment(cfg))
         assert "pyscf.hessian.uks" in md
         assert "[Sun2020, Sun2018]" in md
@@ -328,7 +327,7 @@ class TestRenderMethodsMdWithStruct:
 
     def test_struct_none_omits_atom_clause(self):
         from molbuilder.spectra import render_methods_md
-        md = render_methods_md(SpectraConfig())
+        md = render_methods_md(_spectra_cfg())
         assert "free, " not in md  # no "(N free, M held fixed)" clause
         assert "vibrational modes" not in md or "vibrational mode" in md
         # When struct is None, the L2 paragraph has no atom counts.
@@ -349,29 +348,33 @@ class TestRenderMethodsMdWithStruct:
         struct = _S()
         struct.atoms = atoms
 
-        md = render_methods_md(SpectraConfig(), struct=struct)
+        md = render_methods_md(_spectra_cfg(), struct=struct)
         assert "5 atoms" in md
         # 3*5 - 6 = 9 modes for all-free.
         assert "9 non-translational" in md or "9 " in md
 
-    def test_struct_with_frozen_elements_counts_correctly(self):
-        """Freeze-by-element subtracts the right atoms from n_free."""
+    def test_struct_with_frozen_atoms_counts_correctly(self):
+        """Frozen atoms subtract from n_free.  Named by INDEX -- the
+        region store holds indices and the deck writes those into
+        geomeTRIC's constraints file.
+
+        Uses a real `Structure`.  This built a `_S` stub exposing
+        `.atoms` of objects with `.symbol`, and `methods.py` carried a
+        `_structure_element_symbols` adapter to read either shape --
+        production code written for a test mock.  Both are gone
+        (2026-08-22): there is one structure type.
+        """
+        import numpy as np
+
         from molbuilder.spectra import render_methods_md
+        from molbuilder.structure import Structure
 
-        class _Atom:
-            def __init__(self, sym):
-                self.symbol = sym
-        # 4 Au + 3 organic = 7 atoms; freeze Au -> n_free=3.
-        atoms = ([_Atom("Au")] * 4 + [_Atom("C"), _Atom("H"), _Atom("H")])
-
-        class _S:
-            pass
-        struct = _S()
-        struct.atoms = atoms
-
-        cfg = SpectraConfig(frozen_elements=["Au"])
+        # 4 Au + 3 organic = 7 atoms; freeze the four Au -> n_free = 3.
+        struct = Structure(
+            elements=["Au", "Au", "Au", "Au", "C", "H", "H"],
+            positions=np.array([[float(i), 0.0, 0.0] for i in range(7)]))
+        cfg = _spectra_cfg(struct=struct, frozen_indices=[0, 1, 2, 3])
         md = render_methods_md(cfg, struct=struct)
-        # 3 free, 4 frozen.
         assert "3 free" in md
         assert "4 frozen" in md
 
@@ -387,14 +390,14 @@ class TestRenderMethodsMdWithStruct:
                                   [0.96, 0., 0.],
                                   [-0.24, 0.93, 0.]]),
         )
-        md = render_methods_md(SpectraConfig(), struct=struct)
+        md = render_methods_md(_spectra_cfg(), struct=struct)
         assert "3 atoms" in md
         # 3*3 - 6 = 3 modes for water.
         assert "3 non-translational" in md
 
-    def test_real_structure_with_frozen_elements(self):
-        """Real Structure + frozen_elements=['Au'] -> Au atoms
-        removed from the free count."""
+    def test_real_structure_with_frozen_atoms(self):
+        """A real Structure with its two Au atoms frozen -> they leave
+        the free count."""
         from molbuilder.spectra import render_methods_md
         from molbuilder.structure import Structure
         struct = Structure(
@@ -404,7 +407,8 @@ class TestRenderMethodsMdWithStruct:
                                   [4., 0., 0.],
                                   [5., 0., 0.]]),
         )
-        cfg = SpectraConfig(frozen_elements=["Au"])
+        # Frozen atoms are INDICES -- the TWO Au atoms are 0 and 1.
+        cfg = _spectra_cfg(struct=struct, frozen_indices=[0, 1])
         md = render_methods_md(cfg, struct=struct)
         assert "2 free" in md
         assert "2 frozen" in md

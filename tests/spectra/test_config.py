@@ -1,4 +1,8 @@
-"""SpectraConfig surface tests -- defaults and validation metadata.
+"""The spectra config surface -- defaults and validation metadata.
+
+The config a spectra calculation is described by is `PySCFConfig`,
+seen through the vibration deck's view (`_spectra_cfg`).  A separate
+`SpectraConfig` class carried this surface until 2026-08-22.
 
 What remains after P3: the dataclass's defaults (the values the
 registry-path validator and the parity reference read) and its
@@ -15,47 +19,58 @@ import dataclasses
 
 import pytest
 
-from molbuilder.spectra import SpectraConfig
+from tests.spectra._helpers import _spectra_cfg
+
 
 
 # --------------------------------------------------------------------- #
-#  SpectraConfig -- L1 dataclass, field metadata, form-schema shape     #
+#  the spectra config surface -- defaults, metadata, form-schema shape #
 # --------------------------------------------------------------------- #
 
 
-class TestSpectraConfigDefaults:
+class TestSpectraDefaults:
     """The dataclass instantiates with all-defaults and the values
     match the v1 spec defaults so a user's first-pass run is
     cheap (es_mode_selection=none) and uses production-defensible
     method/basis choices (B3LYP/def2-SVP/D3BJ, grid 4)."""
 
-    def test_default_construction(self):
-        cfg = SpectraConfig()
-        # Spec-pinned defaults.
-        assert cfg.engine     == "pyscf"
-        assert cfg.job_name   == "spectra"
+    def test_a_spectra_calculations_science_defaults(self):
+        """What a vibration run gets when the user chooses nothing:
+        B3LYP / def2-SVP / D3BJ, restricted, density-fitted.
+
+        Pinned HERE and nowhere else.  The catalogue-agreement gate
+        mirrors help / range / unit / choices / label / engine_key
+        between the class and the catalogue -- **not defaults** -- so
+        without this a silent change to the functional or the basis
+        would reach a user's spectrum with nothing failing.
+        """
+        cfg = _spectra_cfg()
+        assert cfg.job_name   == "pyscf_relax"
         assert cfg.method     == "RKS"
         assert cfg.functional == "B3LYP"
         assert cfg.basis      == "def2-SVP"
         assert cfg.dispersion == "d3bj"
         assert cfg.density_fit is True
 
-    def test_atom_freeze_lists_empty_by_default(self):
-        cfg = SpectraConfig()
-        assert cfg.frozen_elements      == []
-        assert cfg.frozen_residue_names == []
-        assert cfg.frozen_indices       == []
+    def test_atom_freeze_list_is_empty_by_default(self):
+        """Frozen atoms are INDICES and come from the structure's region
+        store -- empty until the user freezes something.  (Two further
+        lists, by element and by residue name, went with `SpectraConfig`
+        on 2026-08-22: nothing populated them and one unreachable branch
+        read them.)"""
+        cfg = _spectra_cfg()
+        assert cfg.frozen_indices == []
 
     def test_es_off_by_default(self):
         """First-pass run should be cheap -- spectrum only, no
         displaced SCFs.  User opts in to top_n / explicit after
         seeing the spectrum."""
-        cfg = SpectraConfig()
+        cfg = _spectra_cfg()
         assert cfg.es_mode_selection == "skip"
 
     def test_ir_off_v1_reserved(self):
         """compute_ir is reserved for 1c and ignored in v1."""
-        cfg = SpectraConfig()
+        cfg = _spectra_cfg()
         assert cfg.compute_ir is False
 
     def test_displacement_amplitude_production_default(self):
@@ -65,11 +80,11 @@ class TestSpectraConfigDefaults:
         Lowered from 0.10 → 0.02 on 2026-05-19; see docstring on
         ``SpectraConfig.displacement_amplitude_ang`` for the
         trade-off rationale."""
-        cfg = SpectraConfig()
+        cfg = _spectra_cfg()
         assert cfg.displacement_amplitude_ang == pytest.approx(0.02)
 
 
-class TestSpectraConfigFieldMetadata:
+class TestSpectraFieldMetadata:
     """The metadata that SURVIVED P3 is the validation vocabulary
     (range / validate / choices / pattern) -- the form keys moved to
     the catalogue with the vibration items."""
@@ -83,26 +98,54 @@ class TestSpectraConfigFieldMetadata:
     def test_basename_validator_attached(self):
         """job_name carries the shared _validate_basename callable
         in its metadata so the validation pass refuses paths-with-
-        dots / slashes / whitespace (per docs/execution/job-contracts.md)."""
-        jn = next(f for f in dataclasses.fields(SpectraConfig)
+        dots / slashes / whitespace (per docs/execution/job-contracts.md).
+
+        Also pinned only here: `validate` is not in the catalogue gate's
+        mirrored set, so nothing else notices if the callable is dropped.
+        """
+        from molbuilder.config.pyscf import PySCFConfig
+        jn = next(f for f in dataclasses.fields(PySCFConfig)
                   if f.name == "job_name")
         assert callable(jn.metadata.get("validate"))
 
-    def test_choices_metadata_is_enforced(self):
-        """Any field carrying a ``choices`` tuple rejects values
-        outside that tuple at construction time -- catches both UI
-        typos and old-value drift after a rename (e.g. the pre-skip
-        ``es_mode_selection="none"`` smoke-test value, which used to
-        be silently accepted and then no-op'd downstream)."""
-        with pytest.raises(ValueError, match="es_mode_selection"):
-            SpectraConfig(es_mode_selection="none")  # renamed -> "skip"
-        with pytest.raises(ValueError, match="dispersion"):
-            SpectraConfig(dispersion="d5")
+    def test_choices_are_enforced_where_a_user_supplies_one(self, tmp_path):
+        """A value outside a field's declared ``choices`` is refused --
+        checked at the DESCRIPTION layer, which is where a user actually
+        supplies one.
+
+        The retired `SpectraConfig` enforced this in `__post_init__`,
+        which only ever fired for a caller constructing the class by
+        hand.  The guard that protects a real user reads `task.json`'s
+        stage overrides against the catalogue
+        (`validation/task.py::preflight`), and it refuses at ERROR --
+        verified here rather than assumed, because retiring a class that
+        carried a check is exactly when a check goes missing.
+        """
+        import json
+        from molbuilder.config.pyscf import PySCFConfig
+        from molbuilder.identity import run_id
+        from molbuilder.task import read_task
+        from molbuilder.validation.task import preflight
+
+        (tmp_path / "task.json").write_text(json.dumps({
+            "schema": "molbuilder/task@1", "engine": {"name": "pyscf"},
+            "shape": "flat", "calculation": "vibration",
+            "run": {"name": "v", "id": run_id("v", "H2O"),
+                    "created": "2026-08-22T00:00:00-07:00"},
+            "structure": {"source": "w.xyz", "formula": "H2O", "atoms": 3},
+            "varies": ["dispersion"],
+            "stages": [{"name": "coarse", "enabled": True,
+                        "overrides": {"dispersion": "d5"}}]}))
+        issues = preflight(read_task(tmp_path / "task.json"), PySCFConfig)
+        bad = [i for i in issues
+               if i.severity == "error" and "dispersion" in (i.message or "")]
+        assert bad, [i.message for i in issues]
+        assert "not one of" in bad[0].message
         # None on Optional[str] field stays valid.
-        SpectraConfig(dispersion=None)
+        _spectra_cfg(dispersion=None)
         # All declared choices remain accepted.
         for v in ("skip", "all", "top_n", "threshold", "explicit"):
-            SpectraConfig(es_mode_selection=v)
+            _spectra_cfg(es_mode_selection=v)
 
 
 # TestSpectraConfigSchema retired at P3 with the
@@ -119,7 +162,7 @@ class TestFreqRangeFilter:
     class just pins the dataclass + schema surface."""
 
     def test_default_no_filter(self):
-        cfg = SpectraConfig()
+        cfg = _spectra_cfg()
         assert cfg.freq_min_cm1 is None
         assert cfg.freq_max_cm1 is None
 

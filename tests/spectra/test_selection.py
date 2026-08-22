@@ -21,12 +21,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from molbuilder.spectra import ModeData, SpectraConfig, SpectraResults
+from molbuilder.spectra import ModeData, SpectraResults
 from molbuilder.spectra.results import PHASE_COMPLETE, SCHEMA_VERSION
 
 from tests.spectra._helpers import (
     _make_es,
     _modes_fixture,
+    _spectra_cfg,
     _struct_water,
 )
 
@@ -35,32 +36,32 @@ class TestSelectModes:
 
     def test_selector_none_returns_empty(self):
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="skip")
+        cfg = _spectra_cfg(es_mode_selection="skip")
         assert select_modes(_modes_fixture(), cfg) == []
 
     def test_selector_all_returns_every_mode(self):
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="all")
+        cfg = _spectra_cfg(es_mode_selection="all")
         assert select_modes(_modes_fixture(), cfg) == [1, 2, 3, 4, 5, 6]
 
     def test_selector_all_respects_freq_window(self):
         """Window [800, 2500] -> modes 3 (1023) and 4 (1612)."""
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="all",
+        cfg = _spectra_cfg(es_mode_selection="all",
                             freq_min_cm1=800.0, freq_max_cm1=2500.0)
         assert select_modes(_modes_fixture(), cfg) == [3, 4]
 
     def test_selector_top_n_orders_by_activity_descending(self):
         """Top-3: brightest first -> 3 (87.2), 5 (45.0), 6 (18.5)."""
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=3)
+        cfg = _spectra_cfg(es_mode_selection="top_n", es_top_n=3)
         assert select_modes(_modes_fixture(), cfg) == [3, 5, 6]
 
     def test_selector_top_n_skips_modes_without_activity(self):
         """Mode 4 has raman_activity=None -- excluded from top_n
         ranking even if N would otherwise include it."""
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=10)
+        cfg = _spectra_cfg(es_mode_selection="top_n", es_top_n=10)
         # Asks for 10, only 5 modes have activities; all 5 returned.
         out = select_modes(_modes_fixture(), cfg)
         assert 4 not in out
@@ -71,7 +72,7 @@ class TestSelectModes:
         falls in the window but has no activity, mode 5 + 6 are the
         only Raman-active candidates."""
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=2,
+        cfg = _spectra_cfg(es_mode_selection="top_n", es_top_n=2,
                             freq_min_cm1=2000.0, freq_max_cm1=4000.0)
         assert select_modes(_modes_fixture(), cfg) == [5, 6]
 
@@ -80,7 +81,7 @@ class TestSelectModes:
         contract; the too-few-modes ADVISORY is the kind validator's
         (validation/spectra.py; validate_selection retired)."""
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=100)
+        cfg = _spectra_cfg(es_mode_selection="top_n", es_top_n=100)
         out = select_modes(_modes_fixture(), cfg)
         # 5 modes have activities; all 5 returned regardless of N=100.
         assert len(out) == 5
@@ -90,7 +91,7 @@ class TestSelectModes:
         Mode 6 has 18.5, so it passes too.  Modes 2 (12.5) and 1 (3.2)
         fall under.  Mode 4 has no activity (excluded)."""
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="threshold",
+        cfg = _spectra_cfg(es_mode_selection="threshold",
                             es_threshold=15.0)
         out = select_modes(_modes_fixture(), cfg)
         assert sorted(out) == [3, 5, 6]
@@ -102,14 +103,14 @@ class TestSelectModes:
         10 ✓ -- passes.  Mode 3 freq=1023 in window ✓, 87 > 10 ✓ --
         passes.)"""
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="threshold",
+        cfg = _spectra_cfg(es_mode_selection="threshold",
                             es_threshold=10.0,
                             freq_min_cm1=500.0, freq_max_cm1=1500.0)
         assert sorted(select_modes(_modes_fixture(), cfg)) == [2, 3]
 
     def test_selector_explicit(self):
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="explicit",
+        cfg = _spectra_cfg(es_mode_selection="explicit",
                             es_explicit_indices=[3, 5])
         assert select_modes(_modes_fixture(), cfg) == [3, 5]
 
@@ -118,7 +119,7 @@ class TestSelectModes:
         for modes 3 + 5 + 6; even though mode 3 is well below
         any window, the explicit selector returns them all."""
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="explicit",
+        cfg = _spectra_cfg(es_mode_selection="explicit",
                             es_explicit_indices=[3, 5, 6],
                             # Window that would exclude 3 if applied
                             freq_min_cm1=2000.0)
@@ -127,7 +128,7 @@ class TestSelectModes:
     def test_explicit_dedupes_repeats(self):
         """Repeated explicit indices collapse; order preserved."""
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="explicit",
+        cfg = _spectra_cfg(es_mode_selection="explicit",
                             es_explicit_indices=[2, 5, 2, 5, 3])
         assert select_modes(_modes_fixture(), cfg) == [2, 5, 3]
 
@@ -180,7 +181,7 @@ class TestSelectModesWithPriorResume:
         already has ES from a prior run.  select_modes returns
         [2, 5] -- the engine will only compute ES for those."""
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="explicit",
+        cfg = _spectra_cfg(es_mode_selection="explicit",
                             es_explicit_indices=[2, 3, 5])
         prior = self._prior_with_es_on_mode(idx=3)
         assert select_modes(_modes_fixture(), cfg, prior=prior) == [2, 5]
@@ -189,7 +190,7 @@ class TestSelectModesWithPriorResume:
         """prior=None and prior.modes-with-ES=[] both leave the
         selection unchanged."""
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="explicit",
+        cfg = _spectra_cfg(es_mode_selection="explicit",
                             es_explicit_indices=[2, 3])
         assert select_modes(_modes_fixture(), cfg, prior=None) == [2, 3]
 
@@ -198,7 +199,7 @@ class TestSelectModesWithPriorResume:
         top_n=3 with prior ES on mode 3 -> returns the next-best
         modes instead."""
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=3)
+        cfg = _spectra_cfg(es_mode_selection="top_n", es_top_n=3)
         prior = self._prior_with_es_on_mode(idx=3)
         out = select_modes(_modes_fixture(), cfg, prior=prior)
         # top_n=3 normally returns [3, 5, 6]; with 3 already done -> [5, 6].
@@ -300,7 +301,7 @@ class TestSelectorEquivalence:
         # gate now reads THAT (one selector, two spellings, still
         # provably equal).
         from molbuilder.pyscf.vibration_emitters import _emit_es_loop
-        cfg = SpectraConfig(**cfg_overrides)
+        cfg = _spectra_cfg(**cfg_overrides)
         modes = _modes_fixture()
 
         # Python canonical result.

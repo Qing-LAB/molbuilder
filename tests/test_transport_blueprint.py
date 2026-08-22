@@ -30,7 +30,7 @@ class TestTransportSchemaEndpoint:
         2026-06-10 post-ship review: every form field MUST declare
         an ``engine_key`` in its metadata so users see exactly
         which keyword the field writes into the generated script.
-        SiestaConfig, PySCFConfig, and SpectraConfig already pin
+        SiestaConfig and PySCFConfig already pin
         this; TransportConfig was the post-review gap.
 
         Pin so a future field addition that forgets ``engine_key``
