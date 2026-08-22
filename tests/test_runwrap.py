@@ -1192,3 +1192,30 @@ def test_every_siesta_warm_suffix_reaches_both_halves_of_the_wrapper(tmp_path):
             f"directory holding only .{ext} would be reported as "
             f"'initial-run (clean state)' while --cold treats it as warm "
             f"(run-identity.md § 5: the banner must never be weakened)")
+
+
+def test_the_py_wrappers_continuation_story_is_the_decks_own(tmp_path):
+    """The wrapper ships beside exactly one deck, and its continuation
+    paragraphs read THAT deck (the `_fdf_honours_restart` doctrine,
+    extended to PySCF at the U6 close): an optimization deck described
+    `continue` carries the chkfile init-guess marker and the wrapper
+    says the reads are gated on it; a vibration deck reads no prior
+    engine state at start and the wrapper says exactly that instead of
+    the old unconditional auto-resume claim."""
+    cont = tmp_path / "opt.py"
+    cont.write_text('JOB = "opt"\nmf.init_guess = "chkfile"\n')
+    w = render_run_wrapper(cont, resources=Resources())
+    assert "gated" in w and "described ``continue``" in w
+    assert "reads no prior" not in w
+
+    vib = tmp_path / "vib.py"
+    vib.write_text('JOB = "vib"\nJSON_PATH = "vib.spectra.json"\n')
+    w2 = render_run_wrapper(vib, resources=Resources())
+    assert "reads no prior\n#    engine state" in w2.replace("  ", " ") \
+        or "reads no prior" in w2
+    assert 'init-guess' not in w2 or "gated" not in w2
+
+    clean = tmp_path / "cln.py"
+    clean.write_text('JOB = "cln"\n')
+    w3 = render_run_wrapper(clean, resources=Resources())
+    assert "NO prior-state" in w3

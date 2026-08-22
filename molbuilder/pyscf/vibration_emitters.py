@@ -94,7 +94,8 @@ def _emit_header_docstring(struct: Structure,
     The Methods paragraph is the same prose the UI surfaces in
     the Methods-preview modal (spec § 9.4 / § 11.2), so a reader
     sees identical content in the file, the form, and the JSON.
-    ``methods_md`` is computed once in :func:`render_spectra_script`
+    ``methods_md`` is computed once in the deck composer
+    (:func:`molbuilder.pyscf.vibration_deck.vibration_spec`)
     and threaded through here + ``_emit_constants``.
     """
     out: List[str] = []
@@ -161,11 +162,6 @@ def _emit_header_docstring(struct: Structure,
 # Imports                                                               #
 # --------------------------------------------------------------------- #
 
-
-# --------------------------------------------------------------------- #
-# Imports                                                               #
-# --------------------------------------------------------------------- #
-
 def _emit_imports(cfg: SpectraConfig) -> List[str]:
     out: List[str] = []
     out.append("import json")
@@ -198,8 +194,9 @@ def _emit_constants(struct: Structure,
     """Pin runtime constants the user can tweak inline if they
     re-run the script with a small parameter change.
 
-    ``methods_md`` and ``bibliography_keys`` are computed once in
-    :func:`render_spectra_script` and threaded through.
+    ``methods_md`` and ``bibliography_keys`` are computed once in the
+    deck composer (`vibration_deck.vibration_spec`) and threaded
+    through.
     """
     out: List[str] = []
     out.append("# ============================================================")
@@ -366,10 +363,9 @@ def _emit_atomic_writer() -> List[str]:
     out.append("    a = np.asarray(arr, dtype=float)")
     out.append("    if np.isfinite(a).all():")
     out.append("        return a.tolist()")
-    out.append("    out = []")
-    out.append("    flat_iter = a.flat")
+    out.append("    flat = [float(x) if math.isfinite(x) else None"
+               "\n            for x in a.flat]")
     out.append("    shape = a.shape")
-    out.append("    flat = [float(x) if math.isfinite(x) else None for x in flat_iter]")
     out.append("    # Re-shape via nested lists.  For 1-D this is trivial.")
     out.append("    if a.ndim == 1:")
     out.append("        return flat")
@@ -1012,21 +1008,23 @@ def _emit_displaced_scf_helpers(cfg: SpectraConfig) -> List[str]:
     out.append("                     for _i in range(N_ATOMS)]")
     out.append("    _mol_new.unit = 'Angstrom'")
     out.append("    _mol_new.build()")
-    out.append("    # Pick the right dft / scf module INSIDE the method branch:")
-    out.append("    # _dft / _scf are gpu4pyscf when _USING_GPU else stock pyscf;")
-    out.append("    # force_cpu overrides to stock pyscf regardless.  The name")
-    out.append("    # `dft` only exists on DFT decks (the import is conditional),")
-    out.append("    # so an HF deck must never evaluate it -- not even to pick a")
-    out.append("    # module it would not use.")
-    out.append("    if METHOD.upper() in ('RKS', 'UKS'):")
-    out.append("        _dft_mod = dft if force_cpu else _dft")
-    out.append("        _cls = _dft_mod.RKS if METHOD.upper() == 'RKS' else _dft_mod.UKS")
-    out.append("        _mf2 = _cls(_mol_new)")
-    out.append("        _mf2 = _mb_configure_dft(_mf2)  # one DFT spelling (§ 7a)")
-    out.append("    else:")
-    out.append("        _scf_mod = scf if force_cpu else _scf")
-    out.append("        _cls = _scf_mod.RHF if METHOD.upper() == 'RHF' else _scf_mod.UHF")
-    out.append("        _mf2 = _cls(_mol_new)")
+    # THE METHOD IS A RENDER-TIME FACT, so only the live arm is
+    # emitted (the E-M4.7 shape, taken one step further at the U6
+    # close): an HF deck used to carry the DFT arm as dead text, with
+    # references -- `dft`, `_mb_configure_dft` -- that exist only on
+    # DFT decks.  Dead text with dead names is exactly where that
+    # NameError class hides.
+    if str(getattr(cfg, "method", "")).upper() in ("RKS", "UKS"):
+        out.append("    # _dft is gpu4pyscf when _USING_GPU else stock pyscf;")
+        out.append("    # force_cpu overrides to stock pyscf regardless.")
+        out.append("    _dft_mod = dft if force_cpu else _dft")
+        out.append("    _cls = _dft_mod.RKS if METHOD.upper() == 'RKS' else _dft_mod.UKS")
+        out.append("    _mf2 = _cls(_mol_new)")
+        out.append("    _mf2 = _mb_configure_dft(_mf2)  # one DFT spelling (§ 7a)")
+    else:
+        out.append("    _scf_mod = scf if force_cpu else _scf")
+        out.append("    _cls = _scf_mod.RHF if METHOD.upper() == 'RHF' else _scf_mod.UHF")
+        out.append("    _mf2 = _cls(_mol_new)")
     out.append("    _use_df = DENSITY_FIT if density_fit is None else density_fit")
     out.append("    if _use_df:")
     out.append("        _mf2 = _mf2.density_fit(**_MB_DF_KW)")
@@ -1048,9 +1046,12 @@ def _emit_ir_projection() -> List[str]:
     """Per-mode IR intensity (km/mol) from the dipole-moment
     derivative collected in the Raman FD loop.
 
-    This block emits inside ``_emit_raman_block`` after the Raman
-    activity loop has run -- it relies on ``DMU_DR`` and the
-    canonical normal modes already being in scope.
+    TWO composers emit this block: ``_emit_raman_block`` (after the
+    Raman activity loop) and the IR-only arm
+    (``vibration_deck._vib_ir_only_block``, whose dipole sweep fills
+    the same ``DMU_DR``).  Either way it relies on ``DMU_DR``,
+    ``modes_payload`` and ``NORM_MODES_CANONICAL`` -- the last defined
+    by the Hessian block on every path -- already being in scope.
 
     SCIENTIFIC VALIDATION STATUS: BAND-LEVEL VALIDATED
     (2026-08-20, water at B3LYP/def2-SVP against literature

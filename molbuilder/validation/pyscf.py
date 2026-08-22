@@ -247,6 +247,37 @@ def _validate_pyscf(struct: Structure, cfg,
         from .sidecar import check_unconsumed_region_labels
         issues += check_unconsumed_region_labels(struct, engine="PySCF")
 
+    # Solvation, engine-side (moved from the kind at the U6 close):
+    # these are facts about the BUILD and the vocabulary, not about the
+    # vibration -- the optimization deck emits the same solvent lines
+    # (scf_setup.emit_solvent_lines), so a refusal that lived only in
+    # the kind let `solvent_method = SMD` reach the queue on an
+    # optimization deck, and an unknown solvent name escaped prep as a
+    # bare ValueError from the emitter (the G-1c stack-trace class).
+    _solv = str(getattr(cfg, "solvent", "") or "").strip().lower()
+    if _solv:
+        from ..pyscf.scf_setup import SOLVENTS
+        if _solv not in SOLVENTS:
+            issues.append(Issue(
+                "error",
+                f"unknown solvent {_solv!r}; this deck's PCM dielectric "
+                f"table knows: {', '.join(sorted(SOLVENTS))}.  (The "
+                f"emitter would refuse the same name with a stack trace "
+                f"at prep -- this is that refusal, at preflight.)",
+                "config.solvent",
+            ))
+        if "SMD" in str(getattr(cfg, "solvent_method", "") or "").upper():
+            issues.append(Issue(
+                "error",
+                "solvent_method = SMD: this PySCF build was compiled "
+                "without the SMD module (probe: RuntimeError 'compile "
+                "with -DENABLE_SMD=ON', 2026-08-21).  Use a PCM variant "
+                "(IEF-PCM / C-PCM / COSMO), or rebuild PySCF with SMD "
+                "enabled.  SMD reference: Marenich, Cramer & Truhlar, "
+                "J. Phys. Chem. B 113, 6378 (2009) [Marenich2009].",
+                "config.solvent_method",
+            ))
+
     # Basis adequacy for transition metals.
     issues += _check_metal_basis_adequacy(
         struct, basis=getattr(cfg, "basis", ""),

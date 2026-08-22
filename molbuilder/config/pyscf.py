@@ -319,7 +319,7 @@ class PySCFConfig:
         "workflow_group": "profile",
         "category": ("method",),
         "help": "auxiliary fitting basis; None lets density_fit() auto-pick",
-            "engine_key":  'df.auxbasis = ...',
+            "engine_key":  'mf = mf.density_fit(auxbasis=...)',
     })
     density_fit: bool = field(default=True, metadata={
         "category": ("method", "execution"),
@@ -752,7 +752,7 @@ class PySCFConfig:
         "workflow_group": "profile",
         "section": "Solvent (optional)",
         "label":   "Solvent",
-        "engine_key":  'mf = mf.PCM() / mf.SMD()',
+        "engine_key":  'mf = mf.PCM()',
         "null_label": "(gas phase)",
         "help": "solvent (water / methanol / dmso / chloroform / ...)",
     })
@@ -940,7 +940,7 @@ class PySCFConfig:
         "workflow_group": "output",
         "section": "Compute & budget",
         "label":   "Write PySCF log",
-        "engine_key":  "mol.stdout = open('<path>','w')",
+        "engine_key":  "gto.M(output='<job>_<stage>.log')",
         "help": "write the PySCF text log to <job>.log",
     })
     # Always-on output knobs; unsectioned (no good reason to expose).

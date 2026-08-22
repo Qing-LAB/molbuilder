@@ -478,7 +478,8 @@ def create_app(*, config=None) -> Flask:
         # Task Setup tab: reads the selected folder's description and shows it
         # -- stages, and the machine settings you either chose or asked to
         # have measured -- with `task.json` in the vendored CodeMirror.
-        # READ-ONLY today: it writes nothing, and the Save button says so.
+        # Reads AND writes: Save posts /api/task-setup/save (gate ③ runs
+    # there), and the launcher door writes jobset.sh.
         # The contract is docs/web/task-setup.md.
         return render_template("task_setup.html")
 
@@ -581,9 +582,11 @@ def create_app(*, config=None) -> Flask:
     @app.route("/api/backends")
     def api_backends():
         # `auto_name` is what dispatch(backend="auto") would pick on
-        # this machine -- exposed so the UI can label the dropdown's
-        # "auto" option with the resolved backend, and surface a
-        # warning when the preferred (3DNA) backend isn't installed.
+        # this machine.  NO browser reads this today (the Build backend
+        # picker left with task #295) -- it stays as a diagnostics door
+        # (curl-able; the rate-limit tests probe it), a read-only
+        # answer rather than a second writer, which is what kept it out
+        # of the C-doors retirement.
         from ..backends import auto_backend_name, available_backends
         return jsonify({
             "ok": True,

@@ -81,20 +81,27 @@
          * on 2026-08-16 when that endpoint stopped resolving the destination
          * to become render-only.  Restored on the side that chooses where to
          * write, which is where it belongs. */
-        try {
-            const prior = await projects.readFile(dest + "/task.json",
-                                                  { missingOk: true });
-            if (prior && prior.ok !== false && prior.exists !== false
-                && typeof prior.text === "string" && prior.text.trim()) {
-                say("error",
-                    "That folder already holds a task.json — it is a described "
-                    + "calculation. Sending here would overwrite it. Pick or "
-                    + "make another folder in the sidebar; one job per folder.");
-                return;
-            }
-        } catch (e) {
-            say("error", "Could not check the folder: "
-                + (e && e.message ? e.message : e));
+        /* readFile never throws (projects/api.js: every failure is an
+         * {ok:false, error} envelope), so with missingOk a genuine
+         * absence is {ok:true, exists:false} and ok===false is ALWAYS a
+         * real failure -- a 403/500/network drop.  The guard used to
+         * fall through on exactly those and send anyway: a one-job-per-
+         * folder check that fails OPEN overwrites the folder it could
+         * not read.  It refuses now; the dead catch went with it. */
+        const prior = await projects.readFile(dest + "/task.json",
+                                              { missingOk: true });
+        if (prior && prior.ok === false) {
+            say("error", "Could not check the folder for an existing "
+                + "description: " + (prior.error || "read failed")
+                + " — nothing was written.");
+            return;
+        }
+        if (prior && prior.exists !== false
+            && typeof prior.text === "string" && prior.text.trim()) {
+            say("error",
+                "That folder already holds a task.json — it is a described "
+                + "calculation. Sending here would overwrite it. Pick or "
+                + "make another folder in the sidebar; one job per folder.");
             return;
         }
 

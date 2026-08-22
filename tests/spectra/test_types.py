@@ -13,7 +13,7 @@ documented in ``docs/web/spectra.md`` § 5 - § 6.  Runtime-cheap
     model.
 
 Engine-agnostic — anything PySCF-script-emission-specific lives in
-``test_script.py``; selector logic in ``test_selection.py``; config-
+tests/test_vibration_render_gate.py; selector logic in ``test_selection.py``; config-
 shape pins in ``test_config.py``.
 """
 
@@ -295,7 +295,7 @@ class TestSpectraResults:
         assert r2.engine_metadata == {"pyscf_dfttype": "RKS", "n_basis_funcs": 24}
 
     def test_modes_preserve_order_through_round_trip(self):
-        """The modes list is sorted by frequency ascending (spec §6).
+        """The modes list is sorted by frequency ascending (archived-spec (docs/archive/old_docs/tabs/spectra/spec.md) §6).
         Round-trip must NOT shuffle them."""
         r = _make_results()
         freqs_before = [m.frequency_cm1 for m in r.modes]
@@ -738,7 +738,7 @@ class TestPostInitValidation:
 
 
 # --------------------------------------------------------------------- #
-#  Phase status + frequency-filter additions (spec § 2.5 / § 8.1)       #
+#  Phase status + frequency-filter additions (archived-spec § 2.5 / § 8.1)       #
 # --------------------------------------------------------------------- #
 
 

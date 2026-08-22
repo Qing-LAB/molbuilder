@@ -469,7 +469,7 @@ def _vib_ir_only_block(cfg) -> List[str]:
         "# ============================================================",
         "print('=== Stage: IR intensities (dipole FD) ===')",
         "state['phase_raman'] = 'complete'   # not requested; nothing owed",
-        "_h_ang = 0.005    # the validated FD step (pyscf_script's own)",
+        "_h_ang = RAMAN_FD_STEP_ANG   # ONE step for both dmu/dR paths",
         "DMU_DR = np.zeros((N_FREE, 3, 3))",
         "for _k, _atom in enumerate(FREE_ATOM_IDXS):",
         "    for _a in range(3):",

@@ -876,10 +876,11 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         record_dir = base
         js = _merge_run_jobset(
             base / "job-set.json", js,
-            # The CURRENT ladder bounds what the merge keeps (A11): a
-            # stageless calculation's ladder is its one label.
-            ladder=frozenset(s.name for s in (task.stages or ())) or
-                   frozenset({task.label}))
+            # The CURRENT ladder bounds what the merge keeps (A11).
+            # (`read_task` refuses a description without stages and
+            # `Task` refuses an empty tuple, so the stage-less fallback
+            # arms that stood here were unreachable -- U6 close.)
+            ladder=frozenset(s.name for s in task.stages))
     js.write(record_dir / "job-set.json")
     if log is not None:
         log.phase("FLOOR 3 · THE JOB-SET — what was declared to the runner")
@@ -1041,10 +1042,12 @@ def token_for(task, stage_name: Optional[str]) -> str:
     """
     if not stage_name:
         return ""       # asked without naming a rung; every ladder has one
-    from ..identity import stage_token
-    for i, s in enumerate(task.stages, start=1):
-        if s.name == stage_name:
-            return stage_token(i, s.name)
+    from ..identity import StageRef
+    # The ordinal rule is stated ONCE (StageRef.ladder -- decision 28's
+    # pre-produce arm); this function reads the ref and spells the token.
+    for ref in StageRef.ladder([s.name for s in task.stages]):
+        if ref.name == stage_name:
+            return ref.token
     # Unreachable through prep_calculation -- resolve._stage_of already
     # refused an unknown stage -- and LOUD rather than "" if a future caller
     # reaches it another way: an empty token would silently drop the stage

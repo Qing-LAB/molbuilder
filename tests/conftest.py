@@ -317,3 +317,32 @@ def write_pseudos(dest, elements) -> None:
     for el in elements:
         (_P(dest) / f"{el}.psml").write_text(
             _PSML_FIXTURE.format(el=el, z=_PSML_Z[el]))
+
+
+@pytest.fixture(autouse=True)
+def _isolated_workspace_store(tmp_path, monkeypatch):
+    """Every test reads and writes its OWN workspace-state store.
+
+    The store's home is ``projects_root()/.molbuilder_workspace`` -- the
+    USER's real saved workspaces.  Without this, any test that drives a
+    page writes its panel state into that real store on teardown
+    (pagehide -> persist), and any later test whose page mounts on an
+    empty canvas RESTORES it: on 2026-08-21 the auto-detect e2e left a
+    one-atom "Fe atom for auto-analyze test" panel there, and the
+    build tab's "setShared must NOT auto-load" e2e failed against a
+    structure it never loaded -- proven with found state, twice over
+    (the tests polluted each other AND the user's own store).
+
+    ``workspace_storage``'s own docstring names this exact patch point:
+    the name is bound at import, so it is rebound on THAT module.  A
+    test that wants the store elsewhere (test_workspace_storage_api)
+    applies its own later patch, which wins.
+    """
+    try:
+        from molbuilder.web.blueprints import workspace_storage as _ws
+    except Exception:
+        yield          # no flask in this env; nothing to isolate
+        return
+    monkeypatch.setattr(_ws, "projects_root",
+                        lambda: tmp_path / "_workspace_store_root")
+    yield

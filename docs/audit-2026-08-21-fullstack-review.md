@@ -33,68 +33,43 @@ same-day regressions of in-flight work, fixable on sight.
 
 ## OPEN — in priority order
 
-### P1 · U2 — the fourteen verified correctness bugs *(awaiting one yes)*
-Spectra/engine side, each recorded with its fix shape in the archive's
-bucket 2 + engine-reader section.  Headline: **HF + Raman crashes AFTER
-paying for the Hessian** (NameError in the generated script, E-M4.7);
-also the charge-heuristic bypass (E-M3.1/V-3c, silent wrong science),
-vibration decks skipping the `ast.parse` gate optimization decks pass
-(E-M4.6r), the CPU-fallback lie in help + emitted decks (E-M1.5),
-newton-at-relax (M1.3), RKS+spin refusal ownership (G-1c), pyscf parity
-(G-1d), `is_dft` on the vibration line (E-M6.3), two broken `__all__`s
-(E-M4.1+E-V4a), wrapper header None arm (E-J3), handover `_what` sender
-(E-B9), notice `level` key (E-B10), PySCF bench refusal by name (E-J1 —
-today's review found the current gate is ACCIDENTAL), validate_ladder
-(G-1a), gate ③ at save (G-1b).
+*(P1–P6 delivered 2026-08-21/22 — see the ledger below.  What remains
+is the deferred remainder, each with its reason, plus the close.)*
 
-### P2 · R2-1 — engine-blind UI caches *(awaiting yes; small, real risk)*
-`loadSweepChoices` and `loadPresets` in the Task-setup page cache the
-first engine's answers for the whole page-load: a PySCF folder opened
-after a SIESTA one shows SIESTA's machine rows and tier presets, and
-applying a preset writes SIESTA values into a PySCF description.  Fix
-pattern is settled in the same file (the columns cache keys by
-engine:kind, viewer.js:748).
+### D1 · the SpectraConfig class retirement *(deferred: transport-adjacent)*
+No production constructor; the view is the runtime object.  BUT the
+class rides the four-engine validator registry
+(`_ENGINE_VALIDATORS` — `test_all_four_engine_configs_are_registered`
+pins SpectraConfig and TransportConfig together), so retiring it
+reshapes a contract transport shares.  Do it WITH transport's round.
+(The safe half — `validate_selection`, `spectra/selection.py`'s dead
+preview path — is already retired; `select_modes` stays as the parity
+reference for the deck's inlined selector.)
 
-### P3 · U3 — the dedup family + the frozen-atoms science decision
-*(awaiting ruling)*
-(a) One rule, one home: the double-fire validation family — the engine
-copy vs the kind's, one charge resolver, `where` ids as catalogue names
-— now joined by round 2's R2-5 (the bench per-point shape checks live
-in the preflight AND `_declared_execution_pins`, with named
-divergences: allocation-item duplicates caught only by the preflight;
-Issue-list vs first-refusal).
-(b) **The science decision only the user can make**: when the vibration
-workflow relaxes geometry before frequencies, do atoms frozen in the UI
-stay frozen?  Today the relaxation ignores the freeze list and the
-documents contradict.  Options: honor the freeze / refuse frozen-atom
-vibration jobs / always relax free and document why.
+### D2 · the auto-detect panel trio *(deferred: one copy is transport's)*
+Three near-verbatim copies (structure-optimization / spectra /
+transport).  The extraction meets the ≥2-caller bar, but doing it
+without transport leaves a shared module plus one hold-out — worse
+than three copies.  Extract in transport's round.
 
-### P4 · U4 — the documentation back-sweep *(awaiting one yes)*
-~40 verified stale spots predating the 2026-08-21 waves (listed in the
-archive's bucket 4 + engine-reader additions), plus round 2's R2-9
-(older test docstrings narrating pre-fold designs in present tense).
+### D3 · the relax retry-loop two-home copy *(U6 sizes it)*
+The optimization deck's retry budget and the vibration relax block's
+`continue` arm spell the same loop twice.  Structural (an emitted
+helper both compose), not mechanical — sized during the close.
 
-### P5 · U5 — retirements *(batch with the list, or per item)*
-The archive's bucket 5 list (SpectraConfig + selection.py dead half,
-`_shared.py`'s zero-caller helpers, two orphaned doors, JS/state dead
-lists, jobset S1-S7, `density_fit_line`, doubled `_mb_outfile`, N² IR
-loop, DFT dresser M1.2, one GPU mechanism M1.4, refs render-through,
-T1-T3 test retirements, auto-detect trio) — joined by round 2's R2-4
-(the dead next-unlaunched picker arm + its imports).
+### D4 · the unenumerated residue *(U6's readers re-find)*
+The round-1 categories whose item lists did not survive consolidation:
+C-jobset's stage-less residue branches + the duplicated read-API
+comment + two submit.py residues; the D-series deleted-machinery
+citations (~8); T2/T3 stale test-module docstrings; R2-9's remaining
+present-tense pre-fold narration.  Also noted for a ruling:
+`Issue.stage` is now write-orphaned (its one stamper retired with
+validate_ladder) — field + serialization arm are retirement
+candidates.
 
-### P6 · small, each its own quick yes
-- R2-2: summarize's "every timed trial ran something other than asked"
-  fires when nothing was timed at all (condition scans all points).
-- R2-7: test_pseudos' `../foo` assertion cannot fail; assert the exact
-  anchored path.
-- R2-8: consolidate the three near-identical shelf-grouping pins; write
-  the two gap tests (a grouped bench on a FLAT calculation; a GPU-side
-  winner riding run-config on a mixed sweep).
-
-### U6 — the close *(after P1–P5)*
-The final full R×3 round over whatever P1–P5 changed, plus a clean
-`none2e` and the live E2Es.  (Round 2 — 2026-08-21 evening — covered
-the bench/execution/UI span and is archived; U6 is the post-fix close.)
+### U6 — the close *(now)*
+The final full R×3 round over everything P1–P5 changed, plus a clean
+`none2e` and the live E2Es.  Transport excluded throughout.
 
 ---
 
@@ -113,3 +88,8 @@ the bench/execution/UI span and is archived; U6 is the post-fix close.)
 | the #N stage grammar | 9d6d3fcd |
 | submission owns the run's state: cold verified · continue by default | 8d51662a |
 | bench prep asks only about launched trials | c38ffd3f |
+| U2 sixteen correctness bugs + U3 frozen-means-frozen + dedup | 92646a59 |
+| P2 engine-keyed caches · P6 census/pins/gap-tests | e7733bc2 |
+| U4 documentation back-sweep, every named spot | 6ad9707d |
+| U5 retirements part 1 (zero-caller deletions + Pattern-B re-home) | 46906470 |
+| U5 retirements part 2 (one home per fact in the vibration deck) | df992287 |

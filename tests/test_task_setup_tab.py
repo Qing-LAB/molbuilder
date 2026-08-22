@@ -1389,7 +1389,9 @@ def test_the_cell_gate_s_notices_reach_the_person():
     # (periodicity_gate.py, since 2026-08-03) -- this pin read `n.severity`
     # until 2026-08-21, asserting the very bug (E-B10) that kept the error
     # arm from ever firing.
-    assert "n.level" in guard, "every notice reads as the same severity"
+    assert "n.level" in guard, (
+        "the notice badness key is `level` (the gate's four-key "
+        "contract), not `severity`")
 
 
 def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
@@ -1845,6 +1847,37 @@ def test_the_two_engine_caches_are_keyed_by_engine():
                     ("loadPresets", "_presetsKey")):
         body = src.split(f"async function {fn}(", 1)[1].split(
             "\nasync function", 1)[0]
-        assert key in body, f"{fn} does not key its cache"
         assert f"{key} === key" in body, (
             f"{fn} caches without comparing the engine key")
+
+
+def test_load_folder_resets_the_previous_folders_state_first():
+    """U6 close: the hand-over and empty branches never wrote _task /
+    _shape, so a description opened FIRST leaked into the next folder
+    -- setShape(_shape) re-fired on the stale _task, syncFromModel()
+    overwrote the editor with the previous folder's task.json, and
+    Save was enabled over the wrong calculation.  The reset must come
+    before any branch."""
+    src = VIEWER.read_text()
+    body = src.split("async function loadFolder(", 1)[1]
+    head = body.split("const taskText", 1)[0]
+    for needle in ("_task = null;", '_shape = "";', "_handover = null;"):
+        assert needle in head, (
+            f"loadFolder does not reset {needle!r} before branching")
+
+
+def test_the_saves_preflight_findings_reach_the_person():
+    """Gate ③'s warnings ride the OK save response ("the reader deserves
+    what the CLI would have echoed"), and the tab must SHOW them --
+    until the U6 close they went on the floor while loadFolder
+    repainted the box to "loaded".  The refusal path's multi-line list
+    needs the state body to keep its newlines."""
+    src = VIEWER.read_text()
+    tail = src.split("async function save(", 1)[1]
+    assert "body.findings" in tail, "save() never reads the findings"
+    assert tail.index("loadFolder") < tail.index("body.findings"), (
+        "the findings must be painted AFTER loadFolder or it wipes them")
+    css = (STATIC / "task-setup" / "style.css").read_text()
+    body_rule = css.split(".ts-state-body", 1)[1].split("}", 1)[0]
+    assert "pre-line" in body_rule, (
+        "gate 3's multi-line refusal renders as one run-on line")

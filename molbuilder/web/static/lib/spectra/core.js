@@ -20,8 +20,9 @@
  * ``molbuilder.formSchema`` helpers) to the three Spectra API
  * endpoints (spec § 10):
  *
- *   GET  /api/build/schema/spectra      -- form schema
- *   POST /api/spectra/render            -- generate spectra.py
+ *   GET  /api/build/schema/pyscf?calculation=vibration -- the form
+ *   POST /api/task-setup/handover       -- Send to Task setup
+ *   (the old schema/spectra + spectra/render routes retired at P3)
  *   POST /api/spectra/load              -- parse a results JSON
  *
  * --- DOM scoping convention ----------------------------------------
@@ -464,20 +465,14 @@
 
     // ----- Form schema load + render ----------------------------
     //
-    // The three-stage contract (design.md "Sidecar-driven boundary
-    // conditions"): when the user picks a .xyz that has a sidecar,
-    // the server pre-fills the form's structure-dependent defaults
-    // (today: ``frozen_indices`` from sidecar's ``frozen_atoms``)
-    // so the boundary condition is VISIBLE before Generate.  We
-    // pass the current sidebar selection (if any, and if it's a
-    // .xyz) as ``structurePath`` so the schema endpoint can read
-    // the sidecar.  We also subscribe to the sidebar's onChange so
-    // the form re-renders with fresh pre-fill when the user picks
-    // a different structure.
+    // The form is the CATALOGUE's vibration schema and depends on no
+    // picked structure (frozen atoms are structure-side facts riding
+    // the hand-over -- § 8 of web/spectra.md; the sidecar pre-fill
+    // narration that stood here described the retired flow the two
+    // functions below explicitly say is gone).
 
-    // Monotonic counter for in-flight schema fetches.  Rapid
-    // sidebar clicks fire onChange multiple times; each fires a
-    // _reloadSchemaForCurrentStructure().  The fetches race -- a
+    // Monotonic counter for in-flight schema fetches.  The fetches
+    // could race -- a
     // later request can finish AFTER an earlier one, and without
     // this guard the older response would overwrite the newer in
     // state.schema + the rendered form.  We snapshot the counter
@@ -658,8 +653,22 @@
             }).then(x => x.json());
             const vf = (window.molbuilder || {}).validationFindings;
             if (vf && Array.isArray(r.issues)) {
+                /* fieldIds lands each finding beside its own control --
+                 * the same map the optimization tab passes; omitting it
+                 * degraded every Spectrum finding to card-then-residual
+                 * (validation-findings.js says so).  emptyText keeps
+                 * the panel's no-findings copy alive: the template's
+                 * static row is destroyed by the first render. */
+                const ids = {};
+                const sects = (state.schema && state.schema.sections) || [];
+                for (const s of sects) {
+                    for (const f of (s.fields || [])) ids[f.name] = f.id;
+                }
                 vf.render(r.issues, { panel: els.preflightPanel,
-                                      formScope: els.formContainer });
+                                      formScope: els.formContainer,
+                                      fieldIds: ids,
+                                      emptyText: "No findings yet — checks "
+                                          + "run live as you edit." });
             }
         } catch (e) {
             // Network hiccup: the panel keeps its previous state; the

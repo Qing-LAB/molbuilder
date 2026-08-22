@@ -596,6 +596,12 @@ def test_no_deprecated_siesta_keyword_reaches_the_deck(water_struct):
     blocks, because a deprecated keyword can hide behind a branch.
     """
     import dataclasses
+
+    # This import went missing in an earlier cleanup and the swallow
+    # below ate the resulting NameError FIFTEEN times per run -- the
+    # deprecated-keyword assert passed over an empty set until the
+    # non-empty guard (U6 close) said so.
+    from molbuilder.siesta import render_fdf
     seen = set()
     for relax in ("cg", "broyden", "fire", "verlet", "nose"):
         for extra in ({}, {"spin_treatment": True}, {"enable_gpu": True}):
@@ -609,6 +615,10 @@ def test_no_deprecated_siesta_keyword_reaches_the_deck(water_struct):
                 if line and not line.startswith(("#", "%")):
                     seen.add(line.split()[0])
 
+    # If EVERY combination refused, `seen` is empty and the vocabulary
+    # assert below would pass over nothing -- a broken render_fdf would
+    # read as a clean deck set.
+    assert seen, "no combination rendered at all; the sweep saw nothing"
     bad = sorted((seen & set(SIESTA_542_DEPRECATED)) - KNOWN_DEPRECATED_STILL_EMITTED)
     assert not bad, (
         "deck writes keyword(s) SIESTA 5.4.2 deprecates:\n  "

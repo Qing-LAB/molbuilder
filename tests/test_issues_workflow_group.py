@@ -180,6 +180,7 @@ class TestIssuesToJsonEnrichment:
             Issue("warn", "cell too tight", "cell.volume"),
         ]
         out = issues_to_json(issues, cfg=cfg)
+        assert out, "nothing serialized; the loop below checks nothing"
         for d in out:
             assert "workflow_group" not in d
 

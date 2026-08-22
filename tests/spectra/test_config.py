@@ -1,18 +1,12 @@
-"""SpectraConfig surface tests: defaults, field metadata, form-schema shape.
+"""SpectraConfig surface tests -- defaults and validation metadata.
 
-Pins the dataclass shape documented in ``docs/web/spectra.md``
-§ 4 + § 8.1.  These tests are runtime-cheap (no PySCF) and live here
-because the data they protect is the form/script handoff contract:
-
-  * default values match the v1 spec (cheap first-pass + production-
-    defensible method/basis choices);
-  * every form-exposed field carries the ``section`` + ``label`` +
-    ``help`` metadata the UI consumes;
-  * the form schema's section order + per-section field counts pin
-    the rendered form against accidental reorders.
-
-Selector behaviour (which modes a config selects) lives in
-``test_selection.py``.  Engine wiring lives in ``test_engine.py``.
+What remains after P3: the dataclass's defaults (the values the
+registry-path validator and the parity reference read) and its
+validation-facing metadata.  The form-schema half of this file retired
+with the /api/build/schema/spectra route -- nothing renders a form from
+this dataclass any more (see the tombstones below), and the class
+itself is a recorded retirement candidate deferred to transport's
+round (it shares the four-engine validator registry).
 """
 
 from __future__ import annotations
@@ -22,7 +16,6 @@ import dataclasses
 import pytest
 
 from molbuilder.spectra import SpectraConfig
-from molbuilder.web.blueprints._shared import dataclass_to_form_schema
 
 
 # --------------------------------------------------------------------- #
@@ -119,7 +112,7 @@ class TestSpectraConfigFieldMetadata:
 
 
 class TestFreqRangeFilter:
-    """Spec § 8.1: the freq_min_cm1 / freq_max_cm1 fields appear
+    """archived-spec (docs/archive/old_docs/tabs/spectra/spec.md) § 8.1: the freq_min_cm1 / freq_max_cm1 fields appear
     in the Electronic-structure section of the form schema and
     are typed Optional[float].  The Model-2 selector logic that
     APPLIES the filter lives in selection.py (next commit); this

@@ -233,11 +233,12 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
             out[j.name] = f"{container}/{job_dir_name(j.name)}"
             continue
         # Tokenless: the deck says nothing, so the SET is the only data
-        # left (see the docstring's R1 paragraph).  A stageless ladder IS
-        # its own one rung and runs at the root; a stageless SWEEP's
-        # points live in the bare ``bench/`` container beside their own
-        # record (A-2, 2026-08-13); a hand-built tokenless ladder's
-        # own-named jobs stay siblings at the root.
+        # left (see the docstring's R1 paragraph -- no DESCRIPTION
+        # reaches these rows any more; what still arrives tokenless is
+        # a HAND-BUILT JobSet).  Such a ladder runs its own-named jobs
+        # as siblings at the root, and such a sweep's points live in the
+        # bare ``bench/`` container beside their own record (A-2,
+        # 2026-08-13).
         if jobset.kind == "ladder":
             out[j.name] = ("." if j.name == jobset.name
                            else job_dir_name(j.name))

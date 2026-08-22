@@ -221,8 +221,12 @@ def test_charge_default_uses_phosphate_heuristic(deprotonated_diester):
 
 def test_charge_explicit_zero_overrides_heuristic(deprotonated_diester):
     """Spec: 'If cfg.charge is not None, it wins (including
-    cfg.charge=0)'."""
-    text = render_script(deprotonated_diester, PySCFConfig(net_charge=0))
+    cfg.charge=0)'.  The neutral diester has an odd electron count
+    (ΣZ = 59), so asserting charge 0 requires the open-shell spelling
+    -- the parity gate (G-1d) rightly refuses charge 0 + spin 0 as an
+    impossible pair."""
+    text = render_script(deprotonated_diester,
+                         PySCFConfig(net_charge=0, method="UKS", spin=1))
     assert "charge     = 0," in text
 
 

@@ -1,17 +1,15 @@
-"""Spectra-blueprint route tests.
+"""Spectra blueprint tests -- the two routes that remain.
 
-Exercises the four endpoints from spec § 10 with the Flask test
-client:
+    GET  /spectrum-calculation   -- page renders, has the tab nav
+    POST /api/spectra/load       -- parse an uploaded .spectra.json into
+                                    typed results; typed error shapes
+                                    (404 missing / 422 wrong schema /
+                                    400 malformed)
 
-  GET  /spectra                       -- page renders, has the tab nav
-  GET  /api/build/schema/spectra      -- schema endpoint mirrors siesta/pyscf
-  POST /api/spectra/render            -- happy path + error shapes
-  POST /api/spectra/load              -- multipart / path / inline-JSON modes,
-                                         plus exception-class -> HTTP code
-
-Cheap to run: no real PySCF SCF (the engine's preflight + render
-happen, but the script template is just text emission); no live
-disk watch.
+(The generate-side routes -- /api/spectra/render and
+GET /api/build/schema/spectra -- retired at the spectra migration's P3;
+the page's form now comes from the pyscf schema narrowed to the
+vibration kind, tested with the form plumbing.)
 """
 
 from __future__ import annotations

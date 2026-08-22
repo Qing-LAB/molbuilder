@@ -185,7 +185,12 @@ def test_geometric_optparams_accepts_pyscf_optimize_kwargs():
 
 
 def test_charge_explicit_overrides_auto(h2o):
-    text = render_script(h2o, PySCFConfig(net_charge=-1))
+    """Explicit net_charge wins over auto-detection.  The pair must be
+    physically possible or the parity gate (G-1d) refuses before the
+    deck renders: water⁻ has 11 electrons, so the open-shell spelling
+    rides along."""
+    text = render_script(h2o, PySCFConfig(net_charge=-1,
+                                          method="UKS", spin=1))
     assert "charge     = -1," in text
 
 

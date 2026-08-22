@@ -1,8 +1,10 @@
-"""End-to-end Flask tests for the molbuilder web UI.
+"""Flask tests for the build/describe surface of the molbuilder web UI.
 
-Exercises every endpoint and asserts the index page contains the
-markup that viewer.js relies on (tab buttons, panels, viewer wrapper).
-Skipped cleanly if Flask isn't installed.
+Covers the build blueprint's doors (molecule / load / preflight /
+schema), the structure-optimization page's markup contract with its
+viewer.js, and the form-schema plumbing.  NOT every endpoint: spectra,
+watch, checkpoint, projects and transport are tested in their own
+files.  Skipped cleanly if Flask isn't installed.
 """
 
 from __future__ import annotations
@@ -2054,28 +2056,11 @@ def test_engine_key_present_on_every_pyscf_form_field():
     )
 
 
-def test_engine_key_present_on_every_spectra_form_field():
-    """SpectraConfig was missing engine_key on ALL fields pre-audit
-    2026-06-02 (task #188).  Backfilled to mirror PySCFConfig style
-    on shared keys + ``(molbuilder: ...)`` markers for the per-mode
-    selectors / frozen-atom filters / finite-difference knobs that
-    have no PySCF equivalent."""
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    from molbuilder.config.spectra import SpectraConfig
-    sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
-    missing = [f["name"] for f in _flatten_schema_fields(sch)
-               if "engine_key" not in f]
-    assert not missing, (
-        f"SpectraConfig fields without engine_key: {missing}"
-    )
-
-
-# test_spectra_molbuilder_only_fields_use_paren_prefix retired at
-# P3: nothing renders a form from SpectraConfig any more (the
-# form metadata left the dataclass), and the vibration items'
-# engine-key badges are the CATALOGUE's facts, covered by the
-# catalogue schema tests.
-
+# (test_engine_key_present_on_every_spectra_form_field retired at the
+#  U6 close: dataclass_to_form_schema(SpectraConfig) returns zero
+#  sections since P3 -- the form metadata left the dataclass -- so the
+#  test pinned an empty set and could not fail.  Its sibling was retired
+#  with the route; this one had survived.)
 def test_engine_key_marks_molbuilder_only_fields_with_paren_prefix():
     """molbuilder-only fields (preprocessing / wrapper / filename
     knobs that don't reach the engine) MUST have engine_key

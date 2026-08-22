@@ -261,5 +261,7 @@ def test_a_new_catalogue_item_joins_the_record_without_an_edit():
     from molbuilder.pyscf.layout import recorded_items
 
     block = _record_block(_render())
-    for name in recorded_items():
+    names = list(recorded_items())
+    assert names, "the catalogue produced no recorded items -- the record vanished"
+    for name in names:
         assert f"_MB_PARAMS[{name!r}]" in block, f"{name} missing from the record"

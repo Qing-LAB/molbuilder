@@ -190,9 +190,4 @@ def _same_but_for_restart(a, b) -> bool:
     return fa == fb
 
 
-# --------------------------------------------------------------------- #
-#  R2 + R3 together                                                     #
-# --------------------------------------------------------------------- #
-
-
 __all__ = ["check_ladder_does_not_loosen", "check_identical_stages"]

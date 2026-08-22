@@ -161,7 +161,7 @@ person to need it finds the entry rather than inventing a second spelling.)*
 |---|---|---|
 | **`label`** | the field's display name | the form builder; falls back to the field name |
 | **`help`** | one sentence of guidance, shown beside the control | the form builder, and the CLI's `--help` |
-| **`section`** | which fieldset it belongs to — **and whether it is exposed at all.** A field with no `section` is internal and no surface renders it. ⚠ **Only for `SpectraConfig` and `TransportConfig` since 2026-08-15** — see the note below | `dataclass_to_form_schema`; the CLI option generator |
+| **`section`** | which fieldset it belongs to — **and whether it is exposed at all.** A field with no `section` is internal and no surface renders it. ⚠ **Only for `TransportConfig` only since P3 (2026-08-21)** — see the note below | `dataclass_to_form_schema`; the CLI option generator |
 | **`workflow_group`** | which card — one of [`template.md`](?doc=engines/template.md) § 5's closed vocabulary, **not** restated here — and therefore **where a finding about it appears** | `form-schema.js` (card order), `validation-findings.js` (finding placement), `_shared.py::resolve_workflow_group` (wire enrichment) |
 | **`engine_key`** | the deck keyword it becomes (`MeshCutoff`) — **or a parenthesised note when the field is not a deck line at all**, e.g. `mpi_np`'s *"(molbuilder: .run.sh `mpirun -np N` only; not in .fdf)"* | the emitters; BENCH-MARKS; anything tracing a value to the file it lands in |
 | **`tier`** | CLI exposure level — a `--tier` filter shows only matching fields | `cli.py`'s option generator |
@@ -189,8 +189,9 @@ person to need it finds the entry rather than inventing a second spelling.)*
 > invisible on the form while being perfectly ordinary settings that reach the
 > generated file. Building from the catalogue is what surfaced them.
 >
-> `section` is still live for **`SpectraConfig` and `TransportConfig`**, whose
-> tabs still call `dataclass_to_form_schema`. Until those move, the tag means
+> `section` is still live for **`TransportConfig` only**, whose tab still
+> calls `dataclass_to_form_schema` (the spectra schema route retired at P3
+> — the Spectrum tab reads the catalogue's vibration form). Until those move, the tag means
 > two different things depending on which class carries it, and the rules below
 > say which.
 
@@ -205,7 +206,7 @@ person to need it finds the entry rather than inventing a second spelling.)*
      `tests/test_catalogue_agreement.py::test_every_catalogue_item_declares_a_panel`,
      plus `test_the_renderer_knows_every_card_the_form_actually_asks_for` —
      because a card the renderer does not draw looks exactly like no card.
-   * **`SpectraConfig` / `TransportConfig`** — `section` and `workflow_group`
+   * **`TransportConfig`** — `section` and `workflow_group`
      still move together, for the reason that rule always had: a field exposed
      with no group renders bare after the cards, and a group with no `section`
      is a tag nothing can read. **Guarded:**
@@ -265,7 +266,7 @@ stated nowhere else:
 
 ```mermaid
 flowchart LR
-    DC["Python config class<br/>e.g. SiestaConfig — the source of truth"]
+    DC["the CATALOGUE<br/>(config classes are translators)"]
     DC -->|"the server turns it into a form shape"| SCHEMA["schema JSON<br/>GET /api/build/schema/siesta"]
     SCHEMA -->|"renderForm"| FORM["the form on screen"]
     FORM -->|"the user fills it in"| FILLED["filled-in form"]
@@ -273,11 +274,12 @@ flowchart LR
     VALUES -->|"sent off to generate the input file"| GEN["the calculation"]
 ```
 
-- **On the server**, `dataclass_to_form_schema()` walks the config class and
-  turns each field into a small JSON description — its label, its kind, its
-  default, its allowed choices — grouped by section. Only fields that carry a
-  `section` tag are exposed, so an option can be kept internal by leaving that
-  tag off. This is served at `GET /api/build/schema/<engine>` (SIESTA, PySCF —
+- **On the server**, `catalogue_to_form_schema()` walks the CATALOGUE
+  (narrowed to the engine, and to the calculation kind when asked) and
+  turns each item into a small JSON description — its label, its kind, its
+  default, its allowed choices — grouped by category.  (Transport's tab
+  still walks its config class through the older
+  `dataclass_to_form_schema()`, where the `section` tag gates exposure.) This is served at `GET /api/build/schema/<engine>` (SIESTA, PySCF —
   `?calculation=vibration` narrows PySCF's to the vibration kind's items;
   the separate `/api/build/schema/spectra` route retired at the spectra
   migration's P3) and `GET /api/transport/schema`.
@@ -360,8 +362,9 @@ warning), so an un-mapped field never silently disappears.
 
 - **Build tab** (structure-optimization) — the full four-call cycle, for SIESTA
   and PySCF.
-- **Spectra tab** — `fetchSchema` / `renderForm` / `collectForm` / `setValues`
-  for its own config.
+- **Spectrum tab** — the same four calls against
+  `fetchSchema("pyscf", {calculation: "vibration"})` — the Build engines'
+  door, narrowed to the kind (no config of its own since P3).
 - **Transport tab** — uses `renderForm` / `collectForm`, but fetches its shape
   from its own route (`GET /api/transport/schema`) rather than through
   `fetchSchema` (which targets the Build engines).

@@ -55,17 +55,25 @@ _AXES = {
 
 
 def _decks():
-    """Every deck the generator emits over the code-shaping axes."""
+    """Every deck the generator emits over the code-shaping axes.
+
+    A generator that refused EVERYTHING would make every consumer pass
+    over nothing, so this raises if no combination rendered at all --
+    the swallow is for individual refused combinations only."""
     names, values = list(_AXES), [_AXES[k] for k in _AXES]
+    yielded = 0
     for combo in itertools.product(*values):
         over = dict(zip(names, combo))
         if over["method"] == "UKS":
             over["spin"] = 2
         try:
             cfg = dataclasses.replace(PySCFConfig(job_name="w"), **over)
-            yield over, str(render_script(_STRUCT, cfg))
+            deck = str(render_script(_STRUCT, cfg))
         except Exception:            # a refused combination is not this
             continue                 # test's subject; the gate owns that
+        yielded += 1
+        yield over, deck
+    assert yielded, "every combination refused; the sweep rendered nothing"
 
 
 def _imported(tree):

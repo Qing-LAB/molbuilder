@@ -80,8 +80,8 @@ flowchart LR
   > this tab on 2026-08-15, and the form has been catalogue-driven since — a
   > parameter is on the page because the catalogue carries it, not because a
   > Python class declares it ([`template.md`](?doc=engines/template.md) § 2.1).
-  > The `/api/build/fdf` route still exists in `build.py`; this UI no longer
-  > calls it, and the file's own header records the same correction.)*
+  > The `/api/build/fdf` route was DELETED 2026-08-17 (a browser renders
+  > no deck); `build.py` carries only its tombstone.)*
 
 ### 1.1 Where the config comes from — the emitter starts from the template
 

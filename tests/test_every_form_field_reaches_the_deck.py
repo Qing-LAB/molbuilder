@@ -147,7 +147,14 @@ def test_every_field_the_form_offers_changes_the_generated_deck(
                 if deck(**ctx) != deck(**{**ctx, name: value}):
                     changed = True
                     break
-            except Exception:          # a refusal is the setting being HEARD
+            except Exception as _exc:
+                # A refusal is the setting being HEARD -- but only a
+                # VALIDATION refusal.  Treating ANY exception as "heard"
+                # made a render broken for every input pass every field.
+                from molbuilder.issues import ValidationError
+                assert isinstance(_exc, (ValidationError, ValueError)), (
+                    f"{name}: render died with {type(_exc).__name__} "
+                    f"rather than refusing: {_exc}")
                 changed = True
                 break
         else:

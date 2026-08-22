@@ -268,27 +268,9 @@ class TestCheckCoverage:
         assert {e.element for e in entries} == {"C", "H"}
 
 
-@pytest.fixture
-def picker_root_at_tmp(tmp_path, monkeypatch):
-    """Repoint Capabilities.file_picker_roots() at tmp_path so the
-    /api/siesta/* endpoints (install-pseudos + structure/analyze)
-    accept paths under tmp_path (the default picker root is
-    molbuilder's projects/).  Pattern mirrors
-    tests/test_pdb_workflow_integration.py::pdb_under_root.
-    """
-    from molbuilder import diagnostics
-    orig = diagnostics.get_capabilities()
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
-    )
-    cls = type(caps)
-    monkeypatch.setattr(
-        cls, "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),),
-    )
-    diagnostics.set_capabilities(caps)
-    monkeypatch.setattr(diagnostics, "_snapshot", orig)
-    return tmp_path
+# (picker_root_at_tmp retired 2026-08-22 with the seven C-doors tests
+#  it served -- install-pseudos/install-wrapper are gone, and the
+#  surviving analyze tests need no picker root.)
 
 
 class TestResolvePsmlLib:
@@ -343,33 +325,9 @@ class TestResolvePsmlLib:
         assert out == tmp_path / ".." / "foo"
 
 
-def _envelope(elements):
-    """The structure as DATA -- what `molview.exportFile()` hands the tab, and
-    since 2026-08-04 what this route takes.
+# (_envelope + _from_file_text retired 2026-08-22: their last
+#  caller left with the install-pseudos tests.)
 
-    THESE TESTS POSTED `structure_text` AND PASSED WHILE THE ROUTE WAS BROKEN.
-    `7447d7d` moved the Save flow onto the envelope and left the route behind,
-    so every real SIESTA save answered 400 here and skipped its .run.sh -- for
-    weeks, with this file green, because it exercised a shape no caller sends.
-    A test of a request nobody makes cannot fail when the request everybody
-    makes stops working.
-
-    Elements are all this door reads: it copies one `<element>.psml` each.
-    Positions are filler, spaced so the Structure is valid."""
-    import sys
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-    from support.envelope import envelope
-    return envelope(list(elements),
-                    [[float(i) * 2.0, 0.0, 0.0] for i in range(len(elements))])
-
-
-def _from_file_text(text, suffix):
-    """An envelope for a structure whose SOURCE was a file, parsed by the
-    application's own reader -- the client's job now, not this route's."""
-    from molbuilder.structure import Structure
-    struct = (Structure.from_pdb(text) if suffix == ".pdb"
-              else Structure.from_xyz(text))
-    return _envelope(list(struct.elements))
 
 
 class TestPseudosEndpoint:

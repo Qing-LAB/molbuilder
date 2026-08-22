@@ -506,6 +506,10 @@ help = "integration timestep for Verlet/Nose dynamics (fs).  1.0 fs is SIESTA's 
 kind = "deck"
 category = ["convergence", "execution"]
 engines = ["siesta", "pyscf"]
+# The vibration deck neither reads nor writes deck-level restart state
+# (it always recomputes from its own relaxation, or your already_relaxed
+# assertion); showing the knob there was a shown-but-unread parameter.
+calculations = ["optimization"]
 expands = ["DM.UseSaveDM", "MD.UseSaveXV", "MD.UseSaveCG"]
 engine_key = "(molbuilder: one field, one mechanism per engine -- SIESTA expands it to DM.UseSaveDM / MD.UseSaveXV / MD.UseSaveCG; PySCF emits control flow that reads <JOB>.chk and <JOB>_optimized.xyz.  Not a single engine key on either)"
 manual = "SIESTA 5.4.2 §6.9.5 'Initialization of the density-matrix' + §6.4.4 'Input of structural information from external files' + §7.2.1 'Conjugate-gradients optimization'"

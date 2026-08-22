@@ -3,10 +3,9 @@
 **Module:** L2, inside the ``validation`` package. Imports ``issues`` and
 ``task`` (both L1), ``template`` (L2) and an engine's config (L1) — the config
 lazily, so importing ``validation`` does not drag the engine stack in. To be
-called by ``describe._check`` on the host and ``prep``'s § 6.6 preflight
-on the target (R5, 2026-08-12); this line claimed "no caller
-yet because no phase has built the reader, which is the plan's sequencing
-rather than a function written on spec.
+called by ``describe._check`` on the host, ``prep``'s § 6.6 preflight
+on the target (R5, 2026-08-12), and the Task-setup save door (gate ③,
+2026-08-21).
 
 **Contract:** [`engines/stages.md`](?doc=engines/stages.md) § 6.6 (the eight
 checks, *"in order, and all of it before anything is written"*) · § 6.7 (`shape`
@@ -22,12 +21,13 @@ exactly what ``tests/test_layering.py`` prevents. Its docstring carries the same
 split, so the two halves cannot quietly diverge; **if you add a row here, add it
 there.**
 
-**Why this returns findings rather than raising.** § 6.6's rows say *refuse*,
-except one: the fingerprint row says *"proceed, and say plainly it was written
-against a different schema"*. A function that raises cannot express that row at
-all. So every row becomes an ``Issue`` — ``error`` for the refusals, ``warn``
-for the fingerprint — and :func:`refuse_on_error` is the caller's one line when
-it wants the exception. That also puts these on the one channel into the UI
+**Why this returns findings rather than raising.** § 6.6's refusal rows
+become ``error`` Issues, and the sequence checks (§ 6.4 / § 6.6a) are
+``warn`` — a function that raises could not express *"proceed, and say
+so"* at all.  (The schema-fingerprint row — the original non-refusal —
+retired 2026-08-14 with the fingerprint itself; `stages.md` § 6.6 records
+the deletion.)  :func:`refuse_on_error` is the caller's one line when it
+wants the exception. That also puts these on the one channel into the UI
 (§ 4.1 R2), which is the point: a check nobody sees is worse than no check.
 
 ``task.py``'s half still raises, and that is not an inconsistency — it fails
@@ -41,9 +41,6 @@ from typing import Any, Dict, List, Optional
 from ..issues import Issue, ValidationError
 
 
-#: Engines whose ladder runs inside ONE process, so a per-stage directory tree
-#: would describe a layout that never exists on disk (§ 6.7 + § 1.1's note on
-#: why PySCF keeps its own stage list).
 def preflight(task, config_cls=None, *,
               generators: Optional[Dict[str, Any]] = None,
               template_text: Optional[str] = None) -> List[Issue]:
@@ -97,7 +94,8 @@ def preflight(task, config_cls=None, *,
     out.extend(_bench_names_a_speed_knob(task, cls))
     out.extend(_bench_points_fit_their_items(task))
 
-    # -- 2. the schema fingerprint -- the ONE non-refusal ------------------
+    # (step 2 -- the schema fingerprint -- retired 2026-08-14 with the
+    # fingerprint itself; stages.md § 6.6 records the deletion)
 
     # -- 3. every named field exists in the schema ------------------------
     fields = {f.name: f for f in dataclasses.fields(cls)}

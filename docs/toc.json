@@ -44,10 +44,6 @@
         {
           "path": "audit-2026-08-21-fullstack-review.md",
           "label": "Full-stack Review (live plan)"
-        },
-        {
-          "path": "archive/2026-08-21-review-delivered.md",
-          "label": "2026-08-21 Delivered Record (archive)"
         }
       ]
     },
@@ -437,6 +433,21 @@
           "path": "archive/2026-08-20-molview-css-namespace-plan.md",
           "label": "MolView — the stylesheet namespace plan",
           "subtitle": "MolView — the stylesheet namespace plan"
+        },
+        {
+          "path": "archive/2026-08-20-spectra-migration-plan.md",
+          "label": "The spectra migration — the vibrational calculation becomes a described job",
+          "subtitle": "The spectra migration — the vibrational calculation becomes a described job"
+        },
+        {
+          "path": "archive/2026-08-21-review-delivered.md",
+          "label": "2026-08-21 review — the delivered record (archived)",
+          "subtitle": "2026-08-21 review — the delivered record (archived)"
+        },
+        {
+          "path": "archive/2026-08-21-vibration-parameter-integration-plan.md",
+          "label": "The 22 shown-but-unread parameters — categories, integration paths, and the hint mechanism",
+          "subtitle": "The 22 shown-but-unread parameters — categories, integration paths, and the hint mechanism"
         },
         {
           "path": "archive/MIGRATION.md",

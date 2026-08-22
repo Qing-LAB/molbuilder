@@ -1072,8 +1072,9 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
     for j in js["jobs"]:
         assert (bench / f"bench-{j['name']}").is_dir()
         assert not (dest / f"bench-{j['name']}").exists()
-    # one trial per invocation, and it is the one NAMED -- not the next
-    # unlaunched (A-4, 2026-08-13).
+    # a NAMED trial submits alone (how a single point is re-run); an
+    # unnamed bench submits one grouped job per resource shelf -- the
+    # old one-per-invocation rule survives as one LAUNCH ACT per shelf.
     t0, t1 = js["jobs"][0]["name"], js["jobs"][1]["name"]
     res = r.invoke(jobset_group, ["submit", "bench", "coarse", t1, "--bundle",
                                   str(dest), "--mode", "direct", "--dry-run"])

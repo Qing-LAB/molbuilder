@@ -56,7 +56,7 @@ from typing import Dict, List, Optional, Tuple
 # nothing.
 from .agreement import (DeckLaunchMismatch, check_launch_matches_deck,
                         check_trial_starts_cold)
-from .model import JobSet, Resources
+from .model import Job, JobSet, Resources
 
 
 class SubmitError(Exception):

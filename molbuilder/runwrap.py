@@ -1677,6 +1677,27 @@ def _fdf_honours_restart(fdf_path: Path) -> Optional[bool]:
     return answer.strip().lower() in _GPU_TRUTHY
 
 
+def _py_deck_reads_prior(script_path: Path) -> Optional[bool]:
+    """Whether this PySCF deck reads prior state at start -- from the DECK.
+
+    ``True``: the deck carries the restart-gated reads (the chkfile
+    init-guess marker; the optimization deck described ``continue``).
+    ``False``: an optimization deck described ``clean`` -- no read is
+    emitted at all.  ``None``: a vibration deck (it computes its own
+    relaxation and reads no prior engine state at start) or an
+    unreadable file.  Keying the wrapper's continuation story on the
+    deck text is what keeps the help from claiming reads the deck does
+    not contain -- the same doctrine as ``_fdf_honours_restart``.
+    """
+    try:
+        text = script_path.read_text()
+    except OSError:
+        return None
+    if ".spectra.json" in text:
+        return None                     # the vibration deck
+    return 'init_guess = "chkfile"' in text
+
+
 def _parse_fdf_n_atoms(fdf_path: Path) -> Optional[int]:
     """Read the ``NumberOfAtoms`` line from a SIESTA .fdf, or None.
 
@@ -1903,6 +1924,8 @@ def render_run_wrapper(script_path: Path, *,
     # wrapper's own help cannot contradict the file it ships beside.
     _restart_honoured = (_fdf_honours_restart(script_path)
                          if suffix == ".fdf" else None)
+    _py_reads_prior = (_py_deck_reads_prior(script_path)
+                       if suffix == ".py" else None)
 
     # THE BUDGET IS NOT OVERRIDDEN HERE, and that is deliberate.
     #
@@ -2821,19 +2844,37 @@ def render_run_wrapper(script_path: Path, *,
             f"\n"
             f"  --continue, -c   resume from prior run.  Scans existing\n"
             f"                   -runN.pyscf.log files and writes\n"
-            f"                   -run(N+1).pyscf.log.  Whether PySCF\n"
-            f"                   reads the prior ``<JOB>.chk`` is the\n"
-            f"                   DECK's to say: a stage described\n"
-            f"                   ``continue`` gates its init-guess and\n"
-            f"                   geometry reads on it (run-identity.md\n"
-            f"                   § 4 rule 2); one described ``clean``\n"
-            f"                   emits no read at all.\n"
-            f"  --force, -f      start over from -run0 even if prior\n"
+            f"                   -run(N+1).pyscf.log.\n"
+            + (
+                f"                   This deck reads prior state: its\n"
+                f"                   chkfile init-guess and geometry\n"
+                f"                   reads are gated on its described\n"
+                f"                   ``continue`` (run-identity.md § 4\n"
+                f"                   rule 2).\n"
+                if _py_reads_prior else
+                f"                   This deck emits NO prior-state\n"
+                f"                   read (described ``clean``), so the\n"
+                f"                   run index advances and the\n"
+                f"                   calculation starts from the deck's\n"
+                f"                   own coordinates.\n"
+                if _py_reads_prior is False else
+                f"                   This vibration deck reads no prior\n"
+                f"                   engine state at start: each run\n"
+                f"                   recomputes from its own relaxation\n"
+                f"                   (or your already_relaxed\n"
+                f"                   assertion); --continue only\n"
+                f"                   advances the run index.\n"
+            )
+            + f"  --force, -f      start over from -run0 even if prior\n"
             f"                   runs exist.  Old files are NOT deleted;\n"
             f"                   the existing -run0.pyscf.log is\n"
             f"                   overwritten.  Prior ``.chk`` warm-start\n"
-            f"                   files STAY on disk -- and are read only\n"
-            f"                   if this deck's ``restart`` says so.\n"
+            f"                   files STAY on disk -- "
+            + ("and this deck's\n"
+               f"                   ``continue`` reads them.\n"
+               if _py_reads_prior else
+               "and this deck\n"
+               f"                   does not read them.\n")
             + _cold_usage_entry(
                 warm_examples=".chk and _optimized.xyz among them")
             + f"  -omp N           OpenMP threads.  Highest precedence;\n"
@@ -3422,12 +3463,18 @@ def render_run_wrapper(script_path: Path, *,
         # fall through this conditional's last arm and receive the
         # PySCF paragraph.
         + (
-            f"#  * PySCF: the deck decides.  A stage described ``continue``\n"
-            f"#    gates both reads on ``restart`` (the chkfile init-guess\n"
-            f"#    and the previous rung's optimized geometry --\n"
-            f"#    run-identity.md § 4 rule 2, implemented 2026-08); one\n"
-            f"#    described ``clean`` emits no read, so prior state on\n"
-            f"#    disk is simply not consulted.\n"
+            f"#  * PySCF: this deck reads prior state -- its chkfile\n"
+            f"#    init-guess and previous-rung geometry reads are gated\n"
+            f"#    on its described ``continue`` (run-identity.md § 4\n"
+            f"#    rule 2).\n"
+            if suffix == ".py" and _py_reads_prior else
+            f"#  * PySCF: this deck emits NO prior-state read (described\n"
+            f"#    ``clean``): prior files on disk are simply not\n"
+            f"#    consulted.\n"
+            if suffix == ".py" and _py_reads_prior is False else
+            f"#  * PySCF (vibration): this deck reads no prior engine\n"
+            f"#    state at start -- each run recomputes from its own\n"
+            f"#    relaxation (or the already_relaxed assertion).\n"
             if suffix == ".py" else
             f"#  * SIESTA: this deck sets ``DM.UseSaveDM`` /\n"
             f"#    ``MD.UseSaveXV`` / ``MD.UseSaveCG`` .true., so SIESTA\n"

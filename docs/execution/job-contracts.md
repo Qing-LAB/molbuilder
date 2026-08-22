@@ -459,12 +459,11 @@ tree for reusable geometries matching `*_optimized.xyz`, `*.STRUCT_OUT`, and
 ### 2.6 The run wrapper — `.run.sh` and `.sbatch`
 
 **`prep` writes the wrapper**, on the machine that will run the job, and on
-the described route it is the only thing that does.  *(Two recorded side
-doors call the same emitter: the web install-wrapper endpoint —
-`web/blueprints/build.py`, the low-level tool the described route
-supersedes — and transport's driver, which emits wrappers for its own
-kind.  Neither renders a wrapper a different way; the sentence that stood
-here claimed exclusivity the tree never had.)*  The wrapper activates the
+the described route it is the only thing that does.  *(One recorded side
+door calls the same emitter: transport's driver, which emits wrappers for
+its own kind and renders them no different way.  The web install-wrapper
+endpoint — the other side door this note used to record — retired
+2026-08-21 with zero browser callers.)*  The wrapper activates the
 routed conda env and
 executes the tool (`molbuilder/runwrap.py::render_run_wrapper`). Routing is by
 extension:
@@ -934,11 +933,12 @@ upgraded.)*
   coordinates are written by the same generator pass, so they cannot drift
   apart — a hash would be tautological.
 - **In-body wins over the sidecar.** When a `.fdf` / `.py` with an
-  ATOM-METADATA block sits next to a `.molstruct.json`, downstream code reads
-  the in-body block and ignores the sidecar
-  (`_shared.py::apply_companion_labels_if_present` runs before the sidecar
-  branch of `apply_sidecar_if_possible`). The sidecar is the fallback for plain
-  `.xyz` loads and for pre-contract scripts.
+  ATOM-METADATA block sits next to a `.molstruct.json`, a reader takes the
+  in-body block and ignores the sidecar. The sidecar is the fallback for
+  plain `.xyz` loads and for pre-contract scripts.  *(The web helpers that
+  once implemented this ordering — `apply_companion_labels_if_present` /
+  `apply_sidecar_if_possible` — retired 2026-08-21 when the emitting doors
+  moved to the envelope; the parse layer's own readers keep the rule.)*
 
 ### 3.5 USER-CUSTOM — your territory
 

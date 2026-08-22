@@ -470,6 +470,15 @@ async function readOptional(projects, path) {
 
 async function loadFolder(projects, dir) {
     _dir = dir;
+    /* EVERY per-folder fact resets before the branch (U6 close): the
+     * hand-over and empty branches never wrote _task/_shape, so a
+     * SIESTA description opened first leaked into the next folder --
+     * setShape(_shape) re-fired on the STALE _task, syncFromModel()
+     * overwrote the editor with the previous folder's task.json, and
+     * Save was enabled over the wrong calculation. */
+    _task = null;
+    _shape = "";
+    _handover = null;
     showPath(dir);
     // Before anything renders: what this folder's template answers is the
     // baseline every empty cell names.
@@ -855,6 +864,12 @@ function fillPicker(sel, items, taken, empty) {
 
 async function refreshPickers() {
     const engine = (_task && _task.engine && _task.engine.name) || "siesta";
+    /* _meta is rebuilt from this engine's answers: its neighbours are
+     * keyed (_colsKey/_sweepKey/_presetsKey) but _meta accreted across
+     * engines -- a sweep-only item's record was written once and never
+     * refreshed, and the previous engine's names backed legalValues /
+     * valueInForce / helpText forever. */
+    for (const k of Object.keys(_meta)) delete _meta[k];
     try {
         const [cols, sweep] = await Promise.all([
             loadColumnChoices(engine), loadSweepChoices(engine),
@@ -1142,6 +1157,13 @@ function renderNext(task) {
             say.textContent = r.ok
                 ? "wrote jobset.sh (portable) \u2014 ./jobset.sh <verb> works here now"
                 : (r.error || "failed");
+            /* The write bypassed the file layer (the server owns the
+             * launcher's bytes), so re-list the folder ourselves or the
+             * new file stays invisible in the sidebar and the file
+             * list until the user re-selects. */
+            if (r.ok && typeof proj.refresh === "function") {
+                proj.refresh();
+            }
         } catch (e) {
             say.textContent = "could not reach the server";
         }
@@ -1493,6 +1515,21 @@ async function save() {
     }
     // Re-open the folder: it is now a description.
     if (projects) await loadFolder(projects, _dir);
+    /* Gate ③'s NON-refusing findings (sequence warnings) ride the OK
+     * response, exactly what the CLI would have echoed -- and until the
+     * U6 close they went on the floor while loadFolder repainted the
+     * box to "loaded": the warned-and-navigated-past failure mode the
+     * hand-over's notices arm just had fixed. */
+    const warns = (Array.isArray(body.findings) ? body.findings : [])
+        .filter((f) => f && f.severity !== "error");
+    if (warns.length) {
+        setState("loaded",
+                 "Saved — the preflight has "
+                 + (warns.length === 1 ? "a note" : warns.length + " notes"),
+                 warns.map((f) => "• "
+                     + (f.where ? "[" + f.where + "] " : "")
+                     + (f.message || "")).join("\n"));
+    }
 }
 
 /* ---------- wiring ---------- */

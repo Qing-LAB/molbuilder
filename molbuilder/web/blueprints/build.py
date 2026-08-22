@@ -4,24 +4,25 @@ Routes (registered with no url_prefix; each carries its own full path):
 
     POST /api/build/molecule        build a Structure from sequence/SMILES/name
     POST /api/build/load            load an existing XYZ / PDB into a Structure
-    POST /api/build/fdf             render a SIESTA .fdf for a Structure + params
-    POST /api/build/pyscf           render a PySCF script for a Structure + params
     POST /api/build/preflight       fast validate-only path (no rendering)
     GET  /api/build/schema/<engine> form-rendering schema for the SIESTA /
-                                    PySCF Build panel (engine ∈ {siesta, pyscf}).
-                                    The Build tab's JS renders the form
-                                    directly from this schema so the
-                                    dataclass is the SINGLE source of truth
-                                    for the field set + per-field UI hints.
+                                    PySCF describing tabs (engine ∈ {siesta,
+                                    pyscf}; ?calculation=vibration narrows to
+                                    the kind's items)
+    POST /api/structure/{analyze,periodicity}
+    POST /api/task-setup/{handover,save,launcher} · GET .../{sweepable,
+                                    columns,template-values,presets}
 
-The four endpoints share a single Flask app instance with the watch
+(The render doors POST /api/build/fdf and /api/build/pyscf were DELETED
+2026-08-17 -- a browser renders no deck; their tombstone is below.  The
+install-wrapper / install-pseudos doors retired 2026-08-21 the same way.)
+
+These endpoints share a single Flask app instance with the watch
 blueprint at ``molbuilder/web/blueprints/watch.py``.  Two top-level
 routes stay on the app itself rather than on this blueprint:
 
     GET  /                     the page (tabbed UI shell)
     GET  /api/health           liveness
-    GET  /api/backends         available builder backends (consumed by
-                               both Build and Watch tabs' pickers)
 
 JSON shape:
 
@@ -46,17 +47,7 @@ JSON shape:
                          returns: same shape as /api/build/molecule
                                   plus "source_format": "xyz"|"pdb"
 
-  /api/build/fdf      -- body: {"structure": {<envelope>},
-                                "params": {<SiestaConfig dict>}}
-                         returns: {"ok": True, "fdf": "<text>",
-                                   "system_label": "..."}
-
-  /api/build/pyscf    -- body: {"structure": {<envelope>},
-                                "params": {<PySCFConfig dict>}}
-                         returns: {"ok": True, "script": "<text>",
-                                   "job_name": "..."}
-
-  The three emitting doors (fdf / pyscf / preflight) read the structure
+  The emitting-door survivor (preflight) reads the structure
   through ``_shared.struct_from_body`` -- the atoms as NUMBERS with their
   facts beside them, which is what the browser holds and what every other
   structure door already takes.  A legacy ``{"xyz": "<text>"}`` body still
@@ -245,6 +236,11 @@ def api_structure_analyze():
         "n_electrons_neutral": analysis.n_electrons_neutral,
         "metals":              analysis.metals,
         "metal_hints":         [asdict(h) for h in analysis.metal_hints],
+        # The detection chip's PRIMARY key (web-ui-coherence Rule 1:
+        # ChemistryAnalysis.suggested_treatment from the one function) --
+        # never sent until the U6 close, so the chip always fell through
+        # to its spin heuristic.
+        "suggested_treatment": analysis.suggested_treatment,
         "suggested":           {
             name: asdict(cls.to_params(analysis))
             for name, cls in registered_adapters().items()
@@ -1468,6 +1464,11 @@ def api_task_setup_sweepable():
             "type":            it.type or "",
             "choices":         list(it.choices) if it.choices else None,
             "default":         it.default,
+            # The unit rides too: the machine card's default/help text
+            # reads m.unit, and max_memory_mb rendered unitless without
+            # it (allocation items never pass through the columns door,
+            # so this payload is their only source).
+            "unit":            it.unit or None,
         })
     return jsonify({"ok": True, "engine": engine, "items": out})
 

@@ -64,8 +64,11 @@ def test_amplitude_advisory_reaches_the_person():
 
 
 def test_registry_path_serves_a_real_spectra_config():
-    """The registered validator (for callers holding a real
-    SpectraConfig) runs the SAME body -- one gate, two doors."""
+    """The registered validator runs the SAME body -- one gate, two
+    doors.  No production code constructs a SpectraConfig any more;
+    this pins the registry ENTRY itself, which stays until the class's
+    deferred retirement lands with transport's round (it shares the
+    four-engine registry)."""
     from molbuilder.config.spectra import SpectraConfig
     from molbuilder.validation import validate
     issues = validate(_water(), SpectraConfig(es_mode_selection="top_n"))
@@ -110,32 +113,27 @@ def test_an_ecp_deck_compiles_and_carries_one_ecp_kwarg():
 #  The U2 correctness pins (2026-08-21)                                  #
 # --------------------------------------------------------------------- #
 
-def test_an_hf_raman_deck_guards_the_dft_name():
-    """E-M4.7's shape: on an HF deck the import block emits no ``dft``,
-    so any load of that name OUTSIDE the RKS/UKS branch of
-    ``_build_mf_at`` is a NameError -- and the Raman path calls it with
-    ``force_cpu=True`` AFTER the full Hessian is paid for.  Every load
-    of ``dft`` in that function must sit inside the method branch that
-    only DFT decks execute."""
+def test_an_hf_raman_deck_never_mentions_the_dft_name():
+    """E-M4.7's shape, tightened at the U6 close: on an HF deck the
+    import block emits no ``dft``, so ANY reference to that name is a
+    NameError waiting in dead text -- and the original bug fired it
+    with ``force_cpu=True`` AFTER the full Hessian was paid for.  The
+    method is a render-time fact, so an HF deck now carries no DFT arm
+    at all; a DFT deck still evaluates ``dft`` only on its force_cpu
+    pick."""
     import ast
-    text = _render(PySCFConfig(method="RHF", compute_raman=True))
-    tree = ast.parse(text)
+    hf = _render(PySCFConfig(method="RHF", compute_raman=True))
+    tree = ast.parse(hf)
     fn = next(n for n in ast.walk(tree)
               if isinstance(n, ast.FunctionDef) and n.name == "_build_mf_at")
-    guarded = set()
-    for node in ast.walk(fn):
-        if (isinstance(node, ast.If)
-                and "'RKS', 'UKS'" in ast.unparse(node.test)):
-            for stmt in node.body:               # the DFT arm only
-                for inner in ast.walk(stmt):
-                    guarded.add(id(inner))
     loads = [n for n in ast.walk(fn)
              if isinstance(n, ast.Name) and n.id == "dft"]
-    assert loads, "the function no longer mentions dft at all -- retarget"
-    unguarded = [n for n in loads if id(n) not in guarded]
-    assert not unguarded, (
-        f"`dft` is evaluated outside the RKS/UKS branch at line(s) "
-        f"{[n.lineno for n in unguarded]} -- an HF+Raman run dies there")
+    assert not loads, (
+        f"`dft` appears in an HF deck's _build_mf_at at line(s) "
+        f"{[n.lineno for n in loads]} -- a NameError waiting in dead text")
+    dft_deck = _render(PySCFConfig(method="RKS", compute_raman=True))
+    assert "_dft_mod = dft if force_cpu else _dft" in dft_deck, (
+        "the DFT deck lost its force_cpu module pick -- retarget")
 
 
 def test_the_vibration_deck_runs_the_engines_own_deck_gate():
@@ -338,7 +336,8 @@ def test_the_dft_trio_has_one_spelling_per_deck():
     assert 'mf.xc = "b3lyp"' in text               # layout's spelling
     assert "mf.xc = FUNCTIONAL" not in text        # the hand spelling
     assert "_mf2.grids.level = GRID_LEVEL" not in text
-    # An HF deck keeps uniform call sites through an explicit no-op.
+    # An HF deck carries NO dresser at all -- both call sites branch
+    # on the method, so an emitted pass-through would be dead text
+    # (tightened at the U6 close).
     hf = _render(PySCFConfig(method="RHF"))
-    assert "def _mb_configure_dft(mf):" in hf
-    assert "not a DFT deck" in hf
+    assert "_mb_configure_dft" not in hf

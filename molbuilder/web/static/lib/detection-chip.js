@@ -37,13 +37,15 @@
             ? resp.n_atoms : null;
         var metals = (resp && Array.isArray(resp.metals))
             ? resp.metals : [];
-        // PySCF's suggested block carries the canonical treatment
-        // verbatim from the analyzer; SIESTA's block agrees by
-        // construction.  Either is fine; PySCF first by convention.
+        // The analyzer's own verdict rides the response top-level
+        // (`suggested_treatment` -- the ONE function's answer, sent
+        // since the U6 close; the per-engine suggested blocks never
+        // carried it, so the old read order always fell through to the
+        // spin heuristic).  The heuristic stays as the last fallback
+        // for older responses.
         var sug = (resp && resp.suggested) || {};
         var sugP = sug.pyscf || sug.siesta || {};
-        var treatment = sugP.suggested_treatment
-            || sugP.treatment
+        var treatment = (resp && resp.suggested_treatment)
             || ((typeof sugP.spin === "number" && sugP.spin > 0)
                 ? "open" : "closed");
         var spinNum = (typeof sugP.spin === "number") ? sugP.spin : null;

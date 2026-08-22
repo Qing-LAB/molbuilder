@@ -45,14 +45,13 @@ deferred with rationale, and named architecture seams.)
 > workstation; the **cluster** half of D7 (the same loop through SLURM on
 > Sol) is what remains of it.
 >
-> **Spectra and transport have not migrated onto this framework.** Their
-> code and process still run the paths built before it — the spectra tab's
-> compute side and `transport bundle`'s three-run driver — and they are
-> **deliberately untouched** until the structure-optimization loop is fully
-> verified. Only then do they migrate (workstream 2 for transport; the
-> spectra producer rides the same gate). Transport is additionally **a
-> different KIND of job** — three coupled runs, one answer assembled from
-> pieces — per the 2026-08-11 decision
+> **Transport has not migrated onto this framework** — `transport
+> bundle`'s three-run driver still runs the path built before it,
+> deliberately, and its workflow is being designed separately.  (Spectra
+> DID migrate, 2026-08: the vibration deck is a calculation kind of the
+> PySCF engine — § "Spectra: migrated" below.)  Transport is additionally
+> **a different KIND of job** — three coupled runs, one answer assembled
+> from pieces — per the 2026-08-11 decision
 > ([`execution/architecture.md`](?doc=execution/architecture.md) § 0);
 > migrating it means giving that kind a first-class representation, not
 > bending it into a ladder.
@@ -652,7 +651,7 @@ dropped in the same commit that closes its item)*:
   cite external `project_*.md` plan files that were never committed —
   repoint to `engines/transport.md` + this roadmap.
 - **README screenshot re-capture.** `hero-molbuilder.png` / `tab-bar.png`
-  show five tabs; six ship (`process/screenshots.md` carries the flag and
+  show five tabs; seven ship (`process/screenshots.md` carries the flag and
   the capture recipe).
 - **`test_vendor_licenses` Python floor.** The test imports `tomllib`
   (3.11+) while `pyproject.toml` claims `requires-python >= 3.9` — guard
@@ -665,9 +664,10 @@ dropped in the same commit that closes its item)*:
   omits the core viewer and most of the front end. Fix the globs + add a
   test that the wheel's file list covers every `static/` file the templates
   reference.
-- **No-shim policy violations** (ship-or-retire, both verified standing):
-  the `molbuilder/backends/` back-compat re-export package, and the
-  `_apply_sidecar_if_possible` dead alias (`web/blueprints/spectra.py:252`).
+- **No-shim policy violations** (ship-or-retire; one remains):
+  the `molbuilder/backends/` back-compat re-export package.  (The
+  `_apply_sidecar_if_possible` dead alias died with its subject — the
+  whole sidecar-helper family retired 2026-08-21, C-shared.)
 - **Ship-or-retire decision batch** — named-in-design, never built, no
   recorded retirement: the checkpoint tail (`prune`, a CLI `checkpoint diff`
   face, the `snippets/` library, wrapper-git "Path B" — running-a-job.md § 6
@@ -991,9 +991,10 @@ Shipped items, newest first. Each landed with a decisions-log entry in
 detail from `git log`. Durable *reference* for a shipped feature lives in its
 domain doc, not here.
 
-- **Six-tab UI** — Molbuilder · Structure optimization · Spectrum calculation
-  · Transport calculation · Results, plus a Documents tab. The former
-  four-tab layout's reorganization (Phases A–D) is complete.
+- **Seven-tab UI** — Molbuilder · Structure optimization · Spectrum
+  calculation · Transport calculation · Task setup · Results, plus a
+  Documents tab. The former four-tab layout's reorganization (Phases A–D)
+  is complete.
 - **Effective cell in the store** (was "Step 6", design-first) — a cell-less
   structure shows a box without a viewer hack. Resolved **server-side**:
   `Structure.to_wire()` computes `resolved_cell` / `resolved_cell_origin`, every

@@ -36,7 +36,7 @@ which already has the schema in hand:
           unknown keys refused by name · ``run.id`` is what ``run.name`` and
           ``structure.formula`` derive (§ 6.1's first rule -- the check needs
           only ``identity``, which is L1 beside this one)
-  P2      the engine has a generator · the schema fingerprint matches · every
+  P2      the engine has a generator · every
           named field exists in the schema · every value is inside its bounds ·
           ``shape: "hierarchical"`` on an engine whose ladder runs in ONE
           process (§ 6.7 — PySCF; refused naming the engine) · and § 6.6a's

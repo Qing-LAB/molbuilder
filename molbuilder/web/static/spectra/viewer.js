@@ -439,6 +439,16 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
         }
 
         function _renderAutoDetectPanel(resp) {
+            /* The workflow-card chips read the same analysis (the ONE
+             * detection surface, lib/detection-chip.js) -- this tab
+             * rendered the rationale panel but never the chips, the
+             * exact per-tab drift the chip module was extracted to
+             * prevent. */
+            const _chip = window.molbuilder
+                       && window.molbuilder.detectionChip;
+            if (_chip && typeof _chip.render === "function") {
+                _chip.render(resp);
+            }
             const panel = _$("auto-detect-panel");
             if (!panel) return;
             panel.hidden = false;

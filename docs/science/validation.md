@@ -438,7 +438,7 @@ validation/
 ├── metadata.py     # dataclass-field-driven config validation (range/validate/choices)
 ├── chemistry.py    # check_open_shell_metal, metal-basis adequacy, peptide protonation
 ├── identity.py     # names and labels (run identity, basenames)
-├── sidecar.py      # frozen-atoms-consumed check
+├── sidecar.py      # frozen-atoms-consumed + unconsumed-region-label (Pattern-B) checks
 ├── stages.py       # stage-ladder checks (shared by describe/dispatch)
 ├── task.py         # the TASK preflight — a description that is not one refuses
 ├── siesta.py       # SIESTA preflight aggregator + pseudo/mesh/Makov-Payne/spin checks

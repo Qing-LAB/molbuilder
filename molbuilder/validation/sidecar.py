@@ -84,8 +84,8 @@ def check_unconsumed_region_labels(struct: Structure, *,
     return [Issue(
         "warn",
         (f"this structure carries region label(s) {inert}, which the "
-         f"{engine} optimization run does NOT consume -- they stay in "
-         f"the sidecar for /transport but do not shape this calculation. "
+         f"{engine} run does NOT consume -- they stay in the sidecar "
+         f"for /transport but do not shape this calculation. "
          f"If you meant those atoms to be held fixed, assign them to "
          f"\"frozen_atoms\" in /modify."),
         "structure.regions",

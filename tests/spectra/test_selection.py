@@ -1,19 +1,19 @@
 """L2 mode-selection tests: ``select_modes`` (the reference selector).
 
-Spec § 8 + § 8.1 + § 2.5.3.  Pure functions, exhaustively tested:
+archived-spec (docs/archive/old_docs/tabs/spectra/spec.md) § 8 + § 8.1 + § 2.5.3.  Pure functions, exhaustively tested:
 
   * the five Model-2 selectors (skip / all / top_n / threshold /
     explicit) on a 6-mode fixture with varied (freq, Raman activity)
     pairs;
   * the frequency-range filter composes with each selector by
-    INTERSECTION (spec § 8.1);
-  * priors / resume behaviour (spec § 2.5.3);
+    INTERSECTION (archived-spec § 8.1);
+  * priors / resume behaviour (archived-spec § 2.5.3);
 
 Also includes the cross-check that the emitted script's inlined
 selector matches the Python ``select_modes`` for the same (modes,
 cfg) inputs (``TestSelectorEquivalence``).  Lives here because the
-test's purpose is selector correctness; the script-template emission
-itself is tested in ``test_script.py``.
+test's purpose is selector correctness; the deck's inlined selector is
+parity-tested below (``TestSelectorEquivalence``).
 """
 
 from __future__ import annotations
@@ -76,8 +76,9 @@ class TestSelectModes:
         assert select_modes(_modes_fixture(), cfg) == [5, 6]
 
     def test_selector_top_n_clamps_silently(self):
-        """N > available count silently clamps (warning lives in
-        validate_selection, not select_modes)."""
+        """N > available count silently clamps -- the selector's own
+        contract; the too-few-modes ADVISORY is the kind validator's
+        (validation/spectra.py; validate_selection retired)."""
         from molbuilder.spectra import select_modes
         cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=100)
         out = select_modes(_modes_fixture(), cfg)
@@ -113,7 +114,7 @@ class TestSelectModes:
         assert select_modes(_modes_fixture(), cfg) == [3, 5]
 
     def test_selector_explicit_ignores_freq_window(self):
-        """Spec § 8.1: explicit IGNORES freq filter.  User asked
+        """archived-spec § 8.1: explicit IGNORES freq filter.  User asked
         for modes 3 + 5 + 6; even though mode 3 is well below
         any window, the explicit selector returns them all."""
         from molbuilder.spectra import select_modes
@@ -132,7 +133,7 @@ class TestSelectModes:
 
 
 class TestSelectModesWithPriorResume:
-    """Spec § 2.5.2 + § 6.1: when prior has ES data for some modes,
+    """archived-spec § 2.5.2 + § 6.1: when prior has ES data for some modes,
     those modes are skipped on the next run (non-destructive L4)."""
 
     def _prior_with_es_on_mode(self, idx: int) -> SpectraResults:

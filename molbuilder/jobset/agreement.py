@@ -4,8 +4,11 @@
 **Module**: the ONE comparison between what a deck was rendered for and the
 launch it is about to get, plus the ONE wording of why a mismatch matters.
 **Callers**: `jobset/submit._resolve_launch` (the refusal, M5's *"`submit`
-decides nothing … refuses if they do not"*) and `jobset/_cli._echo_resolved`
-(the warning at `prep`, where changing your mind is still cheap); the
+decides nothing … refuses if they do not"*), `jobset/_cli._echo_resolved`
+(the warning at `prep`, where changing your mind is still cheap), and --
+since the cold-start ruling (2026-08-21) -- `jobset/submit`'s per-trial
+gate calling :func:`check_trial_starts_cold` (the door VERIFIES the
+run's starting state; prep's measurement pin is the one setter); the
 fixture-level tests in `test_jobset` / `test_prep_calculation`.
 
 **Why its own module** (U6, 2026-08-12): this comparison lived in `prep.py`
@@ -151,7 +154,8 @@ def check_launch_matches_deck(job_dir, job) -> None:
 
 
 __all__ = ["LaunchAgreement", "launch_agreement", "disagreement_note",
-           "DeckLaunchMismatch", "check_launch_matches_deck"]
+           "DeckLaunchMismatch", "check_launch_matches_deck",
+           "check_trial_starts_cold"]
 
 
 def check_trial_starts_cold(job_dir, job) -> None:
@@ -173,9 +177,7 @@ def check_trial_starts_cold(job_dir, job) -> None:
     Raises :class:`DeckLaunchMismatch` (the same family as the launch
     agreement -- submission declines to act on a deck that disagrees).
     """
-    import os
     import re
-    from pathlib import Path
 
     deck = Path(job_dir) / os.path.basename(job.script)
     if not deck.is_file():

@@ -331,11 +331,11 @@ def _stage_bench_dir(base, stage):
 # always mean (stage, trial) and the re-binding can never fire.
 
 
-def _pick_trial(js, base, trial, mode):
+def _pick_trial(js, base, trial):
     """Which trial this invocation launches.  NAMED → that one (how a single
     point is re-run); refused by name against the sweep's own list.  Bare →
-    ``None`` — under `--mode direct` that means the whole set, in order (not
-    submission), and bare-under-submit never reaches here at all: the
+    ``None`` (--mode direct runs the whole set, in order), and
+    bare-under-submit never reaches here at all: the
     dispatch routes it to the grouped door (one exact-fit job per resource
     shelf, § 2.3.2).  A next-unlaunched picker arm stood here for the
     pre-grouping shape; its own docstring called it unreachable, and it
@@ -349,7 +349,9 @@ def _pick_trial(js, base, trial, mode):
         _ledger(base, "submit", "trial-picked", trial=trial,
                 picked_by="named by the user")
         return trial
-    return None                       # direct: the whole set, in order
+    return None       # bare: --mode direct runs the whole set, in order
+                      # (bare-under-submit routes to the grouped door
+                      # upstream and never reaches here)
 
 
 def _load_bench_set(base, stage):
@@ -635,7 +637,11 @@ def _declared_execution_pins(base, engine):
     if shape_errors:
         raise click.ClickException(shape_errors[0].message)
 
-    items = {i.name: i for i in _T.select(_T.catalogue(), engine=engine)
+    # THE ENGINE IS THE DESCRIPTION'S OWN (task.engine): the caller
+    # passed the same value, but reading it here keeps this door and
+    # the shape checker it calls keyed on one source.
+    items = {i.name: i
+             for i in _T.select(_T.catalogue(), engine=str(task.engine))
              if "execution" in (i.category or ())}
     pins, axes, value_axes = {}, {}, {}
     for name, pts in declared.items():
@@ -1741,7 +1747,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 trial_timeout_s=trial_timeout_min * 60, only=only_side)
         else:
             if kind == "bench" and js.kind == "sweep":
-                only = _pick_trial(js, base, trial, mode)
+                only = _pick_trial(js, base, trial)
             else:
                 only = _resolve_stage(js, stage, "submit")
             results = submit_jobset(js, base, mode=mode, domain=domain,

@@ -106,7 +106,7 @@
     font-weight: var(--weight-semibold);
     color: var(--text-primary);
 }
-.ts-state-body { margin: var(--space-xs) 0 0; color: var(--text-secondary); }
+.ts-state-body { margin: var(--space-xs) 0 0; color: var(--text-secondary); white-space: pre-line; }
 
 /* ---- What will be written ---- */
 

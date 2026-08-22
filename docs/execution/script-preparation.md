@@ -235,9 +235,11 @@ type, its severity model, and `report()`, so a refusal here reads like every
 other refusal in the tree. What is new is only the **subject**: no check in this
 tree has ever read a produced artifact.
 
-> *(`render_checks` on the spectra and transport engine bases is named as though
+> *(`render_checks` on TRANSPORT's engine base is named as though
 > it were this, and is not: it takes `(struct, cfg)` and runs before emission. It
-> is a config gate with a misleading name.)*
+> is a config gate with a misleading name.  Spectra's engine base died at P3;
+> its science lives as `validation/spectra.py::spectra_render_checks`, run by
+> the ONE settings gate.)*
 
 ### 3.2 The three rules inside step 3
 
@@ -792,7 +794,8 @@ piece of work, not a sweep.
 > **What this costs today, concretely.** `transport/_cli.py` writes an `.fdf`
 > with a plain `write_text`, so W4's one-writer rule does not hold there; those
 > decks carry no `USER-CUSTOM` block, no provenance record, and are never read
-> back after writing. And `render_checks` on both engine bases is named as
+> back after writing. And `render_checks` on transport's engine base (the
+> one that remains — spectra's died at P3) is named as
 > though it were the artifact gate and is not — it takes `(struct, cfg)` and
 > runs before any text exists, which makes it a second config gate with a
 > misleading name.

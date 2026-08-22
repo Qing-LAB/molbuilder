@@ -42,7 +42,6 @@
  *   int-triple  : three <input type=number step=1>    (Tuple[int,int,int], e.g. kgrid)
  *   float-triple : three <input type=number step=any> (Tuple[float,float,float],
  *                  e.g. kgrid_displacement — 0.5 must survive)
- *   stage-table  : per-stage rows table + preset dropdown
  *                  (List[<dataclass>], e.g. PySCFConfig.stages)
  *   comma-floats : comma-separated list of floats
  *                  (List[float], e.g. bias voltages)
@@ -213,332 +212,15 @@
         return el("input", attrs);
     }
 
-    /* ---------- stage-table (List[<dataclass>], e.g. stages) ---------- *
-     *
-     * Renders a table where ROWS are per-stage parameters (name,
-     * enabled, conv_tol, gmax, ...) and COLUMNS are the stages
-     * themselves (Stage 1 / 2 / 3 by default).  A "Stage strategy"
-     * preset dropdown above the table sets the per-stage enable
-     * checkboxes to the publication-guide tiers.
-     *
-     * Per-cell input ids: ``<f.id>-stage<index>-<param_name>``.
-     * collectField walks all stage_fields × stage indices and
-     * rebuilds the list-of-dicts that the server's
-     * ``coerce_to_field_type`` then rebuilds into List[<dataclass>].
-     */
-
-    // Preset → per-stage enable flags.  Custom is the no-op (the
-    // user has already set things; preset stays "Custom" until they
-    // pick another one).  Add new presets here AND in
-    // makeStageTable's <option> list below — keep in sync.
-    const STAGE_STRATEGY_PRESETS = {
-        "publishable": {
-            label:   "Publishable (stages 1+2)",
-            enables: [true,  true,  false],
-        },
-        "loose-only": {
-            label:   "Loose only (stage 1)",
-            enables: [true,  false, false],
-        },
-        "vib-quality": {
-            label:   "Vib quality (1+2+3)",
-            enables: [true,  true,  true],
-        },
-    };
-
-    function applyStagePreset(wrap, f, strategy) {
-        const preset = STAGE_STRATEGY_PRESETS[strategy];
-        if (!preset) return;
-        const enables = preset.enables;
-        const stages  = f.default || [];
-        stages.forEach((_, stageIdx) => {
-            if (stageIdx >= enables.length) return;
-            const cellId = `${f.id}-stage${stageIdx}-enabled`;
-            const cb = wrap.querySelector("#" + cssEsc(cellId));
-            if (cb) {
-                cb.checked = enables[stageIdx];
-                // Fire ``input`` event so dirty-tracking listeners
-                // observe the preset change just like a manual click.
-                cb.dispatchEvent(new Event("input", { bubbles: true }));
-            }
-        });
-    }
-
-    function makeStageCellInput(cellId, sf, value) {
-        if (sf.kind === "checkbox") {
-            return el("input", {
-                id: cellId, type: "checkbox",
-                checked: Boolean(value),
-            });
-        }
-        if (sf.kind === "int" || sf.kind === "number") {
-            const attrs = {
-                id: cellId, type: "number",
-                step: sf.kind === "int" ? "1" : (sf.step || "any"),
-                value: (value == null || value === "") ? "" : String(value),
-            };
-            const inp = el("input", attrs);
-            if (sf.min !== undefined) inp.min = sf.min;
-            if (sf.max !== undefined) inp.max = sf.max;
-            return inp;
-        }
-        if (sf.kind === "choice") {
-            // <select> dropdown for str fields with a ``choices``
-            // enum (#534 commit 6b — first user: stages-table
-            // ``on_nonconvergence`` policy).  The list comes from
-            // sf.choices, which the Python schema layer copies
-            // verbatim from the dataclass field metadata.
-            const sel = el("select", { id: cellId });
-            (sf.choices || []).forEach(function (opt) {
-                const o = el("option", { value: String(opt) }, String(opt));
-                if (String(value) === String(opt)) {
-                    o.selected = true;
-                }
-                sel.appendChild(o);
-            });
-            return sel;
-        }
-        // text fallback
-        const attrs = {
-            id: cellId, type: "text", autocomplete: "off",
-            value: (value == null) ? "" : String(value),
-        };
-        if (sf.pattern) attrs.pattern = sf.pattern;
-        return el("input", attrs);
-    }
-
-    function makeStageTable(f) {
-        const wrap = el("div", {
-            id: f.id, class: "schema-stage-table-wrap",
-        });
-        // Preset dropdown row.  Default to "custom" so the user's
-        // existing edits aren't squashed on first render; selecting
-        // a preset is an explicit opt-in to overwrite per-stage
-        // ``enabled`` flags.
-        const presetRow = el("div", { class: "schema-stage-presets" });
-        const presetLabel = el("label", {
-            class: "schema-stage-preset-label",
-            for:   f.id + "-preset",
-        }, "Stage strategy ");
-        presetRow.appendChild(presetLabel);
-        const presetSel = el("select", {
-            id: f.id + "-preset",
-            class: "schema-stage-preset-select",
-        });
-        presetSel.appendChild(el("option", { value: "custom" },
-            "Custom (manual)"));
-        Object.keys(STAGE_STRATEGY_PRESETS).forEach((k) => {
-            presetSel.appendChild(el("option", { value: k },
-                STAGE_STRATEGY_PRESETS[k].label));
-        });
-        presetRow.appendChild(presetSel);
-        wrap.appendChild(presetRow);
-
-        // Table
-        const stages = Array.isArray(f.default) ? f.default : [];
-        const stageFields = Array.isArray(f.stage_fields)
-            ? f.stage_fields : [];
-        const table = el("table", { class: "schema-stage-table" });
-
-        // Header row: per-stage column headers ("Stage 1" / "Stage 2"
-        // / "Stage 3" — derived from the stage index, NOT the
-        // stage's ``name`` field, since ``name`` is user-editable
-        // and the column header should be stable).
-        const thead = el("thead");
-        const headRow = el("tr");
-        headRow.appendChild(el("th",
-            { class: "stage-param-name-header" }, ""));
-        stages.forEach((_, stageIdx) => {
-            headRow.appendChild(el("th",
-                { class: "stage-col-header" },
-                "Stage " + (stageIdx + 1)));
-        });
-        thead.appendChild(headRow);
-        table.appendChild(thead);
-
-        // Body rows: one per stage_field.  ``name`` row first
-        // (filename suffix is the user-facing identity of the
-        // stage), ``enabled`` second (toggling it is the most-
-        // common action), then convergence knobs in declaration
-        // order.
-        const tbody = el("tbody");
-        stageFields.forEach((sf) => {
-            const tr = el("tr",
-                { class: "stage-row stage-row--" + sf.name });
-            const lbl = el("th", { class: "stage-param-name" });
-            const labelText = sf.unit
-                ? `${sf.label} (${sf.unit})` : sf.label;
-            lbl.appendChild(el("span",
-                { class: "stage-param-label" }, labelText));
-            if (sf.help) lbl.title = sf.help;
-            if (sf.engine_key) {
-                // Mirror the per-field engine-key badge so the user
-                // sees which keyword a row writes (e.g. ``mf.conv_tol``).
-                const badge = engineKeyBadge({
-                    label: sf.label,
-                    engine_key: sf.engine_key,
-                });
-                if (badge) lbl.appendChild(badge);
-            }
-            tr.appendChild(lbl);
-
-            stages.forEach((stage, stageIdx) => {
-                const cellId =
-                    `${f.id}-stage${stageIdx}-${sf.name}`;
-                const v = (stage && stage[sf.name] !== undefined)
-                    ? stage[sf.name] : sf.default;
-                const inp = makeStageCellInput(cellId, sf, v);
-                const td = el("td",
-                    { class: "stage-cell stage-cell--" + sf.kind });
-                td.appendChild(inp);
-                tr.appendChild(td);
-            });
-            tbody.appendChild(tr);
-        });
-        table.appendChild(tbody);
-        wrap.appendChild(table);
-
-        // Preset-change handler.  ``Custom`` is the no-op so the
-        // user can return to manual editing without resetting their
-        // values.  All other presets call applyStagePreset which
-        // dispatches an ``input`` event per affected checkbox.
-        presetSel.addEventListener("change", function (e) {
-            const v = e.target.value;
-            if (v && v !== "custom") {
-                applyStagePreset(wrap, f, v);
-            }
-        });
-
-        return wrap;
-    }
-
-    // The two triple kinds, so the places that special-case a triple ask one
-    // question instead of listing both.
-    const TRIPLE_KINDS = ["int-triple", "float-triple"];
-    function isTriple(kind) { return TRIPLE_KINDS.indexOf(kind) !== -1; }
-
-    function makeTriple(f, isInt) {
-        // Three labelled number inputs sharing one id prefix.  Each
-        // cell carries its own sub-label so kgrid (Tuple[int,int,int])
-        // reads as "kx 1  ky 1  kz 1" instead of three anonymous boxes.
-        // Sub-ids: f.id + "-" + label, e.g. "p-k-x" / "p-k-y" / "p-k-z";
-        // collectForm reassembles into [int, int, int].
-        // ``isInt`` splits the step exactly as makeNumber does for the
-        // scalars.  A float triple stepping by 1 makes the browser call 0.5
-        // invalid before any JS runs, and parseInt then reads it back as 0 --
-        // which is the Gamma-centred grid the user was moving off.
-        const wrap = el("span", { class: "schema-int-triple" });
-        const defaults = Array.isArray(f.default) ? f.default : [0, 0, 0];
-        f.labels.forEach((lab, i) => {
-            const cell = el("span", { class: "schema-int-triple-cell" });
-            cell.appendChild(el("span", {
-                class: "schema-int-triple-label",
-            }, lab));
-            const cellInput = el("input", {
-                id: `${f.id}-${lab}`, type: "number",
-                step: isInt ? "1" : "any",
-                value: defaults[i] != null ? defaults[i] : "",
-            });
-            // Bounds apply PER COMPONENT -- a triple's ``range`` bounds each
-            // axis, not their sum.  Missing until 2026-08-15: makeNumber
-            // honoured f.min/f.max and this did not, so kgrid accepted 0 and
-            // -4 (a Monkhorst-Pack count is a COUNT) and the displacement
-            // accepted anything at all, while both declared no range to
-            // honour either.  Same two lines as the scalar path, so the two
-            // controls cannot drift on what a bound means.
-            if (f.min !== undefined) cellInput.min = f.min;
-            if (f.max !== undefined) cellInput.max = f.max;
-            cell.appendChild(cellInput);
-            wrap.appendChild(cell);
-        });
-        return wrap;
-    }
-
-    /**
-     * Long help-text strings (psml_lib at ~39 lines, basis_size's
-     * convergence advice, etc.) used to live in ``title=`` -- browsers
-     * truncate native tooltips to ~one OS-dependent line and the
-     * paragraph-length contents were unreadable.  For multi-line help
-     * we now render a click-to-expand ``<details>`` element with the
-     * full text in a styled ``.schema-help-body``.  Short help still
-     * goes into ``title=`` (single-line tooltip is fine for one-liners).
-     * Threshold: 80 chars or first newline.
-     */
-    function helpIsLong(help) {
-        if (!help) return false;
-        if (help.indexOf("\n") !== -1) return true;
-        return help.length > 80;
-    }
-
-    function makeHelpDetails(help, refs) {
-        const det = document.createElement("details");
-        det.className = "schema-help";
-        const sum = document.createElement("summary");
-        sum.textContent = "ⓘ help";
-        sum.className = "schema-help-summary";
-        det.appendChild(sum);
-        // Preserve the source's line breaks (browser default for
-        // <pre> would also work; div with white-space:pre-wrap reads
-        // a bit nicer + lets us style border/background).
-        const body = document.createElement("div");
-        body.className = "schema-help-body";
-        body.textContent = help;
-        det.appendChild(body);
-        // References -- resolved server-side from the one bibliography
-        // (docs/science/references.bib); each renders as title + a DOI
-        // link the user can follow to the paper.
-        if (Array.isArray(refs) && refs.length) {
-            const list = document.createElement("ul");
-            list.className = "schema-help-refs";
-            for (const c of refs) {
-                const li = document.createElement("li");
-                li.textContent = (c.title ? c.title + " — " : "") + (c.text || "");
-                if (c.doi) {
-                    const a = document.createElement("a");
-                    a.href = "https://doi.org/" + c.doi;
-                    a.target = "_blank";
-                    a.rel = "noopener";
-                    a.textContent = "doi:" + c.doi;
-                    li.appendChild(document.createTextNode("  "));
-                    li.appendChild(a);
-                }
-                list.appendChild(li);
-            }
-            det.appendChild(list);
-        }
-        // Click-anywhere-on-summary toggles the details; stop the
-        // event from bubbling to the parent <label> (which would
-        // forward clicks to the input -- e.g. a checkbox label
-        // would flip the checkbox just because the user wanted to
-        // read help).
-        sum.addEventListener("click", (e) => e.stopPropagation());
-        return det;
-    }
-
-    /* Stage-table wrapper: standalone section (not a single
-     * input-in-a-label).  Renders a heading with the field's label
-     * + the parent engine-key badge + an expandable help paragraph,
-     * then the table widget itself.  Returned in place of the
-     * standard label so renderField doesn't try to wrap it. */
-    function makeStageTableSection(f) {
-        const section = el("div", {
-            class: "schema-field schema-field-stage-table",
-        });
-        if (f.tier === "advanced") section.classList.add("is-advanced");
-        const heading = el("div", { class: "schema-stage-heading" });
-        heading.appendChild(el("span",
-            { class: "schema-stage-heading-label" }, f.label || f.name));
-        const badge = engineKeyBadge(f);
-        if (badge) heading.appendChild(badge);
-        section.appendChild(heading);
-        if (f.help && helpIsLong(f.help)) {
-            section.appendChild(makeHelpDetails(f.help, f.refs));
-        } else if (f.help) {
-            section.title = f.help;
-        }
-        section.appendChild(makeStageTable(f));
-        return section;
-    }
+    /* (The stage-table field kind -- makeStageTable, its presets, the
+     * section wrapper and the collect/setValues arms -- retired at the
+     * U6 close, 2026-08-22.  Its Python producer
+     * ``_stagespec_to_field_schemas`` died when stages.md § 1.1a made a
+     * PySCF ladder N decks, so no schema could carry the kind; the
+     * renderer was recorded as reached-by-nothing in
+     * tests/test_stage_vocabulary.py until the user's cleanup ask.
+     * The live stage table is Task setup's own, hand-rolled in
+     * task-setup/viewer.js over task.json.) */
 
     function renderField(f) {
         // Build a single <label> wrapping the input.  Checkbox lays
@@ -563,13 +245,6 @@
             case "tri-select": input = makeTriSelect(f); break;
             case "int-triple":   input = makeTriple(f, true);  break;
             case "float-triple": input = makeTriple(f, false); break;
-            case "stage-table":
-                // Per-stage row table (List[<dataclass>]).  The
-                // table includes its own label ("Stage strategy")
-                // and engine-key badges per row, so don't wrap in
-                // the standard label-text pattern below — return
-                // the table directly via early-out.
-                return makeStageTableSection(f);
             case "comma-floats":
                 // Variable-length List[float] field (Transport's
                 // bias_voltages_v).  Render as a plain text input with
@@ -875,61 +550,6 @@
                 if (v === "auto" || v === "") return null;
                 return v === "true";
             }
-            case "stage-table": {
-                // Walk all (stage, stage_field) pairs; rebuild a
-                // list-of-dicts matching the server-side
-                // ``coerce_to_field_type`` List[<dataclass>] branch's
-                // expected shape.  Missing inputs fall back to the
-                // schema's per-stage default so a stale DOM doesn't
-                // blank a knob.
-                const stages = Array.isArray(f.default) ? f.default : [];
-                const stageFields = Array.isArray(f.stage_fields)
-                    ? f.stage_fields : [];
-                const rows = [];
-                let anyMissing = false;
-                stages.forEach((defStage, stageIdx) => {
-                    const row = {};
-                    stageFields.forEach((sf) => {
-                        const cellId = `${f.id}-stage${stageIdx}-${sf.name}`;
-                        const inp = container.querySelector(
-                            "#" + cssEsc(cellId));
-                        if (!inp) {
-                            anyMissing = true;
-                            row[sf.name] = defStage[sf.name];
-                            return;
-                        }
-                        if (sf.kind === "checkbox") {
-                            row[sf.name] = !!inp.checked;
-                        } else if (sf.kind === "int") {
-                            const v = inp.value.trim();
-                            if (v === "") {
-                                row[sf.name] = defStage[sf.name];
-                            } else {
-                                const n = parseInt(v, 10);
-                                row[sf.name] = Number.isFinite(n)
-                                    ? n : defStage[sf.name];
-                            }
-                        } else if (sf.kind === "number") {
-                            const v = inp.value.trim();
-                            if (v === "") {
-                                row[sf.name] = defStage[sf.name];
-                            } else {
-                                const n = parseFloat(v);
-                                row[sf.name] = Number.isFinite(n)
-                                    ? n : defStage[sf.name];
-                            }
-                        } else {
-                            row[sf.name] = String(inp.value).trim();
-                        }
-                    });
-                    rows.push(row);
-                });
-                if (anyMissing) {
-                    _warnStale(f.name,
-                        "has missing stage-table cell(s)");
-                }
-                return rows;
-            }
             case "int-triple":
             case "float-triple": {
                 // Read each component back with the parser its type asks for.
@@ -979,29 +599,19 @@
     }
 
     async function fetchSchema(engine, opts) {
-        // ``opts.structurePath`` (optional) is forwarded as a
-        // ``?structure_path=…`` query so the server can pre-fill
-        // structure-dependent field defaults (e.g. the /spectra
-        // schema overrides ``frozen_indices.default`` from the
-        // .molstruct.json sidecar's ``frozen_atoms`` -- design.md
-        // "Sidecar-driven boundary conditions").  Callers that
-        // don't pass it (or pass an empty value) get the static
-        // schema, same as before.
-        const structurePath = (opts && opts.structurePath) || "";
         // ``opts.calculation`` (optional) narrows the form to the
         // parameters that apply to that calculation KIND
         // (template.md § 6.3's `calculations` key); absent means
         // optimization, exactly as the server defaults it.
+        // (A ``structurePath`` forward and a ``body.notice`` hook
+        // stood here for the retired sidecar-prefill flow -- the
+        // server dropped the query silently and no route ever
+        // emitted the notice; both retired at the U6 close.)
         const calculation = (opts && opts.calculation) || "";
         let url = "/api/build/schema/" + encodeURIComponent(engine);
-        const q = [];
-        if (structurePath) {
-            q.push("structure_path=" + encodeURIComponent(structurePath));
-        }
         if (calculation) {
-            q.push("calculation=" + encodeURIComponent(calculation));
+            url += "?calculation=" + encodeURIComponent(calculation);
         }
-        if (q.length) url += "?" + q.join("&");
         const r = await fetch(url);
         const body = await r.json();
         if (!r.ok || !body.ok) {
@@ -1009,16 +619,6 @@
                 "form-schema.fetchSchema: server returned "
                 + r.status + " — " + (body.error || "")
             );
-        }
-        // ``body.notice`` is an optional server-side hint (e.g.
-        // "sidecar atom count differs from structure -- re-export
-        // from /modify"); the caller can choose to surface it
-        // inline.  Exposed as a non-enumerable property so existing
-        // callers that just receive ``schema`` aren't broken.
-        if (body.notice) {
-            Object.defineProperty(body.schema, "_notice", {
-                value: body.notice, enumerable: false,
-            });
         }
         return body.schema;
     }
@@ -1080,55 +680,6 @@
                     }
                     continue;
                 }
-                if (f.kind === "stage-table") {
-                    // Walk the per-stage row list and write each
-                    // cell input.  Per the schema contract ``v`` is a
-                    // list-of-dicts whose order matches ``f.default``
-                    // (== STAGE_FIELD_INDEX_BY_NAME); cells are
-                    // ``<f.id>-stage<i>-<param>`` (set by
-                    // ``makeStageTable``).  Same pattern as
-                    // int-triple: dispatch input + change after
-                    // each write so dirty-trackers + live previews
-                    // observe.  Items shorter than f.default skip
-                    // tail rows; extras (forward-compat payload
-                    // with a 4th stage on a 3-stage form) are
-                    // silently dropped.
-                    if (!Array.isArray(v)) continue;
-                    const stageFields = Array.isArray(f.stage_fields)
-                        ? f.stage_fields : [];
-                    const nStages = Array.isArray(f.default)
-                        ? f.default.length : 0;
-                    const limit = Math.min(v.length, nStages);
-                    for (let si = 0; si < limit; si++) {
-                        const stageVals = v[si];
-                        if (!stageVals || typeof stageVals !== "object") {
-                            continue;
-                        }
-                        for (const sf of stageFields) {
-                            if (!(sf.name in stageVals)) continue;
-                            const cell = container.querySelector(
-                                "#" + cssEsc(
-                                    f.id + "-stage" + si + "-" + sf.name));
-                            if (!cell) continue;
-                            const cellVal = stageVals[sf.name];
-                            if (sf.kind === "checkbox") {
-                                cell.checked = Boolean(cellVal);
-                            } else {
-                                cell.value =
-                                    cellVal === null || cellVal === undefined
-                                        ? "" : String(cellVal);
-                            }
-                            try {
-                                cell.dispatchEvent(new Event("input",
-                                    { bubbles: true }));
-                                cell.dispatchEvent(new Event("change",
-                                    { bubbles: true }));
-                            } catch (_) { /* legacy browser */ }
-                        }
-                    }
-                    continue;
-                }
-                const elx = container.querySelector("#" + cssEsc(f.id));
                 if (!elx) continue;
                 if (f.kind === "checkbox") {
                     elx.checked = Boolean(v);

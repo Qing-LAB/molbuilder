@@ -1,4 +1,4 @@
-"""Validates spec.md § 5.1 — the spectra atom-index contract.
+"""Validates the archived spec's (docs/archive/old_docs/tabs/spectra/spec.md) § 5.1 — the spectra atom-index contract.
 
 Invariants 1–2 (the free_atom_idxs partition + eigenvector length) are enforced
 by ``SpectraResults.__post_init__``; these pin that enforcement, including the

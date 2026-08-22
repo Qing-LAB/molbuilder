@@ -5,11 +5,10 @@
  * ``/api/results/bundle``, and surfaces the response.
  *
  *   * Pre-fills ``run_dir`` and ``target_dir`` from the projects-
- *     sidebar's current cursor (when available).  ``stem`` defaults
- *     to the source script's basename which the endpoint reports
- *     back; we don't try to guess it client-side because the
- *     bundle layer picks the .fdf/.py via atom-count rules the
- *     UI can't easily replicate.
+ *     sidebar's current cursor (when available).  ``stem`` is
+ *     REQUIRED by the endpoint (a missing one is a 400), so an
+ *     empty field falls back to 'handoff' client-side before the
+ *     POST -- the server reports no default back.
  *   * On success: renders a summary panel (engine, coords source,
  *     n_atoms, regions, notes) and calls ``projects.refresh(target_dir)``
  *     so the sidebar lists the new pair.  See bundle-contract.md

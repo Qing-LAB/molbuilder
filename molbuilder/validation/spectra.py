@@ -108,8 +108,7 @@ def spectra_render_checks(struct: Structure,
     # error than PySCF's runtime "Mol.nelectron is odd, but spin=0".
     from ..chemistry import (check_spin_charge_parity,
                               detect_open_shell_metals,
-                              explain_metal_spin,
-                              total_electrons)
+                              explain_metal_spin)
     try:
         parity_err = check_spin_charge_parity(
             struct, cfg.charge, cfg.spin,
@@ -331,8 +330,8 @@ def spectra_render_checks(struct: Structure,
     # (1) whether gpu4pyscf is importable on the molbuilder host
     # and (2) whether the host has a GPU that actually meets
     # gpu4pyscf's minimum compute capability (7.0 = Volta).  The
-    # generated script is robust to a missing gpu4pyscf (CPU
-    # fallback), but checking here lets the user fix things
+    # generated script STOPS on a missing gpu4pyscf (no CPU
+    # fallback, 2026-08-17); checking here lets the user fix things
     # before the run rather than after.
     if cfg.use_gpu:
         issues.extend(_gpu_capability_advisories())
@@ -352,35 +351,12 @@ def spectra_render_checks(struct: Structure,
     # gate unflagged).  A restricted method (RKS/RHF) forces nα=nβ ⇒ 2S=0,
     # so a non-zero spin with it is a contradiction.
     method_u = cfg.method.upper()
-    if cfg.spin > 0 and method_u in ("RKS", "RHF"):
-        issues.append(Issue(
-            severity="warn",
-            message=(f"spin = {cfg.spin} is set but method = {method_u} "
-                     f"is closed-shell (restricted); a restricted SCF "
-                     f"forces all electrons paired (2S=0).  Use UKS / UHF "
-                     f"for open-shell systems, or set spin = 0."),
-            where="config.method",
-        ))
-    if method_u in ("RKS", "RHF") and cfg.spin == 0:
-        # Odd electron count with a restricted closed-shell method + spin=0
-        # is a radical the user didn't recognise: an unpaired electron MUST
-        # exist, so RKS/RHF either fails SCF or returns the wrong state.
-        try:
-            parity_err2 = check_spin_charge_parity(struct, cfg.charge, 1)
-            odd = parity_err2 is None   # spin=1 fits ⇒ odd electron count
-        except Exception:
-            odd = False
-        if odd:
-            issues.append(Issue(
-                severity="warn",
-                message=(f"odd electron count with method = {method_u} and "
-                         f"spin = 0 -- the system is a radical and a "
-                         f"closed-shell SCF will fail to converge or "
-                         f"return the wrong electronic state.  Switch to "
-                         f"UKS / UHF and set spin = 1 (or set cfg.charge "
-                         f"if auto-detection miscounted)."),
-                where="config.method",
-            ))
+    # (The restricted-method-with-spin refusal and the radical arm are
+    # the ENGINE validator's, unconditional for both kinds -- G-1c's
+    # error-level finding and the parity block's folded advice.  Copies
+    # of both stood here and double-fired on every vibration deck, one
+    # of them at a softer severity than the refusal it duplicated;
+    # deleted with the U6 close, 2026-08-22.)
 
     # Frozen-atom sanity: every explicit index must be within
     # the structure's atom range.  Element / residue rules are
@@ -444,43 +420,15 @@ def spectra_render_checks(struct: Structure,
             where="config.frozen_indices",
         ))
 
-    # Pattern B: unrecognized-label notice.  The selection panel
-    # also writes ``regions`` (L-electrode, bridge, interface,
-    # …) for transport-engine workflows.  The spectra engine
-    # does NOT consume regions; the partial-Hessian path
-    # operates on the frozen / free atom partition alone.
-    # Surface this explicitly so the user knows their region
-    # labels are NOT influencing the spectrum calculation --
-    # they're carried forward in the sidecar for /transport
-    # but inert here.  Pinned by the three-stage contract:
-    # "every label NOT understood by the current engine MUST
-    # be named explicitly in a preflight issue."
-    from ..structure import FROZEN_LABEL
-    regions = getattr(struct, "regions", None) or {}
-    # The reserved frozen label is EXCLUDED: since schema 7 the frozen
-    # set lives inside `regions`, and this engine consumes it -- the
-    # relaxation constrains it and the Hessian mask reads it.  Warning
-    # "not consumed" about the one label the whole partial-Hessian path
-    # runs on was E-M7.1's false alarm.
-    non_empty_regions = sorted(
-        name for name, idxs in regions.items()
-        if idxs and name != FROZEN_LABEL
-    )
-    if non_empty_regions:
-        issues.append(Issue(
-            severity="warn",
-            message=(
-                f"This structure carries region label(s) "
-                f"{non_empty_regions}, which the PySCF spectra "
-                f"engine does NOT consume.  They will be ignored "
-                f"for the Hessian / Raman calculation but stay "
-                f"in the sidecar for /transport.  If you meant "
-                f"these atoms to be frozen during the spectrum "
-                f"run, mark them as such via /modify -> Assign "
-                f"to \"frozen_atoms\"."
-            ),
-            where="structure.regions",
-        ))
+    # Pattern B -- THE one home (validation/sidecar.py, U5): region
+    # labels this run does not consume are named; the reserved frozen
+    # label is excluded (the relaxation constrains it, the Hessian mask
+    # reads it).  A hand-written copy of the same rule stood here and
+    # had already diverged once (E-M7.1's false alarm was fixed in only
+    # one of the two).
+    from .sidecar import check_unconsumed_region_labels
+    issues.extend(check_unconsumed_region_labels(
+        struct, engine="PySCF vibration"))
 
 
     # --- The solvation matrix (category 2; PROBED live against pyscf
@@ -493,21 +441,17 @@ def spectra_render_checks(struct: Structure,
     _solv = str(getattr(cfg, "solvent", "") or "").lower()
     _smethod = str(getattr(cfg, "solvent_method", "") or "").upper()
     if _solv:
-        if "SMD" in _smethod:
-            issues.append(Issue(
-                severity="error",
-                message=(
-                    "solvent_method = SMD: this PySCF build was compiled "
-                    "without the SMD module (probe: RuntimeError 'compile "
-                    "with -DENABLE_SMD=ON', 2026-08-21).  Use a PCM "
-                    "variant (IEF-PCM / C-PCM), which carries the full "
-                    "analytic-derivative chain here, or rebuild PySCF "
-                    "with SMD enabled.  SMD reference: Marenich, Cramer "
-                    "& Truhlar, J. Phys. Chem. B 113, 6378 (2009) "
-                    "[Marenich2009]."),
-                where="config.solvent_method",
-            ))
-        elif "DDCOSMO" in _smethod or "COSMO" == _smethod:
+        # (The SMD refusal is the ENGINE validator's since the U6 close:
+        # a compiled-out module is a build fact, not a vibration fact,
+        # and the optimization deck emits the same solvent lines.)
+        if "DDCOSMO" in _smethod:
+            # NOT bare "COSMO": that is a legal catalogue choice served
+            # through pyscf.solvent.pcm (mf.PCM() + with_solvent.method
+            # = "COSMO"), whose analytic Hessian this block itself
+            # vouches for below.  Matching it here refused a legal
+            # dropdown value with a rationale measured on a DIFFERENT
+            # module (pyscf.solvent.ddcosmo -- the mf.ddCOSMO() class
+            # this deck never constructs).
             issues.append(Issue(
                 severity="error",
                 message=(
@@ -521,23 +465,28 @@ def spectra_render_checks(struct: Structure,
                 where="config.solvent_method",
             ))
         else:
-            issues.append(Issue(
-                severity="info",
-                message=(
-                    f"PCM solvation ({_solv}): relaxation, Hessian, IR "
-                    f"and Raman all run under the SAME solvated "
-                    f"Hamiltonian -- consistent by construction (the "
-                    f"polarizability response includes the solvent; "
-                    f"measured).  The numbers use the EQUILIBRIUM-"
-                    f"solvation approximation: the continuum relaxes "
-                    f"fully at every displaced geometry, so fast "
-                    f"non-equilibrium solvent response is not in the "
-                    f"line shapes.  Tomasi, Mennucci & Cammi, Chem. Rev. "
-                    f"105, 2999 (2005) [Tomasi2005]; Cances, Mennucci & "
-                    f"Tomasi, J. Chem. Phys. 107, 3032 (1997) "
-                    f"[Cances1997]."),
-                where="config.solvent",
-            ))
+            # Only for a name the dielectric table knows: the engine
+            # validator refused unknown names, and a regime note about a
+            # run that will not happen would be double-speak.
+            from ..pyscf.scf_setup import SOLVENTS as _SOLV_TABLE
+            if _solv in _SOLV_TABLE:
+                issues.append(Issue(
+                    severity="info",
+                    message=(
+                        f"PCM solvation ({_solv}): relaxation, Hessian, IR "
+                        f"and Raman all run under the SAME solvated "
+                        f"Hamiltonian -- consistent by construction (the "
+                        f"polarizability response includes the solvent; "
+                        f"measured).  The numbers use the EQUILIBRIUM-"
+                        f"solvation approximation: the continuum relaxes "
+                        f"fully at every displaced geometry, so fast "
+                        f"non-equilibrium solvent response is not in the "
+                        f"line shapes.  Tomasi, Mennucci & Cammi, Chem. Rev. "
+                        f"105, 2999 (2005) [Tomasi2005]; Cances, Mennucci & "
+                        f"Tomasi, J. Chem. Phys. 107, 3032 (1997) "
+                        f"[Cances1997]."),
+                    where="config.solvent",
+                ))
         if bool(getattr(cfg, "use_gpu", False)):
             issues.append(Issue(
                 severity="error",
@@ -767,7 +716,7 @@ def _gpu_capability_advisories() -> List[Issue]:
 
 # (_is_hybrid_functional removed 2026-07, V4: the hybrid detector +
 #  grid-floor gate now live once in validation.pyscf.is_hybrid_functional
-#  / check_dft_grid_level, called by preflight() above.)
+#  / check_dft_grid_level, called by spectra_render_checks above.)
 
 
 # The render-time checks are the module's public door (the retired

@@ -29,9 +29,10 @@ both times.
 Everything below is drawn by a single module, `lib/spectra/core.js`. It is
 mounted by two different pages, each a thin wrapper:
 
-- **The standalone Spectra tab** (`/spectrum-calculation`) — the full
-  *compute-then-view* workflow: inspect a structure, set parameters, generate a
-  runnable script, and watch the spectrum appear as the calculation runs. Its
+- **The standalone Spectrum tab** (`/spectrum-calculation`) — the full
+  *describe-then-view* workflow: inspect a structure, set parameters, Send
+  the description to Task setup (this tab renders no deck — § 5), and load
+  the spectrum as the prepped calculation runs. Its
   controller is `spectra/viewer.js`.
 - **The Results-tab presenter** — the *view-only* half. When you open a
   `*.spectra.json` result on the Results tab, the presenter
@@ -491,12 +492,15 @@ anyway. See [`presenters.md`](?doc=web/presenters.md) and
 
 ## 10. Test map
 
-Engine + backend (`tests/spectra/`): `test_blueprint.py` (the three routes +
-dispose contract), `test_config.py` (the schema shape), `test_engine.py` (the
-PySCF engine), `test_methods.py` (the Methods prose + citations),
-`test_parsers_json.py` (the `.spectra.json` round-trip), `test_script.py` (the
-emitted script), `test_selection.py` (which modes get computed),
-`test_atom_index_contract.py` (the free-atom invariant).
+Engine + backend (`tests/spectra/`): `test_blueprint.py` (the page +
+`/api/spectra/load`), `test_config.py` (defaults + validation metadata),
+`test_methods.py` (the Methods prose + citations),
+`test_parsers_json.py` (the `.spectra.json` round-trip),
+`test_selection.py` (the reference selector + the deck-parity
+cross-check), `test_atom_index_contract.py` (the free-atom invariant).
+The emitted DECK's tests live with the engine:
+`tests/test_vibration_render_gate.py` and `tests/test_vibration_e2e.py`
+(`test_engine.py` / `test_script.py` died at P3 with the old generator).
 
 Viewer + integration: `test_results_state_contract_spectra_js.py` (the state
 buckets), `test_spectra_phase_indicator_js.py` (the phase indicator, the
@@ -504,4 +508,4 @@ relaxation dot included), `test_task_setup_tab.py` (the send flow: the shared
 door, the kind, and the browser-vs-CLI byte-compat pin),
 `test_vibration_render_gate.py` (the deck runs the science gate — and it
 refuses), `tests/test_vibration_e2e.py` (the live water runs),
-`test_vibrationview_mode_math_js.py` (the animation's eigenvector math).
+`test_vibrationview_maths_js.py` (the animation's eigenvector math).

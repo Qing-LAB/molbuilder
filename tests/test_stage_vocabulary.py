@@ -267,9 +267,9 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
     # Mechanism 10's Python half went with mechanism 8:
     # ``_stagespec_to_field_schemas`` walked a ``List[<dataclass>]`` config
     # field into a stage-table schema, and no config anywhere has such a field
-    # now.  The JS renderer below still exists and is reached by nothing --
-    # recorded rather than deleted, because the Build UI is not touched
-    # without an ask.
+    # now.  The JS renderer outlived it as reached-by-nothing until the
+    # user's cleanup ask; it retired at the U6 close (2026-08-22), CSS
+    # included -- the live stage table is Task setup's own.
     "Stage": (
         11, "molbuilder/task.py",
         "THE DESIGN'S OWN: a stage in task.json -- name, enabled, overrides, "
@@ -321,9 +321,10 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
 # *new file* growing stage machinery.
 JS_LEDGER: dict[str, tuple[int | None, str]] = {
     "lib/form-schema.js": (
-        10, "the generic stage-table field kind -- rows are the per-stage "
-            "parameters, columns are the stages, which is the panel "
-            "task-setup.md § 5 describes"),
+        None, "carries NO stage vocabulary since the U6 close -- the "
+              "stage-table renderer (mechanism 10's JS half) retired "
+              "2026-08-22 with its producer long gone; the live stage "
+              "table is task-setup/viewer.js's own"),
     # structure-optimization/viewer.js was attributed here until 2026-08-16,
     # for a `p-stage-preset` that turned a stage NUMBER into a filename.  The
     # tab's cleanup deleted that path (the panel no longer names decks), so
@@ -378,10 +379,16 @@ JS_LEDGER: dict[str, tuple[int | None, str]] = {
 #: ladder and the ``--stages-json`` route that authored one -- are DELETED
 #: with the in-script loop that read them (`stages.md` § 1.1a).  **This is
 #: the subtraction the whole PySCF exception was costing**: the four that
-#: remain are 1 (tier values), 2 (enable masks), 10 (a dead JS renderer) and
-#: 11 (task.json's own stage), and the first, second and fourth are now the
-#: SAME code on both engines rather than a pair of parallel ones.
-MECHANISM_COUNT = 4
+#: remained were 1 (tier values), 2 (enable masks), 10 (a dead JS renderer)
+#: and 11 (task.json's own stage), and the first, second and fourth became
+#: the SAME code on both engines rather than a pair of parallel ones.
+#:
+#: THREE since 2026-08-22 (the U6 close): mechanism 10's JS half -- the
+#: form-schema stage-table renderer -- retired.  Its Python producer died
+#: with mechanism 8, it had been recorded as reached-by-nothing awaiting a
+#: UI ask, and the user's cleanup ask supplied one.  The three that remain
+#: are 1, 2 and 11.
+MECHANISM_COUNT = 3
 
 
 def _py_sources() -> list[Path]:

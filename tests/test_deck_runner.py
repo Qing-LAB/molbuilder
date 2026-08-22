@@ -78,8 +78,6 @@ def test_the_engine_never_sees_a_bare_value_so_the_reason_travels_with_it():
     """
     out = se.render_deck(_spec(), _struct(), _Cfg())
     assert "MeshCutoff 250.0" in out.text
-    # the note came from the catalogue, not from the stub
-    assert "MeshCutoff" in out.text
     note = se.parameter("mesh_cutoff", "siesta").note()
     assert note, "the catalogue declares a note for mesh_cutoff"
     body = [ln for ln in note if ln.strip().startswith("#")][0]

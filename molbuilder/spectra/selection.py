@@ -96,11 +96,12 @@ def select_modes(modes: List[ModeData],
 
     elif sel == "explicit":
         # Frequency filter intentionally IGNORED -- the user named
-        # specific modes, the window doesn't override (spec § 8.1).
-        # Index range validation is the validator's job (see
-        # validate_selection) so this path produces the raw user
-        # input; out-of-range indices simply find no matching mode
-        # in the engine's later lookup.
+        # specific modes, the window doesn't override (the archived
+        # spec's § 8.1 rule, now stated here).  Index-range validation
+        # is the KIND validator's job (validation/spectra.py's
+        # frozen/explicit-index bounds; validate_selection retired), so
+        # this path produces the raw user input; out-of-range indices
+        # simply find no matching mode in the engine's later lookup.
         base = [int(i) for i in cfg.es_explicit_indices]
 
     else:
@@ -169,4 +170,4 @@ def _modes_with_activity_sorted(modes: List[ModeData]) -> List[ModeData]:
     )
 
 
-__all__ = ["select_modes", "validate_selection"]
+__all__ = ["select_modes"]

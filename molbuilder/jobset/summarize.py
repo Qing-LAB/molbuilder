@@ -642,7 +642,13 @@ def summary_text(res: BenchResult, out_path: Path, *,
     # `any(p.mismatch)` over ALL points fired this sentence when nothing
     # had been timed at all -- one unfinished point with mismatch data
     # and the summary asserted a census it never took.
-    _timed = [p for p in res.points if p.s_per_iter() is not None]
+    # "timed" is choose_winner's own definition (completed AND timed):
+    # a mid-flight point can carry a parsed s_per_iter while still
+    # incomplete, and counting it here once flipped the verdict line to
+    # "no completed, timed trial" beside a mismatch row it had just
+    # printed.
+    _timed = [p for p in res.points
+              if p.state == "completed" and p.s_per_iter() is not None]
     if res.choice:
         lines.append(f"  winner: {res.choice.get('rationale')}")
     elif _timed and all(p.mismatch for p in _timed):
@@ -650,7 +656,7 @@ def summary_text(res: BenchResult, out_path: Path, *,
                      "than it was asked to.  The times are real but they do "
                      "not measure the settings on their labels -- fix the "
                      "cause and re-run before trusting a choice.")
-    elif not res.choice:
+    else:
         # B4's sibling on THIS surface: an empty verdict is said, with the
         # state census that explains it -- "no winner" and "no trial has
         # run yet" are different situations wearing one empty dict.

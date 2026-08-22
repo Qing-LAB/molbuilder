@@ -289,11 +289,15 @@ def test_unconsumed_region_labels_are_named_on_every_deck_route(water_struct):
     issues = validate(s, PySCFConfig())
     named = [i for i in issues if i.where == "structure.regions"]
     assert len(named) == 1
-    assert "L-electrode" in named[0].message
-    assert "frozen_atoms" not in str(named[0].message.split("assign")[0]), (
-        "the consumed frozen label is warned about")
-    # SIESTA's validator runs the same body.
+    # The label LIST is what must exclude the consumed frozen label --
+    # the trailing advice sentence always spells "frozen_atoms", so the
+    # old prefix-split assert could not fail.
+    listed = named[0].message.split("]", 1)[0]
+    assert "L-electrode" in listed
+    assert "frozen_atoms" not in listed, (
+        "the consumed frozen label is listed as unconsumed")
+    # SIESTA's validator runs the same body (same structure object on
+    # purpose -- the labels set above are the fixture).
     from molbuilder.siesta import SiestaConfig
-    s2 = water_struct
-    issues2 = validate(s2, SiestaConfig(system_label="JOB"))
+    issues2 = validate(s, SiestaConfig(system_label="JOB"))
     assert any(i.where == "structure.regions" for i in issues2)

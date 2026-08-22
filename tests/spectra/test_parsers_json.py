@@ -281,7 +281,7 @@ class TestParseSpectraJsonFieldErrors:
 
 class TestParseSpectraJsonForwardCompat:
     """SpectraResults.from_dict ignores unknown keys by design
-    (spec § 5 forward-compat rule).  Test that the parser inherits
+    (archived-spec (docs/archive/old_docs/tabs/spectra/spec.md) § 5 forward-compat rule).  Test that the parser inherits
     this -- new engines can add ``engine_metadata.foo`` keys
     without breaking older readers."""
 
@@ -617,7 +617,7 @@ class TestDumpSpectraJson:
 #  Robustness against the wire shapes the engine ACTUALLY writes:       #
 #  compute_raman=False -> raman_activity_a4_amu=null on every mode;     #
 #  selector=none -> every mode has electronic_structure=null;           #
-#  in-progress writes -> modes=[] until L2 finishes (spec § 6.1).       #
+#  in-progress writes -> modes=[] until L2 finishes (archived-spec § 6.1).       #
 # --------------------------------------------------------------------- #
 
 
@@ -678,7 +678,7 @@ class TestOptionalNullFields:
 
 class TestImaginaryModeRoundTrip:
     """Saddle-point / spurious modes show up as negative
-    frequencies with has_imag=True (spec § 5).  The wire shape
+    frequencies with has_imag=True (archived-spec § 5).  The wire shape
     must preserve sign + flag faithfully."""
 
     def test_negative_frequency_with_has_imag(self, tmp_path):
@@ -743,7 +743,7 @@ class TestImaginaryModeRoundTrip:
 
 
 class TestEmptyModesList:
-    """In-progress wire state per spec § 6.1: between phase
+    """In-progress wire state per archived-spec § 6.1: between phase
     Setup-complete and L2-complete the file can carry an empty
     modes list with phase_frequencies=running.  Parser must
     accept this without barfing."""
@@ -822,7 +822,7 @@ class TestCrossModeInvariants:
         assert "homo_idx" in str(exc_info.value)
 
     def test_cross_mode_es_window_mismatch(self, tmp_path):
-        """Per spec § 5, every mode's ES window must have the same
+        """Per archived-spec § 5, every mode's ES window must have the same
         orbital count -- the engine writes the same n_window for
         all selected modes.  A file with mismatched windows is
         corrupted and the parser refuses it."""
@@ -1003,7 +1003,7 @@ class TestNestedFieldErrors:
 
 class TestPhaseStatusValidation:
     """Phase status strings are constrained to {empty, running,
-    complete} (spec § 5).  An invalid value comes through the
+    complete} (archived-spec § 5).  An invalid value comes through the
     parser as a FieldError because the dataclass __post_init__
     rejects it."""
 

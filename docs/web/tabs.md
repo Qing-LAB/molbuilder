@@ -165,18 +165,16 @@ auto-detect its chemistry, generate an input script. It mounts:
 The flow: **inspect** → **Auto-detect** (`POST /api/structure/analyze` pre-fills
 both sub-forms) → ~~**Generate**~~ *(the two emit routes were **deleted**
 2026-08-17; a deck is rendered by `prep`, never by a browser)* →
-**Save to current dir**. There's no single `/api/build/render`; the two engines
-have their own render routes. Live validation runs against `/api/build/preflight`
-as you edit.
+**Save to current dir**. There is no browser render route at all — both
+engines' were deleted with the same rule (a deck is rendered by `prep`).
+Live validation runs against `/api/build/preflight` as you edit.
 
-Saving a SIESTA run is a **four-step pipeline**, because a SIESTA job needs more
-than the script alone: write the `.fdf` script (the geometry is *inline* in the
-`.fdf` — this tab writes no separate `.xyz`) → install the pseudopotentials
-(`.psml`, via `/api/siesta/install-pseudos`) → drop the run wrapper (`.run.sh`,
-via `/api/run/install-wrapper`) → rewrite the **`psml_lib` form field** to a
-path relative to the save folder (so a later re-edit stays portable — this
-touches the form, not the already-written `.fdf`). PySCF is simpler: save the
-`.py`, install the wrapper. These files are written through the projects module's
+What the tab writes today is the DESCRIPTION, via Send to Task setup: the
+parameter template, the structure pair and the hand-over.  Everything a run
+needs beyond that — the deck, the pseudopotentials beside it, the `.run.sh`
+wrapper — is written by `prep` on the machine that runs it (the old
+`/api/siesta/install-pseudos` and `/api/run/install-wrapper` doors retired
+2026-08-21 with zero browser callers).  These files are written through the projects module's
 `safeSave` file-writer — note that's a *different* door from the structure-save in
 §6 (`saveMolecule` → `/api/structure/save`, which writes a molecule + sidecar
 pair); a script isn't a molecule, so it takes the plain file-write door.

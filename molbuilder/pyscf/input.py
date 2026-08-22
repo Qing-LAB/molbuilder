@@ -72,8 +72,9 @@ _STABILITY_ENERGY_TOL = 1e-8
 
 
 # The PCM dielectric table MOVED to scf_setup.SOLVENTS
-# (2026-08-21, one home for both decks); this alias keeps
-# this module's readers and the error message below working.
+# (2026-08-21, one home for both decks); the emitter's own
+# refusal moved with it, so this alias serves one reader --
+# the deck header's solvent line.
 from .scf_setup import SOLVENTS as _SOLVENTS
 
 

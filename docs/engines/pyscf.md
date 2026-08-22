@@ -95,24 +95,26 @@ by the config flag in column 2):
 
 | file | enabled when | contents |
 |---|---|---|
-| `<job>.log` | `log_file` (default on) | the verbose PySCF log for **every enabled stage**; appended, never truncated mid-run |
+| `<job>_<NN>_<stage>.log` | `log_file` (default on) | the verbose PySCF log, one per rung (the token keeps two rungs in one folder from overwriting each other's) |
 | `<job>.chk` | `chkfile` (default on) | PySCF checkpoint (density matrix, mol, energies) |
 | `<job>_initial.xyz` | `save_initial_xyz` | the input geometry, snapshotted right after `gto.M(...)`, before any optimization |
 | `<job>_optimized.xyz` | `save_optimized_xyz` AND `optimize` | the final relaxed geometry |
 | `<job>_geom_<stage>_optim.xyz` | `optimize` + `write_trajectory` + `optimizer=="geometric"` | streaming per-stage trajectory (multi-frame XYZ, one frame per accepted step) |
 | `<job>_geom_<stage>.log` | same | geomeTRIC's own per-stage log |
-| `<job>.molwatch.log` | `write_molwatch_log` + `optimize` + geometric | the unified per-step trajectory log (§ 4); the Results-tab inspector's single-file input |
+| `<job>_<NN>_<stage>.molwatch.log` | `write_molwatch_log` + `optimize` + geometric | the per-step trajectory log (§ 4), one per rung; the Results-tab inspector's single-file input |
 
 The script's header `Outputs:` block lists **exactly** this set for the active
 config — no under- or over-promising. `job_name` stays unsuffixed so
 `.chk`/`.log`/`_optimized.xyz` transfer across stages.
 
-> ⚠ **This changed on 2026-08-18 and the code has not caught up yet.** A PySCF
-> ladder is now N decks and N jobs, like SIESTA's
-> ([`stages.md § 1.1a`](?doc=engines/stages.md)), so each rung writes its own log
-> under the deck's own token — `<label>_<NN>_<stage>.molwatch.log`
+> **This changed on 2026-08-18 and the code has caught up.** A PySCF
+> ladder is N decks and N jobs, like SIESTA's
+> ([`stages.md § 1.1a`](?doc=engines/stages.md)): each rung writes its own log
+> under the deck's own token — `<label>_<NN>_<stage>.log` and
+> `<label>_<NN>_<stage>.molwatch.log`
 > ([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)) — and the two
-> engines name their outputs the same way.
+> engines name their outputs the same way (`gto.M(output=…)` and the molwatch
+> suffix both resolve through the one basename helper).
 >
 > Until 2026-08-18 this paragraph read: *"PySCF writes ONE unified log, and that
 > is the difference from SIESTA. Its ladder runs inside a single process, so all
@@ -120,18 +122,17 @@ config — no under- or over-promising. `job_name` stays unsuffixed so
 > name is only meaningful where a stage is a separate process."* The last sentence
 > was right, and it is now true of both engines.
 >
-> **`cfg.stage` is a live catalogue item and it carries the token, not the old
-> spelling.** It names the artifact token for a single-stage run —
-> `<job>_01_coarse.molwatch.log`, `None` keeping the unsuffixed name — and it is
-> resolved through the same `trajectory_log.format::molwatch_log_basename`
-> helper SIESTA's emitter uses, so there is one rule and not two.
+> **The stage token is a RENDER ARGUMENT, not a config field.**
+> `spec_for(struct, config, *, stage_token=…)` carries it; the deck's log
+> name and molwatch suffix resolve through the same
+> `trajectory_log.format::molwatch_log_basename` helper SIESTA's emitter
+> uses, so there is one rule and not two.
 >
-> *(This note said the field *"still emits `<job>-stage<N>.molwatch.log`"* and
-> was *"being deleted, the last user of the retired `-stage<N>` spelling"*,
-> until 2026-08-16. Both were overtaken: the retirement landed as a
-> **migration** rather than a deletion — the field now takes `<NN>_<name>` like
-> everything else — and the catalogue declares it, `group = "staging"`,
-> `kind = "produce"`. It is safe to build on.)*
+> *(A `cfg.stage` field held the token transitionally, and this note called
+> it "a live catalogue item … safe to build on" until the U6 close — by
+> then C7 (2026-08-18) had deleted the field as the last of the retired
+> spellings, and neither `PySCFConfig` nor the catalogue carries a `stage`
+> entry.  `roadmap.md` records the closure.)*
 
 ---
 
@@ -257,13 +258,15 @@ one-process loop, where nobody looked in between.
 runs up to `200 × (1 + 2) = 600` steps before it finally halts.
 
 **Spin / method.** (`cfg.spin` here is 2S = the number of unpaired electrons, *not*
-the multiplicity 2S+1.) `render_script` raises `ValueError` at generation time
-(`input.py,151`) if `cfg.method` is unknown, or if it's a **restricted** method
-(`RKS`/`RHF`, which assume `mol.spin == 0`, i.e. closed-shell) with `cfg.spin != 0`
-— the message points at `UKS`/`UHF`. This is the PySCF-specific guard SIESTA lacks (SIESTA accepts
-`SpinPolarized` with any method). The shared open-shell-metal check
-([`science/validation.md`](?doc=science/validation.md)) runs on top of it
-(`validation/pyscf.py`); a negative spin is a separate error.
+the multiplicity 2S+1.) `render_script` raises `ValueError` at generation time only for an
+**unknown** method.  A **restricted** method (`RKS`/`RHF`, which assume
+`mol.spin == 0`, i.e. closed-shell) with `cfg.spin != 0` is refused by the
+GATE as an error-severity preflight finding at `config.method`
+(`validation/pyscf.py`, G-1c 2026-08-21) — a named issue, not a stack
+trace, and the message points at `UKS`/`UHF`.  The shared electron-count
+parity rule and the open-shell-metal check
+([`science/validation.md`](?doc=science/validation.md)) run in the same
+gate; a negative spin is a separate error.
 
 **Charge.** The `gto.M(...)` charge matches `_resolve_charge(struct, cfg)`
 (`input.py`): `cfg.charge` wins if set (including `0`); otherwise
@@ -671,4 +674,6 @@ renaming a promised output file is a **major** bump. Purely additive changes (a 
 optional field or output) are minor.
 
 **Tests:** `tests/test_pyscf.py` — behavioural assertions over the generated script
-(output-file set, stage-loop ordering, spin/method `ValueError`, molwatch blocks).
+(output-file set, the one-`optimize()`-call shape, unknown-method
+`ValueError`, molwatch blocks; the in-script stage loop retired with
+§ 1.1a, and the spin refusal is the gate's, pinned in `tests/validation/`).

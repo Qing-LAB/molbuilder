@@ -88,7 +88,9 @@ def test_summary_text_names_every_point_and_the_output(tmp_path):
         environment={}, system={}, now_iso="2026-08-12T00:00:00Z")
     text = summary_text(res, Path("/tmp/bench-result.json"))
     assert "p1" in text and "completed" in text
-    assert "bench-result.json" in text
+    # the exact path the caller was told about, not a substring of the
+    # test's own argument (the R2-7 class)
+    assert str(Path("/tmp/bench-result.json")) in text
 
 
 # --------------------------------------------------------------------- #

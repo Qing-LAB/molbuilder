@@ -22,9 +22,11 @@ the interesting one is easy to get wrong:
     default, and collapsing stops polling).  A fault that is only
     visible inside a folded-away card is a fault nobody sees.
 
-The server runs in-process here, so setting ``_GPU_ERROR`` on the
-module is enough to make a real browser see a real broken host --
-nothing about the front-end path is stubbed.
+The server runs in-process here, and the fixture fakes the WHOLE
+broken-driver state (`_GPU_ERROR` + empty handles + `_NVML_OK` off) --
+faking only the flag was enough while the development host's own
+driver was dead, and failed the day it was repaired (see
+``_set_gpu_error``).  Nothing about the front-end path is stubbed.
 """
 from __future__ import annotations
 

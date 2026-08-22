@@ -103,11 +103,11 @@ def partial_trajectory_inspector():
 def partial_spectra_inspector():
     """Return the rendered spectra inspector partial as HTML.
 
-    Source: ``templates/_spectra_inspector.html``.  Same partial is
-    included server-side by ``spectra.html`` (transitionally, until
-    step 2.5 drops the inspect-side from /spectra); this endpoint
-    exists so ``/results`` can swap the inspector in client-side
-    without forking the markup.
+    Source: ``templates/_spectra_inspector.html``.  ``/results`` swaps
+    the inspector in client-side through this endpoint; the
+    server-side include that ``spectra.html`` carried transitionally
+    left with step 2.5 (the standalone tab gates its inspect side on
+    ``hasInspectSide`` and no longer embeds the partial).
 
     Cache + content-type semantics identical to the trajectory
     partial endpoint -- intentional, so the inspector wrappers

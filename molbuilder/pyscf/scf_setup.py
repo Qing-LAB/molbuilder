@@ -19,7 +19,7 @@ the same day with zero callers.)
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List
 
 
 def emit_scf_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
@@ -78,8 +78,12 @@ def emit_dft_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
     ``mf`` and is per-site conditional (the Raman polarizability path
     forces non-DF), so it stays at the construction sites.
 
-    On a wavefunction-method deck (RHF/UHF) every knob declines and the
-    function is an explicit pass-through, so call sites stay uniform.
+    Not emitted on a wavefunction-method deck (RHF/UHF): both call
+    sites branch on the method before calling, so a pass-through body
+    would be text nothing runs.  Ordering note, MEASURED 2026-08-22
+    (molbuilder-pySCF, pyscf 2.13): ``density_fit()`` carries ``disp``
+    across the rebind in both directions, so dressing before the
+    fitting call is safe.
     """
     from .. import script_emit as _sc
     from . import layout as _layout
@@ -97,6 +101,9 @@ def emit_dft_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
         "    every mf this deck constructs.  density_fit is deliberately",
         '    NOT here -- it rebinds mf and is per-site conditional."""',
     ]
+    if not is_dft:
+        return []          # both call sites branch on the method; an
+                           # emitted pass-through would be dead text
     emitted = 0
     for name in _layout.DFT_SECTION.items:
         if name == "density_fit":
@@ -110,7 +117,7 @@ def emit_dft_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
         out.append("    " + ln)
         emitted += 1
     if not emitted:
-        out.append("    pass  # not a DFT deck; kept so call sites stay uniform")
+        out.append("    pass  # every DFT knob at its engine default")
     out.append("    return mf")
     return out
 

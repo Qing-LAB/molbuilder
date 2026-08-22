@@ -282,7 +282,11 @@ class TestOAuthSharedFields:
         with pytest.raises(RuntimeConfigError) as exc:
             _normalise(_wrap(entry))
         msg = str(exc.value)
-        assert "client_secret" in msg
+        import re as _re
+        # \b keeps this from being satisfied by "client_secret_file"
+        # alone -- the error must offer BOTH forms.
+        assert _re.search(r"client_secret\b", msg), (
+            "the error must offer the inline client_secret form too")
         assert "client_secret_file" in msg
 
     @pytest.mark.parametrize("kind", ["google", "github", "microsoft", "orcid"])

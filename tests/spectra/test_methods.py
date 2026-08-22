@@ -2,7 +2,7 @@
 ``render_methods_md`` across the pre-run / post-run / engine-fragment
 forms.
 
-Spec § 9.4 + § 11.1 + § 11.2.  These tests verify the Methods prose
+archived-spec (docs/archive/old_docs/tabs/spectra/spec.md) § 9.4 + § 11.1 + § 11.2.  These tests verify the Methods prose
 that ships embedded in the emitted script and in the post-run output:
 
   * citation keys parse cleanly from the prose's [Foo, Bar] markers;
@@ -29,14 +29,14 @@ from tests.spectra._helpers import _make_mode, _make_results
 # --------------------------------------------------------------------- #
 #  L2 Methods composer (methods.py)                                     #
 #                                                                       #
-#  Spec § 11.2 + § 9.4.  Pure prose generation; no engine I/O.          #
+#  archived-spec § 11.2 + § 9.4.  Pure prose generation; no engine I/O.          #
 # --------------------------------------------------------------------- #
 
 
 class TestExtractCitationKeys:
     """The bibliography-extractor underlies both the trailing
     bibliography in render_methods_md and the
-    SpectraResults.bibliography_keys field (spec § 5).  Test it
+    SpectraResults.bibliography_keys field (archived-spec § 5).  Test it
     standalone so its semantics are pinned independently of the
     composer's prose choices."""
 
@@ -67,7 +67,7 @@ class TestExtractCitationKeys:
         # A purely alphabetic bracket-word like [array] DOES look like
         # a citation key structurally and will be extracted; that's
         # accepted as the cost of a permissive author key pattern --
-        # the references.bib linter (spec § 11.3) catches the false
+        # the references.bib linter (archived-spec § 11.3) catches the false
         # positive at release-tag time.
         assert extract_citation_keys("an [array] of words") == ["array"]
 
@@ -104,7 +104,7 @@ class TestExtractCitationKeys:
 class TestRenderMethodsMdPreRun:
     """Pre-run path (`results=None`): the prose describes what
     *will* be done with the configured knobs.  Used by the
-    Methods-preview modal (spec § 9.4) before the user runs the
+    Methods-preview modal (archived-spec § 9.4) before the user runs the
     script."""
 
     def test_minimal_config_produces_paragraph(self):
@@ -189,7 +189,7 @@ class TestRenderMethodsMdPreRun:
         assert "≥ 1500" in md or ">= 1500" in md
 
     def test_frequency_window_ignored_for_explicit(self):
-        """selector=explicit ignores the freq window (spec § 8.1);
+        """selector=explicit ignores the freq window (archived-spec § 8.1);
         the prose shouldn't claim a window restriction that won't
         actually be enforced."""
         from molbuilder.spectra import render_methods_md
@@ -227,7 +227,7 @@ class TestRenderMethodsMdPreRun:
 class TestRenderMethodsMdPostRun:
     """Post-run path (`results` provided): real numbers from the
     parsed SpectraResults replace pre-run placeholders.  Used to
-    populate SpectraResults.methods_text (spec § 5) -- the same
+    populate SpectraResults.methods_text (archived-spec § 5) -- the same
     prose lands in the JSON for downstream consumers."""
 
     def test_frequency_span_appended_when_modes_present(self):
@@ -252,7 +252,7 @@ class TestRenderMethodsMdPostRun:
     def test_selected_modes_line_post_run(self):
         """When ES data is present in results, the post-run prose
         ends with a "Selected modes: ..." line listing the indices
-        + frequencies (spec § 11.2)."""
+        + frequencies (archived-spec § 11.2)."""
         from molbuilder.spectra import render_methods_md
         cfg = SpectraConfig(es_mode_selection="explicit",
                             es_explicit_indices=[2])
