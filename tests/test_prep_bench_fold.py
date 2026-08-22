@@ -1792,50 +1792,49 @@ def test_the_table_measures_beside_the_ask_and_gates_gpu_columns():
 def test_prep_writes_an_executable_jobset_launcher_that_works(calc,
                                                               monkeypatch,
                                                               tmp_path):
-    """workflow.md § 6.1 (user, 2026-08-20), EXECUTED: prep leaves
-    `jobset.sh` at the bundle root; running it from ANYWHERE activates
-    nothing twice, stands in the bundle, puts the repo on PYTHONPATH and
-    hands the verb through -- so `--bundle .` means the calculation.  A
-    stub `python` on PATH records what actually reached it."""
-    import os
+    """workflow.md § 6.1 (user, 2026-08-20), EXECUTED FOR REAL: prep leaves
+    an executable `jobset.sh` at the bundle root, and running it from a
+    directory that is neither the bundle nor the checkout reaches a working
+    molbuilder standing IN the bundle -- so `--bundle .` means this
+    calculation.
+
+    **No stubs.**  This used to put a fake `python` on PATH -- a bash script
+    that echoed CWD/ARGS, later taught to pattern-match ``PYTHONPATH`` so it
+    could pretend to answer ``import molbuilder``.  A test like that
+    confirms the fake behaves as written; it cannot see an env that does not
+    activate, an import that does not resolve, or an ``exec`` that never
+    happens, which are the only ways this script fails.  The launcher's one
+    job is to reach molbuilder and hand over the verb, so the only witness
+    that counts is molbuilder answering.
+    """
     import stat
     import subprocess
-    from pathlib import Path
 
     _prep_bench(calc)
     launcher = calc / "jobset.sh"
     assert launcher.is_file(), "prep must write the launcher"
     assert launcher.stat().st_mode & stat.S_IXUSR, "and make it executable"
-    text = launcher.read_text()
-    assert 'python -m molbuilder jobset "$@"' in text
-    assert "PYTHONPATH" in text and "_REPO" in text
 
-    # A PATH shim records cwd/PYTHONPATH/args; conda's absence is survived
-    # by shimming the activation command the config baked in.
-    shim = tmp_path / "bin"
-    shim.mkdir()
-    (shim / "python").write_text(
-        "#!/usr/bin/env bash\n"
-        'echo "CWD=$(pwd)"\n'
-        'echo "PYPATH=${PYTHONPATH:-}"\n'
-        'echo "ARGS=$*"\n')
-    (shim / "python").chmod(0o755)
-    (shim / "conda").write_text("#!/usr/bin/env bash\nexit 0\n")
-    (shim / "conda").chmod(0o755)
-    env = {**os.environ, "PATH": f"{shim}:{os.environ['PATH']}"}
-    # invoked FROM ELSEWHERE, deliberately
-    proc = subprocess.run(["bash", str(launcher), "status", "--fails"],
-                          cwd=str(tmp_path), env=env,
-                          capture_output=True, text=True, timeout=60)
-    out = proc.stdout
-    assert f"CWD={calc.resolve()}" in out, (
-        f"the launcher must stand in the bundle:\n{out}\n{proc.stderr}"
-    )
-    assert "ARGS=-m molbuilder jobset status --fails" in out
-    import molbuilder as _pkg
-    repo = str(Path(_pkg.__file__).resolve().parent.parent)
-    assert f"PYPATH={repo}" in out.replace(repo + ":", repo + "\n")[:10**6] \
-        or repo in out, "the repo must ride PYTHONPATH"
+    proc = subprocess.run([str(launcher), "status"],
+                          cwd=str(tmp_path), capture_output=True,
+                          text=True, timeout=300)
+    combined = proc.stdout + proc.stderr
+
+    # Every way the launcher can give up names ITSELF ("jobset.sh: ...").
+    # Its absence means control reached molbuilder.
+    assert "jobset.sh:" not in combined, (
+        f"the launcher refused instead of running:\n{combined}")
+    # What answered is molbuilder's own jobset surface, reached from a cwd
+    # that is neither the bundle nor the checkout.  (`prep bench` writes the
+    # sweep's job-set.json into the stage's bench/ container, so a bare
+    # `status` at the root legitimately reports none -- that message IS
+    # molbuilder, which is the point.)
+    assert ("job-set.json" in combined or "coarse" in combined
+            or "bench" in combined), (
+        f"the verb did not reach molbuilder:\n{combined}")
+    # It stood in the bundle before handing over, so `--bundle .` means
+    # this calculation for every verb.
+    assert 'cd "$_BUNDLE"' in launcher.read_text()
 
 
 def test_the_group_refuses_a_trial_without_an_explicit_shape(calc):

@@ -1717,8 +1717,14 @@ def test_the_save_door_ships_the_bootstrap_launcher(web_client, tmp_path):
         assert sh.is_file(), "the save door did not ship the launcher"
         assert sh.stat().st_mode & _stat.S_IXUSR, "not executable"
         text = sh.read_text()
-        for marker in ("BOOTSTRAP", "MOLBUILDER_ROOT", "micromamba",
-                       "module load mamba", 'MOLBUILDER_ENV'):
+        # ONE launcher now (2026-08-21).  "BOOTSTRAP" named the weaker
+        # of two generations -- the save door's -- which prep overwrote
+        # with a baked one that had no ladder and no check.  There is one
+        # script; what a marker must prove is the CONTRACT, not which
+        # generation wrote it.
+        for marker in ("CONTRACT", "MOLBUILDER_ROOT", "micromamba",
+                       "module load mamba", "MOLBUILDER_ENV",
+                       "_mb_env_ok", "set +eu"):
             assert marker in text, f"launcher lost its {marker} arm"
 
         # the bare-shell refusal speaks (a real subprocess, empty PATH)
@@ -1728,7 +1734,8 @@ def test_the_save_door_ships_the_bootstrap_launcher(web_client, tmp_path):
         p = _sp.run(["bash", str(sh), "plan"], capture_output=True,
                     text=True, env=env, cwd=str(d), timeout=30)
         assert p.returncode == 1, (p.returncode, p.stderr)
-        assert "no conda/mamba" in p.stderr
+        assert "is not usable here" in p.stderr
+        assert "Tried: the configured activation, then conda, mamba" in p.stderr
 
         # never-downgrade: a prep-baked launcher survives a re-save
         sh.write_text("#!/usr/bin/env bash\n# MACHINE-BAKED sentinel\n")
@@ -1760,13 +1767,13 @@ def test_the_launcher_door_rewrites_only_beside_a_description(web_client):
         assert r.status_code == 200 and r.get_json()["wrote"] == "jobset.sh"
         sh = d / "jobset.sh"
         assert sh.stat().st_mode & _stat.S_IXUSR
-        assert "BOOTSTRAP" in sh.read_text()
+        assert "CONTRACT" in sh.read_text()
 
         sh.write_text("#!/bin/bash\n# baked sentinel\n")
         r = web_client.post("/api/task-setup/launcher",
                             json={"dest": str(d)})
         assert r.status_code == 200
-        assert "BOOTSTRAP" in sh.read_text(), (
+        assert "CONTRACT" in sh.read_text(), (
             "the explicit door must overwrite -- that is its purpose")
     finally:
         _shutil.rmtree(ROOT / "projects/_t_handover", ignore_errors=True)

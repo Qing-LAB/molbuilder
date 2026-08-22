@@ -3931,139 +3931,256 @@ def _mem_to_mb(value: Any) -> Optional[int]:
     return int(float(m.group(1)) * mult)
 
 
-def render_jobset_bootstrap() -> str:
-    """``jobset.sh``, GENERATION 1 — written by the Task-setup save door
-    the moment a folder becomes a described calculation (user,
-    2026-08-21: *"when Task setup decides to write to the dir, it needs
-    to provide that script too … no other requirement but mamba/conda
-    available — just like a bare remote shell"*).
+#: THE ONE ENV-ACTIVATION BLOCK every generated script emits.
+#:
+#: **Why one.**  Two scripts have to put themselves in a conda environment
+#: before they can do anything -- ``<label>.run.sh`` and ``jobset.sh`` -- and
+#: until 2026-08-21 each carried its own idea of how.  The run wrapper knew
+#: to disable ``nounset`` across the bootstrap (external activate.d hooks
+#: reference unset variables and abort under ``set -u``; live hit 2026-07-29)
+#: but trusted one configured activation form and never checked the result.
+#: The launcher checked nothing and disabled nothing.  So the lesson each had
+#: learned was invisible to the other, and the launcher failed on Sol with a
+#: bare ``ModuleNotFoundError: numpy`` three layers inside molbuilder --
+#: because ``source activate`` under a mamba 2.x module returns 0 and leaves
+#: you on the system python.
+#:
+#: **The contract this realises** (`running-a-job.md` § 5.2a): *given a
+#: package manager, the script puts itself in the right environment or says
+#: why it could not.*  Three parts, none optional:
+#:
+#:   1. ``set +u`` across preamble + activation, restored immediately after;
+#:   2. the configured form FIRST (it is the site's own answer), then a
+#:      conda -> mamba -> micromamba ladder, because a manager that is
+#:      absent, deprecated or unhooked is a fact about the machine, not an
+#:      error in the calculation;
+#:   3. a PROBE -- the caller says what proves this env is the right one --
+#:      run against the interpreter/PATH that resulted.  A manager's exit
+#:      code is not evidence; the probe is.
+_ENV_BLOCK = r'''
+# ---- environment: @WHAT@ ------------------------------------------
+# errexit AND nounset OFF for this span ONLY.  Everything between here and
+# the restore is EXTERNAL code -- module files, conda's hook, each
+# activate.d hook in the env:
+#   -u  they reference unset variables (cuda-nvcc's NVCC_PREPEND_FLAGS is
+#       the one that bit us) and would abort;
+#   -e  they are allowed to FAIL.  `module load mamba` on a workstation
+#       with no module system is not an error, it is a machine without
+#       modules -- and under errexit it killed the whole script before the
+#       ladder that would have found conda anyway (caught by running the
+#       bare-shell case, 2026-08-21).
+# The probe below is what decides whether any of it worked.
+set +eu
+@PREAMBLE@
+# What proves this env is the right one.  A manager can return 0 and leave
+# you on the system python, so nothing here trusts a return code.
+_mb_env_ok() { @PROBE@; }
 
-    The bootstrap closes the first-prep dilemma: the supported
-    invocation is ``python -m molbuilder`` from the repo checkout, but
-    the FIRST command a fresh bundle needs — ``prep`` — is exactly the
-    one that cannot run from inside it, and the machine-baked launcher
-    below is written BY prep.  So this generation bakes NOTHING: on a
-    bare shell it activates the molbuilder env itself (conda → mamba →
-    micromamba, exactly the manager ladder diagnostics uses in Python),
-    resolves the checkout at run time (override var → a real install →
-    walking up from the bundle → ``~/molbuilder``), and refuses with
-    the remedy in one line otherwise.  The first successful ``prep``
-    REPLACES this file with :func:`render_jobset_launcher`'s
-    machine-baked form, which is the right trade once the machine is
-    known.
+_mb_activate() {
+    # The site's configured form first -- it is this machine's own answer.
+@CONFIGURED@
+    if command -v conda >/dev/null 2>&1; then
+        _mb_base="$(conda info --base 2>/dev/null || true)"
+        if [ -n "$_mb_base" ] && [ -f "$_mb_base/etc/profile.d/conda.sh" ]; then
+            . "$_mb_base/etc/profile.d/conda.sh"
+        fi
+        conda activate "@ENV@" 2>/dev/null && _mb_env_ok && return 0
+    fi
+    if command -v mamba >/dev/null 2>&1; then
+        _mb_base="$(mamba info --base 2>/dev/null || true)"
+        if [ -n "$_mb_base" ] && [ -f "$_mb_base/etc/profile.d/conda.sh" ]; then
+            . "$_mb_base/etc/profile.d/conda.sh"
+        fi
+        conda activate "@ENV@" 2>/dev/null && _mb_env_ok && return 0
+        mamba activate "@ENV@" 2>/dev/null && _mb_env_ok && return 0
+    fi
+    if command -v micromamba >/dev/null 2>&1; then
+        eval "$(micromamba shell hook -s bash 2>/dev/null || true)"
+        micromamba activate "@ENV@" 2>/dev/null && _mb_env_ok && return 0
+    fi
+    return 1
+}
+
+_mb_env_ok || _mb_activate || true
+set -eu
+
+if ! _mb_env_ok; then
+    echo "@SCRIPT@: environment '@ENV@' is not usable here." >&2
+    echo "  The check that failed: @PROBE_SAYS@" >&2
+    echo "    CONDA_DEFAULT_ENV : ${CONDA_DEFAULT_ENV:-<unset>}" >&2
+    echo "    CONDA_PREFIX      : ${CONDA_PREFIX:-<unset>}" >&2
+    echo "    which python      : $(command -v python 2>/dev/null || echo '(none)')" >&2
+    echo "  Tried: the configured activation, then conda, mamba, micromamba." >&2
+    echo "  Fix (either): activate '@ENV@' yourself, then re-run" >&2
+    echo "            or  create it:  bash <checkout>/scripts/install-env.sh @ENV@" >&2
+    exit 1
+fi
+'''
+
+
+def render_env_activation(env_name: str,
+                          *,
+                          probe: str,
+                          probe_says: str,
+                          preamble: str = "",
+                          configured_form: str = "",
+                          script_name: str = "script",
+                          what: str = "") -> str:
+    """Emit the one env-activation block (see :data:`_ENV_BLOCK`).
+
+    Args:
+      env_name: the conda env to end up in.
+      probe: a shell command that succeeds ONLY in the right env.  This is
+        the caller's contract, not a guess: the host env is proven by
+        ``python -c 'import numpy'``, a SIESTA env by ``command -v siesta``,
+        a PySCF env by ``python -c 'import pyscf'``.  Different jobs need
+        different things from an env, so nothing generic can answer it.
+      probe_says: the same thing in words, for the refusal message.
+      preamble: ``script_generation.preamble``, verbatim (the ``module load``
+        lines).  The one machine fact a script cannot discover -- without it
+        no manager is on ``PATH`` at all.
+      configured_form: ``script_generation.activation`` (``source activate``
+        / ``conda activate``).  Tried FIRST when given; the ladder is what
+        happens when it is absent or silently ineffective.
+      script_name: what the refusal calls itself.
+      what: a short phrase for the section comment.
     """
-    return """#!/usr/bin/env bash
-# jobset.sh -- run any `jobset` verb ON THIS calculation from inside it:
-#   ./jobset.sh prep run <stage> | ./jobset.sh status | ./jobset.sh submit run <stage>
+    pre = (("# --- Baked preamble (verbatim from molbuilder.json) ---\n"
+            + preamble.rstrip() + "\n") if preamble.strip() else
+           "# --- Baked preamble (none configured) ---\n"
+           "# On a cluster `module load mamba` belongs here: set\n"
+           "# script_generation.preamble and re-generate.\n")
+    conf = (f'    {configured_form} "{env_name}" 2>/dev/null || true\n'
+            f"    _mb_env_ok && return 0\n"
+            if configured_form.strip() else
+            "    # (no script_generation.activation configured)\n")
+    return (_ENV_BLOCK
+            .replace("@PREAMBLE@", pre)
+            .replace("@CONFIGURED@", conf)
+            .replace("@PROBE@", probe)
+            .replace("@PROBE_SAYS@", probe_says)
+            .replace("@SCRIPT@", script_name)
+            .replace("@WHAT@", what or env_name)
+            .replace("@ENV@", env_name))
+
+
+def render_jobset_bootstrap() -> str:
+    """``jobset.sh`` with nothing baked -- Task setup's first write.
+
+    The same script :func:`render_jobset_launcher` writes; it simply has no
+    config to bake yet, because a folder becomes a described calculation
+    before anyone has said which machine will run it.
+    """
+    return render_jobset_launcher(None)
+
+
+_JOBSET_SH = r'''#!/usr/bin/env bash
+# jobset.sh -- run any `jobset` verb ON THIS calculation, from anywhere:
+#   ./jobset.sh prep bench coarse | ./jobset.sh submit bench coarse
 #
-# BOOTSTRAP generation, written by Task setup when this calculation was
-# described.  Requirement: conda/mamba reachable -- a bare remote shell
-# is enough; the script activates the molbuilder env itself when your
-# shell has not.  Nothing about a machine is baked in:
-#   env:      $MOLBUILDER_ENV (default: molbuilder), activated via
-#             conda | mamba | micromamba, whichever the shell has
-#   checkout: $MOLBUILDER_ROOT | `molbuilder` on PATH | walking up
-#             from this folder | ~/molbuilder
-# The first successful `prep` replaces this file with the machine-baked
-# form (repo path + env activation verbatim).
+# CONTRACT: given a package manager (conda / mamba / micromamba) reachable
+# -- after the baked preamble, if there is one -- this script runs
+# correctly.  It bakes no checkout path and no activation form: both are
+# found here, so the file stays right on a machine that did not write it.
+# Overrides: $MOLBUILDER_ENV, $MOLBUILDER_ROOT.
 set -euo pipefail
 _BUNDLE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$_BUNDLE"
-_ENV="${MOLBUILDER_ENV:-molbuilder}"
 
-# ---- the env: activate unless already active ----------------------
-if [[ "${CONDA_DEFAULT_ENV:-}" != "$_ENV" ]]; then
-    if command -v conda >/dev/null 2>&1; then
-        _BASE="$(conda info --base 2>/dev/null)"
-        # shellcheck disable=SC1091
-        [[ -n "$_BASE" ]] && source "$_BASE/etc/profile.d/conda.sh"
-        conda activate "$_ENV" 2>/dev/null || {
-            echo "jobset.sh: conda env '$_ENV' not found -- create it:" >&2
-            echo "  bash <checkout>/scripts/install-env.sh $_ENV" >&2; exit 1; }
-    elif command -v mamba >/dev/null 2>&1; then
-        _BASE="$(mamba info --base 2>/dev/null || true)"
-        # shellcheck disable=SC1091
-        [[ -n "$_BASE" && -f "$_BASE/etc/profile.d/conda.sh" ]] && source "$_BASE/etc/profile.d/conda.sh"
-        { conda activate "$_ENV" 2>/dev/null || mamba activate "$_ENV" 2>/dev/null; } || {
-            echo "jobset.sh: env '$_ENV' not activatable via mamba -- create it or activate manually" >&2; exit 1; }
-    elif command -v micromamba >/dev/null 2>&1; then
-        eval "$(micromamba shell hook -s bash)"
-        micromamba activate "$_ENV" || {
-            echo "jobset.sh: env '$_ENV' not activatable via micromamba" >&2; exit 1; }
-    else
-        echo "jobset.sh: no conda/mamba/micromamba on PATH (on a cluster: module load mamba)" >&2
-        exit 1
-    fi
-fi
-
-# ---- the checkout: resolve, then run with cwd = this bundle -------
-_ok() { [[ -f "$1/molbuilder/__main__.py" ]]; }
-_go() { PYTHONPATH="$1${PYTHONPATH:+:$PYTHONPATH}" exec python -m molbuilder jobset "${@:2}"; }
-
-if [[ -n "${MOLBUILDER_ROOT:-}" ]] && _ok "$MOLBUILDER_ROOT"; then _go "$MOLBUILDER_ROOT" "$@"; fi
-if command -v molbuilder >/dev/null 2>&1; then exec molbuilder jobset "$@"; fi
-_D="$_BUNDLE"
-while [[ "$_D" != "/" ]]; do
-    if _ok "$_D"; then _go "$_D" "$@"; fi
-    _D="$(dirname "$_D")"
-done
-if _ok "$HOME/molbuilder"; then _go "$HOME/molbuilder" "$@"; fi
-echo "jobset.sh: cannot find the molbuilder checkout." >&2
-echo "  fix (either):  export MOLBUILDER_ROOT=/path/to/molbuilder" >&2
-echo "             or  keep this project under the checkout (or at ~/molbuilder)" >&2
-exit 1
-"""
+# Where the PACKAGE comes from, before anything asks for it.  The env
+# carries molbuilder's dependencies; molbuilder itself is a source checkout
+# (it is deliberately not pip-installed), so it is reached by PYTHONPATH.
+# Set up FRONT, not as a fallback after a failed probe: then there is one
+# question -- "can python import molbuilder?" -- and one answer, instead of
+# a check that can refuse before the remedy it needs has been applied.
+# Harmless if the package IS in the env; install it there and this line
+# stops mattering.
+export PYTHONPATH="${MOLBUILDER_ROOT:-@BAKEDROOT@}${PYTHONPATH:+:$PYTHONPATH}"
+@ENVBLOCK@
+exec python -m molbuilder jobset "$@"
+'''
 
 
-def render_jobset_launcher(bundle_dir: Path) -> str:
-    """``jobset.sh`` — run any ``jobset`` verb ON THIS calculation, from
-    anywhere, with no molbuilder installed (user, 2026-08-20).
+def render_jobset_launcher(bundle_dir: Optional[Path] = None) -> str:
+    """``jobset.sh`` -- run any ``jobset`` verb ON THIS calculation.
 
-    THE DILEMMA IT CLOSES: the supported invocation is ``python -m
-    molbuilder`` from the repo checkout (workflow.md § 6.1 — deliberately
-    not pip-installed), but every verb's defaults (``--bundle .``) mean the
-    CALCULATION's directory.  From the bundle the module is nowhere to be
-    found; from the repo the bundle is not the cwd.  This launcher carries
-    the two facts only generation knows — WHERE THE REPO IS on this machine
-    (this very package's checkout) and WHICH ENV prep itself ran in — and
-    at runtime does what a person would: activate, stand in the bundle, run
-    the module with the repo on ``PYTHONPATH`` so the cwd stays the
-    bundle and ``--bundle .`` keeps its meaning for every verb.
+    **ONE CONTRACT (user, 2026-08-21):** *given a package manager, this runs
+    correctly.*  Everything else the script works out at run time.
 
-    THE SAME TWO-LAYER PREMISE AS EVERY WRAPPER (§ 6.1): the configured
-    ``script_generation.preamble`` + ``activation`` are baked VERBATIM at
-    generate time; at runtime there is no discovery, no config read, no
-    env-var switching — the one assumption is a working conda/mamba, found
-    exactly the way the run wrappers find it.
+    **There were two of these, and the weaker one won.**  A bootstrap
+    generation (Task setup's) discovered everything at run time: a manager
+    ladder, the checkout by walking up, a refusal with a remedy on every
+    arm.  A "machine-baked" generation (`prep`'s) baked the checkout path,
+    the activation form and ``CONDA_DEFAULT_ENV`` as prep happened to see
+    it, then ran one activation line and ``exec``'d python **with no ladder,
+    no check and no message**.  Every `prep` overwrote the first with the
+    second, so the first successful prep DOWNGRADED the launcher -- and what
+    it then produced was ``ModuleNotFoundError: numpy`` from three layers
+    inside molbuilder, nowhere near the activation that had quietly not
+    happened (Sol, 2026-08-21).
+
+    **Baking was the wrong instinct twice over.**  The checkout, the manager
+    and the env are things a shell can *find*, and finding them is right on
+    every machine; baking them is right only on the machine that baked them.
+    The one fact a script cannot discover is the one that must come first --
+    ``module load mamba``, without which no manager is on ``PATH`` at all --
+    so that is the only thing baked, and the env-name is a DEFAULT that
+    ``$MOLBUILDER_ENV`` overrides.  With no config the same script is
+    emitted minus the preamble, which is exactly what the bootstrap was:
+    one script, one contract, two amounts of knowledge about the machine.
+
+    The environment span itself is :func:`render_env_activation` -- the same
+    block ``<label>.run.sh`` emits, so a lesson learned in one script is now
+    learned by both (`running-a-job.md` § 5.2a).
     """
-    import molbuilder as _pkg
+    preamble = ""
+    configured = ""
+    env_name = "molbuilder"
+    if bundle_dir is not None:
+        from . import runtime_config as _rc
+        _project = Path(bundle_dir) if Path(bundle_dir).exists() else None
+        try:
+            _sg = _rc.get_script_generation(project_dir=_project)
+            preamble = "\n".join(
+                text for _scope, text in (_sg["preamble_chunks"] or []))
+            configured = _sg.get("activation") or ""
+        except Exception:
+            preamble, configured = "", ""
+        # A DEFAULT, not a decision: $MOLBUILDER_ENV wins at run time, and
+        # the ladder + probe mean a wrong guess is reported, never obeyed.
+        # An env activated BY PATH reports a path here; its basename is the
+        # name every manager also accepts.
+        env_name = os.environ.get("CONDA_DEFAULT_ENV") or "molbuilder"
+        if "/" in env_name:
+            env_name = Path(env_name).name
 
-    from . import runtime_config as _rc
-    repo = _pkg.repo_root()
-    env_name = os.environ.get("CONDA_DEFAULT_ENV") or "molbuilder"
-    _project = Path(bundle_dir) if Path(bundle_dir).exists() else None
-    _sg = _rc.get_script_generation(project_dir=_project)
-    activation = _rc.require_activation(project_dir=_project)
-    chunks = _sg["preamble_chunks"] or []
-    preamble = "\n".join(text for _scope, text in chunks)
-    return (
-        "#!/usr/bin/env bash\n"
-        "# jobset.sh -- run any `jobset` verb ON THIS calculation, from\n"
-        "# anywhere: ./jobset.sh status | ./jobset.sh submit run <stage> ...\n"
-        "# Generated by prep (runwrap.render_jobset_launcher); regenerated\n"
-        "# on every prep so the repo path and env are THIS machine's.\n"
-        "set -euo pipefail\n"
-        '_BUNDLE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\n'
-        f'_REPO="{repo}"\n'
-        "# --- Baked preamble (verbatim from molbuilder.json) ---\n"
-        f"{preamble}\n"
-        f"{activation} {env_name}\n"
-        'cd "$_BUNDLE"\n'
-        "# The repo on PYTHONPATH, the bundle as cwd: --bundle . and every\n"
-        "# other verb default keep their meaning from inside the project.\n"
-        'PYTHONPATH="${_REPO}${PYTHONPATH:+:$PYTHONPATH}" '
-        'exec python -m molbuilder jobset "$@"\n'
+    block = render_env_activation(
+        env_name,
+        # The HOST env's job is to run molbuilder itself, and the first
+        # thing `python -m molbuilder` does is import numpy -- so this is
+        # the real precondition, not a proxy for it.
+        # The one question: can this interpreter run molbuilder?  It
+        # answers "is the env active" and "is the package reachable"
+        # together, so no second, different check is needed downstream.
+        probe="python -c 'import molbuilder' >/dev/null 2>&1",
+        probe_says="python -c 'import molbuilder'",
+        preamble=preamble,
+        configured_form=configured,
+        script_name="jobset.sh",
+        what="the env that runs molbuilder itself",
     )
+    # $MOLBUILDER_ENV override, in front of the block that consumes it.
+    block = (f'_ENV="${{MOLBUILDER_ENV:-{env_name}}}"\n'
+             + block.replace(f'"{env_name}"', '"$_ENV"')
+                    .replace(f"'{env_name}'", "'$_ENV'"))
+    # The checkout this was generated from, for the case where the env does
+    # not carry the package.  Always known -- whoever generates this IS
+    # running molbuilder -- and always second to $MOLBUILDER_ROOT.  It is a
+    # fallback, not the answer: if the env has molbuilder, the probe passes
+    # and this is never consulted.
+    import molbuilder as _pkg
+    return (_JOBSET_SH.replace("@ENVBLOCK@", block)
+                      .replace("@BAKEDROOT@", str(_pkg.repo_root())))
 
 
 def render_sbatch(script_path: Path,
