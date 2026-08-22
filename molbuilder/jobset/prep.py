@@ -805,18 +805,13 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             with _calling("relabel", engine=task.engine,
                           where=element.label, log=log):
                 cfg = seam.relabel(cfg, element.label)
-            # AND forced cold -- `project-layout.md` § 7 invariant 5 states
-            # both halves and only the relabel was implemented (found
-            # 2026-08-14).  The relabel alone does NOT cover the case that
-            # matters: prep the same trial TWICE and the second render carries
-            # the SAME trial label, so the engine finds the FIRST attempt's
-            # .XV/.DM under it and warm-starts.  That point then measures a
-            # continued run while its neighbours measure cold ones, and the
-            # timings a benchmark exists to compare are not comparable.
-            # A trial is a measurement; a measurement starts from the same
-            # place every time.
-            if hasattr(cfg, "restart"):
-                cfg = dataclasses.replace(cfg, restart="clean")
+            # The forced cold has ONE setter -- the measurement pin
+            # (`_MEASUREMENT_PINS`, resolved with provenance "pin") --
+            # and ONE verifier, the submission door
+            # (`agreement.check_trial_starts_cold`; user-settled
+            # 2026-08-21: prep bakes the intent, submission determines
+            # the actual state).  A hard replace stood here as a second,
+            # provenance-invisible setter until then (Q6a).
         # The stage's artifact token is a RENDER ARGUMENT (C7, 2026-08-12):
         # `prep` holds the StageRef, so `prep` says it, per call -- the
         # config field that used to carry it is gone, and the emitter never

@@ -512,6 +512,26 @@ pin (false-matched the vacuum warning) and the fragile debug-domain
 dict pin; gpu_count joined the two machine-item test pins; the § 2.12
 worked-example matrix is now enumerated end-to-end.
 
+**RULED AND BUILT (2026-08-21, evening wave 2)** — the user answered:
+- R2-3 → the **#N grammar**: a stage is its NAME, or `#N` its assigned
+  number; the bare number and the token retired (both are legal names —
+  the old grammar was ambiguous).  One resolver, prep included; refusals
+  offer the typeable spellings (`render_stage_choices`).
+- Q6 → **(a) + the user's own completion**: the measurement pin is the
+  one SETTER of a trial's cold start (prep's hidden hard-override
+  deleted), and the SUBMISSION DOOR is the VERIFIER
+  (`agreement.check_trial_starts_cold`: a warm or group-stripped deck
+  refuses by name; an absent deck says nothing) — "prep bakes the
+  intent, submission determines the run's actual starting state."
+- The natural run workflow: **re-submitting a launched stage continues
+  by default** — the door opens the next attempt warm from the stage's
+  own latest (prepare_attempt, said out loud; dry-run previews without
+  creating); no state to carry → refuses with the died-at-startup story;
+  § 1.6 amended in place (same-stage-latest is never a guess; everything
+  else stays explicit); trials keep § 1.5's refusal.  All
+  mutation-tested; docs: project-layout § 1.6 + § 2.3.2, generator
+  § 4.3a, job-system's grammar diagram.
+
 **AWAITING RULINGS from round 2** (pre-existing; fix shapes named):
 - R2-1 (bug, UI): `loadSweepChoices` and `loadPresets` cache
   engine-blind — a PySCF folder opened after a SIESTA one gets SIESTA's

@@ -382,7 +382,10 @@ framework rule, not a script patch)*:
   axis is the sweep the resolver always understood, fed by the declaration.
 - **The measurement pins still win** (capped SCF, forced cold, run-once):
   they are applied *over* the point's coordinates, so a trial stays a
-  measurement whatever it measures.  A value axis that **names a
+  measurement whatever it measures — and the cold start is **verified at
+  the submission door** against the rendered deck itself (a warm or
+  group-stripped deck refuses by name; user, 2026-08-21: prep bakes the
+  intent, submission determines the run's actual starting state).  A value axis that **names a
   measurement pin** is refused by name — its trials would render identical
   decks under different labels, the same measurement twice.
 - **`enable_gpu` with two points is the grid-family axis.**  The machine

@@ -54,7 +54,8 @@ from typing import Dict, List, Optional, Tuple
 # alongside three siblings that are not needed anywhere else.  A second,
 # top-level import shadowed by that one sat here until 2026-08-10 doing
 # nothing.
-from .agreement import DeckLaunchMismatch, check_launch_matches_deck
+from .agreement import (DeckLaunchMismatch, check_launch_matches_deck,
+                        check_trial_starts_cold)
 from .model import JobSet, Resources
 
 
@@ -286,6 +287,10 @@ def _resolve_launch(jobset: JobSet, base_dir: Path, job, suffix: str):
     job_dir, attempt = _launch_dir(jobset, base_dir, job)
     try:
         check_launch_matches_deck(job_dir, job)
+        if jobset.kind == "sweep":
+            # the cold gate rides the named-trial door too (user,
+            # 2026-08-21) -- one rule, every launch path
+            check_trial_starts_cold(job_dir, job)
     except DeckLaunchMismatch as e:
         # M5: the refusal is SUBMIT's -- the agreement floor states the
         # fact, this verb is what declines to act on it.
@@ -709,10 +714,14 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
 
     # The deck/launch agreement gate guards THIS door too (review
     # 2026-08-21): a trial refused when submitted by name must not launch
-    # silently by riding its group.
+    # silently by riding its group.  And the COLD gate (user, same day:
+    # "it is the submission that determines the actual state of the
+    # run"): the pin baked the intent at prep; here the artifact itself
+    # is verified before it is launched.
     for j in pending:
         try:
             check_launch_matches_deck(base / dirs[j.name], j)
+            check_trial_starts_cold(base / dirs[j.name], j)
         except DeckLaunchMismatch as e:
             raise SubmitError(str(e)) from e
 
@@ -963,9 +972,9 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
         raise SubmitError(f"base dir not found (prep first): {base}")
 
     if only is not None:
-        # Through the ONE resolver, so a name, a number and a token all reach
-        # the same job here as they do at every other surface -- and the
-        # refusal carries the ordinals (§ 8f).  This spelled its own lookup and
+        # Through the ONE resolver, so a name and a #N number reach the
+        # same job here as they do at every other surface -- and the
+        # refusal carries the typeable spellings (§ 8f).  This spelled its own lookup and
         # its own listing until 2026-08-10, which is the same defect
         # `prepare_attempt` had: a library entry point quietly speaking a
         # second vocabulary for the one question.
@@ -984,6 +993,76 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
         import dataclasses as _dc
         lone = next(j for j in jobset.jobs if j.name == only)
         jobset = _dc.replace(jobset, jobs=[lone])
+
+    # THE NATURAL WORKFLOW at the run door (user, 2026-08-21: "a run
+    # stopped due to the server running out of time, and you can submit
+    # again and by default it continues").  A LADDER stage whose latest
+    # attempt has already been launched is not refused any more: the door
+    # opens the next attempt CONTINUING from it -- the same
+    # prepare_attempt primitive `prep run --from` uses, said out loud --
+    # and then launches that.  § 1.6's "which run you continue from is
+    # something you say" is AMENDED, not broken: the same stage's LATEST
+    # attempt is the one source that is never a guess (a wall-killed
+    # run's newest state is the state); an older attempt or another
+    # stage's stays the explicit `--from` lane, and a fresh start stays
+    # `prep run <stage>` first (an unlaunched attempt is reused, never
+    # continued over).  Bench trials keep § 1.5's immutability refusal.
+    # Under --dry-run nothing is created: the WOULD-continue line stands
+    # in for that job's whole plan.
+    continued: List[JobResult] = []
+    if jobset.kind == "ladder":
+        from .materialize import (attempts, job_dir_names, prepare_attempt,
+                                  shape_of, was_launched)
+        # Gated on the ATTEMPT LAYER itself, not on the shape flag: the
+        # launched-attempt refusal downstream (`_launch_dir`) fires
+        # whenever attempts exist, shape known or not, so this mirror
+        # must too -- a shape-flag gate here left the hand-built-ladder
+        # lane refusing where it should continue (found writing the pin).
+        _sh = shape_of(jobset, base)
+        if True:
+            _names = job_dir_names(jobset, _sh)
+            _skip = set()
+            for _j in jobset.jobs:
+                _d = base / _names[_j.name]
+                _ns = attempts(_d)
+                if not _ns or not was_launched(_d / f"run-{_ns[-1]}"):
+                    continue
+                if dry_run:
+                    continued.append(JobResult(
+                        _j.name, [],
+                        f"WOULD continue {_names[_j.name]}/run-{_ns[-1]} "
+                        f"into run-{_ns[-1] + 1} (warm), then launch it"))
+                    _skip.add(_j.name)
+                    continue
+                try:
+                    _rep = prepare_attempt(
+                        jobset, base, _j.name,
+                        continue_from=f"{_names[_j.name]}/run-{_ns[-1]}")
+                except ValueError as _e:
+                    # continuing is impossible -- no state to carry, or
+                    # the stage's deck would not read it.  Both are
+                    # SIGNALS (a launched run that left nothing likely
+                    # died at startup), so the door refuses with the
+                    # story rather than silently starting fresh.
+                    raise SubmitError(
+                        f"{_j.name}: run-{_ns[-1]} was launched, so "
+                        f"re-submission continues by default -- but "
+                        f"continuing is impossible here:\n  {_e}\n"
+                        f"  Look at that run's logs; a FRESH attempt "
+                        f"is:  molbuilder jobset prep run {_j.name}  "
+                        f"(then submit).") from _e
+                continued.append(JobResult(
+                    _j.name, [],
+                    f"continuing {_names[_j.name]}/run-{_ns[-1]} -> "
+                    f"{_rep.dir.name} (copied: "
+                    f"{', '.join(_rep.copied) or 'nothing to carry'}).  "
+                    f"Fresh instead: prep run {_j.name} first."))
+            if _skip:
+                import dataclasses as _dc2
+                jobset = _dc2.replace(jobset, jobs=[
+                    j for j in jobset.jobs if j.name not in _skip])
+                if not jobset.jobs:
+                    return continued
 
     # The no-chain rule, AT THE SEAM (U5, 2026-08-12): a ladder is launched
     # one stage at a time, in EVERY mode -- direct running stages in order
@@ -1007,13 +1086,14 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
     _refuse_batch_submission(jobset, base, mode=mode)
 
     if mode == "submit":
-        return _submit_slurm(jobset, base, domain=domain, dry_run=dry_run)
+        return continued + _submit_slurm(jobset, base, domain=domain,
+                                         dry_run=dry_run)
     if mode == "direct":
         if domain:
             raise SubmitError(
                 "domain is a SLURM-submit concept; it has no meaning in "
                 "'direct' (local) mode.")
-        return _run_direct(jobset, base, dry_run=dry_run)
+        return continued + _run_direct(jobset, base, dry_run=dry_run)
     raise SubmitError(
         f"unknown mode {mode!r}: must be 'submit' (SLURM) or 'direct' (local)")
 

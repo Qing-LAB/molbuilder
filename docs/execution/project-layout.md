@@ -609,6 +609,20 @@ afterwards.
 This is the same shape one level down: a redo of a stage — `run-1` after
 `run-0` — copies from the attempt you name, for the same reason.
 
+> **One amendment** *(user, 2026-08-21: "a run stopped due to the server
+> running out of time — you submit again and by default it continues;
+> that's the natural workflow")*: re-submitting a stage whose latest
+> attempt has already been launched **continues from that latest attempt
+> by default** — the submission door opens the next `run-<n>` warm from
+> it, says so out loud, and launches that. The same stage's *latest*
+> attempt is the one source that is never a guess: a wall-killed run's
+> newest state *is* the state. Everything else stays something you say —
+> an older attempt or another stage is the explicit `--from`, a fresh
+> start is `prep run <stage>` first — and when the launched run left no
+> state to continue (it likely died at startup), the door refuses with
+> that story rather than silently starting fresh. Benchmark trials are
+> untouched: § 1.5's immutability refusal stands.
+
 > **What this removes.** Nothing has to point at a file that does not exist yet,
 > so there are no dangling links to resolve, no question of *which attempt will
 > the producer use*, and nothing to swap at run time. Those problems only arise
@@ -967,7 +981,11 @@ machine, not relaxing the molecule**.
 > **The benchmark cannot damage the real run**, and this is structural rather
 > than careful. Its decks are **relabelled**, so their warm files are keyed to a
 > different `SystemLabel` and SIESTA will not read them into the real stage; and
-> they are **forced cold**, so they cannot pick anything up either. See § 4.
+> they are **forced cold** — the measurement pin is the one *setter*, and
+> since 2026-08-21 the submission door is the *verifier*: a trial whose
+> deck would warm-start (or whose restart group was stripped) is refused
+> by name before launch, because prep bakes the intent but submission
+> determines the run's actual starting state (user ruling). See § 4.
 
 You submit them with `jobset submit bench tight` — and under `--mode
 submit` the trials group into **one scheduler job per resource shelf**

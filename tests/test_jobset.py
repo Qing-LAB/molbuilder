@@ -345,7 +345,11 @@ def _sweep() -> JobSet:
 
 def _write_fdf(path):
     # minimal .fdf so write_run_wrapper renders for real (bash -n validated).
-    path.write_text("SystemName test\nSystemLabel test\nNumberOfAtoms 2\n")
+    # The clean restart group rides along: since 2026-08-21 the submission
+    # door verifies a trial's cold start against its deck, and a real deck
+    # always carries the group written out (`siesta/input.py`, 2026-08-18).
+    path.write_text("SystemName test\nSystemLabel test\nNumberOfAtoms 2\n"
+                    "DM.UseSaveDM .false.\nMD.UseSaveXV .false.\n")
 
 
 def _write_config(root):
@@ -1775,6 +1779,42 @@ def test_the_grammar_is_unambiguous_even_for_a_stage_named_3(tmp_path):
         resolve_stage_ref(refs, "03_tight")              # tokens retired
 
 
+def test_resubmitting_a_launched_stage_continues_by_default(tmp_path):
+    """The natural workflow (user, 2026-08-21): a run killed at the wall is
+    re-submitted and BY DEFAULT continues -- the door opens the next
+    attempt warm from the stage's own latest (the one source that is never
+    a guess), says so out loud, and launches it.  Under --dry-run nothing
+    is created; the WOULD-continue line stands in.  A fresh start stays
+    the explicit lane (`prep run <stage>` first), and bench trials keep
+    § 1.5's immutability refusal."""
+    from molbuilder.jobset.materialize import (attempts, prepare_attempt,
+                                               write_run_launch)
+    from molbuilder.jobset.submit import SubmitError, submit_jobset
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    rep0 = prepare_attempt(js, tmp_path, "tight")
+    (rep0.dir / "JOB.XV").write_text("state\n")   # the wall-killed run's
+    (rep0.dir / "JOB.DM").write_text("state\n")   # newest warm files
+    write_run_launch(rep0.dir, mode="submit", command=["sbatch", "x"],
+                     job_id="7")
+
+    # dry: preview only, no directory made
+    res = submit_jobset(js, tmp_path, mode="direct", dry_run=True,
+                        only="tight")
+    assert any("WOULD continue 03_tight/run-0 into run-1" in r.status
+               for r in res)
+    assert attempts(tmp_path / "03_tight") == [0]
+
+    # real: the attempt IS opened, warm-marked, before the launch itself
+    # fails on this fixture's missing wrapper -- which is the honest probe
+    # that the continuation happens at the door, not after a launch
+    with pytest.raises(SubmitError, match="run.sh"):
+        submit_jobset(js, tmp_path, mode="direct", dry_run=False,
+                      only="tight")
+    assert attempts(tmp_path / "03_tight") == [0, 1]
+    marker = tmp_path / "03_tight" / "run-1" / ".continued-from"
+    assert marker.read_text().strip() == "03_tight/run-0"
+
+
 def test_run_launch_omits_continued_from_rather_than_writing_null(tmp_path):
     """`checkpointing.md` S3 words its check as *"names a directory that exists
     **or is absent**"*, and absent is not `null`: a reader that tests for the
@@ -1817,12 +1857,15 @@ def test_the_provenance_survives_the_prep_to_submit_handover(tmp_path):
     assert body["mode"] == "direct"
 
 
-def test_submit_refuses_an_attempt_that_has_already_been_launched(tmp_path):
-    """§ 1.5: *"A run directory is written once and never modified."*  Without
-    this refusal a second submit runs the engine straight into the results of
-    the first -- the one thing an attempt directory exists to make impossible.
-    """
-    from molbuilder.jobset.materialize import prepare_attempt
+def test_a_launched_attempt_is_never_touched_and_the_door_continues(tmp_path):
+    """§ 1.5: *"A run directory is written once and never modified"* --
+    PRESERVED by the 2026-08-21 ruling, with the mechanism changed: a
+    second submit no longer refuses, it CONTINUES into a fresh attempt
+    (the natural wall-kill workflow), and the first attempt's results
+    stay untouched either way.  When there is NOTHING to continue (the
+    launched run left no state -- it likely died at startup), the door
+    refuses with that story instead of silently starting fresh."""
+    from molbuilder.jobset.materialize import attempts, prepare_attempt
     from molbuilder.jobset.submit import submit_jobset, SubmitError
     js = _token_ladder("JOB_03_tight.fdf")
     attempt = prepare_attempt(js, tmp_path, "tight").dir
@@ -1830,10 +1873,19 @@ def test_submit_refuses_an_attempt_that_has_already_been_launched(tmp_path):
     submit_jobset(js, tmp_path, mode="direct", only="tight")
     (attempt / "JOB_03_tight.out").write_text("results of the first run\n")
 
+    # no warm state in run-0 -> continuing is impossible; the refusal says
+    # so and teaches the fresh lane
     with pytest.raises(SubmitError) as e:
         submit_jobset(js, tmp_path, mode="direct", only="tight")
-    assert "already been launched" in str(e.value)
-    assert "prep run tight" in str(e.value)      # says how to get a fresh one
+    assert "continuing is impossible" in str(e.value)
+    assert "prep run tight" in str(e.value)
+    assert (attempt / "JOB_03_tight.out").read_text().startswith("results")
+
+    # with state, the door continues -- run-0 still untouched
+    (attempt / "JOB.XV").write_text("state\n")
+    with pytest.raises(SubmitError, match="run.sh"):
+        submit_jobset(js, tmp_path, mode="direct", only="tight")
+    assert attempts(tmp_path / "03_tight") == [0, 1]
     assert (attempt / "JOB_03_tight.out").read_text().startswith("results")
 
 

@@ -152,3 +152,52 @@ def check_launch_matches_deck(job_dir, job) -> None:
 
 __all__ = ["LaunchAgreement", "launch_agreement", "disagreement_note",
            "DeckLaunchMismatch", "check_launch_matches_deck"]
+
+
+def check_trial_starts_cold(job_dir, job) -> None:
+    """A TRIAL measures from scratch, and SUBMISSION verifies it.
+
+    User-settled 2026-08-21: prep bakes the INTENT (the measurement pin
+    resolves ``restart = clean`` into the deck), but the submission is
+    what determines the run's actual starting state -- so the door checks
+    the artifact it is about to launch.  The clean restart group is
+    written out, never omitted (`siesta/input.py`, 2026-08-18: ``clean``
+    writes ``.false.``), so a cold deck PROVABLY carries ``UseSave`` keys
+    reading false; a deck where any reads true would warm-start -- a
+    continued run wearing a trial's label -- and one carrying none at all
+    cannot be vouched for (hand-stripped, or rendered before the pin).
+    A warm or group-stripped deck refuses by name (remedy: one
+    re-prep); an ABSENT deck passes silently -- absence says nothing,
+    and the launch itself fails loudly without one.
+
+    Raises :class:`DeckLaunchMismatch` (the same family as the launch
+    agreement -- submission declines to act on a deck that disagrees).
+    """
+    import os
+    import re
+    from pathlib import Path
+
+    deck = Path(job_dir) / os.path.basename(job.script)
+    if not deck.is_file():
+        # Absence says nothing (the sibling gate's doctrine: a deck that
+        # says nothing cannot be disagreed with) -- and a launch without
+        # its deck fails loudly on its own; this gate's question is only
+        # whether an EXISTING deck would warm-start.
+        return
+    text = deck.read_text(encoding="utf-8", errors="replace")
+    saves = re.findall(r"^[ \t]*([A-Za-z.]*UseSave[A-Za-z.]*)[ \t]+(\S+)",
+                       text, re.M)
+    if not saves:
+        raise DeckLaunchMismatch(
+            f"trial {job.name!r}: {deck.name} carries no restart group at "
+            f"all, so its cold start cannot be vouched for (the clean "
+            f"group is always written -- a deck without one was edited or "
+            f"predates the pin).  Re-prep the bench.")
+    warm = [k for k, v in saves
+            if v.strip().lower().strip(".") in ("t", "true", "yes", "1")]
+    if warm:
+        raise DeckLaunchMismatch(
+            f"trial {job.name!r}: {deck.name} would WARM-start "
+            f"({', '.join(warm)} true) -- that measures a continued run, "
+            f"not its point (generator.md § 4.3a).  Re-prep the bench to "
+            f"restore the cold deck.")

@@ -283,6 +283,41 @@ def test_the_shelves_submit_widest_first(sol_calc):
     assert riders == ["K4C1", "K2C1"], riders
 
 
+def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
+    """User-settled 2026-08-21: prep bakes the intent (the measurement
+    pin), but the SUBMISSION determines the run's actual starting state --
+    so the door verifies the artifact.  A trial deck edited to warm-start
+    is refused by name; one with its restart group stripped cannot be
+    vouched for and refuses too."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    _declare(sol_calc, {"mpi_np": [4], "omp_threads": [1],
+                        "enable_gpu": [False], "block_size": [64, 128]})
+    _prep(sol_calc)
+    deck = next((sol_calc / "01_coarse" / "bench"
+                 / "bench-K4C1block_size64").glob("*.fdf"))
+    text = deck.read_text()
+    assert "DM.UseSaveDM" in text and ".false." in text
+
+    import re
+    warm_text = re.sub(r"(DM\.UseSaveDM\s+)\.false\.", r"\1.true.", text)
+    assert warm_text != text, "the flip must actually land"
+    deck.write_text(warm_text)
+    r = CliRunner().invoke(
+        jobset_group, ["submit", "bench", "coarse", "--bundle",
+                       str(sol_calc), "--mode", "submit", "--dry-run"])
+    assert r.exit_code != 0
+    assert "WARM-start" in r.output and "K4C1block_size64" in r.output
+
+    deck.write_text(re.sub(r"^[ \t]*[A-Za-z.]*UseSave.*$", "",
+                           text, flags=re.M))
+    r = CliRunner().invoke(
+        jobset_group, ["submit", "bench", "coarse", "--bundle",
+                       str(sol_calc), "--mode", "submit", "--dry-run"])
+    assert r.exit_code != 0
+    assert "no restart group" in r.output
+
+
 # --------------------------------------------------------------------- #
 #  summarize: the coordinate rides the record and the proposal           #
 # --------------------------------------------------------------------- #

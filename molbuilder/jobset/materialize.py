@@ -461,7 +461,11 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     ``continue_from`` is a bundle-relative attempt directory —
     ``"01_coarse/run-0"``. **Which run you continue from is something you say,
     not something molbuilder guesses** (§ 1.6): continuing from ``run-0`` and
-    from ``run-2`` are different scientific choices. ``cold=True`` means start
+    from ``run-2`` are different scientific choices.  *(One amendment,
+    user 2026-08-21: the submission door calls this with the SAME stage's
+    LATEST attempt by default when re-submitting a launched stage — the
+    one source that is never a guess; every other source stays yours to
+    name.)* ``cold=True`` means start
     clean, and with a directory per attempt that is simply *skip the copy* —
     there is nothing to move aside, because a fresh attempt is empty unless
     something is put in it.
