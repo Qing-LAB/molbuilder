@@ -1228,3 +1228,86 @@ def test_the_py_wrappers_continuation_story_is_the_decks_own(tmp_path):
     clean.write_text('JOB = "cln"\n')
     w3 = render_run_wrapper(clean, resources=Resources())
     assert "NO prior-state" in w3
+
+
+class TestTheHeaderReadsTheProbedRecord:
+    """A `scheduler` block is PREFERENCES; the reachable `(partition, qos)`
+    pairs are a MEASUREMENT (`configuration.md` § 5, M-1).
+
+    `_render_sbatch_for` used to answer "does this machine have a queue?"
+    by looking only for the preferences block, and returned None without
+    one.  On Sol that surfaced as *"submit mode needs a scheduler and this
+    machine has none configured"* printed directly beneath a diagnostic
+    listing nine probed domains -- while `submit` had already resolved the
+    partition/qos the header wanted and was passing them to `sbatch` as
+    `-p`/`-q` on the very same call (2026-08-21).
+    """
+
+    def _sol_shaped(self, tmp_path, monkeypatch):
+        """A bundle with no scheduler block and a probed record that has
+        domains.  cwd and HOME are moved so no real config leaks in --
+        the first version of this check passed only because it was
+        reading the repo's own molbuilder.json."""
+        import json
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        (tmp_path / "home").mkdir(exist_ok=True)
+        (tmp_path / ".molbuilder.json").write_text(json.dumps(
+            {"script_generation": {"preamble": "module load mamba",
+                                   "activation": "source activate"}}))
+        (tmp_path / "environment.json").write_text(json.dumps({
+            "schema": "molbuilder/environment@2",
+            "scheduler": "slurm",
+            "site": {"name": "sol", "scheduler": "slurm"},
+            "domains": [
+                {"name": "htc", "partition": "htc", "qos": "public",
+                 "max_time": "0-04:00:00"},
+                {"name": "public", "partition": "general", "qos": "public",
+                 "max_time": "7-00:00:00"},
+            ],
+            "topology": {"cores": 128},
+        }))
+        (tmp_path / "j.fdf").write_text("SystemLabel j\n")
+        return tmp_path / "j.fdf"
+
+    def test_no_scheduler_block_but_probed_domains_still_yields_a_header(
+            self, tmp_path, monkeypatch):
+        from molbuilder.jobset.model import Resources
+        from molbuilder.runwrap import _render_sbatch_for
+        deck = self._sol_shaped(tmp_path, monkeypatch)
+        header = _render_sbatch_for(deck, resources=Resources(mpi_np=4),
+                                    env=None)
+        assert header is not None, (
+            "refused to write a header for a machine whose probed record "
+            "names reachable domains")
+        # The menu's FIRST row is the documented recommendation.
+        assert "#SBATCH -p htc" in header
+        assert "#SBATCH -q public" in header
+
+    def test_the_pair_submit_resolved_wins(self, tmp_path, monkeypatch):
+        """So the header and `sbatch -p/-q` cannot name different queues."""
+        from molbuilder.jobset.model import Resources
+        from molbuilder.runwrap import _render_sbatch_for
+        deck = self._sol_shaped(tmp_path, monkeypatch)
+        header = _render_sbatch_for(deck, resources=Resources(mpi_np=4),
+                                    env=None,
+                                    domain_pq=("general", "public"))
+        assert "#SBATCH -p general" in header
+        assert "#SBATCH -q public" in header
+
+    def test_a_machine_with_neither_still_refuses(self, tmp_path, monkeypatch):
+        """No preferences AND no measurement is genuinely no queue -- the
+        workstation case, where only .run.sh is meaningful."""
+        import json
+        from molbuilder.jobset.model import Resources
+        from molbuilder.runwrap import _render_sbatch_for
+        deck = self._sol_shaped(tmp_path, monkeypatch)
+        (tmp_path / "environment.json").write_text(json.dumps({
+            "schema": "molbuilder/environment@2",
+            "scheduler": "workstation",
+            "site": {"name": "box", "scheduler": "workstation"},
+            "domains": [], "topology": {"cores": 8},
+        }))
+        assert _render_sbatch_for(deck, resources=Resources(mpi_np=4),
+                                  env=None) is None

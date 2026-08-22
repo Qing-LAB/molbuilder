@@ -3823,7 +3823,9 @@ def write_run_wrapper(script_path: Path, *,
 def _render_sbatch_for(script_path: Path,
                        *,
                        resources: "Resources",
-                       env: Optional[str]) -> Optional[str]:
+                       env: Optional[str],
+                       domain_pq: Optional[Tuple[str, str]] = None
+                       ) -> Optional[str]:
     """Resolve the per-job header values and RETURN the ``.sbatch`` text when
     this machine has a queue; ``None`` when it does not.
 
@@ -3864,7 +3866,34 @@ def _render_sbatch_for(script_path: Path,
 
     scheduler = _rc.get_scheduler(project_dir=project_dir)
     if scheduler is None:
-        return None  # § 10: no scheduler -> emit only .run.sh
+        # NO PREFERENCES FILE IS NOT THE SAME AS NO QUEUE.  `scheduler` in
+        # molbuilder.json is where a person records PREFERENCES (account,
+        # mail, defaults); which `(partition, qos)` pairs this account can
+        # actually reach is a MEASUREMENT, and `jobset probe` already wrote
+        # it into `environment.json` (`configuration.md` § 5, M-1:
+        # measurements in the machine record, preferences in the config).
+        #
+        # Refusing here read the wrong record.  On Sol it produced
+        # "submit mode needs a scheduler and this machine has none
+        # configured" directly under a diagnostic listing NINE probed
+        # domains -- and `submit` had already resolved the very
+        # partition/qos this header wants, and was passing them to
+        # `sbatch` as `-p`/`-q` on the same call (2026-08-21).
+        #
+        # So: take the pair the caller resolved, or -- for callers with no
+        # job to fit, like `prep` -- the menu's first row, which
+        # `get_routing` documents as the recommendation.  Only when there
+        # is no pair at all is there genuinely no queue to write a header
+        # for.
+        pq = domain_pq
+        if pq is None:
+            rows = _rc.get_routing(project_dir=project_dir)
+            if rows:
+                pq = (rows[0].get("partition"), rows[0].get("qos"))
+        if not pq or not pq[0] or not pq[1]:
+            return None  # § 10: no scheduler -> emit only .run.sh
+        scheduler = {"kind": "slurm",
+                     "directives": {"partition": pq[0], "qos": pq[1]}}
 
     suffix = script_path.suffix.lower()
     is_siesta = suffix == ".fdf"

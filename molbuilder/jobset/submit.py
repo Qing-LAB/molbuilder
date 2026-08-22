@@ -821,12 +821,21 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     # render missed both and refused ("no scheduler") or fell to the
     # machine scope.  The stem alone names the delegated run script, so
     # the header still runs `bash {name}.run.sh` from the container.
+    # The pair this submission is ALREADY routing to, handed to the header
+    # emitter so the .sbatch and the `sbatch -p/-q` on the command line
+    # cannot name different queues.  Without it the header re-derived the
+    # pair (or refused for want of a `scheduler` block) while the command
+    # line used the one resolved above.
     header = _render_sbatch_for(base / f"{name}.sh",
-                                resources=envelope, env=None)
+                                resources=envelope, env=None,
+                                domain_pq=(pq if pq else None))
     if header is None:
         raise SubmitError(
-            "submit mode needs a scheduler and this machine has none "
-            "configured -- use --mode direct, or add a scheduler block "
+            "submit mode needs a queue, and this machine has neither a "
+            "`scheduler` block in molbuilder.json nor any reachable "
+            "submission domain in its probed environment.json -- run "
+            "`molbuilder jobset probe --write` on this machine, use "
+            "--mode direct, or add a scheduler block "
             "(running-a-job.md § 5.3).")
     (container / f"{name}.sbatch").write_text(header, encoding="utf-8")
     cp = subprocess.run(cmd, cwd=str(container),
