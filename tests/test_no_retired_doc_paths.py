@@ -42,7 +42,11 @@ ALLOWLIST = {
 # Retired locations.  ``docs/archive/old_docs/`` is the sanctioned way
 # to cite history, so ``old_docs/`` only trips when NOT under archive.
 RETIRED = re.compile(
-    r"docs/(?:protocols|types|tabs)/"
+    # (?<!old_): ``docs/archive/old_docs/tabs/…`` is the sanctioned
+    # history citation (the comment above), and ``old_docs/tabs/``
+    # CONTAINS the substring ``docs/tabs/`` -- without the lookbehind
+    # this arm flagged exactly the citations the old_docs arm permits.
+    r"(?<!old_)docs/(?:protocols|types|tabs)/"
     r"|docs/(?:config|deployment|README_install|installation"
     r"|job-execution|science|MIGRATION)\.md"
     r"|(?<![\w/])README_install\.md"

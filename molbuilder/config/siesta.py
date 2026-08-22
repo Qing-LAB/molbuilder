@@ -1913,8 +1913,9 @@ def apply_siesta_stage(cfg: SiestaConfig, stage: int) -> SiestaConfig:
 # it says nothing about how a stage is tuned, only which ones are in the
 # ladder.  ``siesta/stages.py::default_siesta_stages`` reads it together with
 # SIESTA_STAGE_PRESETS above to build the shipped ladder; keep aligned with
-# web/static/lib/form-schema.js ``SIESTA_STAGE_STRATEGY_PRESETS`` (a regex-
-# parse drift-guard test fires if the two ever diverge).
+# config/pyscf.py's STAGE_STRATEGY_PRESETS (the drift-guard test fires if
+# the two engines ever diverge; the JS third copy retired 2026-08-22 with
+# the stage-table widget).
 SIESTA_STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
     "publishable": (True,  True,  False),   # stage1 loose + stage2 publishable
     "loose-only":  (True,  False, False),   # stage1 only (CG warm-up)

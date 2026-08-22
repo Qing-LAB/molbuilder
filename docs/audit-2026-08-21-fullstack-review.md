@@ -25,7 +25,12 @@ same-day regressions of in-flight work, fixable on sight.
 3. Once: `molbuilder jobset probe --write` on the login node — it now
    records each partition's GPU inventory AND `max_cores` (the GPU node
    group's own row).  Nothing to hand-edit.
-4. Then: `./jobset.sh prep bench coarse` → `submit bench coarse` (one
+4. If `prep bench` still refuses over pseudopotentials after the
+   pull, the message now names the real place: Sol's tree has no
+   `pseudopotential/` at its top — copy your `.psml` set to
+   `~/molbuilder/projects/pseudopotential/` (Relax needs H, C, S, Au),
+   or set `psml_lib` to an absolute path.
+5. Then: `./jobset.sh prep bench coarse` → `submit bench coarse` (one
    exact-fit job per resource shelf, biggest first) → `summarize bench
    coarse` any time, mid-flight included.
 
@@ -33,44 +38,83 @@ same-day regressions of in-flight work, fixable on sight.
 
 ## OPEN — in priority order
 
-*(P1–P6 delivered 2026-08-21/22 — see the ledger below.  What remains
-is the deferred remainder, each with its reason, plus the close.)*
+*(Consolidated 2026-08-22 after the U6 close, on the user's ruling:
+transport locks NONE of the spectrum-related work.  Everything below
+is independent of transport unless its own line says otherwise.)*
 
-### D1 · the SpectraConfig class retirement *(deferred: transport-adjacent)*
-No production constructor; the view is the runtime object.  BUT the
-class rides the four-engine validator registry
-(`_ENGINE_VALIDATORS` — `test_all_four_engine_configs_are_registered`
-pins SpectraConfig and TransportConfig together), so retiring it
-reshapes a contract transport shares.  Do it WITH transport's round.
-(The safe half — `validate_selection`, `spectra/selection.py`'s dead
-preview path — is already retired; `select_modes` stays as the parity
-reference for the deck's inlined selector.)
+### O1 · retire SpectraConfig — a re-homing, not a delete *(spectrum work; unblocked)*
+No production constructor; the runtime object is the `_LiftView` over
+PySCFConfig.  The class survives only as the VOCABULARY carrier for
+three readers — the vibration kind's science duck-types its field
+shape, the reference selector's parity tests construct it as their
+fixture, and the Methods fragment reads the same fields.  The work:
+make the view the one shape, point those three at it, drop the class,
+its registry row and the "all four engines registered" pin (a one-line
+test edit; nothing of transport's changes).  *(An earlier note claimed
+a transport lock; that was wrong and is corrected here.)*
 
-### D2 · the auto-detect panel trio *(deferred: one copy is transport's)*
-Three near-verbatim copies (structure-optimization / spectra /
-transport).  The extraction meets the ≥2-caller bar, but doing it
-without transport leaves a shared module plus one hold-out — worse
-than three copies.  Extract in transport's round.
+### O2 · extract the auto-detect panel for the two describing tabs *(unblocked)*
+Structure-optimization and Spectrum carry near-verbatim copies of the
+auto-detect panel; extract the shared module with those two as its
+callers now.  Transport's third copy joins in transport's own round —
+a shared module with one recorded hold-out beats three copies drifting.
 
-### D3 · the relax retry-loop two-home copy *(U6 sizes it)*
+### O3 · one home for the relax retry loop *(spectrum work; small)*
 The optimization deck's retry budget and the vibration relax block's
-`continue` arm spell the same loop twice.  Structural (an emitted
-helper both compose), not mechanical — sized during the close.
+`continue` arm spell the same loop twice; an emitted helper both
+compose ends it.  Sized during the close as structural-but-small.
 
-### D4 · the unenumerated residue *(U6's readers re-find)*
-The round-1 categories whose item lists did not survive consolidation:
-C-jobset's stage-less residue branches + the duplicated read-API
-comment + two submit.py residues; the D-series deleted-machinery
-citations (~8); T2/T3 stale test-module docstrings; R2-9's remaining
-present-tense pre-fold narration.  Also noted for a ruling:
-`Issue.stage` is now write-orphaned (its one stamper retired with
-validate_ladder) — field + serialization arm are retirement
-candidates.
+### O4 · residue the close did not reach *(sweep-scale, low risk)*
+The unenumerated leftovers: C-jobset's remaining stage-less residue
+branches + the duplicated read-API comment + two submit.py residues;
+T2/T3 stale test-module docstrings; R2-9's last present-tense pre-fold
+narration.  Plus one ruling to record: `Issue.stage` is write-orphaned
+(its one stamper retired with validate_ladder) — field + serialization
+arm are retirement candidates.
 
-*(U6 — the close — ran 2026-08-22: four fresh-eye readers over code /
-UI / tests / docs, every claim self-verified, 80+ findings fixed in
-615dbbc7; the certification sweeps' verdict is stamped in the ledger
-row.  What remains open is D1–D4 above, all deferred with reasons.)*
+### O5 · project paths: one anchor rule, one door *(framework; user 2026-08-21)*
+From Sol: `./jobset.sh prep bench coarse` refused with *"library … is
+not a directory: `<calc>/projects/pseudopotential`"* — the resolver's
+terminal fallback is `projects_root()` = **cwd**`/projects`, a folder
+fabricated from wherever you stand.  Two layers:
+the walk-up stage (83d84b88) reached origin/main only 2026-08-21
+13:32, so no Sol run before a pull after that time had it; and even
+with it, a total miss still *reports* the cwd form instead of the
+discovered tree's `…/molbuilder/projects/pseudopotential`.
+Under both: `resolve_psml_lib` picks its ANCHOR by what happens to
+exist (dest-dir try → walk-up try → cwd) — resolution by guessing —
+and tree discovery sits inline in `pseudos.py`, not in `projects.py`
+which owns the tree.
+**Handcraft inventory** (sweep 2026-08-21): six private copies of
+"where is the repo root" by parent-chains — `references.py:25`,
+`web/blueprints/docs.py:46`, `runwrap.py:4042`, `script_emit.py:691`,
+`builders/backends/_threedna.py:155/:613` (`envs/builds.py:403` is the
+nvcc toolchain's root, not ours — stays); the inline walk-up; the cwd
+terminal anchor; and hint texts (`jobset/prep.py:494`,
+`validation/siesta.py:54`, `config/siesta.py:1592`) telling users the
+repo-root spelling `projects/pseudopotential/` while the sidebar
+backend (`files.py`) exchanges projects-root-relative paths everywhere
+— two vocabularies for one field.
+**Proposed rule — the spelling declares the anchor; nothing guessed:**
+- R1 · `psml_lib`: absolute / `~` → as-is.  Leading `./` or `../` →
+  calculation-dir-relative (the Save-to-current-dir form).  Bare →
+  relative to the projects tree the calculation LIVES in (walk-up);
+  a miss errors naming that one candidate, never a cwd form.
+  Dest-less callers (server-side validate) anchor at the server's own
+  `projects_root()` — repo-root cwd is that process's contract.
+- R2 · tree discovery is `projects.py`'s: `find_projects_root(start)`;
+  `pseudos.py` calls it.
+- R3 · one `repo_root()` (`molbuilder/__init__.py`); the six copies
+  call it.
+- R4 · every hint/help speaks the bare spelling (`pseudopotential`);
+  the long form lives in the catalogue text only.
+No new mechanism: R1 collapses the cascade, R2/R3 re-home, R4 is text.
+
+### Transport's own round *(excluded from all of the above, by ruling)*
+The `transport bundle` migration, its engine-base `render_checks`
+misnomer, its copy of the auto-detect panel, and its blueprint's
+stale `/api/spectra/render` citations — all deferred together to the
+transport design round.
 
 ---
 
@@ -106,3 +150,8 @@ saved panel state on those tabs.
 | U5 retirements part 1 (zero-caller deletions + Pattern-B re-home) | 46906470 |
 | U5 retirements part 2 (one home per fact in the vibration deck) | df992287 |
 | U6 the close: 4 readers, ~80 verified findings, workspace-store isolation | 615dbbc7 |
+| span-cut restore (four innocents + `elx`) · e2e census: 2 stale suites retired, the Send witness added | 79148338 · 78bb0941 |
+
+**Verified 2026-08-21:** e2e 90/90 · none2e 6974 ran, 4 FAIL — all four
+stale-in-sweep (the retired-paths lookbehind + the presets drift-guard
+rewrite landed mid-sweep; both re-proven green on the final tree).
