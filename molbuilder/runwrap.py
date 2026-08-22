@@ -3136,7 +3136,33 @@ def render_run_wrapper(script_path: Path, *,
         f'  _log INFO "CONDA_DEFAULT_ENV=${{CONDA_DEFAULT_ENV:-<unset>}}"\n'
         f'  _log INFO "CONDA_PREFIX=${{CONDA_PREFIX:-<unset>}}"\n'
         f'  _log INFO "which python: $(command -v python 2>/dev/null || echo \'(not on PATH)\')"\n'
-        f"fi\n"
+        # DID THE ACTIVATION TAKE?  Same block, because it is the same
+        # concern: what the environment actually IS after the bootstrap.
+        # Logging it was only half the job -- a line a human reads
+        # afterwards, if anyone looks.
+        #
+        # This wrapper is what the scheduler runs on a compute node, in a
+        # fresh non-interactive shell that inherits nothing, with nobody
+        # watching.  A manager can return 0 and leave the system python on
+        # PATH (`source activate` under a mamba 2.x module does exactly
+        # that), and the cost of finding out later is a queue wait plus MPI
+        # start-up.  SIESTA has refused by name since the build probe
+        # landed (`command -v siesta`); PySCF ran the deck regardless and
+        # surfaced it as `ModuleNotFoundError: pyscf` from inside the
+        # script -- the same failure `jobset.sh` produced on Sol
+        # (2026-08-21).  Both branches now make the same promise.
+        + (f'  if ! python -c "import pyscf" >/dev/null 2>&1; then\n'
+           f'    echo "ERROR: python cannot import pyscf after activating '
+           f'\'{target_env}\' -- the environment did not take, or PySCF is '
+           f'not installed in it." >&2\n'
+           f'    echo "    CONDA_DEFAULT_ENV : ${{CONDA_DEFAULT_ENV:-<unset>}}" >&2\n'
+           f'    echo "    CONDA_PREFIX      : ${{CONDA_PREFIX:-<unset>}}" >&2\n'
+           f'    echo "    which python      : $(command -v python 2>/dev/null '
+           f'|| echo \'(none)\')" >&2\n'
+           f"    exit 1\n"
+           f"  fi\n"
+           if category == "pyscf" else "")
+        + f"fi\n"
         f"\n"
     )
 

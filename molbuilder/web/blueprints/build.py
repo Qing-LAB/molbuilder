@@ -1408,6 +1408,19 @@ def api_task_setup_launcher():
             "error": "this folder holds no description (no task.json / "
                      "task.1st.json) -- the launcher belongs beside one.",
         }), 400
+    # THE BROWSER WRITES THE PORTABLE FORM, and only that.  `prep` runs on
+    # the target machine and bakes what only that machine knows (the
+    # preamble that puts a package manager on PATH); this side must not,
+    # because the browser writes nothing that names a machine
+    # (`project-layout.md` § 2.1).
+    #
+    # THIS DOOR OVERWRITES, and that is its purpose: it is the repair
+    # button for a launcher that is missing, stale or broken.  The save
+    # door is the one that writes only-when-absent; the two differ on
+    # purpose, not by accident.  What it writes is the portable form, and
+    # the next `prep` re-bakes this machine's preamble over it -- so the
+    # only window in which the preamble is absent is one that ends at the
+    # command you must run before submitting anyway.
     from molbuilder.runwrap import render_jobset_bootstrap
     launcher = dest / "jobset.sh"
     try:
@@ -1416,7 +1429,8 @@ def api_task_setup_launcher():
     except OSError as exc:
         return jsonify({"ok": False, "error": f"could not write: {exc}"}), 500
     return jsonify({"ok": True, "wrote": "jobset.sh",
-                    "generation": "bootstrap"})
+                    "note": "the portable form -- `prep` bakes this "
+                            "machine's preamble into it."})
 
 
 @bp.route("/api/task-setup/sweepable", methods=["GET"])

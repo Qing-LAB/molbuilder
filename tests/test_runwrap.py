@@ -645,8 +645,17 @@ def _emit_truncated_wrapper(tmp_path, basename, suffix=".fdf"):
     # Since U10 the bootstrap + state dump sit inside the help guard
     # (``if [ "$_mb_help" = "0" ]``); the cut must swallow its closing
     # ``fi`` or the truncated wrapper keeps an unopened one.
-    if text[cut_end:cut_end + 3] == "fi\n":
-        cut_end += 3
+    #
+    # Scan FORWARD to that ``fi`` instead of assuming it is the very next
+    # line.  It was the next line until 2026-08-21, when the post-activation
+    # env CHECK joined the log lines inside the same guard -- the cut then
+    # left a dangling ``fi`` and, worse, kept a pyscf-import check in a
+    # truncated wrapper whose whole point is to run without the env.  The
+    # helper's stated intent is "strip the guarded bootstrap block", so it
+    # should end where that block ends.
+    _fi = text.find("\nfi\n", cut_end - 1)
+    if _fi >= 0 and text[cut_end:_fi].count("\nif ") == text[cut_end:_fi].count("\nfi\n"):
+        cut_end = _fi + len("\nfi\n")
     # Plus the blank line that separates blocks.
     if text[cut_end:cut_end + 1] == "\n":
         cut_end += 1
