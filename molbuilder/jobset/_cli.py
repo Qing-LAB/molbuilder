@@ -392,10 +392,13 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
     HAPPENED (a launched attempt's ``run.json``, warm files at the root),
     ask before re-rendering over it (A3/U14, 2026-08-12).
 
-    ``bench_container`` widens the evidence to a sweep's launched trials
-    (A7, 2026-08-12): `prep bench` re-renders the very decks a QUEUED
-    trial's symlinks point at, and until A7 the ask ran for `prep run`
-    only, so that re-render was silent.
+    ``bench_container`` NARROWS the evidence to a sweep's launched trials
+    (A7, 2026-08-12; narrowed 2026-08-21, user: "bench always starts cold
+    -- there is no point of asking"): `prep bench` re-renders the very
+    decks a QUEUED trial's symlinks point at, so THAT is worth a
+    question -- while the run's launched attempts and the root's warm
+    files, which the run-side ask weighs, cannot be touched by
+    re-rendering relabelled cold trial decks and are not asked about.
 
     The default is YES and an unanswerable prompt PROCEEDS, saying so —
     the inverse of the verdict offer, deliberately: applying someone
@@ -412,7 +415,15 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
     from .materialize import RUN_LAUNCH_FILE, attempts, was_launched
     from .shape import Shape
     evidence = []
-    if task.stages and stage is not None:
+    # A BENCH prep weighs ONE kind of evidence only (user, 2026-08-21:
+    # "bench always starts cold -- there is no point of asking"): launched
+    # trials in this stage's container, whose decks a queued job may be
+    # reading mid-flight (A7).  The run's own attempts and the root's warm
+    # files are irrelevant to it -- trial decks are relabelled and forced
+    # cold, so re-rendering them cannot touch the run -- and asking about
+    # them made every bench re-prep beside a launched run a question with
+    # no stakes.
+    if bench_container is None and task.stages and stage is not None:
         from .prep import token_for
         try:
             token = token_for(task, stage)
@@ -440,10 +451,11 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
                 f"launched trial(s) in "
                 f"{Path(bench_container).relative_to(Path(base))}/: "
                 + ", ".join(launched))
-    from ..validation.identity import warm_files_present
-    warm = warm_files_present(base, task.label, task.engine)
-    if warm:
-        evidence.append("warm files at the root: " + ", ".join(warm))
+    if bench_container is None:
+        from ..validation.identity import warm_files_present
+        warm = warm_files_present(base, task.label, task.engine)
+        if warm:
+            evidence.append("warm files at the root: " + ", ".join(warm))
     if not evidence:
         return
     click.echo("this calculation is already under way here:")

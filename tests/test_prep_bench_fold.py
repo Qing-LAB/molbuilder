@@ -1425,6 +1425,44 @@ def test_a_declared_point_over_capability_is_refused_by_name(calc):
     assert "mpi_np=4096" in str(e.value) and "omp_threads=2" in str(e.value)
 
 
+def test_prep_bench_asks_only_about_launched_trials(calc):
+    """User, 2026-08-21: "bench always starts cold -- there is no point of
+    asking."  A bench prep weighs ONE kind of evidence: launched trials in
+    its own container (their decks may be read by a queued job, A7).  The
+    run's launched attempts and the root's warm files cannot be touched by
+    re-rendering relabelled cold trial decks -- so beside them the bench
+    re-prep asks NOTHING, while the run-side ask still weighs both."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.jobset.materialize import write_run_launch
+
+    js = _prep_bench(calc)
+    # a launched RUN attempt + a warm file at the root: run-side evidence
+    run_attempt = calc / "01_coarse" / "run-0"
+    run_attempt.mkdir(parents=True)
+    write_run_launch(run_attempt, mode="direct", command=["bash", "x"])
+    (calc / "JOB.DM").write_text("warm\n")
+
+    r = CliRunner().invoke(jobset_group,
+                           ["prep", "bench", "coarse", "--bundle", str(calc),
+                            "--np", "8", "--cpus-per-task", "8",
+                            "--no-sbatch"])
+    assert r.exit_code == 0, r.output
+    assert "already under way" not in r.output, \
+        "a bench prep beside a launched RUN must not ask"
+
+    # a launched TRIAL is the one evidence that still asks
+    first = js["jobs"][0]["name"]
+    write_run_launch(calc / "01_coarse" / "bench" / f"bench-{first}",
+                     mode="direct", command=["bash", "x"])
+    r = CliRunner().invoke(jobset_group,
+                           ["prep", "bench", "coarse", "--bundle", str(calc),
+                            "--np", "8", "--cpus-per-task", "8",
+                            "--no-sbatch"], input="y\n")
+    assert r.exit_code == 0, r.output
+    assert "already under way" in r.output and first in r.output
+
+
 def test_a_multi_point_value_entry_is_a_value_axis(calc):
     """§ 4.3a, BUILT 2026-08-21 (this test pinned the refusal while the
     extension was recorded-not-built): a non-machine entry with SEVERAL
