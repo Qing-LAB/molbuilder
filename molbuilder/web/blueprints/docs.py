@@ -51,18 +51,23 @@ def _resolve_doc(raw_path: str, root: Path) -> Path:
     """Resolve a ``docs/``-relative path to an absolute ``.md`` file inside
     ``root``, raising ``ValueError`` on any rejection.
 
-    Defence in depth (mirrors files._resolve_within_roots): reject a raw
-    ``..`` component, resolve symlinks/relatives, then confirm the resolved
-    path is still under ``root`` and is a real ``.md`` file.
+    Containment is `projects.contain` -- the SAME fence the file picker and
+    the `jobset` CLI use, just with a different root.  This said it
+    "mirrors files._resolve_within_roots" and implemented the rule a second
+    way (``os.path.commonpath`` against an unresolved root, where the other
+    compared resolved paths).  A security rule with two implementations is
+    a rule that can be true in one place and false in the other; the tree
+    it guards differs, the question does not.
+
+    What stays here is what is genuinely docs-specific: the answer must be
+    a real ``.md`` file.
     """
-    if not raw_path or ".." in raw_path.split("/"):
+    from molbuilder.projects import OutsideRoot, contain
+    if not raw_path:
         raise ValueError("invalid path")
-    resolved = (root / raw_path).resolve()
-    # Must stay inside docs/ (os.path.commonpath rejects escapes).
     try:
-        if os.path.commonpath([resolved, root]) != str(root):
-            raise ValueError("path escapes docs/")
-    except ValueError:
+        resolved = contain(root / raw_path, root)
+    except OutsideRoot:
         raise ValueError("path escapes docs/")
     if resolved.suffix.lower() != ".md" or not resolved.is_file():
         raise ValueError("not a docs .md file")

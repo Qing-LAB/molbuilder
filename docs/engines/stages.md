@@ -17,7 +17,7 @@ is resolved *from*, and the format every engine's parameters share;
 
 **Status: landed.** This document was written first and the code built to it,
 the way `web/spectrumchart.md` and `web/vibrationview.md` were: `task.json`
-and `jobset describe` shipped 2026-08-11 (plan step 2), and `prep`'s five
+and `jobset init` shipped 2026-08-11 (plan step 2), and `prep`'s five
 steps — the effective config resolved from the template ⊕ a stage's
 `overrides` and rendered per stage on the target — shipped 2026-08-12
 (step 4). *(This line read "proposed, not built — nothing in `SiestaConfig`
@@ -346,7 +346,7 @@ limited to.
 > `restart` says whether a stage starts from what the stage before it produced.
 > It is not a physics parameter, so it sits in `staging`; and because the table's
 > columns were being read off the `stage` group, it could not become a column at
-> all. A ladder built anywhere except `jobset describe --stage-strategy` therefore
+> all. A ladder built anywhere except `jobset init --stage-strategy` therefore
 > had no `restart` on any stage — which, while `clean` was the default, meant
 > every stage started clean and the stages were three unrelated runs. Nothing
 > said so; the refusal only arrived later, at `prep --from`, as *"this stage

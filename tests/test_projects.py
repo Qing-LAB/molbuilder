@@ -73,10 +73,33 @@ def test_validate_topic_still_validates_chars():
 # --------------------------------------------------------------------- #
 
 
-def test_projects_root_default_is_cwd_relative(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    assert projects_root() == tmp_path / PROJECTS_ROOT_NAME
+def test_projects_root_comes_from_the_one_door(tmp_path, monkeypatch):
+    """`projects_root` is the ONE door, and it is not the working
+    directory (user, 2026-08-22).
 
+    It used to return ``Path.cwd()/"projects"``, which made the tree a
+    property of where you happened to stand.  It now resolves in a
+    declared order -- ``base=``, ``$MOLBUILDER_PROJECTS``,
+    ``molbuilder.json``'s ``paths.projects``, then ``repo_root()/projects``
+    -- so one setting moves the tree for every surface at once.
+    """
+    from molbuilder.projects import PROJECTS_ROOT_ENV, projects_root
+    import molbuilder
+
+    # cwd does NOT decide it any more (this is the behaviour change).
+    elsewhere = tmp_path / "somewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.delenv(PROJECTS_ROOT_ENV, raising=False)
+    assert projects_root() != elsewhere / PROJECTS_ROOT_NAME
+    assert projects_root() == molbuilder.repo_root() / PROJECTS_ROOT_NAME
+
+    # the env override wins over the default
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "elsewhere-tree"))
+    assert projects_root() == tmp_path / "elsewhere-tree"
+
+    # an explicit base wins over everything
+    assert projects_root(base=tmp_path) == tmp_path / PROJECTS_ROOT_NAME
 
 def test_projects_root_with_explicit_base(tmp_path):
     assert projects_root(base=tmp_path) == tmp_path / PROJECTS_ROOT_NAME
@@ -245,3 +268,137 @@ def test_find_geom_candidates_alphabetical_when_not_newest_first(tmp_path):
     _touch_with_mtime(sd / "a_optimized.xyz", 200.0)
     found = find_geom_candidates(base=tmp_path, newest_first=False)
     assert [p.name for p in found] == ["a_optimized.xyz", "z_optimized.xyz"]
+
+
+class TestTheProjectsRootIsOneConfigurableDoor:
+    """`projects_root` is the ONE door every surface resolves the tree
+    through, and it is settable (user, 2026-08-22).
+
+    The reason it must be settable is deployment, not taste: the default
+    lives inside the checkout, and on a cluster that is often a quota'd
+    home directory, a read-only shared install, or simply not where the
+    data belongs.  Because every surface -- the sidebar backend, the
+    `jobset` verbs' `--bundle`, the workspace store, the pseudopotential
+    anchor -- goes through this function, one setting moves them all.
+    """
+
+    def _pj(self):
+        """No reload needed: `runtime_config` is stateless by contract --
+        it reads the file on every call.  (Reloading it also mints a NEW
+        RuntimeConfigError class, which then fails to match `pytest.raises`
+        against the one imported earlier -- a trap worth not re-setting.)"""
+        import molbuilder.projects as pj
+        return pj
+
+    def test_the_config_key_moves_the_tree(self, tmp_path, monkeypatch):
+        import json
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("MOLBUILDER_PROJECTS", raising=False)
+        (tmp_path / "molbuilder.json").write_text(
+            json.dumps({"paths": {"projects": str(tmp_path / "elsewhere")}}))
+        pj = self._pj()
+        assert pj.projects_root() == tmp_path / "elsewhere"
+
+    def test_a_relative_setting_is_read_from_the_molbuilder_root(
+            self, tmp_path, monkeypatch):
+        """So the setting means the same folder whatever directory you run
+        from -- the same rule `--bundle` and `psml_lib` follow."""
+        import json
+        import molbuilder
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("MOLBUILDER_PROJECTS", raising=False)
+        (tmp_path / "molbuilder.json").write_text(
+            json.dumps({"paths": {"projects": "shared-tree"}}))
+        pj = self._pj()
+        assert pj.projects_root() == molbuilder.repo_root() / "shared-tree"
+
+    def test_the_env_override_beats_the_config(self, tmp_path, monkeypatch):
+        import json
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "molbuilder.json").write_text(
+            json.dumps({"paths": {"projects": str(tmp_path / "from-config")}}))
+        monkeypatch.setenv("MOLBUILDER_PROJECTS", str(tmp_path / "from-env"))
+        pj = self._pj()
+        assert pj.projects_root() == tmp_path / "from-env"
+
+    def test_a_malformed_setting_is_refused_not_ignored(
+            self, tmp_path, monkeypatch):
+        """A config the user wrote and molbuilder silently ignored is the
+        worst of both.  A blanket `except Exception` did exactly that for
+        one revision."""
+        import json
+        import pytest as _pytest
+        from molbuilder.runtime_config import RuntimeConfigError
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("MOLBUILDER_PROJECTS", raising=False)
+        (tmp_path / "molbuilder.json").write_text(
+            json.dumps({"paths": {"porjects": "/typo"}}))
+        pj = self._pj()
+        with _pytest.raises(RuntimeConfigError) as e:
+            pj.projects_root()
+        assert "porjects" in str(e.value) and "projects" in str(e.value)
+
+
+class TestABundleIsNamedFromTheRootAndStaysInside:
+    """`--bundle` is uniform and fenced (`job-contracts.md` § 2.5b).
+
+    Uniform: a supplied path is read from the projects root, full stop --
+    no dotted escape hatch, because a calculation outside the tree is not a
+    calculation molbuilder manages.  Fenced: `..` and absolute paths are
+    resolved and then checked, so the rule cannot be spelled around.
+    """
+
+    def _tree(self, tmp_path, monkeypatch):
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        root = tmp_path / "projects"
+        (root / "P" / "optimization" / "Relax").mkdir(parents=True)
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
+        monkeypatch.chdir(tmp_path)          # deliberately OUTSIDE the tree
+        return root
+
+    def _bundle(self, args):
+        from click.testing import CliRunner
+        from molbuilder.jobset._cli import jobset_group
+        return CliRunner().invoke(jobset_group, ["status"] + args)
+
+    def test_a_path_is_read_from_the_projects_root(self, tmp_path, monkeypatch):
+        root = self._tree(tmp_path, monkeypatch)
+        res = self._bundle(["--bundle", "P/optimization/Relax"])
+        assert str(root / "P" / "optimization" / "Relax") in res.output
+
+    def test_a_leading_dot_is_not_an_escape_hatch(self, tmp_path, monkeypatch):
+        """`./x` means the same as `x` now -- one anchor, no exceptions."""
+        root = self._tree(tmp_path, monkeypatch)
+        res = self._bundle(["--bundle", "./P/optimization/Relax"])
+        assert str(root / "P" / "optimization" / "Relax") in res.output
+
+    def test_dot_dot_cannot_climb_out(self, tmp_path, monkeypatch):
+        """Refused on the RAW spelling, before resolution -- the shared
+        fence rejects `..` early so there is no "did they think it was
+        harmless?" ambiguity (`projects.contain`)."""
+        self._tree(tmp_path, monkeypatch)
+        res = self._bundle(["--bundle", "../escaped"])
+        assert res.exit_code == 2
+        assert "may not contain '..'" in res.output
+        assert "inside the projects tree" in res.output
+
+    def test_an_absolute_path_outside_is_refused(self, tmp_path, monkeypatch):
+        self._tree(tmp_path, monkeypatch)
+        res = self._bundle(["--bundle", "/etc"])
+        assert res.exit_code == 2
+        assert "inside the projects tree" in res.output
+
+    def test_an_absolute_path_inside_is_fine(self, tmp_path, monkeypatch):
+        """The fence is about leaving the tree, not about spelling."""
+        root = self._tree(tmp_path, monkeypatch)
+        res = self._bundle(["--bundle", str(root / "P")])
+        assert res.exit_code != 2, res.output
+
+    def test_omitting_it_outside_the_tree_says_so(self, tmp_path, monkeypatch):
+        """The default is the working directory -- which must itself be a
+        place in the tree, or it names no calculation."""
+        self._tree(tmp_path, monkeypatch)
+        res = self._bundle([])
+        assert res.exit_code == 2
+        assert "is not inside the projects tree" in res.output
+        assert "<project>/<topic>/<calculation>" in res.output

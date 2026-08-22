@@ -103,12 +103,12 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "the vibration kind's ONE-STAGE ladder (`stages.md` § 6.8, "
         "spectra-migration P1): a `freq` stage with no overrides, so a "
         "vibration description is an ordinary § 6.5 ladder rather than a "
-        "stage-less special shape.  `jobset describe` selects it by "
+        "stage-less special shape.  `jobset init` selects it by "
         "`--calculation vibration` and refuses --stage-strategy beside it "
         "-- the tiers are an optimization vocabulary"),
     "--stage-strategy": (
         2, "molbuilder/jobset/_cli.py",
-        "named presets over the *enable* flags, on `jobset describe` -- "
+        "named presets over the *enable* flags, on `jobset init` -- "
         "where the ladder is DESCRIBED rather than rendered, and for both "
         "engines through one option.  It was also on `molbuilder pyscf` "
         "until 2026-08-18; a command that writes ONE deck had no business "
@@ -363,7 +363,7 @@ JS_LEDGER: dict[str, tuple[int | None, str]] = {
 #: with it -- the single-shot tier overlay is no longer expressible from any
 #: surface (the presets remain as the ladder's defaults, applied by
 #: ``apply_siesta_stage`` at resolve time).  ``--stage-strategy`` moved to
-#: `jobset describe`, where the ladder is DESCRIBED rather than rendered.
+#: `jobset init`, where the ladder is DESCRIBED rather than rendered.
 #: SEVEN since step 6 u5 (2026-08-12): mechanisms 6 and 7 -- the
 #: produce-time renderer ``render_siesta_stage_fdfs`` and the producer
 #: ``stages_to_jobset`` -- are DELETED with the second lifecycle.  The deck

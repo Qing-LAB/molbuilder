@@ -119,7 +119,7 @@ shared API.
 > earlier: it wrote a **finished deck** straight from CLI flags, and
 > `fdf --jobset` wrote a whole flat bundle — both skipping the description that
 > makes a calculation reproducible. **Describing a calculation is
-> `molbuilder jobset describe`**, which writes the portable package — the
+> `molbuilder jobset init`**, which writes the portable package — the
 > template, `task.json`, the data files — and `prep` renders the deck from it on
 > the machine that will run it
 > ([`project-layout.md § 2.1`](?doc=execution/project-layout.md)).
@@ -205,7 +205,7 @@ the calculation ([`generator.md § 4.3a`](?doc=execution/generator.md)).
   derived from `SiestaConfig`/`PySCFConfig` field metadata, so a `choices=` field
   becomes a `click.Choice` that fails at parse time (exit 2) — the CLI and the web
   form expose the *same* options from one source. That is also what makes
-  `jobset describe` possible without a second flag list: the template it writes is
+  `jobset init` possible without a second flag list: the template it writes is
   generated from the same metadata ([`template.md § 5`](?doc=engines/template.md)).
 
 ## 4. Where the guards live (test map)

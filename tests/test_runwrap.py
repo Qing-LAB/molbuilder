@@ -1311,3 +1311,65 @@ class TestTheHeaderReadsTheProbedRecord:
         }))
         assert _render_sbatch_for(deck, resources=Resources(mpi_np=4),
                                   env=None) is None
+
+
+class TestTheBootstrapFailsFast:
+    """`running-a-job.md` § 2.0a: `<label>.run.sh` runs UNATTENDED on a
+    compute node, on an allocation.
+
+    `set -u` is disabled across the preamble + activation, because those
+    source external scripts that read unset variables.  **`set -e` is
+    not**, and the difference is the whole point: a preamble that fails
+    means the job is about to run in the wrong environment, with nobody
+    reading the output, spending the allocation anyway.
+
+    The instinct to make the preamble tolerant comes from interactive
+    shells, where a preamble that does not apply to the machine in front of
+    you should not stop you working.  This script has no such user.  The
+    rule is checked here because it is one line of shell away from being
+    "tidied" by someone applying that instinct in the wrong place.
+    """
+
+    def _bootstrap_span(self, tmp_path):
+        import json
+        from molbuilder.jobset.model import Resources
+        from molbuilder.runwrap import render_run_wrapper
+        (tmp_path / ".molbuilder.json").write_text(json.dumps(
+            {"script_generation": {"preamble": "module load mamba",
+                                   "activation": "source activate"}}))
+        (tmp_path / "job.fdf").write_text("SystemLabel job\n")
+        text = render_run_wrapper(tmp_path / "job.fdf",
+                                  resources=Resources(mpi_np=4),
+                                  env="molbuilder-siesta")
+        lines = text.splitlines()
+        start = next(i for i, l in enumerate(lines) if l.strip() == "set +u")
+        end = next(i for i, l in enumerate(lines)
+                   if i > start and l.strip() == "set -u")
+        return text, lines[start:end + 1]
+
+    def test_errexit_is_not_disabled_across_the_bootstrap(self, tmp_path):
+        text, span = self._bootstrap_span(tmp_path)
+        offenders = [l for l in span
+                     if l.strip() in ("set +e", "set +eu", "set +ue")
+                     or l.strip().startswith("set +e ")]
+        assert not offenders, (
+            "errexit was disabled across the preamble/activation.  On a "
+            "compute node a failed preamble must kill the job, not let it "
+            "run in the wrong environment (running-a-job.md 2.0a):\n  "
+            + "\n  ".join(offenders))
+        # ...and the span really is the bootstrap, not an empty window.
+        assert any("Baked preamble" in l for l in span), \
+            "the span checked is not the preamble+activation bootstrap"
+
+    def test_the_rule_travels_in_the_script_itself(self, tmp_path):
+        """A reader editing the generated file sees the reason there, not
+        only in the generator."""
+        text, _ = self._bootstrap_span(tmp_path)
+        assert "`set -e` IS NOT DISABLED HERE" in text
+        assert "running-a-job.md 2.0a" in text
+
+    def test_nounset_is_disabled_and_restored(self, tmp_path):
+        """The other half: activate.d hooks read unset variables, so -u is
+        off for the bootstrap and ON again immediately after."""
+        text, span = self._bootstrap_span(tmp_path)
+        assert span[0].strip() == "set +u" and span[-1].strip() == "set -u"

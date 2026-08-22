@@ -1340,24 +1340,6 @@ def api_task_setup_save():
     except OSError as exc:
         return jsonify({"ok": False, "error": f"could not write: {exc}"}), 500
 
-    # THE LAUNCHER RIDES THE DESCRIPTION (user, 2026-08-21): the first
-    # command this folder needs is `prep`, and that is exactly the one a
-    # fresh bundle cannot run -- the module lives in the checkout, the
-    # verbs' defaults mean this directory, and the machine-baked
-    # jobset.sh is written BY prep.  So the save door ships the
-    # BOOTSTRAP generation: nothing baked, self-activating from a bare
-    # shell (runwrap.render_jobset_bootstrap's contract).  Written only
-    # when absent -- a prep-baked launcher must never be downgraded by a
-    # re-save.
-    launcher = dest / "jobset.sh"
-    if not launcher.exists():
-        try:
-            from molbuilder.runwrap import render_jobset_bootstrap
-            launcher.write_text(render_jobset_bootstrap(), encoding="utf-8")
-            launcher.chmod(0o755)
-        except OSError:
-            pass    # the description saved; the launcher is a convenience
-
     # The hand-over's REMOVAL is the browser's, through
     # `projects.deleteEntry` -- moving bytes is the content-blind layer's job
     # (`projects.md` § 1), and unlinking here would bypass its guard and the
@@ -1373,64 +1355,6 @@ def api_task_setup_save():
         # what the CLI would have echoed.
         "findings":      _issues_to_json(_pf),
     })
-
-
-@bp.route("/api/task-setup/launcher", methods=["POST"])
-def api_task_setup_launcher():
-    """(Re)write the PORTABLE ``jobset.sh`` into a described folder.
-
-    The save door ships it automatically for NEW descriptions; this door
-    exists for the folders that predate that (and for a bundle carried
-    to another machine, where a prep-baked launcher describes the wrong
-    machine and the bootstrap is the correct downgrade).  An explicit
-    user action, so it OVERWRITES -- the next `prep` re-bakes on top,
-    exactly as always (workflow.md § 6.1's two generations).
-
-    Body: ``{"dest": "<folder>"}``.  Refuses a folder that is not a
-    described calculation (no task.json and no task.1st.json): a
-    launcher belongs beside a description, not scattered.
-    """
-    body = request.get_json(silent=True) or {}
-    dest_raw = str(body.get("dest") or "")
-    if not dest_raw:
-        return jsonify({"ok": False, "error": "no destination folder given"}), 400
-    try:
-        dest = _resolve_within_roots(dest_raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
-    if not dest.is_dir():
-        return jsonify({"ok": False, "error": f"not a directory: {dest_raw}"}), 400
-    from molbuilder.task import FILENAME as _TASKF
-    if not ((dest / _TASKF).is_file()
-            or (dest / TASK_HANDOVER_NAME).is_file()):
-        return jsonify({
-            "ok": False,
-            "error": "this folder holds no description (no task.json / "
-                     "task.1st.json) -- the launcher belongs beside one.",
-        }), 400
-    # THE BROWSER WRITES THE PORTABLE FORM, and only that.  `prep` runs on
-    # the target machine and bakes what only that machine knows (the
-    # preamble that puts a package manager on PATH); this side must not,
-    # because the browser writes nothing that names a machine
-    # (`project-layout.md` § 2.1).
-    #
-    # THIS DOOR OVERWRITES, and that is its purpose: it is the repair
-    # button for a launcher that is missing, stale or broken.  The save
-    # door is the one that writes only-when-absent; the two differ on
-    # purpose, not by accident.  What it writes is the portable form, and
-    # the next `prep` re-bakes this machine's preamble over it -- so the
-    # only window in which the preamble is absent is one that ends at the
-    # command you must run before submitting anyway.
-    from molbuilder.runwrap import render_jobset_bootstrap
-    launcher = dest / "jobset.sh"
-    try:
-        launcher.write_text(render_jobset_bootstrap(), encoding="utf-8")
-        launcher.chmod(0o755)
-    except OSError as exc:
-        return jsonify({"ok": False, "error": f"could not write: {exc}"}), 500
-    return jsonify({"ok": True, "wrote": "jobset.sh",
-                    "note": "the portable form -- `prep` bakes this "
-                            "machine's preamble into it."})
 
 
 @bp.route("/api/task-setup/sweepable", methods=["GET"])
@@ -1507,7 +1431,7 @@ def api_task_setup_columns():
     for the second cost the table its most important column: `restart`, the
     field that decides whether a ladder is a ladder, sits in `staging` and so
     could never be added.  Every ladder built anywhere but
-    `jobset describe --stage-strategy` therefore ran every stage `clean`.
+    `jobset init --stage-strategy` therefore ran every stage `clean`.
 
     `group` rides along because it is still the right answer to a different
     question — which columns the table STARTS with (§ 1.3).

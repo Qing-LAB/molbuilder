@@ -479,7 +479,7 @@ def create_app(*, config=None) -> Flask:
         # -- stages, and the machine settings you either chose or asked to
         # have measured -- with `task.json` in the vendored CodeMirror.
         # Reads AND writes: Save posts /api/task-setup/save (gate ③ runs
-    # there), and the launcher door writes jobset.sh.
+    # there).
         # The contract is docs/web/task-setup.md.
         return render_template("task_setup.html")
 

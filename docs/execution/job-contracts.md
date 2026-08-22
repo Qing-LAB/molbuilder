@@ -402,6 +402,26 @@ projects/
                               project-layout.md § 1 — flat or hierarchical
 ```
 
+> **`projects/` lives INSIDE the checkout, and that is load-bearing.**
+> `.gitignore` carries `projects/*`, so the tree is a git-ignored directory
+> *of the repository*, not an arbitrary location a user picks. Two
+> consequences follow, and the second is why this is stated here rather than
+> left as folklore:
+>
+> * walking up from any calculation to the directory named `projects` finds
+>   the tree — this is `find_projects_root` and the anchor rule in § 2.5a;
+> * **its parent is the molbuilder checkout.** So the same single walk that
+>   locates the tree also locates the package, which means a calculation can
+>   work out where molbuilder is *without being told* — no install into the
+>   environment, no baked path, no `$MOLBUILDER_ROOT`.
+>
+> That second point is what makes a bundle portable to a machine where you
+> may not be permitted to install anything, which is the normal condition on
+> a cluster (user, 2026-08-22). A deployment that puts `projects/` somewhere
+> else keeps the first consequence and loses the second; the launcher
+> therefore still accepts `$MOLBUILDER_ROOT` as an override, and that is the
+> only thing that override is for.
+
 **The three levels above are organisational only.** What is *inside* the
 innermost one is not this section's to say: it is
 [`project-layout.md`](?doc=execution/project-layout.md) § 1, and it has **two
@@ -482,6 +502,93 @@ server's own declared root rather than an accident of where a user stood.
 > the flow the rule was bent around had already gone. The dotted spelling
 > stands on its own: *"from here"* is a thing a person means when they type it,
 > whether or not any button writes it.
+
+#### 2.5b Naming a calculation: from the root, and inside it
+
+§ 2.5a is about a path that points at **data** — a pseudopotential library
+may legitimately live anywhere, so its spellings can leave the tree. A path
+that points at a **calculation** is a different question, and it gets a
+different answer (user, 2026-08-22):
+
+| `--bundle` | means |
+|---|---|
+| omitted | the working directory |
+| anything else | read from the **projects root**, uniformly — `<project>/<topic>/<calculation>` |
+
+**And either way it must be inside the projects root.** `..` segments and
+absolute paths are resolved and then checked, so no spelling reaches out of
+the tree. A calculation outside the tree is not a calculation molbuilder
+manages.
+
+**One fence, not two.** The check is `projects.contain`, and the sidebar
+backend's `_resolve_within_roots` calls the same function — it keeps only
+what is genuinely its own (several allowed roots, first match wins, an
+HTTP-shaped refusal naming them all). The rules that must not vary between
+the two — refuse `..` on the raw spelling, expand `~` but never variables
+(a 2026-06-14 disclosure fix), resolve **both** sides before comparing —
+live in the primitive with their reasons attached. Two doors onto one tree
+that disagreed about what is reachable would be one door too many.
+
+The consequence worth stating: **you no longer have to stand in a
+calculation to act on it.** `jobset launch bench coarse --bundle
+Au-BDT-Au/optimization/Relax` works from anywhere, which is what lets the
+CLI be run from wherever molbuilder happens to be importable rather than
+from the job directory.
+
+*(An earlier cut gave `--bundle` § 2.5a's dotted escape hatch, borrowing
+`psml_lib`'s rule. That was the wrong borrowing: same shape of string,
+different kind of thing.)*
+
+##### Two kinds of citation, and only one starts at the root
+
+A verb is handed two different sorts of path, and reading them as one rule
+is the mistake to avoid:
+
+| | what it addresses | measured from | example |
+|---|---|---|---|
+| **tree address** | a thing that lives in the tree — a calculation, a project, a structure file | the **projects root** | `--bundle Au-BDT-Au/optimization/Relax` |
+| **inside-bundle address** | a part of one calculation — a stage, an attempt, a warm file | the **bundle** | `--from 01_coarse/run-0` |
+
+**The second is not an oversight, and must not be "fixed" to match the
+first.** A calculation is self-contained and travels: copy the folder to a
+cluster and `01_coarse/run-0` still names the same attempt, while a path
+from the projects root would name a tree that may not exist there. The
+rule is therefore *what is the thing being addressed*, not *what shape is
+the string*.
+
+##### Where each verb stands today
+
+| verb | takes | citation |
+|---|---|---|
+| `init`, `plan`, `prep`, `launch`, `status`, `summarize` | `--bundle` | **tree address**, fenced to the root |
+| `init` | `--structure` | **tree address** — a structure lives in `<project>/structure/` |
+| `prep` | `--from STAGE/run-N` | inside-bundle |
+| `init` | `--psml-lib` | § 2.5a's rule — a data library may leave the tree |
+| `probe` | `--out` | a machine record, not tree content |
+
+**Every verb names a calculation the same way, through one declaration.**
+`--bundle` is a single `click.option` shared by all six; the rule, the
+fence and the refusal text exist once. `init` differs from the other five
+in exactly one respect — its bundle **may not exist yet**, because it is
+the verb that creates one — and that is a parameter of the shared option,
+not a second option with its own semantics.
+
+> **`init` was called `describe` until 2026-08-22.** Two things were wrong
+> with the old form. The name: it is the only verb that was named after its
+> output rather than its action, which is why a verb that creates a whole
+> calculation read like one that prints a summary — `prep` does not write
+> "a prep", `launch` does not write "a launch". And the addressing: it took
+> two bare `click.Path` positionals read from the working directory, so it
+> could create a calculation **outside** the tree that every other verb
+> then refused to act on — a state reachable by following the tool's own
+> help.
+>
+> The artifact keeps its name. What `init` writes is still **the
+> description**, floor 2 is still the description floor, and
+> `write_description` is still what writes it. A verb names an action; an
+> artifact keeps its own noun.
+
+
 
 > ⚠ **Do not write the `projects/` prefix.** `projects/pseudopotential` is a
 > bare spelling that *starts with the tree's own name*, so walking up to the
@@ -1483,7 +1590,6 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Machine record | `environment.json` — the calculation's, a **named target**, then this machine's; first found wins ([`configuration.md`](?doc=configuration.md) § 5 M-3) | `molbuilder/environment@2` | `environment.py`, and only `environment.py` — the door is § 5 M-4's table | `scheduler`, `topology`, `site`, `domains` — **what the target machine is**, in one shape whether it is a cluster or a workstation |
 | ~~Benchmark manifest~~ | ~~`bench-manifest.json`~~ | ~~`molbuilder/bench-manifest@2`~~ | *(retired — no writer, no reader; note below)* | ~~`points.{cpu,gpu}`~~ |
 | Benchmark result | `<seq>_<stage>/bench/bench-result.json` — in the stage's container (§ 6.3) | `molbuilder/bench-result@1` | `bench/result.py` | `points`, `choice`, `recommend` |
-| Jobset launcher | `jobset.sh` — at the bundle root, regenerated by every prep (user, 2026-08-20): bakes this machine's repo path + env and runs `python -m molbuilder jobset "$@"` with the bundle as cwd, so every verb works from inside the calculation with no molbuilder installed (`workflow.md` § 6.1) | *(bash)* | `runwrap.render_jobset_launcher` (written by `jobset/prep.py`) | the baked `_REPO` + activation lines |
 | Bench group | `<seq>_<stage>/bench/bench-group.run.sh` + `bench-group.log` — the grouped submission's sequencer and its log (user, 2026-08-20): regenerated at each `submit bench --mode submit` from the trials still unlaunched, runs each under its per-trial time bound from the container (the parent that sees every trial), and exits nonzero when any trial failed so `squeue` prompts a look at the log. **One group per side AND resource shelf** (`generator.md` § 4.3a, 2026-08-21): qualifiers appear only when needed — `bench-group`, `-cpu`/`-gpu` when the sweep spans both sides, a shelf token when a side spans several exact resource asks (`-g2n32c1` = 2 GPUs, 32 ranks, 1 core per rank) — same files per group, each an exact-fit allocation so nothing idles inside it | *(bash + text)* | `jobset/submit.py` | one `run_trial` line per pending trial |
 | Run proposal | `<seq>_<stage>/bench/run-config.toml` — beside the record it is built from; **the user's editable half**: `summarize bench` writes it from the winner, `prep run <stage>` applies it to unstated allocation fields, deleting it declines the verdict (`project-layout.md` § 2.3.3) | `molbuilder/run-config@1` | `jobset/summarize.py` | `[resources]`, `[pins]` |
 | Job-set plan | `job-set.json` at the root — the RUN plan, **merged per stage, never overwritten**; a sweep's own record is `<seq>_<stage>/bench/job-set.json` (§ 6.3) | `molbuilder/job-set@1` | `jobset/model.py` | `name`, `engine`, `kind`, `shared`, `jobs[]` |

@@ -52,6 +52,28 @@ def checkpoint_config(tmp_path, monkeypatch):
     return _set
 
 
+@pytest.fixture
+def isolated_projects_root(tmp_path, monkeypatch):
+    """Point the ONE door at a per-test tree — **opt in, not autouse**.
+
+    ``projects_root`` resolves from the molbuilder root now, not the
+    working directory (2026-08-22), so the default a test sees is the
+    developer's REAL tree — which is exactly what the web-route tests that
+    build ``projects/_t_handover`` have always used, and what cwd-anchoring
+    gave them when they ran from the repo root.
+
+    A blanket autouse override broke 13 of those: they construct a tree and
+    then ask a route to serve it, and the route's root guard was pointed
+    somewhere else entirely.  So isolation is requested by the tests that
+    build their own tmp tree, and everything else keeps the real default.
+    """
+    from molbuilder.projects import PROJECTS_ROOT_ENV, PROJECTS_ROOT_NAME
+    root = tmp_path / PROJECTS_ROOT_NAME
+    root.mkdir(exist_ok=True)
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
+    return root
+
+
 @pytest.fixture(autouse=True)
 def _reset_diagnostics_singleton():
     """Every test starts AND ends with no bound Capabilities snapshot.

@@ -522,6 +522,39 @@ def _read_admin(raw: Mapping[str, Any]):
 #: dropped looks effective while nobody applied it.  ``provenance_safe``
 #: gates `config_provenance`: True only where every value is printable
 #: in logs (no secrets, no paths to secrets).
+def _read_paths(raw: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """``paths`` — where molbuilder keeps things that are not its own code.
+
+    One key today: ``projects``, the tree of projects.  It exists because
+    the default (inside the checkout) is not always writable or wanted --
+    a cluster home with a small quota, a scratch filesystem, a shared tree
+    (user, 2026-08-22).  Everything that touches the tree goes through
+    ``projects.projects_root``, so setting it here moves the tree for every
+    surface at once: the sidebar, the CLI verbs, the workspace store, the
+    pseudopotential anchor.
+
+    A relative value is resolved against the molbuilder root, so the
+    setting means the same thing whatever directory you run from.
+    """
+    if "paths" not in raw:
+        return None
+    section = _require_object_section(raw, "paths")
+    if section is None:
+        return None
+    unknown = set(section) - {"projects"}
+    if unknown:
+        raise RuntimeConfigError(
+            f"molbuilder.json: unknown key(s) in `paths`: "
+            f"{', '.join(sorted(unknown))}.  The only key is `projects` "
+            f"(architecture.md § 8.2).")
+    val = section.get("projects")
+    if val is not None and not isinstance(val, str):
+        raise RuntimeConfigError(
+            f"molbuilder.json: paths.projects must be a string path; "
+            f"got {type(val).__name__}.")
+    return section
+
+
 _SECTIONS: Dict[str, Dict[str, Any]] = {
     "tls":               {"read": _read_tls,
                           "scopes": ("machine",), "provenance_safe": False},
@@ -554,6 +587,8 @@ _SECTIONS: Dict[str, Dict[str, Any]] = {
     "rate_limit":        {"read": lambda raw: _require_object_section(
                               raw, "rate_limit"),
                           "scopes": ("machine",), "provenance_safe": False},
+    "paths":             {"read": _read_paths,
+                          "scopes": ("machine",), "provenance_safe": True},
 }
 
 #: Top-level keys that are NOT section names but are still known: the
@@ -1553,6 +1588,15 @@ def _declared_routing(project_dir: Optional[Path] = None) -> List[Dict[str, Any]
             # not writing one.  A reader owns only the keys it checks.
             out = [dict(r) for r in rows if isinstance(r, Mapping)]
     return out
+
+
+def get_paths() -> Dict[str, Any]:
+    """The effective ``paths`` block, or ``{}``.  See :func:`_read_paths`."""
+    raw = _read_server_wide()
+    try:
+        return dict(_read_paths(raw) or {})
+    except RuntimeConfigError:
+        raise
 
 
 def get_scheduler(

@@ -569,7 +569,7 @@ async function loadFolder(projects, dir) {
         setState("empty", "No description here yet",
                  "This folder carries no task.json and no hand-over. Send "
                  + "parameters here from the Structure-optimization tab, or "
-                 + "run `molbuilder jobset describe`.");
+                 + "run `molbuilder jobset init`.");
         $("ts-stages-card").hidden = true;
         $("ts-machine-card").hidden = true;
         await setEditorText("");
@@ -1092,6 +1092,29 @@ function renderNext(task) {
     // writes bench-result.json (the record) AND run-config.toml (the
     // editable proposal); `prep run` then applies what the accepted
     // proposal says -- template < declaration < run-config < flags.
+    /* `--bundle <path from the projects root>` for every command this
+     * tab teaches.  Naming the bundle is what lets the line be pasted
+     * from anywhere; the sidebar already knows the folder, so the user
+     * never types it.
+     *
+     * Built from what already exists -- the sidebar's `getCurrentDir` +
+     * `getProjectsRoot`, and `path.relativeFromDir` to subtract one from
+     * the other.  That last one had had NO caller since `d1c8a871` took
+     * deck-rendering out of the browser; this is the job it was written
+     * for.  Empty when the folder is not under the tree, where the verb's
+     * own refusal says more than a truncated command could. */
+    function _bundleArg() {
+        const mb = window.molbuilder || {};
+        const proj = mb.projects, pathUtil = mb.path;
+        if (!proj || !pathUtil || !pathUtil.relativeFromDir) return "";
+        const dir  = proj.getCurrentDir && proj.getCurrentDir();
+        const root = proj.getProjectsRoot && proj.getProjectsRoot();
+        if (!dir || !root) return "";
+        const rel = pathUtil.relativeFromDir(dir, root);
+        if (!rel || rel === "." || rel.indexOf("..") === 0) return "";
+        return " --bundle " + rel;
+    }
+
     const benchKeys = Object.keys((task && task.bench) || {});
     if (benchKeys.length) {
         const bs = enabled[0].st.name || "";
@@ -1099,10 +1122,10 @@ function renderNext(task) {
             el("div", { class: "ts-next-stage" },
                "bench first \u2014 " + benchKeys.join(", ")),
             el("pre", { class: "ts-cmd" },
-               "./jobset.sh prep bench " + bs + "\n"
-               + "./jobset.sh launch bench " + bs
+               "molbuilder jobset prep bench " + bs + _bundleArg() + "\n"
+               + "molbuilder jobset launch bench " + bs + _bundleArg()
                + "      # one job per resource shelf; wait for the queue\n"
-               + "./jobset.sh summarize bench " + bs
+               + "molbuilder jobset summarize bench " + bs + _bundleArg()
                + "   # writes bench-result.json + run-config.toml\n"
                + "# read run-config.toml \u2014 the editable proposal; "
                + "accept or edit it,\n"
@@ -1126,49 +1149,13 @@ function renderNext(task) {
             el("div", { class: "ts-next-stage" }, name,
                (runs ? el("span", { class: "ts-ran" }, runs + "\u00d7 run") : null)),
             el("pre", { class: "ts-cmd" },
-               // The bootstrap launcher rides the description (the save
-               // door writes jobset.sh), so the command the tab teaches
-               // is the one that works in a bare shell on any machine.
-               "./jobset.sh prep run " + name + from + "\n"
-               + "./jobset.sh launch run " + name)));
+               // The bundle is NAMED, from the projects root, so the line
+               // works from wherever the user is standing
+               // (job-contracts.md 2.5b).
+               "molbuilder jobset prep run " + name + from + _bundleArg() + "\n"
+               + "molbuilder jobset launch run " + name + _bundleArg())));
     });
 
-    // (Re)write the launcher -- for folders described before the save
-    // door shipped it, and for bundles carried to another machine where
-    // a prep-baked launcher names the wrong machine.  Explicit action:
-    // overwrites; the next prep re-bakes on top (workflow.md § 6.1).
-    const btn = el("button", { type: "button", class: "ts-launcher-btn",
-                               title: "Write the portable jobset.sh into "
-                                    + "this folder (prep re-bakes it for "
-                                    + "the machine on the next prep)." },
-                   "(Re)write jobset.sh");
-    const say = el("span", { class: "status" }, "");
-    btn.addEventListener("click", async () => {
-        const proj = (window.molbuilder || {}).projects;
-        const dir = proj && proj.getCurrentDir && proj.getCurrentDir();
-        if (!dir) { say.textContent = "pick the folder first"; return; }
-        say.textContent = "writing\u2026";
-        try {
-            const r = await fetch("/api/task-setup/launcher", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ dest: dir }),
-            }).then((x) => x.json());
-            say.textContent = r.ok
-                ? "wrote jobset.sh (portable) \u2014 ./jobset.sh <verb> works here now"
-                : (r.error || "failed");
-            /* The write bypassed the file layer (the server owns the
-             * launcher's bytes), so re-list the folder ourselves or the
-             * new file stays invisible in the sidebar and the file
-             * list until the user re-selects. */
-            if (r.ok && typeof proj.refresh === "function") {
-                proj.refresh();
-            }
-        } catch (e) {
-            say.textContent = "could not reach the server";
-        }
-    });
-    host.appendChild(el("div", { class: "ts-launcher-row" }, btn, say));
     card.hidden = false;
 }
 

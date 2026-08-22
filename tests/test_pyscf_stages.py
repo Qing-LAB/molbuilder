@@ -178,7 +178,7 @@ def test_every_varied_field_is_a_catalogue_item_with_a_bound(key):
 def test_every_shipped_tier_value_is_inside_its_items_bound(tier):
     """The shipped ladder must pass the check every user ladder passes.
     A default outside its own declared bound would be refused by
-    `jobset describe` -- of the ladder molbuilder itself ships."""
+    `jobset init` -- of the ladder molbuilder itself ships."""
     for key, value in PYSCF_STAGE_PRESETS[tier].items():
         lo, hi = _catalogue_item(key).range
         assert lo <= value <= hi, f"{key}={value} outside [{lo}, {hi}]"
@@ -216,7 +216,7 @@ def test_strategy_preset_changes_only_the_enable_flags():
 def test_strategy_preset_rejects_unknown_name():
     """It REFUSES rather than falling back.  A silent fallback answers a
     question nobody asked: a misspelled strategy would run a ladder the
-    caller did not name, and `jobset describe --stage-strategy` is the one
+    caller did not name, and `jobset init --stage-strategy` is the one
     door a ladder is authored through."""
     with pytest.raises(ValueError, match="unknown PySCF stage strategy"):
         default_pyscf_stages("no-such-preset")

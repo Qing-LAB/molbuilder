@@ -30,62 +30,32 @@ same-day regressions of in-flight work, fixable on sight.
    `pseudopotential/` at its top — copy your `.psml` set to
    `~/molbuilder/projects/pseudopotential/` (Relax needs H, C, S, Au),
    or set `psml_lib` to an absolute path.
-5. Then: `./jobset.sh prep bench coarse` → `submit bench coarse` (one
-   exact-fit job per resource shelf, biggest first) → `summarize bench
-   coarse` any time, mid-flight included.
+5. Then, from anywhere (the verb takes the bundle):
+   `molbuilder jobset prep bench coarse --bundle Au-BDT-Au/optimization/Relax`
+   → `... launch bench coarse --bundle ... --mode submit` (one exact-fit
+   job per resource shelf, biggest first) → `... summarize bench coarse
+   --bundle ...` any time, mid-flight included.  From inside the folder,
+   drop `--bundle`.
 
 ---
 
 ## OPEN — in priority order
 
-*(Re-consolidated 2026-08-21 on the user's ruling: the path framework
-comes first.  Transport locks none of the rest.  Everything below is
-independent of transport unless its own line says otherwise.)*
+*(Re-consolidated 2026-08-22 after the directory/verb design round.
+Transport locks none of this.  Everything below is independent of
+transport unless its own line says otherwise.)*
 
-### ~~O1~~ · file and directory knowledge — **DELIVERED** *(a691fce1)*
-The rule is now a contract: `architecture.md` § 7 **A10** (an anchor is
-declared, never discovered) and **A11** (one home per root, and per name
-molbuilder writes), with the spelling table in `job-contracts.md`
-§ 2.5a and the `psml_lib` restatement in `project-layout.md` § 2.6.
+### O1 · orphan letter-citations to an archived plan *(small, mechanical)*
+Roughly eight code comments cite `(A3…A8, 2026-08-12)` from the
+2026-08-12 staged-runs plan, while `architecture.md` § 7 now runs A1–A11
+with different meanings — `prep.py:67`'s "(A8)" is error translation, the
+live A8 is "an object travels whole". The dates disambiguate for a
+careful reader, which is the only reason this is recorded rather than
+swept. The three that collided with letters created in the path round —
+two in `prep.py` / `plan.py`, one in `engines/siesta.md` — are already
+de-referenced.
 
-The sweep found **five** resolvers, not the one that broke: `describe.py`
-and `siesta/input.py` each carried a bare `Path(...).expanduser()`, making
-every relative spelling working-directory-relative. All five now share one
-rule and one explainer, so a refusal cannot describe the rule differently
-from the code that applied it. `repo_root()` replaced five parent-chain
-climbs, `find_projects_root` homed tree discovery in `projects.py`,
-`job-set.json` collapsed to one spelling, and the hint texts stopped
-teaching the `projects/` prefix that cannot work.
-
-**One behaviour change worth knowing:** a bare name now means the tree
-*even when a same-named folder sits beside the calculation*. Under the old
-cascade the local folder won if it happened to exist — the property A10
-removes. `./name` is how you mean the local one; both refusals say so.
-
-### O2 · two leftovers the A10 verification turned up *(small, recorded not fixed)*
-Both found while checking that the UI and the catalogue really carry the
-new rule (they do — verified through `/api/build/schema/siesta`, which
-serves the field's help from the dataclass, mirrored to the catalogue
-and pinned equal by `test_catalogue_agreement`).
-
-- **`static/lib/path-utils.js::relativeFromDir` has no caller.** It
-  wrote the `../../../pseudopotential` spelling for the browser's
-  old Save-to-disk flow; that caller went with `d1c8a871`, the
-  migration that took deck-rendering out of the browser. `basename`
-  in the same file has four live callers, so the file stays — the
-  one function is the question. *(Its absence also retired a claim:
-  the old resolver justified its first cascade stage as "the form
-  Save persists". Corrected in `job-contracts.md` § 2.5a.)*
-- **Orphan letter-citations to an archived plan.** Roughly eight code
-  comments cite `(A3…A8, 2026-08-12)` from the 2026-08-12 staged-runs
-  plan, and `architecture.md` § 7 now runs A1–A11 with different
-  meanings — `prep.py:67`'s "(A8)" is error translation, the live A8 is
-  "an object travels whole". The dates disambiguate for a careful
-  reader, which is why this is recorded rather than swept. The three
-  that collided with letters this round created — two in `prep.py` /
-  `plan.py`, one in `engines/siesta.md` — are already de-referenced.
-
-### O3 · retire SpectraConfig — a re-homing, not a delete *(spectrum work; unblocked)*
+### O2 · retire SpectraConfig — a re-homing, not a delete *(spectrum work; unblocked)*
 No production constructor; the runtime object is the `_LiftView` over
 PySCFConfig.  The class survives only as the VOCABULARY carrier for
 three readers — the vibration kind's science duck-types its field
@@ -96,18 +66,18 @@ its registry row and the "all four engines registered" pin (a one-line
 test edit; nothing of transport's changes).  *(An earlier note claimed
 a transport lock; that was wrong and is corrected here.)*
 
-### O4 · extract the auto-detect panel for the two describing tabs *(unblocked)*
+### O3 · extract the auto-detect panel for the two describing tabs *(unblocked)*
 Structure-optimization and Spectrum carry near-verbatim copies of the
 auto-detect panel; extract the shared module with those two as its
 callers now.  Transport's third copy joins in transport's own round —
 a shared module with one recorded hold-out beats three copies drifting.
 
-### O5 · one home for the relax retry loop *(spectrum work; small)*
+### O4 · one home for the relax retry loop *(spectrum work; small)*
 The optimization deck's retry budget and the vibration relax block's
 `continue` arm spell the same loop twice; an emitted helper both
 compose ends it.  Sized during the close as structural-but-small.
 
-### O6 · residue the close did not reach *(sweep-scale, low risk)*
+### O5 · residue the close did not reach *(sweep-scale, low risk)*
 The unenumerated leftovers: C-jobset's remaining stage-less residue
 branches + the duplicated read-API comment + two submit.py residues;
 T2/T3 stale test-module docstrings; R2-9's last present-tense pre-fold
@@ -157,6 +127,8 @@ saved panel state on those tabs.
 | U6 the close: 4 readers, ~80 verified findings, workspace-store isolation | 615dbbc7 |
 | span-cut restore (four innocents + `elx`) · e2e census: 2 stale suites retired, the Send witness added | 79148338 · 78bb0941 |
 | the path framework: A10 · A11, contract first, five resolvers folded into one | a691fce1 |
+| jobset.sh deleted · env verified in the wrappers · scheduler header from the probed record · `submit`→`launch` | ac04b06a · 47e5958b · ba0ecc00 · 0f489861 · 127e8e57 |
+| the directory/verb design: one projects-root door · `--bundle` uniform + fenced · one containment fence (8 copies → 1) · `describe`→`init` · the `.run.sh` environment contract | *(this commit)* |
 
 **Verified 2026-08-21:** e2e 90/90 · none2e 6974 ran, 4 FAIL — all four
 stale-in-sweep (the retired-paths lookbehind + the presets drift-guard

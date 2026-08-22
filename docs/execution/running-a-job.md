@@ -76,6 +76,41 @@ collaborator, and have it run identically.
 > and completed a real SIESTA run. The one assumption is the package manager
 > `prep` found ([`workflow.md § 6.1`](?doc=workflow.md)).
 
+### 2.0a Where it runs, and what that decides
+
+Every rule in this section follows from one fact: **`<label>.run.sh` runs
+unattended, in a shell that inherits nothing.** Under a scheduler it is
+started by `sbatch` on a **compute node** — a different machine from the one
+you submitted from, in a **non-interactive** shell that reads no rc files, so
+no module is loaded and no environment is active. Under `--mode direct` it is
+started by `bash` locally, with the same emptiness. Nobody is watching either
+way.
+
+What follows, and is checked in the rendered script:
+
+| the situation demands | the wrapper does |
+|---|---|
+| nothing is on `PATH` before it acts | bakes the preamble and the activation verbatim |
+| `activate.d` hooks read unset variables | `set +u` across the bootstrap **only**, restored immediately after |
+| `--help` must answer without a working env | the whole bootstrap sits inside the help guard |
+| the scheduler kills with `SIGTERM` at the time limit | `trap … TERM INT` → clean up, exit 143 |
+| the engine's exit code must be inspectable | the engine is **run, not `exec`'d**; `set +e` around it, `${PIPESTATUS[0]}` captured |
+| a run must be watchable while it runs | stdout is **teed**, never swallowed |
+| the engine env has no molbuilder in it | the monitor travels as a copied `mb_monitor.py`, not `python -m molbuilder monitor` |
+
+> **`set -e` stays ON across the preamble, and that is deliberate.**
+> A failed `module load` here means the job is about to run in the wrong
+> environment — on an allocation, unattended, producing results nobody asked
+> for and nobody is reading. Dying at the failed line is the cheap outcome;
+> continuing is the expensive one.
+>
+> **Do not "fix" this by making the preamble tolerant.** The instinct comes
+> from interactive shells, where a preamble that does not apply to the
+> machine in front of you should not stop you working. This script has no
+> such user: it is on a node, on a clock, spending an allocation. Same line
+> of shell, opposite correct behaviour, because the environment is different
+> — which is why it is written down here rather than left to be re-derived.
+
 ### 2.1 "Detection" — reading external state
 
 "Detection" means reading state that is *not* in the run directory. There are

@@ -296,7 +296,7 @@ Three ways in, and they all end at the same files:
 | you are | you use | it produces |
 |---|---|---|
 | working in a browser | the parameter tab, then the **Task setup** tab | the template, the description and the structure pair, in a folder you chose |
-| working at a terminal | `molbuilder jobset describe` | the same files |
+| working at a terminal | `molbuilder jobset init` | the same files |
 | already have a folder | `molbuilder jobset prep run <stage>` | the runnable directory |
 
 The browser never writes an engine input. It renders the *form* from the
@@ -328,36 +328,72 @@ supported invocation). An evaluation that goes looking for `molbuilder` on
 `PATH` is testing an assumption this design never makes — made once,
 2026-08-19, which is why this section exists.
 
-**And from inside a calculation, the launcher rides the description**
-*(user, 2026-08-20 + 2026-08-21)*: `./jobset.sh <verb> …` is the same
-supported form, carried to where the data lives. The dilemma it closes: from
-the bundle the module is nowhere to be found, and from the repo the bundle is
-not the cwd. The file has TWO GENERATIONS, one name:
+### 6.2 Telling a verb which job you mean
 
-- **Bootstrap** — written by the Task-setup save door the moment the folder
-  becomes a described calculation, because the FIRST command a fresh bundle
-  needs is `prep`, and that is exactly the one it could not run.  Nothing is
-  baked: from a bare remote shell it activates the molbuilder env itself
-  (conda → mamba → micromamba, `$MOLBUILDER_ENV` overriding the name),
-  resolves the checkout at run time (`$MOLBUILDER_ROOT` → a real install on
-  `PATH` → walking up from the bundle → `~/molbuilder`), and refuses with the
-  one-line remedy otherwise.  It assumes only that the env installation was
-  done (`ops/installation.md`).
-- **Machine-baked** — every `prep` REPLACES the file with the generation that
-  bakes THIS machine's repo path and env verbatim (the wrappers' own
-  two-layer premise: configured preamble + activation, no runtime
-  discovery) — the right trade once the machine is known.
+**You do not have to stand in the calculation** *(user, 2026-08-22)*. Every
+verb that acts on one takes `--bundle`, and it reads the path **from the
+projects root** — the same three levels the tree is built from:
 
-Both stand in the bundle and run `python -m molbuilder` with the repo on
-`PYTHONPATH` — the cwd stays the bundle, so `--bundle .` and every other verb
-default keep their meaning.
+```
+--bundle <project>/<topic>/<calculation>
+```
 
-**Verified against the scripts, not assumed** (2026-08-19): both engines'
-wrappers were run in a pure shell — `env -i`, no conda on `PATH`, no rc
-files — and bootstrapped from nothing but their baked hook line: activation,
-engine resolution, and a real completed SIESTA run.
+So one place to stand, any job:
 
----
+```bash
+cd ~/molbuilder                                  # where molbuilder runs from
+molbuilder jobset status         --bundle Au-BDT-Au/optimization/Relax
+molbuilder jobset prep   bench coarse --bundle Au-BDT-Au/optimization/Relax
+molbuilder jobset launch bench coarse --bundle Au-BDT-Au/optimization/Relax --mode submit
+molbuilder jobset summarize bench coarse --bundle Au-BDT-Au/optimization/Relax
+```
+
+**Omit it and the current directory is used** — the short form once you have
+`cd`'d into the folder to look at output:
+
+```bash
+cd ~/molbuilder/projects/Au-BDT-Au/optimization/Relax
+molbuilder jobset status
+```
+
+Either way the folder must be **inside the projects tree**. A path that
+climbs out with `..`, or an absolute path somewhere else, is refused by
+name rather than acted on — a calculation outside the tree is not one
+molbuilder manages ([`job-contracts.md § 2.5b`](?doc=execution/job-contracts.md)).
+
+**If your calculations do not live under the checkout**, that is a setting,
+not an obstacle: point the tree somewhere writable and every surface follows
+it at once — the verbs, the sidebar, the workspace store.
+
+```json
+{ "paths": { "projects": "/scratch/qqing/projects" } }
+```
+
+in `molbuilder.json`, or `MOLBUILDER_PROJECTS=/scratch/qqing/projects` for
+one shell ([`architecture.md § 8.2`](?doc=execution/architecture.md)).
+
+> **One address, one anchor — with one exception you will meet at `prep`.**
+> `--from 01_coarse/run-0` names an attempt *inside* the calculation, and is
+> measured from the bundle, not from the projects root. That is deliberate:
+> a calculation is self-contained and travels, so the name of one of its own
+> attempts has to keep working after the folder is copied to a cluster
+> (`job-contracts.md` § 2.5b).
+>
+> **`jobset init` is the verb that creates a calculation**, and it names
+> both the calculation and its structure from the projects root like
+> everything else:
+>
+> ```
+> molbuilder jobset init --structure P/structure/water.xyz \
+>                        --bundle   P/frequency/water-vib \
+>                        --shape hierarchical --engine pyscf
+> ```
+>
+> It is the one verb whose `--bundle` may not exist yet — that is what it
+> is for. (It was called `describe` until 2026-08-22, and took two loose
+> paths from the working directory, which let it create a calculation
+> outside the tree that no other verb would then touch.)
+
 
 ## 7. What is genuinely data-driven today, and what is not
 
@@ -451,7 +487,7 @@ flowchart TB
     end
     subgraph MACHINE["run it — the machine that will compute"]
         PREP["<b>prep</b> — the conductor renders the deck<br/>(execution/script-preparation.md § 5’s five steps;<br/>workflow.md § 5); wrapper + dirs follow the deck"]
-        RUN["<b>submit → run</b> — one wrapper, <code>jobset.sh</code><br/>(execution/running-a-job.md); the deck<br/>phase-writes its artifact atomically"]
+        RUN["<b>launch → run</b> — one wrapper,<br/><code>&lt;label&gt;.run.sh</code> (execution/running-a-job.md);<br/>the deck phase-writes its artifact atomically"]
     end
     subgraph READ["read it — results presentation"]
         ART["<b>the artifacts</b> — trajectory · logs ·<br/><code>.spectra.json</code> (schema-versioned;<br/>readable sets, one home per format)"]

@@ -46,7 +46,7 @@ def _load(bundle: str) -> tuple:
         raise click.ClickException(
             f"no {_JOBSET_FILE} in {base} -- nothing to do.  The host "
             "describes it and `prep` derives it (job-system.md § 5.1); run "
-            "`molbuilder jobset describe` first.")
+            "`molbuilder jobset init` first.")
     try:
         return JobSet.load(jpath), base
     except ValueError as e:                      # bad schema / shape
@@ -71,17 +71,158 @@ def jobset_group() -> None:
 #: ``jobset <verb> <kind> [<stage>]``, and a positional that is sometimes a
 #: path has no place in it.  `jobset status tight` answered *"Directory 'tight'
 #: does not exist"*, which tells a user they mistyped a path they never meant.
-_bundle_option = click.option(
-    "--bundle", "bundle", default=".",
-    type=click.Path(exists=True, file_okay=False),
-    help="the calculation folder (default: the current directory, which is "
-         "where a session is normally run from).")
+def _bundle_hint(base) -> str:
+    """`` --bundle <path from the projects root>``, or "" when the caller
+    is already standing in it.
+
+    A printed next-step has to be a command the user can paste.  Naming
+    the bundle is what makes it work from anywhere, and omitting it when
+    the cwd already IS the bundle keeps the common case short.
+    """
+    from ..projects import projects_root
+    try:
+        here = Path(base).resolve()
+        if here == Path.cwd().resolve():
+            return ""
+        rel = here.relative_to(Path(projects_root()).resolve())
+    except (ValueError, OSError):
+        return ""
+    return f" --bundle {rel}"
 
 
-@jobset_group.command("describe",
-                      short_help="write the portable description (floor 2 only)")
-@click.argument("structure", type=click.Path(exists=True, dir_okay=False))
-@click.argument("dest", type=click.Path(file_okay=False))
+def _resolve_bundle(ctx, param, value, *, must_exist: bool = True):
+    """``--bundle`` names a calculation, and a calculation is always inside
+    the projects tree (user, 2026-08-22).
+
+      * not given            -> the working directory
+      * anything else        -> read from the projects root, uniformly
+      * either way           -> it must be INSIDE the projects root
+
+    **Uniform, with no escape hatch.**  A first cut let ``./x`` and ``../x``
+    mean *"beside me"*, mirroring `psml_lib`'s rule.  That was the wrong
+    borrowing: the two fields denote different kinds of thing.  `psml_lib`
+    points at a LIBRARY OF DATA that legitimately lives anywhere -- a
+    shared pseudopotential collection, ``/opt``, a home directory -- so its
+    spellings must be able to leave the tree.  ``--bundle`` points at a
+    CALCULATION, and a calculation outside the projects tree is not a
+    calculation molbuilder manages.  One anchor, therefore, and a fence.
+
+    **The fence is the point, not a side effect.**  `..` segments and
+    absolute paths are both resolved and then checked, so no spelling
+    reaches outside the tree -- the same containment the sidebar backend
+    applies to every path it serves (`files.py`'s "outside every configured
+    root").  Two doors onto the same tree that disagreed about what is
+    reachable would be one door too many.
+    """
+    from ..projects import OutsideRoot, contain, projects_root
+    root = Path(projects_root()).expanduser()
+    raw = str(value)
+    p = Path(raw).expanduser()
+    if p.is_absolute():
+        candidate = p
+    elif raw == ".":
+        candidate = Path.cwd()
+    else:
+        candidate = root / p
+
+    # THE fence is `projects.contain`, shared with the sidebar backend.
+    # This function had its own copy for one revision -- a second fence
+    # around the same tree, and the weaker of the two.
+    try:
+        real = contain(candidate, root)
+    except OutsideRoot as exc:
+        if raw == ".":
+            raise click.BadParameter(
+                f"the working directory ({exc.candidate}) is not inside the "
+                f"projects tree ({exc.root}), so it names no calculation.  "
+                f"Give the job's path from the projects root, e.g. "
+                f"--bundle <project>/<topic>/<calculation>.")
+        raise click.BadParameter(
+            f"{raw!r} does not name a calculation inside the projects tree "
+            f"({exc.root}): {exc.reason}.  Paths are read from the tree's "
+            f"root and may not leave it, e.g. "
+            f"--bundle <project>/<topic>/<calculation>.")
+
+    if must_exist and not real.is_dir():
+        raise click.BadParameter(
+            f"{raw!r} is read from the projects root, and {real} is not a "
+            f"directory.  Give the job's path from the projects root, e.g. "
+            f"--bundle <project>/<topic>/<calculation>.")
+    if not must_exist and real.exists() and not real.is_dir():
+        raise click.BadParameter(
+            f"{raw!r} names {real}, which exists and is not a directory.")
+    return str(real)
+
+
+#: ONE declaration for every verb.  Three verbs re-declared this option
+#: inline until 2026-08-22, so the anchor rule would have had to be added in
+#: four places -- and the help text had already drifted into two wordings.
+#:
+#: ``must_exist`` is the ONLY axis on which the verbs differ: five of them
+#: act on a calculation that is already there, and `init` creates one.  That
+#: is a parameter of the one option, never a second option with its own
+#: semantics -- the fence, the anchor rule and the refusal text stay single.
+def _bundle_option(must_exist: bool = True):
+    return click.option(
+        "--bundle", "bundle", default=".",
+        callback=(_resolve_bundle if must_exist
+                  else _resolve_bundle_may_be_new),
+        type=click.Path(file_okay=False),
+        help="the calculation, as a path from the PROJECTS ROOT -- e.g. "
+             "`--bundle <project>/<topic>/<calculation>` -- which works from "
+             "any directory.  Omit it to use the current directory.  Either "
+             "way it must be inside the projects tree "
+             "(job-contracts.md 2.5b)."
+             + ("" if must_exist else "  It need not exist yet."))
+
+
+def _resolve_structure(ctx, param, value):
+    """`--structure` is a tree address too (`job-contracts.md` § 2.5b).
+
+    The same anchor and the same fence as `--bundle`; only the shape at the
+    end differs, because this one names a file.  A structure belongs in
+    `<project>/structure/` -- which is where the sidebar picks it from, so
+    the CLI and the browser cite the same thing the same way.
+    """
+    from ..projects import OutsideRoot, contain, projects_root
+    root = Path(projects_root()).expanduser()
+    raw = str(value)
+    p = Path(raw).expanduser()
+    candidate = p if p.is_absolute() else root / p
+    try:
+        real = contain(candidate, root)
+    except OutsideRoot as exc:
+        raise click.BadParameter(
+            f"{raw!r} does not name a structure inside the projects tree "
+            f"({exc.root}): {exc.reason}.  Paths are read from the tree's "
+            f"root, e.g. --structure <project>/structure/water.xyz.")
+    if not real.is_file():
+        raise click.BadParameter(
+            f"{raw!r} is read from the projects root, and {real} is not a "
+            f"file.")
+    return str(real)
+
+
+def _resolve_bundle_may_be_new(ctx, param, value):
+    """`--bundle` for the verb that CREATES the calculation.
+
+    Same anchor, same fence, one difference: the folder may not be there
+    yet.  `projects.contain` already declines to check existence -- that is
+    why it can serve both -- so this is the existence check being skipped,
+    not a second resolution rule.
+    """
+    return _resolve_bundle(ctx, param, value, must_exist=False)
+
+
+@jobset_group.command("init",
+                      short_help="create the calculation (floor 2 only)")
+@_bundle_option(must_exist=False)
+@click.option("--structure", "structure", required=True, metavar="PATH",
+              callback=_resolve_structure,
+              help="the structure to describe, as a path from the PROJECTS "
+                   "ROOT -- e.g. `--structure <project>/structure/water.xyz`. "
+                   "It lives in the tree like everything else a calculation "
+                   "cites (job-contracts.md 2.5b).")
 @click.option("--shape", required=True,
               type=click.Choice(("flat", "hierarchical")),
               help="how the stages sit on disk. REQUIRED and never inferred -- "
@@ -113,7 +254,7 @@ _bundle_option = click.option(
                    "into the engine's warm-file vocabulary (job-contracts "
                    "4.2a).  The engine's sections define what is legal, "
                    "checked where the vocabulary is read.")
-def describe_cmd(structure: str, dest: str, shape: str,
+def init_cmd(structure: str, bundle: str, shape: str,
                  stage_strategy, name, engine: str, psml_lib, vacuum,
                  calculation: str) -> None:
     """Write the portable description: the template, ``task.json``, and the
@@ -141,7 +282,7 @@ def describe_cmd(structure: str, dest: str, shape: str,
     from ..siesta.stages import default_siesta_stages
     from ..task import Stage
 
-    out_dir = _P(dest)
+    out_dir = _P(bundle)
     run_name = name or out_dir.name
 
     try:
@@ -229,7 +370,7 @@ def describe_cmd(structure: str, dest: str, shape: str,
 
 @jobset_group.command("plan",
                       short_help="show the plan (jobs, warm files, resources)")
-@_bundle_option
+@_bundle_option()
 def plan_cmd(bundle: str) -> None:
     """Print the job-set plan: one row per job — its seq, input deck, warm
     files and resources, in ladder order.  Reads only ``job-set.json`` --
@@ -242,7 +383,7 @@ def plan_cmd(bundle: str) -> None:
 
 @jobset_group.command("status", short_help="show per-stage status + resume point")
 @click.argument("stage", required=False, default=None)
-@_bundle_option
+@_bundle_option()
 def status_cmd(stage, bundle: str) -> None:
     """Show each stage's run state (finished / running / failed / queued /
     pending / not-started), which warm-restart files are present, and the FIRST
@@ -1175,10 +1316,7 @@ def _resolve_stage(js, stage, verb: str):
 @jobset_group.command("prep", short_help="set a stage up to run")
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("stage", required=False, default=None)
-@click.option("--bundle", "bundle", default=".",
-              type=click.Path(exists=True, file_okay=False),
-              help="the calculation folder (default: the current directory, "
-                   "which is where a session is normally run from).")
+@_bundle_option()
 @click.option("--from", "from_attempt", default=None, metavar="STAGE/run-N",
               help="the attempt this run continues from, e.g. "
                    "'01_coarse/run-0'.  Its warm files are COPIED in.  Which "
@@ -1262,7 +1400,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         raise click.ClickException(
             f"{base} is not a described calculation -- no task.json + "
             "template pair.  `prep` derives everything from those two "
-            "(project-layout.md § 2.1); run `molbuilder jobset describe` "
+            "(project-layout.md § 2.1); run `molbuilder jobset init` "
             "first.  (Hand-built job-sets remain launchable: `launch` and "
             "`status` read job-set.json directly.)")
     if (from_attempt or cold) and stage is None:
@@ -1432,15 +1570,20 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         click.echo(f"prepped {len(dirs)} trial dir(s){where} under {base}:")
         for d in dirs:
             click.echo(f"  {d.name}")
-        # The REAL grammar (E-J2, 2026-08-21 review): `launch bench`
+        # The REAL grammar (E-J2, 2026-08-21 review): `launch bench
         # <stage>` -- typed with a trial name, the trial binds as the
         # STAGE and is refused; and the shipped submission is the
-        # grouped one, not one-per-invocation.  prep just wrote
-        # jobset.sh, so the hint speaks the launcher.
-        click.echo(f"next: ./jobset.sh launch bench "
-                   f"{stage or '<stage>'}   (grouped: one job per "
+        # grouped one, not one-per-invocation.
+        #
+        # The hint names the BUNDLE, because `--bundle` reads it from the
+        # projects root, so the line works from wherever the user is
+        # standing (job-contracts.md § 2.5b).
+        _b = _bundle_hint(base)
+        click.echo(f"next: molbuilder jobset launch bench "
+                   f"{stage or '<stage>'}{_b}   (grouped: one job per "
                    f"resource shelf)")
-        click.echo(f"then: ./jobset.sh summarize bench {stage or '<stage>'}"
+        click.echo(f"then: molbuilder jobset summarize bench "
+                   f"{stage or '<stage>'}{_b}"
                    f"  -- writes bench-result.json + run-config.toml "
                    f"(the editable proposal `prep run` applies)")
         return
@@ -1469,9 +1612,9 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         click.echo(f"prepped {len(dirs)} job dir(s) under {base}  "
                    "(flat: no attempt to open; runs are told apart by "
                    "the wrapper's output index)")
-        click.echo("next: ./jobset.sh launch run "
+        click.echo("next: molbuilder jobset launch run "
                    + (f"{stage} " if stage is not None else "")
-                   + "--mode submit|direct")
+                   + f"--mode submit|direct{_bundle_hint(base)}")
         return
     try:
         rep = prepare_attempt(js, base, attempt_target,
@@ -1490,9 +1633,9 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     else:
         click.echo("  nothing carried in (first stage, or none named)")
     _echo_resolved(js, base, rep.stage, rep.dir)
-    click.echo("next: ./jobset.sh launch run "
+    click.echo("next: molbuilder jobset launch run "
                + (f"{stage} " if stage is not None else "")
-               + "--mode submit|direct")
+               + f"--mode submit|direct{_bundle_hint(base)}")
 
 
 def _echo_resolved(js, base, stage_name: str, attempt) -> None:
@@ -1560,9 +1703,7 @@ def _echo_resolved(js, base, stage_name: str, attempt) -> None:
                       short_help="read a sweep's results -> bench-result.json")
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("stage", required=False, default=None)
-@click.option("--bundle", "bundle", default=".",
-              type=click.Path(exists=True, file_okay=False),
-              help="the calculation folder (default: the current directory).")
+@_bundle_option()
 def summarize_cmd(kind: str, stage, bundle: str) -> None:
     """Read the trials' artifacts and write ``bench-result.json`` — a
     recommendation, not a decision (`project-layout.md` § 2.3.2): you read
@@ -1611,9 +1752,7 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("stage", required=False, default=None)
 @click.argument("trial", required=False, default=None)
-@click.option("--bundle", "bundle", default=".",
-              type=click.Path(exists=True, file_okay=False),
-              help="the calculation folder (default: the current directory).")
+@_bundle_option()
 @click.option("--mode", type=click.Choice(["submit", "direct"]), default=None,
               help="HOW to launch, which is a fact about this MACHINE and not "
                    "about the layout: 'direct' = run it here with bash; "

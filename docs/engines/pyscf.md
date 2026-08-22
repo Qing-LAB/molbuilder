@@ -66,7 +66,7 @@ flowchart LR
 
   **It writes ONE deck, and it has no ladder flags** — a ladder is N decks
   (§ 1.1a), declared in `task.json` and built by
-  `jobset describe --engine pyscf --stage-strategy …`, which is the one door
+  `jobset init --engine pyscf --stage-strategy …`, which is the one door
   either engine's ladder is authored through.
 
 - **Frontend.** The Structure-optimization tab **collects parameters and

@@ -385,7 +385,7 @@ A route owns **an order**, not a floor.
 
 | route | you type | the job it does | its order | floors it visits |
 |---|---|---|---|---|
-| **describe** | `jobset describe` | **write** the portable description — the template, `task.json`, the data files | ask → check → write | **2 only** |
+| **describe** | `jobset init` | **write** the portable description — the template, `task.json`, the data files | ask → check → write | **2 only** |
 | **prep** | `jobset prep` | assemble a runnable folder **on the machine that will run it** | the five steps below | 1 → 2 → 3 → 5 → 4 |
 | **submit** | `jobset launch` | one job becomes one running program | find the folder → check it agrees → launch → record | 4 → 5 |
 | **observe** | `jobset status` | answer *where has this got to* | newest attempt → read it → add up | 4 → 6 |
@@ -682,6 +682,7 @@ the project's if set, otherwise the server's.
 | `scheduler` | `get_scheduler`, `get_routing` | **floor 5**, at `launch` | the `#SBATCH` header: `directives` (partition, qos, mail), `gpu` (partition, type, memory band), `defaults` (time, cores, memory), `mem_model`, and `routing` — the named domains |
 | `execution` | `get_execution` | **floor 5**, at `launch` | `mode` (`direct` or `submit`), and the default `domain` |
 | `envs` | `get_envs` | **floor 5**, `prep` step 4 | which conda environment each engine runs in |
+| `paths` | `get_paths` | `projects.projects_root` — every surface | `projects`: where the projects tree lives.  Default: `projects/` inside the checkout; set it when that is not writable or not wanted (a quota'd cluster home, a scratch filesystem, a shared tree).  `$MOLBUILDER_PROJECTS` overrides it |
 | `checkpoint` | `get_checkpoint`, `get_checkpoint_engines` | **outside the stack** — the file protocol | the size at which a file goes to the archive instead of git, and the per-engine hints |
 | `auth` | `get_auth`, `get_providers` | the **server** | who may sign in; the provider list is `auth.providers` (`ops/access-control.md` § 3) |
 | `secret_key_file` | `get_secret_key_file` | the **server** | the path to the session-signing key — a path, never the secret itself |

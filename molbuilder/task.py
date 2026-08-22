@@ -231,7 +231,7 @@ class Task:
         # every route to a Task -- describe on a laptop, read_task on the
         # cluster, a hand-edited file -- passes through this constructor.
         # Three comments claimed these checks existed here (the u5
-        # retirement in validation/siesta.py, describe_cmd's help,
+        # retirement in validation/siesta.py, init_cmd's help,
         # describe._check's "codec's own checks") while NOTHING refused
         # either: the claims are made true at the claimed home (U15,
         # 2026-08-12).

@@ -124,12 +124,121 @@ def validate_topic(topic: str) -> str:
 # ---------------------------------------------------------------- #
 
 
+#: The env override for the projects tree.  Named here because it is part
+#: of the resolution :func:`projects_root` documents, not a loose string.
+PROJECTS_ROOT_ENV = "MOLBUILDER_PROJECTS"
+
+
 def projects_root(base: Optional[Path] = None) -> Path:
-    """Return the ``projects/`` directory under ``base`` (default cwd).
+    """Where the projects tree is — **the one door** (user, 2026-08-22).
+
+    Every surface that touches the tree resolves it here: the sidebar
+    backend, the `jobset` verbs' ``--bundle``, the workspace store, the
+    pseudopotential anchor, diagnostics.  That is the point of a single
+    door — moving the tree is one setting, and it moves for everyone at
+    once instead of for whichever caller remembered.
+
+    **Resolution, in declared order — nothing is probed:**
+
+      1. ``base`` — an explicit argument, for a caller serving another tree
+      2. ``$MOLBUILDER_PROJECTS``
+      3. ``molbuilder.json`` → ``paths.projects`` (a relative value is read
+         from the molbuilder root, so it means the same thing wherever you
+         run from)
+      4. ``repo_root()/projects`` — the default
+
+    **It is no longer the working directory, and that is the fix.**  This
+    returned ``Path.cwd()/"projects"``, which made the tree a property of
+    where the user happened to stand: the same command meant different
+    trees in different shells, and `python -m molbuilder` wanting to run
+    from the checkout fought `--bundle .` wanting to run from the
+    calculation.  The default now comes from the molbuilder root, which is
+    a fact the package knows about itself (`job-contracts.md` § 2.5), and
+    steps 2–3 exist because the default is not always writable — a cluster
+    home with a quota, a scratch filesystem, a shared tree.
 
     Does NOT create the directory.  Read-only path resolution.
     """
-    return (base if base is not None else Path.cwd()) / PROJECTS_ROOT_NAME
+    if base is not None:
+        return base / PROJECTS_ROOT_NAME
+    import os
+    env = os.environ.get(PROJECTS_ROOT_ENV)
+    if env:
+        return Path(env).expanduser()
+    # Lazy: runtime_config is not needed to answer 1 or 2, and importing it
+    # at module scope would tie the tree API to the config reader.
+    from . import repo_root
+    # ImportError only.  A blanket `except Exception` stood here for one
+    # revision and swallowed RuntimeConfigError -- so a typo in `paths`
+    # silently fell back to the default instead of being refused with the
+    # known keys named, which is the discipline every other section in
+    # molbuilder.json follows (architecture.md § 8.2a).  A config the user
+    # wrote and molbuilder ignored is the worst of both.
+    try:
+        from .runtime_config import get_paths
+    except ImportError:                     # pragma: no cover - cycle guard
+        configured = None
+    else:
+        configured = (get_paths() or {}).get("projects")
+    if configured:
+        p = Path(configured).expanduser()
+        return p if p.is_absolute() else repo_root() / p
+    return repo_root() / PROJECTS_ROOT_NAME
+
+
+class OutsideRoot(ValueError):
+    """A path that resolves outside the root it was required to stay in.
+
+    Carries the resolved candidate and the root so a caller can compose its
+    own message -- the CLI wants a sentence about the projects tree, the
+    web layer wants an HTTP 400 naming every allowed root.
+    """
+
+    def __init__(self, candidate, root, reason: str):
+        self.candidate = candidate
+        self.root = root
+        self.reason = reason
+        super().__init__(f"{candidate} is outside {root}: {reason}")
+
+
+def contain(candidate, root) -> Path:
+    """Resolve ``candidate`` and require that it lies inside ``root``.
+
+    **THE fence — there is one, and this is it.**  It lived only in the web
+    layer (`files.py::_resolve_within_roots`) until 2026-08-22, when the
+    `jobset` CLI grew its own copy for ``--bundle``: two fences around one
+    tree, which is one too many, and the CLI's copy was already the weaker
+    of the two (no early ``..`` reject).  Both call this now.
+
+    Three steps, and each is here for a reason paid for in advance:
+
+      * ``..`` in the RAW spelling is refused before anything else.
+        Resolution would normalise it away, but refusing early removes the
+        ambiguity of *"did the writer think `..` was harmless?"*.
+      * ``expanduser`` only — never ``expandvars``.  A 2026-06-14 security
+        fix: with variable expansion, ``/etc/$SECRET_KEY/foo`` resolved to
+        a path that then got echoed back in the "outside the root" error,
+        leaking the value.  ``~`` stays because that leak is symmetric.
+      * **both sides are resolved before comparing**, so a symlinked root
+        or a relative working directory cannot make the fence decorative.
+
+    Existence is NOT checked: a listing wants 404 on a missing path, a
+    save-as target legitimately does not exist yet, and a calculation
+    folder must be a directory.  The caller decides.
+
+    Raises :class:`OutsideRoot`; returns the resolved path on success.
+    """
+    raw = str(candidate)
+    if ".." in Path(raw).parts:
+        raise OutsideRoot(raw, root, "the path may not contain '..'")
+    try:
+        resolved = Path(raw).expanduser().resolve()
+        real_root = Path(root).expanduser().resolve()
+    except (OSError, RuntimeError) as exc:
+        raise OutsideRoot(raw, root, f"could not resolve: {exc}")
+    if resolved != real_root and real_root not in resolved.parents:
+        raise OutsideRoot(resolved, real_root, "outside the root")
+    return resolved
 
 
 def find_projects_root(start: Path) -> Optional[Path]:
@@ -143,7 +252,7 @@ def find_projects_root(start: Path) -> Optional[Path]:
     answer is the working directory -- correct for the server, which is
     started at a declared root, and wrong for a calculation, which is a folder
     that already knows where it lives.  A user on a cluster runs
-    ``./jobset.sh`` from inside the calculation; anchoring on their working
+    a verb from inside the calculation; anchoring on their working
     directory made a template that worked on the workstation resolve to a
     folder that does not exist on the cluster (2026-08-21).
 

@@ -673,13 +673,13 @@ flowchart LR
 
 ### 5.1 Describe (host)
 
-**`molbuilder jobset describe` writes the portable package** — the template,
+**`molbuilder jobset init` writes the portable package** — the template,
 `task.json`, and the data files — into the calculation folder. Nothing in it
 names a machine, so it means the same thing wherever you copy it
 ([`project-layout.md § 2.1`](?doc=execution/project-layout.md)).
 
 ```bash
-molbuilder jobset describe bdt.xyz projects/BDT-Au/optimization/bdt-relax \
+molbuilder jobset init bdt.xyz projects/BDT-Au/optimization/bdt-relax \
     --stage-strategy publishable \
     --shape hierarchical \
     --psml-lib ~/pseudos
@@ -1155,7 +1155,7 @@ parameters are a set, `project-layout.md` § 2.3.1a)*:
 
 ```mermaid
 flowchart LR
-    D["jobset describe<br/>(host)<br/>the portable calculation"]
+    D["jobset init<br/>(host)<br/>the portable calculation"]
     P["jobset prep bench &lt;stage&gt;<br/>(target)<br/>probe → environment.json<br/>+ the grid as trial decks in<br/>&lt;NN&gt;_&lt;stage&gt;/bench/"]
     R["jobset launch bench &lt;stage&gt;<br/>one grouped job per resource shelf<br/>(a named trial submits alone)"]
     S["jobset summarize bench &lt;stage&gt;<br/>trials → bench/bench-result.json<br/>(winner + mechanism + sizing)"]

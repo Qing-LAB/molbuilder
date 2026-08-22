@@ -40,7 +40,7 @@ def _isolated(monkeypatch, tmp_path_factory):
 
 @pytest.fixture
 def calc(tmp_path):
-    """A described calculation, exactly as `jobset describe` leaves it.
+    """A described calculation, exactly as `jobset init` leaves it.
 
     The activation config is the **dotted, bundle-scoped**
     ``.molbuilder.json`` — the project scope the wrapper writer resolves
@@ -185,7 +185,7 @@ def test_the_template_supplies_what_no_stage_varies(calc):
 
 def test_a_folder_with_no_description_is_refused_by_name(tmp_path):
     (tmp_path / "empty").mkdir()
-    with pytest.raises(PrepError, match=r"jobset describe"):
+    with pytest.raises(PrepError, match=r"jobset init"):
         prep_calculation(tmp_path / "empty", "coarse",
                          allocation=Resources(mpi_np=8))
 

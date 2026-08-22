@@ -247,6 +247,11 @@ def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
     monkeypatch.chdir(tmp_path)
+    # The tree is THIS tmp one.  A chdir used to say that on its own,
+    # because `projects_root` was cwd-anchored; it resolves from the
+    # molbuilder root now (2026-08-22), so the door is told directly.
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
     sdir = tmp_path / "projects" / "P" / "structure"
     sdir.mkdir(parents=True)
     s = Structure(elements=["H", "H"],

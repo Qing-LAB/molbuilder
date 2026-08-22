@@ -26,6 +26,17 @@ from molbuilder.jobset.prep import prep_calculation
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
+
+@pytest.fixture(autouse=True)
+def _tmp_is_the_projects_tree(tmp_path, monkeypatch):
+    """These tests build a calculation under ``tmp_path`` and hand its path
+    to a verb.  ``--bundle`` is fenced to the projects tree
+    (`job-contracts.md` § 2.5b), so the test declares where its tree IS --
+    exactly what a user does when calculations live on scratch.
+    """
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
+
 #: The user's declared matrix, with the catalogue's canonical enum casing
 #: (their saved file spelled "ELPA-1Stage" — the preflight test below pins
 #: that THIS is now caught at describe time, not at prep on Sol).

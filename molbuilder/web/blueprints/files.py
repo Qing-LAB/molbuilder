@@ -58,8 +58,8 @@ from flask import Blueprint, jsonify, request
 
 from molbuilder import diagnostics
 from molbuilder.projects import (
-    CANONICAL_TOPICS, InvalidName, ProjectExists,
-    populate_project_skeleton, projects_root,
+    CANONICAL_TOPICS, InvalidName, OutsideRoot, ProjectExists,
+    contain, populate_project_skeleton, projects_root,
     validate_name, validate_topic,
 )
 
@@ -112,13 +112,51 @@ def _depth_inside_root(resolved: Path) -> Optional[int]:
     /api/files/upload target_dir check).  Single source so all
     three endpoints stay in lockstep on the security boundary.
     """
+    parts = _rel_parts_inside_root(resolved)
+    return None if parts is None else len(parts)
+
+
+def _root_containing(candidate) -> "Optional[Tuple[Path, Path]]":
+    """``(root, resolved)`` for the first allowed root that contains
+    ``candidate``, or ``None``.
+
+    **The one place that asks "which root is this in?"**  Three functions
+    asked it separately until 2026-08-22 -- this resolver, the depth rule
+    the write/delete/upload endpoints share, and the new-name validator --
+    each looping the roots and each calling ``relative_to`` in a
+    ``try/except ValueError``.  Three copies of a security boundary is
+    three chances for one of them to answer differently.
+
+    The containment test itself is `projects.contain`, shared with the
+    `jobset` CLI, so the browser and the terminal cannot disagree about
+    what is reachable.
+    """
     for root_path, _label in _allowed_roots():
         try:
-            rel = resolved.relative_to(root_path)
-        except ValueError:
+            return root_path, contain(candidate, root_path)
+        except OutsideRoot:
             continue
-        return len(rel.parts)
     return None
+
+
+def _rel_parts_inside_root(resolved) -> "Optional[Tuple[str, ...]]":
+    """The path's segments RELATIVE to the root that contains it, or
+    ``None`` when no root does.
+
+    Every endpoint with a depth rule needs this: depth 1 is a project,
+    depth 2 a topic, and what is legal to rename, move, copy or delete
+    depends on which.  Five functions walked the roots themselves to get
+    it -- rename, move/copy, delete, upload and the depth rule -- and two
+    of them carried comments conceding the duplication ("centralising
+    would help", "the same loop but returns just the length").  Five
+    copies of a depth rule is five chances to disagree about what a user
+    may delete.
+    """
+    hit = _root_containing(resolved)
+    if hit is None:
+        return None
+    root_path, real = hit
+    return real.relative_to(root_path).parts
 
 
 def _resolve_within_roots(raw_path: str) -> Path:
@@ -133,26 +171,6 @@ def _resolve_within_roots(raw_path: str) -> Path:
     if not raw_path:
         raise _PickerError(400, "missing 'path' query parameter")
 
-    # Defense in depth: reject .. in the raw string.  Resolution will
-    # also normalise it away, but an early reject avoids ambiguity
-    # ("did the user think .. was harmless?").
-    if ".." in Path(raw_path).parts:
-        raise _PickerError(400, f"path may not contain '..': {raw_path!r}")
-
-    # 2026-06-14 I4 round-3 security fix: dropped
-    # ``os.path.expandvars`` to prevent server env-var disclosure.
-    # Pre-fix an attacker could submit ``/etc/$SECRET_KEY/foo``;
-    # expandvars resolved it to ``/etc/<secret_value>/foo`` (likely
-    # outside roots), and the "outside every configured root" error
-    # at line 169 echoed the resolved path back -- leaking the env
-    # var.  ``expanduser`` (``~`` -> $HOME) stays because the leak
-    # is symmetric (the user knows their own home dir).
-    expanded = Path(raw_path).expanduser()
-    try:
-        resolved = expanded.resolve()
-    except (OSError, RuntimeError) as exc:
-        raise _PickerError(400, f"could not resolve path: {exc}")
-
     roots = _allowed_roots()
     if not roots:
         raise _PickerError(
@@ -162,20 +180,28 @@ def _resolve_within_roots(raw_path: str) -> Path:
             "diagnostics.initialize() ran at startup).",
         )
 
-    for root_path, _label in roots:
-        try:
-            resolved.relative_to(root_path)
-        except ValueError:
-            continue
-        # Inside an allowed root.  Existence is checked by the caller
-        # (list / stat / read have different expectations -- list-of-
-        # missing should 404, but the user might want to stat a file
-        # they expect to appear shortly).
-        return resolved
+    # THE fence is `projects.contain` -- one implementation, shared with the
+    # `jobset` CLI's --bundle (`projects.py`, 2026-08-22).  This function
+    # keeps what is genuinely ITS OWN: several allowed roots, first match
+    # wins, and an HTTP-shaped refusal that names them all.  The rules about
+    # `..`, `expanduser`-not-`expandvars` and resolving both sides moved into
+    # the shared primitive with their reasons attached.
+    # `..` and unresolvable paths are refused for their own reason rather
+    # than as "outside every root", which would say the wrong thing.
+    if ".." in Path(raw_path).parts:
+        raise _PickerError(400, f"path may not contain '..': {raw_path!r}")
 
+    hit = _root_containing(raw_path)
+    if hit is not None:
+        return hit[1]
+
+    try:
+        shown = Path(raw_path).expanduser().resolve()
+    except (OSError, RuntimeError) as exc:
+        raise _PickerError(400, f"could not resolve path: {exc}")
     raise _PickerError(
         400,
-        f"path {str(resolved)!r} is outside every configured root; "
+        f"path {str(shown)!r} is outside every configured root; "
         f"allowed roots: {[str(p) for p, _ in roots]}",
     )
 
@@ -730,14 +756,8 @@ def _validate_subdir_name(parent_abs: Path, name: str) -> None:
     Raises :class:`molbuilder.projects.InvalidName` on rejection.
     """
     roots = _allowed_roots()
-    root = None
-    for root_path, _label in roots:
-        try:
-            parent_abs.relative_to(root_path)
-        except ValueError:
-            continue
-        root = root_path
-        break
+    hit = _root_containing(parent_abs)
+    root = hit[0] if hit is not None else None
     if root is None:
         raise InvalidName(
             f"parent {parent_abs!s} is outside the picker's roots; "
@@ -1490,14 +1510,7 @@ def api_files_rename():
     # Depth check + canonical-topic protection.  Same shape as
     # delete's check; centralising would help but the two endpoints
     # are infrequent enough that the duplication is acceptable.
-    rel_parts: Optional[Tuple[str, ...]] = None
-    for root_path, _label in _allowed_roots():
-        try:
-            rel = resolved.relative_to(root_path)
-        except ValueError:
-            continue
-        rel_parts = rel.parts
-        break
+    rel_parts = _rel_parts_inside_root(resolved)
 
     if rel_parts is None:
         return jsonify({
@@ -1645,14 +1658,7 @@ def _validate_op_target(
     Centralises the "would orphan a canonical project layout" check
     so move / copy stay in lockstep with rename + delete.
     """
-    rel_parts: Optional[Tuple[str, ...]] = None
-    for root_path, _label in _allowed_roots():
-        try:
-            rel = resolved.relative_to(root_path)
-        except ValueError:
-            continue
-        rel_parts = rel.parts
-        break
+    rel_parts = _rel_parts_inside_root(resolved)
     if rel_parts is None:
         return ({
             "ok":    False,
@@ -2070,14 +2076,7 @@ def api_files_delete():
     # the path parts (for the canonical-topic name lookup at depth
     # 2).  Walk the roots once for the parts; _depth_inside_root
     # is the same loop but returns just the length.
-    rel_parts: Optional[Tuple[str, ...]] = None
-    for root_path, _label in _allowed_roots():
-        try:
-            rel = resolved.relative_to(root_path)
-        except ValueError:
-            continue
-        rel_parts = rel.parts
-        break
+    rel_parts = _rel_parts_inside_root(resolved)
 
     if rel_parts is None:
         # _resolve_within_roots already verified containment, so

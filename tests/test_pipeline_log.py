@@ -61,7 +61,7 @@ BDT = Structure(
 
 
 def _calculation(tmp_path, engine: str, shape: str, name: str = "BDT"):
-    """A described calculation, as `jobset describe` leaves one."""
+    """A described calculation, as `jobset init` leaves one."""
     cfg, stages = ((SiestaConfig(system_label=name, mesh_cutoff=300.0),
                     default_siesta_stages("publishable"))
                    if engine == "siesta" else

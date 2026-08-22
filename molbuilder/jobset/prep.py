@@ -287,35 +287,6 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     if log is not None:
         log.produced("STAGE-PLAN.md", str(plan_dir / "STAGE-PLAN.md"))
 
-    # ---- 4b. the jobset launcher (user, 2026-08-20) ------------------- #
-    # `./jobset.sh <verb> ...` from inside the bundle, with no molbuilder
-    # installed: the launcher bakes THIS machine's repo path and env at
-    # generation (runwrap.render_jobset_launcher -- the shell home), so it
-    # is regenerated on every prep and always describes the machine that
-    # prepped.  Written at the BUNDLE root: one per calculation, serving
-    # every verb, since the verbs' own --bundle defaults to the cwd it
-    # establishes.
-    try:
-        import stat as _stat
-
-        from ..runwrap import render_jobset_launcher
-        _launcher = base / "jobset.sh"
-        _launcher.write_text(render_jobset_launcher(base), encoding="utf-8")
-        _launcher.chmod(_launcher.stat().st_mode
-                        | _stat.S_IXUSR | _stat.S_IXGRP | _stat.S_IXOTH)
-        if log is not None:
-            log.produced("jobset.sh", str(_launcher))
-    except Exception as _exc:
-        # A bundle without a launcher is inconvenient, not broken -- the
-        # activation config may legitimately be absent on a dev checkout,
-        # and prep's real products must not fail on the convenience.  But
-        # the skip is SAID (milestone review N2, 2026-08-20): silence here
-        # let a stale jobset.sh -- another machine's baked repo path --
-        # survive a re-prep without a word.
-        if log is not None:
-            log.note("jobset.sh: not regenerated (" + str(_exc) + "); a "
-                     "launcher already on disk is a previous prep's and "
-                     "may bake another machine's paths")
     return dirs
 
 
@@ -409,7 +380,7 @@ class EngineSeam:
     #: that machine — and because `prep` is already what decides the shared
     #: package.  Added 2026-08-18: the rule *"a calculation copies the
     #: pseudopotentials it needs into its own shared package"* was written and
-    #: unowned, so `jobset describe` performed it and the browser's hand-over
+    #: unowned, so `jobset init` performed it and the browser's hand-over
     #: did not, and a calculation described in the browser prepped, laid out
     #: its directories and reported success with no pseudopotentials in it.
     provide_data: Optional[Callable] = None
@@ -442,7 +413,7 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
     cannot start, after a queue wait and however long MPI takes to come up.
 
     **Idempotent, and the folder wins.**  Anything already here was put here by
-    an earlier prep, by `jobset describe`, or by travelling with the folder;
+    an earlier prep, by `jobset init`, or by travelling with the folder;
     `copy_pseudopotentials` leaves it alone.  Only what is missing is fetched,
     from the library named by ``psml_lib``.
 
@@ -712,7 +683,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     if not desc.is_file():
         raise PrepError(
             f"no {TASK_FILENAME} in {base}. `prep` turns a DESCRIPTION into a "
-            f"runnable directory; write one first with `jobset describe`.")
+            f"runnable directory; write one first with `jobset init`.")
 
     # ---- 1. resolve the machine ---------------------------------------- #
     environment = _environment_for(base, target)

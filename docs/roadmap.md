@@ -140,7 +140,7 @@ own load, all of it landed, reviewed (R×3,
 — every finding fixed with an explicit yes), and pinned:
 
 - **the grouped bench** (one scheduler job per sweep, the sequencer +
-  `bench-group.log`) and **`jobset.sh`** (every bundle runs any verb from
+  `bench-group.log`) and **`--bundle`** (every verb runs on any bundle from
   inside itself) — `project-layout.md § 2.3.2`, `workflow.md § 6.1`;
 - **the two-kinds contract + sidecar schema 8** (per-atom rides the atom
   list and survives edits; system stored separately; identity columns
@@ -209,7 +209,7 @@ ladder that goes nowhere" — described the pre-Task-setup tab.)*
 
 **Where the work stands.** The whole engine-agnostic framework already
 exists on the command line: the `jobset` model and its `job-set.json`
-persistence, the `molbuilder jobset describe/prep/plan/submit/summarize/status`
+persistence, the `molbuilder jobset init/prep/plan/submit/summarize/status`
 verbs (both local `bash` execution and SLURM submission, **one job per
 invocation**), and `prep`'s five steps writing floor 3 on the target (*the
 chaining producers died in the 2026-08-12 fold*). **The describe half of the
@@ -724,7 +724,7 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   `molbuilder run` and `molbuilder fdf` are deleted, the template is TOML
   (its fingerprint was added and then **retired 2026-08-14** — one writer, one
   reader, and a claim weaker than the per-field checks that ran right after
-  it; [`engines/template.md`](?doc=engines/template.md) § 10), `jobset describe`
+  it; [`engines/template.md`](?doc=engines/template.md) § 10), `jobset init`
   exists, `--mode` falls back to
   `execution.mode`, and the deleted-flag print is gone. Still open, scheduled
   with steps 6–7: `BlockSize`'s third
@@ -754,7 +754,7 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
   **L2 — closed 2026-08-18.** `PySCFConfig.stages` is deleted, and with it
   `StageSpec`, `_default_stages`, `validate_stages`, `stages_from_dicts`,
   `stages_from_configs` and `apply_stage_strategy`. `--stage-strategy` now
-  means what it means for SIESTA and nothing else: `jobset describe` builds a
+  means what it means for SIESTA and nothing else: `jobset init` builds a
   ladder from the engine's preset table. `molbuilder pyscf` lost its ladder
   flags — one deck is not a ladder. The stage-table's Python feed went too; its
   JS renderer is now reached by nothing and is left for whenever the Build UI

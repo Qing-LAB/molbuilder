@@ -6,7 +6,8 @@ Subcommands:
     molbuilder rna AUGCAUGCAU --out file.xyz
     molbuilder smiles "c1ccccc1" --out benzene.xyz
     molbuilder name "1,4-benzenedithiol" --out bdt.xyz
-    molbuilder jobset describe in.xyz calc/ --stage-strategy publishable
+    molbuilder jobset init --structure P/structure/in.xyz \
+        --bundle P/optimization/calc --shape flat --stage-strategy publishable
     molbuilder pyscf in.xyz out.py --functional B3LYP
     molbuilder serve --port 8000
     molbuilder watch parse run.molwatch.log
@@ -526,7 +527,7 @@ def _make_pyscf_options_decorator():
 # THIS COMMAND WRITES ONE DECK, AND A LADDER IS N DECKS (`stages.md` § 1.1a),
 # so there is no ``--stages-json`` / ``--stage-strategy`` here -- for the same
 # reason ``molbuilder siesta`` never had them.  A ladder is DECLARED in
-# task.json, and ``jobset describe --engine pyscf --stage-strategy ...`` is the
+# task.json, and ``jobset init --engine pyscf --stage-strategy ...`` is the
 # one door that writes one.  A second door here would be a second place a
 # ladder could be said, free to disagree with the description.
 @_make_pyscf_options_decorator()
@@ -603,7 +604,7 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
         molbuilder dna ATGC | molbuilder validate -
 
         molbuilder validate run.xyz --engine siesta --exit-on-error \\
-            && molbuilder jobset describe run.xyz calc/
+            && molbuilder jobset init --structure P/structure/run.xyz --bundle P/optimization/calc --shape flat
     """
     import json
     from .validation import validate, validate_geometry

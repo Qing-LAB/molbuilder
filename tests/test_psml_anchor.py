@@ -87,9 +87,13 @@ class TestTheCallerWithNoCalculation:
     """Server-side validation runs before anything exists on disk."""
 
     def test_it_anchors_at_the_servers_own_root(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+        """The server's own tree -- which is `projects_root()`, the one
+        door, NOT the working directory (it was cwd until 2026-08-22)."""
+        from molbuilder.projects import PROJECTS_ROOT_ENV, projects_root
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "tree"))
+        monkeypatch.chdir(tmp_path)          # deliberately irrelevant now
         assert resolve_psml_lib("pseudopotential") == \
-            tmp_path / "projects" / "pseudopotential"
+            projects_root() / "pseudopotential"
 
     def test_base_overrides_that_root(self, tmp_path):
         assert resolve_psml_lib("pseudopotential", base=tmp_path / "elsewhere") \

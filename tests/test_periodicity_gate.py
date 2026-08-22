@@ -620,6 +620,11 @@ class TestLoaderGate:
         pytest.importorskip("flask")
         from molbuilder.diagnostics import Capabilities, set_capabilities
         monkeypatch.chdir(tmp_path)
+        # The tree is THIS tmp one.  A chdir used to say that on its own,
+        # because `projects_root` was cwd-anchored; it resolves from the
+        # molbuilder root now (2026-08-22), so the door is told directly.
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
         sdir = tmp_path / "projects" / "P" / "structure"
         sdir.mkdir(parents=True)
         xyz = self._write_pair_with_no_stored_corner(sdir)
@@ -897,6 +902,11 @@ class TestTheLoadAnswerIsNotSilent:
         import json as _json
         from molbuilder.workingcopy_structure import StructureCodec
         monkeypatch.chdir(tmp_path)
+        # The tree is THIS tmp one.  A chdir used to say that on its own,
+        # because `projects_root` was cwd-anchored; it resolves from the
+        # molbuilder root now (2026-08-22), so the door is told directly.
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
         sdir = tmp_path / "projects" / "P" / "structure"
         sdir.mkdir(parents=True)
         s = _mol()

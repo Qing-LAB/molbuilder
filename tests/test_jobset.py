@@ -35,6 +35,19 @@ from molbuilder.jobset.prep import prep_jobset
 from molbuilder.jobset.runstatus import jobset_status, render_status
 
 
+@pytest.fixture(autouse=True)
+def _tmp_is_the_projects_tree(tmp_path, monkeypatch):
+    """These tests build a calculation under ``tmp_path`` and hand its path
+    to a verb.  ``--bundle`` is fenced to the projects tree
+    (`job-contracts.md` § 2.5b), so the test says where its tree IS rather
+    than handing over a path from outside one -- which is exactly what a
+    user does when their calculations live on scratch: set
+    ``paths.projects`` / ``$MOLBUILDER_PROJECTS`` and the fence follows.
+    """
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
+
+
 class _CP:
     """Minimal stand-in for subprocess.CompletedProcess."""
     def __init__(self, returncode=0, stdout="", stderr=""):
@@ -693,7 +706,7 @@ def test_cli_prep_is_described_only(tmp_path):
                             "--no-sbatch"])
     assert r.exit_code != 0
     assert "not a described calculation" in r.output
-    assert "jobset describe" in r.output
+    assert "jobset init" in r.output
     # the library route for laying out a hand-built set is prep_jobset,
     # pinned by the prep_jobset tests above; nothing was laid out here
     assert not (tmp_path / "bench-G1K1C4").exists()

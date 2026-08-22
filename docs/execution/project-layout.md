@@ -223,7 +223,7 @@ exactly why stage 2 overwrites them.
 ```
 bdt-relax/                            the CALCULATION — the user typed this name
 ├── <label>.template.toml              ─┐ the description: written by the
-├── task.json                         ─┘ browser (or `jobset describe`) —
+├── task.json                         ─┘ browser (or `jobset init`) —
 │                                        portable, names no machine, says
 │                                        the id — label plus formula
 ├── <label>.source.xyz  + sidecar        the structure pair (§ 6.3's .source
@@ -1395,7 +1395,7 @@ self-contained when moved to a cluster.
 **The copy happens at `prep`, and doing it twice costs nothing.** For each element
 the deck names, `prep` looks in the calculation's own folder first and does
 nothing if the file is already there — put there by an earlier `prep`, by
-`jobset describe`, or by having travelled with the folder. Only what is missing is
+`jobset init`, or by having travelled with the folder. Only what is missing is
 copied, from the library in `pseudopotential/`.
 
 **Why `prep` and not the surface that wrote the description.** `prep` is the step
@@ -1404,7 +1404,7 @@ fact about that machine — the same class of fact as how many cores there are. 
 is also the step that already decides what the shared package contains, so putting
 the copy anywhere else would mean two places deciding one thing. And it is the
 only arrangement under which the two ways of describing a calculation — the
-browser and `jobset describe` — end up with identical folders, because neither of
+browser and `jobset init` — end up with identical folders, because neither of
 them has to remember to do it.
 
 **Where the library is, is said once.** `psml_lib` is a path like any other the
@@ -1414,7 +1414,7 @@ means itself, a leading `./` or `../` means *from this calculation*, and a bare
 `pseudopotential` means *the `projects/` tree this calculation lives in* —
 found by walking up from the calculation folder, so the same template works on
 the workstation that wrote it and the cluster that runs it. `prep`, the
-browser's validation and `jobset describe --psml-lib` all resolve it through
+browser's validation and `jobset init --psml-lib` all resolve it through
 that one rule; before 2026-08-21 they had three rules between them, and
 `describe` had a fourth that was simply the working directory.
 
@@ -1434,7 +1434,7 @@ however long MPI takes to come up first.
 
 > **Stated 2026-08-18 (user).** The rule above — a calculation copies what it
 > needs — was already here, and nothing was said about who performs the copy. So
-> one route did it (`jobset describe`, while writing the folder) and the browser's
+> one route did it (`jobset init`, while writing the folder) and the browser's
 > hand-over did not, and a calculation described in the browser reached `prep`,
 > rendered its decks, laid out its directories and reported success with no
 > pseudopotentials anywhere in it. Nothing checked: the coverage check reads the

@@ -7,7 +7,7 @@ projects UI, validation, and their contracts)*
 `0d7bdf3c` — Task I/II (bench→run connection, probe consent), the four-item
 MolView/checkpoint UI plan, the export/persistence follow-ups, the
 kgrid-as-statement rule + run-periodicity bridge, and the grouped bench
-submission + `jobset.sh` launcher.
+submission.
 **Method:** the three-pass protocol — (1) the freshest unit against its
 governing contract sections, re-read first; (2) every commit since the
 milestone, walked from `git log` with per-feature receive-side traversals
@@ -249,7 +249,6 @@ known-violations ledger the test maintains and fix F3.
   list (or renaming the key `sweep=`) would make the decision entry exact.
 * **N2** — prep step 4b swallows a launcher-write failure with no note
   (`prep.py:308-313` `except Exception: pass`): a bundle can silently keep
-  a *stale* `jobset.sh` baking another machine's repo path.  A
   `log.produced`-style note on the skip would keep the record honest.
 * **N3** — `topology_field_types` types a plain (non-Optional) field as
   `str` (`environment.py`: `get_args()` of a bare type is empty).
@@ -288,10 +287,6 @@ known-violations ledger the test maintains and fix F3.
   always have their `gres`); wall = pending × bound × 1.1 + 300 s;
   dry-run parity with the single path; a second grouped submit correctly
   refuses ("all trials launched").
-* **`jobset.sh` launcher** — bakes repo + env at generation, verbatim
-  preamble + activation, `cd` bundle, `exec python -m molbuilder`; § 6.1's
-  two-layer premise held, proven at delivery by the PATH-shim execution
-  test.
 * **VibrationView seal** — `lib/vibrationview/_export.js` is
   **byte-identical** to its pre-touch state (`git diff 1ce4b40d^ HEAD` is
   empty).

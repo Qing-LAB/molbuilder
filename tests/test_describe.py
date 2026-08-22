@@ -1,4 +1,4 @@
-"""``jobset describe`` — the portable description, and what it must never write.
+"""``jobset init`` — the portable description, and what it must never write.
 
 Contract: ``docs/execution/architecture.md`` § 4 (the route: *ask → check →
 write*, **floor 2 only**) · ``docs/execution/job-system.md`` § 5.1 (the command)
@@ -176,14 +176,27 @@ def test_the_vacuum_flag_reaches_the_travelling_structure(tmp_path):
     in memory."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
+    from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.workingcopy_structure import StructureCodec
-    xyz = tmp_path / "h2.xyz"
+    import os
+    # `init` cites both the structure and the calculation FROM THE PROJECTS
+    # ROOT (job-contracts.md 2.5b), so the test says where its tree is --
+    # the same thing a user does when calculations live on scratch.
+    tree = tmp_path / "projects"
+    (tree / "P" / "structure").mkdir(parents=True)
+    xyz = tree / "P" / "structure" / "h2.xyz"
     xyz.write_text("2\n\nH 0 0 0\nH 0 0 0.74\n")
-    res = CliRunner().invoke(jobset_group, [
-        "describe", str(xyz), str(tmp_path / "calc"),
-        "--shape", "hierarchical", "--vacuum", "8", "--name", "JOB"])
+    os.environ[PROJECTS_ROOT_ENV] = str(tree)
+    try:
+        res = CliRunner().invoke(jobset_group, [
+            "init", "--structure", "P/structure/h2.xyz",
+            "--bundle", "P/optimization/calc",
+            "--shape", "hierarchical", "--vacuum", "8", "--name", "JOB"])
+    finally:
+        os.environ.pop(PROJECTS_ROOT_ENV, None)
     assert res.exit_code == 0, res.output
-    reloaded = StructureCodec().load(tmp_path / "calc" / "h2.source.xyz")
+    reloaded = StructureCodec().load(
+        tree / "P" / "optimization" / "calc" / "h2.source.xyz")
     assert reloaded.vacuum == (8.0, 8.0, 8.0)
 
 

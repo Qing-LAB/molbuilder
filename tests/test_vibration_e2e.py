@@ -32,20 +32,28 @@ WATER = "3\nwater\nO 0.0 0.0 0.119\nH 0.0 0.757 -0.477\nH 0.0 -0.757 -0.477\n"
 
 
 def _describe(tmp_path, monkeypatch):
+    """Create the calculation the way a user does: both citations read from
+    the projects root (`job-contracts.md` § 2.5b)."""
     from click.testing import CliRunner
 
     from molbuilder.jobset._cli import jobset_group
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    tree = tmp_path / "projects"
+    (tree / "P" / "structure").mkdir(parents=True)
+    (tree / "P" / "structure" / "w.xyz").write_text(WATER)
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "w.xyz").write_text(WATER)
     r = CliRunner().invoke(jobset_group, [
-        "describe", str(tmp_path / "w.xyz"), str(tmp_path / "V"),
+        "init", "--structure", "P/structure/w.xyz",
+        "--bundle", "P/frequency/V",
         "--engine", "pyscf", "--shape", "hierarchical",
         "--calculation", "vibration", "--name", "W"])
     assert r.exit_code == 0, r.output
-    (tmp_path / "V" / ".molbuilder.json").write_text(json.dumps(
+    bundle = tree / "P" / "frequency" / "V"
+    (bundle / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": f"source {CONDA_SH}"}}))
-    return tmp_path / "V"
+    return bundle
 
 
 def _prep_and_run(bundle):

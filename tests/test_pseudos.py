@@ -729,7 +729,7 @@ def test_analyze_accepts_the_shape_its_callers_actually_send(tmp_path, monkeypat
 
 def test_a_relative_lib_resolves_through_the_calculations_own_tree(
         tmp_path, monkeypatch):
-    """The 2026-08-21 Sol bug: `./jobset.sh` runs with the calculation
+    """The 2026-08-21 Sol bug: a verb run with the calculation
     folder as the working directory, and the old fallback anchored a bare
     ``pseudopotential`` at ``<cwd>/projects/...`` -- "stuck with the pwd".
     The calculation KNOWS its own tree: a bare spelling walks up from the
