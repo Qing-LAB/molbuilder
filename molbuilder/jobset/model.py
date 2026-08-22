@@ -36,6 +36,14 @@ from typing import Any, Dict, List, Optional
 # name AND major since U9).
 SCHEMA = "molbuilder/job-set@1"
 
+#: The file a JobSet is written to.  **A11: one spelling per name molbuilder
+#: writes** -- this was a bare literal in `prep` (three times), in `_cli` (as a
+#: private `_JOBSET_FILE` nobody could import) and in `checkpoint`'s bundle
+#: descriptors, so the name of the file this module defines was spelled
+#: everywhere except here.  The pattern is `task.FILENAME` and
+#: `environment.FILENAME`: the module that owns the format owns its name.
+FILENAME = "job-set.json"
+
 _KINDS = ("sweep", "ladder")
 
 

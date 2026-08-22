@@ -51,8 +51,10 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
              "to start without them.  Download from "
              "http://www.pseudo-dojo.org (PBE-SR, standard, PSML "
              "format) and set cfg.psml_lib to that directory.  "
-             "Convention: projects/pseudopotential/ next to your "
-             "structure files.  Once set, this preflight will check "
+             "Convention: the bare name `pseudopotential`, which means "
+             "the projects tree this calculation lives in "
+             "(job-contracts.md 2.5a) -- do NOT write the projects/ "
+             "prefix.  Once set, this preflight will check "
              "coverage + XC-family match against your structure's "
              "elements automatically."),
             "config.psml_lib",
@@ -60,41 +62,29 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     from ..pseudos import resolve_psml_lib
     psml_dir = resolve_psml_lib(psml_lib, dest_dir=dest_dir)
     if not psml_dir.is_dir():
-        # Relative paths try dest-relative first (if we have dest_dir),
-        # then fall back to projects/-relative (see
-        # pseudos.resolve_psml_lib).  When the user gives a relative
-        # path that misses both anchors, tell them what we tried.
+        # The spelling named ONE anchor (job-contracts.md 2.5a) and the
+        # folder is not there.  Say which anchor, in the rule's own words --
+        # `pseudos.describe_psml_anchor` owns that sentence so this surface
+        # and `prep`'s cannot describe the rule differently.
+        from ..pseudos import describe_psml_anchor
         from pathlib import Path as _P
         is_relative = not _P(psml_lib).expanduser().is_absolute()
-        if is_relative:
-            hint = (
-                f"  Note: relative paths are resolved against the "
-                f".fdf destination dir first (the portable form the "
-                f"Save handler persists), then against ``projects/`` "
-                f"(the documented convention).  Tried: {psml_dir}.  "
-                f"Either create that directory, use an absolute path, "
-                f"or pick the directory via the file-picker."
-            )
-        else:
-            hint = ""
-        # Severity rule:
-        #   * ABSOLUTE path that doesn't exist -> always ERROR.  No
-        #     amount of context can rescue an absolute path.
-        #   * RELATIVE path + NO dest_dir context -> WARN.  The form
-        #     might hold a dest-relative path (post-Save form rewrite);
-        #     Save-time install-pseudos re-checks with dest_dir.
-        #   * RELATIVE path + dest_dir given (Save preflight) -> ERROR.
-        #     We tried both anchors; if neither hits the file is really
-        #     missing and Save will fail downstream.
-        if not is_relative:
-            severity = "error"
-        else:
-            severity = "error" if dest_dir is not None else "warn"
+        # Severity, and the one thing that changes it:
+        #   * ABSOLUTE miss -> ERROR.  Nothing about context can rescue it.
+        #   * RELATIVE, calculation folder known -> ERROR.  The anchor the
+        #     spelling named is available and the folder is not there.
+        #   * RELATIVE, NO calculation folder -> WARN.  A dotted spelling
+        #     means "from this calculation", and there is no calculation
+        #     yet; this ran against the server's own tree instead, so a
+        #     miss here does not prove a miss at prep time.
+        severity = "error" if (not is_relative or dest_dir is not None) else "warn"
         return [Issue(
             severity,
             f"cfg.psml_lib path does not exist or is not a directory: "
-            f"{psml_lib}.  SIESTA will not find any pseudopotentials."
-            + hint,
+            f"{psml_lib}.  SIESTA will not find any pseudopotentials.  "
+            + describe_psml_anchor(psml_lib, dest_dir=dest_dir)
+            + "  Create that directory, use an absolute path, or pick "
+              "the directory with the file-picker.",
             "config.psml_lib",
         )]
     # The expected XC family, from the ONE table (`pseudos.expected_xc_family`).

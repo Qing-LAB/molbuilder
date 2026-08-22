@@ -21,8 +21,13 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional
 
+from molbuilder import repo_root
+
 #: The bib's one location -- beside the science docs it serves.
-BIB_PATH = Path(__file__).resolve().parent.parent / "docs" / "science" / "references.bib"
+#: A11: the root comes from its one owner (`molbuilder.repo_root`), never
+#: from a parent-chain climb.  Module level is safe here -- `references` is
+#: not in the package import chain, so this cannot cycle.
+BIB_PATH = repo_root() / "docs" / "science" / "references.bib"
 
 _ENTRY_RE = re.compile(r"@(\w+)\s*\{\s*([^,\s]+)\s*,", re.M)
 _FIELD_RE = re.compile(

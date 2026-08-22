@@ -42,7 +42,7 @@ def render_plan(jobset: JobSet) -> str:
     and resources.  Reads only the JobSet -- no IO.
 
     (The *"dependency, carry, plus the dependency graph"* this promised
-    until A10, 2026-08-12, died 2026-08-10 with stage chaining: nothing
+    until 2026-08-12, died 2026-08-10 with stage chaining: nothing
     orders anything, and a carry is a COPY ``prep --from`` makes, read
     from the attempt's marker — not a plan column.)"""
     js = jobset

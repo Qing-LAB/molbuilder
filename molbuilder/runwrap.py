@@ -4039,7 +4039,7 @@ def render_jobset_launcher(bundle_dir: Path) -> str:
     import molbuilder as _pkg
 
     from . import runtime_config as _rc
-    repo = Path(_pkg.__file__).resolve().parent.parent
+    repo = _pkg.repo_root()
     env_name = os.environ.get("CONDA_DEFAULT_ENV") or "molbuilder"
     _project = Path(bundle_dir) if Path(bundle_dir).exists() else None
     _sg = _rc.get_script_generation(project_dir=_project)

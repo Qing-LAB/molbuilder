@@ -594,6 +594,8 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 | **A7** | **nothing depends upwards** — a floor-N file imports floors ≤ N | `test_architecture_rules`, whose floor map must match § 2.1's table |
 | **A8** | **an object travels whole** (§ 3.1). A door that consumes one of § 3's objects takes the object; its signature may not also name that object's fields, and no caller may destructure one to call it | `test_architecture_rules` — a generator door's parameter names, intersected with the fields of every object it already takes, must be empty |
 | **A9** | **two artifacts of one object agree.** Where a single object is rendered into more than one file, the files are checked against **each other**, not only against a test's intent | `test_runwrap_pair` — one `Resources` in, `.run.sh` and `.sbatch` out, ranks · cores · GPU compared across the pair |
+| **A10** | **an anchor is declared, never discovered.** A path molbuilder is handed resolves against an anchor its own **spelling** names; no resolver may pick one by trying candidates and taking whichever happens to exist | `test_psml_anchor` — the eight-spelling matrix, and the refusal names the one place it looked |
+| **A11** | **one home per root and per name molbuilder writes.** Nothing climbs a parent chain to a root, and nothing re-spells a filename molbuilder itself writes | `test_architecture_rules` — the set of files that climb to the install root must be `{__init__.py}`; the set that spells `job-set.json` / `task.json`, `{jobset/model.py}` / `{task.py}` |
 
 > **A1, A4, A7 and A8 are about the shape of the source** — who may spell a name,
 > who may build an object, who may import whom, who may take one apart — and no
@@ -613,6 +615,33 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 > builds its own object; what must not happen is a *second* function building
 > one — including inside the same file, which a module-level rule would wave
 > through.
+
+> **A10 is the rule the 2026-08-21 Sol failure was missing.** `prep bench`
+> refused over pseudopotentials naming
+> `…/optimization/Relax/projects/pseudopotential` — a folder assembled out of
+> wherever the user happened to be standing. The resolver took a relative
+> `psml_lib` and *tried* anchors in turn — the calculation folder, then the
+> tree above it, then the working directory — so the same string named a
+> different folder on every machine, and the message on a total miss pointed
+> at the last candidate rather than at anywhere the user had chosen. **The fix
+> is not a better fallback order; it is having no fallback order.** The three
+> spellings each name their anchor (`job-contracts.md` § 2.5), and a miss is
+> reported against the one anchor the spelling asked for.
+>
+> **A11 is A1 widened from names to roots and filenames.** A1 stops a second
+> module *assembling* a name; A11 stops a second module *arriving at* a place —
+> by climbing `.parent.parent` to the install root, or by re-typing a filename
+> that already has a constant. Both failure modes are the same one: a fact
+> with two spellings drifts, and the drift is invisible until the two
+> disagree on some machine that is not this one. The roots have one owner
+> each — the install root is the package's own self-knowledge
+> (`molbuilder.repo_root`), the user's tree is `projects.py`'s
+> (`projects_root` / `find_projects_root`), and a per-user config path is
+> `environment.machine_scope_path`'s. Three roots, three owners, no fourth
+> way to reach any of them.
+>
+> *(`envs/builds.py` climbs a parent chain too — to the **nvcc toolchain's**
+> root, which is not ours to own. A11 is about molbuilder's own roots.)*
 
 ---
 

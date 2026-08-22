@@ -688,7 +688,8 @@ def molbuilder_git_sha() -> str:
         # Resolve repo root via this file's path (works under both
         # editable and packaged installs as long as the source is
         # actually present).
-        repo_root = Path(__file__).resolve().parent.parent
+        from molbuilder import repo_root as _repo_root   # A11: one owner
+        repo_root = _repo_root()
         out = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
             cwd=str(repo_root),

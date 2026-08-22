@@ -151,8 +151,12 @@ def _find_in_tree() -> Optional[_Threedna]:
     ``x3dna_notes/`` (dir, but missing bin/fiber + config/).
     """
     # _threedna.py -> repo_root/molbuilder/builders/backends/_threedna.py
-    # parent.parent.parent.parent = repo_root
-    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    # A11: one owner for the root.  This counted FOUR levels because of
+    # where the file sits -- a fact about its depth, wrong the moment it
+    # moves.  Imported inside the function: this module is in the package
+    # import chain, so a module-level import would cycle.
+    from molbuilder import repo_root as _repo_root
+    repo_root = _repo_root()
     for candidate in sorted(repo_root.glob("x3dna*")):
         if candidate.is_dir() and _looks_complete(str(candidate)):
             return _Threedna(
@@ -610,7 +614,8 @@ def _unavailable_message() -> str:
       * a one-line non-commercial-license reminder;
       * the names of the fallback backends (amber, rdkit).
     """
-    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    from molbuilder import repo_root as _repo_root   # A11: one owner
+    repo_root = _repo_root()
     in_tree_glob = repo_root / "x3dna-v*"
     env_root = os.environ.get("X3DNA", "(unset)")
     fiber_path = shutil.which("fiber") or "(not on PATH)"

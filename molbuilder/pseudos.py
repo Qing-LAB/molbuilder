@@ -42,79 +42,118 @@ import xml.etree.ElementTree as ET
 def resolve_psml_lib(raw: str, *,
                       base: Optional[Path] = None,
                       dest_dir: Optional[Path] = None) -> Path:
-    """Resolve ``cfg.psml_lib`` to an absolute Path with a sensible anchor.
+    """Resolve ``cfg.psml_lib`` against the anchor its SPELLING names.
 
-    Anchoring rule (the question "relative to what?"):
-      * Absolute path or ``~/...`` -> use as-is (just ``.expanduser()``).
-      * Relative path -> three-stage resolution:
-          1. If ``dest_dir`` is given, try ``dest_dir / raw`` FIRST.
-             This is the form persisted by the "Save to current dir"
-             button (e.g. ``../../../pseudopotential`` walking back
-             from a project's run dir to projects/pseudopotential/).
-             Portability + privacy: survives copying the whole tree.
-          2. Walk UP from ``dest_dir`` to the nearest ancestor directory
-             named ``projects`` -- the tree the calculation LIVES in --
-             and anchor there.  This is what makes ``./jobset.sh`` work
-             from inside the calculation folder on a cluster (user bug,
-             2026-08-21: with only the cwd fallback below, a bare
-             ``pseudopotential`` resolved to ``<calc>/projects/…`` --
-             "stuck with the pwd" -- because nothing consulted the
-             bundle's own position).
-          3. Fall back to ``<cwd>/projects/`` anchoring -- the web
-             server's case, which runs from the repo root and has no
-             calculation folder to walk from.
+    The rule is `job-contracts.md` § 2.5a, and it is the whole rule:
 
-    Earlier behaviour was ``Path(raw)`` which lets pathlib resolve
-    against ``Path.cwd()`` -- the Flask server's working directory
-    (typically the repo root).  That mismatch surprised users who
-    typed paths assuming a different anchor (e.g. ``../../../pseudo``
-    expecting it to walk back from the .fdf destination).  The
-    two-stage rule above handles both intentions: relative-to-dest
-    (what users type or what Save persists) AND relative-to-projects/
-    (the documented convention).
+      * absolute, or ``~/...``           -> itself.
+      * starts with ``./`` or ``../``    -> the CALCULATION folder
+                                            (``dest_dir``).
+      * anything else (a bare name)      -> the ``projects/`` tree the
+                                            calculation lives in, found by
+                                            walking up from ``dest_dir``.
 
-    Args:
-      raw: the user-provided string (cfg.psml_lib).
-      base: override for ``projects_root()`` -- mostly for tests.
-      dest_dir: the .fdf destination directory (or any directory the
-        relative path should be tried against first).  Provided at
-        ``/api/siesta/install-pseudos`` time; left None at validate
-        time (which then falls back to projects/-relative).
+    **One anchor per spelling, and nothing is tried-and-discarded.**  Until
+    2026-08-21 this walked a cascade -- ``dest_dir``, then the tree, then
+    ``<cwd>/projects`` -- taking whichever candidate happened to exist.  Three
+    consequences, all of them found in one Sol failure:
 
-    Returns:
-      An absolute, NOT-resolved Path (callers do ``.is_dir()`` checks
-      and want the path to remain symlink-faithful for error
-      messages).  Returns the first candidate that exists as a
-      directory; if neither does, returns the projects/-anchored form
-      so the error message points at the canonical location.
+      * the same string named a different folder on different machines,
+        because which candidate "happened to exist" is a property of the
+        machine, not of what the user asked for;
+      * a total miss reported the LAST candidate, so ``prep`` refused with
+        ``.../optimization/Relax/projects/pseudopotential`` -- a folder
+        assembled from where the user was standing, which no user had chosen
+        and no amount of reading the message would explain;
+      * and because trying was free, nothing ever had to decide what the
+        spelling meant.
+
+    Now the spelling decides, the answer is one path, and a miss is reported
+    against the anchor that spelling asked for (`architecture.md` § 7, A10).
+
+    **The caller with no calculation folder.**  Server-side validation runs
+    before anything is written, so there is no *"here"* to be relative to and
+    no tree to walk up from.  With ``dest_dir=None`` both relative forms
+    anchor at ``projects_root()`` -- the server's own declared root, which is
+    the one place a working directory is a legitimate anchor.  ``base``
+    overrides that root (tests, and any caller serving a different tree).
+
+    Returns an absolute, **not-resolved** Path: callers do ``.is_dir()`` and
+    want the path to stay symlink-faithful in error messages.  The path is
+    returned whether or not it exists -- this function answers *"which folder
+    does this spelling name?"*, and the caller reports the miss.
     """
-    from .projects import PROJECTS_ROOT_NAME
+    from .projects import find_projects_root, projects_root
     p = Path(raw).expanduser()
     if p.is_absolute():
         return p
-    # Stage 1: try dest_dir-relative when given.
-    if dest_dir is not None:
-        candidate = (Path(dest_dir) / p)
-        if candidate.is_dir():
-            return candidate
-        # Stage 2: the calculation knows its own tree -- walk up to the
-        # nearest ``projects`` ancestor and anchor there.  Resolve first
-        # so a relative dest_dir still finds its real ancestry.
-        for anc in Path(dest_dir).resolve().parents:
-            if anc.name == PROJECTS_ROOT_NAME:
-                candidate = anc / p
-                if candidate.is_dir():
-                    return candidate
-                break        # the nearest projects/ IS the tree root;
-                             # deeper ancestors are someone else's
-    # Stage 3: fall back to projects/-relative (cwd-anchored).
-    if base is not None:
-        return (base / p)
-    # Lazy import: pseudos.py is a low-level lib module and projects.py
-    # imports nothing here, so a top-level import would be fine, but
-    # this keeps the dependency graph trivially obvious.
-    from .projects import projects_root
-    return projects_root() / p
+
+    dotted = raw.startswith("./") or raw.startswith("../")
+
+    if dest_dir is None:
+        # No calculation to be relative to: the server's declared root.
+        root = base if base is not None else projects_root()
+        return root / p
+
+    if dotted:
+        return Path(dest_dir) / p
+
+    tree = find_projects_root(dest_dir)
+    if tree is not None:
+        return tree / p
+    # The calculation is not inside a projects/ tree -- a hand-made folder,
+    # or a bundle copied somewhere flat.  There is no tree to name, so the
+    # bare spelling has no anchor and the calculation folder is the only
+    # place left that the user actually chose.
+    return Path(dest_dir) / p
+
+
+def describe_psml_anchor(raw: str, *, dest_dir: Optional[Path] = None) -> str:
+    """One sentence: which anchor this spelling named, and where that landed.
+
+    **Why the explanation lives beside the rule.**  Two surfaces refuse over a
+    missing library -- ``prep`` on the target machine and the browser's
+    preflight -- and each used to describe the resolution in its own words.
+    Both descriptions were of the old cascade, so when the rule changed there
+    were two places telling users about anchors that are no longer tried.  A
+    refusal is the only place most users ever learn the rule, which makes it
+    part of the rule, not decoration on top of it.
+
+    The caller owns severity and formatting; this owns the fact.
+    """
+    landed = resolve_psml_lib(raw, dest_dir=dest_dir)
+    p = Path(raw).expanduser()
+    if p.is_absolute():
+        return f"{raw} is an absolute path, so that is where it looked: {landed}."
+
+    if dest_dir is None:
+        return (f"{raw!r} is relative and there is no calculation folder yet, "
+                f"so it was resolved against this server's projects tree: "
+                f"{landed}.")
+
+    if raw.startswith("./") or raw.startswith("../"):
+        return (f"{raw!r} starts with a dot, which means "
+                f"\"from this calculation\", so it looked in {landed}.")
+
+    from .projects import PROJECTS_ROOT_NAME, find_projects_root
+    tree = find_projects_root(dest_dir)
+    if tree is None:
+        return (f"{raw!r} is a bare name, which means the {PROJECTS_ROOT_NAME}/ "
+                f"tree this calculation lives in -- but this calculation is "
+                f"not inside one, so it looked beside the calculation: "
+                f"{landed}.")
+    lead = (f"{raw!r} is a bare name, which means the {PROJECTS_ROOT_NAME}/ "
+            f"tree this calculation lives in ({tree}), so it looked in "
+            f"{landed}.")
+    if raw.split("/", 1)[0] == PROJECTS_ROOT_NAME:
+        # The one spelling that cannot work: the walk-up already found the
+        # tree, so naming it again nests it inside itself.  Say so -- do not
+        # silently strip it, because a user who meant something else by that
+        # first segment deserves to see what happened to it.
+        lead += (f"  Note the doubled {PROJECTS_ROOT_NAME}/: the tree is what "
+                 f"the walk-up finds, so the path you write is the part "
+                 f"INSIDE it.  Drop the leading {PROJECTS_ROOT_NAME}/.")
+    return lead
 
 
 @dataclass(frozen=True)

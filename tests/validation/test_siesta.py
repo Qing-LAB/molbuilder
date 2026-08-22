@@ -336,7 +336,13 @@ class TestSiestaPseudoCoverageInPreflight:
         # Actionable: mentions PseudoDojo + the projects/pseudopotential/
         # convention.
         assert "pseudo-dojo.org" in psml_issues[0].message
-        assert "projects/pseudopotential" in psml_issues[0].message
+        # The convention is the BARE name.  This asserted
+        # "projects/pseudopotential" until 2026-08-21 -- the one spelling
+        # that cannot work, because the walk-up finds the tree and joining
+        # its name again nests it inside itself (job-contracts.md 2.5a).
+        msg = psml_issues[0].message
+        assert "`pseudopotential`" in msg
+        assert "do NOT write the projects/ prefix" in msg
 
     def test_psml_lib_bad_path_emits_error(self):
         from molbuilder.config.siesta import SiestaConfig

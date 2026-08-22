@@ -47,6 +47,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from .jobset.model import FILENAME as _JOBSET_FILENAME
+from .task import FILENAME as _TASK_FILENAME
+
 
 # --------------------------------------------------------------------- #
 #  Classification -- which store a file goes to                         #
@@ -355,7 +358,9 @@ def _run_git(argv: List[str], cwd: str, *,
 # ``bench-manifest.json`` was the third entry until U19 (2026-08-12): its
 #: producer (``bench generate``, the shipped-bundle lifecycle) died in step
 #: 6 u5, and a descriptor nothing writes declares nothing.
-_BUNDLE_DESCRIPTORS = ("task.json", "job-set.json")
+#: A11: both names come from the modules that write them -- `task.FILENAME`
+#: and `jobset.model.FILENAME` -- never re-spelled here.
+_BUNDLE_DESCRIPTORS = (_TASK_FILENAME, _JOBSET_FILENAME)
 
 
 def _is_bundle_root(path: Path) -> bool:

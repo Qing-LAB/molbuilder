@@ -49,6 +49,45 @@ __all__ = [
 
 
 # --------------------------------------------------------------------- #
+#  repo_root() -- where this checkout is                                #
+# --------------------------------------------------------------------- #
+
+
+def repo_root() -> Path:
+    """The directory that CONTAINS the ``molbuilder`` package.
+
+    **Architecture rule A11: one home per root.**  Five modules used to climb
+    a parent chain to this same place -- ``references.py`` for
+    ``docs/science/references.bib``, ``web/blueprints/docs.py`` for ``docs/``,
+    ``runwrap.py`` and ``script_emit.py`` for the checkout a generated script
+    must activate against, and ``builders/backends/_threedna.py`` (twice) for
+    the ``x3dna*/`` unpack directory (`ops/installation.md` § "Option A").
+    Each spelled the climb itself, and ``_threedna`` had to count four levels
+    instead of two because of where it sits.  A count is a fact about a file's
+    depth in the tree, and it is wrong the moment the file moves.
+
+    **Why the package's own module answers this.**  Only ``molbuilder`` knows
+    where ``molbuilder`` is; every one of those five derived it from a
+    ``__file__``, which is this package's self-knowledge read from outside.
+    Asking here means one answer, and it stays right when a caller is moved to
+    a different depth.
+
+    **What it is, precisely:** ``Path(__file__).resolve().parent.parent`` --
+    for the supported deployment (a source checkout, run in place) that is the
+    checkout root, the directory holding ``pyproject.toml``, ``docs/`` and any
+    unpacked ``x3dna*/``.  It is not a search: nothing is probed and nothing
+    falls back, so a caller that needs a file under it checks for that file.
+
+    **Callers inside the import chain must import it lazily.**  ``__init__``
+    imports ``structure`` -> ... -> ``builders.backends._threedna`` and
+    ``projects``, so a module-level ``from molbuilder import repo_root`` in
+    any of those is a cycle.  Import it inside the function instead; modules
+    outside the chain (``references.py``) may import it at module level.
+    """
+    return Path(__file__).resolve().parent.parent
+
+
+# --------------------------------------------------------------------- #
 #  load() -- read existing XYZ or PDB into a Structure                  #
 # --------------------------------------------------------------------- #
 

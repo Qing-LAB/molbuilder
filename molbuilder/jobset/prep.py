@@ -45,7 +45,7 @@ from typing import Callable, List, Optional
 from .. import script_emit as _sc
 from .materialize import job_dir_names, shape_of, materialize, relink
 from ..issues import calling as _calling
-from .model import Job, JobSet, Resources
+from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
 
 
 class PrepError(Exception):
@@ -490,14 +490,25 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
             f"this calculation needs pseudopotentials for "
             f"{', '.join(want)} and none are in {base.name}/, but no "
             f"pseudopotential directory is set.  Set `psml_lib` in the "
-            f"template to the library they live in -- the convention is "
-            f"`projects/pseudopotential/` (project-layout.md § 2.6).")
+            f"template to the library they live in -- the convention is the "
+            f"bare name `pseudopotential`, which means the projects tree "
+            f"this calculation lives in (project-layout.md § 2.6, "
+            f"job-contracts.md § 2.5a).")
     lib = resolve_psml_lib(str(lib_raw), dest_dir=base)
     if not lib.is_dir():
+        # Name the anchor the SPELLING asked for, in the rule's own words.
+        # This used to print only the resolved path, which under the old
+        # cascade was whichever candidate was tried last -- on Sol that was
+        # `<calc>/projects/pseudopotential`, a folder assembled from the
+        # user's working directory that nobody had chosen (2026-08-21).
+        from ..pseudos import describe_psml_anchor
         raise PrepError(
             f"this calculation needs pseudopotentials for "
             f"{', '.join(want)}, and the library they should come from is "
-            f"not a directory: {lib}.")
+            f"not a directory.  "
+            + describe_psml_anchor(str(lib_raw), dest_dir=base)
+            + f"  Put the .psml files there, or set `psml_lib` to a "
+              f"directory that has them.")
     missing = copy_pseudopotentials(want, lib, base)
     if missing:
         raise PrepError(
@@ -875,20 +886,20 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     else:
         record_dir = base
         js = _merge_run_jobset(
-            base / "job-set.json", js,
-            # The CURRENT ladder bounds what the merge keeps (A11).
+            base / JOBSET_FILENAME, js,
+            # The CURRENT ladder bounds what the merge keeps.
             # (`read_task` refuses a description without stages and
             # `Task` refuses an empty tuple, so the stage-less fallback
             # arms that stood here were unreachable -- U6 close.)
             ladder=frozenset(s.name for s in task.stages))
-    js.write(record_dir / "job-set.json")
+    js.write(record_dir / JOBSET_FILENAME)
     if log is not None:
         log.phase("FLOOR 3 · THE JOB-SET — what was declared to the runner")
         log.received("kind", kind)
         for _j in js.jobs:
             log.produced(_j.name, f"{_j.script}  "
                                   f"{_flat_resources(_j.resources)}")
-        log.produced("job-set.json", str(record_dir / "job-set.json"))
+        log.produced(JOBSET_FILENAME, str(record_dir / JOBSET_FILENAME))
     # The allocation is NOT passed on: every job already carries its own
     # resolved resources, per element (generator.md § 5).  Passing it made
     # prep_jobset re-apply the BASE allocation over every job — the review's
@@ -913,7 +924,7 @@ def _merge_run_jobset(path: Path, new: JobSet,
     (`project-layout.md` § 2.3.4 row 3).
 
     ``ladder`` is the CURRENT task's stage-name set, and it bounds what is
-    kept (A11, 2026-08-12): a row is standing only while its stage is still
+    kept (2026-08-12): a row is standing only while its stage is still
     on the ladder — a stage removed from ``task.json`` used to stay in the
     plan forever, its deck gone.  A set whose NAME differs is a different
     calculation's plan and is replaced outright, same as the legacy cases.

@@ -277,12 +277,26 @@ def write_description(desc: Description, dest, *,
                 shutil.copy2(src, staging / travel_name)
         if psml_lib and desc.pseudo_species:
             from .siesta.input import copy_pseudopotentials
-            lib = Path(psml_lib).expanduser()
+            from .pseudos import describe_psml_anchor, resolve_psml_lib
+            # THE SAME ANCHOR RULE AS EVERY OTHER SURFACE (job-contracts.md
+            # § 2.5a).  This was a bare `Path(psml_lib).expanduser()` until
+            # 2026-08-21 -- a fourth rule, and the crudest of them: every
+            # relative spelling meant "from the working directory", so
+            # `--psml-lib pseudopotential` worked or failed depending on
+            # where the user happened to stand, and the bare name that means
+            # the tree everywhere else meant something different here.
+            #
+            # The anchor is `out_dir`, not `staging`: the calculation is the
+            # folder being described, and staging is a transaction detail
+            # that gets renamed away.  Anchoring on it would make a `./`
+            # spelling point at a directory that ceases to exist.
+            lib = resolve_psml_lib(str(psml_lib), dest_dir=out_dir)
             if not lib.is_dir():
                 raise DescribeError(
-                    f"--psml-lib {psml_lib!r} is not a directory. The "
-                    f"pseudopotentials travel with the calculation, so they "
-                    f"have to be somewhere readable now.")
+                    f"--psml-lib {psml_lib!r} is not a directory.  "
+                    + describe_psml_anchor(str(psml_lib), dest_dir=out_dir)
+                    + "  The pseudopotentials travel with the calculation, "
+                      "so they have to be somewhere readable now.")
             copy_pseudopotentials(list(desc.pseudo_species), lib, staging)
     except BaseException:
         # Nothing is published, so the target is exactly as it was.

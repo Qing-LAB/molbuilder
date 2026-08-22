@@ -732,9 +732,10 @@ def test_a_relative_lib_resolves_through_the_calculations_own_tree(
     """The 2026-08-21 Sol bug: `./jobset.sh` runs with the calculation
     folder as the working directory, and the old fallback anchored a bare
     ``pseudopotential`` at ``<cwd>/projects/...`` -- "stuck with the pwd".
-    The calculation KNOWS its own tree: resolution walks up from the
+    The calculation KNOWS its own tree: a bare spelling walks up from the
     calculation folder to the nearest ``projects`` ancestor and anchors
-    there, wherever the process happens to be standing."""
+    there, wherever the process happens to be standing (`job-contracts.md`
+    § 2.5a; the full matrix is `test_psml_anchor.py`)."""
     from molbuilder.pseudos import resolve_psml_lib
     lib = tmp_path / "projects" / "pseudopotential"
     lib.mkdir(parents=True)
@@ -745,12 +746,23 @@ def test_a_relative_lib_resolves_through_the_calculations_own_tree(
     monkeypatch.chdir(elsewhere)
     got = resolve_psml_lib("pseudopotential", dest_dir=calc)
     assert got == lib
-    # dest-relative (stage 1) still wins when the folder carries its own
+
+    # A BARE NAME MEANS THE TREE EVEN WHEN A SAME-NAMED FOLDER SITS BESIDE
+    # THE CALCULATION.  This asserted the opposite until 2026-08-21 -- back
+    # then resolution tried the calculation folder first and took it if it
+    # existed, so what a spelling meant depended on what happened to be on
+    # disk.  That is the property A10 removes: the anchor is the spelling's,
+    # not the filesystem's.  `./mypseudos` is how you name the local one.
     local = calc / "mypseudos"
     local.mkdir()
-    assert resolve_psml_lib("mypseudos", dest_dir=calc) == local
-    # outside any projects tree, the cwd fallback stands unchanged
+    assert resolve_psml_lib("mypseudos", dest_dir=calc) == \
+        tmp_path / "projects" / "mypseudos"
+    assert resolve_psml_lib("./mypseudos", dest_dir=calc) == local
+
+    # Outside any projects tree there is no tree to name, so the bare
+    # spelling falls to the folder the user actually chose -- NOT to the
+    # working directory, which is the anchor nobody chose.
     lone = tmp_path / "lone-calc"
     lone.mkdir()
-    got = resolve_psml_lib("pseudopotential", dest_dir=lone)
-    assert got == elsewhere / "projects" / "pseudopotential"
+    assert resolve_psml_lib("pseudopotential", dest_dir=lone) == \
+        lone / "pseudopotential"

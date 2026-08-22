@@ -1407,11 +1407,28 @@ only arrangement under which the two ways of describing a calculation — the
 browser and `jobset describe` — end up with identical folders, because neither of
 them has to remember to do it.
 
+**Where the library is, is said once.** `psml_lib` is a path like any other the
+user types, so it follows the anchor rule in
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5a: absolute or `~`
+means itself, a leading `./` or `../` means *from this calculation*, and a bare
+`pseudopotential` means *the `projects/` tree this calculation lives in* —
+found by walking up from the calculation folder, so the same template works on
+the workstation that wrote it and the cluster that runs it. `prep`, the
+browser's validation and `jobset describe --psml-lib` all resolve it through
+that one rule; before 2026-08-21 they had three rules between them, and
+`describe` had a fourth that was simply the working directory.
+
 **An element with no pseudopotential in either place stops `prep`, by name**, before
 a deck is written: *"this calculation needs S.psml and there is none in the folder
 or in the library."* SIESTA has no search path — it opens `<element>.psml` in the
 directory it is run from and nowhere else — so a missing file is not a warning
-about a preference, it is a run that cannot start. Finding that out at `prep`, on
+about a preference, it is a run that cannot start. **And when the library
+itself is not there, the refusal names the folder the spelling asked for** —
+`~/molbuilder/projects/pseudopotential`, the tree it walked up to — not a
+candidate assembled from the working directory. A user who is told the real
+place can put files in it; a user who is told
+`…/optimization/Relax/projects/pseudopotential` is being shown a folder nobody
+chose (the 2026-08-21 Sol refusal, `architecture.md` § 7 **A10**). Finding that out at `prep`, on
 the machine, costs a second; finding it out afterwards costs a queue wait and
 however long MPI takes to come up first.
 

@@ -1880,9 +1880,16 @@ def convert(
             summary["makov_payne_script"] = str(emitted)
 
     if cfg.psml_lib and cfg.copy_psml:
-        lib = Path(cfg.psml_lib).expanduser()
+        # The one anchor rule (job-contracts.md § 2.5a), anchored on the
+        # calculation the .fdf is being written into.  A bare
+        # `Path(...).expanduser()` stood here until 2026-08-21 and made every
+        # relative spelling working-directory-relative -- so `convert` and
+        # `prep` disagreed about what the same template meant.
+        from ..pseudos import describe_psml_anchor, resolve_psml_lib
+        lib = resolve_psml_lib(str(cfg.psml_lib), dest_dir=fdf_p.parent)
         if not lib.is_dir():
-            print(f"  WARN: --psml-lib {lib} is not a directory; skipping psml copy",
+            print(f"  WARN: skipping psml copy -- "
+                  f"{describe_psml_anchor(str(cfg.psml_lib), dest_dir=fdf_p.parent)}",
                   file=sys.stderr)
         else:
             summary["missing_psml"] = copy_pseudopotentials(species, lib, fdf_p.parent)

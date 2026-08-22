@@ -33,7 +33,8 @@ from .prep import PrepError
 from .submit import submit_jobset, SubmitError
 from .runstatus import jobset_status, render_stage_status, render_status
 
-_JOBSET_FILE = "job-set.json"
+#: A11: the name comes from the module that writes the file.
+from .model import FILENAME as _JOBSET_FILE
 
 
 def _load(bundle: str) -> tuple:

@@ -43,7 +43,7 @@ def _docs_root() -> Optional[Path]:
     not configured -- the docs live at a fixed spot in the source tree.
     """
     import molbuilder
-    root = Path(molbuilder.__file__).resolve().parent.parent / "docs"
+    root = molbuilder.repo_root() / "docs"
     return root if root.is_dir() else None
 
 

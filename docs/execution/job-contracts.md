@@ -448,10 +448,44 @@ across structures" intuition that motivated topic-first ordering.
 > only). The set is now **nine** — two storage topics (`structure`,
 > `pseudopotential`) and a free-form `user` workspace were added.
 
+#### 2.5a A relative path says which anchor it means
+
+A user types a path in one of three places — a template field, a CLI flag, a
+form — and the same string has to mean the same folder on the workstation that
+wrote it and the cluster that runs it. **The spelling declares the anchor.**
+
+| The user wrote | It is resolved against | Because |
+|---|---|---|
+| `/data/psml` or `~/psml` | itself | an absolute path is already an answer |
+| `./psml` or `../../psml` | **the calculation folder** | the leading dot is the user saying *"from here"* — and "here", for a path stored in a calculation, is that calculation. This is the form the browser's *Save to current dir* persists, and it survives the whole folder being copied to a cluster |
+| `pseudopotential` (bare) | **the `projects/` tree this calculation lives in**, found by walking up from the calculation folder | a bare name is the tree's own vocabulary — the same word the topic table above uses. Walking up is what makes it machine-independent: the tree is found from the calculation's position, not from where the user was standing |
+
+**Nothing is tried and discarded.** A spelling names exactly one anchor, and if
+the folder is not there the answer is a refusal that names *that* anchor — not
+a second guess against a different one. A resolver that tries candidates in
+turn makes the same string mean different folders on different machines, and
+reports failures against a place the user never chose (`architecture.md` § 7,
+**A10**).
+
+**A caller with no calculation folder** — server-side validation, which runs
+before anything is written anywhere — has no *"here"* and no tree to walk up
+from. It anchors bare and dotted spellings alike at its own `projects_root()`,
+which for the server process is the working directory it was started in. That
+is the one place a working directory is a legitimate anchor, because it is the
+server's own declared root rather than an accident of where a user stood.
+
+> ⚠ **Do not write the `projects/` prefix.** `projects/pseudopotential` is a
+> bare spelling that *starts with the tree's own name*, so walking up to the
+> tree and joining it produces `projects/projects/pseudopotential`. The tree
+> is what the walk-up finds; the path is what you want *inside* it. Say
+> `pseudopotential`. *(Hint texts taught the prefixed form until 2026-08-21 —
+> it is the spelling that cannot work.)*
+
 `molbuilder/projects.py` exposes the tree API: `validate_name`,
 `validate_topic`, `project_dir` / `topic_dir` / `structure_dir`,
-`ensure_structure_dir` (mkdir -p), `list_projects` / `list_topics` /
-`list_structures`, and `find_geom_candidates(project=…)`. The last scans the
+`ensure_structure_dir` (mkdir -p), `projects_root` / `find_projects_root`,
+`list_projects` / `list_topics` / `list_structures`, and
+`find_geom_candidates(project=…)`. The last scans the
 tree for reusable geometries matching `*_optimized.xyz`, `*.STRUCT_OUT`, and
 `*_geom_optim.xyz` (sorted newest-first) — deliberately **not** bare `*.xyz` /
 `*.pdb`, which would sweep up user inputs and noise.

@@ -548,3 +548,104 @@ def test_a8_no_caller_takes_an_object_apart_to_make_a_call():
           "which subset matters and the doors disagree by construction -- "
           "invisibly, because a missing field is indistinguishable from a "
           "field whose value happens to be the default.")
+
+
+# ===================================================================== #
+#  A11 -- one home per root, and per name molbuilder writes             #
+# ===================================================================== #
+
+#: How a module climbs to the directory that CONTAINS the package: two
+#: ``.parent`` steps off a ``__file__`` (or off ``molbuilder.__file__``), with
+#: however many more steps the file's own depth requires.  ``_threedna`` needed
+#: four, which is what makes the climb a bug waiting to happen: the count is a
+#: fact about where the file sits, and moving the file silently changes where
+#: it thinks the root is.
+_CLIMBS_TO_THE_ROOT = re.compile(
+    r"""__file__\s*\)?             # Path(__file__)  /  Path(mod.__file__)
+        (?:\s*\.resolve\(\))?      #   .resolve()
+        (?:\s*\.parent){2,}        #   .parent.parent ...
+    """,
+    re.VERBOSE,
+)
+
+#: A11's rule for roots, as the set it permits.  ``__init__.py`` answers
+#: "where is this package installed?" because it is the only module that can:
+#: every climb was reading this package's own ``__file__`` from outside.
+_THE_ROOT_OWNERS = {Path("__init__.py")}
+
+#: Files molbuilder writes whose NAME has one home, and where that home is.
+#: The pattern is `task.FILENAME` / `environment.FILENAME`: the module that
+#: owns the format owns its name.  A second module spelling the literal is a
+#: second place to edit when a name changes -- and the one that gets missed.
+_FILENAME_OWNERS = {
+    "task.json":        Path("task.py"),
+    "job-set.json":     Path("jobset/model.py"),
+    "environment.json": Path("environment.py"),
+}
+
+
+def test_a11_exactly_one_module_climbs_to_the_install_root():
+    """**A11 — one home per root.**
+
+    Five modules used to climb here independently (`references`,
+    `web/blueprints/docs`, `runwrap`, `script_emit`, and `_threedna` twice).
+    They agreed, which is why nothing caught it -- a duplicated fact is only
+    visible once the copies disagree, and by then it disagrees on somebody
+    else's machine.
+
+    **An equality, not a hunt.**  ``__init__.py`` must still be the one that
+    climbs: if `repo_root` moved or stopped deriving the path this way, the
+    guard would otherwise pass while watching nothing.
+
+    **What it cannot see:** a root reached some other way -- an env var, a
+    ``sys.path`` entry, a hard-coded string.  It fences the spelling people
+    actually reach for.
+    """
+    climbers = {rel for rel in _python_files()
+                if _CLIMBS_TO_THE_ROOT.search(
+                    (_PKG / rel).read_text(encoding="utf-8"))}
+    assert climbers == _THE_ROOT_OWNERS, (
+        "A11 says one module climbs to the install root; the rest call "
+        "`molbuilder.repo_root()`.\n"
+        f"  also climbing: {sorted(str(p) for p in climbers - _THE_ROOT_OWNERS)}\n"
+        f"  expected to, but does not: "
+        f"{sorted(str(p) for p in _THE_ROOT_OWNERS - climbers)}")
+
+
+@pytest.mark.parametrize("filename,owner", sorted(_FILENAME_OWNERS.items()))
+def test_a11_one_module_spells_each_name_molbuilder_writes(
+        filename: str, owner: Path):
+    """**A11 — one spelling per name molbuilder writes.**
+
+    ``job-set.json`` was spelled in `jobset/prep.py` (three times), in
+    `jobset/_cli.py` (as a private ``_JOBSET_FILE`` no other module could
+    import) and in `checkpoint.py`'s bundle descriptors -- everywhere except
+    `jobset/model.py`, which defines the format.  `checkpoint.py` re-spelled
+    ``task.json`` too, beside an existing `task.FILENAME`.
+
+    Docstrings and comments are excluded: prose naming a file is documentation,
+    and the rule is about the string the CODE uses.
+    """
+    quoted = re.compile(r"""['"]""" + re.escape(filename) + r"""['"]""")
+    spellers = set()
+    for rel in _python_files():
+        src = (_PKG / rel).read_text(encoding="utf-8")
+        if not quoted.search(src):
+            continue
+        tree = ast.parse(src)
+        strings = {n.value for n in ast.walk(tree)
+                   if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+        docstrings = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                 ast.AsyncFunctionDef)):
+                d = ast.get_docstring(node, clean=False)
+                if d is not None:
+                    docstrings.add(d)
+        if filename in strings - docstrings:
+            spellers.add(rel)
+    assert spellers == {owner}, (
+        f"A11 says `{filename}` is spelled once, in {owner}.\n"
+        f"  also spelling it: {sorted(str(p) for p in spellers - {owner})}\n"
+        f"  expected to, but does not: "
+        f"{sorted(str(p) for p in {owner} - spellers)}")

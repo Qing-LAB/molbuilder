@@ -132,6 +132,37 @@ def projects_root(base: Optional[Path] = None) -> Path:
     return (base if base is not None else Path.cwd()) / PROJECTS_ROOT_NAME
 
 
+def find_projects_root(start: Path) -> Optional[Path]:
+    """Walk up from ``start`` to the ``projects/`` tree it lives in.
+
+    Returns the tree root (the directory NAMED ``projects``), or ``None`` if
+    ``start`` is not inside one.
+
+    **Why the tree is found from the calculation, not from the process.**
+    ``projects_root()`` answers *"where would a NEW project go?"* and its
+    answer is the working directory -- correct for the server, which is
+    started at a declared root, and wrong for a calculation, which is a folder
+    that already knows where it lives.  A user on a cluster runs
+    ``./jobset.sh`` from inside the calculation; anchoring on their working
+    directory made a template that worked on the workstation resolve to a
+    folder that does not exist on the cluster (2026-08-21).
+
+    **The NEAREST ancestor wins, and the walk stops there.**  A tree inside a
+    tree is somebody else's tree: continuing past the first match would let a
+    calculation reach into a parent installation's pseudopotentials, which is
+    exactly the machine-dependence this function exists to remove.
+
+    ``start`` is resolved first, so a relative path still finds its real
+    ancestry.  This is the tree half of the anchor rule in
+    `job-contracts.md` § 2.5a; the resolver that applies it to a user-typed
+    path is `pseudos.resolve_psml_lib`.
+    """
+    for anc in Path(start).resolve().parents:
+        if anc.name == PROJECTS_ROOT_NAME:
+            return anc
+    return None
+
+
 def project_dir(project: str, *, base: Optional[Path] = None) -> Path:
     return projects_root(base) / validate_name(project, kind="project")
 
