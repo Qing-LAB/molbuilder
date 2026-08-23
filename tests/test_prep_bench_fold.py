@@ -71,7 +71,7 @@ def _sandbox(tmp_path_factory, monkeypatch):
 def calc(tmp_path):
     """A GPU calculation, described, on a machine whose probe found one a100.
 
-    ``enable_gpu=True`` is stated here rather than assumed, because from
+    ``use_gpu=True`` is stated here rather than assumed, because from
     2026-08-17 it is the DESCRIPTION that decides whether this is a GPU
     benchmark — `web/task-setup.md` § 6.2, *"use GPU or not is set up only at
     the Job Prep UI"*.  `_bench_inputs` used to pin it True for every trial, so
@@ -85,7 +85,7 @@ def calc(tmp_path):
     dest = tmp_path / "calc"
     D.write_description(
         D.build_description(struct,
-                            SiestaConfig(system_label="JOB", enable_gpu=True,
+                            SiestaConfig(system_label="JOB", use_gpu=True,
                                          diag_algorithm="ELPA-1STAGE"),
                             default_siesta_stages("publishable"),
                             engine="siesta", shape="hierarchical", name="JOB",
@@ -274,7 +274,7 @@ def _describe_cpu(calc):
     """
     p = calc / "JOB.template.toml"
     text = p.read_text()
-    i = text.index("[item.enable_gpu]")
+    i = text.index("[item.use_gpu]")
     j = text.index("[item.", i + 1)
     p.write_text(text[:i]
                  + text[i:j].replace("value = true", "value = false")
@@ -595,7 +595,7 @@ def test_the_choice_names_its_winner_and_its_mechanism(calc):
     assert "mpi_np" in choice["knobs"]          # exchange, not "ranks"
     assert "ranks" not in choice["knobs"]
     mech = choice["mechanism"]
-    assert mech["enable_gpu"] is True           # the deck's gpu_mode
+    assert mech["use_gpu"] is True           # the deck's gpu_mode
     assert mech["diag_algorithm"] == "ELPA-1STAGE"   # the deck's own line
     assert res["generated_at"]                  # the offer reads this key
 
@@ -1532,19 +1532,19 @@ def test_a_name_outside_the_execution_category_is_refused(calc):
 
 def test_a_one_point_declaration_is_a_pin_and_decides_the_grid(calc):
     """The override lane's ONE-point half (user rule, 2026-08-20): a CPU
-    description with `bench: {enable_gpu: [true]}` enumerates the GPU grid
+    description with `bench: {use_gpu: [true]}` enumerates the GPU grid
     -- the declaration overrides the template's answer -- and the value
     rides every trial as a pin, under the measurement pins."""
-    _describe_cpu(calc)                       # template says enable_gpu=false
-    _declare_bench(calc, {"enable_gpu": [True],
+    _describe_cpu(calc)                       # template says use_gpu=false
+    _declare_bench(calc, {"use_gpu": [True],
                           "diag_algorithm": ["ELPA-2STAGE"],
                           "mpi_np": [4], "omp_threads": [1]})
     sweep, pins, _tr = _bench_inputs(calc)
-    assert pins["enable_gpu"] is True
+    assert pins["use_gpu"] is True
     assert pins["diag_algorithm"] == "ELPA-2STAGE"
     assert pins["max_scf_iter"] == 3, "the measurement pins still ride"
     assert all("G" in p for p in sweep), (
-        "a declared enable_gpu=true must enumerate the GPU grid")
+        "a declared use_gpu=true must enumerate the GPU grid")
 
 
 def test_a_declared_pin_reaches_the_trial_deck(calc):
@@ -1573,7 +1573,7 @@ def test_a_bad_enum_value_and_a_non_bool_are_refused_with_the_choices(calc):
     with pytest.raises(click.ClickException) as e:
         _bench_inputs(calc)
     assert "ELPA-9STAGE" in str(e.value) and "ScaLAPACK" in str(e.value)
-    _declare_bench(calc, {"enable_gpu": [1]})
+    _declare_bench(calc, {"use_gpu": [1]})
     with pytest.raises(click.ClickException) as e:
         _bench_inputs(calc)
     assert "true or false" in str(e.value)
@@ -1688,8 +1688,8 @@ def test_summarize_writes_the_proposal_and_never_overwrites_yours(calc):
     # the fixture's trial has no util.csv -> no measured peak -> the
     # proposal honestly carries NO mem line (absent, not invented)
     assert "mem_gb" not in rec["recommend"] and "mem" not in raw["resources"]
-    assert raw["pins"]["enable_gpu"] == \
-        rec["choice"]["mechanism"]["enable_gpu"]
+    assert raw["pins"]["use_gpu"] == \
+        rec["choice"]["mechanism"]["use_gpu"]
     # the user edits it; a re-summarize must not clobber the edit
     cfg.write_text(cfg.read_text().replace(
         f"mpi_np = {raw['resources']['mpi_np']}", "mpi_np = 1"))
@@ -1739,8 +1739,8 @@ def test_run_config_refuses_what_it_does_not_know(tmp_path):
         read_run_config(_write("[resources]\nmpi_np = true\n"), engine="siesta")
     with pytest.raises(ValueError, match="mem must be str"):
         read_run_config(_write("[resources]\nmem = 29\n"), engine="siesta")
-    with pytest.raises(ValueError, match="enable_gpu must be bool"):
-        read_run_config(_write("[pins]\nenable_gpu = 1\n"), engine="siesta")
+    with pytest.raises(ValueError, match="use_gpu must be bool"):
+        read_run_config(_write("[pins]\nuse_gpu = 1\n"), engine="siesta")
     with pytest.raises(ValueError, match="not valid TOML"):
         read_run_config(_write("= what ="), engine="siesta")
     f = tmp_path / "run-config.toml"
@@ -1874,7 +1874,7 @@ def test_a_declared_pin_reaches_the_run_deck_and_the_verdict_outranks_it(
 def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tmp_path):
     """E-J1 (restored 2026-08-21): the bench lane speaks SIESTA's
     vocabulary -- its measurement pins name SiestaConfig fields, and the
-    GPU question is read under `enable_gpu`.  A PySCF description used
+    GPU question is read under `use_gpu`.  A PySCF description used
     to be stopped only by ACCIDENT: those pins failing resolve, with a
     refusal blaming settings the user never wrote.  The seam now refuses
     by NAME, before any grid is enumerated."""

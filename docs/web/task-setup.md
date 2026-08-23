@@ -236,7 +236,7 @@ one element, a benchmark is the same list with N*).
 
 | setting | points | what that means |
 |---|---|---|
-| `enable_gpu` | `off` | **chosen** — one point, so it is a value |
+| `use_gpu` | `off` | **chosen** — one point, so it is a value |
 | `mpi_np` | `4` `8` `16` | measured — 3 trials |
 | `omp_threads` | `1` `2` | measured — 2 trials |
 
@@ -254,7 +254,7 @@ filters it). Inside it, the catalogue draws a line:
 **Neither row is a list, and neither should be written as one.** Each setting in
 the catalogue already says whether the machine answers it, so asking that
 question sorts the group in two with nothing to keep in step. For SIESTA today
-that comes out as `restart` · `continue_retries` · `enable_gpu` on the first row
+that comes out as `restart` · `continue_retries` · `use_gpu` on the first row
 and `mpi_np` · `omp_threads` · `max_memory_mb` on the second — but those are what
 the answer *is* right now, not what it is defined as.
 
@@ -300,7 +300,7 @@ Three things are true of it at once, and no parameter tab can know any of them:
   CPU on a machine that has a GPU is ordinary and deliberate.
 - **It can be measured first and decided after.** Add a second point and it
   becomes a bench axis; `summarize` writes `bench-result.json`, whose
-  `choice.mechanism` carries `enable_gpu`, and `prep run` **offers** the verdict
+  `choice.mechanism` carries `use_gpu`, and `prep run` **offers** the verdict
   and waits ([`project-layout.md § 2.3.3`](?doc=execution/project-layout.md)).
 
 **What it is not is the eigensolver.** `diag_algorithm` is a `budget` item on the

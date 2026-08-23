@@ -334,7 +334,7 @@ because both halves are real and they are different acts:
 | | | |
 |---|---|---|
 | **what to measure** | `task.json`'s `bench` — *"try 4, 8, 16 ranks"* | **declared**, floor 2, portable |
-| **what is chosen outright** | a `bench` entry with **one** point — *"enable_gpu: [true]"* | **declared**, and applied at prep as a **pin** over the template, for the bench's trials and the run alike *(user rule, 2026-08-20: every non-machine `bench` entry is an override lane — several points = try them, one = the value in force; the machine-answered axes can never be "in force")* |
+| **what is chosen outright** | a `bench` entry with **one** point — *"use_gpu: [true]"* | **declared**, and applied at prep as a **pin** over the template, for the bench's trials and the run alike *(user rule, 2026-08-20: every non-machine `bench` entry is an override lane — several points = try them, one = the value in force; the machine-answered axes can never be "in force")* |
 | **what those points mean on this machine** | `prep bench <stage>` | **resolved**, floor 3, on the target |
 | **what was fastest** | `<stage>/bench/bench-result.json` | **measured**, and offered back to that stage's next `prep run` |
 
@@ -388,7 +388,7 @@ framework rule, not a script patch)*:
   intent, submission determines the run's actual starting state).  A value axis that **names a
   measurement pin** is refused by name — its trials would render identical
   decks under different labels, the same measurement twice.
-- **`enable_gpu` with two points is the grid-family axis.**  The machine
+- **`use_gpu` with two points is the grid-family axis.**  The machine
   grid is enumerated once per flag: the CPU family holds the device count
   at `G = 0` (plain ranks), the GPU family ranges `G` over each rank
   count's divisors, and the flag rides each point as an ordinary value
@@ -691,14 +691,14 @@ thought about — which is the state PySCF reached a full review in.
 ### 7.2 Where the two engines stand — the catalogue half
 
 *(Counts are **engine-exclusive rows** — items naming only that engine. Three
-further items name no engine at all and so belong to both, and one —
-`restart` — names both explicitly because each engine answers it with a
+further items name no engine at all and so belong to both, and two —
+`restart` and `use_gpu` — are shared because each engine answers them with a
 different mechanism; [`template.md`](?doc=engines/template.md) § 6.3's rule is
 that an absent `engines` key means every engine.)*
 
 | | SIESTA | PySCF |
 |---|---|---|
-| catalogue rows | 44 items | **54 items** | *(each engine's EXCLUSIVE rows; `net_charge` now names both and so counts in neither, `template.md` § 6.3)*
+| catalogue rows | 43 items | **53 items** | *(each engine's EXCLUSIVE rows; `net_charge` and `use_gpu` name both and so count in neither — merged 2026-08-19 and 2026-08-23, `template.md` § 6.3)*
 | every row maps to a config field | yes | **yes** |
 | `warm-files.toml` in its package | yes | **yes** — `base` · `optimization` · `vibration` |
 | identity literal declared | `SystemLabel` | **`JOB`** (`config/pyscf.py`) |
@@ -726,7 +726,7 @@ removes the places where two things can disagree:**
 | the second lifecycle in `bench/` — build, lay out, name | it is `prep` steps 2–5 with a list of length N |
 | every `if` on *"is this a benchmark"* below floor 7 | length is data |
 | the trial-name format string | `point`, rendered by one function |
-| the wrapper knowing which keyword means what | `read_by` names the items it depends on (`template.md` § 6.1). *(The ELPA half of this row was deleted outright in 2026-08-13 rather than replaced — the premise that only the source build has ELPA was measured false, so there was no read left to move. `enable_gpu` is the live case.)* |
+| the wrapper knowing which keyword means what | `read_by` names the items it depends on (`template.md` § 6.1). *(The ELPA half of this row was deleted outright in 2026-08-13 rather than replaced — the premise that only the source build has ELPA was measured false, so there was no read left to move. `use_gpu` is the live case.)* |
 | a second copy of every bound | the catalogue is the one place a bound is stated; the template is it narrowed and answered, and BENCH-MARKS is checked against it (§ 3) |
 
 **The size test** (`staged-runs-implementation-plan.md` § 9.4): a change made

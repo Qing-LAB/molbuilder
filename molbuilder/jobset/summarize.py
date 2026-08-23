@@ -327,7 +327,7 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     from ..parse.scripts.bench_marks import _extract_bench_marks_dict
     marks = _extract_bench_marks_dict(text) or {}
     if "gpu_mode" in marks:
-        mech["enable_gpu"] = str(marks["gpu_mode"]).lower() == "true"
+        mech["use_gpu"] = str(marks["gpu_mode"]).lower() == "true"
     # Through the ONE deck reader.  This loop kept the LAST match while
     # `deck_value` takes the first -- two readers of one file, disagreeing
     # on a deck that names the keyword twice, and this is the copy whose
@@ -395,7 +395,7 @@ def _pins_vocabulary(engine: str) -> Dict[str, type]:
     item of this engine, typed from its catalogue declaration -- the SAME
     one-door membership rule the declaration lane uses
     (`_declared_execution_pins`, `generator.md` § 4.3a).  A hand table
-    (``enable_gpu``/``diag_algorithm``) stood here until 2026-08-21, so
+    (``use_gpu``/``diag_algorithm``) stood here until 2026-08-21, so
     the proposal writer could emit a swept knob -- ``block_size`` -- that
     this reader then refused: summarize's own output failing `prep run`.
     """

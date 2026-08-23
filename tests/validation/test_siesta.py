@@ -610,7 +610,7 @@ def test_no_deprecated_siesta_keyword_reaches_the_deck(water_struct):
     from molbuilder.siesta import render_fdf
     seen = set()
     for relax in ("cg", "broyden", "fire", "verlet", "nose"):
-        for extra in ({}, {"spin_treatment": True}, {"enable_gpu": True}):
+        for extra in ({}, {"spin_treatment": True}, {"use_gpu": True}):
             try:
                 cfg = dataclasses.replace(SiestaConfig(), relax_type=relax, **extra)
                 deck = render_fdf(water_struct, cfg)

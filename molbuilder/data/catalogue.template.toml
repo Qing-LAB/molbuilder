@@ -760,20 +760,41 @@ help = """
 How much memory this run may use.  Left blank -- the normal state -- it is the machine's maximum, resolved at prep on the node that granted it; set a number only when you need a ceiling.
 
 Each engine applies it its own way: SIESTA emits a SystemMemory hint into the deck and caps the wrapper, PySCF passes it to mol.max_memory, which is what it consults to choose in-core versus out-of-core."""
-[item.enable_gpu]
-kind = "engine"
+[item.use_gpu]
+# MERGED 2026-08-23, following `net_charge`'s worked example (2026-08-19).
+# This was two items -- `enable_gpu` (SIESTA) and `use_gpu` (PySCF) -- two
+# names for one question: DOES THIS RUN USE A GPU?  The merge was ruled
+# 2026-08-13, restated 08-14 and marked do-not-re-open (template.md 6.3);
+# what had not landed was the rename, and it could not land separately
+# because TOML cannot hold the key twice.  `use_gpu` is the survivor per
+# that ruling.
+#
+# `kind = "deck"` with no anchor is what a merged item becomes.  `expands`
+# names BOTH reaches and the check gate demands only the keyword the
+# emitted line actually names -- so SIESTA is asked for `Diag.ELPA.GPU`
+# and PySCF for `gpu4pyscf`, never each other's.  The one imprecise row
+# (PySCF carries an `expands` entry it does not honour as a keyword) is
+# the cost 6.3 states out loud for `restart`, and it is deliberate: a
+# per-engine `expands` was considered and rejected 2026-08-18, because
+# `section` was that per-engine key and was retired at @2 for the drift
+# such a key invites.
+kind = "deck"
 category = ["execution"]
-engines = ["siesta"]
-anchor = "Diag.ELPA.GPU"
-engine_key = "Diag.ELPA.GPU"
-manual = "SIESTA 5.4.2 §6.12.1 'Diagonalization options'"
+expands = ["Diag.ELPA.GPU", "gpu4pyscf"]
+engine_key = "Diag.ELPA.GPU (SIESTA) | mf = mf.to_gpu() (PySCF)"
+manual = "SIESTA 5.4.2 §6.12.1 'Diagonalization options'; PySCF 2.13 pyscf.dft.rks.RKS 'to_gpu()'"
 type = "bool"
 value = false
 default = false
 group = "staging"
-label = "Use GPU (NVIDIA, via ELPA-CUDA)"
+label = "Use GPU (NVIDIA)"
+# SIESTA's half needs the wrapper: a GPU deck needs the source-built env AND
+# a GPU runtime (the gres ask, MPS, the NUMA pin, the rank/thread budget).
+# PySCF has no env routing in `runwrap` at all -- it checks the DEVICE at run
+# start instead -- so the declaration is SIESTA's and applies to the item
+# (`execution/gpu.md` G7, G8).
 read_by = ["wrapper"]
-help = "OPTIONAL: run the ELPA diagonalization on an NVIDIA CUDA GPU.  This does NOT turn ELPA on -- pick the solver in ``Diagonalizer`` (ELPA-1STAGE / -2STAGE). This toggle only moves that ELPA solve onto the GPU (GPU-only, no CPU fallback).  Requires an ELPA diagonalizer (GPU + ScaLAPACK is rejected) and an NVIDIA GPU on the run machine.  Off = the chosen ELPA solver runs on CPU (or ScaLAPACK if that's selected). This toggle is the ONLY thing that needs the source-built ``molbuilder-siesta-gpu`` env: the packaged SIESTA runs ELPA on CPU perfectly well, but its ELPA is built without the GPU entry.  The wrapper refuses to emit if that env is missing. Affinity hint: GPU favors 1STAGE."
+help = "OPTIONAL: run the ELPA diagonalization on an NVIDIA CUDA GPU.  This does NOT turn ELPA on -- pick the solver in ``Diagonalizer`` (ELPA-1STAGE / -2STAGE). This toggle only moves that ELPA solve onto the GPU (GPU-only, no CPU fallback).  Requires an ELPA diagonalizer (GPU + ScaLAPACK is rejected) and an NVIDIA GPU on the run machine.  Off = the chosen ELPA solver runs on CPU (or ScaLAPACK if that's selected). This toggle is the ONLY thing that needs the source-built ``molbuilder-siesta-gpu`` env: the packaged SIESTA runs ELPA on CPU perfectly well, but its ELPA is built without the GPU entry.  The wrapper refuses to emit if that env is missing. Affinity hint: GPU favors 1STAGE.\n\nPySCF: run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf extension.  The recipe for ``molbuilder-pySCF`` installs the matching ``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` wheels for the project's pinned CUDA toolkit (see ``molbuilder envs doctor molbuilder-pySCF``); the script probes gpu4pyscf at run start and STOPS with an actionable message if the package isn't importable or the GPU is missing / too old (compute capability < 7.0) -- there is no silent CPU fallback: a run that changed where it executed would report a CPU time under a GPU label."
 
 [item.diag_algorithm]
 kind = "engine"
@@ -1314,19 +1335,6 @@ null_label = "(auto: physical cores)"
 optional = true
 help = "how many CPU threads PySCF uses.  Default (blank) asks what this job was GIVEN before it asks how big the machine is: OMP_NUM_THREADS, then the scheduler's allocation (SLURM_CPUS_PER_TASK / PBS_NCPUS / NSLOTS), and only as a last resort this node's PHYSICAL cores (not logical/HT) -- hyperthreading rarely helps QC kernels and can hurt cache locality.  Asking the node first is how a job holding 8 cores of a 128-core machine started 128 threads and had them time-sliced onto its 8.  The emitted script pins BLAS to 1 thread per worker (OPENBLAS_NUM_THREADS=1, MKL_NUM_THREADS=1) so PySCF threads * BLAS threads don't multiply -- the canonical anti-oversubscription recipe.  Set explicitly to bench, or to leave cores free for other jobs."
 
-[item.use_gpu]
-kind = "engine"
-category = ["execution"]
-engines = ["pyscf"]
-anchor = "gpu4pyscf"
-engine_key = "gpu4pyscf: mf = mf.to_gpu()"
-manual = "PySCF 2.13 pyscf.dft.rks.RKS 'to_gpu()'"
-type = "bool"
-value = false
-default = false
-group = "staging"
-label = "Use GPU (NVIDIA, via gpu4pyscf)"
-help = "run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf extension.  The recipe for ``molbuilder-pySCF`` installs the matching ``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` wheels for the project's pinned CUDA toolkit (see ``molbuilder envs doctor molbuilder-pySCF``); the script probes gpu4pyscf at run start and STOPS with an actionable message if the package isn't importable or the GPU is missing / too old (compute capability < 7.0) -- there is no silent CPU fallback: a run that changed where it executed would report a CPU time under a GPU label."
 
 [item.verbose]
 kind = "engine"

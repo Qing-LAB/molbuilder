@@ -1462,7 +1462,7 @@ def api_task_setup_columns():
             # THE VALUE SHAPE (user, 2026-08-20): the stage table's cell
             # editor renders a dropdown for an enum or a bool, and it can
             # only ask the catalogue -- inventing a widget from the value's
-            # look is how `enable_gpu` became a number box.
+            # look is how `use_gpu` became a number box.
             "type":    it.type or "",
             "choices": list(it.choices) if it.choices else None,
             # THE SAME WRITER THE FORM USES.  This read `it.anchor`

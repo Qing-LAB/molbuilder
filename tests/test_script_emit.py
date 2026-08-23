@@ -68,12 +68,12 @@ def test_emit_provenance_includes_required_fields():
     block = sc.emit_provenance(
         generator_version="git abc1234",
         generated_at="2026-06-16T17:00:00-07:00",
-        resolved_defaults={"BlockSize": "auto -> 256", "enable_gpu": "true"},
+        resolved_defaults={"BlockSize": "auto -> 256", "use_gpu": "true"},
     )
     assert "git abc1234" in block
     assert "2026-06-16T17:00:00-07:00" in block
     assert "BlockSize" in block and "256" in block
-    assert "enable_gpu" in block
+    assert "use_gpu" in block
     assert block.splitlines()[0] == "# === molbuilder provenance BEGIN ==="
 
 

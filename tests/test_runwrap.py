@@ -953,7 +953,7 @@ def test_pyscf_wrapper_passes_bash_n(tmp_path):
     when they tried to run the generated script.
 
     There was an analogous ``bash -n`` test for the SIESTA branch
-    (``test_siesta_enable_gpu.py:test_gpu_wrapper_keeps_siesta_
+    (``test_siesta_use_gpu.py:test_gpu_wrapper_keeps_siesta_
     template_intact``) but NONE for the PySCF branch — the gap that
     let the bug ship.  This test closes that gap.
 
@@ -1004,7 +1004,7 @@ def test_pyscf_wrapper_passes_bash_n_single_quoted_job(tmp_path):
 
 def test_siesta_wrapper_passes_bash_n(tmp_path):
     """Symmetric coverage for SIESTA — duplicates the assertion that
-    :mod:`tests.test_siesta_enable_gpu` makes but in the file readers
+    :mod:`tests.test_siesta_use_gpu` makes but in the file readers
     expect (``test_runwrap.py``).  Cheap insurance against a future
     refactor that breaks SIESTA template rendering."""
     _bind()

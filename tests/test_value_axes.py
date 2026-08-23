@@ -2,7 +2,7 @@
 
 The acceptance case is the USER's live matrix (their
 ``projects/Au-BDT-Au/optimization/Relax/task.json``, declared 2026-08-21):
-``mpi_np × enable_gpu × diag_algorithm × block_size``, prepped from a
+``mpi_np × use_gpu × diag_algorithm × block_size``, prepped from a
 Sol-shaped record — a login node with NO local GPU, a menu whose
 gpu-capable row carries the sinfo inventory and the probed 48-core cap
 (the GPU node group's own core count; hand-editable).
@@ -42,7 +42,7 @@ def _tmp_is_the_projects_tree(tmp_path, monkeypatch):
 #: that THIS is now caught at describe time, not at prep on Sol).
 USERS_MATRIX = {
     "mpi_np": [32, 64, 128],
-    "enable_gpu": [True, False],
+    "use_gpu": [True, False],
     "diag_algorithm": ["ELPA-1STAGE", "ELPA-2STAGE"],
     "block_size": [64, 128, 256],
 }
@@ -62,7 +62,7 @@ def sol_calc(tmp_path):
     D.write_description(
         D.build_description(struct,
                             SiestaConfig(system_label="JOB",
-                                         enable_gpu=False,
+                                         use_gpu=False,
                                          diag_algorithm="ELPA-1STAGE"),
                             default_siesta_stages("publishable"),
                             engine="siesta", shape="hierarchical",
@@ -110,8 +110,8 @@ def test_the_users_matrix_enumerates_both_families(sol_calc, capsys):
     assert sorted({p["K"] for p in cpu}) == [32, 64, 128]
     assert all(p["G"] * p["K"] == 32 for p in gpu), \
         "np64/np128 exceed the gpu domain's 48 cores/node"
-    assert all(p["enable_gpu"] is False for p in cpu)
-    assert all(p["enable_gpu"] is True for p in gpu)
+    assert all(p["use_gpu"] is False for p in cpu)
+    assert all(p["use_gpu"] is True for p in gpu)
     # every point carries the full value coordinate
     assert all({"diag_algorithm", "block_size"} <= set(p) for p in points)
     # the drop is loud and names its cells and the cap's source
@@ -198,7 +198,7 @@ def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
 
 def _small_matrix():
     return {"mpi_np": [4], "omp_threads": [1],
-            "enable_gpu": [True, False],
+            "use_gpu": [True, False],
             "diag_algorithm": ["ELPA-1STAGE"],
             "block_size": [64, 128]}
 
@@ -228,8 +228,8 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
     # ``diag_algorithm`` has ONE declared point, so it is a PIN, not an
     # axis (§ 4.3a: one point = the value in force) -- it reaches every
     # deck but never a name.  Only the multi-point axes coordinate.
-    b64 = deck("G0K4C1enable_gpuFalseblock_size64")
-    b128 = deck("G0K4C1enable_gpuFalseblock_size128")
+    b64 = deck("G0K4C1use_gpuFalseblock_size64")
+    b128 = deck("G0K4C1use_gpuFalseblock_size128")
     def kw(text, key):
         # the KEYWORD line, not the item's comment banner above it
         return next(l for l in text.splitlines()
@@ -240,14 +240,14 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
     assert kw(b128, "BlockSize").split()[1] == "128"
     assert ".false." in kw(b64, "Diag.ELPA.GPU")
     assert "ELPA-1STAGE" in b64, "the one-point pin reaches the deck"
-    gpu = deck("G1K4C1enable_gpuTrueblock_size64")
+    gpu = deck("G1K4C1use_gpuTrueblock_size64")
     assert ".true." in kw(gpu, "Diag.ELPA.GPU")
 
     js = json.loads(
         (sol_calc / "01_coarse" / "bench" / "job-set.json").read_text())
     for job in js["jobs"]:
         assert job["point"]["block_size"] in (64, 128)
-        assert isinstance(job["point"]["enable_gpu"], bool)
+        assert isinstance(job["point"]["use_gpu"], bool)
 
 
 # --------------------------------------------------------------------- #
@@ -308,7 +308,7 @@ def test_the_shelves_submit_widest_first(sol_calc):
     expensive measurements land first and an early stop still summarizes
     to a verdict.  Declared ASCENDING here, so the order must flip it."""
     _declare(sol_calc, {"mpi_np": [2, 4], "omp_threads": [1],
-                        "enable_gpu": [False]})
+                        "use_gpu": [False]})
     _prep(sol_calc)
     out = _submit_dry(sol_calc)
     plans = [l for l in out.splitlines() if "WOULD run" in l]
@@ -328,7 +328,7 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     _declare(sol_calc, {"mpi_np": [4], "omp_threads": [1],
-                        "enable_gpu": [False], "block_size": [64, 128]})
+                        "use_gpu": [False], "block_size": [64, 128]})
     _prep(sol_calc)
     deck = next((sol_calc / "01_coarse" / "bench"
                  / "bench-K4C1block_size64").glob("*.fdf"))
@@ -371,7 +371,7 @@ def test_the_winners_coordinates_ride_run_config(sol_calc):
     _prep(sol_calc)
     js, base = _load_bench_set(str(sol_calc), "coarse")
     dirs = job_dir_names(js, shape_of(js, sol_calc))
-    winner = "G0K4C1enable_gpuFalseblock_size128"
+    winner = "G0K4C1use_gpuFalseblock_size128"
     d = sol_calc / dirs[winner]
     stem = next(d.glob("*.fdf")).name[:-4]
     (d / f"{stem}-run0.out").write_text(
@@ -388,14 +388,14 @@ def test_the_winners_coordinates_ride_run_config(sol_calc):
     assert res.choice["point"]["block_size"] == 128
     by_label = {p.label: p for p in res.points}
     assert by_label[winner].point["block_size"] == 128
-    assert by_label[winner].point["enable_gpu"] is False
+    assert by_label[winner].point["use_gpu"] is False
 
     text = cfg_path.read_text()
     assert "block_size = 128" in text
     assert 'diag_algorithm = "ELPA-1STAGE"' in text
     cfg = read_run_config(cfg_path, engine="siesta")
     assert cfg["pins"]["block_size"] == 128
-    assert cfg["pins"]["enable_gpu"] is False
+    assert cfg["pins"]["use_gpu"] is False
 
 
 # --------------------------------------------------------------------- #
@@ -408,7 +408,7 @@ def test_declared_gpu_count_is_exact(sol_calc):
     uneven (mpi_np, G) pair is dropped BY NAME (ELPA's equal-share rule),
     never rounded."""
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
-                        "enable_gpu": [True], "gpu_count": [1, 2, 3]})
+                        "use_gpu": [True], "gpu_count": [1, 2, 3]})
     points, _pins, _tr = _bench_inputs(sol_calc)
     assert sorted(p["G"] for p in points) == [1, 2],         "exactly the declared counts that divide -- G4 must NOT appear"
     assert all(p["G"] * p["K"] == 32 for p in points)
@@ -416,7 +416,7 @@ def test_declared_gpu_count_is_exact(sol_calc):
 
 def test_uneven_split_is_dropped_by_name(sol_calc, capsys):
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
-                        "enable_gpu": [True], "gpu_count": [2, 3]})
+                        "use_gpu": [True], "gpu_count": [2, 3]})
     _bench_inputs(sol_calc)
     out = capsys.readouterr().out
     assert "split EVENLY" in out and "mpi_np=32 x gpu_count=3" in out
@@ -424,7 +424,7 @@ def test_uneven_split_is_dropped_by_name(sol_calc, capsys):
 
 def test_gpu_count_beyond_the_record_is_refused(sol_calc):
     import click
-    _declare(sol_calc, {"mpi_np": [32], "enable_gpu": [True],
+    _declare(sol_calc, {"mpi_np": [32], "use_gpu": [True],
                         "gpu_count": [8]})
     with pytest.raises(click.ClickException) as e:
         _bench_inputs(sol_calc)
@@ -434,7 +434,7 @@ def test_gpu_count_beyond_the_record_is_refused(sol_calc):
 
 def test_gpu_count_on_a_cpu_bench_is_refused_not_ignored(sol_calc):
     import click
-    _declare(sol_calc, {"mpi_np": [32], "enable_gpu": [False],
+    _declare(sol_calc, {"mpi_np": [32], "use_gpu": [False],
                         "gpu_count": [2]})
     with pytest.raises(click.ClickException) as e:
         _bench_inputs(sol_calc)
@@ -443,7 +443,7 @@ def test_gpu_count_on_a_cpu_bench_is_refused_not_ignored(sol_calc):
 
 def test_every_cell_uneven_refuses_a_gpu_only_bench(sol_calc):
     import click
-    _declare(sol_calc, {"mpi_np": [32], "enable_gpu": [True],
+    _declare(sol_calc, {"mpi_np": [32], "use_gpu": [True],
                         "gpu_count": [3]})
     with pytest.raises(click.ClickException) as e:
         _bench_inputs(sol_calc)
@@ -454,12 +454,12 @@ def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc,
                                                                 capsys):
     """tuning.md § 2.12's own worked declaration, end to end: gpu_count
     filters ONLY the GPU family (the CPU family keeps every declared rank
-    count); enable_gpu as a two-point axis beside gpu_count does NOT
+    count); use_gpu as a two-point axis beside gpu_count does NOT
     trigger the cpu-only refusal; and the probed 48-core cap drops a
     DECLARED count by name (np64 × G1 = 64 cores) — the cap lane, distinct
     from the even-split lane."""
     _declare(sol_calc, {"mpi_np": [32, 64], "omp_threads": [1],
-                        "enable_gpu": [True, False],
+                        "use_gpu": [True, False],
                         "gpu_count": [1, 2, 4]})
     points, _pins, _tr = _bench_inputs(sol_calc)
     cpu = [p for p in points if not p["G"]]
@@ -482,7 +482,7 @@ def test_gpu_count_alone_filters_the_proposed_grid(sol_calc):
     """gpu_count without mpi_np does NOT invent a rank grid: the K x C
     half stays the machine's proposal, filtered to the declared device
     counts."""
-    _declare(sol_calc, {"enable_gpu": [True], "gpu_count": [2]})
+    _declare(sol_calc, {"use_gpu": [True], "gpu_count": [2]})
     points, _pins, _tr = _bench_inputs(sol_calc)
     assert points, "the probed ladder must survive the filter"
     assert {p["G"] for p in points} == {2}
@@ -515,23 +515,23 @@ def test_summarize_mid_flight_lists_unfinished_and_refreshes(sol_calc):
         (d / f"{stem}-run0.scf-timing.log").write_text(
             "\n".join(f"{t0 + i * spi} iter" for i in range(4)) + "\n")
 
-    finish("G0K4C1enable_gpuFalseblock_size64", 5.0)
+    finish("G0K4C1use_gpuFalseblock_size64", 5.0)
     res, out_path, rc = run_summarize_jobset(
         js, sol_calc, now_iso="2026-08-21T00:00:00Z", stage="coarse",
         **_out_kw)
     text = summary_text(res, out_path, run_config=rc, stage="coarse")
     states = {p.label: p.state for p in res.points}
-    assert states["G0K4C1enable_gpuFalseblock_size64"] == "completed"
+    assert states["G0K4C1use_gpuFalseblock_size64"] == "completed"
     assert sum(1 for s in states.values() if s != "completed") == 7
     assert "coverage: 1 of 8 prepped points measured" in text
     assert "the verdict ranks what ran" in text
 
     # more evidence lands; the RECORD refreshes on the next summarize
-    finish("G0K4C1enable_gpuFalseblock_size128", 3.0)
+    finish("G0K4C1use_gpuFalseblock_size128", 3.0)
     res2, _o, rc2 = run_summarize_jobset(
         js, sol_calc, now_iso="2026-08-21T01:00:00Z", stage="coarse",
         **_out_kw)
-    assert res2.choice["label"] == "G0K4C1enable_gpuFalseblock_size128"
+    assert res2.choice["label"] == "G0K4C1use_gpuFalseblock_size128"
     # the PROPOSAL file is the user's after first write: kept, with the
     # refresh taught in the summary text
     assert rc2[1] == "kept"
@@ -551,7 +551,7 @@ def test_preflight_flags_a_typod_choice_per_point(sol_calc):
     from molbuilder.task import read_task
     from molbuilder.validation.task import preflight
     _declare(sol_calc, {"diag_algorithm": ["ELPA-1Stage", "ELPA-2STAGE"],
-                        "enable_gpu": [True, True]})
+                        "use_gpu": [True, True]})
     issues = preflight(read_task(sol_calc / "task.json"))
     msgs = [i.message for i in issues]
     assert any("'ELPA-1Stage'" in m and "ELPA-1STAGE" in m for m in msgs), \
@@ -589,7 +589,7 @@ def flat_sol_calc(tmp_path):
     D.write_description(
         D.build_description(struct,
                             SiestaConfig(system_label="JOB",
-                                         enable_gpu=False,
+                                         use_gpu=False,
                                          diag_algorithm="ELPA-1STAGE"),
                             default_siesta_stages("publishable"),
                             engine="siesta", shape="flat",
@@ -642,7 +642,7 @@ def test_a_gpu_winner_rides_run_config_on_a_mixed_sweep(sol_calc):
     """R2-8's second gap: the GPU-side winner was covered only on a
     GPU-only grid.  On a MIXED sweep (both families prepped), a GPU
     trial finishing fastest must become the verdict, and the run's
-    config must apply ITS pins — enable_gpu=true included — not the CPU
+    config must apply ITS pins — use_gpu=true included — not the CPU
     family's."""
     from molbuilder.jobset._cli import (_apply_run_config,
                                         _load_bench_set,
@@ -666,8 +666,8 @@ def test_a_gpu_winner_rides_run_config_on_a_mixed_sweep(sol_calc):
         (d / f"{stem}-run0.scf-timing.log").write_text(
             "\n".join(f"{t0 + i * spi} iter" for i in range(4)) + "\n")
 
-    cpu_label = next(l for l in dirs if "enable_gpuFalse" in l)
-    gpu_label = next(l for l in dirs if "enable_gpuTrue" in l)
+    cpu_label = next(l for l in dirs if "use_gpuFalse" in l)
+    gpu_label = next(l for l in dirs if "use_gpuTrue" in l)
     finish(cpu_label, 9.0)
     finish(gpu_label, 2.0)          # the GPU family wins
     # `out=` is the CLI's own plumbing (`summarize bench <stage>` writes
@@ -679,10 +679,10 @@ def test_a_gpu_winner_rides_run_config_on_a_mixed_sweep(sol_calc):
     rc_path, rc_state = rc
     assert rc_state == "written"
     text = rc_path.read_text()
-    assert "enable_gpu = true" in text, (
+    assert "use_gpu = true" in text, (
         "the proposal does not carry the winner's family")
     alloc, pins = _apply_run_config(sol_calc, Resources(), stage="coarse")
-    assert pins.get("enable_gpu") is True, (
+    assert pins.get("use_gpu") is True, (
         f"the run's pins lost the GPU family: {pins}")
     assert alloc.gres and "gpu" in str(alloc.gres), (
         f"the run's allocation carries no GPU ask: {alloc!r}")

@@ -914,11 +914,11 @@ def _bench_inputs(base, target=None):
 
     **Whether this is a GPU grid is the DESCRIPTION's answer, not this
     function's assumption** (2026-08-17).  `web/task-setup.md` § 6.2 —
-    *"use GPU or not is set up only at the Job Prep UI"* — makes ``enable_gpu``
+    *"use GPU or not is set up only at the Job Prep UI"* — makes ``use_gpu``
     a value the person chose, carried in the template like any other; and
     § 6.2 is equally explicit that the eigensolver is NOT the same question
     (``diag_algorithm`` is a `budget` item on the parameter tab).  This
-    function pinned ``enable_gpu=True`` and ``diag_algorithm='ELPA-1STAGE'``
+    function pinned ``use_gpu=True`` and ``diag_algorithm='ELPA-1STAGE'``
     flat, so every trial measured a GPU regardless of what was asked for —
     and on a machine with no GPU the whole verb refused, which made a
     CPU benchmark impossible to run at all.  Both pins are gone: the
@@ -927,7 +927,7 @@ def _bench_inputs(base, target=None):
     **A multi-point non-machine entry is a VALUE AXIS** (§ 4.3a, built
     2026-08-21): its points multiply the machine grid, each point carries
     its coordinates (the resolver's parameter lane applies them per
-    trial), and ``enable_gpu`` with two points is the grid-FAMILY axis --
+    trial), and ``use_gpu`` with two points is the grid-FAMILY axis --
     the grid enumerates once per flag, G=0 holding the CPU family's
     device coordinate.  See the section for the cap, naming, and
     split-submission halves of the rule.
@@ -952,7 +952,7 @@ def _bench_inputs(base, target=None):
     # THE SEAM REFUSAL, BY NAME (E-J1, restored 2026-08-21).  The bench
     # lane speaks SIESTA's vocabulary today: the measurement pins name
     # SiestaConfig fields (`max_scf_iter`, `restart`, ...), and the GPU
-    # question is read under SIESTA's `enable_gpu`.  A PySCF description
+    # question is read under SIESTA's `use_gpu`.  A PySCF description
     # used to be stopped only by ACCIDENT -- those pins failing resolve
     # with a message blaming settings the user never wrote -- and the
     # accident evaporates the day PySCFConfig grows any same-named
@@ -975,7 +975,7 @@ def _bench_inputs(base, target=None):
     # silently -- § 2.2's predicted failure exactly.
     #
     # TWO names answer one question until § 6.3's settled merge is renamed:
-    # SIESTA's `enable_gpu`, PySCF's `use_gpu`.  Spelling both here is the
+    # SIESTA's `use_gpu`, PySCF's `use_gpu`.  Spelling both here is the
     # honest encoding of "an un-renamed pair stays two items", and it collapses
     # to one line when the rename lands.
     #
@@ -986,7 +986,7 @@ def _bench_inputs(base, target=None):
     #
     # THE NAME IS SIESTA'S, AND THAT IS A DEPENDENCY RATHER THAN A CHOICE.
     # The GPU question has no engine-agnostic name yet: `template.md` § 6.3's
-    # merge of ``enable_gpu`` / ``use_gpu`` is RULED and not yet renamed, so
+    # merge of ``use_gpu`` / ``use_gpu`` is RULED and not yet renamed, so
     # today two names answer one question.  Writing an engine->name table here
     # would put that un-landed rename in a second place to maintain.  Reading
     # SIESTA's name flat is SAFE because the seam refusal above already
@@ -997,26 +997,26 @@ def _bench_inputs(base, target=None):
     # THE DECLARED OVERRIDE LANE, split before anything is decided (user
     # rule, 2026-08-20): one-point non-machine entries are pins -- values
     # in force for every trial -- and the machine-answered entries are the
-    # grid's axes.  A declared enable_gpu pin OVERRIDES the template's
+    # grid's axes.  A declared use_gpu pin OVERRIDES the template's
     # answer below, which is what makes the machine card's choice reach
     # the sweep without touching the template file.
     declared_pins, declared_axes, value_axes = _declared_execution_pins(
         base, task.engine)
 
-    on_gpu = any(i.name == "enable_gpu" and bool(i.value)
+    on_gpu = any(i.name == "use_gpu" and bool(i.value)
                  for i in template_select(tmpl, engine=task.engine))
-    if "enable_gpu" in declared_pins:
-        on_gpu = bool(declared_pins["enable_gpu"])
+    if "use_gpu" in declared_pins:
+        on_gpu = bool(declared_pins["use_gpu"])
 
-    # THE GRID-FAMILY AXIS (§ 4.3a, user 2026-08-21): enable_gpu with two
+    # THE GRID-FAMILY AXIS (§ 4.3a, user 2026-08-21): use_gpu with two
     # points enumerates the machine grid once per flag -- the CPU family
     # holds the device count at G=0, the GPU family ranges it -- and the
     # flag rides each point as an ordinary value coordinate, so the deck's
     # answer and the point's family agree by construction (submit reads
     # the deck, `_job_wants_gpu`, and splits the groups from that answer).
     gpu_flags = None
-    if "enable_gpu" in value_axes:
-        gpu_flags = [bool(v) for v in value_axes.pop("enable_gpu")]
+    if "use_gpu" in value_axes:
+        gpu_flags = [bool(v) for v in value_axes.pop("use_gpu")]
     families = gpu_flags if gpu_flags is not None else [bool(on_gpu)]
     mixed = gpu_flags is not None
 
@@ -1042,7 +1042,7 @@ def _bench_inputs(base, target=None):
             gpn, gtype = _gpn, _gtype
         else:
             raise click.ClickException(
-                f"this description asks for the GPU (enable_gpu = "
+                f"this description asks for the GPU (use_gpu = "
                 f"{'a cpu-vs-gpu axis' if mixed else 'true'}), so the "
                 f"benchmark enumerates a GPU grid (G × ranks-per-GPU × "
                 f"cores) -- and this machine's probe found no GPU topology "
@@ -1112,8 +1112,8 @@ def _bench_inputs(base, target=None):
     if gpu_counts and not any(families):
         raise click.ClickException(
             "task.json declares gpu_count, but this bench resolves to the "
-            "CPU family (enable_gpu is false and not an axis) -- the "
-            "device counts would be silently ignored.  Declare enable_gpu "
+            "CPU family (use_gpu is false and not an axis) -- the "
+            "device counts would be silently ignored.  Declare use_gpu "
             "= [true] (or the [true, false] axis), or drop gpu_count.")
     if gpu_counts and any(families):
         _over = sorted(g for g in gpu_counts if g > (gpn or 0))
@@ -1208,7 +1208,7 @@ def _bench_inputs(base, target=None):
     points = []
     for fam, (g, k, c) in cells:
         if mixed:
-            coord = {"G": g, "K": k, "C": c, "enable_gpu": fam}
+            coord = {"G": g, "K": k, "C": c, "use_gpu": fam}
         elif on_gpu:
             coord = {"G": g, "K": k, "C": c}
         else:

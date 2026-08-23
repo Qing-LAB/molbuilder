@@ -65,7 +65,7 @@ _ENABLING = {
     "md_max_cg_displ":        [{"relax_type": "Nose"}],
     "spin_total":             [{"spin_treatment": "polarized"}],
     "diag_algorithm":         [{"diag_algorithm": "ELPA-2STAGE"}],
-    "enable_gpu":             [{"diag_algorithm": "ELPA-2STAGE"}],
+    "use_gpu":             [{"diag_algorithm": "ELPA-2STAGE"}],
     "auxbasis":               [{"density_fit": True}],
     "ecp_atoms":              [{"ecp": "def2-SVP"}],
     "solvent_method":         [{"solvent": "water"}],

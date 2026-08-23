@@ -843,7 +843,7 @@ generation time:
   repo recovers the full generator state.
 - `generated-at` is ISO-8601 with timezone.
 - `resolved-defaults` lists a fixed set of parallel/resource knobs — `mpi_np`,
-  `omp_threads`, `BlockSize`, `enable_gpu` (and the PySCF equivalents:
+  `omp_threads`, `BlockSize`, `use_gpu` (and the PySCF equivalents:
   `use_gpu`, `density_fit`, `threads`, `max_memory_mb`) — each annotated with
   either what the auto-policy chose (`auto -> 4`) **or** the user-set value
   (`user-set -> 256`, or the raw number). It is not a "what the user left on
@@ -1743,7 +1743,7 @@ them; within a layer, one concept has exactly one name.
 | Partition | `directives.partition` | `partition` → `-p` | resolved from `domain` |
 | QoS | `directives.qos` | `qos` → `-q` | resolved from `domain` |
 | Routing domain | `routing[].name` / `execution.domain` | `domain` (in `jobset.Resources`) | `--domain` → `-p`/`-q` |
-| GPU request | `enable_gpu` | `gres` → `--gres` | derived from the deck's `Diag.ELPA.GPU` + GPU type. *(This row named `diag_algorithm` as a second source until 2026-08-14. The solver choice decides no resource and no environment — the packaged SIESTA runs ELPA on CPU, `engines/siesta.md` § 7.2 — so `Diag.ELPA.GPU` is the one keyword read.)* |
+| GPU request | `use_gpu` | `gres` → `--gres` | derived from the deck's `Diag.ELPA.GPU` + GPU type. *(This row named `diag_algorithm` as a second source until 2026-08-14. The solver choice decides no resource and no environment — the packaged SIESTA runs ELPA on CPU, `engines/siesta.md` § 7.2 — so `Diag.ELPA.GPU` is the one keyword read.)* |
 | Eigensolver | `diag_algorithm` (`ScaLAPACK` / `ELPA-1STAGE` / `ELPA-2STAGE`) | `.fdf`: `Diag.Algorithm` | `render_fdf` |
 | Non-convergence policy (**PySCF only**) | `on_nonconvergence` | *(no scheduler name)* | the emitted `.py`'s own control flow — PySCF's ladder ran as a loop in one process, so the policy was a branch inside the script (⚠ that loop is retired, [`stages.md § 1.1a`](?doc=engines/stages.md)). SIESTA's stages are separate jobs a person starts, so it has no equivalent; `engines/stages.md § 3` keeps the field out of the shared stage schema for that reason |
 | Warm-retry budget | `continue_retries` (1–5) | `continue_retries` — **not a SLURM flag** | `resolve.py` — rides the element's `Resources`; `prep` bakes it into the wrapper |

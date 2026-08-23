@@ -439,7 +439,17 @@ def test_every_deck_keyword_the_wrapper_reads_is_declared_read_by(tmp_path):
     for name, scanner in _wrapper_deck_scanners():
         seen_by = []
         for f in declared:
-            key = f.metadata.get("engine_key")
+            # A MERGED item's `engine_key` is PROSE naming both engines'
+            # mechanisms ("Diag.ELPA.GPU (SIESTA) | mf = mf.to_gpu()
+            # (PySCF)"), so it is no longer a keyword a scanner can be handed.
+            # `expands` is where a deck-kind item lists the keywords it really
+            # produces -- the same move `net_charge` made when it merged on
+            # 2026-08-19.  Fall back to `engine_key` for the un-merged items,
+            # where the two are still the same string.
+            keys = list(f.metadata.get("expands") or ())
+            if not keys:
+                keys = [f.metadata.get("engine_key")]
+            key = next((k for k in keys if k), None)
             if not key:
                 continue
             for value in _trigger_values(f):
@@ -459,11 +469,11 @@ def test_every_deck_keyword_the_wrapper_reads_is_declared_read_by(tmp_path):
 
 def test_the_read_by_guard_fails_when_a_declaration_goes_missing(tmp_path):
     """The guard above is only worth having if removing a declaration breaks
-    it. Drop ``enable_gpu``'s and the GPU-runtime scanner is left unclaimed."""
+    it. Drop ``use_gpu``'s and the GPU-runtime scanner is left unclaimed."""
     from molbuilder import runwrap
     declared = [f for f in dataclasses.fields(SiestaConfig)
                 if "wrapper" in (f.metadata.get("read_by") or ())
-                and f.name != "enable_gpu"]
+                and f.name != "use_gpu"]
     deck = tmp_path / "probe.fdf"
     orphaned = []
     for name, scanner in _wrapper_deck_scanners():
@@ -480,7 +490,7 @@ def test_the_read_by_guard_fails_when_a_declaration_goes_missing(tmp_path):
         if not hits:
             orphaned.append(name)
     assert orphaned == ["_fdf_requests_gpu"], (
-        "without enable_gpu's declaration exactly one scanner should be "
+        "without use_gpu's declaration exactly one scanner should be "
         f"unclaimed; got {orphaned}. If this changed, the guard above may "
         "have stopped testing anything.")
     assert runwrap._fdf_requests_gpu is not None      # the scanner is live

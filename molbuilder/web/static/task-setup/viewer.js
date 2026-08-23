@@ -62,7 +62,7 @@ const TASK_HANDOVER = "task.1st.json";
  * loud: the sweepable fetch answered `400 unknown engine`, the cached answer
  * became the empty list, and the machine card then reported the OPPOSITE of
  * the truth -- *"every sweepable setting is already listed"*, disabled, with
- * nine settings available and none listed.  `enable_gpu` is one of the nine,
+ * nine settings available and none listed.  `use_gpu` is one of the nine,
  * so the surface `task-setup.md` § 6.2 makes the ONE place a GPU is chosen was
  * inert on the hand-over path, which is the only path the UI offers.
  *
@@ -360,14 +360,14 @@ function renderMachine(task) {
         // A VALUE axis with several points SWEEPS (generator.md § 4.3a,
         // built 2026-08-21 -- it was refused by name until then): the
         // points multiply the machine grid and every trial's deck
-        // carries its coordinate.  enable_gpu decides which trials run
+        // carries its coordinate.  use_gpu decides which trials run
         // on the GPU at all; submission groups trials by their exact
         // resource ask (one exact-fit job per shelf), so CPU trials
         // never hold a device.
         const _isMachine = machineAnswers(name);
         const _tooMany = (!_isMachine && pts.length > 1)
             ? el("small", { class: "ts-row-note" },
-                 name === "enable_gpu"
+                 name === "use_gpu"
                    ? (pts.length + " points \u2014 the cpu-vs-gpu axis: "
                       + "the grid enumerates per flag, and submit bench "
                       + "groups trials by their exact resource ask \u2014 "
@@ -898,7 +898,7 @@ async function loadSweepChoices(engine) {
 /* The LEGAL VALUES of a bool/enum parameter, from the catalogue meta --
  * null for a free-typed (numeric) one.  The one place the widget question
  * is answered (user, 2026-08-20): a value's look must never pick the
- * widget, which is how enable_gpu became a number box. */
+ * widget, which is how use_gpu became a number box. */
 function legalValues(name) {
     const m = _meta[name] || {};
     if (m.type === "bool") return [true, false];
@@ -1788,7 +1788,7 @@ function start(projects) {
         // A row starts as ONE point -- a choice -- and the choice starts
         // at the value IN FORCE (template, else catalogue default).  It
         // started as the literal 1 for every type until 2026-08-20, which
-        // for enable_gpu or diag_algorithm was not a value at all.
+        // for use_gpu or diag_algorithm was not a value at all.
         addPoint(sel.value, String(valueInForce(sel.value)));
         sel.value = "";
     };

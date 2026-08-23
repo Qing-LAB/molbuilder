@@ -774,7 +774,7 @@ _SIESTA = Recipe(
     # This env exists to be installable ANYWHERE -- packages only, no
     # toolchain.  ``molbuilder-siesta-gpu`` must be built from source,
     # which some HPC sites do not permit.  That, not hardware, is why
-    # there are two.  The web UI's ``enable_gpu`` toggle is the
+    # there are two.  The web UI's ``use_gpu`` toggle is the
     # script-input contract; ``runwrap.write_run_wrapper`` gates env
     # presence at script-generation time so a missing GPU env is caught
     # before run time.

@@ -38,7 +38,7 @@ path. This one does.
 
 **Owns:** which GPU question each name answers, who answers it, where the
 answer is read, and the one walk from the tick-box to the running job. The
-**unification** of `enable_gpu` and `use_gpu` into one item, and the
+**unification** of `use_gpu` and `use_gpu` into one item, and the
 transition that lands it.
 
 **Does not own:** what a GPU *does* for a calculation
@@ -193,17 +193,20 @@ drawn here only because the graph is the same walk.)*
 
 ## 4. The unification — one item, and what it costs
 
-`enable_gpu` (SIESTA) and `use_gpu` (PySCF) are **one question with two
-spellings**. The merge is ruled and un-renamed, and the cost is already
-being paid: any caller asking *"does this want a GPU?"* must name an
-engine's spelling, and `jobset/_cli.py::_bench_inputs` spells **both** — once
-for the template read and once for the grid-family axis.
+`use_gpu` (SIESTA) and `use_gpu` (PySCF) are **one question with two
+spellings**, until 2026-08-23. The merge was ruled 2026-08-13 and the rename
+had not landed; it could not land on its own, because TOML cannot hold
+`[item.use_gpu]` twice — the rename *was* the merge, one unit.
+
+It is one item now: `kind = "deck"`, no anchor, `expands` naming both reaches,
+and the check gate demanding only the keyword the emitted line actually names.
+`net_charge` is the worked example, merged the same way on 2026-08-19.
 
 **The surviving name is `use_gpu`**, per the ruling.
 
 | | sites |
 |---|---|
-| `enable_gpu` | 42 code · 90 test · 51 live-doc |
+| `use_gpu` | 42 code · 90 test · 51 live-doc |
 | `use_gpu` (already correct) | 37 code · 5 test |
 
 A merged item carries the **answer**; each engine's writer renders its own
@@ -222,8 +225,8 @@ leaves the reader unable to recognise the wrong version.
 
 | # | where | says | true |
 |---|---|---|---|
-| **C1** | `engines/tuning.md` § 2.11 | *"`enable_gpu` and `mpi_np` … are **machine facts** and bench axes"* | `use_gpu` is the person's (G2). The `allocation` set is `mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb`, `threads` |
-| **C2** | `config/siesta.py` card comment | `enable_gpu` on the **Budget card** | `group = "staging"` — the field's own metadata, 1 230 lines below, and the catalogue |
+| **C1** | `engines/tuning.md` § 2.11 | *"`use_gpu` and `mpi_np` … are **machine facts** and bench axes"* | `use_gpu` is the person's (G2). The `allocation` set is `mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb`, `threads` |
+| **C2** | `config/siesta.py` card comment | `use_gpu` on the **Budget card** | `group = "staging"` — the field's own metadata, 1 230 lines below, and the catalogue |
 | **C3** | `runwrap.render_sbatch` | absent `gpu_count` ⇒ `ntasks` (*"one GPU per rank"*) | 1 device (G5). `_render_sbatch_for` already defaults to 1, so the two disagree one function apart |
 | **C4** | `tests/test_sbatch_emit.py` | pins the `ntasks` default as *"1 rank/GPU default"* | that model was retired 2026-08-13; the test is the only thing keeping it alive |
 | **C5** | `runwrap._render_sbatch_for`, the no-config branch | a machine with **probed** domains and a **probed** `topology.gpu_type` cannot emit a GPU header at all — *"no gpu type resolved"* | the type is on disk and one path cannot see it |
@@ -256,7 +259,7 @@ Smallest risk first; each phase separately testable and revertable.
 |---|---|---|
 | **1** | **the contradictions** | C1–C4. No rename, no behaviour change except C3's default. Pins: the `allocation` set read from the catalogue rather than typed; one `gpu_count` default with one test |
 | **2** | **the graph is the only picture** | this document joins the doc set; the restatements in `siesta.md` § 7, `overview.md`, `stages.md` § 6 and `task-setup.md` § 6.2 keep their *engine-specific* halves and point here for the walk |
-| **3** | **the rename** — `enable_gpu` → `use_gpu` | 183 sites, mechanical, **no compatibility shim** (rename = delete old everywhere). The catalogue item merges: one `[item.use_gpu]` with no `engines` list, two writers |
+| **3** | **the rename** — `use_gpu` → `use_gpu` | 183 sites, mechanical, **no compatibility shim** (rename = delete old everywhere). The catalogue item merges: one `[item.use_gpu]` with no `engines` list, two writers |
 | **4** | **G7 — the wrapper is handed the value** | the four `_fdf_requests_gpu` call sites stop grepping a rendered deck for a value the item already declares it needs |
 
 Phase 3 is the one that must not be split: while two names exist, every
@@ -272,7 +275,7 @@ a third state.
 | test | why it goes |
 |---|---|
 | `test_sbatch_emit.py` — the `ntasks`-default case | pins the retired *one rank per GPU* model (C4). Its replacement asserts the **single** default of G5 |
-| any test naming `enable_gpu` as the question rather than the SIESTA spelling | after phase 3 there is one name; a test that asserts the pair is asserting the gap |
+| any test naming `use_gpu` as the question rather than the SIESTA spelling | after phase 3 there is one name; a test that asserts the pair is asserting the gap |
 
 **Added** — each pins a rule that could not previously be checked:
 

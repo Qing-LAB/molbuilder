@@ -501,7 +501,7 @@ def _bench_marks_for(struct, cfg, block_size, bs_range) -> dict:
         metadata={
             "n_atoms":        struct.n_atoms,
             "n_orbitals_est": 10 * struct.n_atoms,
-            "gpu_mode":       str(bool(cfg.enable_gpu)).lower(),
+            "gpu_mode":       str(bool(cfg.use_gpu)).lower(),
             # The launch quantity BlockSize was derived FROM.  § 5.2's whole
             # point is that a later change of launch can re-derive the coupled
             # lines "instead of silently leaving them stale" -- and
@@ -610,7 +610,7 @@ def _parallel_facts(cfg) -> dict:
 
     # Diagonalizer (engines/siesta.md § 13).  The solver choice
     # (``diag_algorithm``) is INDEPENDENT of the GPU toggle; ELPA runs on
-    # CPU and GPU alike, and ``enable_gpu`` only moves an ELPA solve onto
+    # CPU and GPU alike, and ``use_gpu`` only moves an ELPA solve onto
     # the GPU.
     #   * ScaLAPACK -> emit nothing (SIESTA's built-in Divide-and-Conquer).
     #   * ELPA-* -> emit ``Diag.Algorithm`` (required: Diag.ELPA.GPU alone
@@ -620,9 +620,9 @@ def _parallel_facts(cfg) -> dict:
     #     codepath, so an omitted flag crashes a CPU run (Sol job 57852378).
     _algo = (cfg.diag_algorithm or "ScaLAPACK").strip()
     _is_elpa = _algo.upper().startswith("ELPA")
-    if cfg.enable_gpu and not _is_elpa:
+    if cfg.use_gpu and not _is_elpa:
         raise ValueError(
-            "enable_gpu requires an ELPA diagonalizer (diag_algorithm = "
+            "use_gpu requires an ELPA diagonalizer (diag_algorithm = "
             "ELPA-1STAGE or ELPA-2STAGE); GPU acceleration does not apply to "
             f"the {_algo} solver.  Pick an ELPA algorithm or turn GPU off "
             "(engines/siesta.md § 13).")
@@ -633,7 +633,7 @@ def _parallel_facts(cfg) -> dict:
     # through ``parameter(..., value=)`` and a DERIVED number still arrives
     # with its declaration, its range and its note.
     return {"block_size": block_size, "over_k": over_k,
-            "algorithm": _algo, "gpu": bool(cfg.enable_gpu)}
+            "algorithm": _algo, "gpu": bool(cfg.use_gpu)}
 
 
 def _relaxation_facts(cfg) -> Optional[dict]:
@@ -1050,7 +1050,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # character is genuinely an engine's syntax; it is simply not one
         # these two differ on.
         provenance_defaults=lambda c: {
-            "enable_gpu": str(bool(c.enable_gpu)).lower(),
+            "use_gpu": str(bool(c.use_gpu)).lower(),
             "BlockSize": (
                 "omitted (SIESTA's own)" if c.block_size == 0
                 else f"auto -> {_derived.get('block_size')}"
@@ -1064,7 +1064,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         bench_marks=lambda st, c: _bench_marks_for(
             st, c, _derived.get("block_size"),
             _block_size_bounds(st.n_atoms, c.mpi_np,
-                               gpu_mode=bool(c.enable_gpu),
+                               gpu_mode=bool(c.use_gpu),
                                emitted=_derived.get("block_size"))),
         created_by="molbuilder render_fdf",
         check_rules=_layout.check_rules,

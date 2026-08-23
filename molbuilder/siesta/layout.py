@@ -104,7 +104,7 @@ def mpi_section(*, block_size, algorithm) -> Section:
         items.append("block_size")
     items.append("parallel_over_k")
     if str(algorithm or "").upper().startswith("ELPA"):
-        items += ["diag_algorithm", "enable_gpu"]
+        items += ["diag_algorithm", "use_gpu"]
     return Section("Parallel execution (MPI)", tuple(items), note=(
         "# These settings matter only with `mpirun -np N siesta`",
         "# (single-rank runs ignore them).",
@@ -189,7 +189,7 @@ _PAD = {
     "write_md_history": 19, "write_md_xmol": 19, "write_hs": 19,
     "dm_energy_tolerance": 19, "scf_energy_converge": 19,
     "block_size": 19, "parallel_over_k": 19, "diag_algorithm": 19,
-    "enable_gpu": 19,
+    "use_gpu": 19,
     "md_target_temperature": 22,
     "max_scf_iter": 18, "spin_treatment": 18,
 }
@@ -248,7 +248,7 @@ def line(derived: dict):
     computed = {"block_size":     derived.get("block_size"),
                 "parallel_over_k": derived.get("over_k"),
                 "diag_algorithm": derived.get("algorithm"),
-                "enable_gpu":     derived.get("gpu")}
+                "use_gpu":     derived.get("gpu")}
     override = {"relax_steps":     derived.get("step_kw"),
                 "relax_max_displ": derived.get("displ_kw")}
     target_t = derived.get("target_t")

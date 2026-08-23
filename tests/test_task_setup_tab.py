@@ -850,7 +850,7 @@ def test_the_sweepable_list_says_which_the_machine_answers(web_client):
     by = {i["name"]: i["machine_answers"] for i in j["items"]}
     for machine in ("mpi_np", "omp_threads", "max_memory_mb", "gpu_count"):
         assert by.get(machine) is True, f"{machine} not flagged machine-answered"
-    assert by.get("enable_gpu") is False, (
+    assert by.get("use_gpu") is False, (
         "the GPU is a user decision, not something the machine answers "
         "(engines/overview.md § 3a: the user decides the GPU)")
 
@@ -1276,10 +1276,10 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client):
 
     **What the description DOES answer is the GPU**, and that is equally
     settled: `web/task-setup.md` § 6.2, *"use GPU or not is set up only at the
-    Job Prep UI"*.  `enable_gpu` is a `staging` item carrying a real value, and
+    Job Prep UI"*.  `use_gpu` is a `staging` item carrying a real value, and
     it rides the template like any other.
 
-    Until 2026-08-17 `_bench_inputs` pinned `enable_gpu=True` and
+    Until 2026-08-17 `_bench_inputs` pinned `use_gpu=True` and
     `diag_algorithm='ELPA-1STAGE'` flat, so **every trial measured a GPU
     whatever was asked for** — and on a machine whose probe finds no GPU the
     verb refused outright, which made a CPU benchmark impossible to run at all.
@@ -1301,7 +1301,7 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client):
         r = web_client.post("/api/task-setup/handover", json=dict(
             env, engine="siesta", name="grid",
             params={"system_label": "grid", "mesh_cutoff": 200.0,
-                    "enable_gpu": False}))
+                    "use_gpu": False}))
         assert r.status_code == 200, r.get_json()
         out = r.get_json()
         for f in out["structure_files"]:
@@ -1344,7 +1344,7 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client):
             g = re.search(r"^Diag\.ELPA\.GPU\s+(\S+)", text, re.M)
             assert not (g and g.group(1).lower().strip(".") == "true"), (
                 f"{deck.name} enables the GPU against the description's "
-                f"enable_gpu = false -- the Job Prep UI's answer was "
+                f"use_gpu = false -- the Job Prep UI's answer was "
                 f"overridden by a pin (web/task-setup.md § 6.2)")
         assert len(set(labels)) == len(labels), (
             f"trials share a SystemLabel {labels} -- they will warm-start off "
@@ -1491,10 +1491,10 @@ def test_both_pickers_payloads_carry_the_value_shape(web_client):
     BOTH payloads carry `type`/`choices` (+ the sweepable's `default`,
     which births a row at its value in force).  Until 2026-08-20 the
     sweepable payload had no type at all, and every added setting was born
-    as the number 1 -- `enable_gpu` included."""
+    as the number 1 -- `use_gpu` included."""
     sw = web_client.get("/api/task-setup/sweepable?engine=siesta").get_json()
     items = {i["name"]: i for i in sw["items"]}
-    assert items["enable_gpu"]["type"] == "bool"
+    assert items["use_gpu"]["type"] == "bool"
     assert items["diag_algorithm"]["type"] == "enum"
     assert items["diag_algorithm"]["choices"] == [
         "ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
@@ -1710,7 +1710,7 @@ def test_the_next_steps_teach_the_bench_lane_and_true_ordinals():
     assert "sweep as a value axis" in src, \
         "the value-axis note left the bench table"
     assert "cpu-vs-gpu axis" in src, \
-        "the enable_gpu family note left the bench table"
+        "the use_gpu family note left the bench table"
     assert "exact resource ask" in src, \
         "the per-shelf teaching left the bench table"
 

@@ -61,7 +61,7 @@ def test_the_machine_answered_set_is_exactly_what_the_contract_names():
 
 def test_the_gpu_flag_is_the_persons_choice_not_the_machines():
     """The specific claim `tuning.md` got backwards until 2026-08-23."""
-    assert "enable_gpu" not in _allocation_names(), (
+    assert "use_gpu" not in _allocation_names(), (
         "the GPU flag is marked as machine-answered.  It is an ordinary "
         "explicit option with a real default, chosen at the Job Prep UI "
         "(`web/task-setup.md` § 6.2, user ruling 2026-08-16) -- nothing "
@@ -71,7 +71,7 @@ def test_the_gpu_flag_is_the_persons_choice_not_the_machines():
 def test_the_flag_has_a_real_default_which_is_what_chosen_means():
     """A machine-answered setting has no default a person could mean; a chosen
     one does, and `false` is it."""
-    item = _item("enable_gpu")
+    item = _item("use_gpu")
     assert item.default is False
     assert item.group == "staging"
 

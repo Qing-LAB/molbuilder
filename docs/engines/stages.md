@@ -310,7 +310,7 @@ question. The vocabulary is closed and lives in `template.GROUPS`
 | **`stage`** | **the settings that typically vary across a sequence** | *(11)* `basis_size`, `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`, `scf_energy_converge`, `kgrid`, `kgrid_displacement`, `relax_type`, `relax_force_tol`, `relax_max_displ` | *(3)* `scf_conv_tol`, `scf_conv_tol_grad`, `grid_level` |
 | `budget` | what it is allowed to spend | *(5)* `max_scf_iter`, `relax_steps`, `block_size`, `diag_algorithm`, `parallel_over_k` | *(1)* `scf_max_cycle` |
 | `output` | what the run writes | *(7)* the `write_*` set, plus `copy_psml` | *(6)* `verbose`, `chkfile`, `log_file`, `save_*`, `write_trajectory` |
-| `staging` | answered by the staging surface, not by a parameter form — the machine asks, the GPU flag, and how a run resumes | *(5)* `mpi_np`, `omp_threads`, `enable_gpu`, `restart`, `continue_retries` | *(3)* `threads`, `use_gpu`, `stage` |
+| `staging` | answered by the staging surface, not by a parameter form — the machine asks, the GPU flag, and how a run resumes | *(5)* `mpi_np`, `omp_threads`, `use_gpu`, `restart`, `continue_retries` | *(3)* `threads`, `use_gpu`, `stage` |
 
 The counts are the whole group, the names a readable sample where the group is
 long; `max_memory_mb` is in `staging` for **both** engines, because it is one of
@@ -704,13 +704,13 @@ decks that are subtly wrong for the machine they run on.
 | Kind | Examples | Lands |
 |---|---|---|
 | an ordinary deck line | `mesh_cutoff` → `MeshCutoff`; `diag_algorithm` → `Diag.Algorithm` | the stage's deck, and nowhere else |
-| **a deck line that is also a resource decision** | `enable_gpu` → `Diag.ELPA.GPU` | the deck **and** the wrapper's env routing **and** a scheduler's `--gres` |
+| **a deck line that is also a resource decision** | `use_gpu` → `Diag.ELPA.GPU` | the deck **and** the wrapper's env routing **and** a scheduler's `--gres` |
 | a field the deck never carries | `mpi_np`, `omp_threads`, `continue_retries` | the **wrapper** — baked at prep (`continue_retries`) or resolved at run time (ranks, threads) — and a scheduler's `-n` / `-c` if one is asked |
 | **a field that is a claim about the run directory** | `required` | **the check the wrapper runs in the directory the job runs in**, immediately before the engine starts — and nowhere else (`job-contracts.md § 2.1`, § 4.4) |
 
 > **The second row is about where a value *lands*, not about who *chooses* it**
 > (clarified 2026-08-07, because the wording invited the other reading).
-> `enable_gpu` is an **ordinary explicit option** — the user ticks it, and
+> `use_gpu` is an **ordinary explicit option** — the user ticks it, and
 > nothing derives it from the machine. What makes it a resource decision is only
 > that the choice is *read* downstream as well as written into the deck, which
 > is exactly what [`template.md`](?doc=engines/template.md) § 6.1's `read_by`
@@ -723,7 +723,7 @@ decks that are subtly wrong for the machine they run on.
 > > environment: conda-forge's SIESTA carries ELPA through ELSI and runs it on
 > > CPU (`engines/siesta.md` § 7.2, `running-a-job.md` § 2.3). So
 > > `diag_algorithm` decides nothing outside its own deck, declares no `read_by`,
-> > and belongs in the first row. `enable_gpu` is the live case and the better
+> > and belongs in the first row. `use_gpu` is the live case and the better
 > > one: the GPU build, the `gres` ask, MPS, the NUMA pin and the rank/thread
 > > budget all turn on it. [`template.md`](?doc=engines/template.md) § 6.1
 > > carries the same correction.
@@ -928,7 +928,7 @@ rather than inventing a second mechanism.
   // never an answer; a non-machine execution entry with ONE point is a
   // chosen override, applied at prep as a pin (user rule, 2026-08-20).
   "bench": { "mpi_np": [4, 8, 16], "omp_threads": [1, 2],
-             "enable_gpu": [true] }
+             "use_gpu": [true] }
 }
 ```
 
@@ -1022,7 +1022,7 @@ override, a pin, or a benchmark axis, so a column the table offers is a column
 `prep` will accept, by construction rather than by agreement.
 
 Concretely, for SIESTA that means the physics settings **plus** `restart`,
-`continue_retries` and `enable_gpu` — the three staging settings a person answers
+`continue_retries` and `use_gpu` — the three staging settings a person answers
 — and **not** `mpi_np`, `omp_threads` or `max_memory_mb`, which the machine
 answers at `prep`. A surface that instead borrows the parameter form's list gets
 a different and smaller answer, because that form filters out the whole staging
@@ -1332,7 +1332,7 @@ declared **valueless** and `read_template` refuses a hand-edited `mpi_np`.
 
 **And a non-machine execution entry with ONE point is a chosen value**
 *(user rule, 2026-08-20 — the override lane, `generator.md` § 4.3a)*:
-`enable_gpu: [true]` is the person's portable intent, applied at prep as a
+`use_gpu: [true]` is the person's portable intent, applied at prep as a
 pin over the template for the bench's trials and the run alike — and
 refused by name on a machine that cannot honor it, which is the
 declaration staying a *question to the target* rather than an answer about

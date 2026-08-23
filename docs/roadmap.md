@@ -164,7 +164,7 @@ each with its recorded home)*:
 | open | recorded |
 |---|---|
 | **D7's cluster half** — the described route through SLURM on Sol | the deferrals table below — **next** |
-| ~~**2β** — multi-point *value* axes (measured GPU-vs-CPU in one sweep)~~ **delivered 2026-08-21** | `generator.md § 4.3a` states the built rule (value axes ride the sweep; `enable_gpu` is the grid-family axis; split per-side grouped submission) |
+| ~~**2β** — multi-point *value* axes (measured GPU-vs-CPU in one sweep)~~ **delivered 2026-08-21** | `generator.md § 4.3a` states the built rule (value axes ride the sweep; `use_gpu` is the grid-family axis; split per-side grouped submission) |
 | **the live browser walk-throughs** — checkpoint swap at narrow/wide widths, per-tab reload round-trips, a real Data/Image export, click-selection on frames ≥ 1 | here *(moved from the archived molview-and-checkpoint plan — its § 6 was the only part still open)* |
 | **VibrationView → shared media/zip** | task #104's note, § 3 below |
 
@@ -1339,7 +1339,7 @@ Phases (contract § 6), smallest risk first:
    ("one GPU per rank", a model retired 2026-08-13) in the one it calls;
 2. **the graph is the only picture** — the restatements keep their
    engine-specific halves and point at the walk;
-3. **the rename** `enable_gpu` → `use_gpu` — 183 sites (42 code · 90 test ·
+3. **the rename** `use_gpu` → `use_gpu` — 183 sites (42 code · 90 test ·
    51 live-doc), mechanical, no shim. **Must not be split:** while two names
    exist every caller must name an engine, and a half-done rename adds a
    third state;
@@ -1367,13 +1367,13 @@ is green.*
 | ~~**4**~~ | ~~the **type framework**~~ **done**: the coverage test makes a new type force a decision at all five readers, and `DECL_TYPES` is gone — the narrower set is derived from `template.TYPES` by a stated rule, exactly reproducing § 3.3's five | (a) before (b) worked as intended: the residue fell out of the mechanism instead of being argued |
 | **5** | **validation display**: the findings file beside the deck (`{label}.validation.txt`), written after the check · `info` reaches the CLI (R4 said three severities; it printed two) | ~~then delete `Issue.stage`~~ **withdrawn** — the field has five writers in the task preflight; see § 7.5 |
 | **6a** | GPU **C1 + C2**, their own commit | **done** `3b36d012` — and landing them separately was right: a semantic correction inside a 22-file sweep is one nobody reads |
-| **6b** | the **rename** `enable_gpu` → `use_gpu` | ⛔ **not mechanical — re-scoped 2026-08-23, needs a decision.** See below |
+| **6b** | the **rename** `use_gpu` → `use_gpu` | ⛔ **not mechanical — re-scoped 2026-08-23, needs a decision.** See below |
 | **7** | GPU **G7** — the wrapper is handed the value instead of grepping the deck at four call sites | ⛔ blocked behind 6b (conflict **E**) |
 
 #### Where they collide
 
 **A — C1/C2 sit inside the rename's own files.** `tuning.md` carries six
-`enable_gpu` mentions and `config/siesta.py` five, so correcting *who answers
+`use_gpu` mentions and `config/siesta.py` five, so correcting *who answers
 it* and then renaming touches the same sentences twice. **Corrections still go
 first, as their own commit:** a semantic fix buried inside a 34-file
 mechanical sweep is a fix nobody can review. The two-sentence re-touch is the
@@ -1402,12 +1402,12 @@ because the deletion was staged behind the file rather than done first.)*
 
 **⛔ 6b IS A DESIGN CHANGE, NOT A SWEEP — and this plan called it "183 sites,
 mechanical", which was wrong.** Four files carry *both* names today, and one
-of them is the catalogue: it holds `[item.enable_gpu]` (SIESTA) **and**
+of them is the catalogue: it holds `[item.use_gpu]` (SIESTA) **and**
 `[item.use_gpu]` (PySCF). TOML cannot hold the key twice, so the rename *is*
 the merge — they are one unit, exactly as `template.md` § 6.3 says. And the
 two items are not the same shape:
 
-| | `enable_gpu` (SIESTA) | `use_gpu` (PySCF) |
+| | `use_gpu` (SIESTA) | `use_gpu` (PySCF) |
 |---|---|---|
 | `anchor` | `Diag.ELPA.GPU` | `gpu4pyscf` |
 | `engine_key` | `Diag.ELPA.GPU` | `gpu4pyscf: mf = mf.to_gpu()` |
@@ -1430,7 +1430,7 @@ file.
 
 **E — G7 must follow the rename**, so it is blocked behind 6b too: `runwrap`
 names the flag zero times today (it greps the keyword), so doing G7 first
-would introduce the old name at four fresh sites for the rename to sweep. `runwrap.py` names `enable_gpu` **zero**
+would introduce the old name at four fresh sites for the rename to sweep. `runwrap.py` names `use_gpu` **zero**
 times today: it greps `Diag.ELPA.GPU` out of the rendered deck. G7 is what
 *introduces* the name there, so doing it first would create fresh sites for
 the rename to sweep.

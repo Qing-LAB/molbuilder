@@ -700,7 +700,7 @@ needs the GPU flag and the rank count, which only exist here. *(Until
 2026-08-16 this said `prep` **proposes** a value from the orbital and rank
 counts when you have not set one. It does not: unset means SIESTA's own
 automatic and the keyword is not emitted — the middle state was retired on
-2026-08-15.)* The GPU flag is another: `enable_gpu` writes `Diag.ELPA.GPU` into the
+2026-08-15.)* The GPU flag is another: `use_gpu` writes `Diag.ELPA.GPU` into the
 deck *and* sends the wrapper to a different conda environment, and whether this
 machine has a GPU at all is not a laptop's to know. A deck rendered on a laptop
 is either wrong for the cluster or a guess.
@@ -1035,7 +1035,7 @@ sweep has finished,
 ```jsonc
 { "choice":    { "label": "G1K4C6", "engine": "gpu",
                  "knobs": { "mpi_np": 4, "cpus_per_task": 6, "gres": "gpu:a100:1" },
-                 "mechanism": { "enable_gpu": true,
+                 "mechanism": { "use_gpu": true,
                                 "diag_algorithm": "ELPA-1STAGE" },
                  "rationale": "G1K4C6 fastest (2.3 s/iter); gpu-bound; vs G1K8C2 3.1 s/iter" },
   "recommend": { "mem_gb": 97, "time": "0-00:11:29",
@@ -1086,7 +1086,7 @@ mem = "97GB"          # the winner's measured peak RSS x safety margin
 time = "0-00:11:29"   # 2.3s/iter x 200 iters x 1.5 (adjust to your run)
 
 [pins]                # HOW the winner computed, read from its own deck
-enable_gpu = true
+use_gpu = true
 diag_algorithm = "ELPA-1STAGE"
 ```
 
@@ -1103,7 +1103,7 @@ instead.
 molbuilder jobset prep run tight
 
   applied 02_tight/bench/run-config.toml: mpi_np=4, cpus_per_task=6,
-  gres=gpu:a100:1, mem=97GB, time=0-00:11:29; pins: enable_gpu=True,
+  gres=gpu:a100:1, mem=97GB, time=0-00:11:29; pins: use_gpu=True,
   diag_algorithm=ELPA-1STAGE
   (edit or delete the file to change this)
 ```
@@ -1571,7 +1571,7 @@ described.**
 >
 > **It overrode a decision that had already been taken elsewhere.**
 > [`web/task-setup.md`](?doc=web/task-setup.md) § 6.2 — *"use GPU or not is set
-> up only at the Job Prep UI"* (user, 2026-08-16) — makes `enable_gpu` a value
+> up only at the Job Prep UI"* (user, 2026-08-16) — makes `use_gpu` a value
 > the person chose, and § 6.2 is equally explicit that the eigensolver is a
 > **separate** question owned by the parameter tab. Pinning both here measured
 > a configuration nobody asked to run, and *"the grid isolates the hardware"* is
@@ -1584,11 +1584,11 @@ described.**
 > measurement that would settle *"is the GPU worth it here?"* could not be run.
 >
 > **What replaced it:** the description answers, and the grid follows its
-> answer. `enable_gpu = true` → the `(G, K, c)` grid, with `gres`; the
+> answer. `use_gpu = true` → the `(G, K, c)` grid, with `gres`; the
 > device count and type come from this machine's probe **or, on a
 > GPU-less login node, from the domain row's probed GPU inventory** —
 > only a machine with neither is refused by name
-> (`generator.md § 4.3a`, 2026-08-21). `enable_gpu = false` → the
+> (`generator.md § 4.3a`, 2026-08-21). `use_gpu = false` → the
 > `(K, c)` grid from the same enumerator, no `gres`, no refusal. One
 > enumeration, two shapes.
 

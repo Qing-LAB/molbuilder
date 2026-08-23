@@ -462,14 +462,14 @@ The real-space integration grid, in Ry.  Higher is finer and slower;
 convergence is checked, not assumed.
 Per-tier: screening 150 · publishable 350 · tight 500."""
 
-# kind = "engine" + read_by — a value that ALSO leaves the deck (§ 6.1).
-# `enable_gpu` is SIESTA's spelling TODAY; the merge with PySCF's `use_gpu` is
-# settled and un-renamed (§ 6.3), so the file shows two items and the table
-# there shows one answer.
-[item.enable_gpu]
-kind     = "engine"
+# kind = "deck" + read_by — a MERGED item whose value ALSO leaves the deck
+# (§ 6.1).  It was `enable_gpu` (SIESTA) and `use_gpu` (PySCF) until
+# 2026-08-23; one question gets one item, and each engine's writer renders
+# its own reach — `net_charge`'s worked example, § 6.3.
+[item.use_gpu]
+kind     = "deck"
 category = ["execution"]
-anchor   = "Diag.ELPA.GPU"
+expands  = ["Diag.ELPA.GPU", "gpu4pyscf"]
 type     = "bool"
 value    = false
 default  = false
@@ -982,7 +982,7 @@ its value.** They are different questions and one key cannot answer both.
 > the ground that an empty result cannot tell "nothing matched" from "you asked
 > for something that does not exist". Audit § 1.3a.)*
 
-`enable_gpu` is unambiguously the engine's — it becomes the SIESTA keyword
+`use_gpu` is unambiguously the engine's — it becomes the SIESTA keyword
 `Diag.ELPA.GPU` — *and* the wrapper acts on it, because a GPU deck needs the
 source-built environment **and** a GPU runtime: the `gres` ask, MPS, the NUMA
 pin, the rank/thread budget. So it is `kind="engine"` with
@@ -1020,7 +1020,7 @@ a new engine declares its own without anyone editing the wrapper writer.
 > through ELSI and runs both stages on CPU (measured — `engines/siesta.md`
 > § 7.2). `diag_algorithm` therefore decides **no** environment and declares no
 > `read_by`; the deck-text scan it justified was deleted rather than replaced.
-> `enable_gpu` is the one live case, and it is a better one — it is read in
+> `use_gpu` is the one live case, and it is a better one — it is read in
 > eight places, only one of which is the environment.
 
 **It also explains an ordering the contract already forces.**
@@ -1200,11 +1200,11 @@ nothing is derived.
 > § 5.5); `charge` by § 1 of the same plan. The merge is **declared by spelling
 > the field alike in both engines** (*How a merge is DECLARED*, below; plan
 > § 5.6), and that rename
-> is a separate unit that has not landed: `enable_gpu` → `use_gpu` and
+> is a separate unit that has not landed: `use_gpu` → `use_gpu` and
 > `net_charge` → `charge`, plus every reader of those names — 117 sites for
 > `net_charge` alone.
 >
-> So today's catalogue carries `enable_gpu` (SIESTA) and `use_gpu` (PySCF) as
+> So today's catalogue carries `use_gpu` (SIESTA) and `use_gpu` (PySCF) as
 > **two items**, and that is the mechanism behaving as designed rather than a
 > defect: *"an un-renamed pair simply stays two items until the rename lands."*
 > The table above states the settled answer; the file states today. **Read a
@@ -1991,13 +1991,13 @@ other kind**, and it is the only trace in this documentation that runs from a
 control on a form to a line in a submitted job — the question *"I ticked a box;
 what actually changed on the cluster?"*
 
-`enable_gpu` is the case because it is the one item declaring
+`use_gpu` is the case because it is the one item declaring
 `read_by = ["wrapper"]`, so its value has to leave floor 2 twice: once into the
 deck, and once past it.
 
 ```mermaid
 flowchart TB
-    IT["<b>[item.enable_gpu]</b><br/>kind=engine · anchor=Diag.ELPA.GPU · read_by=[wrapper]"]
+    IT["<b>[item.use_gpu]</b><br/>kind=engine · anchor=Diag.ELPA.GPU · read_by=[wrapper]"]
 
     FORM["<b>the form</b><br/>a checkbox on the <i>staging</i> card,<br/>legend <i>execution</i>, badge <code>Diag.ELPA.GPU</code>"]
     TPL["<b>the template</b><br/><code>value = true</code>"]
@@ -2025,7 +2025,7 @@ flowchart TB
 **Three things this picture is for.**
 
 **One value, two floors, and the second is where the cost lives.** A wrong
-`mesh_cutoff` gives you a worse number. A wrong `enable_gpu` puts the job in an
+`mesh_cutoff` gives you a worse number. A wrong `use_gpu` puts the job in an
 environment whose SIESTA cannot do what the deck asks — and both wrong answers
 look exactly like the defaults, which is
 [`workflow.md`](?doc=workflow.md) § 5's argument for why step 4 cannot precede
@@ -2033,7 +2033,7 @@ step 3.
 
 **This is why the deck is rendered before the wrapper**, stated as a fact about
 one item rather than as a sequencing rule. The wrapper cannot be written until
-`enable_gpu` is fixed, because three of its decisions are functions of it.
+`use_gpu` is fixed, because three of its decisions are functions of it.
 
 **And it is where § 1.1a's second row bites.** Step 4 gets that value by
 **grepping the `.fdf` it just wrote**, not by reading `read_by`. The picture is
@@ -2202,11 +2202,11 @@ stage at any time and get the same deck.
 
 A **GPU** deck must run in `molbuilder-siesta-gpu` — the source build is the
 only one whose ELPA was compiled with GPU support. The wrapper writer needs
-`enable_gpu`'s value to pick both the environment and the GPU runtime.
+`use_gpu`'s value to pick both the environment and the GPU runtime.
 
 **How it gets it today, and how it is meant to.** Today it greps the rendered
 deck for `Diag.ELPA.GPU`. The design is that it asks for every item whose
-`read_by` names it and is handed `enable_gpu` — and the item already carries
+`read_by` names it and is handed `use_gpu` — and the item already carries
 that declaration, kept correct by the guard test in § 6.1. The difference is
 one import away and is § 1.1a's second row.
 
@@ -2324,7 +2324,7 @@ closing one is a visible act. Measured 2026-08-17.
 | **6** | **PySCF's `threads` is not flagged `allocation`** | § 6.4 | nothing sizes a PySCF job from what the machine granted |
 | **7** | **BENCH-MARKS is SIESTA-only** | § 9 | a PySCF deck declares no override surface, so a sweep has nothing to read from it |
 | **8** | **`required` is not an item** | [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.1 | a stage cannot declare the warm files it needs, because a description names fields and never defines them |
-| **9** | **`enable_gpu` → `use_gpu` is ruled and un-renamed** | § 6.3 | two names answer one question, so any caller asking *"does this want a GPU?"* must name an engine's spelling. `jobset/_cli.py::_bench_inputs` does — for the template read AND for 2β's declared grid-family axis (`generator.md` § 4.3a), so the un-landed rename now has two spellings to collect there — and is correct only while the BENCH LANE refuses non-SIESTA descriptions by name (`jobset/_cli.py::_bench_inputs` — the engine seam itself serves PySCF since 2026-08-18) |
+| ~~**9**~~ | ~~**`enable_gpu` → `use_gpu` is ruled and un-renamed**~~ **CLOSED 2026-08-23** | § 6.3 | two names answer one question, so any caller asking *"does this want a GPU?"* must name an engine's spelling. `jobset/_cli.py::_bench_inputs` does — for the template read AND for 2β's declared grid-family axis (`generator.md` § 4.3a), so the un-landed rename now has two spellings to collect there — and is correct only while the BENCH LANE refuses non-SIESTA descriptions by name (`jobset/_cli.py::_bench_inputs` — the engine seam itself serves PySCF since 2026-08-18) |
 
 **Rows 1, 2 and 8 are the same shape and it is worth naming.** Each is a
 *carrier* that the contract assumes and the catalogue lacks. § 7's membership

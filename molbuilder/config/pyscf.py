@@ -851,7 +851,8 @@ class PySCFConfig:
         "workflow_group": "staging",
         "section": "Compute & budget",
         "label":     "Use GPU (NVIDIA, via gpu4pyscf)",
-        "engine_key":  'gpu4pyscf: mf = mf.to_gpu()',
+        "item_kind":   "deck",
+        "engine_key":  "Diag.ELPA.GPU (SIESTA) | mf = mf.to_gpu() (PySCF)",
         "id_suffix": "use-gpu",
         # Help text intentionally references the recipe rather than
         # naming a specific cuda<N>x wheel tag: the project-wide

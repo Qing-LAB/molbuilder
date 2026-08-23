@@ -421,14 +421,14 @@ two — and it is `bench` / `prep` that makes it one.**
 > needs to be realigned at bench/prep stage."***
 
 **The alignment happens where the target is known, and that is not this form.**
-`enable_gpu` and `mpi_np` are both answered on the **staging** surface rather
+`use_gpu` and `mpi_np` are both answered on the **staging** surface rather
 than beside the physics — which is all this argument needs from them. A form
 that no longer holds the GPU flag cannot check a rule about the GPU, and a rule
 checked in the wrong place is a rule that will be wrong. So:
 
 > **Corrected 2026-08-23: they are not the same kind of answer.** This read
 > *"they are machine facts and bench axes"*, which is true of `mpi_np` and
-> false of `enable_gpu`. **`enable_gpu` is the person's** — an ordinary
+> false of `use_gpu`. **`use_gpu` is the person's** — an ordinary
 > explicit option with a real default, chosen at the Job Prep UI
 > ([`task-setup.md`](?doc=web/task-setup.md) § 6.2, user ruling 2026-08-16),
 > and nothing derives it from the machine. The machine-answered set is a flag
@@ -500,7 +500,7 @@ seconds per SCF iteration — the number every comparison ranks on.)*
 **What the GPU actually accelerates — one step, not the run.** SIESTA
 offloads exactly one thing to the GPU: solving the dense eigenvalue
 problem at the heart of each SCF iteration, and only through the ELPA
-solver (`enable_gpu` requires an ELPA `diag_algorithm`; the deck writes
+solver (`use_gpu` requires an ELPA `diag_algorithm`; the deck writes
 `Diag.Algorithm` + `Diag.ELPA.GPU` —
 [`siesta.md § 7`](?doc=engines/siesta.md)). Everything else — building
 the Hamiltonian and overlap matrices on the real-space grid, updating the
@@ -527,7 +527,7 @@ half, and since 2026-08-21 that includes the device count itself
 ```json
 "bench": {
   "mpi_np":      [32, 64],
-  "enable_gpu":  [true, false],
+  "use_gpu":  [true, false],
   "gpu_count":   [1, 2, 4],
   "diag_algorithm": ["ELPA-1STAGE", "ELPA-2STAGE"]
 }
@@ -541,7 +541,7 @@ repairs: a device count the machine's record does not hold **refuses**; a
 `(mpi_np, gpu_count)` pair that cannot split into equal shares is
 **dropped, and the dropped pair is printed by name** — ELPA's own rule is
 the same rank count on every device, and a benchmark must never round
-your numbers; `gpu_count` on a bench whose `enable_gpu` resolves to false
+your numbers; `gpu_count` on a bench whose `use_gpu` resolves to false
 **refuses** rather than being silently ignored; and with `gpu_count`
 absent, the machine *proposes* — G ranges over each declared rank count's
 divisors, bounded by the recorded device count. The device count itself
@@ -556,7 +556,7 @@ scheduler and stores on the domain row.
 flowchart TD
     subgraph YOU["task.json — what YOU declare (portable, no machine facts)"]
         MP["bench.mpi_np = [32, 64]<br/>TOTAL ranks per trial"]
-        EG["bench.enable_gpu = [true, false]<br/>run the bench on CPU, GPU, or both"]
+        EG["bench.use_gpu = [true, false]<br/>run the bench on CPU, GPU, or both"]
         GC["bench.gpu_count = [1, 2, 4]<br/>devices per trial — EXPLICIT<br/>(absent → machine proposes divisors)"]
         VA["bench.diag_algorithm, block_size, …<br/>value settings → every trial's input file"]
     end
@@ -702,7 +702,7 @@ which configuration to run at — for the least machine time.
   bench` replaces the stage's sweep record, so each round's verdict
   stands on its own; round 2 re-measures the winning shape under each
   value, which is precisely the comparison wanted; (c) when one side's
-  extra trials are the cost, bench one side at a time (`enable_gpu` with
+  extra trials are the cost, bench one side at a time (`use_gpu` with
   a single point per round). Worked on the § 6 junction's declared
   matrix: the full cross product is 36 trials; dropping `block_size` to
   automatic makes it 12; staging makes it 6 + 6 with the second round

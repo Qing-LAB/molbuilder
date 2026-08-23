@@ -355,10 +355,10 @@ knob, **not** a `Structure` field.
 flowchart TD
     A{"Diag.Algorithm?"}
     A -->|ScaLAPACK| S["emit NOTHING<br/>(SIESTA's built-in default)<br/>env → molbuilder-siesta"]
-    A -->|"ELPA-1STAGE / ELPA-2STAGE"| G{"enable_gpu?"}
+    A -->|"ELPA-1STAGE / ELPA-2STAGE"| G{"use_gpu?"}
     G -->|"true"| GPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .true.<br/>env → molbuilder-siesta-gpu<br/><i>the only ask needing a source build</i>"]
     G -->|"false"| CPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .false.<br/>env → molbuilder-siesta<br/><i>CPU-ELPA runs in the packaged env</i>"]
-    A -.->|"ScaLAPACK + enable_gpu"| ERR["render_fdf raises ValueError<br/>(input.py:1038)"]
+    A -.->|"ScaLAPACK + use_gpu"| ERR["render_fdf raises ValueError<br/>(input.py:1038)"]
 ```
 
 Two **orthogonal** decisions (contract rewritten 2026-06-29):
@@ -367,7 +367,7 @@ Two **orthogonal** decisions (contract rewritten 2026-06-29):
    (SIESTA's default divide-and-conquer) / `ELPA-1STAGE` / `ELPA-2STAGE` (**ELPA** =
    a dense-matrix eigensolver library). **ELPA runs on CPU *and* GPU.** Affinity
    (a hint, not a rule): GPU favours 1STAGE, CPU favours 2STAGE.
-2. **`cfg.enable_gpu` — an accelerator on top of an ELPA choice.** On → the ELPA
+2. **`cfg.use_gpu` — an accelerator on top of an ELPA choice.** On → the ELPA
    solve runs on the GPU (`Diag.ELPA.GPU .true.`), GPU-only with no silent CPU
    fallback. Off with an ELPA algorithm → CPU-ELPA (`Diag.ELPA.GPU .false.`).
    Meaningful only with an ELPA algorithm — GPU + ScaLAPACK is rejected by the
@@ -457,7 +457,7 @@ picks from what survives.
 > binary carries `ELPA-1stage`, `ELPA-2stage` and `Diag.ELPA.GPU` as strings
 > either way.
 
-The `enable_gpu` toggle is a *script-input* contract — it never queries env
+The `use_gpu` toggle is a *script-input* contract — it never queries env
 presence; `runwrap` gates env presence at generation time with a clear install
 hint. (How the `molbuilder-siesta-gpu` env is *built* — the CUDA/ELPA source
 build, CMake flags, toolchain pinning — is a deployment concern documented under
@@ -631,7 +631,7 @@ variant tested must `convert()` end-to-end without raising.
 `cell_padding` was removed 2026-07 — and the `Config`
 alias), `test_siesta_stages.py` + `test_siesta_stages_emit.py` (the ladder and
 what each stage emits), `test_siesta_stage_strategy_presets_drift.py` (the
-presets against their three consumers), `test_siesta_enable_gpu.py` (§ 7's
+presets against their three consumers), `test_siesta_use_gpu.py` (§ 7's
 two orthogonal decisions, including the rejected GPU + ScaLAPACK pair), and
 `test_molwatch_preview.py` (the sibling log). *(This list named
 `test_cli_siesta_stages.py` and `test_siesta_form_schema_stage_table.py` until

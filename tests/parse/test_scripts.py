@@ -44,7 +44,7 @@ FULL_FDF = """\
 #   generated-at         2026-06-19T12:00:00Z
 #   resolved-defaults:
 #     mpi_np            auto -> 4
-#     enable_gpu        true
+#     use_gpu        true
 # === molbuilder provenance END ===
 
 # === molbuilder bench-marks BEGIN ===

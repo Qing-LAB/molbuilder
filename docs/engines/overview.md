@@ -251,7 +251,7 @@ is decided by where the capability lives rather than by preference.
 
 | | **SIESTA** | **PySCF** |
 |---|---|---|
-| the item | `enable_gpu` | `use_gpu` |
+| the item | `use_gpu` — **one merged item since 2026-08-23**, `kind="deck"`; it was `enable_gpu` here | `use_gpu` |
 | what the flag turns on | `Diag.ELPA.GPU .true.` in the deck, and only with an ELPA solver — GPU + ScaLAPACK is refused by the **emitter** | `mf = _mb_to_gpu_if_enabled(mf)` in the script, after the `mf` is fully assembled |
 | **where the capability lives** | in the **environment** — only `molbuilder-siesta-gpu`'s ELPA has the GPU codepath | in the **device**, plus `gpu4pyscf` + `cupy` |
 | **when it is checked** | **at `prep`** — an env is a fact the prepping machine can see | **at run start** — you prep on a login node and run on a GPU node, so the device is not visible until the job is on it |
@@ -287,8 +287,8 @@ a GPU is present. G-5 governs *availability*, not *coverage*.
 
 | | |
 |---|---|
-| **one name** | `enable_gpu` / `use_gpu` are the same question with two spellings. The merge is **ruled and un-renamed** ([`template.md`](?doc=engines/template.md) § 6.3, § 12.1 row 9), so any caller asking *"does this run want a GPU?"* must currently name an engine's spelling |
-| **`read_by`** | `enable_gpu` declares `read_by = ["wrapper"]`; `use_gpu` does not, though both decide which environment the job needs. PySCF has no env routing in `runwrap` at all |
+| **one name** | ~~two spellings~~ **merged 2026-08-23.** `use_gpu` is one item, `kind="deck"`, `expands` naming both reaches — ruled 2026-08-13, landed when the catalogue merge and the rename went together (they could not be split: TOML cannot hold the key twice). A caller asking *"does this run want a GPU?"* now asks once |
+| **`read_by`** | `use_gpu` declares `read_by = ["wrapper"]`; `use_gpu` does not, though both decide which environment the job needs. PySCF has no env routing in `runwrap` at all |
 | **`gpu_used` read-back** | G-5a is a rule with no reader yet: nothing compares a PySCF trial's asked GPU against `_RUNTIME_INFO['gpu_used']` |
 
 ---

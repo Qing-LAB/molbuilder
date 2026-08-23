@@ -1898,7 +1898,7 @@ def test_siesta_form_schema_matches_documented_layout():
         ("convergence", 4),
         ("procedure",  16),
         # 7 -> 3 on 2026-08-15: mpi_np, omp_threads, max_memory_mb and
-        # enable_gpu moved to the staging surface.  They are bench axes
+        # use_gpu moved to the staging surface.  They are bench axes
         # measured on the machine, not parameters typed beside the physics.
         ("execution",   3),
     ], got

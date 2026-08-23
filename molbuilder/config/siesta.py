@@ -236,11 +236,11 @@ class SiestaConfig:
     #   * Stage card   -- force_tol + max_displ (convergence targets)
     #   * Budget card  -- relax_steps + BlockSize + ParallelOverK +
     #                     diag_algorithm
-    #   * Staging card -- mpi_np + omp_threads + gpu_count + enable_gpu +
+    #   * Staging card -- mpi_np + omp_threads + gpu_count + use_gpu +
     #                     max_memory_mb + continue_retries (the
     #                     workflow_group="staging" members)
     #
-    # ``enable_gpu`` moved rows here on 2026-08-23 -- on paper only: the
+    # ``use_gpu`` moved rows here on 2026-08-23 -- on paper only: the
     # field's own metadata 1200 lines below has said `workflow_group:
     # "staging"` all along, and so does the catalogue, which is what the
     # form actually reads.  This comment had it on the Budget card, so the
@@ -1471,14 +1471,14 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "choose in-core versus out-of-core."),
         "skip_cli":   True,
     })
-    enable_gpu: bool = field(default=False, metadata={
+    use_gpu: bool = field(default=False, metadata={
         "category": ("execution",),
         "section": "Compute & budget",
         "workflow_group": "staging",
         "label":     "Use GPU (NVIDIA, via ELPA-CUDA)",
         # OPTIONAL accelerator on top of an ELPA ``diag_algorithm``
         # (engines/siesta.md § 13).  It does NOT select ELPA -- that's
-        # the ``diag_algorithm`` field.  enable_gpu only decides where an
+        # the ``diag_algorithm`` field.  use_gpu only decides where an
         # already-chosen ELPA solve runs:
         #   * ON  -> ``Diag.ELPA.GPU .true.``  (GPU-only, no CPU fallback)
         #   * OFF -> ``Diag.ELPA.GPU .false.`` (CPU-ELPA -- explicit
@@ -1501,7 +1501,13 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         # declared: trusting the declarations alone would have dropped
         # every GPU runtime fact silently.
         "read_by": ("wrapper",),
-        "engine_key":  'Diag.ELPA.GPU',
+        # MERGED with PySCF's item 2026-08-23 (ruled 2026-08-13).  One
+        # question -- does this run use a GPU -- so one item, `kind="deck"`,
+        # each engine's writer rendering its own reach.  `net_charge` is the
+        # worked example (`engines/template.md` § 6.3).
+        "item_kind":   "deck",
+        "expands":     ("Diag.ELPA.GPU",),
+        "engine_key":  "Diag.ELPA.GPU (SIESTA) | mf = mf.to_gpu() (PySCF)",
         "id_suffix": "enable-gpu",
         "help":      "OPTIONAL: run the ELPA diagonalization on an NVIDIA "
                      "CUDA GPU.  This does NOT turn ELPA on -- pick the "
@@ -1526,7 +1532,7 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         # molbuilder-siesta-gpu.  Measured: the packaged SIESTA runs both
         # ELPA stages on CPU (ELPA is compiled in through ELSI), so the
         # solver choice decides no environment and the wrapper derives
-        # NOTHING from this value.  ``enable_gpu`` is the one item the
+        # NOTHING from this value.  ``use_gpu`` is the one item the
         # wrapper reads -- see its declaration above.
         #
         # Declaring ``read_by`` here anyway would be the same defect the
@@ -1538,7 +1544,7 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "label":     "Diagonalizer",
         # The EIGENSOLVER choice -- independent of hardware (engines/
         # siesta.md § 13, rewritten 2026-06-29).  ELPA runs on CPU AND
-        # GPU; ``enable_gpu`` only moves an ELPA solve onto the GPU.
+        # GPU; ``use_gpu`` only moves an ELPA solve onto the GPU.
         #   * ScaLAPACK -> emit NOTHING (SIESTA's built-in Divide-and-
         #     Conquer default); runs in the precompiled ``molbuilder-siesta``.
         #   * ELPA-1STAGE / ELPA-2STAGE (Src/diag_option.F90:264-273) ->

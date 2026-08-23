@@ -327,8 +327,8 @@ def test_a_settings_refusal_is_in_the_log_with_its_reason(tmp_path):
     from molbuilder.jobset.prep import PrepError
     dest, stages = _calculation(tmp_path, "siesta", "flat")
     tpl = dest / "BDT.template.toml"
-    head, sep, tail = tpl.read_text().partition("[item.enable_gpu]")
-    assert sep, "the template lost its enable_gpu item"
+    head, sep, tail = tpl.read_text().partition("[item.use_gpu]")
+    assert sep, "the template lost its use_gpu item"
     body, nxt, rest = tail.partition("\n[item.")
     assert "value = false" in body, body
     tpl.write_text(head + sep + body.replace("value = false", "value = true", 1)
@@ -389,8 +389,8 @@ def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
     #    ValueError, with its own message.
     with pytest.raises(ValueError) as caught:
         with calling("spec_for", engine="siesta", where="BDT.fdf"):
-            raise ValueError("enable_gpu requires an ELPA diagonalizer")
-    assert str(caught.value) == "enable_gpu requires an ELPA diagonalizer"
+            raise ValueError("use_gpu requires an ELPA diagonalizer")
+    assert str(caught.value) == "use_gpu requires an ELPA diagonalizer"
     assert any("siesta.spec_for" in n
                for n in getattr(caught.value, "__notes__", [])), caught.value
 
@@ -398,7 +398,7 @@ def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
     #    SIESTA's own sentence, through every layer between.
     dest, stages = _calculation(tmp_path, "siesta", "flat")
     tpl = dest / "BDT.template.toml"
-    head, sep, tail = tpl.read_text().partition("[item.enable_gpu]")
+    head, sep, tail = tpl.read_text().partition("[item.use_gpu]")
     assert sep
     body, nxt, rest = tail.partition("\n[item.")
     tpl.write_text(head + sep + body.replace("value = false", "value = true", 1)
