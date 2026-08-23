@@ -1528,6 +1528,53 @@ def api_task_setup_template_values():
     return jsonify({"ok": True, "name": found.name, "values": values})
 
 
+@bp.route("/api/task-setup/resolved", methods=["GET"])
+def api_task_setup_resolved():
+    """What a `prep` would resolve for this folder, and from which file.
+
+    The same block `prep` prints -- `runtime_config.config_provenance`,
+    which answers *"where did that setting come from?"* at the moment it
+    takes effect.  Served rather than restated: a hand-written notice in
+    the browser would be a second account of the same facts, free to drift
+    from the one the terminal shows.
+
+    Safe for the browser by construction: provenance carries paths,
+    presence, and the effective values of an allowlisted set of sections --
+    never file contents, so a `tls` key or an OAuth secret cannot reach a
+    page through it.
+
+    Query: ``dest`` (the folder), ``target`` (optional machine name).
+    """
+    dest_raw = str(request.args.get("dest") or "")
+    if not dest_raw:
+        return jsonify({"ok": False, "error": "no folder given"}), 400
+    try:
+        dest = _resolve_within_roots(dest_raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    if not dest.is_dir():
+        return jsonify({"ok": False, "error": f"not a directory: {dest_raw}"}), 400
+
+    from molbuilder.runtime_config import bootstrap_travels, config_provenance
+    target = str(request.args.get("target") or "") or None
+    if target == "(this machine)":
+        # The tab's label for "no --target"; prepping for the box you are on
+        # is the case the local config IS for, so it is not a target.
+        target = None
+    try:
+        prov = config_provenance(project_dir=dest)
+    except Exception as exc:                      # a malformed config
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({
+        "ok": True,
+        "sources": prov.get("sources") or [],
+        "effective": prov.get("effective") or {},
+        "domains": prov.get("domains") or [],
+        # ONE rule, shared with `prep` -- see runtime_config.bootstrap_travels.
+        "bootstrap_warning": bootstrap_travels(prov, target),
+    })
+
+
 @bp.route("/api/task-setup/machines", methods=["GET"])
 def api_task_setup_machines():
     """Which machines a calculation could be prepared FOR.

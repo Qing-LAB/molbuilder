@@ -464,6 +464,11 @@
     gap: var(--space-md) var(--space-lg);
     margin: 0;
 }
+/* Same [hidden]-precedence guard as `.ts-state`: the rule above sets
+ * `display: grid`, which ties with the browser's `[hidden] { display: none }`
+ * and wins on source order.  The came-over facts are always shown; the
+ * resolved-config list is hidden until a folder is open. */
+.ts-facts[hidden] { display: none; }
 .ts-facts > div { display: flex; flex-direction: column; gap: var(--space-xs); }
 .ts-facts dt {
     font-size: var(--text-xs);

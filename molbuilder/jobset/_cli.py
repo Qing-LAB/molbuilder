@@ -1558,31 +1558,13 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     prov = config_provenance(project_dir=base)
     click.echo(format_provenance(prov))
 
-    # THE BOOTSTRAP DOES NOT TRAVEL BY ITSELF
-    # (`preparing-for-another-machine.md` § 3).  `--target` supplies the
-    # machine's MEASUREMENTS -- cores, scheduler, domains -- but a preamble
-    # is a PREFERENCE and lives in molbuilder.json, so a prep aimed at
-    # another machine renders the right numbers with THIS machine's
-    # bootstrap.  That wrapper then dies on a compute node, unattended,
-    # after a queue wait.  The bundle's own .molbuilder.json is what makes
-    # it travel; say so when it did not.
-    if target is not None:
-        _eff = (prov or {}).get("effective") or {}
-        _from = {k.split(".", 1)[1]: v.get("from")
-                 for k, v in _eff.items() if k.startswith("script_generation.")}
-        _local = sorted(k for k, v in _from.items() if v != "bundle")
-        if _local:
-            _detail = ", ".join(
-                f"{k} ({_from[k]})" for k in _local)
-            click.echo(
-                f"  ⚠ prepped for {target!r}, but the wrapper's bootstrap "
-                f"carries THIS machine's config: {_detail}.\n"
-                f"    It will run on {target!r} with lines written for here. "
-                f"Note preambles CONCATENATE (server first, then the "
-                f"bundle's), so a machine-scope preamble travels even when "
-                f"the bundle adds its own -- to send only the target's, this "
-                f"machine must not set one.\n"
-                f"    See preparing-for-another-machine.md § 3.")
+    # Does the bootstrap belong to the machine this will run on?  The rule
+    # is `runtime_config.bootstrap_travels`, shared with the Task-setup tab
+    # -- a rule about when a job will fail must not hold two opinions.
+    from ..runtime_config import bootstrap_travels
+    _warn = bootstrap_travels(prov, target)
+    if _warn:
+        click.echo("  \u26a0 " + _warn)
     def _rel(d):
         try:
             return str(_P(d).resolve().relative_to(_P(base).resolve()))

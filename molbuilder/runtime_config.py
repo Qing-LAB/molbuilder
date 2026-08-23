@@ -1046,6 +1046,48 @@ def machine_config_path() -> Tuple[Path, str]:
     return _per_user_fallback_path().resolve(), "xdg"
 
 
+def bootstrap_travels(provenance, target) -> Optional[str]:
+    """Does the wrapper's bootstrap belong to the machine it will run on?
+
+    Returns ``None`` when it does (or when there is no target, which is the
+    case the local config IS for), and a sentence naming the problem when it
+    does not.
+
+    **Why this is a function and not two `if`s.**  `--target` supplies the
+    target's MEASUREMENTS -- cores, scheduler, domains -- but a preamble is a
+    PREFERENCE and lives in ``molbuilder.json``
+    (`preparing-for-another-machine.md` § 3), so a prep aimed elsewhere
+    renders the right numbers with THIS machine's bootstrap.  That wrapper
+    then dies on a compute node, unattended, after a queue wait.  Two
+    surfaces need to say so -- `prep` on the terminal and the Task-setup tab
+    -- and a rule about when a job will fail must not be able to hold two
+    opinions.
+
+    **`from == "bundle"` is the whole test, and the concatenation is why.**
+    Preambles JOIN, server first then the bundle's (`architecture.md`
+    § 8.2), so a machine-scope preamble is emitted even when the bundle
+    supplies its own; the provenance reports that as
+    ``server+project (concatenated)``.  Anything other than a clean
+    ``bundle`` therefore carries local lines.
+    """
+    if not target:
+        return None
+    eff = (provenance or {}).get("effective") or {}
+    origin = {k.split(".", 1)[1]: v.get("from")
+              for k, v in eff.items() if k.startswith("script_generation.")}
+    local = sorted(k for k, v in origin.items() if v != "bundle")
+    if not local:
+        return None
+    detail = ", ".join(f"{k} ({origin[k]})" for k in local)
+    return (
+        f"prepped for {target!r}, but the wrapper's bootstrap carries THIS "
+        f"machine's config: {detail}.  It will run on {target!r} with lines "
+        f"written for here.  Note preambles CONCATENATE (server first, then "
+        f"the bundle's), so a machine-scope preamble travels even when the "
+        f"bundle adds its own -- to send only the target's, this machine "
+        f"must not set one.  See preparing-for-another-machine.md § 3.")
+
+
 def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     """Which config files this process consults, and which one supplied each
     execution-relevant value — the answer to *"where did that setting come

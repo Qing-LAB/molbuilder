@@ -206,10 +206,18 @@ not get its own rules: it surfaces the ones above.
   chosen — and **`launch` does not**, because launching happens on the
   machine.
 
-**Still to build here:** the resolved-provenance display. `prep` already
-computes it (`runtime_config.config_provenance` — `sources`, `effective`,
-`domains`) and prints it; surfacing that block, including the § 3
-bootstrap flag, is the remaining piece.
+- **It shows what a `prep` would resolve, and from which file** —
+  `GET /api/task-setup/resolved` serves `config_provenance`, the same block
+  `prep` prints. Served rather than restated: a hand-written notice in the
+  browser would be a second account of the same facts, free to drift from
+  the one the terminal shows. Safe for a page by construction — provenance
+  carries paths, presence and an allowlisted set of effective values, never
+  file contents, so a TLS key or an OAuth secret cannot reach it.
+- **The § 3 warning comes from one rule, not two.**
+  `runtime_config.bootstrap_travels` decides whether the bootstrap belongs
+  to the machine the job will run on, and both `prep` and the tab call it.
+  A rule about *when a job will fail* must not be able to hold two
+  opinions.
 
 > **This narrows a stated boundary, deliberately.** `job-system.md` § 4 says
 > *"`prep` and `launch` stay on the terminal by design"*, written when

@@ -1953,3 +1953,74 @@ class TestEveryStageOffersBothThingsYouCanDoWithIt:
         src = VIEWER.read_text()
         assert "--np / --omp / --time" in src
         assert "run-config.toml" in src
+
+
+class TestTheTabShowsWhatAPrepWouldResolve:
+    """`preparing-for-another-machine.md` § 5: the tab shows what `prep`
+    resolved using the provenance `prep` already computes -- not a
+    hand-written notice, which would be a second account of the same facts,
+    free to drift from the one the terminal prints."""
+
+    def _folder(self, tmp_path, monkeypatch, bundle_cfg=None):
+        import json as _json
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        tree = tmp_path / "projects"
+        b = tree / "P" / "optimization" / "w"
+        b.mkdir(parents=True)
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "molbuilder.json").write_text(_json.dumps(
+            {"script_generation": {"preamble": "source /home/local/conda.sh",
+                                   "activation": "conda activate"}}))
+        if bundle_cfg:
+            (b / ".molbuilder.json").write_text(_json.dumps(bundle_cfg))
+        return b
+
+    def test_it_serves_the_same_facts_prep_prints(
+            self, web_client, tmp_path, monkeypatch):
+        b = self._folder(tmp_path, monkeypatch)
+        r = web_client.get("/api/task-setup/resolved",
+                           query_string={"dest": str(b)}).get_json()
+        assert r["ok"], r
+        # the shape config_provenance produces, not a re-description of it
+        assert {s["scope"] for s in r["sources"]} >= {"machine", "bundle"}
+        assert "script_generation.preamble" in r["effective"]
+        assert "from" in r["effective"]["script_generation.preamble"]
+
+    def test_a_remote_target_is_warned_and_a_local_one_is_not(
+            self, web_client, tmp_path, monkeypatch):
+        """The § 3 rule, through the route: `--target` carries measurements,
+        a preamble is a preference and stays here."""
+        b = self._folder(tmp_path, monkeypatch)
+        remote = web_client.get("/api/task-setup/resolved", query_string={
+            "dest": str(b), "target": "sol"}).get_json()
+        assert remote["bootstrap_warning"], remote
+        assert "preambles CONCATENATE" in remote["bootstrap_warning"]
+
+        local = web_client.get("/api/task-setup/resolved", query_string={
+            "dest": str(b), "target": "(this machine)"}).get_json()
+        assert local["bootstrap_warning"] is None, (
+            "preparing for the box you are on is the case the local config "
+            "IS for -- warning there would be noise")
+
+    def test_the_warning_is_the_same_rule_the_cli_uses(self):
+        """One rule, two surfaces.  A rule about when a job will fail must
+        not be able to hold two opinions, so both call the same function."""
+        cli = (ROOT / "molbuilder/jobset/_cli.py").read_text()
+        web = (ROOT / "molbuilder/web/blueprints/build.py").read_text()
+        assert "bootstrap_travels" in cli
+        assert "bootstrap_travels" in web
+        # and neither carries its own copy of the test
+        for src, who in ((cli, "_cli.py"), (web, "build.py")):
+            assert 'v.get("from")' not in src, (
+                f"{who} re-implements the bootstrap check instead of "
+                f"calling runtime_config.bootstrap_travels")
+
+    def test_the_provenance_list_uses_the_pages_facts_component(self):
+        css = (ROOT / "molbuilder/web/static/task-setup/style.css").read_text()
+        head = (ROOT / "molbuilder/web/templates/task_setup.html").read_text()
+        assert 'class="ts-facts" id="ts-resolved"' in head
+        # hidden by JS, so it needs the [hidden]-precedence guard
+        assert ".ts-facts[hidden]" in css, (
+            "`.ts-facts` sets display:grid and is now hidden by JS -- "
+            "without the guard it stays in the layout")

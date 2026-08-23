@@ -469,6 +469,11 @@ async function readOptional(projects, path) {
 }
 
 async function loadFolder(projects, dir) {
+    /* The resolved-config view is per FOLDER (the bundle's own
+     * .molbuilder.json is one of the scopes), so it repaints with one.
+     * Fire-and-forget: it is a read of what a prep WOULD do, and nothing
+     * below waits on it. */
+    setTimeout(loadResolved, 0);
     _dir = dir;
     /* EVERY per-folder fact resets before the branch (U6 close): the
      * hand-over and empty branches never wrote _task/_shape, so a
@@ -1338,6 +1343,7 @@ function setMachine(name) {
     }
     const needs = $("ts-machine-needs");
     if (needs) needs.hidden = !!name;
+    loadResolved();          // the warning depends on WHICH machine
     const chosen = _machines.find((m) => m.name === name);
     const st = $("ts-machine-state");
     if (!st) return;
@@ -1356,6 +1362,57 @@ function setMachine(name) {
         ? chosen.summary + (chosen.detected_at
             ? "\nmeasured " + chosen.detected_at : "")
         : chosen.summary;
+}
+
+/** What a `prep` would resolve for the open folder, and from which file.
+ *
+ *  The block `prep` itself prints, served by the same producer -- a
+ *  hand-written notice here would be a second account of the same facts,
+ *  free to drift from the one the terminal shows.  The bootstrap warning
+ *  is `runtime_config.bootstrap_travels`, the rule both surfaces share.
+ */
+async function loadResolved() {
+    const facts = $("ts-resolved");
+    const warn = $("ts-bootstrap-state");
+    if (!facts || !warn) return;
+    const proj = (window.molbuilder || {}).projects;
+    const dir = proj && proj.getCurrentDir && proj.getCurrentDir();
+    if (!dir) { facts.hidden = true; warn.hidden = true; return; }
+    let d = null;
+    try {
+        const q = "dest=" + encodeURIComponent(dir)
+                + (_machine ? "&target=" + encodeURIComponent(_machine) : "");
+        d = await fetch("/api/task-setup/resolved?" + q).then((r) => r.json());
+    } catch (e) { d = null; }
+    if (!d || !d.ok) { facts.hidden = true; warn.hidden = true; return; }
+
+    facts.textContent = "";
+    /* WHICH FILE SUPPLIED EACH SETTING -- the question provenance exists to
+     * answer.  Shown before the warning, because the warning only makes
+     * sense once you can see where the lines came from. */
+    for (const [key, v] of Object.entries(d.effective || {})) {
+        facts.appendChild(el("div", null,
+            el("dt", null, key.replace("script_generation.", "")),
+            el("dd", null, String(v.value || "\u2014")),
+            el("dd", { class: "hint" }, "from " + (v.from || "?"))));
+    }
+    const found = (d.sources || []).filter((s) => s.found);
+    if (found.length) {
+        facts.appendChild(el("div", null,
+            el("dt", null, "read from"),
+            el("dd", { class: "hint" },
+               found.map((s) => s.scope + " (" + s.via + ")").join(", "))));
+    }
+    facts.hidden = !facts.children.length;
+
+    const body = $("ts-bootstrap-body");
+    if (d.bootstrap_warning) {
+        if (body) body.textContent = d.bootstrap_warning;
+        warn.setAttribute("data-state", "refuse");
+        warn.hidden = false;
+    } else {
+        warn.hidden = true;
+    }
 }
 
 async function loadMachines() {
