@@ -1013,6 +1013,7 @@ test-pin exists and passes.
 | 7.4g | the UI's duplicated components — found by a detector, not by a bug | **done** `7772b9a1` |
 | 7.5 | the residue three: O1, O4, O5 (carried over) | **open** |
 | 7.6 | the scheduler subsystem — five modules, two emitters, no admission | **done — all five phases** |
+| 7.7 | the GPU decision — ten names, no graph, four self-contradictions | **contract written; phases open** |
 
 *(7.1–7.4 were carried as **open** in this table for a day after they shipped
 — the exact drift R3 exists to stop, caught 2026-08-23 by reading the table
@@ -1274,6 +1275,45 @@ record `prep` walked said `max_cores: None`, so no cap existed to apply. R9 is
 the rule that catches it on arrival; until phase 4 lands, a re-`prep` against
 the current record is the fix.
 
+
+### 7.7 The GPU decision — one graph, one name *(contract written 2026-08-23)*
+
+**Goal:** one tick-box becomes an environment, a scheduler flag, an MPI
+launch, a memory cap and a NUMA pin — and is read under **ten different
+names** on the way. Five GPU defects in one month were all one shape: a GPU
+fact with more than one home.
+
+The contract is [`execution/gpu.md`](?doc=execution/gpu.md); it is not
+restated here. What it settles: **who answers each GPU question** (§ 2 G2 —
+the person, the machine, or the probe), that the eigensolver decides no
+environment and no resource (G3), and that the **ask** (`gpu_count`) is a
+different variable from the **ceiling** (`Device.per_node`) that bounds it
+(G4).
+
+Four places the tree disagrees with itself today, found by full-text review
+and listed as § 5 C1–C4. **C1 and C2 are the same error and the important
+one** — both put the person's choice on the machine's side of the only line
+that matters, and C1 is the exact reading `stages.md` already carries a dated
+2026-08-07 clarification to prevent. The correction was made once, in one
+document, and the restatements were never swept.
+
+Phases (contract § 6), smallest risk first:
+
+1. **the contradictions** — C1–C4. No rename; the only behaviour change is
+   `gpu_count`'s default, which today is `1` in one function and `ntasks`
+   ("one GPU per rank", a model retired 2026-08-13) in the one it calls;
+2. **the graph is the only picture** — the restatements keep their
+   engine-specific halves and point at the walk;
+3. **the rename** `enable_gpu` → `use_gpu` — 183 sites (42 code · 90 test ·
+   51 live-doc), mechanical, no shim. **Must not be split:** while two names
+   exist every caller must name an engine, and a half-done rename adds a
+   third state;
+4. **G7** — the wrapper is handed the value instead of grepping the rendered
+   deck for it at four call sites.
+
+*Test-pin:* the § 7 table — above all *"every name in the vocabulary resolves
+to exactly one answerer"*, which is this document's `max_mem_gb` guard: a
+tenth GPU name arrives with its row or it does not arrive.
 
 ---
 

@@ -133,6 +133,10 @@
           "label": "The scheduler subsystem \u2014 machines, queues, placement"
         },
         {
+          "path": "execution/gpu.md",
+          "label": "How a GPU decision travels \u2014 one question, ten names"
+        },
+        {
           "path": "execution/running-a-job.md"
         },
         {
