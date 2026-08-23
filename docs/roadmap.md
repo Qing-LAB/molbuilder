@@ -1366,8 +1366,9 @@ is green.*
 | ~~**3**~~ | ~~**O4** — `pyscf/relax_policy.py`~~ **done**: emitted once, composed by both. The optimization deck's bytes are unchanged; the vibration deck's differ only in quote style, which nothing pinned | self-contained |
 | ~~**4**~~ | ~~the **type framework**~~ **done**: the coverage test makes a new type force a decision at all five readers, and `DECL_TYPES` is gone — the narrower set is derived from `template.TYPES` by a stated rule, exactly reproducing § 3.3's five | (a) before (b) worked as intended: the residue fell out of the mechanism instead of being argued |
 | **5** | **validation display**: the findings file beside the deck (`{label}.validation.txt`), written after the check · `info` reaches the CLI (R4 said three severities; it printed two) | ~~then delete `Issue.stage`~~ **withdrawn** — the field has five writers in the task preflight; see § 7.5 |
-| **6** | GPU **C1 + C2** (their own commit), then the **rename** `enable_gpu` → `use_gpu` across **34 files** (9 code · 12 test · 13 live-doc) | the widest change, and it must not be split |
-| **7** | GPU **G7** — the wrapper is handed the value instead of grepping the deck at four call sites | must follow wave 6 (see conflict **E**) |
+| **6a** | GPU **C1 + C2**, their own commit | **done** `3b36d012` — and landing them separately was right: a semantic correction inside a 22-file sweep is one nobody reads |
+| **6b** | the **rename** `enable_gpu` → `use_gpu` | ⛔ **not mechanical — re-scoped 2026-08-23, needs a decision.** See below |
+| **7** | GPU **G7** — the wrapper is handed the value instead of grepping the deck at four call sites | ⛔ blocked behind 6b (conflict **E**) |
 
 #### Where they collide
 
@@ -1399,7 +1400,37 @@ about **this deck**, the other labels findings from a validator that sees
 ordering rule did do is work: the review that found the writers happened
 because the deletion was staged behind the file rather than done first.)*
 
-**E — G7 must follow the rename.** `runwrap.py` names `enable_gpu` **zero**
+**⛔ 6b IS A DESIGN CHANGE, NOT A SWEEP — and this plan called it "183 sites,
+mechanical", which was wrong.** Four files carry *both* names today, and one
+of them is the catalogue: it holds `[item.enable_gpu]` (SIESTA) **and**
+`[item.use_gpu]` (PySCF). TOML cannot hold the key twice, so the rename *is*
+the merge — they are one unit, exactly as `template.md` § 6.3 says. And the
+two items are not the same shape:
+
+| | `enable_gpu` (SIESTA) | `use_gpu` (PySCF) |
+|---|---|---|
+| `anchor` | `Diag.ELPA.GPU` | `gpu4pyscf` |
+| `engine_key` | `Diag.ELPA.GPU` | `gpu4pyscf: mf = mf.to_gpu()` |
+| `read_by` | `["wrapper"]` | *(none)* |
+
+`template.md` says a merged item is `kind = "deck"` — *"molbuilder's own item,
+reaching the deck through molbuilder's rule rather than one keyword"* — and
+the machinery exists and is used (16 deck-kind items today). **But the format
+still wants a single `expands` list**, and SIESTA's reach is a keyword while
+PySCF's is a method call on the mean field. One item declaring two engines'
+different mechanisms is the open question, and it is a catalogue-format
+decision rather than a rename.
+
+`read_by` survives a merge (it is kind-independent), so that half is fine.
+
+*Why this was not obvious from the doc set:* `template.md` § 12.1 row 9 lists
+the merge as *"ruled and un-renamed"* with 117 sites for `net_charge` alone —
+which reads as scale, not as difficulty. The difficulty is one line in one
+file.
+
+**E — G7 must follow the rename**, so it is blocked behind 6b too: `runwrap`
+names the flag zero times today (it greps the keyword), so doing G7 first
+would introduce the old name at four fresh sites for the rename to sweep. `runwrap.py` names `enable_gpu` **zero**
 times today: it greps `Diag.ELPA.GPU` out of the rendered deck. G7 is what
 *introduces* the name there, so doing it first would create fresh sites for
 the rename to sweep.
