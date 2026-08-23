@@ -235,10 +235,17 @@ class SiestaConfig:
     #   * Profile card -- relax_type + MD physics (room/temp/dt)
     #   * Stage card   -- force_tol + max_displ (convergence targets)
     #   * Budget card  -- relax_steps + BlockSize + ParallelOverK +
-    #                     diag_algorithm + enable_gpu
-    #   * Staging card -- mpi_np + omp_threads + gpu_count +
+    #                     diag_algorithm
+    #   * Staging card -- mpi_np + omp_threads + gpu_count + enable_gpu +
     #                     max_memory_mb + continue_retries (the
     #                     workflow_group="staging" members)
+    #
+    # ``enable_gpu`` moved rows here on 2026-08-23 -- on paper only: the
+    # field's own metadata 1200 lines below has said `workflow_group:
+    # "staging"` all along, and so does the catalogue, which is what the
+    # form actually reads.  This comment had it on the Budget card, so the
+    # one place a person looks for the layout disagreed with the two places
+    # that produce it (`execution/gpu.md` C2).
     _form_section_order = (
         "System",
         "Basis & grid",

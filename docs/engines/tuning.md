@@ -421,10 +421,26 @@ two — and it is `bench` / `prep` that makes it one.**
 > needs to be realigned at bench/prep stage."***
 
 **The alignment happens where the target is known, and that is not this form.**
-`enable_gpu` and `mpi_np` are answered on the staging surface — they are machine
-facts and bench axes, not parameters typed beside the physics. A form that no
-longer holds the GPU flag cannot check a rule about the GPU, and a rule checked
-in the wrong place is a rule that will be wrong. So:
+`enable_gpu` and `mpi_np` are both answered on the **staging** surface rather
+than beside the physics — which is all this argument needs from them. A form
+that no longer holds the GPU flag cannot check a rule about the GPU, and a rule
+checked in the wrong place is a rule that will be wrong. So:
+
+> **Corrected 2026-08-23: they are not the same kind of answer.** This read
+> *"they are machine facts and bench axes"*, which is true of `mpi_np` and
+> false of `enable_gpu`. **`enable_gpu` is the person's** — an ordinary
+> explicit option with a real default, chosen at the Job Prep UI
+> ([`task-setup.md`](?doc=web/task-setup.md) § 6.2, user ruling 2026-08-16),
+> and nothing derives it from the machine. The machine-answered set is a flag
+> on the catalogue item read through one door, and it holds exactly `mpi_np`,
+> `gpu_count`, `omp_threads`, `max_memory_mb`, `threads`.
+>
+> [`stages.md`](?doc=engines/stages.md) § 4 already carries a dated
+> 2026-08-07 clarification against precisely this reading — *"the wording
+> invited the other reading"* — so the correction had been made once, in one
+> document, and this restatement was never swept. That is the argument for
+> [`execution/gpu.md`](?doc=execution/gpu.md)'s single graph: nine places
+> stating one fact is nine places for it to drift.
 
 | where | what happens to `BlockSize` |
 |---|---|
