@@ -144,6 +144,9 @@
           "path": "execution/running-a-job.md"
         },
         {
+          "path": "execution/preparing-for-another-machine.md"
+        },
+        {
           "path": "execution/run-identity.md"
         },
         {

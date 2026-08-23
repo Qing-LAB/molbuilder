@@ -1526,14 +1526,17 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                 cont = None
             _ask_if_underway(base, stage, bench_container=cont)
         from .prep import prep_calculation
-        from ..environment import UnknownTarget
+        from ..environment import AmbiguousTarget, UnknownTarget
         try:
             dirs = prep_calculation(base, stage, allocation=allocation,
                                     env=env, emit_sbatch=emit_sbatch,
                                     sweep=sweep, pins=pins,
                                     translation=translation, target=target,
                                     pipeline_log=pipeline_log)
-        except UnknownTarget as exc:
+        except (UnknownTarget, AmbiguousTarget) as exc:
+            # Both are the same class of refusal -- WHICH machine is this
+            # for -- and both are answers only the user has
+            # (`preparing-for-another-machine.md` § 4).
             raise click.ClickException(str(exc))
         # `prep` WROTE floor 3 as part of those five steps; read it back
         # rather than keeping a second copy in hand, so what the attempt
@@ -1554,6 +1557,32 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     from ..runtime_config import config_provenance, format_provenance
     prov = config_provenance(project_dir=base)
     click.echo(format_provenance(prov))
+
+    # THE BOOTSTRAP DOES NOT TRAVEL BY ITSELF
+    # (`preparing-for-another-machine.md` § 3).  `--target` supplies the
+    # machine's MEASUREMENTS -- cores, scheduler, domains -- but a preamble
+    # is a PREFERENCE and lives in molbuilder.json, so a prep aimed at
+    # another machine renders the right numbers with THIS machine's
+    # bootstrap.  That wrapper then dies on a compute node, unattended,
+    # after a queue wait.  The bundle's own .molbuilder.json is what makes
+    # it travel; say so when it did not.
+    if target is not None:
+        _eff = (prov or {}).get("effective") or {}
+        _from = {k.split(".", 1)[1]: v.get("from")
+                 for k, v in _eff.items() if k.startswith("script_generation.")}
+        _local = sorted(k for k, v in _from.items() if v != "bundle")
+        if _local:
+            _detail = ", ".join(
+                f"{k} ({_from[k]})" for k in _local)
+            click.echo(
+                f"  ⚠ prepped for {target!r}, but the wrapper's bootstrap "
+                f"carries THIS machine's config: {_detail}.\n"
+                f"    It will run on {target!r} with lines written for here. "
+                f"Note preambles CONCATENATE (server first, then the "
+                f"bundle's), so a machine-scope preamble travels even when "
+                f"the bundle adds its own -- to send only the target's, this "
+                f"machine must not set one.\n"
+                f"    See preparing-for-another-machine.md § 3.")
     def _rel(d):
         try:
             return str(_P(d).resolve().relative_to(_P(base).resolve()))

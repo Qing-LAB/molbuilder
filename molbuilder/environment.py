@@ -641,6 +641,25 @@ class UnknownTarget(Exception):
             f"{environments_dir() / (name + '.json')}.")
 
     @classmethod
+    def unreadable(cls, name: str, path) -> "UnknownTarget":
+        """The record exists under that name but does not read.
+
+        Absent, unreadable, not JSON, wrong schema -- `read_environment`
+        answers all of them with ``None`` so a caller has one thing to
+        check.  For a NAMED target that single answer must not mean "try
+        the next scope": the user named this machine, so silently prepping
+        for a different one is the mistake the flag exists to catch.
+        """
+        exc = cls.__new__(cls)
+        exc.name, exc.known = name, []
+        Exception.__init__(exc, (
+            f"--target {name!r} names a record that cannot be read: {path}.\n"
+            f"  It is absent, not JSON, or a schema this molbuilder does not "
+            f"know.  Re-write it with `molbuilder jobset probe --write "
+            f"--name {name}` on that machine."))
+        return exc
+
+    @classmethod
     def conflict(cls, name: str, bundle_dir) -> "UnknownTarget":
         """This calculation already carries a DIFFERENT machine's record.
 
@@ -661,6 +680,33 @@ class UnknownTarget(Exception):
             f"again with --target {name}.\n"
             f"  To keep it: drop --target."))
         return exc
+
+
+class AmbiguousTarget(Exception):
+    """Several machines could be meant and nobody said which.
+
+    The cost is asymmetric, which is the whole argument: being asked costs
+    one flag; being given the wrong machine costs a queue wait, an
+    allocation, and a set of numbers that look plausible.  That is the
+    failure ``--target`` was introduced for -- a benchmark prepped for a
+    cluster, silently measured against the workstation it was prepped on.
+
+    Raised only when the question is real: no record beside the calculation
+    yet (a snapshot IS the answer already taken), no ``--target``, and more
+    than one machine to mean.  One record and silence still proceeds --
+    there is no ambiguity to resolve, so there is no question to ask
+    (`preparing-for-another-machine.md` § 4, C1).
+    """
+
+    def __init__(self, choices):
+        self.choices = sorted(choices)
+        listed = "\n".join(f"    --target {c}" for c in self.choices if c != "(this machine)")
+        super().__init__(
+            "several machines could be meant and none was named.  Say which "
+            "this calculation is for:\n" + listed +
+            "\n    (omit --target only when this machine is the one)\n"
+            "  A record is written by `molbuilder jobset probe --write "
+            "--name NAME` on the machine it describes.")
 
 
 def machine_for(bundle_dir=None, *, target: Optional[str] = None,
@@ -690,26 +736,53 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     # a typo silent: `--target nope` on an already-prepped folder prepped
     # happily against whatever was snapshotted, which is precisely the mistake
     # this flag exists to catch.
-    if target is not None and target not in named_environments():
-        raise UnknownTarget(target, named_environments())
+    _named = named_environments()
+    if target is not None and target not in _named:
+        raise UnknownTarget(target, _named)
 
-    named = None
+    # A NAMED target is validated WHOLE, here, before any scope is walked --
+    # both that the name exists and that its record READS.  `read_environment`
+    # answers absent / not-JSON / wrong-schema with one `None` so callers have
+    # one thing to check; for a named target that single answer must not mean
+    # "try the next scope", because the user said which machine and silence
+    # hands them another (C3).
+    #
+    # Validated here rather than inside the loop because the loop may never
+    # REACH the target scope: `record_scopes` puts the calculation's snapshot
+    # first, and an already-prepped bundle returns there.  A check placed in
+    # the loop would fire for a fresh bundle and stay silent for a prepped
+    # one -- the same flag, two behaviours.
+    _want = read_environment(_named[target]) if target is not None else None
+    if target is not None and _want is None:
+        raise UnknownTarget.unreadable(target, _named[target])
+
+    # C1 -- SEVERAL MACHINES, NOBODY SAID WHICH.  Only when the question is
+    # real: a calculation that already carries a snapshot has its answer (and
+    # a contradicting --target is caught below), so this asks nothing of a
+    # re-prep.
+    #
+    # "This machine" is ALWAYS a candidate -- with no local record, `probe`
+    # produces one -- so the presence of any named record is what makes the
+    # question ambiguous.  Requiring a local record here first would let the
+    # commonest cluster setup (named targets, nothing probed locally) fall
+    # through to a fresh probe of the machine the user is sitting at, which
+    # is the exact failure this refusal exists to stop.
+    if target is None and _named:
+        _snapshot = (Path(bundle_dir) / FILENAME) if bundle_dir is not None else None
+        if _snapshot is None or not _snapshot.is_file():
+            raise AmbiguousTarget(list(_named) + ["(this machine)"])
+
     for label, path in record_scopes(bundle_dir, target):
         env = read_environment(path)
         if env is None:
             continue
-        if label.startswith("target:"):
-            named = env
-        elif label == "calculation" and target is not None:
+        if label == "calculation" and target is not None:
             # A NAMED target that contradicts the snapshot is a question
             # nobody can answer for the user: refuse rather than silently
             # keeping the old one or silently replacing it.
-            want = read_environment(named_environments()[target])
-            if want is not None and want.to_dict() != env.to_dict():
+            if _want.to_dict() != env.to_dict():
                 raise UnknownTarget.conflict(target, bundle_dir)
         return env
-    if named is not None:
-        return named
     if not probe:
         return None
     try:
@@ -725,6 +798,7 @@ __all__ = [
     "machine_scope_path", "environments_dir", "named_environments",
     "record_scopes",
     "read_environment", "write_environment", "machine_for", "UnknownTarget",
+    "AmbiguousTarget",
     "_parse_scontrol_node", "_parse_lscpu", "_parse_nvidia_smi_l",
     "_parse_gres",
 ]
