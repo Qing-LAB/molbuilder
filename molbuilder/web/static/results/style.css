@@ -166,7 +166,7 @@
 .results-supported-list code {
     background: var(--bg-code);
     color: var(--text-mono);
-    padding: 1px 6px;
+    padding: 1px var(--space-sm);
     border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-size: 0.88em;
@@ -192,10 +192,10 @@
 .results-fallback-source-hint code {
     background:     var(--bg-code);
     color:          var(--text-mono);
-    padding:        1px 5px;
+    padding: 1px var(--space-xs);
     border-radius:  var(--radius-sm);
     font-family:    var(--font-mono);
-    font-size:      0.88em;
+    font-size: 0.88em;
     border:         1px solid var(--border-soft);
     margin-right:   var(--space-xs);
 }
@@ -291,7 +291,7 @@
 .inspector-card-note code {
     background: var(--bg-code);
     color: var(--text-mono);
-    padding: 1px 6px;
+    padding: 1px var(--space-sm);
     border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-size: 0.9em;
@@ -508,7 +508,7 @@
 .result-list-label {
     color:        var(--text-secondary);
     font-weight:  600;
-    margin:       0;
+    margin: 0;
     flex-shrink:  0;
 }
 
@@ -628,14 +628,14 @@ body:has(#results-file-picker-bar:not([hidden])) .results-status {
     --spinner-size: 16px;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 18px;
+    gap: var(--space-sm2);
+    padding: var(--space-sm2) var(--space-lg);
     background: var(--bg-card, #1c222c);
     border: 1px solid var(--border-strong, #3a3f48);
     border-radius: var(--radius, 6px);
     box-shadow: var(--shadow-card, 0 2px 8px rgba(0,0,0,0.3));
     color: var(--text-primary, #e6e9ef);
-    font-size: 0.92rem;
+    font-size: var(--text-base);
 }
 
 

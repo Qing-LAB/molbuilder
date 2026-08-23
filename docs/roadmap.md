@@ -1137,8 +1137,19 @@ Two ways forward, and they differ in whether anything moves on screen:
   system gets sharper and **things move a pixel or two everywhere**. The
   layout guard would catch breakage but not "it looks slightly different".
 
-I did not pick. The second is a visual change across every page and is the
-user's call. *(Worth recording: `molview.css` states in its own header that it
+**Rounded to the 4px grid** (user's ruling, 2026-08-23). The scale gained two
+steps (12px, 24px), the one off-grid value moved (14 → 16), and ~350 literals
+were rounded onto it — **70.5% → 86.4% named**. Ties round *up*: 6px sits
+exactly between 4 and 8, and rounding down takes a third off a gap while
+rounding up adds two pixels nobody notices.
+
+Two exclusions, each for a reason rather than convenience: **hairlines**
+(under 3px) are optical adjustments and snapping them would quadruple them;
+and **`molview.css` is untouched**, because its literals feed `calc()`
+arithmetic that derives the card's minimum width — which the shell's dock
+threshold is in turn derived from. Rounding those would silently move a floor
+two other things depend on. Its own header still says it never writes a
+literal where a named metric exists, and it still does, 127 times. *(Worth recording: `molview.css` states in its own header that it
 "never says `24px` where a named metric already exists" — and carries 127
 repeated literals. Its rule is right; the file does not keep it.)*
 

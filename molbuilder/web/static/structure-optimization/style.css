@@ -16,8 +16,8 @@ html, body { height: 100%; }
 header code {
     background: var(--accent-bg);
     color: var(--accent-hover);
-    padding: 1px 6px;
-    border-radius: 3px;
+    padding: 1px var(--space-sm);
+    border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-size: 0.85em;
 }
@@ -25,42 +25,42 @@ header code {
 /* ---- Generate / Analyze cards (vertical workflow) ---- */
 #generate-card,
 #analyze-card {
-    padding: 1.4rem 1.6rem;
+    padding: var(--space-lg2) var(--space-lg2);
 }
 #generate-card > h2,
 #analyze-card > h2 {
-    font-size: 1.1rem;
-    margin-bottom: 1rem;
+    font-size: var(--text-md);
+    margin-bottom: var(--space-md);
 }
 #analyze-card > .hint {
-    margin: 0 0 1rem;
+    margin: 0 0 var(--space-md);
     color: var(--text-secondary);
-    font-size: 0.92rem;
+    font-size: var(--text-base);
     line-height: 1.5;
 }
 #analyze-card .auto-detect-bar { padding: 0; margin: 0 0 0.6rem; }
 #analyze-card .auto-detect-panel { margin: 0; }
 #generate-card .tabs {
-    margin-bottom: 0.8rem;
+    margin-bottom: var(--space-sm2);
 }
 #generate-card fieldset {
-    margin: 1.2rem 0;
-    padding: 0.8rem 1rem 0.9rem;
+    margin: var(--space-lg) 0;
+    padding: var(--space-sm2) var(--space-md) var(--space-md);
     border: 1px solid var(--border-soft);
-    border-radius: 6px;
+    border-radius: var(--radius);
 }
 #generate-card fieldset:first-of-type { margin-top: 0.4rem; }
 #generate-card legend {
-    padding: 0 0.5rem;
+    padding: 0 var(--space-sm);
     font-weight: 600;
     color: var(--text-primary);
-    font-size: 0.95rem;
+    font-size: var(--text-base);
 }
 #generate-card label {
     display: block;
-    margin: 0.55rem 0;
+    margin: var(--space-sm) 0;
     line-height: 1.4;
-    font-size: 0.93rem;
+    font-size: var(--text-base);
 }
 #generate-card label > span:first-child {
     display: inline-block;
@@ -69,9 +69,9 @@ header code {
 }
 #generate-card .hint,
 #generate-card p.hint {
-    margin: 0.5rem 0 0.8rem;
+    margin: var(--space-sm) 0 var(--space-sm2);
     color: var(--text-secondary);
-    font-size: 0.88rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
 }
 
@@ -92,7 +92,7 @@ header code {
  * line-height / severity modifiers) is owned by lib/page-shell.css, which this
  * page also loads — do not re-declare those here (framework vs tab, symmetry). */
 .status {
-    margin-top: 8px;
+    margin-top: var(--space-sm);
     min-height: 1.2em;
 }
 
@@ -112,15 +112,15 @@ fieldset select:disabled {
 /* ---- Tabs (SIESTA / PySCF) — index only ---- */
 .tabs {
     display: flex;
-    gap: 4px;
-    margin: 4px 0 14px;
+    gap: var(--space-xs);
+    margin: var(--space-xs) 0 var(--space-md);
     border-bottom: 1px solid var(--border-strong);
     padding: 0 2px;
 }
 .tab-btn {
-    padding: 8px 18px;
+    padding: var(--space-sm) var(--space-lg);
     font: inherit;
-    font-size: 0.95rem;
+    font-size: var(--text-base);
     font-weight: 500;
     color: var(--text-secondary);
     background: transparent;
@@ -156,9 +156,9 @@ fieldset select:disabled {
 
 /* ---- Footer — index only ---- */
 footer {
-    padding: 16px 28px;
+    padding: var(--space-md) var(--space-xl);
     color: var(--text-muted);
-    font-size: 0.82rem;
+    font-size: var(--text-xs);
     text-align: right;
 }
 footer a {

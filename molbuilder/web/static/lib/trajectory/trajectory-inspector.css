@@ -142,7 +142,7 @@
 .plots-toolbar {
     display: flex;
     justify-content: flex-end;
-    margin-bottom: 6px;
+    margin-bottom: var(--space-sm);
 }
 .plots-toolbar-btn {
     appearance: none;
@@ -280,10 +280,10 @@
     border: 1px solid var(--border-strong);
     border-left: 3px solid var(--accent);
     border-radius: var(--radius);
-    padding: 12px 16px;
+    padding: var(--space-sm2) var(--space-md);
     margin: var(--space-sm) 0;
     color: var(--text-muted);
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
     line-height: 1.4;
 }
 .trajectory-empty-status[hidden] { display: none; }
@@ -305,9 +305,9 @@
     border-left: 3px solid var(--accent);
     border-radius: var(--radius);
     padding: 9px var(--space-md);
-    font-size: 0.92rem;
+    font-size: var(--text-base);
     display: flex;
-    gap: 12px;
+    gap: var(--space-sm2);
     align-items: baseline;
     flex-wrap: wrap;
     box-shadow: var(--shadow-soft);
@@ -316,7 +316,7 @@
 .scf-status {
     color: var(--text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
 }
 
 /* ``.inspect-*`` rules (the trajectory inspector's own atom-list +
@@ -457,33 +457,33 @@
  * grounds that adding 4 tokens for one panel would split the
  * theme's source-of-truth across files. */
 .parse-warnings {
-    margin: 0.5rem 0.5rem 0.6rem;
+    margin: var(--space-sm) var(--space-sm) var(--space-sm);
     padding: 0;
     border:  1px solid var(--warn-soft);
     border-radius: var(--radius-sm);
     background: #fff7e0; /* exempt: warn-pastel theme */
     color:      #6b4a00; /* exempt: warn-pastel theme */
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
 }
 .parse-warnings[hidden] { display: none; }
 .parse-warnings-summary {
-    padding: 0.4rem 0.65rem;
+    padding: var(--space-sm) var(--space-sm2);
     cursor:  pointer;
     list-style: none;     /* hide the default disclosure triangle */
     display:  flex;
     align-items: center;
-    gap: 0.45rem;
+    gap: var(--space-sm);
     font-weight: 600;
 }
 .parse-warnings-summary::-webkit-details-marker { display: none; }
 .parse-warnings-icon { font-size: 1rem; }
 .parse-warnings-list {
     margin: 0;
-    padding: 0.2rem 0.65rem 0.55rem 0.65rem;
+    padding: var(--space-xs) var(--space-sm2) var(--space-sm) var(--space-sm2);
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: var(--space-sm);
     border-top: 1px dashed var(--warn-soft);
     background: #fffaef; /* exempt: warn-pastel theme */
 }
@@ -493,14 +493,14 @@
     grid-template-areas:
         "meta error"
         ".    snippet";
-    column-gap: 0.6rem;
+    column-gap: var(--space-sm);
     row-gap: 0.15rem;
-    padding-top: 0.25rem;
+    padding-top: var(--space-xs);
 }
 .parse-warning-meta {
     grid-area: meta;
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color:       #8c6d20; /* exempt: warn-pastel theme */
     white-space: nowrap;
 }
@@ -508,11 +508,11 @@
 .parse-warning-snippet {
     grid-area: snippet;
     margin: 0;
-    padding: 0.25rem 0.4rem;
+    padding: var(--space-xs) var(--space-sm);
     background: #f5e8c2; /* exempt: warn-pastel theme */
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     overflow-x:  auto;
     white-space: pre;
 }

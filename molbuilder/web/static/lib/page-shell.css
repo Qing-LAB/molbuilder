@@ -89,9 +89,9 @@ header h1 {
     color: var(--text-primary);
 }
 header .tagline {
-    margin: 6px 0 0;
+    margin: var(--space-sm) 0 0;
     color: var(--text-secondary);
-    font-size: 0.92rem;
+    font-size: var(--text-base);
 }
 
 /* Account menu (moved from the tabs nav into the hero banner).  Owner
@@ -101,7 +101,7 @@ header .tagline {
 header .app-account {
     display: flex;
     align-items: center;
-    gap: 0.7rem;
+    gap: var(--space-sm2);
     flex-shrink: 0;
     color: var(--text-secondary);
     font-size: var(--text-sm);
@@ -111,7 +111,7 @@ header .app-account__email { color: var(--text-primary); font-weight: 500; }
 header .app-account__logout {
     color: var(--accent);
     text-decoration: none;
-    padding: 0.35rem 0.8rem;
+    padding: var(--space-xs) var(--space-sm2);
     border: 1px solid var(--accent);
     border-radius: var(--radius-sm);
     font-weight: 500;
@@ -129,7 +129,7 @@ header .app-account__logout:hover {
 header .app-account__reload {
     color: var(--text-secondary);
     background: transparent;
-    padding: 0.35rem 0.8rem;
+    padding: var(--space-xs) var(--space-sm2);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm);
     font: inherit;
@@ -355,7 +355,7 @@ button:disabled {
 
 .status {
     color: var(--text-secondary);
-    font-size: 0.88rem;
+    font-size: var(--text-sm);
     margin-left: var(--space-xs);
     /* Multi-line error messages render with their newlines preserved. */
     white-space: pre-line;
@@ -455,7 +455,7 @@ button:disabled {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
     background: var(--border-strong);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     border: 2px solid var(--bg-page);
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }

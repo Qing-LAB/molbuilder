@@ -37,7 +37,7 @@
  * divider from its neighbour so the set looks like separate choices, and a clear
  * hover lift. --ps-fg-muted replaces the near-invisible --ps-fg-dim. */
 .app-tab {
-    padding: 0.7rem 1.6rem;
+    padding: var(--space-sm2) var(--space-lg2);
     color: var(--ps-fg-muted);
     font-weight: 500;
     text-decoration: none;

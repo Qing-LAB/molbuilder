@@ -106,8 +106,8 @@ body.has-mobile-sidebar-open .ps-resize-handle {
 .ps-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.7rem;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-sm2);
   border-bottom: 1px solid var(--ps-border);
   background: var(--ps-bg-deep);
 }
@@ -115,7 +115,7 @@ body.has-mobile-sidebar-open .ps-resize-handle {
 .ps-title {
   margin: 0;
   flex: 1;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   font-weight: 600;
 }
 
@@ -158,7 +158,7 @@ body.has-mobile-sidebar-open .ps-resize-handle {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 .ps-edge-tab-chevron {
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   line-height: 1;
   font-weight: 700;
 }
@@ -175,7 +175,7 @@ body.has-mobile-sidebar-open .ps-resize-handle {
   position: absolute;
   right: 0;
   border-right: none;
-  border-radius: 6px 0 0 6px;
+  border-radius: var(--radius) 0 0 var(--radius);
 }
 
 /* Reopen tab: at the screen's left edge, curving toward the content on its
@@ -184,7 +184,7 @@ body.has-mobile-sidebar-open .ps-resize-handle {
   position: fixed;
   left: 0;
   border-left: none;
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
   display: none;
 }
 
@@ -232,8 +232,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-create-bar {
   display: flex;
   align-items: stretch;
-  gap: 0.4rem;
-  padding: 0.4rem 0.6rem 0.5rem;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-sm) var(--space-sm);
   border-bottom: 1px solid var(--ps-border);
   background: var(--ps-bg-deep);
 }
@@ -244,14 +244,14 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   background: var(--ps-bg-deep);
   color: var(--ps-fg);
   border: 1px solid var(--ps-border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0.15rem;
-  padding: 0.4rem 0.3rem;
+  padding: var(--space-sm) var(--space-xs);
   font: inherit;
   line-height: 1.1;
   transition:
@@ -279,7 +279,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 .ps-create-action-icon {
   flex: 0 0 auto;
-  font-size: 1.2rem;
+  font-size: var(--text-lg);
   line-height: 1;
   color: var(--ps-fg);
 }
@@ -288,7 +288,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 .ps-create-action-label {
   flex: 0 0 auto;
-  font-size: 0.72rem;
+  font-size: var(--text-2xs);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -304,7 +304,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 /* Inline error row shown in the entry list when a directory listing fails
  * (lib/projects/list.js openDir error path). */
 .ps-list-error {
-    padding: 0.7rem;
+    padding: var(--space-sm2);
     color:   var(--ps-danger-fg, #e07a7a);
 }
 
@@ -319,8 +319,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   background: var(--ps-bg-tile);
   color: var(--ps-fg, #dddddd);
   border: 1px solid var(--ps-border, #2a2a2a);
-  border-radius: 6px;
-  padding: 1rem 1.1rem;
+  border-radius: var(--radius);
+  padding: var(--space-md) var(--space-md);
   min-width: 22rem;
   max-width: 90vw;
   font: 13px/1.45 system-ui, sans-serif;
@@ -330,60 +330,60 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   background: rgba(0, 0, 0, 0.45);
 }
 .molbuilder-projects-dialog h2 {
-  margin: 0 0 0.7rem;
-  font-size: 1rem;
+  margin: 0 0 var(--space-sm2);
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--ps-selected-fg);
 }
 .molbuilder-projects-dialog-hint {
-  margin: 0 0 0.6rem;
-  font-size: 0.8rem;
+  margin: 0 0 var(--space-sm);
+  font-size: var(--text-xs);
   color: var(--ps-fg-muted, #999999);
   line-height: 1.45;
 }
 .molbuilder-projects-dialog-field {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  margin: 0 0 0.6rem;
+  gap: var(--space-xs);
+  margin: 0 0 var(--space-sm);
 }
 .molbuilder-projects-dialog-field > span {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--ps-fg-muted, #999999);
 }
 .molbuilder-projects-dialog-field input[type="text"],
 .molbuilder-projects-dialog-field input[type="file"] {
   font: inherit;
-  padding: 0.35rem 0.55rem;
+  padding: var(--space-xs) var(--space-sm);
   background: var(--ps-bg-deep);
   color: var(--ps-fg, #dddddd);
   border: 1px solid var(--ps-border, #2a2a2a);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .molbuilder-projects-dialog-field input[type="text"]:focus {
   outline: 1px solid var(--accent, #6ba6ff);
   outline-offset: -1px;
 }
 .molbuilder-projects-dialog-error {
-  margin: 0.2rem 0 0.5rem;
-  font-size: 0.78rem;
+  margin: var(--space-xs) 0 var(--space-sm);
+  font-size: var(--text-xs);
   color: var(--ps-danger-fg);
   min-height: 1em;
 }
 .molbuilder-projects-dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 0.7rem;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm2);
 }
 .molbuilder-projects-dialog-actions button {
   appearance: none;
   font: inherit;
-  padding: 0.35rem 0.85rem;
+  padding: var(--space-xs) var(--space-sm2);
   background: var(--ps-hover, #2a2a2a);
   color: var(--ps-fg, #dddddd);
   border: 1px solid var(--ps-border, #2a2a2a);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background 0.1s;
 }
@@ -417,8 +417,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   overflow-y: auto;
   background: var(--ps-bg-deep);
   border: 1px solid var(--ps-border, #2a2a2a);
-  border-radius: 3px;
-  padding: 0.3rem 0;
+  border-radius: var(--radius-sm);
+  padding: var(--space-xs) 0;
 }
 .molbuilder-projects-dest-tree ul {
   list-style: none;
@@ -426,13 +426,13 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   padding: 0;
 }
 .molbuilder-projects-dest-children {
-  padding-left: 1.2rem;
+  padding-left: var(--space-lg);
 }
 .molbuilder-projects-dest-row {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.2rem 0.5rem;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
   cursor: pointer;
   border-radius: 2px;
   transition: background 0.1s;
@@ -450,18 +450,18 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   border: none;
   color: var(--ps-fg-muted, #999999);
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   padding: 0;
   width: 1em;
 }
 .molbuilder-projects-dest-label {
   flex: 1 1 auto;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 .molbuilder-projects-dest-empty,
 .molbuilder-projects-dest-error {
-  padding: 0.2rem 0.5rem 0.2rem 1.6rem;
-  font-size: 0.78rem;
+  padding: var(--space-xs) var(--space-sm) var(--space-xs) var(--space-lg2);
+  font-size: var(--text-xs);
   color: var(--ps-fg-muted, #999999);
   font-style: italic;
 }
@@ -473,9 +473,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  * it can extend past the sidebar's overflow:hidden.
  */
 .ps-entry-kebab {
-  font-size: 1.1rem;        /* ⋯ glyph reads better slightly larger */
+  font-size: var(--text-md);        /* ⋯ glyph reads better slightly larger */
   line-height: 1;
-  padding: 0 0.35rem;
+  padding: 0 var(--space-xs);
   font-weight: 700;
 }
 .ps-entry-kebab:hover,
@@ -489,20 +489,20 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   min-width: 10rem;
   background: var(--ps-bg-tile);
   border: 1px solid var(--ps-border, #2a2a2a);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
-  padding: 0.2rem 0;
+  padding: var(--space-xs) 0;
 }
 .ps-entry-menu-item {
   appearance: none;
   display: block;
   width: 100%;
-  padding: 0.35rem 0.8rem;
+  padding: var(--space-xs) var(--space-sm2);
   background: transparent;
   color: var(--ps-fg, #dddddd);
   border: none;
   text-align: left;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: background 0.1s;
 }
@@ -536,9 +536,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.15rem;
-  padding: 0.4rem 0.7rem;
+  padding: var(--space-sm) var(--space-sm2);
   border-bottom: 1px solid var(--ps-border);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   color: var(--ps-fg-muted);
   overflow-x: auto;
   white-space: nowrap;
@@ -547,7 +547,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-crumb {
   cursor: pointer;
   color: var(--ps-fg);
-  padding: 0.12rem 0.45rem;
+  padding: 0.12rem var(--space-sm);
   border: 1px solid transparent;
   border-radius: 999px;     /* full pill */
   transition: background 0.12s, border-color 0.12s, color 0.12s;
@@ -564,7 +564,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-crumb-sep {
   color: var(--ps-fg-muted);
   margin: 0 0.05rem;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   user-select: none;
 }
 
@@ -592,8 +592,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-filter-bar {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.3rem 0.7rem 0.2rem;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm2) var(--space-xs);
   background: var(--ps-bg, #181818);
   border-bottom: 1px solid var(--ps-border, #2a2a2a);
 }
@@ -609,8 +609,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   background: rgba(0, 0, 0, 0.25);
   color: var(--ps-fg, #dddddd);
   border: 1px solid var(--ps-border, #2a2a2a);
-  border-radius: 3px;
-  padding: 0.25rem 1.5rem 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  padding: var(--space-xs) var(--space-lg2) var(--space-xs) var(--space-sm);
   font: 0.85rem/1.4 ui-monospace, "SF Mono", Menlo, monospace;
 }
 .ps-filter-input:focus {
@@ -627,8 +627,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   border: none;
   color: var(--ps-fg, #dddddd);
   cursor: pointer;
-  font-size: 0.95rem;
-  padding: 0 0.25rem;
+  font-size: var(--text-base);
+  padding: 0 var(--space-xs);
   line-height: 1;
 }
 .ps-filter-clear:hover { color: var(--ps-selected-fg); }
@@ -641,7 +641,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   color: var(--ps-fg-dim, #888);
   font-style: italic;
   display: block;
-  padding: 0.4rem 0.7rem;
+  padding: var(--space-sm) var(--space-sm2);
 }
 
 /* Entry hidden by the active filter.  Keeps the entry in the DOM
@@ -664,17 +664,17 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-list.is-empty::before {
   content: "(empty)";
   display: block;
-  padding: 0.8rem 0.7rem;
+  padding: var(--space-sm2) var(--space-sm2);
   color: var(--ps-fg-muted);
   font-style: italic;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .ps-entry {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.7rem;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm2);
   cursor: pointer;
   border-bottom: 1px solid transparent;
   user-select: none;
@@ -709,7 +709,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 
 .ps-entry-meta {
   flex: 0 0 auto;
-  font-size: 0.7rem;
+  font-size: var(--text-2xs);
   color: var(--ps-fg-muted);
   font-family: monospace;
 }
@@ -717,14 +717,14 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 /* ---- Actions area -------------------------------------------- */
 
 .ps-actions {
-  padding: 0.5rem 0.7rem;
+  padding: var(--space-sm) var(--space-sm2);
   border-top: 1px solid var(--ps-border);
   background: var(--ps-bg-deep);
 }
 
 .ps-selection {
   margin: 0;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--ps-fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -744,13 +744,13 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  * differentiate (neutral for preview, red for delete). */
 .ps-entry-action {
   flex: 0 0 auto;
-  margin-left: 0.3rem;
-  padding: 0 0.4rem;
+  margin-left: var(--space-xs);
+  padding: 0 var(--space-sm);
   background: transparent;
   color: var(--ps-fg-muted);
   border: 1px solid transparent;
-  border-radius: 3px;
-  font-size: 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
   line-height: 1.4;
   cursor: pointer;
   opacity: 0;
@@ -820,7 +820,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   background: var(--ps-bg-tile);
   color: var(--ps-fg);
   border: 1px solid var(--ps-border);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -835,8 +835,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.8rem;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-sm2);
   background: var(--ps-bg-deep);
   border-bottom: 1px solid var(--ps-border);
 }
@@ -844,7 +844,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-preview-title {
   margin: 0;
   flex: 1;
-  font-size: 1rem;
+  font-size: var(--text-base);
   font-family: monospace;
   font-weight: 600;
   overflow: hidden;
@@ -856,19 +856,19 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   background: transparent;
   border: 1px solid var(--ps-border);
   color: var(--ps-fg);
-  padding: 0 0.55rem;
-  font-size: 1.1rem;
+  padding: 0 var(--space-sm);
+  font-size: var(--text-md);
   line-height: 1;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .ps-preview-close:hover { background: var(--ps-hover); }
 
 .ps-preview-meta {
   flex: 0 0 auto;             /* don't shrink, hold the path display */
   margin: 0;
-  padding: 0.35rem 0.8rem;
-  font-size: 0.75rem;
+  padding: var(--space-xs) var(--space-sm2);
+  font-size: var(--text-xs);
   font-family: monospace;
   color: var(--ps-fg-muted);
   background: var(--ps-bg-deep);
@@ -922,7 +922,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   left: 0;
   height: auto;
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   line-height: 1.45;
   background: var(--ps-bg-deep);
   color: var(--ps-fg);
@@ -994,7 +994,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-preview-cmview .CodeMirror-vscrollbar::-webkit-scrollbar-thumb,
 .ps-preview-cmview .CodeMirror-hscrollbar::-webkit-scrollbar-thumb {
   background: var(--ps-border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius);
   border: 2px solid var(--ps-bg-deep);
 }
 .ps-preview-cmview .CodeMirror-vscrollbar::-webkit-scrollbar-thumb:hover,
@@ -1027,29 +1027,29 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  * + dark-mode it so the prompt actually shows up against the
  * black background of the viewer. */
 .ps-preview-cmview .CodeMirror-dialog {
-  padding: 0.4rem 0.6rem;
+  padding: var(--space-sm) var(--space-sm);
   background: var(--ps-bg-deep);
   color: var(--ps-fg);
   border-bottom: 1px solid var(--ps-border);
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 .ps-preview-cmview .CodeMirror-dialog input {
   font: inherit;
   color: inherit;
   background: var(--ps-bg-deep);
   border: 1px solid var(--ps-border);
-  padding: 0.2rem 0.4rem;
+  padding: var(--space-xs) var(--space-sm);
   min-width: 14rem;
 }
 
 .ps-preview-error {
   flex: 0 0 auto;
   margin: 0;
-  padding: 0.4rem 0.8rem;
+  padding: var(--space-sm) var(--space-sm2);
   color: var(--ps-danger-fg);
   background: var(--ps-bg-tile);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 .ps-preview-error:empty { display: none; }
 
@@ -1059,9 +1059,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-preview-status {
   flex: 0 0 auto;
   margin: 0;
-  padding: 0.3rem 0.8rem;
+  padding: var(--space-xs) var(--space-sm2);
   color: var(--ps-fg-muted, #999999);
-  font-size: 0.82rem;
+  font-size: var(--text-xs);
   font-style: italic;
 }
 .ps-preview-status:empty { display: none; }
@@ -1071,20 +1071,20 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-preview-footer {
   flex: 0 0 auto;
   display: flex;
-  gap: 0.45rem;
+  gap: var(--space-sm);
   justify-content: flex-end;
-  padding: 0.55rem 0.8rem;
+  padding: var(--space-sm) var(--space-sm2);
   background: var(--ps-bg-deep);
   border-top: 1px solid var(--ps-border);
 }
 .ps-preview-footer button {
-  font-size: 0.85rem;
-  padding: 0.3rem 0.8rem;
+  font-size: var(--text-sm);
+  padding: var(--space-xs) var(--space-sm2);
   cursor: pointer;
   background: var(--ps-hover);
   color: var(--ps-fg);
   border: 1px solid var(--ps-border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .ps-preview-footer button:hover:not(:disabled) {
   background: var(--ps-selected);
@@ -1108,16 +1108,16 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  * retarget the next step into the wrong directory).                *
  * ---------------------------------------------------------------- */
 .ps-lock-banner {
-  margin: 0.4rem 0.5rem 0.2rem;
-  padding: 0.45rem 0.55rem;
+  margin: var(--space-sm) var(--space-sm) var(--space-xs);
+  padding: var(--space-sm) var(--space-sm);
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-sm);
   background: var(--ps-warn-bg);        /* warm amber so it pops against the dark UI */
   color: var(--ps-warn-fg);
   border: 1px solid var(--ps-warn-bg);
-  border-radius: 4px;
-  font-size: 0.85rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
 }
 /* Force display:none when the ``hidden`` HTML attribute is set.
  * Without this, the user-agent stylesheet's ``[hidden]{display:none}``
@@ -1129,7 +1129,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-lock-banner[hidden] { display: none; }
 .ps-lock-icon {
   flex: 0 0 auto;
-  font-size: 1rem;
+  font-size: var(--text-base);
   /* 1-step bob so the user notices the indicator is alive even if
    * the operation takes minutes -- not a spinner (avoid the
    * "looks stuck because the animation froze" trap on a janky
@@ -1149,12 +1149,12 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 .ps-lock-cancel {
   flex: 0 0 auto;
-  font-size: 0.78rem;
-  padding: 0.2rem 0.55rem;
+  font-size: var(--text-xs);
+  padding: var(--space-xs) var(--space-sm);
   background: var(--ps-warn-bg);
   color: var(--ps-warn-fg);
   border: 1px solid var(--ps-warn-bg);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 .ps-lock-cancel:hover {
@@ -1273,12 +1273,12 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     z-index:         95;
     width:           2.75rem;
     height:          2.75rem;
-    padding:         0;
+    padding: 0;
     border:          1px solid var(--ps-border);
-    border-radius:   6px;
+    border-radius: var(--radius);
     background:      var(--ps-bg);
     color:           var(--ps-fg);
-    font-size:       1.5rem;
+    font-size: var(--text-xl);
     line-height:     1;
     cursor:          pointer;
     box-shadow:      0 2px 6px rgba(0, 0, 0, 0.3);
@@ -1315,7 +1315,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   border-radius: 50%;
   border: 1px solid var(--ps-border);
   background: transparent;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   line-height: 1;
   cursor: pointer;
   padding: 0;
@@ -1358,9 +1358,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-checkpoint {
     flex:              1 1 auto;
     min-height:        0;
-    padding:           0.5rem 0.75rem;
+    padding: var(--space-sm) var(--space-sm2);
     background:        var(--ps-bg);
-    font-size:         0.85rem;
+    font-size: var(--text-sm);
     color:             var(--ps-fg);
     overflow-y:        auto;       /* the view scrolls where the list did */
 }
@@ -1371,22 +1371,22 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-checkpoint-header {
     display:           flex;
     align-items:       center;
-    gap:               0.5rem;
-    margin-bottom:     0.4rem;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
 }
 
 .ps-checkpoint-title {
-    margin:            0;
-    font-size:         0.9rem;
+    margin: 0;
+    font-size: var(--text-sm);
     font-weight:       600;
     color:             var(--ps-fg);
     flex:              1;
 }
 
 .ps-checkpoint-sensor {
-    padding:           0.1rem 0.5rem;
-    border-radius:     999px;
-    font-size:         0.75rem;
+    padding: 0.1rem var(--space-sm);
+    border-radius: 999px;
+    font-size: var(--text-xs);
     font-weight:       500;
     cursor:            pointer;
     user-select:       none;
@@ -1417,14 +1417,14 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 
 .ps-checkpoint-empty {
-    padding:           0.6rem;
+    padding: var(--space-sm);
     text-align:        center;
     border:            1px dashed var(--ps-border);
-    border-radius:     4px;
+    border-radius: var(--radius-sm);
 }
 
 .ps-checkpoint-empty-msg {
-    margin:            0 0 0.5rem 0;
+    margin: 0 0 var(--space-sm) 0;
     color:             var(--ps-fg);
     opacity:           0.8;
 }
@@ -1434,9 +1434,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     background:        var(--ps-accent, #4f7ab8);
     color:             var(--ps-on-accent);
     border:            none;
-    padding:           0.25rem 0.6rem;
-    border-radius:     3px;
-    font-size:         0.8rem;
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
     cursor:            pointer;
 }
 .ps-checkpoint-init-btn:hover,
@@ -1446,8 +1446,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 
 .ps-checkpoint-actions {
     display:           flex;
-    gap:               0.3rem;
-    margin-bottom:     0.4rem;
+    gap: var(--space-xs);
+    margin-bottom: var(--space-sm);
     flex-wrap:         wrap;
 }
 .ps-checkpoint-actions[hidden] {
@@ -1456,16 +1456,16 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 
 .ps-checkpoint-list {
     list-style:        none;
-    margin:            0;
-    padding:           0;
-    border-radius:     3px;
+    margin: 0;
+    padding: 0;
+    border-radius: var(--radius-sm);
     overflow:          hidden;
 }
 
 .ps-checkpoint-list-item {
-    padding:           0.4rem 0.5rem;
+    padding: var(--space-sm) var(--space-sm);
     border-bottom:     1px solid var(--ps-border);
-    font-size:         0.8rem;
+    font-size: var(--text-xs);
     cursor:            pointer;
     transition:        background 0.1s;
 }
@@ -1479,13 +1479,13 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-checkpoint-row-sha {
     font-family:       var(--font-mono, monospace);
     color:             var(--ps-code-fg);
-    font-size:         0.75rem;
-    margin-right:      0.4rem;
+    font-size: var(--text-xs);
+    margin-right: var(--space-sm);
 }
 
 /* Which state a row came from ("from a1b2c3d") -- quiet, like the sha. */
 .ps-checkpoint-row-parent {
-    font-size:         0.7rem;
+    font-size: var(--text-2xs);
     color:             var(--ps-fg-dim);
     font-family:       ui-monospace, "SF Mono", Menlo, monospace;
 }
@@ -1496,18 +1496,18 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 
 .ps-checkpoint-row-refs {
     display:           inline-flex;
-    gap:               0.25rem;
-    margin-left:       0.4rem;
+    gap: var(--space-xs);
+    margin-left: var(--space-sm);
     flex-wrap:         wrap;
 }
 
 .ps-checkpoint-ref-chip {
     display:           inline-block;
-    padding:           0.05rem 0.4rem;
+    padding: 0.05rem var(--space-sm);
     background:        var(--ps-accent, #4f7ab8);
     color:             var(--ps-on-accent);
-    border-radius:     999px;
-    font-size:         0.7rem;
+    border-radius: 999px;
+    font-size: var(--text-2xs);
 }
 .ps-checkpoint-ref-chip[data-kind="tag"] {
     background:        var(--ps-ref-tag-bg);
@@ -1519,8 +1519,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 
 .ps-checkpoint-row-actions {
     display:           none;
-    gap:               0.25rem;
-    margin-top:        0.3rem;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
 }
 .ps-checkpoint-list-item.is-expanded .ps-checkpoint-row-actions {
     display:           flex;
@@ -1530,9 +1530,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     background:        var(--ps-bg-2, #2a2a2a);
     color:             var(--ps-fg);
     border:            1px solid var(--ps-border);
-    padding:           0.15rem 0.45rem;
-    font-size:         0.7rem;
-    border-radius:     3px;
+    padding: 0.15rem var(--space-sm);
+    font-size: var(--text-2xs);
+    border-radius: var(--radius-sm);
     cursor:            pointer;
 }
 .ps-checkpoint-row-action-btn:hover {
@@ -1543,13 +1543,13 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 
 .ps-checkpoint-advisory {
-    margin-top:        0.4rem;
-    padding:           0.4rem 0.6rem;
+    margin-top: var(--space-sm);
+    padding: var(--space-sm) var(--space-sm);
     background:        var(--ps-ck-dirty-bg);
     color:             var(--ps-ck-dirty-fg);
     border:            1px solid var(--ps-ck-dirty-border);
-    border-radius:     3px;
-    font-size:         0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
     line-height:       1.3;
 }
 
@@ -1557,9 +1557,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 
 .ps-checkpoint-view-toggle {
     display:           inline-flex;
-    margin-left:       auto;
+    margin-left: auto;
     border:            1px solid var(--ps-border);
-    border-radius:     3px;
+    border-radius: var(--radius-sm);
     overflow:          hidden;
 }
 
@@ -1567,8 +1567,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     background:        var(--ps-bg, #181818);
     color:             var(--ps-fg);
     border:            none;
-    padding:           0.15rem 0.5rem;
-    font-size:         0.7rem;
+    padding: 0.15rem var(--space-sm);
+    font-size: var(--text-2xs);
     cursor:            pointer;
     border-right:      1px solid var(--ps-border);
 }
@@ -1589,9 +1589,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     max-height:        50vh;
     overflow:          auto;
     border:            1px solid var(--ps-border);
-    border-radius:     3px;
+    border-radius: var(--radius-sm);
     background:        var(--ps-bg, #181818);
-    padding:           0.3rem;
+    padding: var(--space-xs);
 }
 
 .ps-checkpoint-graph svg {
@@ -1600,10 +1600,10 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 
 .ps-checkpoint-graph-empty {
-    margin:            0;
+    margin: 0;
     color:             var(--ps-fg);
     opacity:           0.6;
     text-align:        center;
-    font-size:         0.75rem;
-    padding:           0.5rem;
+    font-size: var(--text-xs);
+    padding: var(--space-sm);
 }

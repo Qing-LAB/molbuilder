@@ -80,19 +80,31 @@
     --radius:        7px;
     --radius-sm:     4px;
     --radius-lg:     10px;
-    --gap:           14px;
+    --gap:           var(--space-md);  /* legacy alias — follows the grid */
 
-    /* ---- Spacing scale -------------------------------------------
-     * Five steps from inline (xs) to section break (xl).  Use these
-     * tokens for ALL new padding/margin/gap so the rhythm is uniform
-     * across cards, sections, and form rows.  ``--gap`` is preserved
-     * as an alias of --space-md for back-compat with pre-2026-05-19
+    /* ---- Spacing scale — A 4px GRID (2026-08-23) ------------------
+     * Every step is a whole number of 4px units, so any two spacings in
+     * the app are commensurable and a rhythm is either kept or visibly
+     * broken.  Use these for ALL padding/margin/gap.
+     *
+     * WHY THE GRID.  The five steps used to run 4 · 8 · 14 · 20 · 28,
+     * and 14 was the only value off any grid.  The gaps it left were
+     * filled by hand: a measurement across the tree found 6, 10 and 12
+     * used hundreds of times as literals, because the nearest token was
+     * wrong by enough to matter.  The literals were not authors ignoring
+     * the scale -- they were the scale being too coarse to say what the
+     * component needed.  Two steps are added and one value moves.
+     *
+     * ``--gap`` is preserved as an alias of --space-md for pre-2026-05-19
      * call sites; new code should prefer the explicit name. */
-    --space-xs:      4px;
-    --space-sm:      8px;
-    --space-md:      14px;     /* = legacy --gap */
-    --space-lg:      20px;
-    --space-xl:      28px;
+    --space-xs:      4px;      /* 1 unit — inline, chip insets */
+    --space-sm:      8px;      /* 2 — control padding, tight rows */
+    --space-sm2:     12px;     /* 3 — NEW: the step 6/10/12 reached for */
+    --space-md:      16px;     /* 4 — was 14px, the one off-grid value;
+                                *     card and row rhythm.  = legacy --gap */
+    --space-lg:      20px;     /* 5 — card padding, section inset */
+    --space-lg2:     24px;     /* 6 — NEW: the step 22/24/26 reached for */
+    --space-xl:      28px;     /* 7 — section break */
 
     /* ---- Typography scale ----------------------------------------
      * Six steps + line-height + weight tokens.  Each size carries a

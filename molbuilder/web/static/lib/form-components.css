@@ -33,8 +33,8 @@
 
 /* ---- Card header (layered on page-shell's .card base) ---- */
 .card h2 {
-    margin: 0 0 10px;
-    font-size: 1.02rem;
+    margin: 0 0 var(--space-sm2);
+    font-size: var(--text-md);
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: -0.005em;
@@ -43,8 +43,8 @@
 .card h2 code {
     background: var(--accent-bg);
     color: var(--accent-hover);
-    padding: 0 5px;
-    border-radius: 3px;
+    padding: 0 var(--space-xs);
+    border-radius: var(--radius-sm);
     font-size: 0.86em;
     font-family: var(--font-mono);
 }
@@ -89,52 +89,52 @@ button.danger:disabled {
 .viewer-load-bar {
     display: flex;
     align-items: center;
-    gap: 0.7rem;
-    margin: 0.5rem 0 0.8rem;
-    padding: 0.6rem 0.8rem;
+    gap: var(--space-sm2);
+    margin: var(--space-sm) 0 var(--space-sm2);
+    padding: var(--space-sm) var(--space-sm2);
     background: var(--bg-card);
     border: 1px solid var(--border-soft);
-    border-radius: 6px;
+    border-radius: var(--radius);
     flex-wrap: wrap;
 }
 .viewer-load-bar #load-from-sidebar-btn { flex: 0 0 auto; }
 .viewer-load-bar #load-source-readout {
     color: var(--text-secondary);
-    font-size: 0.92rem;
+    font-size: var(--text-base);
 }
 
 /* ---- Auto-detect bar + rationale panel (scientific-validation §2.5) ---- */
 .auto-detect-bar {
     display: flex;
     align-items: center;
-    gap: 0.7rem;
-    margin: 0 0 0.6rem;
-    padding: 0.4rem 0.8rem;
+    gap: var(--space-sm2);
+    margin: 0 0 var(--space-sm);
+    padding: var(--space-sm) var(--space-sm2);
 }
 .auto-detect-bar #auto-detect-btn { flex: 0 0 auto; }
 .auto-detect-bar #auto-detect-status {
     color: var(--text-secondary);
-    font-size: 0.92rem;
+    font-size: var(--text-base);
 }
 .auto-detect-panel {
-    margin: 0 0 0.8rem;
-    padding: 0.5rem 0.8rem;
+    margin: 0 0 var(--space-sm2);
+    padding: var(--space-sm) var(--space-sm2);
     background: var(--bg-card);
     border: 1px solid var(--border-soft);
-    border-radius: 6px;
-    font-size: 0.92rem;
+    border-radius: var(--radius);
+    font-size: var(--text-base);
 }
 .auto-detect-panel summary {
     cursor: pointer;
     font-weight: 600;
 }
 .auto-detect-panel .auto-detect-rationale {
-    margin: 0.5rem 0;
+    margin: var(--space-sm) 0;
     color: var(--text-primary);
 }
 .auto-detect-panel .auto-detect-warnings {
-    margin: 0.3rem 0;
-    padding-left: 1.2rem;
+    margin: var(--space-xs) 0;
+    padding-left: var(--space-lg);
     color: var(--text-secondary);
 }
 .auto-detect-panel .auto-detect-warnings:empty,
@@ -144,7 +144,7 @@ button.danger:disabled {
 .auto-detect-panel .auto-detect-metals { margin: 0.3rem 0; }
 .auto-detect-panel .auto-detect-metals dt {
     font-weight: 600;
-    margin-top: 0.3rem;
+    margin-top: var(--space-xs);
 }
 .auto-detect-panel .auto-detect-metals dd {
     margin: 0 0 0 1.2em;
@@ -162,10 +162,10 @@ button.danger:disabled {
     display: flex;
     flex-direction: column;
     gap: var(--space-xs);
-    font-size: 0.88rem;
+    font-size: var(--text-sm);
 }
 .issues-panel .issue-item {
-    padding: 6px 10px 6px 12px;
+    padding: var(--space-sm) var(--space-sm2) var(--space-sm) var(--space-sm2);
     border-radius: var(--radius-sm);
     border-left: 3px solid var(--border-soft);
     background: var(--bg-input);
@@ -185,7 +185,7 @@ button.danger:disabled {
     flex-basis: 100%;
     width: 100%;
     margin-top: var(--space-xs);
-    font-size: 0.82rem;
+    font-size: var(--text-xs);
 }
 .schema-field > .field-issues .issue-item {
     padding: var(--space-xs) var(--space-sm) var(--space-xs) 10px;
@@ -230,20 +230,20 @@ button.danger:disabled {
     font-size: var(--text-xs);
     opacity: 0.65;
     margin-left: auto;
-    padding-left: 12px;
+    padding-left: var(--space-sm2);
 }
 
 /* ---- Viewer card chrome (3Dmol canvas lives in .viewer-wrap) ---- */
 .card-viewer {
     display: flex; flex-direction: column;
-    gap: 10px;
+    gap: var(--space-sm2);
 }
 .viewer-header {
     display: flex; flex-direction: column; gap: 6px;
 }
 .viewer-info {
     display: flex; flex-wrap: wrap; gap: 6px 14px;
-    font-size: 0.86rem;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     align-items: baseline;
 }
@@ -261,8 +261,8 @@ button.danger:disabled {
     font-family: var(--font-mono);
     color: var(--text-mono);
     background: var(--bg-input);
-    padding: 1px 6px;
-    border-radius: 3px;
+    padding: 1px var(--space-sm);
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border-soft);
 }
 /* ``.viewer-wrap`` sizing + chrome moved to lib/molview/molview.css (2026-07-17):
@@ -275,7 +275,7 @@ button.danger:disabled {
 /* ---- Hint / helper text ---- */
 .hint {
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
     margin: var(--space-xs) 0 12px;
     line-height: 1.55;
 }
@@ -289,12 +289,12 @@ button.danger:disabled {
     flex-wrap: wrap;
 }
 .fdf-output {
-    margin-top: 12px;
+    margin-top: var(--space-sm2);
     padding: 12px var(--space-md);
     background: var(--bg-code);
     color: var(--text-mono);
     font-family: var(--font-mono);
-    font-size: 0.82rem;
+    font-size: var(--text-xs);
     line-height: 1.45;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-strong);
@@ -315,7 +315,7 @@ button.danger:disabled {
     color: var(--text-on-accent);
     border: none;
     border-radius: var(--radius-sm);
-    padding: 0.4rem 0;
+    padding: var(--space-sm) 0;
     font: 600 0.92rem/1 system-ui, sans-serif;
     cursor: pointer;
 }
@@ -362,6 +362,6 @@ a.btn-like:hover {
     list-style: none;
     color: var(--text-muted);
     font-style: italic;
-    font-size: 0.82rem;
+    font-size: var(--text-xs);
     padding: 2px 0;
 }

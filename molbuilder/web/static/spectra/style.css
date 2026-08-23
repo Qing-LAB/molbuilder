@@ -29,7 +29,7 @@ html, body { height: 100%; }
  * default). */
 
 header {
-    padding: 1.4rem 2rem 1rem;
+    padding: var(--space-lg2) var(--space-xl) var(--space-md);
     border-bottom: 1px solid var(--border-soft);
 }
 header h1 {
@@ -37,9 +37,9 @@ header h1 {
     font: 700 1.6rem/1.2 "Inter", system-ui, sans-serif;
 }
 header .tagline {
-    margin: 0.2rem 0 0;
+    margin: var(--space-xs) 0 0;
     color: var(--text-secondary);
-    font-size: 0.95rem;
+    font-size: var(--text-base);
 }
 
 /* ---- Layout ---------------------------------------------------
@@ -55,8 +55,8 @@ header .tagline {
 .card {
     background: var(--bg-card);
     border: 1px solid var(--border-soft);
-    border-radius: 12px;
-    padding: 1rem 1.4rem 1.2rem;
+    border-radius: var(--radius-lg);
+    padding: var(--space-md) var(--space-lg2) var(--space-lg);
 }
 
 
@@ -66,13 +66,13 @@ textarea, input[type="text"], input[type="file"] {
     background: var(--bg-input);
     color: var(--text-primary);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    padding: 0.45rem 0.65rem;
-    font-size: 0.9rem;
+    border-radius: var(--radius);
+    padding: var(--space-sm) var(--space-sm2);
+    font-size: var(--text-sm);
 }
 textarea {
     font-family: var(--font-mono);
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     resize: vertical;
     min-height: 96px;
 }
@@ -86,9 +86,9 @@ button {
     background: var(--bg-input);
     color: var(--text-primary);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    padding: 0.42rem 0.95rem;
-    font-size: 0.9rem;
+    border-radius: var(--radius);
+    padding: var(--space-sm) var(--space-md);
+    font-size: var(--text-sm);
     cursor: pointer;
     transition: background 0.12s ease, border-color 0.12s ease;
 }
@@ -108,7 +108,7 @@ button > code {
 .primary-actions { margin-top: 0.4rem; }
 
 .status {
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     min-height: 1.1em;
 }

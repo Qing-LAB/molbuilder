@@ -30,7 +30,7 @@ Results).  Sections use
 * 0.7rem inside).
  */
 .card-section {
-    padding: 0.8rem 0;
+    padding: var(--space-sm2) 0;
 }
 .card-section + .card-section {
     border-top: 1px solid var(--border-soft);
@@ -48,8 +48,8 @@ plain for the right column. */
     align-items: baseline;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 0.6rem;
-    margin: 0 0 0.6rem;
+    gap: var(--space-sm);
+    margin: 0 0 var(--space-sm);
 }
 .section-header h2 {
     margin: 0;
@@ -63,14 +63,14 @@ plain for the right column. */
 }
 .section-hint {
     margin: 0;
-    font-size: 0.82rem;
+    font-size: var(--text-xs);
     color: var(--text-secondary);
 }
 /* Subsection heading inside a section (e.g. "Spectrum",
 "Modes"
  * inside the Results section). */
 .subsection-h {
-    margin: 1.1rem 0 0.5rem;
+    margin: var(--space-md) 0 var(--space-sm);
     font: 600 0.95rem/1.2 "Inter", system-ui, sans-serif;
     color: var(--text-primary);
 }
@@ -79,11 +79,11 @@ plain for the right column. */
 
 .field-block {
     display: grid;
-    gap: 0.3rem;
-    margin: 0 0 0.6rem;
+    gap: var(--space-xs);
+    margin: 0 0 var(--space-sm);
 }
 .field-block > .field-label {
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
 }
 .field-block > textarea,
@@ -95,18 +95,18 @@ plain for the right column. */
  * breathing room for the main Generate row. */
 .inline-row {
     display: flex;
-    gap: 0.6rem;
+    gap: var(--space-sm);
     align-items: center;
     flex-wrap: wrap;
-    margin: 0.3rem 0;
+    margin: var(--space-xs) 0;
 }
 /* ---- Results meta dictionary ---- */
 
 .results-meta {
     display: grid;
     grid-template-columns: max-content 1fr;
-    gap: 0.25rem 1rem;
-    font-size: 0.88rem;
+    gap: var(--space-xs) var(--space-md);
+    font-size: var(--text-sm);
     margin: 0;
 }
 .results-meta dt { color: var(--text-secondary); }
@@ -115,21 +115,21 @@ plain for the right column. */
 
 .spectrum-controls {
     display: flex;
-    gap: 0.9rem;
+    gap: var(--space-md);
     align-items: center;
     flex-wrap: wrap;
-    margin: 0.3rem 0 0.5rem;
-    font-size: 0.85rem;
+    margin: var(--space-xs) 0 var(--space-sm);
+    font-size: var(--text-sm);
 }
 .spectrum-controls .inline-label {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--space-sm);
     color: var(--text-secondary);
 }
 .spectrum-controls input[type="number"] {
     width: 5.5em;
-    padding: 0.2rem 0.4rem;
+    padding: var(--space-xs) var(--space-sm);
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
@@ -137,7 +137,7 @@ plain for the right column. */
 .spectrum-controls .hint {
     color: var(--text-secondary);
     opacity: 0.75;
-    font-size: 0.82rem;
+    font-size: var(--text-xs);
     flex: 1;
     min-width: 200px;
 }
@@ -174,10 +174,10 @@ so there is no
 
 .modes-table-controls {
     display: flex;
-    gap: 0.6rem;
+    gap: var(--space-sm);
     align-items: center;
     flex-wrap: wrap;
-    margin: 0.4rem 0;
+    margin: var(--space-sm) 0;
 }
 .modes-table-controls input[type="text"] {
     flex: 1;
@@ -190,12 +190,12 @@ so there is no
     max-height: clamp(320px, 55vh, 760px);
     overflow: auto;
     border: 1px solid var(--border-soft);
-    border-radius: 6px;
+    border-radius: var(--radius);
 }
 .modes-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
 }
 .modes-table thead {
     position: sticky;
@@ -205,7 +205,7 @@ so there is no
 }
 .modes-table th,
 .modes-table td {
-    padding: 0.35rem 0.6rem;
+    padding: var(--space-xs) var(--space-sm);
     border-bottom: 1px solid var(--border-soft);
     text-align: right;
     font-variant-numeric: tabular-nums;
@@ -357,17 +357,17 @@ the module fills it). */
 .mode-viewer {
     width: 100%;
     height: clamp(200px, 26vh, 320px);
-    margin: 0.35rem 0;
+    margin: var(--space-xs) 0;
     border: 1px solid var(--border-soft);
-    border-radius: 6px;
+    border-radius: var(--radius);
 }
 .viewer-controls {
     display: flex;
-    gap: 0.9rem;
+    gap: var(--space-md);
     align-items: center;
     flex-wrap: wrap;
-    margin: 0.4rem 0;
-    font-size: 0.85rem;
+    margin: var(--space-sm) 0;
+    font-size: var(--text-sm);
 }
 /* A class that sets `display` ties with the browser's own
    `[hidden] { display: none }` on specificity and wins on source order,
@@ -381,7 +381,7 @@ and it sat visible under
 .viewer-controls .inline-label {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--space-sm);
     color: var(--text-secondary);
 }
 .viewer-controls input[type="range"] {
@@ -553,14 +553,14 @@ instead of "-6.1234 eV" being one blob whose
  * UI never disagrees with the backend's notion of "what's done". */
 .phase-indicator {
     display: flex;
-    gap: 1.2rem;
+    gap: var(--space-lg);
     flex-wrap: wrap;
-    margin: 0.6rem 0;
-    padding: 0.5rem 0.7rem;
+    margin: var(--space-sm) 0;
+    padding: var(--space-sm) var(--space-sm2);
     border: 1px solid var(--border-soft);
-    border-radius: 6px;
+    border-radius: var(--radius);
     background: var(--bg-input);
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
 }
 /* 2026-05-28 [hidden]-attribute audit: ``display: flex`` above ties
  * on specificity with the UA stylesheet's ``[hidden] { display: none
@@ -572,7 +572,7 @@ so #phase-indicator was
 .phase {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
+    gap: var(--space-sm);
     color: var(--text-secondary);
 }
 .phase-label { user-select: none; }
@@ -608,7 +608,7 @@ so #phase-indicator was
 .thermo-charts {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: var(--space-sm2);
 }
 .thermo-chart { min-height: 260px; }
 @media (max-width: 900px) {

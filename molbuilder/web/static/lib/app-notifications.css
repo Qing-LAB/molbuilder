@@ -22,7 +22,7 @@
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-card);
     color: var(--text-primary);
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
     line-height: 1.4;
     animation: app-notification-in 140ms ease-out;
 }
@@ -41,7 +41,7 @@
     background: transparent;
     border: none;
     color: var(--text-secondary);
-    font-size: 1.1rem;
+    font-size: var(--text-md);
     line-height: 1;
     padding: 0 var(--space-xs);
     cursor: pointer;
@@ -59,7 +59,7 @@
     background: transparent;
     border: 1px solid var(--border-soft);
     color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
     padding: var(--space-xs) var(--space-sm);
     border-radius: var(--radius-sm);
     cursor: pointer;

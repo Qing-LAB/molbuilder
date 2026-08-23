@@ -111,7 +111,19 @@ few module-specific ones (`1100`, `768`, `480`). All animation honors
   radius, padding, shadow). A couple of tabs deliberately restyle it in their own
   vocabulary, which the shell documents as intentional.
 - **Rhythm** — spacing, type sizes, and radii all come from the `--space-*` /
-  `--text-*` / `--radius*` scales. And a deliberate calm: no harsh gradients,
+  `--text-*` / `--radius*` scales. **Spacing is a 4px grid** (2026-08-23):
+  every step is a whole number of 4px units, so any two spacings are
+  commensurable and a rhythm is either kept or visibly broken. It ran
+  4 · 8 · 14 · 20 · 28 until then, and 14 was the only value off any grid —
+  the gaps it left were filled by hand, with 6, 10 and 12 appearing hundreds
+  of times as literals because the nearest token was wrong by enough to
+  matter. Two steps were added, one value moved, and ~350 literals were
+  rounded onto the grid.
+
+  Two things are **not** rhythm and stay literal: a **hairline** (under 3px —
+  a 1px nudge, a 2px inset under a border) is an optical adjustment, and
+  snapping it to the grid would quadruple it; a value **over 40px** is a real
+  dimension, not spacing. And a deliberate calm: no harsh gradients,
   and no animation longer than ~120 ms on a hover.
 
 ## 5. Why an error looks the same on every tab
