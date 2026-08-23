@@ -103,15 +103,22 @@ def _compare(row, *, cores: Optional[int] = None,
                        f"allows {cap_gb:g} GB")
 
     if gpus:
-        if not domain_serves_gpu(row):
-            why.append(f"{row.name} has no GPUs")
-        else:
-            have = row.gpu or {}
-            if isinstance(have, dict) and have:
-                if max(int(v) for v in have.values()) < gpus:
-                    why.append(f"needs {gpus} GPUs but {row.name} "
-                               f"offers at most "
-                               f"{max(int(v) for v in have.values())}")
+        # R3 APPLIES TO DEVICES TOO.  A domain that states no inventory is not
+        # claiming it has none -- plenty of records describe a queue without
+        # enumerating its gres, and a hand-declared row often states only the
+        # wall.  Refusing on silence made an explicitly named domain
+        # unusable the moment its record was terse (caught 2026-08-23, when
+        # R9 started admitting the named path).
+        #
+        # PREFERRING nodes that do have devices is a CHOICE, and choices live
+        # in `place.candidates`; this only refuses what the record positively
+        # rules out.
+        have = row.gpu if isinstance(row.gpu, dict) else None
+        if have:
+            most = max(int(v) for v in have.values())
+            if most < gpus:
+                why.append(f"needs {gpus} GPUs but {row.name} offers at "
+                           f"most {most}")
     return why
 
 

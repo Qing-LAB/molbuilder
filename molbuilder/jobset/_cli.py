@@ -832,7 +832,7 @@ _MEASUREMENT_PINS = {"max_scf_iter": 3, "relax_steps": 0, "restart": "clean",
 
 def _gpu_inventory(base):
     """The cluster's GPU ``(per-node count, type)`` from THE gpu domain
-    row (`submit.gpu_domain_row` -- one selector, shared with the cap and
+    row (`scheduler.place.candidates` -- one walk, shared with the cap and
     the routing, so the grid's device count, the cap and the submission
     can never read three different rows) -- § 4.3a's fallback when THIS
     node's probe has none (a login node).
@@ -842,9 +842,13 @@ def _gpu_inventory(base):
     buried ``best_gpu_type`` for exactly that (scheduler/probe.py, N3) --
     the remedy is curating the row down to the type this bench measures.
     """
-    from ..jobset.submit import gpu_domain_row
     from ..runtime_config import get_routing
-    row = gpu_domain_row(get_routing(project_dir=Path(base)))
+    from ..scheduler.place import candidates
+    # CAPABILITY, not duration: `prep` asks which nodes have devices, not how
+    # long a job may run, so it passes no wall and the answer is the menu's
+    # own recommendation -- the first gpu-capable row (R7).
+    rows = candidates(get_routing(project_dir=Path(base)), prefer_gpu=True)
+    row = rows[0] if rows else None
     inv = (row.gpu if row is not None else None) or {}
     if not inv:
         return None, None
@@ -860,16 +864,20 @@ def _gpu_inventory(base):
 
 def _gpu_core_cap(base):
     """``(max_cores, domain name)`` of THE gpu domain row
-    (`submit.gpu_domain_row`; ``(None, None)`` when it states no cap --
+    (`scheduler.place.candidates`; ``(None, None)`` when it states no cap --
     the queue then teaches).  Probed since 2026-08-21
     (§ 4.3a): sinfo reports one row per node group, so the GPU nodes'
     own core count is on their row even inside a mixed partition -- on
     Sol, GPU nodes take 48 cores where standard nodes take 128.  The
     row stays the user's to edit.
     """
-    from ..jobset.submit import gpu_domain_row
     from ..runtime_config import get_routing
-    row = gpu_domain_row(get_routing(project_dir=Path(base)))
+    from ..scheduler.place import candidates
+    # CAPABILITY, not duration: `prep` asks which nodes have devices, not how
+    # long a job may run, so it passes no wall and the answer is the menu's
+    # own recommendation -- the first gpu-capable row (R7).
+    rows = candidates(get_routing(project_dir=Path(base)), prefer_gpu=True)
+    row = rows[0] if rows else None
     if row is not None and row.max_cores:
         return int(row.max_cores), str(row.name)
     return None, None

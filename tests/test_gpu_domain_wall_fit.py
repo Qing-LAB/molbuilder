@@ -33,8 +33,21 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.jobset.submit import _row_holds, gpu_domain_row
-from molbuilder.scheduler import Domain
+from molbuilder.scheduler import Domain, Request, admits
+from molbuilder.scheduler.place import Unplaceable, place
+
+
+def _gpu(rows, needed_s=None):
+    """The GPU side's placement — `scheduler.place`, walked.
+
+    Was `jobset.submit.gpu_domain_row`; phase 4 moved the walk into the
+    scheduler subsystem, where both sides share it (2026-08-23).
+    """
+    return place(rows, Request(walltime_s=needed_s), prefer_gpu=True)
+
+
+def _row_holds(domain, needed_s):
+    return not admits(domain, Request(walltime_s=needed_s))
 
 
 #: ASU Sol, probed 2026-08-23 -- name, partition, qos, ceiling, gpu.
@@ -77,37 +90,48 @@ class TestTheSelectorSkipsACeilingItCannotUse:
         """Cheapest-ceiling-first is unchanged when the job actually fits --
         a bounded single trial belongs in `debug`, which is the whole point
         of that ordering."""
-        assert gpu_domain_row(SOL, needed_s=600).name == "debug"
+        assert _gpu(SOL, 600).name == "debug"
 
     def test_the_group_that_failed_on_sol_now_routes_to_a_row_that_holds_it(self):
         """Tens of minutes: `debug` is skipped, the next gpu-capable row
         that can hold it wins -- still the cheapest ceiling among those
         that fit, not the biggest."""
-        row = gpu_domain_row(SOL, needed_s=38 * 60)
+        row = _gpu(SOL, 38 * 60)
         assert row.name == "htc"
         assert (row.partition, row.qos) == ("htc", "public")
 
     def test_a_very_long_group_walks_further_down(self):
-        assert gpu_domain_row(SOL, needed_s=5 * 24 * 3600).name == "public"
+        assert _gpu(SOL, 5 * 24 * 3600).name == "public"
 
     def test_a_cpu_only_row_is_never_offered_to_the_gpu_side(self):
         """`highmem` has the ceiling but no devices."""
         for need in (600, 38 * 60, 5 * 24 * 3600):
-            assert gpu_domain_row(SOL, needed_s=need).gpu is not None
+            assert _gpu(SOL, need).domain.gpu is not None
 
     def test_asking_nothing_about_duration_keeps_the_old_answer(self):
         """prep's device inventory and per-family core cap ask about
         CAPABILITY, not duration -- their answer must not move."""
-        assert gpu_domain_row(SOL).name == "debug"
-        assert gpu_domain_row(SOL, needed_s=None).name == "debug"
+        assert _gpu(SOL).name == "debug"
+        assert _gpu(SOL, None).name == "debug"
 
-    def test_nothing_fits_is_reported_as_nothing(self):
-        """Not "fall back to row 0" -- that is what submitted the doomed
-        job.  The caller refuses on None."""
+    def test_nothing_fits_refuses_and_says_why(self):
+        """Not "fall back to row 0" -- that is what submitted the doomed job.
+
+        Phase 4 turned the None into a refusal that carries its reasons: a
+        caller cannot mistake "nothing fits" for "no preference" and let the
+        header's directives stand, which is exactly what happened on Sol.
+        """
         tiny = [Domain.from_row({"name": "debug", "partition": "htc",
                                  "qos": "debug", "max_time": "00:15:00",
                                  "gpu": {"a100": 1}})]
-        assert gpu_domain_row(tiny, needed_s=_FIFTEEN_MIN + 1) is None
+        with pytest.raises(Unplaceable) as exc:
+            _gpu(tiny, _FIFTEEN_MIN + 1)
+        assert "debug allows 00:15:00" in exc.value.reasons[0]
+
+    def test_no_menu_at_all_is_not_a_refusal(self):
+        """R6's other half: a machine that promised nothing gets its header
+        left alone, rather than a refusal it cannot act on."""
+        assert place([], Request(walltime_s=10 ** 6), prefer_gpu=True) is None
 
 
 class TestWhatFittingMeans:
@@ -190,3 +214,57 @@ class TestTheRequestStatesCoresOnce:
         assert any("min" in w for w in why)
         assert any("cores" in w for w in why)
         assert any("GB" in w for w in why)
+
+
+class TestSilenceIsNotARefusal:
+    """R3 over every limit, devices included.
+
+    A domain that states no GPU inventory is not claiming it has none -- a
+    hand-declared row often states only the wall.  Refusing on silence made
+    an explicitly named domain unusable the moment its record was terse, which
+    surfaced the day R9 started admitting the named path (2026-08-23).
+
+    Preferring nodes that DO have devices is a choice, and choices belong to
+    `place.candidates`; admission only refuses what the record rules out.
+    """
+
+    def test_a_terse_row_admits_a_gpu_request(self):
+        assert admits(_dom(name="fast"), Request(gpus=2)) == []
+
+    def test_a_row_that_states_too_few_refuses(self):
+        assert admits(_dom(name="one", gpu={"a100": 1}), Request(gpus=2)) == [
+            "needs 2 GPUs but one offers at most 1"]
+
+    def test_a_row_that_states_enough_admits(self):
+        assert admits(_dom(name="four", gpu={"a100": 4}), Request(gpus=2)) == []
+
+    def test_choosing_still_prefers_rows_with_devices(self):
+        """The preference did not move into admission -- it stayed in the
+        walk, which is why the automatic path is unchanged by the above."""
+        from molbuilder.scheduler.place import candidates
+        terse = _dom(name="terse")
+        withgpu = _dom(name="withgpu", gpu={"a100": 4})
+        assert [d.name for d in candidates([terse, withgpu], prefer_gpu=True)] \
+            == ["withgpu"]
+
+
+class TestNamingADomainDoesNotSkipTheCheck:
+    """Contract § 5: `--domain` reaches the same admission test.  Your choice
+    is honoured as a CHOICE, not as permission to skip verification -- until
+    phase 4 it bypassed admission entirely."""
+
+    def test_a_named_domain_too_small_is_refused(self):
+        with pytest.raises(Unplaceable) as exc:
+            place(SOL, Request(walltime_s=38 * 60), prefer_gpu=True,
+                  named="debug")
+        assert "debug allows 00:15:00" in exc.value.reasons[0]
+
+    def test_a_named_domain_that_fits_is_used_even_if_not_cheapest(self):
+        got = place(SOL, Request(walltime_s=600), prefer_gpu=True,
+                    named="general")
+        assert got.name == "general"      # not `debug`, the cheapest that fits
+
+    def test_an_unknown_name_says_what_there_is(self):
+        with pytest.raises(Unplaceable) as exc:
+            place(SOL, Request(), prefer_gpu=True, named="nope")
+        assert "debug" in exc.value.reasons[0] and "htc" in exc.value.reasons[0]

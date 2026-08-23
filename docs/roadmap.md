@@ -1011,7 +1011,7 @@ test-pin exists and passes.
 | 7.4e | nothing in the suite measures layout | **open** |
 | 7.4f | the MolView host overflows its card at ≤768px | **open** |
 | 7.5 | the residue three: O1, O4, O5 (carried over) | **open** |
-| 7.6 | the scheduler subsystem — five modules, two emitters, no admission | **contract written** |
+| 7.6 | the scheduler subsystem — five modules, two emitters, no admission | **phases 1–4 done; phase 5 (one emitter) open** |
 
 ### 7.1 The remote-machine workflow, finished
 
@@ -1166,10 +1166,11 @@ Phases, smallest risk first — each separately testable and revertable:
    redirect GPU work from inside the record's unexamined bag, and it is what
    R2's memory comparison needs before it can hold at all. Steps 4 and 5 both
    assume it;
-4. move placement out of `jobset/submit.py` — the two branches become the one
-   walk the contract draws, `--domain` starts being admitted like everything
-   else, and **R9** (re-admit at send time) becomes possible because the walk
-   is callable from both moments;
+4. ~~move placement out of `jobset/submit.py`~~ — **done 2026-08-23**: the two
+   branches are the one walk the contract draws, `--domain` is admitted like
+   everything else, and **R9** landed with it (the group's cores, memory and
+   devices are re-checked against what the machine says NOW, not what it said
+   at prep);
 5. unify the two emitters.
 
 *Test-pin:* phase 5's gate — render both spellings from one placement and

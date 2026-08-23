@@ -85,37 +85,6 @@ class JobResult:
 #  domain → -p/-q resolution (reuses runtime_config.get_routing)         #
 # --------------------------------------------------------------------- #
 
-def _resolve_domain(domain: Optional[str], *, gpu: bool,
-                    project_dir: Optional[Path]) -> Optional[tuple]:
-    """Resolve a submission-domain name to ``(partition, qos)`` for the
-    ``sbatch`` CLI.  ``None`` domain → ``None`` (use the rendered header's
-    default directives).  A GPU job prefers the domain's ``gpu_partition``
-    when set (running-a-job.md § 5.3).
-
-    The menu is ``environment.json``'s ``domains`` since 2026-08-17 (N4) --
-    probed, not configured (`configuration.md` § 5, M-1).  This function did
-    not change: `get_routing` still answers, from a different file."""
-    if not domain:
-        return None
-    from .. import runtime_config as _rc
-    routing = _rc.get_routing(project_dir=project_dir)
-    for d in routing:
-        if d.name == domain:
-            part = (d.gpu_partition or d.partition) if gpu \
-                else d.partition
-            return (part, d.qos)
-    names = ", ".join(d.name for d in routing) or "(none probed)"
-    raise SubmitError(
-        f"unknown submission domain {domain!r}; reachable: {names}.  The menu "
-        f"is PROBED into environment.json -- run `molbuilder jobset probe "
-        f"--write` on a login node, then `prep` snapshots it beside the "
-        f"calculation (docs/configuration.md § 5).")
-
-
-# --------------------------------------------------------------------- #
-#  per-job resource → CLI flags (bench launch-line model)               #
-# --------------------------------------------------------------------- #
-
 def _sbatch_resource_flags(r: Resources) -> List[str]:
     """The per-job ``sbatch`` overrides.  CLI flags win over the rendered
     header's #SBATCH defaults, so one shared ``.sbatch`` serves every job.
@@ -200,14 +169,16 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         job_dir, attempt, sbatch_name = _resolve_launch(
             jobset, base_dir, job, ".sbatch")
         gpu = _job_wants_gpu(job_dir, job)
-        pq = _resolve_domain(domain, gpu=gpu, project_dir=base_dir)
-        if pq is None and domain is None and jobset.kind == "sweep":
-            # A re-measured trial must land where its group did (review
-            # 2026-08-21): without this, the group followed the per-side
-            # preference while a named trial fell to the header's
-            # defaults -- a different partition, silently breaking the
-            # compare-by-node-type premise.  Ladders keep the defaults.
-            pq = _preferred_domain(Path(base_dir), gpu)
+        # ONE WALK, both paths (2026-08-23).  A re-measured trial must land
+        # where its group did (review 2026-08-21): without this the group
+        # followed the per-side preference while a named trial fell to the
+        # header's defaults -- a different partition, silently breaking the
+        # compare-by-node-type premise.  A ladder keeps the defaults, so it
+        # asks for no placement at all rather than getting a different one.
+        placement = None
+        if domain or jobset.kind == "sweep":
+            placement = _place(Path(base_dir), gpu_side=gpu, named=domain,
+                               label=job.name)
 
         # WHICH CALCULATION, then which stage.  `-J` carried the bare stage
         # name until 2026-08-10, so three concurrent ladders showed
@@ -216,8 +187,8 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         # and it showed you nothing.  `JobSet.name` is the id (run-identity.md
         # § 2), so it goes first and the stage qualifies it.
         cmd = ["sbatch", "-J", _scheduler_job_name(jobset, job)]
-        if pq:
-            cmd += ["-p", pq[0], "-q", pq[1]]
+        if placement is not None:
+            cmd += ["-p", placement.partition, "-q", placement.qos]
         cmd += _sbatch_resource_flags(job.resources)
         # The launch-door claim, EXPLICIT on the command line: environment
         # inheritance alone is fragile (sites override SLURM's --export
@@ -519,7 +490,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     group's envelope asks no ``gres`` and devices are never held while CPU
     trials run.  The names come from the SET's composition, not from what
     is pending, so a side keeps its name across resubmissions.  ``domain``
-    applies to both sides through :func:`_resolve_domain` (a GPU side
+    applies to both sides through `scheduler.place` (a GPU side
     prefers the domain's ``gpu_partition``); ``only`` (``"cpu"``/``"gpu"``)
     submits one side -- and a side this machine cannot launch simply stays
     pending for a later `launch bench``, which is the cross-cluster lane.
@@ -595,124 +566,39 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     return results
 
 
-def gpu_domain_row(routing, needed_s: Optional[int] = None) -> Optional[dict]:
-    """THE row that speaks for the GPU nodes -- **one selector, three
-    consumers** (2026-08-21 review): `prep`'s device inventory, `prep`'s
-    per-family core cap, and `launch`'s side routing all read THIS row,
-    so the cap can never be taken from one domain while the group is
-    routed to another.  The rule is the menu's own: cheapest ceiling
-    first, the first gpu-capable row is the recommendation.
+def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
+           mem_gb=None, gpus=None, named=None, label: str = ""):
+    """This side's placement — `scheduler.place`, walked with THIS machine's
+    menu (`execution/scheduler.md` § 5).
 
-    ``needed_s`` -- **a ceiling too low is not a candidate** (2026-08-23).
-    Cheapest-ceiling-first makes the shortest queue the recommendation,
-    which is right for one bounded trial and wrong for a group of them:
-    on ASU Sol the first gpu-capable row is ``htc/debug`` at **15
-    minutes**, so a grouped submission asking for tens of minutes was
-    refused by the scheduler with ``QOSMaxWallDurationPerJobLimit`` while
-    ``htc/public`` (4h) and ``general`` (14d) sat further down the same
-    menu, both gpu-capable and both large enough.  A caller that knows the
-    wall passes it and gets the cheapest ceiling that can actually HOLD
-    the job; a caller that does not (prep's inventory and core cap, which
-    ask about capability rather than duration) passes nothing and the rule
-    is exactly as it was.
+    Fetching the menu is this layer's job; deciding is not.  The routing walk
+    lived here until 2026-08-23, which is why the CPU and GPU sides were
+    written separately and disagreed: the GPU side looked only at the first
+    gpu-capable row, and when that row's 15-minute ceiling could not hold a
+    38-minute group it returned "no preference" and let the header's
+    directives -- naming that same row -- stand.
 
-    A row stating no ``max_time`` counts as fitting -- an unstated limit
-    is not a small one.
+    Returns ``None`` when this machine has no menu at all: nothing was
+    promised, so the rendered header stands (R6).  Raises `SubmitError` when
+    there IS a menu and nothing on it can take the request -- we hold the
+    record that says the scheduler will refuse, so we say so here rather than
+    spend a round trip finding out.
     """
-    from ..scheduler import domain_serves_gpu
-    for row in routing:
-        if domain_serves_gpu(row) and _row_holds(row, needed_s):
-            return row
-    return None
-
-
-def _row_holds(row, needed_s: Optional[int]) -> bool:
-    """Can this domain hold a job of ``needed_s``?
-
-    A thin yes/no over :func:`scheduler.admits`, which is where the
-    request-versus-record comparison lives for every constraint.  One reader
-    for both sides, so the CPU branch and the GPU branch cannot disagree
-    about what "fits" means -- they did until 2026-08-23, when the CPU branch
-    walked the menu for a row that fits and the GPU branch only ever looked
-    at the first gpu-capable one.
-    """
-    from ..scheduler import Request, admits
-    return not admits(row, Request(walltime_s=needed_s))
-
-
-def _preferred_domain(base: Path, gpu_side: bool,
-                      needed_s: Optional[int] = None) -> Optional[tuple]:
-    """The per-side routing PREFERENCE (user, 2026-08-21; `generator.md`
-    § 4.3a): a CPU group MAY run on a gpu-capable cluster, but when the
-    menu holds a cpu-only domain it is preferred -- idle devices cost --
-    and a GPU group takes THE gpu row (:func:`gpu_domain_row`, its
-    ``gpu_partition`` when declared).  ``needed_s`` is the group's wall:
-    a row whose stated ``max_time`` cannot hold it is skipped (found in
-    review 2026-08-21 -- a 15-minute ``debug`` row sorted first and a
-    three-hour group would have been submitted into it and killed); a
-    row stating no wall counts as fitting.  No fitting row -> ``None``:
-    the rendered header's default directives stand.
-
-    ``--domain`` OVERRIDES this for both sides (through
-    :func:`_resolve_domain`); ``--only`` + ``--domain`` places one side at
-    a time, which is the fully explicit form.
-    """
-    from ..scheduler import domain_serves_gpu
     from .. import runtime_config as _rc
-
-    routing = _rc.get_routing(project_dir=base)
-    if gpu_side:
-        # The wall goes to the SELECTOR, so a ceiling too low is not a
-        # candidate at all -- rather than picking row 0 and then asking
-        # whether it fits, which answered "no" and fell through to the
-        # header's directives naming that very row.
-        row = gpu_domain_row(routing, needed_s=needed_s)
-        if row is not None:
-            return ((row.gpu_partition or row.partition),
-                    row.qos)
-        return None
-    for row in routing:
-        if domain_serves_gpu(row):
-            continue
-        if _row_holds(row, needed_s):
-            return (row.partition, row.qos)
-    return None
-
-
-def _refuse_if_nothing_holds(base: Path, gpu_side: bool, needed_s: int,
-                             name: str) -> None:
-    """Refuse a submission the recorded menu says will be rejected.
-
-    Only fires when there IS a menu and every row this side could use
-    states a ceiling too low.  The message names the wall and each
-    candidate's ceiling, because "too long" without the two numbers sends
-    a user to read `scontrol` for what we already have on disk.
-    """
-    from ..scheduler import domain_serves_gpu
-    from ..scheduler.probe import parse_walltime
-    from .. import runtime_config as _rc
-
-    routing = _rc.get_routing(project_dir=base)
-    if not routing:
-        return                          # nothing was promised; header stands
-    usable = [d for d in routing
-              if domain_serves_gpu(d)] if gpu_side else [
-              d for d in routing if not domain_serves_gpu(d)]
-    if not usable or any(_row_holds(d, needed_s) for d in usable):
-        return                          # some row fits, or none is ours
-    from ..scheduler import Request, admits
-    want = Request(walltime_s=needed_s)
-    reasons = []
-    for d in usable:
-        reasons.extend(admits(d, want))
-    raise SubmitError(
-        f"{name} needs {_slurm_time(needed_s)} and no "
-        f"{'gpu-capable ' if gpu_side else ''}domain on this machine can "
-        f"take it:\n    " + "\n    ".join(reasons) + "\n"
-        f"  Nothing was submitted -- the scheduler would refuse it "
-        f"(QOSMaxWallDurationPerJobLimit).  Either run fewer trials per "
-        f"group, lower --trial-timeout, or name a longer domain with "
-        f"--domain <name>.")
+    from ..scheduler import Request, parse_mem_gb
+    from ..scheduler.place import place, Unplaceable
+    want = Request(ranks=cores, cpus_per_task=1, gpus=gpus or None,
+                   mem_gb=parse_mem_gb(mem_gb), walltime_s=needed_s)
+    try:
+        return place(_rc.get_routing(project_dir=base), want,
+                     prefer_gpu=gpu_side, named=named)
+    except Unplaceable as exc:
+        raise SubmitError(
+            f"{label or 'this group'} cannot be placed on this machine:\n    "
+            + "\n    ".join(exc.reasons)
+            + "\n  Nothing was submitted -- the scheduler would refuse it.  "
+              "Either run fewer trials per group, lower --trial-timeout, or "
+              "name a longer domain with --domain <name>.") from None
 
 
 def _shelf_key(job: "Job"):
@@ -856,26 +742,23 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     # The side IS the GPU answer -- partitioned by the deck's own word in
     # `submit_bench_group`, so nothing is re-derived here.  A named
     # --domain overrides; otherwise each side takes its capability-fitting
-    # preference from the menu (`_preferred_domain`).
-    pq = (_resolve_domain(domain, gpu=gpu_side, project_dir=base)
-          if domain else _preferred_domain(base, gpu_side,
-                                           needed_s=total_s))
-    if pq:
-        cmd += ["-p", pq[0], "-q", pq[1]]
-    elif not domain:
-        # NOTHING FITS IS NOT "USE THE DEFAULT" (2026-08-23).  Falling
-        # through here let the rendered header's directives stand -- and
-        # the header names the row this menu walk just rejected as too
-        # small, because prep picked it by the same cheapest-ceiling rule
-        # without knowing the wall.  On Sol that meant submitting tens of
-        # minutes of work into `htc/debug`'s 15-minute ceiling and
-        # learning about it from `QOSMaxWallDurationPerJobLimit`.
-        #
-        # We hold the record that says it cannot be accepted, so we say so
-        # here instead of spending a round trip to find out.  A menu with
-        # no rows at all is a different situation -- nothing was promised
-        # and the header is all there is -- so it still proceeds.
-        _refuse_if_nothing_holds(base, gpu_side, total_s, name)
+    # preference from the menu (`scheduler.place`, one walk).
+    # R9 -- WHAT WAS ADMITTED WHEN THE WORK WAS BUILT IS RE-ADMITTED WHEN IT
+    # IS SENT.  The envelope was decided at `prep`, against whatever the
+    # machine record said THEN; this walk uses what it says NOW.  The two can
+    # differ precisely in the case that matters: a bundle prepared on one
+    # machine and rsync'd to another, or prepared before the machine's own
+    # probe learned a limit.  The Au-BDT-Au sweep is the worked example --
+    # its cells were sized against a record whose gpu rows said
+    # `max_cores: None`, and Sol has since measured 48.
+    placement = _place(base, gpu_side=gpu_side, needed_s=total_s,
+                       cores=(envelope.mpi_np or 0)
+                             * max(envelope.cpus_per_task or 1, 1) or None,
+                       mem_gb=envelope.mem,
+                       gpus=_gres_count(envelope.gres or ""),
+                       named=domain, label=name)
+    if placement is not None:
+        cmd += ["-p", placement.partition, "-q", placement.qos]
     # The same shape as a single job: the rendered .sbatch header carries
     # the SITE directives (partition/qos/account/mail -- runwrap's one
     # header emitter, so the group cannot drift from what every trial
@@ -905,7 +788,9 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     # line used the one resolved above.
     header = _render_sbatch_for(base / f"{name}.sh",
                                 resources=envelope, env=None,
-                                domain_pq=(pq if pq else None))
+                                domain_pq=((placement.partition,
+                                            placement.qos)
+                                           if placement else None))
     if header is None:
         raise SubmitError(
             "submit mode needs a queue, and this machine has neither a "

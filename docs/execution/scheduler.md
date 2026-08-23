@@ -21,12 +21,16 @@ between them. This document says what that subsystem *is*, so the pieces have
 one home and one set of rules instead of one treatment per place someone
 noticed a problem.
 
-> **Status**, 2026-08-23. Phases 1 and 2 of § 8 have landed:
-> `scheduler/record.py`, `scheduler/probe.py` and `scheduler/admit.py` exist,
-> and `molbuilder.scheduler` is the package. **Placement and emission have not
-> moved yet** (phases 3–5), so where § 1's tables say they live is still where
-> they live — that is the point of those tables, and they stop being true the
-> moment phase 5 lands.
+> **Status**, 2026-08-23. Phases 1–4 of § 8 have landed: `record`, `probe`,
+> `admit` and `place` are the subsystem, `molbuilder.scheduler` is the
+> package, and placement is one walk that both the group and single-job paths
+> take. **Emission has not moved** (phase 5) — the `#SBATCH` header and the
+> `sbatch` flags are still two writers, handed the same placement rather than
+> deriving one each.
+>
+> § 1's table is written in the **past tense on purpose**: it records where
+> each responsibility lived when the two Sol failures happened, which is the
+> evidence for why the subsystem exists. It is history, not a map.
 
 ---
 
@@ -356,9 +360,15 @@ The schedule is `roadmap.md` § 7.6, not here (R3).
    dictionary key against a declared field. Steps 4 and 5 both assume typed
    rows, and R2's memory comparison needs the unit conversion this step gives
    the request.
-4. **Move placement out of `jobset/submit.py`.** The CPU and GPU branches
-   become the single walk of § 5, and `--domain` starts going through
-   admission like everything else.
+4. **Move placement out of `jobset/submit.py`.** *(Done 2026-08-23.)* The CPU
+   and GPU branches became the single walk of § 5; `--domain` now goes through
+   admission like everything else; and **R9** arrived with it, because the
+   walk is finally callable from both moments. Two corrections fell out of
+   doing it: R3 had to be extended to devices (a domain that states no GPU
+   inventory is not claiming it has none — refusing on silence made a terse
+   record unusable the moment the named path started being admitted), and
+   preferring nodes that *do* have devices stayed in `candidates`, where a
+   choice belongs, rather than migrating into admission.
 5. **Unify the emitters.** The last and most valuable step: the header and the
    flags stop being two functions.
 
