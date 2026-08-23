@@ -310,23 +310,19 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
     _policy = str(getattr(cfg, "on_nonconvergence", "halt") or "halt").lower()
     if _policy == "continue":
         _retries = int(getattr(cfg, "geom_continue_retries", 0) or 0)
-        out += [
-            f"    _budget = 1 + {_retries}",
-            "    for _attempt in range(_budget):",
-            "        try:",
-            f"            mol = _geom_opt(_mf_relax, {_opt_kw},",
-            "                            assert_convergence=True, **_conv)",
-            "            break",
-            "        except RuntimeError as _e:",
-            "            if 'not converged' not in str(_e).lower():",
-            "                raise            # a genuinely different error",
-            "            if _attempt == _budget - 1:",
-            "                raise            # exhausted -> halt",
-            "            print(f'WARN: relaxation did not converge in '",
-            "                  f'{GEOM_MAX_STEPS} steps; retrying '",
-            "                  f'({_budget - 1 - _attempt} left)')",
-            "    state['relaxation']['converged'] = True",
-        ]
+        # THE ONE RETRY LOOP (`pyscf/relax_policy.py`).  This block spelled
+        # the optimization deck's loop out a second time until 2026-08-23 --
+        # same budget, same convergence-vs-real-error test, same countdown --
+        # so a fix to either reached one deck of the two.  The CALL is this
+        # deck's own (a two-line `_geom_opt`, aligned under its own opening
+        # paren); the loop around it is not.
+        from .relax_policy import emit_retry_loop
+        out += emit_retry_loop(
+            [f"mol = _geom_opt(_mf_relax, {_opt_kw},",
+             "                assert_convergence=True, **_conv)"],
+            retries=_retries, steps_var="GEOM_MAX_STEPS",
+            what="relaxation ", indent="    ")
+        out += ["    state['relaxation']['converged'] = True"]
     elif _policy == "proceed":
         out += [
             f"    mol = _geom_opt(_mf_relax, {_opt_kw},",

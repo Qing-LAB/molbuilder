@@ -1246,19 +1246,13 @@ def _emit_optimization(cfg: PySCFConfig,
         if v:
             out.append(f"#   retry the same targets up to {retries} more time(s)")
             out.append("#   (total budget = max_steps x (1 + retries)), then raise.")
-        out.append(f"_budget = 1 + {retries}")
-        out.append("for _attempt in range(_budget):")
-        out.append("    try:")
-        out.append("        mol_eq = _mb_run_optimization(_hard_fail=True)")
-        out.append("        break")
-        out.append("    except RuntimeError as _e:")
-        out.append("        if 'not converged' not in str(_e).lower():")
-        out.append("            raise            # a genuinely different error")
-        out.append("        if _attempt == _budget - 1:")
-        out.append("            raise            # exhausted -> halt")
-        out.append('        print(f"WARN: did not converge in "')
-        out.append('              f"{_GEOM_MAX_STEPS} steps; retrying "')
-        out.append('              f"({_budget - 1 - _attempt} left)")')
+        # THE ONE RETRY LOOP (`pyscf/relax_policy.py`).  The vibration deck's
+        # relaxation spelled the same loop out until 2026-08-23, so a fix here
+        # reached one deck of the two.
+        from .relax_policy import emit_retry_loop
+        out += emit_retry_loop(
+            ["mol_eq = _mb_run_optimization(_hard_fail=True)"],
+            retries=retries, steps_var="_GEOM_MAX_STEPS")
     else:
         if v:
             out.append("#   raise on non-convergence rather than hand on a")
