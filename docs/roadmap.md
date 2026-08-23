@@ -1367,8 +1367,8 @@ is green.*
 | ~~**4**~~ | ~~the **type framework**~~ **done**: the coverage test makes a new type force a decision at all five readers, and `DECL_TYPES` is gone — the narrower set is derived from `template.TYPES` by a stated rule, exactly reproducing § 3.3's five | (a) before (b) worked as intended: the residue fell out of the mechanism instead of being argued |
 | **5** | **validation display**: the findings file beside the deck (`{label}.validation.txt`), written after the check · `info` reaches the CLI (R4 said three severities; it printed two) | ~~then delete `Issue.stage`~~ **withdrawn** — the field has five writers in the task preflight; see § 7.5 |
 | **6a** | GPU **C1 + C2**, their own commit | **done** `3b36d012` — and landing them separately was right: a semantic correction inside a 22-file sweep is one nobody reads |
-| **6b** | the **rename** `use_gpu` → `use_gpu` | ⛔ **not mechanical — re-scoped 2026-08-23, needs a decision.** See below |
-| **7** | GPU **G7** — the wrapper is handed the value instead of grepping the deck at four call sites | ⛔ blocked behind 6b (conflict **E**) |
+| **6b** | the **merge** — one item, one name | **done** `8bc2691c`, and it needed no decision: § 6.3 specifies it, `restart` demonstrates it, `net_charge` did it on 2026-08-19 |
+| **7** | GPU **G7** — the wrapper is told, not made to guess | **done** — the answer rides `Resources.use_gpu` (the tenth field, § 6.2 amended with it); one door prefers it, and the deck scan survives only where there is no allocation to ask |
 
 #### Where they collide
 
@@ -1400,33 +1400,27 @@ about **this deck**, the other labels findings from a validator that sees
 ordering rule did do is work: the review that found the writers happened
 because the deletion was staged behind the file rather than done first.)*
 
-**⛔ 6b IS A DESIGN CHANGE, NOT A SWEEP — and this plan called it "183 sites,
-mechanical", which was wrong.** Four files carry *both* names today, and one
-of them is the catalogue: it holds `[item.use_gpu]` (SIESTA) **and**
-`[item.use_gpu]` (PySCF). TOML cannot hold the key twice, so the rename *is*
-the merge — they are one unit, exactly as `template.md` § 6.3 says. And the
-two items are not the same shape:
+**⛔ ~~6b IS A DESIGN CHANGE, NOT A SWEEP~~ — I was wrong twice about this
+row, and the second time is the instructive one.**
 
-| | `use_gpu` (SIESTA) | `use_gpu` (PySCF) |
-|---|---|---|
-| `anchor` | `Diag.ELPA.GPU` | `gpu4pyscf` |
-| `engine_key` | `Diag.ELPA.GPU` | `gpu4pyscf: mf = mf.to_gpu()` |
-| `read_by` | `["wrapper"]` | *(none)* |
+First I sized it *"183 sites, mechanical"*. Then, finding the catalogue holds
+`[item.enable_gpu]` **and** `[item.use_gpu]` and that TOML cannot hold the key
+twice, I called it blocked on a catalogue-format decision and asked the user
+for one.
 
-`template.md` says a merged item is `kind = "deck"` — *"molbuilder's own item,
-reaching the deck through molbuilder's rule rather than one keyword"* — and
-the machinery exists and is used (16 deck-kind items today). **But the format
-still wants a single `expands` list**, and SIESTA's reach is a keyword while
-PySCF's is a method call on the mean field. One item declaring two engines'
-different mechanisms is the open question, and it is a catalogue-format
-decision rather than a rename.
+**Both wrong, and § 6.3 answers it in forty lines.** A merged item is
+`kind = "deck"` with no anchor and `expands` naming every keyword it may
+produce; the check gate demands only the keyword the emitted line actually
+names, so each engine is asked for its own. `restart` has been that shape for
+weeks. `net_charge` — *the other half of the same ruling* — merged exactly this
+way on **2026-08-19**. A per-engine `expands` was considered and **rejected**
+on 2026-08-18, because `section` was that per-engine key and was retired at @2
+for the drift such a key invites.
 
-`read_by` survives a merge (it is kind-independent), so that half is fine.
-
-*Why this was not obvious from the doc set:* `template.md` § 12.1 row 9 lists
-the merge as *"ruled and un-renamed"* with 117 sites for `net_charge` alone —
-which reads as scale, not as difficulty. The difficulty is one line in one
-file.
+I reached "needs a decision" by reconstructing the section from greps instead
+of reading it. The cost was a question the user should never have been asked,
+and the lesson is the one already at the top of this file: **open the document
+that owns the concept before acting.**
 
 **E — G7 must follow the rename**, so it is blocked behind 6b too: `runwrap`
 names the flag zero times today (it greps the keyword), so doing G7 first

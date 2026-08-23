@@ -115,9 +115,13 @@ A CPU-ELPA deck writes `Diag.ELPA.GPU .false.` **explicitly** — source ELPA
 defaults to the GPU codepath, so an omitted flag crashes a CPU run.
 
 **G7 — The value travels; the deck is not re-read for it.** `use_gpu`
-declares `read_by = ["wrapper"]` precisely so the wrapper can be *handed*
-the value. Grepping the rendered deck for `Diag.ELPA.GPU` is what it does
-today, at four call sites, and § 6's transition ends it.
+declares `read_by = ["wrapper"]` precisely so the wrapper can be *handed* the
+value. **Landed 2026-08-23:** the answer rides `Resources.use_gpu` — the
+allocation that already travels there whole (A8) — and one door,
+`runwrap._wants_gpu`, prefers it. The deck scan remains only for a caller that
+states nothing, which is not re-deriving: that path has no allocation to ask.
+*The scan matched a SIESTA keyword, so a PySCF GPU run could not route at all;
+that is what this bought beyond tidiness.*
 
 **G8 — Capability is checked where it can be seen.** SIESTA's GPU capability
 is an **environment** — visible on the prepping machine, so checked at prep.

@@ -1743,7 +1743,7 @@ them; within a layer, one concept has exactly one name.
 | Partition | `directives.partition` | `partition` → `-p` | resolved from `domain` |
 | QoS | `directives.qos` | `qos` → `-q` | resolved from `domain` |
 | Routing domain | `routing[].name` / `execution.domain` | `domain` (in `jobset.Resources`) | `--domain` → `-p`/`-q` |
-| GPU request | `use_gpu` | `gres` → `--gres` | derived from the deck's `Diag.ELPA.GPU` + GPU type. *(This row named `diag_algorithm` as a second source until 2026-08-14. The solver choice decides no resource and no environment — the packaged SIESTA runs ELPA on CPU, `engines/siesta.md` § 7.2 — so `Diag.ELPA.GPU` is the one keyword read.)* |
+| GPU request | `use_gpu` | `gres` → `--gres`, and `use_gpu` itself rides `Resources` | the GPU type comes from the record; the ANSWER is carried, not read back out of the deck (2026-08-23, `execution/gpu.md` G7). *(This row named `diag_algorithm` as a second source until 2026-08-14. The solver choice decides no resource and no environment — the packaged SIESTA runs ELPA on CPU, `engines/siesta.md` § 7.2 — so `Diag.ELPA.GPU` is the one keyword read.)* |
 | Eigensolver | `diag_algorithm` (`ScaLAPACK` / `ELPA-1STAGE` / `ELPA-2STAGE`) | `.fdf`: `Diag.Algorithm` | `render_fdf` |
 | Non-convergence policy (**PySCF only**) | `on_nonconvergence` | *(no scheduler name)* | the emitted `.py`'s own control flow — PySCF's ladder ran as a loop in one process, so the policy was a branch inside the script (⚠ that loop is retired, [`stages.md § 1.1a`](?doc=engines/stages.md)). SIESTA's stages are separate jobs a person starts, so it has no equivalent; `engines/stages.md § 3` keeps the field out of the shared stage schema for that reason |
 | Warm-retry budget | `continue_retries` (1–5) | `continue_retries` — **not a SLURM flag** | `resolve.py` — rides the element's `Resources`; `prep` bakes it into the wrapper |
@@ -1790,12 +1790,19 @@ concept, one name" framing here is the SLURM mapping, not a Python rename.)
 > the object; which of the two names it uses inside is its own business, and no
 > caller can pass a subset. Rule A9 checks the pair it produces.
 
-The `jobset.Resources` dataclass holds exactly **nine** fields — `domain`,
-`time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`, plus the two
+The `jobset.Resources` dataclass holds exactly **ten** fields — `domain`,
+`time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`, plus the three
 riders that become no scheduler flag: `continue_retries` (the warm-retry
-budget, this table's last row) and `max_memory_mb` (the wrapper's
+budget, this table's last row), `max_memory_mb` (the wrapper's
 `ulimit -v` cap — the runtime guard against a runaway allocation, applied
-in the wrapper itself, distinct from `mem` which asks the scheduler).
+in the wrapper itself, distinct from `mem` which asks the scheduler), and
+`use_gpu` (**added 2026-08-23**, `execution/gpu.md` G7 — *does this run use a
+GPU*, carried rather than re-derived. The wrapper depends on that answer
+(`read_by = ["wrapper"]`) and satisfied it by **grepping the rendered deck for
+`Diag.ELPA.GPU`** at four sites: a layer re-deriving what this object already
+held, and matching a SIESTA keyword to do it, so a PySCF GPU run could not
+route at all. It rides the allocation for the reason `continue_retries` does —
+*carried there, it cannot be forgotten by one of them.*).
 *(This sentence said "exactly seven" while its own table already carried
 `continue_retries` — amended U19, 2026-08-12, and pinned by an equality
 test in both directions.)*  `partition` and `qos` are **not** `Resources`

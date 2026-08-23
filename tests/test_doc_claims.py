@@ -109,22 +109,37 @@ def test_the_retired_type_is_named_nowhere_as_live():
         )
 
 
-def test_resources_is_nine_fields_and_the_contract_says_so():
+#: `Resources`' field count, in ENGLISH -- the spelling § 6.2 uses.  Kept as a
+#: map rather than a literal so raising the count is one edit here plus one in
+#: the contract, which is exactly the pair this test exists to keep together.
+_COUNT_WORD = {7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven"}
+
+
+def test_the_resources_field_count_is_stated_in_prose_and_true():
     """The instance that motivated this file, kept as its own test.
 
-    `job-contracts.md` § 6.2 states the count in prose (*"exactly nine"*), so
-    the number is checkable and not only the member list.  It was wrong once,
-    in both directions -- the contract said seven while its own table carried
-    eight, and the guide showed seven while its own caption said nine.
+    `job-contracts.md` § 6.2 states the count in prose, so the NUMBER is
+    checkable and not only the member list.  It was wrong once in both
+    directions -- the contract said seven while its own table carried eight,
+    and the guide showed seven while its own caption said nine.
+
+    *Was `..._is_nine_fields_...` until 2026-08-23, when `use_gpu` became the
+    tenth (`execution/gpu.md` G7).  The name carried the number, so the count
+    lived in three places -- the class, the contract, and a test's own title.
+    It now reads the word out of the contract and compares, which is the same
+    check with one fewer place to update.*
     """
     n = len(dataclasses.fields(Resources))
-    assert n == 9, f"Resources has {n} fields; update this test AND § 6.2"
     text = (DOCS / "execution/job-contracts.md").read_text(encoding="utf-8")
-    assert re.search(r"exactly \*\*nine\*\*|holds exactly \*\*nine\*\*", text), (
+    m = re.search(r"holds exactly \*\*([a-z]+)\*\* fields", text)
+    assert m, (
         "job-contracts.md § 6.2 no longer states the field COUNT in prose. "
         "The count is what drifted last time (seven vs nine), so it is worth "
         "stating and worth pinning."
     )
+    assert m.group(1) == _COUNT_WORD.get(n, "?"), (
+        f"Resources has {n} fields; § 6.2 says {m.group(1)!r}.  A field "
+        f"arrives with its § 6.2 decision, or it does not arrive")
 
 
 def test_the_template_required_keys_agree_across_their_three_homes():

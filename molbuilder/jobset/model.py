@@ -79,6 +79,17 @@ class Resources:
     exclusive:     Optional[bool]  = None
     mem:           Optional[str]   = None    # SLURM --mem (e.g. "120G", "0")
     gres:          Optional[str]   = None    # SLURM --gres (e.g. "gpu:a100:1")
+    #: Whether this run uses a GPU -- the ANSWER, carried rather than
+    #: re-derived.  `read_by = ["wrapper"]` on the catalogue item says the
+    #: wrapper depends on it (`engines/template.md` § 6.1), and until
+    #: 2026-08-23 the wrapper satisfied that by grepping the rendered deck
+    #: for `Diag.ELPA.GPU` at four sites -- a layer re-deriving what another
+    #: layer already held, and doing it by matching a SIESTA keyword, so a
+    #: PySCF GPU run could not route at all.  ``None`` means the caller did
+    #: not say, and the wrapper falls back to reading the artifact it was
+    #: handed -- which is a different thing from re-deriving: a wrapper
+    #: written for a deck someone points at has nothing else to ask.
+    use_gpu:       Optional[bool]  = None
     mpi_np:        Optional[int]   = None    # SLURM -n (MPI ranks)
     cpus_per_task: Optional[int]   = None    # SLURM -c (OMP cores/rank); == SiestaConfig.omp_threads
     continue_retries: Optional[int] = None   # NOT a SLURM flag -- baked into the wrapper

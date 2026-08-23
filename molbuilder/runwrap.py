@@ -1770,6 +1770,28 @@ def _effective_parameters_block(script_path: "Path") -> str:
     return "\n".join(lines) + "\n"
 
 
+
+def _wants_gpu(script_path: Path, resources=None) -> bool:
+    """Does this run use a GPU?  **Told first, read second.**
+
+    `execution/gpu.md` G7.  The catalogue item declares
+    ``read_by = ["wrapper"]``, and until 2026-08-23 the wrapper satisfied that
+    by grepping the rendered deck for ``Diag.ELPA.GPU`` at four sites -- a
+    layer re-deriving a value another layer already held, and matching a
+    SIESTA KEYWORD to do it, so a PySCF GPU run could not route at all.
+
+    ``resources.use_gpu`` is the answer, carried on the allocation that
+    already travels here whole (A8).  Falling back to the deck when it is
+    unstated is not the same defect: a wrapper written for a deck someone
+    points at has nothing else to ask, and that path has no allocation.
+    """
+    if resources is not None:
+        stated = getattr(resources, "use_gpu", None)
+        if stated is not None:
+            return bool(stated)
+    return _fdf_requests_gpu(script_path)
+
+
 def render_run_wrapper(script_path: Path, *,
                         resources: "Resources",
                         env: Optional[str] = None,
@@ -1875,7 +1897,7 @@ def render_run_wrapper(script_path: Path, *,
     # choosing the source build for its external ELPA stays available
     # without molbuilder guessing on their behalf.
     env_lookup_category = category
-    if category == "siesta" and env is None and _fdf_requests_gpu(script_path):
+    if category == "siesta" and env is None and _wants_gpu(script_path, resources):
         env_lookup_category = "siesta-gpu"
 
     caps = get_capabilities()
@@ -2009,7 +2031,7 @@ def render_run_wrapper(script_path: Path, *,
         # so we sit firmly in the "multi-rank-per-GPU" regime; the
         # 1-rank-per-GPU best case only applies when NCCL is on.
         gpu_mode = (script_path.suffix.lower() == ".fdf"
-                    and _fdf_requests_gpu(script_path))
+                    and _wants_gpu(script_path, resources))
         # Resolve MPI rank count.  SIESTA is fundamentally an MPI
         # code; even single-host execution is launched via mpirun.
         # When the user leaves mpi_np blank we default to ALL physical
@@ -3652,7 +3674,7 @@ def _monitor_source() -> str:
 
 
 def _build_mem_audit(script_path: Path, *,
-                     gres: Optional[str],
+                     resources: "Resources",
                      env: Optional[str]) -> Optional[dict]:
     """Build the baked memory-model coefficients for the runtime
     estimate-vs-allocation audit (:func:`_siesta_mem_audit_block`).
@@ -3666,10 +3688,10 @@ def _build_mem_audit(script_path: Path, *,
     """
     if script_path.suffix.lower() != ".fdf":
         return None
-    if gres is not None:
+    if resources.gres is not None:
         return None  # GPU job (explicit --gres)
     try:
-        if env is None and _fdf_requests_gpu(script_path):
+        if env is None and _wants_gpu(script_path, resources):
             return None  # GPU job (fdf requests ELPA-CUDA)
         from . import runtime_config as _rc
         project_dir = script_path.parent if script_path.parent.exists() else None
@@ -3769,7 +3791,7 @@ def render_wrappers(script_path: Path, *,
                if script_path.suffix.lower() == ".fdf" else None)
     text = render_run_wrapper(
         script_path, resources=r, env=env, n_atoms=n_atoms,
-        mem_audit=_build_mem_audit(script_path, gres=r.gres, env=env),
+        mem_audit=_build_mem_audit(script_path, resources=r, env=env),
     )
     _validate_rendered_wrapper(text, script_path)
     # ``stem + ".run.sh"`` rather than ``with_suffix(".run.sh")``: the latter
@@ -3917,7 +3939,7 @@ def _render_sbatch_for(script_path: Path,
     # Is this a GPU job?  Only SIESTA .fdf can be; honour an explicit
     # --env override that points away from GPU (mirrors the run-wrapper's
     # env_lookup_category logic).
-    gpu = bool(is_siesta and env is None and _fdf_requests_gpu(script_path))
+    gpu = bool(is_siesta and env is None and _wants_gpu(script_path, resources))
     gpu_type: Optional[str] = None
     gpu_count: Optional[int] = None
     if gres is not None:

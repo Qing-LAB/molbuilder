@@ -108,7 +108,7 @@ the engine seam, and for the same reason.)*
 | **the template is the master; nothing derives it from a config class** | ✅ wired — `render_template` was deleted 2026-08-14 | § 2.1 |
 | **a machine fact's value is refused on read** | ✅ wired — `template_fields` + `config_from_template` | § 7 |
 | **`kind` lets a layer find its own items** | ⚠ **not a dispatch axis.** No caller filters `select` by `kind`. What `kind` does today is force `anchor` on an engine item and `expands` on a deck one — a completeness check on the catalogue — and tell a *reader* who owns the item | § 6, § 8 |
-| **`read_by` tells the wrapper which items it depends on** | ⚠ **declared, not yet consumed.** `runwrap.py` does not import `template`; it still scans the deck text for `Diag.ELPA.GPU`. `read_by` is a **declaration kept in step with those scanners** by `tests/test_template_declarations.py::test_every_deck_keyword_the_wrapper_reads_is_declared_read_by` | § 6.1, § 11.3 |
+| **`read_by` tells the wrapper which items it depends on** | ✅ **consumed since 2026-08-23.** The answer rides `Resources.use_gpu` — the allocation that already travels to the wrapper whole (A8) — and `runwrap._wants_gpu` prefers it, reading the deck only when a caller states nothing (a wrapper written for a deck someone points at has no allocation to ask). The keyword scan is no longer how a GPU run is recognised, which is what let a PySCF GPU run route at all | § 6.1, § 11.3, `execution/gpu.md` G7 |
 | **`kind = "monitor"`** | ⚠ **zero items carry it.** `monitor.py` reads a log; it is not a configured layer. The two molwatch switches are `kind="produce"`, which is correct — the *producer* decides what the script writes | § 6 |
 
 **Why the declarations are worth keeping while unconsumed, which is the part
@@ -982,11 +982,14 @@ its value.** They are different questions and one key cannot answer both.
 > the ground that an empty result cannot tell "nothing matched" from "you asked
 > for something that does not exist". Audit § 1.3a.)*
 
-`use_gpu` is unambiguously the engine's — it becomes the SIESTA keyword
-`Diag.ELPA.GPU` — *and* the wrapper acts on it, because a GPU deck needs the
-source-built environment **and** a GPU runtime: the `gres` ask, MPS, the NUMA
-pin, the rank/thread budget. So it is `kind="engine"` with
-`read_by = ["wrapper"]`.
+`use_gpu` reaches a deck in each engine's own way — the SIESTA keyword
+`Diag.ELPA.GPU`, PySCF's `mf.to_gpu()` — *and* the wrapper acts on it, because
+a GPU deck needs the source-built environment **and** a GPU runtime: the `gres`
+ask, MPS, the NUMA pin, the rank/thread budget. So it is `kind="deck"` (a
+merged item keeps no anchor, § 6.3) with `read_by = ["wrapper"]`.
+
+> *It was `kind="engine"` with `anchor = "Diag.ELPA.GPU"` until the merge
+> landed on 2026-08-23; `read_by` was unaffected, being kind-independent.*
 
 **Why that key earns its place — and where it stands today.** The wrapper finds
 this out by **reading the deck text**, which is a layer re-deriving an answer
@@ -995,11 +998,16 @@ another layer already holds — the habit
 remove. The target is that the wrapper is *told* which items it depends on, so
 a new engine declares its own without anyone editing the wrapper writer.
 
-> **⚠ That target is not reached, and this section said it was.** `runwrap.py`
-> does not import `template`; it still greps the rendered `.fdf` for
-> `Diag.ELPA.GPU`. So `read_by` today is a **declaration**, not a lookup —
-> nothing in the tree reads `Item.read_by` except the check that validates it
-> (§ 1.1a).
+> **✅ Reached 2026-08-23** — by carrying the answer rather than by importing
+> the catalogue into the wrapper. `resolve` puts `use_gpu` on the element's
+> `Resources` (the same ride `continue_retries` takes), and the wrapper asks
+> that. The deck scan survives only as the fallback for a caller that states
+> nothing, which is a different thing from re-deriving: that path has no
+> allocation to ask.
+>
+> **What it bought, beyond tidiness:** the scan matched a SIESTA keyword, so a
+> PySCF GPU run could not route to a GPU environment however correctly its
+> item declared `read_by`. Told, the wrapper needs no engine's vocabulary.
 >
 > **It is still worth carrying, for a reason that is checkable rather than
 > hopeful.** `tests/test_template_declarations.py::test_every_deck_keyword_the_wrapper_reads_is_declared_read_by`

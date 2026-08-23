@@ -433,6 +433,20 @@ def resolve(template_text: str, task, config_cls, *,
                 resources = dataclasses.replace(resources,
                                                 continue_retries=budget)
 
+        # ``use_gpu`` RIDES THE SAME WAY, 2026-08-23 (`execution/gpu.md` G7).
+        # The catalogue item declares `read_by = ["wrapper"]` and the wrapper
+        # satisfied that by GREPPING the rendered deck for `Diag.ELPA.GPU` --
+        # a layer re-deriving what this one already holds, and doing it by
+        # matching a SIESTA keyword, so a PySCF GPU run could not route at
+        # all.  An explicitly stated allocation still wins; otherwise the
+        # resolved config's answer rides the element, exactly as
+        # `continue_retries` does above and for the same reason.
+        if resources.use_gpu is None:
+            wants_gpu = getattr(values, "use_gpu", None)
+            if wants_gpu is not None:
+                resources = dataclasses.replace(resources,
+                                                use_gpu=bool(wants_gpu))
+
         elements.append(ResolvedConfig(
             values=values,
             resources=resources,
