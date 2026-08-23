@@ -429,9 +429,8 @@
     // ----- Listener bookkeeping ---------------------------------
     //
     // Every element-level addEventListener inside mountInspector goes
-    // through _on() so the registered teardown closure is captured in
-    // _cleanups[].  dispose() walks _cleanups in reverse to
-    // removeEventListener every one of them.
+    // through _on(), which registers the teardown at the same moment as the
+    // registration; dispose() hands the whole scope back in one call.
     //
     // On /results the host's innerHTML is cleared by the inspector
     // adapter after our dispose() returns, which on its own would
@@ -443,10 +442,13 @@
     // (c) the inspector grows a "remount in place" path that re-runs
     // init() and would otherwise leak the previous round of
     // listeners.  Mirrors lib/trajectory/core.js's dispose contract.
-    const _cleanups = [];
-    // The shared listener scope (lib/inspectors/lifecycle.js).  Registration
-    // and cleanup are written in one place, which is the only way they stay
-    // in step across mount/dispose cycles.
+    //
+    // THE SCOPE IS THE ONLY REGISTRY.  A local ``_cleanups`` array stood
+    // beside it for one commit on 2026-08-23 -- the leftover of the array
+    // ``_on`` used to push into before the scope was extracted -- and
+    // dispose() drained THAT while every listener sat in the scope, so a
+    // mount/dispose cycle removed nothing at all.  Two registries is the
+    // same defect as two readers: one of them is the one that gets used.
     var _listeners = root.molbuilder.inspectorLifecycle.listeners();
     function _on(target, event, handler, opts) {
         _listeners.on(target, event, handler, opts);
@@ -2845,9 +2847,8 @@
     function _wireRefreshListener() {
         const C = (window.molbuilder || {}).constants;
         if (!C || !C.EVENT_REFRESH_REQUESTED) return;
-        // Route through the _on() helper so dispose() tears down
-        // via _cleanups — same contract as every other listener
-        // registered in this module.  Pinned by
+        // Route through the _on() helper so dispose() tears this down
+        // with every other listener registered in this module.  Pinned by
         // tests/spectra/test_blueprint.py::
         // TestSpectraDisposeContract::
         // test_all_element_listeners_route_through_on_helper.
@@ -3083,12 +3084,10 @@
          * inspector; caller may clear/replace freely.
          */
         dispose() {
-            // Walk listener teardowns in reverse so the most recent
-            // registration tears down first (LIFO -- matches the
-            // order they'd be attached in a remount cycle).
-            while (_cleanups.length) {
-                try { _cleanups.pop()(); } catch (_) {}
-            }
+            // Hand the listener scope back (lib/inspectors/lifecycle.js).
+            // It tears down in reverse, so the most recent registration goes
+            // first -- the order they would be re-attached in on a remount.
+            _listeners.disposeAll();
             // Contract § 2: dispose -> transition('IDLE').  Single
             // canonical site for the full reset matrix § 3 row
             // "dispose / unmount" (aborts loadAbort + renderAbort +

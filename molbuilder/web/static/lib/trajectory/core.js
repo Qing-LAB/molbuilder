@@ -165,11 +165,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // ----- Listener bookkeeping ---------------------------------
     //
     // Every element-level addEventListener inside mountInspector
-    // goes through _on() so the registered teardown closure is
-    // captured in _cleanups[].  dispose() walks _cleanups in
-    // reverse + then runs the per-resource teardowns (polling
-    // timer, in-flight HTTP request, embed handle, window-level
-    // listeners).
+    // goes through _on(), which registers the teardown at the same moment
+    // as the registration; non-listener teardowns (a ResizeObserver to
+    // disconnect) go through _listeners.defer().  ONE registry, drained by
+    // dispose() in one call, then the per-resource teardowns (polling
+    // timer, in-flight HTTP request, embed handle).
     //
     // The window-level listeners (``resize``, ``pagehide`` on the
     // legacy /watch handoff) MUST be tracked here -- they survive
@@ -179,10 +179,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // with their nodes; tracking them is defensive (and matches
     // the spectra core's dispose contract for cross-inspector
     // consistency).
-    const _cleanups = [];
-    // The shared listener scope (lib/inspectors/lifecycle.js).  Registration
-    // and cleanup are written in one place, which is the only way they stay
-    // in step across mount/dispose cycles.
+    //
+    // THE SCOPE IS THE ONLY REGISTRY.  A local ``_cleanups`` array stood
+    // beside it for one commit on 2026-08-23 -- the leftover of the array
+    // ``_on`` used to push into before the scope was extracted -- and
+    // dispose() drained THAT while every listener sat in the scope.
     var _listeners = root.molbuilder.inspectorLifecycle.listeners();
     function _on(target, event, handler, opts) {
         _listeners.on(target, event, handler, opts);
@@ -2752,12 +2753,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             if (!p) return;     // not yet loaded; nothing to refresh
             loadByPath(p);
         };
-        document.addEventListener(C.EVENT_REFRESH_REQUESTED,
-                                   _onRefresh);
-        _cleanups.push(() => {
-            document.removeEventListener(C.EVENT_REFRESH_REQUESTED,
-                                          _onRefresh);
-        });
+        _on(document, C.EVENT_REFRESH_REQUESTED, _onRefresh);
 
         /* WATCH THE CONTAINER, don't wait to be told.
          *
@@ -2792,7 +2788,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
              * cost correctness.  Straight call, no state to get wrong. */
             const ro = new ResizeObserver(() => { resizePlots(); });
             ro.observe(plotsRow);
-            _cleanups.push(() => {
+            _listeners.defer(() => {
                 try { ro.disconnect(); } catch (_) {}
             });
         }
@@ -3070,7 +3066,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     }
 
     // Refresh-button listener wires here ONCE per mount.  Tears
-    // down with the inspector's dispose path via _cleanups.
+    // down with the inspector's dispose path, through the listener scope.
     // Pre-PR-2.1 this lived inside startPolling() which loadByPath
     // called on every load -- so the listener was re-attached each
     // load and the old ones piled up until dispose.  PR 2.1 audit
@@ -3095,17 +3091,13 @@ import { molviewFiles } from "../projects/molview-doors.js";
          * resize.
          */
         dispose() {
-            // Walk listener teardowns in reverse so the most recent
-            // registration tears down first (LIFO -- matches the
-            // order they'd be attached in a remount cycle).  Each
-            // teardown is the closure ``_on()`` pushed at register
-            // time; covers the window resize listener AND every
-            // element-level listener attached during mount.
-            // Per-cleanup catch keeps one buggy teardown from
-            // blocking the rest.
-            while (_cleanups.length) {
-                try { _cleanups.pop()(); } catch (_) {}
-            }
+            // Hand the whole scope back (lib/inspectors/lifecycle.js).
+            // It tears down in reverse, so the most recent registration
+            // goes first -- the order they would be re-attached in on a
+            // remount -- and covers every element-level listener from the
+            // mount plus the deferred ResizeObserver.  Its per-teardown
+            // catch keeps one buggy teardown from blocking the rest.
+            _listeners.disposeAll();
             // Contract § 2: dispose -> transition('IDLE').  The
             // matrix § 3 row "dispose / unmount" runs the full
             // reset (aborts, timer stop, bucket clears).

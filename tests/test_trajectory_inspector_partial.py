@@ -481,8 +481,8 @@ class TestTrajectoryCoreMountContract:
         through its matching closing ``},``.  Used by the contract
         tests below so the assertions are scoped to the dispose
         block without being pinned to a fixed window size that
-        breaks when the body grows (today: the _cleanups walker
-        comment adds ~10 lines)."""
+        breaks when the body grows (today: the listener-scope teardown
+        comment adds ~6 lines)."""
         ix = viewer_js.find("dispose() {")
         assert ix > 0, "dispose() definition not found"
         # Scan forward + count braces.  Acceptable because dispose
@@ -542,27 +542,32 @@ class TestTrajectoryCoreMountContract:
             "owned by the embed (handle.setAnimation) per § 3.9"
         )
 
-    def test_dispose_tears_down_listeners_via_cleanups(self, viewer_js):
-        """The trajectory core uses an ``_on()`` helper that captures
-        a teardown closure into ``_cleanups``; dispose() walks the
-        array in reverse.  This covers the window.resize listener
-        AND every element-level listener attached during mount --
-        a stronger contract than the old single-line
+    def test_dispose_hands_the_listener_scope_back(self, viewer_js):
+        """The trajectory core registers through an ``_on()`` helper that
+        captures the teardown at the same moment; dispose() hands the whole
+        scope back and it tears down in reverse.  This covers every
+        element-level listener attached during mount plus the deferred
+        ResizeObserver -- a stronger contract than the old single-line
         ``window.removeEventListener("resize", _onResize)``.
 
-        Pin the contract pieces: _cleanups array exists, _on()
-        helper exists, dispose() walks _cleanups, and the window
-        resize listener is registered THROUGH _on (not raw)."""
+        **Migrated 2026-08-23.**  This named ``_cleanups`` -- an array BY
+        NAME -- and so it stayed green through the day the scope moved to
+        `lib/inspectors/lifecycle.js` and the array stayed behind empty:
+        registration went to the scope, the drain went to the array, and a
+        mount/dispose cycle removed nothing.  Now it asks for the drain of
+        the scope `_on` actually writes into.  Behaviour is pinned in
+        `tests/test_inspector_lifecycle_teardown.py`.
+        """
         body = self._dispose_body(viewer_js)
-        # dispose walks the cleanups array.
-        assert "_cleanups.pop()" in body, (
-            "dispose() doesn't walk _cleanups -- listeners attached "
-            "during mount won't be removed.  See the spectra core's "
-            "dispose for the reference pattern."
+        assert "_listeners.disposeAll()" in body, (
+            "dispose() doesn't hand the listener scope back -- listeners "
+            "attached during mount won't be removed.  See the spectra "
+            "core's dispose for the reference pattern."
         )
         # Backbone exists at module scope.
-        assert "const _cleanups = []" in viewer_js, (
-            "_cleanups array missing from lib/trajectory/core.js"
+        assert "inspectorLifecycle.listeners()" in viewer_js, (
+            "the shared listener scope is missing from "
+            "lib/trajectory/core.js"
         )
         assert "function _on(target, event, handler" in viewer_js, (
             "_on() helper missing from lib/trajectory/core.js"

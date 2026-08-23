@@ -636,36 +636,53 @@ class TestSpectraDisposeContract:
     that captures a teardown closure, and ``dispose()`` walks them
     in reverse.
 
-    These tests pin the structural invariant of that fix: the
-    cleanups array exists, every element-listener registration goes
-    through ``_on``, and ``dispose()`` actually runs the
-    teardowns + per-resource cleanups.  Pin SHAPE, not specific
-    sites — so the test survives reordering of the wiring block but
-    fails loudly if someone reintroduces a direct
-    ``els.foo.addEventListener(...)`` that leaks past dispose.
+    These tests pin the structural invariant of that fix: the listener
+    scope exists, every element-listener registration goes through ``_on``,
+    and ``dispose()`` actually hands the scope back before the per-resource
+    cleanups.  Pin SHAPE, not specific sites — so the test survives
+    reordering of the wiring block but fails loudly if someone reintroduces
+    a direct ``els.foo.addEventListener(...)`` that leaks past dispose.
+
+    **What SHAPE cannot pin, and where that is pinned instead.**  These are
+    source assertions, so they answer *"is the cleanup code wired?"* and not
+    *"does it work?"*.  On 2026-08-23 the wiring was intact and the teardown
+    total: the scope was extracted to `lib/inspectors/lifecycle.js` and each
+    core's old array stayed behind, so `dispose()` drained an empty list.
+    Every test here passed.  The behavioural half is
+    `tests/test_inspector_lifecycle_teardown.py` — it registers, disposes,
+    and counts what is left.
     """
 
-    def test_cleanups_array_and_on_helper_exist(self, web_client):
-        """The closure-local listener bookkeeping is the contract
-        backbone.  If a future refactor drops _cleanups or _on, the
-        rest of this test class becomes moot — pin the existence
-        first so a regression here surfaces with a clear failure."""
+    def test_the_listener_scope_and_on_helper_exist(self, web_client):
+        """The listener bookkeeping is the contract backbone.  If a future
+        refactor drops the scope or _on, the rest of this test class becomes
+        moot — pin the existence first so a regression here surfaces with a
+        clear failure.
+
+        **Migrated 2026-08-23, and the reason matters.**  This asserted
+        ``const _cleanups = []`` — an array BY NAME.  When the scope was
+        extracted to `lib/inspectors/lifecycle.js` the array stayed behind
+        empty and ``dispose()`` drained it while every listener sat in the
+        scope: a total teardown leak that this test, and the one below,
+        happily called green because the array they named still existed.
+        Naming the mechanism is what let the contract break underneath it.
+        The behaviour is pinned in `tests/test_inspector_lifecycle_teardown.py`.
+        """
         js = web_client.get("/static/lib/spectra/core.js").data.decode()
-        # The cleanups array (closure-local list of teardown closures).
-        assert "const _cleanups = []" in js, (
-            "lib/spectra/core.js no longer declares the _cleanups "
-            "array; dispose() can't tear down listeners without it"
+        # The shared listener scope: registration and its undo, in one place.
+        assert "inspectorLifecycle.listeners()" in js, (
+            "lib/spectra/core.js no longer takes a listener scope; "
+            "dispose() can't tear down listeners without one"
         )
-        # The _on() registration helper that captures teardowns.
+        # The _on() registration helper that routes into it.
         assert "function _on(target, event, handler" in js, (
             "lib/spectra/core.js no longer defines the _on() helper "
-            "that wraps addEventListener + pushes a teardown into "
-            "_cleanups"
+            "that wraps addEventListener + registers its undo"
         )
 
-    def test_dispose_walks_cleanups_before_per_resource_cleanups(
+    def test_dispose_tears_down_listeners_before_per_resource_cleanups(
             self, web_client):
-        """dispose() must drain _cleanups FIRST so timer/raf
+        """dispose() must hand the listener scope back FIRST so timer/raf
         callbacks (which themselves may dispatch events to listeners)
         don't fire against torn-down DOM.  Ordering matters.
 
@@ -675,7 +692,11 @@ class TestSpectraDisposeContract:
         lib/spectra/core.js clears state.lifecycle.watchTimer
         (guarded with an ``if`` check, so a second call is a
         no-op).  This test asserts the ordering of the canonical
-        chain: _cleanups drained, THEN transition("IDLE").
+        chain: listeners torn down, THEN transition("IDLE").
+
+        The ORDER is the contract; the mechanism's spelling is not.  This
+        searched for ``_cleanups.pop()`` until 2026-08-23 and so passed
+        while dispose() drained an array nothing registered into.
         """
         import re
         js = web_client.get("/static/lib/spectra/core.js").data.decode()
@@ -683,18 +704,18 @@ class TestSpectraDisposeContract:
             r"dispose\(\)\s*\{(.+?)\n        \},", js, re.DOTALL)
         assert m, "could not locate dispose() body in lib/spectra/core.js"
         body = m.group(1)
-        cleanups_idx = body.find("_cleanups.pop()")
+        teardown_idx = body.find("_listeners.disposeAll()")
         idle_idx     = body.find('transition("IDLE")')
-        assert cleanups_idx > -1, (
-            "dispose() does not walk _cleanups — listeners leak"
+        assert teardown_idx > -1, (
+            "dispose() does not hand the listener scope back — listeners leak"
         )
         assert idle_idx > -1, (
             "dispose() does not call transition(\"IDLE\") — "
             "the canonical state-machine cleanup site per "
             "results-state-contract.md § 2"
         )
-        assert cleanups_idx < idle_idx, (
-            "dispose() must walk _cleanups BEFORE calling "
+        assert teardown_idx < idle_idx, (
+            "dispose() must tear the listeners down BEFORE calling "
             "transition(\"IDLE\") so torn-down listeners don't "
             "fire on the bucket-clear cascade"
         )
@@ -766,8 +787,8 @@ class TestSpectraDisposeContract:
             self, web_client):
         """Catches the class of regression where someone adds a
         direct ``els.foo.addEventListener("click", handler)`` inside
-        mountInspector.  Such a direct call escapes _cleanups and
-        leaks past dispose — the same class of bug the
+        mountInspector.  Such a direct call escapes the listener scope
+        and leaks past dispose — the same class of bug the
         2026-05-18 review surfaced.
 
         The claim got STRONGER on 2026-08-23.  ``_on()`` used to hold the
@@ -808,7 +829,7 @@ class TestSpectraDisposeContract:
         Defensive against the registry calling dispose twice (which
         it shouldn't, but a future refactor might).  The closure
         guards each cleanup with a null-check + try/catch, so a
-        twice-drained _cleanups array + already-nulled state should
+        twice-drained listener scope + already-nulled state should
         be a no-op rather than an error."""
         import re
         js = web_client.get("/static/lib/spectra/core.js").data.decode()

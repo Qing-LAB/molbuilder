@@ -5,7 +5,7 @@
  * byte-identically, which is two places for a leak fix to miss.
  *
  * Exports (on window.molbuilder.inspectorLifecycle):
- *   listeners()          -> { on, disposeAll }
+ *   listeners()          -> { on, defer, disposeAll }
  *   alias(state, k, b)   -> a legacy name that reads through to a bucket
  */
 (function (root) {
@@ -29,6 +29,21 @@
                 undo.push(function () {
                     target.removeEventListener(event, handler, opts);
                 });
+            },
+            /**
+             * Register a teardown that is not a listener -- a
+             * ResizeObserver to disconnect, an observer to stop.
+             *
+             * It exists so a core has exactly ONE registry.  When an
+             * inspector kept a second array beside this scope, `dispose()`
+             * drained that one and left every listener attached: a
+             * mount/dispose cycle removed nothing (caught 2026-08-23 by
+             * `test_inspector_registry_e2e.py`, which counts add/remove
+             * pairs across a real mount).  Two registries is the same
+             * defect as two readers -- one of them is the one that is used.
+             */
+            defer: function (undoFn) {
+                if (typeof undoFn === "function") undo.push(undoFn);
             },
             disposeAll: function () {
                 while (undo.length) {
