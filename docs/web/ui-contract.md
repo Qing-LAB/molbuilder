@@ -85,8 +85,16 @@ hits a magic width. Three mechanisms carry most of it:
   handle, and the panel minimum).
 
 There are still a handful of real screen-width breakpoints for the things that
-genuinely depend on the whole viewport: **641px** (at and above, the projects
-sidebar docks in-flow; below, it becomes a slide-in **drawer**), **720px**
+genuinely depend on the whole viewport: **786px** (at and above, the projects
+sidebar docks in-flow; below, it becomes a slide-in **drawer**) — and that
+number is *derived*, not chosen: sidebar `18rem` + the shell's insets + the
+widest embed's own declared floor (`--molviewer-size-card-min-width`). It was
+641px until 2026-08-23, a value that predated the 3-D viewer having a floor,
+so between those widths the page docked a sidebar and then had less room than
+its content declared it needed — the viewer card, correctly refusing to shrink
+past its floor, overflowed its host by exactly the shortfall. A media query
+cannot read a custom property, so the literal stays; the arithmetic lives
+beside it in `page-shell.css`. Also **720px**
 (the parameter grid flattens to one column so labels sit above inputs), plus a
 few module-specific ones (`1100`, `768`, `480`). All animation honors
 `prefers-reduced-motion`.

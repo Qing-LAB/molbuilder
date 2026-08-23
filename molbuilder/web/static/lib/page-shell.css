@@ -229,7 +229,7 @@ body.is-projects-sidebar-collapsed[data-sidebars] .sidebar-rail {
  * view of the file-list space, so the projects aside is the one dock panel
  * left -- the geometry stays shared here for the next panel that docks.
  *
- * Desktop (>=641px) is where panels dock IN-FLOW side by side; the geometry is
+ * Desktop (>=786px, derived below) is where panels dock IN-FLOW side by side; the geometry is
  * scoped there so the narrow-viewport projects DRAWER (position:fixed, its own
  * sheet) is untouched.  ``body[data-sidebars] .dock-panel`` (0,2,0) out-ranks
  * the ``.projects-sidebar`` fixed base (0,1,0) so the aside flips to in-flow on
@@ -246,7 +246,26 @@ body.is-projects-sidebar-collapsed[data-sidebars] .sidebar-rail {
 .dock-panel[hidden] {
     display: none;
 }
-@media (min-width: 641px) {
+/* THE DOCK THRESHOLD, DERIVED (2026-08-23).
+ *
+ *   sidebar        18rem            = 288px   (--ps-w)
+ *   shell insets   main padding + scrollbar   = 130px  (measured)
+ *   the widest embed's own floor    = 368px   (--molviewer-size-card-min-width,
+ *                                              itself max(window,panel) + pad)
+ *                                     ------
+ *                                      786px
+ *
+ * Below that, docking the sidebar leaves the page less width than its content
+ * declares it needs, and the 3-D viewer card -- which correctly refuses to
+ * shrink past its own floor -- overflowed its host by exactly the shortfall
+ * (18px at 768px, measured).  The shell already has the answer for a narrow
+ * viewport: the sidebar becomes a slide-in DRAWER.  It was simply doing it
+ * too late, at 641px, a number that predates the viewer having a floor.
+ *
+ * A media query cannot read a custom property, so this is a literal -- but it
+ * is a DERIVED one, and the arithmetic above is the reason it is 786 and not
+ * a round number somebody liked. */
+@media (min-width: 786px) {
     body[data-sidebars] .dock-panel {
         position: relative;      /* in-flow; anchors any absolute child (resize handle) */
         top: auto;

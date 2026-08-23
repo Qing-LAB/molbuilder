@@ -6,7 +6,7 @@
  * ``.app-body`` row, BELOW the nav -- pure CSS, correct on the first paint (no
  * fixed positioning, no JS-measured offset, so no flash).  This sheet owns the
  * projects-sidebar's OWN styling (palette, header, list, resize handle, edge
- * tabs) + the narrow-viewport DRAWER (@media max-width: 640px, where the aside
+ * tabs) + the narrow-viewport DRAWER (@media max-width: 785px, where the aside
  * becomes a position:fixed slide-in overlay) + the desktop in-flow override.
  *
  * Markup contract:  templates/_projects_sidebar.html
@@ -23,7 +23,7 @@
 /* Desktop layout is owned by the app shell (lib/page-shell.css): the sidebar is
  * an in-flow flex child of the .sidebar-rail (see the app-shell override
  * below).  The ``position: fixed`` base here is the MOBILE-DRAWER base -- on a
- * narrow viewport (@media max-width: 640px) the sidebar slides in as a fixed
+ * narrow viewport (@media max-width: 785px) the sidebar slides in as a fixed
  * overlay.  (The old ``body.has-projects-sidebar { padding-left }`` shim was
  * retired when every tab moved to the app-shell flex layout.) */
 
@@ -49,7 +49,7 @@
  * it needs no per-sidebar override here.  This sheet owns only what is
  * projects-specific: the WIDTH is the base ``width: var(--ps-w)`` above (kept at
  * every viewport), the palette, and the narrow-viewport DRAWER (position:fixed,
- * @media max-width: 640px, further down). */
+ * @media max-width: 785px, further down). */
 
 /* ---- Width-resize handle (2026-06-12) ------------------------------
  *
@@ -97,7 +97,7 @@ body.is-projects-sidebar-collapsed .ps-resize-handle,
 body.has-mobile-sidebar-open .ps-resize-handle {
   display: none;
 }
-@media (max-width: 640px) {
+@media (max-width: 785px) {
   .ps-resize-handle { display: none; }
 }
 
@@ -202,7 +202,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 /* Narrow-viewport drawer mode takes over below 640 px (the
  * existing mobile toggle handles open/close there); hide the
  * desktop affordances so they don't double up. */
-@media (max-width: 640px) {
+@media (max-width: 785px) {
   .ps-edge-tab--collapse { display: none; }
   /* Must outrank the (0,2,0) show rule ``body.is-projects-sidebar-collapsed
    * .ps-edge-tab--reopen`` above -- match its specificity instead of !important. */
@@ -1237,7 +1237,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   display: none;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 785px) {
   /* Slide the sidebar off-canvas by default.  Animated so the user
    * sees it slide in/out rather than abruptly appear.
    *

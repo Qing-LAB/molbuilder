@@ -334,7 +334,7 @@
 
 /* ---- Responsive breakpoints ---- */
 
-/* (The 640px media block styled page-shell's main/header -- a module sheet
+/* (The narrow-viewport media block styled page-shell's main/header -- a module sheet
  * must not own page chrome -- and re-tuned the dead --viewer-extent; both
  * removed 2026-07.  Narrow-viewport page padding is page-shell's concern.) */
 

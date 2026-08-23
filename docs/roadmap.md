@@ -1126,12 +1126,13 @@ What remains:
   code, not appearance — and each states why in
   `test_css_classes_are_defined.py`, which also fails if a `<dialog>` is built
   without the component or a page loads the shell without the sheet.
-- **7.4e — nothing in the suite measures layout.** Every UI test asserts
-  presence or behaviour; none asserts that content fits its box. The audit
-  probe is the guard, with one correction already learned: children of a
-  **closed `<details>`** keep layout boxes sized to the collapsed summary, so
-  measuring them reports overflow no user can see (28 false findings before
-  the fix). *Test-pin: is* this item.
+- ~~**7.4e — nothing in the suite measures layout.**~~ **Done 2026-08-23.**
+  `test_layout_fits_e2e.py` renders every page at four widths and fails on any
+  element wider than its container, plus the § 3 rule that no page scrolls
+  sideways. The closed-`<details>` correction is built in — its children keep
+  layout boxes sized to the collapsed summary, and measuring them reports
+  overflow no user can see (28 false findings before the fix). Mutation-tested
+  against the original `minmax(9rem, 1fr)` defect.
 - ~~**7.4g — the Documents render pane is light inside a dark app.**~~
   **Done 2026-08-23.** Sharper than first recorded: a toggle *did* exist, but
   it defaulted to the light palette and stored the answer in `sessionStorage`,
@@ -1143,10 +1144,17 @@ What remains:
   by `test_docs_pane_theme_e2e.py`, which asserts the painted colour rather
   than the class, and `/documents` joined the browser boot list it had never
   been in.
-- **7.4f — the MolView host overflows its card by 18px at ≤768px** on
-  structure-optimization. The only true overflow left after the 2026-08-22
-  fixes; CodeMirror's +50px is its own managed scroll and three +2px readings
-  are subpixel.
+- ~~**7.4f — the MolView host overflows its card by 18px at ≤768px.**~~
+  **Done 2026-08-23**, and it was two faults wearing one number. The dock
+  threshold was **641px**, a value predating the 3-D viewer having a declared
+  floor, so between 641 and 786 the shell docked a sidebar and then had less
+  room than its content needs; it is now derived (sidebar + shell insets +
+  `--molviewer-size-card-min-width` = 786) and documented in `ui-contract.md`
+  § 3. Below the floor — a phone — MolView genuinely cannot render, and the
+  fault there was the *clipping*: the card stuck out and the knob bar's
+  right-hand controls were gone with no scrollbar and no sign. The host now
+  scrolls in its own box, which is § 3's own rule for content wider than its
+  container.
 
 ### 7.5 The residue three *(carried from the 2026-08-21 review)*
 
