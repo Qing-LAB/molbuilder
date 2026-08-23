@@ -46,16 +46,34 @@ class Directives:
     exclusive:     bool = False
 
     @classmethod
-    def of(cls, placement, *, walltime=None, ntasks=None, cpus_per_task=None,
-           gres=None, mem=None, exclusive=False) -> "Directives":
+    def of(cls, placement, resources=None) -> "Directives":
         """Bind a :class:`~molbuilder.scheduler.place.Placement` to the
-        resources it was placed for.  ``placement`` may be ``None`` on a
-        machine with no menu, where the queue is simply not stated."""
+        resources it was placed for.
+
+        **Both objects travel whole** (`architecture.md` § 3.1, A8).  An
+        earlier draft took ``Resources`` apart into six keyword arguments at
+        the call site, which is the destructure A8 exists to prevent: the
+        caller re-assembles what the callee should have been handed, and the
+        seventh field is the one that gets forgotten.  The fields are read
+        HERE instead, by the thing that needs them.
+
+        ``resources`` is duck-typed rather than imported: this package is
+        stdlib-only and sits below the layer that defines ``Resources``, so
+        it reads the attributes it needs and names none of the type.
+
+        ``placement`` may be ``None`` on a machine with no menu, where the
+        queue is simply not stated.
+        """
+        r = resources
         return cls(
             partition=getattr(placement, "partition", None),
             qos=getattr(placement, "qos", None),
-            walltime=walltime, ntasks=ntasks, cpus_per_task=cpus_per_task,
-            gres=gres, mem=mem, exclusive=bool(exclusive),
+            walltime=getattr(r, "time", None),
+            ntasks=getattr(r, "mpi_np", None),
+            cpus_per_task=getattr(r, "cpus_per_task", None),
+            gres=getattr(r, "gres", None),
+            mem=getattr(r, "mem", None),
+            exclusive=bool(getattr(r, "exclusive", False)),
         )
 
     # ---- the two spellings -------------------------------------------- #

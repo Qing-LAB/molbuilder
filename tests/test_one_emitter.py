@@ -21,10 +21,30 @@ the two, and nothing held both.  `scheduler.emit.Directives` does.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Optional
+
 import pytest
 
 from molbuilder.scheduler.emit import Directives
 from molbuilder.scheduler.place import Placement
+
+
+@dataclass
+class _Res:
+    """A stand-in for `jobset.model.Resources`.
+
+    Duck-typed on purpose: `emit` sits below the layer that defines
+    Resources and reads the attributes it needs without naming the type, so
+    the test hands it the same shape rather than importing across the layer
+    it is checking.
+    """
+    time: Optional[str] = None
+    mpi_np: Optional[int] = None
+    cpus_per_task: Optional[int] = None
+    gres: Optional[str] = None
+    mem: Optional[str] = None
+    exclusive: bool = False
 
 
 def _directives(**kw):
@@ -79,7 +99,7 @@ class TestTheTwoSpellingsCannotDisagree:
 
     def test_a_placement_binds_both(self):
         p = Placement(domain=None, partition="general", qos="public")
-        d = Directives.of(p, walltime="1-00:00:00", ntasks=8)
+        d = Directives.of(p, _Res(time="1-00:00:00", mpi_np=8))
         assert d.queue() == ("general", "public")
         assert "#SBATCH -p general" in d.header_lines()
         assert ["-p", "general"] == d.sbatch_flags()[:2]
@@ -87,7 +107,7 @@ class TestTheTwoSpellingsCannotDisagree:
     def test_no_menu_states_no_queue_on_either_side(self):
         """A machine with no domains promised nothing (R6), so neither
         spelling invents a queue."""
-        d = Directives.of(None, walltime="0-00:10:00", ntasks=4)
+        d = Directives.of(None, _Res(time="0-00:10:00", mpi_np=4))
         assert _header_value(d.header_lines(), "-p") is None
         assert _flag_value(d.sbatch_flags(), "-p") is None
 
@@ -116,3 +136,28 @@ class TestTheMemoryRuleIsWrittenOnce:
         d = _directives(exclusive=False, mem="120G")
         assert "#SBATCH --mem=120G" in d.header_lines()
         assert "--mem=120G" in d.sbatch_flags()
+
+
+class TestBothObjectsTravelWhole:
+    """A8 — a door takes the object, so a caller has no subset to pass.
+
+    `Directives.of` took six loose keyword arguments until 2026-08-23, and the
+    architecture rule caught it: at two `field=obj.field` arguments the caller
+    is re-assembling what the callee should have been handed, and the seventh
+    field is the one that gets forgotten.
+    """
+
+    def test_the_resources_object_is_handed_over_intact(self):
+        r = _Res(time="0-01:00:00", mpi_np=32, cpus_per_task=2,
+                 gres="gpu:a100:1", mem="64G")
+        d = Directives.of(Placement(domain=None, partition="p", qos="q"), r)
+        assert d.walltime == r.time
+        assert d.ntasks == r.mpi_np
+        assert d.cpus_per_task == r.cpus_per_task
+        assert d.gres == r.gres
+        assert d.mem == r.mem
+
+    def test_no_resources_at_all_is_a_queue_and_nothing_else(self):
+        d = Directives.of(Placement(domain=None, partition="p", qos="q"))
+        assert d.header_lines() == ["#SBATCH -p p", "#SBATCH -q q"]
+        assert d.sbatch_flags() == ["-p", "p", "-q", "q"]

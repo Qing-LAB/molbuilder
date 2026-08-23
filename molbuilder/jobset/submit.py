@@ -100,11 +100,7 @@ def _sbatch_resource_flags(r: Resources, placement=None) -> List[str]:
     ``.sbatch`` serve a whole sweep while each job gets its own ranks.
     """
     from ..scheduler.emit import Directives
-    return Directives.of(placement,
-                         walltime=r.time, ntasks=r.mpi_np,
-                         cpus_per_task=r.cpus_per_task, gres=r.gres,
-                         mem=r.mem, exclusive=bool(r.exclusive)
-                         ).sbatch_flags()
+    return Directives.of(placement, r).sbatch_flags()
 
 
 def _run_sh_args(r: Resources) -> List[str]:
