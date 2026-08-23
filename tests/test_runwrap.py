@@ -1373,3 +1373,66 @@ class TestTheBootstrapFailsFast:
         off for the bootstrap and ON again immediately after."""
         text, span = self._bootstrap_span(tmp_path)
         assert span[0].strip() == "set +u" and span[-1].strip() == "set -u"
+
+
+class TestOneDefaultForAnAbsentGpuCount:
+    """**G5** (`execution/gpu.md`): an absent ``gpu_count`` means ONE device,
+    and both sbatch entries say so.
+
+    `_render_sbatch_for` defaulted it to 1 and `render_sbatch` — the function
+    it calls — defaulted it to ``ntasks``, the *one rank per GPU* model
+    retired 2026-08-13.  Two defaults for one absent value, one call apart,
+    and nothing compared them: a 32-rank job reaching the second door asked
+    for 32 devices.
+
+    Sibling of `test_one_emitter.py`: that asserts a PLACEMENT survives both
+    renderings, this asserts a DEFAULT does.
+    """
+
+    def _machine(self, tmp_path, monkeypatch):
+        """An ordinary configured cluster: preferences name the queue and the
+        device type, so the header path has everything but the COUNT."""
+        import json
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        (tmp_path / "home").mkdir(exist_ok=True)
+        (tmp_path / ".molbuilder.json").write_text(json.dumps({
+            "script_generation": {"preamble": "module load mamba",
+                                  "activation": "source activate"},
+            "scheduler": {"kind": "slurm",
+                          "directives": {"partition": "htc", "qos": "public"},
+                          "gpu": {"default_type": "a100"}},
+        }))
+        deck = tmp_path / "j.fdf"
+        deck.write_text("SystemLabel j\nDiag.ELPA.GPU .true.\n")
+        return deck
+
+    @staticmethod
+    def _gres_count(text):
+        line = next(l for l in text.splitlines() if "--gres=" in l)
+        return line.split("--gres=", 1)[1].strip().rsplit(":", 1)[-1]
+
+    def test_both_entries_agree_and_neither_uses_the_rank_count(
+            self, tmp_path, monkeypatch):
+        from molbuilder.jobset.model import Resources
+        from molbuilder.runwrap import _render_sbatch_for, render_sbatch
+        deck = self._machine(tmp_path, monkeypatch)
+
+        outer = _render_sbatch_for(deck, resources=Resources(mpi_np=3),
+                                   env=None)
+        assert outer is not None and "--gres=" in outer, (
+            "a GPU deck produced no gres line; the premise changed")
+        inner = render_sbatch(
+            deck, {"kind": "slurm",
+                   "directives": {"partition": "htc", "qos": "public"},
+                   "gpu": {"default_type": "a100"}},
+            ntasks=3, gpu=True)
+
+        assert self._gres_count(outer) == self._gres_count(inner) == "1", (
+            f"the two sbatch entries disagree on an absent gpu_count: "
+            f"_render_sbatch_for asked for {self._gres_count(outer)}, "
+            f"render_sbatch for {self._gres_count(inner)}.  One default, "
+            f"one device (gpu.md G5)")
+        # ...and the rank count is untouched by the device default.
+        assert " -n 3" in outer or "--ntasks=3" in outer

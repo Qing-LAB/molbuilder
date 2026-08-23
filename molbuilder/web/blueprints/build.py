@@ -1521,9 +1521,9 @@ def api_task_setup_template_values():
         return jsonify({"ok": False, "name": found.name,
                         "error": f"{found.name}: {exc}"}), 400
 
-    # THE one read API (`engines/template.md` § 8.0), not a comprehension over
-    # `.items` -- which is what this was, and which re-implemented the
-    # `Template.values()` deleted on 2026-08-17 as one of four second readers.
+    # Through `select` -- `engines/template.md` § 8.0 owns the rule.  What it
+    # cost HERE: this was a comprehension over `.items`, re-implementing the
+    # `Template.values()` deleted 2026-08-17 as one of four second readers.
     values = {it.name: it.value for it in select(tmpl) if it.is_set}
     return jsonify({"ok": True, "name": found.name, "values": values})
 

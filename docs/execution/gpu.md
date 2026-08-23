@@ -226,6 +226,18 @@ leaves the reader unable to recognise the wrong version.
 | **C2** | `config/siesta.py` card comment | `enable_gpu` on the **Budget card** | `group = "staging"` — the field's own metadata, 1 230 lines below, and the catalogue |
 | **C3** | `runwrap.render_sbatch` | absent `gpu_count` ⇒ `ntasks` (*"one GPU per rank"*) | 1 device (G5). `_render_sbatch_for` already defaults to 1, so the two disagree one function apart |
 | **C4** | `tests/test_sbatch_emit.py` | pins the `ntasks` default as *"1 rank/GPU default"* | that model was retired 2026-08-13; the test is the only thing keeping it alive |
+| **C5** | `runwrap._render_sbatch_for`, the no-config branch | a machine with **probed** domains and a **probed** `topology.gpu_type` cannot emit a GPU header at all — *"no gpu type resolved"* | the type is on disk and one path cannot see it |
+
+> **C5 was found by writing C4's replacement test**, which is the argument for
+> the test rather than a note about it. When a machine states no `scheduler`
+> block, `_render_sbatch_for` hand-builds
+> `{"kind": "slurm", "directives": {partition, qos}}` from the probed menu — and
+> that dict carries **no `gpu` key**, so the fill-in that copies
+> `topology.gpu_type` into `scheduler.gpu.default_type` never runs. The
+> measurement is in the record, the header path is a different path, and the
+> job refuses. **Same class as C1–C4** — a GPU fact reachable by one route and
+> not the other — which is why it is listed here rather than filed as its own
+> bug.
 
 **C1 and C2 are the same error and the important one.** Both put the
 person's choice on the machine's side of the only line that matters. C1 is

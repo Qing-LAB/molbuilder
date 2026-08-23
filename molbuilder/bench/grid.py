@@ -13,7 +13,6 @@ see the tombstone below.)
 
 from __future__ import annotations
 
-import re
 from typing import List, Optional
 
 from ..scheduler import Topology
@@ -49,15 +48,19 @@ def sweep_grid(gpn, cps, ks, cs_explicit):
             for c in (cs_explicit if cs_explicit else _bracket_cs(cps, k)):
                 yield (g, k, c)
 
-# A script basename is interpolated UNQUOTED into generated shell, so it
-# must not carry shell metacharacters / spaces (production base is
-# user-derived from an fdf name).
-_SAFE_BASE = re.compile(r"^[A-Za-z0-9._-]+$")
-
-
-
-# GPU type goes into ``--gres=gpu:<type>:N`` -- keep it a bare token.
-_SAFE_GPU_TYPE = re.compile(r"^[A-Za-z0-9_-]+$")
+# TWO GUARD-SHAPED CONSTANTS STOOD HERE AND GUARDED NOTHING, deleted
+# 2026-08-23 with two definitions and zero uses between them.  Said out loud
+# because a bare deletion of something named ``_SAFE_*`` invites a future
+# reader to put it back:
+#
+#   * the basename guard is REAL and lives in `runwrap._SAFE_WRAPPER_NAME_RE`,
+#     enforced at three call sites.  This was a second copy of it that no
+#     caller ever reached;
+#   * the GPU-type guard protected against a token reaching a shell.  It
+#     cannot: `sbatch` is invoked with an argv LIST and molbuilder uses
+#     ``shell=True`` nowhere, so a crafted type is a malformed ``--gres``
+#     value SLURM rejects, not an injection.  Re-add a check here only if
+#     that stops being true.
 
 
 

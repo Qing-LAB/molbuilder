@@ -1202,17 +1202,35 @@ repeated literals. Its rule is right; the file does not keep it.)*
 
 ### 7.5 The residue three *(carried from the 2026-08-21 review)*
 
-- **O1** — roughly eight comments cite `(A3…A8, 2026-08-12)` from an archived
-  plan while `architecture.md` § 7 now runs A1–A11 with different meanings.
-  Mechanical; the dates disambiguate for a careful reader, which is why it was
-  recorded rather than swept.
+> **Re-read against the tree 2026-08-23, and most of it was already gone.**
+> This entry was written on 2026-08-21 and never re-checked while the waves
+> after it closed item after item. Six of O5's nine were already shipped, and
+> two of the three headline items are done. **The list below is what a read of
+> the code says today**, not what the review said then — the same drift R3
+> exists to stop, caught this time by opening the tree instead of the summary.
+
+- **O1** — ~~A-letter citations pointing at a plan that is not in the doc
+  set~~ **done 2026-08-23** (`e82ef9c3`): fourteen citations now spell
+  `2026-08-12 plan A<N>`, `architecture.md` § 7 states that its table is the
+  only live meaning of an A-letter, and every other bare A-letter in the tree
+  was classified — `checkpointing.md`'s own series, live architecture rules,
+  or not a citation at all.
 - **O4** — the optimization deck's retry budget and the vibration relax
-  block's `continue` arm spell the same loop twice; an emitted helper both
-  compose ends it.
-- **O5** — C-jobset's stage-less residue branches, the duplicated read-API
-  comment, two `submit.py` residues, T2/T3 stale test-module docstrings, and
-  one ruling to record: `Issue.stage` is write-orphaned since its only stamper
-  retired with `validate_ladder`.
+  block's `continue` arm spell the same loop twice. **Open — wave 3 of
+  § 7.8**; the home is settled (`pyscf/relax_policy.py`, sibling to
+  `scf_setup.py`, which is the same shape already solved once).
+- **O5** — **six of nine done.** `_pick_trial`'s dead arm retired 2026-08-21 ·
+  the trial-cold rule now has one setter and one verifier (Q6a) · the two
+  `submit.py` "residues" are live code carrying historical notes · four of the
+  five stage-less branches already say the shape retired · T1's smoke test is
+  gone. **Three stand**, and they are waves 1 and 4–5 of § 7.8:
+  `_SAFE_BASE`/`_SAFE_GPU_TYPE` (two definitions, zero uses) · the read-API
+  rule restated in two comments · `Issue.stage`, write-orphaned since
+  `validate_ladder` retired, whose deletion waits on the findings-file
+  decision. *(T2/T3's stale docstrings could not be confirmed: the three smoke
+  modules read accurately today, and the reader reports that named the two are
+  not in the tree.)*
+
 ### 7.6 The scheduler subsystem *(contract written 2026-08-23)*
 
 **Goal:** one subsystem owns whether a request fits a queue, which queue it is
@@ -1328,6 +1346,7 @@ is green.*
 | **0** | correct § 7.5's stale line — six of its nine items shipped in the waves after it was written | free, no code, and it is what stops the list being re-derived a third time |
 | **1** | dead code with **zero** callers: `_SAFE_BASE`/`_SAFE_GPU_TYPE` (`bench/grid.py`, 2 definitions 0 uses) · the `task.stages and` conjunct at `_cli.py:569` (`Task` refuses an empty ladder, so the half can never be false) · the read-API rule restated in two comments | isolated, mechanical, nothing depends on any of it |
 | **2** | GPU **C3 + C4** — one `gpu_count` default (1 device), and retire the test pinning the retired *one rank per GPU* model | the only GPU correction that is not about naming, so it does not wait for the rename |
+| **2b** | GPU **C5** — a probed-only machine cannot emit a GPU header, because the no-config branch hand-builds a scheduler dict with no `gpu` key and never sees `topology.gpu_type` | **found while writing C4's replacement test**; same class, so it lands with its siblings rather than as its own bug |
 | **3** | **O4** — `pyscf/relax_policy.py`, the geomeTRIC non-convergence policy emitted once and composed by both decks | self-contained; deck bytes unchanged for both callers |
 | **4** | the **type framework**: (a) the coverage test — each satellite declares *complete* or *narrower-with-a-reason* against `template.TYPES`; then (b) retire `DECL_TYPES` as a list and state the benchmark restriction as a rule | (a) before (b) on purpose: the mechanism makes the residue fall out instead of being argued |
 | **5** | **validation display**: the findings file beside the deck, written after the check · `info` reaches the CLI · then delete `Issue.stage` and amend `stages.md` § 4 R2 | ⚠ **blocked** — the filename is the user's call |

@@ -128,11 +128,26 @@ def test_gpu_exclusive_defaults_from_config(tmp_path):
     assert "#SBATCH --exclusive" in txt
 
 
-def test_gpu_count_defaults_to_ntasks(tmp_path):
+def test_an_absent_gpu_count_defaults_to_one_device(tmp_path):
+    """**G5** (`execution/gpu.md`): one default for an absent ask, and it is
+    **1 device** — not the rank count.
+
+    *Replaces* `test_gpu_count_defaults_to_ntasks`, which asserted
+    ``ntasks=3 -> --gres=gpu:a100:3``: the *one rank per GPU* model D12e
+    retired on 2026-08-13.  It was the only thing keeping that model alive —
+    `_render_sbatch_for`, the one production caller, already defaulted to 1,
+    so the two disagreed one function apart and the wrong one was the branch
+    a direct caller reached.  Note the test immediately below has asserted
+    the REPLACING model — ranks and devices independent — the whole time.
+    """
     fdf = tmp_path / "g.fdf"
     fdf.write_text("Diag.ELPA.GPU .true.\n")
-    txt = render_sbatch(fdf, _SCHED, ntasks=3, gpu=True)  # 1 rank/GPU default
-    assert "#SBATCH --gres=gpu:a100:3" in txt
+    txt = render_sbatch(fdf, _SCHED, ntasks=3, gpu=True)
+    assert "#SBATCH --gres=gpu:a100:1" in txt, (
+        "an absent gpu_count must ask for ONE device; deriving it from the "
+        "rank count is the retired 1-rank-per-GPU model (gpu.md G5)")
+    # ...and the rank count is untouched by the device default.
+    assert "#SBATCH -n 3" in txt or "#SBATCH --ntasks=3" in txt
 
 
 def test_gpu_ranks_independent_of_gpu_count(tmp_path):

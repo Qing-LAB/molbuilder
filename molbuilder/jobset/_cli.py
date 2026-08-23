@@ -566,7 +566,13 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
     # relabelled and forced cold, so re-rendering them cannot touch the
     # run -- and asking about them made every bench re-prep beside a
     # launched run a question with no stakes.
-    if bench_container is None and task.stages and stage is not None:
+    # No `task.stages` test: `read_task` above refuses a description whose
+    # ladder is absent OR empty (`task.py`, engines/stages.md 6.5), so on
+    # this path it is always non-empty.  The TYPE is weaker -- it permits
+    # `stages=None` when `varies` is None too -- which is why the invariant
+    # is named here against the reader that establishes it rather than
+    # assumed from the dataclass.
+    if bench_container is None and stage is not None:
         from .prep import token_for
         try:
             token = token_for(task, stage)
@@ -963,10 +969,10 @@ def _bench_inputs(base, target=None):
             f"the engine's own scaling guidance in docs/engines/tuning.md.")
     tmpl = read_template(
         template_path(Path(base), task.label).read_text(encoding="utf-8"))
-    # THE one read API (`template.md` § 8.0), not a dict comprehension over
-    # `.items` -- the hand-rolled version ignored ``engines``, § 2.2's
-    # predicted failure exactly: on a PySCF description it read the GPU
-    # flag as absent and enumerated a CPU grid, silently.
+    # Through `select` -- `template.md` § 8.0 owns the rule.  What it cost
+    # HERE: the hand-rolled comprehension ignored ``engines``, so on a PySCF
+    # description it read the GPU flag as absent and enumerated a CPU grid,
+    # silently -- § 2.2's predicted failure exactly.
     #
     # TWO names answer one question until § 6.3's settled merge is renamed:
     # SIESTA's `enable_gpu`, PySCF's `use_gpu`.  Spelling both here is the

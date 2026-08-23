@@ -4112,11 +4112,21 @@ def render_sbatch(script_path: Path,
                 "(running-a-job.md § 3.1)."
             )
         if gpu_count is None:
-            gpu_count = ntasks  # a floor only -- ranks routinely EXCEED GPUs
-                                # (K ranks share a GPU via MPS,
-                                # running-a-job.md § 3.3); the old
-                                # '1 rank per GPU' comment taught the
-                                # retired model (D12e, 2026-08-13)
+            # ONE DEFAULT FOR AN ABSENT ASK: 1 device (`execution/gpu.md` G5).
+            #
+            # This read ``gpu_count = ntasks`` until 2026-08-23 -- one GPU per
+            # rank, the model D12e retired on 2026-08-13 -- while
+            # `_render_sbatch_for`, this function's ONLY production caller,
+            # already defaulted to 1 before calling in.  Two defaults for one
+            # absent value, one function apart, and the wrong one was the one
+            # a direct caller reached: a 32-rank job asked for 32 devices.
+            # Nothing in production took that path, and the only thing keeping
+            # it alive was a test that pinned it (`test_sbatch_emit.py`).
+            #
+            # Ranks and devices stay INDEPENDENT -- K ranks share a device via
+            # MPS (running-a-job.md § 3.3) -- which is exactly why the rank
+            # count is the wrong thing to derive a device count from.
+            gpu_count = 1
         if exclusive is None:
             exclusive = bool(gpu_cfg.get("exclusive", False))
     else:
