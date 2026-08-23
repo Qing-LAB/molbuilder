@@ -268,17 +268,15 @@ export function init(viewer) {
     //  Load: POST /api/build/load with a multipart file upload.  Same  //
     //  endpoint the Build tab uses; M2 doesn't need its own route.     //
     // --------------------------------------------------------------- //
+    /** The shared `.status` writer (lib/status.js).
+     *
+     *  `#status` is the SHARED status line -- page-shell.css owns `.status`
+     *  -- which is why the severity here is bare `ok` / `error` and not this
+     *  page's `modify-status--*`: they are different elements with different
+     *  owners, and giving them one vocabulary would mean this page renaming a
+     *  shared component. */
     function setStatus(msg, kind = null) {
-        // Compound-class convention shared with Build + Watch:
-        // ``className = "status ok"`` so the CSS rule ``.status.ok``
-        // applies.  ``#status`` is the SHARED status line (page-shell.css owns
-        // `.status`), which is why the modifier here is bare `ok` / `error` and
-        // not this page's `modify-status--*` -- the two are different elements
-        // with different owners, and giving them one vocabulary would mean this
-        // page renaming a shared component.
-        const el = $("status");
-        el.textContent = msg;
-        el.className = "status" + (kind ? " " + kind : "");
+        window.molbuilder.status.set("status", msg, kind);
     }
 
     // (loadFile() removed 2026-05-18: was the multipart upload path

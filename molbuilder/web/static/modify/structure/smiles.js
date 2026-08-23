@@ -159,14 +159,21 @@
         var status = doc.getElementById("smiles-status");
         if (!input || !button) return;
 
+        /* The shared `.status` writer (lib/status.js).
+         *
+         * These seven panels each spelled this out, writing `.muted` with
+         * `is-error` / `is-generating` / `is-loading` -- modifiers NO
+         * stylesheet defined.  So a refused SMILES reported itself in the
+         * same muted grey as a hint, on every builder panel, and had done
+         * since they were written.  `.status` is the app's one severity
+         * surface and its `error` IS red.
+         *
+         * The busy state maps to the neutral line: it had no appearance
+         * before either (its class answered nothing), so this is the same
+         * rendering with one fewer class that means nothing. */
         function setStatus(msg, kind) {
-            if (!status) return;
-            status.textContent = msg || "";
-            // Two states: generating (in-flight) or error.  Empty
-            // string clears both.
-            status.className = "muted"
-                + (kind === "error"      ? " is-error"      : "")
-                + (kind === "generating" ? " is-generating" : "");
+            window.molbuilder.status.set(
+                status, msg, kind === "error" ? "error" : null);
         }
 
         button.addEventListener("click", function () {

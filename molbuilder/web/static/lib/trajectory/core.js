@@ -702,14 +702,14 @@ import { molviewFiles } from "../projects/molview-doors.js";
     }
 
     function setStatus(msg, kind) {
-        // Status banner is page-level (not in the inspector partial),
-        // a legacy of the /watch loader bar.  On /results no such
-        // element exists, so this is a silent no-op there — error
-        // surfacing is the embed's onError + per-inspector renderers.
-        const el = document.getElementById("status");
-        if (!el) return;
-        el.textContent = msg;
-        el.className = "status" + (kind ? " " + kind : "");
+        // The page-level banner, a legacy of the /watch loader bar.  On
+        // /results no such element exists and this is EXPECTED, not a bug --
+        // error surfacing there is the embed's onError plus the per-inspector
+        // renderers.  So the absent slot is swallowed here rather than
+        // reported: the shared writer warns, and warning on every trajectory
+        // render would be noise that trains people to ignore it.
+        if (!document.getElementById("status")) return;
+        window.molbuilder.status.set("status", msg, kind);
     }
 
     /* ------------------------------------------------------------------ */

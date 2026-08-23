@@ -45,14 +45,11 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
 
     function _$(id) { return document.getElementById(id); }
 
+    /** The shared `.status` writer (lib/status.js).  This copy allowed only
+     *  ok|warn|error and silently DROPPED anything else, so `muted` -- which
+     *  page-shell declares and other tabs use -- rendered as nothing here. */
     function setStatus(elId, msg, kind) {
-        const el = _$(elId);
-        if (!el) return;
-        el.textContent = msg || "";
-        el.className = "status"
-            + (kind === "ok"    ? " ok"    : "")
-            + (kind === "warn"  ? " warn"  : "")
-            + (kind === "error" ? " error" : "");
+        window.molbuilder.status.set(elId, msg, kind);
     }
 
     /* THE INSPECTOR THIS PAGE MOUNTED, kept so the page can hand it the viewer

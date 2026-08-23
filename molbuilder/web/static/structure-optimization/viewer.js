@@ -191,18 +191,12 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     }
 
     // ----- Status helpers --------------------------------------------
+    /** The shared `.status` writer (lib/status.js).  The null-guard and the
+     *  console warning that used to live here are its -- they are why it is
+     *  loud: a silent return once turned a MolView mount failure completely
+     *  invisible, because the catch handler died on a phantom id. */
     function setStatus(elId, msg, kind) {
-        const el = $(elId);
-        // Null-guarded: a missing status slot must never turn the REPORT of a
-        // failure into a throw of its own (that made a MolView mount failure
-        // completely invisible -- the catch handler died on a phantom id).
-        if (!el) {
-            if (window.console) console.warn("[structure-opt] no #" + elId
-                + " status slot for: " + msg);
-            return;
-        }
-        el.textContent = msg;
-        el.className = "status" + (kind ? " " + kind : "");
+        window.molbuilder.status.set(elId, msg, kind);
     }
 
     // Findings rendering lives in ONE module for the whole app

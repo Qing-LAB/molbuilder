@@ -16,6 +16,7 @@
    design.md "Module init contract". #}
 <script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/status.js') }}"></script>
 </head>
 {#- No `data-workspace-owner`: it existed so a read happening before any mount was
     still namespaced, back when the workspace held one active namespace that had to
@@ -116,7 +117,7 @@
       <div class="modify-source-actions">
         <input id="file-upload-input" type="file"
                accept=".xyz,.pdb,.XYZ,.PDB">
-        <span id="file-upload-status" class="muted" role="status"></span>
+        <span id="file-upload-status" class="status" role="status"></span>
       </div>
     </div>
   </div>
@@ -134,7 +135,7 @@
       </label>
       <div class="modify-source-actions">
         <button id="smiles-generate-btn" class="ghost">Generate</button>
-        <span id="smiles-status" class="muted" role="status"></span>
+        <span id="smiles-status" class="status" role="status"></span>
       </div>
     </div>
   </div>
@@ -153,7 +154,7 @@
       </label>
       <div class="modify-source-actions">
         <button id="name-generate-btn" class="ghost">Generate</button>
-        <span id="name-status" class="muted" role="status"></span>
+        <span id="name-status" class="status" role="status"></span>
       </div>
     </div>
   </div>
@@ -209,7 +210,7 @@
       </label>
       <div class="modify-source-actions">
         <button id="dna-generate-btn" class="ghost">Generate</button>
-        <span id="dna-status" class="muted" role="status"></span>
+        <span id="dna-status" class="status" role="status"></span>
       </div>
     </div>
   </div>
@@ -249,7 +250,7 @@
       </label>
       <div class="modify-source-actions">
         <button id="rna-generate-btn" class="ghost">Generate</button>
-        <span id="rna-status" class="muted" role="status"></span>
+        <span id="rna-status" class="status" role="status"></span>
       </div>
     </div>
   </div>
@@ -269,7 +270,7 @@
       </label>
       <div class="modify-source-actions">
         <button id="peptide-generate-btn" class="ghost">Generate</button>
-        <span id="peptide-status" class="muted" role="status"></span>
+        <span id="peptide-status" class="status" role="status"></span>
       </div>
     </div>
   </div>
@@ -347,7 +348,7 @@
         Save to project
       </button>
       <span id="save-readout" class="muted"></span>
-      <span id="save-status" class="muted" role="status"></span>
+      <span id="save-status" class="status" role="status"></span>
     </div>
 
     {#- WHAT THE LAST OP DID -- one line, and only that.  What the SERVER says

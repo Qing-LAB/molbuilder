@@ -1092,11 +1092,24 @@ What remains:
   default, so the key that closes a dialog keeps your work. Two anonymous
   literals became named tokens with reasons (`--shadow-modal`, `--backdrop`).
   Closes `web/audit-2026-08-05-tab-ui.md` § C8.
-- **7.4b — `setStatus` is written twelve times.** The CSS side is a properly
-  owned shared component (`.status` + severities, one owner in page-shell);
-  the writer is hand-rolled per tab. The 2026-08-05 audit counted six (§ C5);
-  it has doubled since, which is the argument for scheduling it rather than
-  recording it again.
+- ~~**7.4b — `setStatus` is written twelve times.**~~ **Done 2026-08-23, and
+  the count was wrong in an instructive way.** Fifteen functions carry that
+  name, but they are not one widget: four wrote the shared `.status`, seven
+  wrote a `.muted` panel line, and four are genuinely their own (the
+  preview's `.ps-preview-status`, two text-only). Same word, different
+  layers.
+
+  Both real duplications are folded onto `lib/status.js`, and folding the
+  second uncovered a defect worth more than the tidy-up: the seven builder
+  panels wrote `is-error` / `is-generating` / `is-loading`, and **no
+  stylesheet defines any of them** — so a refused SMILES reported itself in
+  the same muted grey as a hint, on every panel, since they were written.
+  They now use `.status`, whose `error` is red. Verified in a browser:
+  `class="status error"`, `rgb(248, 113, 113)`.
+
+  The shared writer is also LOUD about a missing slot, which one copy was and
+  the others were not — that copy exists because a silent return once made a
+  MolView mount failure completely invisible.
 - **7.4c — 991 anonymous values against 1846 named (65% named).** The
   distribution is the finding: the newest sheet is at 99.2% and the *shared*
   layers everything inherits from are the worst — `form-components` 45.3%,
