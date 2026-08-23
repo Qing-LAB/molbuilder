@@ -113,13 +113,49 @@ def _compare(row, *, cores: Optional[int] = None,
         # PREFERRING nodes that do have devices is a CHOICE, and choices live
         # in `place.candidates`; this only refuses what the record positively
         # rules out.
-        have = row.gpu if isinstance(row.gpu, dict) else None
-        if have:
-            most = max(int(v) for v in have.values())
-            if most < gpus:
-                why.append(f"needs {gpus} GPUs but {row.name} offers at "
-                           f"most {most}")
+        most = _devices_offered(row.gpu)
+        if most is not None and most < gpus:
+            why.append(f"needs {gpus} GPUs but {row.name} offers at "
+                       f"most {most}")
     return why
+
+
+def _devices_offered(gpu) -> Optional[int]:
+    """How many devices a domain's ``gpu`` column offers, or ``None``.
+
+    **The column has two shapes**, and nothing declared which -- found
+    2026-08-23 when admission started reading it and crashed on the second:
+
+      * probed rows map TYPE to COUNT, ``{"a100": 4, "h100": 8}`` -- one
+        entry per gres type `sinfo` reported;
+      * hand-declared rows describe ONE device,
+        ``{"type": "a100", "per_node": 4, "mem_gb": 80}``.
+
+    Both are in live records, so both are read here rather than one being
+    declared wrong: a reader that understands only the shape it happened to
+    meet is how a hand-declared cluster stops being usable.  ``per_node`` is
+    the descriptor's count; otherwise the largest numeric value wins, and a
+    non-numeric value is skipped rather than raising -- an unreadable column
+    is not a small one (R3).
+
+    (That the column needs this function at all is worth its own fix: one
+    concept, two spellings.  Recorded rather than unified here, because
+    changing the record's shape is not this phase's job.)
+    """
+    if not isinstance(gpu, dict) or not gpu:
+        return None
+    if "per_node" in gpu:
+        try:
+            return int(gpu["per_node"])
+        except (TypeError, ValueError):
+            return None
+    counts = []
+    for value in gpu.values():
+        try:
+            counts.append(int(value))
+        except (TypeError, ValueError):
+            continue                 # a type name, a memory size, a label
+    return max(counts) if counts else None
 
 
 def domain_ceiling_s(row) -> Optional[int]:

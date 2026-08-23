@@ -4223,35 +4223,38 @@ def render_sbatch(script_path: Path,
         "#",
         f"#SBATCH -J {basename}",
         "#SBATCH -N 1",
-        f"#SBATCH -n {ntasks}",
     ]
-    if cpus is not None:
-        lines.append(f"#SBATCH -c {cpus}")
-    if walltime:
-        lines.append(f"#SBATCH -t {walltime}")
-    lines.append(f"#SBATCH -p {partition}")
-    lines.append(f"#SBATCH -q {qos}")
-    if gpu:
-        lines.append(f"#SBATCH --gres=gpu:{gpu_type}:{gpu_count}")
-        # Nudge SLURM toward co-locating the CPU cores with the GPU's
-        # NUMA node; the launcher still does the authoritative per-rank
-        # runtime bind (running-a-job.md § 3.3).
-        lines.append("#SBATCH --gres-flags=enforce-binding")
+    # THE ONE EMITTER (2026-08-23, scheduler.md R1).  The queue, the wall, the
+    # ranks, the cores, the devices and the memory rule are rendered by
+    # `scheduler.emit`, which also renders them for the `sbatch` command line
+    # -- so the header and the flags are two spellings of one placement rather
+    # than two writers deciding separately.  That split is both Sol failures:
+    # a header naming `htc/debug` while the command line asked for 38 minutes,
+    # and a header naming a queue while stating no wall at all.
+    #
+    # `-J`, `-N`, the account, mail and the output paths stay here: the
+    # command line does not also decide them, so they cannot drift from it.
+    from .scheduler.emit import Directives
+    _d = Directives(partition=partition, qos=qos, walltime=walltime,
+                    ntasks=ntasks, cpus_per_task=cpus,
+                    gres=(f"gpu:{gpu_type}:{gpu_count}" if gpu else None),
+                    mem=(memory or None), exclusive=bool(exclusive))
     if exclusive:
-        lines.append("#SBATCH --exclusive")
-        # --exclusive reserves the WHOLE node, which already grants ALL of
-        # the node's memory.  The configured mem request is therefore
-        # IGNORED here; --mem=0 = "all memory on the node".  Stated out loud
-        # so the ignored value is never a silent surprise (the mem<->exclusive
-        # rule -- running-a-job.md § 5.3.1).
+        # The ignored value, said out loud so it is never a silent surprise
+        # (the mem<->exclusive rule -- running-a-job.md § 5.3.1).  The RULE
+        # itself lives in the emitter; this is the explanation beside it.
         lines.append(
             f"# --exclusive owns the whole node -> ALL its memory.  Configured "
             f"mem ({memory or 'unset'}) is IGNORED; --mem=0 = all node RAM.")
-        lines.append("#SBATCH --mem=0")
-    elif memory:
-        if mem_comment:
-            lines.append(mem_comment)
-        lines.append(f"#SBATCH --mem={memory}")
+    elif memory and mem_comment:
+        lines.append(mem_comment)
+    lines.extend(_d.header_lines())
+    if gpu:
+        # Nudge SLURM toward co-locating the CPU cores with the GPU's
+        # NUMA node; the launcher still does the authoritative per-rank
+        # runtime bind (running-a-job.md § 3.3).  Not a placement fact --
+        # the command line never states it -- so it stays here.
+        lines.append("#SBATCH --gres-flags=enforce-binding")
     lines.append("#SBATCH -o slurm.%j.out")
     lines.append("#SBATCH -e slurm.%j.err")
     if directives.get("mail_type"):

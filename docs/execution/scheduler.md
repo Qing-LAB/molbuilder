@@ -21,12 +21,19 @@ between them. This document says what that subsystem *is*, so the pieces have
 one home and one set of rules instead of one treatment per place someone
 noticed a problem.
 
-> **Status**, 2026-08-23. Phases 1–4 of § 8 have landed: `record`, `probe`,
+> **Status**, 2026-08-23. **All five phases of § 8 have landed:** `record`, `probe`,
 > `admit` and `place` are the subsystem, `molbuilder.scheduler` is the
-> package, and placement is one walk that both the group and single-job paths
-> take. **Emission has not moved** (phase 5) — the `#SBATCH` header and the
-> `sbatch` flags are still two writers, handed the same placement rather than
-> deriving one each.
+> package, placement is one walk that both the group and single-job paths
+> take, and the header and the flags are two renderings of one `Directives`.
+>
+> Two things this document specifies that the record does not yet support,
+> both found while implementing it and both recorded rather than quietly
+> patched: **`Domain.gpu` has two shapes** — probed rows map type→count,
+> hand-declared rows describe one device with named keys — and admission
+> reads both because both are in live records; and **R9 needs two records**,
+> the bundle's snapshot for routing and the machine's own for the re-check,
+> because routing resolves the calculation scope first and re-admitting
+> against the snapshot compares a request with the record that built it.
 >
 > § 1's table is written in the **past tense on purpose**: it records where
 > each responsibility lived when the two Sol failures happened, which is the
@@ -369,8 +376,13 @@ The schedule is `roadmap.md` § 7.6, not here (R3).
    record unusable the moment the named path started being admitted), and
    preferring nodes that *do* have devices stayed in `candidates`, where a
    choice belongs, rather than migrating into admission.
-5. **Unify the emitters.** The last and most valuable step: the header and the
-   flags stop being two functions.
+5. **Unify the emitters.** *(Done 2026-08-23.)* `scheduler/emit.py` renders
+   the facts both spellings carry — queue, wall, ranks, cores, devices, and
+   the `--exclusive`/`--mem` mutual exclusion. `-J`, `-N`, the account, mail
+   and the output paths stay with the header: the command line does not also
+   decide them, so they cannot drift from it. The one place the renderings
+   differ is verbosity, not meaning — the header adds `--mem=0` beside
+   `--exclusive` because a person reads that file.
 
 **The gate for step 5** is a test that renders both spellings from one
 placement and asserts they name the same queue and the same wall — the

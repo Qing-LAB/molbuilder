@@ -85,26 +85,26 @@ class JobResult:
 #  domain → -p/-q resolution (reuses runtime_config.get_routing)         #
 # --------------------------------------------------------------------- #
 
-def _sbatch_resource_flags(r: Resources) -> List[str]:
-    """The per-job ``sbatch`` overrides.  CLI flags win over the rendered
-    header's #SBATCH defaults, so one shared ``.sbatch`` serves every job.
-    ``--exclusive`` and ``--mem`` are mutually exclusive (whole-node owns all
-    memory — the ``--mem`` is meaningless and rejected by some sites), so
-    exclusive suppresses ``--mem`` (running-a-job.md § 5.3.1)."""
-    flags: List[str] = []
-    if r.mpi_np:
-        flags += ["-n", str(r.mpi_np)]
-    if r.cpus_per_task:
-        flags += ["-c", str(r.cpus_per_task)]
-    if r.gres:
-        flags.append(f"--gres={r.gres}")
-    if r.time:
-        flags += ["-t", r.time]
-    if r.exclusive:
-        flags.append("--exclusive")
-    elif r.mem:
-        flags.append(f"--mem={r.mem}")
-    return flags
+def _sbatch_resource_flags(r: Resources, placement=None) -> List[str]:
+    """The per-job ``sbatch`` flags — rendered by `scheduler.emit`, the ONE
+    emitter (R1).
+
+    Was a second writer beside `runwrap`'s header, each deciding for itself
+    what queue and what wall to name.  That split is both Sol failures: a
+    header naming ``htc/debug`` while this side asked for 38 minutes, and a
+    header naming a queue while stating no wall at all.  Now both spellings
+    come off one :class:`~molbuilder.scheduler.emit.Directives`, so there is
+    nothing left for them to disagree about.
+
+    CLI flags still WIN over the rendered header, which is what lets one
+    ``.sbatch`` serve a whole sweep while each job gets its own ranks.
+    """
+    from ..scheduler.emit import Directives
+    return Directives.of(placement,
+                         walltime=r.time, ntasks=r.mpi_np,
+                         cpus_per_task=r.cpus_per_task, gres=r.gres,
+                         mem=r.mem, exclusive=bool(r.exclusive)
+                         ).sbatch_flags()
 
 
 def _run_sh_args(r: Resources) -> List[str]:
@@ -187,9 +187,7 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         # and it showed you nothing.  `JobSet.name` is the id (run-identity.md
         # § 2), so it goes first and the stage qualifies it.
         cmd = ["sbatch", "-J", _scheduler_job_name(jobset, job)]
-        if placement is not None:
-            cmd += ["-p", placement.partition, "-q", placement.qos]
-        cmd += _sbatch_resource_flags(job.resources)
+        cmd += _sbatch_resource_flags(job.resources, placement)
         # The launch-door claim, EXPLICIT on the command line: environment
         # inheritance alone is fragile (sites override SLURM's --export
         # policy), and the CLI flag wins over site defaults, so the claim
@@ -590,8 +588,18 @@ def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
     want = Request(ranks=cores, cpus_per_task=1, gpus=gpus or None,
                    mem_gb=parse_mem_gb(mem_gb), walltime_s=needed_s)
     try:
-        return place(_rc.get_routing(project_dir=base), want,
-                     prefer_gpu=gpu_side, named=named)
+        placed = place(_rc.get_routing(project_dir=base), want,
+                       prefer_gpu=gpu_side, named=named)
+        # R9's SECOND record.  Routing reads the calculation scope first, so
+        # a prepped bundle routes against the snapshot beside it -- which is
+        # right for reproducibility and useless as a re-check, because it is
+        # the same record the request was built against.  What will actually
+        # enforce the limits is THIS machine's own record, so the re-admission
+        # reads that one.  When the two agree this costs a read; when they
+        # disagree it is the whole point of the rule.
+        if placed is not None:
+            _reject_if_this_machine_says_no(placed, want, gpu_side, label)
+        return placed
     except Unplaceable as exc:
         raise SubmitError(
             f"{label or 'this group'} cannot be placed on this machine:\n    "
@@ -599,6 +607,39 @@ def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
             + "\n  Nothing was submitted -- the scheduler would refuse it.  "
               "Either run fewer trials per group, lower --trial-timeout, or "
               "name a longer domain with --domain <name>.") from None
+
+
+def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
+                                    label: str) -> None:
+    """R9 -- the machine's OWN record has the last word.
+
+    A bundle carries the record it was prepared against.  If it travelled, or
+    if the machine has been re-probed since, the limits that will actually be
+    enforced are the ones here.  The Au-BDT-Au sweep is the worked example:
+    its cells were sized against a snapshot whose gpu rows said
+    ``max_cores: None``, and Sol has since measured 48.
+
+    Silent when this machine has no record of the queue in question -- absent
+    evidence is not evidence of a smaller limit (R3).
+    """
+    from .. import runtime_config as _rc
+    from ..scheduler import admits
+    here = _rc.get_routing(project_dir=None)
+    if not here:
+        return                       # no record of my own; nothing to add
+    mine = [d for d in here if (d.partition, d.qos) == (placed.partition,
+                                                        placed.qos)]
+    if not mine:
+        return                       # this machine does not know that queue
+    why = admits(mine[0], want)
+    if why:
+        raise SubmitError(
+            f"{label or 'this group'} was prepared against a record that "
+            f"allowed it, but THIS machine does not:\n    "
+            + "\n    ".join(why)
+            + f"\n  The bundle's snapshot and {mine[0].name}'s current record "
+              f"disagree -- re-run `prep` here so the trials are sized "
+              f"against what this machine actually offers.")
 
 
 def _shelf_key(job: "Job"):
@@ -757,14 +798,12 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
                        mem_gb=envelope.mem,
                        gpus=_gres_count(envelope.gres or ""),
                        named=domain, label=name)
-    if placement is not None:
-        cmd += ["-p", placement.partition, "-q", placement.qos]
     # The same shape as a single job: the rendered .sbatch header carries
     # the SITE directives (partition/qos/account/mail -- runwrap's one
     # header emitter, so the group cannot drift from what every trial
     # gets), and the CLI flags carry the envelope as overrides, exactly
     # the flags-win-over-header rule _sbatch_resource_flags documents.
-    cmd += _sbatch_resource_flags(envelope)
+    cmd += _sbatch_resource_flags(envelope, placement)
     cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch"]
     cmd.append(f"{name}.sbatch")
 

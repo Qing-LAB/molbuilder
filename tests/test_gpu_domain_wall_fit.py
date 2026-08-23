@@ -268,3 +268,35 @@ class TestNamingADomainDoesNotSkipTheCheck:
         with pytest.raises(Unplaceable) as exc:
             place(SOL, Request(), prefer_gpu=True, named="nope")
         assert "debug" in exc.value.reasons[0] and "htc" in exc.value.reasons[0]
+
+
+class TestTheGpuColumnHasTwoShapes:
+    """`Domain.gpu` is written two ways and nothing declares which.
+
+    Probed rows map TYPE to COUNT (one entry per gres type `sinfo` reported);
+    hand-declared rows describe ONE device with named keys.  Both are in live
+    records, so both are read -- a reader that understands only the shape it
+    happened to meet is how a hand-declared cluster stops being usable.
+
+    Found 2026-08-23, when admission started reading the column and crashed
+    with `int('a100')` on the second shape.
+    """
+
+    def test_the_probed_shape_is_type_to_count(self):
+        d = _dom(name="sol", gpu={"a100": 4, "h100": 8})
+        assert admits(d, Request(gpus=8)) == []
+        assert admits(d, Request(gpus=9)) == [
+            "needs 9 GPUs but sol offers at most 8"]
+
+    def test_the_declared_shape_describes_one_device(self):
+        d = _dom(name="hand", gpu={"type": "a100", "per_node": 4,
+                                   "mem_gb": 80})
+        assert admits(d, Request(gpus=4)) == []
+        assert admits(d, Request(gpus=5)) == [
+            "needs 5 GPUs but hand offers at most 4"]
+
+    def test_a_label_in_the_column_is_skipped_not_raised(self):
+        """An unreadable value is not a small one (R3) -- and it must not
+        take the whole submission down with a ValueError."""
+        d = _dom(name="odd", gpu={"type": "a100"})
+        assert admits(d, Request(gpus=2)) == []

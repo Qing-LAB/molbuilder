@@ -1011,7 +1011,7 @@ test-pin exists and passes.
 | 7.4e | nothing in the suite measures layout | **open** |
 | 7.4f | the MolView host overflows its card at ≤768px | **open** |
 | 7.5 | the residue three: O1, O4, O5 (carried over) | **open** |
-| 7.6 | the scheduler subsystem — five modules, two emitters, no admission | **phases 1–4 done; phase 5 (one emitter) open** |
+| 7.6 | the scheduler subsystem — five modules, two emitters, no admission | **done — all five phases** |
 
 ### 7.1 The remote-machine workflow, finished
 
@@ -1171,7 +1171,16 @@ Phases, smallest risk first — each separately testable and revertable:
    everything else, and **R9** landed with it (the group's cores, memory and
    devices are re-checked against what the machine says NOW, not what it said
    at prep);
-5. unify the two emitters.
+5. ~~unify the two emitters~~ — **done 2026-08-23**: the header and the
+   flags are two renderings of one `Directives`, pinned by
+   `test_one_emitter.py`.
+
+**Two follow-ups this work recorded rather than patched:** `Domain.gpu` is
+written two ways (probed `{type: count}` vs declared `{type, per_node,
+mem_gb}`) and admission reads both — one concept, two spellings, worth
+unifying in the record; and the 64-rank Au-BDT-Au trials still need a
+re-`prep` against Sol's current record, which R9 will now refuse to submit
+without.
 
 *Test-pin:* phase 5's gate — render both spellings from one placement and
 assert they name the same queue and the same wall. That is the assertion
