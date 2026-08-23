@@ -99,6 +99,12 @@ _PAGES = [
     # always visible.  The picker bar itself is the right
     # always-visible probe.
     ("/results", "#results-file-picker-bar"),
+    # Task-setup tab: the prep surface.  Added 2026-08-22 -- it was
+    # the one served page with no boot pin, which is how a duplicate
+    # `ts-machine-card` id could hide the whole bench panel without
+    # anything going red.  `#ts-dest-card` is the folder picker,
+    # the only card that is never hidden.
+    ("/task-setup", "#ts-dest-card"),
 ]
 
 

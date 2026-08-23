@@ -317,59 +317,35 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
             if (!btn) return;
             btn.disabled = !_sidebarLastFile;
         }
-        let _autoDetectSeq = 0;
-        // J3 2026-06-14: shared AbortController across the manual
-        // click + background _autoAnalyzeOnLoad fires.  See
-        // viewer.js (structure-opt) for the same pattern.
-        let _autoDetectAbort = null;
+        // Both halves of auto-detect -- the analyze call's
+        // supersede/abort protocol AND the panel renderer -- live in
+        // lib/auto-detect.js, so a fix cannot land on one tab and
+        // miss the others (audit-2026-08-05-tab-ui.md §§ C1, C2).
+        // Loaded as a classic script, hence defined before this
+        // module body runs.
+        const autoDetect = window.molbuilder.autoDetect;
         const _autoBtn = _$("auto-detect-btn");
         if (_autoBtn) {
             _autoBtn.addEventListener("click", async () => {
                 if (!_sidebarLastFile) return;
-                const mySeq     = ++_autoDetectSeq;
                 const myLoadSeq = _loadSeq;
                 const myPath    = _sidebarLastFile;
-                if (_autoDetectAbort) _autoDetectAbort.abort();
-                _autoDetectAbort = new AbortController();
-                const mySignal = _autoDetectAbort.signal;
                 _autoBtn.disabled = true;
                 setStatus("auto-detect-status", "Analyzing…", null);
-                let body;
-                try {
-                    const r = await fetch("/api/structure/analyze", {
-                        method:  "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body:    JSON.stringify({ structure_path: myPath }),
-                        signal:  mySignal,
-                    });
-                    body = await r.json();
-                    if (mySeq !== _autoDetectSeq
-                        || myLoadSeq !== _loadSeq) return;
-                    if (!r.ok || !body.ok) {
-                        setStatus("auto-detect-status",
-                            body && body.error
-                                ? body.error
-                                : `Analyze failed (HTTP ${r.status}).`,
-                            "error");
-                        return;
-                    }
-                } catch (e) {
-                    if (e && e.name === "AbortError") return;
-                    if (mySeq !== _autoDetectSeq
-                        || myLoadSeq !== _loadSeq) return;
-                    setStatus("auto-detect-status",
-                        "Network error: "
-                        + (e && e.message ? e.message : String(e)),
-                        "error");
+                const res = await autoDetect.analyze(myPath, {
+                    isStale: () => myLoadSeq !== _loadSeq,
+                });
+                // Superseded: a newer click, or a structure loaded
+                // mid-flight, owns the button and the panel now.
+                // Leave both to whoever won.
+                if (res.superseded) return;
+                _refreshAutoDetectButton();
+                if (!res.ok) {
+                    setStatus("auto-detect-status", res.error, "error");
                     return;
-                } finally {
-                    if (mySeq === _autoDetectSeq
-                        && myLoadSeq === _loadSeq) {
-                        _refreshAutoDetectButton();
-                    }
                 }
-                await _applyAutoDetectToSpectraForm(body);
-                _renderAutoDetectPanel(body);
+                await _applyAutoDetectToSpectraForm(res.body);
+                autoDetect.renderPanel(res.body);
                 setStatus("auto-detect-status",
                     "Applied to the parameter form.  Review rationale below.",
                     "ok");
@@ -385,31 +361,19 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
          * the form-fill).
          */
         async function _autoAnalyzeOnLoad(path) {
-            if (!path) return;
-            const mySeq     = ++_autoDetectSeq;
             const myLoadSeq = _loadSeq;
-            if (_autoDetectAbort) _autoDetectAbort.abort();
-            _autoDetectAbort = new AbortController();
-            const mySignal = _autoDetectAbort.signal;
-            try {
-                const r = await fetch("/api/structure/analyze", {
-                    method:  "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body:    JSON.stringify({ structure_path: path }),
-                    signal:  mySignal,
-                });
-                const body = await r.json();
-                if (mySeq !== _autoDetectSeq
-                    || myLoadSeq !== _loadSeq) return;
-                if (!r.ok || !body.ok) return;  // silent — see Optimization helper
-                _renderAutoDetectPanel(body);
-                setStatus("auto-detect-status",
-                    "Chemistry analyzed — click Auto-detect to "
-                    + "apply suggested defaults to the form.",
-                    null);
-            } catch (_) {
-                // Silent — background fire.
-            }
+            const res = await autoDetect.analyze(path, {
+                isStale: () => myLoadSeq !== _loadSeq,
+            });
+            // Silent on every failure, superseded included: the user
+            // did not ask for this fire, so it must not flash an
+            // error at them.  The button is still there to retry.
+            if (!res.ok) return;
+            autoDetect.renderPanel(res.body);
+            setStatus("auto-detect-status",
+                "Chemistry analyzed — click Auto-detect to "
+                + "apply suggested defaults to the form.",
+                null);
         }
 
         /**
@@ -436,54 +400,6 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
                 return;
             }
             fs.setValues(container, schema, sug);
-        }
-
-        function _renderAutoDetectPanel(resp) {
-            /* The workflow-card chips read the same analysis (the ONE
-             * detection surface, lib/detection-chip.js) -- this tab
-             * rendered the rationale panel but never the chips, the
-             * exact per-tab drift the chip module was extracted to
-             * prevent. */
-            const _chip = window.molbuilder
-                       && window.molbuilder.detectionChip;
-            if (_chip && typeof _chip.render === "function") {
-                _chip.render(resp);
-            }
-            const panel = _$("auto-detect-panel");
-            if (!panel) return;
-            panel.hidden = false;
-            panel.open = true;
-            const ratEl  = _$("auto-detect-rationale");
-            const warnEl = _$("auto-detect-warnings");
-            const metEl  = _$("auto-detect-metals");
-            if (ratEl) {
-                const sug = (resp.suggested || {}).pyscf || {};
-                ratEl.textContent = sug.rationale || "";
-            }
-            if (warnEl) {
-                warnEl.textContent = "";
-                for (const w of (resp.warnings || [])) {
-                    const li = document.createElement("li");
-                    li.textContent = w;
-                    warnEl.appendChild(li);
-                }
-                warnEl.hidden = (resp.warnings || []).length === 0;
-            }
-            if (metEl) {
-                metEl.textContent = "";
-                for (const h of (resp.metal_hints || [])) {
-                    const dt = document.createElement("dt");
-                    dt.textContent = h.element;
-                    metEl.appendChild(dt);
-                    for (const c of (h.common_spins || [])) {
-                        const dd = document.createElement("dd");
-                        dd.textContent =
-                            `spin=${c.spin} — ${c.label}`;
-                        metEl.appendChild(dd);
-                    }
-                }
-                metEl.hidden = (resp.metal_hints || []).length === 0;
-            }
         }
 
         // Refresh the Auto-detect button state every time the

@@ -1,7 +1,7 @@
 """``molbuilder jobset ...`` — the calculation's one grammar
 (docs/execution/job-system.md § 5.3).
 
-``describe`` writes the portable folder (floor 2); on the machine that runs
+``init`` writes the portable folder (floor 2); on the machine that runs
 it, ``prep`` derives floor 3 and everything below (the five steps of
 project-layout.md § 2.3.1), ``launch`` launches ONE job per invocation, and
 ``summarize`` reads a sweep's results back.  Nothing is produced on a host
@@ -53,13 +53,24 @@ def _load(bundle: str) -> tuple:
         raise click.ClickException(str(e))
 
 
+#  The group docstring below IS the `jobset --help` text, so it names verbs a
+#  user is about to type.  It said ``describe`` for days after that verb became
+#  ``init`` -- help recommending a command the CLI rejects.  Kept honest by
+#  `test_machines_listing.py::test_jobset_help_names_live_verbs`, which
+#  resolves every verb the text names against the registered commands.  (The
+#  note lives here rather than in the docstring: a user reading --help needs
+#  the verbs, not our rename history.)
 @click.group("jobset", short_help="run a job-set bundle (stage ladder / sweep)")
 def jobset_group() -> None:
     """The calculation's verbs, one grammar (job-system.md § 5.3):
-    ``describe`` writes the portable folder; on the machine that runs it,
+    ``init`` writes the portable folder; on the machine that runs it,
     ``prep`` derives everything else and ``launch`` launches one job per
     invocation.  Floor 3 (``job-set.json``) is DERIVED at prep, on the
-    target -- nothing is produced on a host and shipped."""
+    target -- nothing is produced on a host and shipped.
+
+    ``probe`` measures a machine and ``machines`` lists the records that
+    measuring produced, which is how a calculation is prepared for a
+    machine other than this one (preparing-for-another-machine.md)."""
 
 
 #: The calculation folder, spelled the same way on every verb.
@@ -2017,6 +2028,49 @@ def _probe_consent_merge(before, probed, *, yes: bool):
         f"took probed: {', '.join(took)}" if took else "",
         f"kept recorded: {', '.join(kept)}" if kept else ""])))
     return probed
+
+
+@jobset_group.command("machines",
+                     short_help="list the machine records prep can target")
+def cmd_machines() -> None:
+    """Which machines a calculation can be prepared FOR, and where each lives.
+
+    The answer to *"did the record I copied over actually arrive, and does it
+    parse?"* -- which until 2026-08-22 could only be had by running ``prep
+    --target`` and reading the refusal, because this list existed only in the
+    browser (`preparing-for-another-machine.md` § 5).
+
+    Prints the same list `GET /api/task-setup/machines` serves, from the same
+    function, so the terminal and the tab cannot disagree.  An unreadable
+    record is PRINTED and marked, never skipped: the user wrote it, and a
+    silently-dropped record looks exactly like one that was never copied.
+
+    The path is shown because it is the destination of the copy -- a record
+    written on the cluster by ``probe --write --name sol`` is carried here by
+    copying it to the path this command prints.
+    """
+    from molbuilder.environment import (known_machines, choice_required,
+                                        environments_dir)
+    machines = known_machines()
+    for m in machines:
+        mark = " " if m["readable"] else "!"
+        name = m["name"] + ("" if m["kind"] == "target" else "  [local]")
+        click.echo(f"{mark} {name:24} {m['summary']}")
+        click.echo(f"    {m['path']}")
+        if m["readable"] and m["detected_at"]:
+            click.echo(f"    measured {m['detected_at']}")
+    named = [m for m in machines if m["kind"] == "target"]
+    click.echo("")
+    if not named:
+        click.echo("No named targets yet.  To prepare for another machine, "
+                   "run this on THAT machine:")
+        click.echo("    molbuilder jobset probe --write --name <name>")
+        click.echo(f"then copy the file it writes into:\n    "
+                   f"{environments_dir()}/")
+    elif choice_required(machines):
+        click.echo("More than one machine could be meant, so `prep` requires "
+                   "`--target <name>` (being asked costs one flag; being "
+                   "given the wrong one costs a queue wait).")
 
 
 @jobset_group.command("probe",

@@ -26,7 +26,13 @@ needs before it can offer to prepare anything.
    machine — cores, GPUs, scheduler, the `(partition, qos)` domains the
    account can reach — and writes `~/.config/molbuilder/environments/sol.json`.
 2. **Carry the record to your machine**, into the same directory. It is a
-   plain JSON file; copying it is the whole step.
+   plain JSON file; copying it is the whole step — see § 1a for the commands.
+
+   ```
+   scp cluster:~/.config/molbuilder/environments/sol.json \
+       ~/.config/molbuilder/environments/
+   molbuilder jobset machines        # confirm it arrived AND parses
+   ```
 3. **Prepare here, for there.** `prep --target sol` resolves capability from
    that record instead of from the machine you are sitting at, snapshots it
    as `environment.json` beside the bundle, and renders decks and wrappers
@@ -41,6 +47,72 @@ only honest source. Preparing without it measures the desk and calls it the
 cluster.
 
 ---
+
+---
+
+## 1a. The commands, end to end
+
+Verified 2026-08-22 by running each step against an isolated `HOME`, so the
+paths below are what the code does rather than what it intends.
+
+**On the target** (a login node is fine — a scheduler is read from `sinfo`,
+not from being on a compute node):
+
+```
+molbuilder jobset probe --write --name sol
+# -> wrote ~/.config/molbuilder/environments/sol.json
+```
+
+The name is yours; it is the filename stem, and it is what `--target` will
+say. `--write` shows what it measured and asks before overwriting an existing
+record, difference by difference — silence keeps the record, `--yes` takes
+every probed value.
+
+**If molbuilder cannot be installed there**, declare what the probe would have
+measured instead of guessing later:
+
+```
+molbuilder jobset probe --write --name sol \
+    --scheduler slurm --set gpus_per_node=4 --set gpu_type=a100
+```
+
+A declared fact wins over detection and the record says `source: flag`, so a
+reader can always see which numbers were measured and which were asserted.
+
+**On your machine**, copy the file into this directory and confirm:
+
+```
+scp cluster:~/.config/molbuilder/environments/sol.json \
+    ~/.config/molbuilder/environments/
+molbuilder jobset machines
+```
+
+`machines` prints every record, its path, and when it was measured. It is the
+only step that answers *"did the copy land, and does it parse?"* — a record
+that is present but corrupt is **listed and marked**, never skipped, because a
+silently-dropped record looks exactly like one that was never copied.
+
+**Then prepare, and send it:**
+
+```
+molbuilder jobset prep run coarse --bundle Au-BDT-Au/optimization/Relax --target sol
+rsync -a Au-BDT-Au/optimization/Relax/ cluster:~/molbuilder/projects/Au-BDT-Au/optimization/Relax/
+```
+
+`launch` is **not** run here — starting a job happens where the job runs
+(§ 5's closing note).
+
+**Where the files are.** `$XDG_CONFIG_HOME` is honoured; the default is
+`~/.config`:
+
+| | path |
+|---|---|
+| this machine's record | `~/.config/molbuilder/environment.json` |
+| a named target | `~/.config/molbuilder/environments/<name>.json` |
+| the bundle's snapshot | `<bundle>/environment.json`, written by `prep` |
+
+The three are different scopes, not copies: `record_scopes()` walks them
+calculation → target → machine, first match wins.
 
 ## 2. What travels, and what does not
 

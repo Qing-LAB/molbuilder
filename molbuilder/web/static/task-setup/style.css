@@ -118,14 +118,27 @@
 /* ---- What will be written ---- */
 
 .ts-files { list-style: none; margin: 0; padding: 0; }
+/* A row is (filename, what it holds).  The two halves have different
+ * natures -- a filename is BOUNDED, drawn from a fixed set; the description
+ * is unbounded prose -- so the row is sized the same content-driven way as
+ * `.ts-facts` below: the name asks for its natural width, the description
+ * takes what is left and drops to a line of its own when that is not
+ * enough.
+ *
+ * Was `justify-content: space-between` with the description right-aligned.
+ * Two faults in one rule: `space-between` set the gap from what was LEFT
+ * OVER rather than from the content, and right-aligning prose ragged its
+ * left edge into three-word lines in a 227px column.  Alignment is not a
+ * layout. */
 .ts-files li {
     display: flex;
-    justify-content: space-between;
+    flex-wrap: wrap;
     align-items: baseline;
-    gap: var(--space-md);
+    gap: var(--space-xs) var(--space-md);
     padding: var(--space-sm) 0;
     border-bottom: 1px solid var(--border-subtle);
 }
+.ts-file-name { flex: 0 0 auto; }
 .ts-files li:last-child { border-bottom: 0; }
 .ts-file-name {
     font-family: var(--font-mono);
@@ -135,7 +148,11 @@
 .ts-file-what {
     color: var(--text-muted);
     font-size: var(--text-xs);
-    text-align: right;
+    /* Left, like every other block of prose in the app.  It takes the
+     * remaining width and wraps to its own line when there is not enough,
+     * instead of being squeezed into a right-aligned column. */
+    flex: 1 1 max-content;
+    min-width: 0;
 }
 .ts-file-state { font-size: var(--text-xs); }
 .ts-file-state[data-exists="yes"] { color: var(--warn-soft); }
@@ -458,9 +475,23 @@
 
 /* ---- What came over: identity, read-only ---- */
 
+/* A fact is a (label, value) pair whose VALUE is machine-generated -- a
+ * path, a command, a resolved config value -- and therefore of unbounded
+ * length.  So the track structure is decided by the content, never by a
+ * constant: each pair asks for its NATURAL width and takes a row of its
+ * own when that will not fit, which makes short facts share a line and a
+ * long path get the full width.
+ *
+ * This replaced `repeat(auto-fit, minmax(9rem, 1fr))` on 2026-08-22 -- the
+ * only bare-constant track floor in the tree, and measurably the worst
+ * overflow in the app: `source /home/…/conda.sh` is ~380px of unbreakable
+ * text, and the constant had declared 9rem sufficient, so the rest was
+ * simply clipped off the card.  Everywhere else already sizes label->value
+ * pairs by their content (`max-content 1fr` in the spectra, molview and
+ * trajectory sheets) or guards the floor with `min(…, 100%)`. */
 .ts-facts {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(var(--ts-fact-min), 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: var(--space-md) var(--space-lg);
     margin: 0;
 }
@@ -469,7 +500,15 @@
  * and wins on source order.  The came-over facts are always shown; the
  * resolved-config list is hidden until a folder is open. */
 .ts-facts[hidden] { display: none; }
-.ts-facts > div { display: flex; flex-direction: column; gap: var(--space-xs); }
+.ts-facts > div {
+    display: flex; flex-direction: column; gap: var(--space-xs);
+    /* Ask for the pair's natural width, but be allowed to shrink: a flex
+     * item defaults to `min-width: auto`, which refuses to go below its
+     * content and is the mechanism that turns one long path into overflow
+     * rather than into a wrapped line. */
+    flex: 1 1 max-content;
+    min-width: 0;
+}
 .ts-facts dt {
     font-size: var(--text-xs);
     text-transform: uppercase;
@@ -481,6 +520,9 @@
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     color: var(--text-mono);
+    /* Machine text has no spaces to break at.  This is a statement about
+     * the CONTENT (a path is one long token), not a width. */
+    overflow-wrap: anywhere;
 }
 
 /* ---- The hand-off: the next command ---- */

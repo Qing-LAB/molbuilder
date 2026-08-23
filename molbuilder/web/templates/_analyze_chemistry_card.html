@@ -1,0 +1,34 @@
+{#- The "Analyze chemistry" card.
+
+    ONE markup, three tabs.  It was hand-pasted into `index.html`,
+    `spectra.html` and `transport_calculation.html` with the SAME ids --
+    `analyze-card`, `auto-detect-btn`, `auto-detect-status`,
+    `auto-detect-panel`, `auto-detect-rationale`, `auto-detect-warnings`,
+    `auto-detect-metals` -- differing only in the hint prose and the
+    button's title (`web/audit-2026-08-05-tab-ui.md` § C1).  Three copies
+    of one set of ids is three chances for a rename to reach two of them.
+
+    Parameters:
+      `hint`   - what this tab's analysis fills, in prose.
+      `title`  - the button's tooltip, which says the same in one line.
+
+    JS: `lib/auto-detect.js` (the panel renderer and the analyze call).
+    CSS: `lib/form-components.css` -- `.auto-detect-bar`,
+         `.auto-detect-panel`. -#}
+<section class="card" id="analyze-card">
+  <h2>2. Analyze chemistry</h2>
+  <p class="hint">{{ hint }}</p>
+  <div class="auto-detect-bar">
+    <button id="auto-detect-btn" type="button" disabled title="{{ title }}">
+      Auto-detect defaults
+    </button>
+    <span id="auto-detect-status" class="status" role="status"
+          aria-live="polite"></span>
+  </div>
+  <details id="auto-detect-panel" class="auto-detect-panel" hidden>
+    <summary>Chemistry analysis</summary>
+    <p class="auto-detect-rationale" id="auto-detect-rationale"></p>
+    <ul class="auto-detect-warnings" id="auto-detect-warnings"></ul>
+    <dl class="auto-detect-metals" id="auto-detect-metals"></dl>
+  </details>
+</section>

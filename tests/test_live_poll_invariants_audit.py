@@ -594,21 +594,32 @@ class TestWorkflowGroupSchemaConsistency:
     def test_detection_chip_renderer_present(self):
         """The .workflow-detection-chip in the Profile + Budget
         workflow-group headers is populated by
-        ``window.molbuilder.detectionChip.render(resp)``, called from
-        _renderAutoDetectPanel (viewer.js) and the Transport tab's
-        auto-analyze handler (transport/core.js).  Pin the wiring:
+        ``window.molbuilder.detectionChip.render(resp)``.
+
+        Migrated 2026-08-22.  This used to regex viewer.js for a
+        private ``_renderAutoDetectPanel`` and check it called the
+        chip renderer — one tab's copy of a thing three tabs had.
+        The panel renderer now lives in ``lib/auto-detect.js`` and
+        does the chip pass itself, so a tab cannot render the panel
+        and forget the chip: that was audit § A2, and it is now
+        structurally unrepeatable rather than fixed per copy.
+
+        Pinned here:
 
           * The shared helper lives in lib/detection-chip.js (one
             implementation, not a per-tab duplicate — web-ui-coherence
             Rule 1).
           * The text builder reads resp.n_atoms / resp.metals
             (data-driven, not hardcoded).
-          * SIESTA viewer.js calls render() from inside the auto-
-            detect panel renderer so the chip refreshes whenever the
-            analyzer fires (including the silent auto-fire on load).
-          * Transport core.js calls render() from its auto-analyze
-            handler — extending coverage to the highest-value chip
-            use case (Au-thiol junctions).
+          * ``auto-detect.js``'s renderPanel drives the chip, and
+            the two adopting tabs keep NO renderer of their own.
+          * Transport core.js still calls render() from its own
+            auto-analyze handler — the recorded hold-out until the
+            transport design round, and the highest-value chip use
+            case (Au-thiol junctions), so it is pinned meanwhile.
+
+        The BEHAVIOUR of renderPanel is proven in
+        ``test_auto_detect_module_js.py``; these are the wiring pins.
         """
         import re
         chip = (_LIB / "detection-chip.js").resolve().read_text()
@@ -641,24 +652,35 @@ class TestWorkflowGroupSchemaConsistency:
             "Chip builder no longer reads resp.metals — must be "
             "data-driven, not hardcoded.")
 
-        # SIESTA viewer must delegate to the shared lib AND invoke
-        # it from the auto-detect panel render path.
-        assert "molbuilder.detectionChip" in viewer, (
-            "viewer.js stopped delegating to lib/detection-chip.js — "
-            "the chip helpers are at risk of drifting back into a "
-            "per-tab duplicate.")
+        # The shared panel renderer drives the chip, so every tab
+        # that renders the panel refreshes the chip by construction.
+        auto = (_LIB / "auto-detect.js").resolve().read_text()
         panel_match = re.search(
-            r"function\s+_renderAutoDetectPanel\b(.+?)\n\s{8}\}",
-            viewer, re.DOTALL,
+            r"function\s+renderPanel\(resp\)(.+?)\n\s{4}\}",
+            auto, re.DOTALL,
         )
         assert panel_match is not None, (
-            "viewer.js: _renderAutoDetectPanel function shape changed; "
+            "lib/auto-detect.js: renderPanel function shape changed; "
             "update this test.")
-        panel_body = panel_match.group(1)
-        assert "_renderWorkflowGroupChips" in panel_body, (
-            "_renderAutoDetectPanel no longer calls "
-            "_renderWorkflowGroupChips — the detection chip stops "
-            "updating after a structure load.")
+        # `chip.render(`, not merely the name: the declaration line
+        # `var chip = ...detectionChip` survives deleting the CALL,
+        # so matching the name alone passes a renderer that fetches
+        # the helper and never uses it.
+        assert "chip.render(resp)" in panel_match.group(1), (
+            "renderPanel no longer drives the detection chip — the "
+            "chip stops updating after a structure load, on EVERY "
+            "tab at once (audit § A2).")
+
+        # ...and the adopting tabs keep no second copy to drift.
+        spectra = (_LIB / ".." / "spectra" / "viewer.js").resolve().read_text()
+        for name, src in (("structure-optimization/viewer.js", viewer),
+                          ("spectra/viewer.js", spectra)):
+            assert "autoDetect.renderPanel" in src, (
+                f"{name} does not render the panel through "
+                f"lib/auto-detect.js — a fourth copy is being born.")
+            assert "function _renderAutoDetectPanel" not in src, (
+                f"{name} grew its own panel renderer again; the "
+                f"whole point of the module is that there is one.")
 
         # Transport tab must also delegate — this is the Au-junction
         # chip drift the 2026-06-13 audit caught.

@@ -1820,14 +1820,20 @@ class TestTheMachineChoiceIsAskedNotGuessed:
         and the stylesheet already carries its pressed/hover states.
         Inventing a second chooser would be two components for one idea."""
         body = web_client.get("/task-setup").data.decode()
-        assert 'id="ts-machine-card"' in body
-        assert 'id="ts-machine-choice"' in body
+        # `ts-target-*`, not `ts-machine-*`: the bench card below already
+        # owns that name for the settings measured ON a machine, and when
+        # this card briefly shared it (2026-08-22) getElementById handed
+        # the bench card's renderer THIS card and the bench panel vanished.
+        # Counting, not `in`, is what tells one card from two -- the
+        # substring form of this assertion passed throughout the outage.
+        assert body.count('id="ts-target-card"') == 1
+        assert body.count('id="ts-target-choice"') == 1
         # the component is the shared one
-        m = re.search(r'id="ts-machine-choice"[^>]*class="[^"]*"'
-                      r'|class="ts-choice" id="ts-machine-choice"', body)
+        m = re.search(r'id="ts-target-choice"[^>]*class="[^"]*"'
+                      r'|class="ts-choice" id="ts-target-choice"', body)
         assert m, "the machine chooser is not the shared .ts-choice component"
         # and it says the choice is required, in the card the design uses
-        assert 'id="ts-machine-needs"' in body
+        assert 'id="ts-target-needs"' in body
 
     def test_no_bespoke_css_was_added_for_it(self):
         """Every class the card uses already existed."""
@@ -1838,7 +1844,7 @@ class TestTheMachineChoiceIsAskedNotGuessed:
             assert f".{cls}" in css, (
                 f".{cls} is used by the machine card but is not in the "
                 f"module's stylesheet -- it must not be invented inline")
-        assert ".ts-machine-" not in css, (
+        assert ".ts-target-" not in css, (
             "a bespoke class was added for the machine card; the shared "
             "components already cover it")
         # The one stylesheet change this card required is a CORRECTNESS fix

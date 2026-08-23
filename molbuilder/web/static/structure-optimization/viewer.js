@@ -45,33 +45,15 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
     const $ = (id) => document.getElementById(id);
 
-    /**
-     * Format a fetch / response-parse exception into a
-     * user-friendly status banner string.  Distinguishes:
-     *
-     *   * ``SyntaxError`` -- ``r.json()`` failed because the server
-     *     returned non-JSON (5xx with an HTML error page, 501
-     *     stub, proxy plain-text drop).  Surfacing as "network
-     *     error" misleads the user into checking their connection
-     *     when the server itself crashed.
-     *   * Anything else -- genuine network failure (TypeError
-     *     "Failed to fetch", DNS issue, CORS preflight rejection),
-     *     surface as "Network error: <message>".
-     *
-     * AbortError is caller's responsibility -- this helper is
-     * called AFTER the caller has filtered abort.
-     *
-     * L2 round-4 fix (R4-A finding #4): same pattern as
-     * ``projects/api.js::_fetchEnvelope`` lines 74-83.
+    /** The one fetch-failure sentence (lib/fetch-error.js).
+
+     * Was spelled out here until 2026-08-22; the SyntaxError arm --
+     * "the SERVER returned an error page, check its log" rather than
+     * "Network error: Unexpected token <" -- is a rule about what a
+     * failure MEANS, and a rule cannot live in two files.
      */
     function _formatFetchError(e) {
-        if (e && e.name === "SyntaxError") {
-            return "Server returned non-JSON response "
-                 + "(likely a 5xx error page).  Check the server "
-                 + "log for the actual failure.";
-        }
-        return "Network error: "
-             + (e && e.message ? e.message : String(e));
+        return window.molbuilder.fetchError.format(e);
     }
 
     // ----- State ------------------------------------------------------
@@ -1133,7 +1115,9 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         // most-recently committed via the Load button or sidebar
         // double-click).
         //
-        // Concurrency safety: _autoDetectSeq mirrors _sidebarLoadSeq.
+        // Concurrency safety is lib/auto-detect.js's: it gates on
+        // its own analyze sequence, and this page reports a newer
+        // structure load through the isStale predicate.
         // If the user clicks Auto-detect, then loads a different
         // structure while the request is in flight, the in-flight
         // response would otherwise apply to the new structure's
@@ -1146,82 +1130,39 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             btn.disabled = !_sidebarLastFile;
         }
         _refreshAutoDetectButton();
-        let _autoDetectSeq = 0;
-        // J3 2026-06-14: shared AbortController so spam-clicks (or a
-        // mount-time auto-fire racing a manual click) cancel the
-        // prior request instead of letting it land on the server.
-        // The ``_autoDetectSeq`` gate above prevents stale responses
-        // from updating the DOM, but the request still completes
-        // server-side -- wasted CPU + bytes on every spam-click.
-        // The AbortController kills the in-flight fetch cleanly so
-        // the server stops parsing on supersede.
-        let _autoDetectAbort = null;
+        // Both halves of auto-detect -- the analyze call's
+        // supersede/abort protocol AND the panel renderer -- live in
+        // lib/auto-detect.js, so a fix cannot land on one tab and
+        // miss the others (audit-2026-08-05-tab-ui.md §§ C1, C2).
+        // Loaded as a classic script, hence defined before this
+        // module body runs.
+        const autoDetect = window.molbuilder.autoDetect;
 
         const _autoBtn = $("auto-detect-btn");
         if (_autoBtn) {
             _autoBtn.addEventListener("click", async () => {
                 if (!_sidebarLastFile) return;
-                // Snapshot BOTH the path AND the load-seq so a
-                // mid-flight structure swap is detectable.
-                const mySeq      = ++_autoDetectSeq;
-                const myLoadSeq  = _sidebarLoadSeq;
-                const myPath     = _sidebarLastFile;
-                // J3: abort any prior analyze request still on the
-                // wire (manual click + background fire share the
-                // same controller so either supersedes the other).
-                if (_autoDetectAbort) _autoDetectAbort.abort();
-                _autoDetectAbort = new AbortController();
-                const mySignal = _autoDetectAbort.signal;
+                // Snapshot the path AND the load-seq: the module
+                // knows when a newer ANALYZE superseded this one,
+                // but only this page knows when a newer STRUCTURE
+                // LOAD did, which is what isStale reports.
+                const myLoadSeq = _sidebarLoadSeq;
+                const myPath    = _sidebarLastFile;
                 _autoBtn.disabled = true;
                 setStatus("auto-detect-status", "Analyzing…");
-                let body;
-                try {
-                    const r = await fetch("/api/structure/analyze", {
-                        method:  "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body:    JSON.stringify({
-                            structure_path: myPath,
-                        }),
-                        signal: mySignal,
-                    });
-                    body = await r.json();
-                    if (mySeq !== _autoDetectSeq
-                        || myLoadSeq !== _sidebarLoadSeq) {
-                        // Superseded — a newer click or load happened
-                        // while this request was in flight.  Drop the
-                        // response silently; the newer request owns
-                        // the UI now.
-                        return;
-                    }
-                    if (!r.ok || !body.ok) {
-                        setStatus("auto-detect-status",
-                            body && body.error
-                                ? body.error
-                                : `Analyze failed (HTTP ${r.status}).`,
-                            "error");
-                        return;
-                    }
-                } catch (e) {
-                    // AbortError = superseded by another click /
-                    // load fire.  Silent; the new request owns
-                    // the UI now.
-                    if (e && e.name === "AbortError") return;
-                    if (mySeq !== _autoDetectSeq
-                        || myLoadSeq !== _sidebarLoadSeq) return;
-                    setStatus("auto-detect-status",
-                        _formatFetchError(e), "error");
+                const res = await autoDetect.analyze(myPath, {
+                    isStale: () => myLoadSeq !== _sidebarLoadSeq,
+                });
+                // Superseded: the newer request owns the button and
+                // the panel.  Re-enabling here would fight it.
+                if (res.superseded) return;
+                _refreshAutoDetectButton();
+                if (!res.ok) {
+                    setStatus("auto-detect-status", res.error, "error");
                     return;
-                } finally {
-                    // Re-enable only if this is still the latest
-                    // click — otherwise the newer one owns the
-                    // button state.
-                    if (mySeq === _autoDetectSeq
-                        && myLoadSeq === _sidebarLoadSeq) {
-                        _refreshAutoDetectButton();
-                    }
                 }
-                _applyAutoDetectToForms(body);
-                _renderAutoDetectPanel(body);
+                _applyAutoDetectToForms(res.body);
+                autoDetect.renderPanel(res.body);
                 setStatus("auto-detect-status",
                     "Applied to both forms.  Review rationale below.",
                     "ok");
@@ -1241,42 +1182,19 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
          * surface the science.
          */
         async function _autoAnalyzeOnLoad(path) {
-            if (!path) return;
-            const mySeq      = ++_autoDetectSeq;
-            const myLoadSeq  = _sidebarLoadSeq;
-            // J3: abort any prior in-flight analyze.  Mount-time
-            // auto-fires can race the user's manual click on the
-            // SAME path (H3 same-file re-fire path); aborting the
-            // first lets the second take ownership cleanly.
-            if (_autoDetectAbort) _autoDetectAbort.abort();
-            _autoDetectAbort = new AbortController();
-            const mySignal = _autoDetectAbort.signal;
-            try {
-                const r = await fetch("/api/structure/analyze", {
-                    method:  "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body:    JSON.stringify({ structure_path: path }),
-                    signal:  mySignal,
-                });
-                const body = await r.json();
-                if (mySeq !== _autoDetectSeq
-                    || myLoadSeq !== _sidebarLoadSeq) return;
-                if (!r.ok || !body.ok) {
-                    // Silent failure — the user can still click
-                    // the button to retry; we don't want to
-                    // flash an error for a background analyze
-                    // they didn't ask for.
-                    return;
-                }
-                _renderAutoDetectPanel(body);
-                setStatus("auto-detect-status",
-                    "Chemistry analyzed — click Auto-detect to "
-                    + "apply suggested defaults to the forms.",
-                    null);
-            } catch (_) {
-                // Same silent-failure rationale — background fire.
-                // Includes AbortError from supersede; nothing to do.
-            }
+            const myLoadSeq = _sidebarLoadSeq;
+            const res = await autoDetect.analyze(path, {
+                isStale: () => myLoadSeq !== _sidebarLoadSeq,
+            });
+            // Silent on every failure, superseded included — the
+            // user did not ask for this fire, so it must not flash
+            // an error at them.  The button is there to retry.
+            if (!res.ok) return;
+            autoDetect.renderPanel(res.body);
+            setStatus("auto-detect-status",
+                "Chemistry analyzed — click Auto-detect to "
+                + "apply suggested defaults to the forms.",
+                null);
         }
 
         /**
@@ -1299,67 +1217,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             }
         }
 
-        function _renderAutoDetectPanel(resp) {
-            const panel = $("auto-detect-panel");
-            if (!panel) return;
-            panel.hidden = false;
-            panel.open = true;
-            const ratEl  = $("auto-detect-rationale");
-            const warnEl = $("auto-detect-warnings");
-            const metEl  = $("auto-detect-metals");
-            if (ratEl) {
-                // The engine-agnostic rationale lives on each
-                // adapter's response (echoed from the analyzer).
-                // Either engine's value is the same; pick PySCF.
-                const sug = (resp.suggested || {}).pyscf || {};
-                ratEl.textContent = sug.rationale || "";
-            }
-            if (warnEl) {
-                warnEl.textContent = "";
-                for (const w of (resp.warnings || [])) {
-                    const li = document.createElement("li");
-                    li.textContent = w;
-                    warnEl.appendChild(li);
-                }
-                warnEl.hidden = (resp.warnings || []).length === 0;
-            }
-            if (metEl) {
-                metEl.textContent = "";
-                for (const h of (resp.metal_hints || [])) {
-                    const dt = document.createElement("dt");
-                    dt.textContent = h.element;
-                    metEl.appendChild(dt);
-                    for (const c of (h.common_spins || [])) {
-                        const dd = document.createElement("dd");
-                        dd.textContent =
-                            `spin=${c.spin} — ${c.label}`;
-                        metEl.appendChild(dd);
-                    }
-                }
-                metEl.hidden = (resp.metal_hints || []).length === 0;
-            }
-            // Inject / refresh the .workflow-detection-chip in every
-            // .workflow-group--profile + .workflow-group--budget card
-            // header so the user sees the analyzer's key conclusion
-            // attached to the panel where they'll act on it.  Stage-
-            // tagged fields don't get a chip — the staged-relaxation
-            // recipe is system-agnostic and the user doesn't override
-            // those values based on chemistry.
-            _renderWorkflowGroupChips(resp);
-        }
-
-        // Detection-chip helpers live in lib/detection-chip.js so
-        // every engine tab that wants chips (SIESTA, PySCF, Transport,
-        // …) reads from one implementation.  Pre-2026-06-13 these
-        // helpers were closure-private here, which silently denied
-        // Transport (Au-junction users!) any chip surface.  See
-        // docs/web/ui-contract.md Rule 1.
-        const _detectionChip = (window.molbuilder
-                                && window.molbuilder.detectionChip)
-            || { buildText: () => ({ profile: "", budget: "" }),
-                 render: () => 0 };
-        const _buildDetectionChipText = _detectionChip.buildText;
-        const _renderWorkflowGroupChips = _detectionChip.render;
         });   // close runtime.whenReady("projects").then(...)
     }
 

@@ -20,14 +20,15 @@ def spectra_render_checks(struct: Structure,
 
     MOVED at P3 (2026-08-21) from the retired
     ``PySCFSpectraEngine.render_checks`` classmethod, unchanged in
-    substance.  Two callers, one body: ``_validate_spectra`` (the
-    registered SpectraConfig validator, for callers holding a real
-    SpectraConfig) and ``pyscf/vibration_deck.py`` directly -- the
+    substance.  Two callers, one body: ``validation/__init__.py``'s
+    vibration arm and ``pyscf/vibration_deck.py`` directly -- the
     deck's config view is an ADAPTER over PySCFConfig, so the
     type-keyed registry cannot see it (which is exactly how this gate
     silently skipped between P1 and P3; the direct call closes that).
     ``cfg`` is duck-typed to the spectra vocabulary for the same
-    reason.  No selector-availability checks; those were
+    reason.  (The third caller this docstring used to name,
+    ``_validate_spectra``, was the type-keyed SpectraConfig
+    validator; it retired with the class on 2026-08-22.)  No selector-availability checks; those were
     preflight-only UX and retired with the preflight route."""
     issues: List[Issue] = []
 

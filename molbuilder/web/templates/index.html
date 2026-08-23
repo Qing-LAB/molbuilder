@@ -104,31 +104,14 @@
       so the user sees what was decided AND why — see
       docs/science/validation.md for the
       scientific-guard role. -#}
-  <section class="card" id="analyze-card">
-    <h2>2. Analyze chemistry</h2>
-    <p class="hint">
-      Engine-agnostic chemistry check: detects open-shell
+  {% set hint %}Engine-agnostic chemistry check: detects open-shell
       transition metals, picks a sensible <code>(charge, spin,
       method)</code> triplet for the typical coordination
       context, and pre-fills BOTH engine sub-forms below.  Click
       after loading a structure in step 1; review the rationale
-      panel before generating the script.
-    </p>
-    <div class="auto-detect-bar">
-      <button id="auto-detect-btn" type="button" disabled
-        title="Analyse the loaded structure (open-shell metals, electron count) and pre-fill (charge, spin, method) on both engine sub-forms.  Disabled until a structure is loaded.">
-        Auto-detect defaults
-      </button>
-      <span id="auto-detect-status" class="status" role="status"
-            aria-live="polite"></span>
-    </div>
-    <details id="auto-detect-panel" class="auto-detect-panel" hidden>
-      <summary>Chemistry analysis</summary>
-      <p class="auto-detect-rationale" id="auto-detect-rationale"></p>
-      <ul class="auto-detect-warnings" id="auto-detect-warnings"></ul>
-      <dl class="auto-detect-metals" id="auto-detect-metals"></dl>
-    </details>
-  </section>
+      panel before generating the script.{% endset %}
+  {% set title = "Analyse the loaded structure (open-shell metals, electron count) and pre-fill (charge, spin, method) on both engine sub-forms.  Disabled until a structure is loaded." %}
+  {% include "_analyze_chemistry_card.html" %}
 
   <section class="card" id="generate-card">
       <h2>3. Calculation parameters</h2>
@@ -319,7 +302,9 @@
 <script src="{{ url_for('static', filename='lib/validation-findings.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/task-handover.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/fetch-error.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/detection-chip.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/auto-detect.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='structure-optimization/viewer.js') }}"></script>

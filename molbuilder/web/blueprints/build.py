@@ -1593,42 +1593,14 @@ def api_task_setup_machines():
     because "prepare for the box I am on" is a choice like any other and
     omitting it would make the common case look unavailable.
     """
-    from molbuilder.environment import (machine_scope_path, named_environments,
-                                        read_environment)
+    from molbuilder.environment import known_machines, choice_required
 
-    def _describe(env, name, kind, path):
-        if env is None:
-            return {"name": name, "kind": kind, "path": str(path),
-                    "readable": False,
-                    "summary": "the record cannot be read -- re-write it with "
-                               "`jobset probe --write --name %s` on that "
-                               "machine" % name}
-        cores = getattr(env.topology, "cores_per_socket", None)
-        sockets = getattr(env.topology, "sockets", None)
-        total = (cores * sockets) if (cores and sockets) else None
-        bits = [env.scheduler or "unknown scheduler"]
-        if total:
-            bits.append(f"{total} cores")
-        if getattr(env.topology, "gpus_per_node", None):
-            bits.append(f"{env.topology.gpus_per_node}× "
-                        f"{env.topology.gpu_type or 'GPU'}")
-        if env.domains:
-            bits.append(f"{len(env.domains)} domain(s)")
-        return {"name": name, "kind": kind, "path": str(path),
-                "readable": True, "summary": " · ".join(bits),
-                "detected_at": env.detected_at or ""}
-
-    out = []
-    for name, path in sorted(named_environments().items()):
-        out.append(_describe(read_environment(path), name, "target", path))
-    here = machine_scope_path()
-    out.append(_describe(read_environment(here), "(this machine)",
-                         "local", here))
-    # A choice is REQUIRED exactly when the CLI would refuse without one
-    # (§ 4, C1): any named record makes "this machine" ambiguous.
-    named = [m for m in out if m["kind"] == "target"]
-    return jsonify({"ok": True, "machines": out,
-                    "choice_required": bool(named)})
+    # One list, one rule -- both live in `molbuilder.environment` so the
+    # browser and `jobset machines` cannot disagree about which machines
+    # exist, which can be read, or when a choice is required.
+    machines = known_machines()
+    return jsonify({"ok": True, "machines": machines,
+                    "choice_required": choice_required(machines)})
 
 
 @bp.route("/api/task-setup/presets", methods=["GET"])

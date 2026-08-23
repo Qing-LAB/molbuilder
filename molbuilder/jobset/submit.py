@@ -595,18 +595,52 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     return results
 
 
-def gpu_domain_row(routing) -> Optional[dict]:
+def gpu_domain_row(routing, needed_s: Optional[int] = None) -> Optional[dict]:
     """THE row that speaks for the GPU nodes -- **one selector, three
     consumers** (2026-08-21 review): `prep`'s device inventory, `prep`'s
     per-family core cap, and `launch`'s side routing all read THIS row,
     so the cap can never be taken from one domain while the group is
     routed to another.  The rule is the menu's own: cheapest ceiling
-    first, the first gpu-capable row is the recommendation."""
+    first, the first gpu-capable row is the recommendation.
+
+    ``needed_s`` -- **a ceiling too low is not a candidate** (2026-08-23).
+    Cheapest-ceiling-first makes the shortest queue the recommendation,
+    which is right for one bounded trial and wrong for a group of them:
+    on ASU Sol the first gpu-capable row is ``htc/debug`` at **15
+    minutes**, so a grouped submission asking for tens of minutes was
+    refused by the scheduler with ``QOSMaxWallDurationPerJobLimit`` while
+    ``htc/public`` (4h) and ``general`` (14d) sat further down the same
+    menu, both gpu-capable and both large enough.  A caller that knows the
+    wall passes it and gets the cheapest ceiling that can actually HOLD
+    the job; a caller that does not (prep's inventory and core cap, which
+    ask about capability rather than duration) passes nothing and the rule
+    is exactly as it was.
+
+    A row stating no ``max_time`` counts as fitting -- an unstated limit
+    is not a small one.
+    """
     from ..environment import domain_serves_gpu
     for row in routing:
-        if domain_serves_gpu(row):
+        if domain_serves_gpu(row) and _row_holds(row, needed_s):
             return row
     return None
+
+
+def _row_holds(row, needed_s: Optional[int]) -> bool:
+    """Can this domain's stated ceiling hold a job of ``needed_s``?
+
+    One reader for both sides, so the CPU branch and the GPU branch cannot
+    disagree about what "fits" means -- they did until 2026-08-23, when the
+    CPU branch walked the menu for a row that fits and the GPU branch only
+    ever looked at the first gpu-capable one.
+    """
+    from ..scheduler_probe import parse_walltime
+    if needed_s is None or not row.get("max_time"):
+        return True
+    try:
+        return parse_walltime(str(row["max_time"])) >= needed_s
+    except ValueError:
+        return True                      # an unreadable wall never bars
 
 
 def _preferred_domain(base: Path, gpu_side: bool,
@@ -627,29 +661,61 @@ def _preferred_domain(base: Path, gpu_side: bool,
     a time, which is the fully explicit form.
     """
     from ..environment import domain_serves_gpu
-    from ..scheduler_probe import parse_walltime
     from .. import runtime_config as _rc
 
-    def _fits(row) -> bool:
-        if needed_s is None or not row.get("max_time"):
-            return True
-        try:
-            return parse_walltime(str(row["max_time"])) >= needed_s
-        except ValueError:
-            return True                      # an unreadable wall never bars
     routing = _rc.get_routing(project_dir=base)
     if gpu_side:
-        row = gpu_domain_row(routing)
-        if row is not None and _fits(row):
+        # The wall goes to the SELECTOR, so a ceiling too low is not a
+        # candidate at all -- rather than picking row 0 and then asking
+        # whether it fits, which answered "no" and fell through to the
+        # header's directives naming that very row.
+        row = gpu_domain_row(routing, needed_s=needed_s)
+        if row is not None:
             return ((row.get("gpu_partition") or row["partition"]),
                     row["qos"])
         return None
     for row in routing:
         if domain_serves_gpu(row):
             continue
-        if _fits(row):
+        if _row_holds(row, needed_s):
             return (row["partition"], row["qos"])
     return None
+
+
+def _refuse_if_nothing_holds(base: Path, gpu_side: bool, needed_s: int,
+                             name: str) -> None:
+    """Refuse a submission the recorded menu says will be rejected.
+
+    Only fires when there IS a menu and every row this side could use
+    states a ceiling too low.  The message names the wall and each
+    candidate's ceiling, because "too long" without the two numbers sends
+    a user to read `scontrol` for what we already have on disk.
+    """
+    from ..environment import domain_serves_gpu
+    from ..scheduler_probe import parse_walltime
+    from .. import runtime_config as _rc
+
+    routing = _rc.get_routing(project_dir=base)
+    if not routing:
+        return                          # nothing was promised; header stands
+    usable = [d for d in routing
+              if domain_serves_gpu(d)] if gpu_side else [
+              d for d in routing if not domain_serves_gpu(d)]
+    if not usable or any(_row_holds(d, needed_s) for d in usable):
+        return                          # some row fits, or none is ours
+    def _ceil(d):
+        try:
+            return f"{d['name']} <= {d['max_time']}"
+        except Exception:
+            return str(d.get("name"))
+    raise SubmitError(
+        f"{name} needs {_slurm_time(needed_s)} but every "
+        f"{'gpu-capable ' if gpu_side else ''}domain on this machine "
+        f"states a shorter ceiling: {', '.join(_ceil(d) for d in usable)}.\n"
+        f"  Nothing was submitted -- the scheduler would refuse it "
+        f"(QOSMaxWallDurationPerJobLimit).  Either run fewer trials per "
+        f"group, lower --trial-timeout, or name a longer domain with "
+        f"--domain <name>.")
 
 
 def _shelf_key(job: "Job"):
@@ -799,6 +865,20 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
                                            needed_s=total_s))
     if pq:
         cmd += ["-p", pq[0], "-q", pq[1]]
+    elif not domain:
+        # NOTHING FITS IS NOT "USE THE DEFAULT" (2026-08-23).  Falling
+        # through here let the rendered header's directives stand -- and
+        # the header names the row this menu walk just rejected as too
+        # small, because prep picked it by the same cheapest-ceiling rule
+        # without knowing the wall.  On Sol that meant submitting tens of
+        # minutes of work into `htc/debug`'s 15-minute ceiling and
+        # learning about it from `QOSMaxWallDurationPerJobLimit`.
+        #
+        # We hold the record that says it cannot be accepted, so we say so
+        # here instead of spending a round trip to find out.  A menu with
+        # no rows at all is a different situation -- nothing was promised
+        # and the header is all there is -- so it still proceeds.
+        _refuse_if_nothing_holds(base, gpu_side, total_s, name)
     # The same shape as a single job: the rendered .sbatch header carries
     # the SITE directives (partition/qos/account/mail -- runwrap's one
     # header emitter, so the group cannot drift from what every trial

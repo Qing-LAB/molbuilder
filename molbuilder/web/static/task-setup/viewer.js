@@ -1337,15 +1337,15 @@ let _machines = [];         // what /api/task-setup/machines answered
 
 function setMachine(name) {
     _machine = name;
-    for (const b of document.querySelectorAll("#ts-machine-choice .opt")) {
+    for (const b of document.querySelectorAll("#ts-target-choice .opt")) {
         b.setAttribute("aria-pressed",
                        b.getAttribute("data-machine") === name ? "true" : "false");
     }
-    const needs = $("ts-machine-needs");
+    const needs = $("ts-target-needs");
     if (needs) needs.hidden = !!name;
     loadResolved();          // the warning depends on WHICH machine
     const chosen = _machines.find((m) => m.name === name);
-    const st = $("ts-machine-state");
+    const st = $("ts-target-state");
     if (!st) return;
     if (!chosen) { st.hidden = true; return; }
     /* An unreadable record is shown as a refusal rather than hidden: the
@@ -1353,8 +1353,8 @@ function setMachine(name) {
      * that cannot happen. */
     st.hidden = false;
     st.setAttribute("data-state", chosen.readable ? "loaded" : "refuse");
-    const title = $("ts-machine-state-title");
-    const body = $("ts-machine-state-body");
+    const title = $("ts-target-state-title");
+    const body = $("ts-target-state-body");
     if (title) title.textContent = chosen.readable
         ? "Prepared for " + chosen.name
         : "Cannot prepare for " + chosen.name;
@@ -1416,7 +1416,7 @@ async function loadResolved() {
 }
 
 async function loadMachines() {
-    const card = $("ts-machine-card");
+    const card = $("ts-target-card");
     if (!card) return;
     let data = null;
     try {
@@ -1424,7 +1424,7 @@ async function loadMachines() {
     } catch (e) { data = null; }
     if (!data || !data.ok) { card.hidden = true; return; }
     _machines = data.machines || [];
-    const host = $("ts-machine-choice");
+    const host = $("ts-target-choice");
     if (!host) return;
     host.textContent = "";
     for (const m of _machines) {

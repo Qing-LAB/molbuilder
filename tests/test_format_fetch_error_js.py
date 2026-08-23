@@ -42,6 +42,7 @@ pytestmark = pytest.mark.module
 
 _ROOT = Path(__file__).resolve().parents[1]
 _VIEWER = _ROOT / "molbuilder/web/static/structure-optimization/viewer.js"
+_MODULE = _ROOT / "molbuilder/web/static/lib/fetch-error.js"
 
 
 def _have_node():
@@ -55,13 +56,18 @@ pytestmark = pytest.mark.skipif(
 
 
 def _extract_format_fetch_error_src():
-    src = _VIEWER.read_text(encoding="utf-8")
-    needle = "    function _formatFetchError(e) {"
+    """The formatter's source — from its ONE home.
+
+    Read `lib/fetch-error.js`, not a viewer: the rule moved there on
+    2026-08-22 (roadmap 7.2) after a second copy appeared.
+    """
+    src = _MODULE.read_text(encoding="utf-8")
+    needle = "    function format(e) {"
     start = src.find(needle)
     if start < 0:
         pytest.fail(
-            "Could not find ``function _formatFetchError(e) {`` in "
-            "viewer.js -- helper renamed or moved.  Update marker."
+            "Could not find ``function format(e) {`` in "
+            "lib/fetch-error.js -- helper renamed or moved.  Update marker."
         )
     open_brace = src.find("{", start)
     depth = 0
@@ -85,7 +91,7 @@ def _run_with_error(error_ctor: str, msg: str) -> str:
     script = (
         fn_src
         + f"\nconst e = new {error_ctor}({json.dumps(msg)});"
-        + "\nconsole.log(_formatFetchError(e));"
+        + "\nconsole.log(format(e));"
     )
     proc = subprocess.run(
         ["node", "--input-type=commonjs", "-e", script],
@@ -157,46 +163,43 @@ def test_generic_error_preserves_network_error_label():
 # --------------------------------------------------------------------- #
 
 
-def test_user_visible_catches_route_through_formatter():
-    """Every user-visible status banner routes its errors through
-    ``_formatFetchError``, so a 5xx-with-HTML response is not reported to the
-    user as a bare "Network error:".
+def test_the_formatter_has_exactly_one_home():
+    """No file spells the SyntaxError rule for itself.
 
-    The ids are DERIVED from viewer.js rather than listed here.  A hard-coded
-    list is wrong in both directions: it went stale on 2026-08-15 when
-    ``fdf-status`` and ``pyscf-status`` left with the Generate buttons, and it
-    would silently skip any banner added later — which is the regression this
-    test exists to catch.
+    Replaces a test that grepped ONE viewer for its own call sites.  That
+    shape passed while a second copy of the rule was being written in
+    another file, and then failed for the wrong reason when the rule moved
+    -- it was measuring a file, not the rule.
+
+    A copy is what this catches: any active source that branches on
+    ``e.name === "SyntaxError"`` to build a message is a second opinion
+    about what a failed fetch means.  `lib/projects/api.js` is exempt by
+    name -- ``_fetchEnvelope`` makes the same distinction while normalising
+    a whole response into ``{ok, ...}``, which is an envelope contract
+    rather than this sentence, and folding them together would put a
+    response shape and a message in one function.
     """
     import re as _re
-    src = _VIEWER.read_text(encoding="utf-8")
-    status_ids = sorted(set(_re.findall(r'setStatus\("([a-z0-9-]+)"', src)))
-    assert status_ids, "no setStatus() call sites found in viewer.js"
-    for status_id in status_ids:
-        # A banner that never reports a failure has nothing to route.
-        if not _re.search(rf'setStatus\("{status_id}",[^)]*(?:err|exc|e\b|catch)',
-                          src) and "_formatFetchError" not in src.split(
-                              f'setStatus("{status_id}"')[-1][:400]:
+    static = _ROOT / "molbuilder/web/static"
+    exempt = {"lib/fetch-error.js", "lib/projects/api.js"}
+    offenders = []
+    for js in sorted(static.rglob("*.js")):
+        rel = js.relative_to(static).as_posix()
+        if rel in exempt or "vendor/" in rel:
             continue
-        # Look for the setStatus call carrying this status id
-        # somewhere within ~200 chars of a _formatFetchError call.
-        # Cheap heuristic: every setStatus(<id>, _formatFetchError(...
-        needle = f'setStatus("{status_id}",'
-        idx = 0
-        found_match = False
-        while True:
-            idx = src.find(needle, idx)
-            if idx < 0:
-                break
-            window = src[idx:idx + 200]
-            if "_formatFetchError" in window:
-                found_match = True
-                break
-            idx += len(needle)
-        assert found_match, (
-            f"setStatus({status_id!r}, ...) is no longer routed "
-            f"through _formatFetchError anywhere in viewer.js.  "
-            f"A refactor may have re-introduced the raw "
-            f"'Network error:' label that misleads the user on "
-            f"server 5xx-with-HTML responses."
-        )
+        body = "\n".join(l for l in js.read_text(encoding="utf-8").splitlines()
+                         if not l.strip().startswith(("*", "//", "/*")))
+        if _re.search(r'name\s*===\s*"SyntaxError"', body):
+            offenders.append(rel)
+    assert not offenders, (
+        "these files build their own non-JSON message instead of calling "
+        "molbuilder.fetchError.format(): " + ", ".join(offenders))
+
+
+def test_every_page_that_formats_a_fetch_error_loads_the_module():
+    """A shared module nobody links is a ReferenceError at the worst moment."""
+    templates = _ROOT / "molbuilder/web/templates"
+    for page in ("index.html", "spectra.html"):
+        html = (templates / page).read_text(encoding="utf-8")
+        assert "lib/fetch-error.js" in html, (
+            f"{page} uses the fetch-error formatter but never loads it")

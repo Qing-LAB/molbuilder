@@ -554,6 +554,74 @@ def named_environments() -> Dict[str, Path]:
     return {p.stem: p for p in sorted(d.glob("*.json"))}
 
 
+def known_machines() -> List[Dict[str, object]]:
+    """Every machine a calculation could be prepared FOR, described once.
+
+    One list, two readers: ``jobset machines`` prints it and
+    ``GET /api/task-setup/machines`` serves it.  The terminal and the browser
+    must not be able to disagree about which machines exist or which of them
+    can be read -- that disagreement is the whole reason a user cannot tell
+    whether the record they copied over actually arrived.
+
+    Each entry: ``name``, ``kind`` (``target`` for a named record, ``local``
+    for this machine), ``path``, ``readable``, ``summary``, ``detected_at``.
+
+    **An unreadable record is described, never dropped** -- the user wrote it,
+    and hiding it leaves them waiting for something that cannot happen
+    (`preparing-for-another-machine.md` § 5).  ``readable`` is the flag; the
+    summary says how to rewrite it.
+    """
+    def _describe(env, name, kind, path):
+        if env is None:
+            # Absent and unreadable are one answer from `read_environment`,
+            # so the message covers both -- and the REMEDY differs by scope:
+            # this machine's record is written by a bare `probe --write`,
+            # while a named target takes `--name` and must be probed on the
+            # machine it describes.  (Said `--name (this machine)` until
+            # 2026-08-22, which is not a name and not a command.)
+            fix = ("`jobset probe --write` here"
+                   if kind == "local"
+                   else "`jobset probe --write --name %s` on that machine"
+                        % name)
+            return {"name": name, "kind": kind, "path": str(path),
+                    "readable": False, "detected_at": "",
+                    "summary": "no record here yet, or it cannot be read -- "
+                               "write one with " + fix}
+        cores = getattr(env.topology, "cores_per_socket", None)
+        sockets = getattr(env.topology, "sockets", None)
+        total = (cores * sockets) if (cores and sockets) else None
+        bits = [env.scheduler or "unknown scheduler"]
+        if total:
+            bits.append(f"{total} cores")
+        if getattr(env.topology, "gpus_per_node", None):
+            bits.append(f"{env.topology.gpus_per_node}\u00d7 "
+                        f"{env.topology.gpu_type or 'GPU'}")
+        if env.domains:
+            bits.append(f"{len(env.domains)} domain(s)")
+        return {"name": name, "kind": kind, "path": str(path),
+                "readable": True, "summary": " \u00b7 ".join(bits),
+                "detected_at": env.detected_at or ""}
+
+    out = [_describe(read_environment(path), name, "target", path)
+           for name, path in sorted(named_environments().items())]
+    here = machine_scope_path()
+    out.append(_describe(read_environment(here), "(this machine)", "local",
+                         here))
+    return out
+
+
+def choice_required(machines=None) -> bool:
+    """Whether preparing must be told WHICH machine (`…-another-machine.md` 4).
+
+    True exactly when a named record exists, because "this machine" is always
+    a candidate too -- so any named record makes the question real.  The same
+    rule the CLI refuses on, so the browser cannot offer a silent default the
+    terminal would reject.
+    """
+    ms = known_machines() if machines is None else machines
+    return any(m["kind"] == "target" for m in ms)
+
+
 def record_scopes(bundle_dir=None,
                   target: Optional[str] = None) -> List[Tuple[str, Path]]:
     """**Where a machine record may live, in precedence order** — the one

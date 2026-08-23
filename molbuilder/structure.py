@@ -1064,6 +1064,45 @@ class Structure:
         self.annotations[name] = channel
         self._validate_annotations(len(self.positions))
 
+    def replace(self, **changes) -> "Structure":
+        """THE door for deriving a modified copy — use instead of
+        ``dataclasses.replace``.
+
+        Why this exists.  ``frozen_atoms`` is both an ``__init__`` field and a
+        derived READ of ``regions[FROZEN_LABEL]``, which is what makes
+        ``Structure(..., frozen_atoms=[...])`` reach the one place that spells
+        the label.  ``dataclasses.replace`` re-passes every field by reading it
+        off the instance — and reading ``frozen_atoms`` goes through the
+        property, which returns a list and never ``None``.  So the setter's
+        "``None`` says nothing about it" contract is unreachable from
+        ``replace``, and an explicit new ``regions`` silently gets the OLD
+        frozen set stamped back into it:
+
+            replace(s, regions={"electrode_L": [1]})
+            -> {"electrode_L": [1], "frozen_atoms": [0]}      # not asked for
+
+        Here, a caller who states ``regions`` states the WHOLE store, so the
+        frozen door is not re-passed. A caller who states ``frozen_atoms`` (with
+        or without ``regions``) gets exactly what they asked for.
+
+        Also installed as ``__replace__``, so on Python 3.13+ plain
+        ``dataclasses.replace`` routes through this automatically. **On 3.12 it
+        does not** — the interpreter has no such hook — so on this interpreter
+        ``dataclasses.replace(struct, regions=…)`` still carries the trap and
+        this method is the only correct door.
+        """
+        import dataclasses as _dc
+        if "regions" in changes and "frozen_atoms" not in changes:
+            # Rebuild from the fields WITHOUT re-passing the derived read.
+            kw = {f.name: getattr(self, f.name)
+                  for f in _dc.fields(self) if f.name != "frozen_atoms"}
+            kw.update(changes)
+            return type(self)(**kw)
+        return _dc.replace(self, **changes)
+
+    #: Python 3.13+ dispatches ``dataclasses.replace`` here.  Harmless on 3.12.
+    __replace__ = replace
+
     # ------------------------------------------------------------------ #
     #  The reserved-label read (molview.md § 6.6)                        #
     # ------------------------------------------------------------------ #
