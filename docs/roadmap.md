@@ -1083,12 +1083,15 @@ measured against its box, its parent and the viewport), transport excluded.
 Two findings were fixed the same day and are recorded under *Closed work*.
 What remains:
 
-- **7.4a — two modals have no CSS at all.** `.molbuilder-warning-modal` and
-  eight `save-dialog` classes have zero rules and zero inline styles, and no
-  `color-scheme` is declared anywhere, so the browser paints them light inside
-  a dark app. `.molbuilder-projects-dialog::backdrop` *is* styled — the three
-  dialog families do not agree with each other. Subsumes
-  `web/audit-2026-08-05-tab-ui.md` § C8.
+- ~~**7.4a — two modals have no CSS at all.**~~ **Done 2026-08-23.**
+  `lib/dialog.css` is one component on the global tokens — surface, backdrop,
+  title, hint, field, preview, error, actions — and all three dialog families
+  wear it. `button.danger` joined `button.primary` in the shared sheet, since
+  discarding unsaved work and deleting a folder are the same kind of answer
+  and looked like ordinary buttons everywhere; it is marked but not the
+  default, so the key that closes a dialog keeps your work. Two anonymous
+  literals became named tokens with reasons (`--shadow-modal`, `--backdrop`).
+  Closes `web/audit-2026-08-05-tab-ui.md` § C8.
 - **7.4b — `setStatus` is written twelve times.** The CSS side is a properly
   owned shared component (`.status` + severities, one owner in page-shell);
   the writer is hand-rolled per tab. The 2026-08-05 audit counted six (§ C5);
@@ -1101,10 +1104,15 @@ What remains:
   (`molview`, `docs-render`, `vibrationview`, `spectrumchart`) state their
   reason and are **not** in scope. Related: `ui-contract.md` § 4 already
   requires the `--space-*` / `--text-*` / `--radius*` scales.
-- **7.4d — classes written by JS that no stylesheet defines** (21 found, of
-  which the modal cluster is 7.4a; `.error-card`, `.is-clean`,
-  `.is-view-only` are separate). The same defect `form-components.css`'s own
-  comment describes as "written by every renderer and styled by NONE".
+- ~~**7.4d — classes written by JS that no stylesheet defines**~~ **Done
+  2026-08-23.** Of the 21: ten were the modals (7.4a); six were hooks made
+  redundant by the component and deleted; four were real surfaces and got
+  rules — the citation list under a help panel, a comma-float input, the
+  results wait text, and the selection-bootstrap error, which now reads as an
+  error instead of body text. The remaining seven are MARKERS — meaning for
+  code, not appearance — and each states why in
+  `test_css_classes_are_defined.py`, which also fails if a `<dialog>` is built
+  without the component or a page loads the shell without the sheet.
 - **7.4e — nothing in the suite measures layout.** Every UI test asserts
   presence or behaviour; none asserts that content fits its box. The audit
   probe is the guard, with one correction already learned: children of a

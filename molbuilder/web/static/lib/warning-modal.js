@@ -142,22 +142,24 @@
     function _buildDialog(doc, txt) {
         txt = txt || {};
         var dialog = doc.createElement("dialog");
-        dialog.className = "molbuilder-warning-modal";
+        dialog.className = "mb-dialog molbuilder-warning-modal";
         dialog.setAttribute("aria-labelledby", "molbuilder-warning-title");
         dialog.setAttribute("aria-describedby", "molbuilder-warning-body");
 
         var title = doc.createElement("h2");
+        title.className = "mb-dialog-title";
         title.id = "molbuilder-warning-title";
         title.textContent = txt.title || TITLE;
         dialog.appendChild(title);
 
         var body = doc.createElement("p");
+        body.className = "mb-dialog-hint";
         body.id = "molbuilder-warning-body";
         body.textContent = txt.body || BODY;
         dialog.appendChild(body);
 
         var actions = doc.createElement("div");
-        actions.className = "molbuilder-warning-modal-actions";
+        actions.className = "mb-dialog-actions";
 
         var cancel = doc.createElement("button");
         cancel.type = "button";
@@ -167,6 +169,10 @@
 
         var discard = doc.createElement("button");
         discard.type = "button";
+        // The irreversible option is MARKED, and it is not the default:
+        // `.btn-danger` says what it costs, and cancel comes first so the
+        // key that closes a dialog is the one that keeps your work.
+        discard.className = "danger";
         discard.setAttribute("data-action", "discard");
         discard.textContent = txt.confirmLabel || DISCARD;
         actions.appendChild(discard);

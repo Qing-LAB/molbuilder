@@ -66,6 +66,25 @@ button.primary:disabled {
     color: var(--text-muted);
 }
 
+/* The DESTRUCTIVE choice, beside its sibling above.  Discarding unsaved work
+ * and deleting a folder are the same kind of answer and looked like ordinary
+ * buttons everywhere -- the confirm dialogs let each caller pass whatever
+ * class it liked, which is the same as none.  Marked, but NOT the default: a
+ * dialog's cancel comes first, so the key that closes it is the one that
+ * keeps your work. */
+button.danger {
+    border-color: var(--error);
+    color: var(--error);
+}
+button.danger:hover:not(:disabled) {
+    background: var(--error);
+    color: var(--bg-page);
+    border-color: var(--error);
+}
+button.danger:disabled {
+    opacity: 0.5;
+}
+
 /* ---- Load-from-sidebar bar (inside the viewer card) ---- */
 .viewer-load-bar {
     display: flex;

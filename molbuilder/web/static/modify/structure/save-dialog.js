@@ -164,14 +164,14 @@
 
     function _buildNameDialog(doc, initialName) {
         var dialog = doc.createElement("dialog");
-        dialog.className = "molbuilder-save-name-modal";
+        dialog.className = "mb-dialog molbuilder-save-name-modal";
 
         var title = doc.createElement("h2");
         title.textContent = "Save structure";
         dialog.appendChild(title);
 
         var label = doc.createElement("label");
-        label.className = "molbuilder-save-name-label";
+        label.className = "mb-dialog-label";
 
         var labelText = doc.createElement("span");
         labelText.textContent = "Filename";
@@ -188,7 +188,7 @@
         dialog.appendChild(label);
 
         var hint = doc.createElement("p");
-        hint.className = "molbuilder-save-name-hint";
+        hint.className = "mb-dialog-hint";
         hint.textContent =
             "Enter a name only — no file extension.  Saving writes TWO files "
             + "into the current project directory: the coordinates and a sidecar "
@@ -198,7 +198,7 @@
         // Live preview of the exact pair the save will write, so the user sees
         // that ONE name produces both files and never needs to type ".xyz".
         var preview = doc.createElement("p");
-        preview.className = "molbuilder-save-name-preview";
+        preview.className = "mb-dialog-preview";
         preview.setAttribute("data-role", "name-preview");
         preview.hidden = true;
         dialog.appendChild(preview);
@@ -207,13 +207,13 @@
         // the input is valid, shown when the user types something
         // that would be rejected (e.g. a path separator).
         var err = doc.createElement("p");
-        err.className = "molbuilder-save-name-error";
+        err.className = "mb-dialog-error";
         err.setAttribute("data-role", "name-error");
         err.hidden = true;
         dialog.appendChild(err);
 
         var actions = doc.createElement("div");
-        actions.className = "molbuilder-save-name-actions";
+        actions.className = "mb-dialog-actions";
 
         var cancel = doc.createElement("button");
         cancel.type = "button";
@@ -291,7 +291,7 @@
 
     function _buildOverwriteDialog(doc, filename) {
         var dialog = doc.createElement("dialog");
-        dialog.className = "molbuilder-save-overwrite-modal";
+        dialog.className = "mb-dialog molbuilder-save-overwrite-modal";
 
         var title = doc.createElement("h2");
         title.textContent = "File exists";
@@ -305,7 +305,7 @@
         dialog.appendChild(body);
 
         var actions = doc.createElement("div");
-        actions.className = "molbuilder-save-overwrite-actions";
+        actions.className = "mb-dialog-actions";
 
         var cancel = doc.createElement("button");
         cancel.type = "button";

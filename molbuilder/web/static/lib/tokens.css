@@ -66,6 +66,15 @@
     --shadow-card:   0 1px 0 rgba(255, 255, 255, 0.02) inset,
                      0 4px 12px rgba(0, 0, 0, 0.30);
     --shadow-input:  0 0 0 3px var(--accent-glow);
+    /* A modal floats above everything, so its shadow is deeper than a card's
+       -- the surface has to read as LIFTED off the page rather than inset
+       into it, or a dialog looks like a panel that failed to open. */
+    --shadow-modal:  0 8px 24px rgba(0, 0, 0, 0.55);
+    /* The dim behind a modal.  Enough to mute the page and say "answer this
+       first", not enough to hide what the dialog is about to change -- a
+       discard prompt is easier to answer while you can still see what you
+       would lose. */
+    --backdrop:      rgba(0, 0, 0, 0.45);
 
     /* ---- Layout ---- */
     --radius:        7px;

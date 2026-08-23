@@ -1,0 +1,117 @@
+/* dialog.css — the ONE modal component.
+ *
+ * `ui-contract.md` § 1: a widget used on more than one page lives in a shared
+ * sheet, and a shared element has exactly one owner.  There were three
+ * scaffolds (audit-2026-08-05-tab-ui.md § C8), and only one of them was
+ * styled at all:
+ *
+ *   * the projects dialogs had a full vocabulary, written against the
+ *     projects sidebar's PRIVATE `--ps-*` tokens;
+ *   * `lib/warning-modal.js` and `modify/structure/save-dialog.js` wrote ten
+ *     class names between them that NO stylesheet defined, so the browser
+ *     painted its own chrome -- a white box with default buttons, in an app
+ *     that has no light theme at all.  Every unsaved-changes prompt and every
+ *     Save-as looked like a different application.
+ *
+ * One component now, on the global tokens, so a dialog cannot be
+ * half-designed by accident: a class that nothing answers is visible the
+ * moment it renders, and `test_dialog_component.py` fails if a `<dialog>`
+ * ships without it.
+ *
+ * Vocabulary — the parts a modal actually has:
+ *   .mb-dialog            the surface (and its ::backdrop)
+ *   .mb-dialog-title      what it is asking
+ *   .mb-dialog-hint       why, in smaller muted prose
+ *   .mb-dialog-field      a labelled input, stacked
+ *   .mb-dialog-preview    a derived value shown back (a filename, a path)
+ *   .mb-dialog-error      the refusal, reserving its line so nothing jumps
+ *   .mb-dialog-actions    the buttons, primary last (the platform order)
+ */
+
+.mb-dialog {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: var(--space-lg) var(--space-lg) var(--space-md);
+    min-width: min(24rem, 92vw);
+    max-width: min(38rem, 92vw);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    box-shadow: var(--shadow-modal);
+}
+.mb-dialog::backdrop {
+    background: var(--backdrop);
+}
+
+.mb-dialog-title {
+    margin: 0 0 var(--space-sm);
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.mb-dialog-hint {
+    margin: 0 0 var(--space-md);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+.mb-dialog-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin: 0 0 var(--space-sm);
+}
+.mb-dialog-field > span,
+.mb-dialog-label {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+.mb-dialog input[type="text"],
+.mb-dialog input[type="file"] {
+    font: inherit;
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--bg-page);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    /* A name field is unbounded text; let it use the dialog's width rather
+     * than pushing the surface wider than the viewport. */
+    min-width: 0;
+    width: 100%;
+}
+.mb-dialog input[type="text"]:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--shadow-input);
+}
+
+/* A derived value shown back to the user -- the filename a save will use.
+ * Monospace because it is machine text, and it may be long: machine text has
+ * no spaces to break at, so say so rather than let it leave the box. */
+.mb-dialog-preview {
+    margin: 0 0 var(--space-sm);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-mono);
+    overflow-wrap: anywhere;
+}
+
+/* Reserves its line even when empty, so the buttons do not jump down the
+ * moment a refusal appears under the user's cursor. */
+.mb-dialog-error {
+    margin: 0 0 var(--space-sm);
+    font-size: var(--text-xs);
+    color: var(--error);
+    min-height: 1.2em;
+}
+
+.mb-dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+}

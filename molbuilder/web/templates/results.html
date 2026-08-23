@@ -7,6 +7,7 @@
 {# Cross-tab page chrome -- body theme, header, main, .card, generic
    form controls, .status, scrollbars.  Splits responsibility cleanly:
    page-shell.css covers what every tab needs; per-tab + per-inspector
+   <link rel="stylesheet" href="{{ url_for('static', filename='lib/dialog.css') }}">
    stylesheets layer their specifics on top. -#}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">

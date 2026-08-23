@@ -637,3 +637,13 @@ body:has(#results-file-picker-bar:not([hidden])) .results-status {
     color: var(--text-primary, #e6e9ef);
     font-size: 0.92rem;
 }
+
+
+/* The word shown while an inspector loads.  Written by `results/viewer.js`
+ * and unstyled until 2026-08-23, so it inherited whatever the host gave it
+ * and read as content rather than as a wait. */
+.results-loading-text {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-style: italic;
+}

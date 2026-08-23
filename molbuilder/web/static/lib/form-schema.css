@@ -367,6 +367,33 @@ fieldset select:disabled {
     opacity: 1;
     text-decoration: underline;
 }
+/* The references under a help panel — title, then a DOI link.  Written by
+ * `form-schema.js` and answered by no rule at all until 2026-08-23, so it
+ * rendered with the browser's own list chrome: disc bullets and 40px of
+ * indent inside a 12px help box. */
+.schema-help-refs {
+    margin: var(--space-xs) 0 0;
+    padding-left: var(--space-md);
+    list-style: none;
+    font-size: var(--text-2xs, 0.72rem);
+    color: var(--text-muted);
+}
+.schema-help-refs li {
+    margin-bottom: var(--space-xs);
+    /* A citation is prose with a DOI in it — long, and the DOI has no spaces
+     * to break at. */
+    overflow-wrap: anywhere;
+}
+.schema-help-refs a { color: var(--accent); }
+
+/* A numeric field that accepts a comma-separated list (a k-grid, a set of
+ * radii).  Tabular figures so the columns of digits line up as they are
+ * typed, which is the whole reason the field takes a list. */
+.schema-input-comma-floats {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
 .schema-help-body {
     margin-top: 4px;
     padding: 6px 8px;

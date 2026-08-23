@@ -177,3 +177,14 @@ label[title], fieldset[title], summary[title] {
 }
 label[title] > input,
 label[title] > select { cursor: auto; }
+
+
+/* A recommendation-diff row's parameter name.  Machine text beside a value,
+ * so it is monospace and may break anywhere — a catalogue key has no spaces
+ * to break at. */
+.rec-diff-name {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-mono);
+    overflow-wrap: anywhere;
+}

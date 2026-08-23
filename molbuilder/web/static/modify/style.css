@@ -672,3 +672,17 @@ footer a:hover { color: var(--accent-hover); }
 .pv-field--inert:focus {
     opacity: 1;                 /* you are using it -- stop apologising */
 }
+
+
+/* The banner shown when the selection layer cannot start.  It is an error
+ * and now reads as one — `.status.error`'s colour, on the shared severity
+ * token, rather than plain body text a user scrolls past. */
+.selection-bootstrap-error {
+    margin: var(--space-sm) 0;
+    padding: var(--space-sm) var(--space-md);
+    border-left: 3px solid var(--error);
+    background: var(--bg-card);
+    color: var(--error);
+    font-size: var(--text-sm);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
