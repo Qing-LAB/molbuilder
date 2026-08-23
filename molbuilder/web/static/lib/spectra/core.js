@@ -234,13 +234,10 @@
     // working unchanged.  See trajectory/core.js for the same
     // pattern + rationale.
     (function _wireBackcompatAliases() {
+        // The shared inspector helper (lib/inspectors/lifecycle.js): both
+        // cores spelled this out byte-identically.
         function alias(key, bucket) {
-            Object.defineProperty(state, key, {
-                get: function ()    { return state[bucket][key]; },
-                set: function (v)   { state[bucket][key] = v; },
-                enumerable: true,
-                configurable: true,
-            });
+            root.molbuilder.inspectorLifecycle.alias(state, key, bucket);
         }
         // fileState: legacy `watchPath` -> canonical `path`.
         Object.defineProperty(state, "watchPath", {
@@ -447,12 +444,12 @@
     // init() and would otherwise leak the previous round of
     // listeners.  Mirrors lib/trajectory/core.js's dispose contract.
     const _cleanups = [];
+    // The shared listener scope (lib/inspectors/lifecycle.js).  Registration
+    // and cleanup are written in one place, which is the only way they stay
+    // in step across mount/dispose cycles.
+    var _listeners = root.molbuilder.inspectorLifecycle.listeners();
     function _on(target, event, handler, opts) {
-        if (!target) return;
-        target.addEventListener(event, handler, opts);
-        _cleanups.push(function () {
-            target.removeEventListener(event, handler, opts);
-        });
+        _listeners.on(target, event, handler, opts);
     }
 
     // ----- Status helper ----------------------------------------

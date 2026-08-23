@@ -1175,20 +1175,14 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
          * so we never silently mutate the user's params; we just
          * surface the science.
          */
-        async function _autoAnalyzeOnLoad(path) {
+        function _autoAnalyzeOnLoad(path) {
             const myLoadSeq = _sidebarLoadSeq;
-            const res = await autoDetect.analyze(path, {
+            return autoDetect.analyzeOnLoad(path, {
                 isStale: () => myLoadSeq !== _sidebarLoadSeq,
+                say: () => setStatus("auto-detect-status",
+                    "Chemistry analyzed — click Auto-detect to "
+                    + "apply suggested defaults to the forms.", null),
             });
-            // Silent on every failure, superseded included — the
-            // user did not ask for this fire, so it must not flash
-            // an error at them.  The button is there to retry.
-            if (!res.ok) return;
-            autoDetect.renderPanel(res.body);
-            setStatus("auto-detect-status",
-                "Chemistry analyzed — click Auto-detect to "
-                + "apply suggested defaults to the forms.",
-                null);
         }
 
         /**

@@ -187,6 +187,7 @@
    warning-modal + region-label-definitions).  The old pasted copy here had DIVERGED --
    it omitted warning-modal.js. #}
 {% include "_molview_scripts.html" %}
+<script src="{{ url_for('static', filename='lib/inspectors/lifecycle.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/validation-findings.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/spectra/core.js') }}"></script>

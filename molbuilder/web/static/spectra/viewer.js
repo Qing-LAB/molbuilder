@@ -357,20 +357,14 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
          * parameter form (the explicit button click still owns
          * the form-fill).
          */
-        async function _autoAnalyzeOnLoad(path) {
+        function _autoAnalyzeOnLoad(path) {
             const myLoadSeq = _loadSeq;
-            const res = await autoDetect.analyze(path, {
+            return autoDetect.analyzeOnLoad(path, {
                 isStale: () => myLoadSeq !== _loadSeq,
+                say: () => setStatus("auto-detect-status",
+                    "Chemistry analyzed — click Auto-detect to "
+                    + "apply suggested defaults to the form.", null),
             });
-            // Silent on every failure, superseded included: the user
-            // did not ask for this fire, so it must not flash an
-            // error at them.  The button is still there to retry.
-            if (!res.ok) return;
-            autoDetect.renderPanel(res.body);
-            setStatus("auto-detect-status",
-                "Chemistry analyzed — click Auto-detect to "
-                + "apply suggested defaults to the form.",
-                null);
         }
 
         /**

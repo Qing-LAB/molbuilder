@@ -187,7 +187,34 @@
         });
     }
 
-    var api = { renderPanel: renderPanel, analyze: analyze };
+    /**
+     * The background fire: analyse on load, show the reasoning, touch no
+     * form.  Both describing tabs spelled this out identically -- fourteen
+     * lines differing in the name of a sequence counter and the word
+     * "form"/"forms" -- which is what a shared module is for and what the
+     * first extraction (2026-08-22) missed by taking the renderer and the
+     * protocol but leaving the caller.
+     *
+     * Silent on EVERY failure, superseded included: the user did not ask for
+     * this fire, so it must not flash an error at them.  The button is there
+     * to retry.  Form-fill stays with the explicit click, so a background
+     * analyse never silently rewrites the user's numbers.
+     *
+     * `opts.isStale` is the page's "a newer structure arrived" test;
+     * `opts.say` writes the status line in the caller's own words.
+     */
+    function analyzeOnLoad(path, opts) {
+        opts = opts || {};
+        return analyze(path, { isStale: opts.isStale }).then(function (res) {
+            if (!res.ok) return res;
+            renderPanel(res.body);
+            if (typeof opts.say === "function") opts.say();
+            return res;
+        });
+    }
+
+    var api = { renderPanel: renderPanel, analyze: analyze,
+                analyzeOnLoad: analyzeOnLoad };
     if (typeof module !== "undefined" && module.exports) {
         module.exports = api;
     }

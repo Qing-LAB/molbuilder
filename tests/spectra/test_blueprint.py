@@ -770,23 +770,26 @@ class TestSpectraDisposeContract:
         leaks past dispose — the same class of bug the
         2026-05-18 review surfaced.
 
-        ``_on()`` itself contains the only legitimate
-        ``addEventListener`` call site; anything else is a leak.
+        The claim got STRONGER on 2026-08-23.  ``_on()`` used to hold the
+        one legitimate ``addEventListener`` in this file; the helper is now
+        shared with the trajectory core (`lib/inspectors/lifecycle.js`,
+        which both inspectors spelled out byte-identically), so this file
+        should contain **none at all** and the single call site lives in the
+        shared scope.
         """
         import re
         js = web_client.get("/static/lib/spectra/core.js").data.decode()
-        # Count BARE .addEventListener( calls.
         adds = re.findall(r"\.addEventListener\(", js)
-        # The _on() helper makes exactly one such call.  Anything
-        # more means a direct registration that won't be torn down.
-        assert len(adds) == 1, (
-            f"expected exactly 1 .addEventListener call in lib/"
-            f"spectra/core.js (the one inside _on()), found "
-            f"{len(adds)} — a recent change has added a direct "
-            f"event-listener registration that escapes the "
-            f"_cleanups array; route it through _on() so dispose() "
-            f"tears it down"
+        assert len(adds) == 0, (
+            f"lib/spectra/core.js registers {len(adds)} listener(s) "
+            f"directly — every one escapes the cleanup scope and leaks past "
+            f"dispose().  Route it through _on()."
         )
+        shared = web_client.get(
+            "/static/lib/inspectors/lifecycle.js").data.decode()
+        assert len(re.findall(r"\.addEventListener\(", shared)) == 1, (
+            "the shared listener scope should hold exactly one registration "
+            "site — that is what makes the cleanup provably complete")
         # Sanity: the _on() helper actually gets used a lot.  Today
         # the wiring block calls _on() ~17 times across the generate-
         # and inspect-side gates.  Pinning a floor (rather than the

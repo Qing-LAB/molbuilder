@@ -22,6 +22,10 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/modify/structure/smiles.js"
+#: The panel reads its dependency slots from the shared wiring
+#: (`panel-deps.js`), which the page loads before it.  A harness that
+#: skips it is testing a module the browser never runs.
+PANEL_DEPS = ROOT / "molbuilder/web/static/modify/structure/panel-deps.js"
 
 
 def _run_node(snippet: str) -> object:
@@ -30,6 +34,7 @@ def _run_node(snippet: str) -> object:
         pytest.skip("node not available")
     module_path = MODULE.resolve()
     bootstrap = f"""
+        require({json.dumps(str(PANEL_DEPS.resolve()))});
         const smiles = require({json.dumps(str(module_path))});
         try {{
             (async () => {{
@@ -379,8 +384,17 @@ class TestCanvasGate:
 class TestConfigurationErrors:
 
     def test_generate_rejects_when_fetch_unconfigured(self):
+        """No fetch at all -- stated, rather than relied on.
+
+        This used to work by accident: the panel's resolver bails early when
+        the app namespace is absent, and requiring only this module left it
+        absent, so nothing picked up Node's global fetch.  Loading the shared
+        `panel-deps` (which the browser loads too) creates that namespace, and
+        the accident stopped happening.  The condition the test MEANS is "the
+        host has no fetch", so it says so.
+        """
         out = _run_node('''
-            // Fresh smiles module never configured.
+            delete globalThis.fetch;          // the condition under test
             const p = smiles.generate("CCO");
             let rejected = false, msg = "";
             try { await p; }

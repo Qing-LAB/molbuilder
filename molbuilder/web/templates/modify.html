@@ -890,6 +890,8 @@
    + the warning modal; the generators (smiles/name/dna/rna/...)
    wire their Generate buttons against structurePage. #}
 <script src="{{ url_for('static', filename='modify/structure/page.js') }}"></script>
+{# The five builder panels share their dependency wiring; it must load first. #}
+<script src="{{ url_for('static', filename='modify/structure/panel-deps.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/structure/smiles.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/structure/name.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/structure/dna.js') }}"></script>

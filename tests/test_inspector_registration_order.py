@@ -53,7 +53,13 @@ def _pages_with_inspectors():
         # registry.js and the factory are machinery, not inspectors: they must
         # exist BEFORE any inspector runs, which is a different constraint.
         scripts = [s for s in scripts
-                   if s[0] not in ("registry.js", "_partial_inspector_factory.js")]
+                   if s[0] not in ("registry.js", "_partial_inspector_factory.js",
+                                   # Same kind of thing: the mount/dispose
+                                   # helpers both cores share.  It publishes a
+                                   # global and registers nothing, so it is
+                                   # bound by "must run first", not by "must
+                                   # run in template order".
+                                   "lifecycle.js")]
         if len(scripts) > 1:
             yield p.name, scripts
 

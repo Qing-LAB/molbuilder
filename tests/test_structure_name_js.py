@@ -21,6 +21,10 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/modify/structure/name.js"
+#: The panel reads its dependency slots from the shared wiring
+#: (`panel-deps.js`), which the page loads before it.  A harness that
+#: skips it is testing a module the browser never runs.
+PANEL_DEPS = ROOT / "molbuilder/web/static/modify/structure/panel-deps.js"
 
 
 def _run_node(snippet: str) -> object:
@@ -29,6 +33,7 @@ def _run_node(snippet: str) -> object:
         pytest.skip("node not available")
     module_path = MODULE.resolve()
     bootstrap = f"""
+        require({json.dumps(str(PANEL_DEPS.resolve()))});
         const nm = require({json.dumps(str(module_path))});
         try {{
             (async () => {{

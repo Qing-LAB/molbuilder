@@ -32,33 +32,13 @@
     var VALID_FORMS = ["B", "A", "Z"];
     var VALID_BACKENDS = ["auto", "threedna", "amber", "rdkit"];
 
-    var _fetch         = null;
-    var _structurePage = null;
-
-    function configure(opts) {
-        opts = opts || {};
-        if (opts.fetch)         _fetch         = opts.fetch;
-        if (opts.structurePage) _structurePage = opts.structurePage;
-    }
-
-    /**
-     * Lazy-resolve production singletons from window.molbuilder.
-     * Pre-fix this module's IIFE captured them once at script-eval
-     * time (LANDMINE-2): if a future template change loaded this
-     * script BEFORE page.js / mol-viewer.js finished
-     * registering their globals, those slots stayed null and the
-     * first generate() call hit the "not configured" branch.
-     * Re-reads on every call so a later script-load doesn't
-     * silently degrade.  Test contexts that called configure()
-     * with explicit fakes are unaffected (their values stay).
-     */
-    function _lazyResolve() {
-        if (typeof root === "undefined" || !root.molbuilder) return;
-        if (!_fetch && root.fetch)
-            _fetch = root.fetch.bind(root);
-        if (!_structurePage && root.molbuilder.structurePage)
-            _structurePage = root.molbuilder.structurePage;
-    }
+    // The panel's dependency slots, wired once for all five panels
+    // (`panel-deps.js`): `configure` is the test door, `_lazyResolve` the
+    // production re-read that LANDMINE-2 needs.  This was eighty lines of
+    // byte-identical copy across smiles/name/peptide/rna/dna.
+    var _deps = root.molbuilder.panelDeps.make(root);
+    var configure = _deps.configure;
+    var _lazyResolve = _deps.resolve;
 
     /**
      * Extract a strand's CORE 5'->3' sequence, honouring direction markers:
@@ -216,15 +196,15 @@
         // Lazy-resolve dependencies in case the script-load
         // order put us above page.js / lib/* (LANDMINE-2 fix).
         _lazyResolve();
-        if (!_fetch) {
+        if (!_deps.fetch) {
             return Promise.reject(new Error(
                 "dna: fetch not configured"));
         }
-        if (!_structurePage) {
+        if (!_deps.structurePage) {
             return Promise.reject(new Error(
                 "dna: structurePage not configured"));
         }
-        return _fetch(BUILD_URL, {
+        return _deps.fetch(BUILD_URL, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({
@@ -252,7 +232,7 @@
                             || ("HTTP error from " + BUILD_URL),
                 };
             }
-            return _structurePage.loadIntoCanvas(
+            return _deps.structurePage.loadIntoCanvas(
                 { source_format: "xyz", text: body.xyz },
                 { kind: "dna",
                   generator_input: {

@@ -30,6 +30,29 @@
 (function (root) {
     "use strict";
 
+    /** Close a dialog once, and only if it is still the live one.
+     *
+     * Both dialogs here spelled this out identically.  The guard is the point:
+     * a dialog that has already been superseded must not resolve its promise
+     * a second time or remove a node the newer dialog is using, and the slot
+     * check is what makes "settle" idempotent under a spam-click.
+     *
+     * `slot()` reads the module's active-dialog slot and `clear()` empties it,
+     * because the two dialogs keep separate slots -- that difference is the
+     * only thing that was ever different between the copies.
+     */
+    function _settleDialog(dialog, slot, clear, resolve, value) {
+        var live = slot();
+        if (!live || live.dialog !== dialog) return;
+        clear();
+        try { dialog.close(); } catch (_) {}
+        try {
+            if (dialog.parentNode) dialog.parentNode.removeChild(dialog);
+        } catch (_) {}
+        resolve(value);
+    }
+
+
     // ─── chooseSaveName ──────────────────────────────────────────── //
 
     var _activeName = null;
@@ -62,15 +85,8 @@
         _activeName = { dialog: dialog, resolve: resolve, promise: promise };
 
         function _settle(value) {
-            if (!_activeName || _activeName.dialog !== dialog) return;
-            _activeName = null;
-            try { dialog.close(); } catch (_) {}
-            try {
-                if (dialog.parentNode) {
-                    dialog.parentNode.removeChild(dialog);
-                }
-            } catch (_) {}
-            resolve(value);
+            _settleDialog(dialog, function () { return _activeName; },
+                          function () { _activeName = null; }, resolve, value);
         }
 
         var input  = dialog.querySelector('[data-role="name-input"]');
@@ -258,15 +274,9 @@
         _activeOverwrite = { dialog: dialog, resolve: resolve, promise: promise };
 
         function _settle(value) {
-            if (!_activeOverwrite || _activeOverwrite.dialog !== dialog) return;
-            _activeOverwrite = null;
-            try { dialog.close(); } catch (_) {}
-            try {
-                if (dialog.parentNode) {
-                    dialog.parentNode.removeChild(dialog);
-                }
-            } catch (_) {}
-            resolve(value);
+            _settleDialog(dialog, function () { return _activeOverwrite; },
+                          function () { _activeOverwrite = null; },
+                          resolve, value);
         }
 
         dialog.querySelector('[data-action="cancel"]')

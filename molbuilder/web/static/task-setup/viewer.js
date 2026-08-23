@@ -384,6 +384,28 @@ function renderMachine(task) {
     }
     const acts = $("ts-machine-actions");
     if (acts) acts.hidden = false;
+
+    /* SAY WHEN THE LABELS ARE MISSING.  The rows above are the real setting
+     * names and are usable as they are; the server-side vocabulary that turns
+     * `mpi_np` into "MPI ranks (np)" is a separate fetch, and when it fails
+     * the honest thing is a card that works and admits what it lacks.  The
+     * alternative -- what happened on 2026-08-23, when the server was
+     * restarting under a loaded page -- is a card that never appears at all
+     * and a user who reports the feature as gone. */
+    let note = $("ts-machine-labels-note");
+    if (_vocabFailed) {
+        if (!note) {
+            note = el("p", { class: "status warn",
+                             id: "ts-machine-labels-note" }, "");
+            card.insertBefore(note, $("ts-machine-rows"));
+        }
+        note.textContent =
+            "Showing raw setting names — the label list did not load "
+            + "(reload the page once the server is back).";
+        note.hidden = false;
+    } else if (note) {
+        note.hidden = true;
+    }
     card.hidden = false;
 }
 
@@ -743,6 +765,10 @@ let _colsKey = null;
  * exists to prevent, so this is a lookup into what the schema returned. */
 const _meta = Object.create(null);
 let _sweep = null;      // the ones a benchmark may sweep
+//: Whether ANY server-side vocabulary failed to load this page-load.
+//: One fact, one flag: the card's note says the names are raw, and it
+//: does not matter which of the four lookups was the one that failed.
+let _vocabFailed = false;
 let _sweepKey = null;
 
 /** Every parameter that may become a column.
@@ -758,6 +784,39 @@ let _sweepKey = null;
  * answer for the second cost this table `restart` — the field that decides
  * whether a ladder is a ladder — so a ladder built here ran every stage clean.
  */
+/** ONE guarded read of a server-side vocabulary (2026-08-23).
+ *
+ * Four functions here memoise a fetch of something the server names --
+ * columns, sweepable settings, tier presets, template values.  Three of the
+ * four wrote the fetch out by hand and NONE of those three caught anything,
+ * so a request that failed rejected out through `loadFolder` and stranded
+ * whatever card sat behind it.  The fourth, `loadTemplateValues`, had the
+ * try/catch -- the right answer was already in this file and the copies did
+ * not get it, which is what copied code does.
+ *
+ * That is how the bench card "disappeared" on 2026-08-23: the server was
+ * restarting under a loaded page, the label lookup failed, and every card
+ * above it painted while the one behind it never got its turn.
+ *
+ * Returns `{ok, body}`.  A failure is the CALLER'S to degrade around -- these
+ * are vocabularies, and a page that has the substance can show it with the
+ * raw names.
+ */
+async function fetchVocabulary(url, what) {
+    try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return { ok: true, body: await r.json() };
+    } catch (e) {
+        _vocabFailed = true;
+        if (window.console) {
+            console.warn("[task-setup] " + what + " unavailable:", e);
+        }
+        return { ok: false, body: null };
+    }
+}
+
+
 async function loadColumnChoices(engine) {
     // The folder's KIND narrows the columns (template.md § 6.3's sibling
     // rule) -- a vibration description's picker offers the vibration
@@ -769,10 +828,12 @@ async function loadColumnChoices(engine) {
     const key = (engine || "siesta") + ":" + kind;
     if (_cols && _colsKey === key) return _cols;
     _colsKey = key;
-    const r = await fetch("/api/task-setup/columns?engine="
-                          + encodeURIComponent(engine || "siesta")
-                          + "&calculation=" + encodeURIComponent(kind));
-    const j = await r.json();
+    const got = await fetchVocabulary(
+        "/api/task-setup/columns?engine="
+        + encodeURIComponent(engine || "siesta")
+        + "&calculation=" + encodeURIComponent(kind), "column list");
+    if (!got.ok) { _cols = []; return _cols; }
+    const j = got.body;
     _cols = (j && j.items) || [];
     for (const it of _cols) _meta[it.name] = it;
     return _cols;
@@ -804,9 +865,23 @@ async function loadSweepChoices(engine) {
     const key = engine || "siesta";
     if (_sweep && _sweepKey === key) return _sweep;
     _sweepKey = key;
-    const r = await fetch("/api/task-setup/sweepable?engine="
-                          + encodeURIComponent(key));
-    const j = await r.json();
+    /* A LABEL LOOKUP MUST NOT BE ABLE TO STRAND THE PAGE (2026-08-23).
+     *
+     * This is an ENRICHMENT: it turns `mpi_np` into "MPI ranks (np)".  It
+     * used to be an unguarded `await fetch` with `renderMachine` behind it as
+     * the last step of `loadFolder`, so a slow or failed request left every
+     * card above it painted and the bench card simply absent -- no error, no
+     * empty state, nothing to retry.  The user's report was "the bench setup
+     * is gone", and the page looked completely normal.
+     *
+     * Now it degrades: rows paint with their raw names and the card says the
+     * labels are missing.  A surface that cannot get its nicety shows what it
+     * has; only a surface that cannot get its SUBSTANCE may refuse. */
+    const got = await fetchVocabulary(
+        "/api/task-setup/sweepable?engine=" + encodeURIComponent(key),
+        "sweepable settings");
+    if (!got.ok) { _sweep = []; return _sweep; }
+    const j = got.body;
     _sweep = (j && j.items) || [];
     // `staging` items are filtered out of the form schema, so this is the
     // only place their note arrives -- fold it in so the table hovers work.
@@ -952,9 +1027,11 @@ async function loadPresets(engine) {
     const key = engine || "siesta";
     if (_presets && _presetsKey === key) return _presets;
     _presetsKey = key;
-    const r = await fetch("/api/task-setup/presets?engine="
-                          + encodeURIComponent(key));
-    const j = await r.json();
+    const got = await fetchVocabulary(
+        "/api/task-setup/presets?engine=" + encodeURIComponent(key),
+        "tier presets");
+    if (!got.ok) { _presets = []; return _presets; }
+    const j = got.body;
     _presets = (j && j.presets) || [];
     return _presets;
 }
