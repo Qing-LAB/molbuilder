@@ -68,8 +68,36 @@ class ResolveError(Exception):
 #: struct to the wrapper, but it is a retry *policy* and names no machine, so it
 #: is legitimately also a template item. The split this list drives is *"where
 #: does this value go"*, which is exactly the allocation's shape.
-ALLOCATION_FIELDS: Tuple[str, ...] = tuple(f.name for f in
-                                      dataclasses.fields(Resources))
+#: The riders: fields that travel ON ``Resources`` without being machine
+#: axes.  The note above already drew this line -- *"the two are not the same
+#: set"* -- and the implementation did not, taking every field of the struct.
+#:
+#: ``continue_retries`` was the standing example and never bit, because
+#: nobody sweeps a retry budget.  ``use_gpu`` bit immediately: it rides here
+#: since 2026-08-23 so the wrapper is told rather than grepping the deck
+#: (`execution/gpu.md` G7) -- and it is ALSO the bench's grid-family axis, so
+#: classifying it as a machine axis sent the family flag to the allocation and
+#: it never reached the config that renders the deck.  Every GPU trial emitted
+#: ``Diag.ELPA.GPU .false.``: the sweep asked for a GPU family and measured a
+#: CPU one under GPU labels.
+#:
+#: A rider lands on the VALUES, and `resolve` copies it onto the allocation
+#: afterwards -- which is how one value legitimately reaches both the deck and
+#: the wrapper without being two facts.
+_RIDERS: Tuple[str, ...] = ("continue_retries", "use_gpu")
+
+ALLOCATION_FIELDS: Tuple[str, ...] = tuple(
+    f.name for f in dataclasses.fields(Resources) if f.name not in _RIDERS)
+
+#: EVERY field ``Resources`` can hold, riders included.  A different question
+#: from :data:`ALLOCATION_FIELDS` and it must not be answered with that list:
+#: *"is this a machine axis?"* decides where a SWEEP AXIS lands, while *"can
+#: Resources hold this?"* decides whether a TRANSLATION's answer is
+#: representable.  They were one list until the riders were split out, and the
+#: translation check below would then have refused a rider with the reason
+#: *"names nothing on Resources"* -- which would have been false.
+_RESOURCE_FIELDS: Tuple[str, ...] = tuple(
+    f.name for f in dataclasses.fields(Resources))
 
 
 def _emitter_fields(config_cls) -> tuple:
@@ -391,14 +419,14 @@ def resolve(template_text: str, task, config_cls, *,
                     f"axes travel together; a partial coordinate would make "
                     f"the machine ask a guess.")
             delta = dict(translation.to_resources(point, environment))
-            bad = sorted(set(delta) - set(ALLOCATION_FIELDS))
+            bad = sorted(set(delta) - set(_RESOURCE_FIELDS))
             if bad:
                 raise ResolveError(
                     f"the translation returned "
                     f"{', '.join(repr(k) for k in bad)}, which name nothing "
                     f"on Resources. A translation may only answer with "
-                    f"allocation fields "
-                    f"({', '.join(sorted(ALLOCATION_FIELDS))}).")
+                    f"fields the allocation can hold "
+                    f"({', '.join(sorted(_RESOURCE_FIELDS))}).")
             machine.update(delta)
         # The bound applies to what the point ASKS FOR, translated or not --
         # a trial whose derived rank count exceeds the allocation is the same

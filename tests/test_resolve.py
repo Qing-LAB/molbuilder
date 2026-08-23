@@ -397,3 +397,52 @@ def test_a_sweep_axis_spelling_a_machine_fact_names_the_road(template):
     with pytest.raises(ResolveError, match=r"machine fact"):
         resolve(template, _task(), SiestaConfig, allocation=ALLOC,
                 sweep={"omp_threads": [1, 2]}, stage=STAGE)
+
+
+# --------------------------------------------------------------------- #
+#  The riders — on Resources, but not machine axes                      #
+# --------------------------------------------------------------------- #
+
+def test_the_two_field_lists_answer_two_different_questions():
+    """`ALLOCATION_FIELDS` answers *"is this a machine axis?"* -- it decides
+    where a SWEEP AXIS lands.  `_RESOURCE_FIELDS` answers *"can Resources hold
+    this?"* -- it decides whether a TRANSLATION's answer is representable.
+
+    They were one list until 2026-08-23, and conflating them cost a real bug
+    each way round: adding `use_gpu` to `Resources` (so the wrapper could be
+    told, `execution/gpu.md` G7) silently reclassified the bench's GPU family
+    axis as a machine axis, so the flag never reached the config that renders
+    the deck and **every GPU trial emitted `Diag.ELPA.GPU .false.`** -- a CPU
+    family measured under GPU labels.  And once split, the translation check
+    still tested the narrower list while its refusal said *"names nothing on
+    Resources"*, which for a rider would have been false.
+    """
+    from molbuilder.resolve import (ALLOCATION_FIELDS, _RESOURCE_FIELDS,
+                                    _RIDERS)
+    assert set(ALLOCATION_FIELDS) | set(_RIDERS) == set(_RESOURCE_FIELDS), (
+        "the split is not a partition: every Resources field is either a "
+        "machine axis or a declared rider, and nothing is both or neither")
+    assert not set(ALLOCATION_FIELDS) & set(_RIDERS)
+
+
+def test_a_rider_is_a_parameter_axis_and_reaches_the_deck():
+    """The property the GPU family axis depends on: a rider named by a sweep
+    lands on the VALUES, so the resolved config carries it and the emitter
+    renders it.  `resolve` copies it onto the allocation afterwards, which is
+    how one value legitimately reaches both the deck and the wrapper without
+    becoming two facts."""
+    from molbuilder.resolve import ALLOCATION_FIELDS, _RIDERS
+    for rider in _RIDERS:
+        assert rider not in ALLOCATION_FIELDS, (
+            f"{rider} is classified as a machine axis, so a sweep naming it "
+            f"would be routed to the allocation and never reach the deck")
+
+
+def test_every_rider_is_a_real_field_of_resources():
+    """A rider names a field that exists; a typo here would silently widen
+    the machine-axis set instead of narrowing it, which fails open."""
+    import dataclasses
+    from molbuilder.jobset.model import Resources
+    from molbuilder.resolve import _RIDERS
+    names = {f.name for f in dataclasses.fields(Resources)}
+    assert set(_RIDERS) <= names, sorted(set(_RIDERS) - names)
