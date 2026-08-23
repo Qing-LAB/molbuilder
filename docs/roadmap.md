@@ -1111,13 +1111,17 @@ What remains:
   **closed `<details>`** keep layout boxes sized to the collapsed summary, so
   measuring them reports overflow no user can see (28 false findings before
   the fix). *Test-pin: is* this item.
-- **7.4g — the Documents render pane is light inside a dark app.**
-  `docs-render.css` is a deliberately isolated theme with a `.docs-render-dark`
-  class for the dark case, and nothing applies it — so every document, and
-  every mermaid diagram in one, renders as a white sheet in a dark shell. Seen
-  while confirming the scheduler contract's diagrams render (2026-08-23). Same
-  family as 7.4a: a surface that opts out of the app's theme and is never
-  opted back in.
+- ~~**7.4g — the Documents render pane is light inside a dark app.**~~
+  **Done 2026-08-23.** Sharper than first recorded: a toggle *did* exist, but
+  it defaulted to the light palette and stored the answer in `sessionStorage`,
+  so a reader met a white sheet on every first visit and re-chose in every new
+  browser session. `tokens.css` has no light palette at all, so light was the
+  default to the one theme the app does not have. The toggle stays — a light
+  reading surface is a real preference, and people print from this pane — but
+  it starts in the app's theme and the choice now outlives the session. Pinned
+  by `test_docs_pane_theme_e2e.py`, which asserts the painted colour rather
+  than the class, and `/documents` joined the browser boot list it had never
+  been in.
 - **7.4f — the MolView host overflows its card by 18px at ≤768px** on
   structure-optimization. The only true overflow left after the 2026-08-22
   fixes; CodeMirror's +50px is its own managed scroll and three +2px readings

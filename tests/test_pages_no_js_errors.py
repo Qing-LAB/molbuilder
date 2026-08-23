@@ -99,6 +99,12 @@ _PAGES = [
     # always visible.  The picker bar itself is the right
     # always-visible probe.
     ("/results", "#results-file-picker-bar"),
+    # Documents tab: the in-app doc reader.  Added 2026-08-23 with the
+    # theme fix -- it was the second served page with no boot pin, and a
+    # renderer that throws leaves an empty pane rather than an error.
+    # `#docs-render` ships hidden until a doc is picked, so the tree is
+    # the always-visible probe.
+    ("/documents", "#docs-list"),
     # Task-setup tab: the prep surface.  Added 2026-08-22 -- it was
     # the one served page with no boot pin, which is how a duplicate
     # `ts-machine-card` id could hide the whole bench panel without

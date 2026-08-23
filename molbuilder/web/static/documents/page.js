@@ -20,19 +20,53 @@
 
     /* ---- theme toggle ------------------------------------------- */
 
+    /* THE APP IS DARK.  `docs-render.css` is a deliberately isolated theme --
+     * it does not read the app's tokens, so that the rendered markdown is a
+     * reading surface in its own right -- and isolation cut both ways: the
+     * pane defaulted to its LIGHT palette, so every document opened as a
+     * white sheet inside a dark shell until the reader found the toggle.
+     * `tokens.css` has no light palette at all (no `prefers-color-scheme`, no
+     * `data-theme`), so light was defaulting to the one theme the app does
+     * not have.
+     *
+     * The toggle stays: a light reading surface is a real preference, and
+     * some people print from this pane.  What changes is which way it starts
+     * and how long the answer survives -- a reading preference is not session
+     * state, and sessionStorage made the reader re-choose in every new
+     * browser session.  localStorage with a sessionStorage fallback keeps it
+     * working where storage is blocked. */
+    function _store(key, value) {
+        try { localStorage.setItem(key, value); return; } catch (_) {}
+        try { sessionStorage.setItem(key, value); } catch (_) {}
+    }
+    function _read(key) {
+        try {
+            var v = localStorage.getItem(key);
+            if (v !== null) return v;
+        } catch (_) {}
+        try { return sessionStorage.getItem(key); } catch (_) {}
+        return null;
+    }
+
     function _applyTheme(dark) {
         renderEl.classList.toggle("docs-render-dark", dark);
-        if (themeBtn) themeBtn.textContent = dark ? "\u25D1" : "\u25D0";
-        try { sessionStorage.setItem("docs-theme", dark ? "dark" : "light"); }
-        catch (_) {}
+        if (themeBtn) {
+            themeBtn.textContent = dark ? "\u25D1" : "\u25D0";
+            themeBtn.title = dark ? "Read on a light background"
+                                  : "Read on a dark background";
+        }
+        _store("docs-theme", dark ? "dark" : "light");
     }
     if (themeBtn) {
-        var _saved = null;
-        try { _saved = sessionStorage.getItem("docs-theme"); } catch (_) {}
-        _applyTheme(_saved === "dark");
+        // Dark unless the reader has said otherwise -- matching the app,
+        // rather than defaulting away from it.
+        _applyTheme(_read("docs-theme") !== "light");
         themeBtn.addEventListener("click", function () {
             _applyTheme(!renderEl.classList.contains("docs-render-dark"));
         });
+    } else {
+        // No toggle rendered (a trimmed page): still match the app.
+        renderEl.classList.add("docs-render-dark");
     }
 
     /* ---- rendering helpers -------------------------------------- */
