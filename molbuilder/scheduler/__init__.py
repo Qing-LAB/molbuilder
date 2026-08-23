@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from .record import (  # noqa: F401
     SCHEMA, FILENAME,
-    Topology, Site, Domain, Environment,
+    Topology, Site, Domain, Device, Environment,
     detect_scheduler, detect_topology, detect_site,
     resolve_environment,
     machine_scope_path, environments_dir, named_environments,
@@ -53,7 +53,7 @@ from .admit import (  # noqa: F401
 
 __all__ = [
     "SCHEMA", "FILENAME",
-    "Topology", "Site", "Domain", "Environment",
+    "Topology", "Site", "Domain", "Device", "Environment",
     "detect_scheduler", "detect_topology", "detect_site",
     "resolve_environment",
     "machine_scope_path", "environments_dir", "named_environments",

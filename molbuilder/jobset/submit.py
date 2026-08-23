@@ -370,7 +370,7 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
     from .materialize import job_dir_names, shape_of, was_launched
     dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
     for job in jobset.jobs:
-        # A6 (2026-08-12): a direct SWEEP resumes past what already ran.
+        # 2026-08-12 plan A6: a direct SWEEP resumes past what already ran.
         # A trial is immutable once launched (§ 1.5), and the submit
         # path's next-unlaunched pick already skips it -- but direct runs
         # the set in order, so without this the loop DIED at the first

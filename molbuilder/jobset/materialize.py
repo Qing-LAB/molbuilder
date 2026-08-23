@@ -226,9 +226,9 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
             # stages' benchmarks can never collide.  Until 2026-08-12 the
             # trials sat directly in the stage; until 2026-08-13 this line
             # spelled the flat container ``bench/`` itself, unqualified --
-            # exactly the two-flat-stages collision A5 closed on the
-            # record side (final review A-1): bench_container is now the
-            # one spelling for both sides.
+            # exactly the two-flat-stages collision 2026-08-12 plan A5
+            # closed on the record side (final review A-1):
+            # bench_container is now the one spelling for both sides.
             container = bench_container(sh, trial_token)
             out[j.name] = f"{container}/{job_dir_name(j.name)}"
             continue

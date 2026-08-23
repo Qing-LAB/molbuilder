@@ -533,7 +533,7 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
     """§ 6's moment (run-identity.md, softened 2026-08-08): before writing,
     SAY what is in the folder — and when what is there says a run already
     HAPPENED (a launched attempt's ``run.json``, warm files at the root),
-    ask before re-rendering over it (A3/U14, 2026-08-12).
+    ask before re-rendering over it (2026-08-12 plan A3/U14).
 
     ``bench_container`` NARROWS the evidence to a sweep's launched trials
     (2026-08-12 plan A7; narrowed 2026-08-21, user: "bench always starts cold
@@ -561,11 +561,11 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
     # A BENCH prep weighs ONE kind of evidence only (user, 2026-08-21:
     # "bench always starts cold -- there is no point of asking"): launched
     # trials in this stage's container, whose decks a queued job may be
-    # reading mid-flight (A7).  The run's own attempts and the root's warm
-    # files are irrelevant to it -- trial decks are relabelled and forced
-    # cold, so re-rendering them cannot touch the run -- and asking about
-    # them made every bench re-prep beside a launched run a question with
-    # no stakes.
+    # reading mid-flight (2026-08-12 plan A7).  The run's own attempts
+    # and the root's warm files are irrelevant to it -- trial decks are
+    # relabelled and forced cold, so re-rendering them cannot touch the
+    # run -- and asking about them made every bench re-prep beside a
+    # launched run a question with no stakes.
     if bench_container is None and task.stages and stage is not None:
         from .prep import token_for
         try:
@@ -849,17 +849,21 @@ def _gpu_inventory(base):
     # own recommendation -- the first gpu-capable row (R7).
     rows = candidates(get_routing(project_dir=Path(base)), prefer_gpu=True)
     row = rows[0] if rows else None
-    inv = (row.gpu if row is not None else None) or {}
+    # `Domain.devices`, never `row.gpu`: the column has two spellings and this
+    # read the map one only, so the documented hand-declared row
+    # (`{type, per_node, mem_gb}`) refused below naming its own KEYS as GPU
+    # types.  One reader, in the record (`scheduler/record._read_devices`).
+    inv = row.devices if row is not None else ()
     if not inv:
         return None, None
     if len(inv) > 1:
         raise click.ClickException(
             f"domain {row.name!r} records several GPU types "
-            f"({', '.join(sorted(inv))}), and choosing one is not the "
-            f"machine's call.  Edit that row in environment.json to "
-            f"keep the type this benchmark should measure.")
-    gtype, count = next(iter(inv.items()))
-    return (int(count) or None), gtype
+            f"({', '.join(sorted(d.type for d in inv))}), and choosing one "
+            f"is not the machine's call.  Edit that row in environment.json "
+            f"to keep the type this benchmark should measure.")
+    dev = inv[0]
+    return (dev.per_node or None), dev.type
 
 
 def _gpu_core_cap(base):
@@ -1529,8 +1533,8 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                 base, _pf_task.engine)
             pins = {**declared_pins, **(verdict_pins or {})} or None
         if kind == "run":
-            # § 6's say-what-is-there, and the A3 ask when a run already
-            # happened here (U14).
+            # § 6's say-what-is-there, and the 2026-08-12 plan A3/U14 ask
+            # when a run already happened here.
             _ask_if_underway(base, stage)
         else:
             # A7: `prep bench` re-renders the decks a QUEUED trial's links

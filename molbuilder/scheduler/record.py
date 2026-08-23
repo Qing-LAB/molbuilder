@@ -85,6 +85,19 @@ class Site:
     account:   Optional[str] = None
 
 
+@dataclass(frozen=True)
+class Device:
+    """One kind of accelerator the nodes of a domain offer.
+
+    The **interpreted** form of a domain's ``gpu`` column -- see
+    :func:`_read_devices` for the two spellings that column arrives in and why
+    both are read here rather than at each call site.
+    """
+    type:     str
+    per_node: Optional[int] = None
+    mem_gb:   Optional[float] = None
+
+
 @dataclass
 class Domain:
     """One **reachable** (partition, qos) pair, and what it allows.
@@ -150,6 +163,57 @@ class Domain:
                if getattr(self, k) is not None}
         row.update(self.extra)
         return row
+
+    @property
+    def devices(self) -> Tuple[Device, ...]:
+        """What this domain's ``gpu`` column says the nodes offer.
+
+        Empty when it says nothing.  **Every reader of the GPU inventory goes
+        through here** -- the column has two spellings, and reading it at the
+        call site is what let two of them disagree (:func:`_read_devices`).
+        """
+        return _read_devices(self.gpu)
+
+
+#: The keys that mark a ``gpu`` column as ONE device spelled out rather than a
+#: map of types.  None of the three is a GPU gres type, so their presence is
+#: unambiguous -- which is what makes the two spellings safe to accept.
+_DEVICE_DESCRIPTOR_KEYS = ("type", "per_node", "mem_gb")
+
+
+def _read_devices(gpu: Any) -> Tuple[Device, ...]:
+    """A domain's ``gpu`` column -> the devices it names.  **The one reader.**
+
+    The column arrives in two spellings, because two things write it:
+
+      * a **probe** maps gres TYPE to per-node COUNT, ``{"a100": 4,
+        "a100.20gb": 16}`` -- one entry per type ``sinfo`` reported, and no
+        memory, because ``sinfo`` does not report it;
+      * a person **declares** one device and describes it,
+        ``{"type": "a100", "per_node": 4, "mem_gb": 80}`` -- the shape
+        `execution/asu-sol.md` § 5.3 tells them to write.
+
+    Both are one fact -- *what the nodes of this domain offer* -- so both parse
+    to the same type here, and no caller re-decides.  That they were read at
+    two call sites instead is how, until 2026-08-23, a hand-declared row made
+    `prep bench` refuse with *"records several GPU types (mem_gb, per_node,
+    type)"*: one reader knew only the map, and read the descriptor's key names
+    as device names.
+
+    An unreadable count is ``None``, never a raise and never a zero -- a column
+    we cannot read is not a domain with no devices (R3), and admission must be
+    able to tell those apart.  The user's own spelling is never rewritten: this
+    interprets the column, `to_row` still returns what was written.
+    """
+    if not isinstance(gpu, dict) or not gpu:
+        return ()
+    if any(k in gpu for k in _DEVICE_DESCRIPTOR_KEYS):
+        gtype = gpu.get("type")
+        return (Device(type=str(gtype) if gtype else "gpu",
+                       per_node=_to_int(gpu.get("per_node")),
+                       mem_gb=_to_float(gpu.get("mem_gb"))),)
+    return tuple(Device(type=str(name), per_node=_to_int(count))
+                 for name, count in gpu.items())
 
 
 @dataclass
@@ -223,6 +287,13 @@ class Environment:
 def _to_int(s) -> Optional[int]:
     try:
         return int(str(s).strip())
+    except (ValueError, TypeError):
+        return None
+
+
+def _to_float(s) -> Optional[float]:
+    try:
+        return float(str(s).strip())
     except (ValueError, TypeError):
         return None
 

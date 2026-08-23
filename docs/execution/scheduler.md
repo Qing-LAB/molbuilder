@@ -211,6 +211,20 @@ R4 says name the numbers; this says name the way out.
   it says "you may submit here, for this long", never "submit here".*
   `node_type` describes the hardware and constrains nothing. `extra` holds
   columns this reader does not interpret (R2).
+- **Device** — one kind of accelerator the nodes of a domain offer: a type, a
+  per-node count, and a memory size when the record states one. The
+  **interpreted** form of the `gpu` column, and the only form any caller sees.
+  The column itself arrives in two spellings, because two things write it — a
+  probe maps gres type to count (`{"a100": 4}`; `sinfo` reports no memory), and
+  a person describes one device (`{"type": "a100", "per_node": 4, "mem_gb":
+  80}`, the shape [`asu-sol.md`](?doc=execution/asu-sol.md) § 5.3 tells them to
+  write). **Two spellings of one fact are allowed; two readings of it are not.**
+  The record reads the column once, behind `Domain.devices`, and hands out
+  devices. Reading it at the call site instead is what made a hand-declared row
+  refuse `prep bench` with *"records several GPU types (mem_gb, per_node,
+  type)"* — a reader that knew only the map, naming the descriptor's own keys
+  as devices. *A count the record does not state is `None`, never zero: R3
+  applies to devices too.*
 - **`gpu_partition`** — where a GPU job goes when that differs from the
   domain's ordinary partition. **A declared field since phase 3**, and so
   subject to R2. Until then it rode in `extra` — the bag documented as

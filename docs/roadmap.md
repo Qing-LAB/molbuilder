@@ -999,19 +999,25 @@ test-pin exists and passes.
 
 | # | item | status |
 |---|---|---|
-| 7.1a | `jobset --help` names `describe`, a verb that no longer exists | **open** |
-| 7.1b | no way to list machine records from the terminal | **open** |
-| 7.1c | carrying a machine record over is documented as one line | **open** |
-| 7.2 | the fetch-error message has five homes; one test is red | **open** |
-| 7.3 | `replace(struct, regions=…)` re-injects the old frozen set | **open** *(latent)* |
-| 7.4a | two modals have no CSS at all — the browser paints them light | **open** |
-| 7.4b | `setStatus` is hand-rolled in twelve files | **open** |
-| 7.4c | 991 values in the stylesheets are anonymous | **open** |
-| 7.4d | classes written by JS that no stylesheet defines | **open** |
-| 7.4e | nothing in the suite measures layout | **open** |
-| 7.4f | the MolView host overflows its card at ≤768px | **open** |
+| 7.1a | `jobset --help` names `describe`, a verb that no longer exists | **done** `97c1d4cc` |
+| 7.1b | no way to list machine records from the terminal | **done** `97c1d4cc` |
+| 7.1c | carrying a machine record over is documented as one line | **done** `97c1d4cc` |
+| 7.2 | the fetch-error message has five homes; one test is red | **done** `97c1d4cc` |
+| 7.3 | `replace(struct, regions=…)` re-injects the old frozen set | **done** `97c1d4cc` |
+| 7.4a | two modals have no CSS at all — the browser paints them light | **done** `64ebb02a` |
+| 7.4b | `setStatus` is hand-rolled in twelve files | **done** `1b71bb4b` |
+| 7.4c | 991 values in the stylesheets are anonymous | **done** `b9446f6d` · `eb7a2179` |
+| 7.4d | classes written by JS that no stylesheet defines | **done** `64ebb02a` |
+| 7.4e | nothing in the suite measures layout | **done** `d2a54541` |
+| 7.4f | the MolView host overflows its card at ≤768px | **done** `d2a54541` |
+| 7.4g | the UI's duplicated components — found by a detector, not by a bug | **done** `7772b9a1` |
 | 7.5 | the residue three: O1, O4, O5 (carried over) | **open** |
 | 7.6 | the scheduler subsystem — five modules, two emitters, no admission | **done — all five phases** |
+
+*(7.1–7.4 were carried as **open** in this table for a day after they shipped
+— the exact drift R3 exists to stop, caught 2026-08-23 by reading the table
+against the tree instead of against memory.  A row moves when its commit
+lands, not when the next review notices.)*
 
 ### 7.1 The remote-machine workflow, finished
 
@@ -1244,12 +1250,18 @@ Phases, smallest risk first — each separately testable and revertable:
    flags are two renderings of one `Directives`, pinned by
    `test_one_emitter.py`.
 
-**Two follow-ups this work recorded rather than patched:** `Domain.gpu` is
-written two ways (probed `{type: count}` vs declared `{type, per_node,
-mem_gb}`) and admission reads both — one concept, two spellings, worth
-unifying in the record; and the 64-rank Au-BDT-Au trials still need a
-re-`prep` against Sol's current record, which R9 will now refuse to submit
-without.
+**The two follow-ups this work recorded rather than patched.** The first is
+**closed 2026-08-23**: `Domain.gpu` is written two ways (probed
+`{type: count}` vs declared `{type, per_node, mem_gb}`), and *two call sites
+each read the raw column* — only one understood both. So the hand-declared
+spelling the docs tell people to write made `prep bench` refuse with *"records
+several GPU types (mem_gb, per_node, type)"*, naming the row's own key names as
+devices, and offering a remedy (curate down to one type) that could not be
+followed. Two spellings of one fact are fine; two readings are not. The reading
+is now one, behind `Domain.devices`, and the contract states it
+([`scheduler.md`](?doc=execution/scheduler.md) § 4, "Device"). The second
+stands: the 64-rank Au-BDT-Au trials still need a re-`prep` against Sol's
+current record, which R9 will now refuse to submit without.
 
 *Test-pin:* phase 5's gate — render both spellings from one placement and
 assert they name the same queue and the same wall. That is the assertion
@@ -1266,6 +1278,67 @@ the current record is the fix.
 ---
 
 ## Closed work
+
+**2026-08-23 — one concept, two spellings, and two readers who disagreed.**
+`Domain.gpu` arrives written two ways, and neither is wrong: a probe maps gres
+type to per-node count, a person describes one device. What was wrong is that
+*admission* and *`prep bench`* each parsed the raw column, and only admission
+understood both — so `asu-sol.md` § 5.3's own documented row made `prep bench`
+refuse with *"records several GPU types (mem_gb, per_node, type)"*: a map-only
+reader naming the descriptor's keys as devices, then telling the user to curate
+a row that already named one type. The reading is now one — `Domain.devices`,
+returning `Device(type, per_node, mem_gb)` — and `admit._devices_offered`
+stopped parsing anything. The contract states the shape it had never stated
+(§ 4, "Device"), which is the reason two readers could invent two readings at
+all. Pinned by `test_routing_domains.py` (five cases, including that the
+operator's own spelling survives `to_row` untouched) and by
+`test_value_axes.py::test_a_hand_declared_device_row_enumerates_like_a_probed_one`,
+which fails with the exact historical message when the descriptor branch is
+removed.
+
+**2026-08-23 — the front's first twelve rows, in one wave.** 7.1a–c, 7.2, 7.3
+and 7.4a–f shipped across sixteen commits (`b0e65bd6..eb7a2179`); the table
+above carries each row's commit, and is the tracker. What the wave is worth
+remembering for: **every one of them was a fact with more than one home.** The
+help text named a verb the CLI had renamed; the fetch-failure sentence was
+written five times; `setStatus` was hand-rolled in twelve files; two modals had
+no stylesheet at all, so the browser painted them in its own chrome; and 991
+stylesheet values were anonymous — of which the ones that had names already are
+now named, and spacing became a 4px grid (70.5% → 86.4% named). Three of the
+four defect classes were invisible to the suite until the wave added the
+detector that sees them: `test_page_ids_unique.py`, `test_css_classes_are_defined.py`,
+and `test_layout_fits_e2e.py` — which measures geometry, something nothing in
+the suite had ever done. `molview.css` is the recorded exception and stays one:
+its literals feed `calc()` expressions that derive the 786px dock threshold, so
+naming them would move the derivation, not document it.
+
+**2026-08-23 — the UI's duplicated components, found by a detector rather
+than by a bug.** Three full-text reviews had swept for defect classes chosen in
+advance — rendered geometry, CSS values, CSS classes — and none had asked
+*"is this written twice?"*, so every duplicate arrived as its own uncorrelated
+bug report. One sweep over 824 function bodies (normalised: comments,
+whitespace, string contents and identifier names removed) found 17 identical
+clusters. **The reported Task-setup stall was one of them:** three memoised
+vocabulary fetches in `task-setup/viewer.js` each spelled out `await fetch`
+and *none* of the three caught anything, while the fourth — the one that had
+been debugged — carried the try/catch; a failed label lookup therefore killed
+`renderMachine`, the last paint in the chain, and the bench card silently never
+arrived. One guarded `fetchVocabulary`, four callers, and a failed lookup now
+shows raw setting names with a note. Also folded: `configure()`+`_lazyResolve()`
+byte-identical in five builder panels (→ `modify/structure/panel-deps.js`),
+`_autoAnalyzeOnLoad` in two tabs — *a duplicate created by the O3 extraction
+itself*, which moved the renderer and the protocol and left the caller behind
+(→ `analyzeOnLoad` in `lib/auto-detect.js`), `alias()`/`_on()` in both
+inspector cores (→ `lib/inspectors/lifecycle.js`), and `_settle()` twice in
+one file. Four clusters are **allowed**, each with its argument recorded in the
+test: two callers of one shared API, a CRC-32 and a CSS-var read inside sealed
+embeddables that carry no imports by design, and one coincidence across
+unrelated domains. Pinned by `test_no_duplicated_ui_components.py`, whose rule
+is not *"these look alike"* but ***"a change to one of them should have reached
+the others"***. Three tests were migrated rather than patched — one of which,
+the smiles unconfigured-fetch case, had been **passing by accident**: requiring
+a single module left the app namespace absent, so nothing ever picked up Node's
+global `fetch`. It now states its condition.
 
 **2026-08-22 — the auto-detect surface got one home.** The "Analyze
 chemistry" card was hand-pasted into three templates with the same seven

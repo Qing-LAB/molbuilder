@@ -799,7 +799,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         # config field that used to carry it is gone, and the emitter never
         # learns the word (engines/stages.md § 1.1).
         # The render's refusals (missing pseudos above all) are user-fixable
-        # and translate to PrepError -- see _user_error_as_prep (A8).
+        # and translate to PrepError -- see _user_error_as_prep
+        # (2026-08-12 plan A8).
         # STEP 3, WHOLE, IN ONE CALL: validate the settings, render the deck,
         # write it through the one writer (which keeps the reader's USER-CUSTOM
         # block), then read the file back and refuse one that does not say what

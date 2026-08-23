@@ -229,7 +229,8 @@ def _read_system(bundle: Path) -> Dict:
     2026-08-12 this looped over ``job-gpu.fdf`` / ``job-cpu.fdf`` — the
     OLD bench-bundle deck names, whose writer died with the fold (step 6
     u5) — so every described sweep's ``bench-result.json.system``
-    silently degraded to ``{"engine": "siesta"}`` (A9).  Description-less
+    silently degraded to ``{"engine": "siesta"}`` (2026-08-12 plan A9).
+    Description-less
     bundles fall back to any root deck; like every reader in this
     module, absence degrades rather than raises — this is a reporter.
     """

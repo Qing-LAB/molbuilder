@@ -154,6 +154,31 @@ def test_two_inventory_types_refuse_with_the_curation_remedy(sol_calc):
     assert "a100.20gb" in str(e.value)
 
 
+def test_a_hand_declared_device_row_enumerates_like_a_probed_one(sol_calc):
+    """The documented hand-declared spelling — `asu-sol.md` § 5.3's
+    ``{"type": "a100", "per_node": 4, "mem_gb": 80}`` — is the SAME fact as
+    the probe's ``{"a100": 4}``, and enumerates identically.
+
+    It did not, until 2026-08-23: `_gpu_inventory` read the column as a
+    type→count map, so the descriptor's three keys counted as three GPU types
+    and `prep bench` refused a correctly-written row with *"records several
+    GPU types (mem_gb, per_node, type)"* — naming its own key names as
+    devices.  The remedy it offered (curate the row down to one type) could
+    not be followed, because the row already named one.
+    """
+    env = json.loads((sol_calc / "environment.json").read_text())
+    env["domains"][1]["gpu"] = {"type": "a100", "per_node": 4, "mem_gb": 80}
+    (sol_calc / "environment.json").write_text(json.dumps(env))
+    _declare(sol_calc, USERS_MATRIX)
+
+    points, _pins, tr = _bench_inputs(sol_calc)
+    g2 = next(p for p in points if p["G"] == 2)
+    assert tr.to_resources(g2, None)["gres"] == "gpu:a100:2"
+    # ...and the cap still applies: the row's 48 cores are unchanged by the
+    # spelling, so the same trials survive as in the probed case.
+    assert len([p for p in points if p["G"]]) == 18
+
+
 def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
     """No local GPU and no recorded inventory: the family cannot be
     enumerated, and the refusal names the probe AND the menu."""

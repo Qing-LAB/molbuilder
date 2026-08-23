@@ -644,6 +644,17 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 > *(`envs/builds.py` climbs a parent chain too — to the **nvcc toolchain's**
 > root, which is not ours to own. A11 is about molbuilder's own roots.)*
 
+> **A comment citing `2026-08-12 plan A<N>` is not citing this table.** A
+> review programme that ran on 2026-08-12 lettered its own items A3…A8, and
+> eight comments in `jobset/` still cite them. That plan is not in the doc set:
+> the letters are the programme's own history and **resolve nowhere**, exactly
+> as R8 says of `job-execution.md`'s section numbers. They are kept, in that
+> one spelling — *"2026-08-12 plan A4"*, never a bare `A4` — because they
+> correlate the eight sites with each other, which is the only thing they can
+> still do. **This table is the only live meaning of an A-letter.** If you are
+> following an `A8` from a comment and land on *"an object travels whole"*, the
+> comment was not sent here.
+
 ---
 
 ## 8. Configuration — one file, and which floor reads each part
