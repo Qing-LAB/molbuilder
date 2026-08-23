@@ -41,7 +41,8 @@ import pytest
 
 from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.script_emit import DECL_TYPES, MARKER_RE
+from molbuilder.script_emit import (MARKER_RE,
+                                    benchmark_declarable_types)
 from molbuilder.template import declarations_for
 
 
@@ -159,11 +160,13 @@ def test_a_bench_marks_field_declares_the_same_type_as_its_template_item():
     have in common.
 
     **Replaces a rule whose premise was false** (2026-08-14).  It read *every*
-    engine-kind anchored item must have a type in ``DECL_TYPES``, on the
+    engine-kind anchored item must have a type a BENCH-MARKS line may
+    carry, on the
     reasoning that such an item could reach a BENCH-MARKS line.  It cannot:
     the block declares the five hand-listed fields below and nothing else --
     ``kgrid`` has been engine-kind and anchored all along and appears in no
-    block.  The false premise had a cost: it made ``DECL_TYPES`` the gate on
+    block.  The false premise had a cost: it made the BENCH-MARKS grammar
+    the gate on
     the TEMPLATE's vocabulary, so ``float3`` (audit § 54) could not be added to
     one without widening the other for a type no benchmark will ever turn.
     """
@@ -204,7 +207,8 @@ def test_a_bench_marks_field_declares_the_same_type_as_its_template_item():
             f"NARROWING of the template's (it sweeps a subset); anything "
             f"else means a tool could propose an override the deck refuses "
             f"(job-contracts.md § 3.3).")
-        assert bf.type_ in DECL_TYPES, f"{bf.anchor}: {bf.type_}"
+        assert bf.type_ in benchmark_declarable_types(), \
+            f"{bf.anchor}: {bf.type_}"
 
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])

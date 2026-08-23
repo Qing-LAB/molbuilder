@@ -697,15 +697,21 @@ flowchart LR
 > because it must describe everything. **The narrower set is a subset, never a
 > competing definition.**
 >
-> ⚠ **The code's benchmark-side constant is wider than § 3.3's five**, found
-> 2026-08-14: `script_emit.DECL_TYPES` carries `bool` and `int3` as well. They
-> were added on 2026-08-07 because § 3.7 then reused this grammar for a
-> template's **in-deck** item blocks — and § 3.7 moved out on 2026-08-11, when a
-> template became its own TOML file with the vocabulary above. So those two are
-> residue of a sharing that has ended, and no BENCH-MARKS field declares either.
-> Recorded rather than deleted here, because the constant's other reader is a
-> test that would need re-scoping with it
-> ([audit § 57](?doc=archive/2026-08-14-template-execution-review.md)).
+> ~~⚠ **The code's benchmark-side constant is wider than § 3.3's five**~~
+> **Closed 2026-08-23.** It carried `bool` and `int3`, added 2026-08-07 when
+> § 3.7 reused this grammar for a template's **in-deck** item blocks; § 3.7
+> moved out on 2026-08-11 and both became residue of a sharing that had ended.
+> The 2026-08-14 note deferred the fix because *"the constant's other reader is
+> a test that would need re-scoping with it"* — one test, and it was re-scoped
+> in the same change.
+>
+> **There is no benchmark-side constant now.** The narrower set is *derived*
+> from the vocabulary above by a stated rule —
+> `script_emit.benchmark_declarable_types()`: **a benchmark varies a scalar it
+> can order or enumerate**, so a shape, a list, verbatim text or a family is
+> not declarable, each with its reason in the code. Which is what *"a subset,
+> never a competing definition"* has to look like to stay true: a second tuple
+> beside this one drifted within four months of being written.
 
 ### 5.1 `manual` — the citation, and why only the catalogue carries it
 

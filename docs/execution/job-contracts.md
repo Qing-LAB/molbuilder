@@ -998,11 +998,26 @@ a catalogue that says `1000` and `300.0`.)*
 > `bool`, `int3`, `float3`, `strlist`, `intlist` and `text` (`template.md` § 5).
 > The narrower set is a subset of the wider one, never a competing definition.
 >
-> ⚠ **`script_emit.DECL_TYPES` is wider than the five named here**, found
-> 2026-08-14: it also carries `bool` and `int3`, added 2026-08-07 when § 3.7
-> reused this grammar for a template's **in-deck** item blocks. § 3.7 moved out
-> on 2026-08-11 and a template became its own TOML file, so those two are
-> residue of a sharing that has ended — no `field` line above declares either.
+> ~~⚠ **`script_emit.DECL_TYPES` is wider than the five named here**~~
+> **Closed 2026-08-23.** It carried `bool` and `int3`, added 2026-08-07 when
+> § 3.7 reused this grammar for a template's **in-deck** item blocks; § 3.7
+> moved out on 2026-08-11 and a template became its own TOML file, leaving
+> both as residue of a sharing that had ended.
+>
+> **And the list itself is gone, which is the larger fix.** It read as a
+> second vocabulary and never was one: this document already requires a
+> `field` line's type to *equal* its catalogue item's, so there has only ever
+> been one vocabulary and the tuple said which members of it a benchmark may
+> be told about — a permission list wearing a vocabulary's clothes, which is
+> how it came to drift. `script_emit.benchmark_declarable_types()` now derives
+> the answer from `template.TYPES` by a stated rule: **a benchmark varies a
+> scalar it can order or enumerate**, so a shape (`int3`, the lists), verbatim
+> text, or a family (`bool`) is not declarable, each with its reason beside it
+> in the code. The derived set is exactly the five named above.
+>
+> *`str` survives the rule and is declared by no `field` line either — a free
+> string has no ordering, so no harness can sweep one. It stays because this
+> section names it; narrowing further is a change to this paragraph first.*
 >
 > **And *"emitted from ONE source"* was an intention, not a mechanism:**
 > `SIESTA_BENCH_FIELDS` is a hand-written list. It is now checked —

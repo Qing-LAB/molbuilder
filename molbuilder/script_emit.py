@@ -122,7 +122,54 @@ MARKER_RE = re.compile(
 #:
 #: ``pow2`` stays BENCH-MARKS-only: it is a constraint a benchmark puts on an
 #: override, not a type any config field has.
-DECL_TYPES = ("int", "float", "str", "bool", "int3", "enum", "pow2")
+#:
+#: **WHY A SHAPE CANNOT BE DECLARED TO A HARNESS**, keyed by the type and
+#: DERIVED from `template.TYPES` rather than re-typed beside it.
+#:
+#: This was a hand-written tuple until 2026-08-23, and it read as a second
+#: vocabulary -- which it never was.  `test_template_declarations` requires a
+#: BENCH-MARKS line's type to EQUAL its catalogue item's (bar one listed
+#: narrowing), so there has only ever been one vocabulary; this said which
+#: members of it a benchmark may be told about.  A permission list wearing a
+#: vocabulary's clothes, and it drifted exactly as one: it carried ``bool``
+#: and ``int3``, added 2026-08-07 when the template briefly shared this
+#: grammar for in-deck item blocks, kept after that sharing ended on
+#: 2026-08-11, and declared by no ``field`` line since.
+_NOT_BENCHMARKABLE = {
+    "int3":    "a shape, not a knob -- a harness has no ordering to sweep",
+    "float3":  "same",
+    "strlist": "a list has no single value to vary",
+    "intlist": "same",
+    "text":    "verbatim engine text, copied rather than chosen",
+    "bool":    "on/off is a FAMILY of runs, not a knob to optimise -- and the "
+               "one live case, `use_gpu`, is the person's choice and never an "
+               "override a tool may make (`execution/gpu.md` G2)",
+}
+
+
+def benchmark_declarable_types() -> Tuple[str, ...]:
+    """The types a BENCH-MARKS ``field`` line may carry.
+
+    **One vocabulary, narrowed by a stated rule.**  A benchmark turns a knob
+    and times the result, so it can be told about a scalar it can vary --
+    a number, a bounded number, or a choice from a closed set.  Everything
+    `_NOT_BENCHMARKABLE` names is a shape or a family instead, with its reason
+    beside it.
+
+    Derived from ``template.TYPES`` at call time (both modules are L2 and
+    neither imports the other at module scope; the lazy import keeps it that
+    way).  So a type added to the catalogue is a type this rule answers for
+    automatically -- and `tests/test_type_vocabulary.py` fails if the answer
+    was never decided.
+
+    ⚠ ``str`` survives the rule and is declared by no ``field`` line either.
+    A free string has no ordering, so no harness can sweep one -- but
+    `job-contracts.md` § 3.3 names it among the five this block accepts, and
+    overturning that is a contract change rather than a code one.  Recorded
+    here so the next narrowing starts from the document.
+    """
+    from .template import TYPES
+    return tuple(t for t in TYPES if t not in _NOT_BENCHMARKABLE)
 
 
 @dataclass(frozen=True)
@@ -146,7 +193,7 @@ class BenchField:
     """
     name: str                                 # human-readable label
     anchor: str                               # what a tool greps for in engine body
-    type_: str                                # one of DECL_TYPES
+    type_: str                                # benchmark_declarable_types()
     range_: Optional[Tuple[float, float]] = None
     unit: Optional[str] = None
     group: Optional[str] = None               # workflow_group (§ 3.7)
@@ -154,10 +201,11 @@ class BenchField:
     optional: bool = False                    # unset is a distinct state
 
     def __post_init__(self) -> None:
-        if self.type_ not in DECL_TYPES:
+        _legal = benchmark_declarable_types()
+        if self.type_ not in _legal:
             raise ValueError(
                 f"field {self.name!r}: type {self.type_!r} is not one of "
-                f"{', '.join(DECL_TYPES)} (job-contracts.md 3.3). A field "
+                f"{', '.join(_legal)} (job-contracts.md 3.3). A field "
                 "whose type has no name cannot be read back, so the type is "
                 "added to the grammar rather than left off the declaration.")
         # NOT checked here: ``type=enum`` with no ``choices``.  § 3.7 adds
@@ -766,7 +814,7 @@ __all__ = [
     "BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
     "BLOCK_ATOM_METADATA", "BLOCK_USER_CUSTOM",
     "MARKER_RE", "begin_marker", "end_marker",
-    "DECL_TYPES", "decl_line", "deck_note",
+    "benchmark_declarable_types", "decl_line", "deck_note",
     # Bench declarations
     "BenchField", "SIESTA_BENCH_FIELDS",
     # Emitters

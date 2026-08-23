@@ -1144,7 +1144,8 @@ def _shape(v: Any, type_: str) -> Any:
         # Snap DOWN to the nearest power of two, so a snap can never hand an
         # engine a BIGGER block than was asked for.  No catalogue item is
         # ``pow2`` since 2026-08-15 -- BENCH-MARKS keeps the constraint, for
-        # its own sweep (`script_emit.DECL_TYPES`) -- so this runs only for a
+        # its own sweep (`script_emit.benchmark_declarable_types`) -- so this
+        # runs only for a
         # hand-written template that declares one.
         n = int(v)
         if n <= 0:
