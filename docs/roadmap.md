@@ -1015,6 +1015,7 @@ test-pin exists and passes.
 | 7.6 | the scheduler subsystem — five modules, two emitters, no admission | **done — all five phases** |
 | 7.7 | the GPU decision — ten names, no graph, four self-contradictions | **contract written; phases open** |
 | 7.8 | **the consolidated order** — all seven open items in one sequence, with the six places they collide | **the live plan** |
+| 7.9 | **what a job asks for** — provenance for every number, and the gate before it costs | **contract written 2026-08-23; phases open** |
 
 *(7.1–7.4 were carried as **open** in this table for a day after they shipped
 — the exact drift R3 exists to stop, caught 2026-08-23 by reading the table
@@ -1435,6 +1436,49 @@ removes a case R2 was catching, so the two are complementary — and the new G5
 test asserts the **default** across both sbatch entries, where
 `test_one_emitter.py` already asserts the **placement** across both renderings.
 Siblings, not duplicates.
+
+### 7.9 What a job asks for *(contract written 2026-08-23)*
+
+**Goal:** a scientist supplies what they know, makes the choices that are
+theirs, and is never surprised by a number the framework invented. The
+contract is [`submission.md`](?doc=execution/submission.md); it is not
+restated here.
+
+**What it is for.** A 38-minute job went to `highmem` — Sol's 2 TB partition
+— and is still queued. The walltime was *correct*: bounded, not estimated
+(2 trials × 15 min × 1.1 + 5 min startup). What was wrong is that **nobody
+chose the 15 minutes and nobody was shown the arithmetic**, and that the
+memory — 64 cores × 2 GB/core, chosen by nobody — did not fit `htc`, so
+placement fell through to the scarcest queue on the machine.
+
+> **Three corrections this round made to my own reporting**, kept because the
+> method matters more than the conclusions: I claimed the walltime came from
+> `measured × 200 × 1.5` and derived a "measured 7.6 s/iter" from it. Both
+> invented — I assumed a code path instead of reading it. The real derivation
+> is the bound above, and it is the design the user independently proposed.
+> The `× 200` estimate is real but belongs to the *production* recommendation,
+> a different path entirely.
+
+**The rule:** five provenances — declared · measured · derived · bounded ·
+**assumed** — and **an assumed number is announced by name** (S1). Prefer
+bounded over assumed (S2): *"it gets four hours"* is a decision a scientist
+can make; *"it will take 38 minutes"* is a prediction the framework is not
+entitled to. **A bound cannot be wrong — it can only be reached, and reaching
+it is a result.**
+
+**The fourth unread field.** `node_type` is declared, serialised and read by
+**nothing** — its only non-record mention in the package is a comment. It is
+what decides whether a benchmark's numbers may be carried to the machine a run
+will use, and it is the only one of the four that guards **scientific
+validity** rather than a resource (S3).
+
+Phases (contract § 8), smallest first: probe memory-per-core · memory becomes
+derived and shown · `node_type` enforced · the benchmark bound becomes a
+choice · queue order accounts for what is cheap to get · the three-statement
+comparison · the gate.
+
+**6 and 7 make the rest verifiable by the person**, so a mistake in 1–5 costs
+a re-render rather than a queue slot.
 
 ---
 

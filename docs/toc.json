@@ -137,6 +137,10 @@
           "label": "How a GPU decision travels \u2014 one question, ten names"
         },
         {
+          "path": "execution/submission.md",
+          "label": "What a job asks for \u2014 provenance, and the gate before it costs"
+        },
+        {
           "path": "execution/running-a-job.md"
         },
         {
