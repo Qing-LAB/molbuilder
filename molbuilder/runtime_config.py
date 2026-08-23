@@ -1176,7 +1176,7 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     # came from, disagreeing with the reader that actually answers it.  One
     # question, one function.
     try:
-        domains = [d["name"] for d in get_routing(project_dir=project_dir)]
+        domains = [d.name for d in get_routing(project_dir=project_dir)]
     except RuntimeConfigError:
         domains = []               # a malformed block is the caller's to raise
     return {"sources": sources, "effective": effective, "domains": domains}
@@ -1778,7 +1778,7 @@ def get_execution(
 
 def get_routing(
     project_dir: Optional[Path] = None,
-) -> List[Dict[str, Any]]:
+) -> List["Domain"]:
     """Return the submission-domain menu: every ``(partition, qos)`` this
     account may actually reach, with its wall.
 
@@ -1789,9 +1789,17 @@ def get_routing(
     It lived under ``scheduler.routing`` here until the prober stopped writing
     into a person's config file.
 
-    Each entry is ``{name, max_time, partition, qos}``.  Returns ``[]`` when
-    there is no record, or on a workstation, which is the same signal it always
-    was: no named menu, so the rendered header's default directives stand.
+    Each entry is a :class:`~molbuilder.scheduler.record.Domain` -- **typed
+    since 2026-08-23**, phase 3 of `execution/scheduler.md` § 8.  This function
+    always built them and then flattened them with ``to_row()`` on its last
+    line, so every caller reached for ``row.max_time`` against a plain
+    dict and nothing could tell a real column from a typo.  That is how
+    ``gpu_partition`` came to redirect GPU work from inside ``extra``, the bag
+    the record documents as uninterpreted.
+
+    Returns ``[]`` when there is no record, or on a workstation, which is the
+    same signal it always was: no named menu, so the rendered header's default
+    directives stand.
     Order is preserved (cheapest ceiling -> most general); the FIRST fitting
     domain is the recommendation.
 
@@ -1814,7 +1822,7 @@ def get_routing(
     # emitted a 4-key mapping built here by hand and the declared branch passed
     # its rows through whole, so a caller got 4 keys or 6 depending on which
     # source answered -- from the same function.
-    return [d.to_row() for d in domains]
+    return domains
 
 
 def write_config_scope(

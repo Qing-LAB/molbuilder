@@ -845,12 +845,12 @@ def _gpu_inventory(base):
     from ..jobset.submit import gpu_domain_row
     from ..runtime_config import get_routing
     row = gpu_domain_row(get_routing(project_dir=Path(base)))
-    inv = (row or {}).get("gpu") or {}
+    inv = (row.gpu if row is not None else None) or {}
     if not inv:
         return None, None
     if len(inv) > 1:
         raise click.ClickException(
-            f"domain {row.get('name')!r} records several GPU types "
+            f"domain {row.name!r} records several GPU types "
             f"({', '.join(sorted(inv))}), and choosing one is not the "
             f"machine's call.  Edit that row in environment.json to "
             f"keep the type this benchmark should measure.")
@@ -870,8 +870,8 @@ def _gpu_core_cap(base):
     from ..jobset.submit import gpu_domain_row
     from ..runtime_config import get_routing
     row = gpu_domain_row(get_routing(project_dir=Path(base)))
-    if row is not None and row.get("max_cores"):
-        return int(row["max_cores"]), str(row.get("name"))
+    if row is not None and row.max_cores:
+        return int(row.max_cores), str(row.name)
     return None, None
 
 

@@ -48,7 +48,7 @@ from .record import (  # noqa: F401
     topology_field_types,
 )
 from .admit import (  # noqa: F401
-    domain_admits, domain_ceiling_s, domain_serves_gpu,
+    Request, admits, parse_mem_gb, domain_ceiling_s, domain_serves_gpu,
 )
 
 __all__ = [
@@ -61,7 +61,8 @@ __all__ = [
     "read_environment", "write_environment", "machine_for",
     "UnknownTarget", "AmbiguousTarget",
     "known_machines", "choice_required",
-    "domain_admits", "domain_ceiling_s", "domain_serves_gpu",
+    "Request", "admits", "parse_mem_gb",
+    "domain_ceiling_s", "domain_serves_gpu",
     # M-1's typed `--set` door.  It was public and USED but absent from
     # the old module's __all__ -- packaging surfaced the gap, because a
     # package re-exports a list where a module exported a namespace.

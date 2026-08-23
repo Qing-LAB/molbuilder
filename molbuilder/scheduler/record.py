@@ -114,12 +114,19 @@ class Domain:
     max_cores: Optional[int] = None
     max_mem_gb: Optional[float] = None
     gpu:       Optional[Dict[str, Any]] = None
+    #: Where a GPU job goes when that differs from ``partition``.  DECLARED
+    #: since 2026-08-23 (scheduler.md § 4): it redirects real work, and until
+    #: then it rode in ``extra`` -- the bag this reader documents as
+    #: uninterpreted -- read by two call sites in routing that reached past
+    #: the type to a raw key.  A value that changes where a job lands is a
+    #: field or it is a bug waiting.
+    gpu_partition: Optional[str] = None
     #: Columns this reader does not check, kept verbatim.
     extra:     Dict[str, Any] = field(default_factory=dict)
 
     #: The keys :meth:`from_row` recognises; everything else goes to ``extra``.
     _KNOWN = ("name", "partition", "qos", "max_time", "node_type",
-              "max_cores", "max_mem_gb", "gpu")
+              "max_cores", "max_mem_gb", "gpu", "gpu_partition")
 
     @classmethod
     def from_row(cls, row: Mapping[str, Any]) -> Optional["Domain"]:

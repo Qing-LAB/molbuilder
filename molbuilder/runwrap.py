@@ -3905,7 +3905,7 @@ def _render_sbatch_for(script_path: Path,
         if pq is None:
             rows = _rc.get_routing(project_dir=project_dir)
             if rows:
-                pq = (rows[0].get("partition"), rows[0].get("qos"))
+                pq = (rows[0].partition, rows[0].qos)
         if not pq or not pq[0] or not pq[1]:
             return None  # § 10: no scheduler -> emit only .run.sh
         scheduler = {"kind": "slurm",
@@ -3958,7 +3958,7 @@ def _render_sbatch_for(script_path: Path,
         if _part and _qos:
             from .scheduler import domain_ceiling_s
             for _row in _rc.get_routing(project_dir=project_dir):
-                if (_row.get("partition"), _row.get("qos")) == (_part, _qos):
+                if (_row.partition, _row.qos) == (_part, _qos):
                     _ceiling = domain_ceiling_s(_row)
                     if _ceiling:
                         time = _slurm_walltime(_ceiling)

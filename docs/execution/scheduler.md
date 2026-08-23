@@ -125,11 +125,13 @@ saw and this reader does not interpret, and `Domain`'s own rule governs it —
 honest; **silently failing to compare a declared one is the defect.** The
 difference is whether the field has a name in the type.
 
-> **Memory needs one unit before R2 can hold for it.** The record states
-> gigabytes as a number; a request states memory as text (`"390G"`). Nothing
-> converts between them today, so the memory comparison is *specified here and
-> not yet implementable* — the conversion belongs to the request type, and is
-> part of the phase that gives placement typed rows.
+> **Memory needed one unit before R2 could hold for it,** and got one in
+> phase 3. The record states gigabytes as a number; a job states memory as
+> SLURM text (`"390G"`), and nothing converted between them — which is the
+> whole reason `max_mem_gb` was read by no code at all. A limit that cannot be
+> expressed in the same unit as the ask is a limit that will never be checked.
+> `parse_mem_gb` is that conversion, and `--mem=0` maps to *no stated limit*
+> rather than zero, because in SLURM it means **all** the node's memory.
 
 **R3 — An unstated limit never bars.** A domain that does not state a ceiling
 is not claiming a small one; a ceiling that cannot be parsed is not a
@@ -199,12 +201,11 @@ R4 says name the numbers; this says name the way out.
   `node_type` describes the hardware and constrains nothing. `extra` holds
   columns this reader does not interpret (R2).
 - **`gpu_partition`** — where a GPU job goes when that differs from the
-  domain's ordinary partition. **It redirects real work and is not a field of
-  `Domain`**: it is read out of `extra`, the bag documented as unexamined, by
-  two call sites in routing. Named here because a value that changes where a
-  job lands cannot live in the part of the record we say we do not read.
-  Making it a declared field — and so subject to R2 — is part of the phase
-  that gives placement typed rows.
+  domain's ordinary partition. **A declared field since phase 3**, and so
+  subject to R2. Until then it rode in `extra` — the bag documented as
+  uninterpreted — and was read by two call sites in routing that reached past
+  the type to a raw key. A value that changes where a job lands is a field, or
+  it is a bug waiting for someone to misspell it.
 - **Request** — what one job asks for: ranks, cpus-per-task, GPUs, memory,
   wall, exclusivity. Fields the caller does not know are `None` (R7).
 - **Placement** — a request bound to a domain, with the reasoning that chose
@@ -346,10 +347,11 @@ The schedule is `roadmap.md` § 7.6, not here (R3).
 
 1. **Move the record and the probe.** Pure relocation. *(Done 2026-08-23.)*
 2. **Move admission.** `domain_admits` already exists and has one caller.
-3. **Typed rows instead of dictionaries.** The record is a dataclass, but the
-   queue menu is handed out as `List[Dict[str, Any]]` and every placement
-   function pokes at it with `row.get("max_time")` — so the typed record and
-   the code that uses it never meet. That is *how* `gpu_partition` came to
+3. **Typed rows instead of dictionaries.** *(Done 2026-08-23.)* The record is
+   a dataclass, but the queue menu was handed out as `List[Dict[str, Any]]` —
+   `get_routing` built `Domain`s and then threw the type away on its last line
+   with `to_row()`, so every placement function poked at a plain dict with
+   `row.get("max_time")` and nothing could tell a real column from a typo. That is *how* `gpu_partition` came to
    redirect real work from inside the unexamined bag (§ 4): nothing checks a
    dictionary key against a declared field. Steps 4 and 5 both assume typed
    rows, and R2's memory comparison needs the unit conversion this step gives

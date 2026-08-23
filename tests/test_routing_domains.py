@@ -94,9 +94,9 @@ def test_parse_walltime_garbage_raises():
 def test_get_routing_reads_the_calculations_record(tmp_path):
     _write_record(tmp_path)
     out = get_routing(project_dir=tmp_path)
-    assert [d["name"] for d in out] == ["debug", "htc", "public"]
-    assert out[1]["partition"] == "htc" and out[1]["qos"] == "public"
-    assert out[0]["max_time"] == "0-00:15:00"
+    assert [d.name for d in out] == ["debug", "htc", "public"]
+    assert out[1].partition == "htc" and out[1].qos == "public"
+    assert out[0].max_time == "0-00:15:00"
 
 
 def test_get_routing_is_empty_without_a_record(tmp_path):
@@ -123,7 +123,7 @@ def test_the_calculations_record_wins_over_the_machines(tmp_path):
     machine.mkdir(parents=True)
     _write_record(machine, [Domain(name="elsewhere", partition="p", qos="q")])
     _write_record(tmp_path)
-    assert [d["name"] for d in get_routing(project_dir=tmp_path)] == \
+    assert [d.name for d in get_routing(project_dir=tmp_path)] == \
         ["debug", "htc", "public"]
 
 
@@ -141,7 +141,7 @@ def test_declared_routing_is_read_when_nothing_was_probed(tmp_path):
     _write_config(tmp_path, dict(_SCHED, routing=[
         {"name": "gpu", "partition": "general", "qos": "public",
          "max_time": "7-00:00:00"}]))
-    assert [d["name"] for d in get_routing(project_dir=tmp_path)] == ["gpu"]
+    assert [d.name for d in get_routing(project_dir=tmp_path)] == ["gpu"]
     assert get_scheduler(project_dir=tmp_path) is not None
 
 
@@ -160,9 +160,9 @@ def test_declared_rows_keep_the_operators_own_columns(tmp_path):
          "max_cores": 48, "max_mem_gb": 512,
          "gpu": {"type": "a100", "per_node": 4, "mem_gb": 80}}]))
     row = get_routing(project_dir=tmp_path)[0]
-    assert row["node_type"] == "gpu-a100"
-    assert row["max_cores"] == 48
-    assert row["gpu"] == {"type": "a100", "per_node": 4, "mem_gb": 80}
+    assert row.node_type == "gpu-a100"
+    assert row.max_cores == 48
+    assert row.gpu == {"type": "a100", "per_node": 4, "mem_gb": 80}
 
 
 def test_one_shape_whichever_source_answered(tmp_path):
@@ -187,9 +187,16 @@ def test_one_shape_whichever_source_answered(tmp_path):
     _write_config(tmp_path, dict(_SCHED, routing=[row]))
     declared = get_routing(project_dir=tmp_path)
 
-    assert probed == declared == [row], (
+    # Typed since phase 3 (2026-08-23): `get_routing` used to flatten its
+    # Domains back to dicts on the way out, which is what let a caller reach
+    # for a key nothing declared.  The claim is unchanged and now stronger --
+    # one SHAPE means one TYPE, compared as objects rather than as mappings
+    # that happen to match.
+    assert probed == declared, (
         "one function must not return two shapes:\n"
         f"  probed  : {probed}\n  declared: {declared}")
+    assert probed == [Domain.from_row(row)]
+    assert all(isinstance(d, Domain) for d in probed)
 
 
 def test_an_unknown_column_survives_the_type(tmp_path):
@@ -204,7 +211,12 @@ def test_an_unknown_column_survives_the_type(tmp_path):
     write_environment(
         Environment(scheduler="slurm", topology=Topology(),
                     domains=[Domain.from_row(row)]), tmp_path / FILENAME)
-    assert get_routing(project_dir=tmp_path)[0]["invented_by_hand"] == 7
+    got = get_routing(project_dir=tmp_path)[0]
+    assert got.extra["invented_by_hand"] == 7
+    # ...and it is in `extra`, NOT promoted to a field: a drafted
+    # column must stay distinguishable from a declared one, which is
+    # exactly what R2 relies on to say admission is total.
+    assert not hasattr(got, "invented_by_hand")
 
 
 def test_a_probed_record_beats_a_declared_one(tmp_path):
@@ -213,7 +225,7 @@ def test_a_probed_record_beats_a_declared_one(tmp_path):
         {"name": "declared", "partition": "p", "qos": "q",
          "max_time": "1-00:00:00"}]))
     _write_record(tmp_path)
-    assert [d["name"] for d in get_routing(project_dir=tmp_path)] == \
+    assert [d.name for d in get_routing(project_dir=tmp_path)] == \
         ["debug", "htc", "public"]
 
 
@@ -227,7 +239,7 @@ def test_a_workstation_record_does_not_mask_a_declared_cluster(tmp_path):
     _write_config(tmp_path, dict(_SCHED, routing=[
         {"name": "sol-gpu", "partition": "general", "qos": "public",
          "max_time": "7-00:00:00"}]))
-    assert [d["name"] for d in get_routing(project_dir=tmp_path)] == ["sol-gpu"]
+    assert [d.name for d in get_routing(project_dir=tmp_path)] == ["sol-gpu"]
 
 
 # ---- where a value came from is displayed, not inferred --------------- #

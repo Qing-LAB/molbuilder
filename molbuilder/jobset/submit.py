@@ -100,11 +100,11 @@ def _resolve_domain(domain: Optional[str], *, gpu: bool,
     from .. import runtime_config as _rc
     routing = _rc.get_routing(project_dir=project_dir)
     for d in routing:
-        if d["name"] == domain:
-            part = (d.get("gpu_partition") or d["partition"]) if gpu \
-                else d["partition"]
-            return (part, d["qos"])
-    names = ", ".join(d["name"] for d in routing) or "(none probed)"
+        if d.name == domain:
+            part = (d.gpu_partition or d.partition) if gpu \
+                else d.partition
+            return (part, d.qos)
+    names = ", ".join(d.name for d in routing) or "(none probed)"
     raise SubmitError(
         f"unknown submission domain {domain!r}; reachable: {names}.  The menu "
         f"is PROBED into environment.json -- run `molbuilder jobset probe "
@@ -629,15 +629,15 @@ def gpu_domain_row(routing, needed_s: Optional[int] = None) -> Optional[dict]:
 def _row_holds(row, needed_s: Optional[int]) -> bool:
     """Can this domain hold a job of ``needed_s``?
 
-    A thin yes/no over :func:`environment.domain_admits`, which is where the
+    A thin yes/no over :func:`scheduler.admits`, which is where the
     request-versus-record comparison lives for every constraint.  One reader
     for both sides, so the CPU branch and the GPU branch cannot disagree
     about what "fits" means -- they did until 2026-08-23, when the CPU branch
     walked the menu for a row that fits and the GPU branch only ever looked
     at the first gpu-capable one.
     """
-    from ..scheduler import domain_admits
-    return not domain_admits(row, walltime_s=needed_s)
+    from ..scheduler import Request, admits
+    return not admits(row, Request(walltime_s=needed_s))
 
 
 def _preferred_domain(base: Path, gpu_side: bool,
@@ -668,14 +668,14 @@ def _preferred_domain(base: Path, gpu_side: bool,
         # header's directives naming that very row.
         row = gpu_domain_row(routing, needed_s=needed_s)
         if row is not None:
-            return ((row.get("gpu_partition") or row["partition"]),
-                    row["qos"])
+            return ((row.gpu_partition or row.partition),
+                    row.qos)
         return None
     for row in routing:
         if domain_serves_gpu(row):
             continue
         if _row_holds(row, needed_s):
-            return (row["partition"], row["qos"])
+            return (row.partition, row.qos)
     return None
 
 
@@ -700,11 +700,11 @@ def _refuse_if_nothing_holds(base: Path, gpu_side: bool, needed_s: int,
               d for d in routing if not domain_serves_gpu(d)]
     if not usable or any(_row_holds(d, needed_s) for d in usable):
         return                          # some row fits, or none is ours
-    from ..scheduler import domain_admits
+    from ..scheduler import Request, admits
+    want = Request(walltime_s=needed_s)
     reasons = []
     for d in usable:
-        for why in domain_admits(d, walltime_s=needed_s):
-            reasons.append(why)
+        reasons.extend(admits(d, want))
     raise SubmitError(
         f"{name} needs {_slurm_time(needed_s)} and no "
         f"{'gpu-capable ' if gpu_side else ''}domain on this machine can "
@@ -928,7 +928,7 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
             # the user's call, via --domain.
             from ..scheduler import domain_serves_gpu
             from .. import runtime_config as _rc
-            able = [d["name"] for d in _rc.get_routing(project_dir=base)
+            able = [d.name for d in _rc.get_routing(project_dir=base)
                     if domain_serves_gpu(d)]
             if able:
                 hint = (f"\n  The GPU group used the header's default "
