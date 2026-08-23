@@ -839,7 +839,7 @@ def _gpu_inventory(base):
 
     ``(None, None)`` when that row records no inventory.  Refuses when it
     records SEVERAL types: choosing one would be a ranking, and the probe
-    buried ``best_gpu_type`` for exactly that (scheduler_probe.py, N3) --
+    buried ``best_gpu_type`` for exactly that (scheduler/probe.py, N3) --
     the remedy is curating the row down to the type this bench measures.
     """
     from ..jobset.submit import gpu_domain_row

@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Matches the molbuilder/<name>@<major> convention used by
-# environment.py and bench/result.py (the same check_schema gate --
+# scheduler/record.py and bench/result.py (the same check_schema gate --
 # name AND major since U9).
 SCHEMA = "molbuilder/job-set@1"
 
@@ -294,7 +294,7 @@ class JobSet:
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "JobSet":
         # Major-version check via the shared helper (persist.py), same rule
-        # environment.py + bench/result.py use.
+        # scheduler/record.py + bench/result.py use.
         from ..persist import check_schema
         check_schema(str(d.get("schema") or ""), SCHEMA, label="job-set")
         return cls(

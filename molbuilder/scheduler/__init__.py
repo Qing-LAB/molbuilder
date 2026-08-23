@@ -15,6 +15,12 @@ Phase 1 (2026-08-23) moved the two pieces that already worked:
   * :mod:`molbuilder.scheduler.probe` — detection from ``sinfo`` /
     ``scontrol`` / ``lscpu``.  Was ``molbuilder/scheduler_probe.py``.
 
+Phase 2 (2026-08-23) split the CHECK out of the record:
+
+  * :mod:`molbuilder.scheduler.admit` — can this domain take this request, and
+    if not, why not.  It shared a module with the record until then, which is
+    how the comparison drifted away from the fields it compares.
+
 They move so that admission, placement and emission have somewhere to be:
 leaving the data model in a general-purpose ``environment.py`` is what let the
 CHECK drift away from the record it checks (contract § 5).
@@ -39,8 +45,10 @@ from .record import (  # noqa: F401
     read_environment, write_environment, machine_for,
     UnknownTarget, AmbiguousTarget,
     known_machines, choice_required,
-    domain_admits, domain_ceiling_s, domain_serves_gpu,
     topology_field_types,
+)
+from .admit import (  # noqa: F401
+    domain_admits, domain_ceiling_s, domain_serves_gpu,
 )
 
 __all__ = [

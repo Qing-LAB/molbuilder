@@ -2,7 +2,7 @@
 schema convention + JSON IO (data-vocabulary.md § 1).
 
 The major-version check was hand-rolled identically in three persisted
-artifacts (``bench/environment.py``, ``bench/result.py``, ``jobset/model.py``),
+artifacts (``scheduler/record.py``, ``bench/result.py``, ``jobset/model.py``),
 with a subtle inconsistency in how a missing ``@`` was handled.  This is the
 one place that logic lives now.
 

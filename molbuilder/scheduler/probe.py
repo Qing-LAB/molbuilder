@@ -14,10 +14,11 @@ Pure parsing + derivation lives here (testable on captured text); the CLI
 (``_cli.cmd_probe_scheduler``) runs the subprocesses and optionally merges
 the result into ``.molbuilder.json`` via ``runtime_config.write_config_scope``.
 
-Moved ``bench/probe.py`` -> ``molbuilder/scheduler_probe.py`` 2026-08-12
+Moved ``bench/probe.py`` -> ``molbuilder/scheduler_probe.py`` 2026-08-12,
+and into the scheduler subsystem as ``scheduler/probe.py`` 2026-08-23
 (follow-up to the U-program): what it produces is a ``scheduler`` CONFIG
 block for molbuilder.json -- runtime_config's domain, floor 1 -- and
-nothing it does is benchmarking.  It lives beside ``environment.py``, the
+nothing it does is benchmarking.  It lives beside ``record.py``, the
 other machine-probe.
 """
 

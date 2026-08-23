@@ -21,11 +21,12 @@ between them. This document says what that subsystem *is*, so the pieces have
 one home and one set of rules instead of one treatment per place someone
 noticed a problem.
 
-> **Status.** Phase 1 landed 2026-08-23: `environment.py` and
-> `scheduler_probe.py` are now `scheduler/record.py` and `scheduler/probe.py`,
-> and `molbuilder.scheduler` is the package. Phases 2–4 (§ 7) are open, so the
-> module names in the tables below still describe where placement and emission
-> live **today** — that is the point of them.
+> **Status**, 2026-08-23. Phases 1 and 2 of § 8 have landed:
+> `scheduler/record.py`, `scheduler/probe.py` and `scheduler/admit.py` exist,
+> and `molbuilder.scheduler` is the package. **Placement and emission have not
+> moved yet** (phases 3–5), so where § 1's tables say they live is still where
+> they live — that is the point of those tables, and they stop being true the
+> moment phase 5 lands.
 
 ---
 

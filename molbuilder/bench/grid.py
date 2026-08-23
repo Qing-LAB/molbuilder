@@ -98,7 +98,7 @@ def sweep_K(topo: Topology) -> List[int]:
         else []
 
 
-# ``parse_walltime`` moved DOWN to ``scheduler_probe.py`` (floor 1) with
+# ``parse_walltime`` moved DOWN to ``scheduler/probe.py`` (floor 1) with
 # the redistribution: a SLURM time-string parser is machine-fact
 # vocabulary, and its only consumer is the probe.  Living here it made
 # floor 1 import upward -- the A-rules import checker is what caught it.
