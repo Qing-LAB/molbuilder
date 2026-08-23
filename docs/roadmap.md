@@ -1014,6 +1014,7 @@ test-pin exists and passes.
 | 7.5 | the residue three: O1, O4, O5 (carried over) | **open** |
 | 7.6 | the scheduler subsystem — five modules, two emitters, no admission | **done — all five phases** |
 | 7.7 | the GPU decision — ten names, no graph, four self-contradictions | **contract written; phases open** |
+| 7.8 | **the consolidated order** — all seven open items in one sequence, with the six places they collide | **the live plan** |
 
 *(7.1–7.4 were carried as **open** in this table for a day after they shipped
 — the exact drift R3 exists to stop, caught 2026-08-23 by reading the table
@@ -1314,6 +1315,61 @@ Phases (contract § 6), smallest risk first:
 *Test-pin:* the § 7 table — above all *"every name in the vocabulary resolves
 to exactly one answerer"*, which is this document's `max_mem_gb` guard: a
 tenth GPU name arrives with its row or it does not arrive.
+
+### 7.8 The consolidated order — simplest first, and where they collide
+
+Seven items were open across § 7.5–7.7 and the two contract rounds. They are
+sequenced here **once**, so nothing is re-derived: simplest and most isolated
+first, and every dependency stated. *A wave moves only when the one before it
+is green.*
+
+| wave | what lands | why here |
+|---|---|---|
+| **0** | correct § 7.5's stale line — six of its nine items shipped in the waves after it was written | free, no code, and it is what stops the list being re-derived a third time |
+| **1** | dead code with **zero** callers: `_SAFE_BASE`/`_SAFE_GPU_TYPE` (`bench/grid.py`, 2 definitions 0 uses) · the `task.stages and` conjunct at `_cli.py:569` (`Task` refuses an empty ladder, so the half can never be false) · the read-API rule restated in two comments | isolated, mechanical, nothing depends on any of it |
+| **2** | GPU **C3 + C4** — one `gpu_count` default (1 device), and retire the test pinning the retired *one rank per GPU* model | the only GPU correction that is not about naming, so it does not wait for the rename |
+| **3** | **O4** — `pyscf/relax_policy.py`, the geomeTRIC non-convergence policy emitted once and composed by both decks | self-contained; deck bytes unchanged for both callers |
+| **4** | the **type framework**: (a) the coverage test — each satellite declares *complete* or *narrower-with-a-reason* against `template.TYPES`; then (b) retire `DECL_TYPES` as a list and state the benchmark restriction as a rule | (a) before (b) on purpose: the mechanism makes the residue fall out instead of being argued |
+| **5** | **validation display**: the findings file beside the deck, written after the check · `info` reaches the CLI · then delete `Issue.stage` and amend `stages.md` § 4 R2 | ⚠ **blocked** — the filename is the user's call |
+| **6** | GPU **C1 + C2** (their own commit), then the **rename** `enable_gpu` → `use_gpu` across **34 files** (9 code · 12 test · 13 live-doc) | the widest change, and it must not be split |
+| **7** | GPU **G7** — the wrapper is handed the value instead of grepping the deck at four call sites | must follow wave 6 (see conflict **E**) |
+
+#### Where they collide
+
+**A — C1/C2 sit inside the rename's own files.** `tuning.md` carries six
+`enable_gpu` mentions and `config/siesta.py` five, so correcting *who answers
+it* and then renaming touches the same sentences twice. **Corrections still go
+first, as their own commit:** a semantic fix buried inside a 34-file
+mechanical sweep is a fix nobody can review. The two-sentence re-touch is the
+price and it is the right one.
+
+**B — `DECL_TYPES` has exactly one hard dependency.**
+`test_template_declarations.py:207` asserts `bf.type_ in DECL_TYPES`. Retiring
+the list migrates that assertion in the same change; nothing else imports it
+(one further mention is a comment in `template.py`).
+
+**C — the findings file must be declared in `identity.py`.**
+`OUR_FILE_PATTERNS` has a second reader — `runwrap._cold_restart_block`
+derives `--cold`'s *"except what molbuilder wrote"* exception from it. An
+undeclared file reads as engine output; that trap already sprang once, when
+the `.source.xyz` pair started being written and `prep` announced a fresh
+calculation as *"already under way — warm files at the root."*
+
+**D — `Issue.stage` is deleted after the file lands, not before.** The file
+identifies its rung by sitting beside that rung's deck. Deleting the field
+first and then finding we want a combined report is the wrong order.
+
+**E — G7 must follow the rename.** `runwrap.py` names `enable_gpu` **zero**
+times today: it greps `Diag.ELPA.GPU` out of the rendered deck. G7 is what
+*introduces* the name there, so doing it first would create fresh sites for
+the rename to sweep.
+
+**F — not a conflict, worth naming.** C3's bug is currently *caught*:
+admission refuses `needs 32 GPUs but gpu offers at most 4`. Fixing the default
+removes a case R2 was catching, so the two are complementary — and the new G5
+test asserts the **default** across both sbatch entries, where
+`test_one_emitter.py` already asserts the **placement** across both renderings.
+Siblings, not duplicates.
 
 ---
 
