@@ -128,7 +128,7 @@ def test_use_gpu_metadata_is_present():
     # the catalogue's, finding-placement reads this one, so a disagreement puts
     # the control on one card and its warnings on another.
     assert md["workflow_group"] == "staging"
-    assert md["id_suffix"] == "enable-gpu"
+    assert md["id_suffix"] == "use-gpu"
     # The engine_key must reference the SIESTA fdf keyword so the
     # methods-text generator can cite it; an empty value would let
     # the field silently drift from the keyword the generator emits.

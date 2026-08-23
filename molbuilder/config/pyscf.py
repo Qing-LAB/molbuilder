@@ -850,7 +850,7 @@ class PySCFConfig:
         "category": ("execution",),
         "workflow_group": "staging",
         "section": "Compute & budget",
-        "label":     "Use GPU (NVIDIA, via gpu4pyscf)",
+        "label":     "Use GPU (NVIDIA)",
         "item_kind":   "deck",
         "engine_key":  "Diag.ELPA.GPU (SIESTA) | mf = mf.to_gpu() (PySCF)",
         "id_suffix": "use-gpu",
@@ -861,19 +861,7 @@ class PySCFConfig:
         # auto-installed by ``molbuilder envs install molbuilder-pySCF``.
         # Quoting a specific tag here drifts the moment the toolkit
         # bumps; the recipe is the single source of truth.
-        "help":      "run the SCF (and geom-opt forces) on an NVIDIA "
-                     "GPU via the gpu4pyscf extension.  The recipe "
-                     "for ``molbuilder-pySCF`` installs the matching "
-                     "``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` "
-                     "wheels for the project's pinned CUDA toolkit "
-                     "(see ``molbuilder envs doctor molbuilder-pySCF``); "
-                     "the script probes gpu4pyscf at run start and "
-                     "STOPS with an actionable message if the "
-                     "package isn't importable or the GPU is "
-                     "missing / too old (compute capability "
-                     "< 7.0) -- there is no silent CPU fallback: "
-                     "a run that changed where it executed would "
-                     "report a CPU time under a GPU label.",
+        "help":      "OPTIONAL: run the ELPA diagonalization on an NVIDIA CUDA GPU.  This does NOT turn ELPA on -- pick the solver in ``Diagonalizer`` (ELPA-1STAGE / -2STAGE). This toggle only moves that ELPA solve onto the GPU (GPU-only, no CPU fallback).  Requires an ELPA diagonalizer (GPU + ScaLAPACK is rejected) and an NVIDIA GPU on the run machine.  Off = the chosen ELPA solver runs on CPU (or ScaLAPACK if that's selected). This toggle is the ONLY thing that needs the source-built ``molbuilder-siesta-gpu`` env: the packaged SIESTA runs ELPA on CPU perfectly well, but its ELPA is built without the GPU entry.  The wrapper refuses to emit if that env is missing. Affinity hint: GPU favors 1STAGE.\n\nPySCF: run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf extension.  The recipe for ``molbuilder-pySCF`` installs the matching ``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` wheels for the project's pinned CUDA toolkit (see ``molbuilder envs doctor molbuilder-pySCF``); the script probes gpu4pyscf at run start and STOPS with an actionable message if the package isn't importable or the GPU is missing / too old (compute capability < 7.0) -- there is no silent CPU fallback: a run that changed where it executed would report a CPU time under a GPU label."
     })
     verbose: int = field(default=4, metadata={
         "category": ("procedure",),
