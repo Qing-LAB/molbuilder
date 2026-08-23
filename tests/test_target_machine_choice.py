@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.environment import AmbiguousTarget, UnknownTarget
+from molbuilder.scheduler import AmbiguousTarget, UnknownTarget
 
 _REC = {"schema": "molbuilder/environment@2", "domains": [], "topology": {},
         "site": {}, "source": {}}

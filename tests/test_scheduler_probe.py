@@ -12,7 +12,7 @@ and nothing it covers is a benchmark.
 
 import pytest
 
-from molbuilder.scheduler_probe import (derive_domains, parse_allowed_qos,
+from molbuilder.scheduler.probe import (derive_domains, parse_allowed_qos,
                                         parse_qos, parse_sinfo)
 
 # Real Sol `sinfo -h -o "%P|%30l|%D|%40G"` (pipe-delimited; untruncated).
@@ -214,7 +214,7 @@ def test_the_preference_deriving_helpers_are_gone(gone):
     partition and QoS — and write it into a person's config file.  M-1 moved
     that decision back to the person, so the code that made it has no caller.
     """
-    import molbuilder.scheduler_probe as probe
+    import molbuilder.scheduler.probe as probe
     assert not hasattr(probe, gone)
 
 
@@ -273,7 +273,7 @@ def test_scheduler_flag_forces_the_kind_and_names_the_named_file(tmp_path):
 
 
 def _two_envs():
-    from molbuilder.environment import Domain, Environment, Topology
+    from molbuilder.scheduler import Domain, Environment, Topology
     before = Environment(scheduler="workstation",
                          topology=Topology(gpus_per_node=4, gpu_type="a100"),
                          detected_at="2026-08-01T00:00:00+00:00")
@@ -342,7 +342,7 @@ def test_an_unchanged_record_is_said_not_reasked(capsys):
 def test_domains_diff_as_one_fact(monkeypatch, capsys):
     """The reachable-domain SET is one question, not one per row."""
     import click
-    from molbuilder.environment import Domain
+    from molbuilder.scheduler import Domain
     from molbuilder.jobset._cli import _probe_consent_merge
     before, probed = _two_envs()
     probed.topology = before.topology            # isolate the domains diff

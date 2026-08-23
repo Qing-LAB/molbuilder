@@ -2535,7 +2535,7 @@ def test_the_machine_probe_is_molbuilders_not_the_benchmarks():
     the major here would make this test fail for a reason it is not about.
     """
     import importlib
-    from molbuilder.environment import SCHEMA
+    from molbuilder.scheduler import SCHEMA
     from molbuilder.persist import schema_name
     assert schema_name(SCHEMA) == "molbuilder/environment"
     assert importlib.util.find_spec("molbuilder.bench.environment") is None
@@ -2552,7 +2552,10 @@ def test_a_machine_that_will_not_probe_does_not_stop_the_prep(tmp_path,
     tree on; failing the whole prep would turn a missing *description* into a
     missing *calculation*.
     """
-    import molbuilder.environment as env_mod
+    # The MODULE that defines it, not the package that re-exports it: the
+    # call site is a module-global lookup inside `scheduler/record.py`, so
+    # patching the package attribute would rebind a name nobody reads.
+    import molbuilder.scheduler.record as env_mod
     from molbuilder.jobset.prep import prep_jobset
 
     def boom(*a, **k):
@@ -2594,7 +2597,7 @@ def _prep_bundle(base, *, scheduler: bool, monkeypatch):
     # `scheduler` block no longer makes a cluster: M6 gave workstations config
     # files too, so block-presence stopped discriminating and the probed
     # record decides.  A test that wants a cluster has to say it IS one.
-    from molbuilder.environment import (FILENAME, Environment, Topology,
+    from molbuilder.scheduler import (FILENAME, Environment, Topology,
                                         write_environment)
     write_environment(
         Environment(scheduler="slurm" if scheduler else "workstation",
@@ -2800,7 +2803,7 @@ def test_submit_honours_the_bundles_own_execution_block(tmp_path,
 
 def _write_domains(where, rows):
     """A probed `environment.json` carrying the reachable domains."""
-    from molbuilder.environment import (FILENAME, Domain, Environment,
+    from molbuilder.scheduler import (FILENAME, Domain, Environment,
                                         Topology, write_environment)
     return write_environment(
         Environment(scheduler="slurm", topology=Topology(cores_per_socket=64),

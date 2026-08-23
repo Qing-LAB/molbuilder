@@ -197,8 +197,12 @@ def test_a4_each_object_is_built_in_exactly_one_function():
 #: stack says nothing about.
 _FLOOR = {
     "identity.py":            1,
-    "environment.py":         1,
-    "scheduler_probe.py":     1,
+    # Both moved into the scheduler subsystem 2026-08-23 (phase 1 of
+    # `execution/scheduler.md` § 7).  Their FLOOR is unchanged -- a record and
+    # a probe sit at the bottom of the stack wherever they live; what moved is
+    # which package they belong to.
+    "scheduler/record.py":    1,
+    "scheduler/probe.py":     1,
     "persist.py":             1,
     "task.py":                2,
     "siesta/stages.py":       3,
@@ -580,7 +584,7 @@ _THE_ROOT_OWNERS = {Path("__init__.py")}
 _FILENAME_OWNERS = {
     "task.json":        Path("task.py"),
     "job-set.json":     Path("jobset/model.py"),
-    "environment.json": Path("environment.py"),
+    "environment.json": Path("scheduler/record.py"),
 }
 
 

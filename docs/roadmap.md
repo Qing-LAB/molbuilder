@@ -1011,6 +1011,7 @@ test-pin exists and passes.
 | 7.4e | nothing in the suite measures layout | **open** |
 | 7.4f | the MolView host overflows its card at ≤768px | **open** |
 | 7.5 | the residue three: O1, O4, O5 (carried over) | **open** |
+| 7.6 | the scheduler subsystem — five modules, two emitters, no admission | **contract written** |
 
 ### 7.1 The remote-machine workflow, finished
 
@@ -1128,6 +1129,39 @@ What remains:
   comment, two `submit.py` residues, T2/T3 stale test-module docstrings, and
   one ruling to record: `Issue.stage` is write-orphaned since its only stamper
   retired with `validate_ladder`.
+### 7.6 The scheduler subsystem *(contract written 2026-08-23)*
+
+**Goal:** one subsystem owns whether a request fits a queue, which queue it is
+placed in, and the directives that placement produces — so the `#SBATCH`
+header and the `sbatch` command line cannot name different queues.
+
+The contract is [`execution/scheduler.md`](?doc=execution/scheduler.md); it is
+not restated here. What it is *for*: two ASU Sol failures three days apart
+turned out to be one defect. Scheduling work sits in five modules with
+**two independent emitters**, and nothing anywhere compared a request against
+the four constraints `Domain` carries — `max_mem_gb` was declared, serialised
+and read by no code at all. `job-system.md` § 6 already required that the
+framework *"refuses to emit a header it knows will be rejected"*; nothing was
+in a position to enforce it.
+
+Delivered ahead of the move, because Sol was blocked: the wall now goes to the
+GPU selector (a ceiling too low is not a candidate), both sides share one fit
+rule, a submission the record says will be refused is refused locally, and a
+header that names a queue states a wall that queue accepts.
+
+Phases, smallest risk first — each separately testable and revertable:
+
+1. move the record and the probe *(pure relocation)*;
+2. move admission — `domain_admits` exists and has one caller;
+3. move placement out of `jobset/submit.py`; the CPU and GPU branches become
+   one walk over the menu;
+4. unify the two emitters.
+
+*Test-pin:* phase 4's gate — render both spellings from one placement and
+assert they name the same queue and the same wall. That is the assertion
+neither emitter could make alone, and the one that would have caught both Sol
+failures before they left the workstation.
+
 
 ---
 

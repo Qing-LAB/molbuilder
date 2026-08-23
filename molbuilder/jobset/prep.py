@@ -111,7 +111,7 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
     and the deck/launch agreement (`agreement.launch_agreement`) is what
     actually refuses a wrong launch.
     """
-    from ..environment import FILENAME, machine_for, write_environment
+    from ..scheduler import FILENAME, machine_for, write_environment
     out = Path(base_dir) / FILENAME
     if out.is_file():
         return out
@@ -580,7 +580,7 @@ def _environment_for(base: Path, target: Optional[str] = None):
     types.  ``environment.machine_for`` is the one door, and the narrow-except
     reasoning that used to live in this body moved with it.
     """
-    from ..environment import machine_for
+    from ..scheduler import machine_for
     resolve_target(base, target)       # step 1 proper: snapshot, idempotent
     # probe=True: this IS step 1, and if the snapshot could not be written
     # (read-only tree, a racing prep) `prep` still needs an answer to resolve

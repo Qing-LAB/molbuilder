@@ -1537,7 +1537,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                 cont = None
             _ask_if_underway(base, stage, bench_container=cont)
         from .prep import prep_calculation
-        from ..environment import AmbiguousTarget, UnknownTarget
+        from ..scheduler import AmbiguousTarget, UnknownTarget
         try:
             dirs = prep_calculation(base, stage, allocation=allocation,
                                     env=env, emit_sbatch=emit_sbatch,
@@ -2049,7 +2049,7 @@ def cmd_machines() -> None:
     written on the cluster by ``probe --write --name sol`` is carried here by
     copying it to the path this command prints.
     """
-    from molbuilder.environment import (known_machines, choice_required,
+    from molbuilder.scheduler import (known_machines, choice_required,
                                         environments_dir)
     machines = known_machines()
     for m in machines:
@@ -2121,10 +2121,10 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     from datetime import datetime, timezone
     from pathlib import Path
 
-    from ..environment import (Domain, FILENAME, _run, machine_scope_path,
+    from ..scheduler import (Domain, FILENAME, _run, machine_scope_path,
                                read_environment, resolve_environment,
                                write_environment)
-    from ..scheduler_probe import (derive_domains, parse_allowed_qos,
+    from ..scheduler.probe import (derive_domains, parse_allowed_qos,
                                     parse_qos, parse_sinfo)
 
     user = getpass.getuser()
@@ -2136,7 +2136,7 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     # record's source says so.  An unknown key or a mistyped value is
     # refused by name -- a silently-dropped declaration is a decision the
     # user wrote down and nobody obeyed.
-    from ..environment import topology_field_types
+    from ..scheduler import topology_field_types
     types = topology_field_types()
     overrides = {}
     for s in sets:
@@ -2210,7 +2210,7 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     # machine's rather than replacing it (P2): a workstation holds both its own
     # capability and the cluster's, and `prep --target NAME` says which.
     if name:
-        from ..environment import environments_dir
+        from ..scheduler import environments_dir
         target = Path(out) if out else environments_dir()
     else:
         target = Path(out) if out else machine_scope_path().parent

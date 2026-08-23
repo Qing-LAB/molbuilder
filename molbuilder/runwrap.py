@@ -3826,6 +3826,16 @@ def write_run_wrapper(script_path: Path, *,
     return parent / rendered.wrapper_name
 
 
+def _slurm_walltime(seconds: int) -> str:
+    """``D-HH:MM:SS`` for a SLURM ``-t``.  Mirrors `jobset.submit._slurm_time`;
+    both spell the same scheduler's syntax and are candidates to fold into the
+    scheduler subsystem when it exists."""
+    d, rem = divmod(int(seconds), 86400)
+    h, rem = divmod(rem, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{d}-{h:02d}:{m:02d}:{sec:02d}"
+
+
 def _render_sbatch_for(script_path: Path,
                        *,
                        resources: "Resources",
@@ -3865,7 +3875,7 @@ def _render_sbatch_for(script_path: Path,
     # A record that says `slurm`, or no record at all, keeps the old
     # behaviour: absent evidence is not evidence of absence, and refusing to
     # emit on a cluster nobody probed would be worse than an extra file.
-    from .environment import machine_for
+    from .scheduler import machine_for
     env_rec = machine_for(project_dir)
     if env_rec is not None and env_rec.scheduler == "workstation":
         return None  # no queue on this machine -> only .run.sh is meaningful
@@ -3927,6 +3937,32 @@ def _render_sbatch_for(script_path: Path,
         # safe header floor -- under sbatch the launcher reads
         # SLURM_NTASKS (running-a-job.md § 3.1), so the user controls scale via -n.
         ntasks = mpi_np if (mpi_np and mpi_np >= 1) else 1
+
+    # A HEADER MUST BE SUBMITTABLE ON ITS OWN (2026-08-23).
+    #
+    # The header names a queue.  If it states no wall, SLURM applies the
+    # PARTITION's default -- which on ASU Sol is longer than the `debug`
+    # QOS this header had just named permits, so `sbatch <trial>.sbatch`
+    # by hand died on QOSMaxWallDurationPerJobLimit.  `jobset launch`
+    # never saw it because it passes `-t` on the command line, where
+    # flags win; the trap was only ever armed for a human.
+    #
+    # Naming a queue and stating no time is the same defect from the
+    # other side: two halves of one placement, written by two emitters
+    # that could disagree.  So when nothing else supplies a wall, state
+    # the ceiling of the queue this header names -- the only value that
+    # queue can never reject as too long.
+    if time is None:
+        _pq = (scheduler.get("directives") or {}) if scheduler else {}
+        _part, _qos = _pq.get("partition"), _pq.get("qos")
+        if _part and _qos:
+            from .scheduler import domain_ceiling_s
+            for _row in _rc.get_routing(project_dir=project_dir):
+                if (_row.get("partition"), _row.get("qos")) == (_part, _qos):
+                    _ceiling = domain_ceiling_s(_row)
+                    if _ceiling:
+                        time = _slurm_walltime(_ceiling)
+                    break
 
     return render_sbatch(
         script_path, scheduler,

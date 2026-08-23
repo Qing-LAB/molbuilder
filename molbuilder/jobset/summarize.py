@@ -212,7 +212,7 @@ def _read_environment(bundle: Path) -> Dict:
     object now and asks it for its own dict, so the shape a result records is
     the shape the record has.
     """
-    from ..environment import FILENAME, read_environment
+    from ..scheduler import FILENAME, read_environment
     env = read_environment(Path(bundle) / FILENAME)
     return env.to_dict() if env is not None else {}
 

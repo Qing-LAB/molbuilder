@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from typing import List, Optional
 
-from ..environment import Topology
+from ..scheduler import Topology
 
 
 # Fallback rank-counts when cores-per-socket is unknown (so the sweep is

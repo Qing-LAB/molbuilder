@@ -20,7 +20,7 @@ import pytest
 
 from molbuilder import describe as D
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.environment import Domain, Environment, Topology
+from molbuilder.scheduler import Domain, Environment, Topology
 from molbuilder.jobset._cli import _bench_inputs
 from molbuilder.jobset.prep import prep_calculation
 from molbuilder.siesta.stages import default_siesta_stages

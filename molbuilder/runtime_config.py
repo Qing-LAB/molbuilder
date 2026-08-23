@@ -1161,8 +1161,8 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     # scopes join `sources`, because "which file supplied this" is the question
     # this function exists to answer and environment.json now answers part of
     # it (`configuration.md` § 5, M-3).
-    from .environment import FILENAME as ENV_FILENAME
-    from .environment import machine_for, machine_scope_path
+    from .scheduler import FILENAME as ENV_FILENAME
+    from .scheduler import machine_for, machine_scope_path
     env_machine = machine_scope_path()
     env_scopes = ([(Path(project_dir) / ENV_FILENAME, "calculation")]
                   if project_dir is not None else [])
@@ -1718,7 +1718,7 @@ def get_scheduler(
     # `scheduler.gpu.default_type` -- and only the first reached the code that
     # sizes a run (`configuration.md` § 5, M-1).
     if not (out.get("gpu") or {}).get("default_type"):
-        from .environment import machine_for
+        from .scheduler import machine_for
         env = machine_for(project_dir)
         probed = getattr(getattr(env, "topology", None), "gpu_type", None)
         if probed:
@@ -1799,7 +1799,7 @@ def get_routing(
     cluster reads the record `prep` snapshotted beside it (M-3's precedence,
     through the one door).
     """
-    from .environment import Domain, machine_for
+    from .scheduler import Domain, machine_for
     env = machine_for(project_dir)
     domains = list(env.domains) if env is not None else []
     if not domains:

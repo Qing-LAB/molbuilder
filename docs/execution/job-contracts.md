@@ -1587,7 +1587,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Artifact | File | Schema string | Authoritative code | Key top-level fields |
 |---|---|---|---|---|
 | User config | `molbuilder.json` / `.molbuilder.json` | *(validated, no `@N`)* | `runtime_config.py` | `scheduler{kind,directives,gpu,defaults,mem_model}`, `execution`, `script_generation`, `envs` — **what you want**, never what a machine reports ([`configuration.md`](?doc=configuration.md) § 5 M-1); `scheduler.routing` and `scheduler.gpu.default_type` moved to the row below 2026-08-17 |
-| Machine record | `environment.json` — the calculation's, a **named target**, then this machine's; first found wins ([`configuration.md`](?doc=configuration.md) § 5 M-3) | `molbuilder/environment@2` | `environment.py`, and only `environment.py` — the door is § 5 M-4's table | `scheduler`, `topology`, `site`, `domains` — **what the target machine is**, in one shape whether it is a cluster or a workstation |
+| Machine record | `environment.json` — the calculation's, a **named target**, then this machine's; first found wins ([`configuration.md`](?doc=configuration.md) § 5 M-3) | `molbuilder/environment@2` | `scheduler/record.py`, and only `scheduler/record.py` — the door is § 5 M-4's table | `scheduler`, `topology`, `site`, `domains` — **what the target machine is**, in one shape whether it is a cluster or a workstation |
 | ~~Benchmark manifest~~ | ~~`bench-manifest.json`~~ | ~~`molbuilder/bench-manifest@2`~~ | *(retired — no writer, no reader; note below)* | ~~`points.{cpu,gpu}`~~ |
 | Benchmark result | `<seq>_<stage>/bench/bench-result.json` — in the stage's container (§ 6.3) | `molbuilder/bench-result@1` | `bench/result.py` | `points`, `choice`, `recommend` |
 | Bench group | `<seq>_<stage>/bench/bench-group.run.sh` + `bench-group.log` — the grouped submission's sequencer and its log (user, 2026-08-20): regenerated at each `submit bench --mode submit` from the trials still unlaunched, runs each under its per-trial time bound from the container (the parent that sees every trial), and exits nonzero when any trial failed so `squeue` prompts a look at the log. **One group per side AND resource shelf** (`generator.md` § 4.3a, 2026-08-21): qualifiers appear only when needed — `bench-group`, `-cpu`/`-gpu` when the sweep spans both sides, a shelf token when a side spans several exact resource asks (`-g2n32c1` = 2 GPUs, 32 ranks, 1 core per rank) — same files per group, each an exact-fit allocation so nothing idles inside it | *(bash + text)* | `jobset/submit.py` | one `run_trial` line per pending trial |
@@ -1676,7 +1676,7 @@ users.
 **name and the major** — tolerating same-major minor bumps, rejecting a
 different major *and* rejecting the wrong artifact by name — through the
 single shared helper `molbuilder/persist.py` (`schema_major`, `check_schema`,
-`read_json`, `write_json`), adopted by `environment.py`, `bench/result.py`,
+`read_json`, `write_json`), adopted by `scheduler/record.py`, `bench/result.py`,
 `jobset/model.py`, `task.py`, `template.py`, and `checkpoint.py` (it was
 hand-rolled three times with a subtle missing-`@` inconsistency before). New
 persisted artifacts must use it. The two bare-integer exceptions predate the

@@ -619,7 +619,7 @@ def gpu_domain_row(routing, needed_s: Optional[int] = None) -> Optional[dict]:
     A row stating no ``max_time`` counts as fitting -- an unstated limit
     is not a small one.
     """
-    from ..environment import domain_serves_gpu
+    from ..scheduler import domain_serves_gpu
     for row in routing:
         if domain_serves_gpu(row) and _row_holds(row, needed_s):
             return row
@@ -627,20 +627,17 @@ def gpu_domain_row(routing, needed_s: Optional[int] = None) -> Optional[dict]:
 
 
 def _row_holds(row, needed_s: Optional[int]) -> bool:
-    """Can this domain's stated ceiling hold a job of ``needed_s``?
+    """Can this domain hold a job of ``needed_s``?
 
-    One reader for both sides, so the CPU branch and the GPU branch cannot
-    disagree about what "fits" means -- they did until 2026-08-23, when the
-    CPU branch walked the menu for a row that fits and the GPU branch only
-    ever looked at the first gpu-capable one.
+    A thin yes/no over :func:`environment.domain_admits`, which is where the
+    request-versus-record comparison lives for every constraint.  One reader
+    for both sides, so the CPU branch and the GPU branch cannot disagree
+    about what "fits" means -- they did until 2026-08-23, when the CPU branch
+    walked the menu for a row that fits and the GPU branch only ever looked
+    at the first gpu-capable one.
     """
-    from ..scheduler_probe import parse_walltime
-    if needed_s is None or not row.get("max_time"):
-        return True
-    try:
-        return parse_walltime(str(row["max_time"])) >= needed_s
-    except ValueError:
-        return True                      # an unreadable wall never bars
+    from ..scheduler import domain_admits
+    return not domain_admits(row, walltime_s=needed_s)
 
 
 def _preferred_domain(base: Path, gpu_side: bool,
@@ -660,7 +657,7 @@ def _preferred_domain(base: Path, gpu_side: bool,
     :func:`_resolve_domain`); ``--only`` + ``--domain`` places one side at
     a time, which is the fully explicit form.
     """
-    from ..environment import domain_serves_gpu
+    from ..scheduler import domain_serves_gpu
     from .. import runtime_config as _rc
 
     routing = _rc.get_routing(project_dir=base)
@@ -691,8 +688,8 @@ def _refuse_if_nothing_holds(base: Path, gpu_side: bool, needed_s: int,
     candidate's ceiling, because "too long" without the two numbers sends
     a user to read `scontrol` for what we already have on disk.
     """
-    from ..environment import domain_serves_gpu
-    from ..scheduler_probe import parse_walltime
+    from ..scheduler import domain_serves_gpu
+    from ..scheduler.probe import parse_walltime
     from .. import runtime_config as _rc
 
     routing = _rc.get_routing(project_dir=base)
@@ -703,15 +700,15 @@ def _refuse_if_nothing_holds(base: Path, gpu_side: bool, needed_s: int,
               d for d in routing if not domain_serves_gpu(d)]
     if not usable or any(_row_holds(d, needed_s) for d in usable):
         return                          # some row fits, or none is ours
-    def _ceil(d):
-        try:
-            return f"{d['name']} <= {d['max_time']}"
-        except Exception:
-            return str(d.get("name"))
+    from ..scheduler import domain_admits
+    reasons = []
+    for d in usable:
+        for why in domain_admits(d, walltime_s=needed_s):
+            reasons.append(why)
     raise SubmitError(
-        f"{name} needs {_slurm_time(needed_s)} but every "
-        f"{'gpu-capable ' if gpu_side else ''}domain on this machine "
-        f"states a shorter ceiling: {', '.join(_ceil(d) for d in usable)}.\n"
+        f"{name} needs {_slurm_time(needed_s)} and no "
+        f"{'gpu-capable ' if gpu_side else ''}domain on this machine can "
+        f"take it:\n    " + "\n    ".join(reasons) + "\n"
         f"  Nothing was submitted -- the scheduler would refuse it "
         f"(QOSMaxWallDurationPerJobLimit).  Either run fewer trials per "
         f"group, lower --trial-timeout, or name a longer domain with "
@@ -929,7 +926,7 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
             # directives cannot place a GPU group, name the menu rows
             # that could (generator.md § 4.3a) -- choosing one stays
             # the user's call, via --domain.
-            from ..environment import domain_serves_gpu
+            from ..scheduler import domain_serves_gpu
             from .. import runtime_config as _rc
             able = [d["name"] for d in _rc.get_routing(project_dir=base)
                     if domain_serves_gpu(d)]

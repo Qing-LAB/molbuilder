@@ -29,7 +29,7 @@ writes this file?"* was answered in five documents and completely in none.
 | **which files are configuration**, and the one name each is called by | the keys inside any one of them |
 | **who writes each file** — a person, a probe, a producing verb, or the engine's own package | what the writer does internally |
 | **the scopes**, and which file wins when two of them speak | the merge algorithm, which is `running-a-job.md` § 5 |
-| **the machine-facts rules** (§ 5) — the split between what is probed and what is chosen | the topology fields themselves, which are `environment.py`'s |
+| **the machine-facts rules** (§ 5) — the split between what is probed and what is chosen | the topology fields themselves, which are `scheduler/record.py`'s |
 | **what is refused where**, and why refusal beats silence | the error text, which belongs to the validator |
 
 **Two rules keep this document true**, and they are the same two that keep
@@ -231,7 +231,7 @@ registry answer two questions.)*
 `molbuilder.json`'s `scheduler.gpu.default_type` recorded the same physical
 fact, probed from `sinfo`. Only the first reached the code that builds the ask.
 
-The disagreement went deeper than a duplicated value. `environment.py`'s
+The disagreement went deeper than a duplicated value. `scheduler/record.py`'s
 `detect_site` leaves `qos` and `account` unset and says why: *"they are site
 policy, not reliably derivable from `sinfo`, so they come from the user's
 config, not detection."* In the same tree, `scheduler_probe.parse_allowed_qos`
@@ -339,7 +339,7 @@ edges is a second thing to remember.
 
 ### M-4 — one door, and the filename has one home
 
-`environment.py` owns the schema, the dataclasses and the JSON round-trip. It
+`scheduler/record.py` owns the schema, the dataclasses and the JSON round-trip. It
 does **not** own the file, and that gap is why three call sites grew three
 different shapes — a raw `write_text`, a read returning an `Environment`, and a
 second read returning a plain `dict`.
@@ -380,7 +380,7 @@ The cost of doing otherwise is concrete rather than aesthetic. `tomllib` reads
 TOML and does not write it, so the only TOML emitter in this tree is
 `template.py`'s, hand-rolled and guarded by round-tripping its own output back
 through `tomllib` and comparing (*"the writer checks itself"*).
-`environment.py` is stdlib-only on purpose — it ships to the target and runs in
+`scheduler/record.py` is stdlib-only on purpose — it ships to the target and runs in
 a backend env with no molbuilder on it — so it could not import that emitter and
 would have to carry a second one.
 

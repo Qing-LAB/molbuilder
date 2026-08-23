@@ -1593,9 +1593,9 @@ def api_task_setup_machines():
     because "prepare for the box I am on" is a choice like any other and
     omitting it would make the common case look unavailable.
     """
-    from molbuilder.environment import known_machines, choice_required
+    from molbuilder.scheduler import known_machines, choice_required
 
-    # One list, one rule -- both live in `molbuilder.environment` so the
+    # One list, one rule -- both live in `molbuilder.scheduler` so the
     # browser and `jobset machines` cannot disagree about which machines
     # exist, which can be read, or when a choice is required.
     machines = known_machines()

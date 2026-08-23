@@ -50,7 +50,7 @@ def _write_record(home, name, *, valid=True):
     # name: a record's CONTENT is a measurement and the machine it describes
     # is its FILENAME -- which is exactly why a copied-in file is discovered
     # by its stem, and why this test can stand in for an `scp`.
-    from molbuilder.environment import (Environment, Site, Topology,
+    from molbuilder.scheduler import (Environment, Site, Topology,
                                         write_environment)
     env = Environment(
         scheduler="slurm",
@@ -118,7 +118,7 @@ class TestTheTerminalAndTheBrowserCannotDisagree:
         """
         pytest.importorskip("flask")
         _write_record(home, "sol")
-        from molbuilder.environment import known_machines, choice_required
+        from molbuilder.scheduler import known_machines, choice_required
         from molbuilder.web.app import create_app
 
         served = create_app(config={}).test_client() \
@@ -131,7 +131,7 @@ class TestTheTerminalAndTheBrowserCannotDisagree:
     def test_a_named_record_makes_the_choice_required(self, home):
         """Rule: "this machine" is always a candidate, so ANY named record
         makes the question real (`…-another-machine.md` § 4, C1)."""
-        from molbuilder.environment import choice_required
+        from molbuilder.scheduler import choice_required
         assert choice_required() is False
         _write_record(home, "sol")
         assert choice_required() is True

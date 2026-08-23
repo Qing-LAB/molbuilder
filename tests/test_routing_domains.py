@@ -20,12 +20,12 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.environment import (FILENAME, Domain, Environment, Site,
+from molbuilder.scheduler import (FILENAME, Domain, Environment, Site,
                                     Topology, write_environment)
 from molbuilder.runtime_config import (PROJECT_CONFIG_FILENAME,
                                        RuntimeConfigError, get_routing,
                                        get_scheduler)
-from molbuilder.scheduler_probe import parse_walltime
+from molbuilder.scheduler.probe import parse_walltime
 
 
 def _write_config(tmp_path, scheduler_block):
