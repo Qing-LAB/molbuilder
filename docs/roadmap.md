@@ -1229,9 +1229,21 @@ repeated literals. Its rule is right; the file does not keep it.)*
   five stage-less branches already say the shape retired · T1's smoke test is
   gone. **Three stand**, and they are waves 1 and 4–5 of § 7.8:
   `_SAFE_BASE`/`_SAFE_GPU_TYPE` (two definitions, zero uses) · the read-API
-  rule restated in two comments · `Issue.stage`, write-orphaned since
-  `validate_ladder` retired, whose deletion waits on the findings-file
-  decision. *(T2/T3's stale docstrings could not be confirmed: the three smoke
+  rule restated in two comments.
+
+> **`Issue.stage` is NOT write-orphaned, and the claim that it was is
+> withdrawn (2026-08-23).** `validation/task.py` writes it at **five** sites:
+> the task preflight validates a whole description with all its rungs at once
+> and labels each finding with the rung it came from — exactly the aggregation
+> R2 describes and exactly what the field is for. The deletion was written,
+> reviewed, and reverted before it was committed.
+>
+> **How the wrong answer was reached**, because the method is the reusable
+> part: the search put `stage=` and `Issue(` on one line. These calls span
+> lines — the constructor opens, the message wraps, and `stage=st.name` lands
+> two lines down — so the grep returned nothing and *"one reader, zero
+> writers"* went into a contract amendment on the strength of it. A negative
+> from a single-line pattern is not evidence about multi-line calls. *(T2/T3's stale docstrings could not be confirmed: the three smoke
   modules read accurately today, and the reader reports that named the two are
   not in the tree.)*
 
@@ -1353,7 +1365,7 @@ is green.*
 | **2b** | GPU **C5** — a probed-only machine cannot emit a GPU header, because the no-config branch hand-builds a scheduler dict with no `gpu` key and never sees `topology.gpu_type` | **found while writing C4's replacement test**; same class, so it lands with its siblings rather than as its own bug |
 | ~~**3**~~ | ~~**O4** — `pyscf/relax_policy.py`~~ **done**: emitted once, composed by both. The optimization deck's bytes are unchanged; the vibration deck's differ only in quote style, which nothing pinned | self-contained |
 | ~~**4**~~ | ~~the **type framework**~~ **done**: the coverage test makes a new type force a decision at all five readers, and `DECL_TYPES` is gone — the narrower set is derived from `template.TYPES` by a stated rule, exactly reproducing § 3.3's five | (a) before (b) worked as intended: the residue fell out of the mechanism instead of being argued |
-| **5** | **validation display**: the findings file beside the deck, written after the check · `info` reaches the CLI · then delete `Issue.stage` and amend `stages.md` § 4 R2 | ⚠ **blocked** — the filename is the user's call |
+| **5** | **validation display**: the findings file beside the deck (`{label}.validation.txt`), written after the check · `info` reaches the CLI (R4 said three severities; it printed two) | ~~then delete `Issue.stage`~~ **withdrawn** — the field has five writers in the task preflight; see § 7.5 |
 | **6** | GPU **C1 + C2** (their own commit), then the **rename** `enable_gpu` → `use_gpu` across **34 files** (9 code · 12 test · 13 live-doc) | the widest change, and it must not be split |
 | **7** | GPU **G7** — the wrapper is handed the value instead of grepping the deck at four call sites | must follow wave 6 (see conflict **E**) |
 
@@ -1378,9 +1390,14 @@ undeclared file reads as engine output; that trap already sprang once, when
 the `.source.xyz` pair started being written and `prep` announced a fresh
 calculation as *"already under way — warm files at the root."*
 
-**D — `Issue.stage` is deleted after the file lands, not before.** The file
-identifies its rung by sitting beside that rung's deck. Deleting the field
-first and then finding we want a combined report is the wrong order.
+**D — ~~`Issue.stage` is deleted after the file lands~~ — the deletion is off
+the table.** The ordering was right and the premise was not: the field has
+five writers in `validation/task.py`. The per-deck report and the preflight's
+per-rung label answer *different* questions — one says what the checks said
+about **this deck**, the other labels findings from a validator that sees
+**all the rungs at once**, before any deck exists. Both are wanted. *(What the
+ordering rule did do is work: the review that found the writers happened
+because the deletion was staged behind the file rather than done first.)*
 
 **E — G7 must follow the rename.** `runwrap.py` names `enable_gpu` **zero**
 times today: it greps `Diag.ELPA.GPU` out of the rendered deck. G7 is what

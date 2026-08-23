@@ -281,18 +281,27 @@ def validate(struct: Structure, cfg, *,
 def report(issues: List[Issue], *,
            raise_on_error: bool = True,
            stream=None) -> None:
-    """Print warnings to stderr; raise ValidationError on errors.
+    """Print warnings and advisories to stderr; raise ValidationError on errors.
 
-    The two-pass shape (warnings first, then maybe-raise) lets the
-    user see *all* the warnings even when an error is also present --
+    The two-pass shape (findings first, then maybe-raise) lets the
+    user see *all* of them even when an error is also present --
     helpful when triaging a misconfigured run.
+
+    **`info` reached no surface at all until 2026-08-23.**  This loop tested
+    ``severity == "warn"`` and dropped the rest, so an advisory -- *"Fe +
+    spin=4 -> high-spin Fe(II)"*, the class written precisely for a person to
+    weigh against their own system -- was computed on every render and printed
+    nowhere.  `science/validation.md` R4 is explicit: *"no surface downgrades
+    a severity to keep a screen quiet, and the CLI prints the same three."*
+    This printed two.  Errors still raise rather than print, which is R4's own
+    distinction and not a downgrade.
     """
     if stream is None:
         stream = sys.stderr
     for i in issues:
-        if i.severity == "warn":
+        if i.severity in ("warn", "info"):
             tag = f" [{i.where}]" if i.where else ""
-            print(f"warn{tag}: {i.message}", file=stream)
+            print(f"{i.severity}{tag}: {i.message}", file=stream)
     errors = [i for i in issues if i.severity == "error"]
     if errors and raise_on_error:
         raise ValidationError(issues)

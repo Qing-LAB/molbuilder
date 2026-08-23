@@ -219,6 +219,15 @@ OUR_FILE_PATTERNS: Sequence[str] = (
     # the wrapper and its scheduler header
     "{label}.run.sh", "{label}_*.run.sh",
     "{label}.sbatch", "{label}_*.sbatch",
+    # THE DECK'S COMPANION VALIDATION REPORT (`script_emit.VALIDATION_SUFFIX`),
+    # added 2026-08-23 with the file itself.  It has to be here for the reason
+    # the `.source` pair above records: this list's second reader derives
+    # `--cold`'s *"except what molbuilder wrote"* exception from it, so a file
+    # molbuilder writes and does not declare reads as ENGINE OUTPUT -- and
+    # `prep` then greets a fresh calculation with *"already under way -- warm
+    # files at the root"*, offering the user their own report back as run
+    # state.
+    "{label}.validation.txt", "{label}_*.validation.txt",
     # the canonical trajectory -- written before the engine even starts
     "{label}.molwatch.log", "{label}_*.molwatch.log",
     # engine stdout -- the run's history.  Three shapes, because three things

@@ -819,6 +819,7 @@ __all__ = [
     "BenchField", "SIESTA_BENCH_FIELDS",
     # Emitters
     "emit_header", "emit_provenance", "emit_bench_marks",
+    "write_validation_report", "VALIDATION_SUFFIX",
     "emit_atom_metadata", "emit_user_custom_placeholder",
     # In-body application
     "apply_inbody_atom_metadata",
@@ -1309,12 +1310,22 @@ class RenderedDeck(str):
     suite wearing a migration's clothes (`archive/2026-08-18-preparation-backend-plan.md`
     § 3.1a).  A caller that wants the text uses it as text; a caller that wants
     to close the loop reads ``.emitted``.
+
+    ``findings`` carries step 3.3's verdict OUT, so the companion validation
+    file can state what the checker said about this deck.  Those findings are
+    produced before a line of text exists and were reported to stderr and
+    dropped; the artifact gate's own findings arrive later, in
+    :func:`prepare_deck`, and the file wants both — *"the final validation of
+    the full script"* is the two halves together, not whichever one the caller
+    happened to hold.
     """
     emitted: Tuple[str, ...]
+    findings: Tuple["Issue", ...]
 
-    def __new__(cls, text: str, emitted=()) -> "RenderedDeck":
+    def __new__(cls, text: str, emitted=(), findings=()) -> "RenderedDeck":
         self = super().__new__(cls, text)
         self.emitted = tuple(emitted)
+        self.findings = tuple(findings)
         return self
 
     @property
@@ -1547,12 +1558,84 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
                      "regions or annotations")
         log.produced("deck", f"{len(text.splitlines())} lines, "
                              f"{len(emitted)} recorded for the gate")
-    return RenderedDeck(text=text, emitted=tuple(emitted))
+    return RenderedDeck(text=text, emitted=tuple(emitted),
+                        findings=tuple(_issues))
 
 
 # --------------------------------------------------------------------- #
 #  The CHECK gate — the file the engine will open                       #
 # --------------------------------------------------------------------- #
+
+
+
+#: The companion file's name, beside the deck it is about.  The one spelling
+#: is `identity.OUR_FILE_PATTERNS`; this is the suffix that builds it.
+VALIDATION_SUFFIX = ".validation.txt"
+
+_VALIDATION_HEADER = """\
+# What the checks said about {deck}
+# ---------------------------------------------------------------------------
+# THESE ARE ADVISORY, and reading them that way is the point.
+#
+# They are heuristics applied to the settings you chose and to the file that
+# was generated from them.  They are NOT a verdict on the physics of your
+# system.  Judge each one against what you know about this structure and this
+# method: a warning that does not apply to your case is one to override
+# deliberately, and a clean report is not a guarantee of a correct answer.
+#
+#   error   the deck was written and then failed its own check -- do not
+#           submit it.  (A refusal BEFORE the deck exists writes no deck and
+#           no report; those reasons are on stderr instead.)
+#   warn    the deck was written; worth reading before you spend cluster time
+#   info    advisory
+#
+# molbuilder never reads this file back.  It travels beside the deck so the
+# two can be opened together months from now.
+# ---------------------------------------------------------------------------
+"""
+
+
+def write_validation_report(deck_path, findings) -> "Path":
+    """Write the deck's companion validation file, and return its path.
+
+    **A separate file, not a block inside the deck** (user, 2026-08-23), and
+    that choice removes a real problem rather than being a matter of taste:
+    the artifact gate's subject is the file on disk, so findings written INTO
+    that file would mean the bytes that were checked are not the bytes that
+    ship — write, check, write again, and the second write is unchecked.
+    Beside it, the deck is final the moment it is checked.
+
+    Written BEFORE the artifact gate's `report`, for the same reason the log
+    is: that call raises on an error-severity finding, and a deck that was
+    written and then failed its own check is exactly the one whose reasons a
+    person needs on disk.
+
+    **It does not cover every refusal, and the header says so honestly.**  The
+    settings gate (step 3.3) raises before a line of the deck exists, so there
+    is no deck for a companion to be about; those reasons travel in the
+    exception and on stderr.  This file exists wherever a deck does.
+
+    ``findings`` is both halves — step 3.3's verdict on the settings and step
+    3.11's on the artifact — because *"the final validation of the full
+    script"* is the two together, not whichever the caller happened to hold.
+    """
+    out = Path(deck_path).with_suffix(VALIDATION_SUFFIX)
+    lines = [_VALIDATION_HEADER.format(deck=Path(deck_path).name)]
+    if not findings:
+        lines.append("")
+        lines.append("The checks had nothing to say about this deck.")
+        lines.append("")
+        lines.append("That is not a claim that the calculation is right -- "
+                     "only that")
+        lines.append("nothing molbuilder knows how to check looked wrong.")
+    else:
+        width = max(len(i.severity) for i in findings)
+        for i in findings:
+            where = f"[{i.where}] " if i.where else ""
+            lines.append("")
+            lines.append(f"{i.severity.upper():<{width}}  {where}{i.message}")
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return out
 
 
 def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
@@ -1679,6 +1762,10 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
         log.produced("verdict", f"{len(issues)} issue(s)")
         for i in issues:
             log.note(f"{i.severity}: [{i.where}] {i.message}")
+    # The companion file, from BOTH halves of the verdict, and written before
+    # `report` -- which raises on an error, and a refused run is the one whose
+    # reasons most need to be on disk.
+    write_validation_report(written, list(rendered.findings) + list(issues))
     report(issues)
     return written
 
