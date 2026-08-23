@@ -130,7 +130,7 @@ class TestTheTerminalAndTheBrowserCannotDisagree:
 
     def test_a_named_record_makes_the_choice_required(self, home):
         """Rule: "this machine" is always a candidate, so ANY named record
-        makes the question real (`…-another-machine.md` § 4, C1)."""
+        makes the question real (`preparing-for-another-machine.md` § 4, C1)."""
         from molbuilder.scheduler import choice_required
         assert choice_required() is False
         _write_record(home, "sol")

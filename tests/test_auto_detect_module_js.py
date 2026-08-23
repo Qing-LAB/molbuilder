@@ -33,6 +33,10 @@ import pytest
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 MODULE = REPO / "molbuilder/web/static/lib/auto-detect.js"
+#: auto-detect delegates the failed-fetch sentence to this module
+#: (roadmap 7.2 gave it one home).  Load it first, exactly as the
+#: page does -- a stub that fakes it would test the stub.
+DEPS = [REPO / "molbuilder/web/static/lib/fetch-error.js"]
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None,
                                 reason="node not available")
@@ -95,7 +99,8 @@ function out(v) { console.log(JSON.stringify(v)); }
 
 
 def _run(script: str):
-    src = MODULE.read_text(encoding="utf-8")
+    src = "\n".join([d.read_text(encoding="utf-8") for d in DEPS]
+                    + [MODULE.read_text(encoding="utf-8")])
     prog = (f"{_STUB}\n{src}\n"
             f"var A = globalThis.molbuilder.autoDetect;\n"
             f"(async function () {{\n{script}\n}})();")

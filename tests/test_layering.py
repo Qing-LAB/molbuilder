@@ -90,19 +90,17 @@ _L1_MODULES = {
     "persist",           # versioned-document helpers (@major schema check +
                          # JSON IO); pure stdlib, no domain deps -- bench +
                          # jobset persisted artifacts share it.
-    "environment",       # the TARGET machine: probe cores/GPUs/scheduler/conda
-                         # and persist ``molbuilder/environment@1``.  Lifted out
-                         # of ``bench/`` 2026-08-10 -- it is step 1 of prep's
-                         # five (project-layout.md 2.3.1), which the benchmark
-                         # merely happened to need first (2.3.1a).  L1: stdlib
-                         # probes plus ``persist`` for the @major check.
-    "scheduler_probe",   # the TARGET scheduler: parse sinfo/sacctmgr text into
-                         # a proposed ``scheduler`` config block (job-system
-                         # § 7).  Moved out of ``bench/`` 2026-08-12 (U-program
-                         # follow-up): what it produces is molbuilder.json
-                         # config, not benchmarking.  L1 beside
-                         # ``environment`` -- pure parsing + derivation on
-                         # stdlib alone; the CLI runs the subprocesses.
+    "scheduler",         # THE SCHEDULER SUBSYSTEM (execution/scheduler.md):
+                         # what a machine offers, and what a job may ask of it.
+                         # `record` persists ``molbuilder/environment@1`` and
+                         # `probe` parses sinfo/sacctmgr text; both were
+                         # top-level modules (``environment`` /
+                         # ``scheduler_probe``) until 2026-08-23, when they were
+                         # packaged so that admission, placement and emission
+                         # have somewhere to be.  L1, and STDLIB-ONLY by
+                         # contract: a record is read on the target inside a
+                         # backend env with no molbuilder installed.  `persist`
+                         # is the one dependency, for the @major check.
     "identity",          # the run id: normalise once, build from inputs
                          # (execution/run-identity.md 2-3).  L1 on stdlib
                          # alone, and that is load-bearing: the CLI, the web

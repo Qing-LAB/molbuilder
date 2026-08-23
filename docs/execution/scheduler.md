@@ -113,9 +113,22 @@ four bugs. It is one missing function.
 command line are two *renderings* of one placement, never two decisions. They
 cannot disagree, because there is nothing to disagree about.
 
-**R2 — Admission is total.** Every constraint the record carries is compared
-against the request, or the record should not carry it. A new column arrives
-with its comparison or it does not arrive.
+**R2 — Admission is total over the named limits.** Every limit `Domain`
+*declares* — `max_time`, `max_cores`, `max_mem_gb`, `gpu` — is compared
+against the request. A new declared limit arrives with its comparison or it
+does not arrive; that is what stops another `max_mem_gb`.
+
+`extra` is the deliberate exception and the only one: it holds columns a probe
+saw and this reader does not interpret, and `Domain`'s own rule governs it —
+*"a reader owns only the keys it checks."* Keeping an uninterpreted column is
+honest; **silently failing to compare a declared one is the defect.** The
+difference is whether the field has a name in the type.
+
+> **Memory needs one unit before R2 can hold for it.** The record states
+> gigabytes as a number; a request states memory as text (`"390G"`). Nothing
+> converts between them today, so the memory comparison is *specified here and
+> not yet implementable* — the conversion belongs to the request type, and is
+> part of the phase that gives placement typed rows.
 
 **R3 — An unstated limit never bars.** A domain that does not state a ceiling
 is not claiming a small one; a ceiling that cannot be parsed is not a
@@ -149,6 +162,29 @@ measurement and is read from `environment.json`. Which queue you *want* is a
 preference and is read from `molbuilder.json` or `--domain`. This subsystem
 reads both and mixes neither.
 
+**R9 — What was admitted when the work was BUILT is re-admitted when it is
+SENT.** A request built under weaker knowledge must not be submitted under
+better knowledge without being re-checked.
+
+> This is the rule the Sol case actually needed, and the one neither failure
+> in § 1 exposed. `prep` already drops a trial no queue can hold — it walked
+> that branch for the Au-BDT-Au sweep and found **no limit to apply**, because
+> the record it had said `max_cores: None` for every GPU row. That record
+> predates `max_cores` being probed. The machine has since learned its GPU
+> nodes hold 48 cores; the bundle still carries 64-rank trials; and `launch`
+> compares only the wall, so nothing notices on arrival.
+>
+> Both records are on disk — the bundle's snapshot and the machine's own — so
+> comparing them costs a read. A bundle that travels is exactly the case where
+> the two can differ, which is why this rule belongs to a subsystem that
+> spans build and send rather than to either one.
+
+**R10 — A refusal names what *would* fit.** Not *"64 cores is too many"* but
+*"this queue holds 48; the largest rank count that fits is 48"*. The graph in
+§ 5 knows which limit bound, so it knows what to suggest, and a refusal that
+stops at "no" leaves the user guessing at the number we are already holding.
+R4 says name the numbers; this says name the way out.
+
 ---
 
 ## 4. The vocabulary
@@ -159,6 +195,15 @@ reads both and mixes neither.
 - **Domain** — one reachable `(partition, qos)` pair and what it allows:
   `max_time`, `max_cores`, `max_mem_gb`, `gpu`. *A fact, never a preference —
   it says "you may submit here, for this long", never "submit here".*
+  `node_type` describes the hardware and constrains nothing. `extra` holds
+  columns this reader does not interpret (R2).
+- **`gpu_partition`** — where a GPU job goes when that differs from the
+  domain's ordinary partition. **It redirects real work and is not a field of
+  `Domain`**: it is read out of `extra`, the bag documented as unexamined, by
+  two call sites in routing. Named here because a value that changes where a
+  job lands cannot live in the part of the record we say we do not read.
+  Making it a declared field — and so subject to R2 — is part of the phase
+  that gives placement typed rows.
 - **Request** — what one job asks for: ranks, cpus-per-task, GPUs, memory,
   wall, exclusivity. Fields the caller does not know are `None` (R7).
 - **Placement** — a request bound to a domain, with the reasoning that chose
@@ -171,7 +216,76 @@ yields no header at all, and the job runs directly.
 
 ---
 
-## 5. The shape
+## 5. The decision graph
+
+Placement is one walk, not a pile of conditions. Every branch below is a rule
+from § 3; drawing it is what stops the CPU side and the GPU side being written
+separately and disagreeing, which is § 1's first failure.
+
+```mermaid
+flowchart TD
+  START(["a request · this machine"])
+  Q0{"any queues<br/>on this machine?"}
+  DIRECT["run it directly<br/><i>no header at all</i>"]
+  Q1{"did the user<br/>name a queue?"}
+  Q2{"does that queue<br/>admit the request?"}
+  KIND["the queues that serve<br/>this KIND of work<br/><i>gpu · cpu</i>"]
+  Q3{"any of that kind?"}
+  ADMIT["of those, the ones that ADMIT it<br/><i>wall · cores · memory · devices</i>"]
+  Q4{"any admit it?"}
+  PLACE(["PLACE<br/><i>cheapest ceiling that fits</i>"])
+  RN["refuse — name what is too big,<br/>and what would fit"]
+  RK["refuse — this machine has<br/>no queue of that kind"]
+  RA["refuse — name the binding limit,<br/>and the nearest request that fits"]
+
+  START --> Q0
+  Q0 -- no --> DIRECT
+  Q0 -- yes --> Q1
+  Q1 -- "yes, by name" --> Q2
+  Q2 -- yes --> PLACE
+  Q2 -- no --> RN
+  Q1 -- no --> KIND --> Q3
+  Q3 -- none --> RK
+  Q3 -- some --> ADMIT --> Q4
+  Q4 -- some --> PLACE
+  Q4 -- none --> RA
+```
+
+**A named queue is checked like any other.** The `--domain` branch reaches the
+same admission test — your choice is honoured as a *choice*, not as permission
+to skip the check. Today it is not checked at all; closing that is part of the
+phase that moves placement (§ 8).
+
+**Refusals are the graph's real output.** Three of the eight leaves refuse, and
+each refuses differently, because the reason is the useful part (R4, R10).
+
+### 5.1 The same walk, at two moments
+
+```mermaid
+flowchart LR
+  subgraph B["when the work is BUILT — prep"]
+    B1["each candidate trial"] --> B2["walk the graph"]
+    B2 --> B3["no queue holds it?<br/>drop it BY NAME, with the reason"]
+  end
+  subgraph S["when the work is SENT — launch"]
+    S1["the request as built"] --> S2["walk the graph again<br/>against what the machine says NOW"]
+    S2 --> S3["still admitted? submit<br/>no longer? refuse before the scheduler does"]
+  end
+  B -.->|"the bundle travels,<br/>and the record can change under it"| S
+```
+
+This is **R9**, and it is the half that does not exist yet. `prep` already
+walks the graph — it did so for the Au-BDT-Au sweep and found no limit to
+apply, because the record it held said `max_cores: None`. The machine has
+since learned its GPU nodes hold 48 cores. The bundle still carries 64-rank
+trials. `launch` compares only the wall, so nothing notices on arrival.
+
+The two records that must agree are both already on disk: the snapshot beside
+the bundle, and the machine's own. Re-walking costs a read.
+
+---
+
+## 6. The shape
 
 ```
 scheduler/
@@ -200,7 +314,7 @@ and be wrong the first time anything else appears.
 
 ---
 
-## 6. What a caller sees
+## 7. What a caller sees
 
 ```python
 req = Request(ranks=64, cpus_per_task=1, gpus=2, gpu_type="a100",
@@ -224,19 +338,30 @@ permission to skip the check.
 
 ---
 
-## 7. Migration
+## 8. Migration
 
 Smallest risk first; each step separately testable and separately revertable.
 The schedule is `roadmap.md` § 7.6, not here (R3).
 
-1. **Move the record and the probe.** Pure relocation.
+1. **Move the record and the probe.** Pure relocation. *(Done 2026-08-23.)*
 2. **Move admission.** `domain_admits` already exists and has one caller.
-3. **Move placement out of `jobset/submit.py`.** The CPU and GPU branches
-   become one walk over the menu with one admission call.
-4. **Unify the emitters.** The last and most valuable step: the header and the
+3. **Typed rows instead of dictionaries.** The record is a dataclass, but the
+   queue menu is handed out as `List[Dict[str, Any]]` and every placement
+   function pokes at it with `row.get("max_time")` — so the typed record and
+   the code that uses it never meet. That is *how* `gpu_partition` came to
+   redirect real work from inside the unexamined bag (§ 4): nothing checks a
+   dictionary key against a declared field. Steps 4 and 5 both assume typed
+   rows, and R2's memory comparison needs the unit conversion this step gives
+   the request.
+4. **Move placement out of `jobset/submit.py`.** The CPU and GPU branches
+   become the single walk of § 5, and `--domain` starts going through
+   admission like everything else.
+5. **Unify the emitters.** The last and most valuable step: the header and the
    flags stop being two functions.
 
-**The gate for step 4** is a test that renders both spellings from one
+**The gate for step 5** is a test that renders both spellings from one
 placement and asserts they name the same queue and the same wall — the
 assertion neither emitter could have made alone, and the one that would have
 caught both Sol failures before they left the workstation.
+
+**R9 rides step 4**, where the walk becomes callable from both moments.

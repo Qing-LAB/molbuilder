@@ -1111,6 +1111,13 @@ What remains:
   **closed `<details>`** keep layout boxes sized to the collapsed summary, so
   measuring them reports overflow no user can see (28 false findings before
   the fix). *Test-pin: is* this item.
+- **7.4g — the Documents render pane is light inside a dark app.**
+  `docs-render.css` is a deliberately isolated theme with a `.docs-render-dark`
+  class for the dark case, and nothing applies it — so every document, and
+  every mermaid diagram in one, renders as a white sheet in a dark shell. Seen
+  while confirming the scheduler contract's diagrams render (2026-08-23). Same
+  family as 7.4a: a surface that opts out of the app's theme and is never
+  opted back in.
 - **7.4f — the MolView host overflows its card by 18px at ≤768px** on
   structure-optimization. The only true overflow left after the 2026-08-22
   fixes; CodeMirror's +50px is its own managed scroll and three +2px readings
@@ -1151,16 +1158,30 @@ header that names a queue states a wall that queue accepts.
 
 Phases, smallest risk first — each separately testable and revertable:
 
-1. move the record and the probe *(pure relocation)*;
+1. ~~move the record and the probe~~ — **done 2026-08-23**;
 2. move admission — `domain_admits` exists and has one caller;
-3. move placement out of `jobset/submit.py`; the CPU and GPU branches become
-   one walk over the menu;
-4. unify the two emitters.
+3. **typed rows instead of dictionaries** *(added after the 2026-08-23
+   review)* — the menu is handed out as plain dicts, so the typed record and
+   the code that uses it never meet; that is how `gpu_partition` came to
+   redirect GPU work from inside the record's unexamined bag, and it is what
+   R2's memory comparison needs before it can hold at all. Steps 4 and 5 both
+   assume it;
+4. move placement out of `jobset/submit.py` — the two branches become the one
+   walk the contract draws, `--domain` starts being admitted like everything
+   else, and **R9** (re-admit at send time) becomes possible because the walk
+   is callable from both moments;
+5. unify the two emitters.
 
-*Test-pin:* phase 4's gate — render both spellings from one placement and
+*Test-pin:* phase 5's gate — render both spellings from one placement and
 assert they name the same queue and the same wall. That is the assertion
 neither emitter could make alone, and the one that would have caught both Sol
 failures before they left the workstation.
+
+**One question this front owes an answer to:** the Au-BDT-Au sweep carries
+64-rank GPU trials against Sol's 48-core GPU nodes. Not a bad choice — the
+record `prep` walked said `max_cores: None`, so no cap existed to apply. R9 is
+the rule that catches it on arrival; until phase 4 lands, a re-`prep` against
+the current record is the fix.
 
 
 ---

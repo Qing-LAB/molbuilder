@@ -482,8 +482,8 @@
  * own when that will not fit, which makes short facts share a line and a
  * long path get the full width.
  *
- * This replaced `repeat(auto-fit, minmax(9rem, 1fr))` on 2026-08-22 -- the
- * only bare-constant track floor in the tree, and measurably the worst
+ * This replaced an auto-fit grid whose track floor was a bare 9rem constant
+ * (2026-08-22) -- the only one in the tree, and measurably the worst
  * overflow in the app: `source /home/…/conda.sh` is ~380px of unbreakable
  * text, and the constant had declared 9rem sufficient, so the rest was
  * simply clipped off the card.  Everywhere else already sizes label->value
