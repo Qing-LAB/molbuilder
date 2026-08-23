@@ -107,6 +107,13 @@
     color: var(--text-primary);
 }
 .ts-state-body { margin: var(--space-xs) 0 0; color: var(--text-secondary); white-space: pre-line; }
+/* The [hidden]-precedence guard, same as `.issues-panel` and the load
+ * monitor's cells: the rule above sets `display: flex`, which ties with the
+ * browser's own `[hidden] { display: none }` and wins on source order.  The
+ * folder state is always shown, but the machine card hides its state until
+ * a machine is chosen -- without this it would sit there reading as a
+ * decision nobody made. */
+.ts-state[hidden] { display: none; }
 
 /* ---- What will be written ---- */
 

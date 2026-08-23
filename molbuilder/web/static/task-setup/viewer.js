@@ -1103,6 +1103,15 @@ function renderNext(task) {
      * deck-rendering out of the browser; this is the job it was written
      * for.  Empty when the folder is not under the tree, where the verb's
      * own refusal says more than a truncated command could. */
+    /* `--target <machine>` for every command taught, once a machine is
+     * chosen and it is not this one.  Preparing for the box you are on is
+     * the case the flag is not for, so it is omitted there -- the same
+     * shape as `--bundle`, which is omitted when the cwd already is it. */
+    function _targetArg() {
+        if (!_machine || _machine === "(this machine)") return "";
+        return " --target " + _machine;
+    }
+
     function _bundleArg() {
         const mb = window.molbuilder || {};
         const proj = mb.projects, pathUtil = mb.path;
@@ -1115,22 +1124,16 @@ function renderNext(task) {
         return " --bundle " + rel;
     }
 
+    /* ONE BLOCK PER ENABLED STAGE, and both things you can do with it
+     * (`task-setup.md` § 11).  A stage is either something to MEASURE or
+     * something to RUN, and which one is a decision only the user has.
+     *
+     * The bench half used to be a single block hardwired to
+     * `enabled[0]` -- a guess dressed as an answer.  The bench axes are
+     * declared once for the calculation, so ANY enabled stage can be
+     * measured; which is worth measuring is a judgement, and the page
+     * hints rather than choosing. */
     const benchKeys = Object.keys((task && task.bench) || {});
-    if (benchKeys.length) {
-        const bs = enabled[0].st.name || "";
-        host.appendChild(el("div", { class: "ts-next-step" },
-            el("div", { class: "ts-next-stage" },
-               "bench first \u2014 " + benchKeys.join(", ")),
-            el("pre", { class: "ts-cmd" },
-               "molbuilder jobset prep bench " + bs + _bundleArg() + "\n"
-               + "molbuilder jobset launch bench " + bs + _bundleArg()
-               + "      # one job per resource shelf; wait for the queue\n"
-               + "molbuilder jobset summarize bench " + bs + _bundleArg()
-               + "   # writes bench-result.json + run-config.toml\n"
-               + "# read run-config.toml \u2014 the editable proposal; "
-               + "accept or edit it,\n"
-               + "# then the run below applies it automatically.")));
-    }
 
     enabled.forEach((e, i) => {
         const name = e.st.name || "";
@@ -1145,15 +1148,44 @@ function renderNext(task) {
             from = " --from " + token + "/run-0";
         }
         const runs = _runs[name];
-        host.appendChild(el("div", { class: "ts-next-step" },
+        const block = el("div", { class: "ts-next-step" },
             el("div", { class: "ts-next-stage" }, name,
-               (runs ? el("span", { class: "ts-ran" }, runs + "\u00d7 run") : null)),
-            el("pre", { class: "ts-cmd" },
-               // The bundle is NAMED, from the projects root, so the line
-               // works from wherever the user is standing
-               // (job-contracts.md 2.5b).
-               "molbuilder jobset prep run " + name + from + _bundleArg() + "\n"
-               + "molbuilder jobset launch run " + name + _bundleArg())));
+               (runs ? el("span", { class: "ts-ran" }, runs + "\u00d7 run") : null)));
+
+        /* MEASURE first, when the description declares axes to measure.
+         * The order is shown because it is load-bearing: `summarize`
+         * writes run-config.toml and `prep run` APPLIES it to any
+         * allocation field you did not state, so skipping the middle step
+         * does not fail -- it quietly prepares a run with no verdict
+         * behind it. */
+        if (benchKeys.length) {
+            block.appendChild(el("p", { class: "hint" },
+                "Measure it \u2014 varying " + benchKeys.join(", ")
+                + ". Worth doing on the cheapest rung that still has the "
+                + "expensive stage's shape; the verdict carries to the run."));
+            block.appendChild(el("pre", { class: "ts-cmd" },
+                "molbuilder jobset prep bench " + name + _bundleArg() + _targetArg() + "\n"
+                + "molbuilder jobset launch bench " + name + _bundleArg()
+                + "      # one job per resource shelf; wait for the queue\n"
+                + "molbuilder jobset summarize bench " + name + _bundleArg()
+                + "   # writes bench-result.json + run-config.toml"));
+        }
+
+        block.appendChild(el("p", { class: "hint" },
+            benchKeys.length
+                ? "Run it \u2014 applies run-config.toml for anything you "
+                  + "did not state. Add --np / --omp / --time to override "
+                  + "the measured verdict."
+                : "Run it \u2014 the wrapper sizes the launch on the "
+                  + "machine it lands on. Add --np / --omp / --time to say "
+                  + "otherwise."));
+        block.appendChild(el("pre", { class: "ts-cmd" },
+            // The bundle is NAMED, from the projects root, so the line
+            // works from wherever the user is standing
+            // (job-contracts.md 2.5b).
+            "molbuilder jobset prep run " + name + from + _bundleArg() + _targetArg() + "\n"
+            + "molbuilder jobset launch run " + name + _bundleArg()));
+        host.appendChild(block);
     });
 
     card.hidden = false;
@@ -1286,6 +1318,76 @@ function proposedFromHandover(over, shape, varies, bench) {
     };
     if (kind !== "optimization") out.calculation = kind;
     return JSON.stringify(out, null, 2) + "\n";
+}
+
+/* ---------- which machine this is prepared for ---------- */
+/* The SAME component and the same rule as the shape chooser below: a
+ * choice with no default when several answers are possible.  It is the
+ * user's because only they know it -- `preparing-for-another-machine.md`
+ * § 4 -- and the CLI refuses without it, so the tab asks rather than
+ * inventing a second rule. */
+
+let _machine = "";          // the chosen record's name, "" until chosen
+let _machines = [];         // what /api/task-setup/machines answered
+
+function setMachine(name) {
+    _machine = name;
+    for (const b of document.querySelectorAll("#ts-machine-choice .opt")) {
+        b.setAttribute("aria-pressed",
+                       b.getAttribute("data-machine") === name ? "true" : "false");
+    }
+    const needs = $("ts-machine-needs");
+    if (needs) needs.hidden = !!name;
+    const chosen = _machines.find((m) => m.name === name);
+    const st = $("ts-machine-state");
+    if (!st) return;
+    if (!chosen) { st.hidden = true; return; }
+    /* An unreadable record is shown as a refusal rather than hidden: the
+     * user picked it, so silence would leave them waiting for something
+     * that cannot happen. */
+    st.hidden = false;
+    st.setAttribute("data-state", chosen.readable ? "loaded" : "refuse");
+    const title = $("ts-machine-state-title");
+    const body = $("ts-machine-state-body");
+    if (title) title.textContent = chosen.readable
+        ? "Prepared for " + chosen.name
+        : "Cannot prepare for " + chosen.name;
+    if (body) body.textContent = chosen.readable
+        ? chosen.summary + (chosen.detected_at
+            ? "\nmeasured " + chosen.detected_at : "")
+        : chosen.summary;
+}
+
+async function loadMachines() {
+    const card = $("ts-machine-card");
+    if (!card) return;
+    let data = null;
+    try {
+        data = await fetch("/api/task-setup/machines").then((r) => r.json());
+    } catch (e) { data = null; }
+    if (!data || !data.ok) { card.hidden = true; return; }
+    _machines = data.machines || [];
+    const host = $("ts-machine-choice");
+    if (!host) return;
+    host.textContent = "";
+    for (const m of _machines) {
+        host.appendChild(el("button", {
+            type: "button", class: "opt", "data-machine": m.name,
+            "aria-pressed": "false",
+        }, el("b", {}, m.name), el("span", {}, m.summary)));
+    }
+    for (const b of host.querySelectorAll(".opt")) {
+        b.addEventListener("click",
+            () => setMachine(b.getAttribute("data-machine") || ""));
+    }
+    /* One machine is not a question.  Choosing it silently is the same
+     * rule the CLI applies: there is no ambiguity, so nothing is asked. */
+    card.hidden = false;
+    if (!data.choice_required && _machines.length === 1) {
+        setMachine(_machines[0].name);
+    } else {
+        setMachine("");
+    }
 }
 
 function setShape(shape) {
@@ -1543,6 +1645,9 @@ function start(projects) {
         b.addEventListener("click",
             () => setShape(b.getAttribute("data-shape") || ""));
     }
+    // The machine options are built from the server's records, so the
+    // buttons (and their listeners) are wired inside loadMachines.
+    loadMachines();
     const addSetting = () => {
         const sel = $("ts-add-setting");
         if (!sel || !sel.value) return;

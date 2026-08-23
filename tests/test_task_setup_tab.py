@@ -1798,3 +1798,158 @@ def test_the_saves_preflight_findings_reach_the_person():
     body_rule = css.split(".ts-state-body", 1)[1].split("}", 1)[0]
     assert "pre-line" in body_rule, (
         "gate 3's multi-line refusal renders as one run-on line")
+
+
+# --------------------------------------------------------------------- #
+#  Which machine this is prepared FOR                                    #
+# --------------------------------------------------------------------- #
+
+
+class TestTheMachineChoiceIsAskedNotGuessed:
+    """`preparing-for-another-machine.md` § 4: the choice is the user's
+    whenever more than one machine could be meant.
+
+    The tab does not carry its own rule for this -- the CLI refuses without
+    a choice, and the tab asks the same question from the same records, so
+    the two cannot come to different conclusions about what is ambiguous.
+    """
+
+    def test_the_card_reuses_the_shape_choosers_component(self, web_client):
+        """No new panel and no new CSS: `.ts-choice`/`.opt` already exists
+        for exactly this shape of question -- a choice with no default --
+        and the stylesheet already carries its pressed/hover states.
+        Inventing a second chooser would be two components for one idea."""
+        body = web_client.get("/task-setup").data.decode()
+        assert 'id="ts-machine-card"' in body
+        assert 'id="ts-machine-choice"' in body
+        # the component is the shared one
+        m = re.search(r'id="ts-machine-choice"[^>]*class="[^"]*"'
+                      r'|class="ts-choice" id="ts-machine-choice"', body)
+        assert m, "the machine chooser is not the shared .ts-choice component"
+        # and it says the choice is required, in the card the design uses
+        assert 'id="ts-machine-needs"' in body
+
+    def test_no_bespoke_css_was_added_for_it(self):
+        """Every class the card uses already existed."""
+        css = (ROOT / "molbuilder/web/static/task-setup/style.css").read_text()
+        body = web_client_css = None  # noqa: F841 - readability
+        for cls in ("ts-choice", "ts-needs", "ts-state", "ts-state-title",
+                    "ts-state-body"):
+            assert f".{cls}" in css, (
+                f".{cls} is used by the machine card but is not in the "
+                f"module's stylesheet -- it must not be invented inline")
+        assert ".ts-machine-" not in css, (
+            "a bespoke class was added for the machine card; the shared "
+            "components already cover it")
+        # The one stylesheet change this card required is a CORRECTNESS fix
+        # to a shared component, not a new one: `.ts-state` sets
+        # `display: flex`, which ties with the browser's `[hidden]` rule and
+        # wins on source order, so anything hidden by JS stayed on screen.
+        # The folder state is never hidden, so the gap had never shown.
+        assert ".ts-state[hidden]" in css, (
+            "`.ts-state` can be hidden by JS now, so it needs the "
+            "[hidden]-precedence guard the other shared components carry")
+
+    def test_the_route_lists_the_records_and_says_when_a_choice_is_required(
+            self, web_client, tmp_path, monkeypatch):
+        """`choice_required` mirrors the CLI's C1 rule: any NAMED record
+        makes 'this machine' ambiguous."""
+        import json as _json
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        cfg = tmp_path / "home" / ".config" / "molbuilder"
+        (cfg / "environments").mkdir(parents=True)
+        rec = {"schema": "molbuilder/environment@2", "scheduler": "slurm",
+               "domains": [], "topology": {}, "site": {}, "source": {}}
+        (cfg / "environment.json").write_text(
+            _json.dumps({**rec, "scheduler": "workstation"}))
+
+        r = web_client.get("/api/task-setup/machines").get_json()
+        assert r["ok"] and r["choice_required"] is False, r
+        assert [m["name"] for m in r["machines"]] == ["(this machine)"]
+
+        (cfg / "environments" / "sol.json").write_text(_json.dumps(rec))
+        r = web_client.get("/api/task-setup/machines").get_json()
+        assert r["choice_required"] is True, r
+        assert {m["name"] for m in r["machines"]} == {"sol", "(this machine)"}
+        assert all(m["readable"] for m in r["machines"])
+
+    def test_an_unreadable_record_is_listed_and_marked(
+            self, web_client, tmp_path, monkeypatch):
+        """Shown rather than hidden: a record the user wrote and molbuilder
+        cannot read is a thing to fix, and hiding it leaves them waiting."""
+        import json as _json
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        cfg = tmp_path / "home" / ".config" / "molbuilder"
+        (cfg / "environments").mkdir(parents=True)
+        (cfg / "environments" / "sol.json").write_text('{"schema": "nope@9"}')
+        r = web_client.get("/api/task-setup/machines").get_json()
+        sol = next(m for m in r["machines"] if m["name"] == "sol")
+        assert sol["readable"] is False
+        assert "probe --write --name sol" in sol["summary"]
+
+    def test_the_taught_command_carries_the_chosen_target(self):
+        """A remote choice reaches the command the user copies -- and
+        `launch` does not take it, because launching happens ON the
+        machine."""
+        src = VIEWER.read_text()
+        assert "_targetArg()" in src
+        # bench is per-STAGE now (§ 11), so both commands read `name`.
+        assert 'prep bench " + name + _bundleArg() + _targetArg()' in src
+        assert 'prep run " + name + from + _bundleArg() + _targetArg()' in src
+        assert "_targetArg()" not in src.split("jobset launch")[1][:80], (
+            "launch must not carry --target -- launching happens ON the "
+            "machine, so there is nothing to target")
+
+
+class TestEveryStageOffersBothThingsYouCanDoWithIt:
+    """`task-setup.md` § 11: a stage is either something to MEASURE or
+    something to RUN, and the page hands over the command for each rather
+    than choosing between them."""
+
+    def test_bench_is_offered_per_stage_not_only_for_the_first(self):
+        """The card offered `prep bench` for `enabled[0]` alone -- a guess
+        dressed as an answer.  The bench axes are declared once for the
+        calculation, so every enabled stage can be measured; which one is
+        worth measuring is a judgement the page states as a hint."""
+        src = VIEWER.read_text()
+        assert "enabled[0].st.name" not in src, (
+            "the bench command is still hardwired to the first stage")
+        # both commands are built inside the per-stage loop, from `name`
+        assert 'prep bench " + name' in src
+        assert 'prep run " + name' in src
+
+    def test_the_order_that_matters_is_shown(self):
+        """`summarize` writes run-config.toml and `prep run` APPLIES it, so
+        skipping the middle step does not fail -- it quietly prepares a run
+        with no measured verdict behind it.  The three commands appear in
+        order, in one block."""
+        src = VIEWER.read_text()
+        i_prep = src.index("prep bench \" + name")
+        i_launch = src.index("launch bench \" + name")
+        i_summ = src.index("summarize bench \" + name")
+        assert i_prep < i_launch < i_summ, "the bench order is not shown in order"
+
+    def test_help_uses_the_pages_own_hint_component(self):
+        """Not a new affordance and not another module's stylesheet:
+        `form-schema.css` (which carries `.schema-help`) is not loaded on
+        this page, and importing a parameter-form stylesheet to get a
+        details widget would be the wrong wheel.  `.hint` is what this
+        page already explains things with."""
+        src = VIEWER.read_text()
+        assert src.count('el("p", { class: "hint" }') >= 2, (
+            "the per-stage blocks do not explain themselves with the "
+            "page's own hint component")
+        assert "Measure it" in src and "Run it" in src
+        head = (ROOT / "molbuilder/web/templates/task_setup.html").read_text()
+        assert "form-schema.css" not in head, (
+            "the parameter form's stylesheet was pulled in for a hint")
+
+    def test_the_hint_says_what_overrides_the_verdict(self):
+        """A user who measured and then wants something else needs to know
+        the flags win -- otherwise the only visible path is to edit
+        run-config.toml by hand."""
+        src = VIEWER.read_text()
+        assert "--np / --omp / --time" in src
+        assert "run-config.toml" in src

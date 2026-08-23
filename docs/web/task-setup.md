@@ -432,5 +432,44 @@ has not been saved says so.
   read from the folder — how many attempts exist, whether the last converged —
   because you cannot decide what `tight` should be without seeing how `coarse`
   went. That is the page's reason for existing, not a dashboard.
-- **It does not name a machine.** Every value it writes means the same thing
-  wherever the folder is copied ([`template.md § 7`](?doc=engines/template.md)).
+- **It does not name a machine _in what it writes_.** Every value it writes
+  means the same thing wherever the folder is copied
+  ([`template.md § 7`](?doc=engines/template.md)).
+  *(Narrowed 2026-08-22. The page now asks which machine a calculation will
+  be prepared FOR and puts `--target` in the command it teaches — because
+  `prep` needs the target's measurements and refuses to guess between
+  several. That choice shapes a printed command; it never reaches
+  `task.json` or the template, so the written description still names no
+  machine. See [`preparing-for-another-machine.md
+  § 5`](?doc=execution/preparing-for-another-machine.md).)*
+
+---
+
+## 11. What to prepare next — the card that hands you the command
+
+The page does not run anything (§ 10). What it can do is hand you the exact
+command, with everything it knows already filled in: the bundle from the
+projects root, the target machine you chose, and the `--from` a `continue`
+stage needs.
+
+**One block per enabled stage, and both things you can do with it.** A
+stage is either something to *measure* or something to *run*, and which
+one is a decision only you can make:
+
+| | what it does | when |
+|---|---|---|
+| **benchmark this stage** | `prep bench <stage>` → `launch bench` → `summarize bench` | you do not yet know what allocation this stage wants. The verdict is written to `run-config.toml`, which the run then applies |
+| **prepare the run** | `prep run <stage>` → `launch run` | you know what it wants — either from a benchmark, or because you are telling it with flags |
+
+**Any stage may be benchmarked, not only the first.** The card offered
+`prep bench` for the first enabled stage alone until 2026-08-22, which was
+a guess dressed as an answer: the bench axes are declared once for the
+calculation (§ 6.3), so every enabled stage can be measured. Which one is
+worth measuring is a judgement — usually the cheapest rung that still has
+the expensive stage's shape — and the page states that as a hint rather
+than choosing.
+
+**The order is shown because it is load-bearing.** `summarize bench` writes
+`run-config.toml`, and `prep run` *applies* it to any allocation field you
+did not state. Skipping the middle step does not fail; it silently prepares
+a run with no measured verdict behind it.

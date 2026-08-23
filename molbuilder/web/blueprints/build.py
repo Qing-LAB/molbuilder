@@ -1528,6 +1528,62 @@ def api_task_setup_template_values():
     return jsonify({"ok": True, "name": found.name, "values": values})
 
 
+@bp.route("/api/task-setup/machines", methods=["GET"])
+def api_task_setup_machines():
+    """Which machines a calculation could be prepared FOR.
+
+    The tab does not decide this and does not have its own rule for it:
+    `preparing-for-another-machine.md` § 4 says the choice is the user's
+    whenever more than one machine could be meant, and this serves the same
+    list the CLI refusal names.
+
+    Each entry is a machine record written by `jobset probe --write --name
+    NAME` on the machine it describes -- MEASUREMENTS (scheduler, cores,
+    reachable domains), which is why they can be trusted from here at all:
+    the numbers were taken there, not guessed from this server.
+
+    ``this_machine`` is always a candidate and is listed with the others,
+    because "prepare for the box I am on" is a choice like any other and
+    omitting it would make the common case look unavailable.
+    """
+    from molbuilder.environment import (machine_scope_path, named_environments,
+                                        read_environment)
+
+    def _describe(env, name, kind, path):
+        if env is None:
+            return {"name": name, "kind": kind, "path": str(path),
+                    "readable": False,
+                    "summary": "the record cannot be read -- re-write it with "
+                               "`jobset probe --write --name %s` on that "
+                               "machine" % name}
+        cores = getattr(env.topology, "cores_per_socket", None)
+        sockets = getattr(env.topology, "sockets", None)
+        total = (cores * sockets) if (cores and sockets) else None
+        bits = [env.scheduler or "unknown scheduler"]
+        if total:
+            bits.append(f"{total} cores")
+        if getattr(env.topology, "gpus_per_node", None):
+            bits.append(f"{env.topology.gpus_per_node}× "
+                        f"{env.topology.gpu_type or 'GPU'}")
+        if env.domains:
+            bits.append(f"{len(env.domains)} domain(s)")
+        return {"name": name, "kind": kind, "path": str(path),
+                "readable": True, "summary": " · ".join(bits),
+                "detected_at": env.detected_at or ""}
+
+    out = []
+    for name, path in sorted(named_environments().items()):
+        out.append(_describe(read_environment(path), name, "target", path))
+    here = machine_scope_path()
+    out.append(_describe(read_environment(here), "(this machine)",
+                         "local", here))
+    # A choice is REQUIRED exactly when the CLI would refuse without one
+    # (§ 4, C1): any named record makes "this machine" ambiguous.
+    named = [m for m in out if m["kind"] == "target"]
+    return jsonify({"ok": True, "machines": out,
+                    "choice_required": bool(named)})
+
+
 @bp.route("/api/task-setup/presets", methods=["GET"])
 def api_task_setup_presets():
     """The shipped tier presets, for filling a stage's row.

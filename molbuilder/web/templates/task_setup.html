@@ -93,6 +93,28 @@
           written</p>
       </section>
 
+      <!-- WHICH MACHINE.  Same component and same rationale as the shape
+           card above: a choice with no default, asked rather than guessed.
+           The options are the machine records `jobset probe --write --name`
+           wrote (preparing-for-another-machine.md 4). -->
+      <section class="card" id="ts-machine-card" hidden>
+        <h2>Which machine is this for</h2>
+        <p class="hint">A deck carries the machine's numbers — ranks, memory,
+          whether there is a queue — so preparing it needs to know which
+          machine. <strong>There is no default when several could be
+          meant</strong>: being asked costs one click, being given the wrong
+          one costs a queue wait and an allocation.</p>
+        <div class="ts-choice" id="ts-machine-choice"></div>
+        <p class="ts-needs" id="ts-machine-needs">Needed before this can be
+          prepared</p>
+        <div class="ts-state" id="ts-machine-state" hidden>
+          <div>
+            <div class="ts-state-title" id="ts-machine-state-title"></div>
+            <p class="ts-state-body" id="ts-machine-state-body"></p>
+          </div>
+        </div>
+      </section>
+
       <section class="card" id="ts-stages-card" hidden>
         <h2>Stages</h2>
         <p class="hint">Rows are stages, columns are the parameters that vary.

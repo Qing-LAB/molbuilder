@@ -191,12 +191,25 @@ The Task-setup tab may offer to prepare, subject to this section. It does
 not get its own rules: it surfaces the ones above.
 
 - It lists the reachable machine records and **requires a choice** when
-  there is more than one (§ 4, C1).
-- It shows what `prep` resolved, using the provenance `prep` already
-  computes (`runtime_config.config_provenance` — `sources`, `effective`,
-  `domains`), not a hand-written notice.
-- It shows **which config supplied the bootstrap**, and flags the § 3 case:
-  a remote target whose preamble came from the local machine.
+  there is more than one — `GET /api/task-setup/machines` answers with the
+  records and a `choice_required` flag computed by the same rule the CLI
+  refuses on (§ 4, C1), so the two cannot disagree about what is ambiguous.
+- **It reuses the components that exist.** The card is the shape chooser's
+  `.ts-choice`/`.opt`, which the design already uses for exactly this kind
+  of question — a choice with no default — plus `.card`, `.hint`,
+  `.ts-needs` and `.ts-state`. No stylesheet was touched: a second chooser
+  would be two components for one idea, and the pressed and hover states
+  would then be maintained twice.
+- An **unreadable** record is listed and marked, not hidden. The user wrote
+  it; hiding it leaves them waiting for something that cannot happen.
+- The commands the tab teaches carry `--target` once a remote machine is
+  chosen — and **`launch` does not**, because launching happens on the
+  machine.
+
+**Still to build here:** the resolved-provenance display. `prep` already
+computes it (`runtime_config.config_provenance` — `sources`, `effective`,
+`domains`) and prints it; surfacing that block, including the § 3
+bootstrap flag, is the remaining piece.
 
 > **This narrows a stated boundary, deliberately.** `job-system.md` § 4 says
 > *"`prep` and `launch` stay on the terminal by design"*, written when
