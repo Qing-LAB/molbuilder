@@ -2121,9 +2121,14 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     from datetime import datetime, timezone
     from pathlib import Path
 
-    from ..scheduler import (Domain, FILENAME, _run, machine_scope_path,
-                               read_environment, resolve_environment,
-                               write_environment)
+    from ..scheduler import (Domain, FILENAME, machine_scope_path,
+                             read_environment, resolve_environment,
+                             write_environment)
+    # `_run` is PRIVATE to the record module and the package does not
+    # re-export it -- a private name comes from the module that defines it,
+    # or it is not private.  (The blanket rename of 2026-08-23 pointed this
+    # at the package, where it correctly did not exist.)
+    from ..scheduler.record import _run
     from ..scheduler.probe import (derive_domains, parse_allowed_qos,
                                     parse_qos, parse_sinfo)
 

@@ -40,6 +40,7 @@ from .record import (  # noqa: F401
     UnknownTarget, AmbiguousTarget,
     known_machines, choice_required,
     domain_admits, domain_ceiling_s, domain_serves_gpu,
+    topology_field_types,
 )
 
 __all__ = [
@@ -53,4 +54,8 @@ __all__ = [
     "UnknownTarget", "AmbiguousTarget",
     "known_machines", "choice_required",
     "domain_admits", "domain_ceiling_s", "domain_serves_gpu",
+    # M-1's typed `--set` door.  It was public and USED but absent from
+    # the old module's __all__ -- packaging surfaced the gap, because a
+    # package re-exports a list where a module exported a namespace.
+    "topology_field_types",
 ]

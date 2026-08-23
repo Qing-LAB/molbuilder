@@ -433,3 +433,56 @@ def test_layer_tables_cover_all_top_level_names():
         f"in any layer table: {sorted(unclassified)}.  Add them to "
         f"_L1_MODULES / _L2_MODULES / _L3_MODULES in this file."
     )
+
+
+def test_every_name_imported_from_the_scheduler_package_resolves():
+    """A package re-exports a LIST where a module exported a namespace.
+
+    Moving `environment.py` into `molbuilder/scheduler/` on 2026-08-23 turned
+    "whatever the module happens to define" into "whatever `__init__` lists",
+    and three imports broke that the move itself could not see:
+
+      * `_run` -- PRIVATE, and the package rightly does not re-export it, so
+        it must come from the module that defines it;
+      * `topology_field_types` -- public and used, but missing from the old
+        module's ``__all__``, which is what the new list was built from;
+      * (and the two the interpreter caught immediately, which needed no
+        guard because nothing ran at all.)
+
+    This checks the surface against its actual callers rather than against a
+    list someone maintained by hand.
+    """
+    import ast
+    import molbuilder.scheduler as pkg
+
+    wanted: dict[str, str] = {}
+    for p in list(Path("molbuilder").rglob("*.py")) + list(Path("tests").rglob("*.py")):
+        try:
+            tree = ast.parse(p.read_text(encoding="utf-8"))
+        except SyntaxError:                       # pragma: no cover
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or not node.module:
+                continue
+            if node.module in ("scheduler", "molbuilder.scheduler"):
+                for alias in node.names:
+                    wanted.setdefault(alias.name, str(p))
+
+    missing = {n: where for n, where in wanted.items() if not hasattr(pkg, n)}
+    assert not missing, (
+        "these names are imported FROM the scheduler package but it does not "
+        "export them: " + ", ".join(f"{n} ({where})" for n, where in
+                                    sorted(missing.items())) +
+        ".  A public name belongs in the package's surface; a private one "
+        "belongs to the module that defines it, imported from there.")
+
+
+def test_the_scheduler_package_exports_no_private_names():
+    """The other half: `__all__` must not launder a private name into the
+    public surface just because a caller wanted it."""
+    import molbuilder.scheduler as pkg
+    private = [n for n in pkg.__all__ if n.startswith("_")]
+    assert not private, (
+        f"the scheduler package re-exports private names {private} -- either "
+        f"they are public and should lose the underscore, or the caller "
+        f"should import them from the module that defines them.")
