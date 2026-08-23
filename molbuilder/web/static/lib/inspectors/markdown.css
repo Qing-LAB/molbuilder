@@ -20,8 +20,8 @@
 .md-toolbar {
     display:           flex;
     align-items:       center;
-    gap:               0.6rem;
-    padding:           0.5rem 0.75rem;
+    gap: 0.6rem;
+    padding: 0.5rem 0.75rem;
     border-bottom:     1px solid var(--ps-border, #2a2a2a);
     background:        var(--ps-bg-tile, #1c1c1c);
     flex-shrink:       0;
@@ -29,7 +29,7 @@
 
 .md-toolbar-title {
     font-weight:       600;
-    font-size:         0.85rem;
+    font-size: 0.85rem;
     color:             var(--ps-fg, #dddddd);
 }
 
@@ -37,7 +37,7 @@
 
 .md-dirty-flag {
     color:             var(--ps-ck-restore-fg, #e0a868);
-    font-size:         0.8rem;
+    font-size: 0.8rem;
     font-style:        italic;
 }
 
@@ -45,9 +45,9 @@
     background:        var(--ps-accent, #4f7ab8);
     color:             var(--ps-selected-fg, #fff);
     border:            none;
-    padding:           0.3rem 0.75rem;
-    border-radius:     3px;
-    font-size:         0.8rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 3px;
+    font-size: 0.8rem;
     cursor:            pointer;
 }
 .md-save-btn:disabled {
@@ -83,7 +83,7 @@
  * size + give it a height so it doesn't collapse to 0. */
 .md-edit-pane .CodeMirror {
     height:            100%;
-    font-size:         0.85rem;
+    font-size: 0.85rem;
     line-height:       1.4;
     background:        var(--ps-bg, #181818);
     color:             var(--ps-fg, #dddddd);
@@ -92,7 +92,7 @@
 /* Rendered Markdown styling — minimal, readable, matches the dark
  * theme.  No exotic CSS; the same rules work for printed export. */
 .md-render-pane {
-    padding:           1rem 1.25rem;
+    padding: 1rem 1.25rem;
     line-height:       1.6;
 }
 
@@ -100,8 +100,8 @@
 .md-render-pane h2,
 .md-render-pane h3,
 .md-render-pane h4 {
-    margin-top:        1.4em;
-    margin-bottom:     0.5em;
+    margin-top: 1.4em;
+    margin-bottom: 0.5em;
     color:             var(--ps-fg, #dddddd);
 }
 .md-render-pane h1 { font-size: 1.5rem; border-bottom: 1px solid var(--ps-border, #2a2a2a); padding-bottom: 0.3rem; }
@@ -113,33 +113,33 @@
 .md-render-pane code {
     background:        var(--ps-bg-tile, #1c1c1c);
     color:             var(--ps-ck-dirty-fg, #e0c898);
-    padding:           0.1em 0.3em;
-    border-radius:     3px;
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
     font-family:       var(--font-mono);
-    font-size:         0.85em;
+    font-size: 0.85em;
 }
 .md-render-pane pre {
     background:        var(--ps-bg-tile, #1c1c1c);
     border:            1px solid var(--ps-border, #2a2a2a);
-    border-radius:     4px;
-    padding:           0.75rem;
+    border-radius: var(--radius-sm);
+    padding: 0.75rem;
     overflow-x:        auto;
 }
 .md-render-pane pre code {
     background:        transparent;
-    padding:           0;
+    padding: 0;
     color:             var(--ps-fg, #dddddd);
 }
 
 .md-render-pane table {
     border-collapse:   collapse;
-    margin:            1em 0;
+    margin: 1em 0;
     width:             100%;
 }
 .md-render-pane th,
 .md-render-pane td {
     border:            1px solid var(--ps-border, #2a2a2a);
-    padding:           0.4rem 0.6rem;
+    padding: 0.4rem 0.6rem;
     text-align:        left;
 }
 .md-render-pane th {
@@ -148,8 +148,8 @@
 
 .md-render-pane blockquote {
     border-left:       4px solid var(--ps-accent, #4f7ab8);
-    margin:            0.8em 0;
-    padding-left:      0.8em;
+    margin: 0.8em 0;
+    padding-left: 0.8em;
     color:             var(--ps-fg-muted, #999999);
 }
 
@@ -159,23 +159,23 @@
 
 .md-render-pane ul,
 .md-render-pane ol {
-    margin:            0.6em 0;
-    padding-left:      1.6em;
+    margin: 0.6em 0;
+    padding-left: 1.6em;
 }
 .md-render-pane li { margin: 0.25em 0; }
 
 .md-render-pane hr {
     border:            none;
     border-top:        1px solid var(--ps-border, #2a2a2a);
-    margin:            1.5em 0;
+    margin: 1.5em 0;
 }
 
 .md-status {
-    padding:           0.4rem 0.75rem;
+    padding: 0.4rem 0.75rem;
     border-top:        1px solid var(--ps-border, #2a2a2a);
     background:        var(--ps-bg-tile, #1c1c1c);
     color:             var(--ps-fg-muted, #999999);
-    font-size:         0.75rem;
+    font-size: 0.75rem;
     flex-shrink:       0;
 }
 

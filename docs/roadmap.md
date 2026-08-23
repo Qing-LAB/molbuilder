@@ -1110,13 +1110,38 @@ What remains:
   The shared writer is also LOUD about a missing slot, which one copy was and
   the others were not — that copy exists because a silent return once made a
   MolView mount failure completely invisible.
-- **7.4c — 991 anonymous values against 1846 named (65% named).** The
-  distribution is the finding: the newest sheet is at 99.2% and the *shared*
-  layers everything inherits from are the worst — `form-components` 45.3%,
-  `page-shell` 69.8%. Module sheets that own their palettes deliberately
-  (`molview`, `docs-render`, `vibrationview`, `spectrumchart`) state their
-  reason and are **not** in scope. Related: `ui-contract.md` § 4 already
-  requires the `--space-*` / `--text-*` / `--radius*` scales.
+### 7.4c · the anonymous values — **diagnosis corrected, and it needs a ruling**
+
+**Partly done, and my first framing of it was wrong.** I reported it as sheets
+ignoring a vocabulary. Measured properly (2026-08-23): of the literals, only
+**63 were exact scale steps** — those are now named, and the tree moved 65% →
+**70.5% named** with no pixel changed, because an exact-value substitution
+cannot change rendering.
+
+The other ~830 are not workarounds *around* the scale; they are values the
+scale **does not contain**. Spacing goes 4 → 8 → 14 → 20 → 28, and the sheets
+need 6, 10 and 12 constantly; type goes 0.78 → 0.875 → 0.95rem, and the sheets
+use 0.8, 0.82 and 0.92. **The scale is too coarse, and the literals are what
+that costs.**
+
+Split by whether the value is a decision: **498 repeat three or more times in
+one sheet** (a decision, worth a name) against **330 one-offs** (composition,
+which `ui-contract.md` § 7 already permits inline).
+
+Two ways forward, and they differ in whether anything moves on screen:
+
+- **Extend the scale** to the steps real components need. Nothing moves; the
+  token file gains ~6 spacing/type steps and becomes correspondingly mushier —
+  a scale with steps 2px apart is arguably not a scale.
+- **Round to a coherent scale** (4 · 8 · 12 · 16 · 20 · 24 · 28). The
+  system gets sharper and **things move a pixel or two everywhere**. The
+  layout guard would catch breakage but not "it looks slightly different".
+
+I did not pick. The second is a visual change across every page and is the
+user's call. *(Worth recording: `molview.css` states in its own header that it
+"never says `24px` where a named metric already exists" — and carries 127
+repeated literals. Its rule is right; the file does not keep it.)*
+
 - ~~**7.4d — classes written by JS that no stylesheet defines**~~ **Done
   2026-08-23.** Of the 21: ten were the modals (7.4a); six were hooks made
   redundant by the component and deleted; four were real surfaces and got

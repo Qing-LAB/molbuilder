@@ -68,7 +68,7 @@ body {
 /* ---- Page header (banner above the tabs nav) -------------------- */
 
 header {
-    padding: 14px 22px 12px;
+    padding: var(--space-md) 22px 12px;
     border-bottom: 1px solid var(--border-strong);
     background: linear-gradient(180deg,
                                 var(--header-gradient-top) 0%,
@@ -83,7 +83,7 @@ header {
 }
 header h1 {
     margin: 0;
-    font-size: 1.5rem;
+    font-size: var(--text-xl);
     font-weight: 600;
     letter-spacing: -0.01em;
     color: var(--text-primary);
@@ -283,7 +283,7 @@ body.is-projects-sidebar-collapsed[data-sidebars] .sidebar-rail {
     background: var(--bg-card);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius);
-    padding: 14px 18px 18px;
+    padding: var(--space-md) 18px 18px;
     box-shadow: var(--shadow-card);
 }
 
@@ -299,7 +299,7 @@ textarea {
     background: var(--bg-input);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
-    padding: 4px 8px;
+    padding: var(--space-xs) var(--space-sm);
     transition: border-color 120ms, background 120ms, box-shadow 120ms;
 }
 input:hover:not([type="checkbox"]):not([type="range"]),
@@ -324,7 +324,7 @@ input[type="range"] {
     cursor: pointer;
 }
 input[type="file"] {
-    padding: 4px 6px;
+    padding: var(--space-xs) 6px;
     cursor: pointer;
     color: var(--text-secondary);
 }
@@ -337,7 +337,7 @@ button {
     background: var(--bg-input);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
-    padding: 4px 12px;
+    padding: var(--space-xs) 12px;
     transition: background 120ms, border-color 120ms, color 120ms;
 }
 button:hover {
@@ -356,7 +356,7 @@ button:disabled {
 .status {
     color: var(--text-secondary);
     font-size: 0.88rem;
-    margin-left: 4px;
+    margin-left: var(--space-xs);
     /* Multi-line error messages render with their newlines preserved. */
     white-space: pre-line;
     line-height: 1.4;

@@ -225,7 +225,7 @@ so there is no
 .modes-table th.sort-desc::after {
     content: " ▲";
     font-size: 0.7em;
-    margin-left: 4px;
+    margin-left: var(--space-xs);
     color: var(--text-secondary);
 }
 .modes-table th.sort-desc::after { content: " ▼"; }
