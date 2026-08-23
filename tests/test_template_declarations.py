@@ -259,7 +259,7 @@ def test_the_kgrid_displacement_is_its_own_item_and_a_float3():
     non-diagonal ``kscell``, but that serves supercells commensurate with a
     sub-lattice and nothing in molbuilder builds one -- recorded as *not
     offered* rather than half-offered
-    (`docs/audit-2026-08-14-template-execution-review.md` § 53.5).
+    (`docs/archive/2026-08-14-template-execution-review.md` § 53.5).
 
     ``float3`` is the type that leaves: the components are floats, they are
     independent, and no other member of § 5's vocabulary can carry them.

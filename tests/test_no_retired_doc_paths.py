@@ -2,7 +2,7 @@
 
 The 2026-07 docs migration moved every doc into the domain tree under
 ``docs/`` and archived the legacy layout to ``docs/archive/old_docs/``.
-The closeout audit (docs/audit-2026-07-28-document-migration.md, P0)
+The closeout audit (docs/archive/2026-07-28-document-migration.md, P0)
 found ~319 references in active code/tests still pointing at retired
 locations; they were repointed 2026-07-29.  This test keeps it that way:
 

@@ -365,7 +365,7 @@ def test_savehs_value_lands_in_fdf_echo(tmp_path):
 #  Added 2026-08-14 with the parameter itself.  molbuilder wrote a       #
 #  hard-coded 0.0 there for the life of the project, so the classic      #
 #  Monkhorst-Pack shift was unreachable                                  #
-#  (docs/audit-2026-08-14-template-execution-review.md § 53, § 54).      #
+#  (docs/archive/2026-08-14-template-execution-review.md § 53, § 54).      #
 #  The same silent-failure shape as the 2026-06-23 keyword incident:     #
 #  a number in the deck that nothing proves the engine acts on.          #
 # --------------------------------------------------------------------- #

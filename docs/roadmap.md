@@ -28,10 +28,12 @@ never holds the plan itself (rule R3).
 
 ## The open workstreams at a glance
 
-Six streams of open work, in priority order. The first is the active
+Seven streams of open work, in priority order. The first is the active
 priority; the others proceed around it. (5 and 6 are consolidation streams
 added 2026-07-29 from the migration's deferred-work dig: science checks
-deferred with rationale, and named architecture seams.)
+deferred with rationale, and named architecture seams. **7 is the current
+front**, consolidated 2026-08-22 from two documents that had been holding
+open work against rule R3 — it carries its own progress table.)
 
 > ### Where the unified workflow stands — and what has NOT migrated yet
 > *(Stated 2026-08-19, user, so nobody confuses the two.)*
@@ -136,7 +138,7 @@ already delivered (2026-08-17: `get_routing` sources `domains`,
 
 The period between the immediate two and the next workstream carried its
 own load, all of it landed, reviewed (R×3,
-[`audit-2026-08-20-milestone-review.md`](?doc=audit-2026-08-20-milestone-review.md)
+[`archive/2026-08-20-milestone-review.md`](?doc=archive/2026-08-20-milestone-review.md)
 — every finding fixed with an explicit yes), and pinned:
 
 - **the grouped bench** (one scheduler job per sweep, the sequencer +
@@ -984,7 +986,185 @@ here so scheduling them is a roadmap edit, not an archaeology dig:
 
 ---
 
+## 7. The 2026-08-22 front — finish the remote-machine workflow, then the UI system
+
+Consolidated here on 2026-08-22 from two places that had been holding open
+work against rule R3: `audit-2026-08-21-fullstack-review.md`, which had
+declared itself "THE LIVE PLAN", and `web/audit-2026-08-05-tab-ui.md`, whose
+nineteen open findings had no schedule. **Both are now evidence documents.**
+The items are here; the evidence stays there, and each row points at it.
+
+Progress is tracked in this table. A row moves to *Closed work* only when its
+test-pin exists and passes.
+
+| # | item | status |
+|---|---|---|
+| 7.1a | `jobset --help` names `describe`, a verb that no longer exists | **open** |
+| 7.1b | no way to list machine records from the terminal | **open** |
+| 7.1c | carrying a machine record over is documented as one line | **open** |
+| 7.2 | the fetch-error message has five homes; one test is red | **open** |
+| 7.3 | `replace(struct, regions=…)` re-injects the old frozen set | **open** *(latent)* |
+| 7.4a | two modals have no CSS at all — the browser paints them light | **open** |
+| 7.4b | `setStatus` is hand-rolled in twelve files | **open** |
+| 7.4c | 991 values in the stylesheets are anonymous | **open** |
+| 7.4d | classes written by JS that no stylesheet defines | **open** |
+| 7.4e | nothing in the suite measures layout | **open** |
+| 7.4f | the MolView host overflows its card at ≤768px | **open** |
+| 7.5 | the residue three: O1, O4, O5 (carried over) | **open** |
+
+### 7.1 The remote-machine workflow, finished
+
+**Goal:** a user can probe a cluster, carry the record to their own machine,
+confirm it arrived, and prepare a calculation for it — without reading source.
+
+The capability shipped in the directory/verb round; what is missing is the
+last mile a person actually walks. Three gaps, found 2026-08-22 while
+verifying the mechanics in an isolated `HOME`:
+
+- **7.1a — the help text teaches a dead verb.** `jobset/_cli.py`'s group
+  docstring still says "``describe`` writes the portable folder". `describe`
+  became `init`; the CLI rejects what its own `--help` recommends. Two spots
+  (the module docstring and the group help, which is the one that prints).
+  *Test-pin:* every verb named in the group help resolves to a registered
+  command.
+- **7.1b — a record can be copied in but not confirmed.** The browser has
+  `GET /api/task-setup/machines`; the terminal has nothing, so "did my `scp`
+  land, and does it parse?" is answerable only by running `prep --target` and
+  reading the refusal. *Ships first:* nothing — `named_environments()` and
+  `read_environment()` already answer it. *Test-pin:* the listing names the
+  copied record, includes this machine, and marks an unreadable record as
+  unreadable rather than hiding it (the rule
+  `preparing-for-another-machine.md` § 5 already states for the browser).
+- **7.1c — the transfer step is one sentence.** § 1 step 2 reads "copying it
+  is the whole step", with no destination path, no command, and no way to
+  check. Verified mechanics to write up: `probe --write --name sol` writes
+  `~/.config/molbuilder/environments/sol.json` and prints the next command; a
+  hand-copied record is discovered by filename stem; `--set` is the door for a
+  cluster that cannot run molbuilder itself. *Test-pin:* the doc-claims test
+  covers the commands the how-to prints.
+
+### 7.2 One home for the fetch-error message
+
+**Goal:** a 5xx-with-HTML response reads as "the server returned non-JSON,
+check its log" on every surface, from one implementation.
+
+`_formatFetchError` now exists five times — `structure-optimization/viewer.js`,
+`lib/auto-detect.js`, `lib/results/bundle-handoff.js`, `lib/spectra/core.js`,
+and `lib/projects/api.js` (a lowercase variant inside `_fetchEnvelope`). Four
+predate 2026-08-22; the fifth was added that day while extracting a
+*triplicated* renderer — the same defect the extraction existed to remove.
+`test_format_fetch_error_js::test_user_visible_catches_route_through_formatter`
+is **red** meanwhile: it greps one viewer for a formatter that has moved.
+*Test-pin:* the migrated test asserts every user-visible status banner's error
+text comes from the one shared formatter.
+
+### 7.3 `replace(struct, regions=…)` re-injects the old frozen set
+
+**Goal:** rewriting a structure's regions through `dataclasses.replace` yields
+exactly the regions asked for.
+
+`frozen_atoms` is both a field and a constructor door onto the reserved label,
+so `replace()` reads the current frozen list back off the property and
+`__post_init__` stamps it into the caller's new `regions`. Measured:
+`replace(s, regions={"electrode_L": [1]})` returns
+`{"electrode_L": [1], "frozen_atoms": [0]}`. **Latent** — no production caller
+passes `regions=` today, which is why it is scheduled rather than urgent, and
+why it is written down rather than left for the next person to rediscover.
+*Test-pin:* the replace above returns the dict it was given.
+
+### 7.4 The UI system — the framework, and the parts that bypass it
+
+**Goal:** every value in the stylesheets has a name and a stated reason, and
+every widget that exists in the shared layers is used rather than re-made.
+
+Measured 2026-08-22 over 49 renders (7 pages × 7 widths, every visible element
+measured against its box, its parent and the viewport), transport excluded.
+Two findings were fixed the same day and are recorded under *Closed work*.
+What remains:
+
+- **7.4a — two modals have no CSS at all.** `.molbuilder-warning-modal` and
+  eight `save-dialog` classes have zero rules and zero inline styles, and no
+  `color-scheme` is declared anywhere, so the browser paints them light inside
+  a dark app. `.molbuilder-projects-dialog::backdrop` *is* styled — the three
+  dialog families do not agree with each other. Subsumes
+  `web/audit-2026-08-05-tab-ui.md` § C8.
+- **7.4b — `setStatus` is written twelve times.** The CSS side is a properly
+  owned shared component (`.status` + severities, one owner in page-shell);
+  the writer is hand-rolled per tab. The 2026-08-05 audit counted six (§ C5);
+  it has doubled since, which is the argument for scheduling it rather than
+  recording it again.
+- **7.4c — 991 anonymous values against 1846 named (65% named).** The
+  distribution is the finding: the newest sheet is at 99.2% and the *shared*
+  layers everything inherits from are the worst — `form-components` 45.3%,
+  `page-shell` 69.8%. Module sheets that own their palettes deliberately
+  (`molview`, `docs-render`, `vibrationview`, `spectrumchart`) state their
+  reason and are **not** in scope. Related: `ui-contract.md` § 4 already
+  requires the `--space-*` / `--text-*` / `--radius*` scales.
+- **7.4d — classes written by JS that no stylesheet defines** (21 found, of
+  which the modal cluster is 7.4a; `.error-card`, `.is-clean`,
+  `.is-view-only` are separate). The same defect `form-components.css`'s own
+  comment describes as "written by every renderer and styled by NONE".
+- **7.4e — nothing in the suite measures layout.** Every UI test asserts
+  presence or behaviour; none asserts that content fits its box. The audit
+  probe is the guard, with one correction already learned: children of a
+  **closed `<details>`** keep layout boxes sized to the collapsed summary, so
+  measuring them reports overflow no user can see (28 false findings before
+  the fix). *Test-pin: is* this item.
+- **7.4f — the MolView host overflows its card by 18px at ≤768px** on
+  structure-optimization. The only true overflow left after the 2026-08-22
+  fixes; CodeMirror's +50px is its own managed scroll and three +2px readings
+  are subpixel.
+
+### 7.5 The residue three *(carried from the 2026-08-21 review)*
+
+- **O1** — roughly eight comments cite `(A3…A8, 2026-08-12)` from an archived
+  plan while `architecture.md` § 7 now runs A1–A11 with different meanings.
+  Mechanical; the dates disambiguate for a careful reader, which is why it was
+  recorded rather than swept.
+- **O4** — the optimization deck's retry budget and the vibration relax
+  block's `continue` arm spell the same loop twice; an emitted helper both
+  compose ends it.
+- **O5** — C-jobset's stage-less residue branches, the duplicated read-API
+  comment, two `submit.py` residues, T2/T3 stale test-module docstrings, and
+  one ruling to record: `Issue.stage` is write-orphaned since its only stamper
+  retired with `validate_ladder`.
+
+---
+
 ## Closed work
+
+**2026-08-22 — the auto-detect surface got one home.** The "Analyze
+chemistry" card was hand-pasted into three templates with the same seven
+ids, and `_renderAutoDetectPanel` existed three times over five hand-rolled
+`POST /api/structure/analyze` call sites. Now `_analyze_chemistry_card.html`
+holds the markup and `lib/auto-detect.js` holds both halves — the panel
+renderer *and* the supersede protocol, which returns an envelope so each
+caller keeps its own policy in one line. The chip pass moved **inside**
+`renderPanel`, which makes `web/audit-2026-08-05-tab-ui.md` § A2 (Spectrum
+rendering a rationale and no chip) structurally unrepeatable rather than
+fixed per copy. Transport is the one recorded hold-out, for its own round.
+Closes that audit's §§ A2, C1, C2. Pinned by `test_auto_detect_module_js.py`
+(12 cases; the supersede races drive `fetch` by hand, because a race is not
+something an end-to-end test can schedule).
+
+**2026-08-22 — the Task-setup bench panel came back.** A card added days
+earlier reused `id="ts-machine-card"`, which the bench card already owned;
+`getElementById` answers with the first, so the renderer built every bench
+row into a card that stayed hidden. The picker is now `ts-target-*` (the
+CLI's own `--target` vocabulary). The card's own test had asserted
+`'id="ts-machine-card"' in body` — which a duplicate satisfies twice — so it
+now counts. Pinned by `test_page_ids_unique.py`, which rejects any id
+declared twice on any served page, and by `/task-setup` joining the browser
+boot list it had never been in.
+
+**2026-08-22 — two layouts stopped asserting sizes their content could not
+honour.** `.ts-facts` used `minmax(var(--ts-fact-min), 1fr)` — the only bare
+constant track floor in the tree — so a 380px conda path was clipped inside a
+149px column; `.ts-files` used `space-between` with prose right-aligned into
+227px, ragging its left edge into three-word lines. Both are now sized by
+what they hold. Measured: 34 of 175 overflow findings gone, `--ts-fact-min`
+deleted, and `main.ts-wrap` / `.ts-cols` went with them — they had been
+consequences of the same unbreakable content, not separate faults.
 
 Shipped items, newest first. Each landed with a decisions-log entry in
 [`design.md`](?doc=design.md) (cross-cutting) or its subsystem doc; reconstruct

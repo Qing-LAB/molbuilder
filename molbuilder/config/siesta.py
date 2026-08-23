@@ -133,7 +133,7 @@ def _validate_kgrid_displacement(value, cfg=None):
     single k-point moves that point off Gamma**, to the zone boundary.  For
     the 1x1x1 default -- a molecule in a box, which is what molbuilder ships
     -- that is simply the wrong point, and nothing downstream would say so.
-    See `docs/audit-2026-08-14-template-execution-review.md` § 54.2.
+    See `docs/archive/2026-08-14-template-execution-review.md` § 54.2.
 
     Not warned: 0.5 on an ODD mesh.  It is a legitimate (if unusual)
     sampling choice, not a mistake, and the ``help`` text already says which

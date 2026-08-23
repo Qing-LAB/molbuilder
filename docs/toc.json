@@ -30,18 +30,6 @@
           "path": "roadmap.md"
         },
         {
-          "path": "audit-2026-07-28-document-migration.md",
-          "label": "Document Migration Audit"
-        },
-        {
-          "path": "audit-2026-08-14-template-execution-review.md",
-          "label": "Template + Execution Review"
-        },
-        {
-          "path": "audit-2026-08-20-milestone-review.md",
-          "label": "Milestone Review (R×3)"
-        },
-        {
           "path": "audit-2026-08-21-fullstack-review.md",
           "label": "Full-stack Review (live plan)"
         }
@@ -338,6 +326,11 @@
           "subtitle": "Decisions log — archived 2026-07-28 (historical record)"
         },
         {
+          "path": "archive/2026-07-28-document-migration.md",
+          "label": "Documentation-migration audit",
+          "subtitle": "Documentation-migration audit"
+        },
+        {
           "path": "archive/2026-08-04-closed-tasks.md",
           "label": "Closed tasks — snapshot 2026-08-04",
           "subtitle": "Closed tasks — snapshot 2026-08-04"
@@ -356,6 +349,11 @@
           "path": "archive/2026-08-11-template-item-blocks.md",
           "label": "The template as an `.fdf` with item blocks — the retired design",
           "subtitle": "The template as an `.fdf` with item blocks — the retired design"
+        },
+        {
+          "path": "archive/2026-08-14-template-execution-review.md",
+          "label": "Full-text review — template, execution, and their backend",
+          "subtitle": "Full-text review — template, execution, and their backend"
         },
         {
           "path": "archive/2026-08-16-molview-corrections-plan.md",
@@ -426,6 +424,11 @@
           "path": "archive/2026-08-20-cell-plan.md",
           "label": "The unit cell, and how a user says what they want — a plan",
           "subtitle": "The unit cell, and how a user says what they want — a plan"
+        },
+        {
+          "path": "archive/2026-08-20-milestone-review.md",
+          "label": "Milestone review, 2026-08-20 — three passes over `b76d9883..ec34c2e6`",
+          "subtitle": "Milestone review, 2026-08-20 — three passes over `b76d9883..ec34c2e6`"
         },
         {
           "path": "archive/2026-08-20-molview-and-checkpoint-ui-plan.md",

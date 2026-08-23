@@ -1,7 +1,10 @@
 # Audit 2026-08-21 — jobset · engines · execution · the two tabs, full-text
 
-**Role:** review record — THE LIVE PLAN (consolidated 2026-08-21 evening,
-user: "archive finished items so we have a concise list").
+**Role:** audit report — **evidence, not a plan.** Held the open list until
+2026-08-22, when rule R3 was applied: open work lives in
+[`roadmap.md`](?doc=roadmap.md) and nowhere else. Its remaining items are
+roadmap **7.5**; the findings below stay here as the record of what was
+measured and why.
 **Domain:** jobset/execution, engine emission, validation, the
 structure-optimization and spectrum tabs, and the documentation set —
 transport excluded (its workflow is designed separately, user ruling).
@@ -11,7 +14,8 @@ archived verbatim in
 [`archive/2026-08-21-review-delivered.md`](?doc=archive/2026-08-21-review-delivered.md).
 Never act from the archive; this file is the only open list.
 **Rule:** nothing below is fixed without a yes per item — except
-same-day regressions of in-flight work, fixable on sight.
+same-day regressions of in-flight work, fixable on sight. *(Scheduling now
+happens in the roadmap; this rule still governs how an item is worked.)*
 
 ---
 
@@ -39,51 +43,10 @@ same-day regressions of in-flight work, fixable on sight.
 
 ---
 
-## OPEN — in priority order
+## OPEN — moved to the roadmap *(2026-08-22)*
 
-*(Re-consolidated 2026-08-22 after the directory/verb design round.
-Transport locks none of this.  Everything below is independent of
-transport unless its own line says otherwise.)*
-
-### O1 · orphan letter-citations to an archived plan *(small, mechanical)*
-Roughly eight code comments cite `(A3…A8, 2026-08-12)` from the
-2026-08-12 staged-runs plan, while `architecture.md` § 7 now runs A1–A11
-with different meanings — `prep.py:67`'s "(A8)" is error translation, the
-live A8 is "an object travels whole". The dates disambiguate for a
-careful reader, which is the only reason this is recorded rather than
-swept. The three that collided with letters created in the path round —
-two in `prep.py` / `plan.py`, one in `engines/siesta.md` — are already
-de-referenced.
-
-### O2 · retire SpectraConfig — a re-homing, not a delete *(spectrum work; unblocked)*
-No production constructor; the runtime object is the `_LiftView` over
-PySCFConfig.  The class survives only as the VOCABULARY carrier for
-three readers — the vibration kind's science duck-types its field
-shape, the reference selector's parity tests construct it as their
-fixture, and the Methods fragment reads the same fields.  The work:
-make the view the one shape, point those three at it, drop the class,
-its registry row and the "all four engines registered" pin (a one-line
-test edit; nothing of transport's changes).  *(An earlier note claimed
-a transport lock; that was wrong and is corrected here.)*
-
-### O3 · extract the auto-detect panel for the two describing tabs *(unblocked)*
-Structure-optimization and Spectrum carry near-verbatim copies of the
-auto-detect panel; extract the shared module with those two as its
-callers now.  Transport's third copy joins in transport's own round —
-a shared module with one recorded hold-out beats three copies drifting.
-
-### O4 · one home for the relax retry loop *(spectrum work; small)*
-The optimization deck's retry budget and the vibration relax block's
-`continue` arm spell the same loop twice; an emitted helper both
-compose ends it.  Sized during the close as structural-but-small.
-
-### O5 · residue the close did not reach *(sweep-scale, low risk)*
-The unenumerated leftovers: C-jobset's remaining stage-less residue
-branches + the duplicated read-API comment + two submit.py residues;
-T2/T3 stale test-module docstrings; R2-9's last present-tense pre-fold
-narration.  Plus one ruling to record: `Issue.stage` is write-orphaned
-(its one stamper retired with validate_ladder) — field + serialization
-arm are retirement candidates.
+O1, O4 and O5 are **roadmap 7.5**. They are not restated here: two copies of
+one list is how the 2026-08-14 day of re-derivation started.
 
 ### Transport's own round *(excluded from all of the above, by ruling)*
 The `transport bundle` migration, its engine-base `render_checks`
@@ -129,6 +92,9 @@ saved panel state on those tabs.
 | the path framework: A10 · A11, contract first, five resolvers folded into one | a691fce1 |
 | jobset.sh deleted · env verified in the wrappers · scheduler header from the probed record · `submit`→`launch` | ac04b06a · 47e5958b · ba0ecc00 · 0f489861 · 127e8e57 |
 | the directory/verb design: one projects-root door · `--bundle` uniform + fenced · one containment fence (8 copies → 1) · `describe`→`init` · the `.run.sh` environment contract | *(this commit)* |
+| O2 · `SpectraConfig` retired — `VibrationConfigView` is the one shape; class, registry row and engine-count pin gone | *(2026-08-22)* |
+| O3 · auto-detect extracted: one card partial, one `lib/auto-detect.js` (panel + supersede protocol), audit §§ A2/C1/C2 closed, transport recorded as the hold-out | *(this commit)* |
+| the Task-setup id collision: the bench card was unreachable behind a duplicate `ts-machine-card`; picker renamed `ts-target-*`, and a duplicate-id sweep added over every served page | *(this commit)* |
 
 **Verified 2026-08-21:** e2e 90/90 · none2e 6974 ran, 4 FAIL — all four
 stale-in-sweep (the retired-paths lookbehind + the presets drift-guard

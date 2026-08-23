@@ -582,7 +582,7 @@ def test_kgrid_displacement_is_the_blocks_fourth_column():
 
     molbuilder hard-coded ``0.0`` in all three rows until 2026-08-14 and
     could not express the shift SIESTA's own manual example uses
-    (`docs/audit-2026-08-14-template-execution-review.md` § 53, § 54).
+    (`docs/archive/2026-08-14-template-execution-review.md` § 53, § 54).
     """
     text = render_fdf(_h2_in_a_box(), SiestaConfig(
         system_label="h2", kgrid=(4, 4, 1),

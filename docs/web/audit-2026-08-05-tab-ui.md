@@ -1,6 +1,12 @@
 # Tab-UI static audit — 2026-08-05
 
 **Role:** audit report
+
+> **Scheduled 2026-08-22.** The findings below are evidence; the open ones
+> are scheduled as **roadmap 7.4** (`?doc=roadmap.md`). §§ A2, C1, C2 are
+> closed; § C5 (`setStatus` ×6) is now ×12 and § C8 (three dialog
+> scaffolds) turned out to include two modals with no CSS at all.
+
 **Domain:** web
 **Audited:** 2026-08-05 (HEAD `853a3f9`)
 **Scope:** every tab page and its controller — the six templates in
@@ -80,7 +86,7 @@ mode viewer."*
 queued VibrationView ESM redesign. The module's single external dependency is a
 global nobody publishes — which is the argument for the redesign, in one line.
 
-### A2. The Spectrum tab silently has no detection chip — `open`
+### A2. The Spectrum tab silently has no detection chip — `closed`
 
 `molbuilder/config/spectra.py` tags 32 fields with `workflow_group`, so
 `form-schema.js` renders the `.workflow-group--profile` and
@@ -95,6 +101,17 @@ documents this exact defect being fixed *for Transport* on 2026-06-13 — *"Pre-
 these helpers were closure-private here, which silently denied Transport
 (Au-junction users!) any chip surface."* The helper was extracted; Spectrum was
 never wired to it. Same defect, same cause (§ C2), still live.
+
+**Closed**, in two steps. The wiring was restored first — `spectra.html` loads
+`lib/detection-chip.js` and the tab's renderer calls it. Then § C2's extraction
+removed the *cause*: the chip pass now lives inside
+`lib/auto-detect.js::renderPanel`, so rendering the panel renders the chip on
+every tab at once and a per-tab copy cannot omit it again.
+
+*(Two citations above have since expired: `molbuilder/config/spectra.py` was
+deleted when `SpectraConfig` was retired — the vibration form's fields are
+`VibrationConfigView`'s now — and the viewer line numbers predate the
+extraction.)*
 
 ### A3. Transport's Generate status element is never written — `open`
 
@@ -235,7 +252,7 @@ orphan and is § A3, because it was clearly meant to work.)
 
 ## C. Duplication
 
-### C1. The "Analyze chemistry" card is hand-pasted three times — `open`
+### C1. The "Analyze chemistry" card is hand-pasted three times — `closed 2026-08-22`
 
 `index.html:105`, `spectra.html:96` and `transport_calculation.html:70` carry the
 same markup with the **same ids** — `analyze-card`, `auto-detect-btn`,
@@ -248,7 +265,13 @@ This repo already uses shared partials for exactly this: `_projects_sidebar.html
 `_spectra_inspector.html`, `_trajectory_inspector.html`. There is no
 `_analyze_chemistry_card.html`.
 
-### C2. `_renderAutoDetectPanel` exists three times — `open`
+**Closed.** `templates/_analyze_chemistry_card.html` now holds the markup, taking
+`hint` and `title` as its two parameters — the only things the three copies ever
+disagreed about. `index.html` and `spectra.html` include it; all seven ids render
+identically to before. Transport keeps its inline copy as the recorded hold-out
+(see § C2).
+
+### C2. `_renderAutoDetectPanel` exists three times — `closed 2026-08-22`
 
 `structure-optimization/viewer.js:1132-1179` and `spectra/viewer.js:437-471` are
 **byte-identical for 40 lines**, differing only in `$` vs `_$` and the trailing
@@ -258,6 +281,29 @@ This repo already uses shared partials for exactly this: `_projects_sidebar.html
 Behind them, five hand-rolled `POST /api/structure/analyze` call sites, each with
 its own `AbortController` and status text: `structure-optimization/viewer.js:1008`
 and `:1062`, `spectra/viewer.js:336` and `:392`, `lib/transport/core.js:373`.
+
+**Closed.** `lib/auto-detect.js` owns both halves:
+
+  * `renderPanel(resp)` — the panel, **and the chip pass**. Putting the chip
+    inside the renderer is what makes § A2 unrepeatable: a tab cannot forget a
+    call it does not make. The rationale now falls back `pyscf → siesta`, so a
+    SIESTA-only response still shows its reasoning (the old `.pyscf`-only reads
+    silently rendered a blank).
+  * `analyze(path, {isStale})` — the supersede protocol and **nothing else**.
+    It returns an envelope (`{ok, body}` / `{ok:false, superseded}` /
+    `{ok:false, error}`) instead of throwing, so each caller states its policy
+    in one line and keeps its own status wording. The module knows when a newer
+    *analyze* superseded a call; only the page knows when a newer *structure
+    load* did, which is what `isStale` reports. Callers gained the readable
+    non-JSON-5xx message that only one of the five copies had.
+
+Both adopting tabs dropped their sequence counter, their `AbortController` and
+their renderer. **Transport remains the recorded hold-out** — its UI is designed
+in its own round (user ruling), and its chip delegation is pinned meanwhile by
+`test_live_poll_invariants_audit.py::test_detection_chip_renderer_present`.
+Behaviour is proven in `test_auto_detect_module_js.py`, whose supersede cases
+drive `fetch` by hand because a race is not something an end-to-end test can
+schedule.
 
 ### C3. The load-from-sidebar block is a copy that has since diverged — `open`
 
@@ -428,9 +474,10 @@ Recorded so a later pass doesn't redo it:
    the VibrationView redesign.
 2. **B1** — 6,884 lines removed, zero behaviour change, but only *after* A1 (the
    directory is what A1's missing global lives in).
-3. **A2 + C1 + C2 together** — extracting the Analyze-chemistry card and its
-   renderer is what stops A2 recurring; fixing A2 alone leaves the third copy to
-   drift again.
+3. ~~**A2 + C1 + C2 together**~~ — **done 2026-08-22**, and in the order this
+   line argued for: the extraction is what stopped A2 recurring, rather than a
+   third fix applied to a third copy. Transport's copy is the one recorded
+   hold-out, deferred to its own round.
 4. **B2, B3, B4, B5, B6** — comment and dead-code sweep; independent, cheap.
 5. **E1, E2** — contract alignment.
 6. **A3, C3-C8, D** — the rest, in whatever order suits the work in flight.

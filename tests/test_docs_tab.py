@@ -181,12 +181,20 @@ def test_list_groups_every_md(client):
 
 
 def test_list_finds_the_index_and_migration_audit(client):
-    """The documentation index and dated migration audit are discoverable."""
+    """The documentation index and dated migration audit are discoverable.
+
+    The audit moved to ``archive/`` on 2026-08-22 -- it has nothing open, and
+    the spine is for documents that still decide something.  What this test
+    is for is unchanged: the listing reaches BOTH the index at the root and a
+    dated document nested in a subdirectory, which is the part a flat walk
+    silently gets wrong.  So the path is matched where it now lives rather
+    than where it was.
+    """
     d = client.get("/api/docs/list").get_json()
     all_paths = {doc["path"] for g in d["groups"] for doc in g["docs"]}
     assert "README.md" in all_paths
     assert any(
-        path.startswith("audit-") and path.endswith("-document-migration.md")
+        path.startswith("archive/") and path.endswith("-document-migration.md")
         for path in all_paths
     )
 

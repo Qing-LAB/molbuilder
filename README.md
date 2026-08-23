@@ -198,7 +198,7 @@ configuration details.
 - **Developing molbuilder:** [design](docs/design.md),
   [architecture](docs/architecture.md), and the in-app [documentation index](docs/README.md)
 - **Current work:** [roadmap](docs/roadmap.md) and
-  [document migration audit](docs/audit-2026-07-28-document-migration.md)
+  [document migration audit](docs/archive/2026-07-28-document-migration.md)
 
 ## License
 

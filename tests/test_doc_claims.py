@@ -8,7 +8,7 @@ in both directions: a member the document omits is a member no reader learns
 about, and a member the document names that the code does not have is a reader
 sent looking for something that is not there.
 
-**Why this exists** (`docs/audit-2026-08-14-template-execution-review.md`
+**Why this exists** (`docs/archive/2026-08-14-template-execution-review.md`
 § 22.1). A full-text review on 2026-08-14 found the same enumeration wrong in
 two documents at once:
 
@@ -85,7 +85,7 @@ def test_the_owning_document_names_every_member(vocab_id):
         f"{doc_rel} owns the {vocab_id} vocabulary but never names "
         f"{missing}.  Either the document is stale, or the member was added to "
         f"the code without the contract that defines it "
-        f"(audit-2026-08-14-template-execution-review.md § 22.1)."
+        f"(archive/2026-08-14-template-execution-review.md § 22.1)."
     )
 
 

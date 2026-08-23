@@ -935,7 +935,7 @@ other.
 >
 > ⚠ **That key has no live contract.** It is validated by code and cited
 > throughout `molbuilder/bench/` as *"job-execution.md § 8.13"* — a document
-> **retired in the 2026-07 migration** (`audit-2026-07-28-document-migration.md`
+> **retired in the 2026-07 migration** (`archive/2026-07-28-document-migration.md`
 > maps it to `execution/running-a-job.md`, whose section numbers did not
 > survive). So `execution` is a config section the code enforces and no live
 > document fully defines. `launch` was wired to it 2026-08-11 (C11, the note

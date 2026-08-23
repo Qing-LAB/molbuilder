@@ -705,7 +705,7 @@ flowchart LR
 > residue of a sharing that has ended, and no BENCH-MARKS field declares either.
 > Recorded rather than deleted here, because the constant's other reader is a
 > test that would need re-scoping with it
-> ([audit § 57](?doc=audit-2026-08-14-template-execution-review.md)).
+> ([audit § 57](?doc=archive/2026-08-14-template-execution-review.md)).
 
 ### 5.1 `manual` — the citation, and why only the catalogue carries it
 
