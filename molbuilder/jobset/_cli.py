@@ -2184,7 +2184,10 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
                               scheduler_override=scheduler_flag)
 
     notes = []
-    sinfo_txt = _run(["sinfo", "-h", "-o", "%P|%30l|%D|%40G|%c"])
+    # ``%m`` (memory per node, MB) added 2026-08-23 -- the ceiling
+    # `Domain.max_mem_gb` has wanted since the row was designed
+    # (`execution/submission.md` § 8, step 1).
+    sinfo_txt = _run(["sinfo", "-h", "-o", "%P|%30l|%D|%40G|%c|%m"])
     if sinfo_txt is None:
         # NOT a refusal.  M-2: a workstation records its capability in the same
         # shape a cluster does.  This verb used to exit 2 here, which left the
@@ -2208,7 +2211,26 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
         allowed = parse_allowed_qos(
             _run(["sacctmgr", "-nP", "show", "assoc", f"user={user}",
                   "format=QOS"]) or "")
+        # THE SECOND COMMAND, and it needs one: `sinfo` has no format code
+        # for DefMemPerCPU, and that is the number SLURM grants per core when
+        # a job states no --mem -- the one that turned 64 cores into a 128 G
+        # ask nobody made.  Absent scontrol, the rows simply carry no
+        # per-core default, which reads as "this machine does not say"
+        # rather than as zero (R3).
+        from ..scheduler.probe import parse_scontrol_partitions
+        defmem = parse_scontrol_partitions(
+            _run(["scontrol", "show", "partition"]) or "")
+        for _p in parts:
+            _p.def_mem_per_cpu_mb = defmem.get(_p.name)
         rows, notes = derive_domains(parts, qos, allowed)
+        # AFTER `derive_domains`, which REASSIGNS `notes` -- appending before
+        # it silently dropped this line, which is the class of bug the note
+        # itself is about: a measurement that quietly did not happen.
+        if not defmem:
+            notes.append("scontrol was not reachable, so no per-core memory "
+                         "default was measured -- a job that states no --mem "
+                         "will get whatever SLURM decides and molbuilder "
+                         "cannot show you the number in advance.")
         env.domains = [Domain(**r) for r in rows]
         env.source["domains"] = "sinfo+sacctmgr"
         click.echo(f"Probed (user={user}): {len(parts)} partitions; "

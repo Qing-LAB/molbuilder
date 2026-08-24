@@ -78,6 +78,18 @@ class Partition:
     gpu_cores: Optional[int] = None
     #: The widest node's cores across every group (CPU rows included).
     max_cpus: Optional[int] = None
+    #: MEMORY PER NODE, in MB, of the SMALLEST node group -- the safe reading
+    #: for a ceiling, the same rule ``gpu_cores`` uses.  Measured 2026-08-23
+    #: (`execution/submission.md` § 8, step 1): `Domain.max_mem_gb` had been a field
+    #: nothing filled, so nothing could tell a 128 G ask that `htc` holds 64 G
+    #: a node -- and the ask fell through to the 2 TB partition instead.
+    mem_mb: Optional[int] = None
+    #: DEFAULT MEMORY PER CORE, in MB -- what SLURM grants when a job states
+    #: no ``--mem``.  From ``scontrol show partition``; ``sinfo`` does not
+    #: report it.  This is the number that made a 64-core job ask for 128 G
+    #: without anyone choosing it, and `default_mem_per_core_gb` has been on
+    #: the record, unread, since the row was designed.
+    def_mem_per_cpu_mb: Optional[int] = None
 
     @property
     def has_gpu(self) -> bool:
@@ -129,13 +141,16 @@ def _parse_gres(gres: str) -> Dict[str, int]:
 
 
 def parse_sinfo(text: str) -> List[Partition]:
-    """Parse ``sinfo -h -o '%P|%<w>l|%D|%<w>G|%c'`` (pipe-delimited; fields
+    """Parse ``sinfo -h -o '%P|%<w>l|%D|%<w>G|%c|%m'`` (pipe-delimited; fields
     may be space-padded by the width modifier -- we strip).  A partition
     appears once per node group; merge them (union GPU types, sum nodes,
-    keep the time limit; per-group CPUS feed ``gpu_cores``/``max_cpus``).
-    The default-partition ``*`` marker is stripped.  A 4-column capture
-    (the pre-2026-08-21 format, no ``%c``) still parses -- the core
-    columns simply stay ``None``."""
+    keep the time limit; per-group CPUS feed ``gpu_cores``/``max_cpus``, and
+    per-group MEMORY feeds ``mem_mb``).
+    The default-partition ``*`` marker is stripped.  A 4- or 5-column capture
+    (the pre-2026-08-21 and pre-2026-08-23 formats) still parses -- the
+    columns it lacks simply stay ``None``, which is the honest reading: a
+    record written by an older probe does not know its memory, and a reader
+    must not mistake that for a small one (R3)."""
     parts: Dict[str, Partition] = {}
     for line in (text or "").splitlines():
         cols = [c.strip() for c in line.split("|")]
@@ -155,6 +170,14 @@ def parse_sinfo(text: str) -> List[Partition]:
                 cpus = int(cols[4].rstrip("+"))
             except ValueError:
                 cpus = None
+        mem: Optional[int] = None
+        if len(cols) >= 6 and cols[5]:
+            # Same "48+" convention as the core column: the base is the
+            # SMALLEST of a differing group, which is the safe ceiling.
+            try:
+                mem = int(cols[5].rstrip("+"))
+            except ValueError:
+                mem = None
         gpus = _parse_gres(gres)
         p = parts.get(name)
         if p is None:
@@ -170,7 +193,48 @@ def parse_sinfo(text: str) -> List[Partition]:
                     else min(p.gpu_cores, cpus)
             p.max_cpus = cpus if p.max_cpus is None \
                 else max(p.max_cpus, cpus)
+        if mem is not None:
+            # SMALLEST across groups: a partition whose nodes differ can only
+            # promise the least of them, and a ceiling that over-promises is
+            # the one that sends a job to a queue it does not fit.
+            p.mem_mb = mem if p.mem_mb is None else min(p.mem_mb, mem)
     return list(parts.values())
+
+
+def parse_scontrol_partitions(text: str) -> Dict[str, Optional[int]]:
+    """``scontrol show partition`` -> ``{partition: DefMemPerCPU in MB}``.
+
+    **The number nobody chose.**  SLURM grants this much memory per core when
+    a job states no ``--mem``, so a 64-core job silently asks for 64 x it.  On
+    ASU Sol that is 2 GB, which is how a benchmark came to request 128 G, fail
+    to fit ``htc``, and fall through to the 2 TB partition
+    (`execution/submission.md` § 3).
+
+    ``sinfo`` cannot report it -- there is no format code -- so this is a
+    second command rather than a wider one.
+
+    A partition that sets ``DefMemPerNode`` instead maps to ``None``: it is a
+    per-NODE default and not per-core, so deriving a per-core figure from it
+    would invent one.  ``None`` means *this partition does not say*, which a
+    reader must not read as zero (R3).
+    """
+    out: Dict[str, Optional[int]] = {}
+    name: Optional[str] = None
+    for chunk in (text or "").split("PartitionName="):
+        if not chunk.strip():
+            continue
+        name = chunk.split()[0].strip()
+        mb: Optional[int] = None
+        for tok in chunk.split():
+            if tok.startswith("DefMemPerCPU="):
+                v = tok.split("=", 1)[1]
+                try:
+                    mb = int(v)
+                except ValueError:
+                    mb = None      # "UNLIMITED" and friends say no number
+                break
+        out[name] = mb
+    return out
 
 
 def parse_qos(text: str) -> Dict[str, Tuple[Optional[str], Optional[int]]]:
@@ -295,6 +359,22 @@ def derive_domains(
                 row["max_cores"] = part.gpu_cores
         elif part.max_cpus:
             row["max_cores"] = part.max_cpus
+        # THE TWO MEMORY FACTS, measured 2026-08-23
+        # (`execution/submission.md` § 8, step 1).  Both fields have been on the
+        # row since it was designed and neither was ever filled, so nothing
+        # could tell a 128 G ask that `htc` holds less than that per node --
+        # and the ask fell through to the 2 TB partition instead.
+        #
+        # `max_mem_gb` is the CEILING (what the node has).
+        # `default_mem_per_core_gb` is what SLURM GRANTS PER CORE when a job
+        # states no --mem: the number that made a 64-core job ask for 128 G
+        # with nobody choosing it.  They are different facts and the code
+        # that reads one must not read the other (submission.md § 1).
+        if part.mem_mb:
+            row["max_mem_gb"] = round(part.mem_mb / 1024.0, 1)
+        if part.def_mem_per_cpu_mb:
+            row["default_mem_per_core_gb"] = round(
+                part.def_mem_per_cpu_mb / 1024.0, 2)
         return row
 
     if "debug" in allowed and "debug" in qos:
