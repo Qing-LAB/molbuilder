@@ -106,7 +106,7 @@ cost. Nothing is lost that was not already unknown.
 | **ranks** · **cores/task** | declared, or a benchmark's grid | ✅ unchanged |
 | **GPU on/off** | declared — the person's choice | ✅ unchanged; **must agree with the script** (§ 4) |
 | **memory** | ⚠ **silently the cluster's default.** 64 cores × 2 GB/core = 128 G, chosen by nobody | **derived** from cores × measured memory-per-core, or **declared**; shown either way |
-| **benchmark walltime** | **bounded** — correct, but the bound is an unshown default | bounded, and the bound is **chosen** |
+| **benchmark walltime** | ~~bounded, but the bound is an unshown default~~ **done** — bounded, stated as a total, and the arithmetic printed with its provenance | ✅ |
 | **production walltime** | ⚠ measured cost × **an assumed 200 cycles** × 1.5 | derived from the deck's **own declared** step budget; if it must still assume, **announce it** (S1) |
 | **queue** | ~~first that fits, ordered by walltime only~~ **done 2026-08-23** — the cheapest ceiling that FITS, across every axis the request states | a fall-through to a scarce queue is still to be **named**, not silent |
 
@@ -336,8 +336,14 @@ partition, and they are visible **while it is still free to change**.
 2. **Memory becomes derived and shown** instead of a silent cluster default.
 3. **`node_type` is enforced** (S3) — a measurement that does not transfer is
    refused, not applied.
-4. **The benchmark bound becomes a choice** — quick-look vs full — with the
-   `debug` fit check.
+4. ~~**The benchmark bound becomes a choice**~~ **done 2026-08-23.** The
+   person states `--budget 4h` (or `15m` for a quick look) — *the* decision
+   they can make from what they know — and the per-trial bound is arithmetic
+   on top of it. The arithmetic is **printed**, a default **announces itself
+   as one** and says how to replace it, a budget that cannot hold the trials
+   says so with both ways out, and a shorter queue that would take the job is
+   named. *(`--trial-timeout` still bounds a trial directly, and still counts
+   as chosen; it is a refinement, not a competitor.)*
 5. ~~**Queue order accounts for what is cheap to get**~~ **done** — see § 5a.
    *(Naming a scarce-queue fall-through belongs to the display, step 7.)*
 6. **The three-statement comparison** joins the after-generation check.

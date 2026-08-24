@@ -726,17 +726,24 @@ def test_cli_submit_dry_run_lists_commands(tmp_path):
 
 
 def test_submit_accepts_exactly_these_options(tmp_path):
-    """`jobset launch` takes a kind, a stage, a trial and four options --
+    """`jobset launch` takes a kind, a stage, a trial and the options below --
     no more.  TRIAL names one benchmark point (§ 2.3.2, decided
     2026-08-12); `run` refuses it.
 
     An equality, and at the CLI because that is the surface a person types: an
     option added without a decision fails here whatever it is called.
+
+    ``budget_text`` joined on 2026-08-23 and the pairing is the decision
+    (`execution/submission.md` § 2): **the person states the TOTAL** the
+    benchmark may take, which is what they can judge from what they know, and
+    the per-trial bound is arithmetic on top of it.  ``trial_timeout_min``
+    stays as the direct refinement — *no single trial may exceed this* — and
+    is a different question rather than a second way to say one thing.
     """
     from molbuilder.jobset._cli import submit_cmd
     assert {q.name for q in submit_cmd.params} == {
         "kind", "stage", "trial", "bundle", "mode", "domain", "dry_run",
-        "trial_timeout_min", "only_side"}
+        "budget_text", "trial_timeout_min", "only_side"}
 
 
 def test_cli_submit_of_a_whole_sweep_groups_it_by_shelf(tmp_path):
