@@ -2037,43 +2037,6 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 "scheduler.  Set execution.mode once for this machine, or pass "
                 "--mode for this call (running-a-job.md § 5.4).")
         mode_source = "execution.mode (config)"
-    if domain is None and mode == "submit" and _execn.get("domain"):
-        # § 5.4's other half: execution.domain is the machine's default
-        # routing -- documented, returned, and never consulted until R3.
-        # ONLY for the submit mode (mode resolves first, above): domain is
-        # a SLURM concept the seam refuses in 'direct', so pouring the
-        # config default in unconditionally made `--mode direct` impossible
-        # on any machine whose config records its routing (2026-08-12 plan A3).
-        # An EXPLICIT --domain with --mode direct still reaches the seam's
-        # refusal -- a stated contradiction is an error, a config default
-        # is not.
-        domain = _execn["domain"]
-        domain_source = "execution.domain (config)"
-    if domain is None and mode == "submit":
-        # NOBODY GUESSES THE QUEUE (user, 2026-08-23).  Which queue to spend
-        # a day of wall-clock in is a judgement about priority, contention and
-        # what else is running -- none of which is on this machine's record,
-        # and all of which the person has.  So the options are LISTED and the
-        # person names one; nothing is submitted until they do.
-        #
-        # `execution.domain` above is that answer given once for a machine
-        # rather than once per call -- a decision, not a guess.
-        from .ask import Ask, queue_table
-        from ..runtime_config import get_routing
-        # `bundle`, not `base`: the bundle root is what the caller named and
-        # is known HERE; `base` is only bound when the job-set is loaded, 20
-        # lines down.  Reaching for it early is the bug this comment replaces.
-        _rows = get_routing(project_dir=Path(bundle) if bundle else None)
-        if _rows:
-            click.echo(queue_table(
-                _rows, Ask(time_s=_duration(time_text),
-                           mem_gb=_memory(mem_text)),
-                cores=None, gpu=(only_side == "gpu")))
-            raise click.ClickException(
-                "no --domain, so no queue was chosen.  Pick one from the "
-                "list above with `--domain <name>`, or set "
-                "`execution.domain` in molbuilder.json to answer this once "
-                "for this machine.")
     if only_side and (kind != "bench" or mode != "submit"
                       or trial is not None):
         # Mirrors the domain refusal below: a side filter rides the GROUPED
@@ -2093,6 +2056,74 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 "stage only (job-system.md § 5.3).")
         js, base = _load(bundle)
     _check_kind(kind, js)
+
+    # ------------------------------------------------------------------ #
+    #  Which queue -- asked ONCE, of everyone who already answered        #
+    # ------------------------------------------------------------------ #
+    # NOBODY GUESSES THE QUEUE (user, 2026-08-23).  Which queue to spend a
+    # day of wall-clock in is a judgement about priority, contention and
+    # what else is running -- none of it on the machine's record, all of it
+    # the person's.  So this never DERIVES a queue; it asks, in order,
+    # everyone the person has already told:
+    #
+    #   1. --domain on this call        -- said about this launch
+    #   2. the bundle's own resources   -- said about THIS WORK at prep,
+    #                                      which is where the Task-setup tab
+    #                                      puts it (task.json `allocation`)
+    #   3. execution.domain in config   -- said once about this machine
+    #
+    # Most specific wins.  (2) was consulted by NOTHING until 2026-08-24: a
+    # person picked `htc` in the browser, `prep` baked it into every job's
+    # `resources.domain`, and `launch` then printed the queue table and
+    # refused for want of a --domain -- asking a question its own artifact
+    # had answered.  R9 says what was admitted when the work was built is
+    # re-admitted when it is sent, and it cannot be re-admitted unread.
+    #
+    # Reading it is not inferring it: the value is there because a person
+    # put it there, so S5 holds.  It is still ADMITTED below like any other
+    # -- a bundle prepped elsewhere and rsync'd here names a queue this
+    # machine may not have, and that refuses with the reason rather than
+    # silently retargeting.
+    if domain is None and mode == "submit":
+        _baked = {j.resources.domain for j in js.jobs if j.resources.domain}
+        if len(_baked) == 1:
+            domain = _baked.pop()
+            domain_source = "the bundle (prep baked it)"
+        elif len(_baked) > 1:
+            # The cpu/gpu split, which --domain / --gpu-domain already
+            # model.  Two baked answers are not one answer, so name them
+            # rather than pick between them.
+            raise click.ClickException(
+                "this bundle's jobs name more than one domain ("
+                + ", ".join(sorted(_baked)) + ").  Name the one to use with "
+                "--domain, and --gpu-domain if the GPU side differs.")
+    if domain is None and mode == "submit" and _execn.get("domain"):
+        # § 5.4's other half: execution.domain is the machine's default
+        # routing -- documented, returned, and never consulted until R3.
+        # ONLY for the submit mode (mode resolves first, above): domain is
+        # a SLURM concept the seam refuses in 'direct', so pouring the
+        # config default in unconditionally made `--mode direct` impossible
+        # on any machine whose config records its routing (2026-08-12 plan A3).
+        # An EXPLICIT --domain with --mode direct still reaches the seam's
+        # refusal -- a stated contradiction is an error, a config default
+        # is not.
+        domain = _execn["domain"]
+        domain_source = "execution.domain (config)"
+    if domain is None and mode == "submit":
+        from .ask import Ask, queue_table
+        from ..runtime_config import get_routing
+        _rows = get_routing(project_dir=Path(base) if base else None)
+        if _rows:
+            click.echo(queue_table(
+                _rows, Ask(time_s=_duration(time_text),
+                           mem_gb=_memory(mem_text)),
+                cores=None, gpu=(only_side == "gpu")))
+            raise click.ClickException(
+                "no --domain, so no queue was chosen.  Pick one from the "
+                "list above with `--domain <name>`, name it in the "
+                "description's `allocation.domain` so the bundle carries it, "
+                "or set `execution.domain` in molbuilder.json to answer this "
+                "once for this machine.")
     # The same provenance line prep printed, at the LAST moment before the
     # launch -- the mode above may have come from config, and this names
     # which file said so (user request 2026-08-12).

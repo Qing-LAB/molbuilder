@@ -143,6 +143,75 @@ def parse_memory(text) -> Optional[float]:
     return v * mult
 
 
+# --------------------------------------------------------------------- #
+#  The record's one spelling                                            #
+# --------------------------------------------------------------------- #
+#
+# A DURATION AND AN AMOUNT OF MEMORY HAVE TWO VOCABULARIES, and only one
+# of them belongs in a file (user, 2026-08-24: *"your record should set
+# unified time format while it is the UI that can do some translation for
+# human readability/input"*).
+#
+#   the HUMAN spelling   "4h", "90m", "80GB"   -- what a person types
+#   the RECORD spelling  "0-04:00:00", "80G"   -- what SLURM accepts
+#
+# `parse_duration` / `parse_memory` above READ the human spelling.  The two
+# writers below produce the record spelling, and `canonical_*` is the door
+# between them: every edge where a human states a value calls it, and
+# everything behind those edges holds one spelling.
+#
+# Why it must be exactly one: the two vocabularies DISAGREE.  `04:30` is
+# four minutes thirty to SLURM and four and a half hours to a person, so a
+# field holding "whichever spelling arrived" cannot be read correctly by
+# anybody.  A `time="4h"` reached `sbatch` as `-t 4h` on 2026-08-24 and was
+# refused -- the tool's own written value, rejected by the tool.
+
+
+def slurm_time(seconds: int) -> str:
+    """Seconds -> ``D-HH:MM:SS``, the record's one spelling for a wall."""
+    d, rem = divmod(int(seconds), 86400)
+    h, rem = divmod(rem, 3600)
+    m, s = divmod(rem, 60)
+    return f"{d}-{h:02d}:{m:02d}:{s:02d}"
+
+
+def slurm_mem(gb: float) -> str:
+    """Gigabytes -> SLURM's ``<n>G`` (or ``<n>M`` when not a whole GB).
+
+    Megabytes for a fractional value rather than rounding: a ceiling asked
+    for at 95% of a node lands on a fraction, and rounding a memory ask UP
+    is how a request that fits becomes one the queue refuses.
+    """
+    if float(gb) <= 0:
+        return "0"
+    mb = round(float(gb) * 1024)
+    return f"{mb // 1024}G" if mb % 1024 == 0 else f"{mb}M"
+
+
+def canonical_time(text) -> Optional[str]:
+    """A stated wall, in whatever spelling, -> the record's.  ``None`` when
+    nothing was stated -- unstated is not zero (`submission.md` S1)."""
+    secs = parse_duration(text)
+    return None if secs is None else slurm_time(secs)
+
+
+def canonical_mem(text) -> Optional[str]:
+    """A stated memory, in whatever spelling, -> the record's.
+
+    ``"0"`` passes through: it is SLURM's own spelling for *all the memory
+    on the node*, which `--mem`'s own help advertises, and it is a stated
+    ask rather than an absent one.  `parse_memory` refuses it because zero
+    gigabytes is not an amount to fit a queue against -- a different
+    question from what to write in the file.
+    """
+    if text is None or str(text).strip() == "":
+        return None
+    if str(text).strip() == "0":
+        return "0"
+    gb = parse_memory(text)
+    return None if gb is None else slurm_mem(gb)
+
+
 def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
                 gpu: bool = False) -> str:
     """**Every queue this machine offers, and which of them can take this job.**

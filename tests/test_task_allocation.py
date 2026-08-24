@@ -39,7 +39,10 @@ def _task(**extra) -> Task:
 
 def test_the_three_asks_round_trip():
     t = _task(allocation={"domain": "htc", "time": "4h", "mem": "128G"})
-    assert t.allocation == Allocation(domain="htc", time="4h", mem="128G")
+    # "4h" is what a person types; the record holds SLURM's spelling,
+    # normalised on the way in (task.py::Allocation, 2026-08-24).
+    assert t.allocation == Allocation(
+        domain="htc", time="0-04:00:00", mem="128G")
     assert Task.from_dict(t.to_dict()).allocation == t.allocation
 
 
@@ -59,12 +62,27 @@ def test_a_partial_ask_writes_only_what_was_said():
     assert t.to_dict()["allocation"] == {"domain": "htc"}
 
 
-def test_the_values_stay_AS_A_PERSON_TYPES_THEM():
-    """`"7-00:00:00"` is SLURM's own spelling and `"0.5T"` is the CLI's --
-    the file holds what you would type, so one parser serves both surfaces
-    and nothing is converted twice."""
+def test_the_record_holds_ONE_SPELLING_AND_IT_IS_SLURMS():
+    """Replaces `test_the_values_stay_AS_A_PERSON_TYPES_THEM` (2026-08-24,
+    user: *"your record should set unified time format while it is the UI
+    that can do some translation for human readability/input"*).
+
+    The old rule let the file hold whichever spelling arrived.  Nothing
+    could then read it correctly, because the two vocabularies DISAGREE --
+    `04:30` is four minutes thirty to SLURM and four and a half hours to a
+    person -- and `prep` copied the browser's `"4h"` straight into
+    `Resources.time`, which `sbatch` refused as `-t 4h`.
+
+    A person still types `"0.5T"`; it is normalised at the door."""
     t = _task(allocation={"time": "7-00:00:00", "mem": "0.5T"})
-    assert t.to_dict()["allocation"] == {"time": "7-00:00:00", "mem": "0.5T"}
+    assert t.to_dict()["allocation"] == {"time": "7-00:00:00", "mem": "512G"}
+
+
+def test_a_human_spelling_is_accepted_at_the_door_and_normalised():
+    """A hand-edited file is a human edge too, so the reader takes what a
+    person would type -- and returns the record's spelling."""
+    t = _task(allocation={"time": "4h", "mem": "80GB"})
+    assert t.to_dict()["allocation"] == {"time": "0-04:00:00", "mem": "80G"}
 
 
 def test_an_unknown_key_is_refused_not_ignored():
@@ -103,7 +121,8 @@ def test_the_description_supplies_what_no_flag_states():
     from molbuilder.jobset.prep import _under_description
     got = _under_description(None, Allocation(domain="htc", time="2:00:00",
                                               mem="200GB"))
-    assert (got.domain, got.time, got.mem) == ("htc", "2:00:00", "200GB")
+    assert (got.domain, got.time, got.mem) == (
+        "htc", "0-02:00:00", "200G")
 
 
 def test_a_stated_flag_wins():
@@ -112,7 +131,7 @@ def test_a_stated_flag_wins():
     from molbuilder.jobset.prep import _under_description
     got = _under_description(Resources(mem="64G"),
                              Allocation(time="2:00:00", mem="200GB"))
-    assert got.mem == "64G" and got.time == "2:00:00"
+    assert got.mem == "64G" and got.time == "0-02:00:00"
 
 
 def test_an_UNRELATED_flag_erases_nothing():
@@ -125,7 +144,8 @@ def test_an_UNRELATED_flag_erases_nothing():
                              Allocation(domain="htc", time="2:00:00",
                                         mem="200GB"))
     assert got.mpi_np == 8
-    assert (got.domain, got.time, got.mem) == ("htc", "2:00:00", "200GB")
+    assert (got.domain, got.time, got.mem) == (
+        "htc", "0-02:00:00", "200G")
 
 
 def test_no_declaration_leaves_the_flags_alone():

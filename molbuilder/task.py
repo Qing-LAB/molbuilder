@@ -128,10 +128,26 @@ class Allocation:
     wall becomes the target queue's own ceiling at submission; an unstated
     memory lets the scheduler's default decide, said out loud.
 
-    Spelled as a person types them (``"4h"``, ``"128G"``, SLURM's own
-    ``"7-00:00:00"``) rather than as seconds and gigabytes: the same strings
-    the CLI's ``--time`` / ``--mem`` take, so what a person reads in the file
-    is what they would type, and one parser serves both surfaces.
+    **ONE SPELLING, AND IT IS SLURM'S** -- ``"0-04:00:00"``, ``"128G"``
+    (user, 2026-08-24: *"your record should set unified time format while
+    it is the UI that can do some translation for human readability /
+    input"*).  A record that held whichever spelling arrived could not be
+    read correctly by anybody, because the two vocabularies DISAGREE:
+    ``04:30`` is four minutes thirty to SLURM and four and a half hours to
+    a person.
+
+    Translation belongs at the edges where humans are -- the Task-setup
+    tab's input box, the CLI's ``--time`` / ``--mem`` -- and every one of
+    them goes through `ask.canonical_time` / `ask.canonical_mem`.  A file
+    typed by hand is such an edge too, so the reader below accepts a human
+    spelling and normalises it on the way in; what it RETURNS is always
+    the record's.
+
+    *Until 2026-08-24 this field was documented as holding what a person
+    types, and `prep` copied it verbatim into `Resources.time`, which is
+    documented as holding SLURM's.  Nothing translated between the two, so
+    the browser's own ``"4h"`` reached ``sbatch`` as ``-t 4h`` and was
+    refused -- the tool's written value, rejected by the tool.*
     """
     domain: str = ""
     time: str = ""
@@ -581,9 +597,22 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
             _refuse(f"allocation.{k} must be a string as a person types it "
                     f"(\"4h\", \"128G\", \"7-00:00:00\"); got "
                     f"{type(v).__name__}")
+    # Normalised on the way in, so nothing downstream meets two spellings
+    # (the class docstring says why).  A refusal here names the field and
+    # the forms it takes, because "invalid allocation" tells a person
+    # nothing about which of three values to go and look at.
+    from .jobset.ask import canonical_mem, canonical_time
+    def _canon(fn, key):
+        v = raw.get(key)
+        if not v:
+            return ""
+        try:
+            return fn(v) or ""
+        except ValueError as exc:
+            _refuse(f"allocation.{key}: {exc}")
     return Allocation(domain=str(raw.get("domain") or ""),
-                      time=str(raw.get("time") or ""),
-                      mem=str(raw.get("mem") or ""))
+                      time=_canon(canonical_time, "time"),
+                      mem=_canon(canonical_mem, "mem"))
 
 
 def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],

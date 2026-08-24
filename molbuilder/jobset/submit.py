@@ -48,6 +48,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+# The record's one spelling for a wall, written in ONE place.  A second
+# formatter here would be a second answer to "what does a walltime look
+# like on disk?" -- and there was one, until 2026-08-24, sitting beside a
+# field a human spelling could reach.
+from .ask import slurm_time as _slurm_time
+
 # NOTE: `job_dir_names` is NOT imported here.  It is the naming
 # authority (materialize.py) and very much alive -- six callers -- but
 # the one place THIS module needs it, `_launch_dir`, imports it locally
@@ -433,12 +439,6 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
     return results
 
 
-def _slurm_time(seconds: int) -> str:
-    """``4500`` -> ``0-01:15:00`` (SLURM's D-HH:MM:SS)."""
-    d, rem = divmod(int(seconds), 86400)
-    h, rem = divmod(rem, 3600)
-    m, s = divmod(rem, 60)
-    return f"{d}-{h:02d}:{m:02d}:{s:02d}"
 
 
 def _group_envelope(jobs) -> "Resources":

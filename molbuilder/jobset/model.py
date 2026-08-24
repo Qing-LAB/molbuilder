@@ -102,6 +102,29 @@ class Resources:
     #  arguments, and one forgot a field; carried on the allocation, it cannot
     #  be forgotten by one of them (generator.md § 5).
 
+    def __post_init__(self) -> None:
+        """``time`` and ``mem`` hold the RECORD's spelling, always.
+
+        The two fields are documented above as SLURM's own -- ``-t`` takes
+        ``D-HH:MM:SS``, ``--mem`` takes ``80G`` -- while a person says
+        ``4h`` and ``80GB``.  Normalising HERE rather than at each caller is
+        the point: this class is reached by the CLI's ``--time``/``--mem``,
+        by ``run-config.toml``'s ``[resources]``, by `prep`'s fold of
+        ``task.json``'s allocation, and by `from_dict` over a job-set file
+        somebody edited -- four roads, and the fix that patched one of them
+        would leave three.  A type that enforces its own invariant cannot
+        be reached down a road that forgot.
+
+        *This is the whole of the 2026-08-24 failure: `prep` copied the
+        browser's ``"4h"`` into this field, `sbatch` was handed ``-t 4h``,
+        and SLURM refused the tool's own written value.*
+        """
+        from .ask import canonical_mem, canonical_time
+        if self.time:
+            self.time = canonical_time(self.time)
+        if self.mem:
+            self.mem = canonical_mem(self.mem)
+
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
 

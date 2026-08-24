@@ -28,7 +28,8 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.jobset.ask import parse_duration, parse_memory
+from molbuilder.jobset.ask import (canonical_mem, canonical_time,
+                                   parse_duration, parse_memory)
 
 _VIEWER = (Path(__file__).resolve().parents[1] / "molbuilder" / "web"
            / "static" / "task-setup" / "viewer.js")
@@ -85,9 +86,116 @@ def _js(raws_t, raws_m):
     return json.loads(out.stdout)
 
 
+def _js_canon(raws_t, raws_m):
+    """The same extraction, for the two CANONICALISERS.
+
+    They are the other half of the duplication: `_canonTime`/`_canonMem`
+    decide what the browser WRITES into `task.json`, and
+    `canonical_time`/`canonical_mem` decide what the CLI writes.  One
+    record, one spelling -- so if these two drift, the file gets whichever
+    surface last touched it, which is the state this whole rule replaced.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    src = _VIEWER.read_text(encoding="utf-8")
+
+    def _grab(name):
+        i = src.index(f"function {name}(")
+        j = src.index("\n}", i) + 2
+        return src[i:j]
+
+    prog = ("\n".join(_grab(n) for n in ("_parseTime", "_parseMem",
+                                         "_slurmTime", "_slurmMem",
+                                         "_canonTime", "_canonMem"))
+            + "\nconst T=" + json.dumps(raws_t) + ",M=" + json.dumps(raws_m)
+            + ";\nconsole.log(JSON.stringify({"
+              "t:T.map(x=>_canonTime(x)),m:M.map(x=>_canonMem(x))}));")
+    out = subprocess.run([node, "--input-type=commonjs", "-e", prog],
+                         capture_output=True, text=True, timeout=15)
+    if out.returncode != 0:
+        pytest.fail(f"node failed: {out.stderr}\n{out.stdout}")
+    return json.loads(out.stdout)
+
+
+#: Only the spellings that MEAN something -- canonicalising is what happens
+#: to a value that parsed, and a refusal is the reader's job, tested above.
+_GOOD_TIMES = ["4h", "90m", "45", "1.5h", "4H", "7-00:00:00", "4:00:00",
+               "00:15:00", "1-00:00:00", "168h", ""]
+_GOOD_MEMS = ["128G", "0.5T", "128", "512M", "1024K", "4t", "80GB",
+              "128GB", "503.5G", "0", ""]
+
+
 @pytest.fixture(scope="module")
 def both():
     return _js(_TIMES, _MEMS)
+
+
+@pytest.fixture(scope="module")
+def both_canon():
+    return _js_canon(_GOOD_TIMES, _GOOD_MEMS)
+
+
+def _py_canon(fn, raw):
+    try:
+        v = fn(raw)
+    except ValueError:
+        return raw.strip()          # the JS passes an unparseable through
+    return v or ""
+
+
+def test_the_two_time_writers_agree_on_every_spelling(both_canon):
+    """What the browser writes into `task.json` and what the CLI writes
+    must be the SAME STRING -- not merely the same duration."""
+    bad = [(raw, js, _py_canon(canonical_time, raw))
+           for raw, js in zip(_GOOD_TIMES, both_canon["t"])
+           if js != _py_canon(canonical_time, raw)]
+    assert not bad, (
+        "the browser and the terminal WRITE a duration differently: "
+        + ", ".join(f"{r!r}: browser={j!r} terminal={p!r}"
+                    for r, j, p in bad))
+
+
+def test_the_two_memory_writers_agree_on_every_spelling(both_canon):
+    bad = [(raw, js, _py_canon(canonical_mem, raw))
+           for raw, js in zip(_GOOD_MEMS, both_canon["m"])
+           if js != _py_canon(canonical_mem, raw)]
+    assert not bad, (
+        "the browser and the terminal WRITE a memory differently: "
+        + ", ".join(f"{r!r}: browser={j!r} terminal={p!r}"
+                    for r, j, p in bad))
+
+
+def test_canonical_is_what_sbatch_takes():
+    """The point of the whole rule: `-t 4h` is not a thing SLURM accepts,
+    and it is what the browser used to write.  2026-08-24."""
+    import re
+    assert canonical_time("4h") == "0-04:00:00"
+    assert re.fullmatch(r"(?:\d+-)?\d+(?::\d{2}){0,2}",
+                        canonical_time("4h"))
+    assert canonical_mem("80GB") == "80G"
+    assert re.fullmatch(r"\d+(?:\.\d+)?[KMGT]?", canonical_mem("80GB"))
+
+
+def test_canonicalising_is_idempotent():
+    """A record read and rewritten must not change -- otherwise every save
+    rewrites the file and no two copies of it ever match."""
+    for v in _GOOD_TIMES:
+        once = canonical_time(v)
+        assert canonical_time(once) == once
+    for v in _GOOD_MEMS:
+        once = canonical_mem(v)
+        assert canonical_mem(once) == once
+
+
+def test_zero_memory_survives_because_slurm_means_something_by_it():
+    """`--mem`'s own help says *"'0' asks for all of the node's"*, and
+    `parse_memory` refuses 0 because zero gigabytes is not an amount to fit
+    a queue against.  Those are two different questions and the writer must
+    not inherit the reader's refusal."""
+    assert canonical_mem("0") == "0"
+    with pytest.raises(ValueError):
+        parse_memory("0")
 
 
 def test_the_two_time_parsers_agree_on_every_spelling(both):

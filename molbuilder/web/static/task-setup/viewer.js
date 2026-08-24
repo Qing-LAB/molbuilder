@@ -1671,6 +1671,57 @@ function _humanTime(sec) {
     return sec + "s";
 }
 
+/* ---- the record's one spelling -------------------------------------
+ * `task.json` holds SLURM's spelling and nothing else (user, 2026-08-24:
+ * *"your record should set unified time format while it is the UI that
+ * can do some translation for human readability/input"*).  So this file
+ * translates in BOTH directions and the file sees only one:
+ *
+ *   _slurmTime / _canonTime   -> what gets WRITTEN   ("0-04:00:00")
+ *   _humanTime                -> what gets SHOWN in prose ("4h")
+ *
+ * Typing "4h" in the box still works -- that is the human edge, and
+ * `_canonTime` is the door it goes through.  Mirrors `ask.slurm_time` /
+ * `ask.canonical_time`; the parity test pins the two against each other.
+ */
+
+/** seconds -> "D-HH:MM:SS", the spelling sbatch takes and the file holds. */
+function _slurmTime(sec) {
+    const n = Math.max(0, Math.round(Number(sec) || 0));
+    const d = Math.floor(n / 86400);
+    const h = Math.floor((n % 86400) / 3600);
+    const m = Math.floor((n % 3600) / 60);
+    const s = n % 60;
+    const p2 = (x) => String(x).padStart(2, "0");
+    return d + "-" + p2(h) + ":" + p2(m) + ":" + p2(s);
+}
+
+/** GB -> "<n>G", or "<n>M" when not a whole GB.  Mirrors `ask.slurm_mem`. */
+function _slurmMem(gb) {
+    const v = Number(gb);
+    if (!(v > 0)) return "0";
+    const mb = Math.round(v * 1024);
+    return (mb % 1024 === 0) ? (mb / 1024) + "G" : mb + "M";
+}
+
+/** Whatever the person typed -> the record's spelling.  An unparseable
+ *  value is passed through untouched so the backend refuses it BY NAME
+ *  ("allocation.time: ...") instead of this quietly writing a zero. */
+function _canonTime(txt) {
+    const s = String(txt || "").trim();
+    if (!s) return "";
+    const sec = _parseTime(s);
+    return Number.isFinite(sec) && sec > 0 ? _slurmTime(sec) : s;
+}
+
+function _canonMem(txt) {
+    const s = String(txt || "").trim();
+    if (!s) return "";
+    if (s === "0") return "0";          // SLURM's "all of the node's"
+    const gb = _parseMem(s);
+    return Number.isFinite(gb) && gb > 0 ? _slurmMem(gb) : s;
+}
+
 /** "4h" / "90m" / "2-00:00:00" / "45" -> seconds, or null. Mirrors
  *  `ask.parse_duration` plus SLURM's own D-HH:MM:SS, which is what the
  *  ceilings are spelled in. */
@@ -1814,8 +1865,11 @@ function setQueue(name) {
     // queue's 487372M, and a figure just typed by hand went the same way
     // on the next queue click.  A default is for an empty field; replacing
     // a stated one is data loss wearing a default's clothes.
+    // Canonical, not "4h": this fills the FIELD, and the field is what
+    // lands in `task.json`.  The human spelling lives on in the note
+    // beneath it (paintAskNotes), which is prose and not a record.
     _fillIfUnanswered($("ts-ask-time"),
-                      d && d.max_time_s ? _humanTime(d.max_time_s) : "");
+                      d && d.max_time_s ? _slurmTime(d.max_time_s) : "");
     _fillIfUnanswered($("ts-ask-mem"),
                       d && d.max_mem_gb ? _defaultMemMB(d.max_mem_gb) : "");
     paintAskNotes();
@@ -1895,8 +1949,12 @@ function askValues() {
     const m = ($("ts-ask-mem") || {}).value || "";
     const out = {};
     if (_queue) out.domain = _queue;
-    if (t.trim()) out.time = t.trim();
-    if (m.trim()) out.mem = m.trim();
+    // THE RECORD GETS ONE SPELLING.  The box accepts "4h" because that is
+    // the human edge; the file never sees it.  Until 2026-08-24 this wrote
+    // the box verbatim, so the browser's own "4h" reached `sbatch` as
+    // `-t 4h` and SLURM refused the tool's written value.
+    if (t.trim()) out.time = _canonTime(t);
+    if (m.trim()) out.mem = _canonMem(m);
     return out;
 }
 
