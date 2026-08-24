@@ -128,6 +128,50 @@
         </div>
       </section>
 
+      <!-- THE QUEUE, AND WHAT IT ALLOWS (2026-08-24, user).  A machine's
+           own probed ceilings are what the two asks default to: picking a
+           queue fills them in, and a person lowers them or leaves them.
+           Nothing here is invented -- a queue that states no ceiling
+           leaves the field empty and says so, because an unstated limit
+           is the scheduler's to decide (submission.md S1/S2). -->
+      <section class="card" id="ts-queue-card" hidden>
+        <h2>Where it runs, and what it may use</h2>
+        <p class="hint">Pick a queue and these fill with <strong>what that
+          queue allows</strong> &mdash; the most you can ask for there. Lower
+          them if this job needs less; a smaller ask is usually scheduled
+          sooner. <strong>Left blank, the scheduler decides</strong>, and on
+          many clusters its own default is far below the node.</p>
+
+        <div class="ts-choice" id="ts-queue-choice"></div>
+        <p class="ts-needs" id="ts-queue-needs">Pick a machine first</p>
+
+        <div class="ts-asks" id="ts-queue-asks" hidden>
+          <div class="ts-ask">
+            <label class="ts-ask-label" for="ts-ask-time">Time limit</label>
+            <input class="ts-ask-input" id="ts-ask-time" type="text"
+                   inputmode="latin" autocomplete="off"
+                   placeholder="e.g. 4h, 90m, 2-00:00:00"
+                   aria-describedby="ts-ask-time-note">
+            <span class="ts-ask-note" id="ts-ask-time-note"></span>
+          </div>
+          <div class="ts-ask">
+            <label class="ts-ask-label" for="ts-ask-mem">Memory</label>
+            <input class="ts-ask-input" id="ts-ask-mem" type="text"
+                   inputmode="latin" autocomplete="off"
+                   placeholder="e.g. 128G, 0.5T"
+                   aria-describedby="ts-ask-mem-note">
+            <span class="ts-ask-note" id="ts-ask-mem-note"></span>
+          </div>
+        </div>
+
+        <div class="ts-state" id="ts-queue-state" hidden>
+          <div>
+            <div class="ts-state-title" id="ts-queue-state-title"></div>
+            <p class="ts-state-body" id="ts-queue-state-body"></p>
+          </div>
+        </div>
+      </section>
+
       <section class="card" id="ts-stages-card" hidden>
         <h2>Stages</h2>
         <p class="hint">Rows are stages, columns are the parameters that vary.

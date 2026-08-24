@@ -646,6 +646,8 @@ def known_machines() -> List[Dict[str, object]]:
     (`preparing-for-another-machine.md` § 5).  ``readable`` is the flag; the
     summary says how to rewrite it.
     """
+    from .admit import domain_ceiling_s          # one parser for max_time
+
     def _describe(env, name, kind, path):
         if env is None:
             # Absent and unreadable are one answer from `read_environment`,
@@ -659,7 +661,7 @@ def known_machines() -> List[Dict[str, object]]:
                    else "`jobset probe --write --name %s` on that machine"
                         % name)
             return {"name": name, "kind": kind, "path": str(path),
-                    "readable": False, "detected_at": "",
+                    "readable": False, "detected_at": "", "domains": [],
                     "summary": "no record here yet, or it cannot be read -- "
                                "write one with " + fix}
         cores = getattr(env.topology, "cores_per_socket", None)
@@ -673,9 +675,27 @@ def known_machines() -> List[Dict[str, object]]:
                         f"{env.topology.gpu_type or 'GPU'}")
         if env.domains:
             bits.append(f"{len(env.domains)} domain(s)")
+        # THE QUEUES, with the ceilings a surface can default from
+        # (2026-08-24, user): the browser's Task-setup tab lets a person
+        # pick a machine, then one of ITS queues, and fills the time and
+        # memory asks with what that queue actually allows.  Measured
+        # values only -- `None` where the queue states nothing, never a
+        # number invented here (R3: an unstated limit never bars).
         return {"name": name, "kind": kind, "path": str(path),
                 "readable": True, "summary": " \u00b7 ".join(bits),
-                "detected_at": env.detected_at or ""}
+                "detected_at": env.detected_at or "",
+                "domains": [{"name": d.name,
+                             "partition": d.partition,
+                             "qos": d.qos,
+                             "max_time": d.max_time,
+                             "max_time_s": domain_ceiling_s(d),
+                             "max_cores": d.max_cores,
+                             "max_mem_gb": d.max_mem_gb,
+                             "default_mem_per_core_gb":
+                                 d.default_mem_per_core_gb,
+                             "node_type": d.node_type,
+                             "gpu": bool(d.gpu)}
+                            for d in (env.domains or [])]}
 
     out = [_describe(read_environment(path), name, "target", path)
            for name, path in sorted(named_environments().items())]

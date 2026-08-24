@@ -578,3 +578,49 @@
     border-radius: var(--radius-sm);
 }
 .ts-preset:focus { outline: none; border-color: var(--accent); }
+
+/* ===================================================================== *
+ *  The queue's asks -- time and memory  (user, 2026-08-24)              *
+ *                                                                       *
+ *  A label, the field, and what the chosen queue ALLOWS, on one line so *
+ *  the limit is read beside the number rather than hunted for.  The     *
+ *  note carries the verdict, because "128G" alone cannot say whether it *
+ *  fits `htc`.                                                          *
+ * ===================================================================== */
+/* The asks block carries its OWN class, and that class sets NO `display`
+   -- so the UA's `[hidden] { display: none }` wins with nothing to
+   override.  It wore `.ts-rows` (display:flex) first, which defeats
+   `el.hidden = true` on specificity and would have left the fields on
+   screen before a machine was picked; `test_css_hidden_attribute_audit`
+   caught it.  Fixed by not colliding rather than by out-specifying --
+   an override is a second rule to keep true. */
+.ts-asks > * + * { margin-top: var(--space-sm); }
+
+.ts-ask {
+    display: grid;
+    grid-template-columns: var(--ts-ask-label-w) minmax(7rem, 12rem) 1fr;
+    align-items: center;
+    gap: var(--space-sm);
+}
+@media (max-width: 34rem) {
+    /* Stacked: the note stays UNDER its own field rather than wrapping
+       into the next row's, which is what made the limit unreadable. */
+    .ts-ask { grid-template-columns: 1fr; gap: var(--space-xs); }
+}
+.ts-ask-label { color: var(--text-secondary); font-size: var(--text-sm); }
+.ts-ask-input {
+    font: inherit;
+    color: inherit;
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    font-variant-numeric: tabular-nums;
+}
+.ts-ask-input:focus-visible { outline: 2px solid var(--accent); }
+.ts-ask-input[aria-invalid="true"] { border-color: var(--ts-refuse-fg); }
+.ts-ask-note { color: var(--text-secondary); font-size: var(--text-sm); }
+/* Three states, three readings -- and never colour alone: the words say
+   which it is, so the meaning survives a monochrome screen. */
+.ts-ask-note[data-state="bad"]   { color: var(--ts-refuse-fg); }
+.ts-ask-note[data-state="unset"] { font-style: italic; }

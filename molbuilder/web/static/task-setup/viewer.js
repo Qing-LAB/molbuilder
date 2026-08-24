@@ -1420,6 +1420,12 @@ function setMachine(name) {
     }
     const needs = $("ts-target-needs");
     if (needs) needs.hidden = !!name;
+    // A machine's QUEUES are its own -- switching machines invalidates a
+    // queue chosen under the old one, so the choice is cleared rather
+    // than carried across (a name that means nothing here would default
+    // the asks from a ceiling this machine never stated).
+    _queue = "";
+    renderQueues();
     loadResolved();          // the warning depends on WHICH machine
     const chosen = _machines.find((m) => m.name === name);
     const st = $("ts-target-state");
@@ -1439,6 +1445,189 @@ function setMachine(name) {
         ? chosen.summary + (chosen.detected_at
             ? "\nmeasured " + chosen.detected_at : "")
         : chosen.summary;
+}
+
+/* ===================================================================== *
+ *  The queue, and what it allows  (user, 2026-08-24)                    *
+ *                                                                       *
+ *  Three facts, one card: WHICH queue, how long, how much memory.  The  *
+ *  queue's own probed ceilings are the defaults -- the most that queue  *
+ *  allows -- because a person sizing a job wants to start from what is  *
+ *  possible and come down.  NOTHING is invented: a queue that states no *
+ *  ceiling leaves the field empty and says so, and an empty field means *
+ *  the scheduler decides (submission.md S1).                            *
+ * ===================================================================== */
+
+let _queue = "";            // the chosen domain name, "" = none
+
+/** Seconds -> the shortest spelling a person would type back. */
+function _humanTime(sec) {
+    if (!sec) return "";
+    if (sec % 86400 === 0) return (sec / 86400) + "-00:00:00";
+    if (sec % 3600 === 0) return (sec / 3600) + "h";
+    if (sec % 60 === 0) return (sec / 60) + "m";
+    return sec + "s";
+}
+
+/** "4h" / "90m" / "2-00:00:00" / "45" -> seconds, or null. Mirrors
+ *  `ask.parse_duration` plus SLURM's own D-HH:MM:SS, which is what the
+ *  ceilings are spelled in. */
+function _parseTime(txt) {
+    const t = String(txt || "").trim().toLowerCase();
+    if (!t) return null;
+    let m = t.match(/^(?:(\d+)-)?(\d+):(\d{2})(?::(\d{2}))?$/);
+    if (m) {
+        return (+(m[1] || 0)) * 86400 + (+m[2]) * 3600
+             + (+m[3]) * 60 + (+(m[4] || 0));
+    }
+    m = t.match(/^([0-9.]+)\s*([hms]?)$/);
+    if (!m) return NaN;                       // says nothing usable
+    const v = parseFloat(m[1]);
+    if (!(v > 0)) return NaN;
+    return Math.round(v * ({ h: 3600, m: 60, s: 1 }[m[2]] || 60));
+}
+
+/** "128G" / "0.5T" / "128" -> GB, or null. Mirrors `ask.parse_memory`. */
+function _parseMem(txt) {
+    const t = String(txt || "").trim().toUpperCase();
+    if (!t) return null;
+    const m = t.match(/^([0-9.]+)\s*([KMGT]?)B?$/);
+    if (!m) return NaN;
+    const v = parseFloat(m[1]);
+    if (!(v > 0)) return NaN;
+    return v * ({ T: 1024, G: 1, M: 1 / 1024, K: 1 / 1048576 }[m[2]] || 1);
+}
+
+function _queuesOf(machineName) {
+    const m = _machines.find((x) => x.name === machineName);
+    return (m && m.domains) || [];
+}
+
+/** Paint the queue buttons for the chosen machine. */
+function renderQueues() {
+    const card = $("ts-queue-card");
+    const host = $("ts-queue-choice");
+    const needs = $("ts-queue-needs");
+    if (!card || !host) return;
+    const qs = _queuesOf(_machine);
+    card.hidden = false;
+    host.innerHTML = "";
+    if (!_machine) {
+        needs.hidden = false;
+        needs.textContent = "Pick a machine first";
+        $("ts-queue-asks").hidden = true;
+        return;
+    }
+    if (!qs.length) {
+        /* A workstation, or a cluster nobody has probed: there is no menu
+         * to choose from, and saying so is better than an empty row. */
+        needs.hidden = false;
+        needs.textContent = _machine + " states no queues \u2014 it runs "
+            + "directly, so there is nothing to choose. You may still set a "
+            + "time or memory limit below.";
+        $("ts-queue-asks").hidden = false;
+        _queue = "";
+        paintAskNotes();
+        return;
+    }
+    needs.hidden = true;
+    for (const d of qs) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "opt";
+        b.setAttribute("data-queue", d.name);
+        b.setAttribute("aria-pressed", d.name === _queue ? "true" : "false");
+        const bits = [];
+        if (d.max_time) bits.push(d.max_time);
+        if (d.max_cores) bits.push(d.max_cores + " cores");
+        if (d.max_mem_gb) bits.push(_fmtGB(d.max_mem_gb));
+        if (d.gpu) bits.push("GPU");
+        // The SAME shape the machine buttons use -- <b> is what the
+        // chosen-tick hooks (style.css `.ts-choice .opt b::before`), so a
+        // parallel markup here would silently lose the tick.
+        const nm = document.createElement("b");
+        nm.textContent = d.name;
+        const wh = document.createElement("span");
+        wh.textContent = bits.join(" \u00b7 ");
+        b.append(nm, wh);
+        b.addEventListener("click", () => setQueue(d.name));
+        host.appendChild(b);
+    }
+    $("ts-queue-asks").hidden = false;
+    paintAskNotes();
+}
+
+function _fmtGB(gb) {
+    if (gb >= 1024) return (Math.round(gb / 102.4) / 10) + " TB";
+    return Math.round(gb) + " GB";
+}
+
+/** Choosing a queue FILLS the two asks with that queue's ceilings --
+ *  its own measured limits, which is the most this job could ask there. */
+function setQueue(name) {
+    _queue = name;
+    for (const b of document.querySelectorAll("#ts-queue-choice .opt")) {
+        b.setAttribute("aria-pressed",
+                       b.getAttribute("data-queue") === name ? "true" : "false");
+    }
+    const d = _queuesOf(_machine).find((x) => x.name === name);
+    const t = $("ts-ask-time");
+    const mem = $("ts-ask-mem");
+    if (d && t) t.value = d.max_time_s ? _humanTime(d.max_time_s) : "";
+    if (d && mem) mem.value = d.max_mem_gb ? Math.round(d.max_mem_gb) + "G" : "";
+    paintAskNotes();
+    refreshSave();
+}
+
+/** Say, under each field, what the queue allows and whether this ask
+ *  fits -- while changing it is still free. */
+function paintAskNotes() {
+    const d = _queuesOf(_machine).find((x) => x.name === _queue);
+    const pairs = [
+        ["ts-ask-time", "ts-ask-time-note", _parseTime,
+         d && d.max_time_s, (v) => _humanTime(Math.round(v)),
+         "this queue states no time ceiling"],
+        ["ts-ask-mem", "ts-ask-mem-note", _parseMem,
+         d && d.max_mem_gb, (v) => _fmtGB(v),
+         "this queue states no memory ceiling"],
+    ];
+    for (const [inId, noteId, parse, cap, fmt, noCap] of pairs) {
+        const el = $(inId);
+        const note = $(noteId);
+        if (!el || !note) continue;
+        const raw = el.value;
+        const val = parse(raw);
+        let state = "ok";
+        let msg;
+        if (Number.isNaN(val)) {
+            state = "bad";
+            msg = "not a value I can read";
+        } else if (val === null) {
+            state = "unset";
+            msg = "left blank \u2014 the scheduler's own default decides";
+        } else if (cap && val > cap) {
+            state = "bad";
+            msg = "more than " + _queue + " allows (" + fmt(cap) + ")";
+        } else if (cap) {
+            msg = "allowed here: up to " + fmt(cap);
+        } else {
+            msg = d ? noCap : "no queue chosen";
+        }
+        note.textContent = msg;
+        note.setAttribute("data-state", state);
+        el.setAttribute("aria-invalid", state === "bad" ? "true" : "false");
+    }
+}
+
+/** The two asks as `task.json` carries them, or null when unset. */
+function askValues() {
+    const t = ($("ts-ask-time") || {}).value || "";
+    const m = ($("ts-ask-mem") || {}).value || "";
+    const out = {};
+    if (_queue) out.domain = _queue;
+    if (t.trim()) out.time = t.trim();
+    if (m.trim()) out.mem = m.trim();
+    return out;
 }
 
 /** What a `prep` would resolve for the open folder, and from which file.
@@ -1618,8 +1807,21 @@ function watchCheckpointControls() {
     }
 }
 
+/* The two asks validate as they are typed: "more than htc allows" is
+ * worth knowing at the keystroke, not after a queue wait. */
+function watchAskControls() {
+    for (const id of ["ts-ask-time", "ts-ask-mem"]) {
+        const el = $(id);
+        if (!el || el.dataset.mbWatched) continue;
+        el.dataset.mbWatched = "1";
+        el.addEventListener("input", () => { paintAskNotes(); refreshSave(); });
+        el.addEventListener("change", () => { paintAskNotes(); refreshSave(); });
+    }
+}
+
 function refreshSave() {
     watchCheckpointControls();
+    watchAskControls();
     const btn = $("ts-save");
     const why = $("ts-save-why");
     if (!btn) return;
