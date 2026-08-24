@@ -27,7 +27,7 @@ framework can write. So it asks two questions, once:
 Everything else follows, and nothing needs explaining afterwards because
 nothing was invented.
 
-Four consequences, and they are the whole contract:
+Five consequences, and they are the whole contract:
 
 **S1 — Unanswered is `None`, never a default wearing a number's clothes.** A
 value the person did not give is absent. The scheduler's own default may then
@@ -46,6 +46,18 @@ refused, not warned about.
 **S4 — Nothing is submitted unseen.** The full request, before the
 irreversible step. `--yes` is how a person says *I have decided to trust
 this*; its absence is not permission.
+
+**S5 — The queue is named, never inferred.** Which queue to spend a day of
+wall-clock in is a judgement about priority, contention and what else is
+running — none of it on the machine's record, all of it the person's. So the
+options are **listed** and the person names one with `--domain`. A queue that
+cannot take the job is listed too, with the reason: hiding it answers *"why is
+my queue not an option?"* with silence.
+
+*`execution.domain` in the config is that answer given once for a machine
+instead of once per call — a decision, not a guess. A split sweep needs one
+per side, because a cpu-only partition cannot take a GPU group; `--gpu-domain`
+**refines** `--domain` and is needed only when the two differ.*
 
 ---
 
@@ -88,6 +100,18 @@ was asked.*
 
 ```
 $ molbuilder jobset launch bench --budget 4h --mem 128G
+this machine offers:
+     name         partition/qos           max time  cores    memory  gpu
+!  1  debug        htc/debug                    15m    128    251 GB  -
+      -> needs 240 min but debug allows 0-00:15:00
+   2  htc          htc/public                    4h    128    251 GB  -
+!  3  general      general/public              168h     48  502.9 GB  a100 x4
+      -> needs 64 cores but general allows 48
+   4  highmem      highmem/public               48h    128   2002 GB  -
+
+  choose one with --domain <name>.  Nothing is submitted until you do.
+
+$ molbuilder jobset launch bench --budget 4h --mem 128G --domain htc
 about to request:
   time     4h 00m
   memory   128 GB
@@ -95,6 +119,10 @@ about to request:
   queue    htc / public
   submit this? [Y/n]
 ```
+
+The listing reuses the scheduler's own admission, so it cannot say yes where
+the submission says no. *A table that disagrees with the check is worse than
+no table.*
 
 `--yes` skips the question, never the output: a person scrolling back must be
 able to see what was sent.
@@ -112,9 +140,10 @@ the hardware:
   rather than as a scheduler rejection after a day in the queue;
 * **`node_type`** — so a measurement taken elsewhere is refused rather than
   silently applied (S3);
-* **queue ceilings** — so placement takes the cheapest ceiling that *fits*, in
-  an order the site declares ([`scheduler.md`](?doc=execution/scheduler.md)
-  § 5a).
+* **queue ceilings** — so the listing can mark what fits and say why the rest
+  does not. *They no longer pick a queue for you* (S5); the ordering machinery
+  that once did survives only where a queue is named for a machine rather than
+  for a call ([`scheduler.md`](?doc=execution/scheduler.md) § 5a).
 
 All four of those fields were declared on the record and read by nothing. That
 is now fixed, and it is worth stating as a pattern rather than as four

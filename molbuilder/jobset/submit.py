@@ -462,6 +462,7 @@ def _dc_replace_time(r: "Resources", time_str: str) -> "Resources":
 
 
 def submit_bench_group(jobset: JobSet, base_dir, *,
+                       gpu_domain: Optional[str] = None,
                        domain: Optional[str] = None,
                        dry_run: bool = False,
                        trial_timeout_s: int = 900,
@@ -549,9 +550,21 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
             name = ("bench-group"
                     + (f"-{side}" if mixed else "")
                     + (f"-{_shelf_token(key)}" if multi else ""))
+            # ONE QUEUE PER SIDE.  A split sweep sends its CPU family and
+            # its GPU family to different queues -- a cpu-only partition
+            # cannot take the GPU side -- so one `--domain` cannot answer for
+            # both, and using it for both is the guess this design removes.
+            # `gpu_domain` REFINES rather than replaces: absent, the GPU
+            # side takes `--domain` like everything else.  Requiring a second
+            # flag from someone who already said `--only gpu` would be the
+            # extra question this design exists to avoid; it is needed only
+            # when the two sides genuinely go to different queues.
             results += _submit_side_group(
                 jobset, base, dirs, pending, name,
-                gpu_side=(side == "gpu"), domain=domain, dry_run=dry_run,
+                gpu_side=(side == "gpu"),
+                domain=((gpu_domain or domain) if side == "gpu"
+                        else domain),
+                dry_run=dry_run,
                 trial_timeout_s=trial_timeout_s)
     if not results:
         raise SubmitError(

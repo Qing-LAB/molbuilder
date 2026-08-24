@@ -1914,6 +1914,11 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                    "bare number of GB.  Unstated means the scheduler's own "
                    "default decides, which is how a 64-core job came to ask "
                    "for 128 GB nobody had chosen.")
+@click.option("--gpu-domain", "gpu_domain", default=None, metavar="NAME",
+              help="the queue the GPU side of a SPLIT sweep goes to, when "
+                   "it differs from --domain.  A cpu-only partition cannot "
+                   "take the GPU side, so one queue cannot always answer for "
+                   "both.  Omit it and the GPU side takes --domain.")
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
               help="submit without showing the request first.  Without it "
                    "you see exactly what will be asked for, and say so.")
@@ -1930,8 +1935,8 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                    "The other side stays pending; a later `launch bench`` "
                    "collects it -- here or on the cluster that reaches it.")
 def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
-               dry_run: bool, budget_text, mem_text, auto_yes,
-               trial_timeout_min, only_side) -> None:
+               dry_run: bool, budget_text, mem_text, gpu_domain,
+               auto_yes, trial_timeout_min, only_side) -> None:
     """Launch a prepped stage: local ``bash`` (direct) or the machine's
     submission system (submit).  Run ``prep`` first.  ``--dry-run`` shows the
     exact command before anything is irreversible.
@@ -1986,6 +1991,31 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         # is not.
         domain = _execn["domain"]
         domain_source = "execution.domain (config)"
+    if domain is None and mode == "submit":
+        # NOBODY GUESSES THE QUEUE (user, 2026-08-23).  Which queue to spend
+        # a day of wall-clock in is a judgement about priority, contention and
+        # what else is running -- none of which is on this machine's record,
+        # and all of which the person has.  So the options are LISTED and the
+        # person names one; nothing is submitted until they do.
+        #
+        # `execution.domain` above is that answer given once for a machine
+        # rather than once per call -- a decision, not a guess.
+        from .ask import Ask, queue_table
+        from ..runtime_config import get_routing
+        # `bundle`, not `base`: the bundle root is what the caller named and
+        # is known HERE; `base` is only bound when the job-set is loaded, 20
+        # lines down.  Reaching for it early is the bug this comment replaces.
+        _rows = get_routing(project_dir=Path(bundle) if bundle else None)
+        if _rows:
+            click.echo(queue_table(
+                _rows, Ask(time_s=_duration(budget_text),
+                           mem_gb=_memory(mem_text)),
+                cores=None, gpu=(only_side == "gpu")))
+            raise click.ClickException(
+                "no --domain, so no queue was chosen.  Pick one from the "
+                "list above with `--domain <name>`, or set "
+                "`execution.domain` in molbuilder.json to answer this once "
+                "for this machine.")
     if only_side and (kind != "bench" or mode != "submit"
                       or trial is not None):
         # Mirrors the domain refusal below: a side filter rides the GROUPED
@@ -2051,7 +2081,8 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                     only=only_side,
                     sweep=[j.name for j in js.jobs])
             results = submit_bench_group(
-                js, base, domain=domain, dry_run=dry_run,
+                js, base, domain=domain, gpu_domain=gpu_domain,
+                dry_run=dry_run,
                 trial_timeout_s=_bound_s, only=only_side)
         else:
             if kind == "bench" and js.kind == "sweep":

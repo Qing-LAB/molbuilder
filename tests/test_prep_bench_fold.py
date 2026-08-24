@@ -350,11 +350,11 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     trial = js["jobs"][0]["name"]
     runner = CliRunner()
     r = runner.invoke(jobset_group, ["launch", "bench", "--bundle", str(calc),
-                                     "--mode", "submit", "--dry-run", "--yes"])
+                                     "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert r.exit_code != 0 and "name it" in r.output
     r = runner.invoke(jobset_group, ["launch", "bench", "coarse",
                                      "--bundle", str(calc),
-                                     "--mode", "submit", "--dry-run", "--yes"])
+                                     "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert r.exit_code == 0, r.output
     # one sbatch per SHELF, each an exact fit -- and the shelves submit
     # widest first, so the first planned group asks the widest -n
@@ -378,13 +378,13 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     assert "next unlaunched trial" not in r.output
     r = runner.invoke(jobset_group, ["launch", "bench", "coarse", trial,
                                      "--bundle", str(calc),
-                                     "--mode", "submit", "--dry-run", "--yes"])
+                                     "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert r.exit_code == 0, r.output
     assert r.output.count("WOULD run") == 1
     assert "bench-group" not in r.output
     r = runner.invoke(jobset_group, ["launch", "run", "coarse", trial,
                                      "--bundle", str(calc),
-                                     "--mode", "submit", "--dry-run", "--yes"])
+                                     "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert r.exit_code != 0 and "TRIAL names a benchmark point" in r.output
 
 
@@ -553,7 +553,7 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
     assert res.exit_code == 0, res.output
     res = r.invoke(jobset_group, ["launch", "bench", "coarse",
                                   "--bundle", str(calc),
-                                  "--mode", "submit", "--dry-run", "--yes"])
+                                  "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert res.exit_code == 0, res.output
     res = r.invoke(jobset_group, ["summarize", "bench", "coarse",
                                   "--bundle", str(calc)])
@@ -1344,13 +1344,13 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
     r = CliRunner()
     res = r.invoke(jobset_group, ["launch", "bench", "coarse", first,
                                   "--bundle", str(calc),
-                                  "--mode", "submit", "--dry-run", "--yes"])
+                                  "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert res.exit_code != 0
     assert "already launched" in res.output
     assert "summarize" in res.output
     res = r.invoke(jobset_group, ["launch", "bench", "coarse",
                                   "--bundle", str(calc),
-                                  "--mode", "submit", "--dry-run", "--yes"])
+                                  "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert res.exit_code == 0, res.output
     # the bare form groups the REMAINDER: the launched trial does not ride
     assert "bench-group" in res.output

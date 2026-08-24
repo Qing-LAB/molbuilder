@@ -183,3 +183,66 @@ def test_the_request_is_shown_even_when_it_is_accepted_unasked():
     confirm("about to request:\n  time 4h", auto_yes=True, echo=said.append,
             prompt=lambda: True)
     assert "about to request" in said[0]
+
+
+# --------------------------------------------------------------------- #
+#  the queue is the person's to name                                     #
+# --------------------------------------------------------------------- #
+
+def _menu():
+    return [
+        Domain(name="debug", partition="htc", qos="debug",
+               max_time="0-00:15:00", max_cores=128, max_mem_gb=251.0),
+        Domain(name="htc", partition="htc", qos="public",
+               max_time="0-04:00:00", max_cores=128, max_mem_gb=251.0),
+        Domain(name="general", partition="general", qos="public",
+               max_time="7-00:00:00", max_cores=48, max_mem_gb=502.9,
+               gpu={"a100": 4}),
+    ]
+
+
+def _table(**kw):
+    from molbuilder.jobset.ask import queue_table
+    return queue_table(_menu(), Ask(time_s=4 * 3600, mem_gb=128), **kw)
+
+
+def test_every_queue_is_listed_with_what_it_offers():
+    """The framework does not choose.  Which queue to spend a day of
+    wall-clock in is a judgement about priority, contention and what else is
+    running — none of it on this machine's record, all of it the person's."""
+    t = _table(cores=64)
+    for name in ("debug", "htc", "general"):
+        assert name in t
+    assert "251 GB" in t and "a100 x4" in t
+
+
+def test_a_queue_that_cannot_take_the_job_is_listed_WITH_THE_REASON():
+    """Hiding it would answer *"why is my queue not an option?"* with
+    silence, and that question has a real answer worth reading."""
+    t = _table(cores=64)
+    assert "needs 240 min but debug allows" in t
+    assert "needs 64 cores but general allows 48" in t
+
+
+def test_the_listing_and_the_submission_cannot_disagree():
+    """The table reuses the scheduler's own admission, so a row it marks as
+    fitting is one the submission will accept.  A table that says yes where
+    the check says no is worse than no table."""
+    from molbuilder.jobset.ask import _why_not
+    from molbuilder.scheduler.admit import Request, admits
+    ask, cores = Ask(time_s=4 * 3600, mem_gb=128), 64
+    for row in _menu():
+        assert _why_not(row, ask, cores=cores) == list(
+            admits(row, Request(ranks=cores, walltime_s=ask.time_s,
+                                mem_gb=ask.mem_gb)))
+
+
+def test_it_says_how_to_choose_and_that_nothing_has_happened_yet():
+    t = _table(cores=64)
+    assert "--domain" in t
+    assert "Nothing is submitted until you do" in t
+
+
+def test_a_machine_with_no_queues_says_the_job_runs_directly():
+    from molbuilder.jobset.ask import queue_table
+    assert "runs directly" in queue_table([], Ask(time_s=60))

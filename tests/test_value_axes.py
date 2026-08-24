@@ -255,11 +255,18 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
 # --------------------------------------------------------------------- #
 
 def _submit_dry(calc, *extra):
+    """A scripted submit names its queues, exactly as a person now does.
+
+    `htc` for the CPU side and `general` for the GPU side: a cpu-only
+    partition cannot take a GPU group, so one queue cannot answer for both
+    when a sweep splits.  `--yes` because there is no terminal to ask.
+    """
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     r = CliRunner().invoke(
         jobset_group, ["launch", "bench", "coarse", "--bundle", str(calc),
-                       "--mode", "submit", "--dry-run", *extra, "--yes"])
+                       "--mode", "submit", "--dry-run", "--yes",
+                       "--domain", "htc", "--gpu-domain", "general", *extra])
     assert r.exit_code == 0, r.output
     return r.output
 
@@ -287,13 +294,20 @@ def test_split_submission_one_group_per_side_and_shelf(sol_calc):
     assert out.count("rides the group") == 8
 
 
-def test_only_submits_one_side_and_domain_overrides(sol_calc):
-    """``--only gpu`` carries just that side; ``--domain`` overrides the
-    per-side preference for whatever it carries — together they place each
-    side wherever the user says."""
+def test_only_submits_one_side_and_the_named_queue_wins(sol_calc):
+    """``--only gpu`` carries just that side, and the queue named for that
+    side is where it goes — nothing infers a preference over a stated answer.
+
+    *Migrated 2026-08-23.*  This passed `--domain htc` and expected it to
+    place the GPU shelves.  With a queue named per side, forcing the GPU side
+    means naming the GPU side's queue: a cpu-only partition cannot take a GPU
+    group, so one flag answering for both was exactly the conflation that made
+    `--gpu-domain` necessary.  The claim is unchanged — a stated queue wins —
+    only the spelling is per-side now.
+    """
     _declare(sol_calc, _small_matrix())
     _prep(sol_calc)
-    out = _submit_dry(sol_calc, "--only", "gpu", "--domain", "htc")
+    out = _submit_dry(sol_calc, "--only", "gpu", "--gpu-domain", "htc")
     plans = [l for l in out.splitlines() if "WOULD run" in l]
     assert len(plans) == 3
     assert all("bench-group-gpu-" in l for l in plans)
@@ -341,7 +355,7 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
     deck.write_text(warm_text)
     r = CliRunner().invoke(
         jobset_group, ["launch", "bench", "coarse", "--bundle",
-                       str(sol_calc), "--mode", "submit", "--dry-run", "--yes"])
+                       str(sol_calc), "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert r.exit_code != 0
     assert "WARM-start" in r.output and "K4C1block_size64" in r.output
 
@@ -349,7 +363,7 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
                            text, flags=re.M))
     r = CliRunner().invoke(
         jobset_group, ["launch", "bench", "coarse", "--bundle",
-                       str(sol_calc), "--mode", "submit", "--dry-run", "--yes"])
+                       str(sol_calc), "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert r.exit_code != 0
     assert "no restart group" in r.output
 

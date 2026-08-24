@@ -156,6 +156,58 @@ def fits(ask: Ask, rows: Sequence) -> Tuple[bool, List[str]]:
     return (not reasons), reasons
 
 
+def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
+                gpu: bool = False) -> str:
+    """**Every queue this machine offers, and which of them can take this job.**
+
+    The framework does not choose (user, 2026-08-23: *"just don't guess
+    shit"*).  It shows what exists, marks what fits, and the person picks with
+    ``--domain``.  Which queue to spend a day of wall-clock in is a judgement
+    about priority, contention and what else is running — none of which is on
+    this machine's record, and all of which the person has.
+
+    A queue that cannot take the job is still LISTED, with the reason.
+    Hiding it would answer *"why is my queue not an option?"* with silence,
+    and that question has a real answer worth reading.
+    """
+    from ..scheduler import domain_ceiling_s, domain_serves_gpu
+    if not rows:
+        return "this machine states no queues -- the job runs directly."
+    head = (f"  {'':2} {'name':<12} {'partition/qos':<22} {'max time':>9} "
+            f"{'cores':>6} {'memory':>9}  gpu")
+    lines = ["this machine offers:", head]
+    for i, d in enumerate(rows, 1):
+        secs = domain_ceiling_s(d)
+        wall = f"{secs // 3600}h" if secs and secs >= 3600 else (
+            f"{secs // 60}m" if secs else "-")
+        mem = f"{float(d.max_mem_gb):g} GB" if d.max_mem_gb else "-"
+        dev = ", ".join(f"{x.type} x{x.per_node}" for x in d.devices) or "-"
+        why = _why_not(d, ask, cores=cores, gpu=gpu)
+        mark = "  " if not why else "! "
+        lines.append(
+            f"{mark}{i:<2} {d.name:<12} {d.partition + '/' + d.qos:<22} "
+            f"{wall:>9} {str(d.max_cores or '-'):>6} {mem:>9}  {dev}")
+        if why:
+            lines.append(f"     -> {'; '.join(why)}")
+    lines.append("")
+    lines.append("  choose one with --domain <name>.  Nothing is submitted "
+                 "until you do.")
+    return "\n".join(lines)
+
+
+def _why_not(row, ask: Ask, *, cores=None, gpu: bool = False) -> List[str]:
+    """Why this queue cannot take this job — empty when it can.
+
+    Reuses the scheduler's own admission so the listing and the submission
+    cannot disagree about what fits: a table that says yes where the check
+    says no is worse than no table.
+    """
+    from ..scheduler.admit import Request, admits
+    return list(admits(row, Request(ranks=cores, walltime_s=ask.time_s,
+                                    mem_gb=ask.mem_gb,
+                                    gpus=1 if gpu else None)))
+
+
 def render(ask: Ask, *, placement=None, n_trials: Optional[int] = None,
            bound_s: Optional[int] = None, extra: Sequence[str] = ()) -> str:
     """**The one output** — what is about to be requested, in full.

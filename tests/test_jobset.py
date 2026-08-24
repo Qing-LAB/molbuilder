@@ -719,7 +719,7 @@ def test_cli_submit_dry_run_lists_commands(tmp_path):
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
     r = runner.invoke(grp, ["launch", "bench", "G1K1C4", "--bundle",
-                            str(tmp_path), "--mode", "submit", "--dry-run", "--yes"])
+                            str(tmp_path), "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert r.exit_code == 0, r.output
     assert "planned" in r.output and "sbatch" in r.output
     assert "-J" in r.output and "G1K1C4" in r.output
@@ -747,8 +747,8 @@ def test_submit_accepts_exactly_these_options(tmp_path):
     from molbuilder.jobset._cli import submit_cmd
     assert {q.name for q in submit_cmd.params} == {
         "kind", "stage", "trial", "bundle", "mode", "domain", "dry_run",
-        "budget_text", "mem_text", "auto_yes", "trial_timeout_min",
-        "only_side"}
+        "budget_text", "mem_text", "gpu_domain", "auto_yes",
+        "trial_timeout_min", "only_side"}
 
 
 def test_cli_submit_of_a_whole_sweep_groups_it_by_shelf(tmp_path):
@@ -760,7 +760,7 @@ def test_cli_submit_of_a_whole_sweep_groups_it_by_shelf(tmp_path):
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
     r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path),
-                            "--mode", "submit", "--dry-run", "--yes"])
+                            "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert r.exit_code == 0, r.output
     plans = [l for l in r.output.splitlines() if "WOULD run" in l]
     assert len(plans) == 2
