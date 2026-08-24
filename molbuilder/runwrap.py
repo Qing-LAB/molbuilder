@@ -1736,7 +1736,8 @@ def _wants_gpu(script_path: Path, resources=None) -> bool:
 def render_run_wrapper(script_path: Path, *,
                         resources: "Resources",
                         env: Optional[str] = None,
-                        n_atoms: Optional[int] = None) -> str:
+                        n_atoms: Optional[int] = None,
+                        project_dir: Optional[Path] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     **The allocation arrives whole** — `architecture.md` § 3.1, rule A8.  This
@@ -2949,7 +2950,14 @@ def render_run_wrapper(script_path: Path, *,
     # ``require_activation`` helper raises RuntimeConfigError with a
     # operator-facing message + the canonical molbuilder.json snippet.
     from . import runtime_config as _rc
-    _project_dir = script_path.parent if script_path.parent.exists() else None
+    # The BUNDLE'S scope, stated by the caller since the layout repair
+    # (roadmap 7.10 M1): the script is born in its job directory now, and
+    # a scope derived from its parent would look for .molbuilder.json and
+    # environment.json in the job dir -- one level below the files.  The
+    # parent stays as the fallback for a caller that points at a script
+    # sitting wherever its bundle root is (the web build route, tests).
+    _project_dir = project_dir if project_dir is not None else (
+        script_path.parent if script_path.parent.exists() else None)
     _sg = _rc.get_script_generation(project_dir=_project_dir)
     _preamble_chunks = _sg["preamble_chunks"]
     _activation_form = _rc.require_activation(project_dir=_project_dir)
@@ -3641,7 +3649,8 @@ class RenderedWrapper:
 def render_wrappers(script_path: Path, *,
                     resources: "Resources",
                     env: Optional[str] = None,
-                    emit_sbatch: bool = True) -> RenderedWrapper:
+                    emit_sbatch: bool = True,
+                    project_dir: Optional[Path] = None) -> RenderedWrapper:
     """Render everything step 4 produces for *script_path*, and write nothing.
 
     **W7 — floor 3 returns text.**  The deck writers hand back a string and the
@@ -3690,7 +3699,7 @@ def render_wrappers(script_path: Path, *,
                if script_path.suffix.lower() == ".fdf" else None)
     text = render_run_wrapper(
         script_path, resources=r, env=env, n_atoms=n_atoms,
-    )
+        project_dir=project_dir)
     _validate_rendered_wrapper(text, script_path)
     # ``stem + ".run.sh"`` rather than ``with_suffix(".run.sh")``: the latter
     # replaces only the LAST suffix, so ``job.spectra.py`` would become
@@ -3707,7 +3716,8 @@ def render_wrappers(script_path: Path, *,
     # this layer knows both the deck (GPU request, atom count) and the
     # invocation's overrides.
     if emit_sbatch:
-        sbatch = _render_sbatch_for(script_path, resources=r, env=env)
+        sbatch = _render_sbatch_for(script_path, resources=r, env=env,
+                                    project_dir=project_dir)
         if sbatch is not None:
             _validate_rendered_wrapper(sbatch, script_path)
             files.append((script_path.stem + ".sbatch", sbatch))
@@ -3718,7 +3728,8 @@ def render_wrappers(script_path: Path, *,
 def write_run_wrapper(script_path: Path, *,
                       resources: "Resources",
                       env: Optional[str] = None,
-                      emit_sbatch: bool = True) -> Path:
+                      emit_sbatch: bool = True,
+                      project_dir: Optional[Path] = None) -> Path:
     """Write what :func:`render_wrappers` produced, and return the wrapper's path.
 
     **This function renders nothing.**  It is the writing half of step 4, kept
@@ -3738,7 +3749,8 @@ def write_run_wrapper(script_path: Path, *,
     """
     from . import script_emit as _sc_write
     rendered = render_wrappers(script_path, resources=resources,
-                               env=env, emit_sbatch=emit_sbatch)
+                               env=env, emit_sbatch=emit_sbatch,
+                               project_dir=project_dir)
     parent = Path(script_path).resolve().parent
     for name, text in rendered.files:
         written = _sc_write.write_script(parent / name, text)
@@ -3756,8 +3768,8 @@ def _slurm_walltime(seconds: int) -> str:
     return f"{d}-{h:02d}:{m:02d}:{sec:02d}"
 
 
-def _render_sbatch_for(script_path: Path,
-                       *,
+def _render_sbatch_for(script_path: Path, *,
+                       project_dir: Optional[Path] = None,
                        resources: "Resources",
                        env: Optional[str],
                        domain_pq: Optional[Tuple[str, str]] = None
@@ -3781,7 +3793,9 @@ def _render_sbatch_for(script_path: Path,
     r = resources
     mpi_np, cpus_per_task = r.mpi_np, r.cpus_per_task
     time, gres, mem, exclusive = r.time, r.gres, r.mem, r.exclusive
-    project_dir = script_path.parent if script_path.parent.exists() else None
+    if project_dir is None:
+        project_dir = (script_path.parent
+                       if script_path.parent.exists() else None)
 
     # Does the MACHINE have a scheduler?  (P1, 2026-08-17.)  This asked only
     # whether a `scheduler` BLOCK was configured, on the old premise that "a

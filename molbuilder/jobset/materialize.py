@@ -335,14 +335,24 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
             # stage finds them lying there; there is no producer directory to
             # reach into.
             continue
-        # static package + this job's own input script: same bytes, in the
-        # bundle root.  The prefix is COMPUTED, not "..": a nested trial dir
-        # (<NN>_<stage>/bench-<point>/) is depth 2, and a hardcoded one-level
-        # hop would dangle -- the same destruction class the flat guard
-        # above records (M5, 2026-08-10).
-        up = os.path.relpath(str(base), str(d))
-        for fname in list(jobset.shared) + [job.script]:
-            relink(d, os.path.join(up, fname), os.path.basename(fname))
+        # The static package arrives as REAL COPIES (user, 2026-08-24;
+        # `project-layout.md` § 1.0: the run directory "holds everything",
+        # and a symlink holds nothing).  These were relative symlinks to
+        # root copies, which is how a ten-trial sweep came to keep its 50
+        # rendered files at the bundle root with directories full of
+        # pointers.  The deck is NOT in this list any more: it is born in
+        # the directory (`prep_calculation` / step 1's adoption), so
+        # there is no root copy to reach for.
+        import shutil as _sh
+        for fname in list(jobset.shared):
+            src = base / fname
+            dst = d / os.path.basename(fname)
+            if not src.is_file():
+                continue          # prep's own missing-input gates report it
+            if dst.is_symlink():
+                dst.unlink()      # a pre-2026-08-24 bundle's link, replaced
+            if not dst.is_file():
+                _sh.copy2(src, dst)
         # NOTHING ELSE IS LINKED IN.  A second loop here laid the `Carry`
         # symlinks -- into a producer's directory, before the producer had
         # run, so they dangled by design.  Deleted 2026-08-10 with `Carry`
@@ -505,33 +515,45 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     attempt, is_new = resolve_attempt(stage_dir)
     attempt.mkdir(parents=True, exist_ok=True)
 
-    # Inputs: the deck and the shared package, linked UP to the bundle root.
-    # Identical bytes for every attempt, so a link is right here -- it is the
-    # warm state below that must be a copy.  The prefix is COMPUTED, not
-    # "../..": a stageless calculation's stage dir IS the bundle root (its
-    # attempt sits at depth 1) and a bench trial's attempt sits at depth 3,
-    # so a hardcoded two-level hop dangles at both -- the same destruction
-    # class materialize() records above (M5, 2026-08-10).
-    up = os.path.relpath(str(base), str(attempt))
+    # Inputs: the deck, wrappers and shared package, COPIED in -- real
+    # files, per L2 (roadmap 7.10; `project-layout.md` § 1.0: the run
+    # directory "holds everything").  These were relative symlinks up to
+    # the bundle root, laid with a computed prefix; since 2026-08-24 the
+    # rendered files are BORN in the stage directory, so the stage dir is
+    # the source and the root is only a legacy fallback (a bundle prepped
+    # before the layout repair).  Identical bytes for every attempt argued
+    # for links once; a synced-back bundle whose links dangled on the
+    # other machine is the argument that outranks it.
+    import shutil as _sh
     linked: List[str] = []
+
+    def _bring(fname: str) -> None:
+        bn = os.path.basename(fname)
+        dst = attempt / bn
+        for src in (stage_dir / bn, base / fname, base / bn):
+            if src.is_file() and src.resolve() != dst.resolve():
+                # REFRESHED every time, exactly as the old relink was
+                # (unlink + relay): a REUSED unlaunched attempt must see
+                # the re-prep's deck, not the first prep's -- skip-if-
+                # exists here kept a stale ELPA-2STAGE deck under a
+                # re-prep whose pin said otherwise (caught by
+                # test_a_declared_pin_reaches_the_run_deck..., 2026-08-24).
+                if dst.is_symlink() or dst.exists():
+                    dst.unlink()
+                _sh.copy2(src, dst)
+                linked.append(bn)
+                return
+
     for fname in [job.script] + list(jobset.shared):
-        relink(attempt, os.path.join(up, fname),
-               os.path.basename(fname))
-        linked.append(os.path.basename(fname))
+        _bring(fname)
     # mb_monitor.py: the load monitor.  makov_payne_correction.py: the
     # post-run script a CHARGED deck's own header instructs the user to
-    # run "after SIESTA finishes" -- i.e. HERE, beside the .out, so the
-    # link is what keeps that instruction honest in the hierarchical
-    # shape (E6 integration, 2026-08-12; prep writes it at the root).
+    # run "after SIESTA finishes" -- i.e. HERE, beside the .out.
     for extra in ("mb_monitor.py", "makov_payne_correction.py"):
-        if (base / extra).exists():
-            relink(attempt, os.path.join(up, extra), extra)
-            linked.append(extra)
+        _bring(extra)
     stem = Path(job.script).stem
     for wrapper in (f"{stem}.run.sh", f"{stem}.sbatch"):
-        if (base / wrapper).exists():
-            relink(attempt, os.path.join(up, wrapper), wrapper)
-            linked.append(wrapper)
+        _bring(wrapper)
 
     # Re-preparing an attempt that was already carried into: UNDO the previous
     # carry first.  § 1.6 makes re-prep *"changing your mind about the setup"*,

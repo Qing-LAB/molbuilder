@@ -84,14 +84,14 @@ def test_prep_renders_the_deck_it_used_to_demand(calc):
     all, so this passing is the migration."""
     assert not list(calc.glob("*.fdf"))
     prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32))
-    assert (calc / "calc_01_coarse.fdf").is_file()
+    assert (calc / "01_coarse" / "calc_01_coarse.fdf").is_file()
 
 
 def test_the_five_steps_all_leave_their_mark(calc):
     prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
     assert (calc / "environment.json").is_file()        # 1 resolve the machine
-    assert (calc / "calc_01_coarse.fdf").is_file()      # 3 render the deck
-    assert (calc / "calc_01_coarse.run.sh").is_file()   # 4 render the wrapper
+    assert (calc / "01_coarse" / "calc_01_coarse.fdf").is_file()      # 3 render the deck
+    assert (calc / "01_coarse" / "calc_01_coarse.run.sh").is_file()   # 4 render the wrapper
     assert (calc / "01_coarse").is_dir()                # 5 build the directory
 
 
@@ -119,7 +119,7 @@ def test_the_deck_records_the_rank_count_it_was_rendered_for(calc):
     from molbuilder.parse.scripts.bench_marks import _extract_bench_marks_dict
     prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32))
     marks = _extract_bench_marks_dict(
-        (calc / "calc_01_coarse.fdf").read_text())
+        (calc / "01_coarse" / "calc_01_coarse.fdf").read_text())
     assert marks.get("mpi_np") == 32
 
 
@@ -129,9 +129,13 @@ def test_the_launch_agreement_holds_for_a_deck_prep_just_made(calc):
     run of this path, because the deck was rendered from the values alone."""
     from molbuilder.jobset.agreement import launch_agreement
     from molbuilder.jobset._cli import _load
+    from molbuilder.jobset.materialize import job_dir_names, shape_of
     prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32))
     js, _ = _load(str(calc))
-    assert launch_agreement(calc, js.jobs[0]).verdict == "agrees"
+    # the deck lives in the JOB's directory (L1, roadmap 7.10) -- ask the
+    # naming authority, exactly as the launch door does.
+    d = calc / job_dir_names(js, shape_of(js, calc))[js.jobs[0].name]
+    assert launch_agreement(d, js.jobs[0]).verdict == "agrees"
 
 
 def test_the_allocation_reaches_the_jobs_resources(calc):
@@ -152,12 +156,12 @@ def test_the_named_stages_overrides_are_what_got_rendered(calc):
     tighter one.  Rendering the wrong rung would be silent, so this names the
     values rather than asserting a file exists."""
     prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
-    coarse = (calc / "calc_01_coarse.fdf").read_text()
+    coarse = (calc / "01_coarse" / "calc_01_coarse.fdf").read_text()
     assert "MD.TypeOfRun CG" in coarse
     assert "MD.MaxForceTol 0.05" in coarse
 
     prep_calculation(calc, "medium", allocation=Resources(mpi_np=8))
-    medium = (calc / "calc_02_medium.fdf").read_text()
+    medium = (calc / "02_medium" / "calc_02_medium.fdf").read_text()
     assert "MD.TypeOfRun Broyden" in medium
     assert "MD.MaxForceTol 0.04" in medium
 
@@ -169,14 +173,14 @@ def test_the_deck_carries_its_stages_token_and_header(calc):
     the keywords below it (decision 27).  Gated here because `prep` is the
     token's producer now -- ``molbuilder fdf --stage N`` was, until it went."""
     prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
-    coarse = (calc / "calc_01_coarse.fdf").read_text()
+    coarse = (calc / "01_coarse" / "calc_01_coarse.fdf").read_text()
     assert "calc_01_coarse.out" in coarse
     assert "# Stage 01_coarse --" in coarse
 
 
 def test_the_template_supplies_what_no_stage_varies(calc):
     prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
-    assert "MeshCutoff 300.0" in (calc / "calc_01_coarse.fdf").read_text()
+    assert "MeshCutoff 300.0" in (calc / "01_coarse" / "calc_01_coarse.fdf").read_text()
 
 
 # --------------------------------------------------------------------- #
@@ -236,12 +240,12 @@ def test_the_warm_retry_budget_travels_the_described_route(calc):
     tpl.write_text(head + sep + body.replace("value = 1", "value = 4", 1)
                    + nxt + rest)
     prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
-    text = (calc / "calc_01_coarse.run.sh").read_text()
+    text = (calc / "01_coarse" / "calc_01_coarse.run.sh").read_text()
     assert "_siesta_retry_max=4" in text, (
         "the template's warm-retry budget never reached the wrapper -- "
         "the § 6.2 translation at resolve.py is broken again (A-5)")
     # an explicitly stated allocation wins over the template's answer
     prep_calculation(calc, "coarse",
                      allocation=Resources(mpi_np=8, continue_retries=2))
-    text = (calc / "calc_01_coarse.run.sh").read_text()
+    text = (calc / "01_coarse" / "calc_01_coarse.run.sh").read_text()
     assert "_siesta_retry_max=2" in text

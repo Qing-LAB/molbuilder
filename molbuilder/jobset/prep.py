@@ -174,21 +174,44 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     # public entry for bundles that predate `describe` -- not a re-decision.
     resolve_target(base)
 
-    # ---- 1. render wrappers once per distinct script (in the root) ------ #
+    # ---- 1. render wrappers once per distinct script, IN THE JOB DIR --- #
+    # Nothing rendered lives at the bundle root (user, 2026-08-24;
+    # `project-layout.md` § 1.0).  The deck was born in its directory by
+    # `prep_calculation`; a deck a caller rendered at the root (hand-built
+    # JobSets, pre-2026-08-24 bundles) is ADOPTED -- moved in, once --
+    # so the root ends clean either way and the wrapper is written beside
+    # the deck it launches.
     if log is not None:
         log.phase("STEP 4 · WRAPPERS — how each deck is launched")
-    rendered: set = set()
+    _dir_of = job_dir_names(jobset, shape_of(jobset, base_dir))
+    rendered: dict = {}
     for job in jobset.jobs:
+        _jd = base / _dir_of[job.name]
+        _jd.mkdir(parents=True, exist_ok=True)
         if job.script in rendered:
+            # A SHARED script (several trials, one deck): each directory
+            # still holds its own real copy (L2) -- under the symlink
+            # model one root render served every dir by reference, and a
+            # directory that references is a directory that does not hold.
+            import shutil as _sh
+            _src_dir = rendered[job.script]
+            _stem0 = Path(job.script).stem
+            for _fn in (job.script, f"{_stem0}.run.sh", f"{_stem0}.sbatch"):
+                if (_src_dir / _fn).is_file() and not (_jd / _fn).is_file():
+                    _sh.copy2(_src_dir / _fn, _jd / _fn)
             if log is not None:
                 log.note(f"{job.name}: shares {job.script}'s wrapper, "
-                         f"already rendered")
+                         f"copied from {_src_dir.name}/")
             continue
-        script_path = base / job.script
+        script_path = _jd / job.script
         if not script_path.is_file():
-            raise PrepError(
-                f"job {job.name!r}: script {job.script!r} not in bundle root "
-                f"{base} (render the inputs before prep).")
+            _root_copy = base / job.script
+            if _root_copy.is_file() and _root_copy != script_path:
+                _root_copy.replace(script_path)      # adoption, not a copy
+            else:
+                raise PrepError(
+                    f"job {job.name!r}: script {job.script!r} not in "
+                    f"{_jd} (render the inputs before prep).")
         with _user_error_as_prep():
             # The ALLOCATION, whole (architecture.md § 3.1, rule A8).  This
             # call listed nine of the wrapper's eleven keyword arguments until
@@ -210,15 +233,20 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 resources=job.resources,
                 env=env,
                 emit_sbatch=emit_sbatch,
+                # The BUNDLE'S scope, explicitly: the script is born in its
+                # job directory now, and the renderer's parent-derived
+                # fallback would read config one level below the bundle's
+                # .molbuilder.json / environment.json (roadmap 7.10 M1).
+                project_dir=base,
             )
-        rendered.add(job.script)
+        rendered[job.script] = _jd
         if log is not None:
             _stem = Path(job.script).stem
             log.received(job.script, _flat_resources(job.resources)
                          + (f", env={env}" if env else ""))
             for _w in (f"{_stem}.run.sh", f"{_stem}.sbatch"):
-                if (base / _w).is_file():
-                    log.produced(_w, f"{len((base / _w).read_text().splitlines())}"
+                if (_jd / _w).is_file():
+                    log.produced(_w, f"{len((_jd / _w).read_text().splitlines())}"
                                      f" lines")
                 elif _w.endswith(".sbatch"):
                     log.note(f"{_w}: not written "
@@ -237,28 +265,13 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                          "the bundle root — flat runs here, nothing is linked"
                          if _d.resolve() == base.resolve() else str(_d))
 
-    # ---- 3. link the rendered wrappers (+ monitor) into each job dir ---- #
-    has_monitor = (base / "mb_monitor.py").exists()
-    # NOT named ``dirs``: step 2 above binds that to materialize's list of
-    # created Paths, which is this function's return value.
-    dir_of = job_dir_names(jobset, shape_of(jobset, base_dir))
-    for job in jobset.jobs:
-        d = base / dir_of[job.name]
-        if d.resolve() == base.resolve():
-            # FLAT: the wrappers step 1 just rendered, and the monitor, are
-            # already in the directory this job runs in.  Linking here would
-            # unlink the real files and point at the bundle's PARENT -- the
-            # same destruction `materialize` guards against, one step later.
-            continue
-        stem = Path(job.script).stem
-        # Computed prefix, not "..": a nested trial dir is depth 2 and a
-        # hardcoded one-level hop would dangle (see materialize's own note).
-        up = os.path.relpath(str(base), str(d))
-        for wrapper in (f"{stem}.run.sh", f"{stem}.sbatch"):
-            if (base / wrapper).exists():
-                relink(d, os.path.join(up, wrapper), wrapper)
-        if has_monitor:
-            relink(d, os.path.join(up, "mb_monitor.py"), "mb_monitor.py")
+    # ---- 3. (gone) -- wrappers are BORN in the job dir (step 1) -------- #
+    # A whole pass of symlink-laying stood here: wrappers rendered at the
+    # root, then pointed at from each directory.  With the render moved
+    # into the directory there is nothing left to link, and the monitor
+    # travels as a real copy with the rest of the shared package
+    # (`materialize`), because a run directory holds real files
+    # (`project-layout.md` § 1.0; user, 2026-08-24).
 
     # ---- 4. emit STAGE-PLAN.md (§ 5 D3; mirrors bench's BENCH-PLAN.md) --- #
     # The reviewable plan lands in the bundle at prep, not just on the
@@ -766,9 +779,36 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             seam.provide_data(struct, pset[0].render_config(), base)
     token = token_for(task, pset.stage)
     jobs: List[Job] = []
+    from .materialize import bench_container
+    from .shape import Shape as _Shape
+    _shape = _Shape.named(task.shape)
     for element in pset:
         stem = f"{element.label}_{token}" if token else element.label
         script = f"{stem}{seam.suffix}"
+        # WHERE THIS ELEMENT'S FILES GO -- its own directory, never the
+        # bundle root (user, 2026-08-24; `project-layout.md` § 1.0 always
+        # said it: "only rendered files and copies go down to where the
+        # engine runs").  What stood here rendered every deck, wrapper,
+        # validation report and molwatch log AT THE ROOT and symlinked
+        # them down -- 50 files at the root of a ten-trial sweep, the
+        # hierarchy inverted into a veneer of links.  The directory is the
+        # same one `job_dir_names` will answer for this job, computed from
+        # the same two facts (token + trial-ness), so the deck is born
+        # where the launch will look for it.
+        if element.is_trial:
+            # The dir is named by the JOB's name -- the sweep coordinate,
+            # `_job_for`'s own first rule -- never by the element's
+            # RELABELLED SystemLabel (`<calc-label>-<coord>`): the two
+            # differ by the calculation prefix, and using the label here
+            # wrote decks into `bench-JOB-G1K1C1/` while every reader
+            # asked `job_dir_names` and looked in `bench-G1K1C1/`.
+            from ..resolve import point_token as _pt
+            _jdir = base / bench_container(_shape, token) \
+                / f"bench-{_pt(element.point)}"
+        else:
+            _sd = _shape.stage_dir(token) if token else "."
+            _jdir = base if _sd == "." else base / _sd
+        _jdir.mkdir(parents=True, exist_ok=True)
         # The deck is rendered from values ⊕ THIS element's allocation, so it
         # records the rank count it actually assumed.  Rendering from the
         # values alone emits `mpi_np auto` and the launch check then refuses a
@@ -818,14 +858,14 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                 spec = seam.spec_for(struct, cfg,
                                      stage_token=(token or None),
                                      calculation=task.calculation)
-            _sc.prepare_deck(spec, struct, cfg, base / script, log=log)
+            _sc.prepare_deck(spec, struct, cfg, _jdir / script, log=log)
         if seam.sibling_artifacts is not None:
             with _calling("sibling_artifacts", engine=task.engine,
                           where=script, log=log):
-                seam.sibling_artifacts(struct, cfg, base / script)
+                seam.sibling_artifacts(struct, cfg, _jdir / script)
         with _calling("label_of", engine=task.engine, log=log):
             _label = seam.label_of(cfg)
-        _seed_trajectory_log(struct, cfg, base, engine=task.engine,
+        _seed_trajectory_log(struct, cfg, _jdir, engine=task.engine,
                              label=_label, token=(token or None))
         if log is not None:
             log.step("what this deck's text PROMISES, kept")

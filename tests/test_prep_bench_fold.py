@@ -129,8 +129,12 @@ def test_the_grid_becomes_a_sweep_jobset_of_relabelled_trials(calc):
     # one deck per trial, named by the TRIAL's label + the stage token
     import re
     for n in names:
-        deck = calc / f"JOB-{n}_01_coarse.fdf"
-        assert deck.is_file()
+        # L1 (roadmap 7.10): the deck is born in the TRIAL's directory;
+        # nothing rendered sits at the bundle root any more.
+        deck = calc / "01_coarse" / "bench" / f"bench-{n}" \
+            / f"JOB-{n}_01_coarse.fdf"
+        assert deck.is_file() and not deck.is_symlink()
+        assert not (calc / f"JOB-{n}_01_coarse.fdf").exists()
         assert re.search(rf"^SystemLabel\s+JOB-{n}\s*$",
                          deck.read_text(), re.M)
 
@@ -140,7 +144,9 @@ def test_the_pins_land_as_rendered_schema_values_not_splices(calc):
     SCF, the single point, the eigensolver — readable in the deck."""
     import re
     js = _prep_bench(calc)
-    deck = (calc / f"JOB-{js['jobs'][0]['name']}_01_coarse.fdf").read_text()
+    _n0 = js['jobs'][0]['name']
+    deck = (calc / "01_coarse" / "bench" / f"bench-{_n0}"
+            / f"JOB-{_n0}_01_coarse.fdf").read_text()
     assert re.search(r"^MaxSCFIterations\s+3\s*$", deck, re.M)
     assert re.search(r"^Diag\.Algorithm\s+ELPA-1STAGE\s*$", deck, re.M)
     assert re.search(r"^Diag\.ELPA\.GPU\s+\.true\.\s*$", deck, re.M)
@@ -170,9 +176,9 @@ def test_trials_nest_inside_the_stage_they_measure(calc):
     d = calc / "01_coarse" / "bench" / f"bench-{name}"
     assert d.is_dir()
     script = d / f"JOB-{name}_01_coarse.fdf"
-    assert script.is_symlink() and script.resolve().is_file()
+    assert script.is_file() and not script.is_symlink()   # L2: real files
     wrapper = d / f"JOB-{name}_01_coarse.run.sh"
-    assert wrapper.is_symlink() and wrapper.resolve().is_file()
+    assert wrapper.is_file() and not wrapper.is_symlink()
     # nothing landed at the old flat location
     assert not (calc / f"bench-{name}").exists()
     assert not (calc / f"point-{name}").exists()
@@ -302,7 +308,7 @@ def test_prep_run_deleting_the_file_declines_the_verdict(calc):
     # and with nothing stated, the wrapper's runtime policy is NAMED
     assert "wrapper sizes the launch at run time" in r.output
     assert "running-a-job.md" in r.output
-    deck = (calc / "JOB_01_coarse.fdf").read_text()
+    deck = (calc / "01_coarse" / "JOB_01_coarse.fdf").read_text()
     assert not re.search(r"^Diag\.ELPA\.GPU\s+\.true\.", deck, re.M)
 
 
@@ -324,7 +330,7 @@ def test_prep_run_applies_the_proposal_file_but_flags_win(calc):
     assert r.exit_code == 0, r.output
     assert f"applied 01_coarse/bench/{RUN_CONFIG_NAME}" in r.output
     assert "edit or delete the file" in r.output
-    deck = (calc / "JOB_01_coarse.fdf").read_text()
+    deck = (calc / "01_coarse" / "JOB_01_coarse.fdf").read_text()
     marks = _extract_bench_marks_dict(deck)
     assert marks.get("mpi_np") == g * k          # measured, user said nothing
     assert re.search(r"^Diag\.Algorithm\s+ELPA-1STAGE\s*$", deck, re.M)
@@ -496,23 +502,27 @@ def test_the_group_sequencer_runs_every_trial_and_survives_failures(
     import molbuilder.runwrap as _rw
     monkeypatch.setattr(_rw, "_render_sbatch_for",
                         lambda *a, **k: "#!/bin/bash\n"
-                        "#SBATCH stub\nbash bench-group.run.sh \"$@\"\n")
+                        "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
+                        "bash bench-group.run.sh \"$@\"\n")
 
     results = submit_bench_group(js, base, dry_run=False, trial_timeout_s=2)
     assert results[0].name == "bench-group"
     assert results[0].job_id == "4242"
 
     container = Path(calls["cwd"])
-    script = container / "bench-group.run.sh"
-    assert script.is_file(), "the sequencer must live in the container"
+    script = container / "launch" / "bench-group.run.sh"
+    assert script.is_file(), (
+        "the sequencer lives in launch/ (L3, roadmap 7.10)")
     assert container.name == "bench", (
         f"the group runs at the parent that sees every trial: {container}"
     )
 
-    # EXECUTE the generated bash for real.
-    proc = _sp.run(["bash", script.name], cwd=str(container),
+    # EXECUTE the generated bash for real -- from the container, exactly
+    # as the sbatch body does (`bash launch/<name>.run.sh`), so the trial
+    # dirs resolve relative to the container and the log lands in launch/.
+    proc = _sp.run(["bash", f"launch/{script.name}"], cwd=str(container),
                    capture_output=True, text=True, timeout=120)
-    log = (container / "bench-group.log").read_text()
+    log = (container / "launch" / "bench-group.log").read_text()
     ran = [job.name for job in js.jobs
            if (base / dirs[job.name] / "ran.marker").exists()]
     assert ran == [j.name for j in js.jobs], (
@@ -806,8 +816,11 @@ def test_the_verb_renders_the_trial_decks_it_promises(calc):
     js = json.loads(
         (calc / "01_coarse" / "bench" / "job-set.json").read_text())
     assert js["kind"] == "sweep" and len(js["jobs"]) >= 2
+    from molbuilder.jobset.materialize import (job_dir_names, shape_of)
+    from molbuilder.jobset.model import JobSet
+    _dirs = job_dir_names(JobSet.from_dict(js), shape_of(None, calc))
     for j in js["jobs"]:
-        deck = (calc / j["script"]).read_text()
+        deck = (calc / _dirs[j["name"]] / j["script"]).read_text()
         m = re.search(r"^SystemLabel\s+(\S+)", deck, re.M)
         assert m and m.group(1) == f"JOB-{j['name']}", (
             f"{j['script']}: identity line {m.group(1) if m else None!r} "
@@ -944,8 +957,10 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
     # all dangled (prepare_attempt hopped a hardcoded "../.." over a
     # depth-1 attempt): prep exited 0, submit was dead.  Existence of a
     # symlink proves nothing -- resolve it.
-    links = [p for p in (rung / "run-0").iterdir() if p.is_symlink()]
-    assert links, "the attempt holds no links -- prep changed shape"
+    links = [p for p in (rung / "run-0").iterdir()]
+    assert links, "the attempt is empty -- prep changed shape"
+    assert not any(p.is_symlink() for p in links), (
+        "L2 (roadmap 7.10): an attempt holds real copies, never links")
     for link in links:
         assert link.resolve().is_file(), \
             f"{link.name} -> {os.readlink(link)} dangles"
@@ -1069,10 +1084,12 @@ def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
                              ["prep", "run", "coarse", "--bundle", str(dest),
                               "--no-sbatch"])
     assert res.exit_code == 0, res.output
-    deck = next(dest.glob("*.fdf")).read_text()
+    _deck_path = next(dest.glob("01_coarse/*.fdf"))     # L1: in the stage dir
+    deck = _deck_path.read_text()
     if "makov_payne_correction.py" in deck:
-        assert (dest / "makov_payne_correction.py").is_file(), (
-            "the deck instructs running a script prep did not write")
+        assert (_deck_path.parent / "makov_payne_correction.py").is_file(), (
+            "the deck instructs running a script prep did not write "
+            "beside it")
 
 
 def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
@@ -1121,7 +1138,11 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
     assert js["kind"] == "sweep" and len(js["jobs"]) >= 2
     # trial decks carry the rung's token like any other stage's trials
     for j in js["jobs"]:
-        assert (dest / j["script"]).is_file()
+        from molbuilder.jobset.materialize import (job_dir_names as _jdn,
+                                                    shape_of as _sof)
+        from molbuilder.jobset.model import JobSet as _JS
+        _dmap = _jdn(_JS.from_dict(js), _sof(None, dest))
+        assert (dest / _dmap[j["name"]] / j["script"]).is_file()
         assert "01_coarse" in j["script"], j["script"]
     # A-2 (2026-08-13): the trials live IN their stage's bench container,
     # beside the record just read -- not at the root, where the

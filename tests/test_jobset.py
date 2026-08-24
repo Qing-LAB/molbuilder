@@ -141,18 +141,19 @@ def test_validate_catches_empty_and_bad_kind():
 #  materialize engine                                                    #
 # --------------------------------------------------------------------- #
 
-def test_materialize_creates_dirs_and_symlinks(tmp_path):
+def test_materialize_creates_dirs_and_copies(tmp_path):
+    """L2 (roadmap 7.10, user 2026-08-24): a run directory holds REAL
+    files.  This asserted relative symlinks until the layout repair --
+    links up to root copies are the mechanism that put 50 rendered files
+    at a ten-trial bundle's root."""
     js = _ladder()
-    # lay the shared package + the per-job scripts in the bundle root.
     for f in js.shared + [j.script for j in js.jobs]:
         (tmp_path / f).write_text("x")
     dirs = materialize(js, tmp_path)
     assert [d.name for d in dirs] == ["bench-s1", "bench-s2"]
-    # shared package symlinked into each job dir (relative).
-    link = tmp_path / "bench-s1" / "C.psml"
-    assert link.is_symlink() and os.readlink(link) == os.path.join("..", "C.psml")
-    # the job's own input symlinked in.
-    assert (tmp_path / "bench-s2" / "demo_s2.fdf").is_symlink()
+    got = tmp_path / "bench-s1" / "C.psml"
+    assert got.is_file() and not got.is_symlink()
+    assert got.read_text() == "x"
 
 
 def test_materialize_lays_no_link_into_another_job(tmp_path):
@@ -177,9 +178,12 @@ def test_materialize_lays_no_link_into_another_job(tmp_path):
     strays = [e.name for e in d.iterdir()
               if e.is_symlink() and "bench-s1" in os.readlink(e)]
     assert not strays, f"links into another job's directory: {strays}"
-    # ...and the legitimate links are untouched: shared package + own deck.
-    assert sorted(e.name for e in d.iterdir()) == ["C.psml", "demo_s2.fdf",
-                                                   "mb_monitor.py"]
+    # ...and the legitimate contents are real copies of the shared
+    # package.  (The deck is BORN in the directory by prep since the
+    # layout repair; materialize no longer places it, so a bare
+    # materialize of a hand-built set carries only the shared files.)
+    assert sorted(e.name for e in d.iterdir()) == ["C.psml", "mb_monitor.py"]
+    assert not any(e.is_symlink() for e in d.iterdir())
 
 
 def test_materialize_is_idempotent(tmp_path):
@@ -188,7 +192,8 @@ def test_materialize_is_idempotent(tmp_path):
         (tmp_path / f).write_text("x")
     materialize(js, tmp_path)
     materialize(js, tmp_path)              # no exception, no duplication
-    assert (tmp_path / "bench-s2" / "demo_s2.fdf").is_symlink()
+    got = tmp_path / "bench-s2" / "C.psml"
+    assert got.is_file() and not got.is_symlink()
 
 
 def test_materialize_rejects_invalid_jobset(tmp_path):
@@ -373,23 +378,24 @@ def _write_config(root):
 
 
 def test_prep_renders_real_wrappers_into_each_job_dir(tmp_path):
-    # THE integration seam the old stubbed tests never exercised (F1): the
-    # script is symlinked into the job dir, but the wrapper must NOT end up at
-    # the resolved bundle-root target -- it must land in the job dir.
+    """L1+L2 (roadmap 7.10, user 2026-08-24): every trial directory holds
+    its own REAL deck and wrapper, and the bundle root holds NO rendered
+    file.  This asserted the inverse until the layout repair -- one root
+    render, symlinked into both dirs -- which is the mechanism that put
+    50 rendered files at a real ten-trial bundle's root."""
     js = _sweep()
     _write_config(tmp_path)
     _write_fdf(tmp_path / "job-gpu.fdf")
     prep_jobset(js, tmp_path, env="molbuilder-siesta-gpu", emit_sbatch=False)
-    # rendered ONCE in the bundle root, from the real file.
-    assert (tmp_path / "job-gpu.run.sh").is_file()
-    # symlinked into BOTH trial dirs (one shared wrapper, the bench model).
-    # A tokenless trial nests in the bare bench/ container (§ 6.3), depth 2,
-    # so the link prefix is COMPUTED -- a hardcoded ".." would dangle.
+    # the root-rendered input was ADOPTED into the first trial's dir --
+    # nothing rendered remains at the root.
+    assert not (tmp_path / "job-gpu.run.sh").exists()
+    assert not (tmp_path / "job-gpu.fdf").exists()
     for name in ("bench-G1K1C4", "bench-G1K2C4"):
-        link = tmp_path / "bench" / name / "job-gpu.run.sh"
-        assert link.is_symlink() and \
-            os.readlink(link) == "../../job-gpu.run.sh"
-        assert link.resolve() == (tmp_path / "job-gpu.run.sh").resolve()
+        d = tmp_path / "bench" / name
+        for fn in ("job-gpu.fdf", "job-gpu.run.sh"):
+            f = d / fn
+            assert f.is_file() and not f.is_symlink(), (name, fn)
 
 
 def test_prep_bakes_the_warm_retry_budget_into_the_wrapper(tmp_path):
@@ -412,7 +418,7 @@ def test_prep_bakes_the_warm_retry_budget_into_the_wrapper(tmp_path):
     _write_fdf(tmp_path / "job.fdf")
     prep_jobset(js, tmp_path, env="molbuilder-siesta", emit_sbatch=False)
 
-    wrapper = (tmp_path / "job.run.sh").read_text()
+    wrapper = (tmp_path / "bench-tight" / "job.run.sh").read_text()
     assert "_siesta_retry_max=3" in wrapper, wrapper
     # and the wrapper SAYS so to the person reading its banner
     assert "3" in wrapper and "etry" in wrapper
@@ -427,12 +433,12 @@ def test_prep_omits_the_retry_loop_when_no_budget_is_asked_for(tmp_path):
     _write_config(tmp_path)
     _write_fdf(tmp_path / "job.fdf")
     prep_jobset(js, tmp_path, env="molbuilder-siesta", emit_sbatch=False)
-    assert "_siesta_retry_max=" not in (tmp_path / "job.run.sh").read_text()
+    assert "_siesta_retry_max=" not in (tmp_path / "bench-tight" / "job.run.sh").read_text()
 
 
 def test_prep_rejects_missing_script(tmp_path):
     from molbuilder.jobset.prep import PrepError
-    with pytest.raises(PrepError, match="not in bundle root"):
+    with pytest.raises(PrepError, match="not in"):
         prep_jobset(_sweep(), tmp_path, emit_sbatch=False)
 
 
@@ -1777,10 +1783,10 @@ def test_attempts_are_ordered_as_numbers_not_as_names(tmp_path):
 
 
 def test_prepare_links_resolve_from_two_levels_down(tmp_path):
-    """The deck and the package are linked from ``<stage>/run-<n>/`` up to the
-    bundle root -- two levels, not one.  A wrong depth is a dangling link, and
-    nothing notices until the engine cannot find its input at launch, on the
-    cluster, in the queue."""
+    """The deck and the package arrive in ``<stage>/run-<n>/`` as REAL
+    COPIES (L2, roadmap 7.10; they were relative links until the layout
+    repair, and a synced-back bundle's links dangled on the other
+    machine)."""
     from molbuilder.jobset.materialize import prepare_attempt
     from molbuilder.jobset.model import Job, JobSet
     js = JobSet(name="JOB", engine="siesta", kind="ladder",
@@ -1796,9 +1802,11 @@ def test_prepare_links_resolve_from_two_levels_down(tmp_path):
                                   "mb_monitor.py", "JOB_03_tight.run.sh"}
     for name in rep.linked:
         link = attempt / name
-        assert link.is_symlink(), f"{name} was copied, not linked"
-        assert link.resolve() == (tmp_path / name).resolve(), \
-            f"{name} points at {os.readlink(link)!r}, which does not resolve"
+        assert link.is_file() and not link.is_symlink(), (
+            f"{name}: a run directory holds real files (L2, roadmap "
+            f"7.10) -- this asserted symlinks until the layout repair")
+        assert link.read_text() == (tmp_path / name).read_text(), (
+            f"{name}: the copy differs from its source")
 
 
 def test_the_grammar_is_unambiguous_even_for_a_stage_named_3(tmp_path):
@@ -2594,7 +2602,8 @@ def test_a_machine_that_will_not_probe_does_not_stop_the_prep(tmp_path,
     dirs = prep_jobset(js, tmp_path, emit_sbatch=False)
 
     assert len(dirs) == 2                                   # the tree is laid
-    assert (tmp_path / "job-gpu.run.sh").is_file()          # wrappers rendered
+    assert (tmp_path / "bench" / "bench-G1K1C4"
+            / "job-gpu.run.sh").is_file()               # wrappers rendered
     assert not (tmp_path / "environment.json").exists()     # and it said nothing
 
 

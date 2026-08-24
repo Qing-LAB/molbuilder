@@ -217,16 +217,20 @@ def test_the_wrapper_entry_points_take_exactly_these_parameters():
 
     ``env`` and ``emit_sbatch`` stay loose because neither is a per-job fact --
     ``env`` is a per-invocation override (`prep --env`) and ``emit_sbatch`` is
-    a surface's choice about what to write. The test is ownership: a field with
-    a home in § 3's table arrives in that home or not at all.
+    a surface's choice about what to write.  ``project_dir`` (2026-08-24,
+    layout repair M1) is the BUNDLE's scope, stated by the caller: the script
+    is born in its job directory now, so a scope derived from the script's
+    parent would read config one level below the bundle's own files.  The
+    test is ownership: a field with a home in § 3's table arrives in that
+    home or not at all.
     """
     import inspect
     assert set(inspect.signature(runwrap.render_run_wrapper).parameters) == {
-        "script_path", "resources", "env", "n_atoms",
+        "script_path", "resources", "env", "n_atoms", "project_dir",
     }
     assert set(inspect.signature(runwrap.render_wrappers).parameters) == {
-        "script_path", "resources", "env", "emit_sbatch",
+        "script_path", "resources", "env", "emit_sbatch", "project_dir",
     }
     assert set(inspect.signature(runwrap.write_run_wrapper).parameters) == {
-        "script_path", "resources", "env", "emit_sbatch",
+        "script_path", "resources", "env", "emit_sbatch", "project_dir",
     }

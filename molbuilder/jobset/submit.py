@@ -785,6 +785,13 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
             f"submission needs the one parent that sees them all; found "
             f"{sorted(str(c) for c in containers)}")
     container = next(iter(containers))
+    # L3 (roadmap 7.10, user 2026-08-24): the group's own machinery -- this
+    # sequencer, its .sbatch, its log, and SLURM's stdout/err -- lives in
+    # ``launch/`` beside the trial directories, not among them.  Before
+    # this, five bench-group-* triples and ten slurm.%j files sat mixed
+    # with the trial dirs in one listing.
+    launch_dir = container / "launch"
+    launch_dir.mkdir(parents=True, exist_ok=True)
 
     envelope = _group_envelope(pending)
 
@@ -799,7 +806,7 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
         "# stay in each trial's own .run.sh, exactly as when a trial runs",
         "# alone; nothing here re-implements module load / source activate.",
         "set -u",
-        f'LOG="{name}.log"',
+        f'LOG="launch/{name}.log"',
         f'echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') start '
         f'trials={len(pending)} per-trial-bound='
         f'{f"{trial_timeout_s}s" if trial_timeout_s else "none"} '
@@ -842,7 +849,7 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
         'exit $(( fails > 0 ))',
         "",
     ]
-    script = container / f"{name}.run.sh"
+    script = launch_dir / f"{name}.run.sh"
     if mem_gb:
         # A launch-time --mem OVERRIDES what prep baked (the envelope
         # already carries prep's answer).  Found 2026-08-23 when job
@@ -909,7 +916,7 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     # the flags-win-over-header rule _sbatch_resource_flags documents.
     cmd += _sbatch_resource_flags(envelope, placement)
     cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch"]
-    cmd.append(f"{name}.sbatch")
+    cmd.append(f"launch/{name}.sbatch")
 
     if dry_run:
         return [JobResult(name, cmd, "planned")] + [
@@ -934,6 +941,21 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
                                 domain_pq=((placement.partition,
                                             placement.qos)
                                            if placement else None))
+    if header is not None:
+        # Repoint the delegated script and SLURM's own output into
+        # launch/ (L3).  Count-asserted: if the emitter's spelling of
+        # either line changes, this fails loudly instead of silently
+        # scattering files back among the trial dirs.
+        for _old, _new in ((f"bash {name}.run.sh", f"bash launch/{name}.run.sh"),
+                           ("#SBATCH -o slurm.%j.out",
+                            "#SBATCH -o launch/slurm.%j.out"),
+                           ("#SBATCH -e slurm.%j.err",
+                            "#SBATCH -e launch/slurm.%j.err")):
+            if header.count(_old) != 1:
+                raise SubmitError(
+                    f"the sbatch header no longer spells {_old!r} exactly "
+                    f"once; the launch/ repointing needs updating.")
+            header = header.replace(_old, _new)
     if header is None:
         raise SubmitError(
             "submit mode needs a queue, and this machine has neither a "
@@ -942,7 +964,7 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
             "`molbuilder jobset probe --write` on this machine, use "
             "--mode direct, or add a scheduler block "
             "(running-a-job.md § 5.3).")
-    (container / f"{name}.sbatch").write_text(header, encoding="utf-8")
+    (launch_dir / f"{name}.sbatch").write_text(header, encoding="utf-8")
     cp = subprocess.run(cmd, cwd=str(container),
                         capture_output=True, text=True,
                         env={**os.environ,

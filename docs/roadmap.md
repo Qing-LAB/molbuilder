@@ -1480,6 +1480,52 @@ comparison · the gate.
 **6 and 7 make the rest verifiable by the person**, so a mistake in 1–5 costs
 a re-render rather than a queue slot.
 
+
+### 7.10 The bundle layout repair *(dictated 2026-08-24; plan of record)*
+
+**What went wrong, in one sentence.** `prep` rendered every per-trial file at
+the bundle root and symlinked it down, so a ten-trial sweep's root held 62
+entries and its "run directories" held pointers — while `project-layout.md`
+§ 1.0 (the user's own 2026-08-11 rule) already said *"only rendered files and
+copies go down to where the engine runs"* and the root keeps the sources.
+The code drifted from the contract and ten reviews checked code against code.
+
+**The design, restated as rules (all four are § 1.0 read plainly):**
+
+- **L1 — the bundle root holds the calculation's identity and nothing else**:
+  `task.json`, the template, the source structure, `environment.json`,
+  `pseudos/`, the stage directories, plus the run-plan `job-set.json` and the
+  decision ledger (records, not scripts — see M4).
+- **L2 — a job's files are born in the job's directory**, real files, never
+  symlinks: the deck, `.run.sh`, `.sbatch`, `.validation.txt`, the molwatch
+  seed, the copied pseudos and monitor.
+- **L3 — group/launch machinery lives in `bench/launch/`**: the
+  `bench-group-*` scripts and logs, `slurm.%j.out/err`.
+- **L4 — a name repeats nothing its path already says** (M2's half): trial
+  dirs are the coordinate plus the value slugs; the SystemLabel is short
+  enough for SIESTA's 50-char derived-filename limit, which today it
+  silently exceeds (58 chars → truncated, and ELPA1/ELPA2 trials collide
+  past char 50).
+
+**Milestones, in execution order:**
+
+| # | scope | state |
+|---|---|---|
+| **M1 placement** | render into the job dir (`prep_calculation`, `prep_jobset` step 1 + adoption of root-rendered decks); delete the wrapper-symlink pass; `materialize` copies, never links; `submit` writes group files + slurm output under `bench/launch/`; ladder attempts follow | prep/materialize done; **submit + attempts + test sweep open** |
+| **M2 naming** | short trial tokens (translation-rider axes dropped from names — G0 already says `use_gpu=False`; value slugs with a collision-fallback to `name=value`); short SystemLabel; **hard refusal** past 48 chars instead of SIESTA's silent truncation | open |
+| **M3 contract** | amend `project-layout.md` §§ 2.3.2 · 4.4 · 5 (the file table moves the deck rows under the stage), `job-contracts.md` § 6.3; `test_doc_claims` green | open |
+| **M4 records** | decision: the run-plan `job-set.json` and `jobset-decisions.log` stay at the root — they are records of the calculation, not scripts.  Recorded here so it is a choice, not an oversight | **decided as stated** |
+| **M5 surfaces** | the web viewers and `summarize`/`status` readers follow the new paths; CLI `--help` text that names root paths updated | open |
+| **M6 root data** | pseudos move under `pseudos/`; `mb_monitor.py` ships into job dirs only (no root copy) | open |
+
+**Definition of done:** a fresh `prep bench` of the Au-BDT-Au bundle produces
+the tree the user approved on disk (`Relax.PROPOSED/`, 2026-08-24): root = 6
+entries + the two records; every trial dir self-contained; `launch/` holds the
+group machinery; full `none2e` lane green.
+
+**Order note:** M1 and M6 land together (both move where files are written),
+then M3 so the contract matches before the naming change, then M2, then M5.
+
 ---
 
 ## Closed work
