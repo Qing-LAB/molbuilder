@@ -694,128 +694,25 @@ def _refuse_if_measured_elsewhere(base, root, stage) -> None:
 
 
 
-#: The grouped launcher's own shape, stated once so the CLI can invert it and
-#: SHOW the arithmetic rather than printing a number (`submission.md` § 2).
-#: It must stay equal to `submit._grouped_run_sh`'s: two spellings of one
-#: formula is how a displayed total comes to differ from the one requested.
-GROUP_SLACK = 1.1
-GROUP_STARTUP_S = 300
 
 
-def _bound_from_budget(budget_s: int, n_trials: int) -> int:
-    """A total the person chose -> the per-trial bound that fits inside it.
-
-    **The person states the TOTAL** (user, 2026-08-23: *"we would just argue
-    that the total benchmark would last less than, say, four hours; or for a
-    quick try, fifteen minutes"*).  That is the decision they can make from
-    what they know -- how long they are willing to wait, and how big a slot
-    they want to queue for.  The per-trial bound is arithmetic on top of it,
-    and arithmetic is the framework's job.
-
-    It ran the other way round: a per-trial default nobody set produced a
-    total nobody saw.
-    """
-    n = max(1, int(n_trials))
-    usable = max(0, int(budget_s) - GROUP_STARTUP_S)
-    return max(60, int(usable / (n * GROUP_SLACK)))
-
-
-def _group_total_s(bound_s: int, n_trials: int) -> int:
-    """The per-trial bound -> the total the allocation asks for.  The
-    launcher's own formula, inverted by `_bound_from_budget` above."""
-    return int(max(1, int(n_trials)) * int(bound_s) * GROUP_SLACK) \
-        + GROUP_STARTUP_S
-
-
-def _parse_budget(text) -> Optional[int]:
-    """``"4h"`` / ``"90m"`` / ``"45"`` -> seconds.  Minutes when bare, because
-    that is the unit the flag it replaces already used."""
-    if text is None:
-        return None
-    t = str(text).strip().lower()
-    mult = 60
-    if t.endswith("h"):
-        mult, t = 3600, t[:-1]
-    elif t.endswith("m"):
-        mult, t = 60, t[:-1]
-    elif t.endswith("s"):
-        mult, t = 1, t[:-1]
+def _duration(text):
+    """`ask.parse_duration`, refusing in click's voice."""
+    from .ask import parse_duration
     try:
-        v = float(t)
-    except ValueError:
-        raise click.ClickException(
-            f"--budget {text!r} is not a duration.  Write it as 4h, 90m or "
-            f"45 (bare numbers are minutes).")
-    if v <= 0:
-        raise click.ClickException("--budget must be positive.")
-    return int(v * mult)
+        return parse_duration(text)
+    except ValueError as e:
+        raise click.ClickException(f"--budget: {e}")
 
 
-
-def _announce_bench_bound(n_trials: int, bound_s: int, *, budget_s=None,
-                          chosen: bool, base=None) -> None:
-    """Say what the benchmark is about to ask for, and where it came from.
-
-    **S1.**  A benchmark's walltime is BOUNDED, never estimated -- it exists
-    to measure the per-cycle cost and cannot be told that cost -- but a bound
-    nobody chose and nobody saw is still a number that arrived by itself.
-    38 minutes was exactly that: 2 trials x a 15-minute flag default x 1.1 +
-    5 minutes, correct arithmetic on an input the person never set.
-
-    Prints the arithmetic, names the provenance, and -- when the bound came
-    from a default rather than a decision -- says so and how to decide it.
-    """
-    total = _group_total_s(bound_s, n_trials)
-    click.echo(
-        f"  bench budget: {n_trials} trial(s) x {bound_s // 60} min "
-        f"x {GROUP_SLACK} + {GROUP_STARTUP_S // 60} min startup "
-        f"= {total // 60} min total")
-    click.echo(
-        "    per-trial bound: yours" if chosen else
-        "    per-trial bound: A DEFAULT YOU DID NOT SET -- state the whole "
-        "benchmark's budget with `--budget 4h`, or `--budget 15m` for a "
-        "quick look")
-    if budget_s is not None and total > budget_s:
-        click.echo(
-            f"    NOTE: {n_trials} trials cannot fit in "
-            f"{budget_s // 60} min -- a bound below one minute measures "
-            f"nothing, so the total is {total // 60} min instead.  Ask for "
-            f"fewer trials, or a larger budget.")
-    # A bound is not a prediction: it can only be REACHED, and reaching it is
-    # a result -- the trials that finished still yield the per-cycle cost.
-    click.echo("    a trial that hits its bound is killed and reads "
-               "incomplete; the walk continues")
-    if base is not None:
-        _name_a_cheaper_queue(base, total)
-
-
-def _name_a_cheaper_queue(base, total_s: int) -> None:
-    """If a shorter queue would take this, say which -- *"a queue that cannot
-    run the job is not a choice"*, so only mention one that can.
-
-    `debug` is the case worth naming: cheap to allocate, capped, and often all
-    a quick look needs.  Silent when nothing shorter fits, because a
-    suggestion the person cannot act on is noise.
-    """
+def _memory(text):
+    """`ask.parse_memory`, refusing in click's voice."""
+    from .ask import parse_memory
     try:
-        from ..runtime_config import get_routing
-        from ..scheduler import domain_ceiling_s
-        rows = [d for d in get_routing(project_dir=Path(base))
-                if domain_ceiling_s(d)]
-    except Exception:
-        return
-    fits = [d for d in rows if domain_ceiling_s(d) >= total_s]
-    if not fits:
-        return
-    cheapest = min(fits, key=lambda d: domain_ceiling_s(d))
-    over = [d for d in rows if domain_ceiling_s(d) < total_s]
-    if over:
-        nearest = max(over, key=lambda d: domain_ceiling_s(d))
-        click.echo(
-            f"    {total_s // 60} min fits "
-            f"{cheapest.name!r} ({cheapest.max_time}); "
-            f"{nearest.name!r} caps at {nearest.max_time} and would take it "
-            f"at a smaller budget")
+        return parse_memory(text)
+    except ValueError as e:
+        raise click.ClickException(f"--mem: {e}")
+
 
 def _apply_run_config(base, allocation, stage=None, engine=None):
     """§ 2.3.2: a verdict can always be FOUND — finding is not permission.
@@ -2007,14 +1904,19 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
               help="print the exact command each job WOULD get; launch "
                    "nothing.")
 @click.option("--budget", "budget_text", default=None, metavar="DURATION",
-              help="bench + submit mode: how long the WHOLE benchmark may "
-                   "take -- `4h`, `90m`, or a bare number of minutes.  This "
-                   "is the decision a person can actually make (how long to "
-                   "wait, how big a slot to queue for); the per-trial bound "
-                   "is arithmetic on top of it and is printed.  A benchmark "
-                   "is BOUNDED, never estimated: it exists to measure the "
-                   "per-cycle cost and cannot be told that cost "
-                   "(execution/submission.md § 2).")
+              help="how much TOTAL time this needs -- `4h`, `90m`, or a bare "
+                   "number of minutes.  You know this better than any rule "
+                   "the framework could write, so it asks instead of "
+                   "deriving; for a benchmark the per-trial bound is "
+                   "arithmetic on top and is printed.")
+@click.option("--mem", "mem_text", default=None, metavar="SIZE",
+              help="how much TOTAL memory this needs -- `128G`, `0.5T`, or a "
+                   "bare number of GB.  Unstated means the scheduler's own "
+                   "default decides, which is how a 64-core job came to ask "
+                   "for 128 GB nobody had chosen.")
+@click.option("--yes", "-y", "auto_yes", is_flag=True,
+              help="submit without showing the request first.  Without it "
+                   "you see exactly what will be asked for, and say so.")
 @click.option("--trial-timeout", "trial_timeout_min", default=None,
               metavar="MINUTES",
               help="bench + submit mode: bound each trial directly instead "
@@ -2028,8 +1930,8 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                    "The other side stays pending; a later `launch bench`` "
                    "collects it -- here or on the cluster that reaches it.")
 def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
-               dry_run: bool, budget_text, trial_timeout_min,
-               only_side) -> None:
+               dry_run: bool, budget_text, mem_text, auto_yes,
+               trial_timeout_min, only_side) -> None:
     """Launch a prepped stage: local ``bash`` (direct) or the machine's
     submission system (submit).  Run ``prep`` first.  ``--dry-run`` shows the
     exact command before anything is irreversible.
@@ -2123,25 +2025,29 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             # "launched" entry below records per job ("rides the group").
             # The key said `trials` until 2026-08-20 and read as the ride
             # list, which it was not (milestone review, N1).
-            # THE BOUND, AND WHERE IT CAME FROM (`submission.md` § 2).
-            # The person states the TOTAL; the per-trial bound is arithmetic
-            # on top of it.  Stating the bound directly still works and still
-            # counts as chosen; a bound from neither is a default, and saying
-            # so is the whole of S1.
+            # ONE QUESTION, ONE ANSWER, ONE OUTPUT (`jobset/ask.py`).
+            # The person states the TOTAL -- how long they are willing to wait
+            # -- and the per-trial bound is arithmetic on top of it.  Stating
+            # the bound directly still works: it is the same answer, said the
+            # other way.
+            from .ask import Ask, bench_bound, confirm, render
             _n = len(js.jobs)
-            _budget_s = _parse_budget(budget_text)
+            _ask = Ask(time_s=_duration(budget_text),
+                       mem_gb=_memory(mem_text))
             if trial_timeout_min is not None:
-                _bound_s, _chosen = int(trial_timeout_min) * 60, True
-            elif _budget_s is not None:
-                _bound_s, _chosen = _bound_from_budget(_budget_s, _n), True
+                _bound_s = int(trial_timeout_min) * 60
+            elif _ask.time_s is not None:
+                _bound_s = bench_bound(_ask.time_s, _n)
             else:
-                _bound_s, _chosen = 15 * 60, False
-            _announce_bench_bound(_n, _bound_s, budget_s=_budget_s,
-                                  chosen=_chosen, base=base)
+                _bound_s = 15 * 60
+            if not confirm(render(_ask, n_trials=_n, bound_s=_bound_s),
+                           auto_yes=auto_yes):
+                click.echo("nothing submitted.")
+                return
             _ledger(base, "launch", "bench-grouped",
                     trial_timeout_s=_bound_s,
-                    budget_s=_budget_s,
-                    bound_chosen=_chosen,
+                    budget_s=_ask.time_s,
+                    mem_gb=_ask.mem_gb,
                     only=only_side,
                     sweep=[j.name for j in js.jobs])
             results = submit_bench_group(

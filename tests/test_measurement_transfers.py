@@ -1,6 +1,6 @@
 """S3 — a measurement is not portable by default.
 
-`execution/submission.md` § 5.  `asu-sol.md` § 5.3 says of `node_type`:
+`execution/submission.md` S3.  `asu-sol.md` § 5.3 says of `node_type`:
 *everything else bounds an allocation; `node_type` is what lets a benchmark
 result say whether it may be carried from the domain it was measured on to the
 domain a run will use.*

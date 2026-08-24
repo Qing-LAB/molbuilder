@@ -65,7 +65,7 @@ def _prep_and_run(bundle):
     assert r.exit_code == 0, r.output
     r = CliRunner().invoke(jobset_group,
                            ["launch", "run", "freq", "--bundle", str(bundle),
-                            "--mode", "direct"])
+                            "--mode", "direct", "--yes"])
     assert r.exit_code == 0, r.output
     art = bundle / "01_freq" / "run-0" / "W.spectra.json"
     assert art.is_file(), "the artifact must land IN THE ATTEMPT DIR"

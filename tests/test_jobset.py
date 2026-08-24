@@ -719,7 +719,7 @@ def test_cli_submit_dry_run_lists_commands(tmp_path):
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
     r = runner.invoke(grp, ["launch", "bench", "G1K1C4", "--bundle",
-                            str(tmp_path), "--mode", "submit", "--dry-run"])
+                            str(tmp_path), "--mode", "submit", "--dry-run", "--yes"])
     assert r.exit_code == 0, r.output
     assert "planned" in r.output and "sbatch" in r.output
     assert "-J" in r.output and "G1K1C4" in r.output
@@ -733,17 +733,22 @@ def test_submit_accepts_exactly_these_options(tmp_path):
     An equality, and at the CLI because that is the surface a person types: an
     option added without a decision fails here whatever it is called.
 
-    ``budget_text`` joined on 2026-08-23 and the pairing is the decision
-    (`execution/submission.md` § 2): **the person states the TOTAL** the
-    benchmark may take, which is what they can judge from what they know, and
-    the per-trial bound is arithmetic on top of it.  ``trial_timeout_min``
-    stays as the direct refinement — *no single trial may exceed this* — and
-    is a different question rather than a second way to say one thing.
+    Three joined on 2026-08-23, and together they are **one question, one
+    answer, one interface** (`jobset/ask.py`): ``budget_text`` and ``mem_text``
+    ask what the job needs — the person knows that better than any rule the
+    framework could write, so it asks rather than deriving — and ``auto_yes``
+    is how they say *I have decided to trust this*, its absence being no kind
+    of permission.
+
+    ``trial_timeout_min`` stays as the direct refinement — *no single trial
+    may exceed this* — which is the same answer said the other way round, not
+    a second knob for one thing.
     """
     from molbuilder.jobset._cli import submit_cmd
     assert {q.name for q in submit_cmd.params} == {
         "kind", "stage", "trial", "bundle", "mode", "domain", "dry_run",
-        "budget_text", "trial_timeout_min", "only_side"}
+        "budget_text", "mem_text", "auto_yes", "trial_timeout_min",
+        "only_side"}
 
 
 def test_cli_submit_of_a_whole_sweep_groups_it_by_shelf(tmp_path):
@@ -755,7 +760,7 @@ def test_cli_submit_of_a_whole_sweep_groups_it_by_shelf(tmp_path):
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
     r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path),
-                            "--mode", "submit", "--dry-run"])
+                            "--mode", "submit", "--dry-run", "--yes"])
     assert r.exit_code == 0, r.output
     plans = [l for l in r.output.splitlines() if "WOULD run" in l]
     assert len(plans) == 2
@@ -777,7 +782,7 @@ def test_cli_submit_refuses_when_no_mode_is_set_anywhere(tmp_path, monkeypatch):
     monkeypatch.setattr(rc, "get_execution", lambda *a, **k: {})
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path)])
+    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path), "--yes"])
     assert r.exit_code != 0
     assert "execution.mode" in r.output
 
@@ -829,7 +834,7 @@ def test_cli_submit_falls_back_to_the_configs_mode(tmp_path, monkeypatch):
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
     r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path),
-                            "--dry-run"])
+                            "--dry-run", "--yes"])
     assert r.exit_code == 0, r.output
     assert "bench-group" in r.output      # the grouped plan proves mode=submit
 
@@ -847,7 +852,7 @@ def test_cli_submit_surfaces_a_broken_config_as_its_own_error(
     monkeypatch.setattr(rc, "get_execution", boom)
     _sweep().write(tmp_path / "job-set.json")
     runner, grp = _runner()
-    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path)])
+    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path), "--yes"])
     assert r.exit_code != 0
     assert "could not be resolved" in r.output
     assert "must be 'direct' or 'submit'" in r.output
@@ -1452,7 +1457,7 @@ def test_a_ladder_refuses_to_act_on_all_of_itself(tmp_path):
     runner, grp = _runner()
 
     r = runner.invoke(grp, ["launch", "run", "--bundle", str(tmp_path),
-                            "--mode", "direct", "--dry-run"])
+                            "--mode", "direct", "--dry-run", "--yes"])
     assert r.exit_code != 0
     assert "acts on ONE stage" in r.output
     assert "01_coarse, 03_tight" in r.output   # ordinals, at the moment you choose
@@ -2802,7 +2807,7 @@ def test_submit_honours_the_bundles_own_execution_block(tmp_path,
     # with nothing prepped that is a missing-wrapper refusal (proof the
     # direct path was taken, not the submit path's scheduler error)
     r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
-                            "--dry-run"])
+                            "--dry-run", "--yes"])
     assert r.exit_code == 0, r.output
     assert "WOULD run" in r.output and "bash" in r.output
     assert "sbatch" not in r.output
@@ -2845,7 +2850,7 @@ def test_submit_defaults_the_domain_from_the_bundles_execution_block(
     _write_domains(bundle, [("fast", "htc", "express", "0-04:00:00")])
     runner, grp = _runner()
     r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
-                            "--dry-run"])
+                            "--dry-run", "--yes"])
     assert r.exit_code == 0, r.output
     assert "-p htc" in r.output and "-q express" in r.output
 
@@ -2879,13 +2884,13 @@ def test_an_explicit_direct_mode_survives_a_configured_domain(
     _write_domains(bundle, [("fast", "htc", "express", "0-04:00:00")])
     runner, grp = _runner()
     r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
-                            "--mode", "direct", "--dry-run"])
+                            "--mode", "direct", "--dry-run", "--yes"])
     assert r.exit_code == 0, r.output
     assert "WOULD run" in r.output and "bash" in r.output
     assert "domain is a SLURM-submit concept" not in r.output
     # the stated contradiction stays an error
     r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
                             "--mode", "direct", "--domain", "fast",
-                            "--dry-run"])
+                            "--dry-run", "--yes"])
     assert r.exit_code != 0
     assert "SLURM-submit concept" in r.output

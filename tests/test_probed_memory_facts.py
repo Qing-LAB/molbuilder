@@ -1,4 +1,4 @@
-"""The two memory facts, measured — `execution/submission.md` § 8, step 1.
+"""The two memory facts, measured — `execution/submission.md` § 4.
 
 **Why this exists.** `Domain.max_mem_gb` and `default_mem_per_core_gb` have
 been on the record since the row was designed and **neither was ever filled by
