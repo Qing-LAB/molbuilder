@@ -94,6 +94,23 @@ button) listens to `onChange`.
 - Follow commits: `projects.onCommit(cb)`. It fires **only** on a real
   double-click — *not* on subscribe, because a commit is a one-off event, not a
   state to mirror.
+- Follow **the folder's contents changing underneath you**:
+  `projects.onFolderChanged(cb)`, payload `{dir}`. Like `onCommit` it does not
+  fire on subscribe. Compare `dir` against the folder your tab is showing and
+  re-read only your own.
+
+  **Why this is a channel of its own** *(2026-08-24)*. The other two answer
+  *"which folder/file is picked"* — but a checkpoint **restore** rewrites a
+  folder while the selection sits still, and can swap `task.json` for
+  `task.1st.json` under an open tab. Neither existing channel fires: the
+  selection never moved, and nothing was committed. Task setup went on showing
+  stages and a bench the folder no longer had.
+
+  Anything that rearranges a folder behind an open tab **publishes**:
+  `projects.publishFolderChanged(dir)`. The writer does not know which tabs are
+  open or what they cache, so it announces rather than reaching in — the
+  checkpoint panel's own refresh repaints only itself, which is precisely how
+  this was missed.
 
 **Making and organizing files.** The sidebar drives the create/rename/move/copy/
 upload/delete operations against the server (`/api/files/*` and

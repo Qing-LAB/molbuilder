@@ -630,18 +630,27 @@ async function loadFolder(projects, dir) {
     _shape = String(task.shape || "");
     $("ts-shape-card").hidden = false;
     setShape(_shape);                            // shows which one it carries
-    renderStages(task);
-    renderNext(task);
+    // THE CATALOGUE META COMES FIRST, and it is AWAITED (2026-08-24).
+    // `renderStages` asks `legalValues()` per cell to decide whether the
+    // column edits through a DROPDOWN of its legal values or a free input
+    // -- and `_meta` was still empty here, because the only two fills ran
+    // after it (`loadSweepChoices` on the next line, `refreshPickers`
+    // four lines down, unawaited, which also CLEARS `_meta` first).  So
+    // every enum and bool rendered as a text box and had to be typed by
+    // hand.  Rendering a widget from data that has not arrived is the
+    // defect; awaiting the data is the fix.
+    await refreshPickers();
     // Through the ONE accessor -- `String({name})` is "[object Object]",
     // which 400s the sweepable fetch and sticks an empty cache for the
     // whole page-load (2026-08-21 review, E-A1).
     await loadSweepChoices(_handoverEngine(task));
+    renderStages(task);
+    renderNext(task);
     renderMachine(task);
     // The card reflects the DESCRIPTION on open, so reopening a folder
     // shows what it already asks for instead of an empty card.
     readAsksFromTask(task);
     renderQueues();
-    refreshPickers();
     await setEditorText(taskText);
 }
 
@@ -830,7 +839,17 @@ async function loadColumnChoices(engine) {
     const kind = (_task && _task.calculation)
         || (_handover && _handover.calculation) || "optimization";
     const key = (engine || "siesta") + ":" + kind;
-    if (_cols && _colsKey === key) return _cols;
+    if (_cols && _colsKey === key) {
+        // REFILL `_meta` EVEN ON THE CACHED PATH.  `refreshPickers` clears
+        // `_meta` before calling the loaders, so an early return here left
+        // it empty -- and `legalValues()` reads it to decide whether a cell
+        // is a DROPDOWN or a text box.  Every enum and bool in the stage
+        // table therefore had to be typed by hand from the second load on
+        // (reported 2026-08-24).  The cache is about not re-FETCHING; it
+        // was never meant to skip publishing what was fetched.
+        _fillMeta(_cols);
+        return _cols;
+    }
     _colsKey = key;
     const got = await fetchVocabulary(
         "/api/task-setup/columns?engine="
@@ -839,8 +858,19 @@ async function loadColumnChoices(engine) {
     if (!got.ok) { _cols = []; return _cols; }
     const j = got.body;
     _cols = (j && j.items) || [];
-    for (const it of _cols) _meta[it.name] = it;
+    _fillMeta(_cols);
     return _cols;
+}
+
+/** Publish a vocabulary's items into `_meta` -- the ONE place a cell's
+ *  widget question (`legalValues`) gets its answer from.  A function, not
+ *  a loop at each call site, because the two loaders each have a cached
+ *  path and a fetching one: four places to remember, and the two cached
+ *  ones were forgotten. */
+function _fillMeta(items) {
+    for (const it of (items || [])) {
+        if (it && it.name) _meta[it.name] = it;
+    }
 }
 
 /* A STARTING SWEEP for the settings the machine answers.
@@ -867,7 +897,10 @@ async function loadSweepChoices(engine) {
      * the first folder's engine to every folder opened after it -- a
      * PySCF description got SIESTA's machine rows. */
     const key = engine || "siesta";
-    if (_sweep && _sweepKey === key) return _sweep;
+    if (_sweep && _sweepKey === key) {
+        _fillSweepMeta(_sweep);      // same reason as the column cache above
+        return _sweep;
+    }
     _sweepKey = key;
     /* A LABEL LOOKUP MUST NOT BE ABLE TO STRAND THE PAGE (2026-08-23).
      *
@@ -887,16 +920,22 @@ async function loadSweepChoices(engine) {
     if (!got.ok) { _sweep = []; return _sweep; }
     const j = got.body;
     _sweep = (j && j.items) || [];
-    // `staging` items are filtered out of the form schema, so this is the
-    // only place their note arrives -- fold it in so the table hovers work.
-    for (const i of _sweep) {
-        if (!_meta[i.name]) {
+    _fillSweepMeta(_sweep);
+    return _sweep;
+}
+
+/** Fold the sweepable items into `_meta` WITHOUT overwriting a column's
+ *  richer record -- `staging` items are filtered out of the form schema,
+ *  so this is the only place their note arrives.  Called from both the
+ *  cached and the fetching path, for the reason `_fillMeta` records. */
+function _fillSweepMeta(items) {
+    for (const i of (items || [])) {
+        if (i && i.name && !_meta[i.name]) {
             _meta[i.name] = { name: i.name, label: i.label, help: i.help,
                               type: i.type, choices: i.choices,
                               default: i.default };
         }
     }
-    return _sweep;
 }
 
 /* The LEGAL VALUES of a bool/enum parameter, from the catalogue meta --
@@ -2040,6 +2079,17 @@ function start(projects) {
 
     // Directory changes arrive on onChange; a dblclick commit also lands on
     // onCommit.  Both carry `dir`, and this page cares about the folder only.
+    /* A restore rewrites the folder while we are showing it -- same
+     * selection, different bytes -- so re-read on the folder-changed
+     * channel as well as on selection.  Without this the tab kept
+     * displaying a description the folder no longer had (2026-08-24). */
+    if (typeof projects.onFolderChanged === "function") {
+        projects.onFolderChanged((ev) => {
+            const changed = (ev && ev.dir) || "";
+            if (changed && _dir && changed !== _dir) return;   // not ours
+            loadFolder(projects, _dir);
+        });
+    }
     if (typeof projects.onChange === "function") {
         projects.onChange((sel) => loadFolder(projects, (sel && sel.dir) || ""));
     }

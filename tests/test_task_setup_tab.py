@@ -961,9 +961,17 @@ def test_the_sweepable_notes_reach_the_lookup():
     """`staging` items are filtered out of the form schema, so the sweepable
     endpoint is the only place their help arrives."""
     src = VIEWER.read_text()
+    # The fill moved into `_fillSweepMeta` on 2026-08-24 so BOTH of the
+    # loader's paths -- the cached one and the fetching one -- publish it;
+    # the cached path returned early without it, which is how every enum
+    # became a text box.  What this pins is unchanged: the sweepable items
+    # reach `_meta`, whichever path ran.
     body = src.split("async function loadSweepChoices", 1)[1].split("\n/**", 1)[0]
-    assert "_meta[i.name]" in body, (
+    assert "_fillSweepMeta(_sweep)" in body, (
         "machine settings would hover with no note at all")
+    filler = src.split("function _fillSweepMeta(", 1)[1].split("\n}", 1)[0]
+    assert "_meta[i.name]" in filler, (
+        "the fill no longer writes into the lookup the hovers read")
 
 
 def test_the_folder_template_is_what_an_empty_cell_names(web_client):

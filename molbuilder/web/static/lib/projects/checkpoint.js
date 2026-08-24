@@ -789,6 +789,17 @@ async function _restore(sha, label, force) {
         });
         if (res.body && res.body.ok) {
             await _refresh();
+            /* THE FOLDER'S FILES JUST CHANGED UNDERNEATH EVERY OPEN TAB.
+             * `_refresh()` above repaints THIS panel's own list and nothing
+             * else, so a restore that swapped `task.json` for
+             * `task.1st.json` left Task setup showing stages and a bench
+             * the folder no longer has (reported 2026-08-24).  Announced
+             * rather than reached-into: this panel does not know which tabs
+             * are open or what they cache. */
+            const _p = window.molbuilder && window.molbuilder.projects;
+            if (_p && typeof _p.publishFolderChanged === "function") {
+                _p.publishFolderChanged(_state.currentDir);
+            }
             _showAdvisory(`This folder is now ${label}.`);
             return;
         }

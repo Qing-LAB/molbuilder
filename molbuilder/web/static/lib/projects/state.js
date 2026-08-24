@@ -103,6 +103,15 @@ const selectionSubscribers = new Set();
 // Molbuilder tab subscribes to drive _commitFile; future form
 // tabs gate their auto-rebuild on this event.
 const commitSubscribers = new Set();
+
+/* "The files under this folder changed UNDERNEATH you" -- a fourth kind of
+ * event, and the one nothing had.  `onChange` says the SELECTION moved and
+ * `onCommit` says the user chose a file; neither fires when the same folder
+ * suddenly holds different bytes, which is exactly what a checkpoint restore
+ * does: it can swap `task.json` for `task.1st.json` while a tab is showing
+ * the first one.  Reported 2026-08-24 -- Task setup kept displaying stages
+ * and a bench that the folder no longer had. */
+const folderSubscribers = new Set();
 // list.js registers itself here at init time; state's refresh() and
 // saveToWorkspace() invoke this to ask the list module to re-list
 // the current directory + re-render.  Single handler (not a set)
@@ -195,6 +204,20 @@ function publishSelectionChange(payload) {
     };
   }
   _publishToSet(selectionSubscribers, payload);
+}
+
+/** Announce that ``dir``'s CONTENTS changed on disk.
+ *
+ * Not a selection change: the selection is exactly where it was, which is
+ * why `publishSelectionChange` is the wrong door -- a subscriber that
+ * re-reads on selection would not fire, and one that repainted on every
+ * selection publish would repaint constantly for no reason.
+ *
+ * Payload is ``{dir}``.  A subscriber compares it against the folder it is
+ * showing and re-reads only its own.
+ */
+function publishFolderChanged(dir) {
+  _publishToSet(folderSubscribers, { dir: String(dir || "") });
 }
 
 // Universal "the user committed this file" publish.  Called by
@@ -882,6 +905,17 @@ export const projects = {
     _registerSubscriber(commitSubscribers, cb, "onCommit");
     return () => commitSubscribers.delete(cb);
   },
+  /* Subscribe to "this folder's files changed on disk".  Like onCommit and
+   * unlike onChange, it does NOT fire on subscribe: there is no state to
+   * mirror, only an event that has or has not happened.  Returns an
+   * unsubscribe function. */
+  onFolderChanged: (cb) => {
+    _registerSubscriber(folderSubscribers, cb, "onFolderChanged");
+    return () => folderSubscribers.delete(cb);
+  },
+  /* Publish one.  The checkpoint panel calls this after a restore; any
+   * writer that rearranges a folder behind an open tab should too. */
+  publishFolderChanged,
   // Publish a commit event directly.  Sidebar list.js calls this
   // from its dblclick handler; programmatic callers (e.g. the
   // file-picker dropdown on /results, future test harnesses) can
