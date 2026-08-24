@@ -72,51 +72,107 @@ def candidates(routing, *, prefer_gpu: bool) -> List:
 
 
 
-def _excess(row, request: Request) -> tuple:
-    """How much bigger than the ask this queue's ceilings are.  Lower is
-    tighter, and a tighter fit is the *cheaper* queue to get.
+#: The axes placement may be ordered by, and the order it uses when nobody
+#: says otherwise.  **A closed set**: an unknown name is refused rather than
+#: dropped, because a priority silently ignored is a preference that looks
+#: honoured and is not.
+PRIORITY_AXES = ("cores", "memory", "walltime")
 
-    **"The cheapest ceiling that fits" was never implemented on any axis but
-    time.**  The menu is ordered by walltime alone, and `place` took the first
-    row that admitted — so a 38-minute job needing 128 GB could land on a
-    partition built for 2 TB work, wait behind it, and pay a scheduling
-    penalty for memory nobody chose (`submission.md` § 3).
+#: **GPU is not in that list, and is not missing from it.**  Whether a run
+#: wants a device is settled BEFORE any ordering: `candidates` splits the menu
+#: by kind, so a GPU request only ever sees gpu-capable queues and CPU work
+#: prefers cpu-only ones.  It is structurally first, which is stronger than
+#: being first in a sort key -- a tie-break can be outweighed, a filter cannot.
+PRIORITY_DEFAULT = ("cores", "memory", "walltime")
 
-    The key is ``(unknown_ceilings, sum_of_ratios)``:
 
-      * a dimension is compared only when **both** the ask states it and the
-        row declares it — R3 again, an unstated ceiling is not a tight one;
-      * rows whose ceilings we can actually measure sort **before** rows we
-        would be guessing about.  A queue whose fit is known is a better
-        choice than one that merely has not said no, and saying so in the sort
-        key is what stops an unmeasured row winning by silence.
+def _excess(row, request: Request, priority=None) -> tuple:
+    """Which admitting queue to prefer.  Lower sorts first.
 
-    It orders; it never admits.  A row that does not fit was already refused
-    by :func:`admits` before this is consulted.
+    **Cores are the requirement; memory is the chooser.**  A calculation's
+    wall-clock depends most critically on how many cores it gets, so the core
+    count is not something to trade away — and `admits` has already guaranteed
+    it before this is consulted.  Memory is different: these jobs are core
+    bound and do not press against memory ceilings, so **the queue offering
+    LESS memory is the one that is easier to allocate**, and asking for a
+    2 TB partition you do not need buys a longer wait and nothing else.
+    *(User, 2026-08-23; `submission.md` § 3.)*
+
+    So the key is lexicographic, not a sum, and **the order is the person's**
+    (`PRIORITY_DEFAULT`, overridable per site):
+
+        (unknown ceilings, *ratios in the declared priority order*)
+
+    The default is cores, then memory, then walltime.  A site whose jobs press
+    on memory rather than on cores says so and gets a different order, which
+    is a preference and lives in the config -- never in the machine record
+    (M-1).
+
+    **A sum was wrong and measurably so.**  The first version added the three
+    ratios equally, and on a Sol-shaped menu the walltime ratios span 6x-76x
+    while memory spans 2x-16x — so the sum was a walltime sort in disguise and
+    the memory axis could not decide anything.  Averaging three quantities
+    that differ by an order of magnitude in spread is a way of choosing by the
+    loudest one.
+
+    Unknown ceilings lead, so a row whose fit we can measure is preferred to
+    one that has merely not said no (R3) — an unmeasured queue must not win by
+    silence.  Each ratio is ``ceiling / ask``, computed only where **both**
+    sides are known; where either is missing the axis contributes ``0.0`` and
+    cannot decide.
     """
     from .admit import domain_ceiling_s
+    pairs = {
+        "cores":    (request.ranks, row.max_cores),
+        "memory":   (request.mem_gb, row.max_mem_gb),
+        "walltime": (request.walltime_s, domain_ceiling_s(row)),
+    }
+    order = tuple(priority) if priority else PRIORITY_DEFAULT
     unknown = 0
-    total = 0.0
-    pairs = (
-        (request.walltime_s, domain_ceiling_s(row)),
-        (request.ranks, row.max_cores),
-        (request.mem_gb, row.max_mem_gb),
-    )
-    for ask, ceiling in pairs:
+    ratios = []
+    for axis in order:
+        ask, ceiling = pairs[axis]
         try:
             ask_f = float(ask) if ask else 0.0
             ceil_f = float(ceiling) if ceiling else 0.0
         except (TypeError, ValueError):
             ask_f = ceil_f = 0.0
-        if ask_f > 0 and ceil_f > 0:
-            total += ceil_f / ask_f
-        elif ceil_f <= 0:
+        if ceil_f <= 0:
             unknown += 1
-    return (unknown, total)
+        ratios.append(ceil_f / ask_f if (ask_f > 0 and ceil_f > 0) else 0.0)
+    return (unknown, *ratios)
+
+
+def check_priority(order) -> tuple:
+    """Validate a declared priority order, or raise.
+
+    An unknown axis is REFUSED, not dropped: a preference that is silently
+    ignored looks honoured and is not, which is the failure this whole
+    document exists to remove.  A partial order is legal -- naming only
+    ``["memory"]`` means *memory decides and the rest may fall where they
+    fall* -- because that is a real thing to want and refusing it would make
+    the person write out axes they do not care about.
+    """
+    order = tuple(order or ())
+    bad = [a for a in order if a not in PRIORITY_AXES]
+    if bad:
+        raise ValueError(
+            f"placement priority names {', '.join(map(repr, bad))}, which "
+            f"{'is' if len(bad) == 1 else 'are'} not an axis placement can "
+            f"order by.  Choose from {', '.join(PRIORITY_AXES)}.  (Whether a "
+            f"run wants a GPU is settled before any ordering -- the menu is "
+            f"split by kind first -- so it is not one of these.)")
+    dupes = [a for a in order if order.count(a) > 1]
+    if dupes:
+        raise ValueError(
+            f"placement priority repeats {sorted(set(dupes))!r}; each axis "
+            f"decides once or the order after it can never be reached.")
+    return order
 
 
 def place(routing, request: Request, *, prefer_gpu: bool,
-          named: Optional[str] = None) -> Optional[Placement]:
+          named: Optional[str] = None,
+          priority: Optional[Sequence[str]] = None) -> Optional[Placement]:
     """Walk § 5's graph.  ``None`` means *this machine has no menu* — nothing
     was promised, so the rendered header's directives stand (R6).
 
@@ -165,7 +221,8 @@ def place(routing, request: Request, *, prefer_gpu: bool,
         # `min` is stable, so among equally tight rows the menu's own order
         # still decides -- the recommendation R7 speaks of survives as the
         # tie-break rather than being overruled.
-        return _bind(min(fits, key=lambda d: _excess(d, request)), prefer_gpu)
+        return _bind(min(fits, key=lambda d: _excess(d, request, priority)),
+                     prefer_gpu)
     raise Unplaceable(reasons, gpu_side=prefer_gpu)
 
 

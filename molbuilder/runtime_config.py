@@ -1464,6 +1464,26 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
     defaults   = _as_obj("defaults")
     mem_model  = _as_obj("mem_model")
 
+    # WHICH AXIS DECIDES between queues that all fit (2026-08-23, user).
+    # A PREFERENCE, so it lives here and never in the machine record (M-1):
+    # the record measures what the queues offer, this says which of those
+    # facts matters most at this site.  Default in `place.PRIORITY_DEFAULT`.
+    #
+    # Refused when it names something placement cannot order by -- a
+    # preference that is silently dropped looks honoured and is not.
+    priority = raw.get("placement_priority")
+    if priority is not None:
+        if not isinstance(priority, (list, tuple)):
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'scheduler.placement_priority' must be "
+                f"a list of axis names; got {type(priority).__name__}.")
+        from .scheduler.place import check_priority
+        try:
+            priority = list(check_priority(priority))
+        except ValueError as e:
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'scheduler.placement_priority': {e}")
+
     # Refuse-to-emit: slurm needs a partition + qos (§ 10).
     for required in ("partition", "qos"):
         val = directives.get(required)
@@ -1574,6 +1594,11 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
         "defaults":   defaults,
         "mem_model":  mem_model,
     }
+    # ABSENT when unset, so a reader can tell "this site did not choose" from
+    # "this site chose the default" -- `place` supplies its own default and
+    # says so, rather than the config pretending to have made a decision.
+    if priority is not None:
+        out["placement_priority"] = priority
     # routing: REFUSED here since 2026-08-17 (N4).  It used to pass through to
     # get_routing, which owned the domain schema.  A domain is what `sinfo` and
     # `sacctmgr` measured, so it belongs in the machine record, and a probe no

@@ -585,8 +585,14 @@ def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
     want = Request(ranks=cores, cpus_per_task=1, gpus=gpus or None,
                    mem_gb=parse_mem_gb(mem_gb), walltime_s=needed_s)
     try:
+        # WHICH AXIS DECIDES between queues that all fit is the site's to
+        # say (`scheduler.placement_priority`, 2026-08-23).  Absent, `place`
+        # supplies its own default and the display names it as a default --
+        # the config does not pretend to have chosen.
+        _sched = _rc.get_scheduler(project_dir=base) or {}
         placed = place(_rc.get_routing(project_dir=base), want,
-                       prefer_gpu=gpu_side, named=named)
+                       prefer_gpu=gpu_side, named=named,
+                       priority=_sched.get("placement_priority"))
         # R9's SECOND record.  Routing reads the calculation scope first, so
         # a prepped bundle routes against the snapshot beside it -- which is
         # right for reproducibility and useless as a re-check, because it is

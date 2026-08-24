@@ -196,6 +196,52 @@ shown as one.
 
 ---
 
+## 5a. Which queue, among the ones that fit
+
+**Whether a run wants a device is settled first, and structurally.** The menu
+is split by kind before any ordering happens: a GPU request only ever sees
+gpu-capable queues, and CPU work prefers cpu-only ones. *Structurally first is
+stronger than first in a sort key* — a tie-break can be outweighed, a filter
+cannot — which is why `gpu` is **not** one of the orderable axes and its
+absence is not an omission.
+
+Among the queues that then admit the request, the order is **lexicographic
+over declared axes**, and the axes are the site's to order:
+
+```
+scheduler.placement_priority = ["cores", "memory", "walltime"]     ← the default
+```
+
+**Why not a sum, which is what the first implementation did.** Adding the
+three ratios equally sounds neutral and is not: on a Sol-shaped menu the
+walltime ratios span 6×–76× while memory spans 2×–16×, so the sum was a
+walltime sort in disguise and the memory axis could never decide anything.
+**Averaging quantities whose spreads differ by an order of magnitude is a way
+of choosing by the loudest one.**
+
+**Why this default.** Wall-clock depends most critically on the core count, so
+cores are the requirement rather than something to trade — and admission has
+already guaranteed them. Memory is different: these jobs are core bound and do
+not press against memory ceilings, so **the queue offering less memory is the
+one that is easier to allocate**, and asking for a partition you do not need
+buys a longer wait and nothing else. *(User, 2026-08-23.)*
+
+A site whose jobs press on memory instead says so and gets a different order.
+It is a **preference**, so it lives in the config and never in the machine
+record (M-1): the record measures what queues offer, this says which of those
+facts matters most here.
+
+Three rules on the declaration itself, all the same rule: **a preference that
+is silently ignored looks honoured and is not.** An unknown axis is refused,
+not dropped. A repeated axis is refused — each decides once, or the order
+after it can never be reached. A *partial* order is legal: naming only
+`["memory"]` means *memory decides and the rest may fall where they fall*,
+which is a real thing to want.
+
+And unmeasured ceilings sort last, whatever the order: a queue whose fit is
+known is a better choice than one that has merely not said no (R3).
+
+
 ## 6. The decision graph
 
 ```mermaid
@@ -292,12 +338,8 @@ partition, and they are visible **while it is still free to change**.
    refused, not applied.
 4. **The benchmark bound becomes a choice** — quick-look vs full — with the
    `debug` fit check.
-5. ~~**Queue order accounts for what is cheap to get**~~ **done** — placement
-   takes the cheapest ceiling that fits across walltime, cores *and* memory,
-   where it had implemented only walltime. A row whose ceilings are unmeasured
-   sorts after rows whose fit is known, so an unmeasured queue cannot win by
-   silence. *(Naming a scarce-queue fall-through belongs to the display, step
-   7.)*
+5. ~~**Queue order accounts for what is cheap to get**~~ **done** — see § 5a.
+   *(Naming a scarce-queue fall-through belongs to the display, step 7.)*
 6. **The three-statement comparison** joins the after-generation check.
 7. **The gate** — shown, then `--yes` or per-job.
 
