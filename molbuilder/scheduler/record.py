@@ -662,6 +662,8 @@ def known_machines() -> List[Dict[str, object]]:
                         % name)
             return {"name": name, "kind": kind, "path": str(path),
                     "readable": False, "detected_at": "", "domains": [],
+                    "mem_total_gb": None, "gpus_per_node": None,
+                    "gpu_type": None,
                     "summary": "no record here yet, or it cannot be read -- "
                                "write one with " + fix}
         cores = getattr(env.topology, "cores_per_socket", None)
@@ -670,6 +672,14 @@ def known_machines() -> List[Dict[str, object]]:
         bits = [env.scheduler or "unknown scheduler"]
         if total:
             bits.append(f"{total} cores")
+        # MEMORY, which was measured and never shown (2026-08-24).  The
+        # probe records `mem_total_gb` for every machine, and the summary
+        # named the scheduler, the cores, the GPUs and the domain count --
+        # so the one number a person sizing a job most wants sat in the
+        # file unread.
+        _mem = getattr(env.topology, "mem_total_gb", None)
+        if _mem:
+            bits.append(f"{float(_mem):g} GB")
         if getattr(env.topology, "gpus_per_node", None):
             bits.append(f"{env.topology.gpus_per_node}\u00d7 "
                         f"{env.topology.gpu_type or 'GPU'}")
@@ -684,6 +694,13 @@ def known_machines() -> List[Dict[str, object]]:
         return {"name": name, "kind": kind, "path": str(path),
                 "readable": True, "summary": " \u00b7 ".join(bits),
                 "detected_at": env.detected_at or "",
+                # The node's own ceiling, for a machine that states no
+                # queues: a workstation has nothing to default a memory
+                # ask from, though its RAM is a real limit and asking for
+                # more than the box has is meaningless.
+                "mem_total_gb": getattr(env.topology, "mem_total_gb", None),
+                "gpus_per_node": getattr(env.topology, "gpus_per_node", None),
+                "gpu_type": getattr(env.topology, "gpu_type", None),
                 "domains": [{"name": d.name,
                              "partition": d.partition,
                              "qos": d.qos,

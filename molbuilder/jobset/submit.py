@@ -971,6 +971,7 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     # pair (or refused for want of a `scheduler` block) while the command
     # line used the one resolved above.
     header = _render_sbatch_for(base / f"{name}.sh",
+                                project_dir=base,
                                 resources=envelope, env=None,
                                 domain_pq=((placement.partition,
                                             placement.qos)

@@ -109,7 +109,7 @@ def calc(tmp_path):
 
 
 def _prep_bench(calc):
-    sweep, pins, translation = _bench_inputs(calc)
+    sweep, pins, translation = _bench_inputs(calc, None)
     prep_calculation(calc, "coarse",
                      allocation=Resources(mpi_np=8, cpus_per_task=8),
                      sweep=sweep, pins=pins, translation=translation,
@@ -191,7 +191,7 @@ def test_a_machine_without_gpus_is_refused_by_name(calc):
                     topology=Topology(sockets=1,
                                       cores_per_socket=4)).to_json() + "\n")
     with pytest.raises(click.ClickException, match=r"no GPU topology"):
-        _bench_inputs(calc)
+        _bench_inputs(calc, None)
 
 
 def test_cli_prep_bench_requires_a_stage(calc):
@@ -1253,7 +1253,7 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100")).to_json() + "\n")
-    sweep, pins, translation = _bench_inputs(dest)
+    sweep, pins, translation = _bench_inputs(dest, None)
     prep_calculation(dest, "coarse",
                      allocation=Resources(mpi_np=8, cpus_per_task=8),
                      sweep=sweep, pins=pins, translation=translation,
@@ -1526,7 +1526,7 @@ def test_the_declared_grid_is_the_sweep(calc):
     """Declared axes produce exactly those points — nothing enumerated."""
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [1, 2], "omp_threads": [1]})
-    sweep, _pins, translation = _bench_inputs(calc)
+    sweep, _pins, translation = _bench_inputs(calc, None)
     assert sweep == [{"K": 1, "C": 1}, {"K": 2, "C": 1}]
     assert translation.axes == ("K", "C")
 
@@ -1539,7 +1539,7 @@ def test_a_declared_point_over_capability_is_refused_by_name(calc):
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [4096], "omp_threads": [2]})
     with pytest.raises(click.ClickException) as e:
-        _bench_inputs(calc)
+        _bench_inputs(calc, None)
     assert "mpi_np=4096" in str(e.value) and "omp_threads=2" in str(e.value)
 
 
@@ -1589,7 +1589,7 @@ def test_a_multi_point_value_entry_is_a_value_axis(calc):
     _describe_cpu(calc)
     _declare_bench(calc, {"block_size": [64, 128],
                           "mpi_np": [4], "omp_threads": [1]})
-    sweep, pins, _tr = _bench_inputs(calc)
+    sweep, pins, _tr = _bench_inputs(calc, None)
     assert len(sweep) == 2
     assert sorted(p["block_size"] for p in sweep) == [64, 128]
     assert "block_size" not in pins, "an axis is not a pin"
@@ -1609,7 +1609,7 @@ def test_a_value_axis_naming_a_measurement_pin_is_refused(calc):
     _declare_bench(calc, {"continue_retries": [0, 2],
                           "mpi_np": [4], "omp_threads": [1]})
     with pytest.raises(click.ClickException) as e:
-        _bench_inputs(calc)
+        _bench_inputs(calc, None)
     assert "continue_retries" in str(e.value)
     assert "measurement" in str(e.value)
 
@@ -1643,7 +1643,7 @@ def test_a_one_point_declaration_is_a_pin_and_decides_the_grid(calc):
     _declare_bench(calc, {"use_gpu": [True],
                           "diag_algorithm": ["ELPA-2STAGE"],
                           "mpi_np": [4], "omp_threads": [1]})
-    sweep, pins, _tr = _bench_inputs(calc)
+    sweep, pins, _tr = _bench_inputs(calc, None)
     assert pins["use_gpu"] is True
     assert pins["diag_algorithm"] == "ELPA-2STAGE"
     assert pins["max_scf_iter"] == 3, "the measurement pins still ride"
@@ -1675,11 +1675,11 @@ def test_a_bad_enum_value_and_a_non_bool_are_refused_with_the_choices(calc):
     _describe_cpu(calc)
     _declare_bench(calc, {"diag_algorithm": ["ELPA-9STAGE"]})
     with pytest.raises(click.ClickException) as e:
-        _bench_inputs(calc)
+        _bench_inputs(calc, None)
     assert "ELPA-9STAGE" in str(e.value) and "ScaLAPACK" in str(e.value)
     _declare_bench(calc, {"use_gpu": [1]})
     with pytest.raises(click.ClickException) as e:
-        _bench_inputs(calc)
+        _bench_inputs(calc, None)
     assert "true or false" in str(e.value)
 
 
@@ -1687,7 +1687,7 @@ def test_a_declared_gpu_point_runs_the_declared_total_ranks(calc):
     """On a GPU description, G ranges over the divisors of each declared
     rank count, so G*K equals the declared mpi_np exactly."""
     _declare_bench(calc, {"mpi_np": [4], "omp_threads": [1]})
-    sweep, _pins, _tr = _bench_inputs(calc)
+    sweep, _pins, _tr = _bench_inputs(calc, None)
     assert all(p["G"] * p["K"] == 4 for p in sweep)
     assert {p["G"] for p in sweep} == {1}          # fixture probes one a100
 
@@ -1696,7 +1696,7 @@ def test_the_cap_is_clean_scf_must_converge_is_pinned_off(calc):
     """B2: the pins include scf_must_converge False, so a capped trial ends
     as the single-point measurement it is instead of ABNORMAL_TERMINATION —
     which is what lets `choose_winner` ever see a completed point."""
-    _sweep, pins, _tr = _bench_inputs(calc)
+    _sweep, pins, _tr = _bench_inputs(calc, None)
     assert pins["scf_must_converge"] is False
     assert pins["max_scf_iter"] == 3
 
@@ -2002,7 +2002,7 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tmp_path):
                     topology=Topology(sockets=1,
                                       cores_per_socket=4)).to_json() + "\n")
     with pytest.raises(click.ClickException) as e:
-        _bench_inputs(dest)
+        _bench_inputs(dest, None)
     msg = str(e.value)
     assert "'pyscf'" in msg and "SIESTA" in msg, (
         "the refusal must name the engine and the reason")

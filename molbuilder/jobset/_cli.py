@@ -1013,8 +1013,19 @@ def _gpu_core_cap(base):
     return None, None
 
 
-def _bench_inputs(base, target=None):
+def _bench_inputs(base, target):
     """The benchmark specialisation's three inputs — `project-layout.md`
+
+    ``target`` is REQUIRED, and that is the point (2026-08-24).  It read
+    ``target=None`` until a caller forgot it: the browser's prep door called
+    ``_bench_inputs(dest)``, Python filled the default, and the grid was
+    enumerated against "no machine named" -- which is a MEANINGFUL state
+    (one record, no ambiguity) so nothing raised, and it failed only on a
+    machine holding two records, only on the write path.  This function
+    exists to read a SPECIFIC machine's hardware; letting that be omitted
+    made the one fact it needs the one fact a caller could forget.  Pass
+    ``None`` deliberately to mean "this machine".
+
     § 2.3.1a's split, stated as data: WHERE the values come from (the grid,
     enumerated from THIS machine's probed topology, as explicit points), the
     point → Resources translation, and the trial pins.  The framework —

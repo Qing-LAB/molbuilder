@@ -1362,7 +1362,14 @@ def api_task_setup_prep():
                           "add a bench axis, or prep the run instead"),
             }), 400
         try:
-            sweep, pins, translation = _bench_inputs(dest)
+            # THE TARGET GOES HERE TOO.  `_bench_inputs` enumerates the
+            # grid from a MACHINE's probed topology -- how many devices it
+            # has -- so it resolves one, and without the target it resolved
+            # with `None` and hit the ambiguity refusal.  The CLI passes it
+            # (`_bench_inputs(base, target)`); this call did not, so `prep
+            # bench` from the browser failed at the WRITE while its own
+            # preview succeeded (reported 2026-08-24).
+            sweep, pins, translation = _bench_inputs(dest, target)
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         kwargs = {"sweep": sweep, "pins": pins, "translation": translation}

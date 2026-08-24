@@ -49,6 +49,104 @@ These hold regardless of which dimension you're auditing.
    have already made that jump (noted inline). When an audit stops turning up fresh
    violations, that's the signal to write the test and retire the manual pass.
 
+## 1a. Rules for a loose-interface language *(user, 2026-08-24)*
+
+Python and JavaScript will both accept a call that is missing the one fact
+the function exists to use. **Nothing raises**, because the parameter had a
+default and the default was a legal value. These rules exist because that
+happened, three times in one afternoon, in code that had passed three
+"reviews".
+
+### D1 — A parameter that decides WHICH thing is never optional
+
+If a default silently selects *which machine, which scope, which folder,
+which queue*, it must be **required**. Pass `None` explicitly to mean "this
+one" — an omitted argument says *I did not think about it*, an explicit
+`None` says *I considered it and the answer is this*.
+
+> **The incident.** `_bench_inputs(base, target=None)` enumerates a sweep
+> grid from a machine's probed hardware. The browser's prep door called
+> `_bench_inputs(dest)`. Python filled `target=None`, which is a *meaningful*
+> state (one record, no ambiguity), so nothing raised and the tests passed —
+> on any machine with a single record. On a machine holding two, `prep bench`
+> failed at the WRITE while its own PREVIEW succeeded, because preview
+> returns before that line. Signature is now `(base, target)`; the same call
+> is now a `TypeError` at the first execution.
+
+**Corollary — a default is a decision, and decisions get written down.** If
+you cannot state in one sentence why the default is the *right answer* rather
+than merely a *safe-looking* one, it should not be a default. `load_warm_files(engine)`
+passes this test: its docstring says status reads a directory where the
+description may not be in hand, so the shipped rules ARE the answer.
+
+### D2 — Scope is stated, never achieved by construction
+
+A call that works because an argument was *shaped* to make a fallback land
+correctly is a trap for the next reader and the next refactor.
+
+> `_render_sbatch_for(base / f"{name}.sh", ...)` derived its config scope from
+> `script_path.parent`, and worked only because the path was chosen so the
+> parent was the bundle root. It now passes `project_dir=base` outright.
+
+### D3 — The UI answers its own preconditions; the server is not the validator
+
+A control that fires into a backend refusal to discover the user skipped a
+step is a control that has outsourced its own question.
+
+> The Prep button called the API with no machine chosen and surfaced the
+> server's paragraph about `--target` and probe commands — which reads as a
+> fault, not as *"pick a machine first"*. It is now disabled with that
+> sentence until the question above it is answered.
+
+### D4 — Two implementations of one rule get a parity test, or one deletes
+
+When a rule must exist twice because the surfaces cannot share code (a
+browser cannot import Python), the duplication is permitted **only** with a
+test that runs both over the same inputs and compares.
+
+> `viewer.js` and `ask.py` both parse `"4h"` and `"128G"`. They had already
+> drifted: the browser accepted SLURM's `7-00:00:00` — which is what the tab
+> FILLS a field with — and Python refused it.
+
+### D5 — Never overwrite an answer with a suggestion
+
+A default fills what nobody answered. If a value was typed by a person or
+loaded from their file, replacing it is data loss wearing a default's
+clothes. Mark which is which **on the field itself**; a parallel record of
+"what is in this box" is a second answer to one question.
+
+---
+
+## 1b. What "review" means *(user, 2026-08-24)*
+
+**A grep is not a review.** Searching for a symbol, counting references, and
+checking a doc table are *structural sweeps*. They find dead code, drift and
+duplication. They cannot find a call that omits an optional argument, because
+that call is syntactically perfect.
+
+Three reviews were reported as complete having run only sweeps. The rules:
+
+**R1 — Read the full text of what you changed.** Every function you wrote,
+end to end, beside the signature of every function it calls. Compare the call
+against the definition, argument by argument. The `_bench_inputs` defect is
+visible in two seconds this way and invisible to every grep.
+
+**R2 — Execute every path, not every function.** A door with modes (plan and
+write; run and bench) has *four* paths. "I tested the door" means all four.
+**A preview succeeding is not evidence that the write works** — it is
+evidence that the code before the write works.
+
+**R3 — Name what the check cannot see.** When reporting a review, say which
+technique was used and what it is blind to. "Swept for unused symbols and
+duplication; did not execute the bench write path" is honest. "Full review,
+clean" — when it was greps — is a false statement about verification, and it
+is worse than the bug because it stops anyone else looking.
+
+**R4 — The last mile is the user's click.** For anything with a UI, drive the
+real control in the real browser to completion before calling it done. Every
+button defect this session survived unit tests, structural sweeps and a
+passing full lane, and died the moment the button was actually pressed.
+
 ## 2. The audit dimensions
 
 What there is to audit; each has a checklist in § 5.

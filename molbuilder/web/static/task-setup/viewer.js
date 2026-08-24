@@ -1199,6 +1199,11 @@ function renderNext(task) {
     const host = $("ts-next");
     if (!card || !host) return;
     host.textContent = "";
+    // The prep widgets are rebuilt with the card, so the list of them is
+    // emptied with the card too -- otherwise it accretes one page's worth
+    // per folder opened, and `_syncPrepButtons` walks buttons nobody can
+    // see.  Owned here because this is the one place they are created.
+    _PREP_WIDGETS.length = 0;
     // ORDINALS COME FROM THE FULL LADDER (`stages.md` § 6.5: seq is
     // assigned once and never renumbered), so a disabled stage still
     // occupies its number -- the enabled-filtered index mis-named the
@@ -1322,6 +1327,11 @@ function renderNext(task) {
     card.hidden = false;
 }
 
+//: Every prep widget on the page, so the machine choice can reach them.
+//: Declared ABOVE its users: a `const` is hoisted but not initialised, so
+//: a push from `prepButton` before this line would throw.
+const _PREP_WIDGETS = [];
+
 /** A "Prep this here" button for one stage.
  *
  * **Prep, never launch** (user, 2026-08-24).  `prep` writes files into the
@@ -1342,6 +1352,24 @@ function prepButton(kind, stage) {
     let planned = null;
 
     btn.addEventListener("click", async () => {
+        // A MACHINE IS THE FIRST QUESTION, and this asked it by firing into
+        // the server's refusal -- a paragraph about targets and probe
+        // commands, which reads as a fault rather than as "you skipped a
+        // step".  After any page load nothing is chosen (`loadMachines`
+        // ends at `setMachine("")` whenever more than one could be meant),
+        // so this was the ORDINARY path, not an edge case (reported
+        // 2026-08-24).  Answered here, in the page's own words, and the
+        // card that answers it is scrolled to.
+        if (!_machine) {
+            say.textContent = "Pick a machine first \u2014 \u201cWhich "
+                + "machine is this for\u201d, just above.";
+            say.setAttribute("data-state", "warn");
+            const card = $("ts-target-card");
+            if (card && card.scrollIntoView) {
+                card.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+            return;
+        }
         btn.disabled = true;
         try {
             if (!planned) {
@@ -1389,7 +1417,41 @@ function prepButton(kind, stage) {
         }
     });
     wrap.append(btn, say);
+    _PREP_WIDGETS.push({ btn, say, kind });
+    _syncPrepButtons();
     return wrap;
+}
+
+/** Keep the buttons honest about whether they can run yet.
+ *
+ *  Disabled-with-a-reason rather than enabled-and-refusing: the question
+ *  ("which machine") is answered in a card directly above, and a control
+ *  that looks ready but is not is how a person ends up reading a server
+ *  refusal to find out they missed a step.
+ */
+function _syncPrepButtons() {
+    // NO CONNECTEDNESS TEST AT ALL.  Two attempts got this wrong: skipping
+    // detached widgets meant each one missed its OWN first sync (it is
+    // returned before the caller appends it), and pruning them dropped a
+    // stage's bench widget the moment its run widget was made, because the
+    // block holding both is not in the page until the stage finishes.  The
+    // list belongs to `renderNext`, which empties it when it rebuilds --
+    // one owner, no liveness guessing.
+    for (const w of _PREP_WIDGETS) {
+        const ready = !!_machine;
+        w.btn.disabled = !ready;
+        w.btn.title = ready
+            ? "Runs prep for " + _machine
+            : "Pick a machine first";
+        if (!ready && !w.say.textContent) {
+            w.say.textContent = "pick a machine above";
+            w.say.setAttribute("data-state", "unset");
+        }
+        if (ready && w.say.getAttribute("data-state") === "unset") {
+            w.say.textContent = "";
+            w.say.removeAttribute("data-state");
+        }
+    }
 }
 
 async function _prepCall(kind, stage, plan) {
@@ -1565,6 +1627,7 @@ function setMachine(name) {
     // the asks from a ceiling this machine never stated).
     _queue = "";
     renderQueues();
+    _syncPrepButtons();      // the prep buttons wait on this answer
     loadResolved();          // the warning depends on WHICH machine
     const chosen = _machines.find((m) => m.name === name);
     const st = $("ts-target-state");
@@ -1662,10 +1725,21 @@ function renderQueues() {
          * to choose from, and saying so is better than an empty row. */
         needs.hidden = false;
         needs.textContent = _machine + " states no queues \u2014 it runs "
-            + "directly, so there is nothing to choose. You may still set a "
-            + "time or memory limit below.";
+            + "directly, so there is nothing to choose. No queue means no "
+            + "wall, so a blank time is unlimited; memory still has a real "
+            + "ceiling \u2014 this machine's own RAM.";
         $("ts-queue-asks").hidden = false;
         _queue = "";
+        // A MACHINE WITH NO QUEUES STILL HAS A MEMORY CEILING (user,
+        // 2026-08-24): its RAM.  The suggestion came only from a QUEUE, so
+        // the one kind of machine that cannot have one got none at all --
+        // while `mem_total_gb` sat measured in its own record.  Time is
+        // genuinely different and correctly stays blank: no scheduler
+        // means no wall to state.
+        const me = _machines.find((x) => x.name === _machine);
+        if (me && me.mem_total_gb) {
+            _fillIfUnanswered($("ts-ask-mem"), _defaultMemMB(me.mem_total_gb));
+        }
         paintAskNotes();
         return;
     }
@@ -1733,25 +1807,58 @@ function setQueue(name) {
                        b.getAttribute("data-queue") === name ? "true" : "false");
     }
     const d = _queuesOf(_machine).find((x) => x.name === name);
-    const t = $("ts-ask-time");
-    const mem = $("ts-ask-mem");
-    if (d && t) t.value = d.max_time_s ? _humanTime(d.max_time_s) : "";
-    if (d && mem) mem.value = d.max_mem_gb ? _defaultMemMB(d.max_mem_gb) : "";
+    // A CEILING FILLS WHAT NOBODY ANSWERED -- it does not overwrite an
+    // answer (user, 2026-08-24).  This assigned unconditionally, so
+    // choosing a queue merely to CHECK a value against it destroyed the
+    // value: a 256G loaded from the folder's own `task.json` became the
+    // queue's 487372M, and a figure just typed by hand went the same way
+    // on the next queue click.  A default is for an empty field; replacing
+    // a stated one is data loss wearing a default's clothes.
+    _fillIfUnanswered($("ts-ask-time"),
+                      d && d.max_time_s ? _humanTime(d.max_time_s) : "");
+    _fillIfUnanswered($("ts-ask-mem"),
+                      d && d.max_mem_gb ? _defaultMemMB(d.max_mem_gb) : "");
     paintAskNotes();
     applyAsksToDoc();
     refreshSave();
+}
+
+/** Write a queue's ceiling into a field ONLY if nothing has answered it.
+ *
+ *  "Answered" means typed by a person or loaded from `task.json`.  A value
+ *  this function put there is not an answer -- it is a suggestion -- so the
+ *  next queue may replace it, which is what makes the fields track the
+ *  queue you are looking at until the moment you disagree with one.
+ *
+ *  Marked on the element rather than held beside it: the field IS the
+ *  state, and a parallel record of what is in it is a second answer to the
+ *  same question.
+ */
+function _fillIfUnanswered(el, suggested) {
+    if (!el) return;
+    const mine = el.dataset.mbAuto === "1";
+    if (el.value && !mine) return;          // a person answered; leave it
+    el.value = suggested;
+    if (suggested) el.dataset.mbAuto = "1";
+    else delete el.dataset.mbAuto;
 }
 
 /** Say, under each field, what the queue allows and whether this ask
  *  fits -- while changing it is still free. */
 function paintAskNotes() {
     const d = _queuesOf(_machine).find((x) => x.name === _queue);
+    // With no queue, the MACHINE's own RAM is the memory ceiling -- a
+    // workstation's field otherwise read "no queue chosen" and checked the
+    // ask against nothing at all.
+    const _me = _machines.find((x) => x.name === _machine);
+    const _nodeMem = (!d && _me && !(_me.domains || []).length)
+        ? _me.mem_total_gb : null;
     const pairs = [
         ["ts-ask-time", "ts-ask-time-note", _parseTime,
          d && d.max_time_s, (v) => _humanTime(Math.round(v)),
          "this queue states no time ceiling"],
         ["ts-ask-mem", "ts-ask-mem-note", _parseMem,
-         d && d.max_mem_gb, (v) => _fmtGB(v),
+         (d && d.max_mem_gb) || _nodeMem, (v) => _fmtGB(v),
          "this queue states no memory ceiling"],
     ];
     for (const [inId, noteId, parse, cap, fmt, noCap] of pairs) {
@@ -1831,8 +1938,10 @@ function readAsksFromTask(task) {
     _queue = a.domain || "";
     const t = $("ts-ask-time");
     const m = $("ts-ask-mem");
-    if (t) t.value = a.time || "";
-    if (m) m.value = a.mem || "";
+    // Loaded from the DESCRIPTION: a person put these there, so they carry
+    // no auto mark and no queue click may replace them.
+    if (t) { t.value = a.time || ""; delete t.dataset.mbAuto; }
+    if (m) { m.value = a.mem || ""; delete m.dataset.mbAuto; }
 }
 
 /** What a `prep` would resolve for the open folder, and from which file.
@@ -2019,7 +2128,15 @@ function watchAskControls() {
         const el = $(id);
         if (!el || el.dataset.mbWatched) continue;
         el.dataset.mbWatched = "1";
-        el.addEventListener("input", () => { paintAskNotes(); refreshSave(); });
+        el.addEventListener("input", () => {
+            // The moment a person types, the field is THEIRS -- so no
+            // later queue click may overwrite it.  Clearing it hands it
+            // back, and the next queue fills it again.
+            if (el.value) el.dataset.mbAuto = "";
+            else delete el.dataset.mbAuto;
+            paintAskNotes();
+            refreshSave();
+        });
         el.addEventListener("change", () => { paintAskNotes(); applyAsksToDoc(); refreshSave(); });
     }
 }

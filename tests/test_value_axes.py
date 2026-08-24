@@ -102,7 +102,7 @@ def test_the_users_matrix_enumerates_both_families(sol_calc, capsys):
     and 18 GPU trials (only np32 survives the 48-core cap; its G ranges
     over the divisors 1/2/4) — and the dropped cells are said BY NAME."""
     _declare(sol_calc, USERS_MATRIX)
-    points, pins, tr = _bench_inputs(sol_calc)
+    points, pins, tr = _bench_inputs(sol_calc, None)
 
     cpu = [p for p in points if not p["G"]]
     gpu = [p for p in points if p["G"]]
@@ -128,7 +128,7 @@ def test_the_gpu_family_answers_from_the_domain_inventory(sol_calc):
     device count and gres type come from the menu's recorded inventory,
     which is what lets a login node enumerate for the cluster behind it."""
     _declare(sol_calc, USERS_MATRIX)
-    points, _pins, tr = _bench_inputs(sol_calc)
+    points, _pins, tr = _bench_inputs(sol_calc, None)
     g2 = next(p for p in points if p["G"] == 2)
     res = tr.to_resources(g2, None)
     assert res["gres"] == "gpu:a100:2"
@@ -149,7 +149,7 @@ def test_two_inventory_types_refuse_with_the_curation_remedy(sol_calc):
     (sol_calc / "environment.json").write_text(json.dumps(env))
     _declare(sol_calc, USERS_MATRIX)
     with pytest.raises(click.ClickException) as e:
-        _bench_inputs(sol_calc)
+        _bench_inputs(sol_calc, None)
     assert "several GPU types" in str(e.value)
     assert "a100.20gb" in str(e.value)
 
@@ -171,7 +171,7 @@ def test_a_hand_declared_device_row_enumerates_like_a_probed_one(sol_calc):
     (sol_calc / "environment.json").write_text(json.dumps(env))
     _declare(sol_calc, USERS_MATRIX)
 
-    points, _pins, tr = _bench_inputs(sol_calc)
+    points, _pins, tr = _bench_inputs(sol_calc, None)
     g2 = next(p for p in points if p["G"] == 2)
     assert tr.to_resources(g2, None)["gres"] == "gpu:a100:2"
     # ...and the cap still applies: the row's 48 cores are unchanged by the
@@ -188,7 +188,7 @@ def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
     (sol_calc / "environment.json").write_text(json.dumps(env))
     _declare(sol_calc, USERS_MATRIX)
     with pytest.raises(click.ClickException) as e:
-        _bench_inputs(sol_calc)
+        _bench_inputs(sol_calc, None)
     assert "no domain row with a recorded GPU inventory" in str(e.value)
 
 
@@ -205,7 +205,7 @@ def _small_matrix():
 
 def _prep(calc):
     from molbuilder.jobset.model import Resources
-    points, pins, tr = _bench_inputs(calc)
+    points, pins, tr = _bench_inputs(calc, None)
     dirs = prep_calculation(calc, "coarse", allocation=Resources(),
                             emit_sbatch=False, sweep=points, pins=pins,
                             translation=tr)
@@ -433,7 +433,7 @@ def test_declared_gpu_count_is_exact(sol_calc):
     never rounded."""
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
                         "use_gpu": [True], "gpu_count": [1, 2, 3]})
-    points, _pins, _tr = _bench_inputs(sol_calc)
+    points, _pins, _tr = _bench_inputs(sol_calc, None)
     assert sorted(p["G"] for p in points) == [1, 2],         "exactly the declared counts that divide -- G4 must NOT appear"
     assert all(p["G"] * p["K"] == 32 for p in points)
 
@@ -441,7 +441,7 @@ def test_declared_gpu_count_is_exact(sol_calc):
 def test_uneven_split_is_dropped_by_name(sol_calc, capsys):
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
                         "use_gpu": [True], "gpu_count": [2, 3]})
-    _bench_inputs(sol_calc)
+    _bench_inputs(sol_calc, None)
     out = capsys.readouterr().out
     assert "split EVENLY" in out and "mpi_np=32 x gpu_count=3" in out
 
@@ -451,7 +451,7 @@ def test_gpu_count_beyond_the_record_is_refused(sol_calc):
     _declare(sol_calc, {"mpi_np": [32], "use_gpu": [True],
                         "gpu_count": [8]})
     with pytest.raises(click.ClickException) as e:
-        _bench_inputs(sol_calc)
+        _bench_inputs(sol_calc, None)
     assert "gpu_count = [8]" in str(e.value)
     assert "4 device(s)" in str(e.value)
 
@@ -461,7 +461,7 @@ def test_gpu_count_on_a_cpu_bench_is_refused_not_ignored(sol_calc):
     _declare(sol_calc, {"mpi_np": [32], "use_gpu": [False],
                         "gpu_count": [2]})
     with pytest.raises(click.ClickException) as e:
-        _bench_inputs(sol_calc)
+        _bench_inputs(sol_calc, None)
     assert "silently ignored" in str(e.value)
 
 
@@ -470,7 +470,7 @@ def test_every_cell_uneven_refuses_a_gpu_only_bench(sol_calc):
     _declare(sol_calc, {"mpi_np": [32], "use_gpu": [True],
                         "gpu_count": [3]})
     with pytest.raises(click.ClickException) as e:
-        _bench_inputs(sol_calc)
+        _bench_inputs(sol_calc, None)
     assert "every GPU cell was dropped" in str(e.value)
 
 
@@ -485,7 +485,7 @@ def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc,
     _declare(sol_calc, {"mpi_np": [32, 64], "omp_threads": [1],
                         "use_gpu": [True, False],
                         "gpu_count": [1, 2, 4]})
-    points, _pins, _tr = _bench_inputs(sol_calc)
+    points, _pins, _tr = _bench_inputs(sol_calc, None)
     cpu = [p for p in points if not p["G"]]
     gpu = [p for p in points if p["G"]]
     assert sorted({p["K"] for p in cpu}) == [32, 64], \
@@ -507,7 +507,7 @@ def test_gpu_count_alone_filters_the_proposed_grid(sol_calc):
     half stays the machine's proposal, filtered to the declared device
     counts."""
     _declare(sol_calc, {"use_gpu": [True], "gpu_count": [2]})
-    points, _pins, _tr = _bench_inputs(sol_calc)
+    points, _pins, _tr = _bench_inputs(sol_calc, None)
     assert points, "the probed ladder must survive the filter"
     assert {p["G"] for p in points} == {2}
     assert len({p["K"] for p in points}) > 1,         "K must still range over the machine's proposal"
@@ -593,7 +593,7 @@ def test_a_duplicated_allocation_point_refuses_at_prep(sol_calc):
     import click
     _declare(sol_calc, {"mpi_np": [8, 8, 16]})
     with pytest.raises(click.ClickException) as e:
-        _bench_inputs(sol_calc)
+        _bench_inputs(sol_calc, None)
     assert "repeated point" in str(e.value)
     assert "mpi_np" in str(e.value)
 
