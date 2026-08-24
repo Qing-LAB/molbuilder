@@ -993,10 +993,11 @@ submit` the trials group into **one scheduler job per resource shelf**
 split per shelf 2026-08-21): trials asking for identical resources (a
 *shelf* — same ranks, cores and GPU request) ride one job together,
 **sized to fit them exactly**.  Within its job the shelf's trials run
-**sequentially**,
-each under a hard per-trial time bound (default 15 minutes,
-`--trial-timeout`), driven by a generated sequencer that lives in the
-stage's `bench/` container — the parent that sees every trial — while each
+**sequentially** — bounded per trial only when the user said so
+(`--trial-timeout`; nothing is invented, per `submission.md` S2) — driven
+by a generated sequencer that lives in the container's **`launch/`**
+folder beside its `.sbatch`, its log and SLURM's own `slurm.%j.out`
+(rule L3, roadmap 7.10), while each
 trial keeps writing into its own `bench-<POINT>/` directory exactly as
 before. Each job's allocation is its shelf's own ask — nothing wider —
 so a narrow trial never idles a wide allocation's cores, the CPU groups
@@ -1797,6 +1798,20 @@ A sweep has no order — no trial follows another — so the name carries **what
 tried**: `bench-G<gpus>K<ranks-per-gpu>C<cores-per-rank>`, which is what lets
 `summarize` map a directory back to its point.
 
+**A name repeats nothing its data already states** *(L4, roadmap 7.10;
+2026-08-24)*. Three rules keep a trial's name short enough to survive SIESTA
+whole (`resolve.point_token`):
+
+- a **rider the coordinate already encodes is dropped** — `G0` *is*
+  `use_gpu=False`, so the name never spells both;
+- a **string value names itself** — `ELPA1STAGE` needs no `diag_algorithm`
+  prefix; a numeric or boolean value keeps its axis name (`block_size16`),
+  because a bare `16` in a listing names nothing;
+- the label is **refused past 48 characters**, never truncated: SIESTA
+  silently cuts label-derived filenames at ~50, which merged two real
+  trials' identities (`…ELPA1STAGE`/`…ELPA2STAGE` differ only past the
+  cut).  The full coordinate lives untouched in the trial's `point` data.
+
 The **shape** is the shipped `point-G<g>K<k>C<c>` convention; the **prefix
 changes** (2026-08-07). `point` is grid vocabulary — it names nothing a person
 would recognise in a directory listing — while `bench-` says what the directory
@@ -1824,11 +1839,11 @@ how a folder stops being trustworthy.
 |---|---|---|---|
 | `<label>.template.toml` | **source** | the user's surface | **every value the calculation ever set is gone.** `task.json` cannot supply them: it carries only what *varies* |
 | `task.json` | **source** | the user's surface | the calculation cannot be regenerated or reopened |
-| `<label>_<NN>_<name>.fdf` | derived | `prep` step 3, from the template ⊕ the allocation | re-prep |
-| `<label>_<NN>_<name>.run.sh` / `.sbatch` | derived | prep, from the deck + the machine's config | re-prep |
+| `<NN>_<name>/<label>_<NN>_<name>.fdf` | derived | `prep` step 3, from the template ⊕ the allocation — **born in the stage's own directory** (L1, roadmap 7.10; nothing rendered sits at the root since 2026-08-24) | re-prep |
+| `<NN>_<name>/<label>_<NN>_<name>.run.sh` / `.sbatch` | derived | prep, beside the deck it launches | re-prep |
 | `job-set.json`, `STAGE-PLAN.md` | derived | the producer / prep | regenerate |
 | `*.pipeline.log` | **record** | `prep --pipeline-log`, when asked | nothing the next prep cannot write again — but the record of the prep that ALREADY ran is gone, which is the one you wanted |
-| `*.psml`, `mb_monitor.py` | **input**, copied in | the producer | re-resolve from the project's cache |
+| `pseudos/*.psml` | **input**, copied in | the producer — one folder at the root (M6); each run directory receives its own `<El>.psml` copies | re-resolve from the project's cache |
 | stage outputs (④) | **result** | the engine | gone — this is what the history is for |
 | trial outputs (the stage's `bench/`) | **scratch** | the engine | nothing lost; `bench-result.json` is the answer |
 

@@ -1511,12 +1511,12 @@ The code drifted from the contract and ten reviews checked code against code.
 
 | # | scope | state |
 |---|---|---|
-| **M1 placement** | render into the job dir (`prep_calculation`, `prep_jobset` step 1 + adoption of root-rendered decks); delete the wrapper-symlink pass; `materialize` copies, never links; `submit` writes group files + slurm output under `bench/launch/`; ladder attempts follow | prep/materialize done; **submit + attempts + test sweep open** |
-| **M2 naming** | short trial tokens (translation-rider axes dropped from names — G0 already says `use_gpu=False`; value slugs with a collision-fallback to `name=value`); short SystemLabel; **hard refusal** past 48 chars instead of SIESTA's silent truncation | open |
-| **M3 contract** | amend `project-layout.md` §§ 2.3.2 · 4.4 · 5 (the file table moves the deck rows under the stage), `job-contracts.md` § 6.3; `test_doc_claims` green | open |
+| **M1 placement** | render into the job dir (`prep_calculation`, `prep_jobset` step 1 + adoption of root-rendered decks); delete the wrapper-symlink pass; `materialize` copies, never links; `submit` writes group files + slurm output under `bench/launch/`; ladder attempts follow | **done 2026-08-24** (`209774ec`; full none2e lane green; caught + fixed a stale-deck bug in reused attempts) |
+| **M2 naming** | short trial tokens (translation-rider axes dropped from names — G0 already says `use_gpu=False`; string values self-name, numerics keep their axis); **hard refusal** past 48 chars instead of SIESTA's silent truncation | **done 2026-08-24** — `siesta-AuBDTAu-…` label 58→32 chars on the real sweep |
+| **M3 contract** | amend `project-layout.md` §§ 2.3.2 · 4.4 · 5 (the file table moves the deck rows under the stage), `job-contracts.md` § 6.3; `test_doc_claims` green | **done 2026-08-24** |
 | **M4 records** | decision: the run-plan `job-set.json` and `jobset-decisions.log` stay at the root — they are records of the calculation, not scripts.  Recorded here so it is a choice, not an oversight | **decided as stated** |
-| **M5 surfaces** | the web viewers and `summarize`/`status` readers follow the new paths; CLI `--help` text that names root paths updated | open |
-| **M6 root data** | pseudos move under `pseudos/`; `mb_monitor.py` ships into job dirs only (no root copy) | open |
+| **M5 surfaces** | the web viewers and `summarize`/`status` readers follow the new paths; CLI `--help` text that names root paths updated | **done 2026-08-24** — summarize's fallback deck-glob widened to stage dirs; Watch discovery is directory-scoped and unaffected; web suites green |
+| **M6 root data** | pseudos move under `pseudos/`; `mb_monitor.py` ships into job dirs only (no root copy) | **done 2026-08-24** — the monitor half fell out of M1 (wrappers render in-dir, so the monitor is written beside them); root strays are adopted into `pseudos/` |
 
 **Definition of done:** a fresh `prep bench` of the Au-BDT-Au bundle produces
 the tree the user approved on disk (`Relax.PROPOSED/`, 2026-08-24): root = 6

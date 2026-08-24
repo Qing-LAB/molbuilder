@@ -228,8 +228,8 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
     # ``diag_algorithm`` has ONE declared point, so it is a PIN, not an
     # axis (§ 4.3a: one point = the value in force) -- it reaches every
     # deck but never a name.  Only the multi-point axes coordinate.
-    b64 = deck("G0K4C1use_gpuFalseblock_size64")
-    b128 = deck("G0K4C1use_gpuFalseblock_size128")
+    b64 = deck("G0K4C1block_size64")
+    b128 = deck("G0K4C1block_size128")
     def kw(text, key):
         # the KEYWORD line, not the item's comment banner above it
         return next(l for l in text.splitlines()
@@ -240,7 +240,7 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
     assert kw(b128, "BlockSize").split()[1] == "128"
     assert ".false." in kw(b64, "Diag.ELPA.GPU")
     assert "ELPA-1STAGE" in b64, "the one-point pin reaches the deck"
-    gpu = deck("G1K4C1use_gpuTrueblock_size64")
+    gpu = deck("G1K4C1block_size64")
     assert ".true." in kw(gpu, "Diag.ELPA.GPU")
 
     js = json.loads(
@@ -385,7 +385,7 @@ def test_the_winners_coordinates_ride_run_config(sol_calc):
     _prep(sol_calc)
     js, base = _load_bench_set(str(sol_calc), "coarse")
     dirs = job_dir_names(js, shape_of(js, sol_calc))
-    winner = "G0K4C1use_gpuFalseblock_size128"
+    winner = "G0K4C1block_size128"
     d = sol_calc / dirs[winner]
     stem = next(d.glob("*.fdf")).name[:-4]
     (d / f"{stem}-run0.out").write_text(
@@ -529,23 +529,23 @@ def test_summarize_mid_flight_lists_unfinished_and_refreshes(sol_calc):
         (d / f"{stem}-run0.scf-timing.log").write_text(
             "\n".join(f"{t0 + i * spi} iter" for i in range(4)) + "\n")
 
-    finish("G0K4C1use_gpuFalseblock_size64", 5.0)
+    finish("G0K4C1block_size64", 5.0)
     res, out_path, rc = run_summarize_jobset(
         js, sol_calc, now_iso="2026-08-21T00:00:00Z", stage="coarse",
         **_out_kw)
     text = summary_text(res, out_path, run_config=rc, stage="coarse")
     states = {p.label: p.state for p in res.points}
-    assert states["G0K4C1use_gpuFalseblock_size64"] == "completed"
+    assert states["G0K4C1block_size64"] == "completed"
     assert sum(1 for s in states.values() if s != "completed") == 7
     assert "coverage: 1 of 8 prepped points measured" in text
     assert "the verdict ranks what ran" in text
 
     # more evidence lands; the RECORD refreshes on the next summarize
-    finish("G0K4C1use_gpuFalseblock_size128", 3.0)
+    finish("G0K4C1block_size128", 3.0)
     res2, _o, rc2 = run_summarize_jobset(
         js, sol_calc, now_iso="2026-08-21T01:00:00Z", stage="coarse",
         **_out_kw)
-    assert res2.choice["label"] == "G0K4C1use_gpuFalseblock_size128"
+    assert res2.choice["label"] == "G0K4C1block_size128"
     # the PROPOSAL file is the user's after first write: kept, with the
     # refresh taught in the summary text
     assert rc2[1] == "kept"
@@ -680,8 +680,10 @@ def test_a_gpu_winner_rides_run_config_on_a_mixed_sweep(sol_calc):
         (d / f"{stem}-run0.scf-timing.log").write_text(
             "\n".join(f"{t0 + i * spi} iter" for i in range(4)) + "\n")
 
-    cpu_label = next(l for l in dirs if "use_gpuFalse" in l)
-    gpu_label = next(l for l in dirs if "use_gpuTrue" in l)
+    # G0 IS the CPU family and G>=1 the GPU family -- the rider no longer
+    # appears in names (roadmap 7.10 M2); the coordinate states it.
+    cpu_label = next(l for l in dirs if l.startswith("G0"))
+    gpu_label = next(l for l in dirs if l.startswith("G1"))
     finish(cpu_label, 9.0)
     finish(gpu_label, 2.0)          # the GPU family wins
     # `out=` is the CLI's own plumbing (`summarize bench <stage>` writes

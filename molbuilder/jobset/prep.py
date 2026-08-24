@@ -462,10 +462,25 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
     species = _detect_species(struct.elements)
     if not species:
         return
-    have = {p.stem for p in base.glob("*.psml")}
+    # THE PARENT'S DATA IS GROUPED (roadmap 7.10 M6): the calculation's
+    # pseudopotential copies live in ``pseudos/``, one folder, instead of
+    # N ``<El>.psml`` entries loose at the root.  Root strays -- put there
+    # by `init`, an earlier prep, or a travelled bundle -- are ADOPTED,
+    # the same move-in the deck adoption uses.  The run directories are
+    # untouched by this: each still receives ``<El>.psml`` beside the
+    # deck (that is SIESTA's own contract; it has no search path).
+    pdir = base / "pseudos"
+    pdir.mkdir(exist_ok=True)
+    for stray in base.glob("*.psml"):
+        target = pdir / stray.name
+        if not target.exists():
+            stray.replace(target)
+        else:
+            stray.unlink()
+    have = {p.stem for p in pdir.glob("*.psml")}
     want = [s for s in species if s not in have]
     if not want:
-        _screen_pseudos(species, cfg, base)
+        _screen_pseudos(species, cfg, pdir)
         return
 
     lib_raw = getattr(cfg, "psml_lib", None)
@@ -493,7 +508,7 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
             + describe_psml_anchor(str(lib_raw), dest_dir=base)
             + f"  Put the .psml files there, or set `psml_lib` to a "
               f"directory that has them.")
-    missing = copy_pseudopotentials(want, lib, base)
+    missing = copy_pseudopotentials(want, lib, pdir)
     if missing:
         raise PrepError(
             f"this calculation needs {', '.join(f'{m}.psml' for m in missing)}"
@@ -501,7 +516,7 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
             f"<element>.psml in the directory it runs from and has no search "
             f"path, so it would refuse at startup.  Put the file in the "
             f"library, or point `psml_lib` at one that has it.")
-    _screen_pseudos(species, cfg, base)
+    _screen_pseudos(species, cfg, pdir)
 
 
 def _screen_pseudos(species, cfg, base: Path) -> None:
@@ -1113,10 +1128,15 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
 def _siesta_shared_package(base: Path) -> List[str]:
     """SIESTA's shared package: the pseudopotentials it put in the folder.
 
-    The same suffix ``_siesta_provide_pseudos`` copies, named by the engine
-    that copied them (`script-preparation.md` § 4, the data-files step).
+    The same files ``_siesta_provide_pseudos`` stages, named by the engine
+    that staged them (`script-preparation.md` § 4, the data-files step).
+    Under ``pseudos/`` since the layout repair (roadmap 7.10 M6); the bare
+    root glob stays as the fallback for a bundle prepped before it, so a
+    travelled calculation still names its package.
     """
-    return sorted(p.name for p in base.glob("*.psml"))
+    grouped = sorted(f"pseudos/{p.name}"
+                     for p in (base / "pseudos").glob("*.psml"))
+    return grouped or sorted(p.name for p in base.glob("*.psml"))
 
 
 def _shared_for(base: Path, seam: "EngineSeam" = None, *, engine: str = "",

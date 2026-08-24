@@ -321,8 +321,12 @@ def test_a_value_outside_the_label_charset_is_spelled_into_it(template):
     ("ELPA-1Stage"), which the user cannot re-spell.  ``.`` still spells
     ``p``; what makes dropping safe is the duplicate-label guard below."""
     assert point_token({"G": -2}) == "G2"
-    assert point_token({"diag_algorithm": "ELPA-1Stage"}) \
-        == "diag_algorithmELPA1Stage"
+    # A SELF-NAMING value drops its axis name (roadmap 7.10 M2): the slug
+    # carries letters, so it identifies itself, and the axis name was 14
+    # redundant characters pushing real labels past SIESTA's ~50-char
+    # filename cut.  A numeric slug keeps the key -- a bare "300p5" in a
+    # directory listing names nothing.
+    assert point_token({"diag_algorithm": "ELPA-1Stage"}) == "ELPA1Stage"
     assert point_token({"mesh_cutoff": 300.5}) == "mesh_cutoff300p5"
 
 

@@ -713,7 +713,30 @@ def _label_for(base: str, point: Mapping[str, Any]) -> str:
     read — or overwrite — the real run's ``.DM`` and ``.XV``
     (`project-layout.md` § 2.3.2).
     """
-    return base if not point else f"{base}-{point_token(point)}"
+    label = base if not point else f"{base}-{point_token(point)}"
+    if len(label) > _SIESTA_LABEL_MAX:
+        # REFUSED, never truncated (roadmap 7.10 M2, user 2026-08-24).
+        # SIESTA silently cuts label-derived filenames at ~50 characters
+        # and writes on: the Au-BDT-Au sweep's 58-char trial labels all
+        # truncated to one identical 50-char stem -- ELPA1STAGE and
+        # ELPA2STAGE trials differ only past the cut, so the two
+        # identities COLLIDED, and only their separate directories kept
+        # the runs apart.  A label that keys warm files must survive the
+        # engine whole, or be refused where changing it is still free.
+        raise ResolveError(
+            f"the trial label {label!r} is {len(label)} characters; SIESTA "
+            f"silently truncates label-derived filenames at about "
+            f"{_SIESTA_LABEL_MAX}, which merges trial identities (two "
+            f"Au-BDT-Au trials differing only in ELPA1STAGE/ELPA2STAGE "
+            f"truncated to one stem, 2026-08-24).  Shorten the "
+            f"calculation's label, or the sweep's axis values.")
+    return label
+
+
+#: SIESTA's practical bound on SystemLabel-derived filenames, observed on
+#: 5.4.2: a 58-char label produced files cut at 50 characters.  Held a few
+#: below the observed cut so suffixes like ``.DM`` stay unambiguous.
+_SIESTA_LABEL_MAX = 48
 
 
 def point_token(point: Mapping[str, Any]) -> str:
@@ -734,8 +757,30 @@ def point_token(point: Mapping[str, Any]) -> str:
     lives in ``ParameterSet.axes`` and each element's ``point``, as data.
     """
     parts = []
+    _machine = ("G", "K", "C")
     for k, v in point.items():
-        part = f"{k}{_flat(v)}"
+        slug = _flat(v)
+        if k == "use_gpu" and "G" in point:
+            # A RIDER the machine coordinate already states (roadmap 7.10
+            # M2): G0 IS use_gpu=False and G>=1 IS use_gpu=True -- spelling
+            # both wrote 11 redundant characters into every trial name of
+            # the Au-BDT-Au sweep and helped push its labels past SIESTA's
+            # limit.  The fact stays in the point's DATA untouched.
+            continue
+        if k in _machine:
+            part = f"{k}{slug}"
+        else:
+            # A value that names itself (ELPA1STAGE) needs no axis prefix.
+            # Only a STRING value can: a number's slug names nothing bare
+            # (and a float's spelled decimal point -- 300.5 -> "300p5" --
+            # would sneak past a has-a-letter test), a bool's "True" names
+            # the wrong thing, and a slug two axes share keeps both keys.
+            _self_naming = (isinstance(v, str)
+                            and any(c.isalpha() for c in slug)
+                            and sum(1 for k2, v2 in point.items()
+                                    if k2 not in _machine
+                                    and _flat(v2) == slug) == 1)
+            part = slug if _self_naming else f"{k}{slug}"
         if not _TOKEN_RE.fullmatch(part):
             # Values were slugged by ``_flat``, so what still fails here is
             # the AXIS name itself, or a value that slugged to nothing while

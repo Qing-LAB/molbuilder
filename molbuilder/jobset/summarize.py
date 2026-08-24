@@ -243,7 +243,13 @@ def _read_system(bundle: Path) -> Dict:
         except Exception:
             pass    # malformed description: fall through to the decks
     sysd: Dict = {"engine": "siesta"}
-    for fdf in sorted(Path(bundle).glob("*.fdf")):
+    # Decks are born in their stage directories since the layout repair
+    # (roadmap 7.10 M1); the bare-root pattern stays first for a bundle
+    # prepped before it.  This is already the degraded path (a malformed
+    # description), so breadth beats precision here.
+    _decks = (list(Path(bundle).glob("*.fdf"))
+              + list(Path(bundle).glob("*/*.fdf")))
+    for fdf in sorted(_decks):
         for line in _read(fdf).splitlines():
             toks = line.split("#", 1)[0].split()
             if len(toks) >= 2 and _norm(toks[0]) == "numberofatoms":
