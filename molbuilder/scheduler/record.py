@@ -126,6 +126,13 @@ class Domain:
     node_type: Optional[str] = None
     max_cores: Optional[int] = None
     max_mem_gb: Optional[float] = None
+    #: What SLURM grants PER CORE when a job states no ``--mem`` -- the number
+    #: that turns 64 cores into a 128 GB ask nobody made.  A DECLARED column
+    #: since 2026-08-23, when the probe started measuring it: `asu-sol.md`
+    #: § 5.3 has documented it since the row was designed, and it rode in
+    #: ``extra`` until the probe could fill it.  ``None`` means the partition
+    #: does not say, never zero (R3).
+    default_mem_per_core_gb: Optional[float] = None
     gpu:       Optional[Dict[str, Any]] = None
     #: Where a GPU job goes when that differs from ``partition``.  DECLARED
     #: since 2026-08-23 (scheduler.md § 4): it redirects real work, and until
@@ -139,7 +146,8 @@ class Domain:
 
     #: The keys :meth:`from_row` recognises; everything else goes to ``extra``.
     _KNOWN = ("name", "partition", "qos", "max_time", "node_type",
-              "max_cores", "max_mem_gb", "gpu", "gpu_partition")
+              "max_cores", "max_mem_gb", "default_mem_per_core_gb",
+              "gpu", "gpu_partition")
 
     @classmethod
     def from_row(cls, row: Mapping[str, Any]) -> Optional["Domain"]:

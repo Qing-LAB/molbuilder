@@ -160,3 +160,52 @@ def test_the_ceiling_and_the_default_are_different_numbers():
     hm = rows["highmem"]
     assert hm["max_mem_gb"] > 2000 and hm["default_mem_per_core_gb"] == 16.0
     assert hm["max_mem_gb"] != hm["default_mem_per_core_gb"]
+
+
+# --------------------------------------------------------------------- #
+#  the row must become an OBJECT — the step this file did not test       #
+# --------------------------------------------------------------------- #
+
+def test_every_row_the_probe_builds_constructs_a_Domain():
+    """**The gap that shipped a crash.**
+
+    `derive_domains` returns dicts and `jobset probe --write` does
+    ``Domain(**row)``.  This file tested the dicts thoroughly and never the
+    step between, so adding `default_mem_per_core_gb` to the row without
+    adding it to `Domain` passed every test here and died on the first real
+    probe:
+
+        TypeError: Domain.__init__() got an unexpected keyword argument
+                   'default_mem_per_core_gb'
+
+    Testing the shape a producer emits, without testing that the consumer
+    accepts it, is a loop left open -- the same defect class as a field
+    declared and never read, one step earlier.
+    """
+    from molbuilder.scheduler import Domain
+    parts = parse_sinfo(_SINFO)
+    defmem = parse_scontrol_partitions(_SCONTROL)
+    for p in parts:
+        p.def_mem_per_cpu_mb = defmem.get(p.name)
+    rows, _notes = derive_domains(parts, {"public": (None, None)}, {"public"})
+    assert rows, "the fixture produced no rows, so this proves nothing"
+    for row in rows:
+        d = Domain(**row)                      # exactly what `probe --write` does
+        assert d.name and d.partition and d.qos
+
+
+def test_the_columns_the_probe_writes_are_all_KNOWN_to_the_record():
+    """The same loop, stated as a rule rather than as one construction: a
+    column the probe emits that `Domain` does not name would land in `extra`
+    on read and crash on `Domain(**row)` -- present in the file, invisible to
+    the reader, fatal to the writer."""
+    from molbuilder.scheduler import Domain
+    parts = parse_sinfo(_SINFO)
+    for p in parts:
+        p.def_mem_per_cpu_mb = 2048
+    rows, _ = derive_domains(parts, {"public": (None, None)}, {"public"})
+    emitted = {k for row in rows for k in row}
+    unknown = sorted(emitted - set(Domain._KNOWN))
+    assert not unknown, (
+        f"the probe writes {unknown}, which `Domain` does not declare -- add "
+        f"the field (and say what it is for), or stop writing the column")

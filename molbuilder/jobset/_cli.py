@@ -2251,8 +2251,9 @@ def cmd_machines() -> None:
 
 
 @jobset_group.command("probe",
-                     short_help="probe this machine's capability -> "
-                                "environment.json")
+                     short_help="record a machine's capability -> "
+                                "environment.json (--name for a cluster you "
+                                "prep FOR)")
 @click.option("--out", default=None,
               type=click.Path(file_okay=False, resolve_path=True),
               help="directory to write environment.json into with --write "
@@ -2260,9 +2261,13 @@ def cmd_machines() -> None:
 @click.option("--write", "do_write", is_flag=True, default=False,
               help="write the probed record (shows a diff + confirms).")
 @click.option("--name", default=None, metavar="NAME",
-              help="record this as a NAMED target (environments/NAME.json) "
-                   "instead of as this machine, so a workstation can hold a "
-                   "cluster's capability and `prep --target NAME` use it.")
+              help="RECORD THIS AS A NAMED TARGET you can prep FOR, rather "
+                   "than as the machine you are standing on.  Run `probe "
+                   "--write --name sol` on Sol's login node, copy the file it "
+                   "writes to the directory `jobset machines` prints, and "
+                   "`prep --target sol` sizes for Sol from anywhere.  Without "
+                   "it the record describes THIS box, which is the wrong "
+                   "answer whenever you prep on a laptop for a cluster.")
 @click.option("--yes", is_flag=True, default=False,
               help="with --write: take every probed value without asking "
                    "(scripts).  Without it, each difference against an "
@@ -2280,10 +2285,23 @@ def cmd_machines() -> None:
                    "(source 'flag').")
 def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
                         sets, scheduler_flag) -> None:
-    """Probe this machine and record what it IS -- cores, GPUs, scheduler, and
-    on a cluster every (partition, QoS) you may actually submit to, with its
-    wall.  Writes ``environment.json`` at the machine scope, so one probe
-    serves every calculation here (`configuration.md` § 5).
+    """Record what a machine IS -- cores, GPUs, scheduler, and on a cluster
+    every (partition, QoS) you may actually submit to, with its wall.
+
+    \b
+    TWO USES, and the second is the one people miss:
+      the machine you are ON      probe --write
+      a cluster you prep FOR      probe --write --name sol
+
+    The named form answers *"I describe calculations on my laptop and run them
+    on Sol"*.  Run it ON Sol's login node, copy the file it writes to the
+    directory `jobset machines` prints, and `prep --target sol` sizes for Sol
+    from anywhere.  **Without it, a bench prepped on a laptop is measured
+    against the laptop's cores and queues, silently** -- which is the whole
+    reason named records exist.
+
+    The unnamed form writes ``environment.json`` at the machine scope, so one
+    probe serves every calculation here (`configuration.md` § 5).
 
     **Facts only.** Which partition you want, the account, and the policy no
     probe can invent (``gpu.exclusive``, ``gpu.mem``) stay yours, in
