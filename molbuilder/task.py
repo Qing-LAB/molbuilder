@@ -76,7 +76,9 @@ STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 
 _TOP_KEYS = ("schema", "engine", "shape", "run",
-             "structure", "varies", "stages", "calculation", "bench")
+             "structure", "varies", "stages", "calculation", "bench",
+             "allocation")
+_ALLOCATION_KEYS = ("domain", "time", "mem")
 _RUN_KEYS = ("name", "id", "created")
 _STRUCTURE_KEYS = ("source", "formula", "atoms")
 
@@ -108,6 +110,35 @@ class Run:
     name: str
     id: str
     created: str = ""
+
+
+@dataclass(frozen=True)
+class Allocation:
+    """**What this calculation asks the scheduler for** — the queue, the
+    wall, the memory.
+
+    Added 2026-08-24 (user), because the Task-setup tab could set neither a
+    time nor a memory ask and `prep` had no way to learn one: five Sol jobs
+    (62039301-05) died against limits nobody chose -- a per-GPU memory
+    default and a wall the framework invented -- because the two numbers had
+    no home that travelled with the calculation.
+
+    **Every field is optional, and absent means UNSTATED** -- never a
+    default wearing a number's clothes (`submission.md` S1).  An unstated
+    wall becomes the target queue's own ceiling at submission; an unstated
+    memory lets the scheduler's default decide, said out loud.
+
+    Spelled as a person types them (``"4h"``, ``"128G"``, SLURM's own
+    ``"7-00:00:00"``) rather than as seconds and gigabytes: the same strings
+    the CLI's ``--time`` / ``--mem`` take, so what a person reads in the file
+    is what they would type, and one parser serves both surfaces.
+    """
+    domain: str = ""
+    time: str = ""
+    mem: str = ""
+
+    def __bool__(self) -> bool:
+        return bool(self.domain or self.time or self.mem)
 
 
 @dataclass(frozen=True)
@@ -180,6 +211,17 @@ class Task:
     #: rules file's question, answered where the file is read -- this
     #: codec checks only the SHAPE (U0, 2026-08-13).
     calculation: str = "optimization"
+
+    #: WHAT THIS CALCULATION ASKS THE SCHEDULER FOR -- the queue, the wall,
+    #: the memory (:class:`Allocation`).  Absent-is-a-state, like ``bench``:
+    #: an empty one writes no key, and every description written before
+    #: 2026-08-24 says exactly what it always said by omitting it.
+    #:
+    #: `prep` reads it as the BASE allocation and an explicit flag still
+    #: wins, so the file answers once what the CLI would otherwise have to
+    #: be told every time -- which is what makes a prepped bundle carry
+    #: everything its launch needs.
+    allocation: "Allocation" = field(default_factory=lambda: Allocation())
 
     #: § 6.8 -- WHAT TO MEASURE before committing: field name -> the points to
     #: try.  Empty means no benchmark is planned, which is what every
@@ -479,7 +521,7 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # no-stages case above, which § 6.5 spells by omitting both keys.)
     return Task(engine=engine, shape=shape, run=run, structure=structure,
                 varies=varies, stages=stages, calculation=calc, bench=bench,
-)
+                allocation=_allocation_from_obj(obj))
 
 
 def _bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
@@ -513,6 +555,35 @@ def _bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
             _refuse(f"bench[{name!r}] takes scalar points; got a nested value")
         out[str(name)] = tuple(points)
     return out
+
+
+def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
+    """``allocation`` -> :class:`Allocation`; absent is an empty one.
+
+    Shape only, like every other reader here: whether ``"4h"`` parses as a
+    duration and whether ``htc`` is a queue THIS machine offers are
+    questions for the surfaces that hold those answers (`ask.parse_*`, the
+    machine record).  A description written for one cluster is opened on
+    another, and refusing it here for naming a queue this box never heard
+    of would refuse a file that is perfectly correct where it is going.
+    """
+    raw = obj.get("allocation")
+    if raw is None:
+        return Allocation()
+    if not isinstance(raw, Mapping) or not raw:
+        _refuse("'allocation' is present but not a non-empty object. Omit "
+                "the key entirely when nothing is asked for -- absent and "
+                "empty would be two spellings of one state")
+    _check_keys(raw, _ALLOCATION_KEYS, where="allocation")
+    for k in _ALLOCATION_KEYS:
+        v = raw.get(k)
+        if v is not None and not isinstance(v, str):
+            _refuse(f"allocation.{k} must be a string as a person types it "
+                    f"(\"4h\", \"128G\", \"7-00:00:00\"); got "
+                    f"{type(v).__name__}")
+    return Allocation(domain=str(raw.get("domain") or ""),
+                      time=str(raw.get("time") or ""),
+                      mem=str(raw.get("mem") or ""))
 
 
 def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
@@ -657,6 +728,14 @@ def _task_to_dict(task: Task) -> dict:
     # exactly what it always said.
     if task.bench:
         out["bench"] = {k: list(v) for k, v in task.bench.items()}
+    # Absent when nothing is asked for, and each field omitted when unset --
+    # so "unstated" has ONE spelling on disk (S1), and a description from
+    # before 2026-08-24 round-trips byte-identical.
+    if task.allocation:
+        out["allocation"] = {
+            k: v for k, v in (("domain", task.allocation.domain),
+                              ("time", task.allocation.time),
+                              ("mem", task.allocation.mem)) if v}
     if task.stages:
         out["varies"] = list(task.varies or ())
         out["stages"] = [{"name": s.name, "enabled": s.enabled,
@@ -671,5 +750,6 @@ def write_task(path, task: Task):
 
 
 __all__ = ["SCHEMA", "FILENAME", "SHAPES", "STAGE_FIELDS",
+           "Allocation",
            "Run", "StructureRef", "Stage", "Task",
            "derive_run", "read_task", "varies_for", "write_task"]

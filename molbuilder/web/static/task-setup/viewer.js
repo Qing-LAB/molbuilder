@@ -1558,8 +1558,31 @@ function renderQueues() {
 }
 
 function _fmtGB(gb) {
-    if (gb >= 1024) return (Math.round(gb / 102.4) / 10) + " TB";
-    return Math.round(gb) + " GB";
+    /* Never rounds UP: this renders a CEILING, and a ceiling shown larger
+     * than it is invites an ask the queue will refuse. */
+    if (gb >= 1024) return (Math.floor(gb / 102.4) / 10) + " TB";
+    return Math.floor(gb) + " GB";
+}
+
+/** The memory a queue's ceiling should DEFAULT to, in exact MB.
+ *
+ * `MEM_HEADROOM` of the node total, floored (user, 2026-08-24).  Two
+ * reasons, and the first is a bug this replaces: the default was
+ * `Math.round(max_mem_gb) + "G"`, which on a 503.5 GB queue asked for
+ * 504 GB -- MORE than the ceiling -- so every non-integral queue filled
+ * itself with a value its own hint then called too large.  The second is
+ * why the fix is not merely `floor`: `max_mem_gb` is the node's TOTAL, and
+ * a job asking all of it is commonly unschedulable because the OS and
+ * SLURM itself need some, so the headroom is what makes the default a
+ * value that actually runs.
+ *
+ * MB, not GB, because that is SLURM's own unit here (`sinfo %m`) and
+ * rounding to whole GB is what lost the 0.5 in the first place.
+ */
+const MEM_HEADROOM = 0.95;
+
+function _defaultMemMB(gb) {
+    return Math.floor(gb * 1024 * MEM_HEADROOM) + "M";
 }
 
 /** Choosing a queue FILLS the two asks with that queue's ceilings --
@@ -1574,7 +1597,7 @@ function setQueue(name) {
     const t = $("ts-ask-time");
     const mem = $("ts-ask-mem");
     if (d && t) t.value = d.max_time_s ? _humanTime(d.max_time_s) : "";
-    if (d && mem) mem.value = d.max_mem_gb ? Math.round(d.max_mem_gb) + "G" : "";
+    if (d && mem) mem.value = d.max_mem_gb ? _defaultMemMB(d.max_mem_gb) : "";
     paintAskNotes();
     refreshSave();
 }
