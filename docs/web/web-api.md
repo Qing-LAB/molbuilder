@@ -352,7 +352,7 @@ Set on every response by an `after_request` hook (`app.py`):
   live in [`ops/deployment.md § 4`](?doc=ops/deployment.md).
 - The global upload cap is **50 MB** (`MAX_CONTENT_LENGTH`).
 
-## 3. Endpoint index — all 79 routes
+## 3. Endpoint index — all 80 routes
 
 > **Three routes below no longer exist** (found 2026-08-10 while correcting
 > an earlier count): `/api/files/result-list`,
@@ -398,6 +398,7 @@ owned by [`molview.md`](?doc=web/molview.md):
 | POST `/api/structure/save` | Save a structure + its sidecar to a path |
 | POST `/api/task-setup/handover` | **Render** the parameter tab's work — returns `<label>.template.toml` and `task.1st.json` as TEXT. Writes nothing: the browser puts them where the user chose, through `projects.safeSave` ([`task-setup.md`](?doc=web/task-setup.md)) |
 | POST `/api/task-setup/save` | Validate a description through `task.read_task` and write `task.json`. A **content-aware door**, for the same reason `/api/structure/save` is one: a browser-authored schema-stamped file the loader would reject is the save-then-reload trap. It reports a hand-over rather than deleting it — moving bytes is the file layer's job |
+| POST `/api/task-setup/prep` | **Run `prep` for one stage** — the same `prep_calculation` the terminal runs, for the machine named in `target` (a record name, or `this` for the machine the server is on). `plan: true` answers WITHOUT writing: which stage, which machine, the bench axes, and what the description asks the scheduler for — so nothing is prepped unseen, the rule the launch door keeps ([`submission.md`](?doc=execution/submission.md) S4). **Prep, never launch**: prep writes files and may be run again, while launch spends a queue slot and refuses batch submission by design, so only the cheap verb has a door here. Refusals come back as the reader's own words with 400 — a browser that repaired one would be the second, drifting decider. Why a browser may trigger this at all when [`project-layout.md § 2.2`](?doc=execution/project-layout.md) says the deck cannot be finished in the browser: that section constrains whose FACTS the deck is rendered from, and a named record supplies the machine half |
 | GET `/api/task-setup/sweepable` | Which parameters a stage may vary — the catalogue's `execution`/`stage` items for one engine, so the tab's columns are **picked from the catalogue** rather than from a list in the browser ([`template.md § 6.2`](?doc=engines/template.md)) |
 | GET `/api/task-setup/columns` | Which settings may become a column of the stage table — everything the description is allowed to hold, with the settings the machine answers left out ([`stages.md § 6.2`](?doc=engines/stages.md)). Separate from `sweepable`, which answers what a benchmark may MEASURE: filtering a panel and limiting a table are different questions, and borrowing one answer for the other cost the table `restart` |
 | GET `/api/task-setup/resolved` | What a `prep` would resolve for a folder and from which file — the same `config_provenance` block `prep` prints, served rather than restated so the tab and the terminal cannot drift. Carries `bootstrap_warning` from the one shared rule (`runtime_config.bootstrap_travels`): a preamble is a preference, so a prep aimed at another machine renders the right numbers with this machine's bootstrap ([`§ 3`](?doc=execution/preparing-for-another-machine.md)) |

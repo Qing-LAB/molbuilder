@@ -1305,17 +1305,21 @@ def api_task_setup_prep():
     if target in ("(this machine)", LOCAL_TARGET):
         target = LOCAL_TARGET
     elif target is None and choice_required():
-        return jsonify({
-            "ok": False,
-            "error": ("several machines could be meant and none was "
-                      "named -- pick one above.  Known: "
-                      + ", ".join(sorted(named_environments()))
-                      + ", or this machine."),
-        }), 400
+        # THE REFUSAL'S OWN WORDS, not a second set.  This composed its own
+        # sentence for a question `AmbiguousTarget` already answers -- two
+        # texts for one rule, and the browser's would have drifted from the
+        # terminal's the first time either was edited.  Raised and caught so
+        # the wording has exactly one home.
+        from molbuilder.scheduler.record import AmbiguousTarget
+        exc = AmbiguousTarget(list(named_environments())
+                              + ["(this machine)"])
+        return jsonify({"ok": False, "error": str(exc)}), 400
     if (target is not None and target != LOCAL_TARGET
             and target not in named_environments()):
+        from molbuilder.scheduler.record import UnknownTarget
         return jsonify({"ok": False,
-                        "error": f"no machine record named {target!r}"}), 400
+                        "error": str(UnknownTarget(
+                            target, named_environments()))}), 400
 
     stages = [s.name for s in (task.stages or ())]
     if stage is None:
@@ -1345,6 +1349,10 @@ def api_task_setup_prep():
     # ---- the real thing ------------------------------------------------ #
     from molbuilder.jobset._cli import _bench_inputs
     from molbuilder.jobset.prep import PrepError, prep_calculation
+    # A machine question raised from INSIDE prep is the user's to answer,
+    # like every refusal here -- not a server fault.  Uncaught it was a 500.
+    from molbuilder.scheduler.record import AmbiguousTarget as _AmbiguousTarget
+    from molbuilder.scheduler.record import UnknownTarget as _UnknownTarget
     kwargs = {}
     if kind == "bench":
         if not (task.bench or {}):
@@ -1361,7 +1369,8 @@ def api_task_setup_prep():
 
     try:
         dirs = prep_calculation(dest, stage, target=target, **kwargs)
-    except (PrepError, ValueError, KeyError) as exc:
+    except (PrepError, ValueError, KeyError,
+            _AmbiguousTarget, _UnknownTarget) as exc:
         # Refused, not repaired -- the reader's own words, as the CLI gives
         # them.  A browser that "fixed" a refusal would be the second,
         # drifting decider this design exists to avoid.

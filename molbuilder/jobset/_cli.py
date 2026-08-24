@@ -2380,9 +2380,17 @@ def cmd_machines() -> None:
         click.echo(f"then copy the file it writes into:\n    "
                    f"{environments_dir()}/")
     elif choice_required(machines):
+        # NAME THE LOCAL SPELLING HERE TOO.  The listing above shows
+        # `(this machine)`, which is a LABEL and not something anyone can
+        # type -- so a reader told that `prep` "requires --target <name>"
+        # was left with no name for the box in front of them.  The same
+        # gap the ambiguity refusal had (`record.LOCAL_TARGET`, 2026-08-24);
+        # a hint that names only half the options is half a hint.
+        from ..scheduler.record import LOCAL_TARGET
         click.echo("More than one machine could be meant, so `prep` requires "
                    "`--target <name>` (being asked costs one flag; being "
                    "given the wrong one costs a queue wait).")
+        click.echo(f"    --target {LOCAL_TARGET}   is this machine.")
 
 
 @jobset_group.command("probe",
