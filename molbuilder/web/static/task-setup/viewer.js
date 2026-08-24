@@ -637,6 +637,10 @@ async function loadFolder(projects, dir) {
     // whole page-load (2026-08-21 review, E-A1).
     await loadSweepChoices(_handoverEngine(task));
     renderMachine(task);
+    // The card reflects the DESCRIPTION on open, so reopening a folder
+    // shows what it already asks for instead of an empty card.
+    readAsksFromTask(task);
+    renderQueues();
     refreshPickers();
     await setEditorText(taskText);
 }
@@ -1599,6 +1603,7 @@ function setQueue(name) {
     if (d && t) t.value = d.max_time_s ? _humanTime(d.max_time_s) : "";
     if (d && mem) mem.value = d.max_mem_gb ? _defaultMemMB(d.max_mem_gb) : "";
     paintAskNotes();
+    applyAsksToDoc();
     refreshSave();
 }
 
@@ -1642,7 +1647,7 @@ function paintAskNotes() {
     }
 }
 
-/** The two asks as `task.json` carries them, or null when unset. */
+/** The three asks as `task.json`'s `allocation` carries them. */
 function askValues() {
     const t = ($("ts-ask-time") || {}).value || "";
     const m = ($("ts-ask-mem") || {}).value || "";
@@ -1651,6 +1656,48 @@ function askValues() {
     if (t.trim()) out.time = t.trim();
     if (m.trim()) out.mem = m.trim();
     return out;
+}
+
+/** Write the asks INTO the open `task.json`, which is what save sends.
+ *
+ * The page's one source of truth is the editor's text (this file's header
+ * rule), so a control that kept its value beside it would be a second
+ * answer to what the description says -- and the one that never reached
+ * disk.  Written on `change` rather than on every keystroke: rewriting
+ * the document under a moving cursor is how an editor fights its user.
+ *
+ * Absent-is-a-state, matching `task.py`: nothing asked writes NO key, so
+ * a description that says nothing round-trips byte-identical.
+ */
+function applyAsksToDoc() {
+    if (!_cm) return;
+    const text = _cm.getValue();
+    let task;
+    try {
+        task = JSON.parse(text);
+    } catch (e) {
+        return;              // mid-edit and unparseable; say nothing, lose nothing
+    }
+    if (!task || typeof task !== "object") return;
+    const asks = askValues();
+    const had = JSON.stringify(task.allocation || null);
+    if (Object.keys(asks).length) task.allocation = asks;
+    else delete task.allocation;
+    if (JSON.stringify(task.allocation || null) === had) return;   // no-op
+    const cur = _cm.getCursor && _cm.getCursor();
+    _cm.setValue(JSON.stringify(task, null, 2) + "\n");
+    if (cur && _cm.setCursor) _cm.setCursor(cur);
+}
+
+/** Fill the card FROM the open description, so reopening a folder shows
+ *  what it already asks for rather than an empty card. */
+function readAsksFromTask(task) {
+    const a = (task && task.allocation) || {};
+    _queue = a.domain || "";
+    const t = $("ts-ask-time");
+    const m = $("ts-ask-mem");
+    if (t) t.value = a.time || "";
+    if (m) m.value = a.mem || "";
 }
 
 /** What a `prep` would resolve for the open folder, and from which file.
@@ -1838,7 +1885,7 @@ function watchAskControls() {
         if (!el || el.dataset.mbWatched) continue;
         el.dataset.mbWatched = "1";
         el.addEventListener("input", () => { paintAskNotes(); refreshSave(); });
-        el.addEventListener("change", () => { paintAskNotes(); refreshSave(); });
+        el.addEventListener("change", () => { paintAskNotes(); applyAsksToDoc(); refreshSave(); });
     }
 }
 

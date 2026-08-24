@@ -759,6 +759,14 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             f"folder is a template PLUS a description (project-layout.md § 2.1) "
             f"and `prep` rebuilds the config from the template.")
     seam = _engine_seam(task.engine)
+    # THE DESCRIPTION'S OWN ALLOCATION, under the caller's (2026-08-24).
+    # `task.json` carries the queue, the wall and the memory a person chose
+    # for this calculation (`task.Allocation`), so a prepped bundle needs
+    # no flag to know them -- and an explicit flag still WINS, because a
+    # person typing `--mem` now is answering about now.  Field by field,
+    # not object by object: `--np 8` alone must not erase the file's
+    # memory ask, which a whole-object override would do silently.
+    allocation = _under_description(allocation, task.allocation)
     try:
         pset = resolve(template_path.read_text(encoding="utf-8"), task,
                        seam.config_cls, allocation=(allocation or Resources()),
@@ -1139,6 +1147,30 @@ def _siesta_shared_package(base: Path) -> List[str]:
     grouped = sorted(f"pseudos/{p.name}"
                      for p in (base / "pseudos").glob("*.psml"))
     return grouped or sorted(p.name for p in base.glob("*.psml"))
+
+
+def _under_description(flags, declared) -> "Resources":
+    """The caller's allocation over the description's -- FIELD by field.
+
+    `task.json`'s ``allocation`` is what this calculation asks for; a flag
+    is what the person is asking for right now, so a stated flag wins and
+    an unstated one leaves the file's answer standing.  Whole-object
+    precedence would make `--np 8` erase a memory ask nobody mentioned,
+    which is the class of silent loss this whole round has been about.
+
+    ``domain`` rides `Resources.domain`, the same field `--domain` fills.
+    """
+    out = flags or Resources()
+    if not declared:
+        return out
+    import dataclasses as _dc
+    patch = {}
+    for name, val in (("domain", declared.domain),
+                      ("time", declared.time),
+                      ("mem", declared.mem)):
+        if val and getattr(out, name, None) in (None, ""):
+            patch[name] = val
+    return _dc.replace(out, **patch) if patch else out
 
 
 def _shared_for(base: Path, seam: "EngineSeam" = None, *, engine: str = "",

@@ -1310,6 +1310,49 @@ all of them. Before the first produce it is free to change; after, it is a
 different calculation. Whether an existing folder can be *converted* is a
 separate question and still open (`project-layout.md § 8`).
 
+### 6.8a `allocation` — what this calculation asks the scheduler for
+
+*(Added 2026-08-24, user.)* Three optional fields, and absent means
+**unstated**:
+
+```json
+"allocation": { "domain": "htc", "time": "4h", "mem": "128G" }
+```
+
+| field | what it says |
+|---|---|
+| `domain` | which **queue** — the same answer `--domain` gives |
+| `time` | the **wall**. Unstated, the target queue's own ceiling is requested |
+| `mem` | the **memory ask**. Unstated, the scheduler's own default decides |
+
+**Why it is here and not in `bench`.** § 6.8's rule still holds — the file
+records what a person *asked*, never what a machine *found* — and these are
+asks. `bench` says *which settings to measure*; this says *what to request*.
+A queue name is portable in the same way `"measure ranks at 4, 8, 16"` is: it
+is a decision about this calculation, true wherever the file is opened, and
+§ 6.8's own example of the un-portable thing (*"use 16"*) is a different
+kind of statement.
+
+**Values are spelled as a person types them** — `"4h"`, `"128G"`,
+`"7-00:00:00"` — not as seconds and gigabytes. The file holds what you would
+type, so one parser serves the CLI, the browser and this reader, and nothing
+is converted twice. Shape is checked here; whether `"4h"` parses and whether
+`htc` exists are the surfaces' questions, because a description written for
+one cluster is opened on another and refusing it there would refuse a file
+that is correct where it is going.
+
+**`prep` reads it as the base allocation, and a flag still wins — FIELD by
+field.** `--mem 64G` overrides the memory and leaves the queue and the wall
+standing; `--np 8` overrides neither. Whole-object precedence would let an
+unrelated flag silently drop an ask nobody mentioned, which is the class of
+loss this key exists to end: five Sol jobs (62039301–05, 2026-08-23) died
+against a per-GPU memory default and an invented wall, because the two
+numbers had no home that travelled with the calculation.
+
+**Absent-is-a-state**, like `bench`: nothing asked writes no key, so every
+description written before this existed still says exactly what it always
+said, byte for byte.
+
 ### 6.8 `bench` — a plan to measure, never a measurement
 
 **The problem it solves.** A calculation's resource settings — ranks, threads,
