@@ -32,7 +32,7 @@ Format reference (.molwatch.log):
     # cycle energy delta_E gnorm ddm
        1   -76.00   0.00   5e-2   1e-1
     scf_history end
-    wall_time: 1718000000.123
+    wall_time: 1718000000.123        (epoch -> Frame.wall_clock_s)
     ==== molwatch step 0 end ====
     ...
     # concluded: success                (optional footer)
@@ -185,11 +185,11 @@ def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
     block_forces: List[List[float]] = []
     block_max_force: Optional[float] = None
     block_scf: List[Dict[str, Any]] = []
-    block_wall_time: Optional[float] = None
+    block_wall_clock_s: Optional[float] = None
 
     def _reset_block() -> None:
         nonlocal in_block, block_idx, block_frame, block_energy
-        nonlocal block_forces, block_max_force, block_scf, block_wall_time
+        nonlocal block_forces, block_max_force, block_scf, block_wall_clock_s
         in_block        = False
         block_idx       = None
         block_frame     = []
@@ -197,7 +197,7 @@ def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
         block_forces    = []
         block_max_force = None
         block_scf       = []
-        block_wall_time = None
+        block_wall_clock_s = None
 
     # ---- header / footer on_start callbacks ----
 
@@ -295,8 +295,13 @@ def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
                 # Always a list (possibly empty) -- the .molwatch.log
                 # format always carries an scf_history block per step.
                 # None is reserved for parsers with no SCF data source.
-                scf_history = list(block_scf),
-                wall_time   = block_wall_time,
+                scf_history  = list(block_scf),
+                # The emitter stamps its own time.time(), so this
+                # log DOES carry a time of day (parse.md § 2a).
+                # ``elapsed_s`` is left unset: deriving it from the
+                # epoch series has exactly one home, and it is not
+                # here (P-T3 -- to_legacy_payload does it).
+                wall_clock_s = block_wall_clock_s,
             ))
         _reset_block()
 
@@ -312,8 +317,8 @@ def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
             line.strip().split(":", 1)[1].strip())
 
     def _on_wall_time(line: str, line_no: int) -> None:
-        nonlocal block_wall_time
-        block_wall_time = _maybe_float(
+        nonlocal block_wall_clock_s
+        block_wall_clock_s = _maybe_float(
             line.strip().split(":", 1)[1].strip())
 
     # ---- multi-line section consume callbacks ----
@@ -370,16 +375,19 @@ def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
         # Optional 6th column: wall_time(s) -- epoch seconds when the
         # emitter saw this SCF cycle finish.  Older .molwatch.log
         # files (pre-2026-06-20) have 5 columns; we surface None for
-        # those.  Per-cycle time = scf[i+1].wall_time - scf[i].wall_time.
-        wall_time = (_maybe_float(parts[5])
-                     if len(parts) >= 6 else None)
+        # those.  The column keeps its on-disk name; the PARSED key is
+        # ``wall_clock_s`` because it is an epoch, where SIESTA's
+        # same-position value is ``elapsed_s`` (parse.md § 2a).
+        # Per-cycle time = scf[i+1] - scf[i] of whichever is present.
+        wall_clock_s = (_maybe_float(parts[5])
+                        if len(parts) >= 6 else None)
         block_scf.append({
             "cycle":     cycle,
             "energy":    energy,
             "delta_E":   delta_E,
             "gnorm":     gnorm,
             "ddm":       ddm,
-            "wall_time": wall_time,
+            "wall_clock_s": wall_clock_s,
         })
         return CONTINUE
 

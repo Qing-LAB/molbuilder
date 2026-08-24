@@ -4,21 +4,23 @@
   "frames": [
     {
       "coords_n": 3,
+      "elapsed_s": null,
       "energy": -76.123456,
       "forces_n": 3,
       "max_force": 0.0024,
       "scf_history_len": 3,
       "step_index": 0,
-      "wall_time": 1761396000.0
+      "wall_clock_s": 1761396000.0
     },
     {
       "coords_n": 3,
+      "elapsed_s": null,
       "energy": -76.2,
       "forces_n": 3,
       "max_force": 0.000224,
       "scf_history_len": 2,
       "step_index": 1,
-      "wall_time": 1761396030.0
+      "wall_clock_s": 1761396030.0
     }
   ],
   "lattice_is_none": true,

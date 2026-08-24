@@ -172,12 +172,16 @@ def test_scf_history_per_step(mw_path):
 def test_scf_cycle_keys(mw_path):
     """Every per-cycle entry has the unified key set.
 
-    ``wall_time`` (2026-06-20) is included unconditionally — None
+    ``wall_clock_s`` (2026-06-20) is included unconditionally — None
     for pre-feature .molwatch.log files (5-column SCF rows),
-    epoch-seconds float for new files (6-column SCF rows).
+    epoch-seconds float for new files (6-column SCF rows).  The key
+    is named for the clock it carries: the emitter stamps its own
+    ``time.time()``, so this is an epoch, where SIESTA's value in the
+    same position is ``elapsed_s`` (docs/model/parse.md § 2a).
     """
     result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
-    expected = {"cycle", "energy", "delta_E", "gnorm", "ddm", "wall_time"}
+    expected = {"cycle", "energy", "delta_E", "gnorm", "ddm",
+                "wall_clock_s"}
     for run in result["scf_history"]:
         for entry in run:
             assert set(entry.keys()) == expected
@@ -250,11 +254,12 @@ def test_registry_dispatches_to_molwatch_parser(mw_path):
     assert detect_parser(mw_path) is MolwatchLogFileParser
 
 
-def test_wall_time_field_round_trip(tmp_path):
-    """When step blocks carry `wall_time: <unix epoch>`, the parser
-    must surface it on Frame.wall_time and the legacy dict must expose
-    it as `wall_times[i]` index-aligned with frames.  Used by the
-    Watch UI to render "Started 2h 15m ago, last step 30s ago"."""
+def test_wall_time_line_surfaces_as_wall_clock_s(tmp_path):
+    """The on-disk line keeps its name; the PARSED field is named for
+    the clock it carries.  A `wall_time: <unix epoch>` step line must
+    surface on ``Frame.wall_clock_s`` and in the legacy dict as
+    `wall_clock_s[i]`, index-aligned with frames.  Used by the Watch
+    UI to render "Started 2h 15m ago, last step 30s ago"."""
     sample = (
         "# molwatch trajectory log v1\n"
         "# engine: pyscf\n"
@@ -291,12 +296,20 @@ def test_wall_time_field_round_trip(tmp_path):
     p = tmp_path / "wt.molwatch.log"
     p.write_text(sample)
     result = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
-    wt = result["wall_times"]
+    wt = result["wall_clock_s"]
     assert len(wt) == 2 and len(wt) == len(result["frames"])
     assert wt[0] == pytest.approx(1777864027.425)
     assert wt[1] == pytest.approx(1777864041.373)
     # 13.948 seconds of "simulation" in the synthetic file
     assert wt[1] - wt[0] == pytest.approx(13.948, abs=0.001)
+
+    # P-T3 (parse.md § 2a): the payload builder derives elapsed from
+    # the epoch series, so a consumer never subtracts to get a
+    # duration and never has to know which engine wrote the file.
+    el = result["elapsed_s"]
+    assert len(el) == len(wt)
+    assert el[0] == pytest.approx(0.0)
+    assert el[1] == pytest.approx(13.948, abs=0.001)
 
 
 def test_run_state_finished_when_concluded_marker_present(tmp_path):
@@ -399,22 +412,22 @@ def test_run_state_propagates_to_legacy_dict(tmp_path):
     assert "RuntimeError" in result["error_message"]
 
 
-def test_wall_time_absent_in_old_logs(mw_path):
+def test_wall_clock_s_absent_in_old_logs(mw_path):
     """The SAMPLE log has no `wall_time:` lines (it's older than the
     field).  Parser must fall back to None for each frame and the
-    legacy dict's `wall_times` list must be all-None index-aligned
+    legacy dict's `wall_clock_s` list must be all-None index-aligned
     with frames -- otherwise the watch UI's optional-elapsed code path
     breaks."""
     result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
-    wt = result["wall_times"]
+    wt = result["wall_clock_s"]
     assert len(wt) == len(result["frames"])
     assert all(v is None for v in wt)
 
 
-def test_scf_cycle_wall_time_round_trip(tmp_path):
+def test_scf_cycle_clock_round_trip(tmp_path):
     """6-column SCF rows (added 2026-06-20) round-trip through the
-    parser as a 'wall_time' field on each per-cycle dict.  Per-cycle
-    time delta is then ``scf[i+1]['wall_time'] - scf[i]['wall_time']``
+    parser as a 'wall_clock_s' field on each per-cycle dict.  Per-cycle
+    time delta is then ``scf[i+1]['wall_clock_s'] - scf[i]['wall_clock_s']``
     without any client-side stitching."""
     sample = (
         "# molwatch trajectory log v1\n"
@@ -447,18 +460,20 @@ def test_scf_cycle_wall_time_round_trip(tmp_path):
     scf = traj.frames[0].scf_history
     assert scf is not None
     assert len(scf) == 3
-    # Every cycle dict carries wall_time as a float epoch.
+    # Every cycle dict carries wall_clock_s as a float epoch.
     for c in scf:
-        assert "wall_time" in c
-        assert isinstance(c["wall_time"], float)
+        assert "wall_clock_s" in c
+        assert isinstance(c["wall_clock_s"], float)
     # Deltas: 1.25 s, then 1.15 s -- direct subtraction works.
-    assert scf[1]["wall_time"] - scf[0]["wall_time"] == pytest.approx(1.25)
-    assert scf[2]["wall_time"] - scf[1]["wall_time"] == pytest.approx(1.15)
+    assert (scf[1]["wall_clock_s"]
+            - scf[0]["wall_clock_s"]) == pytest.approx(1.25)
+    assert (scf[2]["wall_clock_s"]
+            - scf[1]["wall_clock_s"]) == pytest.approx(1.15)
 
 
-def test_scf_cycle_wall_time_optional_in_old_logs(tmp_path):
+def test_scf_cycle_clock_optional_in_old_logs(tmp_path):
     """Pre-feature .molwatch.log files (5-column SCF rows) must
-    parse fine; the 'wall_time' field surfaces as None on each cycle
+    parse fine; the 'wall_clock_s' field surfaces as None on each cycle
     dict so consumers can branch on presence without crashing."""
     sample = (
         "# molwatch trajectory log v1\n"
@@ -488,5 +503,5 @@ def test_scf_cycle_wall_time_optional_in_old_logs(tmp_path):
     scf = traj.frames[0].scf_history
     assert scf is not None
     for c in scf:
-        assert "wall_time" in c
-        assert c["wall_time"] is None
+        assert "wall_clock_s" in c
+        assert c["wall_clock_s"] is None

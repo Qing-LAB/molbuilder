@@ -186,7 +186,7 @@ def test_input_echo_outcoor_before_first_scf_marks_frame_in_progress():
     assert f.scf_history is not None
     assert len(f.scf_history) == 1
     # And the iter-1 timer snapshot survived through to the cycle dict.
-    assert f.scf_history[0].get("cumulative_walltime_s") == 43.217
+    assert f.scf_history[0].get("elapsed_s") == 43.217
 
 
 def test_committed_step_with_e_ks_stays_completed():

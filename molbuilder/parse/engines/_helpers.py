@@ -175,7 +175,8 @@ def trajectory_result_to_legacy_dict(
           "iterations":  [ int, ... ],
           "lattice":     [[ax, ay, az], ...] | null,
           "scf_history": [ [ {cycle, energy, delta_E, ...}, ... ], ... ],
-          "wall_times":  [ float | null, ... ],
+          "wall_clock_s": [ float | null, ... ],
+          "elapsed_s":    [ float | null, ... ],
           "in_progress": [ bool, ... ] | [],
           "source_format": "siesta" | "pyscf" | "molwatch" | ...,
           "run_state":     "ongoing" | "finished" | "error" | "unknown",
@@ -204,7 +205,13 @@ def trajectory_result_to_legacy_dict(
     out_forces:     List[List[List[float]]] = []
     out_iterations: List[int] = []
     out_scf:        List[List[Dict[str, Any]]] = []
-    out_wall_times: List[Any] = []
+    # Two clocks, never one (parse.md § 2a).  ``wall_clock_s`` is an
+    # absolute epoch and is the only one a consumer may render as a
+    # date; ``elapsed_s`` counts from the run's start and is the only
+    # one it may render as a duration.  A parser fills whichever its
+    # engine actually reports and leaves the other None.
+    out_wall_clock: List[Any] = []
+    out_elapsed:    List[Any] = []
     # Per-frame "this frame is still being written" flag.  Set True
     # on the synthetic EOF-flush frame the SIESTA parser appends
     # when the file ends mid-step so the JS results-state-contract.md
@@ -230,7 +237,8 @@ def trajectory_result_to_legacy_dict(
             out_forces.append([])
         out_iterations.append(f.step_index)
         out_scf.append(f.scf_history if f.scf_history is not None else [])
-        out_wall_times.append(f.wall_time)
+        out_wall_clock.append(f.wall_clock_s)
+        out_elapsed.append(f.elapsed_s)
         out_in_progress.append(bool(getattr(f, "in_progress", False)))
 
     # Legacy shape quirk: when no parser tracks SCF data for ANY
@@ -278,6 +286,23 @@ def trajectory_result_to_legacy_dict(
     if not any(out_in_progress):
         out_in_progress = []
 
+    # P-T3 (parse.md § 2a): derive `elapsed_s` from the epoch series,
+    # here and nowhere else.  A run's start IS knowable from the frames
+    # themselves -- it is the first frame carrying a clock reading -- so
+    # an engine that reports only epochs (the molwatch emitter) still
+    # yields a usable duration without any parser inventing one.
+    #
+    # The reverse is NOT done and must never be: `wall_clock_s` cannot
+    # be recovered from `elapsed_s`, because the file does not contain
+    # the missing addend.  An engine with no time of day (SIESTA .out)
+    # keeps a null series, and the consumer falls back to the file's
+    # mtime knowingly instead of formatting a duration as a date.
+    if any(v is not None for v in out_wall_clock) and \
+            all(v is None for v in out_elapsed):
+        origin = next(v for v in out_wall_clock if v is not None)
+        out_elapsed = [None if v is None else float(v) - float(origin)
+                       for v in out_wall_clock]
+
     return {
         "frames":        out_frames,
         "lattice":       lattice_out,
@@ -287,7 +312,8 @@ def trajectory_result_to_legacy_dict(
         "max_forces_constrained": out_max_forces_constrained,
         "forces":        out_forces,
         "scf_history":   out_scf,
-        "wall_times":    out_wall_times,
+        "wall_clock_s":  out_wall_clock,
+        "elapsed_s":     out_elapsed,
         "in_progress":   out_in_progress,
         "source_format": result.source_format,
         # Run-state markers from end-of-run detection.

@@ -333,7 +333,7 @@ coordinates (Ang):
 energy (eV): None
 forces (eV/Ang):
 max_force (eV/Ang): None
-wall_time: <s>
+wall_time: <unix epoch seconds>
 scf_history begin
 scf_history end                          # empty on step 0 (no header line)
 ==== molwatch step 0 end ====
@@ -342,6 +342,15 @@ scf_history end                          # empty on step 0 (no header line)
 A **real** opt step (index ≥ 1) carries an energy/forces/max_force value and an
 `scf_history` block with a header + one row per SCF cycle:
 `#  cycle   energy(eV)   delta_E(eV)   gnorm(eV/Ang)   ddm   wall_time(s)`.
+
+- **`wall_time` is an absolute Unix epoch**, both on the step line and in the
+  6th SCF column — the emitter stamps its own `time.time()`. The name is this
+  file format's and does not change; the reader surfaces it under the name that
+  states which clock it is, `wall_clock_s`, because a SIESTA `.out` puts an
+  *elapsed* count in the same conceptual slot and the two must not be confused
+  ([`model/parse.md § 2a`](?doc=model/parse.md)). A PySCF log therefore supports
+  "last result at 14:32" where a SIESTA one cannot, and says so with a null
+  rather than a plausible wrong number.
 
 - **Units are converted at write time** so the parser does zero conversion:
   coordinates Å, energy eV (Ha × 27.211386245988), forces/gradient-norm eV/Å

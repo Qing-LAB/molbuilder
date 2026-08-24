@@ -2205,7 +2205,7 @@ def cmd_watch():
                    short_help="parse a trajectory file; print frame JSON")
 @click.argument("input_path", metavar="input")
 @click.option("--frames-only", is_flag=True,
-              help="emit only the per-frame energy / max_force / wall_time "
+              help="emit only the per-frame energy / max_force / time "
                    "table; skip per-atom coordinates (smaller payload)")
 @click.option("--pretty", is_flag=True,
               help="indent the JSON output (default is one-payload-per-line)")
@@ -2234,7 +2234,7 @@ def cmd_watch_parse(input_path, frames_only, pretty):
     payload = trajectory_to_legacy_dict(traj)
     if frames_only:
         # Drop the heavy per-atom arrays; keep the per-frame summary
-        # (iteration index, energy, max_force, wall_time).  Useful for
+        # (iteration index, energy, max_force, and both clocks).  Useful for
         # piping a long trajectory into jq / grep without slurping
         # megabytes of coordinates.
         payload = {
@@ -2244,7 +2244,10 @@ def cmd_watch_parse(input_path, frames_only, pretty):
             "iterations":    payload["iterations"],
             "energies":      payload["energies"],
             "max_forces":    payload["max_forces"],
-            "wall_times":    payload["wall_times"],
+            # Both clocks ship; either may be an all-null series when
+            # the engine cannot report it (parse.md § 2a).
+            "wall_clock_s":  payload["wall_clock_s"],
+            "elapsed_s":     payload["elapsed_s"],
         }
     click.echo(json.dumps(payload, indent=2 if pretty else None))
 
@@ -2308,7 +2311,8 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
                     "step":       payload["iterations"][i],
                     "energy":     payload["energies"][i],
                     "max_force":  payload["max_forces"][i],
-                    "wall_time":  payload["wall_times"][i],
+                    "wall_clock_s": payload["wall_clock_s"][i],
+                    "elapsed_s":    payload["elapsed_s"][i],
                     "n_atoms":    len(payload["frames"][i]),
                 }
                 click.echo(json.dumps(line))

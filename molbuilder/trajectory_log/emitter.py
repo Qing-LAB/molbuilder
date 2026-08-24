@@ -230,9 +230,15 @@ class MolwatchEmitter:
         ddm     = float(norm_ddm) if norm_ddm is not None else None
         # Snapshot wall-clock at the moment this SCF cycle finished.
         # Surfaced as a 6th column on the per-cycle row so per-cycle
-        # time = scf[i+1].wall_time - scf[i].wall_time without any
-        # client-side stitching.  Same epoch-second format as the
-        # per-step ``wall_time:`` line above.
+        # time is a plain difference of neighbours, with no client-side
+        # stitching.  Same epoch-second format as the per-step
+        # ``wall_time:`` line above.
+        #
+        # ``wall_time`` is this FILE FORMAT's column name and stays as
+        # written -- logs already on disk must keep parsing.  It is an
+        # absolute epoch, so the reader surfaces it under the name that
+        # says so, ``wall_clock_s`` (docs/model/parse.md § 2a); the
+        # translation is the parser's job, not this writer's.
         wt      = _mw_time.time()
         self._scf_buf.append({
             'cycle':     int(cycle) + 1,      # 1-indexed in our log

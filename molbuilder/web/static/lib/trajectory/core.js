@@ -228,7 +228,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             label:  null,
             // data shape: {frames, lattice, iterations, energies,
             //   max_forces, max_forces_constrained, forces,
-            //   scf_history, wall_times, in_progress, run_state,
+            //   scf_history, wall_clock_s, elapsed_s, in_progress, run_state,
             //   error_message, runtime_info, parse_warnings, ...}
             data:   null,
             // Per-atom metadata (region labels / frozen tags / annotation
@@ -1930,9 +1930,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             const findLatestCycleWithWalltime = (step) => {
                 if (!Array.isArray(step)) return null;
                 for (let j = step.length - 1; j >= 0; j--) {
-                    const c = step[j];
-                    const v = c && c.cumulative_walltime_s;
-                    if (typeof v === "number" && isFinite(v)) return c;
+                    if (cycleClock(step[j]) != null) return step[j];
                 }
                 return null;
             };
@@ -1982,8 +1980,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                     if (!Array.isArray(step)) continue;
                     for (let j = 0; j < step.length; j++) {
                         const c = step[j];
-                        const v = c && c.cumulative_walltime_s;
-                        if (typeof v === "number" && isFinite(v)) {
+                        if (cycleClock(c) != null) {
                             baselineCycle = c;
                             provenance = stopped
                                 ? "from SIESTA iter-1 timer; the only "
@@ -1999,7 +1996,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
 
             // (4) Nothing -- leave statusText untouched.
             if (baselineCycle !== null) {
-                const cumT = baselineCycle.cumulative_walltime_s;
+                const cumT = cycleClock(baselineCycle);
                 const cumN = baselineCycle.cumulative_calls;
                 // Prefer per-iter (cumulative/calls).  Fall back to
                 // raw cumulative when calls is missing (rare: Fortran
@@ -2180,10 +2177,32 @@ import { molviewFiles } from "../projects/molview-doors.js";
         }
     }
 
+    /* Whichever clock an SCF-cycle dict carries, for DELTAS ONLY.
+     *
+     * Per docs/model/parse.md § 2a a cycle carries `elapsed_s` (SIESTA
+     * -- its timer counts from the start of the run) or `wall_clock_s`
+     * (the molwatch emitter -- it stamps its own time.time()), never
+     * both, and the two are not interchangeable.  A DIFFERENCE between
+     * two cycles of the same run is the one quantity that is identical
+     * either way, because the origin cancels -- so per-iteration timing
+     * may read whichever is present.
+     *
+     * The return value is therefore safe to subtract and NOT safe to
+     * format: never hand it to fmtTimestamp.  For an absolute time,
+     * read `wall_clock_s` directly and accept null as the answer.
+     */
+    function cycleClock(c) {
+        if (!c) return null;
+        const v = Number.isFinite(c.elapsed_s) ? c.elapsed_s
+                : Number.isFinite(c.wall_clock_s) ? c.wall_clock_s
+                : null;
+        return v;
+    }
+
     // Compact "1h 23m" / "12m 5s" / "45s" formatter for elapsed seconds.
     // Hours-and-minutes for long runs; minutes-and-seconds for medium;
     // bare seconds for short.  Negative inputs (clock skew between
-    // server and the file's wall_time) are clamped to 0.
+    // server and the file's clock) are clamped to 0.
     function fmtElapsed(secs) {
         if (!Number.isFinite(secs) || secs < 0) secs = 0;
         secs = Math.floor(secs);
@@ -2197,7 +2216,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * compact; older results prepend MMM DD so the user can tell the
      * difference between a 12 h-old "Ongoing" (probably stalled) and
      * one from 5 min ago.  Input is a Unix-epoch SECONDS timestamp
-     * (matches the wire format of mtime / wall_times). */
+     * (matches the wire format of mtime / wall_clock_s).  Never
+     * pass an elapsed-seconds value here -- see cycleClock. */
     function fmtTimestamp(epochSecs) {
         if (!Number.isFinite(epochSecs)) return "";
         const d   = new Date(epochSecs * 1000);
@@ -2627,19 +2647,29 @@ import { molviewFiles } from "../projects/molview-doors.js";
         }
 
         const ts = new Date(r.mtime * 1000).toLocaleTimeString();
-        // Elapsed simulation time -- wall_times[] is per-frame Unix
-        // epoch.  Total sim time = last_wall - first_wall.  Falls
-        // back silently when wall_times is absent.
-        const wt = state.data.wall_times || [];
-        const firstWall = wt.find(v => Number.isFinite(v));
-        let lastWall = null;
-        for (let i = wt.length - 1; i >= 0; i--) {
-            if (Number.isFinite(wt[i])) { lastWall = wt[i]; break; }
-        }
-        let elapsed = null;
-        if (firstWall != null && lastWall != null) {
-            elapsed = lastWall - firstWall;
-        }
+        // Two clocks, and they are not interchangeable
+        // (docs/model/parse.md § 2a).  `elapsed_s[]` counts from the
+        // run's start and is the only series that may be shown as a
+        // duration; `wall_clock_s[]` is an absolute epoch and the only
+        // one that may be shown as a date.  Either may be an all-null
+        // series when the engine cannot report it -- a SIESTA .out has
+        // no time of day in it at all -- so each is read on its own and
+        // neither substitutes for the other.
+        const lastFinite = (arr) => {
+            for (let i = arr.length - 1; i >= 0; i--) {
+                if (Number.isFinite(arr[i])) return arr[i];
+            }
+            return null;
+        };
+        const elapsedSeries = state.data.elapsed_s || [];
+        const clockSeries   = state.data.wall_clock_s || [];
+        // The server already offsets `elapsed_s` to the run's start
+        // (single-file) or to the first stage's start (merged), so the
+        // last value IS the total -- no subtraction here, which is
+        // what used to hide a wrong origin behind a correct-looking
+        // difference.
+        const elapsed  = lastFinite(elapsedSeries);
+        const lastWall = lastFinite(clockSeries);
 
         // Run-state badge: authoritative when the writer emitted
         // explicit end-of-run markers (PySCF .molwatch.log:
@@ -2659,14 +2689,17 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 "run-state-ongoing", "run-state-error",
             );
             badge.hidden = false;
-            // "Last result at <time>": prefer the per-frame wall_time
-            // from the simulation log (authoritative; this is when the
-            // simulation itself produced the result), fall back to
-            // the file's mtime (the only timestamp available when the
-            // engine doesn't emit per-step wall clocks, e.g. raw SIESTA
-            // .out without molwatch hooks).  This is DIFFERENT from
-            // "Watch tab last polled at X" -- which is a client-side
-            // concern not shown on the badge.
+            // "Last result at <time>": prefer the per-frame
+            // `wall_clock_s` from the simulation log (authoritative;
+            // this is when the simulation itself produced the result),
+            // fall back to the file's mtime -- the only timestamp
+            // available when the engine emits no time of day, e.g. a
+            // raw SIESTA .out without molwatch hooks.  That fallback
+            // is reached because the parser reports null rather than
+            // handing over its elapsed seconds; when it did the latter,
+            // a run six minutes in displayed "Dec 31, 5:06 PM".  This
+            // is DIFFERENT from "Watch tab last polled at X" -- a
+            // client-side concern not shown on the badge.
             const lastResultEpoch = Number.isFinite(lastWall)
                 ? lastWall
                 : (Number.isFinite(state.mtime) ? state.mtime : null);

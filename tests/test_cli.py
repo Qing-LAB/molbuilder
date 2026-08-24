@@ -838,7 +838,7 @@ scf_history end
 def test_watch_parse_emits_full_trajectory_json(capsys, tmp_path):
     """`watch parse` reads a .molwatch.log and dumps the parsed
     trajectory as JSON: per-frame coords, energies, max_forces,
-    wall_times, run_state."""
+    both clocks, run_state."""
     import json
     p = tmp_path / "run.molwatch.log"
     p.write_text(_MW_LOG)
@@ -865,7 +865,11 @@ def test_watch_parse_frames_only_drops_atom_arrays(capsys, tmp_path):
     assert "frames"  not in body
     assert "forces"  not in body
     assert body["energies"]   == [None, -32.5]
-    assert body["wall_times"] == [1700000000.0, 1700000005.0]
+    # The .molwatch.log carries epochs, so the epoch series is the
+    # one that is populated -- and the elapsed series is derived from
+    # it once, in the payload builder (parse.md § 2a, P-T3).
+    assert body["wall_clock_s"] == [1700000000.0, 1700000005.0]
+    assert body["elapsed_s"]    == [0.0, 5.0]
 
 
 def test_watch_tail_emits_ndjson_one_per_frame(capsys, tmp_path):

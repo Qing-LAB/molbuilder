@@ -105,14 +105,33 @@ class Frame:
                       Consumers must not assume a fixed key set.
                       None when the parser couldn't find SCF data
                       (e.g. PySCF .log absent).
-      wall_time    -- Unix epoch seconds when the engine wrote this
-                      step.  None for parsers / formats that don't
-                      surface a per-step timestamp (geomeTRIC's
-                      _geom_optim.xyz, SIESTA's run.out without the
-                      molwatch.log sibling).  Used by the watch UI to
-                      show "Started 2h 15m ago, last step 30s ago" --
-                      the latency-of-progress signal a researcher
-                      actually wants when staring at a long run.
+      wall_clock_s -- Absolute Unix epoch seconds when the engine
+                      wrote this step.  Answers "at what time?", and
+                      is the ONLY field a consumer may render as a
+                      date (parse.md § 2a, P-T1).  Only a parser that
+                      read a real clock reading out of the file may
+                      fill it: the molwatch emitter stamps its own
+                      ``time.time()``, so .molwatch.log has one.  A
+                      SIESTA .out carries no time-of-day anywhere, so
+                      it stays None -- that is an ANSWER ("this engine
+                      cannot say"), not missing data, and it is what
+                      lets the watch UI fall back to the file's mtime
+                      deliberately instead of formatting a duration as
+                      a date.  Never derived from ``elapsed_s``: the
+                      file does not contain the missing addend.
+      elapsed_s    -- Seconds since the run began.  Answers "how far
+                      in?", and is the ONLY field a consumer may
+                      render as a duration.  SIESTA fills it from its
+                      ``timer: ... IterSCF`` lines.  Parsers whose
+                      engine reports epochs leave it None and let
+                      ``to_legacy_payload`` derive it from the epoch
+                      series -- one derivation, one home (P-T3).
+                      Both stay None for formats that surface no time
+                      at all (geomeTRIC's _geom_optim.xyz).  Together
+                      these drive the watch UI's "Started 2h 15m ago,
+                      last step 30s ago" -- the latency-of-progress
+                      signal a researcher actually wants when staring
+                      at a long run.
       in_progress  -- True when this Frame represents a calculation
                       mid-flight rather than a completed geometry step
                       with a real outcoor block.  Set by parsers when
@@ -134,7 +153,8 @@ class Frame:
     max_force_constrained: Optional[float]        = None
     lattice:      Optional[np.ndarray]            = None
     scf_history:  Optional[List[Dict[str, float]]] = None
-    wall_time:    Optional[float]                 = None
+    wall_clock_s: Optional[float]                 = None
+    elapsed_s:    Optional[float]                 = None
     in_progress:  bool                            = False
 
     def __post_init__(self) -> None:

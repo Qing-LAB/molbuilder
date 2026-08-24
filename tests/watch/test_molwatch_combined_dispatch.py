@@ -246,8 +246,10 @@ def _rich_signature():
                                else round(float(f.energy), 6)),
                 "max_force":  (None if f.max_force is None
                                else round(float(f.max_force), 6)),
-                "wall_time":  (None if f.wall_time is None
-                               else round(float(f.wall_time), 6)),
+                "wall_clock_s": (None if f.wall_clock_s is None
+                                 else round(float(f.wall_clock_s), 6)),
+                "elapsed_s":    (None if f.elapsed_s is None
+                                 else round(float(f.elapsed_s), 6)),
                 "coords_n":   len(f.structure.elements),
                 "forces_n":   (0 if f.forces is None else len(f.forces)),
                 "scf_history_len": len(f.scf_history or []),
@@ -267,7 +269,7 @@ def _rich_signature():
 
 def test_rich_block_matches_golden():
     """Parse a synthetic log that exercises every documented section
-    type (coords, forces, energy, max_force, wall_time, scf_history
+    type (coords, forces, energy, max_force, both clocks, scf_history
     with None residuals, runtime_info including ``None`` value,
     concluded footer) and compare the signature against the committed
     golden.

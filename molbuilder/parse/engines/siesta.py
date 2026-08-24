@@ -825,18 +825,25 @@ class SiestaParser:
             # preserved in ``runtime_info["initial_etot"]`` for
             # display, NOT as a frame energy.
             # SIESTA emits per-SCF-cycle ``timer: ... IterSCF N <cum_s>``
-            # lines; we attach the cumulative wall-clock onto the last
-            # cycle dict.  For the CG step's end-of-time we surface the
-            # LAST cycle's cumulative_walltime_s -- that's when the SCF
-            # converged, i.e. when this CG step finished.  Per-CG-step
-            # time is then frames[i+1].wall_time - frames[i].wall_time.
+            # lines counting from the START OF THE RUN; we attach that
+            # onto the last cycle dict as ``elapsed_s``.  For the CG
+            # step's end-of-time we surface the LAST cycle's value --
+            # that's when the SCF converged, i.e. when this CG step
+            # finished.  Per-CG-step time is then
+            # frames[i+1].elapsed_s - frames[i].elapsed_s.
             # None when no SCF cycles in this step (rare: single-shot
             # runs) or when SIESTA didn't emit the timer.
-            frame_wall_time: Optional[float] = None
+            #
+            # ``wall_clock_s`` is left unset ON PURPOSE: a SIESTA .out
+            # carries no time-of-day anywhere, so the honest answer is
+            # "this engine cannot say" (parse.md § 2a, P-T2).  Filling
+            # it with the elapsed seconds is what made the browser
+            # render a 6-minute run as "Dec 31, 5:06 PM".
+            frame_elapsed_s: Optional[float] = None
             if current_scf:
-                cum = current_scf[-1].get("cumulative_walltime_s")
+                cum = current_scf[-1].get("elapsed_s")
                 if isinstance(cum, (int, float)) and math.isfinite(cum):
-                    frame_wall_time = float(cum)
+                    frame_elapsed_s = float(cum)
             frames.append(Frame(
                 structure   = struct,
                 step_index  = len(frames),
@@ -845,7 +852,7 @@ class SiestaParser:
                 max_force   = step_max_force,
                 max_force_constrained = step_max_force_constrained,
                 scf_history = list(current_scf) if current_scf else None,
-                wall_time   = frame_wall_time,
+                elapsed_s   = frame_elapsed_s,
                 in_progress = in_progress,
             ))
             # PR 4 (results-state-contract § 6): preserve the
@@ -1195,7 +1202,7 @@ class SiestaParser:
               gets the keys that DID parse cleanly.  So a long run that
               overflows Time but not Calls still gets ``cumulative_calls``
               attached; the JS just falls back to the cycle index when
-              ``cumulative_walltime_s`` is missing.
+              ``elapsed_s`` is missing.
             """
             nonlocal current_scf
             m = _TIMER_ITERSCF_RE.match(line)
@@ -1223,7 +1230,7 @@ class SiestaParser:
             if len(tokens) >= 2:
                 cum_time_s = _parse_fortran_float(tokens[1])
                 if math.isfinite(cum_time_s):
-                    last_cycle["cumulative_walltime_s"] = cum_time_s
+                    last_cycle["elapsed_s"] = cum_time_s
 
         # Max-force lines: single-line, both variants.  Gated by a
         # closure-captured check on ``step_forces`` -- only valid
@@ -1427,9 +1434,11 @@ class SiestaParser:
                 # time live -- the canonical "is this run progressing
                 # at a reasonable pace?" signal.  See _on_iter_scf_timer
                 # for the cumulative-to-delta computation: we attach
-                # ``cumulative_walltime_s`` to the SCF cycle dict that
-                # was just appended; the JS chart computes per-iter
-                # deltas from the cumulative series.
+                # ``elapsed_s`` to the SCF cycle dict that was just
+                # appended; the JS chart computes per-iter deltas from
+                # the cumulative series.  The key name is the contract:
+                # SIESTA's timer counts from the start of the run, so
+                # this is elapsed, never an epoch (parse.md § 2a).
                 start=matches_regex_ci(
                     r"^\s*timer:\s*Routine,Calls,Time,%\s*=\s*IterSCF\s"),
                 on_start=_on_iter_scf_timer,
@@ -1770,20 +1779,21 @@ class SiestaParser:
             # JS plottableFrames filter omits the point.  The
             # preamble Etot is preserved separately in
             # ``runtime_info["initial_etot"]`` for display.
-            # Same wall-time surfacing as for committed frames: last
-            # SCF cycle's cumulative_walltime_s = the wall-clock at the
-            # moment SIESTA last ticked the IterSCF timer.
-            ip_wall_time: Optional[float] = None
+            # Same time surfacing as for committed frames: last SCF
+            # cycle's ``elapsed_s`` = how far into the run SIESTA was
+            # when it last ticked the IterSCF timer.  ``wall_clock_s``
+            # stays None here for the same reason as above.
+            ip_elapsed_s: Optional[float] = None
             if current_scf:
-                cum = current_scf[-1].get("cumulative_walltime_s")
+                cum = current_scf[-1].get("elapsed_s")
                 if isinstance(cum, (int, float)) and math.isfinite(cum):
-                    ip_wall_time = float(cum)
+                    ip_elapsed_s = float(cum)
             frames.append(Frame(
                 structure   = placeholder_struct,
                 step_index  = len(frames),
                 energy      = in_prog_energy,
                 scf_history = list(current_scf),
-                wall_time   = ip_wall_time,
+                elapsed_s   = ip_elapsed_s,
                 in_progress = True,
             ))
 

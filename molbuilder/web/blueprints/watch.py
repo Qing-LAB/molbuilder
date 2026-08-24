@@ -705,7 +705,9 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
 
     merged: Dict[str, Any] = {
         "frames": [], "energies": [], "max_forces": [],
-        "forces": [], "scf_history": [], "wall_times": [],
+        "forces": [], "scf_history": [],
+        # Two clocks, never one (parse.md § 2a).
+        "wall_clock_s": [], "elapsed_s": [],
         "iterations": [], "step_indices": [], "stages": [],
         # in_progress: per-frame bool array used by the JS
         # plottableFrames filter (results-state-contract.md § 4
@@ -717,6 +719,10 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
     stages: List[Dict[str, Any]] = []
     any_scf = False
     last_traj_legacy: Optional[Dict[str, Any]] = None
+    # Running total of the elapsed time of the stages already merged,
+    # in seconds.  See the extend below for why a raw concatenation of
+    # per-stage elapsed series is wrong.
+    elapsed_offset = 0.0
     for path in paths:
         # Per-file parse is wrapped: a torn / mid-write log mustn't
         # take down the whole merge.  Surfacing the failure in stages
@@ -760,7 +766,30 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
         merged["energies"].extend(legacy["energies"])
         merged["max_forces"].extend(legacy["max_forces"])
         merged["forces"].extend(legacy["forces"])
-        merged["wall_times"].extend(legacy["wall_times"])
+        # An absolute epoch series concatenates as-is: each stage's
+        # readings are already on the same clock.
+        merged["wall_clock_s"].extend(legacy["wall_clock_s"])
+        # An ELAPSED series does not.  Each stage is a separate engine
+        # run whose timer restarts at zero, so concatenating raw values
+        # gives a sawtooth -- up, back to zero, up again -- and
+        # `last - first` across the merge is wrong or negative.  This is
+        # the second home of the elapsed derivation named in
+        # parse.md § 2a (P-T3): offset each stage by the running total
+        # of the stages before it.
+        #
+        # What this reports is TOTAL COMPUTE TIME, and that is the
+        # honest answer: with no wall clock in the file there is no way
+        # to know how long the job sat between stage k finishing and
+        # stage k+1 starting, so that gap is excluded rather than
+        # invented.
+        stage_elapsed = legacy["elapsed_s"]
+        merged["elapsed_s"].extend(
+            [None if v is None else float(v) + elapsed_offset
+             for v in stage_elapsed])
+        stage_last = next((v for v in reversed(stage_elapsed)
+                           if v is not None), None)
+        if stage_last is not None:
+            elapsed_offset += float(stage_last)
         # Propagate per-frame in_progress flags.  The adapter
         # collapses to [] when no frame is in-progress, so we
         # expand back to per-frame bools here for the merge, then

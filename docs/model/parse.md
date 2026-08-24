@@ -108,6 +108,62 @@ instead of raising.
 
 ---
 
+## 2a. Time fields name their clock
+
+Engines report time in whatever frame of reference suits them. A `.molwatch.log`
+carries the writer's own `time.time()`; a SIESTA `.out` carries `timer:` lines
+counting from the start of the run and contains no time-of-day anywhere. **Both
+are legitimate; neither is convertible into the other from the file alone.**
+
+So the *field name* carries the frame of reference, and there is no neutral
+name for "some time value".
+
+**P-T1 — a time field names its clock.** No field is called `wall_time`. Every
+time-valued field on a parse result ends in one of two suffixes, and the suffix
+**is** the contract:
+
+| suffix | quantity | answers | rendered as |
+|---|---|---|---|
+| `wall_clock_s` | absolute Unix epoch seconds | *at what time?* | a date |
+| `elapsed_s` | seconds since the run began | *how far in?* | a duration |
+
+Only a parser that read a real clock reading out of the file may fill
+`wall_clock_s`.
+
+**P-T2 — `None` means "this engine cannot say", and is a correct final answer.**
+A parser never converts one kind to fill the other's hole, and never substitutes
+a value it did not read. SIESTA's `wall_clock_s` is `None` forever. That is
+output, not missing data — and it is what lets a consumer fall back to the
+file's `mtime` deliberately instead of rendering nonsense confidently.
+
+**P-T3 — derivation happens once, downward only.** `elapsed_s` may be derived
+from an epoch series (`t[i] - t[0]`), because a run's start is knowable from the
+frames themselves. `wall_clock_s` may **never** be derived from `elapsed_s` —
+the file does not contain the missing addend. Each derivation has exactly one
+home:
+
+| derivation | the one place it happens |
+|---|---|
+| `elapsed_s` from a frame's epoch series | `parse/engines/_helpers.py::to_legacy_payload` |
+| `elapsed_s` across chained stages | `web/blueprints/watch.py::_merge_stage_payloads` |
+
+No other layer computes either field.
+
+**P-T4 — epoch is formatted as a date, elapsed as a duration, and neither as the
+other.** This property is the whole reason for the rule.
+
+> **Why this exists.** `Frame.wall_time` was one bare float that molwatch filled
+> with an epoch and SIESTA filled with elapsed seconds. The field's docstring
+> said "Unix epoch"; the browser formatted it as a date; a SIESTA run 360 s in
+> displayed **"last result Dec 31, 5:06 PM"** — epoch zero plus six minutes.
+> Elapsed still looked right, because subtracting two numbers cancels the error
+> that made them wrong. A patch at the display would have left the same trap
+> for the next reader of the field, and the same bug one layer down in
+> `scf_history`, where the two engines had already diverged into
+> `wall_time` and `cumulative_walltime_s` for the same quantity.
+
+---
+
 ## 3. The registry + public API
 
 `molbuilder/parse/__init__.py` re-exports the whole surface; the dispatch lives
@@ -405,6 +461,9 @@ These stop the next round of parallel parse paths:
    consumers.
 7. **No engine-specific code outside `parse/engines/` and `parse/coords/`.** The
    composer stays engine-agnostic; engine logic lives in the leaf parsers.
+8. **No time field without a clock in its name** (§ 2a). `wall_clock_s` is an
+   epoch, `elapsed_s` counts from the run's start, and a value the file does not
+   carry stays `None` rather than being converted from the other kind.
 
 ---
 

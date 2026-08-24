@@ -15,7 +15,7 @@ Field-by-field defensive parsing: a Fortran column-width overflow
 (``******``) in any one field MUST NOT drop the whole attribution.
 Each field parses independently; only the ones that decode cleanly
 land in the cycle dict.  The JS falls back to the cycle index when
-``cumulative_walltime_s`` is missing.
+``elapsed_s`` is missing.
 """
 from __future__ import annotations
 
@@ -102,12 +102,12 @@ def test_two_clean_iters_attribute_cumulative_calls_and_time():
     assert history is not None and len(history) == 2
     a, b = history
     assert a["cumulative_calls"]       == 1
-    assert a["cumulative_walltime_s"]  == 40.820
+    assert a["elapsed_s"]  == 40.820
     assert b["cumulative_calls"]       == 2
-    assert b["cumulative_walltime_s"]  == 75.400
+    assert b["elapsed_s"]  == 75.400
     # Spot-check the per-iter delta the JS will compute:
-    assert (b["cumulative_walltime_s"]
-            - a["cumulative_walltime_s"]) == pytest.approx(34.580)
+    assert (b["elapsed_s"]
+            - a["elapsed_s"]) == pytest.approx(34.580)
 
 
 def test_overflowed_time_drops_only_walltime_keeps_calls():
@@ -121,7 +121,7 @@ def test_overflowed_time_drops_only_walltime_keeps_calls():
     assert iter2["cumulative_calls"] == 2, (
         "Calls field was clean -- must still attach"
     )
-    assert "cumulative_walltime_s" not in iter2, (
+    assert "elapsed_s" not in iter2, (
         "Time field was asterisks -- must NOT attach a NaN or "
         "garbage value; JS will fall back to cycle index"
     )
@@ -135,7 +135,7 @@ def test_overflowed_percent_only_keeps_time_and_calls():
     assert history is not None and len(history) == 1
     iter1 = history[0]
     assert iter1["cumulative_calls"]      == 1
-    assert iter1["cumulative_walltime_s"] == 40.820
+    assert iter1["elapsed_s"] == 40.820
 
 
 def test_timer_without_scf_silently_ignored():
@@ -151,33 +151,87 @@ def test_timer_without_scf_silently_ignored():
     assert len(traj.frames) == 0
 
 
-def test_frame_wall_time_carries_last_cumulative_walltime_s():
-    """Symmetric per-iteration timing (2026-06-20).  ``Frame.wall_time``
-    is populated from the LAST SCF cycle's ``cumulative_walltime_s`` so
-    per-CG-step time = ``frames[i+1].wall_time - frames[i].wall_time``
-    without any client-side stitching.
+def test_frame_elapsed_s_carries_last_cycle_elapsed_s():
+    """Symmetric per-iteration timing (2026-06-20).  ``Frame.elapsed_s``
+    is populated from the LAST SCF cycle's ``elapsed_s`` so per-CG-step
+    time = ``frames[i+1].elapsed_s - frames[i].elapsed_s`` without any
+    client-side stitching.
 
     This pins the same code path for both the committed-frame branch
     (outcoor-bounded) and the in-progress-frame branch at EOF.  The
     fixture below has no outcoor block -> in-progress frame, which is
-    the easier case to construct and runs through the SAME wall_time
+    the easier case to construct and runs through the SAME time
     surfacing logic.
     """
     traj = _parse(_TWO_ITERS_CLEAN)
     assert len(traj.frames) == 1
     f = traj.frames[0]
-    # In-progress frame -- still gets wall_time from the last cycle.
+    # In-progress frame -- still gets its elapsed from the last cycle.
     assert f.in_progress is True
-    # Last cycle's cumulative time was 75.400 s -- that's the wall-clock
-    # at which SIESTA finished its 2nd SCF cycle.
-    assert f.wall_time == pytest.approx(75.400)
+    # Last cycle's cumulative time was 75.400 s -- that is how far into
+    # the run SIESTA was when it finished its 2nd SCF cycle.
+    assert f.elapsed_s == pytest.approx(75.400)
+    # And it is NOT offered as a time of day.  A SIESTA .out carries no
+    # epoch anywhere, so the honest answer is None (parse.md 2a, P-T2):
+    # this is the assertion that stops 75.4 s being rendered as a date.
+    assert f.wall_clock_s is None
 
 
-def test_frame_wall_time_is_none_when_no_iter_scf_timer():
+# Same two timed iterations, but bounded by an outcoor block so the
+# frame is COMMITTED rather than in-progress.  SIESTA's outcoor rows are
+# ``X Y Z species_index atom_index element`` (6 tokens); thinner rows
+# are ignored and no frame commits.
+_TWO_ITERS_COMMITTED = dedent("""\
+    Running on 4 procs
+
+       Parallelisations: MPI, OpenMP
+
+         iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     dDmax    Ef(eV) dHmax(eV)
+       scf:    1   -798748.382767  -804434.909422  -804435.406774  2.772203  1.493296 90.109736
+       timer: Routine,Calls,Time,% = IterSCF        1      40.820  49.49
+       scf:    2   -806618.752906  -805857.884182  -805858.389926  0.445086  0.781420 39.179556
+       timer: Routine,Calls,Time,% = IterSCF        2      75.400  52.10
+
+    outcoor: Atomic coordinates (Ang):
+        0.00000000  0.00000000  0.00000000  1  1  H
+        1.00000000  0.00000000  0.00000000  1  2  H
+
+    """)
+
+
+def test_committed_frame_reports_elapsed_and_no_wall_clock():
+    """The COMMITTED-frame branch, pinned separately from the
+    in-progress one — they are two code paths that each construct a
+    Frame, and a mutation-test showed the committed one was reachable
+    with no assertion on its clocks at all.  It is also the path that
+    produces the run-state badge for a real bench run.
+
+    ``elapsed_s`` carries the last cycle's cumulative timer, and
+    ``wall_clock_s`` is None because a SIESTA .out states no time of
+    day anywhere (docs/model/parse.md § 2a, P-T2).  When this frame
+    handed its 75.4 elapsed seconds over as a wall clock, the browser
+    formatted it as a date and the badge read "Dec 31, 5:06 PM".
+    """
+    traj = _parse(_TWO_ITERS_COMMITTED)
+    assert len(traj.frames) == 1
+    f = traj.frames[0]
+    # The two branches are told apart by the STRUCTURE, not by
+    # in_progress: the committed branch carries the real outcoor
+    # geometry, the in-progress branch synthesises a placeholder.  (The
+    # flag stays True here only because this fixture never reaches
+    # "End of run" -- irrelevant to which branch built the Frame.)
+    assert f.structure.elements == ["H", "H"], (
+        "fixture must exercise the committed-frame branch; a placeholder "
+        "structure means the outcoor block stopped committing a frame")
+    assert f.elapsed_s == pytest.approx(75.400)
+    assert f.wall_clock_s is None
+
+
+def test_frame_elapsed_s_is_none_when_no_iter_scf_timer():
     """When SIESTA didn't emit any ``timer: ... IterSCF`` lines (older
     build, or stripped output), the per-cycle dicts carry no
-    ``cumulative_walltime_s`` and ``Frame.wall_time`` falls back to
-    ``None`` rather than crashing or picking up some other field."""
+    ``elapsed_s`` and ``Frame.elapsed_s`` falls back to ``None`` rather
+    than crashing or picking up some other field."""
     out_body = dedent("""\
         Running on 4 procs
 
@@ -189,4 +243,5 @@ def test_frame_wall_time_is_none_when_no_iter_scf_timer():
         """)
     traj = _parse(out_body)
     assert len(traj.frames) == 1
-    assert traj.frames[0].wall_time is None
+    assert traj.frames[0].elapsed_s is None
+    assert traj.frames[0].wall_clock_s is None
