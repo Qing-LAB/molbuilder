@@ -437,6 +437,44 @@ def test_launch_bench_mem_reaches_the_grouped_sbatch_command(calc):
         f"--mem 128G never reached the sbatch command: {plans}")
 
 
+def test_the_launch_plan_states_gpu_sharing_and_what_is_unstated(calc):
+    """**What a person approves says what will actually be asked for.**
+
+    User, 2026-08-23: *"explicitly note for gpu enabled task: how many
+    task will be sharing the gpu at the same time, and warn if that
+    number is exceedingly high"* -- and 2026-08-24, that an unstated
+    limit must be SAID rather than silently defaulted.  Both are checked
+    on the real launch door, from the very commands it is about to send.
+
+    The arithmetic itself (`ask.gpu_share_notes`) is unit-tested; this
+    pins that it REACHES the approval screen, which is the half that was
+    missing while five Sol jobs went out against limits nobody chose.
+    """
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    _prep_bench(calc)
+    r = CliRunner().invoke(jobset_group, [
+        "launch", "bench", "coarse", "--bundle", str(calc),
+        "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
+    assert r.exit_code == 0, r.output
+    # every GPU shelf's ratio, stated -- and stated ONCE per ratio, not
+    # once per shelf (several shelves share a ratio).
+    ratios = [l for l in r.output.splitlines() if "gpu share" in l]
+    assert ratios, r.output
+    assert len(ratios) == len(set(ratios)), f"repeated: {ratios}"
+    assert any("rank(s)/GPU" in l for l in ratios)
+    # and the two unstated facts, each said exactly once
+    assert r.output.count("MEMORY NOT STATED") == 1, r.output
+    assert r.output.count("time not stated") <= 1
+    # a stated --mem removes its warning entirely
+    r2 = CliRunner().invoke(jobset_group, [
+        "launch", "bench", "coarse", "--bundle", str(calc),
+        "--mode", "submit", "--dry-run", "--yes", "--domain", "htc",
+        "--mem", "128G"])
+    assert r2.exit_code == 0, r2.output
+    assert "MEMORY NOT STATED" not in r2.output
+
+
 def test_the_group_sequencer_runs_every_trial_and_survives_failures(
         calc, monkeypatch):
     """The generated bash, EXECUTED: every pending trial runs in its own

@@ -1551,18 +1551,11 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
             f"{CONFIG_FILENAME}: 'scheduler.gpu.mem' must be a string "
             f"(e.g. \"24G\") or null; got {type(gpu['mem']).__name__}."
         )
-    # gpu.mem_cap_per_gpu: ceiling on a NON-exclusive GPU job's --mem,
-    # per requested GPU (the node's proportional host-RAM share, e.g.
-    # 512G/4 = "128G" on Sol A100 nodes).  Keeps a shared-node GPU job
-    # backfill-friendly; the emitter scales it by the job's GPU count.
-    # gpu.mem is the matching FLOOR.  See render_sbatch.
-    if "mem_cap_per_gpu" in gpu and gpu["mem_cap_per_gpu"] is not None \
-            and not isinstance(gpu["mem_cap_per_gpu"], str):
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'scheduler.gpu.mem_cap_per_gpu' must be "
-            f"a string (e.g. \"128G\") or null; got "
-            f"{type(gpu['mem_cap_per_gpu']).__name__}."
-        )
+    # ``gpu.mem_cap_per_gpu`` was VALIDATED here and read by nothing once
+    # the memory clamp was deleted (2026-08-24) -- a key a person could
+    # set, that this file accepted, and that changed nothing.  Removed
+    # rather than left standing: an accepted setting with no effect is
+    # worse than a refused one.  A GPU job's default is ``gpu.mem``.
 
     # defaults: time str|None, cpus_per_task int|None, mem str|None.
     if "time" in defaults and defaults["time"] is not None \

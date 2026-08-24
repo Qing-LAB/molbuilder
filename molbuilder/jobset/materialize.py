@@ -45,17 +45,6 @@ RUN_LAUNCH_SCHEMA = "molbuilder/run-launch@1"
 RUN_LAUNCH_FILE = "run.json"
 
 
-def relink(link_dir: Path, target: str, link_name: str) -> None:
-    """Create ``link_dir/link_name`` -> ``target`` (a relative path),
-    replacing any existing entry (``ln -sfn`` semantics).  Dangling
-    targets are allowed (carry-forward before the producer runs, and the
-    rendered wrappers the prep step links in afterwards)."""
-    link_path = link_dir / link_name
-    if link_path.is_symlink() or link_path.exists():
-        link_path.unlink()
-    os.symlink(target, link_path)
-
-
 def job_dir_name(job_name: str) -> str:
     """The on-disk directory for a **trial** — ``bench-<point>``.
 
@@ -707,7 +696,6 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
 
 __all__ = ["Attempt",
            "materialize", "job_dir_name", "job_dir_names", "stage_refs",
-           "relink",
            "attempts", "was_launched", "latest_attempt", "resolve_attempt",
            "prepare_attempt",
            "write_run_launch", "RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE"]

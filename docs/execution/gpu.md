@@ -63,7 +63,7 @@ request fits a queue ([`scheduler.md`](?doc=execution/scheduler.md) § 3).
 | `Device(type, per_node, mem_gb)` | **the probe, or the operator** | `environment.json` · `Domain.gpu` | what one node of a queue **offers** — the ceiling |
 | `Domain.gpu_partition` | **the probe, or the operator** | `environment.json` | where GPU work lands when that differs |
 | `topology.gpus_per_node` · `gpu_type` | **the probe** | `environment.json` | what *this* machine has |
-| `scheduler.gpu.{partition,default_type,exclusive,mem,mem_cap_per_gpu}` | **the person's config** | `molbuilder.json` | site policy for GPU jobs |
+| `scheduler.gpu.{partition,default_type,exclusive,mem}` | **the person's config** | `molbuilder.json` | site policy for GPU jobs |
 
 > **The ask and the ceiling are different variables, and the names hide it.**
 > `gpu_count` is what a trial asks for. The ceiling is `Device.per_node`, which
@@ -157,7 +157,7 @@ flowchart TB
 
     DECK --> ENV{"molbuilder-siesta-gpu<br/>present?"}
     ENV -->|no| REFUSE2["<b>wrapper refuses to emit</b><br/>names the env + install (G6, G8)"]
-    ENV -->|yes| RT["<b>the GPU runtime</b><br/>gres · MPS · NUMA pin · rank/thread budget<br/>mem cap = mem_cap_per_gpu × devices"]
+    ENV -->|yes| RT["<b>the GPU runtime</b><br/>gres · MPS · NUMA pin · rank/thread budget<br/>--mem = what the person stated"]
 
     COUNT --> RT
     TOPO -.->|"type, when config states none"| RT

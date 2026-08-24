@@ -20,10 +20,12 @@ lifted out (§ 2.3.1a: *benchmarking is `prep` whose parameters are a set
 rather than a point* — the five steps are general, the grid is the
 specialisation).
 
-Wrappers render **once per distinct ``job.script``, in the bundle root, from
-the real file**: ``write_run_wrapper`` resolves symlinks, so rendering from a
-materialized link would land the wrapper beside the resolved target instead
-of where the job runs.  On the described route every element renders its own
+Wrappers render **once per distinct ``job.script``, in the JOB'S OWN
+DIRECTORY** (L2, roadmap 7.10 -- until 2026-08-24 they rendered in the
+bundle root and were symlinked down, which is how a ten-trial sweep came to
+keep 50 rendered files at its root).  A set that genuinely shares one script
+gets a real copy per directory rather than a second render.  On the described
+route every element renders its own
 deck, so per-script is per-element and each wrapper carries its own
 element's resources.  *(A "legacy sweep whose jobs share one script"
 paragraph stood here promising its own fold "with bench (plan step 6)" —
@@ -43,7 +45,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from .. import script_emit as _sc
-from .materialize import job_dir_names, shape_of, materialize, relink
+from .materialize import job_dir_names, shape_of, materialize
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
 

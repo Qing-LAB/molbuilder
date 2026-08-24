@@ -197,11 +197,11 @@ def test_gpu_mem_config_key_is_used(tmp_path):
 
 
 def test_cpu_job_ignores_gpu_mem_floor(tmp_path):
-    """gpu.mem / mem_cap_per_gpu are GPU-band knobs; a CPU job with no
-    defaults.mem and no parseable system emits NO --mem at all (the
-    partition default), not the GPU floor."""
+    """gpu.mem is a GPU-job knob; a CPU job with no defaults.mem emits
+    NO --mem at all (the scheduler's own default decides), never the GPU
+    value."""
     sched = dict(_SCHED)
-    sched["gpu"] = dict(_SCHED["gpu"], mem="64G", mem_cap_per_gpu="128G")
+    sched["gpu"] = dict(_SCHED["gpu"], mem="64G")
     sched["defaults"] = dict(_SCHED["defaults"], mem=None)
     cfdf = tmp_path / "c.fdf"; cfdf.write_text("x\n")
     ctxt = render_sbatch(cfdf, sched, ntasks=64)
@@ -209,11 +209,10 @@ def test_cpu_job_ignores_gpu_mem_floor(tmp_path):
     assert "#SBATCH --mem=" not in ctxt
 
 
-def test_explicit_mem_beats_the_gpu_band(tmp_path):
-    """An explicit --mem is the operator's judgment: never floored,
-    never capped."""
+def test_explicit_mem_beats_the_gpu_default(tmp_path):
+    """An explicit --mem is the operator's judgment and wins outright."""
     sched = dict(_SCHED)
-    sched["gpu"] = dict(_SCHED["gpu"], mem="64G", mem_cap_per_gpu="128G")
+    sched["gpu"] = dict(_SCHED["gpu"], mem="64G")
     gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
     gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1,
                          mem="470G", exclusive=False)

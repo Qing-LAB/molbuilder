@@ -1526,6 +1526,22 @@ group machinery; full `none2e` lane green.
 **Order note:** M1 and M6 land together (both move where files are written),
 then M3 so the contract matches before the naming change, then M2, then M5.
 
+**Closing review (2026-08-24), findings fixed:**
+
+| found | fix |
+|---|---|
+| `relink` — defined, exported, imported, **called by nobody** once the symlink model died | deleted (same class as `ask.fits`, 2026-08-23) |
+| `scheduler.gpu.mem_cap_per_gpu` — still **validated**, read by nothing after the clamp was deleted: a setting a person could write, that this file accepted, that changed nothing | key removed, docs swept |
+| `--dry-run` printed every command **twice** (plan block + results echo), and the two unstated-fact warnings **once per shelf-job** — 16 near-identical lines for one command | plan block suppressed under `--dry-run` (the results echo is the dry run); warnings deduped to one per FACT |
+| GPU sharing was stated in the bench-grid enumeration but **not in the submission plan** — the screen a person actually approves | wired in, read off the very `sbatch` command about to be sent; pinned + mutation-tested |
+| `test_vibration_e2e` read a PySCF deck from the bundle root | repointed at the stage dir (the run itself already passed) |
+| `prep.py`'s module docstring still described the symlink model | rewritten |
+
+**Verified end to end, not by unit test alone:** `prep --time 2:00:00 --mem
+200GB --np 8` bakes `#SBATCH -n 8 / -t 2:00:00 / --mem=200GB`, and `launch`
+restating **nothing** reproduces exactly those on the command line — the
+"prep has all information ready for launch" requirement (user, 2026-08-24).
+
 ---
 
 ## Closed work

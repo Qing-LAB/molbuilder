@@ -110,14 +110,15 @@ of every job, printed by the code that submits it. A `render` summary lived
 here until 2026-08-24 and could disagree with the submission it described.*
 
 ```
-$ molbuilder jobset launch bench --mem 128G
+$ molbuilder jobset launch bench --mem 900G
 this machine offers:
      name         partition/qos           max time  cores    memory  gpu
 !  1  debug        htc/debug                    15m    128    251 GB  -
-      -> needs 240 min but debug allows 0-00:15:00
-   2  htc          htc/public                    4h    128    251 GB  -
+      -> needs 900 GB but debug allows 251
+!  2  htc          htc/public                    4h    128    251 GB  -
+      -> needs 900 GB but htc allows 251
 !  3  general      general/public              168h     48  502.9 GB  a100 x4
-      -> needs 64 cores but general allows 48
+      -> needs 900 GB but general allows 502.9
    4  highmem      highmem/public               48h    128   2002 GB  -
 
   choose one with --domain <name>.  Nothing is submitted until you do.
@@ -125,10 +126,21 @@ this machine offers:
 $ molbuilder jobset launch bench --mem 128G --domain htc
 about to submit:
   bench-group-cpu
-    sbatch -J AuBDTAu_bench-group-cpu -p htc -q public -n 48 -c 1 -t 0-04:00:00 --mem=128G ... bench-group-cpu.sbatch
+    sbatch -J AuBDTAu_bench-group-cpu -p htc -q public -n 48 -c 1 -t 0-04:00:00 --mem=128G ... launch/bench-group-cpu.sbatch
+  bench-group-gpu-g1n48c1
+    sbatch -J AuBDTAu_bench-group-gpu-g1n48c1 -p htc -q public -n 48 -c 1 --gres=gpu:a100:1 -t 0-04:00:00 --mem=128G ... launch/bench-group-gpu-g1n48c1.sbatch
+  gpu share  48 rank(s) / 1 GPU(s) = 48 rank(s)/GPU
+  NOTE 48 ranks/GPU; this stack's tuned point (no NCCL) is ~4 (engines/tuning.md § 2.12).
   per-trial bound: none -- each trial runs until the wall
   submit this? [Y/n]
 ```
+
+*Every line is read off the very `sbatch` commands about to be sent. Only
+what a queue can actually refuse appears as a bar — with no `--time` stated
+there is no walltime to fail, and `-t 0-04:00:00` above is `htc`'s own
+ceiling, requested because nothing else was said. The GPU-sharing lines say
+once per RATIO what several shelves may share, and an unstated `--mem`
+would add its own line here rather than being defaulted in silence.*
 
 *The `-t 0-04:00:00` is `htc`'s own ceiling — the full amount that queue
 allows — because no `--time` was stated. The display is the exact command,

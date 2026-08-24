@@ -14,7 +14,7 @@ from .agreement import (DeckLaunchMismatch, LaunchAgreement,
                         check_launch_matches_deck, launch_agreement)
 from .ledger import LEDGER_FILE, record
 from .model import Job, JobSet, Resources, SCHEMA
-from .materialize import materialize, job_dir_name, relink
+from .materialize import materialize, job_dir_name
 from .prep import prep_jobset, prep_calculation, PrepError
 from .plan import render_plan
 from .submit import submit_jobset, JobResult, SubmitError
@@ -23,7 +23,7 @@ from .summarize import run_summarize_jobset
 
 __all__ = [
     "Job", "JobSet", "Resources", "SCHEMA",
-    "materialize", "job_dir_name", "relink",
+    "materialize", "job_dir_name",
     "prep_jobset", "prep_calculation", "PrepError", "render_plan",
     "submit_jobset", "JobResult", "SubmitError",
     "jobset_status", "render_status", "StageStatus", "JobSetStatus",

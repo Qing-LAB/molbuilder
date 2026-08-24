@@ -172,8 +172,11 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(
     assert t[t.index("[item.compute_ir]"):t.index("[item.", t.index("[item.compute_ir]") + 1)].count("value = true") == 1
     tpl.write_text(t)
 
-    deck = (bundle / "W_01_freq.py")
     d = _prep_and_run(bundle)
+    # The deck is born in its STAGE directory (L1, roadmap 7.10, layout
+    # repair 2026-08-24) -- it sat at the bundle root until then.  Bound
+    # AFTER the prep for the same reason: the file does not exist before.
+    deck = bundle / "01_freq" / "W_01_freq.py"
     text = deck.read_text()
     assert "mf = mf.PCM()" in text or "_mb_apply_solvent" in text
     assert "78.3553" in text, "the water dielectric never reached the deck"

@@ -2135,26 +2135,66 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 time_s=_ask.time_s,
                 only=only_side)
             _lines = ["about to submit:"]
-            for _r in _plan:
-                if _r.status != "planned":
-                    continue
+            _planned = [r for r in _plan if r.status == "planned"]
+            for _r in _planned:
                 _lines.append(f"  {_r.name}")
                 _lines.append(f"    {' '.join(_r.command)}")
-                if not any(a.startswith("--mem") for a in _r.command):
-                    _lines.append(
-                        "    MEMORY NOT STATED -- the scheduler's own "
-                        "default decides (a per-core or per-GPU rate; on "
-                        "some sites far below the node).  State it at prep "
-                        "(--mem) or here (--mem).")
-                if not any(a == "-t" for a in _r.command):
-                    _lines.append(
-                        "    time not stated and this queue declares no "
-                        "ceiling -- the scheduler's default stands.")
+            # ONE warning per unstated FACT, not per job.  These describe
+            # the ask -- prep bakes one allocation over a sweep, so every
+            # shelf-job says the same thing -- and a sweep of eight
+            # shelves printed the same two sentences eight times each.
+            _warn = []
+            # GPU SHARING, in the one output a person approves (user
+            # 2026-08-23: "explicitly note ... how many task will be
+            # sharing the gpu ... and warn if that number is exceedingly
+            # high").  Read off the very command about to be sent -- its
+            # `-n` and its `--gres` -- so the number shown is the number
+            # requested.  `runwrap` prints the same arithmetic at RUN
+            # time; this is the half that arrives while changing it is
+            # still free.
+            from .ask import gpu_share_notes as _gsn
+            for _r in _planned:
+                _g = next((a for a in _r.command
+                           if a.startswith("--gres=gpu")), None)
+                if not _g:
+                    continue
+                try:
+                    _ng = int(_g.rsplit(":", 1)[-1])
+                    _nr = int(_r.command[_r.command.index("-n") + 1])
+                except (ValueError, IndexError):
+                    continue
+                for _l in _gsn(_ng, _nr):
+                    # Deduped on the STORED spelling: several shelves can
+                    # share one rank/GPU ratio, and the fact is about the
+                    # ratio, not about which shelf happens to carry it.
+                    _line = "  " + _l.strip()
+                    if _line not in _warn:
+                        _warn.append(_line)
+            if any(not any(a.startswith("--mem") for a in r.command)
+                   for r in _planned):
+                _warn.append(
+                    "  MEMORY NOT STATED -- the scheduler's own default "
+                    "decides (a per-core or per-GPU rate; on some sites "
+                    "far below the node).  State it at prep (--mem) or "
+                    "here (--mem).")
+            if any("-t" not in r.command for r in _planned):
+                _warn.append(
+                    "  time not stated and this queue declares no ceiling "
+                    "-- the scheduler's default stands.")
+            _lines.extend(_warn)
             _lines.append(
                 f"  per-trial bound: "
                 + (f"{_bound_s // 60} min" if _bound_s else
                    "none -- each trial runs until the wall"))
-            if not confirm("\n".join(_lines), auto_yes=auto_yes):
+            # Under --dry-run the results echo below prints these very
+            # commands, so showing the plan here too would say everything
+            # twice.  The WARNINGS are the part only this block carries,
+            # so they are kept either way -- an unstated --mem is exactly
+            # what a dry run is for finding.
+            if dry_run:
+                for _l in _warn + [_lines[-1]]:
+                    click.echo(_l)
+            elif not confirm("\n".join(_lines), auto_yes=auto_yes):
                 click.echo("nothing submitted.")
                 return
             _ledger(base, "launch", "bench-grouped",
