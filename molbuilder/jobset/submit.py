@@ -146,7 +146,8 @@ def _scheduler_job_name(jobset: JobSet, job) -> str:
 
 
 def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
-                  dry_run: bool) -> List[JobResult]:
+                  dry_run: bool,
+                  mem_gb: Optional[float] = None) -> List[JobResult]:
     """SLURM path: ``sbatch`` **one** job, with its resources as CLI flags.
 
     **One per invocation** — :func:`_refuse_batch_submission` is what makes
@@ -183,7 +184,19 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         # and it showed you nothing.  `JobSet.name` is the id (run-identity.md
         # § 2), so it goes first and the stage qualifies it.
         cmd = ["sbatch", "-J", _scheduler_job_name(jobset, job)]
-        cmd += _sbatch_resource_flags(job.resources, placement)
+        resources = job.resources
+        if mem_gb:
+            # Same gap as the grouped path (`_submit_side_group`), same
+            # fix: nothing ever set `Resources.mem` for a single-job
+            # submission either -- `job.resources` is whatever `prep`
+            # baked (mpi_np/omp/gres from the sweep axes; never memory),
+            # so `--mem` typed at `launch` was silently discarded here
+            # too.  Overridden here rather than on `job.resources` itself
+            # so the job's OWN prepped record is untouched -- only what
+            # gets submitted changes.
+            import dataclasses as _dc
+            resources = _dc.replace(resources, mem=f"{mem_gb:g}G")
+        cmd += _sbatch_resource_flags(resources, placement)
         # The launch-door claim, EXPLICIT on the command line: environment
         # inheritance alone is fragile (sites override SLURM's --export
         # policy), and the CLI flag wins over site defaults, so the claim
@@ -466,6 +479,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
                        domain: Optional[str] = None,
                        dry_run: bool = False,
                        trial_timeout_s: int = 900,
+                       mem_gb: Optional[float] = None,
                        only: Optional[str] = None) -> List[JobResult]:
     """ONE scheduler job per RESOURCE SHELF of the sweep (grouped
     2026-08-20; split per side, then per shelf, 2026-08-21 --
@@ -565,7 +579,8 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
                 domain=((gpu_domain or domain) if side == "gpu"
                         else domain),
                 dry_run=dry_run,
-                trial_timeout_s=trial_timeout_s)
+                trial_timeout_s=trial_timeout_s,
+                mem_gb=mem_gb)
     if not results:
         raise SubmitError(
             f"all {len(sides[only]) if only else len(jobset.jobs)} "
@@ -700,7 +715,8 @@ def _shelf_token(key) -> str:
 def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
                        name: str, *, gpu_side: bool,
                        domain: Optional[str], dry_run: bool,
-                       trial_timeout_s: int) -> List[JobResult]:
+                       trial_timeout_s: int,
+                       mem_gb: Optional[float] = None) -> List[JobResult]:
     """One side's grouped submission -- the whole of the pre-split
     `submit_bench_group` body, run once per side with its own envelope,
     sequencer, and ``-p/-q`` resolution.
@@ -803,6 +819,19 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     ]
     script = container / f"{name}.run.sh"
     envelope = _dc_replace_time(envelope, _slurm_time(total_s))
+    if mem_gb:
+        # THE BUG this replaces: `_group_envelope` never sets `.mem` (it
+        # reads only mpi_np/cpus_per_task/gres/exclusive off the trials),
+        # so a grouped submission asked SLURM for --mem on NOTHING, no
+        # matter what --mem said at launch -- discovered 2026-08-23 when
+        # job 62039305 (48 ranks, 1 GPU, htc) OOM'd at 24576M, a number
+        # molbuilder never requested and never told anyone it wasn't
+        # requesting.  One override here reaches BOTH readers downstream
+        # (the admission re-check and `_sbatch_resource_flags`), because
+        # both read `envelope.mem` -- exactly how `_dc_replace_time` above
+        # already reaches both readers of `.time`.
+        import dataclasses as _dc
+        envelope = _dc.replace(envelope, mem=f"{mem_gb:g}G")
 
     cmd = ["sbatch", "-J", f"{jobset.name}_{name}"]
     # The side IS the GPU answer -- partitioned by the deck's own word in
@@ -990,6 +1019,7 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                   domain: Optional[str] = None,
                   dry_run: bool = False,
                   only: Optional[str] = None,
+                  mem_gb: Optional[float] = None,
                   ) -> List[JobResult]:
     """Launch a prepped ``jobset`` rooted at ``base_dir``.
 
@@ -1142,7 +1172,7 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
 
     if mode == "submit":
         return continued + _submit_slurm(jobset, base, domain=domain,
-                                         dry_run=dry_run)
+                                         dry_run=dry_run, mem_gb=mem_gb)
     if mode == "direct":
         if domain:
             raise SubmitError(

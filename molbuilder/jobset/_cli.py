@@ -2131,14 +2131,21 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             results = submit_bench_group(
                 js, base, domain=domain, gpu_domain=gpu_domain,
                 dry_run=dry_run,
-                trial_timeout_s=_bound_s, only=only_side)
+                trial_timeout_s=_bound_s, mem_gb=_ask.mem_gb,
+                only=only_side)
         else:
             if kind == "bench" and js.kind == "sweep":
                 only = _pick_trial(js, base, trial)
             else:
                 only = _resolve_stage(js, stage, "launch")
+            # Same ask, the single-job door (2026-08-23): this branch never
+            # built an Ask at all, so --mem typed here was silently
+            # dropped before it could even reach submit_jobset -- the
+            # grouped-sweep branch's `_ask` was the only one, and only a
+            # trial-less grouped submit ever ran through it.
             results = submit_jobset(js, base, mode=mode, domain=domain,
-                                    dry_run=dry_run, only=only)
+                                    dry_run=dry_run, only=only,
+                                    mem_gb=_memory(mem_text))
     except SubmitError as e:
         _ledger(base, "launch", "refused", kind=kind, stage=stage,
                 trial=trial, mode=mode, mode_source=mode_source,

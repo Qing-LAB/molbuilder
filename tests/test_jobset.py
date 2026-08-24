@@ -463,6 +463,20 @@ def test_submit_dry_run_emits_J_and_writes_nothing(tmp_path):
     assert list(tmp_path.iterdir()) == []          # wrote nothing
 
 
+def test_submit_mem_reaches_the_single_job_sbatch_command(tmp_path):
+    """The single-job sibling of the grouped-path bug (job 62039305,
+    2026-08-23): `job.resources` is whatever `prep` baked -- never memory
+    -- and this branch never built an `Ask` at all, so `--mem` typed at
+    `launch run`/`launch bench <trial>` was silently dropped exactly like
+    the grouped path was.  Fixed by overriding `resources.mem` in
+    `_submit_slurm` before `_sbatch_resource_flags`, the same
+    `dataclasses.replace` pattern as the grouped path's envelope.
+    """
+    res = submit_jobset(_ladder(), tmp_path, mode="submit", dry_run=True,
+                        only="s1", mem_gb=64.0)
+    assert "--mem=64G" in res[0].command, res[0].command
+
+
 def test_two_calculations_are_told_apart_in_the_queue(tmp_path):
     """The point of the name, stated as the thing it prevents.
 

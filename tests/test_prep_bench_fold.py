@@ -388,6 +388,35 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     assert r.exit_code != 0 and "TRIAL names a benchmark point" in r.output
 
 
+def test_launch_bench_mem_reaches_the_grouped_sbatch_command(calc):
+    """**The regression.**  Job 62039305 (48 ranks, 1 GPU, `htc`) OOM'd at
+    24576M on 2026-08-23 -- a number nobody asked for and nothing told
+    anyone about, because `--mem` typed at `launch` never reached
+    `submit_bench_group` at all: `_group_envelope` only ever set
+    mpi_np/cpus_per_task/gres/exclusive, so the actual `sbatch` command
+    asked for no memory no matter what a person typed.
+
+    Fixed by threading `Ask.mem_gb` through `submit_bench_group` ->
+    `_submit_side_group`, applied to the envelope the same way
+    `_dc_replace_time` already applies the wall (`jobset/submit.py`).
+    This is the CLI end to end, `--dry-run` so nothing real is submitted --
+    the same entry point `test_cli_submit_bench_groups_the_sweep_by_shelf`
+    proves the shelf-grouping through, with one flag added.
+    """
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    _prep_bench(calc)
+    r = CliRunner().invoke(jobset_group, [
+        "launch", "bench", "coarse", "--bundle", str(calc),
+        "--mode", "submit", "--dry-run", "--yes", "--domain", "htc",
+        "--mem", "128G"])
+    assert r.exit_code == 0, r.output
+    plans = [l for l in r.output.splitlines() if "WOULD run" in l]
+    assert plans, r.output
+    assert all("--mem=128G" in p for p in plans), (
+        f"--mem 128G never reached the sbatch command: {plans}")
+
+
 def test_the_group_sequencer_runs_every_trial_and_survives_failures(
         calc, monkeypatch):
     """The generated bash, EXECUTED: every pending trial runs in its own
