@@ -1015,7 +1015,7 @@ test-pin exists and passes.
 | 7.6 | the scheduler subsystem — five modules, two emitters, no admission | **done — all five phases** |
 | 7.7 | the GPU decision — ten names, no graph, four self-contradictions | **contract written; phases open** |
 | 7.8 | **the consolidated order** — all seven open items in one sequence, with the six places they collide | **the live plan** |
-| 7.9 | **what a job asks for** — provenance for every number, and the gate before it costs | **contract written 2026-08-23; phases open** |
+| 7.9 | **what a job asks for** — provenance for every number, and the gate before it costs | **contract written; phases 1 and 3 done** |
 
 *(7.1–7.4 were carried as **open** in this table for a day after they shipped
 — the exact drift R3 exists to stop, caught 2026-08-23 by reading the table

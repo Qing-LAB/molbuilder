@@ -216,7 +216,8 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         rec = attempt if attempt is not None else (
             job_dir if jobset.kind == "sweep" else None)
         if rec is not None:
-            _record_launch(rec, mode="submit", command=cmd, job_id=jid)
+            _record_launch(rec, mode="submit", command=cmd, job_id=jid,
+                           placement=placement)
         results.append(JobResult(job.name, cmd, "submitted", job_id=jid))
     return results
 
@@ -863,19 +864,39 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     results = [JobResult(name, cmd, "submitted", job_id=jid)]
     for j in pending:
         _record_launch(base / dirs[j.name], mode="submit",
-                       command=cmd, job_id=jid)
+                       command=cmd, job_id=jid, placement=placement)
         results.append(JobResult(j.name, [], "rides the group",
                                  job_id=jid))
     return results
 
 
+def _placed_on(placement) -> Optional[dict]:
+    """A `Placement` -> the four facts a later reader needs about where a run
+    ran, or ``None`` when there was no placement (a direct run).
+
+    ``node_type`` is the one that earns this: it is what decides whether a
+    measurement taken here may be carried to a run somewhere else
+    (`execution/submission.md` § 5), and it was reachable only by parsing the
+    ``sbatch`` argv this file also records.
+    """
+    if placement is None:
+        return None
+    d = getattr(placement, "domain", None)
+    return {"domain": getattr(d, "name", None),
+            "partition": placement.partition,
+            "qos": placement.qos,
+            "node_type": getattr(d, "node_type", None)}
+
+
 def _record_launch(attempt: Path, *, mode: str, command: List[str],
-                   job_id: Optional[str] = None) -> None:
+                   job_id: Optional[str] = None, placement=None) -> None:
     """Write ``run.json`` into the attempt, carrying its provenance.
 
     ``continued_from`` is read back from what ``prep`` copied in rather than
     passed down: prep is what knows, and re-deriving it here would be a second
-    answer to one question.
+    answer to one question.  ``placement`` is passed for the opposite reason:
+    submission is what knows where the job went, and nothing downstream should
+    have to work it out from a command line.
     """
     from .materialize import write_run_launch
     src = None
@@ -883,7 +904,7 @@ def _record_launch(attempt: Path, *, mode: str, command: List[str],
     if marker.is_file():
         src = marker.read_text(encoding="utf-8").strip() or None
     write_run_launch(attempt, mode=mode, command=command, job_id=job_id,
-                     continued_from=src)
+                     continued_from=src, placed_on=_placed_on(placement))
 
 
 # --------------------------------------------------------------------- #

@@ -154,15 +154,31 @@ advisories, now against the **final** settings rather than half-typed ones.
 `node_type` is what lets a benchmark result say whether it may be carried from
 the domain it was measured on to the domain a run will use.*
 
-**Nothing reads it.** It is the fourth field declared, serialised and consulted
+**Nothing read it.** It was the fourth field declared, serialised and consulted
 by no code — after `max_mem_gb`, `gpu_partition` and
-`default_mem_per_core_gb`. It is also the only one that guards **scientific
+`default_mem_per_core_gb`, the first three of which are now read. It is also the only one that guards **scientific
 validity** rather than a resource: a walltime carried from a machine it does
 not describe is not conservative or aggressive, it is meaningless.
 
-**S3 in force:** applying a benchmark's numbers to a run on a different
-`node_type` is refused, and the refusal names both types and what would make
-them comparable.
+**S3 in force since 2026-08-23**, and it took two halves because a check
+needs both:
+
+* **the measurement says where it was taken.** A trial's launch record now
+  names the domain it went to and that domain's `node_type`. The partition was
+  always *in* that file — inside the `sbatch` argv it also records — so
+  recovering it meant parsing a command line, which is the re-derivation A4
+  exists to remove. And the argv never carried the *type* at all.
+* **the apply step compares, and refuses.** Not a warning: a warning about a
+  number that is already wrong hands the person the comparison the framework
+  was holding both halves of. The refusal names both types and the two ways
+  out — re-measure, or state the allocation yourself.
+
+**Silent on the honest unknowns**, deliberately: when the trials do not say
+where they ran (an older bundle), and when the target's row states no
+`node_type`. Neither is a match — they are *cannot tell* — and refusing on
+them would block every bundle written before the field was recorded. What
+makes those visible instead is § 7's display, where an unknown provenance is
+shown as one.
 
 ---
 

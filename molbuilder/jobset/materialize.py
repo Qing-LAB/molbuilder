@@ -637,14 +637,27 @@ def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
 def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
                      job_id: Optional[str] = None,
                      continued_from: Optional[str] = None,
-                     launched_at: Optional[str] = None) -> Path:
+                     launched_at: Optional[str] = None,
+                     placed_on: Optional[dict] = None) -> Path:
     """Record a launch into the attempt — ``molbuilder/run-launch@1``.
 
-    Written **after** the launch succeeds, so a failed submission leaves the
+    Written **after** the launch succeeds, so a failed launch leaves the
     attempt exactly as prepare left it and is still safe to prepare again
-    (§ 1.6). The last field is the run's provenance — *this geometry came from
-    ``01_coarse/run-0``* — which is worth recording whether or not anything
-    reads it back.
+    (§ 1.6). ``continued_from`` is the run's provenance — *this geometry came
+    from ``01_coarse/run-0``* — which is worth recording whether or not
+    anything reads it back.
+
+    ``placed_on`` is WHERE IT RAN: the domain name, its partition and qos, and
+    its ``node_type`` (2026-08-23, `execution/submission.md` § 5). The
+    placement was already in this file, buried inside the ``sbatch`` argv as
+    ``-p``/``-q`` — so reading it back meant parsing a command line, which is
+    the re-derivation A4 exists to remove. Naming it is what lets a later
+    reader ask *was this measured on the kind of node the run will use?*
+    without inventing an answer.
+
+    Absent when there was no placement to record — a direct run, or a machine
+    with no queue at all. **Absent means the question cannot be answered**,
+    which a reader must not mistake for *yes*.
     """
     from datetime import datetime, timezone
     p = Path(attempt_dir) / RUN_LAUNCH_FILE
@@ -662,6 +675,10 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
     # tests for the key rather than for its truthiness.
     if continued_from:
         body["continued_from"] = str(continued_from)
+    # Same absent-not-null rule: a direct run has no placement, and a reader
+    # testing for the key learns that rather than reading a null as "nowhere".
+    if placed_on:
+        body["placed_on"] = dict(placed_on)
     p.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
     return p
 

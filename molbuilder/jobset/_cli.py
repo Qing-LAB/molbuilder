@@ -630,6 +630,69 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
             "stopped at your request -- nothing was re-rendered.")
 
 
+
+def _measured_on(root: Path) -> Optional[str]:
+    """The ``node_type`` this benchmark's trials actually ran on, or ``None``.
+
+    Read from the trials' own launch records, which name where they went
+    (`materialize.write_run_launch`'s ``placed_on``, 2026-08-23).  ``None``
+    means *no trial says* -- an older bundle, or a direct run that had no
+    placement -- and a reader must not turn that into a match.
+
+    Several trials could in principle disagree; if they do, this returns
+    ``None`` rather than picking one, because a benchmark whose trials ran on
+    different hardware has no single node type to carry anywhere.
+    """
+    import json as _json
+    from .materialize import RUN_LAUNCH_FILE
+    seen = set()
+    for rj in sorted(Path(root).glob(f"*/{RUN_LAUNCH_FILE}")):
+        try:
+            body = _json.loads(rj.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        nt = (body.get("placed_on") or {}).get("node_type")
+        if nt:
+            seen.add(str(nt))
+    return next(iter(seen)) if len(seen) == 1 else None
+
+
+def _refuse_if_measured_elsewhere(base, root, stage) -> None:
+    """Refuse to apply a verdict measured on a different kind of node.
+
+    **A refusal, not a warning** (S3).  A warning about a number that is
+    already wrong asks the person to do the comparison the framework was
+    holding both halves of.
+
+    Silent in the two honest unknowns: when the trials do not say where they
+    ran, and when the target's own row states no ``node_type``.  Neither is a
+    match -- they are *cannot tell* -- and the check says nothing rather than
+    inventing a verdict either way.  What makes those cases visible is the
+    submission display (§ 7), where an unknown provenance is shown as one.
+    """
+    from ..runtime_config import get_routing
+    from ..scheduler.place import candidates
+    from .summarize import RUN_CONFIG_NAME
+    measured = _measured_on(root)
+    if not measured:
+        return
+    rows = candidates(get_routing(project_dir=Path(base)), prefer_gpu=False)
+    target = rows[0].node_type if rows else None
+    if not target or target == measured:
+        return
+    raise click.ClickException(
+        f"this benchmark was measured on {measured!r} and this prep targets "
+        f"{target!r} -- the numbers do not carry.\n"
+        f"  Seconds-per-cycle, peak memory and the walltime derived from them "
+        f"describe the hardware they were taken on; applying them to a "
+        f"different node type is not conservative, it is meaningless "
+        f"(execution/submission.md S3).\n"
+        f"  Either re-run the benchmark on {target!r}, or state the "
+        f"allocation yourself with flags -- an explicit ask is always "
+        f"honoured, and deleting {RUN_CONFIG_NAME} declines the verdict "
+        f"outright.")
+
+
 def _apply_run_config(base, allocation, stage=None, engine=None):
     """§ 2.3.2: a verdict can always be FOUND — finding is not permission.
 
@@ -721,6 +784,14 @@ def _apply_run_config(base, allocation, stage=None, engine=None):
         # A file the user edited into an unreadable state STOPS the prep:
         # skipping it would silently discard a decision they wrote down.
         raise click.ClickException(str(e))
+    # S3 -- A MEASUREMENT IS NOT PORTABLE BY DEFAULT
+    # (`execution/submission.md` § 5).  Numbers measured on one kind of node
+    # do not describe another: a seconds-per-cycle taken on a 48-core GPU node
+    # says nothing about a 128-core CPU node, and a walltime derived from it
+    # is not conservative or optimistic, it is meaningless.  `node_type` has
+    # been on the record since the row was designed for exactly this and was
+    # read by NOTHING until now -- the fourth such field.
+    _refuse_if_measured_elsewhere(base, root, stage)
     stated = {}
     for field_name in ("mpi_np", "cpus_per_task", "gres", "mem", "time"):
         if (cfg["resources"].get(field_name) is not None
