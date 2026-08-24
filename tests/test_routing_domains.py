@@ -244,12 +244,13 @@ def test_a_workstation_record_does_not_mask_a_declared_cluster(tmp_path):
 
 # ---- where a value came from is displayed, not inferred --------------- #
 
-@pytest.mark.parametrize("scope", ["machine-cwd", "machine-xdg", "bundle"])
+@pytest.mark.parametrize("scope", ["machine-cwd", "machine-xdg", "project"])
 def test_a_refusal_names_WHICH_file_carries_the_key(tmp_path, scope):
     """A refusal must point at the file a person has to edit.
 
-    Three files can supply a `scheduler` block -- cwd, XDG, and the bundle's
-    `.molbuilder.json` -- so a message quoting the generic ``molbuilder.json``
+    Three files can supply a `scheduler` block -- cwd, XDG, and the
+    project scope's `.molbuilder.json` -- so a message quoting the generic
+    ``molbuilder.json``
     names three and answers none.  This file learned that once (R10,
     2026-08-12) and N4 reintroduced it, costing thirteen confusing failures
     whose real cause was a config two directories up.
@@ -259,7 +260,7 @@ def test_a_refusal_names_WHICH_file_carries_the_key(tmp_path, scope):
     but the naming rule outlived it.
     """
     block = dict(_SCHED, kind="pbs")           # not a supported scheduler
-    if scope == "bundle":
+    if scope == "project":
         _write_config(tmp_path, block)
         expected = tmp_path / PROJECT_CONFIG_FILENAME
     elif scope == "machine-cwd":

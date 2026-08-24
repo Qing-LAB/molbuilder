@@ -84,12 +84,15 @@ def test_provenance_names_each_values_source(tmp_path):
     prov = config_provenance(project_dir=bundle)
     assert prov["effective"]["execution.mode"] == {
         "value": "direct", "from": "machine"}
-    # the bundle wins where both speak
+    # the project file wins where both speak
     assert prov["effective"]["script_generation.activation"] == {
-        "value": "source activate", "from": "bundle"}
+        "value": "source activate", "from": "project"}
     scopes = {s["scope"]: s for s in prov["sources"]}
     assert scopes["machine"]["found"] and scopes["machine"]["via"] == "cwd"
-    assert scopes["bundle"]["found"]
+    # `project`, ONE name for this scope (2026-08-23).  It answered to
+    # "bundle" here and "project" in the registry -- and `bundle` already
+    # names the portable prepped directory of handoff-bundle.md.
+    assert scopes["project"]["found"]
 
 
 def test_provenance_never_carries_secret_material(tmp_path):

@@ -30,6 +30,8 @@ import secrets
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .config_dir import DIRNAME, config_dir
+
 
 # --------------------------------------------------------------------- #
 #  Path helpers                                                          #
@@ -41,14 +43,18 @@ def default_secret_dir(home: Optional[Path] = None) -> Path:
 
     Override via ``$XDG_CONFIG_HOME`` if set, mirroring the XDG Base
     Directory spec -- so a user with ``$XDG_CONFIG_HOME=/scratch/$USER``
-    keeps secrets off the NFS-mounted $HOME on HPC nodes.
+    keeps secrets off the NFS-mounted $HOME on HPC nodes.  That convention
+    is :func:`molbuilder.config_dir.config_dir`'s and is IMPORTED, not
+    restated -- this function used to spell it out, one of three copies.
+
+    ``home=`` stays an explicit-root escape hatch for callers (and tests)
+    that name the directory outright; it deliberately does NOT consult
+    ``XDG_CONFIG_HOME``, because a caller passing a root has already
+    answered the question the variable exists to answer.
     """
     if home is None:
-        xdg = os.environ.get("XDG_CONFIG_HOME")
-        if xdg:
-            return Path(xdg) / "molbuilder"
-        home = Path.home()
-    return Path(home) / ".config" / "molbuilder"
+        return config_dir()
+    return Path(home) / ".config" / DIRNAME
 
 
 def secret_key_path(home: Optional[Path] = None) -> Path:

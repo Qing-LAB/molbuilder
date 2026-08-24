@@ -53,14 +53,13 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
+from .config_dir import config_dir
+
 
 CONFIG_FILENAME = "molbuilder.json"
 # Per-project config sidecar.  Per docs/execution/running-a-job.md § 5: hidden file in
 # the project directory, same schema as the server-wide molbuilder.json.
 PROJECT_CONFIG_FILENAME = ".molbuilder.json"
-# XDG fallback for the server-wide config when one isn't present in cwd.
-# Matches the convention auth-setup uses (see molbuilder/auth_setup.py).
-_XDG_FALLBACK_RELATIVE = Path(".config") / "molbuilder" / CONFIG_FILENAME
 
 #: One message, two raisers -- `get_scheduler` (which knows the file) and
 #: `_validate_scheduler` (which does not).  ``{path}`` is what a person edits.
@@ -516,7 +515,9 @@ def _read_admin(raw: Mapping[str, Any]):
 
 #: name -> how it is read · where it may live · whether provenance may
 #: print its values.  ``scopes``: "machine" = molbuilder.json (cwd/XDG),
-#: "project" = a bundle's .molbuilder.json.  A section absent from a
+#: "project" = the .molbuilder.json in a project or calculation folder
+#: -- ONE name for that scope, everywhere (2026-08-23; it answered to
+#: "bundle" in provenance output until then).  A section absent from a
 #: scope's tuple is REFUSED there, never silently ignored -- S1c's
 #: argument, generalised: a section that is read, validated and then
 #: dropped looks effective while nobody applied it.  ``provenance_safe``
@@ -995,14 +996,14 @@ def _validate_script_generation(raw: Mapping[str, Any]) -> Dict[str, Any]:
 def _per_user_fallback_path() -> Path:
     """``~/.config/molbuilder/molbuilder.json``, honouring XDG.
 
-    Mirrors :func:`molbuilder.auth_setup.default_secret_dir`'s
-    convention so the auth-setup wizard and config reader land in the
-    same per-user directory.
+    **The bootstrap caller.**  This is how ``molbuilder.json`` is FOUND, so
+    it is the one location that cannot be declared inside ``molbuilder.json``
+    -- which is why :func:`molbuilder.config_dir.config_dir` is a convention
+    with no config-file override.  The cwd step in
+    :func:`_server_wide_candidates` is what lets a person still put the file
+    where they want without knowing this path.
     """
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    if xdg:
-        return Path(xdg) / "molbuilder" / CONFIG_FILENAME
-    return Path.home() / _XDG_FALLBACK_RELATIVE
+    return config_dir() / CONFIG_FILENAME
 
 
 def _read_scope(path: Path) -> Dict[str, Any]:
@@ -1063,19 +1064,19 @@ def bootstrap_travels(provenance, target) -> Optional[str]:
     -- and a rule about when a job will fail must not be able to hold two
     opinions.
 
-    **`from == "bundle"` is the whole test, and the concatenation is why.**
-    Preambles JOIN, server first then the bundle's (`architecture.md`
-    § 8.2), so a machine-scope preamble is emitted even when the bundle
-    supplies its own; the provenance reports that as
+    **`from == "project"` is the whole test, and the concatenation is why.**
+    Preambles JOIN, server first then the project file's
+    (`architecture.md` § 8.2), so a machine-scope preamble is emitted even
+    when the project file supplies its own; the provenance reports that as
     ``server+project (concatenated)``.  Anything other than a clean
-    ``bundle`` therefore carries local lines.
+    ``project`` therefore carries local lines.
     """
     if not target:
         return None
     eff = (provenance or {}).get("effective") or {}
     origin = {k.split(".", 1)[1]: v.get("from")
               for k, v in eff.items() if k.startswith("script_generation.")}
-    local = sorted(k for k, v in origin.items() if v != "bundle")
+    local = sorted(k for k, v in origin.items() if v != "project")
     if not local:
         return None
     detail = ", ".join(f"{k} ({origin[k]})" for k in local)
@@ -1083,8 +1084,8 @@ def bootstrap_travels(provenance, target) -> Optional[str]:
         f"prepped for {target!r}, but the wrapper's bootstrap carries THIS "
         f"machine's config: {detail}.  It will run on {target!r} with lines "
         f"written for here.  Note preambles CONCATENATE (server first, then "
-        f"the bundle's), so a machine-scope preamble travels even when the "
-        f"bundle adds its own -- to send only the target's, this machine "
+        f"the project's), so a machine-scope preamble travels even when the "
+        f"project file adds its own -- to send only the target's, this machine "
         f"must not set one.  See preparing-for-another-machine.md § 3.")
 
 
@@ -1100,17 +1101,25 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
 
     Returns ``{"sources": [...], "effective": {...}, "domains": [...]}``:
     ``sources`` lists each scope as ``{scope, path, found}`` in precedence
-    order (bundle last = wins); ``effective`` maps ``section.key`` to
-    ``{"value": ..., "from": "machine"|"bundle"}``.
+    order (project last = wins); ``effective`` maps ``section.key`` to
+    ``{"value": ..., "from": "machine"|"project"}``.
+
+    **The scope is called ``project`` everywhere** -- the registry's
+    ``_SECTIONS[...]["scopes"]``, this output, and the refusals below.  It
+    was ``"bundle"`` here and ``"project"`` in the registry until
+    2026-08-23, three names for one thing counting the refusals' prose
+    (`configuration.md` § 8).  ``bundle`` was the one that had to go: it
+    already names a different artifact, the portable prepped directory of
+    `handoff-bundle.md`.
     """
     machine_path, machine_via = machine_config_path()
     sources = [{"scope": "machine", "path": str(machine_path.resolve()),
                 "found": machine_path.is_file(), "via": machine_via}]
 
     if project_dir is not None:
-        bundle_path = Path(project_dir) / PROJECT_CONFIG_FILENAME
-        sources.append({"scope": "bundle", "path": str(bundle_path),
-                        "found": bundle_path.is_file(), "via": "bundle"})
+        project_path = Path(project_dir) / PROJECT_CONFIG_FILENAME
+        sources.append({"scope": "project", "path": str(project_path),
+                        "found": project_path.is_file(), "via": "project"})
 
     # RAW file bytes decide what a file "supplied" (R10, 2026-08-12: the
     # normalized scopes injected validator defaults, and provenance then
@@ -1125,22 +1134,22 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
             return {}
 
     machine_file = _raw_file(machine_path)
-    bundle_file = (_raw_file(Path(project_dir) / PROJECT_CONFIG_FILENAME)
-                   if project_dir is not None else {})
+    project_file = (_raw_file(Path(project_dir) / PROJECT_CONFIG_FILENAME)
+                    if project_dir is not None else {})
     effective: Dict[str, Dict[str, Any]] = {}
     for section in _PROVENANCE_SECTIONS:
         for scope_name, raw in (("machine", machine_file),
-                                ("bundle", bundle_file)):
+                                ("project", project_file)):
             block = raw.get(section)
             if not isinstance(block, Mapping):
                 continue
             for key, value in block.items():
-                # later scope overwrites: bundle wins, mirroring _deep_merge
+                # later scope overwrites: project wins, mirroring _deep_merge
                 effective[f"{section}.{key}"] = {"value": value,
                                                  "from": scope_name}
     # ONE exception, asked of its owner rather than re-derived (R10):
-    # script_generation.preamble does not merge bundle-wins -- it
-    # CONCATENATES server-then-bundle (get_script_generation's bespoke
+    # script_generation.preamble does not merge project-wins -- it
+    # CONCATENATES server-then-project (get_script_generation's bespoke
     # rule), and showing one scope as the source misreported the other
     # half away.
     if "script_generation.preamble" in effective:
@@ -1193,7 +1202,7 @@ def format_provenance(prov: Mapping[str, Any]) -> str:
     width = max([len(s["scope"]) for s in prov["sources"]] + [8]) + 1
     for s in prov["sources"]:
         state = "found" if s["found"] else "absent"
-        via = f", via {s['via']}" if s["found"] and s["via"] != "bundle" else ""
+        via = f", via {s['via']}" if s["found"] and s["via"] != "project" else ""
         lines.append(f"  {s['scope']:<{width}}{s['path']}  ({state}{via})")
     for key in sorted(prov["effective"]):
         e = prov["effective"][key]
@@ -1238,7 +1247,9 @@ def _read_project(project_dir: Path) -> Dict[str, Any]:
         # reading this refusal is mid-mistake about exactly that.
         raise RuntimeConfigError(
             f"{Path(project_dir) / PROJECT_CONFIG_FILENAME}: a 'checkpoint' "
-            f"section may not live in a project or calculation folder.  The "
+            f"section may not live in a PROJECT-scope file "
+            f"({PROJECT_CONFIG_FILENAME}, in a project or calculation "
+            f"folder).  The "
             f"classification has one home -- the server-wide "
             f"{CONFIG_FILENAME} -- so that two folders cannot behave "
             f"differently for no recorded reason, and so that nobody can "
@@ -1253,9 +1264,10 @@ def _read_project(project_dir: Path) -> Dict[str, Any]:
                             if "project" in spec["scopes"])
         raise RuntimeConfigError(
             f"{Path(project_dir) / PROJECT_CONFIG_FILENAME}: "
-            f"{', '.join(map(repr, misplaced))} may not live in a project "
-            f"or calculation folder -- machine sections have one home, the "
-            f"server-wide {CONFIG_FILENAME}.  A bundle may carry: "
+            f"{', '.join(map(repr, misplaced))} may not live in a "
+            f"PROJECT-scope file ({PROJECT_CONFIG_FILENAME}, in a project "
+            f"or calculation folder) -- machine sections have one home, the "
+            f"server-wide {CONFIG_FILENAME}.  A project file may carry: "
             f"{allowed}.  (Refused rather than ignored: a section that is "
             f"read, validated and then silently dropped looks effective "
             f"while nobody applied it.)"
@@ -1715,7 +1727,7 @@ def get_scheduler(
     # Name the FILE the block came from.  `_validate_scheduler` sees only the
     # MERGED mapping, so every refusal it raises -- a bad `kind`, a missing
     # directive -- could say no more than the generic "molbuilder.json", which
-    # names three possible files (cwd, XDG, bundle) and answers none.  R10
+    # names three possible files (cwd, XDG, project) and answers none.  R10
     # fixed exactly this for `read_config` on 2026-08-12 and the scheduler
     # getter was never given the same treatment.
     #
@@ -1803,6 +1815,8 @@ def get_execution(
 
 def get_routing(
     project_dir: Optional[Path] = None,
+    *,
+    local_only: bool = False,
 ) -> List["Domain"]:
     """Return the submission-domain menu: every ``(partition, qos)`` this
     account may actually reach, with its wall.
@@ -1831,9 +1845,15 @@ def get_routing(
     ``project_dir`` selects the calculation scope, so a folder carried to a
     cluster reads the record `prep` snapshotted beside it (M-3's precedence,
     through the one door).
+
+    ``local_only`` bypasses ``project_dir`` and asks a different question --
+    :func:`molbuilder.scheduler.record.machine_for`'s ``local_only`` docstring
+    has the reasoning.  The declared-routing fallback below still applies:
+    this machine's own DECLARED menu counts as "what this machine knows"
+    exactly as much as a probed one does.
     """
     from .scheduler import Domain, machine_for
-    env = machine_for(project_dir)
+    env = machine_for(project_dir, local_only=local_only)
     domains = list(env.domains) if env is not None else []
     if not domains:
         # No probed domains: either a workstation (there are none to have) or a

@@ -1989,7 +1989,7 @@ class TestTheTabShowsWhatAPrepWouldResolve:
                            query_string={"dest": str(b)}).get_json()
         assert r["ok"], r
         # the shape config_provenance produces, not a re-description of it
-        assert {s["scope"] for s in r["sources"]} >= {"machine", "bundle"}
+        assert {s["scope"] for s in r["sources"]} >= {"machine", "project"}
         assert "script_generation.preamble" in r["effective"]
         assert "from" in r["effective"]["script_generation.preamble"]
 

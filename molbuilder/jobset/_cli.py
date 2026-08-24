@@ -71,6 +71,34 @@ def jobset_group() -> None:
     ``probe`` measures a machine and ``machines`` lists the records that
     measuring produced, which is how a calculation is prepared for a
     machine other than this one (preparing-for-another-machine.md)."""
+    _echo_config_root()
+
+
+def _echo_config_root() -> None:
+    """The ONE line every jobset verb opens with -- where ``molbuilder.json``
+    resolves from before anything else runs (user, 2026-08-23: *"this gives
+    the user some root information of the starting point of config
+    information"*).
+
+    Not the full ``config:`` provenance block -- that already exists
+    (`config_provenance`/`format_provenance`, on ``prep``/``launch``) and
+    answers a bigger question, *what took effect*, for the commands that need
+    it.  This answers a narrower one that every verb needs even when it never
+    reads a `molbuilder.json` section: *which file is the starting point*.  A
+    person hitting the ``script_generation.activation`` refusal should not
+    have to already know that ``~/.config/molbuilder/molbuilder.json`` is the
+    file to edit -- the first line of output says so.
+
+    A Click GROUP callback runs once, before the subcommand's own output, and
+    is skipped for ``--help`` and the bare group (verified empirically --
+    Click has no documented guarantee either way).  That is exactly the
+    placement: every real invocation, no help-text noise.
+    """
+    import click as _click
+    from ..runtime_config import CONFIG_FILENAME, machine_config_path
+    path, via = machine_config_path()
+    state = "found" if path.is_file() else "not found -- defaults in effect"
+    _click.echo(f"{CONFIG_FILENAME}: {path} ({state}, via {via})")
 
 
 #: The calculation folder, spelled the same way on every verb.
@@ -1268,6 +1296,26 @@ def _bench_inputs(base, target=None):
                     f"allows {cap} cores/node): "
                     + ", ".join(f"G{g}K{k}C{c} ({g * k * c} cores)"
                                 for g, k, c in dropped))
+        if fam and fcells:
+            # Checks 1-3 of the GPU-sharing note (user, 2026-08-23): ALWAYS
+            # state ranks/GPU, warn past MPS's 48-client ceiling, note past
+            # this stack's ~4-rank tuned point.  Check 4 (node-fit) is the
+            # cap-drop just above -- this does not re-derive it, only
+            # states the sharing fact for whatever survived it.  ONE
+            # function (`ask.gpu_share_notes`) so this and the submission
+            # display can never disagree about the arithmetic.
+            from .ask import gpu_share_notes
+            shares = sorted({(g, k) for g, k, c in fcells})
+            bits = []
+            for g, k in shares:
+                notes = gpu_share_notes(g, k)
+                flag = ""
+                if len(notes) > 1:
+                    flag = ("  <- WARNING, past MPS's ceiling"
+                           if "WARNING" in notes[1] else
+                           "  <- past the tuned point")
+                bits.append(f"G{g}K{k}: {k} rank(s)/GPU{flag}")
+            click.echo(f"  GPU sharing in this family: " + ", ".join(bits))
         if fam and not fcells:
             # every GPU cell fell to the cap or the even-split rule --
             # the drops were echoed by name above, so this names the

@@ -90,6 +90,12 @@ _L1_MODULES = {
     "persist",           # versioned-document helpers (@major schema check +
                          # JSON IO); pure stdlib, no domain deps -- bench +
                          # jobset persisted artifacts share it.
+    "config_dir",        # ONE per-user directory ($XDG_CONFIG_HOME/molbuilder
+                         # else ~/.config/molbuilder); pure stdlib, no domain
+                         # deps -- runtime_config, auth_setup and
+                         # scheduler/record each computed this independently
+                         # until 2026-08-23 (configuration.md M-4, one level
+                         # down from the filename it already covered).
     "scheduler",         # THE SCHEDULER SUBSYSTEM (execution/scheduler.md):
                          # what a machine offers, and what a job may ask of it.
                          # `record` persists ``molbuilder/environment@1`` and

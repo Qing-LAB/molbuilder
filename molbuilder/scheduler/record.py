@@ -592,10 +592,12 @@ def machine_scope_path() -> Path:
     """Where the MACHINE-scope record lives — ``jobset probe``'s target.
 
     ``~/.config/molbuilder/environment.json``, honouring ``XDG_CONFIG_HOME``.
-    The convention is `runtime_config._per_user_fallback_path`'s, and it is
-    **mirrored rather than imported**: this module is stdlib-only by contract
-    (it ships to the target and runs in a backend env with no molbuilder on
-    it), and `runtime_config` is not.
+    The convention is :func:`molbuilder.config_dir.config_dir`'s and is now
+    IMPORTED.  It was **mirrored** here, on the grounds that this module is
+    stdlib-only and `runtime_config` is not -- true, and the reason the rule
+    does not live in `runtime_config`.  It is not a reason to spell it twice:
+    `config_dir` is L1 pure stdlib exactly like `persist`, which this module
+    already imports (`write_environment` -> `..persist.write_json`).
 
     **Per-user only, with no cwd step** — deliberately unlike
     `molbuilder.json`, whose lookup tries the working directory first.  A
@@ -604,9 +606,8 @@ def machine_scope_path() -> Path:
     you happened to run from inside a bundle, and M-3's precedence would then
     compare a record against itself.
     """
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".config"
-    return base / "molbuilder" / FILENAME
+    from ..config_dir import config_dir
+    return config_dir() / FILENAME
 
 
 def environments_dir() -> Path:
@@ -852,7 +853,8 @@ class AmbiguousTarget(Exception):
 
 
 def machine_for(bundle_dir=None, *, target: Optional[str] = None,
-                probe: bool = False) -> Optional["Environment"]:
+                probe: bool = False,
+                local_only: bool = False) -> Optional["Environment"]:
     """**The precedence, entire** — the one function a caller asks.
 
     Walks :func:`record_scopes` and returns the first record that reads.  The
@@ -871,7 +873,32 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     round trip to the scheduler on a login node.  `resolve_target` (prep step
     1) is the one caller that wants it, because it is the one that WRITES the
     answer down afterwards.
+
+    ``local_only`` asks a DIFFERENT question from everything else in this
+    function: not *"which machine is this calculation for"* (bundle / target /
+    C1's ambiguity guard -- all of that is precedence among CANDIDATES for the
+    calculation's answer), but *"what does the box this process is literally
+    running on know about itself, full stop."*  R9's second check
+    (`jobset/submit.py::_reject_if_this_machine_says_no`) wants exactly that:
+    a re-admission against THIS machine's own probe, independent of and in
+    addition to whichever machine the calculation is prepped for.  Bug found
+    2026-08-23 -- a workstation with named targets (``environments/sol.json``)
+    but no local probe of its own raised ``AmbiguousTarget`` from inside a
+    read-only re-check that never asked about a target at all.  The C1
+    question and this one only LOOK alike because both start from "no target
+    was named"; C1 protects the case where that silence would make a wrong
+    machine's numbers travel into a wrapper.  Here there is no wrapper, no
+    numbers travelling, and no target in the question -- so C1 does not apply
+    and must not run.
     """
+    if local_only:
+        env = read_environment(machine_scope_path())
+        if env is not None or not probe:
+            return env
+        try:
+            return resolve_environment()
+        except Exception:          # pragma: no cover - probing is optional
+            return None
     # A named target is validated FIRST, before any scope is consulted.  It
     # read the calculation's snapshot first and returned it when present, on
     # the reasoning that the snapshot *is* the answer already taken.  That made

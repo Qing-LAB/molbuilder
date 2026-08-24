@@ -637,10 +637,19 @@ def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
 
     Silent when this machine has no record of the queue in question -- absent
     evidence is not evidence of a smaller limit (R3).
+
+    ``local_only=True`` -- this asks what the box RUNNING THIS PROCESS knows,
+    never what the calculation is prepped for.  Bug found 2026-08-23: on a
+    workstation carrying named targets (``environments/sol.json``) but no
+    probe of its own, plain ``get_routing(project_dir=None)`` fell into
+    `machine_for`'s C1 guard -- "several machines could be meant" -- and
+    raised ``AmbiguousTarget`` out of a read-only re-check that names no
+    target at all.  This question has nothing to do with C1: no wrapper is
+    written here, nothing travels, there is nothing to be ambiguous about.
     """
     from .. import runtime_config as _rc
     from ..scheduler import admits
-    here = _rc.get_routing(project_dir=None)
+    here = _rc.get_routing(project_dir=None, local_only=True)
     if not here:
         return                       # no record of my own; nothing to add
     mine = [d for d in here if (d.partition, d.qos) == (placed.partition,

@@ -342,6 +342,36 @@ def write_pseudos(dest, elements) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _isolated_machine_scope(tmp_path_factory, monkeypatch):
+    """Every test reads its OWN machine record, never the developer's.
+
+    ``machine_scope_path()`` resolves ``$XDG_CONFIG_HOME/molbuilder/`` (else
+    ``~/.config/molbuilder/``), and ``environments_dir()`` is the
+    ``environments/`` beside it -- the USER's real probed machines.  Nothing
+    isolated them, so the suite has been reading whatever this box happens to
+    have, and passing because most boxes have nothing.
+
+    **How it surfaced.**  On 2026-08-23 a real ``sol.json`` was probed on Sol
+    and saved to ``~/.config/molbuilder/environments/``.  Two tests in
+    ``test_cheapest_ceiling_that_fits`` went red at once -- not wrongly: with a
+    named target present, `resolve` is RIGHT to refuse and ask which machine is
+    meant (C1).  The tests were asserting placement against found state, and
+    the found state changed.  **A suite whose colour depends on the developer's
+    home directory is not a suite** -- and the failure lands on whoever did the
+    correct thing, which is the worst possible messenger.
+
+    Sibling of :func:`_isolated_workspace_store` and for the same reason: a
+    per-user store that production reads by default needs a test-time home, or
+    the tests and the user share one.
+
+    ``tmp_path_factory`` rather than ``tmp_path`` so the directory does not
+    appear inside the tree a test builds and then walks.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME",
+                       str(tmp_path_factory.mktemp("machine-scope")))
+
+
+@pytest.fixture(autouse=True)
 def _isolated_workspace_store(tmp_path, monkeypatch):
     """Every test reads and writes its OWN workspace-state store.
 

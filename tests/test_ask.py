@@ -20,7 +20,7 @@ from __future__ import annotations
 import pytest
 
 from molbuilder.jobset.ask import (GROUP_SLACK, GROUP_STARTUP_S, Ask,
-                                   bench_bound, bench_total, confirm, fits,
+                                   bench_bound, bench_total, confirm,
                                    parse_duration, parse_memory, render)
 from molbuilder.scheduler import Domain
 
@@ -91,41 +91,6 @@ def test_the_launcher_shares_this_formula():
     from molbuilder.jobset import submit
     src = inspect.getsource(submit._submit_side_group)
     assert f"* {GROUP_SLACK}" in src and f"+ {GROUP_STARTUP_S}" in src
-
-
-# --------------------------------------------------------------------- #
-#  fits — answered before anything is submitted                          #
-# --------------------------------------------------------------------- #
-
-def _sol():
-    return [Domain(name="htc", partition="htc", qos="public",
-                   max_time="0-04:00:00", max_cores=128, max_mem_gb=251.0),
-            Domain(name="general", partition="general", qos="public",
-                   max_time="7-00:00:00", max_cores=128, max_mem_gb=502.9)]
-
-
-def test_an_ask_this_machine_can_hold_passes():
-    ok, why = fits(Ask(time_s=2280, mem_gb=128), _sol())
-    assert ok and not why
-
-
-def test_an_impossible_ask_is_caught_while_changing_it_is_free():
-    """The whole point: a queue rejects this after you have waited for it."""
-    ok, why = fits(Ask(time_s=2280, mem_gb=900), _sol())
-    assert not ok
-    assert "900" in why[0] and "502.9" in why[0], (
-        "the refusal must name both what was asked and what is available")
-
-
-def test_a_machine_with_no_queues_contradicts_nothing():
-    assert fits(Ask(time_s=2280, mem_gb=900), [])[0] is True
-
-
-def test_an_unstated_ceiling_never_bars():
-    """R3.  A row that does not say how much memory it has is not claiming to
-    have none."""
-    silent = [Domain(name="s", partition="p", qos="q")]
-    assert fits(Ask(time_s=999999, mem_gb=9999), silent)[0] is True
 
 
 # --------------------------------------------------------------------- #
