@@ -41,6 +41,7 @@ two ways is how they come to disagree about what was asked.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
@@ -81,16 +82,30 @@ def parse_duration(text) -> Optional[int]:
     if text is None or str(text).strip() == "":
         return None
     t = str(text).strip().lower()
+    # SLURM'S OWN SPELLING, ``[D-]HH:MM[:SS]``, accepted too (2026-08-24).
+    # It is not a nicety: it is how a queue's ``max_time`` is written in the
+    # machine record, so it is what the browser fills a time field WITH --
+    # and a person reading `7-00:00:00` out of their own `task.json` could
+    # not type it back at `--time`, which refused the very value the tool
+    # had just written.  One vocabulary, every surface.
+    m = re.fullmatch(r"(?:(\d+)-)?(\d+):(\d{2})(?::(\d{2}))?", t)
+    if m:
+        d, hh, mm, ss = (int(g or 0) for g in m.groups())
+        total = d * 86400 + hh * 3600 + mm * 60 + ss
+        if total <= 0:
+            raise ValueError("a duration must be positive")
+        return total
     mult = 60
-    for suffix, m in (("h", 3600), ("m", 60), ("s", 1)):
+    for suffix, mu in (("h", 3600), ("m", 60), ("s", 1)):
         if t.endswith(suffix):
-            mult, t = m, t[:-1]
+            mult, t = mu, t[:-1]
             break
     try:
         v = float(t)
     except ValueError:
-        raise ValueError(f"{text!r} is not a duration -- write 4h, 90m, "
-                         f"or 45 (bare numbers are minutes)")
+        raise ValueError(f"{text!r} is not a duration -- write 4h, 90m, 45 "
+                         f"(bare numbers are minutes), or SLURM's own "
+                         f"D-HH:MM:SS")
     if v <= 0:
         raise ValueError("a duration must be positive")
     return int(v * mult)
@@ -105,16 +120,24 @@ def parse_memory(text) -> Optional[float]:
     if text is None or str(text).strip() == "":
         return None
     t = str(text).strip().upper()
+    # A TRAILING ``B`` IS ACCEPTED (2026-08-24).  `prep --mem`'s own help
+    # says *"e.g. 80GB"* and passes the string through unparsed, while
+    # `launch --mem` parsed it and REFUSED -- two flags of one name
+    # disagreeing about a spelling one of them advertises.  Also ``K``,
+    # for completeness with SLURM's units.
+    if t.endswith("B") and len(t) > 1 and not t[-2].isdigit():
+        t = t[:-1]
     mult = 1.0
-    for suffix, m in (("T", 1024.0), ("G", 1.0), ("M", 1 / 1024.0)):
+    for suffix, mu in (("T", 1024.0), ("G", 1.0),
+                       ("M", 1 / 1024.0), ("K", 1 / 1048576.0)):
         if t.endswith(suffix):
-            mult, t = m, t[:-1]
+            mult, t = mu, t[:-1]
             break
     try:
         v = float(t)
     except ValueError:
         raise ValueError(f"{text!r} is not an amount of memory -- write "
-                         f"128G, 0.5T, or 128 (bare numbers are GB)")
+                         f"128G, 128GB, 0.5T, or 128 (bare numbers are GB)")
     if v <= 0:
         raise ValueError("memory must be positive")
     return v * mult

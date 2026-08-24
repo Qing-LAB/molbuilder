@@ -274,6 +274,17 @@ actually gets is what the scheduler granted, resolved at `prep` on the target.
 it into a description would make the file a machine's opinion rather than a
 calculation's description.
 
+> **This is about CATALOGUE ITEMS, and the tab also holds something else**
+> *(2026-08-24)*. The queue card ("Where it runs, and what it may use") sets
+> `task.json`'s `allocation` — `domain` / `time` / `mem` — and those are **not**
+> points to try. The distinction is the one § 6.8a of
+> [`stages.md`](?doc=engines/stages.md) draws: `max_memory_mb` above is a
+> per-rank `ulimit` the *deck* carries, a machine-answered template parameter;
+> `allocation.mem` is what the *job asks the scheduler for*. A queue name and a
+> wall are portable in exactly the way *"try 4, 8, 16"* is — decisions about
+> this calculation, true wherever the file is opened — which is why they may be
+> written down here while *"use 16 ranks"* may not.
+
 ### 6.2 Why the GPU is decided here and nowhere else
 
 > **Decided by the user, 2026-08-16: *"use GPU or not is set up only at the Job

@@ -164,12 +164,12 @@
           </div>
         </div>
 
-        <div class="ts-state" id="ts-queue-state" hidden>
-          <div>
-            <div class="ts-state-title" id="ts-queue-state-title"></div>
-            <p class="ts-state-body" id="ts-queue-state-body"></p>
-          </div>
-        </div>
+        {# A `ts-queue-state` block stood here, hidden, with a title and a
+           body no JS ever wrote -- markup added on the assumption it would
+           be needed and then never wired.  Deleted 2026-08-24 rather than
+           left: the card already speaks through `ts-queue-needs` (a machine
+           with no queues) and the per-field notes (what this queue allows),
+           and an element nothing fills is a promise the page does not keep. #}
       </section>
 
       <section class="card" id="ts-stages-card" hidden>

@@ -1542,6 +1542,34 @@ then M3 so the contract matches before the naming change, then M2, then M5.
 restating **nothing** reproduces exactly those on the command line — the
 "prep has all information ready for launch" requirement (user, 2026-08-24).
 
+
+### 7.11 The two asks reach the browser *(2026-08-24)*
+
+**Done.** The Task-setup tab exposes the queue, the wall and the memory, and
+they persist: `task.json` grows an optional `allocation` block
+(`engines/stages.md` § 6.8a) that `prep` folds under the caller's flags
+FIELD BY FIELD, so a prepped bundle carries everything its launch needs and
+`--np 8` cannot silently drop a memory ask. Picking a queue fills both
+fields from that queue's own probed ceilings.
+
+**Closing review, findings fixed (2026-08-24):**
+
+| found | fix |
+|---|---|
+| The browser and the terminal READ A TIME AND A MEMORY DIFFERENTLY. `"7-00:00:00"` is SLURM's own spelling and what a queue's ceiling IS in the record — so the tab fills a field with it — and `parse_duration` refused it. `"80GB"` is what `prep --mem`'s own help advertises, and `launch --mem` refused it | both parsers widened; a node-vs-Python **parity test** over every spelling either surface produces or documents, since the duplication cannot be removed (the browser cannot import Python) |
+| `ts-queue-state` — markup with a title and a body **no JS ever wrote**, added on the assumption it would be needed | deleted; the card speaks through `ts-queue-needs` and the per-field notes |
+| `task.json`'s row in the persisted-artifact registry (`job-contracts.md` § 6.1) did not list the new key | added |
+| `web/task-setup.md` said *"ranks, threads and memory can only ever be points to try here"* — still true of CATALOGUE items, but the tab now also holds `allocation.mem`, which is not one | the distinction written down, pointing at § 6.8a |
+
+**Open, recorded rather than fixed — one naming split.** A machine coordinate
+has two spellings in names a person reads side by side in one listing: a
+trial directory is `bench-G2K24C1…` (`K` = ranks **per GPU**) while its
+group's job is `bench-group-gpu-g2n48c1` (`n` = **total** ranks). Same three
+facts, different letters and different case; they coincide only at `G1`.
+Not a defect — nothing misreads it — but it is two vocabularies for one
+thing, which `job-contracts.md` § 6.3 exists to prevent. Worth one rename
+when that area is next open.
+
 ---
 
 ## Closed work
