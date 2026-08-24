@@ -78,10 +78,18 @@ class TestTheUserChoosesTheMachine:
         res = _prep("P/optimization/w")
         assert res.exit_code != 0, res.output
         assert "several machines could be meant" in res.output
-        # It names every choice, including staying here.
+        # It names every choice, including staying here -- AS SOMETHING A
+        # PERSON CAN TYPE.  This asserted "omit --target" until 2026-08-24,
+        # which is what the message used to say and was self-contradictory:
+        # omitting the flag is the action that produced this refusal, so the
+        # instruction it gave could not be followed.  With any named record
+        # on file, preparing for the box in front of you was impossible.
         assert "--target sol" in res.output
         assert "--target agave" in res.output
-        assert "omit --target" in res.output
+        from molbuilder.scheduler.record import LOCAL_TARGET
+        assert f"--target {LOCAL_TARGET}" in res.output
+        assert "omit --target" not in res.output, (
+            "the refusal is telling the user to do the thing that caused it")
 
     def test_c1_one_machine_and_no_target_still_proceeds(self, machines):
         """No ambiguity, so no question.  A refusal here would tax every
