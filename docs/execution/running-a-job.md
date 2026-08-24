@@ -578,9 +578,8 @@ dropped with a warning.)
     "directives": { "partition": "public", "qos": "public",
                     "mail_type": "ALL", "mail_user": "you@example.edu", "export": "NONE" },
     "gpu":      { "partition": "public", "default_type": "a100", "exclusive": false,
-                  "mem": "64G", "mem_cap_per_gpu": "128G" },
+                  "mem": "64G" },
     "defaults": { "time": "0-04:00:00", "cpus_per_task": 8, "mem": null },
-    "mem_model": { "node_mem_gb": 500, "safety": 1.3, "extra_gb": 0 },
     "routing":  [ { "name": "short", "max_time": "0-04:00:00",
                     "partition": "public", "qos": "public" } ]
 } }
@@ -593,17 +592,16 @@ dropped with a warning.)
   `mail_user` — SLURM's `%u` / `%j` patterns expand only in `-o` / `-e`
   filenames, never in `--mail-user`, so `"%u@…"` is sent literally and bounces
   (the emitter warns when it sees a `%`).
-- **`gpu`** — `{partition, default_type, exclusive, mem, mem_cap_per_gpu}`. A
+- **`gpu`** — `{partition, default_type, exclusive, mem}`. A
   GPU job routes its `-p` to `gpu.partition` and takes
-  `--gres=gpu:<default_type>:<count>`. `mem` and `mem_cap_per_gpu` are the
-  GPU memory **band** — a floor and a per-GPU ceiling on the job's `--mem`
-  (§ 5.3.1). `exclusive: false` is the recommended HPC default: GPU nodes are
-  shared multi-GPU boxes, and a job kept inside its proportional share
-  backfills far sooner (and burns far less fairshare) than one reserving a
-  whole node — reserve `exclusive: true` for benchmark-grade timings.
+  `--gres=gpu:<default_type>:<count>`. `mem` is the `--mem` a GPU job gets
+  when nothing else states one — a value **you** wrote, once, for this
+  machine (§ 5.3.1). `exclusive: false` is the recommended HPC default: GPU
+  nodes are shared multi-GPU boxes, and a job kept inside its proportional
+  share backfills far sooner (and burns far less fairshare) than one
+  reserving a whole node — reserve `exclusive: true` for benchmark-grade
+  timings.
 - **`defaults`** — job-agnostic `{time, cpus_per_task, mem}` fallbacks.
-- **`mem_model`** — numeric coefficients for the per-job memory estimator
-  (`molbuilder/siesta/memory.py`).
 - **`routing`** — a menu of named domains
   `{name, max_time, max_mem_gb?, partition, qos, gpu_partition?}`; order is the
   recommendation order. A domain resolves to `-p`/`-q` when a run is *submitted*
@@ -618,35 +616,31 @@ memory per § 5.3.1. The body is a single line — `bash <basename>.run.sh "$@"`
 because the inner wrapper owns activation and launch. Emission is gated on a
 `scheduler` block being present; with none, only the `.run.sh` is written.
 
-#### 5.3.1 Memory resolution (one sizing path + a GPU band)
+#### 5.3.1 Memory resolution — the user states it, nothing else does
 
-The *amount* a job needs is job-specific and identical physics on CPU and
-GPU, so there is **one sizing path** for both:
+**No estimation exists** *(user decision, 2026-08-24)*. A per-`.fdf` memory
+model (`siesta/memory.py`, the `mem_model` coefficients, a runtime
+estimate-vs-allocation audit, and a GPU floor/ceiling clamp band) lived here
+until then and was deleted whole: five Sol jobs (62039301–05) OOM'd against
+scheduler defaults while that machinery sat unconfigured and silent, and a
+model that answers a question the user was never asked is the wrong shape
+regardless of its coefficients.
 
-1. an explicit `--mem` (a hard override — never floored, never capped), else
-2. `defaults.mem` if set (a site-wide override for all jobs), else
-3. a per-job estimate from the `.fdf` problem size (scaled by rank count, via
-   `mem_model`), emitted with a `# --mem auto-estimated …` comment.
+What a job's `--mem` is, in order — every line a person wrote:
 
-What *differs* on GPU nodes is the **hardware context**, so a non-exclusive
-GPU job then clamps the sized value into the `gpu` band:
+1. an explicit `--mem` (prep or launch; hard override), else
+2. `defaults.mem` if set (site-wide, `molbuilder.json`), else
+3. `gpu.mem` for a GPU job if set (per-machine, `molbuilder.json`), else
+4. **nothing is emitted** — the scheduler's own default decides, and the
+   launch plan says so out loud before anything submits (Sol's is a tight
+   per-GPU or per-core rate; that is the scheduler's answer, not ours).
 
-- **Floor = `gpu.mem`** (e.g. `"64G"`). HPC sites grant a tight per-GPU
-  host-RAM default when `--mem` is absent (Sol: 24 GiB/GPU) — too small for
-  a dense SIESTA diagonalization's host-side matrices.
-- **Ceiling = `gpu.mem_cap_per_gpu` × GPUs requested** (e.g. `"128G"` ×
-  n). GPU nodes are shared multi-GPU boxes (Sol A100 nodes: 48 cores /
-  512 GiB / 4 GPUs → 128 GiB is one GPU's proportional share). A job inside
-  its share backfills beside other GPU jobs; a job that grabs most of the
-  node's RAM blockades the remaining GPUs — queue wait *and* fairshare
-  charge (Sol bills 1 CHE per 4 GiB-hour) both scale with the request.
-  When the cap bites, the emitted header says so and names the options:
-  request more GPUs (the cap scales), run `--exclusive`, or take the CPU
-  route.
+An **exclusive** job takes the whole node (`--mem=0`).
 
-Estimation is best-effort and never blocks emission; on any failure a GPU
-job falls back to the floor and a CPU job to the partition default. An
-**exclusive** job ignores all of this and takes the whole node (`--mem=0`).
+Wall time follows the same rule: `--time` (prep or launch), else the target
+queue's own ceiling — the full amount the cluster allows there — else
+nothing, said out loud. Nothing is derived, modelled, or assumed for either
+axis.
 
 ### 5.4 `execution` and `envs`
 

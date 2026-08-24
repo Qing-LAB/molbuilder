@@ -252,7 +252,7 @@ is the clearest statement of the rule.)*
 | answers | *what is this machine* | *what do I want from it* |
 | file | `environment.json` | `molbuilder.json` |
 | arrives by | **probe** when you are standing on the machine · **declaration** when you are not | always a person |
-| examples | cores, GPUs and their type, memory, scheduler kind, the partitions and QoS you can reach and their walls | which partition to default to, `gpu.exclusive`, `gpu.mem`, `defaults`, `mem_model` |
+| examples | cores, GPUs and their type, memory, scheduler kind, the partitions and QoS you can reach and their walls | which partition to default to, `gpu.exclusive`, `gpu.mem`, `defaults` |
 
 > **Why "probed" is the wrong axis.** *You can only probe the machine you are
 > standing on.* Describe a calculation on a workstation to run it on a cluster

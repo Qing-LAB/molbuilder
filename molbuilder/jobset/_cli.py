@@ -730,7 +730,7 @@ def _duration(text):
     try:
         return parse_duration(text)
     except ValueError as e:
-        raise click.ClickException(f"--budget: {e}")
+        raise click.ClickException(f"--time: {e}")
 
 
 def _memory(text):
@@ -1951,12 +1951,11 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
 @click.option("--dry-run", is_flag=True,
               help="print the exact command each job WOULD get; launch "
                    "nothing.")
-@click.option("--budget", "budget_text", default=None, metavar="DURATION",
-              help="how much TOTAL time this needs -- `4h`, `90m`, or a bare "
-                   "number of minutes.  You know this better than any rule "
-                   "the framework could write, so it asks instead of "
-                   "deriving; for a benchmark the per-trial bound is "
-                   "arithmetic on top and is printed.")
+@click.option("--time", "time_text", default=None, metavar="DURATION",
+              help="wall-clock limit for each submitted job -- `4h`, `90m`, "
+                   "or a bare number of minutes.  Unstated, the target "
+                   "queue's own ceiling is requested -- the full amount the "
+                   "cluster allows there.  Never derived, never estimated.")
 @click.option("--mem", "mem_text", default=None, metavar="SIZE",
               help="how much TOTAL memory this needs -- `128G`, `0.5T`, or a "
                    "bare number of GB.  Unstated means the scheduler's own "
@@ -1972,10 +1971,10 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                    "you see exactly what will be asked for, and say so.")
 @click.option("--trial-timeout", "trial_timeout_min", default=None,
               metavar="MINUTES",
-              help="bench + submit mode: bound each trial directly instead "
-                   "of deriving it from --budget.  A trial that hits it is "
-                   "killed and reads incomplete; the walk continues.  "
-                   "[default: derived from --budget, else 15]")
+              help="bench + submit mode: kill any single trial after this "
+                   "many minutes so the rest of the group still runs; the "
+                   "killed trial reads incomplete.  Unstated, no per-trial "
+                   "bound exists -- each trial runs until the job's wall.")
 @click.option("--only", "only_side", default=None,
               type=click.Choice(["cpu", "gpu"]),
               help="bench + submit mode: submit just this side of a sweep "
@@ -1983,7 +1982,7 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                    "The other side stays pending; a later `launch bench`` "
                    "collects it -- here or on the cluster that reaches it.")
 def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
-               dry_run: bool, budget_text, mem_text, gpu_domain,
+               dry_run: bool, time_text, mem_text, gpu_domain,
                auto_yes, trial_timeout_min, only_side) -> None:
     """Launch a prepped stage: local ``bash`` (direct) or the machine's
     submission system (submit).  Run ``prep`` first.  ``--dry-run`` shows the
@@ -2056,7 +2055,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         _rows = get_routing(project_dir=Path(bundle) if bundle else None)
         if _rows:
             click.echo(queue_table(
-                _rows, Ask(time_s=_duration(budget_text),
+                _rows, Ask(time_s=_duration(time_text),
                            mem_gb=_memory(mem_text)),
                 cores=None, gpu=(only_side == "gpu")))
             raise click.ClickException(
@@ -2108,31 +2107,71 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             # -- and the per-trial bound is arithmetic on top of it.  Stating
             # the bound directly still works: it is the same answer, said the
             # other way.
-            from .ask import Ask, bench_bound, confirm, render
-            _n = len(js.jobs)
-            _ask = Ask(time_s=_duration(budget_text),
+            from .ask import Ask, confirm
+            _ask = Ask(time_s=_duration(time_text),
                        mem_gb=_memory(mem_text))
-            if trial_timeout_min is not None:
-                _bound_s = int(trial_timeout_min) * 60
-            elif _ask.time_s is not None:
-                _bound_s = bench_bound(_ask.time_s, _n)
-            else:
-                _bound_s = 15 * 60
-            if not confirm(render(_ask, n_trials=_n, bound_s=_bound_s),
-                           auto_yes=auto_yes):
+            # NOTHING IS DERIVED (user dictation, 2026-08-24).  --time is
+            # the wall, said or defaulted to the target queue's ceiling
+            # inside `_submit_side_group`; --trial-timeout is itself or
+            # absent.  The bench_bound arithmetic that turned a "budget"
+            # into a per-trial bound -- slack factor, startup margin,
+            # one-minute floor, a 15-minute default when nothing was said
+            # -- is DELETED, not bypassed: it manufactured the 38-minute
+            # walls of jobs 62039301-05 from a default nobody chose.
+            _bound_s = (int(trial_timeout_min) * 60
+                        if trial_timeout_min is not None else None)
+            # NOTHING IS SUBMITTED UNSEEN (S4) -- and what is seen is the
+            # REAL thing: the exact sbatch command of every shelf-job,
+            # from the same code that will submit it, not a summary
+            # computed a second way.  The summary this replaces said
+            # "10 trial(s) -> 170 min total" while five separate jobs
+            # went out at 38 minutes EACH (62039301-05): a sweep splits
+            # per resource shelf, and a display that ignores the split
+            # describes a submission that never happens.
+            _plan = submit_bench_group(
+                js, base, domain=domain, gpu_domain=gpu_domain,
+                dry_run=True,
+                trial_timeout_s=_bound_s, mem_gb=_ask.mem_gb,
+                time_s=_ask.time_s,
+                only=only_side)
+            _lines = ["about to submit:"]
+            for _r in _plan:
+                if _r.status != "planned":
+                    continue
+                _lines.append(f"  {_r.name}")
+                _lines.append(f"    {' '.join(_r.command)}")
+                if not any(a.startswith("--mem") for a in _r.command):
+                    _lines.append(
+                        "    MEMORY NOT STATED -- the scheduler's own "
+                        "default decides (a per-core or per-GPU rate; on "
+                        "some sites far below the node).  State it at prep "
+                        "(--mem) or here (--mem).")
+                if not any(a == "-t" for a in _r.command):
+                    _lines.append(
+                        "    time not stated and this queue declares no "
+                        "ceiling -- the scheduler's default stands.")
+            _lines.append(
+                f"  per-trial bound: "
+                + (f"{_bound_s // 60} min" if _bound_s else
+                   "none -- each trial runs until the wall"))
+            if not confirm("\n".join(_lines), auto_yes=auto_yes):
                 click.echo("nothing submitted.")
                 return
             _ledger(base, "launch", "bench-grouped",
                     trial_timeout_s=_bound_s,
-                    budget_s=_ask.time_s,
+                    time_s=_ask.time_s,
                     mem_gb=_ask.mem_gb,
                     only=only_side,
                     sweep=[j.name for j in js.jobs])
-            results = submit_bench_group(
-                js, base, domain=domain, gpu_domain=gpu_domain,
-                dry_run=dry_run,
-                trial_timeout_s=_bound_s, mem_gb=_ask.mem_gb,
-                only=only_side)
+            if dry_run:
+                results = _plan
+            else:
+                results = submit_bench_group(
+                    js, base, domain=domain, gpu_domain=gpu_domain,
+                    dry_run=False,
+                    trial_timeout_s=_bound_s, mem_gb=_ask.mem_gb,
+                    time_s=_ask.time_s,
+                    only=only_side)
         else:
             if kind == "bench" and js.kind == "sweep":
                 only = _pick_trial(js, base, trial)
@@ -2145,7 +2184,8 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             # trial-less grouped submit ever ran through it.
             results = submit_jobset(js, base, mode=mode, domain=domain,
                                     dry_run=dry_run, only=only,
-                                    mem_gb=_memory(mem_text))
+                                    mem_gb=_memory(mem_text),
+                                    time_s=_duration(time_text))
     except SubmitError as e:
         _ledger(base, "launch", "refused", kind=kind, stage=stage,
                 trial=trial, mode=mode, mode_source=mode_source,

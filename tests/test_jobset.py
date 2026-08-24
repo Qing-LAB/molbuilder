@@ -748,7 +748,7 @@ def test_submit_accepts_exactly_these_options(tmp_path):
     option added without a decision fails here whatever it is called.
 
     Three joined on 2026-08-23, and together they are **one question, one
-    answer, one interface** (`jobset/ask.py`): ``budget_text`` and ``mem_text``
+    answer, one interface** (`jobset/ask.py`): ``time_text`` and ``mem_text``
     ask what the job needs — the person knows that better than any rule the
     framework could write, so it asks rather than deriving — and ``auto_yes``
     is how they say *I have decided to trust this*, its absence being no kind
@@ -761,7 +761,7 @@ def test_submit_accepts_exactly_these_options(tmp_path):
     from molbuilder.jobset._cli import submit_cmd
     assert {q.name for q in submit_cmd.params} == {
         "kind", "stage", "trial", "bundle", "mode", "domain", "dry_run",
-        "budget_text", "mem_text", "gpu_domain", "auto_yes",
+        "time_text", "mem_text", "gpu_domain", "auto_yes",
         "trial_timeout_min", "only_side"}
 
 

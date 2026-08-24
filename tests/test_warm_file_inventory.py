@@ -196,7 +196,7 @@ def test_the_wrapper_entry_points_take_exactly_these_parameters():
     **All three take the allocation whole** (`architecture.md` § 3.1, rule A8),
     and differ only in what else they need. `render_run_wrapper` returns the
     inner script's text, so it also takes the sizing inputs read off the DECK:
-    `n_atoms` and `mem_audit`. `render_wrappers` returns everything step 4
+    `n_atoms`. `render_wrappers` returns everything step 4
     produces -- the wrapper, the `.sbatch` when the machine has a queue, the
     monitor a SIESTA job carries -- and reads those two off the deck itself.
     `write_run_wrapper` writes what it rendered.
@@ -222,7 +222,7 @@ def test_the_wrapper_entry_points_take_exactly_these_parameters():
     """
     import inspect
     assert set(inspect.signature(runwrap.render_run_wrapper).parameters) == {
-        "script_path", "resources", "env", "n_atoms", "mem_audit",
+        "script_path", "resources", "env", "n_atoms",
     }
     assert set(inspect.signature(runwrap.render_wrappers).parameters) == {
         "script_path", "resources", "env", "emit_sbatch",

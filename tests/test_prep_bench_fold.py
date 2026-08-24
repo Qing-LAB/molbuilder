@@ -366,7 +366,21 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     assert len(plans) < len(js["jobs"]) or len(shelves) == len(js["jobs"])
     assert "bench-group" in r.output
     assert ".sbatch" in plans[0]
-    assert " -t 0-" in plans[0], "the wall must ride the sbatch command"
+    # TIME IS NEVER INVENTED (user dictation, 2026-08-24).  This fixture is
+    # a workstation record -- no queue menu, so no ceiling to default to --
+    # and nothing was stated, so NO -t rides the command and the display
+    # says the scheduler's default stands.  A stated --time is the wall.
+    assert " -t " not in plans[0], (
+        f"a wall was invented on a machine with no ceiling: {plans[0]}")
+    r2 = runner.invoke(jobset_group, ["launch", "bench", "coarse",
+                                      "--bundle", str(calc),
+                                      "--mode", "submit", "--dry-run",
+                                      "--yes", "--domain", "htc",
+                                      "--time", "4h"])
+    assert r2.exit_code == 0, r2.output
+    plans2 = [l for l in r2.output.splitlines() if "WOULD run" in l]
+    assert all(" -t 0-04:00:00 " in pl for pl in plans2), (
+        f"--time 4h must ride every shelf-job: {plans2}")
     # widest = the CORE footprint (ranks x cores-per-rank), not ranks
     wid = max(js["jobs"], key=lambda j: (j["resources"].get("mpi_np") or 1)
               * (j["resources"].get("cpus_per_task") or 1))["resources"]
@@ -598,7 +612,9 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
     assert prep["kind"] == "bench" and prep["stage"] == "coarse"
     assert "provenance" in prep            # WHERE each setting came from
     group = lines[1]
-    assert group["trial_timeout_s"] == 15 * 60
+    # Unstated stays None in the ledger too -- the 15-minute default this
+    # asserted is deleted (user dictation, 2026-08-24).
+    assert group["trial_timeout_s"] is None
     assert len(group["sweep"]) == len(
         json.loads((calc / "01_coarse" / "bench"
                     / "job-set.json").read_text())["jobs"])

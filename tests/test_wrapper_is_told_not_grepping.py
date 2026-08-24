@@ -81,8 +81,7 @@ def test_the_answer_rides_the_allocation_out_of_resolve():
         "guessing from deck text")
 
 
-@pytest.mark.parametrize("site", ["render_run_wrapper", "_render_sbatch_for",
-                                  "_build_mem_audit"])
+@pytest.mark.parametrize("site", ["render_run_wrapper", "_render_sbatch_for"])
 def test_no_site_greps_the_deck_directly_any_more(site):
     """One door.  Four call sites each spelled the grep out, which is how
     they came to disagree about what a GPU job is -- `_render_sbatch_for`

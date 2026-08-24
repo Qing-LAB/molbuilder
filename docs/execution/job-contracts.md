@@ -666,7 +666,6 @@ wrapper contains these and nothing else:
 | **MPS daemon** | *(GPU decks only)* starts the per-job Hyper-Q daemon when ranks share a GPU — per-job pipe/log dirs, readiness poll with a no-MPS fallback, torn down by the one EXIT trap (same E-6 repair as the pinning row) |
 | **GPU mode: ELPA-CUDA defaults** | *(GPU decks only)* the researched rank/thread policy for the ELPA-CUDA build, overridable by every knob the usage names |
 | **GPU<->CPU socket co-location** | *(GPU decks only)* pins ranks beside the GPU's own NUMA node so host<->device traffic stays on-socket |
-| **Memory: estimate** | *(decks the estimator can read)* the CPU memory estimate vs the SLURM allocation, so an OOM is predicted in the log rather than discovered by the scheduler |
 | **Geometry-cap check + warm-retry** | *(`continue_retries` > 0)* bounded re-exec with `--continue` on a geometry-step cap hit — the retry budget the deck records |
 | **PySCF wrapper argument parsing** | *(PySCF wrappers)* the same flag handling for the `.py` route |
 | **Background job monitor** | launches the self-contained `mb_monitor.py` beside the run (nice 19, self-exits with the wrapper; opt out `MB_MONITOR=0`) — real compute-node work, headered and listed since 2026-08-13 (it was structurally invisible to the guard) |
@@ -1601,7 +1600,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 
 | Artifact | File | Schema string | Authoritative code | Key top-level fields |
 |---|---|---|---|---|
-| User config | `molbuilder.json` / `.molbuilder.json` | *(validated, no `@N`)* | `runtime_config.py` | `scheduler{kind,directives,gpu,defaults,mem_model}`, `execution`, `script_generation`, `envs` — **what you want**, never what a machine reports ([`configuration.md`](?doc=configuration.md) § 5 M-1); `scheduler.routing` and `scheduler.gpu.default_type` moved to the row below 2026-08-17 |
+| User config | `molbuilder.json` / `.molbuilder.json` | *(validated, no `@N`)* | `runtime_config.py` | `scheduler{kind,directives,gpu,defaults}`, `execution`, `script_generation`, `envs` — **what you want**, never what a machine reports ([`configuration.md`](?doc=configuration.md) § 5 M-1); `scheduler.routing` and `scheduler.gpu.default_type` moved to the row below 2026-08-17 |
 | Machine record | `environment.json` — the calculation's, a **named target**, then this machine's; first found wins ([`configuration.md`](?doc=configuration.md) § 5 M-3) | `molbuilder/environment@2` | `scheduler/record.py`, and only `scheduler/record.py` — the door is § 5 M-4's table | `scheduler`, `topology`, `site`, `domains` — **what the target machine is**, in one shape whether it is a cluster or a workstation |
 | ~~Benchmark manifest~~ | ~~`bench-manifest.json`~~ | ~~`molbuilder/bench-manifest@2`~~ | *(retired — no writer, no reader; note below)* | ~~`points.{cpu,gpu}`~~ |
 | Benchmark result | `<seq>_<stage>/bench/bench-result.json` — in the stage's container (§ 6.3) | `molbuilder/bench-result@1` | `bench/result.py` | `points`, `choice`, `recommend` |

@@ -20,8 +20,15 @@ Four things live here and nowhere else:
 
     Ask          the question, and the answer to it
     queue_table  the queues this machine offers, and which can take the job
-    render       the one output — what is about to be requested
     confirm      the one interface — approve, change, or skip
+
+    The one output is the PLAN the launch door prints -- the exact sbatch
+    command of every job, from the same code that submits it.  A `render`
+    summary lived here until 2026-08-24 and described a submission that
+    never happens (it ignored the per-shelf split); with it went
+    `bench_bound`/`bench_total` and their slack/startup constants -- TIME
+    IS NEVER DERIVED (user dictation, 2026-08-24): the user states it, or
+    the target queue's own ceiling stands.
 
 A `fits(ask, rows)` sat here until it was reviewed and found to be **a third
 implementation of "does this fit"** — `admits` is the one check, placement
@@ -37,24 +44,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
-#: The benchmark launcher's own shape, stated once so the total shown is the
-#: total requested.  Two spellings of one formula is how a displayed number
-#: comes to differ from the one that reaches the scheduler.
-GROUP_SLACK = 1.1
-GROUP_STARTUP_S = 300
-
 #: MPS's own hard ceiling -- more than this many processes cannot even
 #: ATTACH to one device (`engines/tuning.md` § 2.12, citing
-#: `references.bib: NvidiaMPS`, the A100-generation figure).  Past it a
-#: submission is not slow, it is broken: the ceiling-plus-first rank's MPS
-#: client fails to connect.
+#: `references.bib: NvidiaMPS`, the A100-generation figure).  A site FACT
+#: cited from the vendor, not an estimate -- the estimation purge of
+#: 2026-08-24 deliberately kept it.
 MPS_MAX_CLIENTS_PER_DEVICE = 48
 
-#: This stack's own tuned point -- ~4 ranks/GPU, because this ELPA build has
-#: no NCCL (`engines/tuning.md` § 2.12: "the wrapper's default lands near
-#: ~4 ranks per GPU with MPS -- the tuned point for this kind of build").
-#: Past it, extra ranks queue for compute rather than running concurrently --
-#: not wrong, just past where more sharing helps.
+#: This stack's tuned point, ~4 ranks/GPU without NCCL (`engines/tuning.md`
+#: § 2.12) -- a MEASURED literature figure, also kept: both feed
+#: `gpu_share_notes`, which INFORMS and never decides.
 GPU_TUNED_RANKS_PER_DEVICE = 4
 
 
@@ -119,29 +118,6 @@ def parse_memory(text) -> Optional[float]:
     if v <= 0:
         raise ValueError("memory must be positive")
     return v * mult
-
-
-def bench_bound(total_s: int, n_trials: int) -> int:
-    """A benchmark's TOTAL -> the per-trial bound that fits inside it.
-
-    The person states the total — how long they are willing to wait — and the
-    per-trial bound is arithmetic on top.  It ran the other way round: a
-    per-trial default produced a total nobody saw.
-
-    A bound below a minute measures nothing, so it floors there and the total
-    is exceeded instead.  :func:`render` says so when that happens; honouring
-    a budget into uselessness would be the worse answer.
-    """
-    n = max(1, int(n_trials))
-    usable = max(0, int(total_s) - GROUP_STARTUP_S)
-    return max(60, int(usable / (n * GROUP_SLACK)))
-
-
-def bench_total(bound_s: int, n_trials: int) -> int:
-    """The per-trial bound -> the total the allocation asks for.  The
-    launcher's own formula, which :func:`bench_bound` inverts."""
-    return int(max(1, int(n_trials)) * int(bound_s) * GROUP_SLACK) \
-        + GROUP_STARTUP_S
 
 
 def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
@@ -258,38 +234,6 @@ def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
                 f"cores -- more than this node's {node_cores} "
                 f"(engines/tuning.md § 2.12: K x C <= cores / G).")
     return lines
-
-
-def render(ask: Ask, *, placement=None, n_trials: Optional[int] = None,
-           bound_s: Optional[int] = None, extra: Sequence[str] = ()) -> str:
-    """**The one output** — what is about to be requested, in full.
-
-    Every line is a number that will reach the scheduler, and a line the
-    person can change while changing it is still free.  Shown by the CLI and
-    by the browser from this one function, because two renderings of one
-    request is how a surface comes to show something the scheduler was not
-    told.
-    """
-    lines: List[str] = ["about to request:"]
-    if ask.time_s is not None:
-        lines.append(f"  time     {ask.time_s // 3600}h "
-                     f"{(ask.time_s % 3600) // 60:02d}m")
-    if ask.mem_gb is not None:
-        lines.append(f"  memory   {ask.mem_gb:g} GB")
-    if n_trials is not None and bound_s is not None:
-        total = bench_total(bound_s, n_trials)
-        lines.append(f"  {n_trials} trial(s), {bound_s // 60} min each "
-                     f"-> {total // 60} min total")
-        if ask.time_s is not None and total > ask.time_s:
-            lines.append(
-                f"  NOTE {n_trials} trials do not fit in "
-                f"{ask.time_s // 60} min -- a bound under a minute measures "
-                f"nothing, so the total is {total // 60} min.  Fewer trials, "
-                f"or more time.")
-    if placement is not None:
-        lines.append(f"  queue    {placement.partition} / {placement.qos}")
-    lines.extend(f"  {e}" for e in extra)
-    return "\n".join(lines)
 
 
 def confirm(text: str, *, auto_yes: bool = False, echo=None,

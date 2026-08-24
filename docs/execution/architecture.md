@@ -691,7 +691,7 @@ the project's if set, otherwise the server's.
 | section | read by | reaches | what it decides |
 |---|---|---|---|
 | `script_generation` | `get_script_generation`, `require_activation` | **floor 5**, `prep` step 4 | the lines baked into every wrapper: `preamble` (e.g. `module load mamba/latest`), then `activation` verbatim |
-| `scheduler` | `get_scheduler`, `get_routing` | **floor 5**, at `launch` | the `#SBATCH` header: `directives` (partition, qos, mail), `gpu` (partition, type, memory band), `defaults` (time, cores, memory), `mem_model`, and `routing` — the named domains |
+| `scheduler` | `get_scheduler`, `get_routing` | **floor 5**, at `launch` | the `#SBATCH` header: `directives` (partition, qos, mail), `gpu` (partition, type, memory), `defaults` (time, cores, memory), and `routing` — the named domains |
 | `execution` | `get_execution` | **floor 5**, at `launch` | `mode` (`direct` or `submit`), and the default `domain` |
 | `envs` | `get_envs` | **floor 5**, `prep` step 4 | which conda environment each engine runs in |
 | `paths` | `get_paths` | `projects.projects_root` — every surface | `projects`: where the projects tree lives.  Default: `projects/` inside the checkout; set it when that is not writable or not wanted (a quota'd cluster home, a scratch filesystem, a shared tree).  `$MOLBUILDER_PROJECTS` overrides it |

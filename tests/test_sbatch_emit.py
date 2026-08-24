@@ -221,42 +221,6 @@ def test_explicit_mem_beats_the_gpu_band(tmp_path):
     assert "CAPPED" not in gtxt
 
 
-def test_gpu_mem_below_floor_is_raised(tmp_path):
-    """A sized value under the floor is raised to it (and says so)."""
-    sched = dict(_SCHED)
-    sched["gpu"] = dict(_SCHED["gpu"], mem="64G", mem_cap_per_gpu="128G")
-    sched["defaults"] = dict(_SCHED["defaults"], mem="8G")
-    gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
-    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1,
-                         exclusive=False)
-    assert "#SBATCH --mem=64G" in gtxt
-    assert "raised from 8G" in gtxt
-
-
-def test_gpu_mem_above_cap_is_capped(tmp_path):
-    """A sized value over the per-GPU cap is capped to cap x n_gpus —
-    the node's proportional host-RAM share (backfill + CHE)."""
-    sched = dict(_SCHED)
-    sched["gpu"] = dict(_SCHED["gpu"], mem="64G", mem_cap_per_gpu="128G")
-    sched["defaults"] = dict(_SCHED["defaults"], mem="470G")
-    gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
-    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1,
-                         exclusive=False)
-    assert "#SBATCH --mem=128G" in gtxt
-    assert "CAPPED" in gtxt and "470G" in gtxt
-
-
-def test_gpu_mem_cap_scales_with_gpu_count(tmp_path):
-    """Two GPUs = two proportional shares: the cap doubles."""
-    sched = dict(_SCHED)
-    sched["gpu"] = dict(_SCHED["gpu"], mem="64G", mem_cap_per_gpu="128G")
-    sched["defaults"] = dict(_SCHED["defaults"], mem="470G")
-    gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
-    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=2,
-                         exclusive=False)
-    assert "#SBATCH --mem=256G" in gtxt
-
-
 def test_explicit_mem_overrides_default(tmp_path):
     sched = dict(_SCHED)
     sched["defaults"] = dict(_SCHED["defaults"], mem="64G")
@@ -439,54 +403,6 @@ LatticeConstant 1.0 Ang
 """
 
 
-def test_wrapper_cpu_emits_runtime_mem_audit(project):
-    # CPU SIESTA .fdf -> the launcher carries the estimate-vs-allocation
-    # audit (recomputes for the runtime rank count; WARNs on OOM risk).
-    fdf = project / "job.fdf"
-    fdf.write_text(_PARSEABLE_FDF)
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=64))
-    runsh = (project / "job.run.sh").read_text()
-    assert "_mb_mem_est=$(awk" in runsh
-    assert "memory          : estimated" in runsh
-    assert "EXCEEDS allocation" in runsh           # the WARN branch
-    # Reads the SLURM allocation, with a /proc/meminfo fallback.
-    assert "SLURM_MEM_PER_NODE" in runsh and "MemTotal" in runsh
-
-
-def test_runtime_mem_audit_awk_reproduces_the_formula(project):
-    # The baked awk must compute ceil(safety*(fixed + c_rank*n)) +
-    # ceil(extra), floored, capped -- the same formula as the Python
-    # estimator.  Extract the awk's constants, RUN it for several rank
-    # counts, and check against an independent Python evaluation.
-    fdf = project / "job.fdf"
-    fdf.write_text(_PARSEABLE_FDF)
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=64))
-    runsh = (project / "job.run.sh").read_text()
-    line = next(ln for ln in runsh.splitlines()
-                if ln.strip().startswith("_mb_mem_est=$(awk"))
-
-    def _const(flag):
-        m = re.search(rf"-v {flag}=([0-9.]+)", line)
-        return float(m.group(1))
-    f, pr, s, e = _const("f"), _const("pr"), _const("s"), _const("e")
-    fl, cap = _const("fl"), _const("cap")
-
-    def _py(n):
-        raw = s * (f + pr * n)
-        est = math.ceil(raw) + math.ceil(e)
-        est = max(est, fl)
-        if cap > 0 and est > cap:
-            est = cap
-        return int(est)
-
-    for n in (1, 4, 8, 32, 64, 256):
-        out = subprocess.run(
-            ["bash"], text=True, capture_output=True,
-            input=f'_mpi_np={n}\n{line}\necho "$_mb_mem_est"')
-        assert out.returncode == 0, out.stderr
-        assert int(out.stdout.strip()) == _py(n), f"mismatch at n={n}"
-
-
 def test_workstation_gpu_knobs_match_launcher_contract(project):
     # CONTRACT: the env vars the bench/run adapter emits for a workstation
     # GPU point MUST be exactly the ones the generated launcher reads, or
@@ -575,24 +491,6 @@ def _min_cpu_fdf(tmp_path):
     return fdf
 
 
-def test_cpu_siesta_mem_auto_estimated_when_unset(tmp_path):
-    """A CPU SIESTA .fdf with no explicit/config mem gets a system-aware
-    --mem (prevents the high-np OOM), with the breakdown as a comment."""
-    sched = dict(_SCHED)
-    sched["defaults"] = dict(_SCHED["defaults"], mem=None)
-    sched["mem_model"] = {"node_mem_gb": 500}
-    fdf = _min_cpu_fdf(tmp_path)
-    txt = render_sbatch(fdf, sched, ntasks=64)
-    assert "#SBATCH --mem=" in txt
-    assert "auto-estimated from problem size" in txt
-    # more ranks -> more replication -> >= memory
-    lo = render_sbatch(fdf, sched, ntasks=8)
-    def _mem(t): return int([l for l in t.splitlines()
-                             if l.startswith("#SBATCH --mem=")][0]
-                            .split("=")[1].rstrip("G"))
-    assert _mem(txt) >= _mem(lo)
-
-
 def test_explicit_mem_skips_estimate(tmp_path):
     sched = dict(_SCHED); sched["defaults"] = dict(_SCHED["defaults"], mem=None)
     fdf = _min_cpu_fdf(tmp_path)
@@ -600,12 +498,3 @@ def test_explicit_mem_skips_estimate(tmp_path):
     assert "#SBATCH --mem=120G" in txt
     assert "auto-estimated" not in txt
 
-
-def test_node_mem_cap_clamps_estimate(tmp_path):
-    sched = dict(_SCHED); sched["defaults"] = dict(_SCHED["defaults"], mem=None)
-    sched["mem_model"] = {"node_mem_gb": 16}     # tiny cap
-    fdf = _min_cpu_fdf(tmp_path)
-    txt = render_sbatch(fdf, sched, ntasks=64)
-    mem = int([l for l in txt.splitlines()
-               if l.startswith("#SBATCH --mem=")][0].split("=")[1].rstrip("G"))
-    assert mem <= 16

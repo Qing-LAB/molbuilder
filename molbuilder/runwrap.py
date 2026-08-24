@@ -1154,65 +1154,6 @@ def _siesta_resolved_log_block(script_name: str, gpu_mode: bool) -> str:
     )
 
 
-def _siesta_mem_audit_block(params: Mapping[str, Any]) -> str:
-    """Bash that, at runtime, RE-estimates peak memory for the ACTUAL
-    resolved rank count and compares it to the SLURM allocation -- the
-    runtime half of the ``--mem`` story (user request 2026-06-27).
-
-    The launcher runs in the backend env (no molbuilder/numpy), so the
-    memory MODEL coefficients are baked here at generate time and the
-    estimate is recomputed in ``awk`` against ``$_mpi_np``.  This is what
-    catches the dangerous case the generate-time ``--mem`` cannot: the
-    user overriding ``-n`` or ``--mem`` on the ``sbatch`` CLI (the np=64
-    OOM-at-240G lesson).  Mirrors
-    :func:`molbuilder.siesta.memory.estimate_siesta_memory`:
-    ``ceil(safety*(fixed + c_rank*n)) + ceil(extra)``, floored, capped.
-
-    READS ``$_mpi_np`` and SLURM's ``SLURM_MEM_PER_NODE`` /
-    ``SLURM_MEM_PER_CPU`` (+ ``/proc/meminfo`` when not under SLURM).
-    EMITS one ``_log INFO`` line (+ ``_log WARN`` if the estimate exceeds
-    the allocation).
-    """
-    fixed  = float(params["fixed_gb"])
-    perrk  = float(params["per_rank_gb"])
-    safety = float(params["safety"])
-    extra  = float(params["extra_gb"])
-    floor  = float(params["floor_gb"])
-    cap    = float(params.get("cap_gb") or 0.0)
-    return (
-        "# --- Memory: estimate (for the resolved rank count) vs SLURM "
-        "allocation ---\n"
-        f"_mb_mem_est=$(awk -v n=\"$_mpi_np\" -v f={fixed:g} -v pr={perrk:g} "
-        f"-v s={safety:g} -v e={extra:g} -v fl={floor:g} -v cap={cap:g} "
-        "'BEGIN{ raw=s*(f+pr*n); est=int(raw); if(est<raw)est++; "
-        "ex=int(e); if(ex<e)ex++; est+=ex; if(est<fl)est=fl; "
-        "if(cap>0 && est>cap)est=cap; print est }')\n"
-        "_mb_mem_alloc_mb=\"\"\n"
-        "if [ -n \"${SLURM_MEM_PER_NODE:-}\" ]; then\n"
-        "    _mb_mem_alloc_mb=$SLURM_MEM_PER_NODE\n"
-        "elif [ -n \"${SLURM_MEM_PER_CPU:-}\" ]; then\n"
-        "    _mb_mem_alloc_mb=$(( SLURM_MEM_PER_CPU * "
-        "${SLURM_NTASKS:-1} * ${SLURM_CPUS_PER_TASK:-1} ))\n"
-        "fi\n"
-        "if [ -n \"$_mb_mem_alloc_mb\" ]; then\n"
-        "    _mb_mem_alloc=$(( _mb_mem_alloc_mb / 1024 ))\n"
-        "    _log INFO \"memory          : estimated ~${_mb_mem_est}G "
-        "($_mpi_np ranks, model) vs allocated ~${_mb_mem_alloc}G (SLURM)\"\n"
-        "    if [ \"$_mb_mem_est\" -gt \"$_mb_mem_alloc\" ]; then\n"
-        "        _log WARN \"memory          : estimate (~${_mb_mem_est}G) "
-        "EXCEEDS allocation (~${_mb_mem_alloc}G) -- OOM risk; raise --mem "
-        "or lower -n (running-a-job.md 5.3.1 mem model)\"\n"
-        "    fi\n"
-        "else\n"
-        "    _mb_mem_phys=$(awk '/MemTotal/{printf \"%d\", $2/1048576}' "
-        "/proc/meminfo 2>/dev/null)\n"
-        "    _log INFO \"memory          : estimated ~${_mb_mem_est}G "
-        "($_mpi_np ranks, model); node RAM ~${_mb_mem_phys:-?}G "
-        "(no SLURM --mem)\"\n"
-        "fi\n"
-    )
-
-
 def _siesta_dry_run_block(script_name: str, gpu_mode: bool) -> str:
     """Bash implementing ``--dry-run``: print the resolved command and,
     in GPU mode, the per-rank GPU/NUMA mapping that WOULD be used, then
@@ -1795,8 +1736,7 @@ def _wants_gpu(script_path: Path, resources=None) -> bool:
 def render_run_wrapper(script_path: Path, *,
                         resources: "Resources",
                         env: Optional[str] = None,
-                        n_atoms: Optional[int] = None,
-                        mem_audit: Optional[Mapping[str, Any]] = None) -> str:
+                        n_atoms: Optional[int] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     **The allocation arrives whole** — `architecture.md` § 3.1, rule A8.  This
@@ -1808,9 +1748,11 @@ def render_run_wrapper(script_path: Path, *,
     calls ``cpus_per_task`` — is its own business (`job-contracts.md` § 6.2
     keeps the two names because different layers read them).
 
-    ``env``, ``n_atoms`` and ``mem_audit`` stay loose because none of them is
-    part of the allocation: the first is a per-invocation override, and the
-    other two are facts read off the DECK.
+    ``env`` and ``n_atoms`` stay loose because neither is part of the
+    allocation: the first is a per-invocation override, the second a fact
+    read off the DECK.  (A ``mem_audit`` rode here until 2026-08-24 -- a
+    baked memory MODEL re-estimated at launch.  Deleted, not unwired:
+    memory is what the user states, never what a model guesses.)
 
     Routing by file extension:
 
@@ -3207,7 +3149,6 @@ def render_run_wrapper(script_path: Path, *,
         # dry-run guard (exits before launch), then the real launch.
         launch_block = (
             _siesta_resolved_log_block(script_name, gpu_mode)
-            + (_siesta_mem_audit_block(mem_audit) if mem_audit else "")
             + _siesta_dry_run_block(script_name, gpu_mode)
             + _siesta_scf_timing_func()
             + f"# --- Launch SIESTA + capture exit -----------------------\n"
@@ -3673,48 +3614,6 @@ def _monitor_source() -> str:
             f"could not read the monitor source to ship: {exc}") from None
 
 
-def _build_mem_audit(script_path: Path, *,
-                     resources: "Resources",
-                     env: Optional[str]) -> Optional[dict]:
-    """Build the baked memory-model coefficients for the runtime
-    estimate-vs-allocation audit (:func:`_siesta_mem_audit_block`).
-
-    Returns None (no audit line) unless this is a **CPU** SIESTA ``.fdf``
-    whose system actually parses: GPU jobs size memory from ``gpu.mem``,
-    not this model.  The coefficients are ntasks-independent (the launcher
-    plugs in the runtime rank count), so the estimate is computed once at
-    ``ntasks=1`` purely to read the np-independent component sizes.
-    Best-effort: any failure -> None (the wrapper just omits the line).
-    """
-    if script_path.suffix.lower() != ".fdf":
-        return None
-    if resources.gres is not None:
-        return None  # GPU job (explicit --gres)
-    try:
-        if env is None and _wants_gpu(script_path, resources):
-            return None  # GPU job (fdf requests ELPA-CUDA)
-        from . import runtime_config as _rc
-        project_dir = script_path.parent if script_path.parent.exists() else None
-        scheduler = _rc.get_scheduler(project_dir=project_dir)
-        mem_cfg = scheduler.get("mem_model") if scheduler else None
-        from .siesta.memory import estimate_siesta_memory, MemModel
-        model = MemModel.from_config(mem_cfg)
-        est = estimate_siesta_memory(
-            script_path, 1, model=model, psml_lib=script_path.parent)
-        if est.n_orb <= 0:
-            return None
-        return {
-            "fixed_gb": est.fixed_raw_gb,   # unrounded base+dense+mesh (B-4)
-            "per_rank_gb": model.c_rank,
-            "safety": model.safety,
-            "extra_gb": model.extra_gb,
-            "floor_gb": model.floor_gb,
-            "cap_gb": model.node_mem_gb or 0.0,
-        }
-    except Exception:
-        return None
-
-
 @dataclass(frozen=True)
 class RenderedWrapper:
     """**Step 4's product, before anything reaches the disk** —
@@ -3791,7 +3690,6 @@ def render_wrappers(script_path: Path, *,
                if script_path.suffix.lower() == ".fdf" else None)
     text = render_run_wrapper(
         script_path, resources=r, env=env, n_atoms=n_atoms,
-        mem_audit=_build_mem_audit(script_path, resources=r, env=env),
     )
     _validate_rendered_wrapper(text, script_path)
     # ``stem + ".run.sh"`` rather than ``with_suffix(".run.sh")``: the latter
@@ -4158,87 +4056,27 @@ def render_sbatch(script_path: Path,
     cpus = cpus_per_task if cpus_per_task is not None \
         else defaults.get("cpus_per_task")
     walltime = time if time is not None else defaults.get("time")
-    # mem: an explicit caller --mem wins OUTRIGHT (the operator's
-    # judgment; never clamped).  Otherwise: site-wide ``defaults.mem``,
-    # else the job-specific .fdf estimator.  GPU jobs then clamp the
-    # result into the [``gpu.mem`` floor, ``gpu.mem_cap_per_gpu`` x
-    # n_gpus ceiling] band:
-    #   * the FLOOR covers the site's tight per-GPU host-RAM default
-    #     (Sol grants 24 GiB/GPU when unspecified -- too small for a
-    #     dense SIESTA diagonalization's host-side matrices);
-    #   * the CEILING keeps a shared-node GPU job inside its
-    #     PROPORTIONAL host-RAM share (node_RAM x n_gpus /
-    #     gpus_per_node; Sol A100 nodes: 512G / 4 = 128G per GPU), so
-    #     it backfills into a partially-used node instead of
-    #     blockading the other GPUs -- queue wait AND the fairshare
-    #     CHE burn (1 CHE per 4 GiB-hour on Sol) both scale with the
-    #     request.  A job whose estimate exceeds the cap is flagged in
-    #     the emitted header: give it more GPUs (the cap scales), run
-    #     it --exclusive, or route it to the CPU partition.
-    # Best-effort: estimation NEVER blocks emission; on any failure we
-    # fall back to the floor (GPU) or the partition default (CPU).
-    # (Exclusive jobs ignore all of this and take the whole node.)
+    # MEMORY IS WHAT THE USER STATED, FULL STOP (user dictation,
+    # 2026-08-24).  An explicit --mem wins; else the site-wide
+    # ``defaults.mem`` a person wrote in molbuilder.json; else the
+    # GPU-job value a person wrote as ``scheduler.gpu.mem``; else NOTHING
+    # is emitted and the scheduler's own default stands.  What stood here
+    # until today -- a per-.fdf memory MODEL (base + dense + mesh terms,
+    # a safety factor, a floor, a cap) and a floor/ceiling CLAMP band for
+    # GPU jobs -- is deleted, not disabled: five Sol jobs (62039301-05)
+    # OOM'd against defaults while the machinery that claimed to prevent
+    # exactly that sat unconfigured and silent.  No estimation, no
+    # clamping, no numbers wearing a user's clothes.
     mem_comment: Optional[str] = None
     if mem is not None:
         memory = mem
     else:
-        memory = defaults.get("mem")           # site-wide fallback
-        if memory is None and Path(script_path).suffix.lower() == ".fdf":
-            try:
-                from .siesta.memory import (estimate_siesta_memory,
-                                            MemModel)
-                _model = MemModel.from_config(scheduler.get("mem_model"))
-                _est = estimate_siesta_memory(
-                    script_path, ntasks, model=_model,
-                    psml_lib=Path(script_path).parent)
-                # Only emit when we actually parsed a system; a stub/
-                # unparseable .fdf yields n_orb=0 -> floor, which is
-                # meaningless.  Fall back to the partition default there.
-                if _est.n_orb > 0:
-                    memory = f"{_est.request_gb}G"
-                    mem_comment = (
-                        f"# --mem auto-estimated from problem size "
-                        f"({_est.breakdown_str()}); tune via "
-                        f"scheduler.mem_model or override with --mem.")
-            except Exception:
-                memory = None   # fall back to the partition default
-        if gpu:
-            _floor_mb = _mem_to_mb(gpu_cfg.get("mem"))
-            _cap_mb = _mem_to_mb(gpu_cfg.get("mem_cap_per_gpu"))
-            if _cap_mb is not None:
-                _cap_mb *= max(1, int(gpu_count or 1))
-            _have_mb = _mem_to_mb(memory)
-            if _have_mb is None:
-                # Nothing to size from (no defaults.mem, no estimate):
-                # the floor IS the GPU request (better than the site's
-                # tight per-GPU default).
-                if _floor_mb is not None:
-                    memory = gpu_cfg.get("mem")
-                    mem_comment = (
-                        "# --mem = scheduler.gpu.mem (GPU floor; no "
-                        "job-specific estimate available).")
-            else:
-                _pre = memory
-                _clamped = _have_mb
-                if _floor_mb is not None and _clamped < _floor_mb:
-                    _clamped = _floor_mb
-                    mem_comment = (
-                        f"# --mem raised from {_pre} to the "
-                        f"scheduler.gpu.mem floor (GPU nodes grant a "
-                        f"tight per-GPU default; the floor is the site's "
-                        f"safe minimum for a GPU run).")
-                if _cap_mb is not None and _clamped > _cap_mb:
-                    _clamped = _cap_mb
-                    mem_comment = (
-                        f"# --mem CAPPED at gpu.mem_cap_per_gpu x "
-                        f"{max(1, int(gpu_count or 1))} GPU(s) -- the "
-                        f"node's proportional host-RAM share, kept so "
-                        f"this job backfills beside other GPU jobs.  "
-                        f"The uncapped value was {_pre}; if the run "
-                        f"OOMs: request more GPUs (the cap scales), "
-                        f"run --exclusive, or use the CPU route.")
-                if _clamped != _have_mb:
-                    memory = f"{-(-_clamped // 1024)}G"
+        memory = defaults.get("mem")           # site-wide, user-written
+        if memory is None and gpu:
+            memory = gpu_cfg.get("mem")        # per-GPU-job, user-written
+            if memory is not None:
+                mem_comment = ("# --mem = scheduler.gpu.mem "
+                               "(user-configured GPU default).")
 
     # NO site inference (D12g, 2026-08-12): `site = "asu-sol" if
     # partition == "public"` hard-coded a facility name from a partition

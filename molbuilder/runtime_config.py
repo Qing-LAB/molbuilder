@@ -1474,7 +1474,6 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
     directives = _as_obj("directives")
     gpu        = _as_obj("gpu")
     defaults   = _as_obj("defaults")
-    mem_model  = _as_obj("mem_model")
 
     # WHICH AXIS DECIDES between queues that all fit (2026-08-23, user).
     # A PREFERENCE, so it lives here and never in the machine record (M-1):
@@ -1587,24 +1586,11 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
             f"(e.g. \"120G\") or null; got {type(defaults['mem']).__name__}."
         )
 
-    # mem_model: tunable coefficients for the CPU --mem estimator
-    # (molbuilder/siesta/memory.py).  All values must be numeric; the
-    # estimator's MemModel.from_config is tolerant of missing keys, so we
-    # only type-check what IS present.
-    for k, v in mem_model.items():
-        if v is not None and not isinstance(v, (int, float)) \
-                or isinstance(v, bool):
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'scheduler.mem_model.{k}' must be a "
-                f"number; got {type(v).__name__}."
-            )
-
     out = {
         "kind":       kind,
         "directives": directives,
         "gpu":        gpu,
         "defaults":   defaults,
-        "mem_model":  mem_model,
     }
     # ABSENT when unset, so a reader can tell "this site did not choose" from
     # "this site chose the default" -- `place` supplies its own default and

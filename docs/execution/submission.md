@@ -34,10 +34,18 @@ value the person did not give is absent. The scheduler's own default may then
 decide — a real and legitimate outcome — but the framework does not
 manufacture a number and present it as an answer.
 
-**S2 — A benchmark is bounded, never estimated.** It exists to measure the
-per-cycle cost, so feeding it an estimate of that cost is circular. The person
-states the **total**; the per-trial bound is arithmetic on top. **A bound
-cannot be wrong** — it can only be reached, and reaching it is a result.
+**S2 — Nothing is derived, for either axis** *(amended 2026-08-24; the
+first version let a stated total become a per-trial bound by arithmetic, and
+an UNSTATED total become fifteen invented minutes a trial — which sent five
+38-minute jobs to Sol for a system nobody had sized)*. **Time**: `--time` is
+the wall, at prep or at launch; unstated, the target queue's **own ceiling**
+is requested — the full amount the cluster allows there — and a queue that
+states none gets no wall at all. `--trial-timeout` exists so one hung trial
+cannot eat a group's whole wall; unstated, no per-trial bound exists.
+**Memory**: `--mem`, at prep or at launch, else the user's own config
+(`defaults.mem` / `gpu.mem`), else nothing — the scheduler's default
+decides, and the plan says so before anything submits. Hitting a limit is a
+result; inventing one is not.
 
 **S3 — A measurement is not portable.** Numbers taken on one kind of node do
 not describe another. Applying a benchmark across a `node_type` boundary is
@@ -94,12 +102,15 @@ was asked.*
 | | |
 |---|---|
 | `Ask` | the question, and the answer to it |
-| `fits` | whether this machine can honour that answer |
-| `render` | the one output — what is about to be requested |
+| `queue_table` | the queues this machine offers, and which can take the job |
 | `confirm` | the one interface — approve, or don't |
 
+*The one output is the launch door's **plan** — the exact `sbatch` command
+of every job, printed by the code that submits it. A `render` summary lived
+here until 2026-08-24 and could disagree with the submission it described.*
+
 ```
-$ molbuilder jobset launch bench --budget 4h --mem 128G
+$ molbuilder jobset launch bench --mem 128G
 this machine offers:
      name         partition/qos           max time  cores    memory  gpu
 !  1  debug        htc/debug                    15m    128    251 GB  -
@@ -111,14 +122,18 @@ this machine offers:
 
   choose one with --domain <name>.  Nothing is submitted until you do.
 
-$ molbuilder jobset launch bench --budget 4h --mem 128G --domain htc
-about to request:
-  time     4h 00m
-  memory   128 GB
-  36 trial(s), 5 min each -> 239 min total
-  queue    htc / public
+$ molbuilder jobset launch bench --mem 128G --domain htc
+about to submit:
+  bench-group-cpu
+    sbatch -J AuBDTAu_bench-group-cpu -p htc -q public -n 48 -c 1 -t 0-04:00:00 --mem=128G ... bench-group-cpu.sbatch
+  per-trial bound: none -- each trial runs until the wall
   submit this? [Y/n]
 ```
+
+*The `-t 0-04:00:00` is `htc`'s own ceiling — the full amount that queue
+allows — because no `--time` was stated. The display is the exact command,
+from the same code that submits it; a summary computed a second way is how
+"170 minutes" was once shown for five 38-minute jobs.*
 
 The listing reuses the scheduler's own admission, so it cannot say yes where
 the submission says no. *A table that disagrees with the check is worse than

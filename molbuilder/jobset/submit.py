@@ -147,7 +147,8 @@ def _scheduler_job_name(jobset: JobSet, job) -> str:
 
 def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
                   dry_run: bool,
-                  mem_gb: Optional[float] = None) -> List[JobResult]:
+                  mem_gb: Optional[float] = None,
+                  time_s: Optional[int] = None) -> List[JobResult]:
     """SLURM path: ``sbatch`` **one** job, with its resources as CLI flags.
 
     **One per invocation** — :func:`_refuse_batch_submission` is what makes
@@ -185,6 +186,9 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         # § 2), so it goes first and the stage qualifies it.
         cmd = ["sbatch", "-J", _scheduler_job_name(jobset, job)]
         resources = job.resources
+        if time_s:
+            import dataclasses as _dc
+            resources = _dc.replace(resources, time=_slurm_time(time_s))
         if mem_gb:
             # Same gap as the grouped path (`_submit_side_group`), same
             # fix: nothing ever set `Resources.mem` for a single-job
@@ -463,8 +467,23 @@ def _group_envelope(jobs) -> "Resources":
     c = max((j.resources.cpus_per_task or 1) for j in jobs)
     gres = next((j.resources.gres for j in jobs if j.resources.gres), None)
     exclusive = any(j.resources.exclusive for j in jobs)
+    # PREP'S ANSWERS RIDE THE TRIALS (resolve.py: `replace(allocation,
+    # **machine)` -- the sweep delta only touches ranks/cores/gres, so a
+    # `prep --mem/--time` is on every trial).  This function DISCARDED
+    # both, which is half of how five jobs went to Sol with no --mem and
+    # an invented 38-minute wall (62039301-05, 2026-08-24): the user's
+    # prep-time statement existed and never reached the sbatch command.
+    mems = {j.resources.mem for j in jobs}
+    times = {j.resources.time for j in jobs}
+    if len(mems) > 1 or len(times) > 1:
+        raise SubmitError(
+            f"the group's trials disagree about mem/time "
+            f"({sorted(mems)} / {sorted(times)}) -- prep bakes one "
+            f"allocation over a sweep, so this is a bug, not a "
+            f"declaration problem.")
     return Resources(mpi_np=n, cpus_per_task=c, gres=gres,
-                     exclusive=exclusive)
+                     exclusive=exclusive,
+                     mem=next(iter(mems)), time=next(iter(times)))
 
 
 def _dc_replace_time(r: "Resources", time_str: str) -> "Resources":
@@ -478,8 +497,9 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
                        gpu_domain: Optional[str] = None,
                        domain: Optional[str] = None,
                        dry_run: bool = False,
-                       trial_timeout_s: int = 900,
+                       trial_timeout_s: Optional[int] = None,
                        mem_gb: Optional[float] = None,
+                       time_s: Optional[int] = None,
                        only: Optional[str] = None) -> List[JobResult]:
     """ONE scheduler job per RESOURCE SHELF of the sweep (grouped
     2026-08-20; split per side, then per shelf, 2026-08-21 --
@@ -580,7 +600,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
                         else domain),
                 dry_run=dry_run,
                 trial_timeout_s=trial_timeout_s,
-                mem_gb=mem_gb)
+                mem_gb=mem_gb, time_s=time_s)
     if not results:
         raise SubmitError(
             f"all {len(sides[only]) if only else len(jobset.jobs)} "
@@ -715,8 +735,9 @@ def _shelf_token(key) -> str:
 def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
                        name: str, *, gpu_side: bool,
                        domain: Optional[str], dry_run: bool,
-                       trial_timeout_s: int,
-                       mem_gb: Optional[float] = None) -> List[JobResult]:
+                       trial_timeout_s: Optional[int],
+                       mem_gb: Optional[float] = None,
+                       time_s: Optional[int] = None) -> List[JobResult]:
     """One side's grouped submission -- the whole of the pre-split
     `submit_bench_group` body, run once per side with its own envelope,
     sequencer, and ``-p/-q`` resolution.
@@ -766,7 +787,6 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     container = next(iter(containers))
 
     envelope = _group_envelope(pending)
-    total_s = int(len(pending) * trial_timeout_s * 1.1) + 300
 
     lines = [
         "#!/usr/bin/env bash",
@@ -781,7 +801,8 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
         "set -u",
         f'LOG="{name}.log"',
         f'echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') start '
-        f'trials={len(pending)} per-trial-bound={trial_timeout_s}s '
+        f'trials={len(pending)} per-trial-bound='
+        f'{f"{trial_timeout_s}s" if trial_timeout_s else "none"} '
         'job=${SLURM_JOB_ID:-none} node=$(hostname) '
         'alloc_ntasks=${SLURM_NTASKS:-unset} '
         'alloc_cpus=${SLURM_CPUS_PER_TASK:-unset}" >> "$LOG"',
@@ -790,12 +811,16 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
         '    _name="$1"; _dir="$2"; shift 2',
         "    _t0=$(date +%s)",
         '    echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') -> ${_name} starts" >> "$LOG"',
-        f'    ( cd "${{_dir}}" && timeout -k 30 {trial_timeout_s} '
-        'bash "$@" ) >> "$LOG" 2>&1',
+        (f'    ( cd "${{_dir}}" && timeout -k 30 {trial_timeout_s} '
+         'bash "$@" ) >> "$LOG" 2>&1'
+         if trial_timeout_s else
+         '    ( cd "${_dir}" && bash "$@" ) >> "$LOG" 2>&1'),
         "    _rc=$?",
         '    if [ "${_rc}" -eq 124 ]; then',
-        f'        echo "[group] ${{_name}} hit the {trial_timeout_s}s '
-        'per-trial bound -- killed; its artifacts read incomplete" >> "$LOG"',
+        (f'        echo "[group] ${{_name}} hit the {trial_timeout_s}s '
+         'per-trial bound -- killed; its artifacts read incomplete" >> "$LOG"'
+         if trial_timeout_s else
+         '        echo "[group] ${_name} killed (124)" >> "$LOG"'),
         "    fi",
         '    if [ "${_rc}" -ne 0 ]; then fails=$((fails+1)); fi',
         "    _t1=$(date +%s)",
@@ -818,20 +843,28 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
         "",
     ]
     script = container / f"{name}.run.sh"
-    envelope = _dc_replace_time(envelope, _slurm_time(total_s))
     if mem_gb:
-        # THE BUG this replaces: `_group_envelope` never sets `.mem` (it
-        # reads only mpi_np/cpus_per_task/gres/exclusive off the trials),
-        # so a grouped submission asked SLURM for --mem on NOTHING, no
-        # matter what --mem said at launch -- discovered 2026-08-23 when
-        # job 62039305 (48 ranks, 1 GPU, htc) OOM'd at 24576M, a number
-        # molbuilder never requested and never told anyone it wasn't
-        # requesting.  One override here reaches BOTH readers downstream
-        # (the admission re-check and `_sbatch_resource_flags`), because
-        # both read `envelope.mem` -- exactly how `_dc_replace_time` above
-        # already reaches both readers of `.time`.
+        # A launch-time --mem OVERRIDES what prep baked (the envelope
+        # already carries prep's answer).  Found 2026-08-23 when job
+        # 62039305 OOM'd at 24576M -- a per-GPU default nobody chose --
+        # because neither prep's answer nor this flag ever reached the
+        # sbatch command.
         import dataclasses as _dc
         envelope = _dc.replace(envelope, mem=f"{mem_gb:g}G")
+
+    # What the admission is asked to fit: the wall the user stated at
+    # launch, else the one prep baked.  Unstated is None -- an unstated
+    # limit never bars (R3), and the wall it gets DEFAULTED to below (the
+    # queue's own ceiling) fits that queue by construction.
+    from ..scheduler.probe import parse_walltime
+    needed_s = time_s
+    if needed_s is None and envelope.time:
+        try:
+            needed_s = parse_walltime(str(envelope.time))
+        except ValueError:
+            raise SubmitError(
+                f"prep baked time={envelope.time!r}, which does not parse "
+                f"as a SLURM walltime.")
 
     cmd = ["sbatch", "-J", f"{jobset.name}_{name}"]
     # The side IS the GPU answer -- partitioned by the deck's own word in
@@ -846,12 +879,29 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     # probe learned a limit.  The Au-BDT-Au sweep is the worked example --
     # its cells were sized against a record whose gpu rows said
     # `max_cores: None`, and Sol has since measured 48.
-    placement = _place(base, gpu_side=gpu_side, needed_s=total_s,
+    placement = _place(base, gpu_side=gpu_side, needed_s=needed_s,
                        cores=(envelope.mpi_np or 0)
                              * max(envelope.cpus_per_task or 1, 1) or None,
                        mem_gb=envelope.mem,
                        gpus=_gres_count(envelope.gres or ""),
                        named=domain, label=name)
+    # THE WALL, in the order the answers rank (user dictation,
+    # 2026-08-24): what the user stated at launch (--time); else what
+    # prep baked; else THE FULL AMOUNT THE TARGET QUEUE ALLOWS -- its own
+    # ceiling, read off the placement.  NEVER a number this framework
+    # invents -- no estimation, no per-trial arithmetic, no defaults
+    # wearing a number's clothes.  Where the queue states no ceiling, no
+    # wall is sent and the scheduler's default stands.  What this
+    # replaces -- 15 invented minutes a trial, times slack, plus startup
+    # -- sent five 38-minute jobs to Sol (62039301-05) for a system
+    # nobody had sized.
+    if time_s is not None:
+        envelope = _dc_replace_time(envelope, _slurm_time(time_s))
+    elif not envelope.time and placement is not None:
+        from ..scheduler import domain_ceiling_s
+        _ceil = domain_ceiling_s(placement.domain)
+        if _ceil:
+            envelope = _dc_replace_time(envelope, _slurm_time(_ceil))
     # The same shape as a single job: the rendered .sbatch header carries
     # the SITE directives (partition/qos/account/mail -- runwrap's one
     # header emitter, so the group cannot drift from what every trial
@@ -1020,6 +1070,7 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                   dry_run: bool = False,
                   only: Optional[str] = None,
                   mem_gb: Optional[float] = None,
+                  time_s: Optional[int] = None,
                   ) -> List[JobResult]:
     """Launch a prepped ``jobset`` rooted at ``base_dir``.
 
@@ -1172,7 +1223,8 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
 
     if mode == "submit":
         return continued + _submit_slurm(jobset, base, domain=domain,
-                                         dry_run=dry_run, mem_gb=mem_gb)
+                                         dry_run=dry_run, mem_gb=mem_gb,
+                                         time_s=time_s)
     if mode == "direct":
         if domain:
             raise SubmitError(

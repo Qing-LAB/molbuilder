@@ -19,9 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.jobset.ask import (GROUP_SLACK, GROUP_STARTUP_S, Ask,
-                                   bench_bound, bench_total, confirm,
-                                   parse_duration, parse_memory, render)
+from molbuilder.jobset.ask import Ask, confirm, parse_duration, parse_memory
 from molbuilder.scheduler import Domain
 
 
@@ -61,64 +59,11 @@ def test_unanswered_is_None_and_never_zero():
     assert Ask(time_s=60)
 
 
-# --------------------------------------------------------------------- #
-#  the benchmark's arithmetic — stated as a total, derived per trial     #
-# --------------------------------------------------------------------- #
-
-def test_the_reported_case_reproduces_exactly():
-    """2 trials, a 15-minute bound: 38 minutes.  Pinned so the formula and
-    the number it produced stay tied together."""
-    assert bench_total(15 * 60, 2) == 38 * 60
-
-
-def test_a_total_becomes_a_per_trial_bound_that_fits_inside_it():
-    for text, n in (("4h", 36), ("15m", 2), ("90m", 6)):
-        total_s = parse_duration(text)
-        assert bench_total(bench_bound(total_s, n), n) <= total_s
-
-
-def test_a_bound_under_a_minute_measures_nothing_so_the_total_gives():
-    """Honouring a budget into uselessness is the worse answer — and § 2's
-    *timing out is a result* only holds if a trial had time to produce one."""
-    assert bench_bound(parse_duration("15m"), 36) >= 60
-
-
-def test_the_launcher_shares_this_formula():
-    """The CLI prints a total and the launcher computes one.  Two spellings of
-    one formula is how a displayed number comes to differ from the one that
-    reaches the scheduler."""
-    import inspect
-    from molbuilder.jobset import submit
-    src = inspect.getsource(submit._submit_side_group)
-    assert f"* {GROUP_SLACK}" in src and f"+ {GROUP_STARTUP_S}" in src
-
-
-# --------------------------------------------------------------------- #
-#  the one output                                                        #
-# --------------------------------------------------------------------- #
-
-def test_every_number_that_reaches_the_scheduler_is_shown():
-    out = render(Ask(time_s=2280, mem_gb=128))
-    assert "0h 38m" in out and "128 GB" in out
-
-
-def test_the_benchmark_shows_its_arithmetic_not_just_the_total():
-    """How 00:38:00 became a number nobody could question."""
-    out = render(Ask(time_s=None), n_trials=2, bound_s=15 * 60)
-    assert "2 trial(s), 15 min each" in out and "38 min total" in out
-
-
-def test_a_total_that_cannot_hold_the_trials_says_so_with_both_ways_out():
-    out = render(Ask(time_s=15 * 60), n_trials=36,
-                 bound_s=bench_bound(15 * 60, 36))
-    assert "do not fit" in out
-    assert "Fewer trials" in out and "more time" in out
-
-
-def test_the_queue_is_named_when_one_was_chosen():
-    class _P:
-        partition, qos = "htc", "public"
-    assert "htc / public" in render(Ask(time_s=60), placement=_P())
+# The benchmark-arithmetic and render() tests that lived here are DELETED
+# with the code they pinned (user dictation, 2026-08-24): time is never
+# derived -- the user states it, or the target queue's own ceiling stands.
+# The one output is now the launch door's plan (the exact sbatch command of
+# every job); its tests live with the launch tests.
 
 
 # --------------------------------------------------------------------- #
