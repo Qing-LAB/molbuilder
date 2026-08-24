@@ -1294,6 +1294,7 @@ function renderNext(task) {
                 + "      # one job per resource shelf; wait for the queue\n"
                 + "molbuilder jobset summarize bench " + name + _bundleArg()
                 + "   # writes bench-result.json + run-config.toml"));
+            block.appendChild(prepButton("bench", name));
         }
 
         block.appendChild(el("p", { class: "hint" },
@@ -1310,10 +1311,105 @@ function renderNext(task) {
             // (job-contracts.md 2.5b).
             "molbuilder jobset prep run " + name + from + _bundleArg() + _targetArg() + "\n"
             + "molbuilder jobset launch run " + name + _bundleArg()));
+        // `--from` is deliberately NOT offered by the button: which run you
+        // continue from is a scientific choice the CLI makes you say out
+        // loud (`project-layout.md` § 1.6), and a button would have to pick
+        // a default.  The command above still shows it when it applies.
+        if (!from) block.appendChild(prepButton("run", name));
         host.appendChild(block);
     });
 
     card.hidden = false;
+}
+
+/** A "Prep this here" button for one stage.
+ *
+ * **Prep, never launch** (user, 2026-08-24).  `prep` writes files into the
+ * calculation and can be run again; `launch` spends a queue slot and
+ * refuses batch submission by design.  The two differ in what they cost to
+ * get wrong, so only the cheap one gets a button.
+ *
+ * **Nothing is prepped unseen.**  The first click asks the server what it
+ * WOULD do -- which stage, which machine, what the description asks the
+ * scheduler for -- and shows it; the second click runs it.  The same rule
+ * the launch door keeps (`submission.md` S4), for the same reason.
+ */
+function prepButton(kind, stage) {
+    const wrap = el("div", { class: "ts-prep" });
+    const btn = el("button", { type: "button", class: "btn" },
+                   "Prep " + kind + " here");
+    const say = el("div", { class: "ts-prep-say" });
+    let planned = null;
+
+    btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+            if (!planned) {
+                const r = await _prepCall(kind, stage, true);
+                if (!r.ok) { say.textContent = r.error; say.setAttribute("data-state", "bad"); return; }
+                planned = r;
+                const bits = ["for " + r.machine];
+                const axes = Object.keys(r.bench_axes || {});
+                if (axes.length) bits.push("varying " + axes.join(", "));
+                const a = r.allocation || {};
+                bits.push(a.domain ? "queue " + a.domain : "NO QUEUE STATED");
+                bits.push(a.mem ? "memory " + a.mem
+                                : "NO MEMORY STATED \u2014 the scheduler's "
+                                  + "own default decides");
+                bits.push(a.time ? "time " + a.time : "no time stated");
+                say.textContent = bits.join(" \u00b7 ") + ".  Click again to write it.";
+                say.setAttribute("data-state", (a.mem && a.domain) ? "ok" : "warn");
+                btn.textContent = "Write it";
+                return;
+            }
+            say.textContent = "Preparing\u2026";
+            say.setAttribute("data-state", "ok");
+            const r = await _prepCall(kind, stage, false);
+            if (!r.ok) {
+                say.textContent = r.error;
+                say.setAttribute("data-state", "bad");
+                planned = null; btn.textContent = "Prep " + kind + " here";
+                return;
+            }
+            say.textContent = "Prepared for " + r.machine + " \u2014 "
+                + r.dirs.length + " director" + (r.dirs.length === 1 ? "y" : "ies")
+                + ": " + r.dirs.slice(0, 3).join(", ")
+                + (r.dirs.length > 3 ? ", \u2026" : "");
+            say.setAttribute("data-state", "ok");
+            planned = null; btn.textContent = "Prep " + kind + " here";
+            // The folder now holds decks and wrappers it did not before --
+            // the same announcement a restore makes, so every open view
+            // re-reads rather than showing the folder as it was.
+            const p = window.molbuilder && window.molbuilder.projects;
+            if (p && typeof p.publishFolderChanged === "function") {
+                p.publishFolderChanged(_dir);
+            }
+        } finally {
+            btn.disabled = false;
+        }
+    });
+    wrap.append(btn, say);
+    return wrap;
+}
+
+async function _prepCall(kind, stage, plan) {
+    const body = { dest: _dir, kind, stage, plan };
+    // The local machine has a NAME, not just a label: the server maps
+    // `(this machine)` to it, so sending the label is enough and the two
+    // surfaces keep one vocabulary.
+    if (_machine) body.target = _machine;
+    try {
+        const r = await fetch("/api/task-setup/prep", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        const j = await r.json();
+        return (j && typeof j.ok === "boolean")
+            ? j : { ok: false, error: "prep failed (" + r.status + ")" };
+    } catch (e) {
+        return { ok: false, error: String((e && e.message) || e) };
+    }
 }
 
 /* ---------- what has already run ---------- */

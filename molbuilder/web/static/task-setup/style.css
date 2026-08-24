@@ -624,3 +624,21 @@
    which it is, so the meaning survives a monochrome screen. */
 .ts-ask-note[data-state="bad"]   { color: var(--ts-refuse-fg); }
 .ts-ask-note[data-state="unset"] { font-style: italic; }
+
+/* ===================================================================== *
+ *  "Prep this here" -- the button and what it says  (user, 2026-08-24)  *
+ *                                                                       *
+ *  Prep writes files; launch spends a queue slot.  Only the first gets  *
+ *  a button, and it previews before it writes -- so the line under it   *
+ *  carries a verdict and needs three readings, never colour alone.      *
+ * ===================================================================== */
+.ts-prep {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-sm);
+    margin-top: var(--space-xs);
+}
+.ts-prep-say { color: var(--text-secondary); font-size: var(--text-sm); }
+.ts-prep-say[data-state="bad"]  { color: var(--ts-refuse-fg); }
+.ts-prep-say[data-state="warn"] { color: var(--warn-soft); }

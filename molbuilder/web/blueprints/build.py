@@ -1231,6 +1231,160 @@ def api_task_setup_handover():
     })
 
 
+@bp.route("/api/task-setup/prep", methods=["POST"])
+def api_task_setup_prep():
+    """Run `prep` for a stage -- the SAME function the terminal runs.
+
+    **Why a browser may trigger this at all**, when
+    `project-layout.md` § 2.2 says the deck cannot be finished in the
+    browser: that section's argument is about WHOSE FACTS the deck is
+    rendered from, not about which surface presses the button.  `prep`
+    needs four inputs; two are portable (the template, the description)
+    and two are the target machine's (`molbuilder.json`,
+    `bench-result.json`).  A named target's record supplies the machine
+    half -- that is what `environments/<name>.json` IS -- so prepping FOR
+    Sol FROM here is the case `preparing-for-another-machine.md` exists
+    for, and prepping for THIS machine is the ordinary one.
+
+    What this door does NOT do is submit.  `prep` writes files into the
+    calculation and can be run again; `launch` spends a queue slot and
+    refuses batch submission by design (one job per invocation, by hand).
+    That line is the user's (2026-08-24) and it is where it is because
+    the two verbs differ in what they cost to get wrong.
+
+    ``plan: true`` answers WITHOUT WRITING: which stage, which machine,
+    how many trials, where they would land.  Nothing is prepped unseen --
+    the same rule the launch door keeps (`submission.md` S4).
+    """
+    body = request.get_json(silent=True) or {}
+    dest_raw = body.get("dest")
+    kind = str(body.get("kind") or "").strip()
+    stage = (body.get("stage") or "").strip() or None
+    target = (body.get("target") or "").strip() or None
+    # NO `--from` HERE.  Continuing from a named attempt is `prep run
+    # --from <stage>/run-N`, which goes through `prepare_attempt` rather
+    # than `prep_calculation`, and WHICH run you continue from is a
+    # scientific choice the CLI makes you say out loud
+    # (`project-layout.md` § 1.6).  A button that offered it would have to
+    # pick a default, and there is no honest one.
+    plan_only = bool(body.get("plan"))
+
+    if kind not in ("run", "bench"):
+        return jsonify({"ok": False,
+                        "error": "kind must be 'run' or 'bench'"}), 400
+    if not dest_raw:
+        return jsonify({"ok": False,
+                        "error": "no calculation folder given"}), 400
+    try:
+        dest = _resolve_within_roots(dest_raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    if not dest.is_dir():
+        return jsonify({"ok": False,
+                        "error": f"not a directory: {dest_raw}"}), 400
+
+    from molbuilder.task import FILENAME as TASK_FILENAME
+    from molbuilder.task import read_task
+    desc = dest / TASK_FILENAME
+    if not desc.is_file():
+        return jsonify({"ok": False,
+                        "error": f"no {TASK_FILENAME} here -- save the "
+                                 f"description first"}), 400
+    try:
+        task = read_task(desc)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    # WHICH MACHINE, answered by the same rule the terminal refuses on, so
+    # the browser cannot offer a silent default the CLI would reject (C1).
+    from molbuilder.scheduler import choice_required, named_environments
+    from molbuilder.scheduler.record import LOCAL_TARGET
+    # The tab labels the local machine `(this machine)`, which is a label
+    # and not a name; `LOCAL_TARGET` is the name.  Translated here so the
+    # browser sends what it shows and the server speaks one vocabulary.
+    if target in ("(this machine)", LOCAL_TARGET):
+        target = LOCAL_TARGET
+    elif target is None and choice_required():
+        return jsonify({
+            "ok": False,
+            "error": ("several machines could be meant and none was "
+                      "named -- pick one above.  Known: "
+                      + ", ".join(sorted(named_environments()))
+                      + ", or this machine."),
+        }), 400
+    if (target is not None and target != LOCAL_TARGET
+            and target not in named_environments()):
+        return jsonify({"ok": False,
+                        "error": f"no machine record named {target!r}"}), 400
+
+    stages = [s.name for s in (task.stages or ())]
+    if stage is None:
+        return jsonify({"ok": False,
+                        "error": "name a stage: " + ", ".join(stages)}), 400
+    if stage not in stages:
+        return jsonify({"ok": False,
+                        "error": f"{stage!r} is not a stage of this "
+                                 f"calculation: " + ", ".join(stages)}), 400
+
+    # ---- the PLAN: what this would do, writing nothing ----------------- #
+    if plan_only:
+        alloc = task.allocation
+        return jsonify({
+            "ok": True, "plan": True, "kind": kind, "stage": stage,
+            "machine": "(this machine)" if target == LOCAL_TARGET
+                       else (target or "(this machine)"),
+            "bench_axes": {k: list(v) for k, v in (task.bench or {}).items()}
+                          if kind == "bench" else {},
+            # What the description asks the scheduler for -- shown because
+            # an unstated memory is the thing that killed five real jobs.
+            "allocation": {"domain": alloc.domain, "time": alloc.time,
+                           "mem": alloc.mem},
+            "writes_into": str(dest),
+        })
+
+    # ---- the real thing ------------------------------------------------ #
+    from molbuilder.jobset._cli import _bench_inputs
+    from molbuilder.jobset.prep import PrepError, prep_calculation
+    kwargs = {}
+    if kind == "bench":
+        if not (task.bench or {}):
+            return jsonify({
+                "ok": False,
+                "error": ("this description declares nothing to measure -- "
+                          "add a bench axis, or prep the run instead"),
+            }), 400
+        try:
+            sweep, pins, translation = _bench_inputs(dest)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        kwargs = {"sweep": sweep, "pins": pins, "translation": translation}
+
+    try:
+        dirs = prep_calculation(dest, stage, target=target, **kwargs)
+    except (PrepError, ValueError, KeyError) as exc:
+        # Refused, not repaired -- the reader's own words, as the CLI gives
+        # them.  A browser that "fixed" a refusal would be the second,
+        # drifting decider this design exists to avoid.
+        #
+        # `ValueError`/`KeyError` are 400 beside `PrepError` because the
+        # conditions that raise them are the USER'S to fix and say so
+        # plainly: a template naming an item the schema does not declare
+        # (a bundle written before a rename) came back as a 500 -- "server
+        # bug" -- over a message that already told the person exactly which
+        # item to correct.
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:                      # pragma: no cover
+        return jsonify({"ok": False,
+                        "error": f"{type(exc).__name__}: {exc}"}), 500
+
+    return jsonify({
+        "ok": True, "kind": kind, "stage": stage,
+        "machine": "(this machine)" if target == LOCAL_TARGET
+                   else (target or "(this machine)"),
+        "dirs": [str(pathlib.Path(d).relative_to(dest)) for d in dirs],
+    })
+
+
 @bp.route("/api/task-setup/save", methods=["POST"])
 def api_task_setup_save():
     """Write the description a person has been reading, and resolve a hand-over.

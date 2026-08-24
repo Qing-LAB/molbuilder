@@ -978,4 +978,15 @@ export function initList() {
   // picker dropdown, or any future programmatic navigator -- auto-
   // syncs the entry-marker + status line.
   _projectsApi.onChange(renderSidebar);
+
+  // AND WHEN THE FOLDER'S FILES CHANGE UNDERNEATH US.  A checkpoint
+  // restore rewrites what is in the directory while the SELECTION sits
+  // still, so `onChange` never fires and the list kept showing files the
+  // folder no longer had -- and hiding ones it now did (reported
+  // 2026-08-24, the same restore that stranded the Task-setup tab).
+  // `refresh()` re-lists through the handler this module registered, so
+  // there is no second re-paint path to keep in step.
+  if (typeof _projectsApi.onFolderChanged === "function") {
+    _projectsApi.onFolderChanged(() => { _projectsApi.refresh(); });
+  }
 }

@@ -863,13 +863,26 @@ class AmbiguousTarget(Exception):
 
     def __init__(self, choices):
         self.choices = sorted(choices)
-        listed = "\n".join(f"    --target {c}" for c in self.choices if c != "(this machine)")
+        listed = "\n".join(f"    --target {c}" for c in self.choices
+                           if c != "(this machine)")
+        listed += f"\n    --target {LOCAL_TARGET}   (this machine)"
         super().__init__(
             "several machines could be meant and none was named.  Say which "
             "this calculation is for:\n" + listed +
-            "\n    (omit --target only when this machine is the one)\n"
+            "\n    (there is no default; name one of the above)\n"
             "  A record is written by `molbuilder jobset probe --write "
             "--name NAME` on the machine it describes.")
+
+
+#: THE TYPEABLE NAME FOR THIS MACHINE (2026-08-24).  ``known_machines``
+#: displays ``(this machine)``, which is a label and not something a person
+#: can type at ``--target``; and with any named record on file, OMITTING
+#: ``--target`` raised `AmbiguousTarget` -- whose own message said *"omit
+#: --target only when this machine is the one"*.  So the instruction the
+#: refusal gave was the action that produced it, and preparing for the box
+#: you are sitting at became impossible the moment you saved one cluster
+#: record.  C1 protects against SILENCE; naming this machine is not silence.
+LOCAL_TARGET = "this"
 
 
 def machine_for(bundle_dir=None, *, target: Optional[str] = None,
@@ -925,6 +938,19 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     # a typo silent: `--target nope` on an already-prepped folder prepped
     # happily against whatever was snapshotted, which is precisely the mistake
     # this flag exists to catch.
+    if target == LOCAL_TARGET:
+        # EXPLICIT "the box I am on".  Goes down the same door the R9
+        # re-check uses, so there is one reader for "what does this
+        # machine know", and C1 below is skipped because the question it
+        # guards -- which machine is meant -- has just been answered.
+        env = read_environment(machine_scope_path())
+        if env is not None or not probe:
+            return env
+        try:
+            return resolve_environment()
+        except Exception:          # pragma: no cover - probing is optional
+            return None
+
     _named = named_environments()
     if target is not None and target not in _named:
         raise UnknownTarget(target, _named)
@@ -985,6 +1011,7 @@ __all__ = [
     "detect_scheduler", "detect_topology", "detect_site",
     "resolve_environment",
     "machine_scope_path", "environments_dir", "named_environments",
+    "LOCAL_TARGET",
     "record_scopes",
     "topology_field_types",
     "read_environment", "write_environment", "machine_for", "UnknownTarget",

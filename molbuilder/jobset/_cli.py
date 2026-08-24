@@ -2568,6 +2568,17 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     # capability and the cluster's, and `prep --target NAME` says which.
     if name:
         from ..scheduler import environments_dir
+        from ..scheduler.record import LOCAL_TARGET
+        if name == LOCAL_TARGET:
+            # RESERVED: `--target this` means the box you are on, so a
+            # record by that name would make the flag ambiguous -- and it
+            # is the one name whose meaning nothing can override.
+            raise click.ClickException(
+                f"{LOCAL_TARGET!r} is reserved: `--target {LOCAL_TARGET}` "
+                f"already means this machine, so a record called that "
+                f"could never be prepped for.  Give it the machine's own "
+                f"name (`--name sol`); this machine's own record needs no "
+                f"--name at all.")
         target = Path(out) if out else environments_dir()
     else:
         target = Path(out) if out else machine_scope_path().parent
