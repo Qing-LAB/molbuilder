@@ -71,6 +71,50 @@ def candidates(routing, *, prefer_gpu: bool) -> List:
     return cpu_only or list(routing)
 
 
+
+def _excess(row, request: Request) -> tuple:
+    """How much bigger than the ask this queue's ceilings are.  Lower is
+    tighter, and a tighter fit is the *cheaper* queue to get.
+
+    **"The cheapest ceiling that fits" was never implemented on any axis but
+    time.**  The menu is ordered by walltime alone, and `place` took the first
+    row that admitted — so a 38-minute job needing 128 GB could land on a
+    partition built for 2 TB work, wait behind it, and pay a scheduling
+    penalty for memory nobody chose (`submission.md` § 3).
+
+    The key is ``(unknown_ceilings, sum_of_ratios)``:
+
+      * a dimension is compared only when **both** the ask states it and the
+        row declares it — R3 again, an unstated ceiling is not a tight one;
+      * rows whose ceilings we can actually measure sort **before** rows we
+        would be guessing about.  A queue whose fit is known is a better
+        choice than one that merely has not said no, and saying so in the sort
+        key is what stops an unmeasured row winning by silence.
+
+    It orders; it never admits.  A row that does not fit was already refused
+    by :func:`admits` before this is consulted.
+    """
+    from .admit import domain_ceiling_s
+    unknown = 0
+    total = 0.0
+    pairs = (
+        (request.walltime_s, domain_ceiling_s(row)),
+        (request.ranks, row.max_cores),
+        (request.mem_gb, row.max_mem_gb),
+    )
+    for ask, ceiling in pairs:
+        try:
+            ask_f = float(ask) if ask else 0.0
+            ceil_f = float(ceiling) if ceiling else 0.0
+        except (TypeError, ValueError):
+            ask_f = ceil_f = 0.0
+        if ask_f > 0 and ceil_f > 0:
+            total += ceil_f / ask_f
+        elif ceil_f <= 0:
+            unknown += 1
+    return (unknown, total)
+
+
 def place(routing, request: Request, *, prefer_gpu: bool,
           named: Optional[str] = None) -> Optional[Placement]:
     """Walk § 5's graph.  ``None`` means *this machine has no menu* — nothing
@@ -104,11 +148,24 @@ def place(routing, request: Request, *, prefer_gpu: bool,
             gpu_side=prefer_gpu)
 
     reasons: List[str] = []
+    fits = []
     for d in pool:
         why = admits(d, request)
         if not why:
-            return _bind(d, prefer_gpu)     # cheapest ceiling that fits
-        reasons.extend(why)
+            fits.append(d)
+        else:
+            reasons.extend(why)
+    if fits:
+        # THE CHEAPEST CEILING THAT FITS -- across every dimension the request
+        # states, not merely the shortest wall.  This took the FIRST admitting
+        # row until 2026-08-23, and the menu is ordered by walltime, so the
+        # choice was "the shortest queue that says yes" rather than "the queue
+        # this job actually needs".
+        #
+        # `min` is stable, so among equally tight rows the menu's own order
+        # still decides -- the recommendation R7 speaks of survives as the
+        # tie-break rather than being overruled.
+        return _bind(min(fits, key=lambda d: _excess(d, request)), prefer_gpu)
     raise Unplaceable(reasons, gpu_side=prefer_gpu)
 
 

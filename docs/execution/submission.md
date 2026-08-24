@@ -108,14 +108,28 @@ cost. Nothing is lost that was not already unknown.
 | **memory** | ⚠ **silently the cluster's default.** 64 cores × 2 GB/core = 128 G, chosen by nobody | **derived** from cores × measured memory-per-core, or **declared**; shown either way |
 | **benchmark walltime** | **bounded** — correct, but the bound is an unshown default | bounded, and the bound is **chosen** |
 | **production walltime** | ⚠ measured cost × **an assumed 200 cycles** × 1.5 | derived from the deck's **own declared** step budget; if it must still assume, **announce it** (S1) |
-| **queue** | ⚠ first that fits, ordered by **walltime only** | ordered by what is cheap to get; a fall-through to a scarce queue is **named**, not silent |
+| **queue** | ~~first that fits, ordered by walltime only~~ **done 2026-08-23** — the cheapest ceiling that FITS, across every axis the request states | a fall-through to a scarce queue is still to be **named**, not silent |
 
-> **How memory chose the queue, which is the case that motivated § 3.** A
-> 128 G ask — nobody's decision — did not fit `htc`, so placement fell through
-> to `highmem`, the partition meant for jobs needing up to 2 TB. A 38-minute
-> job now waits behind real 2 TB work. **And high memory delays scheduling
-> even at equal core count**, so the un-chosen number is paid for three times:
-> the scarce queue, the queue wait, and the priority.
+> **⚠ The memory-chose-the-queue story is WITHDRAWN, and how it fell apart is
+> worth more than the story was.** It read: a 128 G ask nobody made did not
+> fit `htc`, so placement fell through to `highmem`. Three separate checks
+> falsified it:
+>
+> 1. the memory ceiling was **never populated** by any probe, so memory could
+>    not have been compared at all — an unstated limit never bars (R3);
+> 2. `htc` on Sol holds ~251 GB a node, so 128 G fits it comfortably;
+> 3. mutating placement back to the old first-that-fits rule **still** chose
+>    `htc` for that request — so the ordering did not send it to `highmem`
+>    either.
+>
+> **Why the observed job went to `highmem` is unknown**, and the remaining
+> candidates all name it explicitly: a partition in the config's directives,
+> an explicit `--domain`, or the record's own contents.
+>
+> The two facts that motivate this document survive without it: **a 128 G ask
+> that nobody decided** is still a number with no provenance, and **high
+> memory delays scheduling even at equal core count**, so asking for memory
+> you did not choose is paid for whether or not it also moved the queue.
 
 ---
 
@@ -278,8 +292,12 @@ partition, and they are visible **while it is still free to change**.
    refused, not applied.
 4. **The benchmark bound becomes a choice** — quick-look vs full — with the
    `debug` fit check.
-5. **Queue order accounts for what is cheap to get**, and a fall-through to a
-   scarce queue is named.
+5. ~~**Queue order accounts for what is cheap to get**~~ **done** — placement
+   takes the cheapest ceiling that fits across walltime, cores *and* memory,
+   where it had implemented only walltime. A row whose ceilings are unmeasured
+   sorts after rows whose fit is known, so an unmeasured queue cannot win by
+   silence. *(Naming a scarce-queue fall-through belongs to the display, step
+   7.)*
 6. **The three-statement comparison** joins the after-generation check.
 7. **The gate** — shown, then `--yes` or per-job.
 
