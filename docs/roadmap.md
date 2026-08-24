@@ -1561,14 +1561,21 @@ fields from that queue's own probed ceilings.
 | `task.json`'s row in the persisted-artifact registry (`job-contracts.md` § 6.1) did not list the new key | added |
 | `web/task-setup.md` said *"ranks, threads and memory can only ever be points to try here"* — still true of CATALOGUE items, but the tab now also holds `allocation.mem`, which is not one | the distinction written down, pointing at § 6.8a |
 
-**Open, recorded rather than fixed — one naming split.** A machine coordinate
-has two spellings in names a person reads side by side in one listing: a
-trial directory is `bench-G2K24C1…` (`K` = ranks **per GPU**) while its
-group's job is `bench-group-gpu-g2n48c1` (`n` = **total** ranks). Same three
-facts, different letters and different case; they coincide only at `G1`.
-Not a defect — nothing misreads it — but it is two vocabularies for one
-thing, which `job-contracts.md` § 6.3 exists to prevent. Worth one rename
-when that area is next open.
+**The naming split — FIXED 2026-08-24.** A machine coordinate had two
+spellings in names read side by side: a trial directory was
+`bench-G2K24C1…` (`K` = ranks **per GPU**) while its own group's job was
+`bench-group-gpu-g2n48c1` (`n` = **total** ranks). They coincide only at
+`G1`, which is why nothing had misread them.
+
+`_shelf_token` now reads the coordinate **off a trial on that shelf** rather
+than deriving it a second way — every trial there shares one resource ask by
+construction, so any member answers, and the value axes that differ between
+them are dropped because a shelf is the machine cell, not the point. A
+hand-built set with no points falls back to deriving it *in the same
+spelling*. So `bench-group-gpu-g3n48c1` is now `bench-group-gpu-G3K16C1`,
+matching the `bench-G3K16C1…` directories it launches. Contracts updated in
+`job-contracts.md` § 6.1, `generator.md` § 4.3a and `submission.md`;
+mutation-tested by restoring the old spelling and watching two tests fail.
 
 ---
 

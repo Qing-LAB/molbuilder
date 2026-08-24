@@ -784,8 +784,12 @@ def test_cli_submit_of_a_whole_sweep_groups_it_by_shelf(tmp_path):
     assert r.exit_code == 0, r.output
     plans = [l for l in r.output.splitlines() if "WOULD run" in l]
     assert len(plans) == 2
-    assert "bench-group-g1n2c4" in plans[0], "widest shelf first"
-    assert "bench-group-g1n1c4" in plans[1]
+    # The shelf token is the SAME spelling its trials carry
+    # (`G<gpus>K<ranks-per-gpu>C<cores>`, 2026-08-24) -- it was
+    # `g<gpus>n<TOTAL-ranks>c<cores>` while the directories that
+    # same job launches were named the other way.
+    assert "bench-group-G1K2C4" in plans[0], "widest shelf first"
+    assert "bench-group-G1K1C4" in plans[1]
     assert r.output.count("rides the group") == 2
 
 

@@ -426,7 +426,8 @@ framework rule, not a script patch)*:
   waits at #shelves instead of #trials — the point of the 2026-08-20
   grouping, kept.  Naming: qualifiers appear only when needed —
   `bench-group`, then `-cpu`/`-gpu` when the sweep spans both sides,
-  then a shelf token (`-g2n32c1`) when a side spans several shelves.
+  then a shelf token (`-G2K16C1`, the same `G`/`K`/`C` spelling its
+  trials carry) when a side spans several shelves.
   The CPU side's groups ask **no `gres`**, so devices are never held
   while CPU trials run — the waste the split exists to stop.  **Routing** *(user, 2026-08-21)*:
   a CPU group MAY run on a gpu-capable cluster, but when the menu holds a

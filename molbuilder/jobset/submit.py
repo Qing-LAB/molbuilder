@@ -583,7 +583,8 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
                 continue            # this shelf already rode a group
             name = ("bench-group"
                     + (f"-{side}" if mixed else "")
-                    + (f"-{_shelf_token(key)}" if multi else ""))
+                    + (f"-{_shelf_token(key, shelves[key])}"
+                       if multi else ""))
             # ONE QUEUE PER SIDE.  A split sweep sends its CPU family and
             # its GPU family to different queues -- a cpu-only partition
             # cannot take the GPU side -- so one `--domain` cannot answer for
@@ -723,13 +724,46 @@ def _shelf_width(key) -> tuple:
     return (n * max(c, 1), _gres_count(gres))
 
 
-def _shelf_token(key) -> str:
-    """A shelf's name qualifier -- ``g2n32c1`` / ``n128c1`` -- appended
-    when a side spans more than one shelf (`job-contracts.md` § 6.3: the
-    ``-`` announces a qualifier; the token stays in [A-Za-z0-9_])."""
+#: The machine axes of a sweep coordinate, in the order they are spelled.
+_MACHINE_AXES = ("G", "K", "C")
+
+
+def _shelf_token(key, jobs=()) -> str:
+    """A shelf's name qualifier -- ``G2K24C1`` -- appended when a side spans
+    more than one shelf (`job-contracts.md` § 6.3: the ``-`` announces a
+    qualifier; the token stays in [A-Za-z0-9_]).
+
+    **THE SAME SPELLING ITS TRIALS CARRY, read off a trial** rather than
+    derived a second way.  This produced ``g2n48c1`` until 2026-08-24 --
+    lowercase, and ``n`` for the TOTAL rank count -- while the very
+    directories that shelf's job launches were named ``bench-G2K24C1…``,
+    where ``K`` is ranks PER GPU.  Same three facts, different letters,
+    different case, sitting side by side in one listing; they coincide only
+    at ``G1``, which is why nothing had misread them yet.  Two vocabularies
+    for one thing is what § 6.3 exists to prevent.
+
+    Every trial on a shelf shares one resource ask by construction, so any
+    member answers -- and the value axes that DO differ between them are
+    dropped, because the shelf is the machine cell, not the point.
+
+    ``jobs`` empty (a hand-built set with no points) falls back to deriving
+    the coordinate from the key, in the same spelling: ranks split evenly
+    over the devices by ELPA's equal-share rule (`tuning.md` § 2.12), which
+    the grid enforces, so ``K = n / g`` is exact where it applies.
+    """
+    from ..resolve import point_token
+    for j in jobs or ():
+        pt = getattr(j, "point", None) or {}
+        if all(a in pt for a in _MACHINE_AXES):
+            return point_token({a: pt[a] for a in _MACHINE_AXES})
     n, c, gres = key
-    g = f"g{_gres_count(gres)}" if gres else ""
-    return f"{g}n{n}c{c}"
+    g = _gres_count(gres)
+    if g and n % g:
+        # An uneven split is a bug upstream (the grid drops those cells),
+        # and `n // g` would name a rank count no trial has.  Say the
+        # total instead of quietly rounding it.
+        return point_token({"G": g, "K": 0, "C": c}).replace("K0", f"N{n}")
+    return point_token({"G": g, "K": (n // g) if g else n, "C": c})
 
 
 def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,

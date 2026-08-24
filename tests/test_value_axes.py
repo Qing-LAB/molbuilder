@@ -285,12 +285,18 @@ def test_split_submission_one_group_per_side_and_shelf(sol_calc):
     assert len(plans) == 4
     cpu = next(l for l in plans if "bench-group-cpu " in l)
     assert "-p htc" in cpu and "--gres" not in cpu
+    # The shelf token is the SAME spelling its trials carry (2026-08-24):
+    # `G<gpus>K<ranks-per-gpu>C<cores>`, where 4 ranks over g devices is
+    # K = 4/g.  It was `g<gpus>n<TOTAL-ranks>c<cores>` -- the same three
+    # facts in a second vocabulary, beside directories using the first.
     for g in (1, 2, 4):
-        line = next(l for l in plans if f"bench-group-gpu-g{g}n4c1" in l)
+        tok = f"G{g}K{4 // g}C1"
+        line = next(l for l in plans if f"bench-group-gpu-{tok}" in l)
         assert "-p general" in line and f"--gres=gpu:a100:{g}" in line
-    # widest first ACROSS shelves: the g4 group precedes g2 precedes g1
+    # widest first ACROSS shelves: the G4 group precedes G2 precedes G1
     order = [l for l in plans if "bench-group-gpu-" in l]
-    assert ["g4" in order[0], "g2" in order[1], "g1" in order[2]] ==         [True, True, True]
+    assert ["G4" in order[0], "G2" in order[1], "G1" in order[2]] == \
+        [True, True, True]
     assert out.count("rides the group") == 8
 
 
@@ -327,8 +333,12 @@ def test_the_shelves_submit_widest_first(sol_calc):
     out = _submit_dry(sol_calc)
     plans = [l for l in out.splitlines() if "WOULD run" in l]
     assert len(plans) == 2
-    assert "bench-group-n4c1" in plans[0] and " -n 4 " in plans[0]
-    assert "bench-group-n2c1" in plans[1] and " -n 2 " in plans[1]
+    # The shelf token is the SAME spelling its trials carry
+    # (`G<gpus>K<ranks-per-gpu>C<cores>`, 2026-08-24) -- it was
+    # `g<gpus>n<TOTAL-ranks>c<cores>` while the directories that
+    # same job launches were named the other way.
+    assert "bench-group-G0K4C1" in plans[0] and " -n 4 " in plans[0]
+    assert "bench-group-G0K2C1" in plans[1] and " -n 2 " in plans[1]
     riders = [l.split()[1] for l in out.splitlines() if "rides the group" in l]
     assert riders == ["K4C1", "K2C1"], riders
 

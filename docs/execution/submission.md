@@ -127,8 +127,8 @@ $ molbuilder jobset launch bench --mem 128G --domain htc
 about to submit:
   bench-group-cpu
     sbatch -J AuBDTAu_bench-group-cpu -p htc -q public -n 48 -c 1 -t 0-04:00:00 --mem=128G ... launch/bench-group-cpu.sbatch
-  bench-group-gpu-g1n48c1
-    sbatch -J AuBDTAu_bench-group-gpu-g1n48c1 -p htc -q public -n 48 -c 1 --gres=gpu:a100:1 -t 0-04:00:00 --mem=128G ... launch/bench-group-gpu-g1n48c1.sbatch
+  bench-group-gpu-G1K48C1
+    sbatch -J AuBDTAu_bench-group-gpu-G1K48C1 -p htc -q public -n 48 -c 1 --gres=gpu:a100:1 -t 0-04:00:00 --mem=128G ... launch/bench-group-gpu-G1K48C1.sbatch
   gpu share  48 rank(s) / 1 GPU(s) = 48 rank(s)/GPU
   NOTE 48 ranks/GPU; this stack's tuned point (no NCCL) is ~4 (engines/tuning.md § 2.12).
   per-trial bound: none -- each trial runs until the wall
