@@ -300,7 +300,7 @@ def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
                 # log DOES carry a time of day (parse.md § 2a).
                 # ``elapsed_s`` is left unset: deriving it from the
                 # epoch series has exactly one home, and it is not
-                # here (P-T3 -- to_legacy_payload does it).
+                # here (P-T3 -- trajectory_result_to_legacy_dict does).
                 wall_clock_s = block_wall_clock_s,
             ))
         _reset_block()

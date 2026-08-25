@@ -10,7 +10,7 @@ from molbuilder.bench.result import (
     BenchPoint, BenchResult, build_bench_result, choose_winner,
     compare_asked_to_ran, parse_effective_run, parse_mpi_ranks,
     parse_sacct_mem, parse_scf_timing, parse_util_bound,
-    parse_util_csv, recommend_resources,
+    parse_util_csv,
 )
 
 
@@ -136,21 +136,44 @@ def test_choose_winner_ignores_non_completed_and_timeless():
     assert choose_winner(pts) == {}
 
 
-def test_recommend_from_winner_peak_rss():
-    pts = _pts()
-    rec = recommend_resources(pts, choose_winner(pts))
-    assert rec["mem_gb"] == 29          # ceil(25.2 * 1.15) = ceil(28.98)
-    assert "time" in rec and rec["time"].count(":") == 2
+def test_a_sweep_proposes_no_wall_and_no_memory():
+    """Replaces `test_recommend_from_winner_peak_rss` and
+    `test_recommend_mem_uses_true_ceil` (deleted 2026-08-24, user).
+
+    Those pinned `recommend_resources`, which derived
+    ``mem_gb = peak RSS x 1.15`` and
+    ``time = s/iter x prod_iters(200) x 1.5``.  The safety factors and the
+    production iteration count were chosen by nobody -- the last of them a
+    default in the function's own signature -- and `summarize` wrote both
+    into `run-config.toml`, from which `prep` folded them into an allocation
+    and `sbatch` received them.  That is the mechanism the estimation purge
+    was ordered to end; it survived in the one path the purge missed.
+
+    What a sweep proposes now is what it MEASURED.  The wall and the memory
+    are the person's to state (`execution/submission.md` S1, S2).
+    """
+    import molbuilder.bench.result as _r
+    assert not hasattr(_r, "recommend_resources"), (
+        "the benchmark must not size a wall or a memory")
+
+    res = build_bench_result(
+        _pts(), environment={"schema": "molbuilder/environment@1",
+                             "scheduler": "slurm"}, system={})
+    assert not hasattr(res, "recommend")
+    assert "recommend" not in res.to_dict()
 
 
-def test_recommend_mem_uses_true_ceil():
-    # rss*safety just above an integer must round UP (the old +0.999 trick
-    # floored values within 0.001 of an int).
-    pts = [BenchPoint("g", "gpu", {"gpus": 1, "ranks_per_gpu": 8},
-                      {"s_per_iter": 100.0, "peak_rss_gb": 25.218},
-                      bound="gpu", state="completed")]
-    rec = recommend_resources(pts, choose_winner(pts))
-    assert rec["mem_gb"] == 30           # ceil(29.0007), not 29
+def test_run_config_proposes_no_wall_and_no_memory():
+    """The other end of the same path: whatever the sweep measured, the
+    toml it proposes must carry no `time` and no `mem` -- those are the two
+    fields `prep` folds into an allocation."""
+    from molbuilder.jobset.summarize import run_config_text
+    res = build_bench_result(
+        _pts(), environment={"schema": "molbuilder/environment@1",
+                             "scheduler": "slurm"}, system={})
+    text = run_config_text(res, stage="tight") or ""
+    assert "time =" not in text, text
+    assert "mem =" not in text, text
 
 
 def test_build_and_round_trip():

@@ -59,6 +59,12 @@ from typing import Any, Dict, Mapping, NoReturn, Optional, Tuple
 
 from .identity import normalise_id, run_id
 from .persist import check_schema, read_json, write_json
+# The record's spelling for the two asks.  A TOP-LEVEL import because it is
+# now legal to have one: `scheduler.quantities` is a stdlib-only codec at
+# the same layer.  It was deferred into the function body while these lived
+# in `jobset/` -- a workaround for a placement that should not have been,
+# and the workaround is what hid the cycle from everything but the test.
+from .scheduler.quantities import canonical_mem, canonical_time
 
 
 SCHEMA = "molbuilder/task@1"
@@ -576,12 +582,24 @@ def _bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
 def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
     """``allocation`` -> :class:`Allocation`; absent is an empty one.
 
-    Shape only, like every other reader here: whether ``"4h"`` parses as a
-    duration and whether ``htc`` is a queue THIS machine offers are
-    questions for the surfaces that hold those answers (`ask.parse_*`, the
-    machine record).  A description written for one cluster is opened on
-    another, and refusing it here for naming a queue this box never heard
-    of would refuse a file that is perfectly correct where it is going.
+    **The two asks are read and normalised here; the queue name is not
+    judged here.**  Those are different questions and they get different
+    answers:
+
+    * ``time`` and ``mem`` have a spelling this record defines (SLURM's,
+      see :class:`Allocation`), so a value that cannot be read AT ALL is
+      refused now, by name, while it is still cheap to fix -- and one that
+      can is stored in the record's spelling, so nothing downstream ever
+      meets two.  *This paragraph said "shape only -- whether "4h" parses
+      is a question for the surfaces that hold those answers" until
+      2026-08-24.  It was true then, and it is exactly how the browser's
+      "4h" travelled unread as far as ``sbatch``.*
+
+    * ``domain`` is NOT checked against this machine's queues.  A
+      description written for one cluster is opened on another, and
+      refusing it here for naming a queue this box never heard of would
+      refuse a file that is perfectly correct where it is going.  The
+      machine record answers that, at launch, where the machine is known.
     """
     raw = obj.get("allocation")
     if raw is None:
@@ -594,14 +612,13 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
     for k in _ALLOCATION_KEYS:
         v = raw.get(k)
         if v is not None and not isinstance(v, str):
-            _refuse(f"allocation.{k} must be a string as a person types it "
-                    f"(\"4h\", \"128G\", \"7-00:00:00\"); got "
-                    f"{type(v).__name__}")
+            _refuse(f"allocation.{k} must be a string -- write it the way "
+                    f"you would type it (\"4h\", \"128G\", "
+                    f"\"7-00:00:00\"); got {type(v).__name__}")
     # Normalised on the way in, so nothing downstream meets two spellings
     # (the class docstring says why).  A refusal here names the field and
     # the forms it takes, because "invalid allocation" tells a person
     # nothing about which of three values to go and look at.
-    from .jobset.ask import canonical_mem, canonical_time
     def _canon(fn, key):
         v = raw.get(key)
         if not v:

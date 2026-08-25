@@ -144,13 +144,26 @@ home:
 
 | derivation | the one place it happens |
 |---|---|
-| `elapsed_s` from a frame's epoch series | `parse/engines/_helpers.py::to_legacy_payload` |
-| `elapsed_s` across chained stages | `web/blueprints/watch.py::_merge_stage_payloads` |
+| `elapsed_s` from a frame's epoch series | `parse/engines/_helpers.py::trajectory_result_to_legacy_dict` |
+| `elapsed_s` across chained stages | `web/blueprints/watch.py::_merge_molwatch_trajectories` |
 
 No other layer computes either field.
 
-**P-T4 — epoch is formatted as a date, elapsed as a duration, and neither as the
-other.** This property is the whole reason for the rule.
+**P-T4 — a consumer asks for the quantity it means, and takes `None` for an
+answer.** Epoch is formatted as a date, elapsed as a duration, and neither as
+the other — but formatting is only the most visible half. *Arithmetic counts
+too*: the browser's per-iteration figure divides a cumulative time by
+`cumulative_calls`, which is meaningful for a duration and is nonsense for a
+date. So it reads `elapsed_s` alone and treats an epoch as absent.
+
+> An accessor that returned *"whichever clock this cycle carries"* was written
+> during the first pass at this rule and looked reasonable — a DIFFERENCE
+> between two cycles really is the same either way, because the origin cancels.
+> But its one caller was dividing, not subtracting, and the helper had just made
+> molwatch cycles match a ladder that had always been SIESTA-only: a PySCF run
+> read **"~489276.7h/iter (from SIESTA iter-1 timer)"**. A convenience that
+> spans both clocks is a place for exactly this to happen; name the quantity
+> instead.
 
 > **Why this exists.** `Frame.wall_time` was one bare float that molwatch filled
 > with an epoch and SIESTA filled with elapsed seconds. The field's docstring

@@ -105,6 +105,19 @@ class Frame:
                       Consumers must not assume a fixed key set.
                       None when the parser couldn't find SCF data
                       (e.g. PySCF .log absent).
+                      A cycle may also carry a TIME, and it obeys the
+                      same two-clock rule as the frame's own (§ 2a of
+                      parse.md): `wall_clock_s` from molwatch (the
+                      emitter's epoch), `elapsed_s` from SIESTA (its
+                      IterSCF timer, cumulative from the run's start),
+                      never both and never interchangeable.  A
+                      consumer must still ask for the one it means:
+                      the browser's per-iteration figure divides by
+                      `cumulative_calls`, which is arithmetic on a
+                      DURATION, so it reads `elapsed_s` alone and
+                      treats an epoch as absent.  The residual keys
+                      stay engine-specific by design; time is not
+                      engine-specific physics.
       wall_clock_s -- Absolute Unix epoch seconds when the engine
                       wrote this step.  Answers "at what time?", and
                       is the ONLY field a consumer may render as a
@@ -124,7 +137,7 @@ class Frame:
                       render as a duration.  SIESTA fills it from its
                       ``timer: ... IterSCF`` lines.  Parsers whose
                       engine reports epochs leave it None and let
-                      ``to_legacy_payload`` derive it from the epoch
+                      ``trajectory_result_to_legacy_dict`` derive it from the epoch
                       series -- one derivation, one home (P-T3).
                       Both stay None for formats that surface no time
                       at all (geomeTRIC's _geom_optim.xyz).  Together

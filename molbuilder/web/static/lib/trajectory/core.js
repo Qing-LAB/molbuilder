@@ -1930,7 +1930,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             const findLatestCycleWithWalltime = (step) => {
                 if (!Array.isArray(step)) return null;
                 for (let j = step.length - 1; j >= 0; j--) {
-                    if (cycleClock(step[j]) != null) return step[j];
+                    if (cumulativeElapsed(step[j]) != null) return step[j];
                 }
                 return null;
             };
@@ -1980,7 +1980,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                     if (!Array.isArray(step)) continue;
                     for (let j = 0; j < step.length; j++) {
                         const c = step[j];
-                        if (cycleClock(c) != null) {
+                        if (cumulativeElapsed(c) != null) {
                             baselineCycle = c;
                             provenance = stopped
                                 ? "from SIESTA iter-1 timer; the only "
@@ -1996,7 +1996,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
 
             // (4) Nothing -- leave statusText untouched.
             if (baselineCycle !== null) {
-                const cumT = cycleClock(baselineCycle);
+                const cumT = cumulativeElapsed(baselineCycle);
                 const cumN = baselineCycle.cumulative_calls;
                 // Prefer per-iter (cumulative/calls).  Fall back to
                 // raw cumulative when calls is missing (rare: Fortran
@@ -2177,26 +2177,27 @@ import { molviewFiles } from "../projects/molview-doors.js";
         }
     }
 
-    /* Whichever clock an SCF-cycle dict carries, for DELTAS ONLY.
+    /* An SCF cycle's CUMULATIVE ELAPSED seconds, or null.
      *
-     * Per docs/model/parse.md § 2a a cycle carries `elapsed_s` (SIESTA
-     * -- its timer counts from the start of the run) or `wall_clock_s`
-     * (the molwatch emitter -- it stamps its own time.time()), never
-     * both, and the two are not interchangeable.  A DIFFERENCE between
-     * two cycles of the same run is the one quantity that is identical
-     * either way, because the origin cancels -- so per-iteration timing
-     * may read whichever is present.
+     * This is SIESTA's `timer: ... IterSCF N <cum_s>` reading: total
+     * seconds spent in IterSCF across `cumulative_calls` calls, counting
+     * from the start of the run.  Its one consumer divides it BY that
+     * call count to get a per-iteration time, and that division is only
+     * meaningful for a cumulative duration.
      *
-     * The return value is therefore safe to subtract and NOT safe to
-     * format: never hand it to fmtTimestamp.  For an absolute time,
-     * read `wall_clock_s` directly and accept null as the answer.
+     * So it deliberately does NOT fall back to `wall_clock_s`.  An
+     * absolute epoch is not a duration: dividing 1761396030 by a call
+     * count is arithmetic on a date.  A first version of this helper
+     * took "whichever clock the cycle carries", which made the ladder
+     * below fire on molwatch cycles for the first time -- they have no
+     * `cumulative_calls`, so the raw epoch fell straight through to the
+     * display and a PySCF run read "~489276.7h/iter (from SIESTA iter-1
+     * timer)".  Returning null for those is what keeps this ladder what
+     * it says it is (docs/model/parse.md § 2a).
      */
-    function cycleClock(c) {
+    function cumulativeElapsed(c) {
         if (!c) return null;
-        const v = Number.isFinite(c.elapsed_s) ? c.elapsed_s
-                : Number.isFinite(c.wall_clock_s) ? c.wall_clock_s
-                : null;
-        return v;
+        return Number.isFinite(c.elapsed_s) ? c.elapsed_s : null;
     }
 
     // Compact "1h 23m" / "12m 5s" / "45s" formatter for elapsed seconds.
@@ -2217,7 +2218,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * difference between a 12 h-old "Ongoing" (probably stalled) and
      * one from 5 min ago.  Input is a Unix-epoch SECONDS timestamp
      * (matches the wire format of mtime / wall_clock_s).  Never
-     * pass an elapsed-seconds value here -- see cycleClock. */
+     * pass an elapsed-seconds value here -- see cumulativeElapsed. */
     function fmtTimestamp(epochSecs) {
         if (!Number.isFinite(epochSecs)) return "";
         const d   = new Date(epochSecs * 1000);

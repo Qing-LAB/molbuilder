@@ -97,12 +97,37 @@ flowchart TB
     EXE["jobset/ · bench/ · runwrap · runtime_config · envs/"]
     RW["parse/ · sidecars/ · script_emit · bundle_writer · validation/"]
   end
-  subgraph L1["L1 · core types (the lingua franca)"]
-    T["structure · frame · selection · config/ · issues · persist · chemistry · pseudos · checkpoint"]
+  subgraph L1["L1 · things, and how each is written"]
+    GEO["geometry — structure · cell · selection · periodicity_gate<br/>chemistry · residues · engine_atom_index"]
+    RES["results — frame · trajectory_log · runtime_info · issues"]
+    JOB["the job as described — task · config · identity<br/>warmfiles · annotations_fdf"]
+    MACH["the machine — scheduler (records · queues · admission<br/>· the quantities a job asks for)"]
+    INF["infrastructure — persist · config_dir · pipeline_log<br/>references · reload_protocol"]
   end
   L3 -->|calls the same verbs| L2
   L2 -->|reads/writes| L1
 ```
+
+**The L1 index, grouped by the object each module owns.** All 22 of them —
+this is the list `tests/test_layering.py` enforces, and
+`test_the_documented_L1_index_is_the_enforced_one` fails if the two drift
+apart. *(The diagram above named `pseudos` and `checkpoint` as L1 until
+2026-08-24; both are L2. A picture that disagrees with the enforced rule is
+how "which layer does this go in?" becomes a guess.)*
+
+| the object | modules | what they own |
+|---|---|---|
+| **geometry** | `structure` · `cell` · `selection` · `periodicity_gate` · `chemistry` · `residues` · `engine_atom_index` | atoms and positions, the cell, an atom selection, chemical facts, and how an atom is numbered for a given engine |
+| **results** | `frame` · `trajectory_log` · `runtime_info` · `issues` | a per-step physics record, the `.molwatch.log` format, the runtime facts a run reports, a validation finding |
+| **the job as described** | `task` · `config` · `identity` · `warmfiles` · `annotations_fdf` | `task.json`, the engine-knob dataclasses, how a run id is written, the warm-file rules, the fdf annotation strategies |
+| **the machine** | `scheduler` | what a machine offers and what a job may ask of it — records, queues, admission, placement, emission, and **the quantities a job asks for and every dialect each is written in** (`quantities.py`) |
+| **infrastructure** | `persist` · `config_dir` · `pipeline_log` · `references` · `reload_protocol` | versioned documents, the one per-user config directory, the prep pipeline's record, the bibliography, the two constants the supervisor and its child agree on |
+
+Reading the table is how you answer *"where does this new function go?"* —
+find the object it acts on, and that is the module. A function that acts on a
+duration goes where durations live (`scheduler/quantities.py`), not where it
+was first needed; `design.md` records what it cost the one time that rule was
+not applied.
 
 The four core types (`Structure`, `Frame`, `Config`, `Issue`) are the wire
 between subsystems: construction emits a `Structure`; validation reads a

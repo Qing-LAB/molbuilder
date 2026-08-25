@@ -72,13 +72,52 @@ the **data that flows between layers**. This section is the brief; the two maps
 below carry the detail.
 
 **Three layers (the load-bearing invariant).** Higher layers may import any
-lower layer; lower layers must never import a higher one. **L1** core types
-(nouns) import nothing above them; **L2** domain verbs may import L1; **L3**
-surfaces (`cli.py`, `web/`) may import both, only through the public package
-surface (`from molbuilder import …`). This is the single most important
-architectural rule — without it the package recreates the registry/abstraction
-tangle that was deleted in favour of dataclass-driven introspection. It is
-enforced by `tests/test_layering.py`, which classifies *every* top-level name.
+lower layer; lower layers must never import a higher one. This is the single
+most important architectural rule — without it the package recreates the
+registry/abstraction tangle that was deleted in favour of dataclass-driven
+introspection. It is enforced by `tests/test_layering.py`, which classifies
+*every* top-level name.
+
+**Which layer a module belongs to is a question with an answer, not a
+judgement call.** Ask them in order and stop at the first yes:
+
+| | ask this about the module | if yes |
+|---|---|---|
+| 1 | Is it a **thing**, plus the operations that only make sense on that thing? Does it touch no filesystem, no scheduler, no subprocess, no workflow? | **L1** |
+| 2 | Does it **do something** — read files, run programs, render decks, build a workflow — using L1 things? | **L2** |
+| 3 | Is it a way a **person reaches** L2 — a command line, a web route? | **L3** |
+
+L1 is *nouns and their codecs*: `structure` is a structure, `identity` is how a
+run id is written, `persist` is how a versioned document is written. L2 is
+*verbs*: `prep` renders, `submit` submits, `parse` reads a run's output. L3 is
+`cli.py` and `web/`, and they reach L2 only through the public package surface
+(`from molbuilder import …`).
+
+**And an L1 module is named for the object it owns — every operation on that
+object lives in it.** This is the half that keeps L1 from becoming a bag. If
+you need a new operation on a duration, it goes where durations live; it does
+*not* go in the module that happened to need it first.
+
+> **What it costs when that rule is not applied.** `parse_duration` and
+> `parse_memory` — "how a person writes a wall time" — sat in `jobset/ask.py`,
+> a workflow module whose own docstring lists what lives in it and never
+> mentioned them. They were dropped where they were first needed. The other
+> half of the same subject, `parse_walltime` ("how SLURM writes a wall time"),
+> sat in `scheduler/`. Two dialects of one quantity, two subpackages, nothing
+> making their difference visible — and in 2026-08-24 the record reader was
+> called on a human-written value, `sbatch` was handed `-t 4h`, and it refused
+> the tool's own written value. Then `task.py` needed to canonicalise a time
+> and had to import the entire job-submission package to do it, which the
+> layering test caught as a circular dependency. **The import loop was the
+> symptom; the wrong home was the defect.** They now live together in
+> `scheduler/quantities.py` — one object, one module, all three dialects.
+
+**`scheduler/` is the one deliberate exception, and it is recorded rather than
+implicit.** By question 1 its `admit`/`place`/`emit` read as verbs, yet it is
+L1. The reason is portability, not grammar: a machine record is read *on the
+cluster*, inside a backend environment with no molbuilder installed, so the
+whole subpackage is stdlib-only by contract. Anything that must survive that
+trip belongs here regardless of question 1.
 
 **Four core types are the lingua franca**; everything else is a verb operating
 on them:

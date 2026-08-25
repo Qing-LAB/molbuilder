@@ -351,7 +351,6 @@ class BenchResult:
     system:      Dict = field(default_factory=dict)
     points:      List[BenchPoint] = field(default_factory=list)
     choice:      Dict = field(default_factory=dict)
-    recommend:   Dict = field(default_factory=dict)
     generated_at: Optional[str] = None
     tool:        str = "bench-summarize@1"
 
@@ -363,7 +362,6 @@ class BenchResult:
             "system": self.system,
             "points": [asdict(p) for p in self.points],
             "choice": self.choice,
-            "recommend": self.recommend,
             "tool": self.tool,
         }
 
@@ -383,14 +381,13 @@ class BenchResult:
             system=d.get("system") or {},
             points=points,
             choice=d.get("choice") or {},
-            recommend=d.get("recommend") or {},
             generated_at=d.get("generated_at"),
             tool=str(d.get("tool", "bench-summarize@1")),
         )
 
 
 # --------------------------------------------------------------------- #
-#  Winner selection + recommendation                                    #
+#  Winner selection                                                     #
 # --------------------------------------------------------------------- #
 
 
@@ -445,38 +442,15 @@ def choose_winner(points: List[BenchPoint]) -> Dict:
             "rationale": "; ".join(bits)}
 
 
-def recommend_resources(points: List[BenchPoint], choice: Dict, *,
-                        mem_safety: float = 1.15,
-                        prod_iters: int = 200,
-                        time_safety: float = 1.5
-                        ) -> Dict:
-    """Production sizing from the MEASURED winner: ``mem_gb`` from its peak
-    RSS x safety, and a suggested ``time`` from its s/iter x an assumed
-    production iteration budget x safety (best-effort -- the real iteration
-    count depends on the production SCF/relaxation, so it is a starting
-    point, not a guarantee)."""
-    if not choice:
-        return {}
-    # By LABEL, the id (U13).  This matched (engine, knobs) until 2026-08-21
-    # -- machine facts only -- so under a value axis two trials sharing a
-    # rank shape (same knobs, different deck) matched the FIRST, and the
-    # mem/time recommendation could be sized from the wrong trial's run.
-    win = next((p for p in points if p.label == choice.get("label")), None)
-    rec: Dict = {}
-    if win is not None:
-        rss = win.metrics.get("peak_rss_gb")
-        if isinstance(rss, (int, float)) and rss > 0:
-            rec["mem_gb"] = math.ceil(rss * mem_safety)
-        spi = win.s_per_iter()
-        if spi:
-            secs = int(spi * prod_iters * time_safety)
-            d, rem = divmod(secs, 86400)
-            h, rem = divmod(rem, 3600)
-            m, s = divmod(rem, 60)
-            rec["time"] = f"{d}-{h:02d}:{m:02d}:{s:02d}"
-            rec["time_basis"] = (f"{spi:g}s/iter x {prod_iters} iters x "
-                                 f"{time_safety} (adjust to your run)")
-    return rec
+# `recommend_resources` was DELETED 2026-08-24 (user).  It produced
+# ``mem_gb = peak RSS x 1.15`` and ``time = s/iter x prod_iters x 1.5`` --
+# a safety factor and a production iteration count NOBODY CHOSE, the second
+# a default sitting in its own signature.  `summarize` wrote both into
+# `run-config.toml`, `prep` folded them in when no flag said otherwise, and
+# they reached `sbatch`: the estimation purge's own target, surviving in the
+# one path it did not sweep.  What a sweep recommends is what it MEASURED --
+# the winning configuration and its knobs; the wall and the memory are the
+# person's to state (`execution/submission.md` S1, S2).
 
 
 def build_bench_result(points: List[BenchPoint], *,
@@ -490,7 +464,6 @@ def build_bench_result(points: List[BenchPoint], *,
         system=system or {},
         points=list(points),
         choice=choice,
-        recommend=recommend_resources(points, choice),
         generated_at=now_iso,
     )
 
@@ -501,5 +474,5 @@ __all__ = [
     "parse_sacct_mem", "parse_mpi_ranks",
     "parse_effective_run", "compare_asked_to_ran",
     "mismatch_phrase", "choose_winner",
-    "recommend_resources", "build_bench_result",
+    "build_bench_result",
 ]

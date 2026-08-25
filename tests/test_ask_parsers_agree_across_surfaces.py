@@ -28,8 +28,8 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.jobset.ask import (canonical_mem, canonical_time,
-                                   parse_duration, parse_memory)
+from molbuilder.scheduler.quantities import (canonical_mem, canonical_time,
+                                             parse_duration, parse_memory)
 
 _VIEWER = (Path(__file__).resolve().parents[1] / "molbuilder" / "web"
            / "static" / "task-setup" / "viewer.js")
@@ -122,8 +122,13 @@ def _js_canon(raws_t, raws_m):
 #: to a value that parsed, and a refusal is the reader's job, tested above.
 _GOOD_TIMES = ["4h", "90m", "45", "1.5h", "4H", "7-00:00:00", "4:00:00",
                "00:15:00", "1-00:00:00", "168h", ""]
+#: Includes a SUB-MEGABYTE value on purpose.  Both writers round to whole
+#: megabytes, and rounding a positive ask down to 0 hands SLURM its
+#: "all the node's memory" spelling -- the smallest request becoming the
+#: largest.  Python grew the guard and the browser did not, and this list
+#: was too narrow to notice (2026-08-24).
 _GOOD_MEMS = ["128G", "0.5T", "128", "512M", "1024K", "4t", "80GB",
-              "128GB", "503.5G", "0", ""]
+              "128GB", "503.5G", "0.0001", "0.001", "0", ""]
 
 
 @pytest.fixture(scope="module")
@@ -238,3 +243,56 @@ def test_nothing_that_should_be_refused_became_acceptable():
             parse_duration(bad)
         with pytest.raises(ValueError):
             parse_memory(bad)
+
+
+# --------------------------------------------------------------------- #
+#  One object, one module                                               #
+# --------------------------------------------------------------------- #
+
+def test_the_quantity_vocabulary_is_defined_in_exactly_one_module():
+    """A duration and an amount of memory are written in one place.
+
+    They were not.  On 2026-08-24 the same two objects had FIVE readers and
+    writers across three modules: `slurm_time` here and a byte-identical
+    `_slurm_walltime` in `runwrap.py` (whose docstring named the fold as a
+    candidate "when the scheduler subsystem exists" -- it existed);
+    `parse_memory` here, `parse_mem_gb` in `scheduler/admit.py`, and a dead
+    `_mem_to_mb` in `runwrap.py` left behind by the estimation purge.  Two
+    of those read the SAME dialect into different units, and `parse_memory`
+    and `parse_mem_gb` still disagree by 1024x on a bare number -- correct
+    per dialect, catastrophic if you hold the wrong one.
+
+    Scattering is what let `jobset/submit.py` call the record reader on a
+    human-written value and hand `sbatch` a `-t 4h` it refused.
+    """
+    import re
+    root = Path(__file__).resolve().parents[1] / "molbuilder"
+    names = ["parse_walltime", "parse_duration", "parse_memory",
+             "slurm_time", "slurm_mem", "canonical_time", "canonical_mem",
+             "human_wall", "parse_mem_gb"]
+    where = {n: [] for n in names}
+    for f in sorted(root.rglob("*.py")):
+        if "static" in f.parts:
+            continue
+        src = f.read_text(encoding="utf-8")
+        for n in names:
+            if re.search(rf"^def {re.escape(n)}\(", src, re.M):
+                where[n].append(f.relative_to(root).as_posix())
+    bad = {n: v for n, v in where.items() if v != ["scheduler/quantities.py"]}
+    assert not bad, (
+        "the quantity vocabulary must live in scheduler/quantities.py and "
+        f"nowhere else; found: {bad}")
+
+
+def test_no_second_writer_of_the_slurm_walltime_spelling():
+    """A content check, not a name check: the duplicate that existed was
+    called something else.  `D-HH:MM:SS` is assembled in one place."""
+    import re
+    root = Path(__file__).resolve().parents[1] / "molbuilder"
+    pattern = re.compile(r'\{d\}-\{h:02d\}:\{m:02d\}')
+    hits = [f.relative_to(root).as_posix()
+            for f in sorted(root.rglob("*.py"))
+            if "static" not in f.parts
+            and pattern.search(f.read_text(encoding="utf-8"))]
+    assert hits == ["scheduler/quantities.py"], (
+        f"more than one module assembles a SLURM walltime: {hits}")

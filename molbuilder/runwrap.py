@@ -62,6 +62,13 @@ if TYPE_CHECKING:                       # floor 5 reading floor 3's object
 _SAFE_WRAPPER_NAME_RE = re.compile(r"^[A-Za-z0-9._\-]+$")
 
 
+# The record's spelling for a wall.  This module had its own copy
+# (`_slurm_walltime`), byte-identical, whose docstring named the fold as a
+# candidate "when the scheduler subsystem exists" -- it exists, and this is
+# it.  One object, one module (`docs/design.md`, "Architecture").
+from .scheduler.quantities import slurm_time
+
+
 class WrapperError(Exception):
     """Wrapper cannot be generated -- unsupported extension, no env
     routing, missing script file, ..."""
@@ -1733,11 +1740,40 @@ def _wants_gpu(script_path: Path, resources=None) -> bool:
     return _fdf_requests_gpu(script_path)
 
 
+def _preamble_source_targets(chunks) -> List[str]:
+    """Absolute paths the baked preamble will ``source``, in order.
+
+    Only ABSOLUTE ones, and only from a bare ``source X`` / ``. X`` at the
+    start of a line: those are the ones that can silently refer to a
+    machine that is not this one.  A relative path or one built from a
+    variable is the author's own business and is left alone -- guessing at
+    it would put a check in front of a line this cannot actually read.
+
+    Deliberately not a shell parser.  It reads the one form that caused a
+    real failure (`source /abs/path/conda.sh`) and ignores everything
+    else, because a wrong guard is worse than no guard: it would refuse a
+    run that would have worked.
+    """
+    import re as _re
+    out: List[str] = []
+    pat = _re.compile(r"^\s*(?:source|\.)\s+(?P<q>[\"']?)(?P<path>/[^\s\"';|&]+)"
+                      r"(?P=q)\s*(?:#.*)?$")
+    for _scope, text in (chunks or []):
+        for line in (text or "").splitlines():
+            m = pat.match(line)
+            if m:
+                pth = m.group("path")
+                if pth not in out:
+                    out.append(pth)
+    return out
+
+
 def render_run_wrapper(script_path: Path, *,
                         resources: "Resources",
                         env: Optional[str] = None,
                         n_atoms: Optional[int] = None,
-                        project_dir: Optional[Path] = None) -> str:
+                        project_dir: Optional[Path] = None,
+                        machine_record=None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     **The allocation arrives whole** — `architecture.md` § 3.1, rule A8.  This
@@ -1862,10 +1898,38 @@ def render_run_wrapper(script_path: Path, *,
     # generation time.  Only fires when we AUTO-routed (env not user-
     # passed) AND the host snapshot lists at least one env (an empty
     # snapshot means the conda probe never ran -- can't gate on that).
+    # WHICH MACHINE IS ASKED WHETHER THE ENV EXISTS.
+    #
+    # *Which* env you want is a preference and comes from your own config
+    # above; whether it EXISTS is a fact about the machine that will run
+    # this, so the question goes to that machine's record when there is one
+    # (`configuration.md` § 5 M-1).  Asking the box you are standing on is
+    # the same mistake as baking its activation: `molbuilder-siesta-gpu`
+    # installed here says nothing about ASU Sol, and the answer arrives as
+    # a `conda activate` failure on a compute node after a queue wait.
+    #
+    # An EMPTY inventory is "unknown", never "none" -- a record written
+    # before the field, or a machine with no conda on PATH -- so it cannot
+    # refuse anything.
+    # A RECORD, ONCE GIVEN, IS THE ONLY MACHINE ASKED -- including when it
+    # cannot answer.  Falling back to this box's inventory for a record
+    # that carries none would re-ask the wrong machine by a different
+    # route: a workstation without `molbuilder-siesta-gpu` would refuse a
+    # bundle for a cluster that has it, and one WITH it would wave through
+    # a bundle for a cluster that does not.  Unknown stays unknown.
+    if machine_record is not None:
+        _known_envs = [str(e) for e in (
+            getattr(machine_record, "conda_envs", None) or [])]
+        _rec_envs = _known_envs
+    else:
+        _known_envs = list(caps.conda_envs or ())
+        _rec_envs = []
+    _env_is_known = bool(_known_envs)
+    _env_present = target_env in _known_envs
     if (env is None
             and env_lookup_category == "siesta-gpu"
-            and caps.conda_envs
-            and not caps.env_available(target_env)):
+            and _env_is_known
+            and not _env_present):
         # Only ONE ask reaches here now: GPU diagonalization.  The
         # message used to branch on GPU-vs-CPU-ELPA and tell a CPU-ELPA
         # user to install a source build for a solver the packaged env
@@ -1874,7 +1938,11 @@ def render_run_wrapper(script_path: Path, *,
         raise WrapperError(
             f"`{script_path.name}` requests GPU diagonalization "
             f"(``Diag.ELPA.GPU .true.``) but the ``{target_env}`` env is "
-            f"not installed.  GPU support is the one thing the packaged "
+            f"not installed "
+            + ("on the machine this bundle is being prepared FOR (read "
+               "from its probed record; re-probe it if you installed the "
+               "env since).  " if _rec_envs else "on this machine.  ")
+            + f"GPU support is the one thing the packaged "
             f"SIESTA does not have -- its ELPA is built without the GPU "
             f"entry -- so it lives only in that source build.  Either "
             f"install it with ``python -m molbuilder envs install "
@@ -2958,34 +3026,50 @@ def render_run_wrapper(script_path: Path, *,
     # sitting wherever its bundle root is (the web build route, tests).
     _project_dir = project_dir if project_dir is not None else (
         script_path.parent if script_path.parent.exists() else None)
-    _sg = _rc.get_script_generation(project_dir=_project_dir)
-    _preamble_chunks = _sg["preamble_chunks"]
-    _activation_form = _rc.require_activation(project_dir=_project_dir)
-    # ``conda activate`` is a shell FUNCTION defined by conda's hook; the
-    # wrapper runs in a NON-interactive bash that never reads rc files, so
-    # without a preamble that loads the hook (``source .../conda.sh`` or a
-    # ``module load``) every run dies with "CondaError: Run 'conda init'
-    # before 'conda activate'" (live-hit 2026-07-29).  Warn at GENERATE
-    # time, where it is fixable, not at run time on the cluster.
-    if _activation_form == "conda activate":
-        _pre_text = " ".join(t for _s, t in (_preamble_chunks or []))
-        if "conda.sh" not in _pre_text and "module" not in _pre_text:
-            import warnings as _warnings
-            _warnings.warn(
-                "script_generation.activation is 'conda activate' but the "
-                "preamble does not source conda's hook (conda.sh) or load "
-                "a module -- the generated .run.sh will fail with "
-                "\"CondaError: Run 'conda init' before 'conda activate'\" "
-                "in any non-interactive shell.  Add e.g. "
-                "\"source ~/miniconda3/etc/profile.d/conda.sh\" to "
-                "script_generation.preamble (running-a-job.md § 5).",
-                stacklevel=2)
-
+    # WHOSE MACHINE IS THIS SCRIPT FOR?
+    #
+    # (The parameter is `machine_record`, NOT `target_env`: this function
+    # already binds a local `target_env` meaning *the conda env NAME to
+    # activate*.  A parameter of that name is silently overwritten by it a
+    # thousand lines above, which turned this branch into a string test and
+    # made every render refuse.  Same word, two meanings, one scope.)
+    #
+    # A wrapper is generated on one machine and executed on another -- that
+    # is what a bundle is for -- and the two enter their environment
+    # differently: `module load mamba` + `source activate` on ASU Sol, a
+    # `conda.sh` hook on the workstation.  So when the caller names a
+    # TARGET, the answer comes off THE TARGET'S RECORD, which is the thing
+    # that travels (`scheduler.record.Environment.script_generation`).
+    #
+    # Reading the local config for a remote target is the 2026-08-24
+    # failure: `prep --target sol` took Sol's queues and topology from its
+    # record and the WORKSTATION's preamble from `molbuilder.json`, so every
+    # job on Sol died on `source /home/.../conda.sh`.  Two doors for one
+    # fact -- which machine is this for -- answered out of two files.
+    _tsg = dict(getattr(machine_record, "script_generation", None) or {})
+    if _tsg.get("activation"):
+        # THE RECORD STATES IT, SO THE RECORD IS THE ANSWER -- the same
+        # field whether the machine is this one or a cluster.  `probe`
+        # writes it wherever it runs, which is what makes copying a record
+        # here sufficient to generate a script that runs there.
+        _preamble_chunks = ([("target", _tsg["preamble"].rstrip("\n"))]
+                            if _tsg.get("preamble") else [])
+        _activation_form = _tsg["activation"]
+    else:
+        # The record is silent.  The only legitimate substitute is the
+        # config of the very machine the record describes -- which is
+        # reachable only when that machine is THIS one, so that is the
+        # single case this branch serves.  `prep` refuses before reaching
+        # here when the record names somewhere else.
+        _sg = _rc.get_script_generation(project_dir=_project_dir)
+        _preamble_chunks = _sg["preamble_chunks"]
+        _activation_form = _rc.require_activation(project_dir=_project_dir)
     # Render preamble with per-scope sentinel comments so a user
     # reading the wrapper sees which scope contributed which lines.
     # No xtrace, no fancy framing -- just the user's bash, baked.
     _scope_labels = {
         "server":  "SERVER PREAMBLE (from molbuilder.json)",
+        "target":  "TARGET PREAMBLE (from the target machine's probed record)",
         "project": "PROJECT ADDITIONS (from .molbuilder.json)",
     }
     if _preamble_chunks:
@@ -2993,9 +3077,55 @@ def render_run_wrapper(script_path: Path, *,
             f"# === {_scope_labels.get(scope, scope.upper())} ===\n{text}\n"
             for scope, text in _preamble_chunks
         ]
+        # EVERY ABSOLUTE PATH THE PREAMBLE SOURCES IS CHECKED BEFORE IT IS
+        # SOURCED (2026-08-24, live hit on Sol).
+        #
+        # The preamble is baked VERBATIM from the machine that ran `prep`.
+        # A bundle travels -- that is the whole point of it naming no
+        # machine -- so an absolute path that exists on the workstation
+        # need not exist on the cluster, and nothing at prep time can know
+        # that: on the prepping machine the file is right there.  The only
+        # code that runs on the TARGET is this script, so the check has to
+        # be here.
+        #
+        # Without it bash says
+        #     line 196: /home/.../conda.sh: No such file or directory
+        # and dies -- naming neither the config key that put the path
+        # there, nor the machine it was baked on, nor what to do.  The
+        # generate-time warning above does not catch this and never could:
+        # it fires when the preamble does NOT name a conda hook, and this
+        # preamble names one.
+        _srcs = _preamble_source_targets(_preamble_chunks)
+        _guard = ""
+        if _srcs:
+            _lines = ["# --- Preamble preflight (paths baked elsewhere) ---"]
+            for _pth in _srcs:
+                _lines += [
+                    f'if [ ! -r "{_pth}" ]; then',
+                    f'    _log ERROR "baked preamble sources a file that '
+                    f'does not exist on this machine:"',
+                    f'    _log ERROR "    {_pth}"',
+                    # SINGLE-quoted: bash runs backticks inside a
+                    # double-quoted string, and the first version of this
+                    # message had `prep` and `module load mamba` in it --
+                    # so the guard fired and printed a sentence with two
+                    # holes in it.  Caught by RUNNING the generated
+                    # script, not by reading it.
+                    f"    _log ERROR 'It was baked verbatim from "
+                    f"script_generation.preamble on the machine that ran "
+                    f"prep, and this is a different machine.'",
+                    f"    _log ERROR 'Fix: set script_generation.preamble "
+                    f"in molbuilder.json HERE (for example: module load "
+                    f"mamba), then re-run prep on this machine -- or edit "
+                    f"the source line below.'",
+                    f'    exit 78',           # EX_CONFIG
+                    "fi",
+                ]
+            _guard = "\n".join(_lines) + "\n\n"
         _preamble_block = (
             "# --- Baked preamble (verbatim from molbuilder.json) ---\n"
-            "_log STAGE \"running baked preamble\"\n"
+            + _guard
+            + "_log STAGE \"running baked preamble\"\n"
             + "\n".join(_rendered_chunks)
             + "\n"
         )
@@ -3650,7 +3780,8 @@ def render_wrappers(script_path: Path, *,
                     resources: "Resources",
                     env: Optional[str] = None,
                     emit_sbatch: bool = True,
-                    project_dir: Optional[Path] = None) -> RenderedWrapper:
+                    project_dir: Optional[Path] = None,
+                    machine_record=None) -> RenderedWrapper:
     """Render everything step 4 produces for *script_path*, and write nothing.
 
     **W7 — floor 3 returns text.**  The deck writers hand back a string and the
@@ -3699,7 +3830,7 @@ def render_wrappers(script_path: Path, *,
                if script_path.suffix.lower() == ".fdf" else None)
     text = render_run_wrapper(
         script_path, resources=r, env=env, n_atoms=n_atoms,
-        project_dir=project_dir)
+        project_dir=project_dir, machine_record=machine_record)
     _validate_rendered_wrapper(text, script_path)
     # ``stem + ".run.sh"`` rather than ``with_suffix(".run.sh")``: the latter
     # replaces only the LAST suffix, so ``job.spectra.py`` would become
@@ -3729,7 +3860,8 @@ def write_run_wrapper(script_path: Path, *,
                       resources: "Resources",
                       env: Optional[str] = None,
                       emit_sbatch: bool = True,
-                      project_dir: Optional[Path] = None) -> Path:
+                      project_dir: Optional[Path] = None,
+                      machine_record=None) -> Path:
     """Write what :func:`render_wrappers` produced, and return the wrapper's path.
 
     **This function renders nothing.**  It is the writing half of step 4, kept
@@ -3749,6 +3881,7 @@ def write_run_wrapper(script_path: Path, *,
     """
     from . import script_emit as _sc_write
     rendered = render_wrappers(script_path, resources=resources,
+                               machine_record=machine_record,
                                env=env, emit_sbatch=emit_sbatch,
                                project_dir=project_dir)
     parent = Path(script_path).resolve().parent
@@ -3756,16 +3889,6 @@ def write_run_wrapper(script_path: Path, *,
         written = _sc_write.write_script(parent / name, text)
         written.chmod(0o755 if name in rendered.executable else 0o644)
     return parent / rendered.wrapper_name
-
-
-def _slurm_walltime(seconds: int) -> str:
-    """``D-HH:MM:SS`` for a SLURM ``-t``.  Mirrors `jobset.submit._slurm_time`;
-    both spell the same scheduler's syntax and are candidates to fold into the
-    scheduler subsystem when it exists."""
-    d, rem = divmod(int(seconds), 86400)
-    h, rem = divmod(rem, 3600)
-    m, sec = divmod(rem, 60)
-    return f"{d}-{h:02d}:{m:02d}:{sec:02d}"
 
 
 def _render_sbatch_for(script_path: Path, *,
@@ -3895,7 +4018,7 @@ def _render_sbatch_for(script_path: Path, *,
                 if (_row.partition, _row.qos) == (_part, _qos):
                     _ceiling = domain_ceiling_s(_row)
                     if _ceiling:
-                        time = _slurm_walltime(_ceiling)
+                        time = slurm_time(_ceiling)
                     break
 
     return render_sbatch(
@@ -3940,26 +4063,12 @@ def _parse_gres(gres: str) -> Tuple[Optional[str], int]:
     return m.group("type"), int(m.group("count"))
 
 
-_MEM_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([KMGT]?)B?$", re.IGNORECASE)
-
-
-def _mem_to_mb(value: Any) -> Optional[int]:
-    """Parse a SLURM-style memory value to MB; ``None`` if unparseable.
-
-    Accepts the forms SLURM's ``--mem`` accepts: a bare number (MB, the
-    SLURM default unit) or a number with a K/M/G/T suffix (``64G``,
-    ``24000M``, ``2T``).  Used to compare the GPU floor/cap band values
-    against the estimator's/defaults' request -- NOT to validate user
-    input (runtime_config owns validation).
-    """
-    if value is None:
-        return None
-    m = _MEM_RE.match(str(value).strip())
-    if not m:
-        return None
-    mult = {"": 1, "K": 1 / 1024, "M": 1,
-            "G": 1024, "T": 1024 * 1024}[m.group(2).upper()]
-    return int(float(m.group(1)) * mult)
+# `_mem_to_mb` and its `_MEM_RE` were DELETED 2026-08-24: defined once,
+# called nowhere.  Its own docstring named what it was for -- comparing
+# a GPU band against "the estimator's/defaults' request" -- and the
+# estimator was deleted in the estimation purge, leaving the reader
+# behind.  Reading SLURM's memory text is `scheduler.quantities`'s job
+# (`parse_mem_gb`), where its human-dialect sibling can be seen beside it.
 
 
 def render_sbatch(script_path: Path,

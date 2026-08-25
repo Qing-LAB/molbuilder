@@ -7,7 +7,8 @@ a duration.  Feeding one to the other's formatter is the defect that
 made a six-minute SIESTA run display "last result Dec 31, 5:06 PM".
 
 Two guards here:
-  * ``cycleClock`` — a pure helper, run under node and checked directly.
+  * ``cumulativeElapsed`` — a pure helper, run under node and checked
+    directly.
   * the run-state badge — checked at source level, because its clock
     selection sits inside a large DOM render function that cannot be
     called without a full browser.
@@ -27,12 +28,12 @@ MODULE = ROOT / "molbuilder/web/static/lib/trajectory/core.js"
 
 
 def _run_cycle_clock(expr: str):
-    """Extract ``cycleClock`` from the module and evaluate ``expr``."""
+    """Extract ``cumulativeElapsed`` from the module and evaluate ``expr``."""
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
     src = MODULE.read_text()
-    ix  = src.index("function cycleClock")
+    ix  = src.index("function cumulativeElapsed")
     end = src.index("function fmtElapsed", ix)
     fn  = src[ix:end].rstrip()
     full = fn + "\nconsole.log(JSON.stringify(" + expr + "));"
@@ -43,52 +44,47 @@ def _run_cycle_clock(expr: str):
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
-class TestCycleClock:
-    """Per-cycle timing reads whichever clock the engine reported.
+class TestCumulativeElapsed:
+    """The per-iteration ladder divides this value by `cumulative_calls`.
 
-    A DIFFERENCE between two cycles of one run is identical either way
-    (the origin cancels), which is what makes one accessor legitimate
-    here where it would not be for an absolute display.
+    That division is arithmetic on a DURATION, so the accessor must yield
+    only a cumulative elapsed -- never an absolute epoch.  A first version
+    took "whichever clock the cycle carries", which made the ladder fire on
+    molwatch cycles (they have no `cumulative_calls`, so the raw epoch fell
+    through to the display) and a PySCF run read
+    "~489276.7h/iter (from SIESTA iter-1 timer)".
     """
 
-    def test_siesta_cycle_reports_elapsed(self):
+    def test_a_siesta_cycle_reports_its_cumulative_timer(self):
         assert _run_cycle_clock(
-            "cycleClock({cycle: 2, elapsed_s: 75.4})") == 75.4
+            "cumulativeElapsed({cycle: 2, elapsed_s: 75.4})") == 75.4
 
-    def test_pyscf_cycle_reports_epoch(self):
+    def test_an_epoch_is_NOT_a_duration_and_must_not_match(self):
+        """The regression, stated as the rule it broke: dividing
+        1761396030 by a call count is arithmetic on a date."""
         assert _run_cycle_clock(
-            "cycleClock({cycle: 2, wall_clock_s: 1761396030.0})"
-        ) == 1761396030.0
+            "cumulativeElapsed({cycle: 2, wall_clock_s: 1761396030.0})"
+            " === null") is True
 
-    def test_elapsed_wins_when_somehow_both_present(self):
-        """No engine emits both; if one ever does, the run-relative
-        value is the one that cannot be confused with a date."""
-        assert _run_cycle_clock(
-            "cycleClock({elapsed_s: 5.0, wall_clock_s: 1761396030.0})"
-        ) == 5.0
-
-    def test_neither_clock_is_null_not_zero(self):
-        """A cycle with no timing must not read as 'at t=0' — that is
-        how a missing measurement becomes a plotted point at the
-        origin."""
-        assert _run_cycle_clock("cycleClock({cycle: 1}) === null") is True
-        assert _run_cycle_clock("cycleClock(null) === null") is True
+    def test_a_cycle_with_no_timing_is_null_not_zero(self):
+        """A missing measurement must not read as 'at t=0' -- that is how
+        it becomes a plotted point at the origin."""
+        assert _run_cycle_clock("cumulativeElapsed({cycle: 1}) === null") is True
+        assert _run_cycle_clock("cumulativeElapsed(null) === null") is True
 
     def test_non_finite_is_rejected(self):
-        """SIESTA's Fortran column overflow yields NaN on the Time
-        field; NaN must not pass as a measurement.
+        """SIESTA's Fortran column overflow yields NaN on the Time field;
+        NaN must not pass as a measurement.
 
         Compared with ``=== null`` rather than for a null RESULT:
         JSON.stringify turns NaN into the token `null`, so a test that
-        round-trips the value through JSON cannot tell the two apart
-        and passes even when NaN leaks through.
+        round-trips the value through JSON cannot tell the two apart and
+        passes even when NaN leaks through.
         """
         assert _run_cycle_clock(
-            "cycleClock({elapsed_s: NaN}) === null") is True
+            "cumulativeElapsed({elapsed_s: NaN}) === null") is True
         assert _run_cycle_clock(
-            "cycleClock({elapsed_s: Infinity}) === null") is True
-        assert _run_cycle_clock(
-            "cycleClock({wall_clock_s: NaN}) === null") is True
+            "cumulativeElapsed({elapsed_s: Infinity}) === null") is True
 
 
 class TestBadgeReadsTheRightClock:

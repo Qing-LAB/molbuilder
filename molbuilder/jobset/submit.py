@@ -52,7 +52,7 @@ from typing import Dict, List, Optional, Tuple
 # formatter here would be a second answer to "what does a walltime look
 # like on disk?" -- and there was one, until 2026-08-24, sitting beside a
 # field a human spelling could reach.
-from .ask import slurm_time as _slurm_time
+from ..scheduler.quantities import slurm_time as _slurm_time
 
 # NOTE: `job_dir_names` is NOT imported here.  It is the naming
 # authority (materialize.py) and very much alive -- six callers -- but
@@ -897,7 +897,7 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     # launch, else the one prep baked.  Unstated is None -- an unstated
     # limit never bars (R3), and the wall it gets DEFAULTED to below (the
     # queue's own ceiling) fits that queue by construction.
-    from ..scheduler.probe import parse_walltime
+    from ..scheduler.quantities import parse_walltime
     needed_s = time_s
     if needed_s is None and envelope.time:
         try:

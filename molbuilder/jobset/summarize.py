@@ -9,7 +9,11 @@ boundary lie about the dependency direction.
 
 Serves ``molbuilder jobset summarize bench`` (step 6 u4): discovery keyed
 by ``job-set.json``'s own data, each trial parsed with the pure parsers in
-:mod:`molbuilder.bench.result`, the verdict written as a recommendation.
+:mod:`molbuilder.bench.result`, the verdict written as a proposal of
+WHAT WAS MEASURED -- the winning configuration and its knobs.  A wall
+and a memory are NOT proposed: they were derived from a safety factor
+and an assumed iteration count until 2026-08-24 and reached `sbatch`
+through this file (`execution/project-layout.md` § 2.3.2).
 
 The OLD half — ``discover_points``' directory-name regex,
 ``summarize_bundle``/``run_summarize`` over the shipped bundle format —
@@ -431,7 +435,6 @@ def run_config_text(res: BenchResult, *, stage: Optional[str] = None
     if not choice:
         return None
     knobs = choice.get("knobs") or {}
-    rec = res.recommend or {}
     mech = choice.get("mechanism") or {}
     stage_word = stage or "<stage>"
     lines = [
@@ -443,8 +446,6 @@ def run_config_text(res: BenchResult, *, stage: Optional[str] = None
         "# decisions.  Delete a line to leave that field to your",
         "# flags/defaults; delete the file to decline the benchmark",
         "# entirely (`jobset summarize bench` writes a fresh one).",
-        "",
-        "[resources]",
     ]
     expect: Dict = {"resources": {}, "pins": {}}
     rows = []                     # (assignment, comment) -> aligned below
@@ -461,17 +462,24 @@ def run_config_text(res: BenchResult, *, stage: Optional[str] = None
         v = str(knobs["gres"])
         rows.append((f'gres = "{v}"', "scheduler GPU request"))
         expect["resources"]["gres"] = v
-    if rec.get("mem_gb"):
-        v = f"{rec['mem_gb']}GB"
-        rows.append((f'mem = "{v}"',
-                     "the winner's measured peak RSS x safety margin"))
-        expect["resources"]["mem"] = v
-    if rec.get("time"):
-        v = str(rec["time"])
-        rows.append((f'time = "{v}"', rec.get("time_basis") or ""))
-        expect["resources"]["time"] = v
-    width = max((len(a) for a, _ in rows), default=0)
-    lines += [f"{a:<{width}}   # {c}" if c else a for a, c in rows]
+    # NO WALL AND NO MEMORY HERE (2026-08-24).  They were written from
+    # `recommend_resources`, which derived them from a safety factor and
+    # an assumed iteration count; `prep` then folded them in when no flag
+    # said otherwise and they reached `sbatch`.  What this file proposes
+    # is what the sweep MEASURED; the two asks stay the person's
+    # (`execution/submission.md` S1, S2).
+    # ABSENT, NOT EMPTY -- the header only when the section has rows, the
+    # same reading the rest of this codebase uses.  It was emitted
+    # unconditionally, and an empty `[resources]` parses back as
+    # `{"resources": {}}` while the self-check below drops empty sections,
+    # so the writer failed its own check.  Nothing reached it while the
+    # deleted `recommend` block always contributed a `mem` and a `time`;
+    # removing those exposed it for a winner whose knobs are all outside
+    # the readable set (2026-08-24).
+    if rows:
+        width = max(len(a) for a, _ in rows)
+        lines += ["", "[resources]"]
+        lines += [f"{a:<{width}}   # {c}" if c else a for a, c in rows]
     # HOW the winner computed: the deck-read mechanism, then the winner's
     # own VALUE coordinates over it (§ 4.3a) -- the coordinate is what was
     # DECLARED and swept, so where both answer, the coordinate speaks.
@@ -673,14 +681,6 @@ def summary_text(res: BenchResult, out_path: Path, *,
         census = ", ".join(f"{n} {s}" for s, n in sorted(by_state.items()))
         lines.append(f"  NO VERDICT: no completed, timed trial to rank "
                      f"({census}).  Submit trials and summarize again.")
-    if res.recommend:
-        rec = res.recommend
-        bits = ([f"mem={rec['mem_gb']}GB"] if rec.get("mem_gb") else []) \
-            + ([f"time={rec['time']}"] if rec.get("time") else [])
-        line = "  recommend: " + (", ".join(bits) or str(rec))
-        if rec.get("time_basis"):
-            line += f"   ({rec['time_basis']})"
-        lines.append(line)
     # The coverage clause (honesty on a partial sweep): a verdict drawn
     # from three of eleven prepped points says so on its face.
     if res.choice:

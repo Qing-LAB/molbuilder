@@ -122,8 +122,8 @@ calculation → target → machine, first match wins.
 | the pseudopotentials | ✅ copied in at `prep` | the files are the same everywhere; the library path is not (`project-layout.md` § 2.6) |
 | the structure pair | ✅ copied in | same reason |
 | `environment.json` | ✅ snapshotted beside the bundle | so the target's capability is a fact of the calculation, not of whoever prepped it |
-| **`script_generation` — the preamble and activation** | ⚠️ **only from the bundle's own `.molbuilder.json`** | see § 3 |
-| conda env NAMES (`envs`) | ⚠️ same | a name that exists here need not exist there — § 3 applies to it identically |
+| **`script_generation` — the preamble and activation** | ✅ **on the target's own record**, since 2026-08-24 | how a shell enters an environment there is a fact about that machine (`configuration.md` § 5 M-1) — see § 3 |
+| the target's **env inventory** | ✅ same | whether `molbuilder-siesta-gpu` exists there is a fact; *which* env you want is a preference and stays in `molbuilder.json` |
 
 **Everything else prep writes is machine-free.** Verified by inspection: of
 every file `prep` produces, the only lines carrying a local absolute path
@@ -132,61 +132,69 @@ renderer.
 
 ---
 
-## 3. The bootstrap does not travel by itself
+## 3. The bootstrap travels on the record
 
-The machine record holds **measurements** — `scheduler`, `topology`,
-`site`, `domains`. It does **not** hold `script_generation`, and it must
-not: `configuration.md` § 5 **M-1** puts measurements in the machine record
-and preferences in `molbuilder.json`, and a preamble is a preference.
+**How a shell enters its environment is a fact about the machine**, so it
+rides the machine's record with the core count and the queue walls:
+`Environment.script_generation` carries `{preamble, activation}`, and
+`jobset probe --write` records whatever the machine it runs on states.
+Probe Sol, copy `sol.json` here, and `prep --target sol` bakes
+`module load mamba` + `source activate` — Sol's answer, not this
+workstation's.
 
-So `prep --target sol` renders the *right numbers* into `.run.sh` and the
-*local machine's bootstrap*:
+The generator reads that field and nothing else. There is **one rule for
+local and remote**: the record states it, so the record is the answer. When
+a record is silent, the only legitimate substitute is the config of the very
+machine that record describes — reachable only when it is *this* one — so
+`prep` refuses a named target whose record cannot answer, and names the
+re-probe:
 
-```bash
-# what a laptop bakes, for a job that will run on a cluster:
-source /home/you/miniconda3/etc/profile.d/conda.sh   # does not exist there
+```
+sol's machine record does not say how to enter its environment, so a wrapper
+generated here would carry THIS machine's activation -- a path that need not
+exist there.
+  Fix: on sol, run
+      molbuilder jobset probe --write --name sol
+  then copy the record it writes into ~/.config/molbuilder/environments/ here,
+  and prep again.
 ```
 
-That script then fails on a compute node, unattended, after a queue wait
-(`running-a-job.md` § 2.0a: a failed preamble is fatal by design, and
-correctly so — the alternative is a job that runs in the wrong environment).
+> **What this section said until 2026-08-24, and what it cost.** It said the
+> record *"does not hold `script_generation`, and it must not"* — reading
+> M-1 as putting a preamble on the preference side. It then predicted, in
+> detail, the failure that followed from its own rule:
+>
+> ```bash
+> # what a laptop bakes, for a job that will run on a cluster:
+> source /home/you/miniconda3/etc/profile.d/conda.sh   # does not exist there
+> ```
+>
+> That is exactly what a browser-prepped bundle carried to Sol, and every
+> trial died on it after a queue wait. The remedy on offer was the bundle's
+> own `.molbuilder.json`, and the section admitted it *"half-exists"*:
+> `activation` overrides cleanly, but preambles **concatenate**, so the
+> local machine's line is emitted *even when the bundle supplies its own*.
+> A per-calculation file cannot subtract what the join already added.
+>
+> The misclassification was the defect, not the merge rule. Put a preamble
+> to M-1's own question — *what is this machine* versus *what do I want from
+> it* — and `module load mamba` is not something anyone wants from Sol; it
+> is how Sol works. Once it sits with the other facts, the bundle needs no
+> per-calculation override, the join has nothing local to add, and the
+> answer comes from the machine that has it.
 
-**The mechanism that fixes it half-exists:** the bundle's own
-`.molbuilder.json`. For `activation` it is a clean override — the bundle's
-value wins and the machine's is not used.
-
-**For `preamble` it is not an override, and this is the sharp edge.**
-Preambles **concatenate** — server first, then the bundle's
-(`architecture.md` § 8.2) — so a machine-scope preamble is emitted into the
-wrapper *even when the bundle supplies its own*:
-
-```bash
-# === SERVER PREAMBLE (from molbuilder.json) ===
-source /home/you/miniconda3/etc/profile.d/conda.sh   # travels anyway
-# === PROJECT ADDITIONS (from .molbuilder.json) ===
-module load mamba                                    # the target's
-```
-
-Measured, not assumed: `config_provenance` reports that value's origin as
-`server+project (concatenated)`, and the rendered wrapper carries both
-lines under their own headers.
-
-**So to prepare for another machine, the preparing machine must not set a
-machine-scope `preamble`** — or must accept that its lines run there. A
-per-calculation `.molbuilder.json` cannot subtract what the join has
-already added. That is a consequence of the merge rule, not a defect in
-it: joining is the useful answer when both scopes describe the *same*
-machine, which is every case except this one.
-
-> **The rule:** when `--target` names a machine that is not this one, the
-> bootstrap must come from the **bundle**. If it came from the local
-> machine scope, `prep` says so — that is a wrapper that will not start.
+**Which environment is still a preference.** `envs.<category>` says which
+env you want for a category; the record says which envs that machine *has*.
+The first is yours and lives in `molbuilder.json`; the second is a fact and
+is checked against the target so a name that exists here but not there is
+caught at prep rather than at `conda activate` on a compute node.
 
 **A record can also be stale.** Nothing expires it: a cluster that changed
-its partitions or its node mix since the probe will be prepped against the
-old answer. `environment.json` carries `detected_at`, so the age is
-knowable; surfacing it is left to the surfaces rather than made a refusal,
-because a six-month-old record is often still exactly right.
+its partitions, its node mix, or its installed environments since the probe
+will be prepped against the old answer. `environment.json` carries
+`detected_at`, so the age is knowable; surfacing it is left to the surfaces
+rather than made a refusal, because a six-month-old record is often still
+exactly right. Re-probe when the machine changed.
 
 ---
 

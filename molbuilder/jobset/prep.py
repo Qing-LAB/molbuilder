@@ -135,7 +135,7 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
 
 def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 emit_sbatch: bool = True, record_dir=None,
-                log=None) -> List[Path]:
+                log=None, machine_record=None) -> List[Path]:
     """Render launchers + lay out the per-job tree under ``base_dir``.
 
     Steps, in order:
@@ -240,6 +240,14 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 # fallback would read config one level below the bundle's
                 # .molbuilder.json / environment.json (roadmap 7.10 M1).
                 project_dir=base,
+                # WHICH MACHINE THIS IS FOR, carried rather than re-derived
+                # (2026-08-24).  Set only when the caller NAMED a target, so
+                # the wrapper reads that machine's own activation off its
+                # probed record instead of this machine's config.  It is the
+                # same lesson as the paragraph above: a fact the conductor
+                # already resolved, handed over whole, cannot be forgotten
+                # or answered a second way further down.
+                machine_record=machine_record,
             )
         rendered[job.script] = _jd
         if log is not None:
@@ -942,8 +950,39 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # prep_jobset re-apply the BASE allocation over every job — the review's
     # "stomp": each trial's wrapper rendered with the base rank count
     # instead of its own translated G·K.
+    # ONE FRAMEWORK, LOCAL OR REMOTE (user, 2026-08-24: *"the jobset probe
+    # should do its job whether it's running on the local machine or a
+    # remote HPC environment.  Either way, it should provide the only set
+    # of data the script generator would need to generate a fully
+    # self-contained script"*).
+    #
+    # So the record ALWAYS travels to the generator -- step 1 resolved one
+    # either way, and `--target` only decides WHICH machine it describes.
+    # There is no second road for the local case: a machine that has been
+    # probed states its own activation, and the generator reads it from the
+    # same field whoever it is for.
+    #
+    # A record that does not state it is refused HERE rather than
+    # substituted there.  This is the layer that knows a remote target was
+    # named, and substituting this machine's activation for another
+    # machine's is the 2026-08-24 failure exactly: it succeeds at generate
+    # time and dies on the cluster hours later on a path that exists only
+    # here.
+    if target and not (getattr(environment, "script_generation", None) or {}
+                       ).get("activation"):
+        raise PrepError(
+            f"{target!r}'s machine record does not say how to enter its "
+            f"environment, so a wrapper generated here would carry THIS "
+            f"machine's activation -- a path that need not exist there.\n"
+            f"  Fix: on {target}, run\n"
+            f"      molbuilder jobset probe --write --name {target}\n"
+            f"  then copy the record it writes into "
+            f"~/.config/molbuilder/environments/ here, and prep again.\n"
+            f"  (The probe records the machine's own script_generation "
+            f"since 2026-08-24; a record written before that carries none.)")
     dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
-                       record_dir=record_dir, log=log)
+                       record_dir=record_dir, log=log,
+                       machine_record=environment)
     if log is not None:
         log.close()
     return dirs

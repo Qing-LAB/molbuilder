@@ -223,14 +223,27 @@ def test_the_wrapper_entry_points_take_exactly_these_parameters():
     parent would read config one level below the bundle's own files.  The
     test is ownership: a field with a home in § 3's table arrives in that
     home or not at all.
+
+    ``machine_record`` (2026-08-24) is loose for the same reason
+    ``project_dir`` is: it is not a per-JOB fact, so it has no home on
+    ``Resources``.  It is the record of the machine this script is generated
+    FOR, and it carries the one thing that differs between the machine that
+    prepped and the machine that runs -- how a shell enters an environment
+    there.  Reading that from local config instead is the 2026-08-24 Sol
+    failure: `prep --target sol` baked `source /home/.../conda.sh` and every
+    trial died on a path that exists only on the workstation
+    (`preparing-for-another-machine.md` § 3).
     """
     import inspect
     assert set(inspect.signature(runwrap.render_run_wrapper).parameters) == {
         "script_path", "resources", "env", "n_atoms", "project_dir",
+        "machine_record",
     }
     assert set(inspect.signature(runwrap.render_wrappers).parameters) == {
         "script_path", "resources", "env", "emit_sbatch", "project_dir",
+        "machine_record",
     }
     assert set(inspect.signature(runwrap.write_run_wrapper).parameters) == {
         "script_path", "resources", "env", "emit_sbatch", "project_dir",
+        "machine_record",
     }

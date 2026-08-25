@@ -286,6 +286,19 @@ def trajectory_result_to_legacy_dict(
     if not any(out_in_progress):
         out_in_progress = []
 
+    # THE TWO CLOCKS GO THROUGH THE SAME SIEVE AS EVERY OTHER NUMBER, and
+    # BEFORE the derivation below rather than after.  `_maybe_float` turns
+    # a `wall_time: nan` line into a float NaN quite happily, and NaN is
+    # not a legal JSON token: the browser's `r.json()` throws and the whole
+    # Results tab renders blank -- the failure the comment above describes,
+    # reached through a series that was not being sieved.  (`wall_times`
+    # was not either, before the split; two series now, so twice the way
+    # in.)  Sieving first also means the derivation can only ever see None
+    # or a finite number, so it cannot manufacture a fresh NaN by
+    # subtracting one.
+    out_wall_clock = _nan_to_none(out_wall_clock)
+    out_elapsed = _nan_to_none(out_elapsed)
+
     # P-T3 (parse.md § 2a): derive `elapsed_s` from the epoch series,
     # here and nowhere else.  A run's start IS knowable from the frames
     # themselves -- it is the first frame carrying a clock reading -- so

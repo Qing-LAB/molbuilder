@@ -1788,10 +1788,15 @@ def test_summarize_writes_the_proposal_and_never_overwrites_yours(calc):
     rec = json.loads(
         (calc / "01_coarse" / "bench" / "bench-result.json").read_text())
     assert raw["resources"]["mpi_np"] == rec["choice"]["knobs"]["mpi_np"]
-    assert raw["resources"]["time"] == rec["recommend"]["time"]
-    # the fixture's trial has no util.csv -> no measured peak -> the
-    # proposal honestly carries NO mem line (absent, not invented)
-    assert "mem_gb" not in rec["recommend"] and "mem" not in raw["resources"]
+    # THE PROPOSAL CARRIES WHAT WAS MEASURED, AND NO WALL OR MEMORY AT ALL
+    # (2026-08-24, user).  It asserted `resources.time == recommend.time`
+    # until then -- and that `recommend` block sized a wall from
+    # `s/iter x an assumed 200 iterations x 1.5`, which `prep` folded into
+    # an allocation and `sbatch` received.  Both fields are deleted, so
+    # the two asks stay the person's (`submission.md` S1, S2).
+    assert "recommend" not in rec
+    assert "time" not in raw["resources"]
+    assert "mem" not in raw["resources"]
     assert raw["pins"]["use_gpu"] == \
         rec["choice"]["mechanism"]["use_gpu"]
     # the user edits it; a re-summarize must not clobber the edit

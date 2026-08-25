@@ -724,9 +724,33 @@ def _refuse_if_measured_elsewhere(base, root, stage) -> None:
 
 
 
+#: WHAT YOU MAY TYPE FOR THE TWO ASKS -- said ONCE, because `prep` and
+#: `launch` each take a `--time` and a `--mem` and each used to describe
+#: them differently: `prep --time` advertised `D-HH:MM:SS` while
+#: `launch --time` advertised "4h, 90m, or a bare number of minutes", and
+#: both accepted all of it.  Same tool, same flag name, two stories about
+#: what is allowed -- the defect roadmap 7.11 already recorded for `--mem`
+#: ("two flags of one name disagreeing about a spelling one of them
+#: advertises") and which `--time` was never swept for.
+#:
+#: These describe the HUMAN edge only.  What the file stores and what
+#: reaches `sbatch` is SLURM's own spelling, always, and neither is any of
+#: the person's business here (`engines/stages.md` § 6.8a).
+TIME_METAVAR = "DURATION"
+TIME_HELP = ("wall-clock limit -- `4h`, `90m`, `2-00:00:00`, or a bare "
+             "number of minutes.  Unstated, the target queue's own ceiling "
+             "is requested -- the full amount the cluster allows there.  "
+             "Never derived, never estimated.")
+MEM_METAVAR = "SIZE"
+MEM_HELP = ("how much TOTAL memory this needs -- `128G`, `80GB`, `0.5T`, or "
+            "a bare number of GB.  `0` asks for all of the node's.  "
+            "Unstated means the scheduler's own default decides, which is "
+            "how a 64-core job came to ask for 128 GB nobody had chosen.")
+
+
 def _duration(text):
-    """`ask.parse_duration`, refusing in click's voice."""
-    from .ask import parse_duration
+    """`scheduler.quantities.parse_duration`, refusing in click's voice."""
+    from ..scheduler.quantities import parse_duration
     try:
         return parse_duration(text)
     except ValueError as e:
@@ -734,8 +758,8 @@ def _duration(text):
 
 
 def _memory(text):
-    """`ask.parse_memory`, refusing in click's voice."""
-    from .ask import parse_memory
+    """`scheduler.quantities.parse_memory`, refusing in click's voice."""
+    from ..scheduler.quantities import parse_memory
     try:
         return parse_memory(text)
     except ValueError as e:
@@ -1519,11 +1543,9 @@ def _resolve_stage(js, stage, verb: str):
               help="GPUs, by type -- e.g. a100:1, a100.40gb:1, a30:2. The MIG "
                    "slices are separate askable types, not a smaller ask of "
                    "the same one.")
-@click.option("--time", "time_", default=None, metavar="D-HH:MM:SS",
-              help="wall time to ask for.")
-@click.option("--mem", default=None, metavar="SIZE",
-              help="memory for the whole job, e.g. 80GB. '0' asks for all of "
-                   "the node's.")
+@click.option("--time", "time_", default=None, metavar=TIME_METAVAR,
+              help=TIME_HELP)
+@click.option("--mem", default=None, metavar=MEM_METAVAR, help=MEM_HELP)
 @click.option("--max-memory-mb", type=int, default=None, metavar="MB",
               help="per-rank cap, baked into the wrapper as ulimit -v.")
 @click.option("--domain", default=None, metavar="NAME",
@@ -1962,16 +1984,10 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
 @click.option("--dry-run", is_flag=True,
               help="print the exact command each job WOULD get; launch "
                    "nothing.")
-@click.option("--time", "time_text", default=None, metavar="DURATION",
-              help="wall-clock limit for each submitted job -- `4h`, `90m`, "
-                   "or a bare number of minutes.  Unstated, the target "
-                   "queue's own ceiling is requested -- the full amount the "
-                   "cluster allows there.  Never derived, never estimated.")
-@click.option("--mem", "mem_text", default=None, metavar="SIZE",
-              help="how much TOTAL memory this needs -- `128G`, `0.5T`, or a "
-                   "bare number of GB.  Unstated means the scheduler's own "
-                   "default decides, which is how a 64-core job came to ask "
-                   "for 128 GB nobody had chosen.")
+@click.option("--time", "time_text", default=None, metavar=TIME_METAVAR,
+              help=TIME_HELP)
+@click.option("--mem", "mem_text", default=None, metavar=MEM_METAVAR,
+              help=MEM_HELP)
 @click.option("--gpu-domain", "gpu_domain", default=None, metavar="NAME",
               help="the queue the GPU side of a SPLIT sweep goes to, when "
                    "it differs from --domain.  A cpu-only partition cannot "
@@ -2544,6 +2560,41 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     # this machine is.
     env = resolve_environment(now_iso=now, overrides=overrides or None,
                               scheduler_override=scheduler_flag)
+
+    # HOW THIS MACHINE ENTERS ITS ENVIRONMENT TRAVELS WITH THE RECORD
+    # (2026-08-24).  A wrapper is generated on one machine and executed on
+    # another; the record is what carries the target across, and activation
+    # is as much a fact about the target as its core count.  Probing Sol
+    # records `module load mamba` / `source activate`; copying that record
+    # to the workstation is then SUFFICIENT to generate a wrapper that runs
+    # on Sol.  Without it, `prep --target sol` had Sol's queues and the
+    # workstation's conda hook, and every job died sourcing a path that
+    # exists on neither the cluster nor anywhere else it was sent.
+    import dataclasses as _dc
+    from ..runtime_config import get_script_generation as _gsg
+    try:
+        _sg = _gsg(project_dir=None)
+        _sg_rec = {k: v for k, v in
+                   (("preamble", _sg.get("preamble")),
+                    ("activation", _sg.get("activation")))
+                   if v}
+    except Exception:      # pragma: no cover - a broken config is its own error
+        _sg_rec = {}
+    # WHICH ENVIRONMENTS EXIST HERE travels too -- the other half of the
+    # pair.  `conda env list` enumerates without entering, so this is free
+    # from whatever env the probe itself runs in.
+    try:
+        from ..diagnostics import get_capabilities as _gc
+        _envs_here = sorted(_gc().conda_envs or ())
+    except Exception:      # pragma: no cover - enumeration is best-effort
+        _envs_here = []
+    if _sg_rec or _envs_here:
+        env = _dc.replace(env, script_generation=_sg_rec or {},
+                          conda_envs=_envs_here)
+    else:
+        notes_sg = ("this machine states no script_generation, so the "
+                    "record carries none -- a bundle prepped ELSEWHERE for "
+                    "this machine will be refused until it does")
 
     notes = []
     # ``%m`` (memory per node, MB) added 2026-08-23 -- the ceiling

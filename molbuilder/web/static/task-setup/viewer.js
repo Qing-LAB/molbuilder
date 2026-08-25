@@ -1701,6 +1701,12 @@ function _slurmMem(gb) {
     const v = Number(gb);
     if (!(v > 0)) return "0";
     const mb = Math.round(v * 1024);
+    // A POSITIVE ASK NEVER ROUNDS TO ZERO -- SLURM reads `--mem=0` as ALL
+    // the node's memory, so rounding a sliver down would turn the smallest
+    // request into the largest one.  Mirrors `ask.slurm_mem`; the parity
+    // test carries a sub-megabyte value precisely to hold the two together
+    // here, which it did not until 2026-08-24.
+    if (mb <= 0) return "1M";
     return (mb % 1024 === 0) ? (mb / 1024) + "G" : mb + "M";
 }
 
@@ -1723,7 +1729,8 @@ function _canonMem(txt) {
 }
 
 /** "4h" / "90m" / "2-00:00:00" / "45" -> seconds, or null. Mirrors
- *  `ask.parse_duration` plus SLURM's own D-HH:MM:SS, which is what the
+ *  `scheduler.quantities.parse_duration` plus SLURM's own D-HH:MM:SS,
+ *  which is what the
  *  ceilings are spelled in. */
 function _parseTime(txt) {
     const t = String(txt || "").trim().toLowerCase();
@@ -1740,7 +1747,8 @@ function _parseTime(txt) {
     return Math.round(v * ({ h: 3600, m: 60, s: 1 }[m[2]] || 60));
 }
 
-/** "128G" / "0.5T" / "128" -> GB, or null. Mirrors `ask.parse_memory`. */
+/** "128G" / "0.5T" / "128" -> GB, or null.
+ *  Mirrors `scheduler.quantities.parse_memory`. */
 function _parseMem(txt) {
     const t = String(txt || "").trim().toUpperCase();
     if (!t) return null;

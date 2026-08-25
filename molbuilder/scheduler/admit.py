@@ -72,7 +72,7 @@ def _compare(row, *, cores: Optional[int] = None,
     An unstated limit never bars: a row that does not say its ceiling is not
     claiming a small one.
     """
-    from .probe import parse_walltime
+    from .quantities import parse_walltime
     why: List[str] = []
 
     if walltime_s is not None and row.max_time:
@@ -145,7 +145,7 @@ def domain_ceiling_s(row) -> Optional[int]:
     rather than a verdict — the header emitter, which must state a time the
     queue it names will accept.
     """
-    from .probe import parse_walltime
+    from .quantities import parse_walltime
     if not row or not row.max_time:
         return None
     try:
@@ -155,36 +155,11 @@ def domain_ceiling_s(row) -> Optional[int]:
 
 
 #: SLURM memory suffixes, in gigabytes.
-_MEM_UNITS = {"K": 1 / 1024 ** 2, "M": 1 / 1024, "G": 1.0, "T": 1024.0}
-
-
-def parse_mem_gb(text) -> Optional[float]:
-    """``"390G"`` -> ``390.0``.  ``None`` when it says nothing usable.
-
-    **The unit R2 was missing.**  The record states memory as a number of
-    gigabytes; a job states it as SLURM text.  Nothing converted between them,
-    so ``max_mem_gb`` could be compared against nothing and was read by no
-    code at all -- a limit that cannot be expressed in the same unit as the
-    ask is a limit that will never be checked.
-
-    ``--mem=0`` is SLURM for *all the memory on the node*, which is the
-    opposite of asking for none, so it returns ``None``: an unbounded ask is
-    not a small one, and R3 says an unstated limit never bars.
-    """
-    if text is None:
-        return None
-    if isinstance(text, (int, float)):
-        return float(text) or None
-    t = str(text).strip().upper()
-    if not t or t == "0":
-        return None
-    unit = _MEM_UNITS.get(t[-1])
-    number = t[:-1] if unit is not None else t
-    try:
-        value = float(number)
-    except ValueError:
-        return None                      # unreadable is not small (R3)
-    return (value * (unit if unit is not None else 1 / 1024)) or None
+# `parse_mem_gb` moved to `quantities.py` (2026-08-24): it is a reader of
+# a dialect, not a rule about admission, and its human-dialect sibling
+# `parse_memory` disagrees with it by 1024x on a bare number.  One object,
+# one module (`docs/design.md`, "Architecture").
+from .quantities import parse_mem_gb            # noqa: F401
 
 
 @dataclass(frozen=True)

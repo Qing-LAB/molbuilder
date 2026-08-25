@@ -699,3 +699,123 @@ def test_the_template_path_is_formed_in_exactly_one_place():
         + "\n  ".join(offenders)
         + "\nUse template.template_filename / template_path / find_template."
     )
+
+
+def test_the_two_clock_derivation_homes_are_real_functions():
+    """`parse.md` § 2a names the ONE place each derivation happens.  A
+    contract that points at a function nobody wrote sends a reader
+    looking for something that is not there -- and both names in that
+    table were invented when the rule was first written (2026-08-24):
+    `to_legacy_payload` and `_merge_stage_payloads`, neither of which
+    has ever existed.
+
+    Narrow on purpose.  A repo-wide `file.py::symbol` linter would be the
+    general form, and a first pass at one turned up ~20 candidates that
+    are mostly module-level constants and partial paths -- worth its own
+    task, not worth shipping with that much noise.  This pins the table
+    the rule depends on.
+    """
+    import re
+    root = Path(__file__).resolve().parents[1]
+    doc = (root / "docs" / "model" / "parse.md").read_text(encoding="utf-8")
+    rows = re.findall(r"`([A-Za-z0-9_/]+\.py)::([A-Za-z_][A-Za-z0-9_]*)`", doc)
+    assert rows, "§ 2a's derivation table could not be parsed -- repoint this"
+    missing = []
+    for mod, sym in rows:
+        f = root / "molbuilder" / mod
+        if not f.is_file():
+            missing.append(f"{mod} (no such file)")
+            continue
+        if not re.search(rf"^\s*(?:async\s+)?(?:def|class)\s+{re.escape(sym)}\b",
+                         f.read_text(encoding="utf-8"), re.M):
+            missing.append(f"{mod}::{sym} (not defined there)")
+    assert not missing, (
+        "parse.md names code that does not exist: " + ", ".join(missing))
+
+
+def test_the_allocation_example_in_its_OWNING_contract_is_what_the_reader_stores():
+    """§ 6.8a of `engines/stages.md` owns the `allocation` block, and the
+    example it prints must be the spelling the reader actually stores.
+
+    **This is the drift-direction check, not a spelling check.** On
+    2026-08-24 the record's spelling changed by user directive, and the
+    change was made in the code and in `task.py`'s docstring -- a
+    RESTATEMENT -- while § 6.8a went on saying *"values are spelled as a
+    person types them"* and printing `"time": "4h"`.  Fixing a
+    code-vs-contract finding by editing the code and the nearest comment
+    is how the contract ends up the last place telling the truth.
+
+    Feeding the document's own example through the reader closes that: if
+    either side moves, they stop agreeing here.
+    """
+    import json as _json
+    import re
+    from molbuilder.task import _allocation_from_obj
+    root = Path(__file__).resolve().parents[1]
+    doc = (root / "docs" / "engines" / "stages.md").read_text(encoding="utf-8")
+    body = doc[doc.index("### 6.8a"):]
+    m = re.search(r"```json\n(.*?)\n```", body, re.S)
+    assert m, "§ 6.8a's allocation example could not be found -- repoint this"
+    example = _json.loads("{" + m.group(1).rstrip().rstrip(",") + "}"
+                          if not m.group(1).strip().startswith("{")
+                          else m.group(1))
+    assert "allocation" in example, (
+        f"§ 6.8a's example is not an allocation block: {example!r}")
+
+    stored = _allocation_from_obj(example)
+    documented = example["allocation"]
+    for field in ("time", "mem", "domain"):
+        if documented.get(field):
+            assert getattr(stored, field) == documented[field], (
+                f"§ 6.8a prints allocation.{field} = "
+                f"{documented[field]!r}, but the reader stores "
+                f"{getattr(stored, field)!r}.  The contract that OWNS this "
+                f"key and the code that reads it disagree about what the "
+                f"file holds.")
+
+
+def test_the_documented_L1_index_is_the_enforced_one():
+    """`architecture.md` § 3's L1 table and `test_layering.py`'s `_L1_MODULES`
+    must be the same set, in both directions.
+
+    **Why this one matters more than most.** The layer a module belongs to is
+    supposed to be answerable from `design.md`'s three questions, and the
+    index is where you look up the answer.  If the index and the enforced
+    list disagree, "which layer does this go in?" silently becomes a guess --
+    and a guess is what put `parse_duration` in a workflow package, which is
+    what let a human-written time reach `sbatch` as `-t 4h`.
+
+    The diagram in that section named `pseudos` and `checkpoint` as L1 until
+    2026-08-24; both are L2, and it listed 9 of the 22.  Nothing had ever
+    compared the picture to the rule.
+    """
+    import ast
+    import re
+    root = Path(__file__).resolve().parents[1]
+
+    # the ENFORCED set, read from the gate itself
+    gate = ast.parse((root / "tests" / "test_layering.py").read_text())
+    enforced = None
+    for node in gate.body:
+        if (isinstance(node, ast.Assign)
+                and getattr(node.targets[0], "id", "") == "_L1_MODULES"):
+            enforced = set(ast.literal_eval(node.value))
+    assert enforced, "_L1_MODULES could not be read -- repoint this test"
+
+    # the DOCUMENTED set, read from the table that indexes it
+    doc = (root / "docs" / "architecture.md").read_text(encoding="utf-8")
+    start = doc.index("**The L1 index, grouped by the object each module owns.**")
+    table = doc[start:doc.index("Reading the table is how you answer", start)]
+    documented = set()
+    for line in table.splitlines():
+        if not line.startswith("|") or line.startswith("| the object"):
+            continue
+        cells = line.split("|")
+        if len(cells) < 3:
+            continue
+        documented |= set(re.findall(r"`([a-z_]+)`", cells[2]))
+
+    assert documented == enforced, (
+        "architecture.md § 3's L1 index and tests/test_layering.py disagree.\n"
+        f"  documented but not enforced: {sorted(documented - enforced)}\n"
+        f"  enforced but not documented: {sorted(enforced - documented)}")

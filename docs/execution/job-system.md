@@ -1239,9 +1239,13 @@ flowchart LR
   > deleted legacy `bench` module carried.)*
 
   The **winner is the fastest completed point** that ran what it was asked to
-  run; the tool also recommends a memory request (peak ×
-  1.15) and a walltime (per-iteration time × a nominal iteration count × a safety
-  factor). The recorded choice is **portable** — `prep run` finds the verdict,
+  run. *(It also recommended a memory request — peak × 1.15 — and a walltime —
+  per-iteration time × a nominal iteration count × a safety factor — until
+  2026-08-24. Both are DELETED: the iteration count was a default in a function
+  signature, `summarize` wrote them into `run-config.toml`, and `prep` folded
+  them into an allocation that reached `sbatch`. The wall and the memory are
+  the person's to state, `submission.md` S1/S2.)* The recorded choice is
+  **portable** — `prep run` finds the verdict,
   **asks**, and re-resolves the concrete rank and core counts for whatever
   machine it is later run on *(the asker was named `prep-run`, a baked bundle
   executable, until the fold retired it)*.

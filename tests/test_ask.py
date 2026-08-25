@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.jobset.ask import Ask, confirm, parse_duration, parse_memory
+from molbuilder.jobset.ask import Ask, confirm
+from molbuilder.scheduler.quantities import parse_duration, parse_memory
 from molbuilder.scheduler import Domain
 
 

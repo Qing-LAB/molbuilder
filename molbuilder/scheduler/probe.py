@@ -27,6 +27,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
+# `parse_walltime` moved to `quantities.py` (2026-08-24), where every dialect
+# of a walltime and a memory size now lives together.  The RECORD reader had
+# been here, beside the `sinfo` text it was written for, while the HUMAN
+# reader sat in `jobset/ask.py` -- two dialects of one quantity in two
+# subpackages, with nothing in the code's shape making their difference
+# visible.  Imported rather than re-exported: this module still READS a
+# `sinfo` timelimit in two places below, so it is a real dependency and
+# not a compatibility alias -- nothing imports the name from here.
+from .quantities import parse_walltime
+
 
 # sinfo timelimit tokens that mean "no ceiling".
 _INFINITE = {"infinite", "unlimited", "n/a", ""}
@@ -34,32 +44,6 @@ _INFINITE = {"infinite", "unlimited", "n/a", ""}
 _INFINITE_SECS = 30 * 24 * 3600
 _INFINITE_STR = "30-00:00:00"
 
-
-def parse_walltime(s) -> int:
-    """SLURM walltime string -> seconds.  Accepts the forms SLURM accepts:
-    ``MM``, ``MM:SS``, ``HH:MM:SS``, ``D-HH``, ``D-HH:MM``, ``D-HH:MM:SS``
-    (running-a-job.md § 5.3).  Empty -> 0.  Raises ValueError on garbage
-    so a malformed config max_time fails loudly, not silently as 0."""
-    s = str(s).strip()
-    if not s:
-        return 0
-    days = 0
-    if "-" in s:
-        d, _, s = s.partition("-")
-        days = int(d)
-        parts = [int(x) for x in s.split(":")] if s else [0]
-        while len(parts) < 3:
-            parts.append(0)
-        h, m, sec = parts[0], parts[1], parts[2]
-    else:
-        parts = [int(x) for x in s.split(":")]
-        if len(parts) == 1:
-            h, m, sec = 0, parts[0], 0          # bare = minutes (SLURM rule)
-        elif len(parts) == 2:
-            h, m, sec = 0, parts[0], parts[1]   # MM:SS
-        else:
-            h, m, sec = parts[0], parts[1], parts[2]
-    return ((days * 24 + h) * 60 + m) * 60 + sec
 
 
 @dataclass

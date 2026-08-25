@@ -1736,8 +1736,9 @@ them; within a layer, one concept has exactly one name.
 |---|---|---|---|
 | MPI ranks | `mpi_np` | `mpi_np` → `-n` | *(same name)* |
 | OMP cores / rank | `omp_threads` | **`cpus_per_task`** → `-c` | `resolve.py` — the allocation is assembled at `prep` in exchange names (`--cpus-per-task`); a sweep's `C` axis reaches it through `MachineTranslation` |
-| Walltime | `defaults.time` | **`time`** → `-t` | — |
-| Memory | `max_memory_mb` / `defaults.mem` | `mem` → `--mem` | `render_sbatch` (estimate) |
+| Walltime | `defaults.time` | **`time`** → `-t` | `ask.canonical_time` at every human edge (the tab's box, `--time`, a hand-edited file), and `Resources.__post_init__` enforces it for the four roads that reach the class. **The exchange side is SLURM's spelling and nothing else** — `engines/stages.md` § 6.8a |
+| Memory | `defaults.mem` | `mem` → `--mem` | `ask.canonical_mem`, the same way. *(This cell said `render_sbatch` (estimate) until 2026-08-24. There is no estimate: the baked memory model was **deleted, not unwired** in the estimation purge — `runwrap.py` says so at its own site — and a table still pointing at it is how a reader learns that a deleted mechanism is live.)* |
+| Per-rank memory cap | `max_memory_mb` | `max_memory_mb` — **not a SLURM flag** | the wrapper's `ulimit -v`. A different question from `mem`, which asks the *scheduler*; they shared a row until 2026-08-24 and the row could not describe either translation correctly |
 | Whole-node | `gpu.exclusive` | `exclusive` → `--exclusive` | — |
 | Partition | `directives.partition` | `partition` → `-p` | resolved from `domain` |
 | QoS | `directives.qos` | `qos` → `-q` | resolved from `domain` |

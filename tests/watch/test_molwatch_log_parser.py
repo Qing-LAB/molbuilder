@@ -505,3 +505,40 @@ def test_scf_cycle_clock_optional_in_old_logs(tmp_path):
     for c in scf:
         assert "wall_clock_s" in c
         assert c["wall_clock_s"] is None
+
+
+def test_a_non_finite_clock_becomes_null_not_NaN(tmp_path):
+    """NaN is not a legal JSON token.  The browser's `r.json()` throws on
+    it and the whole Results tab renders blank -- so every numeric series
+    in the payload goes through `_nan_to_none`, and the two clocks were
+    not among them until 2026-08-24.
+
+    `_maybe_float` turns a malformed `wall_time:` line into a float NaN
+    quite happily, so one bad line in one log was enough.
+    """
+    import json as _json
+    sample = ("# molwatch trajectory log v1\n"
+              "# engine: pyscf\n"
+              "# created: 2026-04-25T11:00:00\n"
+              "\n"
+              "==== molwatch step 0 begin ====\n"
+              "step_index: 0\n"
+              "wall_time: nan\n"
+              "n_atoms: 1\n"
+              "coordinates (Ang):\n"
+              "   H  0.0  0.0  0.0\n"
+              "energy (eV): -1.0\n"
+              "forces (eV/Ang):\n"
+              "   H  0.0  0.0  0.0\n"
+              "max_force (eV/Ang): 0.0\n"
+              "scf_history begin\n"
+              "scf_history end\n"
+              "==== molwatch step 0 end ====\n")
+    p = tmp_path / "nan.molwatch.log"
+    p.write_text(sample)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
+    assert result["wall_clock_s"] == [None]
+    # And the derivation must not manufacture a fresh NaN by subtracting
+    # one -- it is sieved BEFORE the derived series is built.
+    assert result["elapsed_s"] == [None]
+    assert "NaN" not in _json.dumps(result)

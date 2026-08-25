@@ -197,3 +197,44 @@ class TestTheRecordHoldsOneSpelling:
             if tok.startswith("--mem="):
                 assert SLURM_MEM.match(tok.split("=", 1)[1]), flags
         assert "-t" in flags and any(f.startswith("--mem=") for f in flags)
+
+
+class TestAStatedValueIsNeverLostQuietly:
+    """The family both Sol failures belong to: a person states something and
+    it does not arrive.  These are the other doors it could happen at."""
+
+    def test_an_unknown_resources_key_is_refused_not_dropped(self):
+        """`"memory"` and `"walltime"` are both plausible and neither is a
+        field name.  Filtering them silently gave the job the scheduler's
+        default and said nothing."""
+        with pytest.raises(ValueError) as e:
+            Resources.from_dict({"memory": "256G", "mpi_np": 48})
+        assert "memory" in str(e.value) and "known keys" in str(e.value)
+
+    def test_the_refusal_names_which_job(self):
+        """A sweep holds six; a refusal you have to bisect a file to act on
+        is most of the cost of the bug still being there."""
+        with pytest.raises(ValueError) as e:
+            Job.from_dict({"name": "G0K48C1", "script": "x.fdf",
+                           "resources": {"walltime": "4h"}})
+        assert "G0K48C1" in str(e.value)
+
+    def test_a_sliver_of_memory_never_becomes_all_of_it(self):
+        """SLURM reads `--mem=0` as ALL the node's memory, so rounding a
+        small positive ask down to zero flips the smallest request into the
+        largest -- silently, and in the direction that gets a job refused or
+        a node monopolised."""
+        from molbuilder.scheduler.quantities import slurm_mem
+        assert slurm_mem(0.0001) == "1M"
+        assert slurm_mem(0) == "0"          # an explicit 0 still means all
+
+    def test_the_queue_table_does_not_under_report_a_ceiling(self):
+        """It read `1h` for a 90-minute queue -- integer division, no
+        remainder -- in the one table a person reads to decide what to ask
+        for, so they would ask for less than it would have given them."""
+        from molbuilder.scheduler.quantities import human_wall
+        assert human_wall(5400) == "1h30m"
+        assert human_wall(271800) == "75h30m"
+        # and unchanged for every round value the listing already showed
+        assert [human_wall(s) for s in (900, 14400, 86400, 604800)] == [
+            "15m", "4h", "24h", "168h"]

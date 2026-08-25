@@ -252,7 +252,28 @@ is the clearest statement of the rule.)*
 | answers | *what is this machine* | *what do I want from it* |
 | file | `environment.json` | `molbuilder.json` |
 | arrives by | **probe** when you are standing on the machine · **declaration** when you are not | always a person |
-| examples | cores, GPUs and their type, memory, scheduler kind, the partitions and QoS you can reach and their walls | which partition to default to, `gpu.exclusive`, `gpu.mem`, `defaults` |
+| examples | cores, GPUs and their type, memory, scheduler kind, the partitions and QoS you can reach and their walls, **how a shell enters an environment there** (`script_generation`), **which environments exist there** | which partition to default to, `gpu.exclusive`, `gpu.mem`, `defaults`, **which environment to use** |
+
+> **The bootstrap is a fact, and it took a wasted afternoon to place it
+> correctly** *(2026-08-24)*. `module load mamba` is not something a person
+> wants from ASU Sol; it is how Sol works, and no other answer is available
+> there. Put it to the question in this table's first row — *what is this
+> machine* — and it lands in the fact column with the core count.
+>
+> `preparing-for-another-machine.md` § 3 read it the other way, called a
+> preamble "a preference", and concluded the record **must not** carry it.
+> The consequence was the failure that section itself predicts, in the same
+> words it uses to predict it: a bundle prepped on the workstation baked
+> `source /home/qqing/miniconda3/etc/profile.d/conda.sh` and every job on
+> Sol died on a path that exists on neither the cluster nor anywhere it was
+> sent.
+>
+> **The distinction that keeps the two apart**: which environment you want
+> is a preference (`envs.<category>`); whether it EXISTS on that machine is
+> a fact, and it is knowable by the probe — `conda env list` enumerates
+> without entering, so the probe running in one env reports all of them.
+> The circularity is only apparent: the probe needs *an* env to run, never
+> the ones the generated script will use.
 
 > **Why "probed" is the wrong axis.** *You can only probe the machine you are
 > standing on.* Describe a calculation on a workstation to run it on a cluster

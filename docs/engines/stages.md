@@ -1316,7 +1316,7 @@ separate question and still open (`project-layout.md § 8`).
 **unstated**:
 
 ```json
-"allocation": { "domain": "htc", "time": "4h", "mem": "128G" }
+"allocation": { "domain": "htc", "time": "0-04:00:00", "mem": "128G" }
 ```
 
 | field | what it says |
@@ -1333,13 +1333,37 @@ is a decision about this calculation, true wherever the file is opened, and
 § 6.8's own example of the un-portable thing (*"use 16"*) is a different
 kind of statement.
 
-**Values are spelled as a person types them** — `"4h"`, `"128G"`,
-`"7-00:00:00"` — not as seconds and gigabytes. The file holds what you would
-type, so one parser serves the CLI, the browser and this reader, and nothing
-is converted twice. Shape is checked here; whether `"4h"` parses and whether
-`htc` exists are the surfaces' questions, because a description written for
-one cluster is opened on another and refusing it there would refuse a file
-that is correct where it is going.
+**One spelling, and it is SLURM's** — `"0-04:00:00"`, `"128G"` *(user,
+2026-08-24: "your record should set unified time format while it is the UI
+that can do some translation for human readability/input")*. Not seconds and
+gigabytes either: what the file holds is what `sbatch` takes.
+
+*This section said the opposite until that date* — **"values are spelled as a
+person types them … nothing is converted twice"** — and the reason it had to
+change is worth keeping, because it is not a matter of taste. **The two
+vocabularies disagree**: `04:30` is four minutes thirty to SLURM and four and
+a half hours to a person, so a field holding *whichever spelling arrived*
+cannot be read correctly by anybody. And nothing converted between this key
+and `Resources.time`, which has always been documented as SLURM's own — so
+the browser's `"4h"` travelled unread as far as the command line, where
+`sbatch` refused `-t 4h`: the tool's own written value, rejected by the tool.
+
+**Translation lives at the edges where humans are** — the Task-setup tab's
+input box, `--time`/`--mem`, and a file typed by hand, which is such an edge
+too. All of them go through one door (`jobset/ask.py`'s `canonical_time` /
+`canonical_mem`), and the reader below normalises on the way in, so a
+description written before this rule still opens and a person may still type
+`4h` anywhere. What no layer behind those edges ever meets is a second
+spelling. `Resources` enforces the same invariant on itself, because four
+roads reach it and a fix at one would leave three.
+
+**The queue name is still not judged here**, and that half of the old reason
+stands unchanged: a description written for one cluster is opened on another,
+and refusing it here for naming a queue this box never heard of would refuse
+a file that is correct where it is going. The difference is that a spelling
+is machine-independent and a queue name is not — so the spelling can be
+settled at the door and the queue cannot. The machine record answers that, at
+launch, where the machine is known.
 
 **`prep` reads it as the base allocation, and a flag still wins — FIELD by
 field.** `--mem 64G` overrides the memory and leaves the queue and the wall

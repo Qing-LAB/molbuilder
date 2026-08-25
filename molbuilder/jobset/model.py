@@ -49,9 +49,14 @@ _KINDS = ("sweep", "ladder")
 
 @dataclass
 class Resources:
-    """A per-job scheduler ask.  Every field is optional; ``None`` means
-    "inherit the job-level default / per-job estimate" (assistant, not
-    nanny — no surprise resource choices).
+    """A per-job scheduler ask.  Every field is optional, and ``None``
+    means **unstated** — the scheduler's own default then decides, said out
+    loud (assistant, not nanny — no surprise resource choices).
+
+    *It said "inherit the job-level default / per-job estimate" until
+    2026-08-24.  There is no per-job estimate: every one was deleted in the
+    estimation purge, and a field whose docstring still offers one invites
+    the next reader to go looking for it.*
 
     Field names match the EXCHANGE vocabulary used by the other persisted
     artifacts (bench-manifest, scheduler config) so the system speaks one
@@ -119,7 +124,7 @@ class Resources:
         browser's ``"4h"`` into this field, `sbatch` was handed ``-t 4h``,
         and SLURM refused the tool's own written value.*
         """
-        from .ask import canonical_mem, canonical_time
+        from ..scheduler.quantities import canonical_mem, canonical_time
         if self.time:
             self.time = canonical_time(self.time)
         if self.mem:
@@ -130,8 +135,28 @@ class Resources:
 
     @classmethod
     def from_dict(cls, d: Optional[Dict[str, Any]]) -> "Resources":
+        """A key this class does not know is REFUSED, not dropped.
+
+        It filtered silently until 2026-08-24, so a hand-edited
+        ``job-set.json`` saying ``"memory": "256G"`` or ``"walltime": "4h"``
+        -- both plausible, neither a field name -- lost the ask with no
+        complaint and the job ran with whatever the scheduler defaults to.
+        That is the same failure as the `--domain` one: a value a person
+        stated, that never arrived.
+
+        `task.py`'s allocation reader has always refused an unknown key and
+        named the known ones (`_check_keys`).  Two readers of one concept
+        disagreeing about strictness is how a person learns that stating a
+        thing does not mean it is read.
+        """
         d = d or {}
         known = {f.name for f in dataclasses.fields(cls)}
+        unknown = [k for k in d if k not in known]
+        if unknown:
+            raise ValueError(
+                f"resources: unknown key(s) "
+                + ", ".join(repr(k) for k in sorted(unknown))
+                + f" (known keys: {', '.join(sorted(known))})")
         return cls(**{k: v for k, v in d.items() if k in known})
 
 
@@ -223,10 +248,16 @@ class Job:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Job":
+        # A sweep holds six of these; a refusal that does not say WHICH one
+        # is a refusal you have to bisect a file to act on.
+        try:
+            res = Resources.from_dict(d.get("resources"))
+        except ValueError as exc:
+            raise ValueError(f"job {d.get('name', '?')!r}: {exc}") from None
         return cls(
             name=d["name"],
             script=d["script"],
-            resources=Resources.from_dict(d.get("resources")),
+            resources=res,
             warm=[WarmFile.from_dict(w) for w in (d.get("warm") or [])],
             traits=dict(d.get("traits") or {}),
             point=dict(d.get("point") or {}),

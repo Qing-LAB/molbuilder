@@ -1038,16 +1038,30 @@ sweep has finished,
                  "knobs": { "mpi_np": 4, "cpus_per_task": 6, "gres": "gpu:a100:1" },
                  "mechanism": { "use_gpu": true,
                                 "diag_algorithm": "ELPA-1STAGE" },
-                 "rationale": "G1K4C6 fastest (2.3 s/iter); gpu-bound; vs G1K8C2 3.1 s/iter" },
-  "recommend": { "mem_gb": 97, "time": "0-00:11:29",
-                 "time_basis": "2.3s/iter x 200 iters x 1.5 (adjust to your run)" } }
+                 "rationale": "G1K4C6 fastest (2.3 s/iter); gpu-bound; vs G1K8C2 3.1 s/iter" } }
 ```
 *(the sample tracks `bench/result.py`'s writer — `choice.label` is the
-winning trial's id, its knobs ride under `knobs`, and `recommend` is
-measured sizing, not prose; the flat-key sample that stood here until
-2026-08-12 was the retired pre-fold shape.  This sample, the table above
-and the toml below are ONE dataset, rendered by the real code —
-regenerate all three together if the writers change)*
+winning trial's id and its knobs ride under `knobs`; the flat-key sample
+that stood here until 2026-08-12 was the retired pre-fold shape.  This
+sample, the table above and the toml below are ONE dataset, rendered by
+the real code — regenerate all three together if the writers change)*
+
+> **There is no `recommend` block, and there is no longer a suggested wall
+> or memory** *(2026-08-24)*. It held
+> `mem_gb = peak RSS x 1.15` and
+> `time = s/iter x 200 iters x 1.5` — a safety factor and a production
+> iteration count **nobody chose**, the second of them a default sitting in
+> a function signature. `summarize` wrote both into the toml below,
+> `prep` folded them in when no flag said otherwise, and they reached
+> `sbatch`. That is the mechanism the estimation purge was ordered to end,
+> surviving in the one path the purge did not sweep — the same shape as the
+> five 38-minute jobs (62039301-05) it was ordered for.
+>
+> **What the sweep still recommends is what it MEASURED**: which
+> configuration won, its ranks, threads, GPU request and solver. The wall
+> and the memory are the person's to state (`execution/submission.md` S1,
+> S2), and unstated means the queue's own ceiling and the scheduler's own
+> default — not a number derived from a benchmark.
 
 The summary itself is a table — one row per point, the sweep's knobs beside
 what the monitor measured — so the scaling is visible in one look rather
@@ -1083,8 +1097,6 @@ schema = "molbuilder/run-config@1"
 mpi_np = 4            # MPI ranks
 cpus_per_task = 6     # cores per rank (OMP threads follow this)
 gres = "gpu:a100:1"   # scheduler GPU request
-mem = "97GB"          # the winner's measured peak RSS x safety margin
-time = "0-00:11:29"   # 2.3s/iter x 200 iters x 1.5 (adjust to your run)
 
 [pins]                # HOW the winner computed, read from its own deck
 use_gpu = true
@@ -1874,7 +1886,7 @@ how a folder stops being trustworthy.
 | ~~`.molbuilder.json`~~ | ~~⑤ benchmark bundle~~ | *(retired — note below)* | ~~the activation the bundle carries to the target~~ |
 | `environment.json` | ③ calculation — **and** per-machine, outside the tree, where `jobset probe` writes it; the calculation's copy wins ([`configuration.md` § 5](?doc=configuration.md) M-3) | `molbuilder/environment@2` | the machine **as probed**: topology, scheduler, site, reachable domains. Never what you want from it — that is `molbuilder.json` |
 | ~~`bench-manifest.json`~~ | ~~⑤ benchmark bundle~~ | *(retired — note below)* | ~~the two comparable points, and the source deck's hash~~ |
-| `bench-result.json` | the stage's `bench/` container | `molbuilder/bench-result@1` | every trial's timing, the winner, a recommendation |
+| `bench-result.json` | the stage's `bench/` container | `molbuilder/bench-result@1` | every trial's timing and the winner.  **No wall and no memory**: those were derived from a safety factor and an assumed iteration count until 2026-08-24 (§ 2.3.2) |
 
 *(Four rows corrected 2026-08-12. The "⑤ benchmark bundle" level never existed
 in § 2.6's table — ⑤ is the attempt — and the bundle it described died in the

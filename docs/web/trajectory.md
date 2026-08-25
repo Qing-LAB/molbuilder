@@ -64,15 +64,38 @@ early approach is readable; as it converges the curve heads toward the line.
 
 ## 4. Is it done, and how fast?
 
-The **run badge** reads *Running*, *Finished*, or *Stopped*. And the SCF line
-gives a live per-iteration wall-time — "~16 s/iter" — with its source spelled
-out, because it comes from whichever estimate is most trustworthy at the moment:
+The **run badge** reads *Running*, *Finished*, or *Stopped*, and carries a
+detail line beneath it with two different facts:
+
+| detail | reads | where it comes from |
+|---|---|---|
+| **when** — "ended 14:32" | a *time of day* | the run's own per-step clock if it has one, else the file's modification time |
+| **total** — "total 2h 15m" | a *duration* | how far into the run the last step was |
+
+**Those are two separate readings and neither substitutes for the other.** A
+PySCF run writes a real timestamp into its `.molwatch.log`, so it can say when.
+A SIESTA `.out` contains no time of day anywhere — only a timer counting from
+the start of the run — so for SIESTA the "when" falls back to the file's
+mtime, deliberately. The parser says *"this engine cannot tell you the time of
+day"* rather than handing over its elapsed seconds; when it did hand them over,
+a run six minutes old displayed **"last result Dec 31, 5:06 PM"** — six minutes
+after epoch zero, a duration printed as a date
+([`model/parse.md § 2a`](?doc=model/parse.md)).
+
+And the SCF line gives a live per-iteration wall-time — "~16 s/iter" — with its
+source spelled out, because it comes from whichever estimate is most
+trustworthy at the moment:
 
 1. best: the **server's own refresh-delta** (the wall-clock time between two file
    flushes, divided by the iterations added), which survives a page reload;
 2. early on, before the server has two timestamps to compare, a **client-side
    estimate** from the last couple of polls;
-3. as a fallback, the engine's own **once-per-run timer** snapshot.
+3. as a fallback, **SIESTA's own once-per-run timer** snapshot — and it is
+   SIESTA's alone. That rung divides a cumulative time by a call count, which
+   is arithmetic on a duration; a PySCF log carries a timestamp instead, and
+   dividing one of those by a call count is arithmetic on a date. So a PySCF
+   run simply has no third rung, and the line stays quiet rather than
+   printing a number that means nothing.
 
 The line says which one it used, so a rough early number isn't mistaken for a
 precise one.
@@ -147,3 +170,6 @@ header. The header's source-path line has the username redacted.
   behavior.
 - `test_trajectory_csv_redaction_js.py` — the CSV export + path redaction.
 - `test_live_poll_invariants_audit.py` — the poll-loop invariants.
+- `test_trajectory_clocks_js.py` — the two clocks: that the badge's "when"
+  reads the timestamp series and its "total" reads the duration series, and
+  that the per-iteration rung refuses a timestamp.

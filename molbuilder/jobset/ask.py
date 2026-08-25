@@ -16,11 +16,22 @@ categories, an announcement rule, a display — machinery whose entire purpose
 was to cope with numbers nobody chose.  **Asking removes the problem instead
 of labelling it.**
 
-Four things live here and nowhere else:
+Everything that lives here, and it lives nowhere else:
 
-    Ask          the question, and the answer to it
-    queue_table  the queues this machine offers, and which can take the job
-    confirm      the one interface — approve, change, or skip
+    Ask              the question, and the answer to it
+    queue_table      the queues this machine offers, and which can take the job
+    gpu_share_notes  what a GPU-sharing request means, stated once
+    confirm          the one interface — approve, change, or skip
+
+*This list said "four things" and named three of them until 2026-08-24.*  An
+inventory that does not match the module is how a resident goes unnoticed:
+`parse_duration` and `parse_memory` lived here for months without appearing
+on it, and being in a job-submission package is what stopped `task.py` --
+which only wanted to canonicalise a time string -- from reaching them
+without importing the whole of `jobset`.  They are now in
+`scheduler/quantities.py`, with every other dialect of the same two
+quantities (`docs/design.md`, "Architecture": an L1 module is named for the
+object it owns).
 
     The one output is the PLAN the launch door prints -- the exact sbatch
     command of every job, from the same code that submits it.  A `render`
@@ -41,9 +52,17 @@ two ways is how they come to disagree about what was asked.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence
+
+# The two quantities a job asks for -- a wall and an amount of memory -- and
+# every dialect each is written in, live in `scheduler/quantities.py`
+# (2026-08-24).  They sat HERE until then, in a module whose own docstring
+# lists what lives in it and never mentioned them: put where they were first
+# needed rather than where they belong, which is what forced `task.py` to
+# import this whole job-submission package to canonicalise a time string.
+# A codec on a basic unit is L1; this module is L2 (`docs/design.md`).
+from ..scheduler.quantities import human_wall
 
 #: MPS's own hard ceiling -- more than this many processes cannot even
 #: ATTACH to one device (`engines/tuning.md` § 2.12, citing
@@ -73,145 +92,6 @@ class Ask:
         return self.time_s is not None or self.mem_gb is not None
 
 
-def parse_duration(text) -> Optional[int]:
-    """``"4h"`` / ``"90m"`` / ``"45"`` -> seconds.  Bare numbers are minutes.
-
-    Raises :class:`ValueError` with the forms it accepts, because a refusal
-    that does not show the shape is a refusal you have to guess past.
-    """
-    if text is None or str(text).strip() == "":
-        return None
-    t = str(text).strip().lower()
-    # SLURM'S OWN SPELLING, ``[D-]HH:MM[:SS]``, accepted too (2026-08-24).
-    # It is not a nicety: it is how a queue's ``max_time`` is written in the
-    # machine record, so it is what the browser fills a time field WITH --
-    # and a person reading `7-00:00:00` out of their own `task.json` could
-    # not type it back at `--time`, which refused the very value the tool
-    # had just written.  One vocabulary, every surface.
-    m = re.fullmatch(r"(?:(\d+)-)?(\d+):(\d{2})(?::(\d{2}))?", t)
-    if m:
-        d, hh, mm, ss = (int(g or 0) for g in m.groups())
-        total = d * 86400 + hh * 3600 + mm * 60 + ss
-        if total <= 0:
-            raise ValueError("a duration must be positive")
-        return total
-    mult = 60
-    for suffix, mu in (("h", 3600), ("m", 60), ("s", 1)):
-        if t.endswith(suffix):
-            mult, t = mu, t[:-1]
-            break
-    try:
-        v = float(t)
-    except ValueError:
-        raise ValueError(f"{text!r} is not a duration -- write 4h, 90m, 45 "
-                         f"(bare numbers are minutes), or SLURM's own "
-                         f"D-HH:MM:SS")
-    if v <= 0:
-        raise ValueError("a duration must be positive")
-    return int(v * mult)
-
-
-def parse_memory(text) -> Optional[float]:
-    """``"128G"`` / ``"0.5T"`` / ``"128"`` -> gigabytes.  Bare numbers are GB.
-
-    SLURM's own spelling, so what a person types here is what they would have
-    typed into ``--mem``.
-    """
-    if text is None or str(text).strip() == "":
-        return None
-    t = str(text).strip().upper()
-    # A TRAILING ``B`` IS ACCEPTED (2026-08-24).  `prep --mem`'s own help
-    # says *"e.g. 80GB"* and passes the string through unparsed, while
-    # `launch --mem` parsed it and REFUSED -- two flags of one name
-    # disagreeing about a spelling one of them advertises.  Also ``K``,
-    # for completeness with SLURM's units.
-    if t.endswith("B") and len(t) > 1 and not t[-2].isdigit():
-        t = t[:-1]
-    mult = 1.0
-    for suffix, mu in (("T", 1024.0), ("G", 1.0),
-                       ("M", 1 / 1024.0), ("K", 1 / 1048576.0)):
-        if t.endswith(suffix):
-            mult, t = mu, t[:-1]
-            break
-    try:
-        v = float(t)
-    except ValueError:
-        raise ValueError(f"{text!r} is not an amount of memory -- write "
-                         f"128G, 128GB, 0.5T, or 128 (bare numbers are GB)")
-    if v <= 0:
-        raise ValueError("memory must be positive")
-    return v * mult
-
-
-# --------------------------------------------------------------------- #
-#  The record's one spelling                                            #
-# --------------------------------------------------------------------- #
-#
-# A DURATION AND AN AMOUNT OF MEMORY HAVE TWO VOCABULARIES, and only one
-# of them belongs in a file (user, 2026-08-24: *"your record should set
-# unified time format while it is the UI that can do some translation for
-# human readability/input"*).
-#
-#   the HUMAN spelling   "4h", "90m", "80GB"   -- what a person types
-#   the RECORD spelling  "0-04:00:00", "80G"   -- what SLURM accepts
-#
-# `parse_duration` / `parse_memory` above READ the human spelling.  The two
-# writers below produce the record spelling, and `canonical_*` is the door
-# between them: every edge where a human states a value calls it, and
-# everything behind those edges holds one spelling.
-#
-# Why it must be exactly one: the two vocabularies DISAGREE.  `04:30` is
-# four minutes thirty to SLURM and four and a half hours to a person, so a
-# field holding "whichever spelling arrived" cannot be read correctly by
-# anybody.  A `time="4h"` reached `sbatch` as `-t 4h` on 2026-08-24 and was
-# refused -- the tool's own written value, rejected by the tool.
-
-
-def slurm_time(seconds: int) -> str:
-    """Seconds -> ``D-HH:MM:SS``, the record's one spelling for a wall."""
-    d, rem = divmod(int(seconds), 86400)
-    h, rem = divmod(rem, 3600)
-    m, s = divmod(rem, 60)
-    return f"{d}-{h:02d}:{m:02d}:{s:02d}"
-
-
-def slurm_mem(gb: float) -> str:
-    """Gigabytes -> SLURM's ``<n>G`` (or ``<n>M`` when not a whole GB).
-
-    Megabytes for a fractional value rather than rounding: a ceiling asked
-    for at 95% of a node lands on a fraction, and rounding a memory ask UP
-    is how a request that fits becomes one the queue refuses.
-    """
-    if float(gb) <= 0:
-        return "0"
-    mb = round(float(gb) * 1024)
-    return f"{mb // 1024}G" if mb % 1024 == 0 else f"{mb}M"
-
-
-def canonical_time(text) -> Optional[str]:
-    """A stated wall, in whatever spelling, -> the record's.  ``None`` when
-    nothing was stated -- unstated is not zero (`submission.md` S1)."""
-    secs = parse_duration(text)
-    return None if secs is None else slurm_time(secs)
-
-
-def canonical_mem(text) -> Optional[str]:
-    """A stated memory, in whatever spelling, -> the record's.
-
-    ``"0"`` passes through: it is SLURM's own spelling for *all the memory
-    on the node*, which `--mem`'s own help advertises, and it is a stated
-    ask rather than an absent one.  `parse_memory` refuses it because zero
-    gigabytes is not an amount to fit a queue against -- a different
-    question from what to write in the file.
-    """
-    if text is None or str(text).strip() == "":
-        return None
-    if str(text).strip() == "0":
-        return "0"
-    gb = parse_memory(text)
-    return None if gb is None else slurm_mem(gb)
-
-
 def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
                 gpu: bool = False) -> str:
     """**Every queue this machine offers, and which of them can take this job.**
@@ -234,8 +114,7 @@ def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
     lines = ["this machine offers:", head]
     for i, d in enumerate(rows, 1):
         secs = domain_ceiling_s(d)
-        wall = f"{secs // 3600}h" if secs and secs >= 3600 else (
-            f"{secs // 60}m" if secs else "-")
+        wall = human_wall(secs)
         mem = f"{float(d.max_mem_gb):g} GB" if d.max_mem_gb else "-"
         dev = ", ".join(f"{x.type} x{x.per_node}" for x in d.devices) or "-"
         why = _why_not(d, ask, cores=cores, gpu=gpu)

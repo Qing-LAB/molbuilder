@@ -236,6 +236,47 @@ class Environment:
     #: probe` has run -- which is why @2 exists: on @1 those two were the same
     #: value and nothing could tell them apart.
     domains:   List["Domain"] = field(default_factory=list)
+    #: HOW A SHELL ON THIS MACHINE ENTERS THE ENVIRONMENT -- the preamble
+    #: to run and the activation form to use, as that machine states them
+    #: in its own ``molbuilder.json``.
+    #:
+    #: **It is a fact about the TARGET, so it travels on the target's
+    #: record.**  A wrapper is generated on a workstation and executed on a
+    #: cluster; the two activate differently (`module load mamba` +
+    #: `source activate` on ASU Sol, a `conda.sh` hook on the workstation),
+    #: and until 2026-08-24 nothing carried the difference.  `prep
+    #: --target sol` resolved Sol's topology and queues from this record
+    #: and then baked the WORKSTATION's preamble into every wrapper, so
+    #: every job on Sol died with
+    #: ``line 196: /home/.../conda.sh: No such file or directory``.
+    #:
+    #: ``{}`` means the record predates this field or was written by a
+    #: probe that could not read a config.  Absent is NOT "use the local
+    #: machine's" -- that substitution is the bug -- so a caller
+    #: generating for a named target REFUSES and asks for a re-probe.
+    #:
+    #: Shape: ``{"preamble": str, "activation": str}``, both optional.
+    script_generation: Dict[str, str] = field(default_factory=dict)
+    #: WHICH ENVIRONMENTS EXIST ON THIS MACHINE, by name.
+    #:
+    #: A FACT, and the other half of the pair above: *which* env you want
+    #: for a category is a preference and stays in `molbuilder.json`
+    #: (`envs.<category>`); whether that name exists THERE is a property of
+    #: the machine (`configuration.md` § 5 M-1).  A generator that checks
+    #: the wanted env against the machine it is standing on answers the
+    #: wrong question for a bundle bound elsewhere -- the same shape as
+    #: baking that machine's activation.
+    #:
+    #: Enumerated, never entered: `conda env list --json` reports every env
+    #: from inside any one of them, so a probe running in `molbuilder` sees
+    #: `molbuilder-siesta-gpu` without activating it.  The apparent
+    #: circularity -- *"probing needs an env"* -- is only about the probe's
+    #: own env, never the ones a generated script will use.
+    #:
+    #: ``[]`` means the probe could not enumerate (no conda on PATH, or a
+    #: record written before this field).  Empty is "unknown", not "none":
+    #: a gate cannot refuse on it.
+    conda_envs: List[str] = field(default_factory=list)
     source:    Dict[str, str] = field(default_factory=dict)
     detected_at: Optional[str] = None
     # the LIVE writer (resolve_target, prep step 1); "prep-bench@1" -- the
@@ -253,6 +294,13 @@ class Environment:
             "topology": asdict(self.topology),
             "site": asdict(self.site),
             "domains": [d.to_row() for d in self.domains],
+            # Absent, not empty, when the probe could read no config: a key
+            # that is missing and a key that is {} are different claims to
+            # anything testing for it.
+            **({"script_generation": dict(self.script_generation)}
+               if self.script_generation else {}),
+            **({"conda_envs": sorted(self.conda_envs)}
+               if self.conda_envs else {}),
             "source": dict(self.source),
             "tool": self.tool,
         }
@@ -278,6 +326,11 @@ class Environment:
         return cls(
             scheduler=str(d.get("scheduler", "workstation")),
             topology=topo, site=site, domains=domains,
+            script_generation={
+                k: str(v) for k, v in
+                (d.get("script_generation") or {}).items()
+                if k in ("preamble", "activation") and v is not None},
+            conda_envs=[str(e) for e in (d.get("conda_envs") or [])],
             source=dict(d.get("source") or {}),
             detected_at=d.get("detected_at"),
             # the default names the LIVE writer; "prep-bench@1" (the deleted

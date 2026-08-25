@@ -21,8 +21,18 @@ import pytest
 
 from molbuilder.scheduler import AmbiguousTarget, UnknownTarget
 
+#: A record as `jobset probe --write` writes one.  It carries
+#: `script_generation` because a probed machine states how a shell enters
+#: an environment there -- a FACT about the machine (`configuration.md`
+#: § 5 M-1), and since 2026-08-24 the field the generator reads.  Without
+#: it `prep --target <name>` refuses rather than bake THIS machine's
+#: activation into a wrapper bound for another one, so a fixture that
+#: omitted it stopped every target test at that refusal instead of at the
+#: guard it meant to exercise.
 _REC = {"schema": "molbuilder/environment@2", "domains": [], "topology": {},
-        "site": {}, "source": {}}
+        "site": {}, "source": {},
+        "script_generation": {"preamble": "module load mamba",
+                              "activation": "source activate"}}
 
 
 @pytest.fixture

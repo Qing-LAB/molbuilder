@@ -199,17 +199,22 @@ fastest.
 flowchart LR
     T["02_tight/<br/>the deck: mesh 300, Broyden"] --> X["<b>transform</b><br/>SCF capped at 5 · convergence off<br/>MD steps zeroed · cold start forced<br/>relabelled job-gpu / job-cpu"]
     X --> P["bench-G1K2C5/ · bench-G1K4C5/ · bench-G2K4C5/ · …<br/>each one timed"]
-    P --> W["<b>bench-result.json</b><br/><i>choice</i>: elpa, G=1 K=4 C=6 — portable<br/><i>recommend</i>: mem 96 GB, time 0-08:20:00 — sized here"]
+    P --> W["<b>bench-result.json</b><br/><i>choice</i>: elpa, G=1 K=4 C=6 — portable"]
 ```
 
-Two different kinds of answer come out, and the split matters. **`choice`** is the
-*mechanism* — which engine build, how many ranks per GPU — and it transfers to
-another cluster unchanged. **`recommend`** is *sizing* measured on this machine:
-memory from the winner's peak usage plus 15%, and a walltime from its seconds per
-iteration times an **assumed 200 iterations** times 1.5. That last number is a
-guess about a run that has not happened, which is why it is a starting point and
-labelled as one — a relaxation that takes 400 steps will need twice the wall time
-the benchmark suggested.
+What comes out is the *mechanism*: **`choice`** — which engine build, how many
+ranks per GPU — and it transfers to another cluster unchanged.
+
+**It used to come with a `recommend` block too, and that is deleted**
+*(2026-08-24)*. It sized memory from the winner's peak usage plus 15%, and a
+walltime from its seconds per iteration times an **assumed 200 iterations**
+times 1.5 — a guess about a run that had not happened, labelled as a starting
+point. Being labelled did not stop it travelling: `summarize` wrote both into
+`run-config.toml`, `prep` folded them in wherever no flag said otherwise, and
+`sbatch` received them. A guess that reaches the scheduler is not a starting
+point, it is the number the job runs under. The wall and the memory are stated
+by the person, and unstated means the queue's own ceiling and the scheduler's
+own default ([`submission.md`](?doc=execution/submission.md) S1, S2).
 
 The trials live **under the stage they measure**, in their own container:
 
