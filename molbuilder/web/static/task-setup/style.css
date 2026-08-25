@@ -595,14 +595,29 @@
    caught it.  Fixed by not colliding rather than by out-specifying --
    an override is a second rule to keep true. */
 .ts-asks > * + * { margin-top: var(--space-sm); }
+/* The asks reflow on THEIR OWN width, not the viewport's -- ui-contract.md
+   § 3.  These rows live in a card in a column beside a sidebar, so at a
+   1024px viewport the block itself is only ~318px wide; a viewport media
+   query cannot see that and left the three-column layout in force where it
+   did not fit.  Naming the block a container is what lets the query below
+   ask the question that actually matters. */
+.ts-asks { container-type: inline-size; }
 
 .ts-ask {
     display: grid;
-    grid-template-columns: var(--ts-ask-label-w) minmax(7rem, 12rem) 1fr;
+    /* minmax(0, ...) on the note, not a bare 1fr: `1fr` is
+       `minmax(auto, 1fr)`, and `auto` floors the track at the note's
+       MIN-CONTENT, so a long word holds the track open instead of wrapping.
+       The same call .ts-cols and .ts-row above already make.
+       It is NOT what fixed the 1024px overflow, though -- measured, the
+       container query below is (with `1fr` restored the test still passes;
+       with the media query back it fails either way).  This is the
+       three-column state's own guard, not the fix. */
+    grid-template-columns: var(--ts-ask-label-w) minmax(7rem, 12rem) minmax(0, 1fr);
     align-items: center;
     gap: var(--space-sm);
 }
-@media (max-width: 34rem) {
+@container (max-width: 34rem) {
     /* Stacked: the note stays UNDER its own field rather than wrapping
        into the next row's, which is what made the limit unreadable. */
     .ts-ask { grid-template-columns: 1fr; gap: var(--space-xs); }

@@ -17,8 +17,15 @@ token reference (``var(--accent)``, ``var(--bg-card)``, ...).  Raw
 hex literals are allowed ONLY in:
 
   * ``lib/tokens.css`` — that file IS the token home.
-  * ``:root { --foo: #hex; }`` blocks — those DEFINE per-file
-    namespaced tokens (e.g. projects-sidebar's ``--ps-*`` palette).
+  * A custom-property DEFINITION — ``--foo: #hex`` — wherever it is
+    declared.  It used to be masked only inside ``:root``, but a
+    module that can be dropped into a foreign host declares its
+    palette on its own class instead (``.spectrumchart { --…: #… }``,
+    ``.docs-render { --dr-…: #… }``) precisely so the component still
+    looks right with no page stylesheet at all — the embed-safety
+    pattern of ui-contract.md § 2.  Masking only ``:root`` made those
+    files unlistable, which is how three of them ended up checked by
+    nothing.
   * Fallback values inside ``var(--token, #fallback)`` — those are
     defensive only-fires-if-token-undefined values.
   * Inside ``/* */`` comments — for documentation.
@@ -28,18 +35,16 @@ hex literals are allowed ONLY in:
     library's hardcoded canvas color, or a cohesive per-panel
     pastel theme that would split if pulled into tokens.
 
-Budget model.  Phase 2 cleanup of the small files (style.css,
-modify/style.css, results/style.css, lib/page-shell.css, etc.)
-ships with this commit.  The two big component files —
-``lib/molview/selection/selection-panel.css`` (97 raw hex) and
-``lib/projects/projects-sidebar.css`` (66 raw hex) — need a deeper Phase 3
-migration that introduces ``--sp-*`` / promotes ``--ps-*`` into
-tokens.css.  Until that lands, this test caps each allowlisted
-file at its current count: adding NEW raw hex makes the test fail.
+Coverage (corrected 2026-08-25).  This ran off two hand-maintained
+lists — ``STRICT_FILES`` and a ``HEX_BUDGET`` of per-file caps — and
+checked **nothing else**.  Phase 3 emptied the budget, but the strict
+list was still enumerated by hand, so seven stylesheets were on
+neither list and went unchecked; a sheet added tomorrow would have
+been exempt by default, which is the opposite of an invariant.
 
-To extend an allowlist budget, you must first explain why the
-file truly needs more raw hex than it has now.  The bias is to
-shrink the budget over time, not grow it.
+Both lists are gone.  **Every** stylesheet under ``static/`` is
+checked, ``lib/tokens.css`` excepted, so a new file is covered the day
+it lands and there is no list to remember to update.
 """
 from __future__ import annotations
 
@@ -54,42 +59,6 @@ STATIC_ROOT = (Path(__file__).resolve().parent.parent
 
 EXCLUDE_PATH_SUBSTRS = ("vendor", "codemirror")
 
-# Files where raw hex is allowed up to a documented cap.  Each
-# entry is (max_allowed, why + phase-N-plan).  Shrink the cap
-# whenever a cleanup commit reduces the count; do NOT grow without
-# a plan.  Goal: drive every entry to zero, then promote to
-# STRICT_FILES below.
-HEX_BUDGET: dict[str, tuple[int, str]] = {}   # empty 2026-07 -- every sheet is STRICT
-
-# Files allowed ZERO raw hex (anything outside protected regions
-# OR not on an /* exempt: ... */ line is a bug).  Phase 3
-# (2026-06-13) moved selection-panel, projects-sidebar, tabs,
-# mol-viewer-embed, measurement-chip, and spectra from BUDGET into
-# STRICT after promoting their palettes (--ps-*, --sp-*) into
-# tokens.css and replacing raw hex with token references.
-STRICT_FILES: set[str] = {
-    # ("style.css" removed 2026-07: the file was deleted in the #58 split.)
-    "results/style.css",
-    "modify/style.css",
-    "transport/style.css",
-    "structure-optimization/style.css",
-    "spectra/style.css",
-    "lib/page-shell.css",
-    "lib/form-schema.css",
-    "lib/form-components.css",
-    "lib/projects/projects-sidebar.css",
-    "lib/molview/selection/selection-panel.css",
-    "lib/tabs.css",
-    "lib/molview/selection/measurement-chip.css",
-    "lib/molview/fused-layout.css",
-    "lib/inspectors/markdown.css",
-    "lib/inspectors/spectra.css",
-    "lib/trajectory/trajectory-inspector.css",
-    "lib/system-load-monitor.css",
-    "lib/results/bundle-handoff.css",
-    "lib/app-notifications.css",
-}
-
 # tokens.css is its own thing — that file IS the home for hex.
 TOKEN_FILE = "lib/tokens.css"
 
@@ -98,6 +67,10 @@ TOKEN_FILE = "lib/tokens.css"
 _COMMENT = re.compile(r"/\*.*?\*/", re.S)
 _ROOT_BLOCK = re.compile(r":root\s*\{[^}]*\}", re.S)
 _FALLBACK = re.compile(r"var\(\s*--[\w-]+\s*,\s*#[0-9a-fA-F]{3,8}\s*\)")
+# A custom-property DEFINITION is a token definition wherever it sits --
+# `:root`, or a class an embeddable declares its own palette on.  _ROOT_BLOCK
+# stays for the whole-block case (it also covers non-hex noise inside).
+_CUSTOM_PROP = re.compile(r"--[\w-]+\s*:[^;}]*[;}]")
 _HEX = re.compile(r"#[0-9a-fA-F]{3,8}\b")
 
 # A line containing `/* exempt: ... */` opts every hex on that line out.
@@ -119,7 +92,7 @@ def _count_raw_hex(path: Path) -> tuple[int, list[tuple[int, str]]]:
     body = path.read_text()
     n = len(body)
     masked = bytearray(n)
-    for pat in (_COMMENT, _ROOT_BLOCK, _FALLBACK):
+    for pat in (_COMMENT, _ROOT_BLOCK, _FALLBACK, _CUSTOM_PROP):
         for m in pat.finditer(body):
             for i in range(m.start(), m.end()):
                 masked[i] = 1
@@ -152,13 +125,15 @@ def _count_raw_hex(path: Path) -> tuple[int, list[tuple[int, str]]]:
     return len(raw), raw[:5]
 
 
-def test_strict_files_have_no_raw_hex():
-    """Files in STRICT_FILES must have ZERO raw hex.  These are
-    Phase 2 successes; adding a raw hex here is a regression."""
+def test_no_stylesheet_has_raw_hex():
+    """EVERY stylesheet under static/ (tokens.css excepted) must have zero
+    raw hex.  No allowlist: this used to consult two hand-maintained lists
+    and skip anything on neither, which left seven files unchecked and made
+    "add a new stylesheet" an unnoticed way out of the invariant."""
     failures: list[str] = []
     for css in _iter_css_files():
         rel = str(css.relative_to(STATIC_ROOT))
-        if rel not in STRICT_FILES:
+        if rel == TOKEN_FILE:
             continue
         count, samples = _count_raw_hex(css)
         if count > 0:
@@ -168,67 +143,23 @@ def test_strict_files_have_no_raw_hex():
             )
     if failures:
         pytest.fail(
-            "Raw hex in strict file(s) — replace with token references "
-            "(var(--accent), var(--bg-card), etc.) or wrap with a "
-            "`/* exempt: <reason> */` comment on the same line.\n\n"
+            "Raw hex outside the token layer — replace with token references "
+            "(var(--accent), var(--bg-card), ...), declare it as a custom "
+            "property the component then reads, or mark the line "
+            "`/* exempt: <reason> */`.\n\n"
             + "\n".join("  " + f for f in failures)
         )
 
 
-def test_budget_files_within_cap():
-    """Files in HEX_BUDGET have a documented cap.  Each cleanup
-    commit should LOWER the cap; new code may NOT push it higher."""
-    failures: list[str] = []
-    for css in _iter_css_files():
-        rel = str(css.relative_to(STATIC_ROOT))
-        if rel not in HEX_BUDGET:
-            continue
-        cap, plan = HEX_BUDGET[rel]
-        count, samples = _count_raw_hex(css)
-        if count > cap:
-            failures.append(
-                f"{rel}: {count} raw hex (cap = {cap}). Plan: {plan}\n"
-                f"      First samples: "
-                + ", ".join(f"line {ln} {h}" for ln, h in samples)
-            )
-    if failures:
-        pytest.fail(
-            "Raw hex count exceeded budget in CSS file(s).  Either:\n"
-            "  (a) replace the new hex with a token reference, OR\n"
-            "  (b) lower the cap if your edit reduced the count, OR\n"
-            "  (c) if you genuinely need more hex than the cap allows,\n"
-            "      explain why in the HEX_BUDGET entry — and consider\n"
-            "      whether the new hex belongs in tokens.css instead.\n\n"
-            + "\n".join("  " + f for f in failures)
-        )
-
-
-def test_budget_files_at_cap_or_below():
-    """The HEX_BUDGET caps should track the actual count and shrink
-    over time.  If a file has fewer raw hex than its budget cap,
-    lower the cap so the next regression fails immediately instead
-    of slipping under the old ceiling."""
-    too_loose: list[str] = []
-    for css in _iter_css_files():
-        rel = str(css.relative_to(STATIC_ROOT))
-        if rel not in HEX_BUDGET:
-            continue
-        cap, _ = HEX_BUDGET[rel]
-        count, _ = _count_raw_hex(css)
-        # Allow exactly the cap or one below (small drift OK).  But
-        # if the actual count is way below, the cap should shrink.
-        if cap > count + 2:
-            too_loose.append(
-                f"{rel}: cap = {cap}, actual = {count}.  Lower the "
-                f"cap to {count} in tests/test_css_no_hex_literals.py"
-            )
-    if too_loose:
-        pytest.fail(
-            "HEX_BUDGET cap is looser than necessary.  Cleanup work "
-            "lowered the count — lower the cap so future regressions "
-            "are caught immediately.\n\n"
-            + "\n".join("  " + f for f in too_loose)
-        )
+def test_every_stylesheet_is_actually_reached():
+    """The scan must SEE the files.  A path filter that silently matched
+    everything would make the test above vacuously green."""
+    seen = {str(p.relative_to(STATIC_ROOT)) for p in _iter_css_files()}
+    assert TOKEN_FILE in seen
+    for expected in ("modify/style.css", "task-setup/style.css",
+                     "documents/docs-render.css", "lib/spectrumchart/_style.css"):
+        assert expected in seen, f"{expected} is not being scanned"
+    assert len(seen) >= 20, f"only {len(seen)} stylesheets scanned"
 
 
 def test_token_file_is_unique_home_for_token_definitions():

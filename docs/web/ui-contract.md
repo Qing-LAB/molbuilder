@@ -82,7 +82,15 @@ hits a magic width. Three mechanisms carry most of it:
 - **Container queries** — an embeddable sizes itself to *its own* width, not the
   page's. The fused MolView card flips from side-by-side to stacked at
   `@container (max-width: 692px)` (the sum of the viewer minimum, the rail, the
-  handle, and the panel minimum).
+  handle, and the panel minimum). The Task-setup **asks** (`.ts-asks`) do the
+  same at `34rem`, and they are the cautionary case: that started as a viewport
+  media query, and a viewport query cannot see a block that is only ~318 px wide
+  *because* it sits in a card in a column beside a sidebar. At a 1024 px
+  viewport the three-column layout stayed in force where it did not fit and the
+  row overflowed its container by 10 px — `test_content_fits_its_box` caught it.
+  **If a block's width is set by its container rather than the window, a media
+  query is the wrong instrument**, and a `minmax(0, 1fr)` floor does not save it
+  (measured: it does not).
 
 There are still a handful of real screen-width breakpoints for the things that
 genuinely depend on the whole viewport: **786px** (at and above, the projects
