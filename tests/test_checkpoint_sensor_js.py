@@ -53,6 +53,23 @@ import pytest
 from molbuilder.web.app import create_app
 
 
+@pytest.fixture(autouse=True)
+def _allowed_root(tmp_path, monkeypatch):
+    """Say where this test's tree IS.
+
+    Since web-api.md § 2.1 every route fences a browser-supplied path to the
+    allowed roots BEFORE calling the module behind it, so a test driving those
+    routes at its own ``tmp_path`` has to declare that path the way a
+    deployment declares its projects root.  Without this the routes correctly
+    refuse — which is the point of the fence, not a test-harness quirk.
+    """
+    from molbuilder import diagnostics
+    caps = diagnostics.Capabilities(runtime_config={}, conda_binary=None,
+                                    conda_envs=frozenset())
+    monkeypatch.setattr(type(caps), "file_picker_roots",
+                        lambda self: ((tmp_path.resolve(), "projects"),))
+    diagnostics.set_capabilities(caps)
+
 def _have_git() -> bool:
     try:
         subprocess.run(["git", "--version"],

@@ -53,19 +53,34 @@ bp = Blueprint("checkpoint", __name__)
 
 
 def _resolve_path(raw: Optional[str]) -> Path:
-    """Resolve a user-supplied path to an absolute directory.
+    """Resolve a browser-supplied path to an absolute directory, INSIDE the
+    allowed roots.
 
     Raises ``ValueError`` (caught by the route handler and surfaced as
-    HTTP 400) when ``raw`` is None, empty, or not an existing dir.
+    HTTP 400) when ``raw`` is None, empty, outside every allowed root, or
+    not an existing dir.
 
-    No symlink or directory-traversal handling here -- the molbuilder
-    web app is a single-user local server (see web-api.md § 1); we
-    accept any path the host filesystem grants ``read`` to the user
-    running molbuilder.
+    **The fence belongs here, not in `molbuilder/checkpoint.py`**
+    (web-api.md § 2.1).  That module is generic on purpose: like `git
+    status`, it is handed a directory and reads what is in it to work out
+    whether it is one it can work with at all.  A module that fenced its
+    own inputs would be a second fence with its own idea of the roots, and
+    the CLI -- which legitimately runs outside them -- would have to argue
+    with it.  So the check happens at the boundary the untrusted path
+    arrives at, which is this route layer, BEFORE the module is called.
+
+    This used to accept "any path the host filesystem grants read to the
+    user running molbuilder", citing web-api.md § 1 -- a section about the
+    response envelope, which said nothing either way.  `watch.py` cited the
+    same document for the opposite rule.  § 2.1 now states it once.
     """
     if not raw:
         raise ValueError("missing required parameter: path")
-    p = Path(raw).expanduser().resolve()
+    from .files import _PickerError, _resolve_within_roots
+    try:
+        p = _resolve_within_roots(raw)
+    except _PickerError as exc:
+        raise ValueError(exc.message) from exc
     if not p.is_dir():
         raise ValueError(f"path is not a directory: {p}")
     return p

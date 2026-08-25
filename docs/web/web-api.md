@@ -352,6 +352,59 @@ Set on every response by an `after_request` hook (`app.py`):
   live in [`ops/deployment.md § 4`](?doc=ops/deployment.md).
 - The global upload cap is **50 MB** (`MAX_CONTENT_LENGTH`).
 
+### 2.1 A path from the browser is fenced at the ROUTE — the rule
+
+**Every route that takes a filesystem path from the browser resolves it
+through `projects.contain` (in the web layer: `files._resolve_within_roots`,
+which adds the several allowed roots and an HTTP-shaped refusal) BEFORE it
+calls anything else.** There is one fence and this is it — the same primitive
+the `jobset` CLI's `--bundle` uses, so "may this be read" has one answer.
+
+**And the modules it calls stay generic, deliberately.** A parser parses
+whatever file it is handed; `molbuilder/checkpoint.py` inspects whatever
+directory it is given, exactly as `git status` does — it reads files there to
+work out whether it is a directory it can work with at all. That is the right
+shape for a module, and it is why the check cannot live inside one: a module
+fencing its own inputs would be a second fence with its own idea of the roots,
+and the CLI (which legitimately runs outside them) would have to argue with
+it. **The boundary is where the untrusted path arrives, and that is the
+route.**
+
+Two consequences worth stating, because both were live defects:
+
+- A generic module that does a bare `open()` is **not** the bug — the route
+  that handed it an unchecked path is. `/api/spectra/load` passed
+  `body["path"]` straight into `parse_spectra_json`, and the parser was doing
+  precisely its job.
+- The rate limiter's attack-string screen reads the **URL**. A path that
+  arrives in a JSON body is not screened by it, so the fence is the only thing
+  standing there.
+
+This section exists because the rule was not written down and two blueprints
+cited this document for opposite readings of it: `watch.py` for requiring the
+fence (its own 2026-06-18 fix, after a logged-in user could POST
+`{"path": "/etc/shadow"}` and have the parser read it), `checkpoint.py` for
+skipping it. Neither rule was here to cite. **An exception is legitimate, but
+it is named here with its reason — not decided per blueprint.**
+
+**Auditing it — the fence is reached under four names**, which is why a grep
+for one of them reads as a clean bill of health when it is not:
+
+| entry point | who uses it |
+|---|---|
+| `files._resolve_within_roots` | `files`, `results`, `watch`, `docs`, `bench`, `spectra`, `checkpoint` |
+| `build._resolve_path_within_roots` | `build`, `transport` — a `require="file"/"dir"` wrapper |
+| `selection._load_structure` | `selection` — resolves, then loads |
+| `checkpoint._resolve_path` | `checkpoint` — resolves, then requires a directory |
+
+And the parameter is not always called `path`: `structure_path`, `run_dir`,
+`target_dir`, `dest`, `dir` and `filename` all carry one somewhere. An audit
+that greps `get("path")` alone misses three blueprints.
+
+*Current exceptions: none.* Every route that takes a filesystem path from the
+browser goes through one of the four above — checked 2026-08-25, which is when
+`/api/spectra/load` (1 route) and `/api/checkpoint/*` (6) were brought onto it.
+
 ## 3. Endpoint index — all 81 routes
 
 > **Three routes below no longer exist** (found 2026-08-10 while correcting

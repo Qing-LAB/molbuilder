@@ -197,6 +197,20 @@ def api_spectra_load():
     path = body.get("path")
     inline = body.get("json")
     if path:
+        # THE FENCE (web-api.md § 2.1).  This route used to hand `path`
+        # straight to the parser, and the parser -- correctly, being a
+        # generic reader -- does a bare open().  So any path the server
+        # process could read was readable from here: not the file's
+        # CONTENT, since the decode error reports only the parser's
+        # position, but its EXISTENCE, which is filesystem enumeration.
+        # The rate limiter's attack-string screen reads the URL, and this
+        # path arrives in a JSON body, so nothing else was standing here.
+        # Exactly the hole watch.py closed on 2026-06-18.
+        from .files import _PickerError, _resolve_within_roots
+        try:
+            path = _resolve_within_roots(path)
+        except _PickerError as exc:
+            return jsonify({"ok": False, "error": exc.message}), exc.status
         try:
             results = parse_spectra_json(path)
         except SpectraJsonError as exc:

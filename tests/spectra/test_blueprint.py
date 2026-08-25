@@ -45,6 +45,24 @@ H   -0.24000000    0.93000000    0.00000000
 """
 
 
+@pytest.fixture(autouse=True)
+def _allowed_root(tmp_path, monkeypatch):
+    """Say where this test's tree IS.
+
+    Since web-api.md § 2.1 every route fences a browser-supplied path to the
+    allowed roots BEFORE calling the module behind it, so a test driving those
+    routes at its own ``tmp_path`` has to declare that path the way a
+    deployment declares its projects root.  Without this the routes correctly
+    refuse — which is the point of the fence, not a test-harness quirk.
+    """
+    from molbuilder import diagnostics
+    caps = diagnostics.Capabilities(runtime_config={}, conda_binary=None,
+                                    conda_envs=frozenset())
+    monkeypatch.setattr(type(caps), "file_picker_roots",
+                        lambda self: ((tmp_path.resolve(), "projects"),))
+    diagnostics.set_capabilities(caps)
+
+
 def _make_minimal_results() -> SpectraResults:
     mode = ModeData(
         index_1based          = 1,
@@ -1376,3 +1394,46 @@ class TestModeAnimationControls:
         assert "out.meta.normalization" in core, (
             "what is reported after an export must name the normalization"
         )
+
+
+# ===================================================================== #
+#  The fence (web-api.md § 2.1)                                         #
+# ===================================================================== #
+
+def test_load_refuses_a_readable_spectra_file_outside_the_roots(
+        web_client, tmp_path_factory):
+    """The file is a PERFECTLY GOOD spectra.json — it is simply not
+    somewhere this server may read from.
+
+    The bait matters.  Pointing this at ``/etc/passwd`` would prove nothing:
+    that answers 400 whether the fence holds or not, because it fails to
+    parse a moment later.  Only a file the endpoint would happily serve can
+    tell a fence from a parse error.
+
+    Until 2026-08-25 this route handed ``body["path"]`` straight to
+    ``parse_spectra_json``, which — correctly, being a generic reader —
+    does a bare ``open()``.  Contents did not leak (the decode error reports
+    only the parser's position), but EXISTENCE did, which is filesystem
+    enumeration; and the rate limiter's attack-string screen reads the URL,
+    while this path arrives in a JSON body.
+    """
+    outside = tmp_path_factory.mktemp("elsewhere")
+    good = outside / "job.spectra.json"
+    dump_spectra_json(_make_minimal_results(), good)
+    assert good.is_file()                      # the bait really is readable
+
+    r = web_client.post("/api/spectra/load", json={"path": str(good)})
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["ok"] is False
+    assert "outside every configured root" in body["error"], body["error"]
+
+
+def test_load_still_reads_a_spectra_file_inside_the_roots(
+        web_client, tmp_path):
+    """...and the fence does not break the ordinary case."""
+    good = tmp_path / "job.spectra.json"
+    dump_spectra_json(_make_minimal_results(), good)
+    r = web_client.post("/api/spectra/load", json={"path": str(good)})
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["ok"] is True

@@ -19,6 +19,24 @@ from molbuilder.web.app import create_app
 BIG = b"\x01" * 5000
 
 
+@pytest.fixture(autouse=True)
+def _allowed_root(tmp_path, monkeypatch):
+    """Say where this test's tree IS.
+
+    Since web-api.md § 2.1 every route fences a browser-supplied path to the
+    allowed roots BEFORE calling the module behind it, so a test driving those
+    routes at its own ``tmp_path`` has to declare that path the way a
+    deployment declares its projects root.  Without this the routes correctly
+    refuse — which is the point of the fence, not a test-harness quirk.
+    """
+    from molbuilder import diagnostics
+    caps = diagnostics.Capabilities(runtime_config={}, conda_binary=None,
+                                    conda_envs=frozenset())
+    monkeypatch.setattr(type(caps), "file_picker_roots",
+                        lambda self: ((tmp_path.resolve(), "projects"),))
+    diagnostics.set_capabilities(caps)
+
+
 @pytest.fixture()
 def calc(tmp_path, checkpoint_config):
     """The classification is server-wide (S1c); the folder carries none."""
@@ -413,3 +431,41 @@ def test_init_refuses_a_folder_of_independent_calculations_as_an_advisory(
     assert body["ok"] is False and body["errors_only"]
     assert "run_a" in body["error"] or "calculation" in body["error"].lower(), (
         "the message must say what is wrong with the folder")
+
+
+# ===================================================================== #
+#  The fence (web-api.md § 2.1)                                         #
+# ===================================================================== #
+
+def test_every_route_refuses_a_real_calculation_outside_the_roots(
+        client, tmp_path_factory, checkpoint_config):
+    """A PERFECTLY GOOD calculation folder — just not one this server may
+    read from.
+
+    The bait has to be a directory the routes would happily work on, or the
+    test proves nothing: a nonexistent path answers 400 either way, because
+    ``is_dir()`` rejects it a moment later.
+
+    Until 2026-08-25 this surface accepted "any path the host filesystem
+    grants read to the user running molbuilder", citing web-api.md § 1 --
+    a section about the response envelope.  The fence belongs HERE and not
+    in ``molbuilder/checkpoint.py``: that module is generic on purpose, and
+    like ``git status`` it reads what is in the directory it is handed to
+    decide whether it can work with it at all.
+    """
+    checkpoint_config(size_limit_bytes=1024, engines={"generic": []})
+    outside = tmp_path_factory.mktemp("elsewhere") / "BDT_Au_relax"
+    outside.mkdir()
+    (outside / "job.fdf").write_text("SystemLabel job\n")
+
+    # every path-taking route on this surface, both verbs.  `config` takes
+    # no path, so it is not one of them.
+    for route in ("state", "list"):
+        r = _get(client, route, outside)
+        assert r.status_code == 400, f"GET {route} let it through"
+        assert "outside every configured root" in r.get_json()["error"]
+
+    for route in ("init", "save", "restore", "tag"):
+        r = _post(client, route, outside)
+        assert r.status_code == 400, f"POST {route} let it through"
+        assert "outside every configured root" in r.get_json()["error"]
