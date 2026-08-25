@@ -63,12 +63,18 @@ EXCLUDE_PATH_SUBSTRS = ("vendor", "codemirror")
 # to the entry.  Phase 2 / Phase 3 of the CSS reorganization will
 # eliminate the per-tab variants by scoping to parent selectors.
 ALLOWLIST: dict[str, str] = {
-    # Tab-level surface primitives — page-shell.css has the base;
-    # modify/spectra each redefine with their own padding / border
-    # variants.  Phase 3 will scope these as `.modify-tab .card`,
-    # `.spectra-tab .card`, etc. and let page-shell's base win
-    # everywhere else.
-    ".card":           "phase 3: scope per-tab .card overrides under .modify-tab / .spectra-tab parent",
+    # `.card` REMOVED 2026-08-24 -- the planned fix turned out not to be
+    # needed.  The two copies restated the shell's background / radius /
+    # shadow verbatim and then differed: `--border-soft` in modify, and in
+    # spectra a softer border, `--radius-lg` and its own padding.  Both
+    # load AFTER page-shell, so both drifts won on source order and one
+    # class had three looks -- in spectra's case inside the very file whose
+    # header says the page was reworked to match the reference tab.
+    #
+    # Scoping them under `.modify-tab` / `.spectra-tab` would have PRESERVED
+    # the divergence with better specificity.  Deleting the copies was the
+    # real fix: the shell owns the surface, and `modify/style.css` keeps
+    # only the flex layout that is genuinely its own.
     ".status":         "phase 3: scope per-tab .status base overrides (position/size/resting colour)",
     # .status.error/.ok/.warn/.muted: CONSOLIDATED into page-shell.css as the single
     # home (ui-design-contract §2.3, CSS-migration step 1) — removed from the

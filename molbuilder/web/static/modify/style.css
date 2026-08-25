@@ -235,6 +235,10 @@ header h1 {
 .modify-init-card {
     margin: 0;
     padding: var(--space-sm) var(--space-lg) var(--space-sm);
+    /* the column flow the deleted `.card` copy used to give it;
+       `.modify-section` (line ~165) already declared its own. */
+    display: flex;
+    flex-direction: column;
 }
 .modify-init-card .card-header {
     padding: 0 0 var(--space-sm);
@@ -285,13 +289,28 @@ header h1 {
    by JS once a script exists -- without this guard it was visible, and empty,
    from page load.  docs/process/code-audit.md. */
 .card[hidden] { display: none; }
-.card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-card);
-    display: flex;
-    flex-direction: column;
+/* `.card` IS THE SHELL'S, AND ONLY THE SHELL'S (2026-08-24).
+ *
+ * A copy lived here restating the shell's background / radius / shadow
+ * verbatim and then differing in one value -- `--border-soft` where
+ * `lib/page-shell.css` says `--border-strong`.  This file loads after the
+ * shell (modify.html:12 vs :7), so the drift won on source order and this
+ * tab's cards had a visibly softer border than every other tab's, with
+ * nothing saying why.  `spectra/style.css` carried a third variant.
+ *
+ * What the copy legitimately added was column layout -- and it did not
+ * need `.card` to say it.  BOTH elements on this page that carry `.card`
+ * already carry a class of their own (`.modify-init-card` at modify.html:55,
+ * `.modify-section` at :322), so the layout attaches to those and the
+ * surface stays in one home (`process/code-audit.md` -- a module owns its
+ * CSS; `tests/test_css_no_duplicate_selectors.py` now enforces it, the
+ * `.card` allowlist entry having been retired with this change).
+ *
+ * The planned fix recorded in that allowlist was to scope the copies as
+ * `.modify-tab .card`.  That would have preserved the divergence with
+ * better specificity; deleting them was the actual fix. */
+.modify-init-card,
+.modify-section {
     min-height: 0;          /* let inner flex children scroll */
 }
 .card-header {

@@ -52,12 +52,13 @@ header .tagline {
  * lib/inspectors/spectra.css (2026-07) -- see the header. */
 
 
-.card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-lg);
-    padding: var(--space-md) var(--space-lg2) var(--space-lg);
-}
+/* `.card` is the shell's (`lib/page-shell.css`).  A copy lived here with a
+ * softer border, a larger radius and its own padding -- three divergences
+ * from the surface every other tab uses, in the very file whose header says
+ * this page was reworked "so the visual rhythm matches the
+ * /structure-optimization tab (the user's reference design)".  It loaded
+ * after the shell (spectra.html:22 vs :7), so the divergence won.
+ * Removed 2026-08-24. */
 
 
 
