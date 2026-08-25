@@ -51,7 +51,7 @@ import re
 from typing import Optional
 
 __all__ = [
-    "parse_walltime",
+    "parse_walltime", "parse_gres",
     "parse_duration", "parse_memory",
     "slurm_time", "slurm_mem",
     "canonical_time", "canonical_mem", "parse_mem_gb",
@@ -95,6 +95,60 @@ def parse_walltime(s) -> int:
         else:
             h, m, sec = parts[0], parts[1], parts[2]
     return ((days * 24 + h) * 60 + m) * 60 + sec
+
+
+def parse_gres(text) -> "dict":
+    """SLURM's own gres spelling -> ``{type: count}``.
+
+    ``gpu:a100:4`` · ``gpu:a100:4(S:0-1)`` · ``gpu:a100:4,mps:400`` ·
+    ``gpu:4`` (untyped -> type ``"gpu"``) · ``(null)``/``none`` -> ``{}``.
+
+    **The type is POSITIONAL, and that is the whole point.**  A second
+    reader of this same text matched the type against a hard-coded list of
+    known GPU names, which on ASU Sol reported:
+
+        gpu:a100.40gb:4  ->  a100     a MIG slice as a whole A100
+        gpu:gh200:1      ->  h200     Grace-Hopper, by substring
+        gpu:h200.35gb:4  ->  h200     a slice as the whole card
+        gpu:hl225:8      ->  None     Habana, simply unknown
+
+    `--gpus`' own help says the MIG slices "are separate askable types, not
+    a smaller ask of the same one" -- and that reader conflated exactly
+    those.  A list of names cannot keep up with a site's hardware; the
+    token is already there to be read.
+
+    (Matching against known names IS right for ``nvidia-smi``, which prints
+    marketing names like ``NVIDIA A100-SXM4-40GB`` rather than gres tokens.
+    `record._gpu_type_from_name` still does that, for that input.)
+
+    Non-gpu resources are skipped, so a trailing ``mps:400`` is never read
+    as a GPU count.  A non-integer count reads as 1 -- SLURM writes bare
+    ``gpu:a100`` for a single device on some versions.  Duplicate types
+    keep the LARGER count: a partition merged across node groups states the
+    most any of its nodes offers.
+    """
+    out = {}
+    g = (text or "").strip()
+    if not g or g.lower() in ("(null)", "none"):
+        return out
+    g = re.sub(r"\(.*?\)", "", g)          # drop a "(S:0-1)" affinity tail
+    for tok in g.split(","):
+        tok = tok.strip()
+        if not tok or not tok.lower().startswith("gpu:"):
+            continue
+        parts = tok.split(":")
+        if len(parts) >= 3:
+            gtype, count = parts[1], parts[2]
+        elif len(parts) == 2:
+            gtype, count = "gpu", parts[1]
+        else:
+            continue
+        try:
+            n = int(count)
+        except ValueError:
+            n = 1
+        out[gtype] = max(out.get(gtype, 0), n)
+    return out
 
 
 # --------------------------------------------------------------------- #

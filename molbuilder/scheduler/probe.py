@@ -96,32 +96,11 @@ def _to_secs(timelimit: str) -> int:
         return _INFINITE_SECS
 
 
-def _parse_gres(gres: str) -> Dict[str, int]:
-    """``gpu:a100:4,gpu:a100.20gb:16`` -> {'a100':4, 'a100.20gb':16}.
-    Ignores non-gpu gres and the ``(null)`` placeholder.  Strips any
-    ``(S:..)`` socket-affinity suffix SLURM may append."""
-    out: Dict[str, int] = {}
-    g = (gres or "").strip()
-    if not g or g == "(null)":
-        return out
-    for tok in g.split(","):
-        tok = tok.strip()
-        if not tok.lower().startswith("gpu:"):
-            continue
-        parts = tok.split("(")[0].split(":")   # drop "(S:0)" affinity tail
-        # gpu:<type>:<count>  OR  gpu:<count>  (untyped)
-        if len(parts) >= 3:
-            gtype, count = parts[1], parts[2]
-        elif len(parts) == 2:
-            gtype, count = "gpu", parts[1]
-        else:
-            continue
-        try:
-            n = int(count)
-        except ValueError:
-            n = 1
-        out[gtype] = max(out.get(gtype, 0), n)
-    return out
+# `_parse_gres` moved to `quantities.py` (2026-08-24): one reader of
+# SLURM's gres spelling, because there were two and they disagreed --
+# see that function's docstring for what the other one made of
+# `gh200` and the MIG slices.
+from .quantities import parse_gres as _parse_gres
 
 
 def parse_sinfo(text: str) -> List[Partition]:

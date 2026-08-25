@@ -269,7 +269,7 @@ def test_bad_gres_rejected(tmp_path):
     fdf = tmp_path / "x.fdf"
     fdf.write_text("Diag.ELPA.GPU .true.\n")
     with pytest.raises(WrapperError, match="gres"):
-        runwrap._parse_gres("a100x2")
+        runwrap._parse_gres_flag("a100x2")
 
 
 @pytest.mark.parametrize("spec,expect", [
@@ -278,7 +278,7 @@ def test_bad_gres_rejected(tmp_path):
     ("2", (None, 2)),
 ])
 def test_parse_gres_forms(spec, expect):
-    assert runwrap._parse_gres(spec) == expect
+    assert runwrap._parse_gres_flag(spec) == expect
 
 
 # --------------------------------------------------------------------- #

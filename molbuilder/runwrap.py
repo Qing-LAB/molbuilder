@@ -3848,7 +3848,8 @@ def render_wrappers(script_path: Path, *,
     # invocation's overrides.
     if emit_sbatch:
         sbatch = _render_sbatch_for(script_path, resources=r, env=env,
-                                    project_dir=project_dir)
+                                    project_dir=project_dir,
+                                    machine_record=machine_record)
         if sbatch is not None:
             _validate_rendered_wrapper(sbatch, script_path)
             files.append((script_path.stem + ".sbatch", sbatch))
@@ -3891,11 +3892,71 @@ def write_run_wrapper(script_path: Path, *,
     return parent / rendered.wrapper_name
 
 
+def _placement_for(resources, domain_pq, project_dir, *, prefer_gpu=False):
+    """The :class:`~molbuilder.scheduler.place.Placement` this job is FOR.
+
+    ``Placement`` is R1's "ONE decision" -- the header and the `sbatch`
+    command line are two renderings of it -- so this returns one rather than
+    a bare ``(partition, qos)``.  A tuple loses ``gpu_partition``: `_bind`
+    sends a GPU job to ``domain.gpu_partition or domain.partition``, and a
+    hand-rolled name lookup returns the ordinary partition for both, which
+    is the wrong queue for exactly the jobs that care.
+
+    Resolution, in order of who knows:
+
+    1. ``domain_pq`` -- the caller already placed it (`launch` does);
+    2. the domain the ALLOCATION names, through `place(..., named=...)`.
+       `Resources.domain` is what the person chose (`task.json`'s
+       ``allocation.domain``, or ``--domain``) and was read by nothing here
+       until 2026-08-24;
+    3. the menu's own recommendation for this kind of work.
+
+    **Asked about CAPABILITY, not fit.**  The request passed to `place` is
+    empty: whether this job fits is `launch`'s to decide against the machine
+    as it stands then (R9), and admitting here would refuse on a wall the
+    caller may not have set yet.  `Unplaceable` therefore means the menu
+    cannot serve this KIND of work at all, and the header simply states no
+    queue.
+    """
+    from .scheduler.place import Placement, Unplaceable, place
+    from .scheduler import Request
+    from . import runtime_config as _rc
+
+    rows = _rc.get_routing(project_dir=project_dir) or []
+    if domain_pq and domain_pq[0] and domain_pq[1]:
+        # Bind the ROW behind the pair, not just the two strings: callers
+        # downstream want the domain itself (its ceiling, its devices), and
+        # re-finding it by matching `(partition, qos)` against the menu is
+        # the lookup this function exists to do once.
+        _row = next((d for d in rows
+                     if (d.partition, d.qos) == (domain_pq[0], domain_pq[1])),
+                    None)
+        return Placement(domain=_row, partition=domain_pq[0],
+                         qos=domain_pq[1])
+    if not rows:
+        return None
+    want = getattr(resources, "domain", None)
+    try:
+        return place(rows, Request(), prefer_gpu=prefer_gpu, named=want)
+    except Unplaceable:
+        if want:
+            # A named domain this machine does not offer.  Saying nothing
+            # is wrong -- but refusing at render time is `launch`'s call,
+            # not this renderer's, so fall back to the recommendation and
+            # let the launch door make the refusal with the full request.
+            try:
+                return place(rows, Request(), prefer_gpu=prefer_gpu)
+            except Unplaceable:
+                return None
+        return None
+
+
 def _render_sbatch_for(script_path: Path, *,
                        project_dir: Optional[Path] = None,
                        resources: "Resources",
                        env: Optional[str],
-                       domain_pq: Optional[Tuple[str, str]] = None
+                       domain_pq: Optional[Tuple[str, str]] = None,
+                       machine_record=None
                        ) -> Optional[str]:
     """Resolve the per-job header values and RETURN the ``.sbatch`` text when
     this machine has a queue; ``None`` when it does not.
@@ -3932,10 +3993,35 @@ def _render_sbatch_for(script_path: Path, *,
     # A record that says `slurm`, or no record at all, keeps the old
     # behaviour: absent evidence is not evidence of absence, and refusing to
     # emit on a cluster nobody probed would be worse than an extra file.
-    from .scheduler import machine_for
-    env_rec = machine_for(project_dir)
+    # THE MACHINE IS DECIDED ONCE, AND IT WAS DECIDED BEFORE THIS.  When
+    # the caller hands over the record, that IS the answer -- the comment
+    # above already says so ("it is the answer `prep` step 1 just wrote
+    # down"), and resolving it a second time here is how the two artifacts
+    # of one render could come to describe two different machines: the
+    # `.run.sh` bootstrapping the target while the `.sbatch` asks whether
+    # SOME OTHER machine has a queue.
+    #
+    # It also refused outright.  `machine_for(project_dir)` with no target
+    # raises `AmbiguousTarget` when several records exist and the project
+    # dir carries no snapshot of its own -- so rendering for an explicitly
+    # named machine died on "several machines could be meant" while
+    # holding that machine's record in its hand (2026-08-24).
+    if machine_record is not None:
+        env_rec = machine_record
+    else:
+        from .scheduler import machine_for
+        env_rec = machine_for(project_dir)
     if env_rec is not None and env_rec.scheduler == "workstation":
         return None  # no queue on this machine -> only .run.sh is meaningful
+
+    # Is this GPU work?  Needed BEFORE the queue is resolved, because
+    # `place` binds a GPU job to `domain.gpu_partition` where a domain
+    # declares one -- a different partition from the same domain's ordinary
+    # row.  Recomputed below for the header's own `--gres`; this is the same
+    # question asked earlier, not a second answer to it.
+    _prefer_gpu = bool(script_path.suffix.lower() == ".fdf"
+                       and env is None
+                       and _wants_gpu(script_path, resources))
 
     scheduler = _rc.get_scheduler(project_dir=project_dir)
     if scheduler is None:
@@ -3958,15 +4044,42 @@ def _render_sbatch_for(script_path: Path, *,
         # `get_routing` documents as the recommendation.  Only when there
         # is no pair at all is there genuinely no queue to write a header
         # for.
-        pq = domain_pq
-        if pq is None:
-            rows = _rc.get_routing(project_dir=project_dir)
-            if rows:
-                pq = (rows[0].partition, rows[0].qos)
-        if not pq or not pq[0] or not pq[1]:
+        _pl = _placement_for(resources, domain_pq, project_dir,
+                             prefer_gpu=_prefer_gpu)
+        if _pl is None or not _pl.partition or not _pl.qos:
             return None  # § 10: no scheduler -> emit only .run.sh
         scheduler = {"kind": "slurm",
-                     "directives": {"partition": pq[0], "qos": pq[1]}}
+                     "directives": {"partition": _pl.partition,
+                                    "qos": _pl.qos}}
+
+    # WHICH QUEUE IS ONE DECISION, AND IT IS NOT THE LOCAL CONFIG'S.
+    #
+    # R1 (`execution/scheduler.md`) says the header and the `sbatch` command
+    # line are two RENDERINGS of one placement, never two decisions.  The
+    # command line honours it -- `submit` builds `Directives.of(placement,
+    # r)` from a placement resolved against the TARGET's record.  The header
+    # did not: it took `partition`/`qos` straight from `scheduler.directives`
+    # in the local `molbuilder.json`, and only fell back to the record when
+    # no such block existed.
+    #
+    # So a bundle prepped on a workstation FOR SOL carried
+    # `-p public -q public` -- the workstation's configured default -- while
+    # its allocation asked for `htc` (`-p htc -q public`).  Different
+    # partition, different hardware.  And it fails SILENTLY: `public` is a
+    # real Sol domain, so `sbatch` accepts the file and the job simply runs
+    # somewhere nobody chose.  `jobset launch` masks it (flags beat the
+    # header) but the header's own instructions say to `sbatch` the file.
+    #
+    # The pair now always comes from the placement; the local block keeps
+    # what is genuinely a preference -- account, mail, output paths.
+    _resolved = _placement_for(resources, domain_pq, project_dir,
+                               prefer_gpu=_prefer_gpu)
+    if _resolved is not None and _resolved.partition and _resolved.qos:
+        scheduler = dict(scheduler)
+        _dirs = dict(scheduler.get("directives") or {})
+        _dirs["partition"] = _resolved.partition
+        _dirs["qos"] = _resolved.qos
+        scheduler["directives"] = _dirs
 
     suffix = script_path.suffix.lower()
     is_siesta = suffix == ".fdf"
@@ -3978,7 +4091,7 @@ def _render_sbatch_for(script_path: Path, *,
     gpu_type: Optional[str] = None
     gpu_count: Optional[int] = None
     if gres is not None:
-        gpu_type, gpu_count = _parse_gres(gres)
+        gpu_type, gpu_count = _parse_gres_flag(gres)
         gpu = True  # an explicit --gres forces a GPU header
 
     if gpu:
@@ -4009,17 +4122,17 @@ def _render_sbatch_for(script_path: Path, *,
     # that could disagree.  So when nothing else supplies a wall, state
     # the ceiling of the queue this header names -- the only value that
     # queue can never reject as too long.
-    if time is None:
-        _pq = (scheduler.get("directives") or {}) if scheduler else {}
-        _part, _qos = _pq.get("partition"), _pq.get("qos")
-        if _part and _qos:
-            from .scheduler import domain_ceiling_s
-            for _row in _rc.get_routing(project_dir=project_dir):
-                if (_row.partition, _row.qos) == (_part, _qos):
-                    _ceiling = domain_ceiling_s(_row)
-                    if _ceiling:
-                        time = slurm_time(_ceiling)
-                    break
+    if time is None and _resolved is not None and _resolved.domain is not None:
+        # OFF THE PLACEMENT WE ALREADY HAVE.  This re-found the row by
+        # matching `(partition, qos)` back against the whole menu -- a second
+        # lookup for something `_placement_for` had just returned, and one
+        # that cannot tell two domains apart if they ever share a pair.
+        # `Placement.domain` IS the row (`scheduler/place.py`: "a request
+        # bound to a domain -- the ONE decision").
+        from .scheduler import domain_ceiling_s
+        _ceiling = domain_ceiling_s(_resolved.domain)
+        if _ceiling:
+            time = slurm_time(_ceiling)
 
     return render_sbatch(
         script_path, scheduler,
@@ -4042,8 +4155,15 @@ def _render_sbatch_for(script_path: Path, *,
 _GRES_RE = re.compile(r"^(?:gpu:)?(?P<type>[A-Za-z0-9_.]+):(?P<count>\d+)$")
 
 
-def _parse_gres(gres: str) -> Tuple[Optional[str], int]:
-    """Parse a ``--gres`` spec into ``(gpu_type, count)``.
+def _parse_gres_flag(gres: str) -> Tuple[Optional[str], int]:
+    """Parse a typed ``--gres`` FLAG into ``(gpu_type, count)``.
+
+    The HUMAN dialect, and named apart from `quantities.parse_gres` for it:
+    that one reads what SLURM emits and returns every type it finds, while
+    this reads what a person typed and RAISES on a typo, so the mistake
+    surfaces at generate time rather than after a queue wait.  Both were
+    called `_parse_gres`, in two modules, returning the same pair in
+    opposite order -- ``(type, count)`` here, ``(count, type)`` there.
 
     Accepts ``gpu:a100:2``, ``a100:2``, or a bare count ``2`` (=> type
     unspecified, caller falls back to ``scheduler.gpu.default_type``).
@@ -4241,13 +4361,14 @@ def render_sbatch(script_path: Path,
             f"mem ({memory or 'unset'}) is IGNORED; --mem=0 = all node RAM.")
     elif memory and mem_comment:
         lines.append(mem_comment)
+    # `--gres-flags=enforce-binding` USED TO BE APPENDED HERE, header-only,
+    # on the reasoning that "the command line never states it -- so it stays
+    # here".  That reasoning is backwards: the command line not stating it
+    # is what made the two renderings of one placement disagree, which is
+    # precisely what R1 forbids.  It now rides WITH the gres in
+    # `scheduler.emit`, in both spellings, because it is meaningless
+    # without one (2026-08-24).
     lines.extend(_d.header_lines())
-    if gpu:
-        # Nudge SLURM toward co-locating the CPU cores with the GPU's
-        # NUMA node; the launcher still does the authoritative per-rank
-        # runtime bind (running-a-job.md § 3.3).  Not a placement fact --
-        # the command line never states it -- so it stays here.
-        lines.append("#SBATCH --gres-flags=enforce-binding")
     lines.append("#SBATCH -o slurm.%j.out")
     lines.append("#SBATCH -e slurm.%j.err")
     if directives.get("mail_type"):

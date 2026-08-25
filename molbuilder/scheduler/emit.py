@@ -95,8 +95,7 @@ class Directives:
             out.append(f"#SBATCH -p {self.partition}")
         if self.qos:
             out.append(f"#SBATCH -q {self.qos}")
-        if self.gres:
-            out.append(f"#SBATCH --gres={self.gres}")
+        out.extend(self._gres_lines("#SBATCH "))
         out.extend(self._memory_lines("#SBATCH ", spell_all=True))
         return out
 
@@ -115,12 +114,31 @@ class Directives:
             out += ["-n", str(self.ntasks)]
         if self.cpus_per_task is not None:
             out += ["-c", str(self.cpus_per_task)]
-        if self.gres:
-            out.append(f"--gres={self.gres}")
+        out.extend(self._gres_lines(""))
         if self.walltime:
             out += ["-t", self.walltime]
         out.extend(self._memory_lines("", spell_all=False))
         return out
+
+    def _gres_lines(self, prefix: str) -> List[str]:
+        """The GPU ask, and the binding that goes with it.
+
+        ``--gres-flags=enforce-binding`` was emitted by the HEADER ALONE,
+        from `runwrap` (2026-08-24) -- a resource directive carried by one
+        of the two renderings.  R1 says they are two spellings of one
+        placement, and this module's own note lists what legitimately
+        belongs to the header only: ``-J``, ``-N``, the account, mail and
+        the output paths.  A gres flag is not one of those.
+
+        It rides WITH the gres because it is meaningless without one: it
+        asks the scheduler to put the task on the socket its GPU is
+        attached to, which is the difference between a device on the local
+        PCIe root and one across the interconnect.
+        """
+        if not self.gres:
+            return []
+        return [f"{prefix}--gres={self.gres}",
+                f"{prefix}--gres-flags=enforce-binding"]
 
     def _memory_lines(self, prefix: str, *, spell_all: bool) -> List[str]:
         """``--exclusive`` and ``--mem`` are mutually exclusive.

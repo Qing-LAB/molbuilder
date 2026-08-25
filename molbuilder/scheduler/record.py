@@ -368,30 +368,32 @@ def _gpu_type_from_name(name: str) -> Optional[str]:
 
 
 def _parse_gres(gres: str) -> Tuple[Optional[int], Optional[str]]:
-    """``gpu:a100:4`` / ``gpu:a100:4(S:0-1)`` / ``gpu:4`` ->
-    ``(count, type)``.
+    """``gpu:a100:4`` -> ``(count, type)`` -- a Topology states ONE device
+    kind, so this narrows what `quantities.parse_gres` reads in full.
 
-    A node's ``Gres`` can list MULTIPLE comma-separated resources (e.g.
-    ``gpu:a100:4,mps:400``); split on ``,`` and parse only the ``gpu:``
-    entry, else a trailing ``mps:0`` would be read as ``0`` GPUs."""
-    g = gres.strip()
-    if not g or g.lower() in ("(null)", "none"):
+    **The reading itself is not done here any more** (2026-08-24).  This
+    matched the type against `_GPU_TYPES`, a hard-coded list, and on ASU Sol
+    that turned `gh200` into `h200` by substring, `a100.40gb` into `a100`,
+    and `hl225` into nothing at all -- so a machine record could state a
+    device its nodes do not have.  The token carries the type; a list of
+    names cannot keep up with a site's hardware.
+
+    `_gpu_type_from_name` survives for the input it was RIGHT for:
+    ``nvidia-smi`` prints marketing names (``NVIDIA A100-SXM4-40GB``), not
+    gres tokens, and matching those against known names is the only way to
+    read them.
+
+    The first entry wins when a node lists several kinds, which is what a
+    single ``gpu_type`` field can say.  An UNTYPED ``gpu:4`` yields type
+    ``None`` rather than the literal ``"gpu"``: the record's field means
+    *which device*, and "gpu" answers nothing.
+    """
+    from .quantities import parse_gres
+    found = parse_gres(gres)
+    if not found:
         return None, None
-    g = re.sub(r"\(.*?\)", "", g)                    # drop (S:..) socket tag
-    entries = [e for e in g.split(",") if e]
-    gpu_entry = next((e for e in entries
-                      if e.split(":", 1)[0].lower() == "gpu"), None)
-    target = gpu_entry if gpu_entry is not None else (entries[0]
-                                                      if entries else g)
-    parts = target.split(":")
-    count = _to_int(parts[-1])
-    gtype = None
-    for p in parts:
-        t = _gpu_type_from_name(p)
-        if t:
-            gtype = t
-            break
-    return count, gtype
+    gtype, count = next(iter(found.items()))
+    return count, (None if gtype == "gpu" else gtype)
 
 
 def _parse_scontrol_node(text: str) -> Topology:

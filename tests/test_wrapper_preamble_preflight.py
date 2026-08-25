@@ -305,3 +305,268 @@ class TestTheEnvGateAsksTheTargetMachine:
         monkeypatch.setattr(rw, "get_capabilities", lambda: _Caps())
         # a record that cannot answer must NOT inherit this machine's "no"
         assert self._render(tmp_path, self._rec([]))
+
+
+class TestTheHeaderNamesTheQueueTheAllocationAsKED:
+    """R1 (`execution/scheduler.md`): the `#SBATCH` header and the `sbatch`
+    command line are two RENDERINGS of one placement, never two decisions.
+
+    The command line honoured it -- `submit` builds
+    `Directives.of(placement, r)` from a placement resolved against the
+    TARGET's record.  The header did not: it read `partition`/`qos` straight
+    out of the local `molbuilder.json`'s `scheduler.directives`, falling back
+    to the record only when no such block existed.  So a bundle prepped on a
+    workstation FOR Sol carried `-p public -q public` -- the workstation's
+    default -- while its allocation asked for `htc` (`-p htc -q public`).
+
+    It fails SILENTLY, which is why it is worth a test: `public` IS a real
+    Sol domain, so `sbatch` accepts the file and the job runs on hardware
+    nobody chose.  `jobset launch` masks it because flags beat the header --
+    but the header's own comment tells you to `sbatch` the file directly.
+    """
+
+    @staticmethod
+    def _sol_with_menu(tmp_path):
+        from molbuilder.scheduler import (Domain, Environment, Topology,
+                                          write_environment, FILENAME)
+        env = Environment(
+            scheduler="slurm", topology=Topology(),
+            script_generation={"preamble": "module load mamba",
+                               "activation": "source activate"},
+            domains=[Domain(name="debug", partition="htc", qos="debug",
+                            max_time="00:15:00"),
+                     Domain(name="htc", partition="htc", qos="public",
+                            max_time="4:00:00"),
+                     Domain(name="general", partition="general", qos="public",
+                            max_time="14-00:00:00")])
+        write_environment(env, tmp_path / FILENAME)
+        return env
+
+    def _header(self, tmp_path, monkeypatch, domain):
+        # a LOCAL config whose directives name a different queue entirely --
+        # the situation that produced the failure
+        import json
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "molbuilder.json").write_text(json.dumps({
+            "scheduler": {"kind": "slurm",
+                          "directives": {"partition": "public",
+                                         "qos": "public"}}}))
+        rec = self._sol_with_menu(tmp_path)
+        (tmp_path / "JOB.fdf").write_text(
+            "SystemName t\nSystemLabel t\nNumberOfAtoms 2\n")
+        from molbuilder.runwrap import render_wrappers
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            out = render_wrappers(
+                tmp_path / "JOB.fdf",
+                resources=Resources(mpi_np=4, cpus_per_task=1, domain=domain,
+                                    time="0-04:00:00", mem="8G"),
+                project_dir=tmp_path, machine_record=rec, emit_sbatch=True)
+        sb = [x for n, x in out.files if n.endswith(".sbatch")]
+        assert sb, "no .sbatch was emitted"
+        return [l.replace("#SBATCH ", "") for l in sb[0].splitlines()
+                if l.startswith("#SBATCH -p") or l.startswith("#SBATCH -q")]
+
+    def test_the_named_domain_decides_the_pair(self, tmp_path, monkeypatch):
+        assert self._header(tmp_path, monkeypatch, "htc") == [
+            "-p htc", "-q public"]
+
+    def test_a_different_domain_gives_a_different_partition(
+            self, tmp_path, monkeypatch):
+        assert self._header(tmp_path, monkeypatch, "general") == [
+            "-p general", "-q public"]
+
+    def test_same_partition_different_qos_is_honoured(
+            self, tmp_path, monkeypatch):
+        """`debug` and `htc` are the SAME partition; only the QoS differs,
+        and it is what drops the wall from 4 h to 15 min.  A resolution that
+        carried only the partition would lose the whole distinction."""
+        assert self._header(tmp_path, monkeypatch, "debug") == [
+            "-p htc", "-q debug"]
+
+    def test_the_local_configs_queue_never_leaks_in(
+            self, tmp_path, monkeypatch):
+        """The regression, stated as what must NOT appear: the local block
+        says `public/public` in every case above and must never win."""
+        for dom in ("htc", "general", "debug"):
+            got = self._header(tmp_path, monkeypatch, dom)
+            assert got != ["-p public", "-q public"], (dom, got)
+
+
+def test_a_gpu_job_goes_to_the_domains_gpu_partition(tmp_path, monkeypatch):
+    """`Placement`, not a `(partition, qos)` tuple.
+
+    A domain may declare `gpu_partition` -- where GPU work goes when that
+    differs from the same domain's ordinary partition -- and
+    `scheduler.place._bind` is what reads it: ``(gpu_partition or
+    partition) if prefer_gpu else partition``.
+
+    The first version of this resolution was a hand-written loop over the
+    routing rows returning ``(row.partition, row.qos)``, which is `place`'s
+    named branch reimplemented WITHOUT that line: both decks would have gone
+    to the ordinary partition, so the GPU job would run on the wrong queue
+    -- and only for the jobs that care about the distinction.
+    """
+    import os
+    from molbuilder.scheduler import (Domain, Environment, Topology,
+                                      write_environment, FILENAME)
+    from molbuilder.runwrap import render_wrappers
+    monkeypatch.chdir(tmp_path)
+    env = Environment(
+        scheduler="slurm", topology=Topology(),
+        script_generation={"preamble": "module load mamba",
+                           "activation": "source activate"},
+        domains=[Domain(name="mix", partition="cpu-part", qos="public",
+                        gpu_partition="gpu-part", max_time="4:00:00",
+                        gpu={"type": "a100", "per_node": 4})])
+    write_environment(env, tmp_path / FILENAME)
+
+    def header(deck_text, res):
+        (tmp_path / "D.fdf").write_text(deck_text)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            out = render_wrappers(tmp_path / "D.fdf", resources=res,
+                                  project_dir=tmp_path, machine_record=env,
+                                  emit_sbatch=True)
+        sb = [x for n, x in out.files if n.endswith(".sbatch")]
+        assert sb, "no .sbatch emitted"
+        return [l.replace("#SBATCH ", "") for l in sb[0].splitlines()
+                if l.startswith("#SBATCH -p")]
+
+    gpu = header("SystemName t\nSystemLabel t\nNumberOfAtoms 2\n"
+                 "Diag.ELPA.GPU .true.\n",
+                 Resources(mpi_np=4, cpus_per_task=1, domain="mix",
+                           time="0-04:00:00", mem="8G", gres="gpu:a100:1"))
+    cpu = header("SystemName t\nSystemLabel t\nNumberOfAtoms 2\n",
+                 Resources(mpi_np=4, cpus_per_task=1, domain="mix",
+                           time="0-04:00:00", mem="8G"))
+    assert gpu == ["-p gpu-part"], gpu
+    assert cpu == ["-p cpu-part"], cpu
+
+
+def test_an_unstated_wall_takes_the_NAMED_queues_ceiling(tmp_path, monkeypatch):
+    """With no `--time`, the header states the ceiling of the queue it
+    names -- the only value that queue can never reject as too long.
+
+    It found that row by matching `(partition, qos)` back against the whole
+    menu, which is a second lookup for something `_placement_for` had just
+    returned, and it cannot tell two domains apart that share a pair.
+    `Placement.domain` IS the row.
+
+    `debug` is the case that proves it: same PARTITION as `htc` on ASU Sol,
+    and only its QoS carries the 15-minute wall.  A partition-only match
+    would hand a debug job four hours.
+    """
+    from molbuilder.scheduler import (Domain, Environment, Topology,
+                                      write_environment, FILENAME)
+    from molbuilder.runwrap import render_wrappers
+    monkeypatch.chdir(tmp_path)
+    env = Environment(
+        scheduler="slurm", topology=Topology(),
+        script_generation={"preamble": "module load mamba",
+                           "activation": "source activate"},
+        domains=[Domain(name="debug", partition="htc", qos="debug",
+                        max_time="00:15:00"),
+                 Domain(name="htc", partition="htc", qos="public",
+                        max_time="4:00:00")])
+    write_environment(env, tmp_path / FILENAME)
+    (tmp_path / "D.fdf").write_text(
+        "SystemName t\nSystemLabel t\nNumberOfAtoms 2\n")
+
+    def wall(domain):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            out = render_wrappers(
+                tmp_path / "D.fdf",
+                resources=Resources(mpi_np=4, cpus_per_task=1,
+                                    domain=domain, mem="8G"),   # NO time
+                project_dir=tmp_path, machine_record=env, emit_sbatch=True)
+        sb = [x for n, x in out.files if n.endswith(".sbatch")][0]
+        return [l.replace("#SBATCH ", "") for l in sb.splitlines()
+                if l.startswith("#SBATCH -t")]
+
+    assert wall("htc") == ["-t 0-04:00:00"]
+    assert wall("debug") == ["-t 0-00:15:00"], (
+        "same partition as htc -- only the QoS carries the shorter wall")
+
+
+class TestOneReaderOfSlurmsGresSpelling:
+    """There were three `_parse_gres`, and one of them was wrong about the
+    hardware ASU Sol actually has.
+
+    `record.py`'s matched the type against a hard-coded list of GPU names,
+    so it reported `gh200` as `h200` (substring), `a100.40gb` as `a100` (a
+    MIG slice as the whole card), and `hl225` as nothing.  `--gpus`' own
+    help says the MIG slices "are separate askable types, not a smaller ask
+    of the same one" -- and that reader conflated exactly those, into the
+    machine record a bundle is prepped against.
+
+    They also returned the same pair in OPPOSITE ORDER under one name:
+    `(count, type)` in `record`, `(type, count)` in `runwrap`.
+    """
+
+    @staticmethod
+    def _q():
+        from molbuilder.scheduler.quantities import parse_gres
+        return parse_gres
+
+    def test_the_type_is_read_from_the_token_not_guessed(self):
+        q = self._q()
+        assert q("gpu:gh200:1") == {"gh200": 1}          # not h200
+        assert q("gpu:a100.40gb:4") == {"a100.40gb": 4}  # not a100
+        assert q("gpu:h200.35gb:4") == {"h200.35gb": 4}
+        assert q("gpu:hl225:8") == {"hl225": 8}          # Habana, not None
+
+    def test_the_slurm_shapes_it_must_survive(self):
+        q = self._q()
+        assert q("gpu:a100:4(S:0-1)") == {"a100": 4}   # affinity tail
+        assert q("gpu:a100:4,mps:400") == {"a100": 4}  # mps is not a GPU count
+        assert q("gpu:4") == {"gpu": 4}                # untyped
+        assert q("(null)") == {} and q("none") == {} and q("") == {}
+
+    def test_a_partition_merged_across_node_groups_keeps_the_larger(self):
+        assert self._q()("gpu:a100:2,gpu:a100:8") == {"a100": 8}
+
+    def test_the_record_narrows_the_same_reading(self):
+        """`Topology` states ONE device kind, so it narrows -- it does not
+        re-read.  Untyped stays None there: the field means *which device*,
+        and "gpu" answers nothing."""
+        from molbuilder.scheduler.record import _parse_gres
+        assert _parse_gres("gpu:gh200:1") == (1, "gh200")
+        assert _parse_gres("gpu:a100.40gb:4") == (4, "a100.40gb")
+        assert _parse_gres("gpu:4") == (4, None)
+        assert _parse_gres("(null)") == (None, None)
+
+    def test_only_one_module_reads_slurms_gres_spelling(self):
+        """The guard.  `runwrap._parse_gres_flag` is excluded by NAME as
+        well as by module: it reads what a PERSON typed and raises on a
+        typo, which is a different dialect and must stay separate."""
+        import re
+        from pathlib import Path as _P
+        root = _P(__file__).resolve().parents[1] / "molbuilder"
+        hits = [f.relative_to(root).as_posix()
+                for f in sorted(root.rglob("*.py"))
+                if "static" not in f.parts
+                and re.search(r"^def parse_gres\(|^def _parse_gres\(",
+                              f.read_text(encoding="utf-8"), re.M)]
+        assert hits == ["scheduler/quantities.py", "scheduler/record.py"], hits
+
+
+def test_both_spellings_carry_gres_flags(tmp_path):
+    """R1: the header and the command line are two renderings of one
+    placement.  `--gres-flags=enforce-binding` was appended by the header
+    alone, from `runwrap`, on the reasoning that "the command line never
+    states it".  That is backwards -- the command line not stating it is
+    the disagreement R1 forbids.  It rides with the gres now, because it
+    is meaningless without one."""
+    from molbuilder.scheduler.emit import Directives
+    d = Directives(partition="general", qos="public", gres="gpu:a100:1",
+                   ntasks=4, walltime="0-04:00:00")
+    hdr = " ".join(d.header_lines())
+    cli = " ".join(d.sbatch_flags())
+    assert "--gres-flags=enforce-binding" in hdr
+    assert "--gres-flags=enforce-binding" in cli
+    # and no gres at all -> no binding flag in either
+    bare = Directives(partition="p", qos="q", ntasks=4)
+    assert "gres" not in " ".join(bare.header_lines())
+    assert "gres" not in " ".join(bare.sbatch_flags())
