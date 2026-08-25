@@ -719,6 +719,156 @@ def summary_text(res: BenchResult, out_path: Path, *,
     return "\n".join(lines)
 
 
+#: How far above a sweep's ``job-set.json`` its calculation root can sit.
+#: The deepest documented layout is ``<calc>/<NN>_<stage>/bench/`` -- two --
+#: and the bound keeps a failed search from walking to ``/`` and matching
+#: something it has no business matching.
+_BUNDLE_SEARCH_DEPTH = 4
+
+
+def bundle_for_sweep_file(jobset, path) -> Path:
+    """Which CALCULATION a sweep's ``job-set.json`` belongs to.
+
+    **The file's own directory is NOT the bundle**, and reading it as one
+    fails silently rather than loudly: ``job_dir_names`` hands out
+    directories relative to the calculation root (``01_coarse/bench/
+    bench-G1K1C1``), so resolving them against the file's directory points
+    at paths that do not exist -- every trial then reports ``unknown``,
+    every measurement is ``None``, and the sweep shows no verdict while
+    looking like a sweep that simply has not run yet.
+
+    Rather than climb a fixed number of levels -- which would encode one
+    of the three layouts `materialize.bench_container` supports -- ask the
+    naming authority where the trials should be and walk up until they are
+    actually THERE.  The answer is checked against the disk, so a wrong
+    guess cannot be returned as a right one.
+    """
+    from .materialize import job_dir_names, shape_of
+    start = Path(path).parent
+    candidates = [start, *list(start.parents)[:_BUNDLE_SEARCH_DEPTH]]
+    for cand in candidates:
+        try:
+            dirs = job_dir_names(jobset, shape_of(jobset, cand))
+        except Exception:
+            continue
+        if dirs and all((cand / d).is_dir() for d in dirs.values()):
+            return cand
+    raise ValueError(
+        f"could not find the calculation {Path(path).name} belongs to: no "
+        f"directory at or above {start} holds this sweep's trial directories")
+
+
+def sweep_view(jobset, bundle) -> Dict:
+    """The whole sweep, composed for a READER: the record a summarize
+    would write, beside where every trial is right now.
+
+    Contract: ``docs/web/bench-summary.md``.  Its **B1** is why this
+    function is a composer and not an analysis: every figure here is
+    produced by a door that already owns it --
+
+      * :func:`discover_points_from_jobset` -- which trials, their knobs
+        and their sweep coordinates;
+      * :func:`~molbuilder.bench.result.build_bench_result` -- the record,
+        including ``choice``: the VERDICT, which is
+        :func:`~molbuilder.bench.result.choose_winner`'s answer and
+        already refuses to crown a trial that ran something other than
+        what it was asked for;
+      * :func:`~molbuilder.jobset.runstatus.jobset_status` -- queued /
+        running / failed, which ``BenchPoint.state`` does NOT answer (that
+        field describes the artifacts on disk, not the run's position).
+
+    Nothing is recomputed here.  **B2** is the reason that matters:
+    ``submission.md`` § 3 records a summary that showed "170 minutes" for
+    five 38-minute jobs because it worked out its own total a second way,
+    and a view comparing six trials has six chances to repeat it.
+
+    Read-only: unlike :func:`run_summarize_jobset` this writes nothing, so
+    it is safe to call while the sweep is still running -- which is
+    exactly when a person watches it.
+
+    Returns a JSON-ready dict.  ``trials`` is one entry per job, in the
+    job-set's own order.
+    """
+    from .runstatus import jobset_status
+
+    bundle = Path(bundle)
+    points = discover_points_from_jobset(bundle, jobset)
+    res = build_bench_result(
+        points,
+        environment=_read_environment(bundle),
+        system=_read_system(bundle),
+        now_iso=utc_now_iso())
+    status = jobset_status(jobset, bundle)
+
+    # POSITION is the join, and it has to be: a BenchPoint's label is the
+    # JOB's name while a StageStatus's name comes from its StageRef -- the
+    # STAGE -- and for a sweep trial those are different strings.  Both
+    # readers walk ``jobset.jobs`` in order and emit exactly one entry per
+    # job, so the zip is sound; the guard is here so that if either ever
+    # learns to skip one, this raises instead of quietly pairing trial N's
+    # measurement with trial N+1's state.
+    if len(points) != len(status.stages):
+        raise ValueError(
+            f"the sweep's two readers disagree on how many trials it has "
+            f"({len(points)} measured, {len(status.stages)} statuses); "
+            f"refusing to pair them by position")
+
+    trials = []
+    for p, st in zip(points, status.stages):
+        trials.append({
+            "label":      p.label,
+            "engine":     p.engine,
+            "point":      dict(p.point),
+            "knobs":      dict(p.knobs),
+            "effective":  dict(p.effective),
+            "mismatch":   dict(p.mismatch),
+            "metrics":    dict(p.metrics),
+            "s_per_iter": p.s_per_iter(),
+            "bound":      p.bound,
+            "artifacts":  p.state,      # what the files say
+            "state":      st.state,     # where the RUN is (§ 2's door)
+            "detail":     st.detail,
+            "dir":        st.dir,
+            "attempts":   list(st.attempts),
+        })
+
+    return {
+        "name":         status.name,
+        "engine":       status.engine,
+        "kind":         getattr(jobset, "kind", ""),
+        "complete":     status.complete,
+        "generated_at": res.generated_at,
+        "environment":  res.environment,
+        "system":       res.system,
+        # The verdict, whole -- including the empty {} that means "nothing
+        # timed, or every timed trial ran something other than its label".
+        "choice":       res.choice,
+        "varied":       swept_coordinates(points),
+        "trials":       trials,
+        "n_trials":     len(trials),
+        "n_done":       sum(1 for s in status.stages if s.state == "finished"),
+    }
+
+
+def swept_coordinates(points: List[BenchPoint]) -> List[str]:
+    """Which coordinate keys this sweep actually VARIED, ascending.
+
+    Selection, not measurement: it reads each trial's ``point`` (the
+    coordinate the sweep declared -- `generator.md` § 4.3a) and keeps the
+    keys that do not hold the same value everywhere.  A view plots the
+    verdict axis against one of these; a sweep that varied nothing
+    comparable gets ``[]`` and is shown as a table rather than a chart of
+    one column (bench-summary.md § 3).
+    """
+    keys = sorted({k for p in points for k in (p.point or {})})
+    varied = []
+    for k in keys:
+        seen = {repr(p.point.get(k)) for p in points if p.point}
+        if len(seen) > 1:
+            varied.append(k)
+    return varied
+
+
 def utc_now_iso() -> str:
     """UTC timestamp ``YYYY-MM-DDThh:mm:ssZ`` (moved from the deleted
     ``bench/prep.py`` at u5 -- its one surviving caller is the summarize
@@ -729,6 +879,7 @@ def utc_now_iso() -> str:
 
 __all__ = [
     "parse_point", "discover_points_from_jobset", "run_summarize_jobset",
+    "sweep_view", "swept_coordinates", "bundle_for_sweep_file",
     "summary_text", "utc_now_iso",
     "RUN_CONFIG_NAME", "RUN_CONFIG_SCHEMA",
     "run_config_text", "read_run_config",

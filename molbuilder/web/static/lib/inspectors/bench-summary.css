@@ -1,0 +1,122 @@
+/* Bench-sweep inspector — the whole sweep on one page.
+ *
+ * Spec: docs/web/bench-summary.md § 3.
+ * Arrangement only: page-shell owns the surfaces and the severity
+ * vocabulary, tokens.css owns every colour (ui-contract.md § 1–2).
+ * There is no raw hex here on purpose — every stylesheet is checked
+ * now, with no allowlist to be left off.
+ */
+
+.bench-summary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    min-height: 0;
+}
+
+.bench-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+}
+.bench-title { margin: 0; font-size: var(--text-lg); }
+.bench-count {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+/* The verdict reads as a statement, not a card: it is one sentence and
+   its whole job is to be seen first. */
+.bench-verdict {
+    border-left: 3px solid var(--border-strong);
+    padding: var(--space-xs) var(--space-sm);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+.bench-verdict.is-decided {
+    border-left-color: var(--success);
+    color: var(--text-primary);
+}
+
+.bench-chart {
+    width: 100%;
+    min-height: 220px;
+}
+
+.bench-trials {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.bench-trial {
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    /* min-width: 0 so a long detail line wraps instead of widening the
+       row past its container — the trap ui-contract.md § 3 describes. */
+    min-width: 0;
+}
+.bench-trial.is-winner { border-color: var(--success); }
+
+.bench-trial-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+}
+.bench-trial-label { font-weight: 600; }
+.bench-siter {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+}
+
+/* State never travels by colour alone — the word IS the state, so it
+   survives a monochrome screen (the call task-setup/style.css makes for
+   its own three readings). */
+.bench-state {
+    font-size: var(--text-2xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 1px var(--space-xs);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-soft);
+    color: var(--text-secondary);
+}
+.bench-state.is-ok   { color: var(--success); border-color: var(--success); }
+.bench-state.is-bad  { color: var(--error);   border-color: var(--error); }
+.bench-state.is-warn { color: var(--warn-soft); border-color: var(--warn-soft); }
+.bench-state.is-busy { color: var(--accent);  border-color: var(--accent); }
+
+.bench-knobs,
+.bench-note {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+.bench-note { font-style: italic; }
+
+/* A trial that ran something other than what it was asked for: the whole
+   reason a sweep is worth reading twice. */
+.bench-mismatch {
+    border-left: 3px solid var(--warn-soft);
+    padding-left: var(--space-sm);
+    font-size: var(--text-sm);
+}
+.bench-mismatch-head { color: var(--warn-soft); }
+.bench-mismatch-row {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    overflow-x: auto;
+}
+
+.bench-foot {
+    color: var(--text-muted);
+    font-size: var(--text-2xs);
+    font-variant-numeric: tabular-nums;
+}

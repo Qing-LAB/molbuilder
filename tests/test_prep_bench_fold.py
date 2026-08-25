@@ -2039,3 +2039,130 @@ def test_no_winner_speaks_only_about_the_timed_set():
     res2 = build_bench_result([q])
     out2 = summary_text(res2, Path("/x/bench-result.json"))
     assert "every timed trial" in out2
+
+
+# ===================================================================== #
+#  `sweep_view` — the whole sweep composed for a reader                 #
+#                                                                       #
+#  Contract: docs/web/bench-summary.md.  Its B1 is the property under    #
+#  test: this composes what four doors already produce and computes      #
+#  nothing.  B2 says why -- submission.md § 3's summary that showed      #
+#  "170 minutes" for five 38-minute jobs got there by working out its    #
+#  own total a second way, and a view comparing six trials has six       #
+#  chances to repeat that.                                              #
+# ===================================================================== #
+
+def _bench_dir(calc):
+    return calc / "01_coarse" / "bench"
+
+
+def _load_sweep(calc):
+    """The jobset, and the BUNDLE it belongs to -- resolved the way the
+    route does it, which is NOT the file's own directory (see
+    ``bundle_for_sweep_file``)."""
+    from molbuilder.jobset.model import JobSet
+    from molbuilder.jobset.summarize import bundle_for_sweep_file
+    jpath = _bench_dir(calc) / "job-set.json"
+    jobset = JobSet.load(jpath)
+    return jobset, bundle_for_sweep_file(jobset, jpath)
+
+
+def test_sweep_view_has_one_trial_per_job_in_the_job_sets_order(calc):
+    from molbuilder.jobset.summarize import sweep_view
+    js = _prep_bench(calc)
+    jobset, bundle = _load_sweep(calc)
+    view = sweep_view(jobset, bundle)
+    assert view["n_trials"] == len(js["jobs"])
+    assert [t["label"] for t in view["trials"]] == [j["name"] for j in js["jobs"]]
+
+
+def test_sweep_view_reports_where_the_RUN_is_not_what_the_files_say(calc):
+    """§ 2's table gives 'queued/running/finished/failed' to jobset_status.
+
+    ``BenchPoint.state`` answers a DIFFERENT question -- what the artifacts
+    on disk look like -- so the view carries both under separate keys and
+    never lets the artifact word stand in for the run's position.
+    """
+    from molbuilder.jobset.summarize import sweep_view
+    _prep_bench(calc)
+    jobset, bundle = _load_sweep(calc)
+    view = sweep_view(jobset, bundle)
+    t = view["trials"][0]
+    assert "state" in t and "artifacts" in t
+    # Nothing has been launched, so the RUN has not started.  The artifact
+    # word for "no .out at all" is `unknown`, which is not a run state.
+    assert t["artifacts"] == "unknown"
+    assert t["state"] != "unknown", (
+        "the run's position must come from jobset_status, not from the "
+        "artifact reader")
+
+
+def test_sweep_view_carries_the_verdict(calc):
+    """The analysis IS choose_winner's answer, composed in -- not a second
+    ranking done by the view."""
+    from molbuilder.jobset.summarize import sweep_view
+    name = _finished_trial_and_verdict(calc)
+    jobset, bundle = _load_sweep(calc)
+    view = sweep_view(jobset, bundle)
+    assert view["choice"].get("label") == name
+    # and the winning trial's own measurement is on its row
+    won = [t for t in view["trials"] if t["label"] == name][0]
+    assert won["s_per_iter"] == pytest.approx(4.0)
+
+
+def test_sweep_view_names_the_coordinate_the_sweep_varied(calc):
+    from molbuilder.jobset.summarize import sweep_view
+    _prep_bench(calc)
+    jobset, bundle = _load_sweep(calc)
+    view = sweep_view(jobset, bundle)
+    # every trial declares a coordinate, and the sweep varied at least one
+    assert all(isinstance(t["point"], dict) for t in view["trials"])
+    assert view["varied"], "a sweep that varied something must say which"
+    for k in view["varied"]:
+        seen = {repr(t["point"].get(k)) for t in view["trials"]}
+        assert len(seen) > 1, f"{k!r} is listed as varied but never changes"
+
+
+def test_sweep_view_never_writes_the_record_or_the_proposal(calc):
+    """Safe to call while the sweep is still running -- which is exactly
+    when someone watches it, and the page polls every 15 s (B4).
+
+    `run_summarize_jobset` is the verb that WRITES: ``bench-result.json``
+    and, beside it, ``run-config.toml`` -- and that proposal is the USER's
+    file, kept rather than overwritten once it exists.  A view that wrote
+    either from a poll would be publishing a record nobody asked for, and
+    could race the very file the user is editing.
+
+    It is NOT "touches no bytes at all": ``jobset_status`` decodes each run
+    directory, and every parser appends its documented ``<input>.parse.log``
+    sidecar (``parse/_log.py``: default ON, append mode, *"re-parses (e.g.
+    /api/watch/data polls) accumulate history"*).  The trajectory viewer's
+    own polling already does that; pinning "no new files at all" would pin
+    a promise this stack does not make.
+    """
+    from molbuilder.jobset.summarize import sweep_view
+    _prep_bench(calc)
+    jobset, bundle = _load_sweep(calc)
+    bench = _bench_dir(calc)
+    assert not (bench / "bench-result.json").exists()
+    sweep_view(jobset, bundle)
+    assert not (bench / "bench-result.json").exists(), (
+        "the view published a record; that is run_summarize_jobset's job")
+    assert not (bench / "run-config.toml").exists(), (
+        "the view wrote a proposal -- that file is the user's")
+
+
+def test_sweep_view_refuses_to_pair_trials_by_position_if_the_readers_disagree(
+        calc, monkeypatch):
+    """The join is positional because the two readers key differently -- a
+    BenchPoint's label is the JOB's name, a StageStatus's is its STAGE's.
+    If either reader ever learns to skip a job, that must raise, not
+    silently pair trial N's measurement with trial N+1's state."""
+    from molbuilder.jobset import summarize as S
+    _prep_bench(calc)
+    jobset, bundle = _load_sweep(calc)
+    real = S.discover_points_from_jobset
+    monkeypatch.setattr(S, "discover_points_from_jobset",
+                        lambda b, j: real(b, j)[:-1])
+    with pytest.raises(ValueError, match="refusing to pair"):
+        S.sweep_view(jobset, bundle)

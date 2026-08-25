@@ -28,6 +28,8 @@
    `button` / `textarea` / `.card` rules would override page-shell's
    canonical controls across /results (ui-design-contract §2.2). -#}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/spectra.css') }}">
+{# The bench-sweep inspector's own sheet (docs/web/bench-summary.md). #}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/bench-summary.css') }}">
 {# 3Dmol: structure + trajectory inspectors both mount a viewer.
    Plotly: trajectory inspector charts energy / force / SCF traces. #}
 <script src="{{ url_for('vendor_plotly_js') }}"></script>
@@ -124,6 +126,11 @@
           <code>*.xyz</code> <code>*.pdb</code>
           &mdash; structure preview (3D viewer + atom info)
         </li>
+        <li>
+          <code>job-set.json</code>
+          &mdash; a benchmark sweep: every trial compared, what each
+          asked for beside what it ran, and the verdict
+        </li>
       </ul>
       <p class="inspector-card-note results-fallback-source-hint">
         For source files (<code>*.fdf</code> <code>*.py</code>
@@ -205,6 +212,10 @@
    is the order that happens.  Mix the two and the modules silently move behind
    the classic ones -- see the note above source.js, and
    tests/test_inspector_registration_order.py, which asserts it. #}
+{# An EXACT basename (`job-set.json`) -- as specific as a match gets, so it
+   is listed ahead of everything, and far ahead of the `.json` catch-all
+   below.  Pinned by tests/test_inspector_registration_order.py. #}
+<script defer src="{{ url_for('static', filename='lib/inspectors/bench-summary.js') }}"></script>
 <script defer src="{{ url_for('static', filename='lib/inspectors/trajectory.js') }}"></script>
 {# A MODULE: it imports VibrationView and hands `mount` to the spectra core,
    which is a classic script and cannot import one itself.  See the file. #}

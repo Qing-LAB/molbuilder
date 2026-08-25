@@ -52,6 +52,10 @@ from _node_esm import run_node
 # transitively loads the whole molview graph, which the DOM/storage stub below lets load in Node.
 _INSPECTOR_MODULES = [
     STATIC / "lib/inspectors/registry.js",
+    # Listed first among the matchers on /results, because an exact
+    # basename is the most specific predicate there is -- and source.js
+    # claims every .json, so anything less would lose job-set.json to it.
+    STATIC / "lib/inspectors/bench-summary.js",
     STATIC / "lib/inspectors/_partial_inspector_factory.js",
     STATIC / "lib/inspectors/trajectory.js",
     STATIC / "lib/inspectors/spectra.js",
@@ -129,6 +133,14 @@ _DISPATCH_CASES = [
     ("/tmp/protein.pdb", "structure", "pdb→structure"),
     # source claims a handful of plain text extensions (.txt is one).
     ("/tmp/notes.txt", "source", "txt→source"),
+    # A sweep's plan, claimed by exact basename.  source.js matches every
+    # .json and is listed after it precisely so this one gets there first.
+    ("/p/calc/01_coarse/bench/job-set.json", "bench-summary",
+     "job_set_json→bench_summary"),
+    # ...and the exactness cuts both ways: a DIFFERENT .json is still the
+    # text viewer's, so claiming job-set.json cost nothing else.
+    ("/p/calc/01_coarse/bench/bench-result.json", "source",
+     "other_json→source"),
     # .fdf is a SIESTA INPUT file — source viewer, not a result.
     ("/projects/foo/spectrum/run.fdf", "source", "fdf→source"),
     # Compound extension precedence: .spectra.json MUST win over plain

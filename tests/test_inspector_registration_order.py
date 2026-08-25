@@ -88,9 +88,30 @@ def test_the_catch_all_inspectors_are_listed_last():
     order = [name for name, _ in _inspector_scripts(html)]
     for generic in ("markdown.js", "source.js"):
         assert generic in order, f"{generic} is not on /results at all"
-    for specific in ("spectra.js", "structure.js", "trajectory.js"):
+    for specific in ("spectra.js", "structure.js", "trajectory.js",
+                     "bench-summary.js"):
         assert order.index(specific) < order.index("source.js"), (
             f"{specific} is listed after source.js, which matches broadly "
             f"enough to claim its files first"
         )
     assert order.index("markdown.js") < order.index("source.js")
+
+
+def test_the_exact_basename_inspector_is_listed_first():
+    """``bench-summary`` matches an exact basename (``job-set.json``) --
+    the most specific predicate on the page, so nothing may sit in front
+    of it.  ``source.js`` claims every ``.json``, and it claimed this one
+    until the sweep inspector was listed ahead of it."""
+    html = (TEMPLATES / "results.html").read_text(encoding="utf-8")
+    order = [name for name, _ in _inspector_scripts(html)]
+    assert "bench-summary.js" in order, (
+        "the bench-sweep inspector is not on /results at all")
+    # Compared against the file-MATCHING inspectors only: lifecycle.js,
+    # registry.js and _partial_inspector_factory.js are the switchboard
+    # itself and claim nothing, so their position says nothing either.
+    matchers = [n for n in order
+                if n not in ("lifecycle.js", "registry.js",
+                             "_partial_inspector_factory.js")]
+    assert matchers[0] == "bench-summary.js", (
+        f"an exact-basename match must get the first look; the matching "
+        f"inspectors are listed {matchers}")
