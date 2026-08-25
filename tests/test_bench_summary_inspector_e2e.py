@@ -245,3 +245,71 @@ def test_the_chart_plots_an_axis_THESE_trials_actually_differ_in(
     assert axis == "K", (
         f"the chart chose {axis!r}, which is constant across every trial it "
         f"is drawing -- that renders as a vertical line")
+
+
+def test_the_page_says_when_it_last_looked(page, server, sweep):
+    """B4's other half.  "The page is live, AND SAYS WHEN IT LAST LOOKED" --
+    a sweep is watched precisely while it runs, so a silently stale verdict
+    is worse than none.  Until this test, B4 was cited in five docstrings
+    while only its teardown was pinned: nothing checked that the readout
+    exists at all."""
+    jpath, _winner, _n = sweep
+    _mount(page, server, jpath)
+    page.wait_for_selector(".bench-summary", timeout=10000)
+    foot = page.locator(".bench-foot").inner_text().strip()
+    assert "last looked" in foot, foot
+    # and it carries a clock reading, not just the words
+    import re as _re
+    assert _re.search(r"\d{1,2}:\d{2}", foot), foot
+
+
+def test_the_declared_cadence_is_the_trajectory_viewers(page, server, sweep):
+    """B4 says "polled on the trajectory viewer's cadence (15 s)".  Nothing
+    else on this page can see that number, so a viewer that drifted off it
+    would pass every other test."""
+    jpath, _winner, _n = sweep
+    _mount(page, server, jpath)
+    page.wait_for_selector(".bench-summary", timeout=10000)
+    assert page.evaluate(
+        "() => window.molbuilder.inspectors.benchSummaryInspector.pollMs"
+    ) == 15000
+
+
+def test_it_really_re_polls(page, server, sweep):
+    """B4's first half: the page IS live.
+
+    Collapsing the long delay rather than waiting 15 s for it -- the
+    presenter schedules through ``window.setTimeout``, so shortening only
+    the long schedules proves the loop re-arms without the test sitting
+    through a real cadence.
+    """
+    jpath, _winner, _n = sweep
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{server}/results", wait_until="networkidle")
+    page.wait_for_function("() => window.molbuilder"
+                           " && window.molbuilder.inspectors"
+                           "        .benchSummaryInspector")
+    n = page.evaluate("""(p) => {
+        window.__fetches = 0;
+        const realFetch = window.fetch;
+        window.fetch = (...a) => {
+            if (String(a[0]).includes('/api/bench/summary')) window.__fetches++;
+            return realFetch(...a);
+        };
+        const realTimeout = window.setTimeout;
+        window.setTimeout = (fn, ms, ...r) =>
+            realTimeout(fn, ms >= 10000 ? 40 : ms, ...r);
+        const insp = window.molbuilder.inspectors.pick(p);
+        const host = document.getElementById('inspector-host');
+        host.innerHTML = '';
+        window.__handle = insp.mount(host, p, { showError: () => {} });
+        return 0;
+    }""", str(jpath))
+    page.wait_for_function("() => window.__fetches >= 3", timeout=10000)
+    page.evaluate("() => window.__handle.dispose()")
+    before = page.evaluate("() => window.__fetches")
+    page.wait_for_timeout(400)
+    assert page.evaluate("() => window.__fetches") == before, (
+        "it kept polling after dispose")
+    assert not errors, errors

@@ -348,6 +348,34 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     return mech
 
 
+def bench_record(jobset, bundle, *, now_iso: Optional[str] = None
+                 ) -> BenchResult:
+    """The sweep's record, built ONE way — points, then the verdict, then
+    HOW the winner computed.
+
+    **Both readers of a sweep come through here**, and that is the whole
+    point.  ``run_summarize_jobset`` (which writes ``bench-result.json``)
+    and ``sweep_view`` (which the Results tab reads) each used to compose
+    this themselves, with the same four arguments — and then differed:
+    only the writing path enriched ``choice`` with ``_winner_mechanism``.
+    So the same sweep produced two different verdicts depending on which
+    door you came through, which is exactly the second path
+    `bench-summary.md` B2 forbids, in the pair of functions that cite it.
+    """
+    res = build_bench_result(
+        discover_points_from_jobset(bundle, jobset),
+        environment=_read_environment(Path(bundle)),
+        system=_read_system(Path(bundle)),
+        now_iso=now_iso)
+    # HOW the winner computed, read from its own deck (U13b) -- part of the
+    # verdict, not a decoration on the file that happens to be written.
+    if res.choice.get("label"):
+        mech = _winner_mechanism(bundle, jobset, res.choice["label"])
+        if mech:
+            res.choice["mechanism"] = mech
+    return res
+
+
 def run_summarize_jobset(jobset, bundle, *,
                          out=None, now_iso: Optional[str] = None,
                          stage: Optional[str] = None):
@@ -361,15 +389,7 @@ def run_summarize_jobset(jobset, bundle, *,
     overwritten; delete it and summarize again for a fresh one), or
     ``"none"`` (no verdict, nothing proposed).
     """
-    res = build_bench_result(
-        discover_points_from_jobset(bundle, jobset),
-        environment=_read_environment(Path(bundle)),
-        system=_read_system(Path(bundle)),
-        now_iso=now_iso)
-    if res.choice.get("label"):
-        mech = _winner_mechanism(bundle, jobset, res.choice["label"])
-        if mech:
-            res.choice["mechanism"] = mech
+    res = bench_record(jobset, bundle, now_iso=now_iso)
     out_path = Path(out) if out else Path(bundle) / "bench-result.json"
     out_path.write_text(res.to_json() + "\n", encoding="utf-8")
     cfg_path = out_path.parent / RUN_CONFIG_NAME
@@ -792,12 +812,12 @@ def sweep_view(jobset, bundle) -> Dict:
     from .runstatus import jobset_status
 
     bundle = Path(bundle)
-    points = discover_points_from_jobset(bundle, jobset)
-    res = build_bench_result(
-        points,
-        environment=_read_environment(bundle),
-        system=_read_system(bundle),
-        now_iso=utc_now_iso())
+    # ONE record-builder, shared with `run_summarize_jobset` -- so the
+    # verdict this view shows is the verdict that gets written, down to
+    # `choice["mechanism"]`.  Composing it here a second time is what B2
+    # forbids, and is what this function did until 2026-08-25.
+    res = bench_record(jobset, bundle, now_iso=utc_now_iso())
+    points = res.points
     status = jobset_status(jobset, bundle)
 
     # POSITION is the join, and it has to be: a BenchPoint's label is the
@@ -880,6 +900,7 @@ def utc_now_iso() -> str:
 __all__ = [
     "parse_point", "discover_points_from_jobset", "run_summarize_jobset",
     "sweep_view", "swept_coordinates", "bundle_for_sweep_file",
+    "bench_record",
     "summary_text", "utc_now_iso",
     "RUN_CONFIG_NAME", "RUN_CONFIG_SCHEMA",
     "run_config_text", "read_run_config",

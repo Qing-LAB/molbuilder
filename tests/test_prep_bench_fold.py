@@ -2044,7 +2044,8 @@ def test_no_winner_speaks_only_about_the_timed_set():
 # ===================================================================== #
 #  `sweep_view` — the whole sweep composed for a reader                 #
 #                                                                       #
-#  Contract: docs/web/bench-summary.md.  Its B1 is the property under    #
+#  Contract: docs/web/bench-summary.md.  Its B1 -- NOT this file's other  #
+#  B1 (roadmap § 0.1, the declared grid) -- is the property under        #
 #  test: this composes what four doors already produce and computes      #
 #  nothing.  B2 says why -- submission.md § 3's summary that showed      #
 #  "170 minutes" for five 38-minute jobs got there by working out its    #
@@ -2166,3 +2167,34 @@ def test_sweep_view_refuses_to_pair_trials_by_position_if_the_readers_disagree(
                         lambda b, j: real(b, j)[:-1])
     with pytest.raises(ValueError, match="refusing to pair"):
         S.sweep_view(jobset, bundle)
+
+
+def test_both_doors_onto_a_sweep_report_the_SAME_verdict(calc):
+    """`bench-summary.md` B2 (not this file's other B2, the pins): a
+    second path that computes the same figure
+    is the defect, not the feature.
+
+    There are two ways to ask a sweep what it concluded -- the CLI, which
+    writes ``bench-result.json``, and the Results tab, which reads
+    ``sweep_view``.  They composed the record separately and then differed:
+    only the writing path enriched ``choice`` with ``_winner_mechanism``,
+    so the same sweep answered "ELPA-1STAGE on a GPU" through one door and
+    said nothing about mechanism through the other.  Both go through
+    ``bench_record`` now, and this fails if either grows its own copy.
+    """
+    from molbuilder.jobset.summarize import sweep_view, bench_record
+    name = _finished_trial_and_verdict(calc)
+    jobset, bundle = _load_sweep(calc)
+
+    written = json.loads((_bench_dir(calc) / "bench-result.json").read_text())
+    viewed = sweep_view(jobset, bundle)["choice"]
+
+    assert written["choice"]["label"] == viewed["label"] == name
+    assert written["choice"].get("mechanism"), (
+        "the fixture's winner should carry a mechanism, or this proves nothing")
+    # every key the record's verdict has, the view's verdict has too
+    assert set(written["choice"]) == set(viewed), (
+        f"the two doors disagree on the verdict's shape: "
+        f"written-only={set(written['choice']) - set(viewed)}, "
+        f"view-only={set(viewed) - set(written['choice'])}")
+    assert viewed["mechanism"] == written["choice"]["mechanism"]

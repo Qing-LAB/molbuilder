@@ -62,11 +62,13 @@ Two naming tiers:
 **The embed-safety pattern.** A component that can be dropped into a foreign host
 (the 3D embed, an inspector) writes `var(--token, #fallback)` — the token if the
 palette is loaded, a literal that *mirrors the token's real value* if it isn't.
-That is the main place a literal color appears. The only others are a small,
-tagged set of `/* exempt: */` colors that aren't UI palette at all — a WebGL
-scene color (the viewer's wireframe, its canvas clear color), a decorative
-gradient, and a couple of lightened text tints on dark severity rows. Outside
-those documented exceptions, a component never writes a raw palette color.
+That is the main place a literal color appears. The only others are a tagged
+set of `/* exempt: */` colors that aren't UI palette at all: a WebGL scene
+color (the viewer's wireframe, its canvas clear color), a decorative
+gradient, and a couple of lightened text tints on dark severity rows.
+**40 of them as of 2026-08-25**, and 32 sit in `molview.css` alone — a
+WebGL scene's palette is its own, not the page's. Outside those documented
+exceptions, a component never writes a raw palette color.
 
 ## 3. Responsive — content decides, not the viewport
 
@@ -103,9 +105,14 @@ its content declared it needed — the viewer card, correctly refusing to shrink
 past its floor, overflowed its host by exactly the shortfall. A media query
 cannot read a custom property, so the literal stays; the arithmetic lives
 beside it in `page-shell.css`. Also **720px**
-(the parameter grid flattens to one column so labels sit above inputs), plus a
-few module-specific ones (`1100`, `768`, `480`). All animation honors
-`prefers-reduced-motion`.
+(the parameter grid flattens to one column so labels sit above inputs), plus the
+module-specific ones: **960px** (task-setup), **900px** (the spectra
+inspector), **768px** (markdown), **480px** (the load monitor and MolView)
+and **40rem** (form-schema). All animation honors `prefers-reduced-motion`.
+
+*(Recounted 2026-08-25. This listed `1100`, which is in no stylesheet, and
+omitted three that are — a doc inventory drifts silently because nothing
+fails when it does.)*
 
 ## 4. Staying visually consistent
 
@@ -116,8 +123,13 @@ few module-specific ones (`1100`, `768`, `480`). All animation honors
   colored left bar and a leading glyph (⚠ / ✗ / i) from the same tokens, owned in
   form-components.
 - **Cards** — `.card` in page-shell is the canonical surface (background, border,
-  radius, padding, shadow). A couple of tabs deliberately restyle it in their own
-  vocabulary, which the shell documents as intentional.
+  radius, padding, shadow), and **it is the only one**. Two tabs used to
+  restyle it "deliberately"; on inspection (2026-08-24) both copies restated
+  the shell's background / radius / shadow verbatim and *then* drifted — a
+  softer border in one, `--radius-lg` and its own padding in the other — so
+  one class had three looks and source order picked the winner. Deleting the
+  copies was the fix, and `test_css_no_duplicate_selectors` now enforces it
+  rather than excusing it.
 - **Rhythm** — spacing, type sizes, and radii all come from the `--space-*` /
   `--text-*` / `--radius*` scales. **Spacing is a 4px grid** (2026-08-23):
   every step is a whole number of 4px units, so any two spacings are
@@ -178,8 +190,9 @@ the element never hides.
 
 The rule: whenever a class sets a non-`none` `display` on an element that gets
 toggled by `hidden`, **pair it with a guard** — `.dock-panel[hidden] { display:
-none }`. This is done consistently across the tree (about thirty guards, most
-with a comment explaining why).
+none }`. This is done consistently across the tree — **83 guards** as of
+2026-08-25, most with a comment explaining why. (It said "about thirty" until
+then: the rule kept being applied and the figure stopped describing it.)
 
 ## 7. What may be inline — the CSP boundary
 
