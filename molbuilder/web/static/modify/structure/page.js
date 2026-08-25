@@ -270,6 +270,21 @@
      * and not files (molview.md § 6.7). */
     function markLoadedFrom(path) {
         _loadedFrom = path || null;
+        /* A LOAD ALSO RETIRES THE SAVE TARGET.
+         *
+         * `_lastSavedTo` means "where the thing on the canvas was written",
+         * and after a load the thing on the canvas is something else.  It
+         * was left standing, so the Save readout went on naming the
+         * PREVIOUS structure's file: build ethanol over a restored
+         * BDT-Au junction and the panel still said
+         * "Target: BDT-Au-junction.xyz" (browser walk, 2026-08-24).
+         *
+         * The overwrite confirmation inside `_saveDataset` means this
+         * misleads rather than silently destroys -- but a confirmation you
+         * answer while reading the wrong filename is not much of a guard.
+         * Cleared here because this is the one gate every generator, every
+         * upload and the sidebar's own load come through. */
+        _lastSavedTo = null;
         _rememberPanel();
     }
 

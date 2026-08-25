@@ -365,6 +365,55 @@ class TestModifierHelpers:
         )
 
 
+class TestALoadRetiresTheSaveTarget:
+    """`lastSaveTo` means "where the thing on the canvas was written".
+
+    After a load, the thing on the canvas is something else -- so the note
+    is about a structure that is no longer there.  It was left standing, and
+    the Save readout went on naming the PREVIOUS structure's file: building
+    ethanol over a restored BDT-Au junction left the panel saying
+    "Target: BDT-Au-junction.xyz" (browser walk, 2026-08-24).
+
+    `_saveDataset` does confirm an overwrite, so this misled rather than
+    silently destroyed -- but a confirmation you answer while reading the
+    wrong filename is not much of a guard.
+    """
+
+    def test_loading_a_file_clears_where_the_last_one_was_saved(self):
+        out = _run_node('''
+            const canvas = _mkFakeCanvas({ empty: false, dirty: false });
+            page._bind(canvas, _mkFakeModal(false));
+            page.markSavedTo("/p/first.xyz");
+            const before = page.getCanvasSnapshot().lastSaveTo;
+            page.markLoadedFrom("/p/second.xyz");
+            console.log(JSON.stringify({
+                before: before,
+                after:  page.getCanvasSnapshot().lastSaveTo,
+                loaded: page.getCanvasSnapshot().loadedFrom,
+            }));
+        ''')
+        assert out["before"] == "/p/first.xyz"
+        assert out["after"] is None, (
+            "a load must retire the previous structure's save target")
+        assert out["loaded"] == "/p/second.xyz"
+
+    def test_a_generator_build_clears_it_too(self):
+        """A SMILES / DNA / peptide build passes no filename, so the page
+        records `null` -- and must equally stop claiming the old target."""
+        out = _run_node('''
+            const canvas = _mkFakeCanvas({ empty: false, dirty: false });
+            page._bind(canvas, _mkFakeModal(false));
+            page.markSavedTo("/p/first.xyz");
+            page.markLoadedFrom(undefined);
+            console.log(JSON.stringify({
+                after:  page.getCanvasSnapshot().lastSaveTo,
+                loaded: page.getCanvasSnapshot().loadedFrom,
+            }));
+        ''')
+        assert out["after"] is None
+        assert out["loaded"] is None
+
+
 # ----- snapshot + onChange --------------------------------------- #
 
 

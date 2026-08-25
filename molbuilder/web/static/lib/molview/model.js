@@ -433,6 +433,22 @@ export function createModel(opts) {
                 resetFrame: true,
                 notices: (said && said.length) ? said : null,
             });
+            // A LOAD CLEARS THE SELECTION, ALWAYS.
+            //
+            // The edit door below clears only when the count changed -- a
+            // count-preserving transform moves the same atoms, so the
+            // selection still means what it meant.  A load has no such
+            // claim: these are different atoms entirely, and index 7 of the
+            // molecule just replaced names nothing in the one now open.
+            //
+            // Without this the count came from the NEW structure while the
+            // selection came from the OLD, and the atom list read
+            // "75 of 9 selected" after a 312-atom structure was replaced by
+            // ethanol (found in the browser, 2026-08-24).  The display was
+            // the visible half; the dangerous half is that Delete selected
+            // and Assign would have run against indices that no longer
+            // exist -- or worse, that now name different atoms.
+            selection.clear();
             unit = HOLDING;
         },
         announce: () => {},                 // settle already told everyone

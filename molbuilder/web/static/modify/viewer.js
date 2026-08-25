@@ -53,6 +53,10 @@ export function init(viewer) {
     // The reload-restore, so `init` can hand it to the owner (see the bottom of
     // this file).  Set once, at the end of the wiring block.
     let _restored = null;
+    /* True while `#status` is showing the "Restored N-atom structure"
+     * sentence.  A restore ANNOUNCES WHAT CAME BACK, so the first change to
+     * the structure afterwards makes it history -- see `_retireRestoreNotice`. */
+    let _restoreNoticeUp = false;
 
     // ----- Unified data model + persistence accessors ---------------- //
     //
@@ -914,6 +918,7 @@ export function init(viewer) {
         const _d = _data();
         if (_d && typeof _d.subscribe === "function") {
             _d.subscribe(() => {
+                _retireRestoreNotice();
                 refreshSelectionUI();
                 refreshUndoButton();
                 _refreshTitleReadout();
@@ -1136,6 +1141,32 @@ export function init(viewer) {
         setStatus(
             `Restored ${_nAtoms()}-atom structure (${title}).`,
             "ok");
+        _restoreNoticeUp = true;
+    }
+
+    /** Clear the restore banner once the structure it describes is gone.
+     *
+     * "Restored 312-atom structure (unnamed)." is true at the moment it is
+     * written and false the moment anything replaces that structure -- yet
+     * it sat there through the next load, so after building ethanol over a
+     * restored 312-atom canvas the header still announced 312 atoms
+     * (browser walk, 2026-08-24).
+     *
+     * The half of this already fixed is recorded at the writer: the message
+     * used to be written even when NOTHING came back, greeting a first
+     * visit with "Restored 0-atom structure" -- and that note says the
+     * sentence "then sat there through the next file load, describing
+     * nothing".  Not writing it when there was nothing to restore fixed the
+     * empty case; the sentence still outlived the structure in every other.
+     *
+     * A restore announces what came back.  Once you change anything, that
+     * is history, so the first data change retires it -- and only the
+     * first, because a later status (a save, an error) is not ours to clear.
+     */
+    function _retireRestoreNotice() {
+        if (!_restoreNoticeUp) return;
+        _restoreNoticeUp = false;
+        setStatus("", null);
     }
 
     // ----- Test hook ------------------------------------------------- //

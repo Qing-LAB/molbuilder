@@ -1843,3 +1843,52 @@ def test_identity_columns_and_channels_ride_the_two_doors_whole():
     assert ch["charge"]["data"] == {"1": -0.4, "2": 0.1}
     assert ch["charge"]["fdf"] == "some-strategy"
     assert env["metadata"]["regions"] == {"L-electrode": [0]}
+
+
+def test_a_load_clears_the_selection():
+    """A LOAD replaces the atoms wholesale, so a kept selection names
+    nothing -- index 7 of the molecule just replaced is not index 7 of the
+    one now open.
+
+    The edit door clears only when the count changed, and that is right for
+    an edit: a count-preserving transform moves the SAME atoms, so the
+    selection still means what it meant.  A load has no such claim, and it
+    had no clear at all.
+
+    Found in the browser 2026-08-24: after a 312-atom structure was
+    replaced by ethanol, the atom list read **"75 of 9 selected"** -- the
+    count from the new structure, the selection from the old.  The display
+    was the visible half; the dangerous half is that "Delete selected" and
+    "Assign" would have run against indices that no longer exist, or that
+    now name different atoms.
+    """
+    out = _run("""
+        const m = await loaded();
+        m.selection.add([0, 1]);
+        const before = m.selection.get().length;
+        // a DIFFERENT molecule, different atom count
+        globalThis.__nextPayload = globalThis.__payload([
+            atomRow(0, "H", 0), atomRow(1, "H", 1), atomRow(2, "O", 2),
+        ]);
+        await m.installMolecule({ text: "3\\n\\nH 0 0 0\\nH 1 0 0\\nO 2 0 0\\n",
+                                  filename: "y.xyz" });
+        console.log(JSON.stringify({
+            before: before,
+            after: m.selection.get().length,
+            atoms: m.getAtoms().length,
+        }));
+    """)
+    assert out["before"] == 2, out
+    assert out["after"] == 0, f"a load must clear the selection: {out}"
+    assert out["atoms"] == 3, out
+
+
+def test_a_count_preserving_EDIT_still_keeps_the_selection():
+    """The other half of the rule, so the fix above cannot be over-applied:
+    an edit that moves the same atoms leaves the selection alone."""
+    out = _run("""
+        const m = await loaded();
+        m.selection.add([0, 1]);
+        console.log(JSON.stringify({ kept: m.selection.get().length }));
+    """)
+    assert out["kept"] == 2, out
