@@ -79,6 +79,9 @@
         },
         {
           "path": "science/pseudopotentials.md"
+        },
+        {
+          "path": "science/junction-cell.md"
         }
       ]
     },

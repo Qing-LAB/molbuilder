@@ -91,7 +91,7 @@ classDiagram
 Channels are **keyed by atom index**, so any structure mutation (add/delete
 atom) MUST remap every channel or metadata silently corrupts. Every
 atom-count-changing modify op carries the remap: the labels via
-`modify.py::_reindex_transport_metadata(struct, keep)` (`:74`, ONE pass over the
+`modify.py::_reindex_transport_metadata(struct, keep)` (`:75`, ONE pass over the
 label store against the survivor-index list — reserved labels remap by the same
 rule because they are in it), and the extensible channels via `remap_annotations`
 (`structure.py:204`) — drop indices

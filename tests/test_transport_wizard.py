@@ -10,8 +10,7 @@ from molbuilder.structure import Structure
 from molbuilder.transport.preflight import parse_fdf_params, preflight
 from molbuilder.transport.transiesta import TransiestaEngine
 from molbuilder.transport.wizard import (
-    bulk_z_period, detect_layers, electrode_wizard, extract_electrode_model,
-    render_electrode_fdf,
+    electrode_wizard, extract_electrode_model, render_electrode_fdf,
 )
 
 
@@ -41,24 +40,6 @@ def _au_device():
 # --------------------------------------------------------------------- #
 #  layer detection + bulk period                                        #
 # --------------------------------------------------------------------- #
-
-
-def test_detect_layers_groups_by_z():
-    z = np.array([0.0, 0.02, 2.35, 2.36, 4.70])   # 3 layers, jitter within
-    assert detect_layers(z) == pytest.approx([0.01, 2.355, 4.70], abs=1e-3)
-
-
-def test_bulk_z_period_adds_one_spacing():
-    # 4 layers at 2.35 spacing -> span 7.05, +d => period 9.40
-    zper, d, n = bulk_z_period([0.0, 2.35, 4.70, 7.05])
-    assert d == pytest.approx(2.35)
-    assert n == 4
-    assert zper == pytest.approx(9.40)
-
-
-def test_bulk_z_period_single_layer_raises():
-    with pytest.raises(ValueError):
-        bulk_z_period([0.0])
 
 
 # --------------------------------------------------------------------- #

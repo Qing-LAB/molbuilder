@@ -50,6 +50,7 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
+from ..cell import LAYER_TOL_ANG, bulk_z_period, detect_layers
 from ..config.transport import TransportConfig
 from ..structure import Structure
 from .transiesta import (
@@ -63,11 +64,6 @@ from .transiesta import (
 # safe starting point for a metal lead and is meant to be converged by
 # the convergence sweep (§ 6.5), not trusted blindly.
 DEFAULT_ELECTRODE_KZ = 40
-
-# Two atoms whose z differ by less than this are the same atomic layer.
-# 0.5 Å is well below any real interlayer spacing (Au(111) ≈ 2.35 Å)
-# and well above relaxation jitter within a layer.
-_LAYER_TOL_ANG = 0.5
 
 
 @dataclass
@@ -100,57 +96,12 @@ class ElectrodeModel:
 # --------------------------------------------------------------------- #
 
 
-def detect_layers(z: np.ndarray, tol_ang: float = _LAYER_TOL_ANG) -> List[float]:
-    """Cluster z-coordinates into atomic layers; return sorted layer
-    centroids (low → high).
-
-    Single-linkage along the sorted z axis: a new layer starts whenever
-    the gap to the previous atom exceeds ``tol_ang``.  Returns the mean
-    z of each cluster.
-    """
-    zs = np.sort(np.asarray(z, dtype=float))
-    if zs.size == 0:
-        return []
-    layers: List[List[float]] = [[float(zs[0])]]
-    for val in zs[1:]:
-        if float(val) - layers[-1][-1] > tol_ang:
-            layers.append([float(val)])
-        else:
-            layers[-1].append(float(val))
-    return [float(np.mean(layer)) for layer in layers]
-
-
-def bulk_z_period(layer_z: List[float]) -> Tuple[float, float, int]:
-    """Propose the bulk repeat from the layer centroids.
-
-    Returns ``(z_period, d_interlayer, n_layers)`` where
-    ``d_interlayer`` is the *median* adjacent-layer spacing (robust to a
-    slightly off top/bottom layer) and
-    ``z_period = z_span + d_interlayer`` so the slab tiles seamlessly:
-    the next periodic image's first layer lands exactly one interlayer
-    spacing above the current top layer.
-
-    Raises ``ValueError`` on fewer than 2 layers (the repeat is
-    undeterminable from a single layer — the caller must supply it).
-    """
-    n = len(layer_z)
-    if n < 2:
-        raise ValueError(
-            "cannot derive a bulk z-period from a single atomic layer; "
-            "pass an explicit z_period (the lead's bulk lattice repeat)")
-    diffs = np.diff(np.asarray(layer_z, dtype=float))
-    d_interlayer = float(np.median(diffs))
-    z_span = float(layer_z[-1] - layer_z[0])
-    z_period = z_span + d_interlayer
-    return z_period, d_interlayer, n
-
-
 def extract_electrode_model(
     device: Structure,
     label: str,
     *,
     z_period: Optional[float] = None,
-    layer_tol_ang: float = _LAYER_TOL_ANG,
+    layer_tol_ang: float = LAYER_TOL_ANG,
     min_thickness_ang: float = 12.0,
 ) -> ElectrodeModel:
     """Build an :class:`ElectrodeModel` for one ``*-electrode`` region.
@@ -194,11 +145,15 @@ def extract_electrode_model(
     notes: List[str] = []
     if z_period is not None:
         zper = float(z_period)
-        # Still report the detected layer structure for the thickness check.
-        d_inter = (float(np.median(np.diff(layer_z)))
-                   if len(layer_z) >= 2 else float("nan"))
+        # Still report the detected layer structure for the thickness check --
+        # measured through the SAME derivation, with only the period overridden.
+        # This used to recompute the median inline, which is a second copy of
+        # the rule cell.bulk_z_period owns (science/junction-cell.md § 5).
+        if len(layer_z) >= 2:
+            _derived, d_inter, n_layers = bulk_z_period(layer_z)
+        else:
+            d_inter, n_layers = float("nan"), len(layer_z)
         z_span = float(layer_z[-1] - layer_z[0]) if layer_z else 0.0
-        n_layers = len(layer_z)
         notes.append(
             f"z-period set explicitly to {zper:.3f} Å (overriding the "
             f"layer-spacing estimate).")
@@ -338,7 +293,7 @@ def electrode_wizard(
     which: str = "both",
     electrode_kz: int = DEFAULT_ELECTRODE_KZ,
     z_period: Optional[float] = None,
-    layer_tol_ang: float = _LAYER_TOL_ANG,
+    layer_tol_ang: float = LAYER_TOL_ANG,
     min_thickness_ang: float = 12.0,
 ) -> List[Tuple[str, str, ElectrodeModel]]:
     """Derive electrode ``.fdf``(s) from a labeled device.
@@ -394,8 +349,6 @@ def format_models(models: List[Tuple[str, str, ElectrodeModel]]) -> str:
 
 __all__ = [
     "ElectrodeModel",
-    "detect_layers",
-    "bulk_z_period",
     "extract_electrode_model",
     "render_electrode_fdf",
     "electrode_wizard",

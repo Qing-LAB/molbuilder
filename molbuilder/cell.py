@@ -466,3 +466,80 @@ def resolve_and_check(struct: Structure, *,
     """The whole line in one call — what almost every caller wants."""
     rc = resolve(struct, box=box)
     return rc, check(rc)
+
+
+# --------------------------------------------------------------------- #
+#  A layered slab's own periodic repeat                                 #
+#                                                                       #
+#  Contract: docs/science/junction-cell.md.  Two callers derive the      #
+#  same number for two boxes -- the junction cell that flanks a molecule #
+#  (modify.add_electrode_slab) and the bulk-lead cell TranSIESTA needs   #
+#  (transport.wizard.extract_electrode_model).  It lived in the wizard   #
+#  first; it is here so the second caller reuses it instead of growing   #
+#  a second copy that can disagree.                                      #
+# --------------------------------------------------------------------- #
+
+#: Two atoms whose z differ by less than this are the same atomic layer.
+#: 0.5 Å is well below any real interlayer spacing (Au(111) ≈ 2.35 Å)
+#: and well above relaxation jitter within a layer.
+LAYER_TOL_ANG = 0.5
+
+
+def detect_layers(z, tol_ang: float = LAYER_TOL_ANG) -> List[float]:
+    """Cluster z-coordinates into atomic layers; return sorted layer
+    centroids (low → high).
+
+    Single-linkage along the sorted z axis: a new layer starts whenever
+    the gap to the previous atom exceeds ``tol_ang``.  Returns the mean
+    z of each cluster.
+    """
+    zs = np.sort(np.asarray(z, dtype=float))
+    if zs.size == 0:
+        return []
+    layers: List[List[float]] = [[float(zs[0])]]
+    for val in zs[1:]:
+        if float(val) - layers[-1][-1] > tol_ang:
+            layers.append([float(val)])
+        else:
+            layers[-1].append(float(val))
+    return [float(np.mean(layer)) for layer in layers]
+
+
+def bulk_z_period(layer_z: Sequence[float]) -> Tuple[float, float, int]:
+    """Propose the bulk repeat from the layer centroids.
+
+    Returns ``(z_period, d_interlayer, n_layers)`` where
+    ``d_interlayer`` is the *median* adjacent-layer spacing (robust to a
+    slightly off top/bottom layer) and
+    ``z_period = z_span + d_interlayer`` so the slab tiles seamlessly:
+    the next periodic image's first layer lands exactly one interlayer
+    spacing above the current top layer.
+
+    The median is measured on the slab AS BUILT, so an ``inter_layer_offset``
+    override is honoured without being passed in.
+
+    Raises ``ValueError`` on fewer than 2 layers (the repeat is
+    undeterminable from a single layer — the caller must supply it).
+    """
+    n = len(layer_z)
+    if n < 2:
+        raise ValueError(
+            "cannot derive a bulk z-period from a single atomic layer; "
+            "pass an explicit z_period (the lead's bulk lattice repeat)")
+    diffs = np.diff(np.asarray(layer_z, dtype=float))
+    d_interlayer = float(np.median(diffs))
+    z_span = float(layer_z[-1] - layer_z[0])
+    z_period = z_span + d_interlayer
+    return z_period, d_interlayer, n
+
+
+#: Layers per stacking period, by fcc surface.  (111) is ABCABC, the
+#: others ABAB -- so a seam only continues the crystal when the layer
+#: count is a whole multiple (junction-cell.md § 3.1).
+#:
+#: Served to the Junction panel by /api/modify/meta, which is the whole
+#: reason it is a table rather than a function: the note re-renders as the
+#: user types a layer count, so the arithmetic happens client-side and only
+#: the crystallography travels.  A plane absent from this table means "not
+#: known" -- the note then says nothing instead of asserting a verdict.
+STACKING_PERIOD = {"111": 3, "100": 2, "110": 2}

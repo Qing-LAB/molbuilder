@@ -141,12 +141,98 @@ class TestElectrodeCaptureCell:
         assert out.cell is not None, "electrode cell must be captured, not discarded"
         assert out.axis_kind == ("periodic", "periodic", "transport")
         assert out.pbc == (True, True, True)          # transport -> True
-        assert out.cell[2, 2] > 0.0                   # z = device extent
+        assert out.cell[2, 2] > 0.0
         # in-plane vectors are non-degenerate (hexagonal for fcc111)
         assert abs(float(np.linalg.det(out.cell))) > 1e-6
         # § 3c: the captured cell WRAPS the atoms -- cell_origin = structure low corner.
         assert out.cell_origin is not None
         assert np.allclose(out.cell_origin, out.positions.min(axis=0))
+
+    # ---- the z length: extent + ONE interlayer spacing ---------------- #
+    #  science/junction-cell.md § 1.  This used to be the bare extent, and
+    #  `assert cell[2,2] > 0` above was the only thing watching it -- which
+    #  a box that collides with its own image passes.  The seam distance is
+    #  the assertion that cannot be satisfied by the bug.
+
+    @staticmethod
+    def _seam(out):
+        """Shortest metal-metal distance ACROSS the periodic z boundary."""
+        import itertools
+        C = np.asarray(out.resolve_cell(), dtype=float)
+        P = np.asarray(out.positions, dtype=float)
+        au = P[[e == "Au" for e in out.elements]]
+        top = au[au[:, 2] > au[:, 2].max() - 1e-3]
+        bot = au[au[:, 2] < au[:, 2].min() + 1e-3]
+        best = float("inf")
+        for i, j in itertools.product((-1, 0, 1), repeat=2):
+            img = bot.copy()
+            img[:, :2] += i * C[0][:2] + j * C[1][:2]
+            img[:, 2] += C[2, 2]
+            best = min(best, float(np.min(
+                np.linalg.norm(top[:, None, :] - img[None, :, :], axis=-1))))
+        return best
+
+    def test_z_is_extent_plus_one_interlayer_spacing(self):
+        from molbuilder.modify import add_symmetric_electrodes
+        a = 4.0782
+        d = a / np.sqrt(3)                      # fcc(111): a/sqrt(3)
+        dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
+        out = add_symmetric_electrodes(dev, "Au", "111", (2, 2, 3), gap=8.0,
+                                       lattice_constant=a)
+        extent = float(out.positions[:, 2].max() - out.positions[:, 2].min())
+        assert out.cell[2, 2] == pytest.approx(extent + d, abs=1e-6)
+        # and the thing that actually matters: the image no longer lands on it
+        assert self._seam(out) == pytest.approx(d, abs=1e-6)
+
+    def test_padding_off_reproduces_the_bare_extent(self):
+        """The switch has to really switch -- and the OFF state is the bug,
+        so this pins the collision it reproduces (junction-cell.md § 6)."""
+        from molbuilder.modify import add_symmetric_electrodes
+        dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
+        out = add_symmetric_electrodes(dev, "Au", "111", (2, 2, 3), gap=8.0,
+                                       lattice_constant=4.0782,
+                                       pad_interlayer_gap=False)
+        extent = float(out.positions[:, 2].max() - out.positions[:, 2].min())
+        assert out.cell[2, 2] == pytest.approx(extent, abs=1e-9)
+        assert self._seam(out) == pytest.approx(0.0, abs=1e-6)
+
+    def test_padding_follows_an_inter_layer_offset_override(self):
+        """The gap is measured on the slab AS BUILT, so a strained slab pads
+        by ITS spacing, not by the bulk one (junction-cell.md § 5)."""
+        from molbuilder.modify import add_electrode_slab
+        dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
+        out = add_electrode_slab(dev, "Au", "111", (2, 2, 3), center_indices=[0],
+                                 lattice_constant=4.0782, inter_layer_offset=3.0)
+        extent = float(out.positions[:, 2].max() - out.positions[:, 2].min())
+        assert out.cell[2, 2] == pytest.approx(extent + 3.0, abs=1e-6)
+
+    def test_a_monolayer_is_still_padded_by_the_crystal_spacing(self):
+        """A single layer has no spacing to MEASURE, but the crystal still has
+        one -- so the box must not silently fall back to the bare extent, which
+        is the collision the padding exists to prevent."""
+        from molbuilder.modify import add_electrode_slab
+        a = 4.0782
+        d = a / np.sqrt(3)
+        dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
+        out = add_electrode_slab(dev, "Au", "111", (2, 2, 1), center_indices=[0],
+                                 lattice_constant=a)
+        extent = float(out.positions[:, 2].max() - out.positions[:, 2].min())
+        assert out.cell[2, 2] == pytest.approx(extent + d, abs=1e-6)
+
+    def test_the_molecule_does_not_set_the_crystal_spacing(self):
+        """A molecule reaching past the slabs must not become the layer
+        spacing: the padding is measured on the METAL layers only."""
+        from molbuilder.modify import add_symmetric_electrodes
+        a = 4.0782
+        d = a / np.sqrt(3)
+        # a long molecule whose atoms sit at irregular z
+        dev = Structure(elements=["S", "C", "C", "S"],
+                        positions=[[0, 0, -3.1], [0, 0, -1.0],
+                                   [0, 0, 1.0], [0, 0, 3.1]])
+        out = add_symmetric_electrodes(dev, "Au", "111", (2, 2, 3), gap=8.0,
+                                       lattice_constant=a)
+        extent = float(out.positions[:, 2].max() - out.positions[:, 2].min())
+        assert out.cell[2, 2] == pytest.approx(extent + d, abs=1e-6)
 
 
 def _parse_fdf_cell_coords(fdf):

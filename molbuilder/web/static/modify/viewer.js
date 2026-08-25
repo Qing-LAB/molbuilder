@@ -673,6 +673,11 @@ export function init(viewer) {
                 Number($("elc-dx").value),
                 Number($("elc-dy").value),
             ],
+            // Pad the cell's z by one interlayer spacing so the box does not
+            // collide with its own periodic image (science/junction-cell.md).
+            // Sent explicitly: the server also defaults it TRUE, and the two
+            // must not be able to disagree about what "unchecked" means.
+            pad_interlayer_gap: $("elc-pad-gap").checked,
         };
         // Resolve the chosen lattice reference -> a numeric
         // `lattice_constant` payload field.  The API already accepts
@@ -691,6 +696,59 @@ export function init(viewer) {
             }
         }
         return out;
+    }
+
+    // The z-gap note.  Two facts a person needs before building, and no
+    // crystallography of its own: what the switch does to the box, and
+    // whether THIS layer count makes a whole stacking period.  The period
+    // table comes from /api/modify/meta (science/junction-cell.md § 3.1);
+    // the Angstrom value deliberately is NOT recomputed here -- the spacing
+    // is measured on the built slab by cell.bulk_z_period, and a second
+    // formula in JS is a second answer waiting to disagree.
+    function renderPadGapNote() {
+        const note = $("elc-pad-gap-note");
+        if (!note) return;
+        const box = $("elc-pad-gap");
+        let msg;
+        if (box && !box.checked) {
+            msg = "Off: the cell's z is the atoms' extent exactly, so the "
+                + "bottom atom's periodic image lands on the top atom. Use "
+                + "only when you set the cell yourself.";
+            note.className = "status warn";
+        } else {
+            const plane  = getCheckedRadio("elc-plane") || "111";
+            const layers = Number(($("elc-layers") || {}).value);
+            const period = (window.__elcStackingPeriod || {})[plane];
+            msg = "Adds one interlayer spacing to the cell's z, so the slab "
+                + "tiles without colliding with its own image.";
+            if (period && Number.isFinite(layers) && layers > 0) {
+                // A whole stacking period is NECESSARY, not sufficient -- the
+                // symmetric pair places its -z slab by mirroring, which leaves
+                // both outermost layers on the same registry whatever the layer
+                // count.  So say what the count IS, never that the boundary
+                // WILL join.
+                const whole = (layers % period) === 0;
+                msg += whole
+                    ? `  ${layers} layers is a whole fcc(${plane}) stacking `
+                      + `period (multiple of ${period}).`
+                    : `  ${layers} layers is NOT a whole fcc(${plane}) stacking `
+                      + `period (multiple of ${period}), so the two faces cannot `
+                      + `line up as bulk across the boundary.`;
+                note.className = whole ? "status ok" : "status warn";
+            } else {
+                note.className = "status muted";
+            }
+        }
+        note.textContent = msg;
+        // The rest of the story -- registry, the mirror, what TranSIESTA does
+        // and does not care about -- is a page, not a tooltip.
+        const link = document.createElement("a");
+        link.href = "/documents?doc=science/junction-cell.md";
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = "Why this matters";
+        note.appendChild(document.createTextNode(" "));
+        note.appendChild(link);
     }
 
     // Populate the element <select> and plane radios from the
@@ -713,6 +771,10 @@ export function init(viewer) {
         // Stash the lattice table for readElcCommonBody.  Schema:
         // { Au: {a_experimental, a_pbe, a_pbe_siesta_psml, name, system}, ... }
         window.__elcLatticeTable = (meta && meta.lattice_table) || {};
+        // Layers per stacking period, from the server (science/junction-cell.md
+        // § 3.1).  No client-side copy of the crystallography -- an empty table
+        // makes the note say nothing rather than guess.
+        window.__elcStackingPeriod = (meta && meta.stacking_period) || {};
         const elSel = $("elc-element");
         if (elSel) {
             elSel.innerHTML = "";
@@ -742,6 +804,19 @@ export function init(viewer) {
                 planeBox.appendChild(lbl);
             }
         }
+        // The z-gap note tracks the plane + layer count, so re-render it
+        // whenever either changes (and once now, for the initial state).
+        for (const inp of planeBox ? planeBox.querySelectorAll("input") : []) {
+            inp.addEventListener("change", renderPadGapNote);
+        }
+        for (const id of ["elc-layers", "elc-pad-gap"]) {
+            const el = $(id);
+            if (el) el.addEventListener("change", renderPadGapNote);
+        }
+        const layersBox = $("elc-layers");
+        if (layersBox) layersBox.addEventListener("input", renderPadGapNote);
+        renderPadGapNote();
+
         // Lattice-ref radios + ⓘ popover wiring.
         renderLatticeRefRadios();
         const infoBtn = $("elc-lattice-ref-info");

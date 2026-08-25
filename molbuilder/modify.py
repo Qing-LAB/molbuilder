@@ -14,12 +14,12 @@ Public surface (all pure functions; each returns a new ``Structure``):
     add_electrode_slab(struct, element, plane, size, center_indices=None, *,
                        contact_distance=None, side="+z", orthogonal=False,
                        offset=(0.0, 0.0), lattice_constant=None,
-                       inter_layer_offset=None)
+                       inter_layer_offset=None, pad_interlayer_gap=True)
                                                 -> Structure
     add_symmetric_electrodes(struct, element, plane, size,
                              center_indices=None, *, gap=8.0,
                              orthogonal=False, offset=(0.0, 0.0),
-                             lattice_constant=None)
+                             lattice_constant=None, pad_interlayer_gap=True)
                                                 -> Structure
 
 Every function preserves the per-atom metadata (``atom_names``,
@@ -63,6 +63,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from . import cell as _cell
 from .structure import Structure, copy_annotations, remap_annotations
 
 
@@ -790,6 +791,7 @@ def add_electrode_slab(
     offset: Tuple[float, float] = (0.0, 0.0),
     lattice_constant: Optional[float] = None,
     inter_layer_offset: Optional[float] = None,
+    pad_interlayer_gap: bool = True,
 ) -> Structure:
     """Append a single FCC electrode slab on one side of an anchor atom.
 
@@ -867,6 +869,14 @@ def add_electrode_slab(
         spacing for the chosen lattice constant + plane).  Useful for
         strained-distance studies where the contact's interlayer
         spacing is intentionally different from bulk.
+    pad_interlayer_gap
+        Add ONE interlayer spacing to the captured cell's z length so the
+        box tiles without colliding with itself (science/junction-cell.md
+        § 1).  Default ``True``: without it the bottom atom's periodic image
+        lands exactly on the top atom and SIESTA stops.  Set ``False`` to
+        reproduce a structure built before this rule, or when you supply the
+        cell yourself -- an explicit cell wins over this either way
+        (structure-periodicity.md § 4, branch 1).
 
     Returns
     -------
@@ -987,11 +997,17 @@ def add_electrode_slab(
 
     # Capture the electrode's cell (structure-periodicity.md § 4 -- fixes the old
     # discard).  In-plane (x,y) = the ASE slab's lattice (rows 0,1; hexagonal for
-    # fcc(111)); z = the DEVICE length (combined atom extent), NOT the slab's
-    # periodic z.  axis_kind = (periodic, periodic, transport): the transport z is
+    # fcc(111)).  axis_kind = (periodic, periodic, transport): the transport z is
     # electrode-matched, never tiled/k-sampled.  Overwrites any prior cell -- the
     # electrode defines the junction's in-plane periodicity.  Skipped if the z
     # extent is degenerate (would make a singular cell); the caller can set one.
+    #
+    # z is the atoms' extent PLUS ONE INTERLAYER SPACING (science/junction-cell.md
+    # § 1).  The extent alone puts the bottom atom's image at z_min + c = z_max --
+    # exactly on the top atom, at zero distance -- and SIESTA stops.  The spacing
+    # comes from cell.bulk_z_period, the same derivation the electrode wizard uses
+    # for the bulk lead (§ 5), measured on the slab AS BUILT so an
+    # ``inter_layer_offset`` override is honoured without being passed in.
     all_pos = np.vstack([struct.positions, metal_pos])
     z_extent = float(all_pos[:, 2].max() - all_pos[:, 2].min())
     slab_cell = np.asarray(full.get_cell(), dtype=float)
@@ -999,19 +1015,40 @@ def add_electrode_slab(
     elc_axis_kind = None
     elc_cell_origin = None
     if z_extent > 1e-6:
+        z_len = z_extent
+        if pad_interlayer_gap:
+            # Measure the METAL layers only: they are what meets across the
+            # boundary, and a molecule that reaches past the slabs must not set
+            # the crystal's spacing.
+            metal_layers = _cell.detect_layers(metal_pos[:, 2])
+            if len(metal_layers) < 2:
+                # A MONOLAYER has no spacing to measure, but the crystal still
+                # has one -- so ask the same builder for a 2-layer slab and read
+                # it off that, rather than leaving the box unpadded (which is
+                # the zero-distance collision this whole branch exists to
+                # prevent).  Same (m, n) and ``orthogonal`` as the real slab, so
+                # it cannot hit an ASE shape constraint the caller already
+                # passed.  ``inter_layer_offset`` does not apply at one layer.
+                probe = _build_ase_slab(element, plane, (m, n, 2), orthogonal, a)
+                metal_layers = _cell.detect_layers(
+                    np.asarray(probe.positions, dtype=float)[:, 2])
+            if len(metal_layers) >= 2:
+                _zp, d_interlayer, _n = _cell.bulk_z_period(metal_layers)
+                z_len = z_extent + d_interlayer
         elc_cell = np.array([
             [slab_cell[0, 0], slab_cell[0, 1], 0.0],
             [slab_cell[1, 0], slab_cell[1, 1], 0.0],
-            [0.0, 0.0, z_extent],
+            [0.0, 0.0, z_len],
         ], dtype=float)
         elc_axis_kind = ("periodic", "periodic", "transport")
         # cell_origin (structure-periodicity.md § 3c): the captured cell is built
         # AROUND atoms that straddle the origin (the molecule stays pinned there;
         # the slabs sit at +/- gap/2).  Anchor the cell at the structure's LOW
-        # CORNER so the box WRAPS the atoms WITHOUT moving them -- the z length is
-        # exactly the device extent, so z runs [z_min, z_max].  render_fdf then
-        # shifts atoms by -cell_origin into [0, cell) for SIESTA; the `calibrate`
-        # op bakes that shift when the user wants it in the stored coords.
+        # CORNER so the box WRAPS the atoms WITHOUT moving them -- z runs
+        # [z_min, z_min + z_len), so the padding opens at the TOP, which is where
+        # the two faces meet.  render_fdf then shifts atoms by -cell_origin into
+        # [0, cell) for SIESTA; the `calibrate` op bakes that shift when the user
+        # wants it in the stored coords.
         elc_cell_origin = all_pos.min(axis=0).astype(float)
 
     # New electrode atoms are appended at indices [old_n, old_n + n_new).
@@ -1050,6 +1087,7 @@ def add_symmetric_electrodes(
     orthogonal: bool = False,
     offset: Tuple[float, float] = (0.0, 0.0),
     lattice_constant: Optional[float] = None,
+    pad_interlayer_gap: bool = True,
 ) -> Structure:
     """Add a symmetric pair of FCC electrodes -- one on +z, one on -z --
     centred on the SELECTED ATOM GROUP (or the origin).
@@ -1111,11 +1149,13 @@ def add_symmetric_electrodes(
         struct, element, plane, size, center_indices,
         contact_distance=half, side="+z",
         orthogonal=orthogonal, offset=offset, lattice_constant=lattice_constant,
+        pad_interlayer_gap=pad_interlayer_gap,
     )
     out = add_electrode_slab(
         out, element, plane, size, center_indices,
         contact_distance=half, side="-z",
         orthogonal=orthogonal, offset=offset, lattice_constant=lattice_constant,
+        pad_interlayer_gap=pad_interlayer_gap,
     )
     return out
 

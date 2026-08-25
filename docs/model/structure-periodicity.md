@@ -58,7 +58,7 @@ Every consumer branches on this one field.
 |---|---|---|---|---|---|---|
 | **periodic** | commensurate lattice (construction / import) | 0 | **yes** (a `SiestaConfig` knob) | yes | `True` | k-sampled |
 | **isolated** | `bbox[i] + 2·vacuum[i]` (§ 3) | **the only kind it applies to** — unset ⇒ 3 Å default, else exactly what you set | no (Γ) | no | `False` | Γ box |
-| **transport** (semi-infinite) | matched **device length** (captured at construction, § 7) | **0** | no (Γ) | no | `True` | Γ + electrode self-energy |
+| **transport** (semi-infinite) | **device length + one interlayer spacing** (captured at construction, § 5) | **0** | no (Γ) | no | `True` | Γ + electrode self-energy |
 
 > **Two physics points the enum encodes** (that a boolean `pbc` could not):
 > - **A `transport` axis is a periodic box that is Γ-sampled.** SIESTA emits a
@@ -115,7 +115,9 @@ carries **no crystal information** and is **categorically not a lattice**:
 So **`bbox + 2·vacuum` is the derivation for `isolated` axes only** (vacuum on
 *each* side of the atoms). `periodic` axes use the commensurate lattice
 (construction/import — never detected from raw coordinates, which is
-ill-posed); `transport` axes use the captured device length (§ 7), never bbox.
+ill-posed); `transport` axes use the captured device length **plus one
+interlayer spacing** (§ 5, and `science/junction-cell.md` for why the bare
+extent collides with its own image), never bbox.
 
 ---
 
@@ -134,7 +136,8 @@ resolve_cell(structure) -> 3x3 | None
         periodic  -> commensurate lattice vector (construction/import;
                      ERROR if unknown -- we do NOT bbox a periodic axis)
         isolated  -> bbox[i] + 2*vacuum[i]      (vacuum >= 0, each side)
-        transport -> the captured device length (in practice branch 1;
+        transport -> the captured device length + one interlayer
+                     spacing (in practice branch 1;
                      never derived here, vacuum = 0)
 ```
 
@@ -190,7 +193,8 @@ masquerade as a user-chosen lattice and defeat the override hatch).
 | The fields + invariants | `structure.py` `__post_init__` | validate/reconcile `cell`/`axis_kind`/`vacuum`/`cell_origin`; derive `pbc` |
 | `resolve_cell()` | `structure.py:427` | § 4 — explicit wins, else per-axis |
 | `resolve_cell_origin()` | `structure.py:467` | § 6 — the box's low corner |
-| **Capture at construction** | `modify.py` `add_electrode_slab:723` (`add_symmetric_electrodes:986` inherits it by calling `add_electrode_slab` twice) | sets `Structure.cell` (in-plane lattice + captured z device length) **and** `axis_kind=(periodic,periodic,transport)` (defined `:950`, passed to the constructor `:969`) — no more electrode discard |
+| **Capture at construction** | `modify.py` `add_electrode_slab:781` (`add_symmetric_electrodes:1079` inherits it by calling `add_electrode_slab` twice) | sets `Structure.cell` (in-plane lattice + the z length below) **and** `axis_kind=(periodic,periodic,transport)` (defined `:1043`, passed to the constructor `:1063`) — no more electrode discard |
+| **The captured z length** | `cell.bulk_z_period:508` (applied at `modify.py:1019`) | **`z_span + one interlayer spacing`**, never the atoms' bare extent — the extent alone puts the bottom atom's image exactly on the top atom, at zero distance. The spacing is the *median* of the metal layers as built, so an `inter_layer_offset` override is honoured. `pad_interlayer_gap=False` opts out. Full rule + the layer-count condition: [`science/junction-cell.md`](?doc=science/junction-cell.md) |
 | Emit | `siesta/input.py:render_fdf` | emits `LatticeVectors` from the resolved cell; translates atoms by `−resolve_cell_origin()` (`:413`) so SIESTA sees atoms in `[0,cell)` |
 | Transport | `transport/_cli.py:_load_device` | reads `struct.cell` (from the sidecar); a `--cell-fdf` argument, when given, **overrides** that cell (`:36-43` — point at an existing relaxed `.fdf`'s lattice); if neither exists it warns and the emitter fabricates a vacuum box |
 
@@ -230,7 +234,7 @@ convention. The box would sit at the origin with half the atoms outside it (the
    state, different mechanism.) **The viewer ≡ render_fdf invariant:** the viewer's box (cell at
    `cell_origin`, atoms where they are) and SIESTA's cell (at `(0,0,0)`, atoms
    translated by `−cell_origin`) are the SAME relative geometry.
-4. **`calibrate_to_cell` — the optional unified last step** (`modify.py:1068`,
+4. **`calibrate_to_cell` — the optional unified last step** (`modify.py:1164`,
    `/api/modify/calibrate`). It *bakes* the generation-time shift into the
    stored coordinates: translate all atoms by `−resolve_cell_origin()`, then set
    `cell_origin → (0,0,0)`. Generation is correct with or without it; calibration

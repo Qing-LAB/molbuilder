@@ -87,6 +87,7 @@ from ._shared import (
     struct_from_body as _struct_from_body,
 )
 
+from molbuilder.cell import STACKING_PERIOD
 from molbuilder.modify import (
     SUPPORTED_FCC_ELEMENTS,
     SUPPORTED_FCC_PLANES,
@@ -136,12 +137,17 @@ def api_modify_meta():
         lattice_table = load_fcc_lattice_full()
     except Exception as exc:                                # pragma: no cover -- defensive
         lattice_error = str(exc)
+    # Layers per stacking period, by surface -- so the Junction panel can say
+    # whether the chosen layer count makes a whole period without carrying its
+    # own copy of the crystallography (science/junction-cell.md § 3.1).  Same
+    # anti-drift reason as the two lists above.
     return jsonify({
-        "ok":            True,
-        "fcc_elements":  list(SUPPORTED_FCC_ELEMENTS),
-        "fcc_planes":    list(SUPPORTED_FCC_PLANES),
-        "lattice_table": lattice_table,
-        "lattice_error": lattice_error,
+        "ok":              True,
+        "fcc_elements":    list(SUPPORTED_FCC_ELEMENTS),
+        "fcc_planes":      list(SUPPORTED_FCC_PLANES),
+        "lattice_table":   lattice_table,
+        "lattice_error":   lattice_error,
+        "stacking_period": dict(STACKING_PERIOD),
     })
 
 
@@ -457,9 +463,11 @@ def api_modify_calibrate():
 
 def _parse_electrode_common(body):
     """Validate and unpack the fields the two electrode endpoints
-    share: element, plane, size, orthogonal, offset, lattice_constant.
+    share: element, plane, size, orthogonal, offset, lattice_constant,
+    pad_interlayer_gap.
 
-    Returns ``(element, plane, size, orthogonal, offset, lattice_constant)``
+    Returns ``(element, plane, size, orthogonal, offset, lattice_constant,
+    pad_interlayer_gap)``
     on success, or raises ``ValueError`` (the caller turns into HTTP
     400 via :func:`._err`).
     """
@@ -501,8 +509,12 @@ def _parse_electrode_common(body):
             lattice_constant = float(lattice_constant)
         except (TypeError, ValueError):
             raise ValueError("'lattice_constant' must be numeric or null")
+    # Default TRUE, matching the builder: an un-padded box collides with its
+    # own periodic image (science/junction-cell.md § 6).  A client that omits
+    # the key must get the correct cell, not the historical one.
+    pad_gap = bool(body.get("pad_interlayer_gap", True))
     return (element, plane, (m, n, n_layers), orthogonal, offset_t,
-            lattice_constant)
+            lattice_constant, pad_gap)
 
 
 # --------------------------------------------------------------------- #
@@ -533,7 +545,7 @@ def api_modify_electrode():
     except ValueError as exc:
         return _err(str(exc), 400)
     try:
-        element, plane, size, orthogonal, offset, lat_a = \
+        element, plane, size, orthogonal, offset, lat_a, pad_gap = \
             _parse_electrode_common(body)
     except ValueError as exc:
         return _err(str(exc), 400)
@@ -579,6 +591,7 @@ def api_modify_electrode():
             contact_distance=contact_distance,
             side=side,
             orthogonal=orthogonal,
+            pad_interlayer_gap=pad_gap,
             offset=offset,
             lattice_constant=lat_a,
             inter_layer_offset=inter_layer_offset,
@@ -626,7 +639,7 @@ def api_modify_symmetric_electrodes():
     except ValueError as exc:
         return _err(str(exc), 400)
     try:
-        element, plane, size, orthogonal, offset, lat_a = \
+        element, plane, size, orthogonal, offset, lat_a, pad_gap = \
             _parse_electrode_common(body)
     except ValueError as exc:
         return _err(str(exc), 400)
@@ -661,6 +674,7 @@ def api_modify_symmetric_electrodes():
             struct, element, plane, size, center_idx,
             gap=gap,
             orthogonal=orthogonal,
+            pad_interlayer_gap=pad_gap,
             offset=offset,
             lattice_constant=lat_a,
         )

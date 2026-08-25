@@ -533,15 +533,43 @@ header h1 {
        parameters and the default 0.4rem read as cramped. */
     margin: var(--space-sm) 0;
 }
-.modify-edit-panel [data-op-panel="junction"] .modify-op-row label {
+.modify-edit-panel [data-op-panel="junction"] .modify-op-row
+    label:not(.modify-check-row) {
     /* Labels stay above their input -- two-line layout reads better
        than the default single-line label+input cluster when several
-       sit side-by-side. */
+       sit side-by-side.
+       The :not() is load-bearing.  This was a blanket `label` selector,
+       so it also caught the checkbox rows it was never written for:
+       `flex-direction: column` put the box ABOVE its text, and
+       `align-items: stretch` widened the <input> to the full row, which
+       paints the tick centred in ~380px of empty space.  Scoped rather
+       than out-specified -- an override would be a second rule to keep
+       true (the same call task-setup/style.css makes for .ts-asks). */
     flex-direction: column;
     align-items: stretch;
     gap: var(--space-xs);
     font-size: var(--text-sm);
     flex: 1 1 0;
+}
+/* A checkbox sits INLINE, before its text -- the box is a fixed-size
+   glyph, never a stretched row.  Used by the junction panel's two
+   switches; page-shell already owns how the box itself is painted, so
+   this is arrangement only (ui-contract.md § 1).
+   Note the neighbour: `.modify-edit-panel .modify-op-row label` above is
+   MORE specific than this rule and already sets display/align-items/gap
+   to the same values, so the two agree rather than compete.  Only
+   `flex-direction` is genuinely this rule's -- if that generic rule ever
+   sets a direction of its own, this one stops winning and the box goes
+   back above its text.  Keep them agreeing, or qualify this selector. */
+.modify-edit-panel .modify-check-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: var(--text-sm);
+}
+.modify-edit-panel .modify-check-row input[type="checkbox"] {
+    flex: 0 0 auto;
 }
 .modify-edit-panel [data-op-panel="junction"] input[type="number"] {
     background: var(--bg-input);

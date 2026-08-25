@@ -142,7 +142,7 @@ molbuilder transport preflight --device run/junc.fdf \
 | Command | Does | Code |
 |---|---|---|
 | `transport bundle` | one labeled device → the full relax + L/R electrode + device + `run-transport.sh` bundle | `orchestrate.build_transport_bundle:281` |
-| `transport electrode --which L-electrode\|R-electrode` | derive a single bulk-lead `.fdf` (the electrode wizard) | `wizard.electrode_wizard:334` |
+| `transport electrode --which L-electrode\|R-electrode` | derive a single bulk-lead `.fdf` (the electrode wizard) | `wizard.electrode_wizard:289` |
 | `transport preflight` | check the device ↔ electrode consistency contract | `preflight.py` + `_cli.cmd_preflight:117` |
 
 **Gotchas:** don't hand-assemble electrodes (use `electrode`/`bundle` so the
@@ -277,7 +277,7 @@ and the Au semicore `MeshCutoff` to van Setten 2018 (§ 9).
 
 | Layer | Module | Role |
 |---|---|---|
-| Electrode wizard | `transport/wizard.py` (`electrode_wizard:334`) | derive a bulk-lead `.fdf` + geometric clone from the labeled device |
+| Electrode wizard | `transport/wizard.py` (`electrode_wizard:289`) | derive a bulk-lead `.fdf` + geometric clone from the labeled device; its z-period comes from `cell.bulk_z_period` (§ 7.1), the same derivation the Junction builder uses |
 | Orchestration | `transport/orchestrate.py` (`build_transport_bundle:281`) | the 3-run bundle + file hand-offs (`run-transport.sh`, `render_driver:173`) |
 | Consistency preflight | `transport/preflight.py` | the cross-run contract gates (§ 5) |
 | Engine | `transport/transiesta.py` (`TransiestaEngine:649`) | the NEGF `.fdf` emitter (`render_script:664`), `preflight:698`, `parse_output:920` |
@@ -360,6 +360,62 @@ Three corrections that catch real mistakes:
   auto-coarsen the relax — so to relax coarser you run the relax step yourself at the
   coarser mesh (or hand-edit `junc_relax.fdf`). Γ-only (1×1×1) is wrong for periodic
   metallic leads: even with the lead atoms frozen it gives a poorly defined `E_F`.
+
+### 7.1 The metal crystal — stacking, layer counts, and the two boundaries
+
+Everything above sizes the electrode *electronically* (orbital range, principal
+layer). This sizes it **crystallographically**, which is a separate constraint
+and the one that decides whether a lead is bulk metal or a defect. The full
+derivation, with the measurements behind it, is
+[`science/junction-cell.md`](?doc=science/junction-cell.md); this is what a
+transport run needs from it.
+
+**Every metal molbuilder builds electrodes from is fcc** — Au, Ag, Cu, Ni, Pt,
+Pd (`data/fcc_lattice.json`). So the stacking is set by which face the molecule
+sees:
+
+| surface | stacking | period | interlayer `d` | Au, `a = 4.158 Å` (PBE) |
+|---|---|---|---|---|
+| (111) | ABCABC | **3 layers** | `a/√3` | 2.4006 Å |
+| (100) | ABAB | **2 layers** | `a/2` | 2.0790 Å |
+| (110) | ABAB | **2 layers** | `a/(2√2)` | 1.4701 Å |
+
+`a` is not a constant to assume: `fcc_lattice.json` carries
+`a_experimental`, `a_pbe` and `a_pbe_siesta_psml` per metal, and **the lead must
+use the same one the device was built with** — a 1–2 % lead/device lattice
+mismatch is exactly what I10 exists to prevent. For a PBE run that means
+`a_pbe`, not the room-temperature experimental value.
+
+**There are two z-boundaries in a transport calculation, and they are judged
+differently.**
+
+*The bulk electrode cell (I9 — a genuinely periodic run).* Its z-period must be
+a real lattice repeat, so the wizard derives `z_period = z_span + d`
+(`cell.bulk_z_period`) rather than the atoms' extent, and warns that the layer
+count must be a whole stacking period. **This is the boundary that matters**,
+because Σ is built from how this cell tiles. On (111), an electrode region whose
+layer count is not a multiple of 3 tiles into a **twin** (4 or 7 layers give
+something worse — an eclipsed, head-on contact), so Σ then describes a faulted
+crystal rather than bulk gold. Six layers in the electrode region satisfies it;
+four does not. Override with `--z-period` when you know the true repeat.
+
+*The device cell boundary (I8 — open).* The device runs at `kz = 1`; beyond the
+outermost lead layers sit the semi-infinite leads, entering only as Σ. What lies
+across the device cell's periodic boundary is **replaced**, so its registry is
+not part of the transport physics. What I12 does require is that the padding
+there be one interlayer spacing and not vacuum — `z-vacuum ≈ 0 at the leads`,
+because a real gap severs the lead instead of continuing it.
+
+**A caution about symmetric junctions.** `add_symmetric_electrodes` places the
+`-z` slab by mirroring, which makes both electrodes present the same face to the
+molecule — the point of a symmetric junction — but also makes the two outermost
+layers carry the same in-plane registry, so they meet head-on across the device
+boundary. No layer count changes this, and neither does any other point-group
+operation (measured: mirror, C₂ and inversion give identical eclipsed seams),
+because each close-packed layer is itself a centrosymmetric 2-D lattice. Under
+I8 this costs the transport calculation nothing. It does contaminate the
+boundary-layer density in any **periodic** run of that same cell — a plain
+single-point, or a relaxation if those layers are not frozen.
 
 ---
 

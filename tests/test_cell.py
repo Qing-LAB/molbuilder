@@ -292,3 +292,51 @@ class TestNothingIsWrittenBack:
         assert s.vacuum == before[2]
         assert s.axis_kind == before[3]
         assert np.array_equal(s.positions, before[4]), "coordinates moved"
+
+
+# ===================================================================== #
+#  A layered slab's own periodic repeat                                 #
+#                                                                       #
+#  Contract: docs/science/junction-cell.md.  These moved here from      #
+#  tests/test_transport_wizard.py when the derivation moved out of the  #
+#  electrode wizard: the junction builder needs the same number, and    #
+#  two copies of "how long is the box" is exactly the disagreement the  #
+#  rest of this module exists to prevent.                               #
+# ===================================================================== #
+
+def test_detect_layers_groups_by_z():
+    z = np.array([0.0, 0.02, 2.35, 2.36, 4.70])   # 3 layers, jitter within
+    assert cellmod.detect_layers(z) == pytest.approx([0.01, 2.355, 4.70], abs=1e-3)
+
+
+def test_bulk_z_period_adds_one_spacing():
+    # 4 layers at 2.35 spacing -> span 7.05, +d => period 9.40
+    zper, d, n = cellmod.bulk_z_period([0.0, 2.35, 4.70, 7.05])
+    assert d == pytest.approx(2.35)
+    assert n == 4
+    assert zper == pytest.approx(9.40)
+
+
+def test_bulk_z_period_single_layer_raises():
+    with pytest.raises(ValueError):
+        cellmod.bulk_z_period([0.0])
+
+
+def test_bulk_z_period_uses_the_median_not_the_mean():
+    """A relaxed outermost layer must not drag the repeat with it.
+
+    junction-cell.md § 5 names the median as the point of the choice; a
+    mean would let one loose surface layer set the whole lattice repeat.
+    """
+    # 2.35 spacing throughout except a surface layer that relaxed outward
+    layers = [0.0, 2.35, 4.70, 7.05, 10.05]
+    _zper, d, _n = cellmod.bulk_z_period(layers)
+    assert d == pytest.approx(2.35), "median must ignore the 3.00 outlier"
+
+
+def test_stacking_period_is_abc_on_111_and_abab_otherwise():
+    """junction-cell.md § 3.1: (111) repeats every 3 layers, (100)/(110)
+    every 2.  The Junction panel's note is driven by this table (served via
+    /api/modify/meta), so a wrong number here misinforms the user about
+    whether their layer count makes a natural boundary."""
+    assert cellmod.STACKING_PERIOD == {"111": 3, "100": 2, "110": 2}

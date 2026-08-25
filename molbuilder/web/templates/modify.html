@@ -699,9 +699,19 @@
         </label>
 
         <div class="modify-op-row">
-          <label><input type="checkbox" id="elc-orthogonal">
-            Orthogonal cell (fcc(111) only)</label>
+          <label class="modify-check-row"><input type="checkbox" id="elc-orthogonal">
+            <span>Orthogonal cell (fcc(111) only)</span></label>
         </div>
+
+        {# The z-gap switch + what it did.  A box whose c is the atoms' bare
+           extent puts the bottom atom's image exactly on the top atom, so
+           this defaults ON; see docs/science/junction-cell.md. #}
+        <div class="modify-op-row">
+          <label class="modify-check-row">
+            <input type="checkbox" id="elc-pad-gap" checked>
+            <span>Pad cell by one layer spacing</span></label>
+        </div>
+        <p class="status" id="elc-pad-gap-note"></p>
 
         <!-- Single-mode-only side picker.  Hidden in pair mode. -->
         <div class="modify-op-row" id="elc-side-row" hidden>
