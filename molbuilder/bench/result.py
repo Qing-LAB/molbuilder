@@ -30,7 +30,7 @@ import json
 import math
 import re
 from dataclasses import asdict, dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 SCHEMA = "molbuilder/bench-result@1"
 
@@ -105,6 +105,45 @@ _CSV_GPU_SM = re.compile(r"^gpu\d+_sm$")
 _CSV_GPU_VRAM = re.compile(r"^gpu\d+_vram_gb$")
 
 
+def _time_weighted(series: List[Tuple[float, float]]) -> float:
+    """The mean of a ``(epoch, value)`` series over TIME, not over samples.
+
+    Takes PAIRS, not two parallel lists, and that is the point: a value and
+    the instant it was read cannot be separated, so a column with a hole
+    cannot borrow its neighbour's clock.  Two parallel lists made that
+    silent -- a single ``[N/A]`` from ``nvidia-smi`` (MIG instances and
+    some drivers report it) shortened one column, shifted every later
+    reading onto the wrong interval, and returned a plausible number.
+
+    ``util.csv`` is CHANGE-GATED: the monitor writes a row only when a
+    metric moves >= its threshold, or when a 300 s keepalive elapses.  The
+    rows are therefore deliberately NOT uniformly spaced, and an ordinary
+    ``sum/len`` over them weights a one-second startup transient exactly as
+    heavily as five minutes of steady state.
+
+    Measured on the Au-BDT-Au sweep (2026-08-25): a 316 s CPU trial logged
+    five rows, one of which covered 300 s of it.  The unweighted mean read
+    **31.5%**; the true time-weighted figure is **40.3%** -- a 28% relative
+    error, in the direction that makes a healthy run look idle.  Dense
+    trials (30+ rows) were within ~1 point, which is exactly why this went
+    unnoticed: it is worst on the shortest runs.
+
+    Each sample is held to weigh the interval until the NEXT sample; the
+    last has no successor and so contributes nothing, which is correct --
+    it marks the end of the window rather than a span within it.  Falls
+    back to the plain mean when there is no usable time base.
+    """
+    if len(series) < 2:
+        return series[0][1] if series else 0.0
+    span = series[-1][0] - series[0][0]
+    if span <= 0:
+        return sum(v for _, v in series) / len(series)
+    total = 0.0
+    for (t0, v0), (t1, _) in zip(series, series[1:]):
+        total += v0 * (t1 - t0)
+    return total / span
+
+
 def parse_util_csv(csv_text: str) -> Dict[str, float]:
     """One reader for the monitor's raw samples (``util.csv``): peak
     RSS, sampled wall window, mean CPU%, per-GPU mean SM% (max across
@@ -121,9 +160,14 @@ def parse_util_csv(csv_text: str) -> Dict[str, float]:
     if len(lines) < 2:
         return {}
     header = [h.strip() for h in lines[0].split(",")]
-    cols: Dict[str, List[float]] = {h: [] for h in header}
+    # ROW BY ROW, so a value never loses its timestamp.  Each row becomes
+    # {header: float} holding only the cells that parse; a blank or
+    # non-numeric cell is simply ABSENT from that row rather than dropped
+    # into a shorter list where it would silently take a later row's place.
+    rows: List[Dict[str, float]] = []
     for row in lines[1:]:
         cells = row.split(",")
+        rec: Dict[str, float] = {}
         for i, h in enumerate(header):
             if i < len(cells) and cells[i].strip():
                 try:
@@ -131,17 +175,30 @@ def parse_util_csv(csv_text: str) -> Dict[str, float]:
                 except ValueError:
                     continue
                 if math.isfinite(v):
-                    cols[h].append(v)
+                    rec[h] = v
+        if rec:
+            rows.append(rec)
+
+    def _values(h: str) -> List[float]:
+        return [r[h] for r in rows if h in r]
+
+    def _series(h: str) -> List[Tuple[float, float]]:
+        """The column paired with its own epochs, holes excluded."""
+        return [(r["epoch"], r[h]) for r in rows if h in r and "epoch" in r]
+
+    cols: Dict[str, List[float]] = {h: _values(h) for h in header}
     out: Dict[str, float] = {}
-    if cols.get("mem_gb"):
-        out["peak_rss_gb"] = max(cols["mem_gb"])
     epochs = cols.get("epoch") or []
+    if cols.get("mem_gb"):
+        # NODE memory in use (MemTotal - MemAvailable), which is the job's
+        # only when the job holds the whole node.  The name is kept for the
+        # record schema; `peak_node_mem_gb` is what it measures.
+        out["peak_rss_gb"] = max(cols["mem_gb"])
     if len(epochs) >= 2 and epochs[-1] > epochs[0]:
         out["wall_s"] = round(epochs[-1] - epochs[0], 1)
     if cols.get("cpu_pct"):
-        out["cpu_mean_pct"] = round(
-            sum(cols["cpu_pct"]) / len(cols["cpu_pct"]), 1)
-    sm_means = [sum(v) / len(v) for h, v in cols.items()
+        out["cpu_mean_pct"] = round(_time_weighted(_series("cpu_pct")), 1)
+    sm_means = [_time_weighted(_series(h)) for h, v in cols.items()
                 if _CSV_GPU_SM.match(h) and v]
     if sm_means:
         out["gpu_sm_mean_pct"] = round(max(sm_means), 1)
@@ -151,6 +208,14 @@ def parse_util_csv(csv_text: str) -> Dict[str, float]:
         out["gpu_vram_peak_gb"] = round(max(vram_peaks), 2)
     return out
 
+
+#: The wrapper's own measurement of the NODE it landed on, logged before it
+#: launches: ``molbuilder: detected phys_cores=48, n_sockets=2,
+#: cores_per_socket=24``.  `lscpu -p=Core,Socket` ignores the affinity mask
+#: (verified), so these are the node's PHYSICAL cores, not the allocation's.
+_WRAP_NODE = re.compile(
+    r"detected\s+phys_cores=(\d+),\s*n_sockets=(\d+),\s*"
+    r"cores_per_socket=(\d+)")
 
 _MPI_RANKS = re.compile(r"Running on\s+(\d+)\s+nodes", re.IGNORECASE)
 
@@ -213,11 +278,27 @@ def parse_effective_run(out_text: str = "", wrapper_log: str = "") -> Dict:
                         ``D&C``, ...) -- the fallback witness.
     ``elpa_gpu``        ELPA's GPU string key, printed only by an
                         ELPA-enabled build that reached the ELPA path.
+    ``node_phys_cores`` the cores of the NODE THIS TRIAL RAN ON, measured
+                        there by the wrapper.  It is here because the
+                        probed ``environment.json`` cannot answer it: that
+                        record describes ONE node of a partition
+                        (``scontrol show node <picked>``), faithfully, and
+                        a heterogeneous partition has no single shape.  A
+                        sweep whose trials landed on different node types
+                        can now say so instead of quoting a number none of
+                        them used (Au-BDT-Au ran on a 2x24 node while the
+                        record said 2x32).
 
     Pure text in, values out -- both texts are optional, and an empty or
     unparsable one contributes nothing rather than raising.
     """
     eff: Dict = {}
+
+    node = _WRAP_NODE.search(wrapper_log or "")
+    if node:
+        eff["node_phys_cores"] = int(node.group(1))
+        eff["node_sockets"] = int(node.group(2))
+        eff["node_cores_per_socket"] = int(node.group(3))
 
     ranks = parse_mpi_ranks(out_text)
     if ranks is not None:

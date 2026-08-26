@@ -76,15 +76,33 @@ def test_parse_util_csv_reads_all_five_metrics():
     r = parse_util_csv(csv)
     assert r["peak_rss_gb"] == 260.9
     assert r["wall_s"] == 41.0                    # last epoch - first
-    assert r["cpu_mean_pct"] == 40.0
-    # per-GPU mean first, then the max ACROSS GPUs: gpu0 mean 80, gpu1 92
-    assert r["gpu_sm_mean_pct"] == 92.0
+    # MEANS ARE OVER TIME, NOT OVER ROWS (2026-08-25).  `util.csv` is
+    # change-gated -- a row is written only when a metric moves past its
+    # threshold or a 300 s keepalive fires -- so the rows are deliberately
+    # not uniformly spaced and `sum/len` weights a one-second transient as
+    # heavily as five minutes of steady state.  On a real 316 s CPU trial
+    # that read 31.5% where the truth was 40.3%: a healthy run made to look
+    # idle.  Each row is held to weigh the interval until the NEXT row; the
+    # last has no successor and so contributes nothing, which is right --
+    # `wall_s` ends AT it, so it spans none of the window.
+    #
+    #   cpu: (30x5 + 50x36) / 41 = 1950/41 = 47.56
+    assert r["cpu_mean_pct"] == 47.6
+    # per-GPU mean first, then the max ACROSS GPUs:
+    #   gpu0: (80x5 + 70x36) / 41 = 2920/41 = 71.2
+    #   gpu1: (90x5 + 92x36) / 41 = 3762/41 = 91.76   <- the max
+    assert r["gpu_sm_mean_pct"] == 91.8
     assert r["gpu_vram_peak_gb"] == 12.5          # peak anywhere
     # missing pieces are absent, not zero
     assert parse_util_csv("epoch,mem_gb\n") == {}
     assert parse_util_csv("") == {}
+    # Two rows, values 3 then 5, and the answer is 3.0 -- not the 4.0 a
+    # row-average gives.  The 5 was the reading AT the closing instant of a
+    # window it spans none of; 3 held for the whole two seconds.  This is
+    # the smallest case where the two definitions visibly disagree, which
+    # is why it is pinned rather than left to the richer CSV above.
     slim = parse_util_csv("epoch,cpu_pct\n7,3\n9,5\n")
-    assert slim == {"wall_s": 2.0, "cpu_mean_pct": 4.0}
+    assert slim == {"wall_s": 2.0, "cpu_mean_pct": 3.0}
 
 
 @pytest.mark.parametrize("text,expect", [
