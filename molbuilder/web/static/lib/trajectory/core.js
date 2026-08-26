@@ -42,7 +42,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * parse/engines/_helpers.py:181 and passed through the watch endpoint
      * unchanged (web/blueprints/watch.py:728):
      *
-     *     "ongoing" | "finished" | "error" | "unknown"
+     *     "running" | "ended" | "stopped" | "out_of_memory" | "unknown"
+     *
+     * -- HOW THE RUN ENDED (`model/parse.md` § 2b), not a grade.  A run
+     * that reached its end without converging is "ended"; whether the
+     * SCF converged rides beside it in `scf_converged`.
      *
      * Named here because this file reads it in TWO places -- the run-state
      * badge and the stop-polling decision -- and for a while they disagreed.
@@ -56,11 +60,20 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * which is a different field for a different consumer (jobset/runstatus).
      * "failed" is not a run_state and never reaches this file. */
     const RUN_STATE = Object.freeze({
-        ONGOING:  "ongoing",
-        FINISHED: "finished",
-        ERROR:    "error",
+        RUNNING:  "running",
+        ENDED:    "ended",
+        STOPPED:  "stopped",
+        OOM:      "out_of_memory",
         UNKNOWN:  "unknown",
     });
+    /* HOW THE RUN ENDED -- `model/parse.md` § 2b.  These are facts about
+     * the process, not grades: a run that ENDED without converging is
+     * `ended`, and whether the SCF converged rides beside it in
+     * `scf_converged` for the reader to show.  Anything that has stopped
+     * producing output is "no longer moving" here, whichever way it
+     * stopped. */
+    const _HAS_STOPPED = Object.freeze([
+        RUN_STATE.ENDED, RUN_STATE.STOPPED, RUN_STATE.OOM]);
 
     /* THE VIEWER IS THE ONE THIS MODULE MOUNTED, and it is reached through the
      * handle that mounting returned -- `_mv.data` (molview.md § 5.6: a viewer
@@ -434,7 +447,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             return;
         }
         if (target === "LOADED") {
-            // Run is finished (run_state="finished") OR static
+            // Run reached its end (run_state="ended") OR static
             // file (no run_state).  Side effects per contract § 3
             // matrix row "fetch resolved, run finished": stop poll
             // timer if running; clear pollInFlight; reset
@@ -522,11 +535,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
     function _settlePostLoad() {
         const rs = state.fileState.data
                 && state.fileState.data.run_state;
-        if (rs === RUN_STATE.ERROR) {
+        if (rs === RUN_STATE.STOPPED || rs === RUN_STATE.OOM) {
             transition("ERROR");
             return;
         }
-        if (rs === RUN_STATE.FINISHED) {
+        if (rs === RUN_STATE.ENDED) {
             // 2-tick buffer: a single "finished" tick may lie if
             // the parser is still flushing trailing data.  Stay in
             // WATCHING until we've seen N consecutive finished
@@ -543,9 +556,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
             }
             return;
         }
-        // Ongoing (rs === "ongoing" or absent).  Reset the buffer
-        // counter: a non-finished tick breaks any consecutive
-        // "finished" streak.  Per contract § 13 the buffer counts
+        // Still running (rs === "running" or absent).  Reset the
+        // buffer counter: a tick that has not stopped breaks any
+        // consecutive stopped streak.  Per contract § 13 the buffer counts
         // CONSECUTIVE ticks only.
         state.lifecycle.finishedTicks = 0;
         transition("WATCHING");
@@ -1973,8 +1986,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                  * The run state is right here on the data this function is
                  * already reading; the ladder simply never asked. */
                 const rs = state.data && state.data.run_state;
-                const stopped = (rs === RUN_STATE.FINISHED
-                                 || rs === RUN_STATE.ERROR);
+                const stopped = _HAS_STOPPED.indexOf(rs) !== -1;
                 for (let i = 0; i < history.length; i++) {
                     const step = history[i];
                     if (!Array.isArray(step)) continue;
@@ -2496,8 +2508,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
         const noNewContent    = sameAtomCount && sameLength && sameLatticeNow;
         if (noNewContent) {
             // Update mtime + run-state markers + parse-warnings list
-            // (these can flip from "ongoing" → "finished" /
-            // "error" on a follow-up poll even with no new frames),
+            // (these can flip from "running" → "ended" / "stopped"
+            // on a follow-up poll even with no new frames),
             // then bail before touching the model / animation /
             // plots.  Plots rebuilt only if the run-state changed
             // OR the SCF history for the in-flight step grew.
@@ -2675,11 +2687,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // Run-state badge: authoritative when the writer emitted
         // explicit end-of-run markers (PySCF .molwatch.log:
         // "# concluded:" / "# error:"; SIESTA .out: ">> End of run").
-        // Defaults to "ongoing" when neither is present.  The badge
+        // Defaults to "running" when neither is present.  The badge
         // is the user's primary "is this finished?" signal -- ONE
         // location instead of inferring from various places.
         const runState  = (state.data.run_state
-                           || RUN_STATE.ONGOING).toLowerCase();
+                           || RUN_STATE.RUNNING).toLowerCase();
         const errMsg    = state.data.error_message || "";
         const badge     = $("run-state-badge");
         const badgeLab  = $("run-state-label");
@@ -2712,7 +2724,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 : "";
             const joinParts = (...parts) =>
                 parts.filter(s => s && s.length).join(" \u00b7 ");
-            if (runState === RUN_STATE.FINISHED) {
+            if (runState === RUN_STATE.ENDED) {
                 badge.classList.add("run-state-finished");
                 badgeLab.textContent = "Finished";
                 badgeDet.textContent = joinParts(
@@ -2720,7 +2732,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                     elapsedTxt ? "total " + elapsedTxt : "",
                 );
                 badgeDet.removeAttribute("title");
-            } else if (runState === RUN_STATE.ERROR) {
+            } else if (runState === RUN_STATE.STOPPED
+                       || runState === RUN_STATE.OOM) {
                 // 2026-05-30: "Error" relabelled to "Stopped" per user
                 // feedback.  Non-convergence is a STATE, not an error
                 // of the viewer / the .out file.  The actual reason

@@ -177,6 +177,94 @@ date. So it reads `elapsed_s` alone and treats an epoch as absent.
 
 ---
 
+## 2b. How a run ENDED is not whether it succeeded
+
+A parser reads a file and reports what is in it. **Whether the science is any
+good is the reader's judgement, never the parser's** — and the moment those
+two are conflated, the machine starts refusing to show data it holds.
+
+That is not hypothetical. On 2026-08-25 the Results tab reported **six failed
+trials and "0 done"** for a benchmark sweep that had run perfectly: every trial
+directory held SIESTA's `0_NORMAL_EXIT`, every `.out` ended `>> End of run` /
+`Job completed`, and every trial displayed a measured s/iter *beside the word
+failed*. The cause was a benchmark deck doing exactly what a benchmark deck
+must:
+
+```
+MaxSCFIterations  3
+SCF.MustConverge  .false.
+```
+
+Three SCF steps, convergence explicitly **not required**, because what is being
+measured is seconds per iteration. SIESTA printed `SCF_NOT_CONV:`, carried on,
+and exited 0 — and the parser called it an error, because it had been taught
+that not converging *is* failing.
+
+**P-S1 — `run_state` answers HOW THE RUN ENDED.** It is a fact about the
+process, drawn from markers in the file. It is not a grade. The vocabulary is
+closed:
+
+| value | means | evidence |
+|---|---|---|
+| `running` | still producing output | no ending marker (a `DirParser` confirms with file age — content alone cannot tell *running* from *died quietly*) |
+| `ended` | the engine reached its own end | `>> End of run` — **that line only**. SIESTA prints `Job completed` beside it, and the corpus has no `.out` carrying one without the other, so a second marker would buy nothing and could fire on a line that merely mentions the phrase |
+| `stopped` | it did not reach its end | an abort marker, or no ending marker and no growth |
+| `out_of_memory` | the kernel or scheduler killed it for memory | an OOM marker |
+| `unknown` | no evidence either way | unreadable, empty, or a format with no markers |
+
+`stopped` carries `error_message` when the file says why (`propor: IMAX=0`, a
+missing pseudopotential). `out_of_memory` is called out from `stopped` because
+it is the most common cause and the most actionable — *"you ran out of
+memory"* is the one sentence that tells a user what to change.
+
+**P-S2 — convergence is REPORTED, never a verdict.** `scf_converged` is
+`True` / `False` / `None` (never ran an SCF, or the format cannot say), and
+**nothing derives `run_state` from it.** Not converging is a normal, frequent,
+often *deliberate* outcome: a capped benchmark, a relaxation step mid-flight, a
+scan that budgets its iterations. A reader composes the sentence —
+*"ended · not converged · 3 iterations"* — from two independent facts.
+
+> Before this rule, `last_scf_converged` had **no consumers at all** outside
+> the parser. It existed only to flip `run_state` to `error`. The science was
+> consumed to manufacture a verdict and then discarded, so no surface could
+> report *"3 iterations, not converged"* even though the parser knew it.
+
+**P-S3 — a parser never withholds what it parsed.** Frames, energies, forces,
+timings and iteration counts are returned whatever the ending. "I cannot show
+you this because it failed" is not a thing a parser is permitted to say — the
+data is the answer, and the ending is one more field beside it.
+
+*Verified, not asserted:* a `.out` cut off mid-run — no ending marker, no
+final energy — still returns `frames=1` with its coordinates, its forces and
+its one SCF cycle, alongside `run_state="running"`.
+
+**P-S4 — one reader per question.** *"Did this run end, and how"* has exactly
+one answer. A consumer that scans for `"Job completed"` itself has created a
+second answer that will disagree — and one did: `jobset/summarize.py` carried a
+private `_DONE_MARKERS` tuple whose own comment knew about the
+`SCF.MustConverge .false.` case, while the parser it sat beside did not. The
+bench summary asked both and rendered the wrong one.
+
+**Where it lives, and why there are two doors onto it.**
+`engines/_run_ending.py` owns the marker strings — `FATAL_MARKERS`,
+`END_MARKER`, the SCF markers — and nothing else. Two callers share them:
+
+| door | for | cost |
+|---|---|---|
+| `scan_ending(text)` | callers that want the ENDING and nothing else | one pass, **stdlib only** |
+| `SiestaParser.parse(path)` | callers that want frames, energies, forces | builds arrays; needs numpy |
+
+The split is a dependency and a cost, not a second opinion — the heavy parser
+**builds its fatal rules from the same table**, so the two cannot diverge, and
+`tests/test_run_ending_one_table.py` parses every frozen fixture both ways and
+fails if they disagree on `run_state` or `scf_converged`.
+
+Measured on a six-trial sweep of 152 KB files: **272 ms** through the full
+parse, **21 ms** through the scan — on a bench summary that polls every 15 s and
+needs one string field. A relaxation `.out` with hundreds of frames costs far
+more. That is the whole reason the cheap door exists; correctness is what the
+shared table protects.
+
 ## 3. The registry + public API
 
 `molbuilder/parse/__init__.py` re-exports the whole surface; the dispatch lives
@@ -217,7 +305,8 @@ r = parse(Path("projects/BDT/optimization/BDT.out"))
 if r.result_kind == "trajectory":            # a SIESTA / PySCF / molwatch .out
     last = r.frames[-1]
     print(last.energy, last.max_force)        # eV, eV/Å (either may be None)
-    print(r.run_state)                        # "running" | "finished" | "failed"
+    print(r.run_state)      # § 2b: "running"|"ended"|"stopped"|"out_of_memory"
+    print(r.scf_converged)  # True | False | None -- a FACT, not a verdict
 elif r.result_kind == "structure":           # a .XV / *_optimized.xyz
     print(len(r.structure.elements), r.cell)  # atom count, 3×3 cell or None
 ```
@@ -235,7 +324,7 @@ print(r.schema, r.payload)                     # e.g. "molstruct/v6", {...}
 from molbuilder.parse import parse_dir
 
 job = parse_dir(Path("projects/BDT/optimization"))   # -> JobResult
-job.status       # decoded status dict (converged / running / failed …)
+job.status       # how each source ENDED (§ 2b) + convergence beside it
 job.progress     # per-stage CG-step progress
 job.plots        # per-source plot buckets for the Results tab
 ```
@@ -271,6 +360,7 @@ molbuilder/parse/
 ├── engines/       # engine .out / .log → TrajectoryResult (FileParsers)
 │   ├── siesta.py · pyscf.py · molwatch.py
 │   ├── siesta_mdnc.py         # <label>.MD.nc (netCDF) — sibling upgrade, § 5a
+│   ├── _run_ending.py         # HOW A RUN ENDED — the markers, § 2b
 │   ├── _helpers.py            # Trajectory → TrajectoryResult adapters
 │   └── _section_rules.py · _sidecar.py   # shared extraction helpers
 │

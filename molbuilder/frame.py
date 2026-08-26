@@ -197,22 +197,31 @@ class Trajectory:
                        cell; per-frame lattice (Frame.lattice) is
                        reserved for variable-cell trajectories that
                        no current parser produces.
-      run_state     -- "finished" | "ongoing" | "error".  Authoritative
-                       when the writer emitted explicit end-of-run
-                       markers (`# concluded:` / `# error:` in
-                       .molwatch.log; `>> End of run` in SIESTA's .out).
-                       Defaults to "ongoing" when no marker found --
-                       better to under-claim than to misclassify a
-                       slow run as stalled.  Long iteration times
-                       (some DFT steps take hours) make any stall
-                       heuristic unreliable, so we go marker-only.
-      error_message -- one-line error description when run_state ==
-                       "error", else None.
+      run_state     -- HOW THE RUN ENDED (`model/parse.md` § 2b, P-S1):
+                       "running" | "ended" | "stopped" | "out_of_memory"
+                       | "unknown".  A fact about the process, never a
+                       grade for the science.  Authoritative when the
+                       writer emitted explicit markers (`# concluded:` /
+                       `# error:` in .molwatch.log; `>> End of run` in
+                       SIESTA's .out).  Defaults to "running" when no
+                       marker is found -- content alone cannot tell a
+                       slow run from one that died quietly, so the
+                       DirParser settles that with file age.  Long
+                       iteration times (some DFT steps take hours) make
+                       any content-only stall heuristic unreliable.
+      scf_converged -- P-S2: True | False | None (no SCF, or the format
+                       cannot say).  A REPORTED FACT.  Nothing derives
+                       `run_state` from it: not converging is normal and
+                       often deliberate -- a capped benchmark, a
+                       relaxation step mid-flight.
+      error_message -- one line saying why, when the file says why.
+                       Meaningful for "stopped" / "out_of_memory".
     """
     source_format: str
     frames:        List[Frame]
     lattice:       Optional[np.ndarray] = None
-    run_state:     str                  = "ongoing"
+    run_state:     str                  = "running"
+    scf_converged: Optional[bool]       = None
     error_message: Optional[str]        = None
     # CPU/GPU/host facts the generator captured at run start.  Parsers
     # populate this from on-disk metadata (``# runtime.<key>:`` lines

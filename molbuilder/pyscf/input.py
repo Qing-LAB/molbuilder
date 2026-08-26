@@ -1407,8 +1407,9 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     # Strategy: install excepthook to capture uncaught exceptions, then
     # an atexit hook that always runs (clean exit OR exception OR Ctrl-C)
     # to write the conclusion line.  SIGKILL / power loss leaves the
-    # file without markers, which correctly reads as "ongoing" -- the
-    # process didn't have a chance to finalize.
+    # file without markers, which correctly reads as "running" -- the
+    # process didn't have a chance to finalize, and only the file's AGE
+    # can say whether it is slow or dead (`model/parse.md` § 2b, P-S1).
     out.append("import atexit as _mw_atexit")
     out.append("import sys as _mw_sys")
     out.append("_molwatch_run = {'error': None}")

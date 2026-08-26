@@ -10,7 +10,7 @@ no error path.  Now:
     to "error" + capture the line as ``error_message``.
   * SCF block convergence is tracked.  If the run ends WITHOUT
     ``>> End of run`` AND the last SCF block did NOT converge, the
-    parser sets run_state="error" with a synthetic message naming
+    parser sets run_state="stopped" with a synthetic message naming
     the failure mode.
   * ``>> End of run`` does NOT downgrade a prior "error" -- once
     error_message is set, it persists.
@@ -53,7 +53,7 @@ def test_clean_exit_with_end_of_run_marks_finished():
     """Baseline: ">> End of run" present + no error -> finished."""
     text = PROLOGUE + "SCF Convergence by DM+H criterion\n>> End of run: x\n"
     traj = _parse(text)
-    assert traj.run_state == "finished"
+    assert traj.run_state == "ended"
     assert traj.error_message is None
 
 
@@ -63,7 +63,7 @@ def test_truncated_without_markers_stays_ongoing():
     running"."""
     text = PROLOGUE + "SCF Convergence by DM+H criterion\n"
     traj = _parse(text)
-    assert traj.run_state == "ongoing"
+    assert traj.run_state == "running"
     assert traj.error_message is None
 
 
@@ -73,7 +73,7 @@ def test_truncated_without_markers_stays_ongoing():
 def test_siesta_error_marker_sets_error():
     text = PROLOGUE + "siesta: ERROR  bad input\n"
     traj = _parse(text)
-    assert traj.run_state == "error"
+    assert traj.run_state == "stopped"
     assert traj.error_message is not None
     assert "siesta: ERROR" in traj.error_message
 
@@ -82,7 +82,7 @@ def test_siesta_error_case_insensitive():
     """Uppercase variant still recognised."""
     text = PROLOGUE + "SIESTA: ERROR  bad input\n"
     traj = _parse(text)
-    assert traj.run_state == "error"
+    assert traj.run_state == "stopped"
 
 
 def test_propor_error_marker_sets_error():
@@ -90,21 +90,21 @@ def test_propor_error_marker_sets_error():
     grep-detects -- now the parser surfaces it too."""
     text = PROLOGUE + "propor: ERROR: IMAX = 0\n"
     traj = _parse(text)
-    assert traj.run_state == "error"
+    assert traj.run_state == "stopped"
     assert "propor: ERROR" in traj.error_message
 
 
 def test_stopping_program_from_node_sets_error():
     text = PROLOGUE + " * Stopping Program from Node:    0\n"
     traj = _parse(text)
-    assert traj.run_state == "error"
+    assert traj.run_state == "stopped"
     assert "Stopping Program from Node" in traj.error_message
 
 
 def test_siesta_died_sets_error():
     text = PROLOGUE + "siesta died: pseudopotential read failure\n"
     traj = _parse(text)
-    assert traj.run_state == "error"
+    assert traj.run_state == "stopped"
     assert "siesta died" in traj.error_message
 
 
@@ -118,7 +118,7 @@ def test_first_fatal_marker_wins():
         + "siesta: ERROR follow-up\n"     # second; should NOT overwrite
     )
     traj = _parse(text)
-    assert traj.run_state == "error"
+    assert traj.run_state == "stopped"
     assert "propor: ERROR" in traj.error_message
     assert "ERROR follow-up" not in traj.error_message
 
@@ -137,30 +137,39 @@ def test_end_of_run_does_not_clear_prior_error():
         + ">> End of run: x\n"
     )
     traj = _parse(text)
-    assert traj.run_state == "error"
+    assert traj.run_state == "stopped"
     assert "propor: ERROR" in traj.error_message
 
 
 # ---- Strict SCF-not-converged detection ----------------------------------
 
 
-def test_scf_did_not_converge_without_end_of_run_is_error():
-    """The user's reported scenario: SIESTA aborts on SCF
-    non-convergence WITHOUT a fatal ERROR line; just truncates after
-    the 'did NOT converge' notice.  Strict policy: error."""
+def test_scf_did_not_converge_is_REPORTED_not_judged():
+    """Rewritten 2026-08-25 for `model/parse.md` § 2b.
+
+    This asserted the "strict policy" -- non-convergence without an
+    End-of-run marker IS an error.  P-S2 retired that: the science does
+    not decide how the process ended.  What the parser must still do is
+    NOTICE, and say so as a fact.
+
+    The ending stays ``running`` because nothing in the text can tell a
+    truncated run from a slow one; ``parse/dirs/job.py`` settles that by
+    file age (P-S1)."""
     text = PROLOGUE + "SCF did NOT converge after 200 iterations\n"
     traj = _parse(text)
-    assert traj.run_state == "error"
-    assert traj.error_message is not None
-    assert "SCF did not converge" in traj.error_message
+    assert traj.scf_converged is False, "the non-convergence went unnoticed"
+    assert traj.run_state == "running", (
+        f"the parser guessed {traj.run_state!r} from content that cannot "
+        f"support it")
 
 
 def test_scf_not_conv_constant_form_also_detected():
     """SIESTA's internal SCF_NOT_CONV constant appears verbatim in
-    some builds.  Detected as the same condition."""
+    some builds.  Detected as the same condition -- reported, not
+    judged (§ 2b P-S2)."""
     text = PROLOGUE + "SCF_NOT_CONV\n"
     traj = _parse(text)
-    assert traj.run_state == "error"
+    assert traj.scf_converged is False
 
 
 def test_scf_not_converged_followed_by_convergence_clears():
@@ -188,7 +197,7 @@ def test_scf_not_converged_followed_by_convergence_clears():
     traj = _parse(text)
     # Even though the first SCF non-converged, the last one
     # converged + End-of-run fired -> finished.
-    assert traj.run_state == "finished"
+    assert traj.run_state == "ended"
     assert traj.error_message is None
 
 
@@ -201,7 +210,7 @@ def test_scf_not_converged_with_end_of_run_stays_finished():
         ">> End of run: x\n"
     )
     traj = _parse(text)
-    assert traj.run_state == "finished"
+    assert traj.run_state == "ended"
     assert traj.error_message is None
 
 
@@ -218,10 +227,11 @@ def test_scf_converged_matcher_requires_by_keyword():
         "SCF Convergence check failed -- SCF did NOT converge\n"
     )
     traj = _parse(text)
-    # The "SCF did NOT converge" matcher SHOULD fire, marking error.
-    # If the converged matcher fired (incorrectly), last_scf_converged
-    # would be True and the run would stay ongoing.
-    assert traj.run_state == "error"
+    # The "SCF did NOT converge" matcher SHOULD fire.  If the SUCCESS
+    # matcher fired instead (the defect this guards), `scf_converged`
+    # would read True and the reader would report a convergence that
+    # never happened.
+    assert traj.scf_converged is False
 
 
 def test_json_emit_carries_run_state_and_error_message():
@@ -232,7 +242,7 @@ def test_json_emit_carries_run_state_and_error_message():
     text = PROLOGUE + "propor: ERROR: IMAX = 0\n"
     traj = SiestaParser.parse(_write_temp(text))
     payload = trajectory_to_legacy_dict(traj)
-    assert payload["run_state"] == "error"
+    assert payload["run_state"] == "stopped"
     assert payload["error_message"] is not None
     assert "propor: ERROR" in payload["error_message"]
 
@@ -273,7 +283,7 @@ def test_real_world_hemec_stage3_pattern():
         "Stopping Program from Node:    1\n"
     )
     traj = _parse(text)
-    assert traj.run_state == "error"
+    assert traj.run_state == "stopped"
     # Root cause, not cascade.
     assert traj.error_message is not None
     assert "SCF_NOT_CONV" in traj.error_message
@@ -293,7 +303,7 @@ def test_abnormal_termination_alone_is_fatal():
         "Stopping Program from Node:    0\n"
     )
     traj = _parse(text)
-    assert traj.run_state == "error"
+    assert traj.run_state == "stopped"
     # First-fatal-wins: ABNORMAL_TERMINATION is the first error
     # marker so it captures error_message.
     assert "ABNORMAL_TERMINATION" in traj.error_message
@@ -308,12 +318,17 @@ def test_scf_not_conv_capture_overrides_softer_form():
         "SCF_NOT_CONV: SCF did not converge "
         "in maximum number of steps (required).\n"
     )
+    # On its own the line proves nothing about the ending (§ 2b P-S2)...
     traj = _parse(text)
-    assert traj.run_state == "error"
-    # error_message captured immediately (fatal handler), not via
-    # the strict-EOF synthetic fallback.
+    assert traj.scf_converged is False
+    assert traj.run_state == "running"
+    # ...but when something DOES prove the run died, the held line is
+    # what surfaces -- not the cascade marker, and not a synthetic
+    # fallback.  That is the rule-order guarantee this test exists for.
+    traj = _parse(text + "ABNORMAL_TERMINATION\n"
+                         "Stopping Program from Node:    0\n")
+    assert traj.run_state == "stopped"
     assert "SCF_NOT_CONV" in traj.error_message
-    # Specifically NOT the synthetic fallback message.
     assert "run truncated" not in traj.error_message
 
 
@@ -326,4 +341,4 @@ def test_scf_did_not_converge_case_insensitive():
     ):
         text = PROLOGUE + variant + "\n"
         traj = _parse(text)
-        assert traj.run_state == "error", f"variant={variant!r}"
+        assert traj.scf_converged is False, f"variant={variant!r}"

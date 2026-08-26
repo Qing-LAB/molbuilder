@@ -288,7 +288,7 @@ def test_the_merge_keeps_the_input_geometry_as_step_0(tmp_path):
 def test_the_merge_never_touches_what_only_the_out_knows(tmp_path):
     merged = _merged(tmp_path)
     plain = _merged(tmp_path, with_nc=False)
-    assert merged.run_state == plain.run_state == "finished"
+    assert merged.run_state == plain.run_state == "ended"
     for a, b in zip(merged.frames, plain.frames):
         assert (a.forces is None) == (b.forces is None)
         if a.forces is not None:
@@ -301,7 +301,7 @@ def test_no_sibling_parses_exactly_as_before(tmp_path):
     writes no .MD.nc at all.  That must cost nothing."""
     res = _merged(tmp_path, with_nc=False)
     assert len(res.frames) == 6
-    assert res.run_state == "finished"
+    assert res.run_state == "ended"
     assert not [k for k in res.runtime_info if k.startswith("mdnc_")]
 
 
@@ -310,7 +310,7 @@ def test_an_unreadable_sibling_is_recorded_not_raised(tmp_path):
     still describes the whole run."""
     res = _merged(tmp_path, corrupt=True)
     assert len(res.frames) == 6
-    assert res.run_state == "finished"
+    assert res.run_state == "ended"
     assert "mdnc_error" in res.runtime_info
     assert "mdnc_coords_upgraded" not in res.runtime_info
 

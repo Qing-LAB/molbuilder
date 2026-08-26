@@ -76,7 +76,13 @@ class TrajectoryResult(ParseResult):
     frames:        List[Frame] = field(default_factory=list)
     lattice:       Optional[np.ndarray] = None
     source_format: str = "unknown"
+    #: HOW THE RUN ENDED -- `model/parse.md` § 2b, P-S1.  A fact about
+    #: the process: "running"|"ended"|"stopped"|"out_of_memory"|"unknown".
     run_state:     str = "unknown"
+    #: P-S2: whether the SCF met its criterion.  A REPORTED FACT, never an
+    #: input to `run_state` -- not converging is normal and often
+    #: deliberate (a capped benchmark, a relaxation step mid-flight).
+    scf_converged: Optional[bool] = None
     error_message: Optional[str] = None
     runtime_info:  Dict[str, Any] = field(default_factory=dict)
     parse_warnings: List[ParseWarning] = field(default_factory=list)

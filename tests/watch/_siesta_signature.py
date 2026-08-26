@@ -25,7 +25,8 @@ Fields snapshotted, per frame:
 Trajectory-level:
 
   * ``source_format``
-  * ``run_state``
+  * ``run_state``   -- how the run ENDED (§ 2b)
+  * ``scf_converged`` -- reported beside it, never folded into it
   * ``error_message``
   * ``frame_count``
   * ``runtime_info``      -- sorted dict.
@@ -81,6 +82,11 @@ def signature(t: Any) -> Dict[str, Any]:
     return {
         "source_format":       t.source_format,
         "run_state":           t.run_state,
+        # `model/parse.md` § 2b, P-S2: convergence is a REPORTED FACT and
+        # therefore parser-observable, so it belongs in the signature --
+        # otherwise a regression that silently stopped reporting it would
+        # not show up as drift.
+        "scf_converged":       getattr(t, "scf_converged", None),
         "error_message":       t.error_message,
         "frame_count":         len(t.frames),
         "runtime_info":        dict(sorted((t.runtime_info or {}).items())),

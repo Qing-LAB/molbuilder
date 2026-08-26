@@ -322,7 +322,7 @@ def test_status_failed_state_from_error_run(tmp_path):
     # Minimal but REAL SIESTA .out: the banner is a strong sniff
     # marker (SiestaOutFileParser.can_parse), the last line is one
     # of the registered fatal markers (engines/siesta.py) that sets
-    # run_state="error".
+    # run_state="stopped".
     (tmp_path / "crash.out").write_text(
         "                           Welcome to SIESTA\n"
         "reinit: System Label: crash\n"

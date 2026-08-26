@@ -24,7 +24,7 @@
     }
   ],
   "lattice_is_none": true,
-  "run_state": "finished",
+  "run_state": "ended",
   "runtime_info": {
     "gpu_count": null,
     "hostname": "testbox",

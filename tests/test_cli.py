@@ -21,6 +21,7 @@ round-trip (``tests/test_template_roundtrip.py``).
 
 from __future__ import annotations
 
+import contextlib
 import sys
 
 import numpy as np
@@ -847,7 +848,7 @@ def test_watch_parse_emits_full_trajectory_json(capsys, tmp_path):
     out = capsys.readouterr().out
     body = json.loads(out)
     assert body["source_format"] == "pyscf"
-    assert body["run_state"]     == "finished"
+    assert body["run_state"]     == "ended"
     assert len(body["frames"])   == 2
     assert body["energies"]      == [None, -32.5]
 
@@ -872,15 +873,50 @@ def test_watch_parse_frames_only_drops_atom_arrays(capsys, tmp_path):
     assert body["elapsed_s"]    == [0.0, 5.0]
 
 
+@contextlib.contextmanager
+def _must_return_within(seconds, what):
+    """Turn a hang into a failure.
+
+    `watch tail` polls until the run is concluded, so a bug in *that*
+    decision does not fail the test -- it spins.  On 2026-08-25 it did:
+    the § 2b rename retired the state names the loop compared against,
+    and the lane stalled at 22% for eleven hours until the process was
+    killed.  A test that cannot fail is worse than no test, because it
+    takes the rest of the suite down with it.
+
+    ``pytest-timeout`` is not installed; SIGALRM is stdlib and pytest
+    runs tests on the main thread, which is all this needs.
+    """
+    import signal
+
+    def _boom(signum, frame):
+        raise AssertionError(f"{what} did not return within {seconds}s")
+
+    prev = signal.signal(signal.SIGALRM, _boom)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, prev)
+
+
 def test_watch_tail_emits_ndjson_one_per_frame(capsys, tmp_path):
     """`watch tail` emits NDJSON: one JSON object per line, one line
     per new frame.  Stops when the run is concluded.  This file is
-    already finished, so we get all 2 frames immediately."""
+    already finished, so we get all 2 frames immediately.
+
+    ``--max-frames`` is deliberately set ABOVE the frame count: the
+    frame cap must not be what ends the loop, or the test would pass
+    while `watch tail` had lost the ability to notice a finished run.
+    Termination here is the run_state decision and nothing else.
+    """
     import json
     p = tmp_path / "run.molwatch.log"
     p.write_text(_MW_LOG)
-    rc = cli.main(["watch", "tail", str(p), "--poll-ms", "10",
-                   "--max-frames", "10"])
+    with _must_return_within(10, "watch tail on a concluded run"):
+        rc = cli.main(["watch", "tail", str(p), "--poll-ms", "10",
+                       "--max-frames", "10"])
     assert rc == 0
     out = capsys.readouterr().out.strip()
     # NDJSON: one JSON object per line.

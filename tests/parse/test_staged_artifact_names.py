@@ -65,7 +65,7 @@ def test_a_staged_trajectory_carries_its_run_metadata(tmp_path):
     stdout -- not the geomeTRIC decoy."""
     traj = _staged_set(tmp_path)
     out = _parse_pyscf_xyz(str(traj))
-    assert out.run_state == "finished"
+    assert out.run_state == "ended"
     ct = out.runtime_info["convergence_targets"]
     assert ct["01_coarse"]["max_force_tol_eV_per_A"] == 0.0231
     assert ct["01_coarse"]["max_geom_iter"] == 200

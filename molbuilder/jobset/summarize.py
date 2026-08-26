@@ -34,10 +34,6 @@ from ..bench.result import (
     parse_util_bound, parse_util_csv,
 )
 
-# "the run finished" markers in a SIESTA .out (best-effort; a capped bench
-# with SCF.MustConverge .false. still exits cleanly and prints these).
-_DONE_MARKERS = ("Job completed", "End of run", "siesta: Final energy",
-                 ">> End of run:")
 _RUN_IDX = re.compile(r"-run(\d+)\.")
 
 
@@ -163,12 +159,27 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     out = _latest_run_file(d, basename, "out")
     out_tail = _read(out, tail=16384) if out is not None else ""
     out_head = _read(out, head=_SETUP_WINDOW) if out is not None else ""
+    # ONE READER PER QUESTION (`model/parse.md` § 2b, P-S4).  This scanned
+    # for its own `_DONE_MARKERS` tuple until 2026-08-25 -- a SECOND answer
+    # to "did this run end", beside the engine parser that owns it.  They
+    # disagreed exactly where it mattered: the private tuple's own comment
+    # knew a capped bench with `SCF.MustConverge .false.` exits cleanly,
+    # and the parser did not, so the bench summary rendered six healthy
+    # trials as failures while the record beside them said completed.
     if out is None:
         state = "unknown"
-    elif any(m in out_tail for m in _DONE_MARKERS):
-        state = "completed"
     else:
-        state = "incomplete"
+        # The CHEAP door onto the one table (`parse/engines/_run_ending`,
+        # `model/parse.md` § 2b).  Not the full parser: that builds Frames
+        # -- positions and forces as numpy arrays -- and this needs one
+        # string field.  Measured on a six-trial sweep of 152 KB files:
+        # 272 ms through the full parse, 21 ms through the scan, on a
+        # summary that polls every 15 s.  Same markers either way, because
+        # both read `FATAL_MARKERS`.
+        from ..parse.engines._run_ending import scan_ending
+        state = ("completed"
+                 if scan_ending(_read(out)).run_state == "ended"
+                 else "incomplete")
     if engine == "cpu" and "mpi_np" not in knobs:
         n = parse_mpi_ranks(out_head)
         if n is not None:

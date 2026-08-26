@@ -232,7 +232,7 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
         keys (max_force_tol_eV_per_A, scf_energy_tol, etc.) plus a
         ``"source": "molwatch_header"`` stamp matching what the
         molwatch parser surfaces.
-      * ``"run_state"``     — "finished" | "error" when the
+      * ``"run_state"``     — "ended" | "stopped" when the
         corresponding marker is present.
       * ``"error_message"`` — when ``# error:`` is present.
 
@@ -285,14 +285,14 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
     for raw in tail.splitlines():
         m_err = _MW_ERROR_RE.match(raw)
         if m_err:
-            out["run_state"] = "error"
+            out["run_state"] = "stopped"
             out["error_message"] = m_err.group(1).strip()
             # Error takes priority — keep scanning so a later concluded
             # doesn't downgrade us, but error_message wins.
             continue
         m_con = _MW_CONCLUDED_RE.match(raw)
-        if m_con and out.get("run_state") != "error":
-            out["run_state"] = "finished"
+        if m_con and out.get("run_state") != "stopped":
+            out["run_state"] = "ended"
     return out
 
 

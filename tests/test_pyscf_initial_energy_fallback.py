@@ -263,7 +263,7 @@ class TestMolwatchSiblingEnrichment:
         (tmp_path / "h2.molwatch.log").write_text(
             self._mw_log(concluded=True))
         traj = PySCFParser.parse(str(xyz))
-        assert traj.run_state == "finished"
+        assert traj.run_state == "ended"
         assert traj.error_message is None
 
     def test_sibling_molwatch_error_sets_error_run_state(self, tmp_path):
@@ -275,7 +275,7 @@ class TestMolwatchSiblingEnrichment:
         # Error has priority over concluded (per molwatch parser
         # contract; the excepthook fires before atexit so both lines
         # appear and error wins).
-        assert traj.run_state == "error"
+        assert traj.run_state == "stopped"
         assert traj.error_message == "diverged at SCF cycle 47"
 
     def test_no_sibling_molwatch_log_is_clean_noop(self, tmp_path):

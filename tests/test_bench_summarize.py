@@ -24,7 +24,14 @@ def _point_dir(tmp_path, name, basename, out_text=None):
 
 
 def test_parse_point_states_are_the_three_honest_answers(tmp_path):
-    done = _point_dir(tmp_path, "a", "job", "x\nsiesta: Final energy = -1\n")
+    # THE REAL END MARKER (`model/parse.md` § 2b).  This wrote only
+    # `siesta: Final energy`, which the retired private `_DONE_MARKERS`
+    # tuple accepted and the engine parser never has.  Checked against the
+    # frozen corpus: every real .out carrying a final energy ALSO carries
+    # `>> End of run`, and none carries it alone -- so the loose marker was
+    # never load-bearing, only a second opinion waiting to disagree.
+    done = _point_dir(tmp_path, "a", "job",
+                      "x\nsiesta: Final energy = -1\n>> End of run:\n")
     part = _point_dir(tmp_path, "b", "job", "still going\n")
     none = _point_dir(tmp_path, "c", "job")
     assert parse_point("a", done, "job", "gpu", {}).state == "completed"

@@ -99,7 +99,7 @@ def _assert_full_parse(traj):
                         [0.0, 10.0, 0.0],
                         [0.0, 0.0, 10.0]])
     # And run-state captured from ">> End of run".
-    assert traj.run_state == "finished"
+    assert traj.run_state == "ended"
 
 
 def test_baseline_lower_case(baseline_text):
@@ -219,7 +219,7 @@ def test_end_of_run_uppercase():
         end_marker=">> END OF RUN",
     )
     traj = _parse(text)
-    assert traj.run_state == "finished"
+    assert traj.run_state == "ended"
 
 
 def test_can_parse_lowercase_banner():
@@ -333,7 +333,7 @@ def test_end_of_run_mid_coords_still_captured():
     )
     traj = _parse(torn)
     # End-of-run was captured even though it appeared mid-coords.
-    assert traj.run_state == "finished"
+    assert traj.run_state == "ended"
 
 
 def test_outcell_immediately_after_coords_no_blank_line():

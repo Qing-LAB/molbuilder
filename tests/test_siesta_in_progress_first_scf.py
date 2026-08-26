@@ -105,7 +105,7 @@ def test_fresh_first_scf_emits_in_progress_frame():
     assert f.energy < 0  # SCF energies are negative for stable systems
     # The run state stays "ongoing" -- the synthetic frame must NOT
     # mark the run as finished.
-    assert traj.run_state == "ongoing"
+    assert traj.run_state == "running"
 
 
 def test_clean_completed_run_does_not_emit_in_progress_frame():
@@ -115,7 +115,7 @@ def test_clean_completed_run_does_not_emit_in_progress_frame():
     traj = _parse(_FRESH_COMPLETED)
     assert len(traj.frames) == 1
     assert traj.frames[0].in_progress is False
-    assert traj.run_state == "finished"
+    assert traj.run_state == "ended"
 
 
 def test_empty_preamble_does_not_emit_in_progress_frame():

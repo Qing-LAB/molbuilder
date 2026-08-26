@@ -315,7 +315,7 @@ def test_wall_time_line_surfaces_as_wall_clock_s(tmp_path):
 def test_run_state_finished_when_concluded_marker_present(tmp_path):
     """When the writer emits ``# concluded: <ISO>`` (atexit hook on
     normal script exit), the parser must surface
-    Trajectory.run_state == "finished".  This is the user-facing
+    Trajectory.run_state == "ended".  This is the user-facing
     "is the run done?" signal -- authoritative, not heuristic."""
     sample = (
         "# molwatch trajectory log v1\n"
@@ -339,7 +339,7 @@ def test_run_state_finished_when_concluded_marker_present(tmp_path):
     p = tmp_path / "done.molwatch.log"
     p.write_text(sample)
     traj = MolwatchLogParser.parse(str(p))
-    assert traj.run_state == "finished"
+    assert traj.run_state == "ended"
     assert traj.error_message is None
 
 
@@ -371,7 +371,7 @@ def test_run_state_error_when_error_marker_present(tmp_path):
     p = tmp_path / "err.molwatch.log"
     p.write_text(sample)
     traj = MolwatchLogParser.parse(str(p))
-    assert traj.run_state == "error"
+    assert traj.run_state == "stopped"
     assert "ValueError" in traj.error_message
     assert "bad geometry" in traj.error_message
 
@@ -381,7 +381,7 @@ def test_run_state_ongoing_when_no_marker(mw_path):
     ongoing.  This is the SAFE default: don't claim "finished" when
     we can't see the marker (the writer might have been SIGKILL'd)."""
     traj = MolwatchLogParser.parse(mw_path)
-    assert traj.run_state == "ongoing"
+    assert traj.run_state == "running"
     assert traj.error_message is None
 
 
@@ -408,7 +408,7 @@ def test_run_state_propagates_to_legacy_dict(tmp_path):
     p = tmp_path / "rt.molwatch.log"
     p.write_text(sample)
     result = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
-    assert result["run_state"] == "error"
+    assert result["run_state"] == "stopped"
     assert "RuntimeError" in result["error_message"]
 
 

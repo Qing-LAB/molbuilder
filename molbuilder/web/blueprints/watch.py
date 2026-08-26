@@ -840,7 +840,7 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
     else:
         merged["lattice"]       = None
         merged["source_format"] = "molwatch"
-        merged["run_state"]     = "ongoing"
+        merged["run_state"]     = "running"
         merged["error_message"] = ""
         merged["runtime_info"]  = {}
     # Re-number iterations globally so the energy / force plots have

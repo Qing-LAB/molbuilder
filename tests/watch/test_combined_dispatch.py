@@ -59,7 +59,8 @@ Coverage matrix:
        (different element set + force scale).
 
 Together these touch every section rule in the SIESTA parser's list and
-all three terminal ``run_state`` values.
+both terminal ``run_state`` values the corpus can hold -- ``ended`` and
+``stopped`` (`model/parse.md` § 2b).
 
 Goldens
 =======
@@ -177,9 +178,13 @@ def test_dispatch_equivalence_against_golden(out_path):
 
 
 def test_corpus_covers_every_run_state():
-    """The frozen fixture set must include at least one ``finished``
-    and at least one ``error`` example (``ongoing`` is excluded
-    because torn live runs aren't reproducible)."""
+    """The frozen fixture set must cover the ENDINGS a real run reaches.
+
+    `model/parse.md` § 2b's vocabulary is
+    ``running``/``ended``/``stopped``/``out_of_memory``/``unknown``.
+    ``running`` is excluded because a torn live run is not reproducible
+    as a fixture, and ``out_of_memory`` because the corpus has no OOM
+    capture yet -- when one is added, assert it here."""
     pairs = _frozen_files()
     if not pairs:
         pytest.skip("no frozen SIESTA fixtures")
@@ -195,8 +200,8 @@ def test_corpus_covers_every_run_state():
             # both register even though their full messages differ
             # between SIESTA versions.
             error_messages.add(g["error_message"][:20])
-    assert "finished" in states, "corpus lacks a finished run"
-    assert "error"    in states, "corpus lacks an error run"
+    assert "ended"   in states, "corpus lacks a run that reached its end"
+    assert "stopped" in states, "corpus lacks a run that stopped short"
     # Different error paths through the parser must each be represented.
     assert any(e.startswith("SCF_NOT_CONV") for e in error_messages), (
         "corpus lacks a SCF_NOT_CONV failure")

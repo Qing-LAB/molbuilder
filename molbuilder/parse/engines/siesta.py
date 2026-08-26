@@ -38,6 +38,8 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+from ._run_ending import FATAL_MARKERS as _FATAL_MARKERS
+
 from molbuilder.frame import Frame, ParseWarning, Trajectory
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import TrajectoryResult
@@ -638,19 +640,25 @@ class SiestaParser:
         frames: List[Frame] = []
         lattice: Optional[List[List[float]]] = None
         pending_lattice: Optional[List[List[float]]] = None
-        # Run-state detection.  Three outcomes, in priority order:
-        #   "error"    -- a fatal marker matched, OR the run ended
-        #                 without ">> End of run" AND the last SCF
-        #                 block did not converge.
-        #   "finished" -- ">> End of run" emitted AND no fatal error.
-        #   "ongoing"  -- no clean-exit marker, no detected fault.
+        # HOW THE RUN ENDED (`model/parse.md` § 2b, P-S1) -- a fact about
+        # the process, never a grade for the science:
+        #   "out_of_memory" -- an OOM marker matched.
+        #   "stopped"       -- a fatal marker matched: it did not reach
+        #                      its own end.
+        #   "ended"         -- ">> End of run" emitted.
+        #   "running"       -- no ending marker and no fault.  Content
+        #                      cannot tell a slow step from a killed job;
+        #                      `parse/dirs/job.py` settles that by age.
+        # Convergence is NOT consulted here.  It rides out separately as
+        # `scf_converged` (P-S2), because a capped benchmark that never
+        # converges still ended perfectly normally.
         # SIESTA's clean-exit marker is "always written" only on
         # success; abort emits at least one of the fatal markers we
         # recognise below (per the 2026-05-29 user directive: detect
         # convergence / exit failures from the .out itself so the
         # /results badge can show "Error" without depending on the
         # wrapper's grep).
-        run_state: str = "ongoing"
+        run_state: str = "running"   # parse.md 2b, P-S1
         error_message: Optional[str] = None
         # Per-SCF-block convergence flag.  None = never saw an SCF
         # block; True = last block converged; False = last block hit
@@ -902,34 +910,47 @@ class SiestaParser:
         # could in principle hit on a single line, though SIESTA
         # never emits them on the same line).
         #
-        # Run-state marker.  Always fires in scan; single-line.
-        # "Finished" takes precedence over "ongoing" but NOT over
-        # "error" -- if a fatal marker already set run_state="error",
-        # a later End-of-run does not paper over it.  In practice
-        # SIESTA either crashes (no End-of-run) or finishes cleanly
-        # (no fatal marker), but the priority rule is the defensible
-        # default if both somehow appear.
+        # Run-state marker.  Always fires in scan; single-line.  In
+        # practice SIESTA either crashes (no End-of-run) or finishes
+        # cleanly (no fatal marker); the precedence below is the
+        # defensible default if both somehow appear, and it is stated
+        # once, beside the code that applies it.
         def _on_end_of_run(line: str, line_no: int) -> None:
             nonlocal run_state
-            if run_state != "error":
-                run_state = "finished"
+            # An abort already seen wins: SIESTA does not print both, but
+            # if it somehow did, the abort is the load-bearing fact.
+            if run_state not in ("stopped", "out_of_memory"):
+                run_state = "ended"
 
-        # Fatal error markers.  Each ``contains_ci`` substring is
-        # the canonical SIESTA-emitted phrase that always indicates
-        # a non-recoverable failure.  The list mirrors the wrapper's
-        # grep heuristic (runwrap.py) so .out -> badge tracking is
-        # consistent across the live wrapper + the post-mortem
-        # parser path.  Set 2026-05-29 per user directive.
-        def _on_fatal_error(line: str, line_no: int) -> None:
-            nonlocal run_state, error_message
-            run_state = "error"
-            # Preserve the FIRST fatal marker -- subsequent crashes
-            # usually cascade from the original cause.  A held
-            # ``SCF_NOT_CONV:`` outranks it: that IS the original cause,
-            # and this marker (ABNORMAL_TERMINATION, Stopping Program)
-            # is the cascade the 2026-05-30 change existed to skip past.
-            if error_message is None:
-                error_message = (scf_not_conv_line or line.strip()[:200])
+        # Fatal error markers.  Each ``contains_ci`` substring is the
+        # canonical SIESTA-emitted phrase that always indicates a
+        # non-recoverable failure; the set lives in `_run_ending`
+        # (`model/parse.md` § 2b) and both readers of it share that table.
+        # Set 2026-05-29 per user directive.
+        #
+        # The wrapper is NOT a third reader of this set, and a comment here
+        # claimed it was until 2026-08-26 ("the list mirrors the wrapper's
+        # grep heuristic").  `runwrap.py` greps one phrase, `propor: ERROR`,
+        # to decide whether a startup crash is worth RETRYING -- a different
+        # question, asked while the job is alive.  How a run ended is asked
+        # afterwards, and only here.
+        def _fatal(state: str):
+            """One handler per ending state, built from the shared table."""
+            def _handler(line: str, line_no: int) -> None:
+                nonlocal run_state, error_message
+                # P-S1: it did not reach its own end.  An OOM outranks a
+                # generic abort -- the aborts that follow are the cascade,
+                # the memory is the cause.
+                if run_state != "out_of_memory":
+                    run_state = state
+                # Keep the FIRST marker: later crashes cascade from the
+                # original.  A held ``SCF_NOT_CONV:`` outranks even that --
+                # it IS the original cause, where ABNORMAL_TERMINATION and
+                # Stopping Program are the cascade the 2026-05-30 change
+                # existed to skip past.
+                if error_message is None:
+                    error_message = (scf_not_conv_line or line.strip()[:200])
+            return _handler
 
         # SCF-block convergence flags.  Two distinct SIESTA emit forms:
         #
@@ -1310,45 +1331,26 @@ class SiestaParser:
                       f"{exc}", category="forces")
 
         rules: List[SectionRule] = [
-            # Fatal-error markers fire FIRST so they win over any
-            # section that might otherwise eat the line.  Substring
-            # match (the markers can appear mid-line, e.g. preceded
-            # by "node 0: " in MPI mode).
-            SectionRule(
-                name="fatal_siesta_error",
-                aliases=["siesta: ERROR"],
-                start=contains_ci("siesta: error"),
-                on_start=_on_fatal_error,
-            ),
-            SectionRule(
-                name="fatal_propor_error",
-                aliases=["propor: ERROR"],
-                start=contains_ci("propor: error"),
-                on_start=_on_fatal_error,
-            ),
-            SectionRule(
-                name="fatal_stopping_program",
-                aliases=["Stopping Program from Node"],
-                start=contains_ci("stopping program from node"),
-                on_start=_on_fatal_error,
-            ),
-            SectionRule(
-                name="fatal_siesta_died",
-                aliases=["siesta died"],
-                start=contains_ci("siesta died"),
-                on_start=_on_fatal_error,
-            ),
-            # ABNORMAL_TERMINATION: SIESTA emits this on every
-            # cause-of-abort (SCF_NOT_CONV with MustConverge, propor
-            # crash, lapack failure, ...).  Always followed by per-
-            # rank Stopping Program lines.  Confirmed in real-world
-            # output 2026-05-30 (projects/hemeC-dithiol stage3 run).
-            SectionRule(
-                name="fatal_abnormal_termination",
-                aliases=["ABNORMAL_TERMINATION"],
-                start=contains_ci("abnormal_termination"),
-                on_start=_on_fatal_error,
-            ),
+            # FATAL MARKERS, FROM THE ONE TABLE (`_run_ending.FATAL_MARKERS`,
+            # `model/parse.md` § 2b).  They fire FIRST so they win over any
+            # section that might otherwise eat the line, and they are
+            # substring matches because SIESTA prefixes them with "node 0: "
+            # under MPI.
+            #
+            # Built from the shared table rather than written out here, so
+            # the cheap `scan_ending()` scanner and this full parse cannot
+            # disagree about what a fatal marker IS.  Two lists is how
+            # `jobset/summarize.py` came to hold a private `_DONE_MARKERS`
+            # that contradicted this file.
+            *[
+                SectionRule(
+                    name=f"fatal_{_marker.replace(' ', '_').replace(':', '')}",
+                    aliases=[_marker],
+                    start=contains_ci(_marker),
+                    on_start=_fatal(_state),
+                )
+                for _marker, _state in _FATAL_MARKERS
+            ],
             # SCF_NOT_CONV: FATAL form.  Must be BEFORE the soft
             # "scf did not converge" rule -- a line containing both
             # ("SCF_NOT_CONV: SCF did not converge ...") must dispatch
@@ -1740,7 +1742,7 @@ class SiestaParser:
         # step 0 during the first SCF cycle, leaking SCF-in-progress
         # state into the completed-frame UI.
         eof_in_progress = (
-            run_state == "ongoing"
+            run_state == "running"
             and bool(step_frame)
             and bool(current_scf)
             and step_energy is None
@@ -1761,7 +1763,7 @@ class SiestaParser:
         # The synthetic frame is FLAGGED as in_progress so consumers
         # know to hide trajectory animation controls and show only
         # the SCF chart + a "calculation in progress" banner.
-        if run_state == "ongoing" and current_scf:
+        if run_state == "running" and current_scf:
             # Geometry placeholder: use the most recent COMMITTED
             # frame's structure when available (correct for "SCF for
             # next geom step", since SIESTA holds geometry constant
@@ -1825,22 +1827,19 @@ class SiestaParser:
                 in_progress = True,
             ))
 
-        # Post-process: if we never saw "End of run" AND the last SCF
-        # block failed to converge, this is a non-convergence error
-        # even without an explicit "siesta: ERROR" line (some SIESTA
-        # builds simply truncate on SCF_NOT_CONV without an error
-        # marker).  Per 2026-05-29 user directive: strict policy --
-        # final SCF must converge OR run must reach End-of-run, else
-        # it's an error.  A fatal-marker run keeps its existing
-        # error_message; the SCF case fills in a sensible default.
-        if run_state == "ongoing" and last_scf_converged is False:
-            run_state = "error"
-            if error_message is None:
-                error_message = (
-                    scf_not_conv_line
-                    or "SCF did not converge in the final step "
-                       "(run truncated without '>> End of run' marker)"
-                )
+        # NO CONVERGENCE CLAUSE HERE -- `model/parse.md` § 2b, P-S2.
+        # This read `if run_state == "ongoing" and last_scf_converged is
+        # False: run_state = "error"`, which let the SCIENCE decide how the
+        # PROCESS ended.  Not converging is normal and often deliberate,
+        # and a run that stops without its end marker is `stopped` because
+        # it stopped -- which the `running` default plus the DirParser's
+        # file-age check already establish, without asking the physics.
+        #
+        # The held `SCF_NOT_CONV:` line is still the best cause-of-death
+        # sentence when something else proves death, so it fills an empty
+        # `error_message` in that case only.
+        if run_state in ("stopped", "out_of_memory") and error_message is None:
+            error_message = scf_not_conv_line
 
         # Surface frozen-atom indices to the consumer.  The
         # trajectory inspector uses this for the "Hide frozen atoms"
@@ -1909,6 +1908,9 @@ class SiestaParser:
             frames         = frames,
             lattice        = lattice,
             run_state      = run_state,
+            # P-S2: reported, never a verdict.  `None` when no SCF block
+            # was seen at all -- a correct final answer, not a hole.
+            scf_converged  = last_scf_converged,
             error_message  = error_message,
             runtime_info   = runtime_info,
             parse_warnings = parse_warnings,

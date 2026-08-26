@@ -62,11 +62,15 @@ def test_a_benchmark_that_ran_out_of_scf_steps_and_finished_is_finished(
     r = _parse(tmp_path, _SCF_THEN_NOT_CONV
                + "Using DM_out to compute the final energy and forces\n"
                + _FINISHED)
-    assert r.run_state == "finished", (
+    assert r.run_state == "ended", (
         f"a completed benchmark reads {r.run_state!r} -- this is the bug "
         f"that showed six healthy trials as failed")
     assert not r.error_message, (
-        f"a finished run carries an error message: {r.error_message!r}")
+        f"a run that ended carries an error message: {r.error_message!r}")
+    # P-S2: the science is REPORTED beside the ending, not folded into it.
+    assert r.scf_converged is False, (
+        "the run did not converge and the reader must say so plainly -- "
+        f"got {r.scf_converged!r}")
 
 
 def test_a_real_abort_still_errors_and_keeps_the_informative_cause(tmp_path):
@@ -75,17 +79,28 @@ def test_a_real_abort_still_errors_and_keeps_the_informative_cause(tmp_path):
     2026-05-30 change existed to skip past."""
     r = _parse(tmp_path, _SCF_THEN_NOT_CONV
                + "ABNORMAL_TERMINATION\nStopping Program from Node:    0\n")
-    assert r.run_state == "error"
+    assert r.run_state == "stopped"
     assert "SCF_NOT_CONV" in (r.error_message or ""), (
         f"the cascade won over the root cause: {r.error_message!r}")
 
 
-def test_a_torn_run_with_no_end_marker_still_errors(tmp_path):
-    """Some builds simply stop.  No End-of-run + a failed last block is
-    still an error, and still names the cause."""
+def test_a_torn_run_is_still_RUNNING_to_the_parser(tmp_path):
+    """P-S1's layering, and it is deliberate.
+
+    A file with no ending marker and no abort marker is honestly
+    ``running``: nothing IN it distinguishes a slow DFT step from a job
+    the scheduler killed thirty seconds ago.  The parser does not guess --
+    ``parse/dirs/job.py`` settles it with the file's age, which is the
+    only evidence that can.
+
+    This used to read ``error``, decided by the last SCF block having not
+    converged -- the science answering a question about the process.  That
+    is exactly what P-S2 forbids."""
     r = _parse(tmp_path, _SCF_THEN_NOT_CONV)
-    assert r.run_state == "error"
-    assert "SCF_NOT_CONV" in (r.error_message or "")
+    assert r.run_state == "running", (
+        f"the parser guessed {r.run_state!r} from content that cannot "
+        f"support it")
+    assert r.scf_converged is False, "the fact itself is still reported"
 
 
 def test_a_converged_run_is_untouched(tmp_path):
@@ -94,5 +109,6 @@ def test_a_converged_run_is_untouched(tmp_path):
                "Siesta Version: 5.4.2\n"
                "   scf:    1 -1740000.0 -1740000.0 -1740000.0  0.9  0.5  30.0\n"
                "SCF Convergence by DM+H criterion\n" + _FINISHED)
-    assert r.run_state == "finished"
+    assert r.run_state == "ended"
+    assert r.scf_converged is True
     assert not r.error_message

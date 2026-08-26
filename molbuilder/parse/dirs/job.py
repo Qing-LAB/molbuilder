@@ -424,7 +424,8 @@ def _consolidate_plots(out_paths: List[Path]
 
     Returns:
         plots:           {plot_name: {out_filename: [[step, value], ...]}}
-        out_run_states:  {out_filename: "finished"|"error"|"ongoing"|"unknown"}
+        out_run_states:  {out_filename: how the run ENDED -- see
+                         `model/parse.md` § 2b for the closed vocabulary}
                          (the engine parsers' run_state vocabulary,
                          passed through verbatim)
         parse_warnings:  flattened list of {source, line_no, snippet, error, category}
@@ -673,7 +674,8 @@ def _molwatch_conclusions(mw_paths: List[Path]) -> Dict[str, str]:
             traj = detect(path).parse(path)
         except (UnknownFormatError, OSError, ValueError):
             continue
-        if (traj.run_state or "") in ("finished", "error"):
+        if (traj.run_state or "") in ("ended", "stopped",
+                                      "out_of_memory"):
             states[path.name] = traj.run_state
     return states
 
@@ -705,15 +707,24 @@ def _build_status(out_paths: List[Path],
     state = "running"
     detail = "running"
     age_s = max(0.0, _wall_now() - active.stat().st_mtime)
-    # Two vocabularies meet here: the engine parsers emit run_state
-    # "ongoing"|"finished"|"error"|"unknown"; the status envelope
-    # (consumed by jobset/runstatus.py) speaks "running"|"stale"|
-    # "failed"|"finished".  Map parser "error" -> envelope "failed".
-    if active_state == "finished":
+    # THIS LAYER SETTLES WHAT CONTENT CANNOT (`model/parse.md` § 2b).  The
+    # engine parser reports how the run ENDED from markers alone --
+    # "running"|"ended"|"stopped"|"out_of_memory"|"unknown" -- and a file
+    # with no ending marker is honestly "running": nothing IN it can tell
+    # a slow DFT step from a job the scheduler killed.  Only the
+    # filesystem can, so the age check lives here and nowhere else.
+    #
+    # Note what is NOT consulted: whether the SCF converged.  That is
+    # P-S2's reported fact, carried beside this state for the reader to
+    # show, never folded into it.
+    if active_state == "ended":
         state, detail = "finished", "job_completed"
-    elif active_state == "error":
-        state, detail = "failed", "engine error in active .out"
+    elif active_state == "out_of_memory":
+        state, detail = "failed", "out of memory"
+    elif active_state == "stopped":
+        state, detail = "failed", "stopped before its end -- see the .out"
     elif age_s > 60.0:
+        # No ending marker and no growth: it is not running any more.
         state, detail = "stale", f"no file growth in {int(age_s)}s"
 
     return {
@@ -766,7 +777,7 @@ def _build_progress(plots: Dict[str, Dict[str, List[List[float]]]],
                 current_scf_iter_global, int(bucket[-1][0]))
 
     stages_completed = sum(
-        1 for state in out_run_states.values() if state == "finished"
+        1 for state in out_run_states.values() if state == "ended"
     )
 
     # ETA: only attempt when running + we have at least 2 SCF entries.

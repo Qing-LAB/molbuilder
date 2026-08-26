@@ -173,7 +173,7 @@ def _parse_molwatch_log(path: str) -> Trajectory:
 def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
     engine = "molwatch"
     frames: List[Frame] = []
-    run_state: str = "ongoing"
+    run_state: str = "running"    # parse.md 2b, P-S1
     error_message: Optional[str] = None
     runtime_info: Dict[str, Any] = {}
 
@@ -206,12 +206,12 @@ def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
         m = _ERROR_RE.match(line)
         if m:
             error_message = m.group(1).strip()
-            run_state = "error"
+            run_state = "stopped"
 
     def _on_concluded(line: str, line_no: int) -> None:
         nonlocal run_state
-        if run_state != "error":
-            run_state = "finished"
+        if run_state != "stopped":
+            run_state = "ended"
 
     def _on_engine(line: str, line_no: int) -> None:
         nonlocal engine

@@ -425,7 +425,7 @@
   ],
   "lattice_sum": 121.331286,
   "parse_warning_count": 0,
-  "run_state": "finished",
+  "run_state": "ended",
   "runtime_info": {
     "convergence_targets": {
       "dm_tolerance": 0.0001,
@@ -449,5 +449,6 @@
       "version": "5.4.2"
     }
   },
+  "scf_converged": true,
   "source_format": "siesta"
 }

@@ -400,7 +400,12 @@ def test_the_winners_coordinates_ride_run_config(sol_calc):
     stem = next(d.glob("*.fdf")).name[:-4]
     (d / f"{stem}-run0.out").write_text(
         "* Running on 4 nodes in parallel\nx\n"
-        "siesta: Final energy (eV):\nJob completed\n")
+        # `>> End of run` is THE end marker (`model/parse.md` 2b) --
+        # not `Job completed`, which SIESTA prints beside it, and not a
+        # final energy.  Until 2026-08-25 `jobset/summarize.py` kept a
+        # private marker tuple that accepted the loose forms, so this
+        # fixture read as finished while the engine parser said running.
+        "siesta: Final energy (eV):\nJob completed\n>> End of run:\n")
     t0 = 1000000.0
     (d / f"{stem}-run0.scf-timing.log").write_text(
         "\n".join(f"{t0 + i * 2.0} iter" for i in range(6)) + "\n")
@@ -534,7 +539,8 @@ def test_summarize_mid_flight_lists_unfinished_and_refreshes(sol_calc):
         stem = next(d.glob("*.fdf")).name[:-4]
         (d / f"{stem}-run0.out").write_text(
             "* Running on 4 nodes in parallel\nx\n"
-            "siesta: Final energy (eV):\nJob completed\n")
+            # `>> End of run` is THE end marker -- see the note above.
+            "siesta: Final energy (eV):\nJob completed\n>> End of run:\n")
         t0 = 1000000.0
         (d / f"{stem}-run0.scf-timing.log").write_text(
             "\n".join(f"{t0 + i * spi} iter" for i in range(4)) + "\n")
@@ -685,7 +691,8 @@ def test_a_gpu_winner_rides_run_config_on_a_mixed_sweep(sol_calc):
         stem = next(d.glob("*.fdf")).name[:-4]
         (d / f"{stem}-run0.out").write_text(
             "* Running on 4 nodes in parallel\nx\n"
-            "siesta: Final energy (eV):\nJob completed\n")
+            # `>> End of run` is THE end marker -- see the note above.
+            "siesta: Final energy (eV):\nJob completed\n>> End of run:\n")
         t0 = 1000000.0
         (d / f"{stem}-run0.scf-timing.log").write_text(
             "\n".join(f"{t0 + i * spi} iter" for i in range(4)) + "\n")

@@ -2270,14 +2270,17 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
         molbuilder watch tail run.molwatch.log | jq '.energy'
         molbuilder watch tail run.out | head -5
 
-    Loop ends when the run finishes (run_state becomes 'finished'
-    or 'error') or after --max-frames frames, whichever comes first.
+    Loop ends when the run is over -- run_state one of 'ended',
+    'stopped' or 'out_of_memory' (`model/parse.md` § 2b, P-S1) -- or
+    after --max-frames frames, whichever comes first.  'unknown' keeps
+    polling: no evidence either way is not evidence of ending.
     Ctrl-C also exits cleanly.
     """
     import json
     import time
     from .parse import detect as detect_parser, UnknownFormatError
     from .parse.engines._helpers import trajectory_to_legacy_dict
+    from .parse.engines._run_ending import CONCLUDED
 
     if input_path == "-":
         click.echo("Error: stdin not supported for `watch tail` "
@@ -2285,7 +2288,7 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
         sys.exit(2)
 
     last_n = 0
-    last_state = "ongoing"
+    last_state = "running"
     emitted = 0
     poll_s = poll_ms / 1000.0
     try:
@@ -2321,7 +2324,7 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
                     return
             last_n = n
             last_state = payload["run_state"]
-            if last_state in ("finished", "error"):
+            if last_state in CONCLUDED:
                 return
             time.sleep(poll_s)
     except KeyboardInterrupt:

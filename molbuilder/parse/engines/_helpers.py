@@ -81,6 +81,7 @@ def wrap_trajectory(traj: Trajectory, parser_name: str,
         lattice=lattice_copy,
         source_format=traj.source_format,
         run_state=traj.run_state or "unknown",
+        scf_converged=getattr(traj, "scf_converged", None),
         error_message=traj.error_message,
         runtime_info=dict(getattr(traj, "runtime_info", None) or {}),
         parse_warnings=warnings,
@@ -179,7 +180,9 @@ def trajectory_result_to_legacy_dict(
           "elapsed_s":    [ float | null, ... ],
           "in_progress": [ bool, ... ] | [],
           "source_format": "siesta" | "pyscf" | "molwatch" | ...,
-          "run_state":     "ongoing" | "finished" | "error" | "unknown",
+          "run_state":     "running" | "ended" | "stopped"
+                           | "out_of_memory" | "unknown",   # parse.md 2b
+          "scf_converged": true | false | null,             # P-S2: a FACT
           "error_message": str | null,
           "runtime_info":  {...},
           "parse_warnings": [ {line_no, snippet, error, category}, ... ],
@@ -331,6 +334,7 @@ def trajectory_result_to_legacy_dict(
         "source_format": result.source_format,
         # Run-state markers from end-of-run detection.
         "run_state":     result.run_state,
+        "scf_converged": getattr(result, "scf_converged", None),
         "error_message": result.error_message,
         # Runtime facts (CPU / memory / GPU / host) captured by the
         # parser from the file's header.  Same keys for every engine
@@ -371,6 +375,7 @@ def trajectory_to_legacy_dict(traj) -> Dict[str, Any]:
         lattice=traj.lattice,
         source_format=traj.source_format,
         run_state=traj.run_state or "unknown",
+        scf_converged=getattr(traj, "scf_converged", None),
         error_message=traj.error_message,
         runtime_info=dict(getattr(traj, "runtime_info", None) or {}),
         parse_warnings=list(getattr(traj, "parse_warnings", None) or []),

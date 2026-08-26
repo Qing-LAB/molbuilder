@@ -163,7 +163,7 @@ def test_concluded_then_error_lands_on_error(tmp_path):
     p.write_text(_CONCLUDED_THEN_ERROR)
 
     t = MolwatchLogParser.parse(str(p))
-    assert t.run_state == "error"
+    assert t.run_state == "stopped"
     assert t.error_message is not None
     assert "actually we did crash" in t.error_message
 
