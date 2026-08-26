@@ -83,16 +83,18 @@ Measured across the seam of a translated slab, with `c = z_span + d`:
 
 | plane | layers/side | nearest metal across the boundary | verdict |
 |---|---|---|---|
-| (111) | 3, 6 | 2.8837 Å | continues the crystal |
-| (111) | 4 | 2.3545 Å | eclipsed |
-| (100) | 4, 6 | 2.8837 Å | continues the crystal |
-| (100) | 3 | 2.0391 Å | eclipsed |
-| (110) | 4, 6 | 2.8837 Å | continues the crystal |
-| (110) | 3 | 1.4419 Å | eclipsed |
+| (111) | 3, 6 | `a/√2` | continues the crystal |
+| (111) | 4 | `d` | eclipsed |
+| (100) | 4, 6 | `a/√2` | continues the crystal |
+| (100) | 3 | `d` | eclipsed |
+| (110) | 4, 6 | `a/√2` | continues the crystal |
+| (110) | 3 | `d` | eclipsed |
 
-(2.8837 Å is the bulk nearest-neighbour `a/√2` at the experimental `a`.
-"Eclipsed" means one atom directly above another — `Δxy = (0, 0)` — at the
-interlayer distance, which is far shorter than any real metal bond.)
+`a/√2` is the bulk nearest-neighbour distance; `d` is the interlayer spacing
+from § 2. "Eclipsed" means one atom sitting directly above another —
+`Δxy = (0, 0)` — separated only by `d`, which on every surface here is far
+shorter than any real metal bond. The relationship is what matters and it is
+scale-free: it holds for any fcc metal at any `a`.
 
 A caution about how to test this: **a distance check alone does not prove fcc**.
 At (111) with 2 or 5 layers the across-seam distance is *also* 2.8837 Å, so a
@@ -100,18 +102,21 @@ distance test passes — but the lateral step is reversed. Comparing the step th
 crystal takes inside the slab with the one it takes across the seam (allowing
 for the triangular lattice's three equivalent directions):
 
-| (111), layers per slab | in-slab step | seam step | |
-|---|---|---|---|
-| 2 | `(0.000, −1.665)` | `(0.000, +1.665)` | **twin** — reversed |
-| 3 | `(0.000, −1.665)` | `(−1.442, +0.832)` | fcc continues |
-| 4 | `(0.000, −1.665)` | `(0.000, 0.000)` | eclipsed |
-| 5 | `(0.000, −1.665)` | `(0.000, +1.665)` | **twin** — reversed |
-| 6 | `(0.000, −1.665)` | `(−1.442, +0.832)` | fcc continues |
+Writing the in-slab step as **`s`** (magnitude `a/√6` on (111)):
 
-`(−1.442, +0.832)` is `(0.000, −1.665)` rotated 120°, which on a triangular
-lattice is the same step. A twin is a real defect with the right bond length —
-which is exactly why a distance check misses it. **Only a multiple of 3 gives
-true fcc continuation on (111).**
+| (111), layers per slab | seam step | |
+|---|---|---|
+| 2 | `−s` | **twin** — reversed |
+| 3 | `s` rotated 120° | fcc continues |
+| 4 | `(0, 0)` | eclipsed |
+| 5 | `−s` | **twin** — reversed |
+| 6 | `s` rotated 120° | fcc continues |
+
+On a triangular lattice the three 120°-separated directions are the same step,
+so the rotated form counts as a continuation while the reversed one does not.
+A twin is a real defect carrying the *right* bond length — which is exactly why
+a distance check misses it. **Only a multiple of 3 gives true fcc continuation
+on (111).**
 
 ### 3.2 The `-z` slab must be *translated*, not flipped
 
@@ -133,7 +138,7 @@ Measured, at (111) with 3, 4 and 6 layers per side:
 | mirror `z → −z` (today) | `(0, 0)` | `d` | eclipsed |
 | C₂ about x, `(x, −y, −z)` | `(0, 0)` | `d` | eclipsed |
 | inversion `(−x, −y, −z)` | `(0, 0)` | `d` | eclipsed |
-| **translation, no flip** | one lattice step | 2.8837 Å | continues (when § 3.1 holds) |
+| **translation, no flip** | one lattice step | `a/√2` | continues (when § 3.1 holds) |
 
 Only a lateral translation changes the registry. `c` cannot: it sets how far
 apart the two faces are, never which sits over which.
@@ -145,6 +150,44 @@ N−1 on the other, so the two anchor sites differ by one registry step. A later
 shift can restore contact symmetry, but it moves the seam by the same step.
 With rigid slabs you cannot have both, so this is a real choice, not an
 oversight to be fixed.
+
+---
+
+### 3.3 The arithmetic of the two placements is not symmetric
+
+§ 3.2 established that only a lateral translation changes the registry. There is
+one more difference between them, and it is easy to get wrong because the two
+operations do not take the same reference point.
+
+```
+                        MIRROR                        TRANSLATE
+                  (layer order flips)            (layer order kept)
+
+   cell top  ─────────────────────────      ─────────────────────────
+             layer N-1 ▪ ▪ ▪ ▪ ▪ ▪           layer N-1 ▪ ▪ ▪ ▪ ▪ ▪
+             ...                             ...
+   +gap/2 ▸  layer 0   ▪ ▪ ▪ ▪ ▪ ▪  ◂ face   layer 0   ▪ ▪ ▪ ▪ ▪ ▪  ◂ face
+                        M O L E C U L E                M O L E C U L E
+   -gap/2 ▸  layer 0   ▪ ▪ ▪ ▪ ▪ ▪  ◂ face   layer N-1 ▪ ▪ ▪ ▪ ▪ ▪  ◂ face
+             ...                             ...
+             layer N-1 ▪ ▪ ▪ ▪ ▪ ▪           layer 0   ▪ ▪ ▪ ▪ ▪ ▪
+   cell bot  ─────────────────────────      ─────────────────────────
+                      ▲                              ▲
+         SEAM: layer N-1 meets itself       SEAM: layer 0 meets layer N-1
+               same registry → ECLIPSED           one step → CONTINUES
+```
+
+A **mirror** reflects about the contact plane, so the layer that was nearest the
+molecule is nearest again and the face lands where it should by construction.
+
+A **translation** keeps the layer order, so the face meeting the molecule is the
+slab's far end — and the shift must therefore be referenced to that end, not to
+the end the mirror uses. Referencing the wrong one displaces the slab by its own
+full thickness, which puts it on the far side of the molecule rather than beside
+it. The slab's thickness enters the arithmetic; a mirror's does not.
+
+Both correct forms give an identical gap and an identical slab. Only the
+registry at the seam differs — which is the whole point of the choice.
 
 ---
 
@@ -249,33 +292,3 @@ extent *through* a build; editing the Cell tab is the way to override one
 *after* it.
 
 ---
-
-## 7. Worked example — the shipped Au-BDT-Au
-
-Audited from `projects/Au-BDT-Au/**/*.molstruct.json` + their `.xyz`:
-
-```
-432 Au (6×6 in-plane, 6 layers per side) + 12 BDT = 444 atoms
-axis_kind = (periodic, periodic, transport)
-cell  a = (17.641, 0, 0)   b = (8.820, 15.277, 0)   c = (0, 0, 36.807)
-layer spacing        2.4008 Å   ->  a = 2.4008·√3 = 4.158 Å  (the PBE value)
-in-plane NN          2.9401 Å   =  a/√2                       (consistent)
-atom z-extent       34.4062 Å
-c_z − extent        +2.4008 Å   =  exactly one interlayer spacing
-```
-
-So this structure **already satisfies the § 1 rule** — whatever produced it
-padded `c` correctly, which `add_electrode_slab` did *not* do until the change
-this document describes. Its 6 layers per side is a multiple of 3, satisfying
-§ 3.1. That matters for reading the audit: the file is **not** evidence that the
-old builder was right — it came from somewhere else, or was corrected by hand.
-
-It still fails § 3.2: the nearest metal across the boundary is **2.4008 Å at
-`Δxy = (0.000, 0.000)`** — eclipsed — against a bulk nearest-neighbour of
-2.9401 Å for its own lattice constant. That is the mirror, and no layer count
-fixes it.
-
-Read against § 4: the relaxation is sound (those layers are frozen), and the
-TranSIESTA path is unaffected (I8 — the seam is replaced by Σ, and the bulk lead
-cell is derived separately and correctly). What it does carry is a contaminated
-boundary-layer density in any periodic single-point of this cell.
