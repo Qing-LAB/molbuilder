@@ -62,6 +62,14 @@ the trajectory viewer's cadence (15 s). A sweep is watched precisely while it
 runs, so a page that silently showed a stale verdict would be worse than one
 that showed nothing.
 
+**Two clocks, because they fail differently** *(2026-08-25)*. The foot carries
+*"last looked HH:MM:SS · measured HH:MM:SS"*: the browser's poll time, and the
+server's own `generated_at` stamp on the composition. The first says the poll
+is still running; it cannot say the ANSWER is old, because a response from a
+cache — or from a server running six-day-old code, which is how this was
+found — ticks just as freshly. A widening gap between the two is the tell, and
+it is only visible if both are printed.
+
 > **The plot's door is the PARSER, not `/api/watch/*` (corrected 2026-08-25).**
 > This table named the watch endpoint, which cannot serve a sweep: that
 > blueprint keeps *"a single global 'current file' dict guarded by a Lock"*
@@ -79,23 +87,30 @@ that showed nothing.
 ## 3. What you see
 
 ```
-┌─ 01_coarse / bench ───────────────── 6 trials · 4 done ─┐
-│  s/iter                                                 │
-│    40┤ ●                                                │
-│    30┤    ●                                             │
-│    20┤       ●───●                                      │
-│      └────────────────────────────  ranks →             │
+┌─ siesta-AuBDTAu ──────────────────── 6 trials · 6 done ─┐
+│  444 atoms · siesta · 128 cores · slurm                 │  ← what it is OF
+│                                                         │
+│  s/iter  ┤ ●                                            │
+│          ┤    ●───●                                     │
+│          ┤                                              │
+│  GB      ┤ ●───●        peak RAM                        │
+│          ┤ ○───○        peak VRAM                       │
+│          ┤                                              │
+│  % busy  ┤ ●───●        CPU                             │
+│          ┤ ○───○        GPU SM                          │
+│          └──────────────────────────  G →               │
 └─────────────────────────────────────────────────────────┘
 
-┌ G1K4C1    ● running     12.4 s/iter · 4m2s ─────────────┐
-│   dDmax ╲___                                            │
-│          ╲___                                           │
-│   np 4 · thr 1 · a100×1 · elpa-2stage                   │
+┌ G4K12C1ELPA1STAGE   ● finished        62.6 s/iter ──────┐
+│   np 48 · thr 1 · gpu:a100:4                            │
+│   peak 71.1 GB · cpu 88% · gpu 28% · vram 7.0 GB · 202 s│
+│   ran with: blocksize 64 · elpa_gpu nvidia-gpu          │
 └─────────────────────────────────────────────────────────┘
-┌ G0K48C1   ✗ failed          --                      ────┐
-│   no SCF data — the run stopped at iteration 3          │
+┌ G0K48C1ELPA2STAGE   ● finished        91.1 s/iter ──────┐
 │   np 48 · thr 1 · no gpu                                │
-└─────────────────────────────────────────────────────────┘
+│   peak 51.3 GB · cpu 27% · 15 s                         │  ← no GPU row:
+└─────────────────────────────────────────────────────────┘     not measured,
+                        last looked 21:14:02 · measured 21:13:58   not zero
 ```
 
 > **Not built yet: the per-trial SCF plot.** The sketch above shows one on
@@ -106,10 +121,22 @@ that showed nothing.
 > `parse.registry.parse`, which is the corrected door named above, and that
 > work is not done. The cards say what they have rather than implying more.
 
-**The comparison chart** plots the sweep's verdict axis — `s/iter` — against
-the coordinate the sweep actually varied, read from each trial's `point`
-(`generator.md` § 4.3a). A sweep that varied nothing comparable gets the table
-alone rather than a chart of one column.
+**The comparison charts** plot every measured quantity against the coordinate
+the sweep actually varied, read from each trial's `point` (`generator.md`
+§ 4.3a). A sweep that varied nothing comparable gets the cards alone rather
+than a chart of one column.
+
+**Three panels, one x axis** *(2026-08-25)*, because the quantities do not
+share a scale: s/iter runs 60–135, memory 7–101 GB, utilisation 0–100 %. On one
+axis the percentages would be a flat line along the bottom. Stacked and
+aligned, a person reads *down* a coordinate — *"at G=4 it got faster, used less
+memory, and the GPU still sat at 28%"* — which is the sentence a benchmark
+exists to produce.
+
+**A series the monitor could not measure is absent, never drawn as zero.** A
+CPU-only shelf has no `gpu_sm_mean_pct`; plotting it at 0 would read as
+*measured, and idle* — the opposite of the truth. A panel whose every series is
+absent is dropped.
 
 The axis is chosen among the trials **being drawn**, not across the whole
 sweep. `varied` answers *"what did this sweep vary"*, which is the right
@@ -119,10 +146,26 @@ coordinate. Taking `varied[0]` regardless put every finished trial at the same
 x — a vertical line that looks like data, and a defect only a screenshot
 caught.
 
-**A trial card** carries its label, its state, and its headline measurement. Underneath: what it **asked** for beside what it
-**ran**, because a silent eigensolver fallback is exactly what a sweep exists
-to catch — `BenchPoint.mismatch` already computes that disagreement, and where
-it is non-empty the card shows both.
+**A trial card** carries its label, its state, and its headline measurement.
+Underneath, in the order a person reads them:
+
+| line | from | why it is there |
+|---|---|---|
+| the knobs | `knobs`, `bound` | what it was asked to run |
+| **what it used** | `metrics` — `peak_rss_gb`, `cpu_mean_pct`, `gpu_sm_mean_pct`, `gpu_vram_peak_gb`, `wall_s` | the numbers a RUN script is written from: how much memory to ask for (the peak, not the request), and whether the accelerator paid for itself |
+| **ran with** | `effective` | the settled truth — the block size SIESTA chose, the ELPA build that answered |
+| asked vs ran | `mismatch` | only the DISAGREEMENTS |
+
+The middle two shipped on 2026-08-25. Every field had been crossing the wire
+since the feature landed and the card drew none of them, so the page reported
+*"62.6 s/iter"* with no way to see that the job asked for 256 GB and peaked at
+71, or that the GPU sat at 28 % while the CPU ran at 88. `mismatch` shows only
+what disagreed; `effective` is what actually happened, and a sweep over
+solvers is largely a question about those values.
+
+A silent eigensolver fallback is exactly what a sweep exists to catch —
+`BenchPoint.mismatch` already computes that disagreement, and where it is
+non-empty the card shows both.
 
 ---
 

@@ -43,7 +43,23 @@
 
 .bench-chart {
     width: 100%;
-    min-height: 220px;
+    /* Three stacked panels need room to be read.  At 220px they were
+       ~55px each once the legend and the x-axis took their share, which
+       is not a plot, it is a sparkline with axis labels. */
+    min-height: 600px;
+}
+
+/* The chart's own key + how to read the quantities.  Below the figure
+   because it explains what is already drawn; a reader who does not need
+   it skips past without it costing vertical space at the top. */
+.bench-caption {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    margin: var(--space-xs) 0 var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
 }
 
 .bench-trials {
@@ -93,6 +109,26 @@
 .bench-state.is-bad  { color: var(--error);   border-color: var(--error); }
 .bench-state.is-warn { color: var(--warn-soft); border-color: var(--warn-soft); }
 .bench-state.is-busy { color: var(--accent);  border-color: var(--accent); }
+
+/* What the trial actually consumed, measured by the monitor.  Tabular
+   figures because these are read in a column down the card list and a
+   proportional digit makes 101.2 and 51.2 hard to compare at a glance. */
+.bench-usage {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+.bench-context {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-sm);
+}
+.bench-effective {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+}
 
 .bench-knobs,
 .bench-note {

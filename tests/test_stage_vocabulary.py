@@ -348,6 +348,16 @@ JS_LEDGER: dict[str, tuple[int | None, str]] = {
     "task-setup/viewer.js": (
         None, "the stage TABLE -- offers a new row's default name and reads "
               "the catalogue's `stage` group; spells no ordinal, names no deck"),
+    # Attributed 2026-08-26 with the sweep-summary charts.  Its single hit is
+    # the word ELPA-1STAGE, in a comment, and it is not this vocabulary at
+    # all: that is the name of an ELPA solver variant -- a VALUE a benchmark
+    # sweeps `diag_algorithm` over, the way it sweeps a block size.  Same
+    # letters, different layer.  The file spells no ordinal, names no deck,
+    # and reads no `stage` group; a chart axis is the closest it comes to a
+    # ladder and that ladder is the sweep's, not the pipeline's.
+    "lib/inspectors/bench-summary.js": (
+        None, "ELPA-1STAGE is an ELPA solver name -- a benchmark axis VALUE, "
+              "not a pipeline stage"),
 }
 
 #: Eleven on 2026-08-07 morning, and it went UP on purpose: P1 added

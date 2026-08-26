@@ -57,6 +57,36 @@
         return (typeof v === "number" && isFinite(v)) ? v.toFixed(2) : "—";
     }
 
+    /** One decimal, or nothing at all.  `null`/absent means the monitor
+     *  never measured it, which is not the same as zero. */
+    function _num(v, unit, digits) {
+        return (typeof v === "number" && isFinite(v))
+            ? v.toFixed(digits === undefined ? 1 : digits) + unit : null;
+    }
+
+    /** "peak 101.2 GB · cpu 31% · gpu 23% · vram 14.0 GB · 275 s · host-bound"
+     *
+     *  Order is the order a person reads it in: what it needed, what it
+     *  used, how long, and what held it back. */
+    function _usageLine(t) {
+        const m = t.metrics || {};
+        const bits = [];
+        const mem = _num(m.peak_rss_gb, " GB");
+        if (mem) bits.push("peak " + mem);
+        const cpu = _num(m.cpu_mean_pct, "%", 0);
+        if (cpu) bits.push("cpu " + cpu);
+        const sm = _num(m.gpu_sm_mean_pct, "%", 0);
+        if (sm) bits.push("gpu " + sm);
+        const vram = _num(m.gpu_vram_peak_gb, " GB");
+        if (vram) bits.push("vram " + vram);
+        const wall = _num(m.wall_s, " s", 0);
+        if (wall) bits.push(wall);
+        // WHAT HELD IT BACK -- the server's own word (BenchPoint.bound),
+        // already shown in the knob line when present, repeated here only
+        // when it is the answer to "why is this one slow".
+        return bits.join(" \u00b7 ");
+    }
+
     /** "np 4 · thr 1 · a100×1" -- the knobs, in the job-set's own words. */
     function _knobLine(t) {
         const bits = [];
@@ -68,12 +98,50 @@
         return bits.join(" · ");
     }
 
-    /* ---- the comparison chart ------------------------------------- *
-     * § 3: the verdict axis (s/iter) against the coordinate the sweep
-     * actually varied.  A sweep that varied nothing comparable gets the
-     * cards alone rather than a chart of one column -- and `varied` is
-     * the SERVER's answer, so the browser never has to work out what the
-     * sweep was about.                                                */
+    /* ---- the comparison charts ------------------------------------ *
+     * § 3: every measured quantity against the coordinate the sweep
+     * actually varied.  `varied` is the SERVER's answer, so the browser
+     * never has to work out what the sweep was about.
+     *
+     * THREE PANELS, ONE X AXIS, because the quantities do not share a
+     * scale: s/iter runs 60-135, memory 7-101 GB, utilisation 0-100 %.
+     * Drawn on one axis the percentages would be a flat line along the
+     * bottom.  Stacked and aligned, a person reads DOWN a coordinate --
+     * "at G=4 it got faster, used less memory, and the GPU still sat at
+     * 28%" -- which is the sentence a benchmark exists to produce.
+     *
+     * A series absent from `metrics` is NOT PLOTTED AS ZERO.  The monitor
+     * could not measure it (no GPU on that shelf), and a zero would read
+     * as "measured, and it was idle" -- the opposite of the truth.  A
+     * panel whose every series is absent is dropped entirely.          */
+    //: Group colours -- distinguishable on the dark card and to the most
+    //: common colour-vision deficiencies (blue / orange / green / pink).
+    const PALETTE = ["#5aa9e6", "#f4a259", "#69c37b", "#e07a9c", "#b48ead"];
+
+    /** A design token's value, with the literal that mirrors it as the
+     *  fallback -- the embed-safety pattern (`ui-contract.md` § 2), because
+     *  Plotly is handed colours as strings and cannot read a `var()`. */
+    function _token(name, fallback) {
+        const v = getComputedStyle(document.documentElement)
+            .getPropertyValue(name).trim();
+        return v || fallback;
+    }
+    const PANELS = [
+        { title: "s / iter", series: [
+            { key: "s_per_iter", name: "s/iter", digits: 1,
+              from: (t) => t.s_per_iter } ] },
+        { title: "GB", series: [
+            { key: "peak_rss_gb", name: "peak RAM", digits: 1,
+              from: (t) => (t.metrics || {}).peak_rss_gb },
+            { key: "gpu_vram_peak_gb", name: "peak VRAM", digits: 1,
+              from: (t) => (t.metrics || {}).gpu_vram_peak_gb } ] },
+        { title: "% busy", series: [
+            { key: "cpu_mean_pct", name: "CPU", digits: 0,
+              from: (t) => (t.metrics || {}).cpu_mean_pct },
+            { key: "gpu_sm_mean_pct", name: "GPU", digits: 0,
+              from: (t) => (t.metrics || {}).gpu_sm_mean_pct } ] },
+    ];
+
     function drawChart(hostEl, data) {
         const varied = data.varied || [];
         if (!varied.length || !root.Plotly) return false;
@@ -93,38 +161,220 @@
         const axis = varied.find((k) => spread(k) > 1);
         if (!axis) return false;      // nothing comparable yet: cards alone
 
-        const pts = timed
-            .map((t) => ({ x: t.point ? t.point[axis] : undefined,
-                           y: t.s_per_iter, label: t.label }))
-            .filter((p) => p.x !== undefined && p.x !== null);
-        if (pts.length < 2) return false;
-        pts.sort((a, b) => (a.x > b.x ? 1 : a.x < b.x ? -1 : 0));
+        const at = (t) => (t.point ? t.point[axis] : undefined);
+        const ordered = timed
+            .filter((t) => at(t) !== undefined && at(t) !== null)
+            .sort((a, b) => (at(a) > at(b) ? 1 : at(a) < at(b) ? -1 : 0));
+        if (ordered.length < 2) return false;
+
+        /* ONE LINE PER SERIES, NOT ONE LINE THROUGH EVERYTHING.
+         *
+         * A sweep usually varies more than one thing.  Au-BDT-Au varied G,
+         * K, use_gpu and diag_algorithm: at each G there are TWO trials,
+         * one per solver.  Plotted as a single line sorted by x, the two
+         * land on the same x and the line draws a VERTICAL SEGMENT joining
+         * them -- at G=0 it spanned 134 and 91 s/iter -- which reads as one
+         * continuous curve and is not.  (The same class of defect as
+         * taking `varied[0]` regardless: a shape that looks like data.)
+         *
+         * The grouping coordinates are the other varied ones that differ
+         * WITHIN a single x.  A coordinate constant at each x is not a
+         * second dimension, it is the SAME axis spelled differently -- K
+         * and use_gpu here, which track G exactly -- and grouping on those
+         * would split every line into singletons.
+         */
+        const groupKeys = varied.filter((k) => {
+            if (k === axis) return false;
+            const byX = new Map();
+            for (const t of ordered) {
+                const x = JSON.stringify(at(t));
+                if (!byX.has(x)) byX.set(x, new Set());
+                byX.get(x).add(JSON.stringify((t.point || {})[k]));
+            }
+            return [...byX.values()].some((vals) => vals.size > 1);
+        });
+        // With ONE grouping key the key name is the same on every line and
+        // adds nothing -- "ELPA-1STAGE" reads; "diag_algorithm ELPA-1STAGE"
+        // is the same word twice.  Name the key only when there are several
+        // and the value alone would be ambiguous.
+        const groupOf = (t) => groupKeys
+            .map((k) => (groupKeys.length > 1 ? `${k} ` : "")
+                        + `${(t.point || {})[k]}`)
+            .join(" \u00b7 ");
+        const groups = groupKeys.length
+            ? [...new Set(ordered.map(groupOf))].sort()
+            : [""];
+
+        const live = PANELS
+            .map((p) => ({
+                title: p.title,
+                series: p.series.filter(
+                    (ser) => ordered.some(
+                        (t) => typeof ser.from(t) === "number")),
+            }))
+            .filter((p) => p.series.length);
+        if (!live.length) return false;
 
         const won = (data.choice || {}).label;
-        root.Plotly.newPlot(hostEl, [{
-            x: pts.map((p) => p.x),
-            y: pts.map((p) => p.y),
-            text: pts.map((p) => p.label),
-            mode: "lines+markers",
-            type: "scatter",
-            hovertemplate: "%{text}<br>%{y:.2f} s/iter<extra></extra>",
-            marker: {
-                size: pts.map((p) => (p.label === won ? 13 : 8)),
-                symbol: pts.map((p) => (p.label === won ? "star" : "circle")),
-            },
-        }], {
-            /* automargin, because the axis TITLES are the whole point: a
-               bare "4" on the x-axis does not say it means K.  A fixed
-               bottom margin clipped them. */
-            margin: { l: 56, r: 16, t: 8, b: 40 },
-            xaxis: { title: { text: axis }, automargin: true },
-            yaxis: { title: { text: "s / iter" }, rangemode: "tozero",
-                     automargin: true },
+        const traces = [];
+        // ONE key entry per group across the WHOLE figure.  Keying per
+        // panel put the same two names up three times.
+        const legended = new Set();
+        const layout = {
+            margin: { l: 64, r: 20, t: 34, b: 52 },
             paper_bgcolor: "rgba(0,0,0,0)",
             plot_bgcolor: "rgba(0,0,0,0)",
-            font: { color: getComputedStyle(document.body).color },
-            showlegend: false,
-        }, { displayModeBar: false, responsive: true });
+            /* The card's own type, not Plotly's 12px default -- the panel
+               labels were smaller than every other word on the page. */
+            font: { color: getComputedStyle(document.body).color, size: 15 },
+            showlegend: groups.length > 1
+                        || live.some((p) => p.series.length > 1),
+            legend: { orientation: "h", y: 1.18, x: 0,
+                      font: { size: 15 } },
+            /* HOVER THE BAR YOU MEANT.  "x unified" stacks every series
+               at that x into one box -- four rows, each repeating the same
+               trial name -- and the values are already printed on the bars,
+               so the tip's remaining job is to name the ONE run under the
+               cursor. */
+            hovermode: "closest",
+            /* THE TIP IS PART OF THE APP, NOT PLOTLY'S DEFAULT.  Unstyled
+               it renders a pale box with the trace colour behind small
+               type: light blue under white, on a dark card.  Read from the
+               tokens at draw time so it follows the theme instead of
+               freezing one palette (`ui-contract.md` § 2). */
+            hoverlabel: {
+                bgcolor: _token("--bg-page", "#14171c"),
+                bordercolor: _token("--border-strong", "#3a3f48"),
+                font: {
+                    color: _token("--text-primary", "#e6e9ef"),
+                    family: getComputedStyle(document.body).fontFamily,
+                    size: 14,
+                },
+                align: "left",
+            },
+            barmode: "group",
+            bargap: 0.35,
+            bargroupgap: 0.08,
+        };
+        // Stack top-to-bottom.  Generous, because three panels crammed
+        // into one card height is a sparkline with axis labels.
+        const GAP = 0.16;
+        const h = (1 - GAP * (live.length - 1)) / live.length;
+        live.forEach((panel, i) => {
+            const n = i + 1;                       // 1-based Plotly axis ids
+            const ySuffix = n === 1 ? "" : String(n);
+            const top = 1 - i * (h + GAP);
+            layout["yaxis" + ySuffix] = {
+                title: { text: panel.title, font: { size: 14 } },
+                rangemode: "tozero",
+                // Headroom so the value above the TALLEST bar is not
+                // clipped by the panel above it.
+                automargin: true,
+                domain: [Math.max(0, top - h), top], automargin: true,
+                /* A GRID IS A READING AID, NOT A DECORATION.  Plotly's
+                   default draws solid mid-grey lines that on this dark card
+                   read as strongly as the data.  A hairline at ~6% alpha is
+                   enough to carry the eye across to the axis and disappears
+                   the moment you stop looking for it. */
+                gridcolor: "rgba(255,255,255,0.07)",
+                zeroline: false,
+                ticks: "outside", ticklen: 4,
+                tickfont: { size: 13 },
+            };
+            panel.series.forEach((ser, si) => groups.forEach((g, gi) => {
+                const pts = ordered.filter(
+                    (t) => typeof ser.from(t) === "number"
+                        && (!groupKeys.length || groupOf(t) === g));
+                if (!pts.length) return;
+                const key = g || ser.name;
+                const firstOfItsKind = !legended.has(key);
+                legended.add(key);
+                traces.push({
+                    x: pts.map((t) => String(at(t))),
+                    y: pts.map(ser.from),
+                    /* THE VALUE, ON THE BAR (2026-08-25, user).  A dozen
+                       bars is few enough to label every one, and a printed
+                       number beats an axis tick plus an estimate --
+                       especially where two bars are close, which is the
+                       comparison a sweep is FOR.  The trial name goes to
+                       the hover instead: printed inside the bar it was
+                       twelve rotated labels shrunk to fit, which is noise. */
+                    text: pts.map((t) => {
+                        const v = ser.from(t);
+                        return v.toFixed(ser.digits === undefined
+                                         ? 1 : ser.digits);
+                    }),
+                    textposition: "outside",
+                    textfont: { size: 13 },
+                    cliponaxis: false,
+                    customdata: pts.map((t) => t.label),
+                    // ONE LEGEND ENTRY PER GROUP, NOT PER TRACE.  Naming
+                    // every trace put ten entries above a three-panel chart
+                    // and buried the panels under their own key.  Colour
+                    // carries the group, dash carries the series within a
+                    // panel, and the y-axis title already says which
+                    // quantity a panel is -- so the legend only has to
+                    // answer "which line is which run".
+                    name: key,
+                    legendgroup: key,
+                    showlegend: firstOfItsKind,
+                    yaxis: "y" + ySuffix,
+                    /* BARS, NOT LINES (2026-08-25, user).  These are six
+                       SEPARATE RUNS at three GPU counts, not samples of a
+                       continuous function: there is no G=1 trial, and a
+                       line between G=0 and G=2 draws a value nobody
+                       measured.  A bar claims only what was run.  Every
+                       quantity here also has a meaningful zero -- seconds,
+                       gigabytes, percent -- which is the other condition a
+                       bar needs to be honest. */
+                    type: "bar",
+                    hovertemplate: "<b>%{customdata}</b><br>"
+                                 + ser.name + ": %{y}<extra></extra>",
+                    marker: {
+                        color: PALETTE[gi % PALETTE.length],
+                        /* The WINNER is outlined rather than recoloured:
+                           colour already means "which run", and a second
+                           meaning on the same channel is unreadable. */
+                        line: {
+                            color: pts.map(
+                                (t) => (t.label === won ? "#f5d76e"
+                                                        : "rgba(0,0,0,0)")),
+                            width: pts.map((t) => (t.label === won ? 2 : 0)),
+                        },
+                        /* A second series in the same panel keeps the run's
+                           colour and takes a hatch -- VRAM is not a
+                           different run from RAM, it is a different thing
+                           measured of it. */
+                        pattern: si === 0 ? {} : { shape: "/", size: 6,
+                                                   solidity: 0.35 },
+                    },
+                });
+            }));
+        });
+        /* automargin, because the axis TITLES are the whole point: a bare
+           "4" on the x-axis does not say it means K. */
+        /* TICKS ONLY WHERE A TRIAL EXISTS.  Plotly's automatic ticks put
+           labels at 0.5, 1.5, 2.5 -- and `G` is a COUNT OF GPUs, so those
+           are values no trial could have.  A tick that cannot exist invites
+           the eye to read the line between two points as measurement, and
+           it is interpolation.  Vertical gridlines go for the same reason:
+           there is nothing at those x to line up with. */
+        const xs = [...new Set(ordered.map(at))]
+            .sort((a, b) => (a > b ? 1 : a < b ? -1 : 0))
+            .map(String);
+        layout.xaxis = {
+            title: { text: axis, font: { size: 15 } }, automargin: true,
+            anchor: "y" + (live.length === 1 ? "" : String(live.length)),
+            // CATEGORIES, in measured order.  A numeric axis would space
+            // G=0,2,4 as though 1 and 3 were simply empty; they are not
+            // empty, they were never run.
+            type: "category", categoryorder: "array", categoryarray: xs,
+            showgrid: false, zeroline: false,
+            ticks: "outside", ticklen: 4,
+            tickfont: { size: 14 },
+        };
+        root.Plotly.newPlot(hostEl, traces, layout,
+                            { displayModeBar: false, responsive: true });
         return true;
     }
 
@@ -143,6 +393,57 @@
         card.appendChild(head);
 
         card.appendChild(el("div", "bench-knobs", _knobLine(t)));
+
+        /* WHAT IT ACTUALLY USED.  `summarize` already measures all of this
+         * from the monitor's `<label>.util.csv` -- and until 2026-08-25
+         * this card threw every field away, showing s/iter and nothing
+         * else.  These are the numbers a person writes the RUN script
+         * from: how much memory to ask for (peak, not the request), and
+         * whether the accelerator paid for itself.  A 256 G ask that
+         * peaked at 101 G with the GPU at 23% is a different script.
+         *
+         * B1 holds: every value is the server's, printed, not recomputed.
+         * A field the monitor could not collect (no GPU on that shelf) is
+         * absent from `metrics` and simply not drawn -- never a zero,
+         * which would read as "measured, and it was idle". */
+        const used = _usageLine(t);
+        if (used) card.appendChild(el("div", "bench-usage", used));
+
+        /* HOW MANY ITERATIONS THE HEADLINE RESTS ON.  Under the capped
+         * 3-iteration trial `parse_scf_timing` drops the warm-up delta and
+         * averages what is left -- which is ONE sample.  The verdict ranks
+         * on it, and a 5% gap between two single measurements is not a
+         * result.  Said out loud only when it is 1: at 3+ the average is
+         * the ordinary case and the note would be noise. */
+        const iters = (t.metrics || {}).iters_measured;
+        if (iters === 1) card.appendChild(el(
+            "div", "bench-note",
+            "s/iter is a single iteration — no spread, so small gaps "
+            + "between trials are not decisive"));
+
+        /* WHAT IT ACTUALLY RAN WITH, read back out of the deck and the
+         * wrapper log.  `mismatch` below shows only the DISAGREEMENTS;
+         * this shows the settled truth -- the block size SIESTA chose,
+         * the ELPA build that answered.  A sweep over solvers is largely
+         * a question about these values, and they were being carried
+         * across the wire and dropped. */
+        /* Only what the knob line ABOVE did not already say.  `effective`
+         * repeats the ranks and threads it was asked for, and printing
+         * "np 48 · thr 1" and then "mpi_np 48 · omp_threads 1" one line
+         * down is the same fact twice in two spellings -- which is how a
+         * reader stops trusting either.  What is left is what only the RUN
+         * can tell you: the block size SIESTA settled on, the ELPA build
+         * that answered.  A key in `mismatch` is skipped too: that row
+         * shows asked-vs-ran itself, in more detail. */
+        const ALREADY_IN_KNOBS = ["mpi_np", "omp_threads", "cpus_per_task"];
+        const eff = t.effective || {};
+        const effBits = Object.keys(eff)
+            .filter((k) => eff[k] !== null && eff[k] !== undefined
+                        && !(k in (t.mismatch || {}))
+                        && ALREADY_IN_KNOBS.indexOf(k) === -1)
+            .map((k) => `${k} ${eff[k]}`);
+        if (effBits.length) card.appendChild(
+            el("div", "bench-effective", "ran with: " + effBits.join(" \u00b7 ")));
 
         /* B3: a trial with nothing to show SAYS so.  Hiding it would
          * answer "where did my third trial go?" with silence. */
@@ -180,8 +481,42 @@
         head.appendChild(el("h2", "bench-title", data.name || "sweep"));
         head.appendChild(el(
             "span", "bench-count",
-            `${data.n_trials} trials · ${data.n_done} done`));
+            `${data.n_trials} trials · ${data.n_done} done`
+            + (data.complete === false ? " · still running" : "")));
         wrap.appendChild(head);
+
+        /* WHAT IT IS A BENCHMARK OF, AND WHERE IT RAN.  Both arrive in
+         * every payload and neither was drawn until 2026-08-25 -- so the
+         * page reported "62.6 s/iter" with no way to know it was 444
+         * atoms on 2x64 slurm cores.  A number per iteration means
+         * nothing without the system it iterated over: that is the first
+         * question anyone asks of a benchmark, and the answer was already
+         * in the response. */
+        const ctx = [];
+        const sys = data.system || {};
+        if (sys.n_atoms) ctx.push(`${sys.n_atoms} atoms`);
+        if (data.engine) ctx.push(String(data.engine));
+        /* THE NODE THE TRIALS RAN ON, from the trials themselves.
+         *
+         * This read `environment.topology` until 2026-08-25 -- the PROBED
+         * record, which describes one node of the partition
+         * (`scontrol show node <picked>`), faithfully, and which is not
+         * necessarily the node you land on.  Au-BDT-Au ran on a 2x24 (48
+         * core) node while the record said 2x32, so the header announced
+         * "64 cores" for a sweep that never saw one.
+         *
+         * The trials measured it themselves, on the node, at run time
+         * (`effective.node_phys_cores`).  If they disagree -- a sweep
+         * spread across node types -- say so rather than pick one. */
+        const nodeCores = [...new Set((data.trials || [])
+            .map((t) => (t.effective || {}).node_phys_cores)
+            .filter((n) => typeof n === "number"))].sort((a, b) => a - b);
+        if (nodeCores.length === 1) ctx.push(`${nodeCores[0]}-core node`);
+        else if (nodeCores.length > 1) ctx.push(nodeCores.join("/") + "-core nodes");
+        const env = data.environment || {};
+        if (env.scheduler) ctx.push(String(env.scheduler));
+        if (ctx.length) wrap.appendChild(
+            el("div", "bench-context", ctx.join(" \u00b7 ")));
 
         /* The verdict, whole -- including its absence, which is a real
          * answer: choose_winner returns {} when nothing was timed, OR
@@ -209,15 +544,50 @@
         const chart = el("div", "bench-chart");
         wrap.appendChild(chart);
 
+        /* HOW TO READ IT.  The figures are exact and still not
+         * self-explanatory: "GPU 28" is a share of WALL TIME, not of the
+         * card's capacity, and a reader who takes it for the latter draws
+         * the opposite conclusion about where the bottleneck is.  This is
+         * a legend for the quantities, not a verdict about this sweep --
+         * B1 holds, nothing here is computed from the trials. */
+        const caption = el("div", "bench-caption");
+        caption.appendChild(el(
+            "div", null,
+            "Solid bars are the host's (RAM, CPU); hatched are the "
+            + "accelerator's (VRAM, GPU). The gold outline is the winner."));
+        caption.appendChild(el(
+            "div", null,
+            "s/iter — lower is better; it is what the verdict ranks on. "
+            + "GB — the PEAK reached, not what was requested. "
+            + "% busy — the share of wall time the device had work to do, "
+            + "so a low GPU beside a high CPU means the host could not feed "
+            + "it, and adding cards will not help."));
+        wrap.appendChild(caption);
+
         const list = el("div", "bench-trials");
         for (const t of (data.trials || [])) {
             list.appendChild(trialCard(t, choice.label));
         }
         wrap.appendChild(list);
 
+        /* B4: the page says WHEN IT LAST LOOKED -- and, since 2026-08-25,
+         * ALSO when the data it is showing was measured.
+         *
+         * They answer different staleness questions and only together
+         * cover both.  The browser clock says the poll is still running;
+         * it cannot tell you the ANSWER is old, because a response served
+         * from a stale cache -- or by a server running six-day-old code --
+         * ticks along just as freshly.  `generated_at` is the server's own
+         * stamp on the composition, so a widening gap between the two is
+         * visible rather than silent.  B4's whole point is that a stale
+         * verdict must not look live. */
         const foot = el("div", "bench-foot");
+        const measured = data.generated_at
+            ? new Date(data.generated_at).toLocaleTimeString()
+            : null;
         foot.appendChild(el("span", null,
-                            "last looked " + new Date().toLocaleTimeString()));
+            "last looked " + new Date().toLocaleTimeString()
+            + (measured ? " \u00b7 measured " + measured : "")));
         wrap.appendChild(foot);
 
         host.appendChild(wrap);
