@@ -1126,7 +1126,7 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path) -> int:
 @click.option("--log", "log_path", required=True,
               type=click.Path(path_type=Path),
               help="append status lines here (e.g. <basename>.monitor.log)")
-@click.option("--interval", type=click.FloatRange(min=1.0), default=5.0,
+@click.option("--interval", type=click.FloatRange(min=1.0), default=10.0,
               show_default=True, help="seconds between wakes = the util "
                                       "sample rate (status lines stay "
                                       "change-gated, so it won't spam)")

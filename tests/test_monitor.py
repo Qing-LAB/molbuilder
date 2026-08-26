@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import os
+
 import pytest
 
 from molbuilder import monitor
@@ -57,14 +59,27 @@ def test_parse_status_counts_iters_and_energy(tmp_path):
     assert st.state == "running"
 
 
-def test_parse_status_done_marker(tmp_path):
+def test_parse_status_never_calls_the_run_over(tmp_path):
+    """`job-contracts.md` gives this module one stop signal: the watched
+    PID.  Reading the artifacts must not produce a second one.
+
+    Until 2026-08-26 a tail scan for completion markers set
+    ``state = "done"`` right here, and ``run_monitor`` returned on it.  One
+    of those markers was ``siesta: Final energy``, which SIESTA prints
+    BEFORE the run is over -- so the monitor could stop sampling while the
+    job still held its CPUs and GPUs, losing exactly the utilisation data
+    it exists to collect.
+    """
     out = tmp_path / "j.out"
-    out.write_text("scf:   1   -100.5\n>> End of run: completed\n")
+    out.write_text("scf:   1   -100.5\n"
+                   "siesta: Final energy = -1\n"
+                   ">> End of run: completed\nJob completed\n")
     timing = tmp_path / "j.scf-timing.log"
     timing.write_text("100.0 1 scf: 1 -100.5\n")
     st = monitor.parse_status(out, timing, 1000.0, 1001.0)
-    assert st.state == "done"
-    assert st.done_marker
+    assert st.state != "done", (
+        "the artifacts must not decide the run is over -- only the PID does")
+    assert not hasattr(st, "done_marker")
 
 
 def test_parse_status_missing_files_safe(tmp_path):
@@ -80,31 +95,37 @@ def test_parse_status_missing_files_safe(tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_run_monitor_finishes_on_done_marker(tmp_path):
+def test_a_completion_marker_does_not_stop_the_sampling(tmp_path):
+    """The loop keeps going while the watched PID lives, whatever the
+    ``.out`` says.
+
+    Bounded by ``max_ticks`` rather than by the marker: if the marker were
+    still terminal this would return after one tick, and the assertion on
+    the tick count is what catches it.  ``os.getpid()`` is a PID that is
+    certainly alive -- this process.
+    """
     out = tmp_path / "j.out"
-    out.write_text("scf:   1   -100.5\nJob completed time = 1s\n")
+    out.write_text("scf:   1   -100.5\n"
+                   "siesta: Final energy = -1\n>> End of run:\nJob completed\n")
     timing = tmp_path / "j.scf-timing.log"
     timing.write_text("100.0 1 scf: 1 -100.5\n")
     log = tmp_path / "j.monitor.log"
 
-    events = []
-    monitor.register_notifier(lambda st, ev: events.append((ev, st.state)))
-
+    # Count LOOP ITERATIONS, not notifier ticks: the tick hook fires only
+    # while the job is progressing (quiet-when-stalled), and this fixture
+    # is deliberately static.  One sleep per iteration is the direct
+    # measure of "did the loop keep going".
+    slept = []
     final = monitor.run_monitor(
-        out, timing, log, interval=300, watch_pid=0,
-        sleep=lambda s: None,
-        clock=_fake_clock([1000.0, 1000.0, 1001.0]),
+        out, timing, log, interval=1, watch_pid=os.getpid(),
+        max_ticks=3, sleep=lambda s: slept.append(s),
+        clock=_fake_clock([1000.0, 1001.0, 1002.0, 1003.0, 1004.0]),
     )
-    assert final.state == "done"
-    # hooks fired for start + finish (the done path skips the per-tick fire).
-    # (start state is "done" here because the .out already carries the
-    # completion marker -- so assert the EVENTS, not the snapshot state.)
-    assert any(ev == "start" for ev, _ in events)
-    assert any(ev == "finish" for ev, _ in events)
-    text = log.read_text()
-    assert "[MONITOR] start" in text
-    assert "[STATUS]" in text
-    assert "job ended" in text
+
+    assert final.state != "gone", "the watched pid is this process; it is alive"
+    assert len(slept) >= 2, (
+        f"the loop ran {len(slept)} time(s) -- a completion marker in the "
+        ".out ended it early instead of the watched pid")
 
 
 def test_run_monitor_stops_when_watch_pid_gone(tmp_path):
@@ -280,7 +301,12 @@ def test_parse_status_geometry_move(tmp_path):
 
 
 def test_failing_notifier_does_not_break_loop(tmp_path):
-    out = tmp_path / "j.out"; out.write_text("Job completed\n")
+    # Ends on the WATCHED PID, which is the only stop signal (2026-08-26).
+    # This wrote "Job completed" and watched pid 0 -- it was terminated by
+    # the completion marker, and when that path went the test looped
+    # forever instead of failing.  A test must not borrow its exit from
+    # behaviour it is not testing.
+    out = tmp_path / "j.out"; out.write_text("scf:   1   -100.5\n")
     timing = tmp_path / "j.scf-timing.log"; timing.write_text("100.0 1 scf:1\n")
     log = tmp_path / "j.monitor.log"
 
@@ -288,13 +314,18 @@ def test_failing_notifier_does_not_break_loop(tmp_path):
         raise RuntimeError("notifier blew up")
 
     seen = []
+    monitor.clear_notifiers()
     monitor.register_notifier(_boom)
     monitor.register_notifier(lambda st, ev: seen.append(ev))
-    final = monitor.run_monitor(out, timing, log, interval=1, watch_pid=0,
-                                sleep=lambda s: None,
-                                clock=_fake_clock([0.0, 0.0, 1.0]))
+    try:
+        final = monitor.run_monitor(out, timing, log, interval=1,
+                                    watch_pid=999_999_999,
+                                    sleep=lambda s: None,
+                                    clock=_fake_clock([0.0, 0.0, 1.0]))
+    finally:
+        monitor.clear_notifiers()
     # The second notifier still ran despite the first raising.
-    assert final.state == "done"
+    assert final.state == "gone"
     assert seen  # at least the start/finish fired
 
 

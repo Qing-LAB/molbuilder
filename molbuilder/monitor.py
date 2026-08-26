@@ -32,8 +32,10 @@ Design notes:
 - **stdlib-only hot path** -- no heavy imports in the loop.
 - Each tick reads only the **tail** of the ``.out`` (cheap on a large
   file) and the whole (tiny) timing log for the iteration COUNT.
-- The authoritative stop signal is ``--watch-pid`` going away (the job
-  wrapper's PID); ``.out`` completion markers are a best-effort hint.
+- The stop signal is ``--watch-pid`` going away (the job wrapper's PID),
+  and it is the ONLY one.  Output markers are not consulted: they can
+  appear before a run is actually over, which would end the sampling
+  early (`job-contracts.md`, the monitor's section).
 - The reliable live per-iteration estimate is ``elapsed / n_iters``
   (running average) -- consistent with the benchmark's ``total/N`` metric
   (§ 11.0); SIESTA's own per-scf time is not trusted.  It is reported
@@ -79,7 +81,6 @@ class JobStatus:
     scf_iter: Optional[str] = None   # last iteration number (as printed)
     per_iter_s: Optional[float] = None
     energy: Optional[str] = None     # last reported total energy (as printed)
-    done_marker: Optional[str] = None  # the .out completion marker, if seen
     geom_step: Optional[int] = None  # geometry-relaxation move # (CG/FIRE/...)
     progressing: bool = True         # did the iteration count advance since the
                                      # previous tick?  Set by run_monitor, not
@@ -110,14 +111,17 @@ class JobStatus:
         return " ".join(bits)
 
 
-# Markers that mean "the SIESTA run finished" (best-effort hint; the
-# authoritative signal is the watched PID disappearing).
-_DONE_MARKERS = (
-    "Job completed",
-    "End of run",
-    "siesta: Final energy",
-    ">> End of run:",
-)
+# NO COMPLETION MARKERS HERE.  `job-contracts.md` states the rule this
+# module follows: the monitor "follows the launcher's PID -- so it knows
+# authoritatively when the run ended, rather than guessing from output
+# markers".  A private marker tuple lived here until 2026-08-26 and did
+# exactly the guessing the contract forbids.
+#
+# It was not harmless.  `siesta: Final energy` prints BEFORE a run is over,
+# so the loop could return while the job was still holding CPUs and GPUs --
+# ending the utilisation sampling that is the whole reason this process
+# exists, and skipping the ticks a notifier hook would have fired.  The
+# watched PID cannot be early: the wrapper outlives the engine it launched.
 _SCF_LINE = re.compile(r"^[ \t]*scf:[ \t]*[0-9]")
 # Geometry-relaxation move marker.  SIESTA prints e.g.
 # ``Begin CG move = 3`` / ``Begin FIRE move = 12`` / ``Begin Broyden
@@ -148,8 +152,9 @@ def parse_status(out_path: Path, timing_path: Path,
     """Parse a :class:`JobStatus` from the job artifacts.
 
     ``n_iters`` (the reliable count) comes from the per-run timing log;
-    ``scf_iter`` / ``energy`` from the last ``scf:`` line; ``done_marker``
-    from a tail scan of the ``.out``.  Pure reads -- never raises on a
+    ``scf_iter`` / ``energy`` from the last ``scf:`` line.  It reports what
+    the artifacts SAY and never judges whether the run is over -- that is
+    the watched PID's answer alone.  Pure reads -- never raises on a
     missing/locked file.
     """
     st = JobStatus(elapsed_s=max(0.0, now_epoch - start_epoch))
@@ -192,11 +197,6 @@ def parse_status(out_path: Path, timing_path: Path,
             gm = _GEOM_LINE.search(line)
             if gm:
                 st.geom_step = int(gm.group(1))
-                break
-        for m in _DONE_MARKERS:
-            if m in tail:
-                st.done_marker = m
-                st.state = "done"
                 break
     return st
 
@@ -467,7 +467,7 @@ def _progressed(curr: JobStatus, prev: JobStatus) -> bool:
 
 
 def run_monitor(out: Path, timing: Path, log: Path, *,
-                interval: float = 5.0,
+                interval: float = 10.0,
                 watch_pid: int = 0,
                 start_epoch: Optional[float] = None,
                 max_ticks: Optional[int] = None,
@@ -550,11 +550,11 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
         alive = _pid_alive(watch_pid)
         st = parse_status(out, timing, start, now)
         if not alive:
-            st.state = "gone" if st.state != "done" else "done"
+            st.state = "gone"
 
         st.progressing = _progressed(st, prev)
 
-        if not alive or st.state == "done":
+        if not alive:
             # Terminal: the cumulative ``elapsed / n_iters`` over the whole
             # run IS a valid final average, so report it (force-show even
             # though this last tick added no new iteration).
@@ -565,8 +565,8 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
                 _append(log, f"[{_iso(now)}] [UTIL-SUMMARY] "
                              f"{util_accum.summary()}")
             _append(log, f"[{_iso(now)}] [MONITOR] job ended "
-                         f"(watch_pid alive={alive}, marker="
-                         f"{st.done_marker or '-'}); final notify + exit")
+                         f"(watched pid {watch_pid} gone); "
+                         f"final notify + exit")
             _fire(st, "finish")
             return st
 
@@ -670,7 +670,7 @@ def main(argv=None) -> int:
                    help="per-run .scf-timing.log (iteration COUNT)")
     p.add_argument("--log", required=True,
                    help="append status lines here (<basename>.monitor.log)")
-    p.add_argument("--interval", type=float, default=5.0,
+    p.add_argument("--interval", type=float, default=10.0,
                    help="seconds between wakes (default 5; this is the "
                         "utilization sample rate -- status lines stay "
                         "change-gated, so a fast rate does not spam)")

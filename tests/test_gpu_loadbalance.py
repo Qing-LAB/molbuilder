@@ -303,7 +303,7 @@ def test_wrapper_launches_low_priority_monitor(tmp_path):
     assert 'nice -n 19 "$_mb_py" mb_monitor.py' in t     # shipped, not -m
     assert "python -m molbuilder monitor" not in t       # NOT the package form
     assert "--watch-pid $$" in t
-    assert "--interval \"${MB_MONITOR_INTERVAL:-5}\"" in t
+    assert "--interval \"${MB_MONITOR_INTERVAL:-10}\"" in t
     # cleaned up by the single unified EXIT trap
     assert '[ -n "${_monitor_pid:-}" ] && kill "$_monitor_pid"' in t
 
