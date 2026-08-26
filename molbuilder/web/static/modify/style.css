@@ -104,10 +104,15 @@ header h1 {
  * the trajectory inspector (lib/trajectory/trajectory-inspector.css) so a
  * future "add a severity" change is a single CSS edit. */
 .status {
-    color: var(--text-muted);
-    font-size: var(--text-base);
+    /* COMPOSITION ONLY (`ui-contract.md` § 5).  This also set
+       `color: var(--text-muted)` and `font-size: var(--text-base)` until
+       2026-08-25 -- re-picking two things page-shell owns, which is the one
+       thing § 5 forbids a page sheet: *"may nudge WHERE the status sits ...
+       but never re-picks the color"*.  Measured, it made every status
+       message on this page #6c7280/15.2px where every other page renders
+       #a8aebb/14px -- dimmer, on the page that shows the most of them.
+       `font-weight: normal` went with them: 400 is already the default. */
     margin-left: auto;   /* right-aligns the status in the Modify action row */
-    font-weight: normal;
 }
 /* Severity modifiers (.status.ok/.error/.warn/.muted) live ONCE in
  * page-shell.css (ui-design-contract §2.3) — the "single CSS edit" home. */

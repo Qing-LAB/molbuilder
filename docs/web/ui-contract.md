@@ -157,6 +157,29 @@ re-picks the color. Change `--error` once in `tokens.css` and every error on
 every tab moves together. That is the whole contract in one example: **one
 owner, one token, consistent everywhere.**
 
+**That line is sharper than *"is this selector duplicated?"*, and the
+difference matters.** Four sheets declare `.status` and three of them are
+*fine*:
+
+| a page sheet declares | verdict |
+|---|---|
+| `margin-top`, `margin-left`, `min-height` — **where it sits, how much room it takes** | composition. Legal, and deleting it moves the page. |
+| `color`, `font-size`, `font-weight` — **what it looks like** | a second owner. Illegal, however sincere. |
+
+Both mistakes were live here until 2026-08-25. `modify/style.css` set
+`color: var(--text-muted)` + `font-size: var(--text-base)`, so every status
+on that page rendered `#6c7280`/15.2px where every other page rendered
+`#a8aebb`/14px — dimmer, on the page that shows the most of them, and
+unnoticed for months because each page looked internally consistent.
+`spectra/style.css` restated the shell's two values *verbatim*, which
+changes nothing until one of them drifts. And
+`structure-optimization/style.css` was nearly deleted as "a duplicate" when
+it declares only `margin-top` + `min-height` — pure composition; removing it
+would have shifted the page by 8px.
+
+So **read the properties, not the selector.** A duplicated selector is a
+prompt to look; only a re-picked *appearance* is the defect.
+
 ### 5.1 And why a *finding* looks the same on every tab
 
 The same rule, one layer up. A scientific finding (a validator `Issue`) is
@@ -208,7 +231,77 @@ The security policy (owned by the server — see
   All behavior lives in linked `.js` files; no `<script>` blocks, no `onclick=`
   attributes. If an XSS payload ever landed, the CSP would block it.
 
-## 8. Checklist for changing the UI
+## 8. Is a rule dead? — how to tell, and how not to
+
+Unused CSS is worth removing and **very easy to get wrong**, because every
+cheap way of asking gives a confidently wrong answer. All four traps below
+produced one here on 2026-08-25, and two of them nearly deleted live styling.
+
+**Trap 1 — grepping for the class name.** A class can be *composed*:
+
+```js
+{ class: "workflow-group workflow-group--" + role }   // form-schema.js
+el("div", "schema-field-" + f.kind)                   // form-schema.js
+```
+
+`.workflow-group--stage` appears in no JS file and is live on the Build form
+for **11 fields** — `stage` is a member of `template.GROUPS`. The same trick
+had already hidden `.schema-field-checkbox` from an earlier sweep. A grep can
+only ever say *"no literal reference"*, which is not the question asked.
+
+**Trap 2 — one page, one state.** Most rules match nothing most of the time.
+`form-components.css` reports 42 of its 55 selectors unmatched on
+`/molbuilder` — because the Build form lives on other pages. Dialogs are
+closed, panels are collapsed, and error rules (`.structure-error`,
+`.source-body-error`) match only when something has *failed*, which no page
+walk reaches by accident.
+
+**Trap 3 — `querySelectorAll` cannot evaluate everything.** `::backdrop`,
+`::before`, `:hover`, `:focus-visible` and friends are not selectable, so a
+zero there is an artefact of the instrument, not a finding.
+`.mb-dialog::backdrop` reads "dead" and is live on every modal.
+
+**Trap 4 — the shell lies quietly.** `**/*.js` does **not** recurse without
+`globstar`, and an unquoted `--include=*.js` is glob-expanded by the shell
+before grep ever sees it. Both search the wrong thing and report success.
+
+### What actually settles it
+
+Load the page, put the component **into the state that uses the rule**, then
+read the DOM:
+
+```js
+for (const r of sheet.cssRules) {
+  // Trap 3: these cannot be evaluated, so a zero would be meaningless.
+  if (/::|:hover|:focus|:active|:checked|:not\(/.test(r.selectorText)) continue;
+  if (!document.querySelectorAll(r.selectorText).length)
+      console.log("unmatched here:", r.selectorText);
+}
+```
+
+Unmatched in **every** state you can reach is evidence; unmatched once is
+not. If a rule guards a failure path you cannot trigger, **leave it** — a
+dead rule costs bytes, a deleted live one breaks the UI in exactly the states
+nobody is watching.
+
+**And "unmatched" still is not "delete it".** A shared sheet may declare a
+*vocabulary* on purpose — `dialog.css` lists the seven parts a modal has,
+precisely because the failure it was written to end was JS emitting class
+names no stylesheet answered. An unused member of a declared vocabulary is a
+promise kept, not residue; if the markup and the vocabulary disagree, **the
+markup is the thing to change.** Ask what the sheet's header says it is for
+before concluding anything.
+
+### Standing verdicts, so they are not re-derived
+
+| rule | verdict | how it was settled |
+|---|---|---|
+| `.workflow-group--stage` | **live** | composed from `role`; 11 SIESTA fields carry it; 2 matches measured on the Build form |
+| `.mb-dialog-title`, `.mb-dialog-field` | **declared API — keep** | both dialog modes opened; neither uses them. But `dialog.css`'s own header names them as the component's vocabulary, and that sheet exists *because* JS once wrote ten classes no stylesheet answered and the browser painted its own chrome. Here the **dialogs** are the drift: `save-dialog.js` puts a bare `<h2>` where the vocabulary says `.mb-dialog-title`. Fix the markup, never the sheet. |
+| `.mb-dialog::backdrop` | **live** | Trap 3 — not selectable, matches on every modal |
+| `.inspector-section{,-header,-hint}`, `.fdf-actions`, `.fdf-output`, `.disabled-tip`, `.workflow-group-apply-btn`, `.structure-error`, `.source-body-error` | **no builder found — deliberately NOT deleted** | no literal reference and no composition prefix, but never observed in their own state either |
+
+## 9. Checklist for changing the UI
 
 - A new **color / size / spacing** value → add it to `tokens.css`; reference it
   with `var(--…)`. No raw palette `#hex` (a `var(--token, #fallback)` in an
@@ -222,3 +315,10 @@ The security policy (owned by the server — see
 - A class that sets `display` on a `hidden`-toggled element → add the
   `[hidden]` guard.
 - Behavior → a linked `.js` file; never an inline `<script>` or `onclick=`.
+- A page sheet that repeats a shared selector → **read its properties** (§ 5).
+  Position is composition and stays; `color` / `font-size` is a second owner
+  and goes.
+- About to delete a rule as unused → **§ 8 first.** A grep cannot see a
+  composed class, one page state cannot see a dialog or an error, and
+  `querySelectorAll` cannot see `::backdrop`. § 8 also carries the verdicts
+  already reached, so they are not worked out a fourth time.

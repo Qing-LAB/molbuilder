@@ -75,11 +75,20 @@ ALLOWLIST: dict[str, str] = {
     # the divergence with better specificity.  Deleting the copies was the
     # real fix: the shell owns the surface, and `modify/style.css` keeps
     # only the flex layout that is genuinely its own.
-    ".status":         "phase 3: scope per-tab .status base overrides (position/size/resting colour)",
+    # POSITION ONLY as of 2026-08-25.  The size and resting-colour
+    # overrides this described are gone: `modify` re-picked both (making
+    # its status #6c7280/15.2px where every other page rendered
+    # #a8aebb/14px -- measured in the browser), and `spectra` restated
+    # page-shell's verbatim.  What is left is genuinely per-page and
+    # § 5 permits it: `margin-left:auto` right-aligns Modify's action
+    # row, `min-height` reserves a line, `margin-top` spaces it.
+    ".status":         "phase 3: scope per-tab .status POSITION overrides",
     # .status.error/.ok/.warn/.muted: CONSOLIDATED into page-shell.css as the single
     # home (ui-design-contract §2.3, CSS-migration step 1) — removed from the
     # allowlist so this invariant now ENFORCES the one-home rule for severity colours.
-    "header .tagline": "phase 3: scope per-tab .tagline overrides",
+    # Also position-only since 2026-08-25 -- spectra kept a tighter top
+    # margin and restated the colour + size verbatim.
+    "header .tagline": "phase 3: scope spectra's .tagline MARGIN override",
     # (`.viewer-controls` allowlist entry removed: it's no longer a cross-file
     #  duplicate -- only spectra/style.css defines it as a rule now.)
     # (`.issues-panel` + `.issues-panel[hidden]` allowlist entries removed

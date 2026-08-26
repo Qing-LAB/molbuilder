@@ -37,9 +37,10 @@ header h1 {
     font: 700 1.6rem/1.2 "Inter", system-ui, sans-serif;
 }
 header .tagline {
+    /* COMPOSITION ONLY (`ui-contract.md` § 5).  The `color` and `font-size`
+       that stood here restated page-shell's VERBATIM; only the tighter top
+       margin is this page's own. */
     margin: var(--space-xs) 0 0;
-    color: var(--text-secondary);
-    font-size: var(--text-base);
 }
 
 /* ---- Layout ---------------------------------------------------
@@ -109,8 +110,10 @@ button > code {
 .primary-actions { margin-top: 0.4rem; }
 
 .status {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+    /* COMPOSITION ONLY (`ui-contract.md` § 5).  The `font-size` and `color`
+       that stood here restated page-shell's own values VERBATIM -- so they
+       changed nothing until one of them drifted, which is exactly how a
+       second owner starts.  Reserving the line is this page's to say. */
     min-height: 1.1em;
 }
 /* Severity modifiers (.status.ok/.error/.warn/.muted) live ONCE in
