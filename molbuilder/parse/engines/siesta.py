@@ -658,6 +658,12 @@ class SiestaParser:
         # decide whether a torn run (no End-of-run marker) was a
         # silent abort vs an explicit non-convergence error.
         last_scf_converged: Optional[bool] = None
+        # The ``SCF_NOT_CONV:`` line, held aside.  It is the most
+        # INFORMATIVE cause-of-abort SIESTA prints, but it is not itself
+        # proof of one (see `_on_scf_fatal_not_converged`), so it is kept
+        # here and promoted to ``error_message`` only by whatever does
+        # prove it -- a fatal marker, or the strict EOF check.
+        scf_not_conv_line: Optional[str] = None
         # Runtime facts.  Empty dict when SIESTA didn't log any
         # (older / barebones builds).  Populated from two sources:
         # (a) SIESTA's own startup banner (`* Running on N nodes…`),
@@ -918,9 +924,12 @@ class SiestaParser:
             nonlocal run_state, error_message
             run_state = "error"
             # Preserve the FIRST fatal marker -- subsequent crashes
-            # usually cascade from the original cause.
+            # usually cascade from the original cause.  A held
+            # ``SCF_NOT_CONV:`` outranks it: that IS the original cause,
+            # and this marker (ABNORMAL_TERMINATION, Stopping Program)
+            # is the cascade the 2026-05-30 change existed to skip past.
             if error_message is None:
-                error_message = line.strip()[:200]
+                error_message = (scf_not_conv_line or line.strip()[:200])
 
         # SCF-block convergence flags.  Two distinct SIESTA emit forms:
         #
@@ -946,15 +955,34 @@ class SiestaParser:
             last_scf_converged = True
 
         def _on_scf_fatal_not_converged(line: str, line_no: int) -> None:
-            """Handler for the FATAL SCF_NOT_CONV: form.  Sets error +
-            captures the informative root-cause line as
-            error_message (first-wins; cascade markers like
-            ABNORMAL_TERMINATION and Stopping Program that follow
-            do NOT overwrite it)."""
-            nonlocal run_state, error_message, last_scf_converged
-            run_state = "error"
-            if error_message is None:
-                error_message = line.strip()[:200]
+            """``SCF_NOT_CONV:`` -- the root cause when the run dies, and
+            NOT a death certificate on its own.
+
+            This set ``run_state = "error"`` outright until 2026-08-25, on
+            the assumption written above it: that the line is emitted only
+            with ``SCF.MustConverge=true``, and is *"always followed in the
+            same run by ABNORMAL_TERMINATION + Stopping Program"*.
+
+            **A benchmark deck breaks that assumption by design.**  It sets
+            ``MaxSCFIterations 3`` and ``SCF.MustConverge .false.`` -- three
+            steps, convergence explicitly not required, because what is
+            being measured is SECONDS PER ITERATION.  SIESTA prints the
+            same ``SCF_NOT_CONV:`` line, then carries straight on ("Using
+            DM_out to compute the final energy and forces"), reaches
+            ``>> End of run``, and writes ``0_NORMAL_EXIT``.  No abort
+            marker anywhere.  Every trial of a healthy sweep was therefore
+            reported FAILED, and the Results tab counted 0 of 6 done while
+            showing six measured timings.
+
+            So the line is HELD, not acted on.  Whatever actually proves
+            the run died -- a fatal marker, or the strict EOF check below
+            -- promotes it, and the informative message the 2026-05-30
+            change wanted is still the one that surfaces.  A run that
+            reaches End-of-run keeps ``finished``, which is what it is.
+            """
+            nonlocal scf_not_conv_line, last_scf_converged
+            if scf_not_conv_line is None:
+                scf_not_conv_line = line.strip()[:200]
             last_scf_converged = False
 
         def _on_scf_not_converged(line: str, line_no: int) -> None:
@@ -1807,10 +1835,12 @@ class SiestaParser:
         # error_message; the SCF case fills in a sensible default.
         if run_state == "ongoing" and last_scf_converged is False:
             run_state = "error"
-            error_message = (
-                "SCF did not converge in the final step "
-                "(run truncated without '>> End of run' marker)"
-            )
+            if error_message is None:
+                error_message = (
+                    scf_not_conv_line
+                    or "SCF did not converge in the final step "
+                       "(run truncated without '>> End of run' marker)"
+                )
 
         # Surface frozen-atom indices to the consumer.  The
         # trajectory inspector uses this for the "Hide frozen atoms"
