@@ -1522,8 +1522,8 @@ def test_the_viewer_dispatches_widgets_on_the_shape_not_the_look():
       * the ONE widget rule exists (`legalValues`) and BOTH surfaces ask
         it -- the machine card's adder and the stage table's cell;
       * a new row is born at its value in force, never the literal "1";
-      * a bool cell writes a real boolean (the declared type decides the
-        coercion, not the value's look)."""
+      * a cell's VALUE is read by the declared type too, not by the look of
+        what was typed."""
     src = (STATIC / "task-setup" / "viewer.js").read_text()
     assert "function legalValues(" in src
     assert src.count("legalValues(") >= 3, (
@@ -1531,8 +1531,23 @@ def test_the_viewer_dispatches_widgets_on_the_shape_not_the_look():
     assert 'addPoint(sel.value, "1")' not in src, (
         "a row born as the literal 1 is the bug this closed")
     assert "String(valueInForce(sel.value))" in src
-    assert 'ov[col] = text === "true"' in src
+    # This asserted the ONE case the writer handled -- `ov[col] = text ===
+    # "true"` -- and passed for seven months over a `setCell` that guessed
+    # every other type from `Number(text)`.  The rule is the lookup, not the
+    # bool branch (2026-08-25).
+    body = src.split("function setCell", 1)[1].split("\n}", 1)[0]
+    assert "CELL_READERS[(_meta[col] || {}).type]" in body, (
+        "the cell reader is not chosen by the parameter's declared type")
+    assert "Number.isFinite(Number(text))" not in body, (
+        "a value's look picks its type again -- that is the `use_gpu` bug "
+        "and the `kgrid` one")
 
+
+# `test_every_declared_type_has_a_cell_reader` moved to
+# `tests/test_task_setup_cell_readers_js.py` on 2026-08-25, with the table
+# it pins: the readers left `viewer.js` for `task-setup/cell-readers.js` so
+# a test could run them instead of grepping for their names.  Key-existence
+# was all this file could ever check -- `int3: (t) => t` would have passed.
 
 def test_another_kinds_items_stay_out_of_the_optimization_surfaces(
         web_client):
@@ -2001,34 +2016,17 @@ class TestTheTabShowsWhatAPrepWouldResolve:
         assert "script_generation.preamble" in r["effective"]
         assert "from" in r["effective"]["script_generation.preamble"]
 
-    def test_a_remote_target_is_warned_and_a_local_one_is_not(
-            self, web_client, tmp_path, monkeypatch):
-        """The § 3 rule, through the route: `--target` carries measurements,
-        a preamble is a preference and stays here."""
-        b = self._folder(tmp_path, monkeypatch)
-        remote = web_client.get("/api/task-setup/resolved", query_string={
-            "dest": str(b), "target": "sol"}).get_json()
-        assert remote["bootstrap_warning"], remote
-        assert "preambles CONCATENATE" in remote["bootstrap_warning"]
-
-        local = web_client.get("/api/task-setup/resolved", query_string={
-            "dest": str(b), "target": "(this machine)"}).get_json()
-        assert local["bootstrap_warning"] is None, (
-            "preparing for the box you are on is the case the local config "
-            "IS for -- warning there would be noise")
-
-    def test_the_warning_is_the_same_rule_the_cli_uses(self):
-        """One rule, two surfaces.  A rule about when a job will fail must
-        not be able to hold two opinions, so both call the same function."""
-        cli = (ROOT / "molbuilder/jobset/_cli.py").read_text()
-        web = (ROOT / "molbuilder/web/blueprints/build.py").read_text()
-        assert "bootstrap_travels" in cli
-        assert "bootstrap_travels" in web
-        # and neither carries its own copy of the test
-        for src, who in ((cli, "_cli.py"), (web, "build.py")):
-            assert 'v.get("from")' not in src, (
-                f"{who} re-implements the bootstrap check instead of "
-                f"calling runtime_config.bootstrap_travels")
+    # `test_a_remote_target_is_warned_and_a_local_one_is_not` and
+    # `test_the_warning_is_the_same_rule_the_cli_uses` were RETIRED
+    # 2026-08-25 with the warning they pinned.  Both asserted § 3's rule as
+    # it read before 2026-08-24 -- *"a preamble is a preference, so it stays
+    # local"* -- which that section retracted in a boxed note the same day:
+    # the bootstrap is a fact about the machine and rides its probed record,
+    # and `runwrap` reads the record and nothing else.  The warning fired on
+    # every named-target prep regardless, because it asked the local config
+    # cascade a question the target's record had already answered.  A test
+    # that keeps a retracted rule alive is worse than no test: it makes
+    # deleting the dead code look like a regression.
 
     def test_the_provenance_list_uses_the_pages_facts_component(self):
         css = (ROOT / "molbuilder/web/static/task-setup/style.css").read_text()

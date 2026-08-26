@@ -15,7 +15,9 @@ everywhere).
 
 **Why this is a second file and not more of `task.py`.** § 6.6's eight checks
 split cleanly: four are answerable from the description alone and live in the
-codec, and four need the engine's field schema. ``task.py`` is L1 — it imports
+codec, and four need the engine's field schema -- one of those four being the
+DECLARED-TYPE row (added 2026-08-25), which needs the schema for the same
+reason the bounds row does: only the field knows what it can hold. ``task.py`` is L1 — it imports
 ``persist`` and the standard library — and importing an engine into it is
 exactly what ``tests/test_layering.py`` prevents. Its docstring carries the same
 split, so the two halves cannot quietly diverge; **if you add a row here, add it
@@ -36,6 +38,8 @@ while *parsing*, where there is no object yet to attach a finding to.
 from __future__ import annotations
 
 import dataclasses
+import re
+import typing
 from typing import Any, Dict, List, Optional
 
 from ..issues import Issue, ValidationError
@@ -105,7 +109,7 @@ def preflight(task, config_cls=None, *,
     #  ...which begins with being a value that field can HOLD.  Found by the
     #  M2 seam walk (2026-08-07): `relax_steps: 100.7` is inside its range and
     #  is not an integer, and reached the deck as `MD.NumCGsteps 100.7`.
-    out.extend(_values_are_the_declared_type(task, fields))
+    out.extend(_values_are_the_declared_type(task, cls, fields))
     out.extend(_values_in_bounds(task, fields))
 
     # -- 5. the sequence's own findings (§ 6.4 / § 6.6a) -- warnings -------
@@ -268,7 +272,7 @@ def _no_such_field(name, fields, cls, lead) -> str:
             f"{cls.__name__}{hint}")
 
 
-def _values_are_the_declared_type(task, fields) -> List[Issue]:
+def _values_are_the_declared_type(task, cls, fields) -> List[Issue]:
     """An override's value must be one the field can actually hold.
 
     **Refused rather than coerced**, and the two halves of that decision are
@@ -279,17 +283,33 @@ def _values_are_the_declared_type(task, fields) -> List[Issue]:
     run a different calculation from the one described, and parsing ``"150"``
     would make a quoting slip invisible.
 
+    **The annotation is RESOLVED, never sniffed as source text**
+    *(2026-08-25)*. This read ``f.type`` and compared it against the literal
+    strings ``"int"`` / ``"float"`` / ``"bool"``, so under ``from __future__
+    import annotations`` — where a field's ``type`` IS its source text — it
+    recognised those three spellings and nothing else. Every ``Optional[…]``
+    field and every sequence field went unchecked: ``kgrid``,
+    ``kgrid_displacement``, ``species_order``, ``ecp_atoms``. A description
+    carrying ``"kgrid": "4,4,1"`` therefore passed this gate, saved cleanly,
+    resolved into a config holding a string where a triple belongs, and died
+    at ``prep`` inside the metadata range check as *"this is a programmer
+    bug"* — a message that names neither the stage nor the key, because at
+    that depth neither is still in hand (found live 2026-08-25). It is the
+    same trick one file over that ``resolve._declares_float`` records itself
+    getting wrong, for the same reason.
+
     Found by the M2 seam walk. Neither side could see it alone — ``task.py``
     has no schema to check a type against, and ``effective_config`` had no
     reason to think a value might not be one.
     """
+    hints = typing.get_type_hints(cls)
     out: List[Issue] = []
     for st in (task.stages or ()):
         for key, value in st.overrides.items():
             f = fields.get(key)
             if f is None:
                 continue                    # already reported by _names_exist
-            bad = _type_complaint(f.type, value)
+            bad = _type_complaint(hints.get(key, f.type), value)
             if bad:
                 out.append(Issue(
                     "error",
@@ -298,23 +318,104 @@ def _values_are_the_declared_type(task, fields) -> List[Issue]:
     return out
 
 
+#: A declared type in the words someone editing the file would use. § 6.6's
+#: row asks a refusal to name *what the field declares*, and "not a whole
+#: number" does not tell a person who typed ``4,4,1`` that ``[4, 4, 1]`` is
+#: what the description wants.
+_PLURAL = {int: "whole numbers", float: "numbers", str: "text values",
+           bool: "true/false values"}
+_COUNT = {1: "one", 2: "two", 3: "three", 4: "four"}
+
+
+def _spell(declared) -> str:
+    origin = typing.get_origin(declared)
+    args = [a for a in typing.get_args(declared) if a is not Ellipsis]
+    elem = args[0] if args else None
+    if origin is tuple and args:
+        return (f"{_COUNT.get(len(args), str(len(args)))} "
+                f"{_PLURAL.get(elem, 'values')}, written as a list")
+    if origin is list:
+        return f"a list of {_PLURAL.get(elem, 'values')}"
+    return {int: "a whole number", float: "a number", bool: "true or false",
+            str: "text"}.get(declared,
+                             getattr(declared, "__name__", str(declared)))
+
+
 def _type_complaint(declared, value) -> Optional[str]:
     """Why *value* cannot be this field's, or ``None`` if it can."""
+    origin = typing.get_origin(declared)
+    args = typing.get_args(declared)
+
+    # ``Optional[X]`` — ``None`` is always legal and the rest is X's question.
+    # A wider union declares no single shape to name, so it is left alone
+    # rather than guessed at.
+    if origin is typing.Union:
+        if value is None:
+            return None
+        inner = [a for a in args if a is not type(None)]
+        return _type_complaint(inner[0], value) if len(inner) == 1 else None
+
+    if origin in (tuple, list):
+        want = f"which is not {_spell(declared)}"
+        elem = next((a for a in args if a is not Ellipsis), None)
+        # A ``str`` is itself a sequence, and treating it as one is exactly
+        # how ``"4,4,1"`` reached a ``Tuple[int, int, int]``: it has three
+        # of something, and every check that asked only *"is it a sequence"*
+        # said yes.  So it is refused FIRST, by name, with the list it was
+        # trying to be.
+        if isinstance(value, str) or not isinstance(value, (list, tuple)):
+            return want + _write_it_as_a_list(value, args, origin)
+        if origin is tuple and Ellipsis not in args and len(value) != len(args):
+            return f"{want} -- it has {len(value)}, not {len(args)}"
+        for v in value:
+            if _scalar_complaint(elem, v):
+                return f"{want} -- {v!r} is not one"
+        return None
+
+    return _scalar_complaint(declared, value)
+
+
+def _write_it_as_a_list(value, args, origin) -> str:
+    """The comma-text a person typed, shown back as the list to write.
+
+    Only when it would actually BE the value — the same count, and every
+    piece the element type. A guess that does not parse is worse than no
+    guess, so there is no partial version of this.
+    """
+    if not isinstance(value, str):
+        return ""
+    pieces = [p for p in re.split(r"[,\sx]+", value.strip()) if p]
+    if origin is tuple and Ellipsis not in args and len(pieces) != len(args):
+        return ""
+    elem = next((a for a in args if a is not Ellipsis), None)
+    try:
+        shaped = [elem(p) for p in pieces] if elem in (int, float) else pieces
+    except (TypeError, ValueError):
+        return ""
+    return f" -- write {list(shaped)!r}"
+
+
+def _scalar_complaint(declared, value) -> Optional[str]:
+    """The same question for a single value. A type with no rule here is not
+    a refusal: this gate says what it knows and leaves the rest to bounds."""
     is_bool = isinstance(value, bool)
-    if declared in ("int", int) and "Optional" not in str(declared):
+    if declared is bool:
+        return None if is_bool else "which is not true or false"
+    if declared is int:
         if is_bool or not isinstance(value, (int, float)):
             return "which is not a whole number"
         if isinstance(value, float) and not value.is_integer():
             return (f"which is not a whole number -- this field counts "
                     f"things, so {value!r} would have to be rounded and the "
                     f"run would not be the one described")
-    elif declared in ("float", float) and "Optional" not in str(declared):
+        return None
+    if declared is float:
         if is_bool or not isinstance(value, (int, float)):
             return "which is not a number"
-    elif declared in ("bool", bool) and not is_bool:
-        return "which is not true or false"
+        return None
+    if declared is str:
+        return None if isinstance(value, str) else "which is not text"
     return None
-
 
 def _values_in_bounds(task, fields) -> List[Issue]:
     """Every override's value is inside the bound the schema declares.

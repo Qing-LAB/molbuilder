@@ -1177,6 +1177,7 @@ In order, and all of it before anything is written:
 | no `overrides` key names a stage field (§ 2) | refuse, naming the field |
 | every stage `name` matches `[A-Za-z0-9_]+` | refuse, naming the stage and the rule |
 | **stage names are unique**, compared case-insensitively | refuse, naming the repeat |
+| every value is one its field's declared type can hold | refuse, naming the field, the value and what the field declares |
 | every value is inside the schema's bounds | refuse, naming the field and both bounds |
 
 **Two things are deliberately not checked here.**

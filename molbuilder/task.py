@@ -37,7 +37,10 @@ which already has the schema in hand:
           ``structure.formula`` derive (§ 6.1's first rule -- the check needs
           only ``identity``, which is L1 beside this one)
   P2      the engine has a generator · every
-          named field exists in the schema · every value is inside its bounds ·
+          named field exists in the schema · every value is one that field's
+          DECLARED TYPE can hold (added 2026-08-25 — the row that let
+          ``"kgrid": "4,4,1"`` through, a string where the config declares
+          ``Tuple[int, int, int]``) · every value is inside its bounds ·
           ``shape: "hierarchical"`` on an engine whose ladder runs in ONE
           process (§ 6.7 — PySCF; refused naming the engine) · and § 6.6a's
           warning for two stages that RESOLVE identically, since resolving is

@@ -28,6 +28,8 @@
  */
 
 import { loadCodeMirror, modeFor } from "../lib/codemirror-load.js";
+// § 5.2: the declared type decides what a cell's text means.
+import { CELL_READERS } from "./cell-readers.js";
 
 const TASK_JSON     = "task.json";
 /* The hand-over a parameter tab leaves (`stages.md` § 6.5a).  Read ONLY when
@@ -724,15 +726,18 @@ function setCell(i, col, raw) {
         // Empty means "this stage uses the template's value" — a real state,
         // expressed by the key being ABSENT (`stages.md` § 6.2).
         delete ov[col];
-    } else if ((_meta[col] || {}).type === "bool") {
-        // The DECLARED type decides the coercion (the resolve layer's own
-        // rule) -- a bool cell writing the string "true" into an override
-        // is a type the reader then has to guess at.
-        ov[col] = text === "true";
-    } else {
-        const n = Number(text);
-        ov[col] = (text !== "" && Number.isFinite(n)) ? n : text;
+        syncFromModel();
+        return;
     }
+    /* THE DECLARED TYPE DECIDES, and nothing else may.  A value's LOOK
+     * never picks its type -- that is the rule `legalValues` keeps for the
+     * widget ("inventing a widget from the value's look is how `use_gpu`
+     * became a number box"), and it is the same rule here.  So a column
+     * whose type the catalogue did not give us is stored AS TYPED and
+     * named by the save door, rather than guessed at as a number. */
+    const read = CELL_READERS[(_meta[col] || {}).type];
+    const v = read ? read(text) : undefined;
+    ov[col] = (v === undefined) ? text : v;
     syncFromModel();
 }
 
@@ -2014,28 +2019,27 @@ function readAsksFromTask(task) {
  *
  *  The block `prep` itself prints, served by the same producer -- a
  *  hand-written notice here would be a second account of the same facts,
- *  free to drift from the one the terminal shows.  The bootstrap warning
- *  is `runtime_config.bootstrap_travels`, the rule both surfaces share.
+ *  free to drift from the one the terminal shows.
  */
 async function loadResolved() {
     const facts = $("ts-resolved");
-    const warn = $("ts-bootstrap-state");
-    if (!facts || !warn) return;
+    if (!facts) return;
     const proj = (window.molbuilder || {}).projects;
     const dir = proj && proj.getCurrentDir && proj.getCurrentDir();
-    if (!dir) { facts.hidden = true; warn.hidden = true; return; }
+    if (!dir) { facts.hidden = true; return; }
     let d = null;
     try {
-        const q = "dest=" + encodeURIComponent(dir)
-                + (_machine ? "&target=" + encodeURIComponent(_machine) : "");
-        d = await fetch("/api/task-setup/resolved?" + q).then((r) => r.json());
+        // Provenance is a property of the FOLDER, not of the machine you
+        // are preparing for; the `target` this used to send fed only the
+        // bootstrap warning, retired 2026-08-25.
+        d = await fetch("/api/task-setup/resolved?dest="
+                        + encodeURIComponent(dir)).then((r) => r.json());
     } catch (e) { d = null; }
-    if (!d || !d.ok) { facts.hidden = true; warn.hidden = true; return; }
+    if (!d || !d.ok) { facts.hidden = true; return; }
 
     facts.textContent = "";
-    /* WHICH FILE SUPPLIED EACH SETTING -- the question provenance exists to
-     * answer.  Shown before the warning, because the warning only makes
-     * sense once you can see where the lines came from. */
+    /* WHICH FILE SUPPLIED EACH SETTING -- the question provenance exists
+     * to answer. */
     for (const [key, v] of Object.entries(d.effective || {})) {
         facts.appendChild(el("div", null,
             el("dt", null, key.replace("script_generation.", "")),
@@ -2051,14 +2055,6 @@ async function loadResolved() {
     }
     facts.hidden = !facts.children.length;
 
-    const body = $("ts-bootstrap-body");
-    if (d.bootstrap_warning) {
-        if (body) body.textContent = d.bootstrap_warning;
-        warn.setAttribute("data-state", "refuse");
-        warn.hidden = false;
-    } else {
-        warn.hidden = true;
-    }
 }
 
 async function loadMachines() {

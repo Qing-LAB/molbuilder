@@ -203,6 +203,49 @@ with — so the browser cannot become a second reader that disagrees.
 450.0 Ry"* above *"Recommended: 300.0 Ry"*. Somebody checking a description
 before a week of compute should be able to see that the two are not the same.
 
+### 5.2 The declared type decides the cell — both the widget and the value
+
+A parameter's `type` comes from the catalogue and answers **two** questions, and
+neither may be answered by looking at the value instead:
+
+| | asked by | answered by |
+|---|---|---|
+| which control edits this cell | `legalValues` | `bool` / `enum` → a dropdown; everything else a text box |
+| what the typed text **means** | `CELL_READERS` (`task-setup/cell-readers.js`) | one reader per member of `template.TYPES` |
+
+Guessing either from the value's look is a bug this tab has had twice. A
+sweep row born as the number `1` made `use_gpu` a number box (fixed
+2026-08-20). And a cell that stored `Number(text)` when the text parsed and
+the **raw string** when it did not wrote `"kgrid": "4,4,1"` into a
+description — a string where the config declares `Tuple[int, int, int]`.
+`kgrid` is `int3`, `Number("4,4,1")` is `NaN`, and the four columns whose
+type is a sequence (`kgrid`, `kgrid_displacement`, `species_order`,
+`ecp_atoms`) all wrote text. It saved cleanly and failed at `prep`, hours
+later, inside a range check that could only call it *"a programmer bug"*
+(reported live 2026-08-25).
+
+So: **every type in the vocabulary has a reader, and a type the catalogue can
+declare but the tab cannot read is a test failure**, not a silent fallback —
+that is the only thing that makes the next addition noisy.
+
+**Three types have a reader and no catalogue item**: `pow2`, `text` and
+`intlist`. A column's type comes from the shipped catalogue, so no cell can
+carry one today — they are handled in advance because the failure without a
+reader is *silent* (the lookup misses, the raw text is stored), and a newly
+added item is exactly when nobody thinks to check. So **when such an item
+does land, the stage table already reads it** — `pow2` as a whole number
+(snapping is `template._shape`'s, not the cell's), `text` verbatim, and
+`intlist` as comma- or space-separated whole numbers (not the range syntax
+`0-35, 100` the Build form's own control takes — that is a different
+control's contract). Do not add a second path for them.
+
+A k-grid takes the three spellings `--kgrid` itself takes — `4,4,1`,
+`4x4x1`, `4 4 1` — because one product should not accept a value at the
+terminal and refuse it in the browser. Text that is **not** the declared
+type is kept exactly as typed and refused by name at the save door
+([`stages.md § 6.6`](?doc=engines/stages.md)'s declared-type row); storing a
+half-parsed value would be the quiet version of the same bug.
+
 **A job always has at least one stage.** You start with `coarse`; adding another
 is one more row. There is no stage-less shape to fall into, so a job's artifacts
 are named the same way from the first run — `01_coarse` — and a job that grows a

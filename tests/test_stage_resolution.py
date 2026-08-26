@@ -447,15 +447,46 @@ def test_an_OPTIONAL_float_is_widened_like_any_other():
             f"annotation again")
 
 
-def test_nothing_but_int_to_float_is_coerced():
-    """The other half, and the reason the widening is safe.
+def test_a_list_override_becomes_the_tuple_the_field_declares():
+    """JSON HAS ONE SEQUENCE — the widening argument above, one shape up.
 
-    ``float → int`` would silently truncate ``relax_steps: 100.7`` to 100, and
-    a string would quietly parse.  Both are the caller's mistake and are
-    refused BY NAME in the preflight, which is where a wrong value belongs.
+    ``kgrid`` declares ``Tuple[int, int, int]`` and a description can only
+    spell it ``[4, 4, 1]``.  So until 2026-08-25 a stage that overrode it
+    left the config holding a LIST while every stage that did not held the
+    template's TUPLE: one field with two shapes, decided by whether a cell
+    happened to be filled in.  Nothing broke only because
+    ``siesta/input.py`` writes ``tuple(cfg.kgrid)`` before comparing — that
+    defensive call IS the symptom, and it is one line away from not being
+    written the next time somebody compares a k-grid.
+    """
+    got = effective_config(_template(), {"kgrid": [4, 4, 1]}).kgrid
+    assert isinstance(got, tuple) and got == (4, 4, 1), (
+        f"kgrid came back {got!r} ({type(got).__name__}) where the field "
+        f"declares Tuple[int, int, int]")
+    disp = effective_config(
+        _template(),
+        {"kgrid_displacement": [0.5, 0.5, 0.0]}).kgrid_displacement
+    assert isinstance(disp, tuple), (
+        f"kgrid_displacement came back {type(disp).__name__}")
+
+
+def test_nothing_but_a_lossless_respelling_is_coerced():
+    """The other half, and the reason both coercions are safe.
+
+    ``int -> float`` and ``list -> tuple`` are the SAME value written the
+    only other way the source format allows, so doing them silently is
+    honest.  ``float -> int`` is not: it would truncate ``relax_steps:
+    100.7`` to 100.  Nor is parsing a string, which would make a quoting
+    slip invisible — the slip that produced ``"kgrid": "4,4,1"``.  Both are
+    the caller's mistake and are refused BY NAME in the preflight, which is
+    where a wrong value belongs.
     """
     assert effective_config(_template(), {"relax_steps": 100}).relax_steps == 100
     assert isinstance(
         effective_config(_template(), {"relax_steps": 100}).relax_steps, int)
     kept = effective_config(_template(), {"basis_size": "TZP"}).basis_size
     assert kept == "TZP"
+    kept_text = effective_config(_template(), {"kgrid": "4,4,1"}).kgrid
+    assert kept_text == "4,4,1", (
+        "the ⊕ operator parsed a string -- a quoting slip must stay visible "
+        "so the preflight can name it")

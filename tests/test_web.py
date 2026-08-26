@@ -500,8 +500,61 @@ def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
 # --------------------------------------------------------------------- #
 
 
+def test_a_comma_string_coerces_for_every_sequence_shape():
+    """Four sequence shapes reach this function and until 2026-08-25 only
+    three of them parsed the text a person types.
+
+    ``Sequence[str]`` (``species_order``), ``Sequence[int]`` and
+    ``Sequence[float]`` each split a comma string.  The TUPLE branch beside
+    them did not -- it read ``if not isinstance(value, (list, tuple)):
+    return value`` and handed the string straight back, while the
+    docstring above it claimed tuples "fall through to per-element int
+    coercion".  So a POST carrying ``kgrid: "4,4,1"`` stored a ``str`` in a
+    field declaring ``Tuple[int, int, int]``, and the range check
+    downstream could only report it as a programmer bug.
+
+    The three k-grid spellings are the ones ``--kgrid`` itself takes
+    (`cli.KGridParam`), because one product should not accept a value at
+    the terminal and refuse it over HTTP.
+    """
+    import dataclasses
+    import typing
+
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.web.blueprints._shared import coerce_to_field_type
+
+    hints = typing.get_type_hints(SiestaConfig)
+    fields = {f.name: f for f in dataclasses.fields(SiestaConfig)}
+
+    def coerce(name, value):
+        return coerce_to_field_type(fields[name], value, hints)
+
+    for spelling in ("4,4,1", "4x4x1", "4 4 1"):
+        assert coerce("kgrid", spelling) == (4, 4, 1), spelling
+    assert coerce("kgrid", [4, 4, 1]) == (4, 4, 1)
+    assert coerce("kgrid_displacement", "0.5,0.5,0.0") == (0.5, 0.5, 0.0)
+    assert coerce("species_order", "Au,C,H,S") == ["Au", "C", "H", "S"]
+    assert coerce("mesh_cutoff", "300") == 300.0
 
 
+def test_a_kgrid_that_is_not_three_numbers_is_still_refused(web_client,
+                                                            peptide_xyz):
+    """Parsing the text must not swallow a value that is not one.  The
+    length is deliberately NOT checked in the coercion -- ``_validate_kgrid``
+    already says it better -- so this pins that the refusal still arrives."""
+    r = web_client.post("/api/build/preflight", json={
+        "structure": _env(peptide_xyz),
+        "engine": "siesta",
+        "params": {"kgrid": "4,4"},
+    })
+    body = r.get_json()
+    # The config now PARSES -- that is the fix -- so the envelope is the
+    # ordinary one and the complaint arrives where a wrong value belongs:
+    # an error Issue naming the field, rather than a 400 naming a cast.
+    errs = [i for i in body["issues"]
+            if i["severity"] == "error" and i["where"] == "config.kgrid"]
+    assert errs, body["issues"]
+    assert "3-tuple" in errs[0]["message"], errs[0]
 
 
 # --------------------------------------------------------------------- #

@@ -324,6 +324,85 @@ def test_a_legal_boolean_is_accepted():
 
 
 # --------------------------------------------------------------------- #
+#  Row 4a, the SEQUENCE half -- added 2026-08-25 after it shipped broken #
+# --------------------------------------------------------------------- #
+#
+#  The row above checked three declared types: ``int``, ``float``, ``bool``.
+#  It did it by comparing ``f.type`` -- the SOURCE TEXT, under
+#  ``from __future__ import annotations`` -- against those three strings, so
+#  every ``Optional[...]`` and every sequence field matched nothing and was
+#  waved through.  A description carrying ``"kgrid": "4,4,1"`` (which is what
+#  the Task-setup stage table wrote for any non-bool cell) saved cleanly here,
+#  resolved into a config holding a str where ``Tuple[int, int, int]`` is
+#  declared, and failed at ``prep`` inside the metadata range check as *"this
+#  is a programmer bug"* -- naming neither the stage nor the key.  Reported
+#  live against Au-BDT-Au, 2026-08-25.
+
+
+def test_the_comma_text_a_person_types_is_refused_for_a_triple():
+    """THE LIVE DEFECT.  ``4,4,1`` is the right thing to TYPE -- it is one of
+    the three spellings ``--kgrid`` itself takes -- and the wrong thing to
+    STORE, because JSON has no tuple and a description spells a triple as a
+    list.  So the refusal must name the list to write, or it sends someone
+    who typed the correct value away with nothing to change."""
+    [issue] = preflight(_staged({"kgrid": "4,4,1"}))
+    assert issue.severity == "error" and issue.where == "config.kgrid"
+    assert issue.stage == "tight"
+    assert "'4,4,1'" in issue.message
+    assert "three whole numbers" in issue.message
+    assert "[4, 4, 1]" in issue.message
+
+
+def test_a_list_is_accepted_for_a_triple():
+    """JSON's only spelling of a triple.  Refusing it would refuse every
+    description the browser and the CLI can write."""
+    assert preflight(_staged({"kgrid": [4, 4, 1]})) == []
+
+
+def test_a_triple_of_the_wrong_length_is_refused_by_its_length():
+    """Two counts is not a k-grid, and saying *"it has 2, not 3"* is the
+    difference between a fixable message and a puzzle."""
+    [issue] = preflight(_staged({"kgrid": [4, 4]}))
+    assert "2, not 3" in issue.message
+
+
+def test_a_fractional_component_is_refused_for_an_int_triple():
+    """The counting argument from ``relax_steps``, one shape up: a k-grid
+    axis is a COUNT of points, so 1.5 of one is not a sampling anybody
+    described."""
+    [issue] = preflight(_staged({"kgrid": [4, 4, 1.5]}))
+    assert "1.5" in issue.message
+
+
+def test_a_float_triple_takes_ints_per_component():
+    """TOML's ``0`` and ``0.0`` are different types to a parser and the same
+    displacement to SIESTA -- the same argument the int -> float widening
+    makes for a scalar."""
+    assert preflight(_staged({"kgrid_displacement": [0, 0, 0]})) == []
+
+
+def test_comma_text_is_refused_for_a_list_field():
+    """``species_order`` had the same hole for the same reason: a str IS a
+    sequence, so every check that asked only *"is it a sequence"* said yes."""
+    [issue] = preflight(_staged({"species_order": "Au,C,H,S"}))
+    assert issue.where == "config.species_order"
+    assert "['Au', 'C', 'H', 'S']" in issue.message
+
+
+def test_an_optional_field_still_checks_the_type_inside_it():
+    """The other half of the source-text bug.  ``Optional[int]`` is not the
+    string ``"int"``, so ``block_size`` -- and every other optional field --
+    accepted anything at all."""
+    assert _errors(preflight(_staged({"block_size": "8"})))
+
+
+def test_none_is_a_legal_value_for_an_optional_field():
+    """``block_size`` unset means *(auto)*, a real state the config declares
+    (`tuning.md` § 2.11).  Checking the inner type must not cost it."""
+    assert preflight(_staged({"block_size": None})) == []
+
+
+# --------------------------------------------------------------------- #
 #  A-9 — a machine fact refuses with § 7's story, not the typo story     #
 # --------------------------------------------------------------------- #
 

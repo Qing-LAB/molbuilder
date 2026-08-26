@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import re
 import typing
 from dataclasses import fields
 from typing import Any, Dict, List, Optional, Tuple
@@ -1094,8 +1095,10 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
     Coercion respects ``Optional[X]`` (the empty string and ``None``
     pass through as ``None``).  ``bool`` accepts the JSON literal True
     / False as well as the strings ``"true"`` / ``"false"`` / ``"1"`` /
-    ``"0"`` (case-insensitive).  Tuple-typed fields like ``kgrid``
-    fall through to per-element int coercion.
+    ``"0"`` (case-insensitive).  A Tuple-typed field like ``kgrid`` takes
+    a list OR the comma text a person types (``"4,4,1"``, ``"4x4x1"``,
+    ``"4 4 1"`` -- the spellings ``--kgrid`` itself takes), and coerces
+    per component.
 
     Unknown / unhandled types pass through untouched -- the dataclass
     constructor sees what the caller sent.
@@ -1127,11 +1130,28 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
         return float(value)
     if ann is str:
         return str(value)
-    # Tuple[int, int, int] (kgrid is the only such field today).
+    # Tuple[int, int, int] (kgrid) and Tuple[float, float, float]
+    # (kgrid_displacement, Transport's k_mesh_transverse).
+    #
+    # A COMMA STRING PARSES, for the same reason the Sequence[*] branches
+    # just below accept one: a non-browser client sends the text a person
+    # would type.  Until 2026-08-25 this was the one sequence branch that
+    # did not -- `if not isinstance(value, (list, tuple)): return value`
+    # handed the string straight back, while the docstring above claimed it
+    # "falls through to per-element int coercion".  A POST carrying
+    # `kgrid: "4,4,1"` therefore stored a str in a `Tuple[int, int, int]`
+    # field, and the range check downstream could only report it as a
+    # programmer bug.
+    #
+    # A value that is neither a string nor a sequence RAISES here rather
+    # than passing through: TypeError is what this function's contract
+    # promises the caller for a value it cannot make, and the endpoint
+    # turns it into an error Issue.  The LENGTH is not checked -- that is
+    # `_validate_kgrid`'s sentence to pass, and it says it better.
     if origin is tuple and args:
-        if not isinstance(value, (list, tuple)):
-            return value
         elem_t = args[0]
+        if isinstance(value, str):
+            value = [s for s in re.split(r"[,\sx]+", value.strip()) if s]
         return tuple(elem_t(v) for v in value)
     # Sequence[str] (species_order in SiestaConfig) -- accept either
     # a comma-string or an already-list value.

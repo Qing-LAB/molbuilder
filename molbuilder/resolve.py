@@ -579,25 +579,41 @@ def _catalogue_types() -> Mapping[str, str]:
         return {}
 
 
-def _declares_float(config, name: str) -> bool:
-    """Whether the CATALOGUE declares *name* a float (`template.md` § 5).
+def _annotated(config, name: str):
+    """The field's RESOLVED annotation, ``Optional[...]`` unwrapped.
 
-    Falls back to the dataclass annotation when the catalogue has no item for
-    it -- a config class used in a test fixture, or a field that is not a
-    template item.  The fallback resolves the annotation properly rather than
-    string-matching it, which is the bug this function replaced.
+    The fallback both predicates below share when the catalogue has no item
+    for a name -- a config class used in a test fixture, or a field that is
+    not a template item.  It resolves the annotation properly rather than
+    string-matching it, which is the bug they replaced.
     """
-    from . import template as _t
-    declared = _catalogue_types().get(name)
-    if declared is not None:
-        return declared == "float"
     import typing
+
+    from . import template as _t
     try:
         ann = typing.get_type_hints(type(config)).get(name)
     except Exception:
-        return False
+        return None
     inner, _ = _t._unwrap_optional(ann)
-    return inner is float
+    return inner
+
+
+def _declares_float(config, name: str) -> bool:
+    """Whether the CATALOGUE declares *name* a float (`template.md` § 5)."""
+    declared = _catalogue_types().get(name)
+    if declared is not None:
+        return declared == "float"
+    return _annotated(config, name) is float
+
+
+def _declares_a_triple(config, name: str) -> bool:
+    """Whether the CATALOGUE declares *name* a fixed-length sequence --
+    ``int3`` (``kgrid``) or ``float3`` (``kgrid_displacement``)."""
+    import typing
+    declared = _catalogue_types().get(name)
+    if declared is not None:
+        return declared in ("int3", "float3")
+    return typing.get_origin(_annotated(config, name)) is tuple
 
 
 def effective_config(template, overrides: Mapping[str, Any], *,
@@ -693,11 +709,26 @@ def effective_config(template, overrides: Mapping[str, Any], *,
     # The catalogue says ``float`` for all three, because that is what a
     # declared type is FOR (`template.md` § 5: what a parser cannot know).  So
     # the authority is the item, and the annotation is not consulted at all.
-    widened = {
-        k: (float(v) if _declares_float(template, k)
-            and isinstance(v, int) and not isinstance(v, bool) else v)
-        for k, v in overrides.items()
-    }
+    #
+    # AND JSON HAS ONE SEQUENCE, which is the same argument one shape up
+    # (2026-08-25).  ``kgrid`` declares ``Tuple[int, int, int]`` and a
+    # description can only spell it ``[4, 4, 1]``, so a stage that overrode
+    # it left the config holding a LIST while every stage that did not held
+    # the template's tuple -- one object, two shapes for one field,
+    # depending on a cell nobody thinks of as a type decision.  Nothing
+    # broke, because ``siesta/input.py`` writes ``tuple(cfg.kgrid)`` before
+    # comparing; that defensive call IS the symptom.  ``list -> tuple`` is
+    # lossless, so it is done here, exactly as ``template._shape`` already
+    # does it for the template's own side of the ⊕.
+    def _as_declared(k, v):
+        if (_declares_float(template, k)
+                and isinstance(v, int) and not isinstance(v, bool)):
+            return float(v)
+        if _declares_a_triple(template, k) and isinstance(v, list):
+            return tuple(v)
+        return v
+
+    widened = {k: _as_declared(k, v) for k, v in overrides.items()}
 
     # ``replace`` builds a NEW object, so the template is untouched and every
     # stage resolves against the same backbone regardless of order.
