@@ -8,6 +8,8 @@ when more than one test file needs the same setup.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -72,6 +74,131 @@ def isolated_projects_root(tmp_path, monkeypatch):
     root.mkdir(exist_ok=True)
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
     return root
+
+
+# --------------------------------------------------------------------- #
+#  No test resolves the PRODUCT's toolchain from the host  (2026-08-25)  #
+# --------------------------------------------------------------------- #
+
+#: The binaries molbuilder resolves from the environment it ENTERS, never
+#: from whatever the developer's box happens to have on PATH.  A wrapper
+#: activates its conda env and then looks up ``siesta`` there -- its own
+#: failure text says so: *"not on PATH after activating '<env>'"*.
+_PRODUCT_TOOLCHAIN = ("siesta", "conda", "mamba", "mpirun")
+
+#: `conda activate` / `mamba activate` succeed silently -- that is all a
+#: wrapper running in a bare shell needs them to do, and it is the call
+#: that reached the host.  EVERYTHING ELSE IS DELEGATED to the real binary
+#: (2026-08-25): `molbuilder.diagnostics` asks `conda env list --json` which
+#: envs exist, and a stub answering that with silence made `env_available`
+#: report none -- so `test_siesta_keyword_smoke.py` and twelve others
+#: SKIPPED instead of running.  A guard that turns real tests into skips is
+#: worse than the hole it closes, because a skip is quiet.
+_DELEGATING = ("conda", "mamba")
+
+_STUB_BODIES = {
+    # Answers the build probe the way the parser downstream expects.  NOT
+    # delegated: reaching the host's engine is the hole this closes, and a
+    # suite that wants a real SIESTA addresses the env's binary by absolute
+    # path (`test_siesta_keyword_smoke.py` does, and says so).
+    "siesta": (
+        'if [ "${1:-}" = "--version" ]; then\n'
+        '    echo "Version         : 5.4.2-stub"\n'
+        '    echo "Parallelisations: MPI"\n'
+        "    exit 0\n"
+        "fi\n"
+        'echo "stub siesta: $*"\n'
+    ),
+    # Drops its own flags and runs what it was asked to launch, so a
+    # `mpirun -np 4 siesta ...` still reaches the siesta stub above.
+    "mpirun": (
+        "while [ $# -gt 0 ]; do\n"
+        '    case "$1" in\n'
+        "        -np|-n|--np|--n) shift 2 ;;\n"
+        "        -*) shift ;;\n"
+        "        *) break ;;\n"
+        "    esac\n"
+        "done\n"
+        'if [ $# -gt 0 ]; then exec "$@"; fi\n'
+        "exit 0\n"
+    ),
+}
+
+
+def _delegating_body(real: str) -> str:
+    """Swallow `activate`; hand everything else to the real binary."""
+    return (
+        'case "${1:-}" in\n'
+        "    activate|deactivate) exit 0 ;;\n"
+        "esac\n"
+        f'_real="{real}"\n'
+        'if [ -n "$_real" ] && [ -x "$_real" ]; then exec "$_real" "$@"; fi\n'
+        "exit 0\n"
+    )
+
+
+@pytest.fixture(scope="session")
+def _product_toolchain_stubs(tmp_path_factory) -> Path:
+    """Built once per session; the PATH entry is per-test (below)."""
+    d = tmp_path_factory.mktemp("product-toolchain")
+    # Resolved BEFORE the stub dir is on PATH, so a delegating stub cannot
+    # find itself.
+    real = {n: (shutil.which(n) or "") for n in _DELEGATING}
+    for name in _PRODUCT_TOOLCHAIN:
+        if name in _DELEGATING:
+            # A GUARD MUST NOT INVENT A TOOL THE MACHINE DOES NOT HAVE
+            # (2026-08-25).  `mamba` is absent on qlabsrv, and stubbing it
+            # anyway put one on PATH -- where `_locate_env_manager` PREFERS
+            # it to conda.  The invented mamba shadowed the real conda,
+            # answered `env list --json` with silence, and detection
+            # reported zero envs; thirteen tests that need
+            # `molbuilder-siesta` skipped instead of running, quietly.
+            # Absent stays absent: there is no host binary to reach.
+            if not real[name]:
+                continue
+            body = _delegating_body(real[name])
+        else:
+            body = _STUB_BODIES[name]
+        f = d / name
+        f.write_text("#!/usr/bin/env bash\n" + body, encoding="utf-8")
+        f.chmod(0o755)
+    return d
+
+
+@pytest.fixture(autouse=True)
+def product_toolchain_is_the_suites_own(_product_toolchain_stubs, monkeypatch):
+    """**No test may reach the host's engine or conda.**
+
+    Several suites render a run wrapper and EXECUTE it -- which is the right
+    thing to test, because that bash is the artifact the cluster runs.  To
+    run it in a bare shell they strip the bootstrap out of it, and that is
+    where the hole was: with no activation, every lookup inside the wrapper
+    (``command -v siesta``, ``conda activate``, ``mpirun``) fell through to
+    the SYSTEM path.  The suite's result then depended on what the developer
+    happened to have installed, which is the opposite of a test.
+
+    Found live on qlabsrv 2026-08-25.  A root-owned 2023
+    ``/usr/local/bin/siesta`` was on PATH; it does not know ``--version``,
+    and SIESTA reads its deck from stdin, so it did not fail -- it waited
+    for a deck.  Eight tests in ``test_runwrap_cold_restart.py`` failed as
+    20-second timeouts, each leaving a blocked process behind (28 had
+    accumulated).  A hostile-toolchain sweep then found the same hole in
+    ``test_launch_door_gate.py`` (conda), ``test_wrapper_preamble_preflight``
+    and ``test_runwrap.py``.
+
+    So the suite brings its own, and they behave.  **A test that needs a
+    HOSTILE binary builds its own stub and prepends it** -- it lands ahead of
+    this one and wins (``test_runwrap_engine_probe.py`` does exactly that,
+    and must, because a guard against hanging cannot be proven by a stub
+    that never hangs).  What no test gets is the host's.
+
+    This does NOT stub the test harness's own tools -- ``bash``, ``node``,
+    ``git``, ``timeout``.  Those are how the tests RUN; the product does not
+    resolve them from an env it activates, and a suite that shadowed them
+    would be unable to execute at all.
+    """
+    monkeypatch.setenv(
+        "PATH", f"{_product_toolchain_stubs}{os.pathsep}{os.environ['PATH']}")
 
 
 @pytest.fixture(autouse=True)

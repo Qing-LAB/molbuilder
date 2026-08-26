@@ -36,6 +36,36 @@ Flags (`molbuilder/cli.py`):
 | `--supervise` / `--no-supervise` | **on** | run under a parent that can restart the server on request (§4); turn off when systemd/Docker/gunicorn owns restarts. `--debug` turns it off on its own |
 | `--no-auth` | off | skip auth entirely — **loopback host only** |
 
+### 1.1 Is the running server actually running your code?
+
+**Static files are read from disk on every request; Python is not.** A
+long-lived `serve` keeps the modules it imported at start-up, so edits to
+`molbuilder/**.py` — routes, blueprints, validators — are invisible until it
+restarts, while edits to `web/static/**` (CSS, JS) take effect on reload.
+
+That split is easy to miss precisely because the page *looks* updated. On
+2026-08-25 the dev server had been up since 19 August: the Results tab
+answered `/api/bench/summary` with a **404 HTML page**, the inspector's
+`r.json()` threw `SyntaxError: Unexpected token '<'`, and the route was
+perfectly present in the source. **109 Python commits** had landed in
+between, including the feature being tested.
+
+Two commands settle it before you debug anything:
+
+```bash
+ps -o pid,lstart,cmd -p "$(pgrep -f 'molbuilder serve' | tail -1)"   # started when?
+git log --oneline --since="<that time>" -- molbuilder/ ':!molbuilder/web/static'
+```
+
+An empty log means the server is current. A non-empty one means **restart
+first** — anything you conclude before that describes the old build. A route
+that 404s while `create_app()` lists it is this, every time:
+
+```bash
+python -c "from molbuilder.web.app import create_app; \
+print([str(r) for r in create_app(config={}).url_map.iter_rules() if 'bench' in str(r)])"
+```
+
 There is **no `--workers` flag and no built-in production server** — `serve`
 always runs Flask/Werkzeug's dev server in one process. To run it under gunicorn
 or behind nginx, *you* wrap it; molbuilder doesn't spawn workers, and its rate

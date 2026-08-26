@@ -40,29 +40,32 @@ from molbuilder.structure import Structure
 
 def _pyscf_env_python():
     """Return the path to the molbuilder-pySCF env's python, or None
-    if the env isn't installed on this machine."""
+    if the env isn't installed on this machine.
+
+    **Asks the product where the env IS** rather than guessing its layout
+    (2026-08-25).  This computed ``Path(CONDA_PREFIX).parent / "envs" /
+    <name>``, which is right only when ``CONDA_PREFIX`` is the BASE
+    install.  Run from inside an env -- which is how this suite runs --
+    ``.parent`` is ALREADY ``envs/``, so it built ``envs/envs/<name>/...``
+    and never matched.  It then fell back to ``<mgr> run -n <env> which
+    <tool>``, and ``which`` searches the INHERITED PATH: on a machine with
+    a system install that returns the HOST's binary.  So this file's own
+    rule -- *"no host PATH siesta is permitted; the env's binary is the
+    one"* -- was broken by its own fallback, silently, for as long as it
+    has existed; on qlabsrv it was measuring a root-owned 2023 build.
+    ``_env_prefix`` is the product's four-tier resolver and cannot return
+    something outside the env.
+    """
     from molbuilder.diagnostics import get_capabilities
+    from molbuilder.envs.install import _env_prefix
     caps = get_capabilities()
     if not caps.env_available("molbuilder-pySCF"):
         return None
-    # Standard conda layout: $CONDA_PREFIX/envs/<name>/bin/python
-    import os
-    candidate = Path(
-        os.environ.get("CONDA_PREFIX", "/home/qqing/miniconda3")
-    ).parent / "envs" / "molbuilder-pySCF" / "bin" / "python"
-    if not candidate.exists():
-        # Fallback: ask conda for the env's prefix
-        from molbuilder.envs import run_in_env
-        try:
-            r = run_in_env(
-                "molbuilder-pySCF",
-                ["python", "-c", "import sys; print(sys.executable)"],
-                capture_output=True, text=True, check=True,
-            )
-            return Path(r.stdout.strip())
-        except Exception:
-            return None
-    return candidate
+    prefix = _env_prefix("molbuilder-pySCF", caps.conda_binary)
+    if not prefix:
+        return None
+    candidate = Path(prefix) / "bin" / "python"
+    return candidate if candidate.exists() else None
 
 
 def _require_pyscf_env():

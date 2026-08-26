@@ -79,6 +79,11 @@ def _bind():
     ))
 
 
+# The engine/conda stubs this suite needs are `conftest.py`'s
+# `product_toolchain_is_the_suites_own` -- ONE home, because the hostile
+# sweep that found this hole here found it in three more suites
+# (2026-08-25).  It lived in this file for about an hour.
+
 # --------------------------------------------------------------------- #
 #  Cold-restart bash block: text shape                                   #
 # --------------------------------------------------------------------- #

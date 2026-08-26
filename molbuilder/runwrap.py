@@ -2653,7 +2653,49 @@ def render_run_wrapper(script_path: Path, *,
             f"'{target_env}'.  Is SIESTA installed in this env?\" >&2\n"
             f"    exit 1\n"
             f"fi\n"
-            f'_siesta_version_out="$(siesta --version 2>/dev/null || true)"\n'
+            # THE PROBE CANNOT BLOCK THE JOB (2026-08-25).  Three things
+            # are needed and each one alone is insufficient; this is the
+            # order they were found in, live on qlabsrv:
+            #
+            #  1. `|| true` catches a probe that FAILS.  It cannot catch
+            #     one that never returns -- and this one can.  SIESTA reads
+            #     its deck from STANDARD INPUT, so a build that does not
+            #     know `--version` does not error: it waits for a deck,
+            #     forever, holding the job it was about to describe.  A
+            #     2023 `/usr/local/bin/siesta` does exactly this.
+            #  2. A CLOCK, because closing stdin is not enough -- measured:
+            #     that binary blocks with stdin at /dev/null too.
+            #  3. A FILE, not a pipe, because the clock is not enough
+            #     either.  `timeout` signals the process it started; the
+            #     probe FORKS, the child outlives the signal still holding
+            #     the write end, and `$( )` waits on a pipe that never sees
+            #     EOF.  The wrapper then hangs AFTER the clock has already
+            #     fired -- which is what the first attempt at this fix did,
+            #     and why the failing tests did not move.  A file has no
+            #     EOF to wait on, so a surviving child cannot hold it.
+            #  4. `-k`, because a clock that only ASKS is not a bound.
+            #     Plain `timeout` sends TERM and then waits -- indefinitely,
+            #     against anything that ignores it, which MPI launchers do.
+            #     `-k 2` follows with KILL, and KILL cannot be declined.
+            #
+            # An unanswered probe leaves the file empty, which the launcher
+            # choice below already treats as *probe failed* -> mpirun, the
+            # documented safe default.  Five seconds is a thousand times any
+            # real answer and nothing against a wall.  Without coreutils
+            # `timeout` the bare call stands: nothing portable bounds it,
+            # and refusing to probe at all would cost every machine its
+            # version banner to guard against one broken binary.
+            f'_mb_probe_out="$(mktemp 2>/dev/null '
+            f'|| echo "${{TMPDIR:-/tmp}}/mb-probe.$$")"\n'
+            f'if command -v timeout >/dev/null 2>&1; then\n'
+            f'    timeout -k 2 5 siesta --version >"$_mb_probe_out" 2>/dev/null '
+            f'</dev/null || true\n'
+            f'else\n'
+            f'    siesta --version >"$_mb_probe_out" 2>/dev/null '
+            f'</dev/null || true\n'
+            f'fi\n'
+            f'_siesta_version_out="$(cat "$_mb_probe_out" 2>/dev/null || true)"\n'
+            f'rm -f "$_mb_probe_out"\n'
             f'_siesta_ver="$(printf %s \"$_siesta_version_out\" '
             f"| awk -F': *' '/^Version/ {{print $2; exit}}')\"\n"
             f'_siesta_par="$(printf %s \"$_siesta_version_out\" '

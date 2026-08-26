@@ -200,8 +200,21 @@ def test_render_siesta_emits_build_probe_block():
     de-probe the wrapper back to a static launcher."""
     _bind()
     text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=4))
-    # Probe runs siesta --version once.
-    assert 'siesta --version 2>/dev/null' in text
+    # Probe runs siesta --version once -- and CANNOT BLOCK THE JOB
+    # (2026-08-25).  This asserted the exact spelling
+    # `siesta --version 2>/dev/null`, which is a pipe with no clock on it:
+    # SIESTA reads its deck from stdin, so a build that does not know the
+    # flag waits for one instead of failing, and the wrapper stops there,
+    # unattended, after a queue wait.  The three properties below are what
+    # make that survivable and the spelling is not one of them; the
+    # BEHAVIOUR is pinned in `test_runwrap_engine_probe.py`, which runs the
+    # wrapper against binaries that hang and that fork.
+    assert "siesta --version" in text
+    assert "timeout" in text, "the probe has no clock on it"
+    assert '>"$_mb_probe_out"' in text, (
+        "the probe captures through a pipe -- a forked child outlives the "
+        "clock still holding the write end, and $( ) then waits forever")
+    assert "</dev/null" in text, "the probe leaves stdin open"
     # Parses Version + Parallelisations.
     assert "/^Version/" in text
     assert "/^Parallelisations/" in text

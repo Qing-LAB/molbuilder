@@ -56,31 +56,30 @@ def _siesta_binary():
     """Return the path to the molbuilder-siesta env's siesta binary,
     or None when the env is not present on this machine.
 
-    Mirrors the pyscf-env discovery pattern at
-    ``tests/test_molwatch_preview.py::_pyscf_env_python``.
+    **Asks the product where the env IS** rather than guessing its layout
+    (2026-08-25).  This computed ``Path(CONDA_PREFIX).parent / "envs" /
+    <name>``, which is right only when ``CONDA_PREFIX`` is the BASE
+    install.  Run from inside an env -- which is how this suite runs --
+    ``.parent`` is ALREADY ``envs/``, so it built ``envs/envs/<name>/...``
+    and never matched.  It then fell back to ``<mgr> run -n <env> which
+    <tool>``, and ``which`` searches the INHERITED PATH: on a machine with
+    a system install that returns the HOST's binary.  So this file's own
+    rule -- *"no host PATH siesta is permitted; the env's binary is the
+    one"* -- was broken by its own fallback, silently, for as long as it
+    has existed; on qlabsrv it was measuring a root-owned 2023 build.
+    ``_env_prefix`` is the product's four-tier resolver and cannot return
+    something outside the env.
     """
     from molbuilder.diagnostics import get_capabilities
+    from molbuilder.envs.install import _env_prefix
     caps = get_capabilities()
     if not caps.env_available("molbuilder-siesta"):
         return None
-    # Standard conda layout: $CONDA_PREFIX/envs/<name>/bin/siesta.
-    candidate = Path(
-        os.environ.get("CONDA_PREFIX", "/home/qqing/miniconda3")
-    ).parent / "envs" / "molbuilder-siesta" / "bin" / "siesta"
-    if candidate.exists():
-        return candidate
-    # Fallback via `conda run -n`.
-    from molbuilder.envs import run_in_env
-    try:
-        r = run_in_env(
-            "molbuilder-siesta",
-            ["which", "siesta"],
-            capture_output=True, text=True, check=True,
-        )
-        path = Path(r.stdout.strip())
-        return path if path.exists() else None
-    except Exception:
+    prefix = _env_prefix("molbuilder-siesta", caps.conda_binary)
+    if not prefix:
         return None
+    candidate = Path(prefix) / "bin" / "siesta"
+    return candidate if candidate.exists() else None
 
 
 def _require_siesta_binary():
