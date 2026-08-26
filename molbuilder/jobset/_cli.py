@@ -1760,13 +1760,6 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     prov = config_provenance(project_dir=base)
     click.echo(format_provenance(prov))
 
-    # Does the bootstrap belong to the machine this will run on?  The rule
-    # is `runtime_config.bootstrap_travels`, shared with the Task-setup tab
-    # -- a rule about when a job will fail must not hold two opinions.
-    from ..runtime_config import bootstrap_travels
-    _warn = bootstrap_travels(prov, target)
-    if _warn:
-        click.echo("  \u26a0 " + _warn)
     def _rel(d):
         try:
             return str(_P(d).resolve().relative_to(_P(base).resolve()))

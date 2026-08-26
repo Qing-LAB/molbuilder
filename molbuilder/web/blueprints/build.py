@@ -79,7 +79,6 @@ from molbuilder import (
 )
 from molbuilder.config.pyscf  import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.runtime_config import RuntimeConfigError
 from molbuilder.structure import Structure
 from molbuilder.validation import validate
 from .files import _resolve_within_roots, _PickerError
@@ -1725,12 +1724,12 @@ def api_task_setup_resolved():
     if not dest.is_dir():
         return jsonify({"ok": False, "error": f"not a directory: {dest_raw}"}), 400
 
-    from molbuilder.runtime_config import bootstrap_travels, config_provenance
-    target = str(request.args.get("target") or "") or None
-    if target == "(this machine)":
-        # The tab's label for "no --target"; prepping for the box you are on
-        # is the case the local config IS for, so it is not a target.
-        target = None
+    from molbuilder.runtime_config import config_provenance
+    # NO `target` PARAMETER.  It existed only to feed the bootstrap warning
+    # retired 2026-08-25; provenance itself is a property of the FOLDER --
+    # which files were read and what each supplied -- and does not change
+    # with the machine you are preparing for.  Parsing an argument nothing
+    # reads is how a dead parameter survives a deletion.
     try:
         prov = config_provenance(project_dir=dest)
     except Exception as exc:                      # a malformed config
@@ -1740,8 +1739,6 @@ def api_task_setup_resolved():
         "sources": prov.get("sources") or [],
         "effective": prov.get("effective") or {},
         "domains": prov.get("domains") or [],
-        # ONE rule, shared with `prep` -- see runtime_config.bootstrap_travels.
-        "bootstrap_warning": bootstrap_travels(prov, target),
     })
 
 

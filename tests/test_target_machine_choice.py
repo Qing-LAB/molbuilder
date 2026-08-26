@@ -166,33 +166,15 @@ class TestTheUserChoosesTheMachine:
         assert rec["scheduler"] == "workstation"
 
 
-class TestTheBootstrapIsSaidToNotTravel:
-
-    def test_a_remote_target_warns_when_the_preamble_is_this_machines(
-            self, machines):
-        """§ 3: `--target` carries MEASUREMENTS.  A preamble is a
-        preference, so it stays local and the wrapper would run on the
-        target with lines written for here."""
-        machines.write("sol")
-        machines.this_machine()
-        (machines.cfg / "molbuilder.json").write_text(json.dumps(
-            {"script_generation": {"preamble": "source /home/local/conda.sh",
-                                   "activation": "conda activate"}}))
-        res = _prep("P/optimization/w", "--target", "sol")
-        assert res.exit_code == 0, res.output
-        assert "prepped for 'sol'" in res.output
-        assert "preambles CONCATENATE" in res.output
-
-    def test_no_warning_without_a_target(self, machines):
-        """Prepping for this machine is the case the local config is FOR."""
-        machines.this_machine()
-        (machines.cfg / "molbuilder.json").write_text(json.dumps(
-            {"script_generation": {"preamble": "source /home/local/conda.sh",
-                                   "activation": "conda activate"}}))
-        res = _prep("P/optimization/w")
-        assert res.exit_code == 0, res.output
-        assert "prepped for" not in res.output
-
+# `TestTheBootstrapIsSaidToNotTravel` was RETIRED 2026-08-25 with
+# `runtime_config.bootstrap_travels`.  Its own docstring stated the rule
+# `preparing-for-another-machine.md` § 3 retracted on 2026-08-24 -- *"a
+# preamble is a preference, so it stays local"*.  Since that date the
+# bootstrap rides the machine's probed record and `runwrap` reads the
+# record and nothing else (see `_REC` above, which carries
+# `script_generation` precisely because the generator now requires it).
+# The warning it pinned therefore fired on every named-target prep while
+# the wrapper being generated was correct.
 
 class TestTheCasesReadingFoundThatPokingDidNot:
     """Three defects that only a full read of `machine_for` shows, because

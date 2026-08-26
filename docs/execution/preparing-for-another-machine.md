@@ -293,11 +293,16 @@ not get its own rules: it surfaces the ones above.
   the one the terminal shows. Safe for a page by construction — provenance
   carries paths, presence and an allowlisted set of effective values, never
   file contents, so a TLS key or an OAuth secret cannot reach it.
-- **The § 3 warning comes from one rule, not two.**
-  `runtime_config.bootstrap_travels` decides whether the bootstrap belongs
-  to the machine the job will run on, and both `prep` and the tab call it.
-  A rule about *when a job will fail* must not be able to hold two
-  opinions.
+- **There is no separate "the bootstrap will not travel" warning, and
+  there must not be.** One existed until 2026-08-25 and both surfaces
+  showed it. It asked the LOCAL config cascade whether the bootstrap came
+  from the bundle's own file — the test § 3 states above it retracted — so
+  it fired on every named-target prep, including the ones where the
+  target's record had answered and the wrapper was correct. The rule now
+  has one enforcement point and it is a refusal, not a warning: `prep`
+  refuses a named target whose record cannot say how to enter its
+  environment. A wrapper that is generated is a wrapper whose bootstrap
+  came off the record it names.
 
 > **This narrows a stated boundary, deliberately.** `job-system.md` § 4 says
 > *"`prep` and `launch` stay on the terminal by design"*, written when
