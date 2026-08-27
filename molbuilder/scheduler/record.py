@@ -148,6 +148,17 @@ class Domain:
     #: does not say, never zero (R3).
     default_mem_per_core_gb: Optional[float] = None
     gpu:       Optional[Dict[str, Any]] = None
+    #: Every distinct machine this domain holds: ``[{cores, nodes, mem_gb,
+    #: gpu}, ...]``.  DECLARED since 2026-08-27, because a partition is a
+    #: QUEUE and not a machine type -- Sol's ``htc`` is 48-, 64- and
+    #: 128-core nodes under one name.
+    #:
+    #: Any single core figure over them is an opinion: a floor refuses work
+    #: the wide nodes would run, a ceiling admits work most nodes cannot
+    #: hold.  ``max_cores`` is kept as the widest (R3 -- refuse only what
+    #: the record positively rules out) and this is what a person reads to
+    #: choose.  Empty means the record does not say, never *no machines*.
+    node_types: Optional[List[Dict[str, Any]]] = None
     #: Where a GPU job goes when that differs from ``partition``.  DECLARED
     #: since 2026-08-23 (scheduler.md § 4): it redirects real work, and until
     #: then it rode in ``extra`` -- the bag this reader documents as
@@ -161,7 +172,7 @@ class Domain:
     #: The keys :meth:`from_row` recognises; everything else goes to ``extra``.
     _KNOWN = ("name", "partition", "qos", "max_time", "node_type",
               "max_cores", "max_mem_gb", "default_mem_per_core_gb",
-              "gpu", "gpu_partition")
+              "gpu", "gpu_partition", "node_types")
 
     @classmethod
     def from_row(cls, row: Mapping[str, Any]) -> Optional["Domain"]:

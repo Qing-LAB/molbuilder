@@ -25,7 +25,7 @@ inside a backend env with no molbuilder installed.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Mapping, Optional
+from typing import Any, List, Mapping, Optional, Tuple
 
 
 def domain_serves_gpu(row: Mapping[str, Any]) -> bool:
@@ -84,14 +84,23 @@ def _compare(row, *, cores: Optional[int] = None,
             why.append(f"needs {walltime_s // 60} min but "
                        f"{row.name} allows {row.max_time}")
 
-    if cores is not None and row.max_cores:
-        try:
-            cap = int(row.max_cores)
-        except (TypeError, ValueError):
-            cap = None
+    if cores is not None:
+        # REFUSE ONLY WHAT NO MACHINE HERE CAN HOLD.  A partition is a
+        # queue, not a machine type: Sol's `htc` is 48-, 64- and 128-core
+        # nodes under one name, and SLURM will not place a job on a node
+        # too small -- it waits for one that fits.  So the ceiling is the
+        # WIDEST node, and refusing on a floor would deny work the wide
+        # nodes would run happily (caught 2026-08-27, when a floor refused
+        # a declared 64-rank CPU trial on a partition whose CPU nodes have
+        # 128 cores).
+        #
+        # R10 -- name what WOULD fit -- so the reason says which machine
+        # is the biggest, not just that the ask is too large.
+        cap, widest = _widest_node(row)
         if cap is not None and cap < cores:
-            why.append(f"needs {cores} cores but {row.name} "
-                       f"allows {cap}")
+            where = f" ({widest})" if widest else ""
+            why.append(f"needs {cores} cores but {row.name}'s largest "
+                       f"machine has {cap}{where}")
 
     if mem_gb is not None and row.max_mem_gb:
         try:
@@ -118,6 +127,33 @@ def _compare(row, *, cores: Optional[int] = None,
             why.append(f"needs {gpus} GPUs but {row.name} offers at "
                        f"most {most}")
     return why
+
+
+def _widest_node(row) -> Tuple[Optional[int], str]:
+    """``(cores of the largest machine, how it is described)``.
+
+    From ``node_types`` when the record lists them -- the measurement --
+    and from ``max_cores`` otherwise, which is what every record written
+    before 2026-08-27 carries.  ``None`` means the record does not say, and
+    R3 then applies: an unstated limit never bars.
+    """
+    rows = getattr(row, "node_types", None) or []
+    best, how = None, ""
+    for r in rows:
+        try:
+            c = int(r.get("cores"))
+        except (TypeError, ValueError):
+            continue
+        if best is None or c > best:
+            n = r.get("nodes")
+            best = c
+            how = f"{n} node(s) of {c}" if n else f"{c} cores"
+    if best is not None:
+        return best, how
+    try:
+        return int(row.max_cores), ""
+    except (TypeError, ValueError):
+        return None, ""
 
 
 def _devices_offered(row) -> Optional[int]:

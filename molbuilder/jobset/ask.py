@@ -122,12 +122,51 @@ def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
         lines.append(
             f"{mark}{i:<2} {d.name:<12} {d.partition + '/' + d.qos:<22} "
             f"{wall:>9} {str(d.max_cores or '-'):>6} {mem:>9}  {dev}")
+        for shape in _machine_lines(d, cores=cores):
+            lines.append(f"       {shape}")
         if why:
             lines.append(f"     -> {'; '.join(why)}")
     lines.append("")
     lines.append("  choose one with --domain <name>.  Nothing is submitted "
                  "until you do.")
     return "\n".join(lines)
+
+
+def _machine_lines(row, *, cores: Optional[int] = None) -> List[str]:
+    """The machines a domain actually holds, one line each.
+
+    **A partition is a queue, not a machine type.**  Sol's ``htc`` is 48-,
+    64- and 128-core nodes under one name, and the ``cores`` column above
+    can only show one number.  Printing the shapes is this table's own
+    stance applied to a field that was hiding them -- *it shows what
+    exists, marks what fits, and the person picks* -- and it is what turns
+    "why is my job queueing?" into something readable: a 128-core ask on
+    ``htc`` fits 134 of its 188 nodes, while on another queue it might fit
+    four.
+
+    Nothing is printed for a domain that holds ONE kind of machine: the
+    ``cores`` column already said it, and a second line repeating it would
+    be noise on every row that has nothing to disclose.
+    """
+    shapes = getattr(row, "node_types", None) or []
+    if len(shapes) < 2:
+        return []
+    out = []
+    for t in sorted(shapes, key=lambda r: -(r.get("cores") or 0)):
+        c, n = t.get("cores"), t.get("nodes")
+        dev = t.get("gpu") or {}
+        bits = [f"{c} cores"]
+        if n:
+            bits.append(f"x{n} node(s)")
+        if t.get("mem_gb"):
+            bits.append(f"{t['mem_gb']:g} GB")
+        if dev:
+            bits.append(", ".join(f"{k} x{v}" for k, v in sorted(dev.items())))
+        # A machine too small for THIS ask is marked, not hidden: it is
+        # why the queue is slower than its node count suggests.
+        fits = "" if (cores is None or not c or c >= cores) else "   (too small)"
+        out.append("- " + "  ".join(bits) + fits)
+    return out
 
 
 def _why_not(row, ask: Ask, *, cores=None, gpu: bool = False) -> List[str]:

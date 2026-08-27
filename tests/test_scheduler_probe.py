@@ -84,13 +84,47 @@ def test_parse_sinfo_reads_cores_per_node_group():
     assert old[0].gpu_cores is None and old[0].max_cpus is None
 
 
-def test_the_domain_row_carries_the_probed_core_cap():
-    """The gpu-capable row's ``max_cores`` is its GPU nodes' cores -- the
-    cap the GPU grid checks at prep -- and a cpu-only row carries its
-    widest node's.  Probed, no longer hand-curated; still yours to edit."""
+def test_a_domain_lists_every_machine_it_holds():
+    """**A partition is a QUEUE, not a machine type** (2026-08-27).
+
+    Sol's ``htc`` is 51 nodes of 48 cores with A100s, 3 of 64 with MIG
+    slices, and 134 of 128 with no device -- one name, three machines. The
+    groups were parsed and discarded until now, collapsed into a single
+    ``max_cores`` that meant a MINIMUM for a gpu-capable partition and a
+    MAXIMUM for a cpu-only one.
+
+    User: *list available machine types explicitly and allow cpu request to
+    fit that range instead of one lowest fit.*
+    """
     doms = {d["name"]: d for d in derive_domains(*_sol())[0]}
-    assert doms["htc"]["max_cores"] == 48
+    shapes = {(t["cores"], t["nodes"]) for t in doms["htc"]["node_types"]}
+    assert shapes == {(48, 51), (64, 3), (128, 134)}
+    # the device rides with the machine that has it, not with the queue
+    by_cores = {t["cores"]: t for t in doms["htc"]["node_types"]}
+    assert by_cores[48]["gpu"] == {"a100": 4}
+    assert "gpu" not in by_cores[128], "the CPU-only group has no device"
+    # a single-shape partition lists exactly one
+    assert [(t["cores"], t["nodes"])
+            for t in doms["highmem"]["node_types"]] == [(128, 11)]
+
+
+def test_max_cores_is_the_WIDEST_machine():
+    """A refusal ceiling, and `admits` *"only refuses what the record
+    positively rules out"* (R3).
+
+    SLURM will not place a job on a node too small -- it waits for one that
+    fits -- so the widest is what can never run. A floor here refused a
+    declared 64-rank CPU trial on a partition whose CPU nodes have 128
+    cores, which is how the collapsed field was caught.
+    """
+    doms = {d["name"]: d for d in derive_domains(*_sol())[0]}
+    assert doms["htc"]["max_cores"] == 128      # was 48: the GPU floor
     assert doms["highmem"]["max_cores"] == 128
+    for name, row in doms.items():
+        widest = max((t["cores"] for t in row.get("node_types") or []
+                      if t.get("cores")), default=None)
+        if widest:
+            assert row["max_cores"] == widest, name
 
 
 def test_parse_qos_maxwall():
@@ -171,7 +205,7 @@ def test_a_domain_is_never_a_preference():
         # gpu-capable row -- the cap the grid checks -- else the widest
         # node's).
         assert set(d) <= {"name", "partition", "qos", "max_time", "gpu",
-                          "max_cores"}, \
+                          "max_cores", "node_types"}, \
             f"a domain gained a field that is not a measurement: {sorted(d)}"
     by = {d["name"]: d for d in domains}
     assert by["htc"]["gpu"] == {"a100": 4, "a100.20gb": 16}

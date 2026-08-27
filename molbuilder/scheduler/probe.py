@@ -25,7 +25,7 @@ other machine-probe.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 # `parse_walltime` moved to `quantities.py` (2026-08-24), where every dialect
 # of a walltime and a memory size now lives together.  The RECORD reader had
@@ -46,6 +46,35 @@ _INFINITE_STR = "30-00:00:00"
 
 
 
+@dataclass(frozen=True)
+class NodeGroup:
+    """One kind of machine in a partition, as ``sinfo`` reports it.
+
+    **A partition is a QUEUE, not a machine type** (measured 2026-08-27):
+    ASU Sol's ``htc`` is 51 nodes of 48 cores with A100s, 3 of 64 with MIG
+    slices, and 134 of 128 with no device at all.  ``general`` and
+    ``public`` have the same shape, and what actually separates the three
+    is the wall clock.
+
+    So the groups are the fact, and any single number derived from them is
+    an opinion.  They were parsed and thrown away until now -- a minimum
+    kept for gpu-capable partitions, a maximum for the rest, both written
+    into one ``max_cores`` field that `admits` then compared as one limit.
+    """
+    cores:   Optional[int] = None
+    mem_mb:  Optional[int] = None
+    nodes:   int = 0
+    gpu:     Tuple[Tuple[str, int], ...] = ()
+
+    def as_row(self) -> Dict[str, Any]:
+        row: Dict[str, Any] = {"cores": self.cores, "nodes": self.nodes}
+        if self.mem_mb is not None:
+            row["mem_gb"] = round(self.mem_mb / 1024.0, 1)
+        if self.gpu:
+            row["gpu"] = dict(self.gpu)
+        return row
+
+
 @dataclass
 class Partition:
     """One SLURM partition, merged across its node groups."""
@@ -53,6 +82,10 @@ class Partition:
     timelimit_str: str
     timelimit_secs: int
     nodes: int = 0
+    #: Every distinct machine this partition holds.  The MEASUREMENT; the
+    #: scalars below are summaries over it, kept because callers already
+    #: read them.
+    groups: List["NodeGroup"] = field(default_factory=list)
     gpu_types: Dict[str, int] = field(default_factory=dict)  # type -> max count
     #: Cores per node of the GPU-carrying node group(s) -- the SMALLEST
     #: when they differ, because it feeds a cap (2026-08-21, user: "why
@@ -148,6 +181,8 @@ def parse_sinfo(text: str) -> List[Partition]:
                           timelimit_secs=_to_secs(tl_str))
             parts[name] = p
         p.nodes += nodes
+        p.groups.append(NodeGroup(cores=cpus, mem_mb=mem, nodes=nodes,
+                                  gpu=tuple(sorted(gpus.items()))))
         for t, c in gpus.items():
             p.gpu_types[t] = max(p.gpu_types.get(t, 0), c)
         if cpus is not None:
@@ -318,10 +353,24 @@ def derive_domains(
         # the widest node's.  The row stays yours to edit.
         if part.gpu_types:
             row["gpu"] = dict(part.gpu_types)
-            if part.gpu_cores:
-                row["max_cores"] = part.gpu_cores
-        elif part.max_cpus:
-            row["max_cores"] = part.max_cpus
+        # EVERY MACHINE THIS DOMAIN HOLDS, not a number derived from them
+        # (2026-08-27, user: *list available machine types explicitly and
+        # allow cpu request to fit that range instead of one lowest fit*).
+        # A partition is a queue: `htc` is 48-, 64- and 128-core nodes
+        # under one name, and a single figure has to be either a floor
+        # that refuses work the wide nodes would run, or a ceiling that
+        # admits work most nodes cannot hold.  Listing them refuses
+        # neither and lets the person see the trade.
+        if part.groups:
+            row["node_types"] = [g.as_row() for g in part.groups
+                                 if g.cores]
+        # ``max_cores`` stays, as the WIDEST node -- the honest ceiling for
+        # a refusal, since `admits` "only refuses what the record
+        # positively rules out" (R3) and SLURM will not place a job on a
+        # node too small; it waits for one that fits.
+        widest = max((g.cores for g in part.groups if g.cores), default=None)
+        if widest:
+            row["max_cores"] = widest
         # THE TWO MEMORY FACTS, measured 2026-08-23
         # (`execution/submission.md` § 8, step 1).  Both fields have been on the
         # row since it was designed and neither was ever filled, so nothing

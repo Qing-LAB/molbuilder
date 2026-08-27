@@ -125,6 +125,24 @@ four bugs. It is one missing function.
 command line are two *renderings* of one placement, never two decisions. They
 cannot disagree, because there is nothing to disagree about.
 
+**R0 — A partition is a QUEUE, not a machine type.** Added 2026-08-27, and
+it is the premise the rest of the core rules rest on. ASU Sol's `htc` is 51
+nodes of 48 cores with A100s, 3 of 64 with MIG slices, and 134 of 128 with no
+device at all; `general` and `public` hold the same mixture, and what
+separates the three is the **wall clock** — 4 h, 7 d, 14 d. Four others
+(`highmem`, `gaudi`, `arm`, `fpga`) genuinely *are* hardware classes.
+
+So **the machines are the measurement, and any single figure over them is an
+opinion.** A domain carries `node_types` — every distinct machine, with its
+count, memory and devices — and the person reads it. `max_cores` remains as
+the **widest** of them, which is the only core figure a refusal can honestly
+use (R3, and see R2's note).
+
+> **Two consequences worth stating.** Hardware cannot be chosen by choosing a
+> partition; that is `--gres` or `--constraint`. And a device is a property of
+> a *machine*, not of a queue: `htc` offers A100s and it offers 128-core
+> nodes, but never both at once — which no single figure could have said.
+
 **R2 — Admission is total over the named limits.** Every limit `Domain`
 *declares* — `max_time`, `max_cores`, `max_mem_gb`, `gpu` — is compared
 against the request. A new declared limit arrives with its comparison or it
@@ -148,6 +166,15 @@ difference is whether the field has a name in the type.
 is not claiming a small one; a ceiling that cannot be parsed is not a
 refusal. Silence is permission — the opposite reading would make a
 partially-probed cluster unusable.
+
+> **The corollary that was violated for months.** *Refuse only what the record
+> positively rules out* — so a core ceiling must be the **widest** machine,
+> because SLURM will not place a job on a node too small; it waits for one
+> that fits. `max_cores` was a MINIMUM across GPU groups for a gpu-capable
+> partition and a MAXIMUM across all groups for a cpu-only one, and admission
+> compared both as one number. The floor reading refused a declared 64-rank
+> CPU trial on a partition whose CPU nodes have 128 cores. Fixed 2026-08-27 by
+> R0: keep the machines, and derive the ceiling from them.
 
 **R4 — A refusal names the numbers.** *"needs 38 min but debug allows
 00:15:00"*, not *"does not fit"*. We hold the record; sending a user to read
