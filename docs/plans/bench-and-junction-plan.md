@@ -305,6 +305,64 @@ of a signature.
 
 ---
 
+### 2.14 Ask the scheduler when, instead of guessing — proposed 2026-08-27
+
+User: *we should provide another verb to prove if a job is going to be
+submitted, what's the waiting time/expected start time, and the user can
+adjust when they know the diff.*
+
+**The primitive exists and does not submit.** `sbatch --test-only` validates a
+request and reports when it *would* be scheduled given the current queue:
+
+```
+sbatch: Job 12345 to start at 2026-08-27T14:30:00 using 48 processors
+        on nodes sg013 in partition htc
+```
+
+No job is created, so this does not touch the standing rule about submitting
+one at a time — but it *is* a scheduler query, so the count matters.
+
+**Why it belongs with § 2.13 rather than beside it.** Listing the machines
+shows what a queue *holds*; this says what a queue *costs today*. Node counts
+are a proxy for wait and a poor one — 134 wide nodes are no help if all 134 are
+busy for two days. Together they answer the question the person actually has:
+*what do I give up by asking for less?*
+
+**A minimal script is enough, so this need not wait for a prep.**
+`--test-only` reads the resource request, not the script body, so a placeholder
+plus the real flags gives the real answer. That means the question can be asked
+*before* committing to a shape — which is the point, since the answer is what
+decides the shape. The flags come from `Directives.of(placement, r)
+.sbatch_flags()`, the one place that already renders them, so what is tested
+and what would be submitted cannot drift.
+
+**Open — three questions, none of them guessable from the code:**
+
+1. **One query or several?** The value is the *diff* between options, which
+   means one query per candidate. On Sol that is up to nine domains, and more
+   if core counts vary too. A cap, and what it is, is a judgement about how
+   much scheduler load is polite.
+2. **Where does it live?** A new verb beside `launch` (*what launch would do,
+   without doing it*), or a column on `jobset ask`, which already tables the
+   queues and marks what fits. The second is one home rather than two — but
+   `ask` works offline from the record, and this cannot: it needs a login node.
+   That difference may be what makes it a separate verb.
+3. **What does an estimate that is missing mean?** SLURM answers *"will start
+   at ..."* only when it can predict; under some configurations it declines, or
+   answers with a time that is really *"not before"*. Reporting a refusal to
+   predict as *"unknown"* is honest; reporting it as *"soon"* would not be. The
+   exact behaviour is a measurement on Sol, not a thing to assume.
+
+**Not started.** Recorded so the design is settled before any code, and because
+question 3 needs one command on a login node:
+
+```bash
+sbatch --test-only -p htc -q public -t 30 -n 1 -c 4 --wrap="true"
+sbatch --test-only -p general -q public -t 30 -n 1 -c 128 --wrap="true"
+```
+
+---
+
 ### 2.12 What a percentage is a fraction OF — decided 2026-08-26
 
 **The rule.** *A run reports how well it used **what it was given**. Cores it
@@ -398,7 +456,7 @@ node-wide totals again — the same defect in a new spelling.
 
 ---
 
-### 2.13 The probe: one meaning per field — reviewed 2026-08-26
+### 2.13 The probe: one meaning per field — reviewed 2026-08-26, P1 BUILT 2026-08-27
 
 A full read of `scheduler/probe.py`, `scheduler/record.py` and the two grid
 gates in `jobset/_cli.py`, against `scheduler.md` § 3's rules. **The probe
