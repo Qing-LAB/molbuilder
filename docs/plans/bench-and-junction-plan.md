@@ -393,26 +393,54 @@ gates in `jobset/_cli.py`, against `scheduler.md` § 3's rules. **The probe
 reads the right things and then loses them on the way to the record.** Four
 findings; the first is the one that matters.
 
-**P1 — `max_cores` carries two different meanings.** `probe.py:153-158` keeps
-both `gpu_cores` (**min** across the groups that have devices) and `max_cpus`
-(**max** across all groups). Then `probe.py:319-324` writes one field from
-whichever applies:
+**P1 — `max_cores` collapses two genuinely different ceilings into one.**
+`probe.py:153-158` keeps both `gpu_cores` (**min** across groups that have
+devices) and `max_cpus` (**max** across all groups). Then `probe.py:319-324`
+writes ONE field from whichever applies:
 
 ```python
 if part.gpu_types:  row["max_cores"] = part.gpu_cores   # a MINIMUM
 elif part.max_cpus: row["max_cores"] = part.max_cpus    # a MAXIMUM
 ```
 
-`admits` compares both as one ceiling. A CPU-only partition therefore admits a
-request only its **widest** node could hold. Memory, measured later, took the
-smallest across groups and said why — *"a partition whose nodes differ can only
-promise the smallest"*. Cores never got that sentence.
+**Attempted 2026-08-26 and REVERTED — the fix was wrong, and building P2 on it
+is what proved it.** The attempt made both a floor (`min_cpus`, saved at
+`scratchpad/p1-attempt.diff`). Its own tests passed. Then P2 routed the bench
+grid's ceiling through the same field and four grid tests failed with:
 
-**The floor is the right meaning, and SLURM says so.** `sinfo` prints `48+`
-precisely to say *these nodes differ and 48 is the base*; nothing above the
-base is promised. So `max_cores` becomes the min across **all** groups, and the
-`elif` disappears — one field, one meaning. Under R10 the refusal already knows
-what to suggest: *this queue holds 48; the largest rank count that fits is 48.*
+```
+declared bench point mpi_np=64 needs 64 cores but domain 'general' holds 48
+```
+
+**That refusal is wrong.** `general`'s node groups are 48 (a100), 64 (l40) and
+**128 (CPU-only)**. A 64-rank *CPU* trial does not need a GPU node; SLURM
+places it on the 128-core group and it runs. Refusing it because the GPU nodes
+are smaller denies a CPU family a rank count only the GPU nodes cannot hold —
+which is the exact reasoning the existing per-family cap comment already gives.
+
+**The two questions the one field is being asked:**
+
+| | the honest ceiling | why |
+|---|---|---|
+| *can this run here at all?* | the **widest** node | `admit.admits` is a refusal, and its own docstring says it *"only refuses what the record positively rules out"* (R3). SLURM will not place a job on a node too small; it waits for one that fits |
+| *which cells should a sweep enumerate?* | the **floor** | a benchmark wants cells that schedule promptly. The user's reason: *we intend to allocate a specific number of cpu to avoid being promoted to request higher cpu-number/memory machine which will take long time to wait* |
+
+Both are true; neither is the other. **The data to serve both is already
+parsed** — `gpu_cores` and the widest-node figure are both computed and then
+thrown away at the collapse. So the fix is to stop collapsing, not to pick a
+winner.
+
+**Measured, so the stakes are clear.** On the real Sol record every CPU-only
+partition (`highmem`, `fpga`) has a *single* node group, so min == max and the
+reverted change was a **no-op on Sol**. Every partition where they differ
+(`htc`, `general`, `public`) has GPUs and so already used the floor. The
+inconsistency is real but currently silent; P2 is what would have made it bite.
+
+**Open — needs a decision.** Either `Domain` carries two named ceilings (and R2
+says a new declared limit arrives *with its comparison*), or `max_cores` is
+documented as the floor and admission stops being the thing that reads it.
+Recorded rather than guessed, because the reverted attempt shows a plausible
+answer can pass its own tests and still be wrong.
 
 **P2 — `topology` is one arbitrary node, and a refusal is gated on it.**
 `record.py:_slurm_pick_node` takes whichever GPU node `sinfo` prints **first**
