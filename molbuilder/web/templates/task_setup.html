@@ -211,6 +211,67 @@
         <span class="ts-ask-note" id="ts-notify-note"></span>
       </section>
 
+      {#- WHERE the reports go -- a SEPARATE card, and the separation is the
+         contract (`run-reports.md` 1 and 3.1).  The card above writes
+         task.json, which TRAVELS, so it must never see a key.  This one
+         writes config_dir()/notify on THIS machine, which never travels --
+         putting a secret where the contract says it lives rather than
+         carrying it anywhere.
+
+         It is also machine-wide rather than per-calculation, which is why
+         it says so in its own heading: you are standing on a calculation
+         page, and a setting that outlives the calculation should announce
+         that. -#}
+      <section class="card" id="ts-reports-card" hidden>
+        <h2>Where the reports go &mdash; this machine</h2>
+        <p class="hint">One destination per machine, not per calculation
+          &mdash; setting it here changes it for every run on this box.
+          <strong>With none set nothing is sent</strong> and a run behaves
+          exactly as it always did.
+          <span id="ts-reports-path" class="ts-reports-path"></span></p>
+
+        <p class="ts-reports-state" id="ts-reports-state">checking&hellip;</p>
+
+        <div class="ts-reports-form" id="ts-reports-form">
+          <label class="ts-dest-row" for="ts-reports-url">
+            <span class="ts-dest-label">Address</span>
+            <input type="url" id="ts-reports-url" class="ts-dest-input"
+                   placeholder="https://qlabsrv.physics.asu.edu:8888/api/&lt;segment&gt;"
+                   autocomplete="off" spellcheck="false">
+          </label>
+          <label class="ts-dest-row" for="ts-reports-key">
+            <span class="ts-dest-label">Key</span>
+            <input type="password" id="ts-reports-key" class="ts-dest-input"
+                   placeholder="from `molbuilder notify-token`"
+                   autocomplete="new-password" spellcheck="false">
+          </label>
+          <p class="ts-notify-sub">Both come from
+            <code>molbuilder notify-token &lt;you&gt;</code>. Slack and
+            Discord keep the credential in the address itself and need no
+            key.</p>
+          <div class="ts-actions">
+            <button type="button" class="btn" id="ts-reports-save">Save</button>
+            <button type="button" class="btn" id="ts-reports-test">Send a test
+              report</button>
+            <button type="button" class="btn" id="ts-reports-clear">Remove</button>
+          </div>
+        </div>
+
+        {#- The far-machine case: this server cannot write a file on a
+           cluster, and pretending otherwise would be the worst kind of
+           help.  It hands over the exact content instead, which is the
+           format problem solved even though the writing is not. -#}
+        <div class="ts-reports-elsewhere" id="ts-reports-elsewhere" hidden>
+          <p class="hint">Jobs from this machine are <strong>submitted to a
+            scheduler</strong>, so the monitor reads this file on the
+            cluster &mdash; somewhere this page cannot write. Run this
+            <em>there</em>:</p>
+          <pre class="ts-reports-cmd" id="ts-reports-cmd"></pre>
+        </div>
+
+        <span class="ts-ask-note" id="ts-reports-note"></span>
+      </section>
+
       <section class="card" id="ts-stages-card" hidden>
         <h2>Stages</h2>
         <p class="hint">Rows are stages, columns are the parameters that vary.

@@ -2036,3 +2036,34 @@ class TestTheTabShowsWhatAPrepWouldResolve:
         assert ".ts-facts[hidden]" in css, (
             "`.ts-facts` sets display:grid and is now hidden by JS -- "
             "without the guard it stays in the layout")
+
+
+def test_the_sheet_names_no_token_that_does_not_exist():
+    """**A gap the raw-colour test leaves open, found 2026-08-27.**
+
+    `test_the_sheet_writes_no_raw_palette_colour` forbids a hex literal —
+    so `var(--danger, #e06c6c)` fails it and `var(--danger)` passes. But
+    `--danger` is defined nowhere: the palette calls it `--error`. A
+    `var()` naming a token that does not exist resolves to *nothing*, so
+    the colour is simply unset and the rule silently does not apply.
+
+    Passing the first test made the second failure invisible, which is the
+    shape worth guarding: the rule that catches the loud mistake let the
+    quiet one through.
+    """
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "molbuilder/web/static"
+    defined = set()
+    for f in root.rglob("*.css"):
+        defined |= set(re.findall(r"^\s*(--[a-z0-9-]+)\s*:", f.read_text(),
+                                  re.M))
+    sheet = (root / "task-setup/style.css").read_text()
+    # strip comments first -- prose about `var(--token)` is not a usage
+    sheet = re.sub(r"/\*.*?\*/", "", sheet, flags=re.S)
+    used = set(re.findall(r"var\((--[a-z0-9-]+)", sheet))
+    missing = sorted(used - defined)
+    assert not missing, (
+        f"task-setup/style.css names token(s) nothing defines: {missing}. "
+        f"A var() with no definition resolves to nothing, so the property "
+        f"silently does not apply.")

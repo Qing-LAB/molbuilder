@@ -240,3 +240,43 @@ def test_the_card_says_KEY_not_token():
     card = html[html.index("ts-notify-card") - 900:]
     card = card[:card.index("ts-notify-opts")]
     assert "token" not in card.lower(), "the card still says token"
+
+
+def test_no_two_elements_share_an_id_in_the_task_setup_page():
+    """**Found in the browser, 2026-08-27, and it fails in silence.**
+
+    A `ts-reports-card` was first written as `ts-dest-card` — a name
+    already taken by the *Where this saves* card, where "dest" means the
+    destination FOLDER. `getElementById` returns the first match, so the
+    new card's JS would have read and written the wrong section entirely,
+    with no error anywhere.
+
+    Duplicate ids are invalid HTML and this is the failure mode: not a
+    crash, but the wrong element quietly answering.
+    """
+    import re
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "molbuilder/web/templates/task_setup.html").read_text()
+    ids = re.findall(r'\bid="([^"]+)"', html)
+    dupes = sorted({i for i in ids if ids.count(i) > 1})
+    assert not dupes, f"duplicate id(s) in task_setup.html: {dupes}"
+
+
+def test_the_reports_card_is_not_the_policy_card():
+    """Two cards, two files, and the separation is the contract
+    (`run-reports.md` § 1). The policy card writes `task.json`, which
+    TRAVELS, so it never sees a key. The reports card writes
+    `config_dir()/notify` on this machine, which never travels.
+
+    Sharing a class or an id prefix would invite one edit to move both.
+    """
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "molbuilder/web/templates/task_setup.html").read_text()
+    assert 'id="ts-notify-card"' in html, "the policy card"
+    assert 'id="ts-reports-card"' in html, "the destination card"
+    # the key input belongs to the reports card and nowhere near the policy one
+    policy = html[html.index('id="ts-notify-card"'):html.index('id="ts-reports-card"')]
+    assert "password" not in policy, "a key field landed on the policy card"
+    assert "ts-reports-key" not in policy

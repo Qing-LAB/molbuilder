@@ -2452,6 +2452,11 @@ async function save() {
 
 function start(projects) {
 
+    // WIRED BEFORE THE FOLDER LOADS, and independent of it: the
+    // destination is a MACHINE setting, so it is neither gated on a
+    // calculation being open nor reset when you pick a different one.
+    wireDestination();
+
     // `getCurrentDir` is the public accessor; reading sessionStorage directly
     // would duplicate the sidebar's own key name in a second place.
     const startDir = typeof projects.getCurrentDir === "function"
@@ -2534,6 +2539,142 @@ function boot() {
     // No runtime at all is a page-assembly fault, not a timing one.
     setState("refuse", "The page did not assemble",
              "molbuilder-runtime.js must load before every other script.");
+}
+
+/* ---------- where the reports go: a MACHINE setting ---------- */
+/*
+ * A different card from the policy one above, and a different file.  The
+ * policy card writes task.json, which TRAVELS -- so it never sees a key.
+ * This writes config_dir()/notify on this machine, which never travels
+ * (`run-reports.md` 1 and 3.1).
+ *
+ * It is also machine-wide, so it does NOT hide with the calculation: what
+ * it sets outlives whichever folder you happen to have open, and hiding
+ * it would suggest otherwise.
+ */
+
+/** The key is write-only: shown as a placeholder, never fetched back. */
+function paintDestination(d) {
+    const state = $("ts-reports-state");
+    const path = $("ts-reports-path");
+    const form = $("ts-reports-form");
+    const away = $("ts-reports-elsewhere");
+    if (!state) return;
+    if (path) path.textContent = d.path ? ("It lives at " + d.path + ".") : "";
+
+    if (d.problem) {
+        // A BROKEN file and NO file both mean nothing is sent, and they
+        // look identical from the outside.  Saying which is the whole
+        // reason this card is worth having.
+        state.textContent = "There is a file, but it cannot be read: "
+            + d.problem + " \u2014 nothing is being sent.";
+        state.className = "ts-reports-state is-bad";
+    } else if (d.configured) {
+        state.textContent = "Reports go to " + d.url
+            + (d.has_key ? " (signed)" : " (no key \u2014 the address is the credential)")
+            + (d.mode && d.mode !== "0o600"
+               ? "  \u2014 warning: the file is " + d.mode + ", not 0600" : "");
+        state.className = "ts-reports-state is-set";
+    } else {
+        state.textContent = "Nothing is set up, so no reports are sent.";
+        state.className = "ts-reports-state";
+    }
+
+    // WHICH MACHINE RUNS THE JOBS decides what this card can do.  On a
+    // submit machine the file belongs on the cluster, which this server
+    // cannot write -- so it hands over the exact command instead of
+    // offering a button that would write the file somewhere useless.
+    const here = d.can_write_here !== false;
+    if (form) form.hidden = !here;
+    if (away) away.hidden = here;
+    const cmd = $("ts-reports-cmd");
+    if (cmd && !here) {
+        const url = ($("ts-reports-url") && $("ts-reports-url").value.trim())
+            || d.url || "https://YOUR-SERVER:8888/api/<segment>";
+        cmd.textContent =
+            'mkdir -p -m 700 "${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder"\n'
+            + 'cat > "${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder/notify" <<\'EOF\'\n'
+            + '{\n  "url": "' + url + '",\n  "key": "PASTE-THE-KEY"\n}\nEOF\n'
+            + 'chmod 600 "${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder/notify"';
+    }
+    if (d.configured && $("ts-reports-url") && !$("ts-reports-url").value) {
+        $("ts-reports-url").value = d.url;
+    }
+}
+
+async function loadDestination() {
+    try {
+        const r = await fetch("/api/notify/destination");
+        paintDestination(await r.json());
+    } catch (e) {
+        const s = $("ts-reports-state");
+        if (s) s.textContent = "Could not ask this server: " + e;
+    }
+}
+
+function destNote(text, bad) {
+    const n = $("ts-reports-note");
+    if (!n) return;
+    n.textContent = text;
+    n.className = "ts-ask-note" + (bad ? " is-bad" : "");
+}
+
+async function saveDestination() {
+    const url = ($("ts-reports-url") || {}).value || "";
+    const key = ($("ts-reports-key") || {}).value || "";
+    destNote("saving\u2026", false);
+    try {
+        const r = await fetch("/api/notify/destination", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: url.trim(), key: key.trim() }),
+        });
+        const d = await r.json();
+        if (!d.ok) { destNote(d.error || "could not save", true); return; }
+        // CLEARED ON SUCCESS: the field is write-only, and leaving a
+        // secret sitting in the DOM is how it ends up in a screenshot.
+        if ($("ts-reports-key")) $("ts-reports-key").value = "";
+        paintDestination(d);
+        destNote("Saved. Send a test report to be sure it works.", false);
+    } catch (e) {
+        destNote(String(e), true);
+    }
+}
+
+async function clearDestination() {
+    destNote("removing\u2026", false);
+    try {
+        const d = await (await fetch("/api/notify/destination",
+                                     { method: "DELETE" })).json();
+        if ($("ts-reports-url")) $("ts-reports-url").value = "";
+        if ($("ts-reports-key")) $("ts-reports-key").value = "";
+        paintDestination(d);
+        destNote("Removed \u2014 nothing is sent now.", false);
+    } catch (e) { destNote(String(e), true); }
+}
+
+async function testDestination() {
+    destNote("sending one report\u2026", false);
+    try {
+        const d = await (await fetch("/api/notify/destination/test",
+                                     { method: "POST" })).json();
+        if (d.ok) { destNote("It arrived.", false); return; }
+        // The listener refuses every way identically, so the hint names
+        // all of the possibilities rather than guessing between them.
+        destNote(d.error || d.hint
+                 || ("the destination answered " + d.status), true);
+    } catch (e) { destNote(String(e), true); }
+}
+
+function wireDestination() {
+    const card = $("ts-reports-card");
+    if (!card) return;
+    card.hidden = false;          // a MACHINE setting: never folder-gated
+    const on = (id, fn) => { const b = $(id); if (b) b.addEventListener("click", fn); };
+    on("ts-reports-save", saveDestination);
+    on("ts-reports-clear", clearDestination);
+    on("ts-reports-test", testDestination);
+    loadDestination();
 }
 
 if (document.readyState === "loading") {

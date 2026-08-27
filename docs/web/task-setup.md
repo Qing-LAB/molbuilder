@@ -476,6 +476,44 @@ has not been saved says so.
 
 ---
 
+## 9b. The one card that is NOT about this calculation
+
+Everything else on the page writes `task.json` for the folder you have open.
+**"Where the reports go" writes a file on this machine** —
+`config_dir()/notify` — and setting it changes every run on this box, not this
+calculation. It says so in its own heading, because a setting that outlives
+the thing you are looking at should announce that.
+
+**Two cards, two files, and the separation is the contract**
+([`run-reports.md`](?doc=execution/run-reports.md) §§ 1, 3.1):
+
+| | writes | travels? | sees a key? |
+|---|---|---|---|
+| *Tell me how it is going* | `task.json`'s `notify` block | **yes** | **never** |
+| *Where the reports go* | `config_dir()/notify`, `0600` | **no** | yes — that is what it is for |
+
+They do not share a class or an id prefix, so one restyle cannot move both.
+The first was `ts-dest-card` for one revision — a name the *Where this saves*
+card already owned — and a duplicate id means `getElementById` returns the
+other element with **no error anywhere**. A test now refuses duplicate ids on
+this page.
+
+**The key is write-only.** The card reports whether one is present and never
+what it is, and clears the field once saved: a page that can show you a secret
+is one that can leak it, and there is no reason to read it back.
+
+**On a submit machine it does not pretend.** The monitor reads that file on the
+cluster, which this server cannot write, so the card hands over the exact
+command to run *there* instead of offering a button that would write it
+somewhere useless.
+
+**Send a test report** is the only check that exercises the whole path — the
+file, the address, the route segment, the signature, egress and TLS. Before it,
+the only way to know a setup worked was to run a job and notice nothing
+arrived.
+
+---
+
 ## 10. What this page does not do
 
 - **It does not render a deck.** § 1.
