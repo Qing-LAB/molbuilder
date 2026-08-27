@@ -142,7 +142,45 @@ a header and has no other way to be told who is calling. It is read if present
 and never required.
 
 `MB_NOTIFY_URL` overrides the file, for testing a destination once without
-editing anything. **Pair it with `MB_NOTIFY_KEY`** when the destination is a
+editing anything.
+
+### 3.1 Setting the destination up — DESIGNED 2026-08-27, not yet built
+
+**The format is the hard part, and it is the part a person should not have to
+get right from memory.** Today the flow is: run `notify-token`, copy the JSON,
+reach the machine that runs the jobs, `mkdir -p -m 700`, paste, `chmod 600`,
+and remember the directory. Four chances to be wrong and **every one of them
+fails silently** — absent or malformed means no notifier, which is
+indistinguishable from never having set it up. The wrong-path defect found in
+the browser on 2026-08-27 came from exactly this.
+
+**This does not touch § 1's split.** That rule is about what *travels*: policy
+into `task.json`, destination and secret into a file that never leaves the
+machine. A surface that writes the **non-travelling half, on the machine it
+belongs to** is not carrying a secret anywhere — it is putting one where the
+contract says it lives. The task-setup card's own rule (*it sets policy; it
+never sees a key*) stays exactly as it is, because that card writes
+`task.json`.
+
+**Two cases, and `execution.mode` already tells them apart:**
+
+| | what the surface can do |
+|---|---|
+| **jobs run here** (`direct`) | **write the file.** Same filesystem, and the key is generated server-side, so it never leaves the machine. Through `auth_setup.write_secret_file`, which sets the mode before the first byte, and to `config_dir()` — the same function the monitor reads from, so the two cannot name different directories |
+| **jobs run on a cluster** (`submit`) | it cannot reach that filesystem. It shows the exact JSON and one install command, both with the route segment already in the URL — which is the format problem solved, even though the writing is not |
+
+**Whose file is it?** `config_dir()` belongs to the OS account the server runs
+as, while a molbuilder login is a person. **molbuilder does not manage that
+mapping and does not try to** (user, 2026-08-27: *each user is expected to
+manage and align his login and OS account; we don't manage that*) — which is
+`access-control.md` § 8 rule 3, *identity is borrowed, never stored*, applied
+to the filesystem.
+
+**And it can verify, which is the part worth the most.** A destination is only
+known to work when a report arrives. Sending one test report and saying whether
+it landed turns *"I think it is set up"* into an answer — and it is the only
+check that exercises the whole path: the file, the URL, the route segment, the
+signature, egress, and TLS. **Pair it with `MB_NOTIFY_KEY`** when the destination is a
 molbuilder listener — an unsigned report is refused there, and refused with a
 `404` that the notifier swallows, so the one destination you most want to test
 would fail in silence.
