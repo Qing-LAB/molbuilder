@@ -1752,43 +1752,64 @@ _NOTIFY_USER_RE = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
 
 
 @cli.command("notify-token",
-              short_help="issue a run-report token for one user, and say "
-                         "where to put it")
+              short_help="issue a run-report signing key for one user, and "
+                         "say where to put it")
 @click.argument("user")
-@click.option("--url", default=None,
-              help="the listener's address as the JOB will reach it, e.g. "
-                   "https://host:8888/api/notify.  Used only to print the "
-                   "file to save on the cluster.")
-@click.option("--tokens-file", type=click.Path(dir_okay=False), default=None,
-              help="the server's token file.  Default: `notify_tokens` in "
+@click.option("--host", default=None,
+              help="the server as the JOB will reach it, e.g. "
+                   "https://host:8888.  The route segment is appended for "
+                   "you; used only to print the file to save on the cluster.")
+@click.option("--keys-file", type=click.Path(dir_okay=False), default=None,
+              help="the server's key file.  Default: `notify_keys` in "
                    "molbuilder's config directory.")
+@click.option("--route", default=None,
+              help="reuse an existing route segment instead of generating "
+                   "one.  Pass the value already in molbuilder.json when "
+                   "issuing a key for a SECOND user -- a new segment would "
+                   "move the route and silence everyone else.")
 @click.option("--replace", is_flag=True,
-              help="reissue for a user who already has one.  The old token "
+              help="reissue for a user who already has one.  The old key "
                    "stops working immediately.")
-def cmd_notify_token(user, url, tokens_file, replace):
-    """Issue a token so one person's jobs can report progress.
+def cmd_notify_token(user, host, keys_file, route, replace):
+    """Issue a signing key so one person's jobs can report progress.
 
     Two files, two machines, one secret:
 
     \b
-      * THIS machine (the server) gets `notify_tokens`, which maps the
-        user to their token.  Point `molbuilder.json`'s
-        `notify_tokens_file` at it -- without that key the listener is
-        not registered at all and `/api/notify` simply 404s.
-      * THE CLUSTER gets `notify`, holding the URL and the token, read
-        by the monitor beside a running job.
+      * THIS machine (the server) gets `notify_keys`, which maps the user
+        to their key.  Point `molbuilder.json`'s `notify_keys_file` at it,
+        AND set `notify_route` to the segment printed below -- with either
+        missing the listener is not registered at all and there is no path
+        to find.
+      * THE CLUSTER gets `notify`, holding the url and the key, read by
+        the monitor beside a running job.
 
     Both are mode 0600 and neither is ever placed in `molbuilder.json`:
-    the config carries PATHS (`ops/deployment.md` 5.1).
+    the config carries PATHS (`ops/deployment.md` 5.1).  The route segment
+    IS in `molbuilder.json`, because it is not a secret -- it appears in
+    every access log, as any path does.  What it buys is that a scanner
+    sweeping fixed paths finds nothing.
 
-    **The token is printed once, and that is a deliberate exception.**
+    **The key signs the body and never travels.**  A bearer token -- what
+    this issued until 2026-08-27 -- is on the wire on every report, so one
+    capture yields a credential good forever and for any body.  A signature
+    is valid for one exact body: it cannot be altered and cannot mint a new
+    report (`access-control.md` § 8 rule 7).
+
+    **The key is printed once, and that is a deliberate exception.**
     `auth-setup` never prints a secret, and is right not to -- a session
-    key never leaves the server that made it.  This one is a SHARED
-    secret by design: it has to reach a second machine, and the only
-    thing that could carry it there without showing it to you is a
-    channel molbuilder does not have.  Copy it now; it is not recoverable
-    from the server's file in a form you can read back out of this
-    command.
+    key never leaves the server that made it.  This one is a SHARED secret
+    by design: it has to reach a second machine, and the only thing that
+    could carry it there without showing it to you is a channel molbuilder
+    does not have.  Copy it now; it is not recoverable from the server's
+    file in a form you can read back out of this command.
+
+    **`serve` never generates or rotates these** (`run-reports.md` § 4.4).
+    The counterpart lives on a cluster molbuilder cannot reach, so a
+    startup rotation would leave every running job signing with the old key
+    -- refused, and silently, because a notifier swallows failures by
+    design.  Rotating is this command with --replace, and then copying the
+    new file across.
     """
     import json as _json
     import secrets as _secrets
@@ -1801,7 +1822,7 @@ def cmd_notify_token(user, url, tokens_file, replace):
             f"FILENAME on the server, so it is limited to letters, digits "
             f"and . _ @ + - (max 128).")
 
-    path = Path(tokens_file) if tokens_file else config_dir() / "notify_tokens"
+    path = Path(keys_file) if keys_file else config_dir() / "notify_keys"
     try:
         existing = _json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(existing, dict):
@@ -1811,7 +1832,7 @@ def cmd_notify_token(user, url, tokens_file, replace):
 
     if user in existing and not replace:
         raise click.UsageError(
-            f"{user!r} already has a token in {path}. Re-run with "
+            f"{user!r} already has a key in {path}. Re-run with "
             f"--replace to issue a new one -- the old one stops working "
             f"the moment you do.")
 
@@ -1819,18 +1840,39 @@ def cmd_notify_token(user, url, tokens_file, replace):
     existing[user] = token
     _as.write_secret_file(path, _json.dumps(existing, indent=2) + "\n")
 
-    where = url or "https://YOUR-SERVER:8888/api/notify"
-    client = _json.dumps(
-        {"url": where, "headers": {"Authorization": f"Bearer {token}"}},
-        indent=2)
+    # THE ROUTE SEGMENT IS GENERATED, NOT NAMED.  A word chosen in the
+    # source would be committed to a public repository and so be exactly as
+    # public as `notify`, only less honest about what it does
+    # (`access-control.md` § 8 rule 7).  It is not a secret -- it lands in
+    # every access log -- it is merely unguessable, which is what stops a
+    # scanner finding the route at all.
+    #
+    # `--route` exists because a SECOND user must join the existing route:
+    # generating a new one would move it and silence everybody already set
+    # up.
+    seg = route or _secrets.token_urlsafe(12).replace("-", "").replace("_", "")
 
-    click.echo(f"\nIssued a run-report token for {user}.\n")
+    base = (host or "https://YOUR-SERVER:8888").rstrip("/")
+    client = _json.dumps({"url": f"{base}/api/{seg}", "key": token}, indent=2)
+
+    click.echo(f"\nIssued a run-report signing key for {user}.\n")
     click.echo(f"  server side, written now : {path}  (0600)")
-    if not tokens_file:
+    if not keys_file:
         click.echo(f"  molbuilder.json needs    : "
-                   f'"notify_tokens_file": "{path}"')
+                   f'"notify_keys_file": "{path}",')
+        click.echo(f"                             "
+                   f'"notify_route": "{seg}"')
         click.echo( "                             "
-                    "(without it the listener is not registered at all)")
+                    "(BOTH -- with either missing there is no route at all)")
+    if route:
+        click.echo( "\n  reusing the route segment you passed, so everybody "
+                    "already set up keeps working.")
+    else:
+        click.echo( "\n  the route segment was GENERATED just now.  If a "
+                    "listener is already running,")
+        click.echo( "  pass its existing segment with --route instead, or "
+                    "this moves the route and")
+        click.echo( "  silences every key already issued.")
     click.echo("\nOn the CLUSTER, save this as "
                "$XDG_CONFIG_HOME/molbuilder/notify")
     click.echo("(or ~/.config/molbuilder/notify), mode 0600:\n")
@@ -1843,9 +1885,9 @@ def cmd_notify_token(user, url, tokens_file, replace):
                "/molbuilder/notify\"")
     click.echo("\nOn an HPC login node $HOME is usually NFS-mounted and "
                "backed up.")
-    click.echo("Setting XDG_CONFIG_HOME to somewhere local keeps the token "
+    click.echo("Setting XDG_CONFIG_HOME to somewhere local keeps the key "
                "off it.\n")
-    click.echo("The token is shown ONCE. Copy it before this scrolls away.")
+    click.echo("The key is shown ONCE. Copy it before this scrolls away.")
     click.echo("Then pick what is worth a message on the Task-setup tab; "
                "with nothing")
     click.echo("ticked a run still reports when it ends.\n")

@@ -143,13 +143,6 @@ editing anything.
 
 ## 4. The listener
 
-> **⏳ Designed 2026-08-26, not yet built.** What shipped on 2026-08-26 is the
-> first cut: a fixed `/api/notify` path and a bearer token in an
-> `Authorization` header. This section is the contract it is being moved to —
-> a generated route segment, a signed body, and `404` on every failure. Until
-> the code follows, § 4.1–4.4 describe the target and not the running server.
-> Remove this box when it lands.
-
 molbuilder's own receiving end is **one route**. It appends one line to a
 record log, answers `{"ok": true}`, and does nothing else. There is no `GET`,
 it never echoes the payload, and nothing stored is readable through it —
@@ -198,6 +191,14 @@ indistinguishable from a path that was never registered (`access-control.md`
 § 8 rule 2). It costs nothing — `404` is still `4xx`, so the rate limiter
 counts it exactly as a `401` would.
 
+**A report also carries a timestamp, signed with the body.** It bounds how
+long a captured report stays replayable — a signature covers one body, so a
+replay can only ever duplicate a line in a capped log. Fifteen minutes, which
+is generous on purpose: a compute node's clock is not ours to trust closely,
+and a run that reports late is not a run that is lying. The timestamp is
+*inside* the signed material rather than beside it, or it could be rewritten
+freely and the window would mean nothing.
+
 **One key per user, and the sender never states who it is.** The server tries
 each key it holds, without an early exit, and the one that verifies *is* the
 identity. There is no user field to send, so a valid key cannot be used to
@@ -217,7 +218,7 @@ attacker's way.
 
 | what they try | what they get | why |
 |---|---|---|
-| sweeps `/api/notify`, `/webhook`, `/api/hooks`, a wordlist | `404`, every one | there is no route at any fixed path; the only one sits at a segment that was never committed anywhere |
+| sweeps `/api/notify`, `/webhook`, `/api/hooks`, a wordlist | `404`, every one | there is no route at any fixed path; the only one sits at a segment that was never committed anywhere. A repo guard holds that: `test_no_fixed_notify_path_exists_anywhere_in_the_source` |
 | guesses the segment | `404` | the space is far too large to walk, and every attempt is `4xx` and rate-limited |
 | **reads the real URL** — an access log, a leaked destination file, over your shoulder | `404` on every request | the URL is an address. Without the key nothing can be signed, and the `404` will not even confirm they found the right place |
 | captures a report in flight | one signature, useless | TLS is in front; and a signature covers **one body**. They cannot alter a field, cannot mint a new report, and a replay only adds a duplicate line to a capped, rotating log |

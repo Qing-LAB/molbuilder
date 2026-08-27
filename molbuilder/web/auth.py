@@ -72,10 +72,18 @@ _PUBLIC_ENDPOINTS = frozenset({
     "api_health",             # liveness probes
     # THE SSO SESSION CHECK DOES NOT APPLY -- which is not the same as
     # unauthenticated.  A monitor on a compute node cannot do a browser
-    # sign-in, so `notify.api_notify` authenticates itself, with a bearer
-    # token compared by `hmac.compare_digest`, as its first act.  It is
-    # registered at all only when the operator configured a token file
-    # (`app.py`), so on a server that has not, this name matches no route.
+    # sign-in, so `notify.api_notify` authenticates itself: an HMAC-SHA256
+    # signature over the exact body, compared by `hmac.compare_digest`.
+    # It is registered at all only when the operator configured BOTH a key
+    # file and a route segment (`app.py`), so on a server that has not,
+    # this name matches no route.
+    #
+    # **This exemption must not lapse into a redirect.**  If the name ever
+    # falls out of this set the gate answers 302 to the sign-in page,
+    # `urllib.request.urlopen` FOLLOWS it, the POST body is dropped on the
+    # way, and the monitor -- which swallows every failure by design -- sees
+    # no error at all.  Reports would stop with nothing anywhere saying why.
+    # `tests/test_notify_listener.py` holds that as a guard.
     "notify.api_notify",      # run reports from a job -- see run-reports.md
     "static",                 # CSS/JS; browser fetches before any session
     "vendor_plotly_js",       # third-party JS served from plotly package

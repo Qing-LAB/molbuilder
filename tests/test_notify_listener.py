@@ -1,57 +1,80 @@
-"""``POST /api/notify`` — the receiving end, and what it refuses.
+"""The receiving end for a run's own reports, and what it refuses.
 
-A job on a cluster POSTs how it is going (`execution/run-reports.md`).  This
-is the smallest endpoint in the app on purpose: **it appends one line to a
-log and answers ok**, and every test here is about a way it must not do
-more than that.
+`execution/run-reports.md` § 4. This is the smallest endpoint in the app on
+purpose — **it appends one line to a log and answers ok** — and every test
+here is about a way it must not do more than that.
 
-The three rules from `ops/access-control.md` § 8 it is built on:
+**Four gates, and only one is the control.**
+
+1. *Has anyone enabled this?* — registered only when **both** the key file and
+   the route segment are configured.
+2. *Where is it?* — a per-deployment random segment, never a word in this
+   repository.
+3. *May this sender write?* — an HMAC-SHA256 signature over the exact body.
+   **This is the control**; the other three exist so a stranger cannot learn
+   whether it is even there.
+4. *What does a failure reveal?* — nothing. Every one answers a plain `404`.
+
+The rules from `ops/access-control.md` § 8 it is built on:
 
 * **rule 1** — *"the safe state is the one you get by doing nothing"*: with
-  no token file configured, there is no route.
-* **rule 2** — *"absent beats refused, when existence is itself the
-  answer"*: so the path 404s rather than sitting there refusing, and a
-  scanner learns nothing about a capability nobody enabled.
-* **rule 4** — *"judge behaviour, not people"*: a wrong token is a probe,
-  so its 401 must reach the limiter. `auth.py`'s gate exempts its OWN 401
-  (an expired session is an ordinary visitor, and counting it once locked a
-  user out of their site for an hour) — that exemption must not spread here.
+  either config key missing, there is no route.
+* **rule 2** — *"absent beats refused, when existence is itself the answer"*:
+  a wrong signature and an unconfigured server answer identically, so probing
+  cannot tell them apart.
+* **rule 4** — *"judge behaviour, not people"*: nobody reaches this by
+  accident, so a failure is a probe and must reach the limiter. `auth.py`'s
+  gate exempts its OWN 401 (an expired session is an ordinary visitor, and
+  counting it once locked a user out of their site for an hour) — that
+  exemption must not spread here.
+* **rule 7** — *"prefer the secret that never travels"*: the key signs, and
+  stays on the cluster.
 """
 from __future__ import annotations
 
 import json
-import os
+import time
 from pathlib import Path
 
 import pytest
 
 from molbuilder.web.app import create_app
+from molbuilder.web.blueprints.notify import sign
 
 
-TOKEN = "test-token-not-a-real-one"
+KEY = "test-key-not-a-real-one"
 USER = "someone@example.org"
+ROUTE = "x7KqTestSegment"
+PATH = f"/api/{ROUTE}"
 
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
     """A configured server, with the log root pointed inside tmp."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    tokens = tmp_path / "notify_tokens"
-    tokens.write_text(json.dumps({USER: TOKEN}))
+    keys = tmp_path / "notify_keys"
+    keys.write_text(json.dumps({USER: KEY}))
     app = create_app(config={"rate_limit": {"enabled": False},
-                             "notify_tokens_file": str(tokens)})
+                             "notify_keys_file": str(keys),
+                             "notify_route": ROUTE})
     from molbuilder.web.blueprints import notify as N
     N._loggers.clear()          # rotating handlers are cached per user
     return app.test_client(), tmp_path / ".molbuilder/logs/notify"
 
 
-def _post(client, token=TOKEN, body=None, raw=None):
-    headers = {"Content-Type": "application/json"}
-    if token is not None:
-        headers["Authorization"] = f"Bearer {token}"
+def _post(client, key=KEY, body=None, raw=None, path=PATH, ts=None, sig=None):
+    """One correctly signed report, unless the caller asks for otherwise."""
     data = raw if raw is not None else json.dumps(
         body if body is not None else {"event": "finish", "text": "done"})
-    return client.post("/api/notify", data=data, headers=headers)
+    blob = data.encode() if isinstance(data, str) else data
+    stamp = ts if ts is not None else "%d" % int(time.time())
+    headers = {"Content-Type": "application/json",
+               "X-Molbuilder-Timestamp": stamp}
+    if sig is not None:
+        headers["X-Molbuilder-Signature"] = sig
+    elif key is not None:
+        headers["X-Molbuilder-Signature"] = sign(key, stamp, blob)
+    return client.post(path, data=data, headers=headers)
 
 
 def _lines(log_root: Path):
@@ -62,92 +85,200 @@ def _lines(log_root: Path):
 
 
 # --------------------------------------------------------------------- #
-#  absent beats refused                                                  #
+#  gate 1: it exists only when it was enabled                            #
 # --------------------------------------------------------------------- #
 
-def test_with_no_token_file_configured_the_route_does_not_exist(tmp_path,
-                                                                monkeypatch):
-    """Not 401, not 403 — **404**.
-
-    A server whose operator never set this up should not advertise that the
-    capability exists.  `access-control.md` § 8 rule 2: *"a capability that
-    cannot be exercised safely should not appear. 404 is not rudeness; it is
-    the honest statement that there is nothing there."*
-    """
+@pytest.mark.parametrize("cfg,why", [
+    ({}, "neither key"),
+    ({"notify_route": ROUTE}, "a route but no keys"),
+    ({"notify_keys_file": "/nonexistent/keys"}, "keys but no route"),
+])
+def test_both_config_keys_are_required_or_there_is_no_route(
+        tmp_path, monkeypatch, cfg, why):
+    """`access-control.md` § 8 rule 1: *the safe state is the one you get by
+    doing nothing.* Half a configuration must not open a door."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    client = create_app(config={"rate_limit": {"enabled": False}}).test_client()
-    r = client.post("/api/notify", data="{}",
-                    headers={"Content-Type": "application/json"})
-    assert r.status_code == 404
-
-
-def test_the_endpoint_is_not_in_the_url_map_at_all(tmp_path, monkeypatch):
-    """The stronger form of the above: nothing to reach, rather than
-    something that says no."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    app = create_app(config={"rate_limit": {"enabled": False}})
+    app = create_app(config={"rate_limit": {"enabled": False}, **cfg})
     assert not [r for r in app.url_map.iter_rules()
-                if str(r) == "/api/notify"]
+                if str(r).startswith("/api/") and "notify" in r.endpoint], why
+
+
+def test_no_fixed_notify_path_exists_anywhere_in_the_source():
+    """**The segment is generated, never named.**
+
+    A cleverer word would be committed to a public repository and so be
+    exactly as public as `notify`, only less honest about what it does
+    (`access-control.md` § 8 rule 7). This is the same shape of guard as
+    `test_config_dir_has_one_home` — a comment saying *do not hard-code it*
+    is not a mechanism.
+    """
+    src = (Path(__file__).resolve().parents[1]
+           / "molbuilder/web/blueprints/notify.py").read_text()
+    body = src.split('"""', 2)[2]          # past the module docstring
+    assert '"/api/notify"' not in body
+    assert "'/api/notify'" not in body
+    assert '"/api/<route>"' in body, "the route must be a parameter"
 
 
 # --------------------------------------------------------------------- #
-#  the token is the claim                                                #
+#  gate 2 + 4: a wrong guess is indistinguishable from nothing           #
 # --------------------------------------------------------------------- #
 
-def test_a_valid_token_is_accepted_and_the_report_is_kept(store):
+def test_the_wrong_segment_is_a_plain_404(store):
+    client, log_root = store
+    assert _post(client, path="/api/notify").status_code == 404
+    assert _post(client, path="/api/webhook").status_code == 404
+    assert _lines(log_root) == []
+
+
+def test_a_wrong_signature_answers_EXACTLY_like_an_unconfigured_server(
+        tmp_path, monkeypatch, store):
+    """**The point of the whole design.** A 401 would say *there is something
+    here and you got it wrong*, which is the one fact the other gates exist
+    to keep. Both answers must be byte-identical."""
+    client, _ = store
+    bad = _post(client, sig="0" * 64)
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    off = create_app(config={"rate_limit": {"enabled": False}}).test_client()
+    absent = off.post(PATH, data="{}",
+                      headers={"Content-Type": "application/json"})
+
+    assert bad.status_code == absent.status_code == 404
+    assert bad.get_data() == absent.get_data(), \
+        "a refusal that looks different from absence gives away the capability"
+
+
+@pytest.mark.parametrize("kw,why", [
+    ({"sig": ""},                       "empty signature"),
+    ({"sig": "not-hex-at-all"},         "garbage"),
+    ({"sig": "a" * 64},                 "well-formed but wrong"),
+    ({"key": None},                     "no signature header at all"),
+    ({"key": KEY + "x"},                "a key nobody holds"),
+])
+def test_anything_but_a_valid_signature_is_refused(store, kw, why):
+    client, log_root = store
+    assert _post(client, **kw).status_code == 404, why
+    assert _lines(log_root) == [], f"{why} still wrote a record"
+
+
+def test_the_signature_covers_the_BODY_so_it_cannot_be_edited(store):
+    """What a bearer token could not do. Sign one body, send another, and
+    the report is refused — an intercepted report cannot be altered in
+    flight, only replayed verbatim."""
+    client, log_root = store
+    stamp = "%d" % int(time.time())
+    honest = json.dumps({"event": "tick", "n_iters": 5}).encode()
+    tampered = json.dumps({"event": "tick", "n_iters": 9999}).encode()
+    r = client.post(PATH, data=tampered, headers={
+        "Content-Type": "application/json",
+        "X-Molbuilder-Timestamp": stamp,
+        "X-Molbuilder-Signature": sign(KEY, stamp, honest)})
+    assert r.status_code == 404
+    assert _lines(log_root) == []
+
+
+def test_the_signature_covers_the_TIMESTAMP_too(store):
+    """Signed WITH the body, not sent beside it — otherwise the timestamp
+    could be rewritten freely and the freshness window would mean nothing."""
+    client, log_root = store
+    body = json.dumps({"event": "tick"}).encode()
+    real = "%d" % int(time.time())
+    r = client.post(PATH, data=body, headers={
+        "Content-Type": "application/json",
+        "X-Molbuilder-Timestamp": "%d" % (int(time.time()) - 60),
+        "X-Molbuilder-Signature": sign(KEY, real, body)})
+    assert r.status_code == 404
+    assert _lines(log_root) == []
+
+
+@pytest.mark.parametrize("ts,why", [
+    ("%d" % (int(time.time()) - 3600), "an hour old"),
+    ("%d" % (int(time.time()) + 3600), "an hour ahead"),
+    ("not-a-number", "unparseable"),
+    ("", "absent"),
+])
+def test_a_stale_or_unreadable_timestamp_is_refused(store, ts, why):
+    """Bounds how long a captured report stays replayable. Generous, because
+    a compute node's clock is not ours to trust closely and a run that
+    reports late is not a run that is lying."""
+    client, log_root = store
+    assert _post(client, ts=ts).status_code == 404, why
+    assert _lines(log_root) == []
+
+
+# --------------------------------------------------------------------- #
+#  gate 3: the key is the claim                                          #
+# --------------------------------------------------------------------- #
+
+def test_a_valid_signature_is_accepted_and_the_report_is_kept(store):
     client, log_root = store
     r = _post(client, body={"event": "finish", "text": "done", "n_iters": 12})
     assert r.status_code == 200
     assert r.get_json() == {"ok": True}
     kept = _lines(log_root)
     assert len(kept) == 1
-    assert kept[0]["event"] == "finish"
-    assert kept[0]["n_iters"] == 12
+    assert kept[0]["event"] == "finish" and kept[0]["n_iters"] == 12
     assert "received_at" in kept[0]
 
 
-@pytest.mark.parametrize("token,why", [
-    (None,            "no header at all"),
-    ("",              "empty bearer"),
-    ("wrong-token",   "a token nobody holds"),
-    (TOKEN[:-1],      "one character short"),
-])
-def test_anything_but_the_token_is_refused(store, token, why):
-    client, log_root = store
-    assert _post(client, token=token).status_code == 401, why
-    assert _lines(log_root) == [], f"{why} still wrote a record"
-
-
 def test_the_sender_never_states_who_it_is(store):
-    """**The secret is the claim.**  There is no user field to send, so a
-    valid token cannot be used to write into somebody else's record —
-    which is the point of issuing one per person."""
+    """**The key is the claim.** There is no user field to send, so one
+    person's key cannot write into another's record — which is the point of
+    issuing one each, and what lets one be revoked alone."""
     client, log_root = store
-    _post(client, body={"event": "tick", "user": "someone-else",
-                        "text": "hi"})
+    _post(client, body={"event": "tick", "user": "someone-else", "text": "hi"})
     kept = _lines(log_root)
-    assert len(kept) == 1
-    assert "user" not in kept[0], "a payload field became an identity"
+    assert len(kept) == 1 and "user" not in kept[0]
     assert (log_root / f"{USER}.jsonl").exists()
     assert not (log_root / "someone-else.jsonl").exists()
 
 
-def test_a_bad_token_is_counted_by_the_limiter(store):
+def test_every_key_is_tried_with_no_early_exit(store, tmp_path):
+    """Returning on the first match would make the time taken depend on a
+    key's position in the file. The loop is short and the cost is nothing;
+    the property is worth holding by construction."""
+    src = (Path(__file__).resolve().parents[1]
+           / "molbuilder/web/blueprints/notify.py").read_text()
+    fn = src[src.index("def _resolve_user"):src.index("def _logger_for")]
+    assert "return" not in fn.split("found = None")[1].split("return found")[0], \
+        "_resolve_user gained an early return"
+
+
+# --------------------------------------------------------------------- #
+#  rule 4: the limiter must hear about a probe                           #
+# --------------------------------------------------------------------- #
+
+def test_a_failure_is_counted_by_the_limiter(store):
     """`auth.py`'s gate marks its own 401 as *not evidence* — an expired
-    session is an ordinary visitor.  **That reasoning does not carry
-    here**, so this route must not set the same flag: nobody reaches it by
-    accident, and a wrong token is somebody trying one.
-    """
+    session is an ordinary visitor. **That reasoning does not carry here**:
+    nobody reaches this route by accident. 404 is still 4xx, so switching
+    from 401 costs nothing (`rate_limit.record_response` takes any
+    `400 <= status < 500`)."""
     client, _ = store
     with client.application.test_request_context():
         from flask import g
-        _post(client, token="wrong-token")
+        _post(client, sig="0" * 64)
         assert not getattr(g, "molbuilder_auth_challenge", False)
-    # And the source says so, at the one place that could set it.
     src = (Path(__file__).resolve().parents[1]
            / "molbuilder/web/blueprints/notify.py").read_text()
     assert "molbuilder_auth_challenge" not in src.split('"""', 2)[2], \
-        "the notify route exempts its own 401 from the limiter"
+        "the notify route exempts its own failure from the limiter"
+
+
+def test_the_route_never_REDIRECTS(store):
+    """**The trap the Sol egress test surfaced.** A `curl` to the app's root
+    answered `302` — the sign-in redirect. If this endpoint ever fell out of
+    `auth.py`'s `_PUBLIC_ENDPOINTS` it would answer the same way,
+    `urllib.request.urlopen` would FOLLOW it, the POST body would be dropped
+    on the way to a login page, and the monitor — which swallows every
+    failure by design — would see no error at all. Reports would stop with
+    nothing anywhere saying why."""
+    client, _ = store
+    for r in (_post(client), _post(client, sig="0" * 64),
+              _post(client, path="/api/notify")):
+        assert not (300 <= r.status_code < 400), \
+            f"{r.status_code} redirect: a POST body does not survive one"
 
 
 # --------------------------------------------------------------------- #
@@ -155,55 +286,51 @@ def test_a_bad_token_is_counted_by_the_limiter(store):
 # --------------------------------------------------------------------- #
 
 def test_there_is_no_way_to_read_anything_back(store):
-    """No GET.  Reading is a logged-in browser's job on the ordinary tabs;
-    a route that both accepts a token and serves data is a route where a
-    stolen token reads instead of only writing."""
+    """A route that both takes a credential and serves data is a route where
+    a stolen credential reads instead of only writing."""
     client, _ = store
-    assert client.get("/api/notify").status_code == 405
+    assert client.get(PATH).status_code in (404, 405)
 
 
 def test_the_answer_carries_nothing_from_the_payload(store):
-    """An endpoint that echoes is an endpoint that can be used to render
-    somebody else's text somewhere it was not expected."""
     client, _ = store
     r = _post(client, body={"event": "finish", "text": "MARKER-abc123"})
     assert "MARKER-abc123" not in r.get_data(as_text=True)
 
 
-@pytest.mark.parametrize("raw,code,why", [
-    ("not json at all",           400, "unparseable"),
-    ('["a", "list"]',             400, "not an object"),
-    ('"a bare string"',           400, "not an object"),
+@pytest.mark.parametrize("raw,why", [
+    ("not json at all", "unparseable"),
+    ('["a", "list"]',   "not an object"),
+    ('"a bare string"', "not an object"),
 ])
-def test_a_body_that_is_not_a_report_is_refused(store, raw, code, why):
+def test_a_body_that_is_not_a_report_is_refused(store, raw, why):
+    """Correctly signed, but not a report. Still 404 — the shape of a body
+    is not something a stranger should learn either."""
     client, log_root = store
-    assert _post(client, raw=raw).status_code == code, why
+    assert _post(client, raw=raw).status_code == 404, why
     assert _lines(log_root) == []
 
 
 def test_an_oversized_body_is_refused_before_it_is_parsed(store):
-    """A cap on a route fed from the internet is not optional: without one
-    a leaked token fills the disk the app runs on."""
+    """A cap on a route fed from the internet is not optional: without one a
+    leaked key fills the disk the app runs on."""
     client, log_root = store
     from molbuilder.web.blueprints.notify import MAX_BODY_BYTES
     huge = json.dumps({"event": "x", "text": "A" * (MAX_BODY_BYTES + 100)})
-    assert _post(client, raw=huge).status_code == 413
+    assert _post(client, raw=huge).status_code == 404
     assert _lines(log_root) == []
 
 
 def test_only_declared_fields_survive(store):
-    """The log is rendered in a browser.  An open-ended blob is an
-    open-ended rendering problem, so the field set is fixed and a nested
-    structure is dropped rather than flattened."""
+    """The log is rendered in a browser. An open-ended blob is an open-ended
+    rendering problem, so nested structures are dropped, not flattened."""
     client, log_root = store
-    _post(client, body={"event": "tick", "text": "ok",
+    _post(client, body={"event": "tick", "text": "ok", "n_iters": 4,
                         "surprise": "not a field",
-                        "nested": {"a": [1, 2, 3]},
-                        "n_iters": 4})
+                        "nested": {"a": [1, 2, 3]}})
     kept = _lines(log_root)[0]
     assert kept["event"] == "tick" and kept["n_iters"] == 4
-    assert "surprise" not in kept
-    assert "nested" not in kept
+    assert "surprise" not in kept and "nested" not in kept
 
 
 def test_a_long_string_is_capped(store):
@@ -216,15 +343,14 @@ def test_a_long_string_is_capped(store):
 #  the loop, end to end                                                  #
 # --------------------------------------------------------------------- #
 
-def test_the_body_the_MONITOR_sends_is_one_the_LISTENER_accepts(store):
-    """The two halves are written in different files, ship separately, and
-    must agree about a wire format.
-
-    The monitor's copy travels to a compute node as a standalone script; a
-    field renamed on one side shows up as reports that vanish silently.  So
-    this builds the body with the monitor's own notifier and feeds it to
-    the real route.
-    """
+def test_the_MONITOR_signs_what_the_LISTENER_verifies(store):
+    """The two halves live in different files and ship separately — the
+    monitor's copy travels to a compute node as a standalone stdlib-only
+    script, so it cannot import the server's `sign` and the server cannot
+    import its `sign_report`. **The same rule, written twice, kept in step
+    by this test.** A change on one side would show up as reports that
+    vanish in silence, because the notifier swallows every failure by
+    design."""
     client, log_root = store
     from molbuilder import monitor as M
 
@@ -236,11 +362,10 @@ def test_the_body_the_MONITOR_sends_is_one_the_LISTENER_accepts(store):
 
     def _fake_urlopen(req, timeout=None):
         sent["body"] = req.data
-        sent["headers"] = dict(req.header_items())
+        sent["headers"] = {k.lower(): v for k, v in req.header_items()}
         return _Resp()
 
-    hook = M.make_webhook_notifier("https://example/api/notify",
-                                   {"Authorization": f"Bearer {TOKEN}"})
+    hook = M.make_webhook_notifier(f"https://example{PATH}", key=KEY)
     import urllib.request as _u
     real = _u.urlopen
     _u.urlopen = _fake_urlopen
@@ -250,53 +375,86 @@ def test_the_body_the_MONITOR_sends_is_one_the_LISTENER_accepts(store):
     finally:
         _u.urlopen = real
 
-    auth = next(v for k, v in sent["headers"].items()
-                if k.lower() == "authorization")
-    r = client.post("/api/notify", data=sent["body"],
-                    headers={"Content-Type": "application/json",
-                             "Authorization": auth})
+    r = client.post(PATH, data=sent["body"], headers={
+        "Content-Type": "application/json",
+        "X-Molbuilder-Timestamp": sent["headers"]["x-molbuilder-timestamp"],
+        "X-Molbuilder-Signature": sent["headers"]["x-molbuilder-signature"]})
     assert r.status_code == 200, r.get_data(as_text=True)
     kept = _lines(log_root)[0]
     assert kept["event"] == "scf_converged"
-    assert kept["geom_step"] == 3
-    assert kept["n_iters"] == 7
+    assert kept["geom_step"] == 3 and kept["n_iters"] == 7
     assert kept["energy"] == "-1740.2"
 
 
+def test_the_monitor_does_not_send_the_key_itself(store):
+    """**Rule 7, checked on the wire.** What travels is a signature, never
+    the secret — that is the whole difference from the bearer token this
+    replaced."""
+    from molbuilder import monitor as M
+    sent = {}
+
+    class _Resp:
+        def close(self):
+            pass
+
+    def _fake_urlopen(req, timeout=None):
+        sent["body"] = req.data
+        sent["headers"] = dict(req.header_items())
+        return _Resp()
+
+    import urllib.request as _u
+    real = _u.urlopen
+    _u.urlopen = _fake_urlopen
+    try:
+        M.make_webhook_notifier("https://example/api/x", key=KEY)(
+            M.JobStatus(elapsed_s=1.0), "tick")
+    finally:
+        _u.urlopen = real
+
+    blob = repr(sent["headers"]) + sent["body"].decode()
+    assert KEY not in blob, "the signing key travelled"
+
+
 # --------------------------------------------------------------------- #
-#  the token file itself                                                 #
+#  the key file itself                                                   #
 # --------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("body", ["", "not json", "[]", '{"u": 5}', '{}'])
-def test_a_broken_token_file_accepts_nothing(tmp_path, monkeypatch, body):
+@pytest.mark.parametrize("body", ["", "not json", "[]", '{"u": 5}', "{}"])
+def test_a_broken_key_file_accepts_nothing(tmp_path, monkeypatch, body):
     """A misconfiguration must remove a capability, never grant one
-    (`access-control.md` § 8 rule 1).  An unreadable token file means an
-    empty token set, and an empty set matches nothing."""
+    (rule 1). An unreadable key file means an empty key set, and an empty
+    set verifies nothing."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    tokens = tmp_path / "notify_tokens"
-    tokens.write_text(body)
+    keys = tmp_path / "notify_keys"
+    keys.write_text(body)
     app = create_app(config={"rate_limit": {"enabled": False},
-                             "notify_tokens_file": str(tokens)})
-    r = app.test_client().post(
-        "/api/notify", data="{}",
-        headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {TOKEN}"})
-    assert r.status_code == 401
+                             "notify_keys_file": str(keys),
+                             "notify_route": ROUTE})
+    assert _post(app.test_client()).status_code == 404
 
 
 def test_a_user_id_that_would_escape_the_log_directory_is_refused(
         tmp_path, monkeypatch):
-    """The id becomes a FILENAME.  A path separator in one would write
-    outside the log root, and *"the operator would not do that"* is not a
-    mechanism."""
+    """The id becomes a FILENAME. A path separator would write outside the
+    log root, and *"the operator would not do that"* is not a mechanism."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    tokens = tmp_path / "notify_tokens"
-    tokens.write_text(json.dumps({"../../escaped": TOKEN}))
+    keys = tmp_path / "notify_keys"
+    keys.write_text(json.dumps({"../../escaped": KEY}))
     app = create_app(config={"rate_limit": {"enabled": False},
-                             "notify_tokens_file": str(tokens)})
-    r = app.test_client().post(
-        "/api/notify", data="{}",
-        headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {TOKEN}"})
-    assert r.status_code == 401
+                             "notify_keys_file": str(keys),
+                             "notify_route": ROUTE})
+    assert _post(app.test_client()).status_code == 404
     assert not (tmp_path / "escaped.jsonl").exists()
+
+
+def test_the_route_segment_is_validated_as_one_url_segment(tmp_path,
+                                                           monkeypatch):
+    """A value with a slash in it would silently mean a different path than
+    the one written down."""
+    from molbuilder.runtime_config import RuntimeConfigError, _normalise
+    for bad in ("a/b", "", "has space", "x" * 200, "a.b", 42):
+        with pytest.raises(RuntimeConfigError):
+            _normalise({"notify_keys_file": "/k", "notify_route": bad})
+    # and one that is fine, so the test cannot pass by refusing everything
+    ok = _normalise({"notify_keys_file": "/k", "notify_route": "  /x7Kq/  "})
+    assert ok["notify_route"] == "x7Kq", "surrounding slashes are trimmed"

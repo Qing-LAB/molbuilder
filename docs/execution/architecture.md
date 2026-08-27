@@ -698,7 +698,8 @@ the project's if set, otherwise the server's.
 | `checkpoint` | `get_checkpoint`, `get_checkpoint_engines` | **outside the stack** — the file protocol | the size at which a file goes to the archive instead of git, and the per-engine hints |
 | `auth` | `get_auth`, `get_providers` | the **server** | who may sign in; the provider list is `auth.providers` (`ops/access-control.md` § 3) |
 | `secret_key_file` | `get_secret_key_file` | the **server** | the path to the session-signing key — a path, never the secret itself |
-| `notify_tokens_file` | `get_notify_tokens_file` | the **server** | the path to the run-report token file — a path, never the tokens. **Absent means the `/api/notify` route is not registered at all** ([`run-reports.md`](?doc=execution/run-reports.md) § 4): a capability nobody enabled does not announce itself. **Being renamed to `notify_keys_file` and joined by `notify_route`** — designed in [`run-reports.md`](?doc=execution/run-reports.md) § 4.3, not yet built |
+| `notify_keys_file` | `get_notify_keys_file` | the **server** | the path to the run-report signing-key file — a path, never the keys ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3) |
+| `notify_route` | `get_notify_route` | the **server** | the listener's URL segment, generated per deployment by `notify-token`. **Both keys are required**; with either absent no route is registered at any path, so the server cannot even be probed for the capability. Not a secret — it is in every access log — but never a fixed word, because a fixed word in a public repository is not obscurity ([`access-control.md`](?doc=ops/access-control.md) § 8 rule 7) |
 | `tls` | `get_tls` | the **server** | the certificate and key for HTTPS |
 | `rate_limit` | `get_rate_limit` | the **server** | how the limiter judges traffic (§ 4 there) |
 | `admin` | `get_admin_emails` | the **server** | `admin.emails` — who may clear the block list and restart the process. **Absent means nobody**, which is the safe state you get by writing no config |
@@ -727,7 +728,7 @@ before:
 | rule | what it means for you |
 |---|---|
 | **an unknown top-level key is refused, never ignored** | a typo'd section name (`"shceduler"`) is an error naming the known sections, not a silently dead block. *Amended contract — `running-a-job.md` § 5 said "unknown keys are ignored", and that tolerance is exactly the hole that ate `admin`.* The one carve-out: a key starting with `_` (the templates' `"_comment_tls"` idiom) is a comment by design |
-| **a machine section may not live in a bundle** | `admin`, `auth`, `tls`, `envs`, `secret_key_file`, `notify_tokens_file`, `checkpoint`, `rate_limit` in a calculation's `.molbuilder.json` are refused — at read AND at write (`write_config_scope`). A bundle may carry `execution`, `script_generation`, `scheduler`. This generalises checkpoint's S1c argument: a section that is read, validated and then silently dropped looks effective while nobody applied it |
+| **a machine section may not live in a bundle** | `admin`, `auth`, `tls`, `envs`, `secret_key_file`, `notify_keys_file`, `notify_route`, `checkpoint`, `rate_limit` in a calculation's `.molbuilder.json` are refused — at read AND at write (`write_config_scope`). A bundle may carry `execution`, `script_generation`, `scheduler`. This generalises checkpoint's S1c argument: a section that is read, validated and then silently dropped looks effective while nobody applied it |
 | **provenance prints only what its row allows** | `config_provenance` (the `config:` lines prep and submit echo and the decision ledger records) shows values only for `execution` and `script_generation` — never anything near a secret |
 
 *(That the § 8.2 table and the registry name the same sections is checked —

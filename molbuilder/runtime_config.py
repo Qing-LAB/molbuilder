@@ -472,19 +472,63 @@ def _read_secret_key_file(raw: Mapping[str, Any]):
     return secret_key_file
 
 
-def _read_notify_tokens_file(raw: Mapping[str, Any]):
-    """Path to the run-report token file.  A top-level SCALAR, like
+#: One URL segment: letters, digits, '-' and '_'.  Deliberately narrow --
+#: the value becomes part of a route, and anything with a slash or a dot in
+#: it would silently mean a different path than the one written down.
+_NOTIFY_ROUTE_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def _read_notify_keys_file(raw: Mapping[str, Any]):
+    """Path to the run-report signing-key file.  A top-level SCALAR, like
     ``secret_key_file`` and for the same reason: the config carries the
-    PATH, and the tokens live in a 0600 file beside it."""
-    value = raw.get("notify_tokens_file")
+    PATH, and the keys live in a 0600 file beside it.
+
+    Renamed from ``notify_tokens_file`` 2026-08-27: the secret stopped
+    being a bearer token and became a signing key that never travels
+    (`run-reports.md` § 4.1).  No compatibility shim -- a stale key under
+    the old name would leave the route unregistered, which is the safe
+    reading and the one `access-control.md` § 8 rule 1 asks for.
+    """
+    value = raw.get("notify_keys_file")
     if value is None:
         return None
     if not isinstance(value, str):
         raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'notify_tokens_file' must be a "
+            f"{CONFIG_FILENAME}: 'notify_keys_file' must be a "
             f"string path; got {type(value).__name__}."
         )
     return value
+
+
+def _read_notify_route(raw: Mapping[str, Any]):
+    """The listener's URL segment, generated per deployment.
+
+    **Not a secret** -- it is in every access log, as any path is -- but
+    never a fixed word either: this repository is public, so a word chosen
+    in the source is exactly as public as ``notify`` and less honest about
+    what it does (`access-control.md` § 8 rule 7).  ``notify-token``
+    generates it the same way it generates the key.
+
+    There is no default.  A default would be a fixed word again, and it is
+    what makes rule 1 hold here: with this key absent there is no route at
+    all, so nothing can be probed for.
+    """
+    value = raw.get("notify_route")
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'notify_route' must be a string; "
+            f"got {type(value).__name__}."
+        )
+    seg = value.strip().strip("/")
+    if not seg or not _NOTIFY_ROUTE_RE.match(seg):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'notify_route' must be one URL segment "
+            f"of letters, digits, '-' or '_' (got {value!r}).  "
+            f"`molbuilder notify-token` generates one."
+        )
+    return seg
 
 
 def _require_object_section(raw: Mapping[str, Any], name: str):
@@ -580,7 +624,9 @@ _SECTIONS: Dict[str, Dict[str, Any]] = {
                           "scopes": ("machine",), "provenance_safe": False},
     "secret_key_file":   {"read": _read_secret_key_file,
                           "scopes": ("machine",), "provenance_safe": False},
-    "notify_tokens_file": {"read": _read_notify_tokens_file,
+    "notify_keys_file":  {"read": _read_notify_keys_file,
+                          "scopes": ("machine",), "provenance_safe": False},
+    "notify_route":      {"read": _read_notify_route,
                           "scopes": ("machine",), "provenance_safe": False},
     "execution":         {"read": lambda raw: _require_object_section(
                               raw, "execution"),
@@ -684,20 +730,25 @@ def get_secret_key_file(cfg: Mapping[str, Any]) -> Optional[str]:
     return cfg.get("secret_key_file")
 
 
-def get_notify_tokens_file(cfg: Mapping[str, Any]) -> Optional[str]:
-    """Path to the run-report token file, or ``None`` when not configured.
+def get_notify_keys_file(cfg: Mapping[str, Any]) -> Optional[str]:
+    """The path to the run-report signing-key file, or ``None``.
 
-    ``None`` is the whole switch for the listener: with no token file there
-    is no ``/api/notify`` route at all — not one that refuses, one that is
-    not there.  `access-control.md` § 8 rule 2, *"absent beats refused, when
-    existence is itself the answer"*, and rule 1, *"the safe state is the one
-    you get by doing nothing"*.
-
-    A PATH, never the tokens themselves — the same rule as
-    :func:`get_secret_key_file`.  ``molbuilder.json`` gets copied, diffed and
-    pasted into an issue; secrets must not travel with it.
+    With this **or** ``notify_route`` absent the listener blueprint is never
+    registered, so the route does not exist at any path -- `run-reports.md`
+    § 4.3, and `access-control.md` § 8 rule 1: *the safe state is the one
+    you get by doing nothing.*
     """
-    return cfg.get("notify_tokens_file")
+    return cfg.get("notify_keys_file")
+
+
+def get_notify_route(cfg: Mapping[str, Any]) -> Optional[str]:
+    """The listener's generated URL segment, or ``None``.
+
+    Not a secret; it appears in every access log.  What it buys is that a
+    scanner sweeping fixed paths finds nothing, and the value never entered
+    this repository (`access-control.md` § 8 rule 7).
+    """
+    return cfg.get("notify_route")
 
 
 def get_tls(cfg: Mapping[str, Any]) -> Dict[str, str]:

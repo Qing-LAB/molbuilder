@@ -261,12 +261,12 @@ notify-token` issues them.
 
 ---
 
-### 2.11 The listener — harden it, decided 2026-08-26
+### 2.11 The listener — hardened, BUILT 2026-08-27
 
-Contract written: `execution/run-reports.md` § 4, with the rules it rests on
-added to `ops/access-control.md` § 8 (rule 2 amended; rules 7 and 8 new). The
-code still runs the first cut, so § 4 carries a *not yet built* box.
+Contract in `execution/run-reports.md` § 4, with the rules it rests on in
+`ops/access-control.md` § 8 (rule 2 amended; rules 7 and 8 new).
 
+**Built 2026-08-27**, once the egress and certificate tests came back clean.
 Four parts, one change:
 
 1. **HMAC-SHA256 over the body** replaces the bearer token. The key stops
@@ -290,6 +290,18 @@ Four parts, one change:
 enough to forge. Ed25519 would close it and is not in the stdlib, which the
 monitor is restricted to. Recorded in § 4.2 rather than left to be
 rediscovered.
+
+**A fifth part the egress test produced.** The `302` measured from a compute
+node is the sign-in redirect — and it is exactly what this route would return
+if it ever fell out of `auth.py`'s `_PUBLIC_ENDPOINTS`. `urlopen` **follows**
+a redirect, the POST body is dropped on the way to a login page, and the
+notifier sees no error at all. A guard test now holds that the route never
+answers 3xx.
+
+39 listener tests; six mutations tried, six caught — including the route
+segment going unchecked, the signature covering the body but not the
+timestamp, `404` reverting to `401`, and the monitor sending its key instead
+of a signature.
 
 ---
 

@@ -477,10 +477,15 @@ behaves exactly as before — `--continue` stays the manual path.
   convergence, every N hours, or neither — a run ending always reports.
   **Where** is yours and never travels with the description: a JSON file at
   `$XDG_CONFIG_HOME/molbuilder/notify` (else `~/.config/molbuilder/notify`),
-  mode 0600, holding a `url` and optional `headers`.
+  mode 0600, holding a `url` and either a `key` or `headers`.
   Absent means no notifier at all and a run that behaves exactly as before.
-  Slack and Discord put the credential in the URL; a private endpoint takes a
-  plain URL and a token in a header.
+
+  Slack and Discord put the credential in the URL, because a third party
+  handed nothing but a URL has nowhere else to keep one. **A molbuilder
+  listener takes a plain URL and a `key` that signs the body and never
+  travels** — so a captured report is valid for that one body and cannot be
+  altered or reused to send another. `molbuilder notify-token <user>` issues
+  the key and prints the file to save.
 - **An SCF-timing tee** stamps every `scf:` line into
   `<basename>-runN.scf-timing.log` and reports total wall / iteration count,
   using `PIPESTATUS` so the tee never masks SIESTA's exit code.

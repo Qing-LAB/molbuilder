@@ -203,12 +203,32 @@ def test_a_stall_reports_whatever_the_policy_says(tmp_path):
 # --------------------------------------------------------------------- #
 
 def test_a_configured_destination_is_read(tmp_path):
+    """A third party's shape: the credential is in the URL or a header,
+    because Slack and Discord have nowhere else to keep one."""
     f = tmp_path / "notify"
     f.write_text(json.dumps({"url": "https://example/hook",
                              "headers": {"Authorization": "Bearer t"}}))
     assert M.load_destination(str(f)) == {
-        "url": "https://example/hook",
+        "url": "https://example/hook", "key": None,
         "headers": {"Authorization": "Bearer t"}}
+
+
+def test_a_molbuilder_destination_carries_a_signing_key(tmp_path):
+    """Our own listener's shape: a plain url and a `key` that signs the
+    body and never travels (`run-reports.md` § 4.1)."""
+    f = tmp_path / "notify"
+    f.write_text(json.dumps({"url": "https://qlab/api/x7Kq", "key": "s3cr3t"}))
+    assert M.load_destination(str(f)) == {
+        "url": "https://qlab/api/x7Kq", "key": "s3cr3t", "headers": {}}
+
+
+def test_a_key_that_is_not_a_string_refuses_the_whole_destination(tmp_path):
+    """Not "ignore the key and send unsigned" -- an unsigned report is one
+    the listener will drop, and it would drop it in SILENCE. Refusing here
+    is the failure the user can actually see, in the monitor log."""
+    f = tmp_path / "notify"
+    f.write_text(json.dumps({"url": "https://qlab/api/x7Kq", "key": 12345}))
+    assert M.load_destination(str(f)) is None
 
 
 def test_no_file_means_no_notifier_and_no_complaint(tmp_path):
@@ -249,8 +269,7 @@ def test_the_webhook_body_is_json_a_channel_can_render(tmp_path):
         sent["timeout"] = timeout
         return _Resp()
 
-    hook = M.make_webhook_notifier("https://example/hook",
-                                   {"Authorization": "Bearer t"})
+    hook = M.make_webhook_notifier("https://example/hook", headers={"Authorization": "Bearer t"})
     st = M.JobStatus(elapsed_s=12.0, n_iters=3, energy="-1.5", geom_step=2)
     import urllib.request as _u
     real = _u.urlopen

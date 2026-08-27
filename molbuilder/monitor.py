@@ -68,6 +68,8 @@ Design notes:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -701,11 +703,12 @@ def load_destination(path: Optional[str] = None,
                      log: Optional[Path] = None) -> Optional[Dict[str, Any]]:
     """The webhook destination, or ``None`` when the user has not set one.
 
-    A JSON object: ``url``, and optional ``headers``.  Two shapes of
+    A JSON object: ``url``, plus ``key`` or ``headers``.  Two shapes of
     destination, one mechanism -- Slack and Discord put the credential IN
-    the url, while a private endpoint takes a plain url and a token in a
-    header.  Either way the file is the user's own, mode 0600, and nothing
-    here is created on anybody's behalf.
+    the url, because a third party handed nothing but a URL has nowhere
+    else to keep one; a molbuilder listener takes a plain url and a ``key``
+    that **signs the body and never travels**.  Either way the file is the
+    user's own, mode 0600, and nothing here is created on anybody's behalf.
 
     **Absent is not an error.**  No file means no notifier, and the run
     proceeds exactly as it does with the feature switched off.  A malformed
@@ -745,18 +748,52 @@ def load_destination(path: Optional[str] = None,
     if not isinstance(headers, dict):
         _say(f"{p}: 'headers' must be an object; ignoring them")
         headers = {}
-    return {"url": obj["url"],
+    key = obj.get("key")
+    if key is not None and not (isinstance(key, str) and key):
+        _say(f"{p}: 'key' must be a non-empty string; not notifying")
+        return None
+    return {"url": obj["url"], "key": key,
             "headers": {str(k): str(v) for k, v in headers.items()}}
 
 
-def make_webhook_notifier(url: str,
-                          headers: Optional[Dict[str, str]] = None) -> Notifier:
+def sign_report(key: str, timestamp: str, body: bytes) -> str:
+    """The signature, computed exactly as the listener computes it.
+
+    **The same rule written twice, and it has to be.**  This file ships to
+    a compute node as a standalone stdlib-only script, so it cannot import
+    the server's copy -- and the server cannot import this one.  The two
+    are kept in step by `web/blueprints/notify.py::sign` and a test that
+    feeds this notifier's own output to the real route.
+
+    Why a signature rather than a bearer token (which this sent until
+    2026-08-27): a token is on the wire every time, so one capture yields a
+    credential good forever and for any body.  This key never leaves the
+    cluster, and what travels is valid for one exact body.
+    """
+    msg = timestamp.encode("ascii", "replace") + b"." + body
+    return hmac.new(key.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+
+
+def make_webhook_notifier(url: str, *,
+                          key: Optional[str] = None,
+                          headers: Optional[Dict[str, str]] = None
+                          ) -> Notifier:
     """A stdlib webhook notifier: POSTs ``event`` + the status summary to
     ``url`` as JSON.  Best-effort, short timeout, never raises out.
 
     JSON rather than form encoding because both destinations want it: Slack
     and Discord read a JSON body, and a private endpoint that appends to a
     record log wants structure rather than one flattened string.
+
+    ``key`` signs the body for a molbuilder listener.  ``headers`` stays for
+    a third party that has no other way to be told who is calling -- Slack
+    and Discord put the credential in the URL itself, so they need neither.
+
+    **Both are keyword-only, deliberately.**  They were briefly two
+    positionals, and a call site written for the old signature passed its
+    headers dict where the key now goes -- binding silently, and failing
+    only later inside the signing.  Two optional parameters of different
+    types in a row is exactly the shape that invites it.
     """
     def _hook(status: JobStatus, event: str) -> None:
         body = json.dumps({
@@ -771,9 +808,15 @@ def make_webhook_notifier(url: str,
             "geom_step":  status.geom_step,
             "per_iter_s": status.per_iter_s,
         }).encode()
+        head = {"Content-Type": "application/json", **(headers or {})}
+        if key:
+            # The timestamp is signed WITH the body, not sent beside it --
+            # otherwise it could be rewritten freely.
+            ts = "%d" % int(time.time())
+            head["X-Molbuilder-Timestamp"] = ts
+            head["X-Molbuilder-Signature"] = sign_report(key, ts, body)
         req = urllib.request.Request(
-            url, data=body, method="POST",
-            headers={"Content-Type": "application/json", **(headers or {})})
+            url, data=body, method="POST", headers=head)
         try:
             urllib.request.urlopen(req, timeout=NOTIFY_TIMEOUT_S).close()
         except Exception:                              # noqa: BLE001
@@ -805,7 +848,8 @@ def _install_env_notifiers(log: Optional[Path] = None) -> None:
         return
     dest = load_destination(log=log)
     if dest:
-        register_notifier(make_webhook_notifier(dest["url"], dest["headers"]))
+        register_notifier(make_webhook_notifier(
+            dest["url"], key=dest.get("key"), headers=dest["headers"]))
 
 
 # --------------------------------------------------------------------- #

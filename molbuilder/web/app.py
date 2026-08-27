@@ -344,11 +344,19 @@ def create_app(*, config=None) -> Flask:
     #
     # `execution/run-reports.md` has the rest: a job POSTs how it is going,
     # this appends one line and answers ok.  It never reads back.
-    from ..runtime_config import get_notify_tokens_file
-    _notify_tokens = get_notify_tokens_file(config or {})
-    if _notify_tokens:
+    #
+    # BOTH keys or no route at all.  The segment has no default -- a default
+    # would be a fixed word, and a fixed word in a public repository is not
+    # obscurity (`access-control.md` § 8 rule 7).  With either key missing
+    # nothing is registered, so there is no path to probe for: rule 1, *the
+    # safe state is the one you get by doing nothing.*
+    from ..runtime_config import get_notify_keys_file, get_notify_route
+    _notify_keys = get_notify_keys_file(config or {})
+    _notify_route = get_notify_route(config or {})
+    if _notify_keys and _notify_route:
         from .blueprints.notify import bp as notify_bp
-        app.config["MB_NOTIFY_TOKENS_FILE"] = _notify_tokens
+        app.config["MB_NOTIFY_KEYS_FILE"] = _notify_keys
+        app.config["MB_NOTIFY_ROUTE"] = _notify_route
         app.register_blueprint(notify_bp)
 
     # 413 Payload Too Large -- without this Flask returns its default
