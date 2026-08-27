@@ -476,27 +476,36 @@ has not been saved says so.
 
 ---
 
-## 9b. The one card that is NOT about this calculation
+## 9b. One card, two files — *Tell me how it is going*
 
-Everything else on the page writes `task.json` for the folder you have open.
-**"Where the reports go" writes a file on this machine** —
-`config_dir()/notify` — and setting it changes every run on this box, not this
-calculation. It says so in its own heading, because a setting that outlives
-the thing you are looking at should announce that.
+**It is last in the flow, deliberately.** Everything above is what the
+calculation *is*; this is what it *says while it runs*, which is a different
+question. It sat between "Where it runs" and "Stages" until 2026-08-27 and
+interrupted the setup (user: *"it breaks the flow"*).
 
-**Two cards, two files, and the separation is the contract**
+**One card, and two files, which is the part to keep straight**
 ([`run-reports.md`](?doc=execution/run-reports.md) §§ 1, 3.1):
 
-| | writes | travels? | sees a key? |
+| half | writes | travels? | sees a key? |
 |---|---|---|---|
-| *Tell me how it is going* | `task.json`'s `notify` block | **yes** | **never** |
-| *Where the reports go* | `config_dir()/notify`, `0600` | **no** | yes — that is what it is for |
+| the ticks — *when* to speak | `task.json`'s `notify` block | **yes** | **never** |
+| *Where these go* — the address and key | `config_dir()/notify`, `0600` | **no** | yes, that is what it is for |
 
-They do not share a class or an id prefix, so one restyle cannot move both.
-The first was `ts-dest-card` for one revision — a name the *Where this saves*
-card already owned — and a duplicate id means `getElementById` returns the
-other element with **no error anywhere**. A test now refuses duplicate ids on
-this page.
+Sharing a card is a **UI** decision — you tick *tell me* and immediately want
+to know *where* — and sharing a **file** would be a contract violation. They do
+not: the two halves have different ids, and a test asserts that nothing
+belonging to the destination reaches the function that writes `task.json`.
+
+**The page hardcodes no path.** It shows what `GET /api/notify/destination`
+reports, and that comes from `monitor.default_notify_path` — so the page, the
+API and the process that reads the file on a compute node get it from one
+function. The card once said `~/.molbuilder/notify` while the monitor read
+`config_dir()/notify`; following it put the file where nothing looks, and
+**absent means silently off**.
+
+**One consequence of the merge, stated plainly:** the destination is
+machine-wide but now lives inside a card that only appears with a calculation
+open. `molbuilder notify-token` is the door that needs no calculation.
 
 **The key is write-only.** The card reports whether one is present and never
 what it is, and clears the field once saved: a page that can show you a secret

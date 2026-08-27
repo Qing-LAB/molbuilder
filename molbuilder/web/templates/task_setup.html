@@ -166,30 +166,64 @@
            and an element nothing fills is a promise the page does not keep. #}
       </section>
 
-      {# WHEN this run should tell you something.  A sibling of the queue
-         card and for the same reason (task-setup.md 6.1): "notify me every
-         six hours" is a decision about THIS calculation and true wherever
-         the file is opened, exactly as "try 4, 8, 16" is.
+      
+      
+      <section class="card" id="ts-stages-card" hidden>
+        <h2>Stages</h2>
+        <p class="hint">Rows are stages, columns are the parameters that vary.
+          A cell shown muted is <em>this stage uses the template's value</em>
+          &mdash; a real state, not a blank.</p>
+        <div class="ts-tablewrap">
+          <table class="ts-table" id="ts-stage-table">
+            <thead><tr><th>Stage</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="ts-actions" id="ts-stage-actions" hidden>
+          <button type="button" class="btn" id="ts-add-stage">+ Add stage</button>
+          <select id="ts-add-col" class="ts-pick"
+                  aria-label="add a parameter column"></select>
+          <button type="button" class="btn" id="ts-add-col-go">+ Add
+            column</button>
+          <span class="hint">A new stage copies the previous one's values —
+            a refinement starts from what came before.</span>
+        </div>
+      </section>
 
-         WHERE to send it is not here and must not be.  A description
-         travels -- to a cluster, into a handoff bundle, to whoever you hand
-         the calculation to -- so the destination and its credential stay in
-         the user's own <config dir>/notify on the machine that runs the
-         job -- `~/.config/molbuilder/notify`, or under XDG_CONFIG_HOME
-         when it is set, which is how a person keeps a key off an
-         NFS-mounted HPC $HOME (`monitor.default_notify_path`).  This card
-         sets policy; it never sees a key. #}
+      <section class="card" id="ts-machine-card" hidden>
+        <h2>The machine, and what to try on it</h2>
+        <p class="hint"><strong>One point is your choice; several is a
+          measurement</strong> &mdash; the same row does both, because a run is a
+          sweep of length one.</p>
+        <div class="ts-rows" id="ts-machine-rows"></div>
+        <div class="ts-actions" id="ts-machine-actions" hidden>
+          <select id="ts-add-setting" class="ts-pick"
+                  aria-label="add a setting to measure"></select>
+          <button type="button" class="btn" id="ts-add-setting-go">+ Add
+            setting</button>
+          <span class="hint">Only speed knobs — a setting that changes the
+            answer would make every point a different calculation.</span>
+        </div>
+      </section>
+
+      {# LAST in the flow, deliberately (user, 2026-08-27: it "breaks the
+         flow of the setup").  Everything above is what the calculation IS;
+         this is what it says while it runs -- a different question, and it
+         belongs after them rather than between "where it runs" and
+         "stages".
+
+         ONE CARD, TWO FILES, and that is the part to keep straight
+         (`run-reports.md` 1).  The ticks are POLICY and go into task.json,
+         which TRAVELS -- so a key must never reach them.  The address and
+         key below go into <config dir>/notify on this machine, which never
+         travels.  Sharing a card is a UI decision; sharing a file would be
+         a contract violation, and they do not. #}
       <section class="card" id="ts-notify-card" hidden>
         <h2>Tell me how it is going</h2>
         <p class="hint">A long run does not need watching. Tick what is
           worth a message and it is written into this calculation's
           description. <strong>A run ending always reports</strong> &mdash;
-          that is the whole point, so it is not a choice.
-          <span class="ts-notify-where">Where the messages go is set up once
-          per machine, in your own
-          <code>~/.config/molbuilder/notify</code> (or under
-          <code>$XDG_CONFIG_HOME</code> if you set it); with no
-          such file nothing is sent and the run is unchanged.</span></p>
+          that is the whole point, so it is not a choice.</p>
 
         <div class="ts-notify-opts">
           <label class="ts-notify-opt" for="ts-notify-scf">
@@ -209,22 +243,10 @@
           </label>
         </div>
         <span class="ts-ask-note" id="ts-notify-note"></span>
-      </section>
 
-      {#- WHERE the reports go -- a SEPARATE card, and the separation is the
-         contract (`run-reports.md` 1 and 3.1).  The card above writes
-         task.json, which TRAVELS, so it must never see a key.  This one
-         writes config_dir()/notify on THIS machine, which never travels --
-         putting a secret where the contract says it lives rather than
-         carrying it anywhere.
-
-         It is also machine-wide rather than per-calculation, which is why
-         it says so in its own heading: you are standing on a calculation
-         page, and a setting that outlives the calculation should announce
-         that. -#}
-      <section class="card" id="ts-reports-card" hidden>
-        <h2>Where the reports go &mdash; this machine</h2>
-        <p class="hint">One destination per machine, not per calculation
+        <hr class="ts-notify-rule">
+        <h3 class="ts-reports-head">Where these go &mdash; this machine</h3>
+<p class="hint">One destination per machine, not per calculation
           &mdash; setting it here changes it for every run on this box.
           <strong>With none set nothing is sent</strong> and a run behaves
           exactly as it always did.
@@ -268,46 +290,7 @@
             <em>there</em>:</p>
           <pre class="ts-reports-cmd" id="ts-reports-cmd"></pre>
         </div>
-
         <span class="ts-ask-note" id="ts-reports-note"></span>
-      </section>
-
-      <section class="card" id="ts-stages-card" hidden>
-        <h2>Stages</h2>
-        <p class="hint">Rows are stages, columns are the parameters that vary.
-          A cell shown muted is <em>this stage uses the template's value</em>
-          &mdash; a real state, not a blank.</p>
-        <div class="ts-tablewrap">
-          <table class="ts-table" id="ts-stage-table">
-            <thead><tr><th>Stage</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-        <div class="ts-actions" id="ts-stage-actions" hidden>
-          <button type="button" class="btn" id="ts-add-stage">+ Add stage</button>
-          <select id="ts-add-col" class="ts-pick"
-                  aria-label="add a parameter column"></select>
-          <button type="button" class="btn" id="ts-add-col-go">+ Add
-            column</button>
-          <span class="hint">A new stage copies the previous one's values —
-            a refinement starts from what came before.</span>
-        </div>
-      </section>
-
-      <section class="card" id="ts-machine-card" hidden>
-        <h2>The machine, and what to try on it</h2>
-        <p class="hint"><strong>One point is your choice; several is a
-          measurement</strong> &mdash; the same row does both, because a run is a
-          sweep of length one.</p>
-        <div class="ts-rows" id="ts-machine-rows"></div>
-        <div class="ts-actions" id="ts-machine-actions" hidden>
-          <select id="ts-add-setting" class="ts-pick"
-                  aria-label="add a setting to measure"></select>
-          <button type="button" class="btn" id="ts-add-setting-go">+ Add
-            setting</button>
-          <span class="hint">Only speed knobs — a setting that changes the
-            answer would make every point a different calculation.</span>
-        </div>
       </section>
 
     </div>

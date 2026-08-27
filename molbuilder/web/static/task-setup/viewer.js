@@ -1978,6 +1978,38 @@ function askValues() {
     return out;
 }
 
+/** Run `fn`, then put the page back exactly where it was.
+ *
+ * **Writing the editor's whole document moves the page.**  `cm.setValue`
+ * followed by `setCursor` makes CodeMirror scroll the cursor into view,
+ * and the browser drags the scrolling container (`.app-content`) with it
+ * -- so ticking a checkbox in a card near the TOP threw the view 1704px
+ * down to the editor at the bottom, every single time.  Measured in the
+ * browser 2026-08-27, reported as *"the page always jumps off to another
+ * place down"*, which is exactly what it did.
+ *
+ * The invariant is the point: **a card edit must not move the page.**  A
+ * person ticking a box has said nothing about where they want to be
+ * looking, so the answer is to leave them there.  Restored twice --
+ * synchronously and on the next frame -- because CodeMirror's own
+ * `refresh` can scroll again after this returns.
+ *
+ * Both card writers use it, not only the one that was reported: the asks
+ * card wrote the document the same way and moved the page the same way.
+ */
+function keepingPagePut(fn) {
+    const sc = document.querySelector(".app-content");
+    const top = sc ? sc.scrollTop : 0;
+    const put = () => { if (sc && sc.scrollTop !== top) sc.scrollTop = top; };
+    try {
+        return fn();
+    } finally {
+        put();
+        requestAnimationFrame(put);
+    }
+}
+
+
 /** Write the asks INTO the open `task.json`, which is what save sends.
  *
  * The page's one source of truth is the editor's text (this file's header
@@ -2005,8 +2037,10 @@ function applyAsksToDoc() {
     else delete task.allocation;
     if (JSON.stringify(task.allocation || null) === had) return;   // no-op
     const cur = _cm.getCursor && _cm.getCursor();
-    _cm.setValue(JSON.stringify(task, null, 2) + "\n");
-    if (cur && _cm.setCursor) _cm.setCursor(cur);
+    keepingPagePut(() => {
+        _cm.setValue(JSON.stringify(task, null, 2) + "\n");
+        if (cur && _cm.setCursor) _cm.setCursor(cur);
+    });
 }
 
 /** Fill the card FROM the open description, so reopening a folder shows
@@ -2074,8 +2108,10 @@ function applyNotifyToDoc() {
     else delete task.notify;
     if (JSON.stringify(task.notify || null) === had) return;   // no-op
     const cur = _cm.getCursor && _cm.getCursor();
-    _cm.setValue(JSON.stringify(task, null, 2) + "\n");
-    if (cur && _cm.setCursor) _cm.setCursor(cur);
+    keepingPagePut(() => {
+        _cm.setValue(JSON.stringify(task, null, 2) + "\n");
+        if (cur && _cm.setCursor) _cm.setCursor(cur);
+    });
 }
 
 /** Fill the card FROM the open description, so reopening a folder shows
@@ -2667,9 +2703,15 @@ async function testDestination() {
 }
 
 function wireDestination() {
-    const card = $("ts-reports-card");
-    if (!card) return;
-    card.hidden = false;          // a MACHINE setting: never folder-gated
+    // The destination lives INSIDE the notify card now (user, 2026-08-27:
+    // "where the notification should be sent should be configurable in
+    // this card too"), so there is no card of its own to reveal -- the
+    // notify card's own gate governs both halves.  Which is a behaviour
+    // change worth naming: the destination is machine-wide, so it is now
+    // only reachable with a calculation open.  That is the trade for
+    // having it where a person is actually thinking about it, and the CLI
+    // (`molbuilder notify-token`) is the door that needs no calculation.
+    if (!$("ts-reports-state")) return;
     const on = (id, fn) => { const b = $(id); if (b) b.addEventListener("click", fn); };
     on("ts-reports-save", saveDestination);
     on("ts-reports-clear", clearDestination);

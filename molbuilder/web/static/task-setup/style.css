@@ -745,3 +745,18 @@
     font-size: var(--text-sm);
     white-space: pre;
 }
+
+/* The rule between the two halves of the notify card: ticks above write
+   task.json, the address below writes a file on this machine.  A visible
+   divider because they are two different questions and two different
+   files, even though one card is the right place to ask both. */
+.ts-notify-rule {
+    margin: var(--space-md) 0 var(--space-sm);
+    border: 0;
+    border-top: 1px solid var(--border-soft);
+}
+.ts-reports-head {
+    margin: 0 0 var(--space-xs);
+    font-size: var(--text-base);
+    color: var(--text-secondary);
+}

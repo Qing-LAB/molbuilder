@@ -47,6 +47,10 @@ def _run(controls: dict, task: dict | None, want: str):
     src = VIEWER.read_text()
     fns = "\n\n".join([
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
+        # `applyNotifyToDoc` calls it, so the harness needs it too: the
+        # writer stopped moving the page on 2026-08-27 and does so through
+        # a helper rather than inline.
+        _slice(src, "function keepingPagePut(fn)", "/** Fill the card FROM"),
         _slice(src, "function applyNotifyToDoc()", "/** Fill the card FROM"),
         _slice(src, "function readNotifyFromTask(task)", "/** One line saying"),
         _slice(src, "function paintNotifyNote()", "/** What a `prep` would"),
@@ -57,6 +61,11 @@ def _run(controls: dict, task: dict | None, want: str):
         // The page's own accessor, faked: every control is an object with
         // the properties the real functions touch, and nothing else.
         function $(id) {{ return _els[id] || null; }}
+        // No DOM here.  `keepingPagePut` looks for the scrolling container
+        // and must degrade to "nothing to restore" rather than throw --
+        // which is also what it does on a page that has not mounted yet.
+        const document = {{ querySelector: () => null }};
+        const requestAnimationFrame = (f) => f();
         let _doc = {json.dumps(json.dumps(task) if task is not None else None)};
         const _cm = {{
             getValue: () => _doc,
@@ -178,11 +187,20 @@ def test_an_unparseable_document_loses_nothing():
     src = VIEWER.read_text()
     fns = "\n\n".join([
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
+        # `applyNotifyToDoc` calls it, so the harness needs it too: the
+        # writer stopped moving the page on 2026-08-27 and does so through
+        # a helper rather than inline.
+        _slice(src, "function keepingPagePut(fn)", "/** Fill the card FROM"),
         _slice(src, "function applyNotifyToDoc()", "/** Fill the card FROM"),
     ])
     harness = f"""
         const _els = {json.dumps(_controls(scf=True))};
         function $(id) {{ return _els[id] || null; }}
+        // No DOM here.  `keepingPagePut` looks for the scrolling container
+        // and must degrade to "nothing to restore" rather than throw --
+        // which is also what it does on a page that has not mounted yet.
+        const document = {{ querySelector: () => null }};
+        const requestAnimationFrame = (f) => f();
         let _doc = "{{ not json at all";
         const _cm = {{ getValue: () => _doc, setValue: (t) => {{ _doc = t; }},
                       getCursor: () => null, setCursor: () => {{}} }};
@@ -207,28 +225,53 @@ def test_the_note_says_what_will_actually_be_sent():
     assert "when it ends" in note
 
 
-def test_the_card_names_the_path_the_CODE_actually_reads():
-    """**Found in the browser, 2026-08-27.** The card told people to create
-    `~/.molbuilder/notify`. The monitor reads `<config dir>/notify` —
-    `~/.config/molbuilder/notify`, or under `$XDG_CONFIG_HOME`.
+def test_the_page_hardcodes_NO_path_and_asks_for_it_instead():
+    """**The stronger form of a defect found in the browser 2026-08-27.**
 
-    Following the card put the file where nothing looks, and **absent means
-    silently off** — so there was no notification, no error, and nothing to
-    read. The exact failure the feature is built to avoid.
+    The card used to state `~/.molbuilder/notify` while the monitor read
+    `config_dir()/notify` — following the page put the file where nothing
+    looks, and **absent means silently off**, so there was no notification,
+    no error, and nothing to read.
 
-    It also defeated the reason the path honours XDG at all: on an HPC
-    login node `$HOME` is NFS-mounted and snapshotted, and
-    `XDG_CONFIG_HOME=/scratch/$USER` is how a key is kept off it
-    (`monitor.default_notify_path`).
+    A hardcoded path is what drifts. The page now shows what
+    `GET /api/notify/destination` reports, and that endpoint takes the path
+    from `monitor.default_notify_path` — so the page, the API and the
+    process that reads the file on a compute node all get it from one
+    function and cannot disagree.
     """
     from pathlib import Path
-    html = (Path(__file__).resolve().parents[1]
-            / "molbuilder/web/templates/task_setup.html").read_text()
-    assert "~/.molbuilder/notify" not in html, \
-        "the card names a path nothing reads"
-    assert "~/.config/molbuilder/notify" in html
-    assert "XDG_CONFIG_HOME" in html, \
-        "the override that makes this usable on HPC is not mentioned"
+    root = Path(__file__).resolve().parents[1]
+    html = (root / "molbuilder/web/templates/task_setup.html").read_text()
+    # a path in the MARKUP is the thing that went wrong; there must be none
+    assert "~/.molbuilder/notify" not in html
+    assert "~/.config/molbuilder/notify" not in html, \
+        "the page hardcodes a path again -- ask the API instead"
+    api = (root / "molbuilder/web/blueprints/notify_setup.py").read_text()
+    assert "from ...monitor import default_notify_path" in api
+
+
+def test_one_card_but_two_files():
+    """The cards were merged on 2026-08-27 (user: *where the notification
+    should be sent should be configurable in this card too*), and sharing a
+    card is a UI decision that must not become a shared FILE.
+
+    `run-reports.md` § 1 is about what travels: the ticks go into
+    `task.json`, which does; the address and key go into
+    `config_dir()/notify`, which never does. So the key input must sit
+    below the policy inputs and nothing may carry it into the description.
+    """
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    html = (root / "molbuilder/web/templates/task_setup.html").read_text()
+    assert 'id="ts-notify-card"' in html
+    assert 'id="ts-reports-card"' not in html, "the split card came back"
+    # the key belongs to the destination half, after the policy half
+    assert html.index('id="ts-notify-scf"') < html.index('id="ts-reports-key"')
+    js = (root / "molbuilder/web/static/task-setup/viewer.js").read_text()
+    writer = js[js.index("function notifyValues()"):js.index("function readNotifyFromTask")]
+    for leak in ("ts-reports-key", "ts-reports-url", "password"):
+        assert leak not in writer, \
+            f"{leak} reached the function that writes task.json"
 
 
 def test_the_card_says_KEY_not_token():
@@ -263,20 +306,3 @@ def test_no_two_elements_share_an_id_in_the_task_setup_page():
     assert not dupes, f"duplicate id(s) in task_setup.html: {dupes}"
 
 
-def test_the_reports_card_is_not_the_policy_card():
-    """Two cards, two files, and the separation is the contract
-    (`run-reports.md` § 1). The policy card writes `task.json`, which
-    TRAVELS, so it never sees a key. The reports card writes
-    `config_dir()/notify` on this machine, which never travels.
-
-    Sharing a class or an id prefix would invite one edit to move both.
-    """
-    from pathlib import Path
-    html = (Path(__file__).resolve().parents[1]
-            / "molbuilder/web/templates/task_setup.html").read_text()
-    assert 'id="ts-notify-card"' in html, "the policy card"
-    assert 'id="ts-reports-card"' in html, "the destination card"
-    # the key input belongs to the reports card and nowhere near the policy one
-    policy = html[html.index('id="ts-notify-card"'):html.index('id="ts-reports-card"')]
-    assert "password" not in policy, "a key field landed on the policy card"
-    assert "ts-reports-key" not in policy
