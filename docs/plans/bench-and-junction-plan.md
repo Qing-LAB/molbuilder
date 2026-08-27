@@ -305,61 +305,47 @@ of a signature.
 
 ---
 
-### 2.14 Ask the scheduler when, instead of guessing — proposed 2026-08-27
+### 2.14 Ask the scheduler when — BUILT 2026-08-27
 
 User: *we should provide another verb to prove if a job is going to be
 submitted, what's the waiting time/expected start time, and the user can
-adjust when they know the diff.*
+adjust when they know the diff* — then, on where it belongs: *instead of
+submit, we can just say ask. We don't have to reinvent something.*
 
-**The primitive exists and does not submit.** `sbatch --test-only` validates a
-request and reports when it *would* be scheduled given the current queue:
+**It is a MODE, not a verb, and that answers two of the three open
+questions at once.** `--mode ask` walks the identical path `--mode submit`
+walks and inserts one flag; the line asked about **is** the line that would
+be sent. A separate verb would have re-rendered the flags, and two
+renderings of one fact are two things that can disagree.
 
-```
-sbatch: Job 12345 to start at 2026-08-27T14:30:00 using 48 processors
-        on nodes sg013 in partition htc
-```
+It also settles *how many queries*: **one**, for the job as configured, the
+same way `submit` sends one. The comparison the person wants comes from
+re-running with a different `--domain` or fewer cores — which is the loop as
+they described it: *come back, tune it, submit for a different cluster or
+reduce those resources and see if they can get a better waiting time, or just
+say okay, I can live with that.*
 
-No job is created, so this does not touch the standing rule about submitting
-one at a time — but it *is* a scheduler query, so the count matters.
+**The third question is answered in the code rather than by measurement.**
+SLURM sometimes declines to predict. That is reported as **unknown, never as
+soon** — a missing answer dressed as a good one is how a person waits a day
+for a queue that looked instant — and the reason it gives is printed, because
+it is often the whole answer (*"Requested node configuration is not
+available"* says the ask fits no machine in that queue). No Sol command was
+needed after all: every branch is exercised by feeding the parser real SLURM
+output, which is pure and needs no cluster.
 
-**Why it belongs with § 2.13 rather than beside it.** Listing the machines
-shows what a queue *holds*; this says what a queue *costs today*. Node counts
-are a proxy for wait and a poor one — 134 wide nodes are no help if all 134 are
-busy for two days. Together they answer the question the person actually has:
-*what do I give up by asking for less?*
+Gated one-at-a-time like `submit`: it enqueues nothing, but it is still N
+scheduler queries from one command. Nothing is recorded either — a launch
+record says a job exists, and after this one does not.
 
-**A minimal script is enough, so this need not wait for a prep.**
-`--test-only` reads the resource request, not the script body, so a placeholder
-plus the real flags gives the real answer. That means the question can be asked
-*before* committing to a shape — which is the point, since the answer is what
-decides the shape. The flags come from `Directives.of(placement, r)
-.sbatch_flags()`, the one place that already renders them, so what is tested
-and what would be submitted cannot drift.
+17 tests; five mutations tried, five caught — including reporting an unknown
+as a time, sorting the answers (which would be a recommendation), and letting
+`ask` escape the one-at-a-time gate.
 
-**Open — three questions, none of them guessable from the code:**
-
-1. **One query or several?** The value is the *diff* between options, which
-   means one query per candidate. On Sol that is up to nine domains, and more
-   if core counts vary too. A cap, and what it is, is a judgement about how
-   much scheduler load is polite.
-2. **Where does it live?** A new verb beside `launch` (*what launch would do,
-   without doing it*), or a column on `jobset ask`, which already tables the
-   queues and marks what fits. The second is one home rather than two — but
-   `ask` works offline from the record, and this cannot: it needs a login node.
-   That difference may be what makes it a separate verb.
-3. **What does an estimate that is missing mean?** SLURM answers *"will start
-   at ..."* only when it can predict; under some configurations it declines, or
-   answers with a time that is really *"not before"*. Reporting a refusal to
-   predict as *"unknown"* is honest; reporting it as *"soon"* would not be. The
-   exact behaviour is a measurement on Sol, not a thing to assume.
-
-**Not started.** Recorded so the design is settled before any code, and because
-question 3 needs one command on a login node:
-
-```bash
-sbatch --test-only -p htc -q public -t 30 -n 1 -c 4 --wrap="true"
-sbatch --test-only -p general -q public -t 30 -n 1 -c 128 --wrap="true"
-```
+**Untested against a live scheduler.** The parsing is covered against real
+SLURM output, and the command path is the submit path, but no `--mode ask`
+has yet run on a login node. One run on Sol is what would confirm the whole
+loop.
 
 ---
 

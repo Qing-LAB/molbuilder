@@ -76,12 +76,17 @@ class JobResult:
     line that ran / would run).  In ``submit`` mode ``job_id`` is the SLURM
     id; in ``direct`` mode ``returncode`` is the process exit status.
     ``status`` is one of ``submitted`` / ``ran`` / ``failed`` / ``skipped``
-    / ``planned`` (dry-run)."""
+    / ``planned`` (dry-run) / ``asked`` (``--mode ask``: nothing was
+    submitted and ``prediction`` carries what the scheduler said)."""
     name:       str
     command:    List[str]
     status:     str
     job_id:     Optional[str] = None
     returncode: Optional[int] = None
+    #: Only in ``ask`` mode.  ``None`` everywhere else, and a ``Prediction``
+    #: whose ``start`` is ``None`` when SLURM declined to predict -- which
+    #: is reported as *unknown*, never as *soon*.
+    prediction: Optional[object] = None
 
     def to_dict(self) -> Dict[str, object]:
         return dataclasses.asdict(self)
@@ -154,7 +159,8 @@ def _scheduler_job_name(jobset: JobSet, job) -> str:
 def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
                   dry_run: bool,
                   mem_gb: Optional[float] = None,
-                  time_s: Optional[int] = None) -> List[JobResult]:
+                  time_s: Optional[int] = None,
+                  ask: bool = False) -> List[JobResult]:
     """SLURM path: ``sbatch`` **one** job, with its resources as CLI flags.
 
     **One per invocation** — :func:`_refuse_batch_submission` is what makes
@@ -215,6 +221,12 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch"]
         cmd.append(sbatch_name)          # relative; we cd into the job dir
 
+        if ask:
+            # `--test-only` goes FIRST so it cannot be shadowed, and the
+            # rest of the line is untouched: the whole point is that the
+            # question is about the command that would actually be sent.
+            cmd = [cmd[0], "--test-only"] + cmd[1:]
+
         if dry_run:
             results.append(JobResult(job.name, cmd, "planned"))
             continue
@@ -229,6 +241,16 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
                             capture_output=True, text=True,
                             env={**os.environ,
                                  "MB_LAUNCHED_BY": "jobset-launch"})
+        if ask:
+            # NOTHING WAS SUBMITTED, so nothing is recorded: a launch record
+            # says a job exists, and after this one does not.  A non-zero
+            # return is not a failure here either -- "this queue cannot take
+            # it" is an answer, and often the one worth reading.
+            from .ask import parse_test_only
+            pred = parse_test_only((cp.stdout or "") + (cp.stderr or ""))
+            results.append(JobResult(job.name, cmd, "asked",
+                                     prediction=pred))
+            continue
         if cp.returncode != 0:
             results.append(JobResult(job.name, cmd, "failed",
                                      returncode=cp.returncode))
@@ -1103,7 +1125,10 @@ def _refuse_batch_submission(jobset: JobSet, base_dir: Path, *,
     if len(jobset.jobs) <= 1:
         return
 
-    if mode == "submit" and len(jobset.jobs) > 1:
+    # ``ask`` is gated the same way.  It submits nothing, but it is still N
+    # scheduler queries fired from one command, and the answer is only
+    # useful for a job you are about to hand over -- which is one job.
+    if mode in ("submit", "ask") and len(jobset.jobs) > 1:
         names = ", ".join(j.name for j in jobset.jobs)
         raise SubmitError(
             f"refusing to hand {len(jobset.jobs)} jobs to the scheduler at "
@@ -1278,10 +1303,14 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
     # the real thing rather than a launch that would be refused.
     _refuse_batch_submission(jobset, base, mode=mode)
 
-    if mode == "submit":
+    if mode in ("submit", "ask"):
+        # ONE PATH, so what is asked about and what would be submitted are
+        # the same flags rather than two renderings that can drift.  The
+        # only difference is `--test-only`, which makes SLURM answer
+        # instead of enqueue.
         return continued + _submit_slurm(jobset, base, domain=domain,
                                          dry_run=dry_run, mem_gb=mem_gb,
-                                         time_s=time_s)
+                                         time_s=time_s, ask=(mode == "ask"))
     if mode == "direct":
         if domain:
             raise SubmitError(
@@ -1289,7 +1318,8 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                 "'direct' (local) mode.")
         return continued + _run_direct(jobset, base, dry_run=dry_run)
     raise SubmitError(
-        f"unknown mode {mode!r}: must be 'submit' (SLURM) or 'direct' (local)")
+        f"unknown mode {mode!r}: must be 'submit' (SLURM), 'ask' (submit "
+        f"nothing, report when it would start) or 'direct' (local)")
 
 
 __all__ = ["submit_jobset", "JobResult", "SubmitError"]

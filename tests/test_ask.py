@@ -132,7 +132,12 @@ def test_a_queue_that_cannot_take_the_job_is_listed_WITH_THE_REASON():
     silence, and that question has a real answer worth reading."""
     t = _table(cores=64)
     assert "needs 240 min but debug allows" in t
-    assert "needs 64 cores but general allows 48" in t
+    # R10 (2026-08-27): a refusal names the MACHINE, not just the number.
+    # Knowing 48 is the ceiling is less useful than knowing which machine
+    # it is -- that is the difference between "trim this" and "this will
+    # queue".  A hand-written row with no `node_types` still falls back to
+    # `max_cores`, which is what this fixture exercises.
+    assert "needs 64 cores but general's largest machine has 48" in t
 
 
 def test_the_listing_and_the_submission_cannot_disagree():

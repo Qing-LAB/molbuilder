@@ -1959,11 +1959,16 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
 @click.argument("stage", required=False, default=None)
 @click.argument("trial", required=False, default=None)
 @_bundle_option()
-@click.option("--mode", type=click.Choice(["submit", "direct"]), default=None,
+@click.option("--mode", type=click.Choice(["submit", "direct", "ask"]),
+              default=None,
               help="HOW to launch, which is a fact about this MACHINE and not "
                    "about the layout: 'direct' = run it here with bash; "
                    "'submit' = hand it to the scheduler molbuilder.json "
-                   "configures.  Independent of the description's `shape` "
+                   "configures; **'ask' = submit NOTHING and report when it "
+                   "would start** (`sbatch --test-only`), so you can change "
+                   "the domain or the resources and ask again before "
+                   "committing.  'ask' needs a login node -- there is no "
+                   "prediction without the cluster.  Independent of the description's `shape` "
                    "(engines/stages.md § 6.7) -- a workstation running "
                    "hierarchical is ordinary.  **Defaults to `execution.mode` "
                    "in molbuilder.json**, which is what running-a-job.md § 5.4 "
@@ -2288,6 +2293,23 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             provenance=prov,
             jobs=[{"job": r.name, "status": r.status, "job_id": r.job_id,
                    "returncode": r.returncode} for r in results])
+    if mode == "ask":
+        # NOTHING WAS SUBMITTED.  The line the scheduler was asked about is
+        # the line that WOULD be sent -- same flags, plus --test-only --
+        # so what is printed here and what launch would do cannot drift.
+        from .ask import prediction_table
+        import dataclasses as _dcs
+        preds = [_dcs.replace(r.prediction, label=r.name)
+                 for r in results if r.prediction is not None]
+        click.echo("")
+        click.echo(prediction_table(preds))
+        click.echo("")
+        click.echo("  asked: " + " ".join(results[0].command)
+                   if results else "  nothing to ask about.")
+        click.echo("  launch it with the same command and `--mode submit` "
+                   "when the answer suits you.")
+        return
+
     verb = "WOULD run" if dry_run else "result"
     for r in results:
         tail = (f"job {r.job_id}" if r.job_id else

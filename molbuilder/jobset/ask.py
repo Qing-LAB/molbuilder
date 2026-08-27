@@ -52,6 +52,7 @@ two ways is how they come to disagree about what was asked.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
@@ -273,3 +274,112 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
     prompt = prompt or (lambda: click.confirm("  submit this?",
                                               default=True))
     return bool(prompt())
+
+
+# --------------------------------------------------------------------- #
+#  When would this actually start?  (`jobset ask`)                       #
+# --------------------------------------------------------------------- #
+#
+# Everything above answers from the RECORD and works anywhere: what each
+# queue allows, which of them could take this job.  Nothing above knows
+# what the cluster is busy with.
+#
+# **There is no prediction without the cluster** (user, 2026-08-27).  Node
+# counts are a proxy for wait and a poor one -- 134 wide nodes are no help
+# if all 134 are busy for two days -- so the only honest answer comes from
+# asking the scheduler, on the machine that has one.
+#
+# `sbatch --test-only` validates a request and reports when it WOULD be
+# scheduled.  **It creates no job.**  That is what makes it safe to run in
+# a loop while you tune: change the domain, change the cores, ask again,
+# and either take the better wait or decide you can live with this one.
+#
+# **It is a MODE of launch, not a verb of its own** (user, 2026-08-27:
+# *instead of submit, we can just say ask -- we don't have to reinvent
+# something*).  `--mode ask` walks the identical path `--mode submit`
+# walks and inserts one flag, so the line asked about IS the line that
+# would be sent.  A separate verb would have had to re-render the flags,
+# and two renderings of one fact are two things that can disagree.
+#
+# Only the PARSING lives here: it is pure, so it can be tested with no
+# cluster present -- and this workstation has none.
+
+import re as _re
+
+#: `sbatch: Job 123 to start at 2026-08-27T14:30:00 using 48 processors
+#:  on nodes sg013 in partition htc`
+#: The timestamp is matched GREEDILY.  It was `(\S+?)` for one revision,
+#: and with every group after it optional the non-greedy form matched a
+#: single character -- `2` -- and the tests caught it.  `\S+` stops at
+#: whitespace, which is exactly the field boundary here.
+_WHEN_RE = _re.compile(
+    r"to start at (\S+)(?:\s+using\s+(\d+)\s+processors?)?"
+    r"(?:\s+on nodes?\s+(\S+))?", _re.I)
+
+
+@dataclass(frozen=True)
+class Prediction:
+    """What the scheduler said about one request.
+
+    ``start`` is ``None`` whenever SLURM did not give a time -- it declined
+    to predict, or it refused the request outright.  **That is reported as
+    unknown, never as soon**: a missing prediction is the absence of an
+    answer, and dressing it as a good one is how a person ends up waiting a
+    day for a queue that looked instant.
+    """
+    #: What was asked about -- the JOB's name.  Not the queue: `ask` sends
+    #: one request, and which queue it named is on the command line printed
+    #: beneath the table.  It was called ``domain`` for one revision and the
+    #: column header said "queue" while the value was the job, which is the
+    #: kind of label that quietly teaches the wrong thing.
+    label:   str = ""
+    start:   Optional[str] = None
+    nodes:   Optional[str] = None
+    procs:   Optional[int] = None
+    refused: Optional[str] = None
+
+
+def parse_test_only(text: str) -> Prediction:
+    """SLURM's answer -> a :class:`Prediction`.  Pure, so it is testable
+    without a scheduler.
+
+    Anything that is not a recognisable *to start at* line leaves ``start``
+    as ``None`` and keeps the raw text in ``refused``, because the reason a
+    queue cannot take the job is worth reading and is often the whole
+    answer (*"Requested node configuration is not available"*).
+    """
+    blob = (text or "").strip()
+    m = _WHEN_RE.search(blob)
+    if not m:
+        first = next((ln.strip() for ln in blob.splitlines() if ln.strip()),
+                     "")
+        return Prediction(refused=first or "no answer")
+    procs = int(m.group(2)) if m.group(2) else None
+    return Prediction(start=m.group(1), procs=procs, nodes=m.group(3))
+
+
+def prediction_table(preds: Sequence[Prediction]) -> str:
+    """What the scheduler said, one line per queue.
+
+    Ordered as it was asked, not by which looks fastest.  Sorting would be
+    a recommendation, and the wait is only one of the things a person is
+    weighing -- the others (what else is running, whose allocation, how
+    long the job really needs) are not on this machine.
+    """
+    if not preds:
+        return "nothing to ask about."
+    head = f"  {'job':<16} {'would start':<22} {'on':<16} procs"
+    lines = ["asked the scheduler (nothing was submitted):", head]
+    for p in preds:
+        if p.start:
+            lines.append(f"  {p.label:<16} {p.start:<22} "
+                         f"{(p.nodes or '-'):<16} {p.procs or '-'}")
+        else:
+            lines.append(f"  {p.label:<16} {'no prediction':<22} "
+                         f"-> {p.refused or 'the scheduler did not say'}")
+    lines.append("")
+    lines.append("  a time is an ESTIMATE from the queue as it is right now; "
+                 "it moves.")
+    lines.append("  change --domain or --cores and ask again, or launch when "
+                 "you are happy.")
+    return "\n".join(lines)

@@ -715,7 +715,30 @@ two machines is explained by the bundle itself. Secret sections (`auth`,
 **There is ONE launch door.** `molbuilder jobset launch` resolves the mode
 (flag, else `execution.mode`, else a refusal — never the detected scheduler),
 runs the deck/launch agreement check, records the attempt, and launches
-**one job per invocation**. When it launches, it stamps the claim
+**one job per invocation**.
+
+> **`--mode ask` submits nothing and tells you when it would start.** It walks
+> the identical path `--mode submit` walks and inserts one flag,
+> `sbatch --test-only`, so the line asked about **is** the line that would be
+> sent. SLURM validates the request and predicts a start time; no job is
+> created, nothing is recorded, and `status` sees nothing — because after it,
+> nothing exists.
+>
+> It is for the minute before you commit: ask, and if the wait is poor, change
+> `--domain` or trim the resources and ask again, or decide you can live with
+> it and re-run with `--mode submit`. It needs a login node — **there is no
+> prediction without the cluster**, and node counts are a poor proxy for it:
+> 134 wide nodes are no help if all 134 are busy for two days.
+>
+> When SLURM declines to predict, that is reported as **unknown**, never as
+> soon. A missing answer dressed as a good one is how you wait a day for a
+> queue that looked instant. The reason it gives is printed, because it is
+> often the whole answer — *"Requested node configuration is not available"*
+> says the ask fits no machine in that queue.
+>
+> It is gated one-job-at-a-time like `submit`: it enqueues nothing, but it is
+> still N scheduler queries from one command, and the answer only matters for
+> the job you are about to hand over. When it launches, it stamps the claim
 `MB_LAUNCHED_BY=jobset-submit` — into the child environment for a direct
 run (inheritance survives `nohup` and backgrounding), and **explicitly on
 the command line** for a scheduler run (`sbatch
