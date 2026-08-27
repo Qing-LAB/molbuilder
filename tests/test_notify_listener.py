@@ -100,8 +100,13 @@ def test_both_config_keys_are_required_or_there_is_no_route(
     doing nothing.* Half a configuration must not open a door."""
     monkeypatch.setenv("HOME", str(tmp_path))
     app = create_app(config={"rate_limit": {"enabled": False}, **cfg})
+    # The LISTENER's blueprint specifically.  `notify_setup` also lives
+    # under /api/notify/ and is always registered -- it is the signed-in
+    # SETUP api, about sending reports FROM here, where this is about
+    # receiving them (`run-reports.md` § 3.1).  Matching on the substring
+    # caught both and made this fail for the wrong reason.
     assert not [r for r in app.url_map.iter_rules()
-                if str(r).startswith("/api/") and "notify" in r.endpoint], why
+                if r.endpoint.startswith("notify.")], why
 
 
 def test_no_fixed_notify_path_exists_anywhere_in_the_source():

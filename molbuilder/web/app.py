@@ -350,6 +350,14 @@ def create_app(*, config=None) -> Flask:
     # obscurity (`access-control.md` § 8 rule 7).  With either key missing
     # nothing is registered, so there is no path to probe for: rule 1, *the
     # safe state is the one you get by doing nothing.*
+    # THE SETUP PAGE'S API, which is always available to a signed-in user.
+    # Not gated on the listener's config: those keys are about RECEIVING
+    # reports on this server, and this is about SENDING them from it --
+    # two different machines' concerns that happen to share a noun
+    # (`run-reports.md` § 3.1).
+    from .blueprints.notify_setup import bp as notify_setup_bp
+    app.register_blueprint(notify_setup_bp)
+
     from ..runtime_config import get_notify_keys_file, get_notify_route
     _notify_keys = get_notify_keys_file(config or {})
     _notify_route = get_notify_route(config or {})

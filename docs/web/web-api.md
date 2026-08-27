@@ -405,7 +405,7 @@ that greps `get("path")` alone misses three blueprints.
 browser goes through one of the four above — checked 2026-08-25, which is when
 `/api/spectra/load` (1 route) and `/api/checkpoint/*` (6) were brought onto it.
 
-## 3. Endpoint index — all 81 routes
+## 3. Endpoint index — all 85 routes
 
 > **Three routes below no longer exist** (found 2026-08-10 while correcting
 > an earlier count): `/api/files/result-list`,
@@ -425,6 +425,18 @@ with rate limiting on registers a few additional admin/auth routes.)
 
 Every route, grouped by domain. Routes with a module-doc home link to it; the
 rest are documented in full in § 5.
+
+**Run reports** — setting up *where* a calculation's reports go; owned by
+[`run-reports.md`](?doc=execution/run-reports.md) § 3.1. **Signed-in only**,
+and separate from the listener on purpose: that one is the public *receiving*
+end (§ 4 there), this is about *sending* from this machine.
+
+| Method · Path | Purpose |
+|---|---|
+| GET `/api/notify/destination` | Is one set up, where, and is a key present. **Never the key itself** — a page that can show you a secret can leak one |
+| POST `/api/notify/destination` | Write it, `0600`, at `config_dir()/notify` — the path taken from the monitor's own function so the two cannot disagree |
+| DELETE `/api/notify/destination` | Remove it. **Absent is off**, and off is a state you can reach without a shell |
+| POST `/api/notify/destination/test` | Send one report and say what happened — the only check that exercises the file, the url, the segment, the signature, egress and TLS together |
 
 **Structure + edits** — return the canonical structure envelope (§ 1);
 owned by [`molview.md`](?doc=web/molview.md):
