@@ -766,11 +766,27 @@ def known_machines() -> List[Dict[str, object]]:
                     "gpu_type": None,
                     "summary": "no record here yet, or it cannot be read -- "
                                "write one with " + fix}
+        # CORES: the RANGE the machines span, when the record lists them.
+        #
+        # `sockets x cores_per_socket` describes ONE node -- whichever
+        # `sinfo` printed first (`_slurm_pick_node`) -- and a partition is a
+        # queue, not a machine type (`scheduler.md` R0).  On Sol that read
+        # "64 cores" for a cluster whose machines are 48, 64 AND 128, in the
+        # card a person picks a machine from.
+        #
+        # R3 keeps every older record working: one written before
+        # `node_types` existed says nothing here, and falls back to the one
+        # figure it does have.  (Caught in the browser, 2026-08-27.)
+        from .quantities import core_range as _core_range
+        from .quantities import machine_sizes as _machine_sizes
         cores = getattr(env.topology, "cores_per_socket", None)
         sockets = getattr(env.topology, "sockets", None)
         total = (cores * sockets) if (cores and sockets) else None
+        spread = _core_range(_machine_sizes(env.domains))
         bits = [env.scheduler or "unknown scheduler"]
-        if total:
+        if spread:
+            bits.append(f"{spread} cores")
+        elif total:
             bits.append(f"{total} cores")
         # MEMORY, which was measured and never shown (2026-08-24).  The
         # probe records `mem_total_gb` for every machine, and the summary

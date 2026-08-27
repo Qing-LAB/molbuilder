@@ -55,7 +55,7 @@ __all__ = [
     "parse_duration", "parse_memory",
     "slurm_time", "slurm_mem",
     "canonical_time", "canonical_mem", "parse_mem_gb",
-    "human_wall",
+    "human_wall", "core_range", "machine_sizes",
 ]
 
 
@@ -367,3 +367,45 @@ def human_wall(secs: Optional[int]) -> str:
     if h and m:
         return f"{h}h{m}m"
     return f"{h}h" if h else f"{m}m"
+
+
+def core_range(shapes) -> str:
+    """A set of machine sizes -> the **maximum core range** they span.
+
+    ``[48, 64, 128]`` -> ``"48-128"``; one size, or several the same, ->
+    that number, because a range whose ends are equal is a number and
+    ``128-128`` invites the reader to look for a difference that is not
+    there.  Nothing measurable -> ``""``.
+
+    **The low end is not a floor on the ask.**  A ``-c 4`` job gets four
+    cores on a 48-core node -- you can always ask for less than a machine
+    has.  Naming it a *minimum* would say the opposite, which is why the
+    user named it a range (2026-08-27).
+
+    Here beside :func:`human_wall` because it answers the same kind of
+    question -- *how is this measurement stated to a person* -- and here
+    rather than in either caller because `ask`'s queue table and the
+    browser's machine card must not spell it two ways.
+    """
+    sizes = sorted({int(c) for c in shapes if c})
+    if not sizes:
+        return ""
+    return str(sizes[0]) if len(sizes) == 1 else f"{sizes[0]}-{sizes[-1]}"
+
+
+def machine_sizes(domains) -> "list":
+    """Every distinct machine size across a menu of domains.
+
+    A partition is a QUEUE and holds several kinds of machine
+    (`scheduler.md` R0), and one domain's ``node_types`` names the ones IT
+    can reach.  Empty when no record states them -- every record written
+    before 2026-08-27 -- and a caller then falls back to whatever single
+    figure it has, which is R3: an unstated fact never bars.
+    """
+    out = []
+    for d in domains or []:
+        for t in (getattr(d, "node_types", None) or []):
+            c = t.get("cores")
+            if c:
+                out.append(int(c))
+    return out

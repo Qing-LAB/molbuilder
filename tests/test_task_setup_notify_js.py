@@ -205,3 +205,38 @@ def test_the_note_says_what_will_actually_be_sent():
     assert "each SCF convergence" in note
     assert "every 3 h" in note
     assert "when it ends" in note
+
+
+def test_the_card_names_the_path_the_CODE_actually_reads():
+    """**Found in the browser, 2026-08-27.** The card told people to create
+    `~/.molbuilder/notify`. The monitor reads `<config dir>/notify` —
+    `~/.config/molbuilder/notify`, or under `$XDG_CONFIG_HOME`.
+
+    Following the card put the file where nothing looks, and **absent means
+    silently off** — so there was no notification, no error, and nothing to
+    read. The exact failure the feature is built to avoid.
+
+    It also defeated the reason the path honours XDG at all: on an HPC
+    login node `$HOME` is NFS-mounted and snapshotted, and
+    `XDG_CONFIG_HOME=/scratch/$USER` is how a key is kept off it
+    (`monitor.default_notify_path`).
+    """
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "molbuilder/web/templates/task_setup.html").read_text()
+    assert "~/.molbuilder/notify" not in html, \
+        "the card names a path nothing reads"
+    assert "~/.config/molbuilder/notify" in html
+    assert "XDG_CONFIG_HOME" in html, \
+        "the override that makes this usable on HPC is not mentioned"
+
+
+def test_the_card_says_KEY_not_token():
+    """The secret stopped being a bearer token on 2026-08-27; it signs and
+    never travels. A card still calling it a token teaches the old model."""
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "molbuilder/web/templates/task_setup.html").read_text()
+    card = html[html.index("ts-notify-card") - 900:]
+    card = card[:card.index("ts-notify-opts")]
+    assert "token" not in card.lower(), "the card still says token"

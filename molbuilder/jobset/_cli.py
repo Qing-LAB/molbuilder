@@ -2327,9 +2327,18 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         asked_cmd = next((r.command for r in results if r.command), None)
         click.echo("")
         if asked_cmd:
-            click.echo("  asked: " + " ".join(asked_cmd))
-        click.echo("  launch it with the same command and `--mode submit` "
-                   "when the answer suits you.")
+            click.echo("  would send: " + " ".join(asked_cmd))
+        # DO NOT SAY "--mode submit" WHEN THERE IS NOTHING TO SUBMIT TO.
+        # The table has just said there is no scheduler here; following it
+        # with "launch it with --mode submit when the answer suits you"
+        # contradicts that in the next breath, and points at a mode this
+        # machine cannot run.
+        if all(p.no_scheduler for p in preds):
+            click.echo("  run it here instead: the same command with "
+                       "`--mode direct`.")
+        else:
+            click.echo("  launch it with the same command and "
+                       "`--mode submit` when the answer suits you.")
         return
 
     verb = "WOULD run" if dry_run else "result"

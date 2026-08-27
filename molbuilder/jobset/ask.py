@@ -55,7 +55,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 # The two quantities a job asks for -- a wall and an amount of memory -- and
 # every dialect each is written in, live in `scheduler/quantities.py`
@@ -153,25 +153,17 @@ def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
 
 
 def core_range(row) -> str:
-    """The MAXIMUM CORE RANGE: what the largest ask a machine here can take
-    runs from, to (user's name for it, 2026-08-27).
+    """This domain's **maximum core range**, for the table's cores column.
 
-    Each machine has a maximum -- its own core count -- and a queue holding
-    several has a range across them.  ``48-128`` on Sol's ``htc``.  One
-    number when every machine is the same size, because a range whose ends
-    are equal is a number.
-
-    **It is not a floor on the ask.**  A ``-c 4`` job gets 4 cores on a
-    48-core node; you can always ask for less than a machine has.  Calling
-    the low end a *minimum* would say the opposite, which is why it is not
-    called that.
+    The arithmetic is `scheduler.quantities.core_range` -- ONE spelling, so
+    the queue table here and the browser's machine card cannot disagree
+    about how a range is written.  This wrapper adds only the fallback: a
+    record with no ``node_types`` (every record written before 2026-08-27)
+    still has ``max_cores``, and R3 says an unstated fact never bars.
     """
-    shapes = [t.get("cores") for t in (getattr(row, "node_types", None) or [])
-              if t.get("cores")]
-    if not shapes:
-        return str(row.max_cores or "-")
-    lo, hi = min(shapes), max(shapes)
-    return str(hi) if lo == hi else f"{lo}-{hi}"
+    from ..scheduler.quantities import core_range as _range
+    shapes = [t.get("cores") for t in (getattr(row, "node_types", None) or [])]
+    return _range(shapes) or str(row.max_cores or "-")
 
 
 def fits_how_many(row, cores: Optional[int]) -> str:
@@ -206,40 +198,51 @@ def fits_how_many(row, cores: Optional[int]) -> str:
 
 
 def _machine_lines(row, *, cores: Optional[int] = None) -> List[str]:
-    """The machines a domain actually holds, one line each.
+    """The machines a domain holds, **one line per SIZE**.
 
     **A partition is a queue, not a machine type.**  Sol's ``htc`` is 48-,
-    64- and 128-core nodes under one name.  The ``cores`` column above
-    summarises them as a range (:func:`core_range`, ``48-128``); these
-    lines are the machines themselves, with their counts and devices.
+    64-, 96- and 128-core nodes under one name.  The ``cores`` column above
+    summarises them as a range (:func:`core_range`); these lines are the
+    machines themselves.
 
-    Printing them is this table's own stance applied to a field that was
-    hiding them -- *it shows what exists, marks what fits, and the person
-    picks*.  It is also the only place a device is tied to the machine that
-    carries it: ``htc`` offers A100s and it offers 128-core nodes, and
-    never both at once.
+    **Grouped by size, and that is not cosmetic.**  `sinfo` reports one row
+    per *gres group*, and on the real Sol record `htc` has FOURTEEN -- nine
+    of them 48-core rows differing only in which card they carry.  Printed
+    one-per-group the menu ran to 68 lines and stopped being readable,
+    which is the opposite of showing what exists.  Sizes are what a person
+    picking a machine is choosing between; the cards available AT each size
+    ride along, because that is the pairing no single figure could state:
+    on ``htc`` you can have 128 cores or you can have an A100, never both.
 
-    Nothing is printed for a domain that holds ONE kind of machine: the
-    ``cores`` column already said it, and a second line repeating it would
-    be noise on every row that has nothing to disclose.
+    Nothing is printed for a domain that holds ONE size: the ``cores``
+    column already said it, and a line repeating it is noise on every row
+    with nothing to disclose.
     """
     shapes = getattr(row, "node_types", None) or []
-    if len(shapes) < 2:
+    by_size: Dict[int, Dict[str, Any]] = {}
+    for t in shapes:
+        c = t.get("cores")
+        if not c:
+            continue
+        g = by_size.setdefault(int(c), {"nodes": 0, "dev": set(), "mem": []})
+        g["nodes"] += int(t.get("nodes") or 0)
+        g["dev"].update((t.get("gpu") or {}).keys())
+        if t.get("mem_gb"):
+            g["mem"].append(float(t["mem_gb"]))
+    if len(by_size) < 2:
         return []
     out = []
-    for t in sorted(shapes, key=lambda r: -(r.get("cores") or 0)):
-        c, n = t.get("cores"), t.get("nodes")
-        dev = t.get("gpu") or {}
-        bits = [f"{c} cores"]
-        if n:
-            bits.append(f"x{n} node(s)")
-        if t.get("mem_gb"):
-            bits.append(f"{t['mem_gb']:g} GB")
-        if dev:
-            bits.append(", ".join(f"{k} x{v}" for k, v in sorted(dev.items())))
-        # A machine too small for THIS ask is marked, not hidden: it is
-        # why the queue is slower than its node count suggests.
-        fits = "" if (cores is None or not c or c >= cores) else "   (too small)"
+    for c in sorted(by_size, reverse=True):
+        g = by_size[c]
+        bits = [f"{c:>4} cores", f"x{g['nodes']} node(s)"]
+        if g["mem"]:
+            lo, hi = min(g["mem"]), max(g["mem"])
+            bits.append(f"{lo:g} GB" if lo == hi else f"{lo:g}-{hi:g} GB")
+        if g["dev"]:
+            bits.append(", ".join(sorted(g["dev"])))
+        # A size too small for THIS ask is marked, not hidden: it is why
+        # the queue is slower than its node count suggests.
+        fits = "" if (cores is None or c >= cores) else "   (too small)"
         out.append("- " + "  ".join(bits) + fits)
     return out
 
@@ -449,10 +452,10 @@ def prediction_table(preds: Sequence[Prediction]) -> str:
     # header would say "asked the scheduler" when none was asked, and the
     # footer would offer to change --domain, which means nothing here.
     if all(p.no_scheduler for p in preds):
+        # The FACT only.  What to do about it is the caller's closing line,
+        # or the two say `--mode direct` one after the other.
         return ("there is no scheduler on this machine, so there is nothing "
-                "to wait for.\n"
-                "  it runs the job directly -- `--mode direct` does that, "
-                "and starts immediately.")
+                "to wait for -- a job here starts immediately.")
     head = f"  {'job':<16} {'would start':<22} {'on':<16} procs"
     lines = ["asked the scheduler (nothing was submitted):", head]
     for p in preds:

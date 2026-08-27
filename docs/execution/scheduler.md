@@ -148,6 +148,26 @@ number rather than `128-128`.
 > 48-core node; you can always ask for less than a machine has. Naming it a
 > *minimum* would say the opposite, which is why it is not called that.
 
+**The machines are grouped by SIZE, not by the row `sinfo` printed.** The
+freshly probed `htc` has **fourteen** gres groups — nine of them 48-core rows
+differing only in which card they carry — and one line each ran the menu to 68
+lines, which is the opposite of showing what exists. Size is what a person
+picking a machine chooses between; the cards available *at* each size ride
+along, because that is the pairing no single figure could state:
+
+```
+  1  htc   htc/public   4h   48-128   501 GB   a100 x4, h100 x8, l40 x4, …
+       -  128 cores  x137 node(s)  503.2-1511.2 GB  a30, gpu, h200, h200.35gb
+       -   96 cores  x2 node(s)    1007.4 GB        h100
+       -   64 cores  x4 node(s)    503.5 GB         a100.40gb
+       -   48 cores  x69 node(s)   501-503.5 GB     a100, a100.20gb, a30, h100, l40
+          64 cores fits 143 of 212 nodes here (67%)
+```
+
+> **Read the last two columns together.** On `htc` you can have 128 cores or
+> you can have an A100 — never both. That is a fact about *machines*, and no
+> queue-level figure can carry it.
+
 **The range alone misleads, so the fitting node count rides with it.** Reading
 `48-128` you would take 128 for the rare extreme. On `htc` it is **134 of 188
 nodes** — the common machine, with the 48-core GPU nodes in the minority — so a

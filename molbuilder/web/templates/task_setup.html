@@ -174,8 +174,11 @@
          WHERE to send it is not here and must not be.  A description
          travels -- to a cluster, into a handoff bundle, to whoever you hand
          the calculation to -- so the destination and its credential stay in
-         the user's own ~/.molbuilder/notify on the machine that runs the
-         job.  This card sets policy; it never sees a token. #}
+         the user's own <config dir>/notify on the machine that runs the
+         job -- `~/.config/molbuilder/notify`, or under XDG_CONFIG_HOME
+         when it is set, which is how a person keeps a key off an
+         NFS-mounted HPC $HOME (`monitor.default_notify_path`).  This card
+         sets policy; it never sees a key. #}
       <section class="card" id="ts-notify-card" hidden>
         <h2>Tell me how it is going</h2>
         <p class="hint">A long run does not need watching. Tick what is
@@ -183,7 +186,9 @@
           description. <strong>A run ending always reports</strong> &mdash;
           that is the whole point, so it is not a choice.
           <span class="ts-notify-where">Where the messages go is set up once
-          per machine, in your own <code>~/.molbuilder/notify</code>; with no
+          per machine, in your own
+          <code>~/.config/molbuilder/notify</code> (or under
+          <code>$XDG_CONFIG_HOME</code> if you set it); with no
           such file nothing is sent and the run is unchanged.</span></p>
 
         <div class="ts-notify-opts">

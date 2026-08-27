@@ -93,6 +93,49 @@ def test_an_unknown_is_shown_as_unknown_with_its_reason():
     assert "2026-08-27T14:00" in out
 
 
+def test_no_scheduler_is_its_own_ANSWER_not_an_empty_table(): 
+    """The workstation path, and it had no test at all until 2026-08-27 —
+    the wording could be changed freely and nothing noticed.
+
+    A missing scheduler is not "the queue could not say"; it is "there is
+    no queue". Rendering the normal table would head it *asked the
+    scheduler* when none was asked, and offer to change `--domain`, which
+    means nothing here.
+    """
+    out = prediction_table([Prediction(label="relax", no_scheduler=True)])
+    assert "no scheduler on this machine" in out
+    assert "nothing to wait for" in out
+    assert "asked the scheduler" not in out
+    assert "--domain" not in out, "offered a knob that does nothing here"
+    assert "would start" not in out, "rendered the table header anyway"
+
+
+def test_no_scheduler_does_not_end_by_pointing_at_submit():
+    """**Caught by running it, not by a test.** The table said *there is no
+    scheduler here* and the closing line said *launch it with `--mode
+    submit` when the answer suits you* — a contradiction in consecutive
+    sentences, pointing at a mode this machine cannot run.
+
+    Guarded at the source, because the closing line lives in the CLI and
+    the table cannot see it.
+    """
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1]
+           / "molbuilder/jobset/_cli.py").read_text()
+    branch = src[src.index("would send: "):src.index("would send: ") + 900]
+    assert "if all(p.no_scheduler for p in preds):" in branch
+    assert "--mode direct" in branch, \
+        "the no-scheduler case must point at the mode that DOES work here"
+
+
+def test_the_fact_and_the_ACTION_are_not_said_twice():
+    """The table states the fact; the CLI's closing line says what to do.
+    Both saying `--mode direct` reads as a stutter, and it was."""
+    out = prediction_table([Prediction(label="relax", no_scheduler=True)])
+    assert out.count("--mode direct") == 0, \
+        "the table took the caller's line as well as its own"
+
+
 def test_the_table_does_not_rank_the_queues():
     """Sorting would be a recommendation. The wait is one of the things
     being weighed; the others — what else is running, whose allocation, how

@@ -153,8 +153,38 @@ def test_a_record_that_lists_no_machines_never_bars():
 def test_the_table_shows_the_machines_not_one_number():
     rows = [d for d in _domains().values()]
     out = queue_table(rows, Ask(), cores=64)
-    assert "48 cores  x51 node(s)  a100 x4" in out
+    assert "48 cores  x51 node(s)" in out
     assert "128 cores  x134 node(s)" in out
+    assert "a100" in out, "the cards available at a size ride with it"
+
+
+def test_the_machines_are_grouped_by_SIZE_not_by_gres_row():
+    """**Found against the real Sol record, 2026-08-27.**
+
+    `sinfo` reports one row per *gres group*, and the freshly probed `htc`
+    has FOURTEEN — nine of them 48-core rows differing only in which card
+    they carry. Printed one-per-group the menu ran to 68 lines and stopped
+    being readable, which is the opposite of showing what exists.
+
+    Sizes are what a person picking a machine chooses between; the cards
+    available AT each size ride along, because that is the pairing no
+    single figure could state.
+    """
+    from molbuilder.jobset.ask import _machine_lines
+    many = Domain(name="x", partition="x", qos="public", node_types=[
+        {"cores": 48, "nodes": 51, "gpu": {"a100": 4}},
+        {"cores": 48, "nodes": 8, "gpu": {"l40": 4}},
+        {"cores": 48, "nodes": 2, "gpu": {"a30": 3}},
+        {"cores": 128, "nodes": 134},
+    ])
+    lines = _machine_lines(many, cores=64)
+    assert len(lines) == 2, f"one line per SIZE, got {len(lines)}: {lines}"
+    small = [ln for ln in lines if "48 cores" in ln][0]
+    assert "x61 node(s)" in small, "node counts must be summed across groups"
+    for card in ("a100", "a30", "l40"):
+        assert card in small, f"{card} was dropped when its group merged"
+    assert "(too small)" in small
+    assert "(too small)" not in [ln for ln in lines if "128" in ln][0]
 
 
 def test_a_machine_too_small_for_THIS_ask_is_marked_not_hidden():
@@ -267,3 +297,44 @@ def test_an_old_record_shows_its_one_number_and_no_fit_line():
     old = Domain(name="htc", partition="htc", qos="public", max_cores=48)
     assert core_range(old) == "48"
     assert fits_how_many(old, 32) == ""
+
+
+# --------------------------------------------------------------------- #
+#  the machine card a person picks from                                  #
+# --------------------------------------------------------------------- #
+
+def test_the_range_has_ONE_spelling():
+    """`ask`'s queue table and the browser's machine card must not write a
+    range two ways. The arithmetic lives in `scheduler.quantities`, beside
+    `human_wall`, because it answers the same kind of question: how is this
+    measurement stated to a person."""
+    from molbuilder.scheduler.quantities import core_range as q_range
+    from molbuilder.jobset.ask import core_range as ask_range
+    htc = _domains()["htc"]
+    assert ask_range(htc) == q_range([48, 64, 128]) == "48-128"
+
+
+def test_an_older_record_still_reads_its_one_figure():
+    """**R3, and the reason this fix is safe to ship before anyone
+    re-probes.** Every record on disk predates `node_types`; the card must
+    fall back to what it does have rather than going blank."""
+    from molbuilder.scheduler.quantities import core_range, machine_sizes
+    from molbuilder.scheduler.record import Domain
+    old = [Domain(name="htc", partition="htc", qos="public", max_cores=48)]
+    assert machine_sizes(old) == []
+    assert core_range(machine_sizes(old)) == ""
+
+
+def test_the_card_stops_showing_one_arbitrary_nodes_cores():
+    """**Caught in the browser, 2026-08-27.** The machine picker read
+    "sol · slurm · 64 cores" — `sockets x cores_per_socket`, which is
+    whichever node `sinfo` printed first — for a cluster whose machines are
+    48, 64 AND 128. A person choosing a machine was shown a number no
+    partition guarantees."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1]
+           / "molbuilder/scheduler/record.py").read_text()
+    block = src[src.index("bits = [env.scheduler"):]
+    block = block[:block.index("_mem =")]
+    assert "if spread:" in block, "the range is not preferred over the node"
+    assert "elif total:" in block, "the older-record fallback is gone"
