@@ -27,6 +27,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -1741,6 +1742,114 @@ def _supervise_forever() -> int:
             return code
         click.echo("molbuilder: reload requested -- starting a fresh server",
                    err=True)
+
+
+#: A user id becomes a log FILENAME on the server, so it is
+#: constrained here -- the same set `web/blueprints/notify.py`
+#: enforces when it writes.  Refusing at issue time is cheaper
+#: than a token that authenticates and then cannot be recorded.
+_NOTIFY_USER_RE = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
+
+
+@cli.command("notify-token",
+              short_help="issue a run-report token for one user, and say "
+                         "where to put it")
+@click.argument("user")
+@click.option("--url", default=None,
+              help="the listener's address as the JOB will reach it, e.g. "
+                   "https://host:8888/api/notify.  Used only to print the "
+                   "file to save on the cluster.")
+@click.option("--tokens-file", type=click.Path(dir_okay=False), default=None,
+              help="the server's token file.  Default: `notify_tokens` in "
+                   "molbuilder's config directory.")
+@click.option("--replace", is_flag=True,
+              help="reissue for a user who already has one.  The old token "
+                   "stops working immediately.")
+def cmd_notify_token(user, url, tokens_file, replace):
+    """Issue a token so one person's jobs can report progress.
+
+    Two files, two machines, one secret:
+
+    \b
+      * THIS machine (the server) gets `notify_tokens`, which maps the
+        user to their token.  Point `molbuilder.json`'s
+        `notify_tokens_file` at it -- without that key the listener is
+        not registered at all and `/api/notify` simply 404s.
+      * THE CLUSTER gets `notify`, holding the URL and the token, read
+        by the monitor beside a running job.
+
+    Both are mode 0600 and neither is ever placed in `molbuilder.json`:
+    the config carries PATHS (`ops/deployment.md` 5.1).
+
+    **The token is printed once, and that is a deliberate exception.**
+    `auth-setup` never prints a secret, and is right not to -- a session
+    key never leaves the server that made it.  This one is a SHARED
+    secret by design: it has to reach a second machine, and the only
+    thing that could carry it there without showing it to you is a
+    channel molbuilder does not have.  Copy it now; it is not recoverable
+    from the server's file in a form you can read back out of this
+    command.
+    """
+    import json as _json
+    import secrets as _secrets
+    from . import auth_setup as _as
+    from .config_dir import config_dir
+
+    if not _NOTIFY_USER_RE.match(user):
+        raise click.UsageError(
+            f"{user!r} is not usable as a user id here. It becomes a log "
+            f"FILENAME on the server, so it is limited to letters, digits "
+            f"and . _ @ + - (max 128).")
+
+    path = Path(tokens_file) if tokens_file else config_dir() / "notify_tokens"
+    try:
+        existing = _json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(existing, dict):
+            existing = {}
+    except (OSError, ValueError):
+        existing = {}
+
+    if user in existing and not replace:
+        raise click.UsageError(
+            f"{user!r} already has a token in {path}. Re-run with "
+            f"--replace to issue a new one -- the old one stops working "
+            f"the moment you do.")
+
+    token = _secrets.token_urlsafe(32)
+    existing[user] = token
+    _as.write_secret_file(path, _json.dumps(existing, indent=2) + "\n")
+
+    where = url or "https://YOUR-SERVER:8888/api/notify"
+    client = _json.dumps(
+        {"url": where, "headers": {"Authorization": f"Bearer {token}"}},
+        indent=2)
+
+    click.echo(f"\nIssued a run-report token for {user}.\n")
+    click.echo(f"  server side, written now : {path}  (0600)")
+    if not tokens_file:
+        click.echo(f"  molbuilder.json needs    : "
+                   f'"notify_tokens_file": "{path}"')
+        click.echo( "                             "
+                    "(without it the listener is not registered at all)")
+    click.echo("\nOn the CLUSTER, save this as "
+               "$XDG_CONFIG_HOME/molbuilder/notify")
+    click.echo("(or ~/.config/molbuilder/notify), mode 0600:\n")
+    click.echo(client)
+    click.echo("\n  mkdir -p -m 700 \"${XDG_CONFIG_HOME:-$HOME/.config}"
+               "/molbuilder\"")
+    click.echo("  # paste the JSON above into "
+               "\"${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder/notify\"")
+    click.echo("  chmod 600 \"${XDG_CONFIG_HOME:-$HOME/.config}"
+               "/molbuilder/notify\"")
+    click.echo("\nOn an HPC login node $HOME is usually NFS-mounted and "
+               "backed up.")
+    click.echo("Setting XDG_CONFIG_HOME to somewhere local keeps the token "
+               "off it.\n")
+    click.echo("The token is shown ONCE. Copy it before this scrolls away.")
+    click.echo("Then pick what is worth a message on the Task-setup tab; "
+               "with nothing")
+    click.echo("ticked a run still reports when it ends.\n")
+    return 0
 
 
 @cli.command("serve", short_help="run the browser UI (Flask + 3Dmol.js)")

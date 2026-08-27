@@ -472,6 +472,21 @@ def _read_secret_key_file(raw: Mapping[str, Any]):
     return secret_key_file
 
 
+def _read_notify_tokens_file(raw: Mapping[str, Any]):
+    """Path to the run-report token file.  A top-level SCALAR, like
+    ``secret_key_file`` and for the same reason: the config carries the
+    PATH, and the tokens live in a 0600 file beside it."""
+    value = raw.get("notify_tokens_file")
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'notify_tokens_file' must be a "
+            f"string path; got {type(value).__name__}."
+        )
+    return value
+
+
 def _require_object_section(raw: Mapping[str, Any], name: str):
     """The lazy-validated sections (scheduler, execution, rate_limit):
     merged and/or validated by their getters or consumers, so here we
@@ -564,6 +579,8 @@ _SECTIONS: Dict[str, Dict[str, Any]] = {
     "auth":              {"read": _read_auth,
                           "scopes": ("machine",), "provenance_safe": False},
     "secret_key_file":   {"read": _read_secret_key_file,
+                          "scopes": ("machine",), "provenance_safe": False},
+    "notify_tokens_file": {"read": _read_notify_tokens_file,
                           "scopes": ("machine",), "provenance_safe": False},
     "execution":         {"read": lambda raw: _require_object_section(
                               raw, "execution"),
@@ -665,6 +682,22 @@ def get_secret_key_file(cfg: Mapping[str, Any]) -> Optional[str]:
     """Path to the session-signing key file, or ``None`` when not
     configured."""
     return cfg.get("secret_key_file")
+
+
+def get_notify_tokens_file(cfg: Mapping[str, Any]) -> Optional[str]:
+    """Path to the run-report token file, or ``None`` when not configured.
+
+    ``None`` is the whole switch for the listener: with no token file there
+    is no ``/api/notify`` route at all — not one that refuses, one that is
+    not there.  `access-control.md` § 8 rule 2, *"absent beats refused, when
+    existence is itself the answer"*, and rule 1, *"the safe state is the one
+    you get by doing nothing"*.
+
+    A PATH, never the tokens themselves — the same rule as
+    :func:`get_secret_key_file`.  ``molbuilder.json`` gets copied, diffed and
+    pasted into an issue; secrets must not travel with it.
+    """
+    return cfg.get("notify_tokens_file")
 
 
 def get_tls(cfg: Mapping[str, Any]) -> Dict[str, str]:

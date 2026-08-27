@@ -112,7 +112,8 @@ def test_the_retired_type_is_named_nowhere_as_live():
 #: `Resources`' field count, in ENGLISH -- the spelling § 6.2 uses.  Kept as a
 #: map rather than a literal so raising the count is one edit here plus one in
 #: the contract, which is exactly the pair this test exists to keep together.
-_COUNT_WORD = {7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven"}
+_COUNT_WORD = {7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven",
+               12: "twelve", 13: "thirteen", 14: "fourteen"}
 
 
 def test_the_resources_field_count_is_stated_in_prose_and_true():

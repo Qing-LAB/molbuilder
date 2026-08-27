@@ -70,6 +70,13 @@ _PUBLIC_ENDPOINTS = frozenset({
     "auth_cas_callback",      # /cas-callback/<provider_id>
     "auth_logout",
     "api_health",             # liveness probes
+    # THE SSO SESSION CHECK DOES NOT APPLY -- which is not the same as
+    # unauthenticated.  A monitor on a compute node cannot do a browser
+    # sign-in, so `notify.api_notify` authenticates itself, with a bearer
+    # token compared by `hmac.compare_digest`, as its first act.  It is
+    # registered at all only when the operator configured a token file
+    # (`app.py`), so on a server that has not, this name matches no route.
+    "notify.api_notify",      # run reports from a job -- see run-reports.md
     "static",                 # CSS/JS; browser fetches before any session
     "vendor_plotly_js",       # third-party JS served from plotly package
 })

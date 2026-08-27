@@ -232,164 +232,24 @@ owns the judgement.** The system's job is to let a benchmark state what it needs
 to record what each trial actually landed on, and to say plainly when trials in
 one sweep disagree. **It never overrides the user's choice.**
 
-### 2.9 Notifications — say something useful, rarely
+### 2.9 Notifications — BUILT 2026-08-26
 
-`job-contracts.md` already calls the notifier hook *"the deliberate
-customization point… why nobody has to be at the cluster. A run that ends at 3am
-can say so."* The hook, the webhook POST and `MB_NOTIFY_URL` all exist. What is
-missing is a cadence anyone would want and a way to set it.
+Moved to [`execution/run-reports.md`](?doc=execution/run-reports.md), which is
+now the contract for it. A plan is the only document allowed to describe
+something that does not exist (`execution/overview.md` § 1), so what exists
+does not belong here.
 
-**How often it looks and how often it tells you are the same number today, and
-they should not be.**
+What landed: the `notify` block in `task.json`; the monitor's triggers, its
+destination file and its 2 s guarded POST; the policy riding `Resources` to
+the wrapper; the Task-setup card. § 2.10 below stays because the receiving end
+does not exist yet.
 
-Each time the monitor wakes it reads CPU/GPU/memory and appends a row to
-`util.csv` if a value has moved. In the same pass it calls every registered
-notifier, guarded by one condition: has the SCF iteration count advanced, or the
-energy changed, or the state changed. On a running job the iteration count
-advances constantly, so that is true almost every pass.
+### 2.10 The listener — BUILT 2026-08-26
 
-Concretely: a Slack webhook set up today receives a message **every ten seconds**
-for the length of the run.
-
-Looking often is right — `util.csv` is the diagnostic record, and its whole point
-is to show whether the CPU/GPU/memory allocation is being used. Telling someone
-often is not. The per-pass event stays a line in the monitor log; who gets told,
-and when, becomes the policy below.
-
-*Done 2026-08-26:* the sampling default moved **5 s → 10 s** — still far finer
-than any change the metrics make, and half the monitor's own footprint beside
-the compute ranks. `MB_MONITOR_INTERVAL` overrides it. (The keepalive stays
-300 s, so a quiet stretch now costs 30 samples rather than 60.)
-
-**The triggers, which are the UI options.**
-
-They combine with OR — **checkboxes, not a choice**, each carrying a value where
-it needs one. Any subset may be on at once.
-
-| trigger | fires when | setting |
-|---|---|---|
-| SCF converged | an SCF cycle reaches its criterion — once in a single point, once per geometry step in a relaxation | — |
-| periodic | every N hours | N |
-| finish / error | the watched PID goes | none — **always on**, not a checkbox |
-
-Finish is not offered as a box because switching it off is the one thing nobody
-wants: a run that ends at 3am saying so is the reason the hook exists.
-
-**Nothing is reported before an SCF converges.** A half-finished cycle is not
-news; the iteration count and running energy are already in the monitor log and
-on the Watch tab for anyone who wants them. The exception is trouble — an abort,
-a scheduler timeout, a stall with no progress — worth saying whenever it
-happens, whatever the policy says. And if a single point's convergence coincides
-with its finish, that is simply what happened: no special case.
-
-**This is not the marker-reading retired on 2026-08-26.** Reading the artifacts
-to REPORT progress is this module's job — the contract has it "parse the run's
-artifacts as they grow, and append what it learns". Deciding *the run is over*
-from a marker is what is forbidden, and that answer stays the watched PID's
-alone. Same file, different question, different authority.
-
-**Where each fact lives.**
-
-| fact | home | why |
-|---|---|---|
-| destination + credential | `~/.molbuilder/notify`, mode 0600, on the machine that runs the job | the established secrets convention (`deployment.md` § 5 — `google_client_secret` lives there, and the XDG config is explicitly *"not a secrets store"*). **The user owns this file**, in both destination kinds |
-| policy — which triggers, what period | `task.json`'s own block, edited in Task setup | a property of *this* calculation; travels, safe to commit, safe to hand to a colleague |
-
-**Two destinations, one mechanism.** Both are a POST with a short timeout
-(~2 s, individually guarded, silent on failure — an unreachable server must
-never cost the run anything):
-
-- **Slack / Discord** — the credential IS the URL, so the whole URL is the
-  secret. Port 443, so cluster egress is not a question.
-- **The molbuilder listener** — the URL is a plain address and a **token**
-  authorises. Progress then shows up in the web UI beside everything else.
-
-**What the listener needs that does not exist.** Access control today is SSO
-plus a rate limiter; `/api/*` answers 401 without a browser session, and a
-monitor on a compute node cannot do SSO. So this means a machine-credential
-route — a bearer token — which is a new inbound write surface. The existing
-limiter belongs in front of it.
-
-*To test, not to design around:* whether Sol's compute nodes can reach a
-non-standard port outbound. One `curl` from inside a short job. Slack and
-Discord are 443 either way.
-
----
-
-### 2.10 The listener — one route, one secret, one word back
-
-**One endpoint: `POST /api/notify`.** It accepts a small JSON body, **appends one
-line to a record log**, answers `{"ok": true}`, and does nothing else. It never
-echoes the payload, never returns stored data, and has no `GET`. A tab reads that
-log and summarises it, for a logged-in browser, like every other read in the app.
-
-**Append-only is the whole security model, and it is the monitor's own rule one
-hop further out.** `job-contracts.md` says of the monitor: *"it observes and
-notifies. It never decides, and never mutates the calculation."* The same holds
-here. A message that arrives becomes a line in a file — it is not parsed into
-application state, does not touch a project, does not start or stop anything.
-**Nothing in the notification path can affect a calculation**, so the worst a
-stolen token buys is junk in a log that one tab reads.
-
-**Where the log lives.** Under the log root molbuilder already has —
-`~/.molbuilder/logs/` (`envs/_cli.py`), which is where the env installer writes
-its own. One file per user: `~/.molbuilder/logs/notify/<user>.jsonl`. Per-user
-because the token is (below), so the tab knows whose run it is without the
-payload having to claim an identity, and one noisy sender cannot crowd out
-another's history.
-
-*Which leaves exactly one new risk worth naming:* an append-only file fed from
-the internet grows. **Size cap and rotation, decided** — `RotatingFileHandler`
-from the stdlib gives both and is already tested by someone else. The rate
-limiter in front bounds the rate; the cap bounds the total; without them a
-leaked token fills the disk the app itself runs on.
-
-**How it gets past the login gate, and what that does and does not mean.**
-`web/auth.py` keeps `_PUBLIC_ENDPOINTS`, a set of endpoint names the
-require-login hook skips, carrying its own warning: *"Adding to this set means
-'this endpoint is public' — weigh carefully."* `api_notify` goes in it. That
-means **the SSO session check does not apply**, not that the route is
-unauthenticated: the handler's first act is to compare the bearer token, with
-`hmac.compare_digest`, and refuse without it.
-
-**A bad token is a probe, and the limiter must hear about it.** The SSO gate
-deliberately marks its own 401 as *not* evidence (`g.molbuilder_auth_challenge`)
-— an expired session is an ordinary visitor, and counting it once locked a user
-out of their own site for an hour. **That reasoning does not carry here.**
-Nobody reaches this route by accident, and a wrong token is somebody trying one.
-So `api_notify` must NOT set that flag: its 401 counts, and the existing limiter
-does the rest.
-
-**The rest of the narrow surface:** JSON only, a hard size cap on the body,
-fields validated against a fixed set, and every stored string escaped where the
-UI renders it — with a valid token the payload is attacker-controlled text, and
-it ends up on a page.
-
-**The secret, both ends.** The same string in two files, each mode 0600 and each
-the user's own: the server-side mapping in `~/.molbuilder/`, and the HPC-side
-`~/.molbuilder/notify` that the monitor reads. Same convention as
-`google_client_secret` (`deployment.md` § 5).
-
-**The user sets this up, and picks their own interval.** Nothing here is
-configured for anybody: each person writes their own two files, and the
-`every N hours` setting is theirs to choose per calculation. molbuilder does not
-invent a cadence, does not supply a default destination, and does not decide on
-someone's behalf how often they want to hear from a job. Absent files mean no
-notifier is registered and the run proceeds exactly as it does today — the
-feature is off until a person turns it on.
-
-**One token per user — decided 2026-08-26.** A shared token would have been
-simpler, and it is the wrong trade the moment there is a second person: per-user
-means the tab can say whose run it is without the payload asserting an identity
-of its own, and one token can be revoked without disturbing anybody else.
-
-The server side is a mapping, mode 0600, alongside its siblings in
-`~/.molbuilder/`; the handler compares the presented bearer against the entries
-with `hmac.compare_digest` and resolves the user from the one that matches. The
-sender never states who it is — **the secret is the claim**, which is what stops
-a valid token being used to write into somebody else's record.
-
----
+Moved to [`execution/run-reports.md`](?doc=execution/run-reports.md) § 4.
+`POST /api/notify`, registered only when `notify_tokens_file` is configured;
+per-user bearer tokens; append-only to a rotating log; `molbuilder
+notify-token` issues them.
 
 ---
 

@@ -1332,10 +1332,16 @@ web") — and its first phase shipped:
   transport is also where the single-parent limit (§ 2, design decision #6)
   is lifted to a branching graph.
 
-Also out of scope for now: **multi-node MPI** (v1 fixes one node), a
+Also out of scope for now: **multi-node MPI** (v1 fixes one node), and a
 `molbuilder config init --site` command (a site preset ships only as a JSON
-example file today), and wiring the notifier hook to a real messaging service
-(a proof-of-concept stub exists).
+example file today).
+
+*(Wiring the notifier hook to a real messaging service was listed here as
+out of scope until 2026-08-26, and is no longer: the monitor POSTs to a
+destination the user configures in their own config directory, on a
+schedule the calculation states in `task.json`'s `notify` block. What
+remains unbuilt is the receiving end on molbuilder's own server —
+`plans/bench-and-junction-plan.md` § 2.10.)*
 
 The through-line: the CLI framework on this page is the settled foundation, and
 the web work is *additive on top of it* — it reuses the same five-step

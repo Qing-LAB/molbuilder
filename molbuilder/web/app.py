@@ -336,6 +336,21 @@ def create_app(*, config=None) -> Flask:
     app.register_blueprint(docs_bp)
     app.register_blueprint(bench_bp)
 
+    # THE RUN-REPORT LISTENER IS REGISTERED ONLY WHEN IT IS CONFIGURED.
+    # Not a route that refuses -- no route at all, so the path 404s like
+    # any other nonexistent one.  `access-control.md` 8 rule 2: "a
+    # capability that cannot be exercised safely should not appear", and
+    # rule 1: "the safe state is the one you get by doing nothing".
+    #
+    # `execution/run-reports.md` has the rest: a job POSTs how it is going,
+    # this appends one line and answers ok.  It never reads back.
+    from ..runtime_config import get_notify_tokens_file
+    _notify_tokens = get_notify_tokens_file(config or {})
+    if _notify_tokens:
+        from .blueprints.notify import bp as notify_bp
+        app.config["MB_NOTIFY_TOKENS_FILE"] = _notify_tokens
+        app.register_blueprint(notify_bp)
+
     # 413 Payload Too Large -- without this Flask returns its default
     # HTML 413 page, which the JS uploaders parse as ``r.json()`` and
     # crash with a misleading "Network error".  Returning the same
