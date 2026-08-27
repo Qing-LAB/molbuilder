@@ -381,15 +381,22 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
 # Only the PARSING lives here: it is pure, so it can be tested with no
 # cluster present -- and this workstation has none.
 
-#: `sbatch: Job 123 to start at 2026-08-27T14:30:00 using 48 processors
-#:  on nodes sg013 in partition htc`
-#: The timestamp is matched GREEDILY.  It was `(\S+?)` for one revision,
-#: and with every group after it optional the non-greedy form matched a
-#: single character -- `2` -- and the tests caught it.  `\S+` stops at
-#: whitespace, which is exactly the field boundary here.
-_WHEN_RE = re.compile(
-    r"to start at (\S+)(?:\s+using\s+(\d+)\s+processors?)?"
-    r"(?:\s+on nodes?\s+(\S+))?", re.I)
+#: THREE INDEPENDENT READS, not one regex with optional tails.
+#:
+#: Measured on ASU Sol 2026-08-27, and this is why:
+#:
+#:     sbatch: Job 62266174 to start at 2026-08-27T11:22:03 a using 4
+#:             processors on nodes sc078 in partition htc
+#:                                        ^
+#: There is a token between the timestamp and ``using`` -- what it is, is
+#: SLURM's business and not ours.  A single pattern that chained the three
+#: facts required them to be adjacent, so that one stray character cost the
+#: processor count AND the node name while the time still parsed.  Read
+#: separately, anything SLURM puts between them is simply ignored, and one
+#: field going missing cannot take the others with it.
+_WHEN_RE = re.compile(r"to start at (\S+)", re.I)
+_PROCS_RE = re.compile(r"using\s+(\d+)\s+processors?", re.I)
+_NODES_RE = re.compile(r"on nodes?\s+(\S+)", re.I)
 
 
 @dataclass(frozen=True)
@@ -421,12 +428,20 @@ class Prediction:
 
 def parse_test_only(text: str) -> Prediction:
     """SLURM's answer -> a :class:`Prediction`.  Pure, so it is testable
-    without a scheduler.
+    without a scheduler -- and it had to be, since this workstation has
+    none.
 
-    Anything that is not a recognisable *to start at* line leaves ``start``
-    as ``None`` and keeps the raw text in ``refused``, because the reason a
-    queue cannot take the job is worth reading and is often the whole
-    answer (*"Requested node configuration is not available"*).
+    Anything without a recognisable *to start at* leaves ``start`` as
+    ``None`` and keeps the raw text in ``refused``.  **Keeping the text
+    rather than matching a known prefix is what makes this work**: the
+    refusal was written against an invented ``sbatch: error: ...`` line,
+    and Sol actually says ``allocation failure: Requested node
+    configuration is not available``.  A parser that recognised prefixes
+    would have thrown away the one sentence worth reading.
+
+    The processor count and node name are read independently of the time
+    and of each other, so a field SLURM omits -- or a token it inserts --
+    costs only itself.
     """
     blob = (text or "").strip()
     m = _WHEN_RE.search(blob)
@@ -434,8 +449,11 @@ def parse_test_only(text: str) -> Prediction:
         first = next((ln.strip() for ln in blob.splitlines() if ln.strip()),
                      "")
         return Prediction(refused=first or "no answer")
-    procs = int(m.group(2)) if m.group(2) else None
-    return Prediction(start=m.group(1), procs=procs, nodes=m.group(3))
+    pm = _PROCS_RE.search(blob)
+    nm = _NODES_RE.search(blob)
+    return Prediction(start=m.group(1),
+                      procs=int(pm.group(1)) if pm else None,
+                      nodes=nm.group(1) if nm else None)
 
 
 def prediction_table(preds: Sequence[Prediction]) -> str:

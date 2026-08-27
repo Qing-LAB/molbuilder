@@ -27,6 +27,46 @@ from molbuilder.jobset.ask import Prediction, parse_test_only, prediction_table
 #  reading what the scheduler said                                       #
 # --------------------------------------------------------------------- #
 
+#: VERBATIM from `sbatch --test-only` on ASU Sol, 2026-08-27.  Note the
+#: token between the timestamp and `using` -- that is what SLURM printed,
+#: and it is why the three facts are read independently.
+SOL_PREDICTION = ("sbatch: Job 62266174 to start at 2026-08-27T11:22:03 a "
+                  "using 4 processors on nodes sc078 in partition htc")
+
+#: Also verbatim.  The refusal path was written against an INVENTED
+#: `sbatch: error: ...` line; the real prefix is `allocation failure:`.
+SOL_REFUSAL = "allocation failure: Requested node configuration is not available"
+
+
+def test_the_REAL_prediction_from_sol_is_read_whole():
+    """**Against what SLURM actually printed, not what I assumed.**
+
+    One regex chained the three facts with optional tails, so it required
+    them to be adjacent — and Sol puts a token between the timestamp and
+    `using`. The time still parsed while the processor count AND the node
+    name were silently lost. Read separately, whatever SLURM inserts is
+    ignored and one missing field cannot take the others with it.
+    """
+    got = parse_test_only(SOL_PREDICTION)
+    assert got.start == "2026-08-27T11:22:03"
+    assert got.procs == 4, "the stray token ate the processor count"
+    assert got.nodes == "sc078", "the stray token ate the node name"
+    assert got.refused is None
+
+
+def test_the_REAL_refusal_from_sol_survives_a_wrong_guess():
+    """The refusal was written against an invented `sbatch: error: …`
+    prefix. Sol says `allocation failure: …`.
+
+    **It works because the parser keeps the raw line rather than matching a
+    known prefix** — a parser that recognised prefixes would have thrown
+    away the one sentence worth reading.
+    """
+    got = parse_test_only(SOL_REFUSAL)
+    assert got.start is None
+    assert "Requested node configuration is not available" in got.refused
+
+
 def test_a_prediction_is_read_whole():
     got = parse_test_only(
         "sbatch: Job 62238108 to start at 2026-08-27T14:30:00 using 48 "

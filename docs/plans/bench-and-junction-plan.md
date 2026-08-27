@@ -345,10 +345,32 @@ record says a job exists, and after this one does not.
 as a time, sorting the answers (which would be a recommendation), and letting
 `ask` escape the one-at-a-time gate.
 
-**Untested against a live scheduler.** The parsing is covered against real
-SLURM output, and the command path is the submit path, but no `--mode ask`
-has yet run on a login node. One run on Sol is what would confirm the whole
-loop.
+**Tested against Sol's real `sbatch --test-only`, 2026-08-27 — and it found a
+defect.** Both branches, verbatim:
+
+```
+sbatch: Job 62266174 to start at 2026-08-27T11:22:03 a using 4 processors
+        on nodes sc078 in partition htc
+allocation failure: Requested node configuration is not available
+```
+
+**The refusal worked, despite the guess being wrong.** It was written against
+an invented `sbatch: error: …` prefix; Sol says `allocation failure: …`. It
+survives because the parser keeps the raw line rather than matching a known
+prefix — a design choice that turned out to be load-bearing rather than
+merely tidy.
+
+**The prediction lost two of its three fields.** There is a token between the
+timestamp and `using` — what it is, is SLURM's business. One regex chaining
+the three facts with optional tails required them to be adjacent, so the time
+parsed while the processor count and the node name vanished silently. They are
+read independently now: whatever SLURM inserts is ignored, and one missing
+field cannot take the others with it. Both lines are pinned as fixtures.
+
+**Still not run end-to-end**, because every stage on Sol has already been
+launched and `--mode ask` correctly skips those. A fresh `prep` would give an
+unlaunched deck; the piece that was actually unverified — what SLURM prints —
+is now measured.
 
 ---
 
