@@ -75,6 +75,20 @@ class Topology:
     gpus_per_node:    Optional[int] = None
     gpu_type:         Optional[str] = None
     mem_total_gb:     Optional[float] = None
+    #: The instruction set: ``x86_64``, ``aarch64``, ...  As the machine
+    #: spells it -- SLURM's ``Arch=`` or ``lscpu``'s ``Architecture:``,
+    #: never normalised, because a name we invent is a name nothing else
+    #: uses.
+    #:
+    #: Added 2026-08-26 (user: *x64 vs arm are different, don't mix them*).
+    #: ASU Sol offers an ``arm`` partition -- Grace-Hopper, aarch64 -- in the
+    #: same menu as eight x86 ones, and nothing here could tell them apart:
+    #: an x86 conda env does not activate usefully on aarch64 and an
+    #: AVX-512 binary does not run there at all, so the failure is total
+    #: rather than slow.  ``None`` keeps its usual meaning (R3, *an unstated
+    #: limit never bars*), which is what leaves every record written before
+    #: this field filtering nothing.
+    arch:             Optional[str] = None
 
 
 @dataclass
@@ -277,6 +291,22 @@ class Environment:
     #: record written before this field).  Empty is "unknown", not "none":
     #: a gate cannot refuse on it.
     conda_envs: List[str] = field(default_factory=list)
+    #: The instruction set the environments above were enumerated ON, as
+    #: ``platform.machine()`` spells it.  **The other half of the pair**
+    #: (user, 2026-08-26: *we should know our compiled/installed
+    #: architecture*): a name in ``conda_envs`` is not portable, and
+    #: ``molbuilder-siesta`` built for x86_64 is different software from one
+    #: built for aarch64 under the one string.
+    #:
+    #: A mismatch is what fails, so a check needs BOTH numbers -- this one
+    #: and ``topology.arch``.  Without it a wrong-architecture failure
+    #: arrives disguised: `envs/builds.py` looks for
+    #: ``x86_64-conda-linux-gnu-gcc`` by name, so on aarch64 it simply finds
+    #: nothing and reports an unknown compiler version rather than the
+    #: actual cause.
+    #:
+    #: ``None`` means a record written before this field (R3).
+    env_arch:   Optional[str] = None
     source:    Dict[str, str] = field(default_factory=dict)
     detected_at: Optional[str] = None
     # the LIVE writer (resolve_target, prep step 1); "prep-bench@1" -- the
@@ -301,6 +331,7 @@ class Environment:
                if self.script_generation else {}),
             **({"conda_envs": sorted(self.conda_envs)}
                if self.conda_envs else {}),
+            **({"env_arch": self.env_arch} if self.env_arch else {}),
             "source": dict(self.source),
             "tool": self.tool,
         }
@@ -331,6 +362,7 @@ class Environment:
                 (d.get("script_generation") or {}).items()
                 if k in ("preamble", "activation") and v is not None},
             conda_envs=[str(e) for e in (d.get("conda_envs") or [])],
+            env_arch=(str(d["env_arch"]) if d.get("env_arch") else None),
             source=dict(d.get("source") or {}),
             detected_at=d.get("detected_at"),
             # the default names the LIVE writer; "prep-bench@1" (the deleted
@@ -408,6 +440,7 @@ def _parse_scontrol_node(text: str) -> Topology:
     t.sockets = _to_int(kv.get("Sockets"))
     t.cores_per_socket = _to_int(kv.get("CoresPerSocket"))
     t.threads_per_core = _to_int(kv.get("ThreadsPerCore"))
+    t.arch = kv.get("Arch") or None                  # x86_64 / aarch64
     rm = _to_int(kv.get("RealMemory"))               # MB
     if rm is not None:
         t.mem_total_gb = round(rm / 1024.0, 1)
@@ -429,6 +462,7 @@ def _parse_lscpu(text: str) -> Topology:
     t.sockets = _to_int(kv.get("Socket(s)"))
     t.cores_per_socket = _to_int(kv.get("Core(s) per socket"))
     t.threads_per_core = _to_int(kv.get("Thread(s) per core"))
+    t.arch = kv.get("Architecture") or None
     numa = _to_int(kv.get("NUMA node(s)"))
     if numa is not None and t.sockets and t.sockets > 0:
         t.numa_per_socket = max(1, numa // t.sockets)

@@ -393,6 +393,33 @@ gates in `jobset/_cli.py`, against `scheduler.md` § 3's rules. **The probe
 reads the right things and then loses them on the way to the record.** Four
 findings; the first is the one that matters.
 
+**P0 — a partition is a QUEUE, not a machine type.** Asked and answered
+2026-08-27 (user: *how could htc clusters have several different
+configuration? does that mean sol actually combines different configuration
+and call them the same cluster?*). **Yes.** Measured:
+
+```
+htc      51 nodes   48 cores  gpu:a100:4
+htc       3 nodes   64 cores  gpu:a100.20gb:16
+htc     134 nodes  128 cores  (none)
+```
+
+`general` and `public` have the same shape. What separates the three is the
+**clock** — htc 4 h, public 7 d, general 14 d, debug 15 min — not the hardware.
+Four others (`highmem`, `gaudi`, `arm`, `fpga`) genuinely *are* hardware
+classes; the three big general-purpose ones are not.
+
+**So hardware cannot be chosen by choosing a partition** — that is `--gres` or
+`--constraint`. § 2.8 already says pinning the partition is the wrong lever for
+holding a sweep's hardware constant; this is why.
+
+**It also corrects an argument made in P1 below.** The 128-core nodes are
+**134 of htc's 188**, the clear majority — so asking for 128 cores there is the
+common case, not the long wait. The queue-time case for reporting a *floor* is
+much weaker than it was put, and neither collapsed number is the answer.
+
+---
+
 **P1 — `max_cores` collapses two genuinely different ceilings into one.**
 `probe.py:153-158` keeps both `gpu_cores` (**min** across groups that have
 devices) and `max_cpus` (**max** across all groups). Then `probe.py:319-324`
@@ -436,11 +463,20 @@ reverted change was a **no-op on Sol**. Every partition where they differ
 (`htc`, `general`, `public`) has GPUs and so already used the floor. The
 inconsistency is real but currently silent; P2 is what would have made it bite.
 
-**Open — needs a decision.** Either `Domain` carries two named ceilings (and R2
-says a new declared limit arrives *with its comparison*), or `max_cores` is
-documented as the floor and admission stops being the thing that reads it.
-Recorded rather than guessed, because the reverted attempt shows a plausible
-answer can pass its own tests and still be wrong.
+**Where P0 leaves it: keep the groups, stop collapsing.** The probe already
+parses count, cores, memory and gres **per node group** and then discards all
+but one figure. Carrying the groups onto the record answers every version of
+the question from one measured fact — *can this run at all* (the widest), *how
+many nodes could take it* (the count, which is what queue time actually turns
+on), *which of them have devices* — with no second field to keep consistent and
+no meaning to document twice.
+
+R2 still governs what `admits` compares: a declared limit arrives with its
+comparison. A derived ceiling over the groups is that comparison, and it can
+finally say *which* group bound the ask, which R10 wants anyway.
+
+**Still to confirm before building**, because the reverted attempt showed a
+plausible answer can pass its own tests and still be wrong.
 
 **P2 — `topology` is one arbitrary node, and a refusal is gated on it.**
 `record.py:_slurm_pick_node` takes whichever GPU node `sinfo` prints **first**
@@ -514,11 +550,32 @@ messages where none was needed.
 
 Two facts and one filter:
 
-| where | what it costs | what it buys |
+| where | status | |
 |---|---|---|
-| the probe | one `kv.get("Arch")` — `scontrol show node` is **already** being run | the record stops being silent about the node |
-| the env list | the conda root's own platform, one value | an env name stops meaning two things |
-| the domain menu | a comparison at listing time | an incompatible queue is never offered |
+| the probe | **BUILT 2026-08-27** | `Topology.arch` from SLURM's `Arch=` and `lscpu`'s `Architecture:` |
+| the env list | **BUILT 2026-08-27** | `Environment.env_arch` — `platform.machine()` where the envs were enumerated |
+| the domain menu | **BLOCKED** | needs the arch **per partition**, and nothing measured yet says it can be had |
+
+**Why the filter is blocked.** `topology.arch` describes whichever node
+`_slurm_pick_node` happened to pick — P2 again — so it says nothing about the
+`arm` partition specifically. The filter needs a per-domain answer, and the
+probe's one `sinfo` call (`%P|%30l|%D|%40G|%c|%m`) has no architecture column
+in it. Whether one exists, or whether the site tags it as a node *feature*
+(`%f`), is a measurement nobody has taken:
+
+```bash
+sinfo -h -o "%P|%f|%c" | sort -u | head -20
+scontrol show node $(sinfo -h -p arm -N -o %N | head -1) | tr " " "\n" | grep -i arch
+```
+
+**Filtering on the partition's NAME is not the fallback.** `parse_gres`'s
+docstring already argues that case and it holds here: *a list of names cannot
+keep up with a site's hardware.* `arm` is what ASU chose to call it, not a
+measurement.
+
+Recording both facts is worth having on its own — the record stops being
+silent, and the pair is visible to anyone reading it — but the menu keeps
+offering every queue until the measurement above says how to know.
 
 **R3 still governs, and here it decides the default.** An unstated architecture
 never bars, so a record written before this field — every existing one — filters
@@ -561,11 +618,19 @@ a card, and `--gpus` calls slices *separate askable types, not a smaller ask of
 the same one*) and genuinely coincide when one token is just more specific.
 Nothing in `sinfo` distinguishes those cases.
 
-**Open — needs a decision, not a fix.** Either the record carries an
-alias table the site owns (M-1: a preference, so `molbuilder.json`, not the
-probe's output), or the menu states the tokens as SLURM spells them and says
-plainly that two rows may be one machine. Recording it here rather than
-guessing.
+**DECIDED 2026-08-27 (user): be explicit.** *"I really don't know because
+that's what the slurm returned. I suspect that's just putting vmem together
+with gpu in the value. We might just as well be explicit."*
+
+The menu states the tokens exactly as SLURM spells them. No alias table: it
+would be site knowledge nothing can verify, it goes stale silently when a site
+relabels, and a wrong entry would merge two genuinely different devices — the
+one failure mode worse than the duplicate it fixes.
+
+The user's reading of the token is very likely right: `a100.40gb` looks like
+the card plus its memory, the same shape as `h200.35gb` beside `h200`. That
+makes it a naming convention rather than a fact about hardware, and **naming
+conventions are exactly what a measurement must not infer from.**
 
 **Related, and now explained:** `topology.gpu_type` read `a100` on
 2026-08-25 and `a100.40gb` on 2026-08-27 with **the same GPU inventory both

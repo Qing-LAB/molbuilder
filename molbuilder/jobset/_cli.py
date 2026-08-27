@@ -2581,9 +2581,18 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
         _envs_here = sorted(_gc().conda_envs or ())
     except Exception:      # pragma: no cover - enumeration is best-effort
         _envs_here = []
+    # AND WHAT THEY WERE BUILT FOR.  An env name is not portable, so the
+    # list above means nothing without the instruction set it was seen on
+    # (user, 2026-08-26: "we should know our compiled/installed
+    # architecture").  `platform.machine()` -- the machine running the
+    # probe, which is the machine those envs live on.
+    _env_arch = None
+    if _envs_here:
+        import platform as _pl
+        _env_arch = _pl.machine() or None
     if _sg_rec or _envs_here:
         env = _dc.replace(env, script_generation=_sg_rec or {},
-                          conda_envs=_envs_here)
+                          conda_envs=_envs_here, env_arch=_env_arch)
     else:
         notes_sg = ("this machine states no script_generation, so the "
                     "record carries none -- a bundle prepped ELSEWHERE for "
