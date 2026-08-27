@@ -736,9 +736,16 @@ runs the deck/launch agreement check, records the attempt, and launches
 > often the whole answer — *"Requested node configuration is not available"*
 > says the ask fits no machine in that queue.
 >
-> It is gated one-job-at-a-time like `submit`: it enqueues nothing, but it is
-> still N scheduler queries from one command, and the answer only matters for
-> the job you are about to hand over. When it launches, it stamps the claim
+> **It is not gated one-job-at-a-time, and `submit` is.** That rule exists
+> because jobs queued together start together and contend — *"a rule about the
+> scheduler, not about doing several things"*, which is why `--mode direct` is
+> untouched too. `--test-only` enqueues nothing, so none of that is reachable.
+>
+> A sweep is where it pays: a grid's trials ask for different shapes, `G1`
+> schedules sooner than `G4`, and seeing their waits side by side is what tells
+> you which one to submit. The number of queries is capped for politeness, and
+> anything past the cap is **named as unasked** — a partial answer that does
+> not say it is partial reads as a complete one. When it launches, it stamps the claim
 `MB_LAUNCHED_BY=jobset-submit` — into the child environment for a direct
 run (inheritance survives `nohup` and backgrounding), and **explicitly on
 the command line** for a scheduler run (`sbatch

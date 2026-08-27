@@ -2303,9 +2303,15 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                  for r in results if r.prediction is not None]
         click.echo("")
         click.echo(prediction_table(preds))
+        skipped = [r.name for r in results if r.status == "not asked"]
+        if skipped:
+            from .submit import ASK_MAX_QUERIES
+            click.echo(f"\n  NOT asked (past {ASK_MAX_QUERIES} queries): "
+                       + ", ".join(skipped))
         click.echo("")
-        click.echo("  asked: " + " ".join(results[0].command)
-                   if results else "  nothing to ask about.")
+        asked_cmd = next((r.command for r in results if r.command), None)
+        click.echo("  asked: " + " ".join(asked_cmd) if asked_cmd
+                   else "  nothing to ask about.")
         click.echo("  launch it with the same command and `--mode submit` "
                    "when the answer suits you.")
         return

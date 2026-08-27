@@ -133,17 +133,44 @@ def test_an_empty_ask_says_so_rather_than_printing_a_header():
 #  the mode itself                                                       #
 # --------------------------------------------------------------------- #
 
-def test_ask_is_gated_like_submit_not_like_direct():
-    """One job at a time. It submits nothing, but it is still N scheduler
-    queries fired from one command — and the answer is only useful for a job
-    you are about to hand over, which is one job."""
+def test_ask_is_NOT_gated_by_the_one_at_a_time_rule():
+    """**I had this backwards, and the rule's own words say so** (caught by
+    the user on a 4-trial bench, 2026-08-27).
+
+    `_refuse_batch_submission` exists because jobs queued together start
+    together, contend, and make a sweep measure contention rather than
+    scaling. Its docstring is explicit: *"a rule about the SCHEDULER, not
+    about doing several things"* — which is why `--mode direct` is untouched.
+
+    `--test-only` enqueues nothing, so none of that harm is reachable. And
+    the sweep is exactly where asking pays: a grid's trials ask for
+    different shapes, G1 schedules sooner than G4, so seeing their waits
+    side by side is what tells you which to submit. Gating it made the
+    feature useless precisely where it was most useful.
+    """
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1]
            / "molbuilder/jobset/submit.py").read_text()
     fn = src[src.index("def _refuse_batch_submission"):
              src.index("def submit_jobset")]
-    assert 'mode in ("submit", "ask")' in fn, \
-        "ask escaped the one-at-a-time gate"
+    assert 'if mode == "submit" and len(jobset.jobs) > 1:' in fn, \
+        "ask was gated by the submission rule again"
+    assert '"ask"' not in fn.split("if mode ==")[1], \
+        "ask must not appear in the refusal condition"
+
+
+def test_the_number_of_QUERIES_is_bounded_and_says_what_it_skipped():
+    """Politeness, not a rule about queues. And **no silent cap**: a partial
+    answer that does not say it is partial reads as a complete one."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1]
+           / "molbuilder/jobset/submit.py").read_text()
+    assert "ASK_MAX_QUERIES" in src
+    assert 'JobResult(job.name, [], "not asked")' in src, \
+        "trials past the cap must be named, not dropped"
+    cli = (Path(__file__).resolve().parents[1]
+           / "molbuilder/jobset/_cli.py").read_text()
+    assert "NOT asked (past" in cli, "the skipped trials are not reported"
 
 
 def test_ask_walks_the_SAME_path_as_submit():

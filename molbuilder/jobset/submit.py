@@ -157,6 +157,15 @@ def _scheduler_job_name(jobset: JobSet, job) -> str:
     return f"{jobset.name}/{job.name}"
 
 
+#: How many `sbatch --test-only` calls one `--mode ask` will make.
+#:
+#: Politeness, not a rule about queues: asking enqueues nothing, so the
+#: one-at-a-time submission rule does not reach it.  A benchmark grid is
+#: the case that matters and is usually a handful of trials; past this the
+#: rest are named as unasked rather than silently dropped.
+ASK_MAX_QUERIES = 24
+
+
 def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
                   dry_run: bool,
                   mem_gb: Optional[float] = None,
@@ -176,6 +185,7 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
     edge to thread and nothing this loop can queue behind anything else.
     """
     results: List[JobResult] = []
+    asked = 0                      # bounded by ASK_MAX_QUERIES
     for job in jobset.jobs:
         job_dir, attempt, sbatch_name = _resolve_launch(
             jobset, base_dir, job, ".sbatch")
@@ -222,7 +232,13 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch"]
         cmd.append(sbatch_name)          # relative; we cd into the job dir
 
+        if ask and asked >= ASK_MAX_QUERIES:
+            # NO SILENT CAP: what was not asked is named, or a partial
+            # answer reads as a complete one.
+            results.append(JobResult(job.name, [], "not asked"))
+            continue
         if ask:
+            asked += 1
             # `--test-only` goes FIRST so it cannot be shadowed, and the
             # rest of the line is untouched: the whole point is that the
             # question is about the command that would actually be sent.
@@ -1153,10 +1169,21 @@ def _refuse_batch_submission(jobset: JobSet, base_dir: Path, *,
     if len(jobset.jobs) <= 1:
         return
 
-    # ``ask`` is gated the same way.  It submits nothing, but it is still N
-    # scheduler queries fired from one command, and the answer is only
-    # useful for a job you are about to hand over -- which is one job.
-    if mode in ("submit", "ask") and len(jobset.jobs) > 1:
+    # ``ask`` IS NOT GATED, and gating it was a misreading of this rule --
+    # by its own words above: *a rule about the scheduler, not about doing
+    # several things*.  `--test-only` enqueues nothing, so none of the harm
+    # this prevents can happen: no job starts, nothing contends, nothing is
+    # antisocial.
+    #
+    # And the sweep case is exactly where asking pays.  A grid's trials ask
+    # for different shapes -- G1 schedules sooner than G4 -- so seeing all
+    # of their waits side by side is what tells you which to submit.
+    # Refusing that (caught by the user on a 4-trial bench, 2026-08-27) made
+    # the feature useless precisely where it was most useful.
+    #
+    # The count is bounded by ASK_MAX_QUERIES instead, which is politeness
+    # rather than a rule about queues.
+    if mode == "submit" and len(jobset.jobs) > 1:
         names = ", ".join(j.name for j in jobset.jobs)
         raise SubmitError(
             f"refusing to hand {len(jobset.jobs)} jobs to the scheduler at "

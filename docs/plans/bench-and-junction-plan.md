@@ -334,8 +334,11 @@ available"* says the ask fits no machine in that queue). No Sol command was
 needed after all: every branch is exercised by feeding the parser real SLURM
 output, which is pure and needs no cluster.
 
-Gated one-at-a-time like `submit`: it enqueues nothing, but it is still N
-scheduler queries from one command. Nothing is recorded either — a launch
+**Not** gated one-at-a-time — that was a misreading, caught by the user on a
+4-trial bench: the rule is *about the scheduler, not about doing several
+things*, and `--test-only` enqueues nothing. The sweep is where asking pays,
+since a grid's trials ask for different shapes and their waits differ. Query
+count is capped for politeness; anything past it is named as unasked. Nothing is recorded either — a launch
 record says a job exists, and after this one does not.
 
 17 tests; five mutations tried, five caught — including reporting an unknown
