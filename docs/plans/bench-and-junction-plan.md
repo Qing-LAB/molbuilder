@@ -352,6 +352,60 @@ loop.
 
 ---
 
+### 2.15 A bench trial gets attempts — decided 2026-08-27, NOT built
+
+**The code contradicts the contract, and the contract is right.** User: *bench
+should allow re-run* — and `project-layout.md` § 1.5 already says so:
+
+> *"Running a stage a second time — a `--continue`, a redo after a change —
+> **makes `run-1`**, carrying what it needs from `run-0` and leaving `run-0`
+> exactly as it was."*
+>
+> *"**`--force` is retired.** … With a directory per attempt there is nothing
+> to overwrite: **a redo is `run-2`**."*
+
+Immutability protects the **old** attempt. It never forbids a new one. But
+`launch` refuses outright and tells the person to *move the trial's directory
+aside yourself* — which is the `--force`-era answer that § 1.5 retired, and it
+invites exactly the mess the user named: `.old`, `.bak`, `.2026-08-24`, one
+convention per person, and `summarize` left guessing which are trials.
+
+**Why a sweep behaves differently.** A hierarchical stage runs in `run-<n>`; a
+sweep trial has **no attempt layer** — `bench-G0K48C1ELPA2STAGE/` holds
+`0_NORMAL_EXIT`, `Au.ion`, the `.out`, everything, directly. `submit.py` says
+so: *"an attempt-less dir (a sweep trial) is ITS OWN attempt."* So there is
+nowhere for `run-1` to go, and the refusal is the only thing left.
+
+**Decided: give a trial the same `run-<n>` layer** (user, 2026-08-27: *run
+increase with index would be fine*). Re-running measures the point again beside
+the first, which is what a benchmark wants — today's own finding is that
+G2 and G4 landed on different silicon, and the answer to that is *measure it
+again*, not *delete the first one*.
+
+**Scope, honestly: ~85 call sites across 9 modules** — `materialize`,
+`summarize`, `submit`, `_cli`, `bench/result`, `prep`, `runstatus`, `model`,
+`web/blueprints/build`. This is a layout change, not a flag.
+
+**The one question that needs answering first.** Every bench directory that
+exists today holds its files at the top level. Under the new layout:
+
+* *readers accept both shapes* — the Au-BDT-Au sweep stays readable, but that
+  is a compatibility shim, and this project's rule is that a rename deletes the
+  old spelling everywhere;
+* *readers accept only `run-<n>`* — clean, and **today's sweep becomes
+  invisible to `summarize`**, which is the data every measurement conclusion on
+  this page rests on;
+* *the tool migrates on first re-prep* — when `prep` is asked to redo a
+  launched trial it moves the existing content into `run-0/` and opens `run-1/`.
+  No manual moves, nothing deleted, and the shim lives only in `prep` rather
+  than in every reader. **This is the one to prefer**, and it still needs a
+  decision about what a reader does with a directory nobody has re-prepped yet.
+
+Not started. The direction is settled; the migration is not, and guessing it
+would put the existing sweep at risk.
+
+---
+
 ### 2.12 What a percentage is a fraction OF — decided 2026-08-26
 
 **The rule.** *A run reports how well it used **what it was given**. Cores it
