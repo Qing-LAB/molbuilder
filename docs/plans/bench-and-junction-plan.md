@@ -401,6 +401,27 @@ exists today holds its files at the top level. Under the new layout:
   than in every reader. **This is the one to prefer**, and it still needs a
   decision about what a reader does with a directory nobody has re-prepped yet.
 
+**And the sweep tab has to be attempt-aware, which is the half that makes the
+first half useful** (user, 2026-08-27). Some of the plumbing exists already:
+`summarize` puts `"attempts": list(st.attempts)` on every trial record, and it
+comes back empty for a bench only because a trial *is* its attempt today.
+
+Three things the display must then get right:
+
+* **A point measured twice is two measurements, never one.** The trial table
+  is keyed by name; with attempts it is keyed by *(trial, attempt)*. Averaging
+  them, or silently showing the newest, would throw away the comparison the
+  re-run was made for.
+* **The verdict must not compare across attempts blindly.** `choice` picks a
+  winner from timed trials. If `G2 run-0` ran on 128 cores and `G2 run-1` on
+  48, those are not two samples of one thing — which is *this very sweep's*
+  finding (§ 4), generalised. Whatever § 2.8 records as a trial's hardware is
+  what makes attempts comparable or not, so these two land together.
+* **A re-run is the answer to a bad measurement**, so the tab should make the
+  older attempt easy to see rather than easy to lose: n=1 timing (§ 2.1) and
+  mixed silicon (§ 4) are both fixed by measuring again, and both are only
+  legible if both measurements survive on the page.
+
 Not started. The direction is settled; the migration is not, and guessing it
 would put the existing sweep at risk.
 
