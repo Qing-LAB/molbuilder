@@ -284,10 +284,29 @@ attacker's way.
 **The honest gap.** HMAC is symmetric: both machines hold the same key, so
 reading the server's key file is enough to forge. Ed25519 would close it — the
 cluster would hold a private key and the server only a public one, making the
-server-side file not a secret at all. It is not used because it is **not in
-the standard library**, and the monitor may not carry a dependency to a
-compute node. The trade is written down here so that if that constraint ever
-changes the decision can be revisited rather than rediscovered.
+server-side file not a secret at all.
+
+**Decided 2026-08-27: not doing it, and the reason is a judgement rather than
+an obstacle.** An earlier draft of this paragraph said it was impossible
+without a dependency the monitor may not carry. That was checked and is not
+true: the monitor only *signs*, signing is ~60 lines of stdlib arithmetic
+(RFC 8032 publishes reference code), and a probe passed the RFC vectors,
+interoperated with the server's `cryptography`, and cost 7.6 ms per signature
+against a monitor that signs a handful of times per run.
+
+It is not done because **what it protects against is already the least of the
+risks here**. Ed25519 defends the server's own key file — and anyone who can
+read `notify_keys` on that machine can read a great deal else. Against
+everything on the wire, HMAC is already sufficient, and it sits behind a
+generated route, a per-key volume cap, `0600` files, and a record that is
+append-only and size-capped by construction. *(User, 2026-08-27: "we have
+rate-limit, file access limit, encrypted/mutated api entry — this is enough
+for a simple task that has low risk, just recording logs with a cap in size
+and number.")*
+
+Two costs that would come with it, stated so a future reader weighs the same
+trade: a pure-Python signer is **not constant-time**, and it is cryptographic
+code this project would own forever.
 
 ### 4.3 The two files, and issuing them
 
