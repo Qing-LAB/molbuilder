@@ -254,7 +254,7 @@ workflow is [`execution/architecture.md`](?doc=execution/architecture.md) § 7.
 | `auth: {providers:[…]}` | enable SSO login (§3) |
 | `auth.trust_proxy` | install `ProxyFix` for a reverse proxy |
 | `secret_key_file` | path to the session-signing key |
-| `notify_tokens_file` | path to the run-report token file ([`run-reports.md`](?doc=execution/run-reports.md) § 4). **Absent means the `/api/notify` route is not registered at all** — a server that has not set this up does not advertise the capability |
+| `notify_tokens_file` | path to the run-report token file ([`run-reports.md`](?doc=execution/run-reports.md) § 4). **Absent means the `/api/notify` route is not registered at all** — a server that has not set this up does not advertise the capability. A rename to `notify_keys_file` plus a required `notify_route` is designed in [`run-reports.md`](?doc=execution/run-reports.md) § 4.3 and not yet built |
 | `rate_limit: {…}` | tune the limiter (§4 defaults) |
 | `envs: {siesta, pyscf, …}` | the conda-env names for the backends |
 

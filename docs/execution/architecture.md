@@ -698,7 +698,7 @@ the project's if set, otherwise the server's.
 | `checkpoint` | `get_checkpoint`, `get_checkpoint_engines` | **outside the stack** — the file protocol | the size at which a file goes to the archive instead of git, and the per-engine hints |
 | `auth` | `get_auth`, `get_providers` | the **server** | who may sign in; the provider list is `auth.providers` (`ops/access-control.md` § 3) |
 | `secret_key_file` | `get_secret_key_file` | the **server** | the path to the session-signing key — a path, never the secret itself |
-| `notify_tokens_file` | `get_notify_tokens_file` | the **server** | the path to the run-report token file — a path, never the tokens. **Absent means the `/api/notify` route is not registered at all** ([`run-reports.md`](?doc=execution/run-reports.md) § 4): a capability nobody enabled does not announce itself |
+| `notify_tokens_file` | `get_notify_tokens_file` | the **server** | the path to the run-report token file — a path, never the tokens. **Absent means the `/api/notify` route is not registered at all** ([`run-reports.md`](?doc=execution/run-reports.md) § 4): a capability nobody enabled does not announce itself. **Being renamed to `notify_keys_file` and joined by `notify_route`** — designed in [`run-reports.md`](?doc=execution/run-reports.md) § 4.3, not yet built |
 | `tls` | `get_tls` | the **server** | the certificate and key for HTTPS |
 | `rate_limit` | `get_rate_limit` | the **server** | how the limiter judges traffic (§ 4 there) |
 | `admin` | `get_admin_emails` | the **server** | `admin.emails` — who may clear the block list and restart the process. **Absent means nobody**, which is the safe state you get by writing no config |

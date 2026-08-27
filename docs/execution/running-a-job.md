@@ -454,6 +454,23 @@ behaves exactly as before — `--continue` stays the manual path.
   before a run is over, and one did: `siesta: Final energy` prints early, so
   the monitor could stop sampling while the job still held its CPUs and GPUs
   (`job-contracts.md`, the monitor's section; fixed 2026-08-26).
+
+  > **What the percentages are a fraction OF: your allocation, not the node.**
+  > Since 2026-08-26 the monitor reads its own job's cgroup, and divides by the
+  > cores the job actually holds. Ask for 4 cores on a 128-core node and use
+  > them fully, and it reads ~100% — not 3%.
+  >
+  > It matters twice. Node-wide, a job cannot move the reading past its own
+  > share, so a benchmark trial at 32.2% looked idle when it was at ~86% of
+  > what it held. And a job that *looks* starved argues for asking for a
+  > bigger machine — which is the longer queue you were avoiding by asking for
+  > a small one. Memory is the same change: the reading was every process on
+  > the machine, including other people's jobs.
+  >
+  > Each run states its own basis on a `[UTIL-BASIS]` line in the monitor log —
+  > how many cores, and which source answered for each reading. Read it before
+  > comparing two runs: cgroup v1 and v2 spell these files differently, and
+  > where no cgroup is readable the numbers fall back to the node and say so.
 - **Notifications, if you set them up.** The monitor can tell you a run
   reached a milestone without you being at the cluster. **When** is the
   calculation's own setting, in `task.json`'s `notify` block: on each SCF

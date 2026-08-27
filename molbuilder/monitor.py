@@ -231,20 +231,172 @@ def parse_status(out_path: Path, timing_path: Path,
 # sparse series still plots cleanly.  Stdlib only: ``/proc`` + nvidia-smi.
 
 
-def _read_cpu_busy_total() -> Optional[Tuple[int, int]]:
-    """``(busy, total)`` jiffies from ``/proc/stat`` aggregate cpu line."""
+def _cgroup_paths() -> Dict[str, str]:
+    """``{controller: path}`` from ``/proc/self/cgroup``, both generations.
+
+    **The path must come from here.**  Reading ``/sys/fs/cgroup/cpu.stat``
+    directly lands on the ROOT cgroup and silently answers for the whole
+    node -- the very defect this reader exists to end, in a new spelling.
+
+    v2 writes one ``0::/path`` line, registered under the key ``""``.  v1
+    writes one line per hierarchy, ``id:controllers:/path``, controllers
+    comma-separated -- so ``cpu,cpuacct`` is registered under its joined
+    spelling (which is also the mount directory) AND under each name.
+    """
+    out: Dict[str, str] = {}
+    try:
+        with open(_PROC_CGROUP, encoding="ascii") as fh:
+            for line in fh:
+                bits = line.rstrip("\n").split(":", 2)
+                if len(bits) != 3:
+                    continue
+                ctrls, path = bits[1], bits[2]
+                if not ctrls:                      # v2: "0::/path"
+                    out[""] = path
+                    continue
+                out[ctrls] = path                  # the mount-dir spelling
+                for c in ctrls.split(","):
+                    out.setdefault(c, path)
+    except OSError:
+        pass
+    return out
+
+
+#: ``memory.limit_in_bytes`` reads ``2**63 - 4096`` when nothing is
+#: enforced.  MEASURED on ASU Sol 2026-08-26: the *task* cgroup carries
+#: exactly that while the *job* cgroup one level up carries the real ask.
+#: A reader that takes the sentinel for a limit reports 0% of an
+#: astronomical number, so it is recognised as NO LIMIT STATED.
+_NO_LIMIT = 1 << 62
+
+#: cgroup v1's mount layout is ``/sys/fs/cgroup/<controller>/<path>``; v2's
+#: is ``/sys/fs/cgroup/<path>``.  Both spellings of the cpu hierarchy's
+#: directory are tried because sites mount it either way.
+#:
+#: These two are NAMED rather than inlined so a test can point them at a
+#: fixture.  Every machine this code will ever run on has exactly one
+#: answer for each, so a test that cannot supply its own is a test that can
+#: only check the machine it happens to be running on -- and the whole
+#: point here is reading a layout (SLURM cgroup v1) that this workstation
+#: does not have.
+_CG = "/sys/fs/cgroup"
+_PROC_CGROUP = "/proc/self/cgroup"
+
+
+def _read_int(path: str) -> Optional[int]:
+    try:
+        with open(path, encoding="ascii") as fh:
+            return int(fh.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _job_cgroup(path: str) -> str:
+    """The JOB cgroup for a step/task path.
+
+    SLURM nests ``<job>/step_N/task_M`` and enforces memory on the JOB.
+    Measured on Sol: the task level answers with the no-limit sentinel
+    while the job level answers ``8589934592`` for ``--mem=8G``.
+    """
+    cut = path.find("/step_")
+    return path[:cut] if cut > 0 else path
+
+
+def _read_cpu_used_ns() -> Optional[Tuple[int, str]]:
+    """``(cpu-nanoseconds this job has consumed, which rung answered)``.
+
+    THE NUMERATOR.  ``/proc/stat``'s aggregate line counts every process on
+    the node, including other people's jobs, so it is the last resort and
+    labels itself ``node`` -- a caller must be able to see when the number
+    it is showing is not the job's.
+    """
+    cg = _cgroup_paths()
+    p = cg.get("cpuacct") or cg.get("cpu")
+    if p:                                          # cgroup v1
+        for d in ("cpu,cpuacct", "cpuacct"):
+            ns = _read_int(_CG + "/" + d + p + "/cpuacct.usage")
+            if ns is not None:
+                return ns, "cgroup-v1"
+    v2 = cg.get("")
+    if v2 is not None:                             # cgroup v2
+        try:
+            with open(_CG + v2 + "/cpu.stat", encoding="ascii") as fh:
+                for line in fh:
+                    if line.startswith("usage_usec"):
+                        return int(line.split()[1]) * 1000, "cgroup-v2"
+        except (OSError, ValueError, IndexError):
+            pass
+    node = _read_node_busy_ns()
+    if node is not None:
+        return node, "node"                        # NOT this job's
+    return None
+
+
+def _read_node_busy_ns() -> Optional[int]:
+    """Node-wide busy time in nanoseconds, from ``/proc/stat``.
+
+    The fallback rung, kept honest: converted to the same unit as the
+    cgroup readings so one subtraction serves all three, and always
+    reported under the label ``node`` so nobody mistakes it for the job.
+    """
     try:
         with open("/proc/stat", encoding="ascii") as fh:
             parts = fh.readline().split()
         vals = [int(x) for x in parts[1:]]
         idle = vals[3] + (vals[4] if len(vals) > 4 else 0)   # idle + iowait
-        return sum(vals) - idle, sum(vals)
-    except (OSError, ValueError, IndexError):
+        hz = os.sysconf("SC_CLK_TCK") or 100
+        return int((sum(vals) - idle) * (1000000000 // hz))
+    except (OSError, ValueError, IndexError, AttributeError):
         return None
 
 
-def _read_mem_used_gb() -> Optional[float]:
-    """Node memory in use (GB) = MemTotal - MemAvailable from /proc."""
+def _alloc_cores() -> Tuple[int, str]:
+    """``(cores this job may use, which rung answered)``.
+
+    THE DENOMINATOR, and the whole of the rule: *a run reports how well it
+    used WHAT IT WAS GIVEN.*  Cores it did not ask for are unpredictable and
+    are not its business -- and a fraction taken over them makes a job that
+    is saturating its own allocation look starved, which argues for a bigger
+    machine, which is the queue this practice exists to stay out of.
+
+    The affinity mask answers first: measured on Sol, a ``-c 4`` job reports
+    exactly 4 through it, it needs no cgroup path, and it works on both
+    generations.
+    """
+    try:
+        n = len(os.sched_getaffinity(0))
+        if n > 0:
+            return n, "affinity"
+    except (AttributeError, OSError):
+        pass
+    for var in ("SLURM_CPUS_ON_NODE", "SLURM_CPUS_PER_TASK"):
+        try:
+            n = int(os.environ.get(var, ""))
+            if n > 0:
+                return n, var
+        except ValueError:
+            pass
+    return (os.cpu_count() or 1), "node"
+
+
+def _read_mem_used_gb() -> Optional[Tuple[float, str]]:
+    """``(GB this job's cgroup holds, which rung)``, else the node's.
+
+    ``MemTotal - MemAvailable`` -- the previous reading -- is every process
+    on the machine, so on a shared node it was measuring other people's
+    jobs as much as this one's.
+    """
+    cg = _cgroup_paths()
+    p = cg.get("memory")
+    if p:
+        b = _read_int(_CG + "/memory" + p + "/memory.usage_in_bytes")
+        if b is not None:
+            return round(b / 1073741824.0, 2), "cgroup-v1"
+    v2 = cg.get("")
+    if v2 is not None:
+        b = _read_int(_CG + v2 + "/memory.current")
+        if b is not None:
+            return round(b / 1073741824.0, 2), "cgroup-v2"
     try:
         info: Dict[str, int] = {}
         with open("/proc/meminfo", encoding="ascii") as fh:
@@ -252,9 +404,57 @@ def _read_mem_used_gb() -> Optional[float]:
                 k, _, rest = line.partition(":")
                 info[k] = int(rest.split()[0])           # kB
         avail = info.get("MemAvailable", info.get("MemFree", 0))
-        return round((info.get("MemTotal", 0) - avail) / 1048576.0, 2)
+        return round((info.get("MemTotal", 0) - avail) / 1048576.0, 2), "node"
     except (OSError, ValueError, IndexError):
         return None
+
+
+def _read_mem_peak_gb() -> Optional[float]:
+    """The kernel's OWN running peak, when it keeps one.
+
+    v1's ``memory.max_usage_in_bytes`` is a counter the kernel maintains, so
+    it is a true peak rather than the largest value a 10-second sampler
+    happened to catch.  Measured on Sol it read ABOVE ``usage_in_bytes``,
+    which is what proves it is not a copy of current.
+    """
+    cg = _cgroup_paths()
+    p = cg.get("memory")
+    if p:
+        b = _read_int(_CG + "/memory" + p + "/memory.max_usage_in_bytes")
+        if b is not None:
+            return round(b / 1073741824.0, 2)
+    v2 = cg.get("")
+    if v2 is not None:                             # newer v2 kernels only
+        b = _read_int(_CG + v2 + "/memory.peak")
+        if b is not None:
+            return round(b / 1073741824.0, 2)
+    return None
+
+
+def _read_mem_limit_gb() -> Optional[float]:
+    """The limit the kernel ENFORCES, or ``None`` when nothing is stated.
+
+    Read from the JOB cgroup, never the task one.  ``None`` for the no-limit
+    sentinel: `scheduler.md` R3 -- *an unstated limit never bars* -- and a
+    sentinel is an absence wearing a number.
+    """
+    cg = _cgroup_paths()
+    p = cg.get("memory")
+    if p:
+        b = _read_int(_CG + "/memory" + _job_cgroup(p)
+                      + "/memory.limit_in_bytes")
+        if b is not None:
+            return None if b >= _NO_LIMIT else round(b / 1073741824.0, 2)
+    v2 = cg.get("")
+    if v2 is not None:
+        try:
+            with open(_CG + _job_cgroup(v2) + "/memory.max",
+                      encoding="ascii") as fh:
+                raw = fh.read().strip()
+            return None if raw == "max" else round(int(raw) / 1073741824.0, 2)
+        except (OSError, ValueError):
+            pass
+    return None
 
 
 _GPU_QUERY = ["nvidia-smi",
@@ -755,6 +955,8 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
             if util_path is not None:
                 _append(log, f"[{_iso(now)}] [UTIL-SUMMARY] "
                              f"{util_accum.summary()}")
+                _append(log, f"[{_iso(now)}] [UTIL-BASIS] "
+                             f"{measurement_provenance()}")
             _append(log, f"[{_iso(now)}] [MONITOR] job ended "
                          f"(watched pid {watch_pid} gone); "
                          f"final notify + exit")
@@ -812,25 +1014,62 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
             return st
 
 
+def measurement_provenance() -> str:
+    """One line naming what every percentage in this run is a fraction OF.
+
+    **A percentage whose denominator is invisible is how the Au-BDT-Au sweep
+    went wrong**: 48 ranks on a 128-core node capped the node-wide reading at
+    37.5%, and 32.2% read as idleness rather than as a job at 86% of its own
+    allocation.  With two cgroup generations in play a number that does not
+    say where it came from cannot be checked at all, so the rung that
+    answered is part of the measurement, not a debug aid.
+    """
+    cores, csrc = _alloc_cores()
+    cpu = _read_cpu_used_ns()
+    mem = _read_mem_used_gb()
+    bits = [f"cpu% of {cores} core(s) [{csrc}]",
+            f"cpu time [{cpu[1] if cpu else 'unavailable'}]",
+            f"mem [{mem[1] if mem else 'unavailable'}]"]
+    peak = _read_mem_peak_gb()
+    if peak is not None:
+        bits.append(f"peak {peak:g} GB (kernel counter)")
+    lim = _read_mem_limit_gb()
+    bits.append(f"limit {lim:g} GB" if lim is not None
+                else "limit not stated")
+    return "; ".join(bits)
+
+
 def _make_default_sampler(clock: Callable[[], float]
                           ) -> Callable[[], "UtilSample"]:
-    """A stateful sampler closure: cpu% is a delta across calls, so it
-    holds the previous ``/proc/stat`` snapshot.  GPU presence is probed
-    once up front (no per-tick ``nvidia-smi -L``)."""
-    state = {"prev": _read_cpu_busy_total()}
+    """A stateful sampler closure.
+
+    cpu% is ``delta cpu-time / (delta wall-time x cores allocated)``, so it
+    holds the previous cumulative reading and the wall clock that went with
+    it.  **The denominator is the allocation**, resolved once up front: it
+    cannot change during a run, and re-reading it per tick would let a
+    percentage silently change meaning mid-series.  GPU presence is probed
+    once too (no per-tick ``nvidia-smi -L``).
+    """
+    cores, _ = _alloc_cores()
+    first = _read_cpu_used_ns()
+    state = {"ns": first[0] if first else None, "t": clock()}
     gpu_on = _gpu_present()
 
     def _s() -> "UtilSample":
-        bt = _read_cpu_busy_total()
+        now = clock()
+        cur = _read_cpu_used_ns()
         cpu_pct = None
-        if bt and state["prev"]:
-            db = bt[0] - state["prev"][0]
-            dt = bt[1] - state["prev"][1]
-            cpu_pct = round(100.0 * db / dt, 1) if dt > 0 else None
-        if bt:
-            state["prev"] = bt
-        return UtilSample(epoch=clock(), cpu_pct=cpu_pct,
-                          mem_gb=_read_mem_used_gb(),
+        if cur is not None and state["ns"] is not None:
+            d_ns = cur[0] - state["ns"]
+            d_t = now - state["t"]
+            if d_t > 0 and cores > 0 and d_ns >= 0:
+                cpu_pct = round(100.0 * d_ns / (d_t * 1e9 * cores), 1)
+        if cur is not None:
+            state["ns"] = cur[0]
+        state["t"] = now
+        mem = _read_mem_used_gb()
+        return UtilSample(epoch=now, cpu_pct=cpu_pct,
+                          mem_gb=mem[0] if mem is not None else None,
                           gpus=_sample_gpus() if gpu_on else [])
     return _s
 

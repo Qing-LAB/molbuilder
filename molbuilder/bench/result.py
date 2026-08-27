@@ -190,9 +190,17 @@ def parse_util_csv(csv_text: str) -> Dict[str, float]:
     out: Dict[str, float] = {}
     epochs = cols.get("epoch") or []
     if cols.get("mem_gb"):
-        # NODE memory in use (MemTotal - MemAvailable), which is the job's
-        # only when the job holds the whole node.  The name is kept for the
-        # record schema; `peak_node_mem_gb` is what it measures.
+        # The job's OWN memory since 2026-08-26: the monitor reads its
+        # cgroup (`monitor._read_mem_used_gb`), so this is the calculation
+        # rather than the machine.  It used to be MemTotal - MemAvailable,
+        # every process on the node -- correct only when the job held the
+        # whole node, and on a shared one it was measuring other people's
+        # jobs as much as this one's.
+        #
+        # Still the max of a sampled series, so it is bounded below by the
+        # true peak.  `monitor._read_mem_peak_gb` reads the kernel's own
+        # counter and is exact; folding that in is `plan` § 2.6's job,
+        # because it needs somewhere in the record to put it.
         out["peak_rss_gb"] = max(cols["mem_gb"])
     if len(epochs) >= 2 and epochs[-1] > epochs[0]:
         out["wall_s"] = round(epochs[-1] - epochs[0], 1)

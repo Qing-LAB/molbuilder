@@ -19,33 +19,41 @@ so, and says what would settle it.
 
 | | |
 |---|---|
-| pushed | `2107e3e3` |
-| committed, unpushed | `f9078b65` — SCF_NOT_CONV is a cause, not proof |
-| uncommitted | ~41 files (§ 1) |
-| lane | **not run** since the § 1 work — run `tools/testrun.py run none2e` before committing |
+| pushed | `0a221f77` |
+| committed, unpushed | 4 — the monitor PID fix, the config-directory consolidation, notifications, the listener |
+| uncommitted | docs only: this plan, `run-reports.md` § 4, `access-control.md` § 8 |
+| lane | last full run **7588 ran, 0 fail, 6 skip**; doc guards green since |
+
+**Consolidated 2026-08-26.** Three of the findings recorded that morning
+(§ 3 A, C, D) turned out to be one metric measuring the wrong thing — see
+§ 2.12. Two proposals of mine were withdrawn the same day and both are recorded
+as withdrawn rather than deleted: preserving `sinfo`'s `+` range (§ 2.13 P4),
+and a cleverer name for the listener route (§ 2.11).
 
 ---
 
-## 1. Uncommitted work — verify, then commit
+## 1. Shipped 2026-08-26
 
-Done and locally tested; needs a full lane and a commit split.
+Committed in five splits and lane-verified (**7588 ran, 0 fail**). Kept as a
+record of what moved, not as work.
 
-1. **The run-ending vocabulary** (`parse.md` § 2b). `run_state` =
-   `running`/`ended`/`stopped`/`out_of_memory`/`unknown`; `scf_converged`
-   reported beside it, never folded in. Touches `frame.py`, `parse/types.py`,
-   `engines/{_helpers,siesta,pyscf,molwatch}.py`, `parse/dirs/job.py`,
-   `web/blueprints/watch.py`, `trajectory/core.js`, ~9 test files, 6 goldens.
-2. **`parse/engines/_run_ending.py`** — the marker table, stdlib-only. Two
-   doors onto it (`scan_ending` 21 ms vs full parse 272 ms on a six-trial
-   sweep); the heavy parser builds its fatal rules from the same table.
-   `jobset/summarize.py`'s private `_DONE_MARKERS` deleted.
-3. **The bench display** — three stacked bar panels, values on bars,
-   token-styled tooltips, usage line, `ran with` line, context header,
-   two clocks, caption.
-4. **Measurement fixes** — time-weighted util means, node facts read from the
-   run's own wrapper log, `iters_measured: 1` disclosed on the card.
-5. **Docs** — `parse.md` § 2b, `junction-cell.md` § 3.3,
-   `bench-summary.md` § 3, `deployment.md` § 1.1, `ui-contract.md` §§ 5 + 8.
+1. **The run-ending vocabulary** (`parse.md` § 2b) — `run_state` says how a run
+   *ended* and never whether it was any good, which is what made six healthy
+   benchmark trials read as failures. `scf_converged` reported beside it.
+2. **`parse/engines/_run_ending.py`** — one marker table, stdlib-only;
+   `summarize.py`'s private copy deleted. The monitor's own private table went
+   too: it could stop sampling mid-run, because `siesta: Final energy` prints
+   early.
+3. **The bench display** — three stacked panels, values on bars, usage and
+   `ran with` lines, two clocks.
+4. **Measurement fixes** — node facts read from the run's own wrapper log,
+   `iters_measured: 1` disclosed rather than hidden.
+5. **Notifications and the listener** — §§ 2.9, 2.10.
+
+> **The one that cost real time:** a `watch tail` test compared against two
+> state names the rename had deleted, so it **hung the lane for 11½ hours**
+> instead of failing. Fixed by `CONCLUDED` plus a `signal.alarm` guard in the
+> test — a hang is now a failure.
 
 ---
 
@@ -253,14 +261,307 @@ notify-token` issues them.
 
 ---
 
+### 2.11 The listener — harden it, decided 2026-08-26
+
+Contract written: `execution/run-reports.md` § 4, with the rules it rests on
+added to `ops/access-control.md` § 8 (rule 2 amended; rules 7 and 8 new). The
+code still runs the first cut, so § 4 carries a *not yet built* box.
+
+Four parts, one change:
+
+1. **HMAC-SHA256 over the body** replaces the bearer token. The key stops
+   travelling; what travels is valid for one body only. Stdlib both ends.
+2. **The route segment is generated per deployment** by `notify-token`, not a
+   word chosen in the source — this repo is public, so a fixed word is not
+   obscurity. `molbuilder.json` gains `notify_route`; `notify_tokens_file`
+   becomes `notify_keys_file`, and **both** are required for the route to
+   exist.
+3. **Every failure answers a plain `404`**, so a wrong signature is
+   indistinguishable from a path that was never registered. Verified this
+   keeps the limiter: `rate_limit.py:305` counts any `400 <= s < 500`, and a
+   notify request sets neither `molbuilder_auth_challenge` nor an
+   authenticated session.
+4. **`serve` never mints or rotates these.** The counterpart lives on a
+   cluster molbuilder cannot reach, and a notifier is silent on failure by
+   design — so a startup rotation would stop every running job's reports with
+   nothing saying why.
+
+**Named, not fixed:** HMAC is symmetric, so reading the server's key file is
+enough to forge. Ed25519 would close it and is not in the stdlib, which the
+monitor is restricted to. Recorded in § 4.2 rather than left to be
+rediscovered.
+
+---
+
+### 2.12 What a percentage is a fraction OF — decided 2026-08-26
+
+**The rule.** *A run reports how well it used **what it was given**. Cores it
+did not ask for are not its business — they are unpredictable, and a fraction
+taken over them measures the cluster rather than the calculation.*
+
+Both readings in `monitor.py` are node-wide today, numerator and denominator
+alike:
+
+| | today | to build |
+|---|---|---|
+| busy time | `/proc/stat` aggregate line — every process on the node | the job's own cgroup (see the two spellings below) |
+| cores | implicit: all of them | `os.sched_getaffinity(0)` |
+| memory | `MemTotal − MemAvailable` — includes other people's jobs | the cgroup's own usage, against the enforced limit |
+
+**Two cgroup generations, and Sol is the older one.** Measured on an
+`htc`/`debug` node 2026-08-26: `/proc/self/cgroup` came back in **v1** form —
+numbered `id:controller:path` lines, no `0::` line — while this workstation is
+v2. An earlier draft of this section named v2 files only (`cpu.stat`,
+`memory.current`, `memory.max`); **none of those exist on Sol.** The reader
+must know both:
+
+| | cgroup v1 (Sol) | cgroup v2 (this workstation) |
+|---|---|---|
+| mount layout | `/sys/fs/cgroup/<controller>/<path>` | `/sys/fs/cgroup/<path>` |
+| CPU time | `cpuacct.usage` (ns) | `cpu.stat: usage_usec` |
+| memory now | `memory.usage_in_bytes` | `memory.current` |
+| memory peak | `memory.max_usage_in_bytes` | `memory.peak` *(newer kernels only)* |
+| the limit | `memory.limit_in_bytes` | `memory.max` |
+
+v1 turns out to be the **better** of the two here: it keeps a running peak
+(`memory.max_usage_in_bytes`) as a kernel counter, so `peak_rss_gb` becomes a
+measurement rather than the maximum of whatever the sampler happened to catch.
+The enforced limit is what § 2.6 needs, and it is a fact rather than an
+estimate.
+
+**Measured on Sol 2026-08-26** (`htc`/`debug`, `-c 4`), every file read
+successfully:
+
+```
+cpuacct.usage           52132694          ns of CPU time, this job's cgroup
+memory.usage_in_bytes    1658880
+memory.max_usage_in_bytes 2879488         a real peak — above current
+memory.limit_in_bytes   9223372036854771712
+SLURM_CPUS_ON_NODE=4  SLURM_CPUS_PER_TASK=4  nproc=4
+```
+
+So the numerator and both memory readings work, and `max_usage_in_bytes` is
+confirmed to be a genuine running peak rather than a copy of current.
+
+**The limit is on the JOB cgroup, not the task one.** Measured with
+`--mem=8G`:
+
+```
+/slurm/uid_.../job_62238108/step_0/task_0   limit_in_bytes  9223372036854771712
+/slurm/uid_.../job_62238108                 limit_in_bytes           8589934592
+```
+
+`8589934592` is exactly 8 GiB — the ask, enforced. The task cgroup carries the
+`2^63` "no limit" sentinel. So **the reader must strip `/step_*` from the path
+and ask the job cgroup**; asking the task cgroup returns a sentinel that any
+arithmetic silently turns into 0%.
+
+This changes § 2.6 for the better: the enforced limit is **readable**, not
+something a person must restate. What they declare is the *ask*; what the
+kernel holds is the *truth*, and OOM detection wants the second. A sentinel is
+still not a limit and must be recognised as *no limit stated*.
+
+**The denominator needs no cgroup at all.** The same measurement returned
+`SLURM_CPUS_ON_NODE=1` and `nproc=1` on a one-core allocation, so SLURM sets
+the affinity mask correctly and `os.sched_getaffinity(0)` answers on both
+generations with no path parsing. That is the rung to try first.
+
+**Two things this buys.** The arithmetic in § 4 — *48 ranks on 128 cores caps
+node CPU at 37.5%* — stops being needed: both trials read ~86–90% of their own
+allocation and are directly comparable. And the metric stops arguing for the
+wrong decision: a job saturating its 48 cores currently *looks* starved, which
+argues for a bigger machine, which is the queue this practice exists to avoid.
+
+**The ladder, and saying which rung.** Denominator: affinity mask → SLURM env
+→ node. Numerator: cgroup v1 → cgroup v2 → `/proc/stat` (node-wide, and
+labelled as such). Whichever rung answered is recorded in `[UTIL-SUMMARY]`:
+**a percentage whose denominator is invisible is how this went wrong in the
+first place** — and with two cgroup generations in play, a number that does not
+say where it came from cannot be checked at all.
+
+*Verified, not assumed:* the path must come from `/proc/self/cgroup`, and on v1
+it must be joined to the **controller's own** mount directory. Reading
+`/sys/fs/cgroup/cpu.stat` directly lands on the root cgroup and silently gives
+node-wide totals again — the same defect in a new spelling.
+
+---
+
+### 2.13 The probe: one meaning per field — reviewed 2026-08-26
+
+A full read of `scheduler/probe.py`, `scheduler/record.py` and the two grid
+gates in `jobset/_cli.py`, against `scheduler.md` § 3's rules. **The probe
+reads the right things and then loses them on the way to the record.** Four
+findings; the first is the one that matters.
+
+**P1 — `max_cores` carries two different meanings.** `probe.py:153-158` keeps
+both `gpu_cores` (**min** across the groups that have devices) and `max_cpus`
+(**max** across all groups). Then `probe.py:319-324` writes one field from
+whichever applies:
+
+```python
+if part.gpu_types:  row["max_cores"] = part.gpu_cores   # a MINIMUM
+elif part.max_cpus: row["max_cores"] = part.max_cpus    # a MAXIMUM
+```
+
+`admits` compares both as one ceiling. A CPU-only partition therefore admits a
+request only its **widest** node could hold. Memory, measured later, took the
+smallest across groups and said why — *"a partition whose nodes differ can only
+promise the smallest"*. Cores never got that sentence.
+
+**The floor is the right meaning, and SLURM says so.** `sinfo` prints `48+`
+precisely to say *these nodes differ and 48 is the base*; nothing above the
+base is promised. So `max_cores` becomes the min across **all** groups, and the
+`elif` disappears — one field, one meaning. Under R10 the refusal already knows
+what to suggest: *this queue holds 48; the largest rank count that fits is 48.*
+
+**P2 — `topology` is one arbitrary node, and a refusal is gated on it.**
+`record.py:_slurm_pick_node` takes whichever GPU node `sinfo` prints **first**
+and stores that machine's shape as the partition's topology. `_cli.py:1233`
+then refuses a declared bench point against `sockets × cores_per_socket`.
+Measured on the real record: that gate says **64**, the GPU family cap says
+**48**, and the nodes the sweep actually ran on were 48 and 128. A declared
+8×8 point passes the first gate and is dropped by the second — the two
+disagree by construction. Core ceilings belong to `domains[].max_cores` (P1),
+which is measured across every group; `topology` keeps only what it can
+honestly answer, namely this node's own shape when we are standing on it.
+
+**P3 — the CPU family has no core cap at all.** The per-family drop at
+`_cli.py:1326` runs under `if fam`, i.e. GPU only. A CPU cell is bounded solely
+by P2's arbitrary node.
+
+**P4 — the `+` is stripped, and that is correct.** `parse_sinfo` does
+`int(cols[4].rstrip("+"))` and keeps the base. An earlier draft of this plan
+proposed preserving the range; **withdrawn** — SLURM promises nothing above the
+base, so the base is the honest number and expanding it would invent a
+guarantee. What was wrong was never the stripping; it was using a *max* as a
+ceiling anywhere (P1).
+
+**P6 — nothing in the record knows x86 from ARM.** User, 2026-08-26: *x64 vs
+arm are different, don't mix them.* `Topology` holds seven fields and
+architecture is not one of them; `_parse_scontrol_node` reads `Sockets`,
+`CoresPerSocket`, `ThreadsPerCore`, `RealMemory` and `Gres` and **skips
+`Arch=`**, which `scontrol show node` prints. `_parse_lscpu` ignores
+`Architecture:` the same way. Sol has an `arm` partition — `gh200: 1`, a
+Grace-Hopper part whose CPU is aarch64 — sitting in the same menu as eight
+x86 ones, distinguishable only by a name ASU happened to choose.
+
+**This is not a performance difference; it is a hard failure.** Three ways:
+
+* **`conda_envs` is architecture-specific and the record does not say so.** The
+  135 names were enumerated wherever the probe ran. An x86 env does not
+  activate usefully on aarch64, so `prep --target sol` can name an environment
+  that cannot exist on the node it is sent to.
+* **Binaries do not cross.** A SIESTA built with AVX-512 does not run on
+  aarch64 at all — not slower, absent. The toolchain sensitivity is already
+  known here (a gcc version miscompiles one SIESTA source file); architecture
+  multiplies it.
+* **§ 2.8 is exactly this rule, one size larger.** *"What must be constant is
+  the hardware within one sweep."* Two different ISAs is the most extreme way
+  to violate it, and nothing detects it.
+
+**And we do not record our OWN architecture either** (user, 2026-08-26: *we
+should know our compiled/installed architecture*). That is the half that
+actually decides whether a job runs, because **a mismatch is what fails, so the
+check needs both numbers**:
+
+* `conda_envs` is `List[str]` — bare names. `molbuilder-siesta` on an x86 root
+  and on an aarch64 root are different software under one string.
+* The build recipes assume x86 **in string literals, with no check**:
+  `builds.py:701` maps `gcc_linux-64` → `x86_64-conda-linux-gnu-gcc`;
+  `builds.py:471` looks for that binary by path; `recipes.py:1038` hard-codes
+  `targets/x86_64-linux/include`. On aarch64 those packages are spelled
+  `gcc_linux-aarch64`, so the lookup simply finds nothing — and a missing
+  compiler reads as *unknown version*, not as *wrong architecture*.
+
+**The rule this needs.** *An environment is not portable, and a record that
+names one must say what it was built for.*
+
+**Decided 2026-08-26 (user):** *the UI would just not list the cluster that is
+incompatible; so far we don't have anything other than x64.* So this is a
+**menu filter, not a refusal** — and that is the better shape, because it is
+`ops/access-control.md` § 8 rule 2 applied to hardware: *a capability that
+cannot be exercised safely should not appear.* An `arm` row that can only ever
+fail is not a choice; offering it and then refusing the submission is two
+messages where none was needed.
+
+Two facts and one filter:
+
+| where | what it costs | what it buys |
+|---|---|---|
+| the probe | one `kv.get("Arch")` — `scontrol show node` is **already** being run | the record stops being silent about the node |
+| the env list | the conda root's own platform, one value | an env name stops meaning two things |
+| the domain menu | a comparison at listing time | an incompatible queue is never offered |
+
+**R3 still governs, and here it decides the default.** An unstated architecture
+never bars, so a record written before this field — every existing one — filters
+nothing and the menu is unchanged. Only two *stated* architectures that disagree
+remove a row. That is what keeps a partially-probed cluster usable, and it is
+why the filter cannot be written as *show only x86*.
+
+**The cheap part is already reachable.** The probe *already* runs `scontrol
+show node` once, so `topology.arch` costs one more `kv.get("Arch")`.
+
+**The part that needs measuring:** whether architecture can be read
+*per-partition* in one call, or whether it needs one `scontrol` per partition.
+It matters because that is what would let admission refuse a mismatch rather
+than merely describe one. Worth one command on a login node when convenient:
+
+```bash
+sinfo -h -o "%P %f %c" | sort -u | head -20      # do features carry the ISA?
+scontrol show node $(sinfo -h -p arm -N -o %N | head -1) | tr " " "\n" | grep -i arch
+```
+
+**Ordering note:** P6 goes with P1 — both are about a record that describes a
+partition it has actually measured. P1 stops a field meaning two things; P6
+stops a field being missing while its absence looks like agreement.
+
+**P5 — the device menu shows one card under two names.** User, 2026-08-26:
+*the `a100` returned `a100.40gb`* — the same hardware, reported by different
+nodes under different gres tokens. Both appear in `domains[].gpu` as separate
+entries, so `htc` offers `a100: 4` **and** `a100.40gb: 4`, which reads as two
+choices and is one.
+
+`parse_gres` is **not** the thing to change. It reads the type positionally and
+its docstring explains why at length: an earlier reader matched against a
+hard-coded name list and flattened `gh200` into `h200` and the slices into
+whole cards, and *"a list of names cannot keep up with a site's hardware."*
+Positional reading is right, and it is what makes the alias visible at all.
+
+The gap is that **`a100 == a100.40gb` is site knowledge and nothing measures
+it**. Two entries genuinely differ when one is a MIG slice (`a100.20gb` is half
+a card, and `--gpus` calls slices *separate askable types, not a smaller ask of
+the same one*) and genuinely coincide when one token is just more specific.
+Nothing in `sinfo` distinguishes those cases.
+
+**Open — needs a decision, not a fix.** Either the record carries an
+alias table the site owns (M-1: a preference, so `molbuilder.json`, not the
+probe's output), or the menu states the tokens as SLURM spells them and says
+plainly that two rows may be one machine. Recording it here rather than
+guessing.
+
+**Related, and now explained:** `topology.gpu_type` read `a100` on
+2026-08-25 and `a100.40gb` on 2026-08-27 with **the same GPU inventory both
+times** — the partition's device set is identical between the two probes. That
+is P2 with a concrete symptom: the field is not stable across probes of an
+unchanged cluster, because it describes whichever node was picked and those
+nodes spell the same card differently.
+
+**Not a defect:** `domains[].gpu` enumerating nine GPU types, and
+`domains[].max_cores = 48` on `htc`. Both are correct as they stand. The
+record dated 2026-08-25T03:28 UTC is not stale either — **re-probing today
+would print the same numbers**, because the loss is in what the record keeps,
+not in what the probe reads.
+
+---
+
 ## 3. Found, not fixed
 
 | | finding | evidence |
 |---|---|---|
 | **A** | `peak_rss_gb` is `MemTotal − MemAvailable` — **node** memory, not process RSS. ≈ correct only when the job holds the whole node. **Superseded by § 2.6:** the fix is a declared limit, not a better guess. | `monitor.py:_read_mem_used_gb` |
-| **B** | `wall_s` is the monitored window (first→last *written* row), not job wall time. | `bench/result.py` |
-| **C** | The probed `Topology` holds ONE shape; `_slurm_pick_node` describes one node of a partition, faithfully. A heterogeneous partition has no single value. `resolve_environment`'s own override example is `{"cores_per_socket": 24}` — someone hit this and hand-patched. | record says 2×32; nodes used were 48 and 128 |
-| **D** | CPU-only trials log **no** node line — `detected phys_cores` appears only on the GPU path, so `sc004`'s size is unrecorded. | the six wrapper logs |
+| **B** | `wall_s` is the monitored window (first→last *written* row), not job wall time. **Still open**, and unaffected by § 2.12 — a clock, not a fraction. | `bench/result.py` |
+| **C** | **Corrected 2026-08-26 — my earlier note said the probe "describes one node of a partition, faithfully", and that was too generous.** `record.py:_slurm_pick_node` takes whichever GPU node `sinfo` prints **first** and stores that one machine's shape as the partition's `topology`. The probe already knows the partition is heterogeneous — the same record's `domains[htc].gpu` enumerates nine GPU types, and `domains[].max_cores` is a deliberate **min** across GPU node groups (`probe.py:155`), i.e. a ceiling safe on any of them. So the heterogeneity is measured and then discarded by the one field the sizing code reads. Not staleness: `sol.json` is dated 2026-08-25T03:28 UTC, source `scontrol`/`sinfo`. | `topology` says 2×32=64 (the 4×a100 node); `domains[].max_cores` says 48; nodes used were 48 and 128. All three are real htc machines. **Resolved by § 2.13 P1+P2:** the ceiling moves to `domains[].max_cores` as a floor, and `topology` stops gating one |
+| **D** | CPU-only trials log **no** node line — `detected phys_cores` appears only on the GPU path. **Shrunk by § 2.12:** core *count* stops mattering once the fraction is taken over the allocation. Core *identity* still does — clock and memory bandwidth set seconds-per-iteration — so what survives is recording node name and CPU model on **every** path, as provenance for comparing throughput and never as a divisor. A log line, not a probe change. | the six wrapper logs |
 | **E** | A sweep can span node types with nothing saying so. **Answered — see § 2.8.** | § 4 |
 
 **Not doing:** the dead-CSS list. Three verification attempts were each wrong
@@ -311,16 +612,77 @@ within one sweep**, and the choice of hardware belongs to the user.
 
 ## 5. Order
 
+Consolidated 2026-08-26, after the notification work shipped and the probe was
+reviewed. **Measurement before anything that reads a measurement** — three of
+today's findings turned out to be one metric measuring the wrong thing.
+
 1. ~~Lane + commit § 1.~~ **Done 2026-08-26.**
-2. § 2.2 — smallest, and it makes every displayed number trustworthy.
-3. § 2.5 — one ending answer. Retires the two-door split, the precedence
-   divergence and the five longhand copies in one change; everything that reads
-   a run's fate depends on it, so it goes before anything that adds a reader.
-4. § 2.1 — unlocks better statistics, which § 4 needs.
-5. § 2.7 — drop the summary's timer. Small, and it removes a cost rather than
-   adding a feature.
-6. § 2.3 + § 2.4 together — one feature; the detector makes the choice informed.
-7. § 2.6 — the declared memory limit, then OOM detection off the wrapper log.
-   The limit comes first: without it the state has nothing to mean.
-8. § 2.8 — record each trial's hardware, then let a benchmark state what it
-   needs. § 3 B–D fold in here; § 3 A is retired by § 2.6.
+2. ~~Notifications + the listener.~~ **Built 2026-08-26** (§ 2.9, § 2.10).
+3. **§ 2.12 — the allocation is the denominator.** First, because it decides
+   what every displayed percentage *means*, and because § 2.2, § 2.6 and § 3 B–D
+   all read a number it changes. `memory.max` also hands § 2.6 the declared
+   limit it was going to invent.
+4. **§ 2.13 — one meaning per probe field.** P1 (`max_cores` becomes a floor,
+   consistently) then P2/P3 (the core ceiling moves off `topology`). Independent
+   of everything else, and it closes § 3 C.
+5. **§ 2.2** — read the monitor's own mean from `[UTIL-SUMMARY]`. After § 2.12,
+   because it is that number it reads.
+6. **§ 2.5** — one engine-neutral answer to *how did this run end*. Retires the
+   two-door split, the precedence divergence and five longhand copies; anything
+   that adds a reader must come after it.
+7. **§ 2.1** — settable benchmark iterations. Unlocks n>1 timing, which § 4
+   needs before any sweep can support a ranking.
+8. **§ 2.11** — harden the listener. Contract settled; **gated on the egress
+   test** (§ 6), which could invalidate the destination entirely.
+9. **§ 2.7** — drop the summary's poll timer. Removes a cost rather than adding
+   a feature.
+10. **§ 2.3 + § 2.4** — junction `placement`, and the seam detector that makes
+    the choice informed. One feature.
+11. **§ 2.6** — the declared memory limit, then OOM detection off the wrapper
+    log. Mostly delivered by § 2.12's `memory.max`.
+12. **§ 2.8** — record each trial's hardware; let a benchmark state what it
+    needs. § 3 B and the shrunken D fold in here; A is retired by § 2.6, C by
+    § 2.13.
+
+---
+
+## 6. What needs a human, and why
+
+Two things nothing here can do for itself.
+
+**Egress — MEASURED 2026-08-26, and it works.** From an `htc`/`debug`
+compute node:
+
+```
+http=302  connect=0.014204  exit=0
+```
+
+TCP, TLS and HTTP all completed in 14 ms; the `302` is the auth gate sending
+`/` to sign-in, which is the correct answer for an unauthenticated browser
+request. **Port 8888 outbound from a Sol compute node is open**, so the
+destination in § 2.11 stands and the hardening work is unblocked.
+
+Two things that measurement did *not* settle, both of which would make reports
+**vanish in silence** — the notifier catches every exception by design, so an
+unreachable server never costs a run anything:
+
+* **The certificate chain — SETTLED 2026-08-26, it validates.** Re-run without
+  `-k` from a compute node: `http=302`, `curl_exit=0`. The CA that signed
+  qlabsrv's certificate is trusted there, so `monitor.py:578`'s
+  `urllib.request.urlopen` — which uses Python's default validating context —
+  will connect. **§ 2.11 has nothing left gating it.**
+* **A redirect would eat the POST.** The `302` we measured is exactly what a
+  notify route would return if it ever fell out of `auth.py`'s
+  `_PUBLIC_ENDPOINTS`: `urlopen` follows the redirect, the body is dropped on
+  the way to a login page, and nothing anywhere records a failure. The route is
+  exempt today; **it needs a guard test that it never redirects**, in the same
+  shape as the other listener guards.
+
+**A re-probe on Sol — after § 2.13, not before.** Re-probing today would print
+the same numbers, because the loss is in what the record keeps. Once P1 lands,
+one command on a login node produces a record whose `max_cores` means one
+thing, and the same cgroup check below tells § 2.12 which rung of its ladder
+Sol will actually answer on.
+
+**Validation is against ASU's own documentation**, not against the record
+itself — a record checked only against itself proves nothing.

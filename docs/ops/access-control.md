@@ -380,7 +380,11 @@ The transferable part. A new gate should be able to point at one of these.
    has its own section and one meaning (§ 5).
 2. **Absent beats refused, when existence is itself the answer.** A capability
    that cannot be exercised safely should not appear. `404` is not rudeness; it
-   is the honest statement that there is nothing there.
+   is the honest statement that there is nothing there. **A refusal that looks
+   different from absence gives away the thing absence was hiding**: if a wrong
+   credential answers `401` where an unconfigured server answers `404`, the
+   refusal has confirmed the capability is switched on. A gate built on this
+   rule answers both the same way.
 3. **Identity is borrowed, never stored.** No accounts, no passwords, no reset
    flows. molbuilder learns an email from somebody whose job this is.
 4. **Judge behaviour, not people.** The limiter never asks who you are, only
@@ -392,6 +396,23 @@ The transferable part. A new gate should be able to point at one of these.
 6. **Name the cost of a destructive action before doing it, in the user's own
    terms.** Not "confirm?", but *everyone is disconnected and unsaved work is
    lost*.
+7. **Prefer the secret that never travels.** A bearer token proves *I know the
+   secret* by sending it, so every request is one more chance to capture a
+   credential that works forever and on any body. A signature over the request
+   body proves the same thing while the secret stays on the machine holding it,
+   and what does travel is valid for one body only. Obscurity — an unguessable
+   path, a quiet name — is a worthwhile layer on top of that and never a
+   substitute for it. Obscurity committed to a public repository is not
+   obscurity, so anything meant to be hard to guess is **generated per
+   deployment**, not chosen once and shipped.
+8. **A secret that must reach a second machine is minted only by an explicit
+   act.** `serve` may generate a secret that lives here and nowhere else — the
+   session key does exactly that on first run (§ 4), and rotating it only asks
+   people to sign in again. It may never generate one whose counterpart is held
+   by another machine, because nothing here can deliver the replacement: the far
+   side keeps presenting the old secret, is refused, and **the failure looks
+   like silence rather than an error**. Creating those belongs to a command a
+   person runs on purpose.
 
 ---
 

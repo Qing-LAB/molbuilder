@@ -152,7 +152,7 @@ Underneath, in the order a person reads them:
 | line | from | why it is there |
 |---|---|---|
 | the knobs | `knobs`, `bound` | what it was asked to run |
-| **what it used** | `metrics` — `peak_rss_gb`, `cpu_mean_pct`, `gpu_sm_mean_pct`, `gpu_vram_peak_gb`, `wall_s` | the numbers a RUN script is written from: how much memory to ask for (the peak, not the request), and whether the accelerator paid for itself |
+| **what it used** | `metrics` — `peak_rss_gb`, `cpu_mean_pct`, `gpu_sm_mean_pct`, `gpu_vram_peak_gb`, `wall_s` | the numbers a RUN script is written from: how much memory to ask for (the peak, not the request), and whether the accelerator paid for itself. **All of these are the JOB's own since 2026-08-26** — read from its cgroup, with `cpu_mean_pct` a fraction of the cores it held. Before that they were the node's, so `peak_rss_gb` included every other job on the machine and a trial using all 48 of its cores on a 128-core node read 32%. Trials recorded earlier are **not comparable** with ones recorded since; the monitor log's `[UTIL-BASIS]` line says which basis a run used |
 | **ran with** | `effective` | the settled truth — the block size SIESTA chose, the ELPA build that answered |
 | asked vs ran | `mismatch` | only the DISAGREEMENTS |
 
