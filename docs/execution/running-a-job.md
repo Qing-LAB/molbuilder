@@ -445,9 +445,25 @@ behaves exactly as before — `--continue` stays the manual path.
   did not redirect it yourself.
 - **A backgrounded monitor** (`mb_monitor.py`, shipped next to **`.fdf`** jobs)
   samples utilisation into `<basename>.util.csv` and `<basename>.monitor.log`
-  every 5 s at `nice -n 19`, and is killed on exit. (Disable with
-  `MB_MONITOR=0`.) A standalone `molbuilder monitor` CLI does the same for a job
-  you point it at.
+  every 10 s at `nice -n 19`, and is killed on exit. (Disable with
+  `MB_MONITOR=0`; override the interval with `MB_MONITOR_INTERVAL`.) A
+  standalone `molbuilder monitor` CLI does the same for a job you point it at.
+
+  It ends when the **watched PID** goes, and only then — it does not read the
+  engine's output for a phrase that looks like the end. A marker can appear
+  before a run is over, and one did: `siesta: Final energy` prints early, so
+  the monitor could stop sampling while the job still held its CPUs and GPUs
+  (`job-contracts.md`, the monitor's section; fixed 2026-08-26).
+- **Notifications, if you set them up.** The monitor can tell you a run
+  reached a milestone without you being at the cluster. **When** is the
+  calculation's own setting, in `task.json`'s `notify` block: on each SCF
+  convergence, every N hours, or neither — a run ending always reports.
+  **Where** is yours and never travels with the description: a JSON file at
+  `$XDG_CONFIG_HOME/molbuilder/notify` (else `~/.config/molbuilder/notify`),
+  mode 0600, holding a `url` and optional `headers`.
+  Absent means no notifier at all and a run that behaves exactly as before.
+  Slack and Discord put the credential in the URL; a private endpoint takes a
+  plain URL and a token in a header.
 - **An SCF-timing tee** stamps every `scf:` line into
   `<basename>-runN.scf-timing.log` and reports total wall / iteration count,
   using `PIPESTATUS` so the tee never masks SIESTA's exit code.

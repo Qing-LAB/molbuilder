@@ -249,3 +249,43 @@ def test_the_warm_retry_budget_travels_the_described_route(calc):
                      allocation=Resources(mpi_np=8, continue_retries=2))
     text = (calc / "01_coarse" / "calc_01_coarse.run.sh").read_text()
     assert "_siesta_retry_max=2" in text
+
+
+# --------------------------------------------------------------------- #
+#  The reporting policy travels from the description to the wrapper      #
+# --------------------------------------------------------------------- #
+
+def test_the_descriptions_notify_block_reaches_the_wrapper(calc):
+    """`task.json` says WHEN this calculation should speak up, and the
+    monitor is what speaks -- so the policy has to survive the whole trip:
+    description -> `Resources` -> the emitted `mb_monitor.py` line.
+
+    **This is the link a wrapper-level test cannot see.**  Tests that build
+    a `Resources` by hand and render from it pass whether or not `prep`
+    ever reads the description: deleting the one line that applies
+    `task.notify` left all ten of them green (mutation-tested 2026-08-26).
+    The seam is only observable from a real description.
+    """
+    import json as _json
+    from molbuilder.task import FILENAME as TASK_FILENAME
+
+    task_file = calc / TASK_FILENAME
+    obj = _json.loads(task_file.read_text())
+    obj["notify"] = {"on_scf_converged": True, "every_hours": 4}
+    task_file.write_text(_json.dumps(obj))
+
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+
+    wrappers = list(calc.rglob("*.run.sh"))
+    assert wrappers, "prep wrote no wrapper"
+    text = "\n".join(w.read_text() for w in wrappers)
+    assert "--notify-on-scf" in text
+    assert "--notify-every-hours 4" in text
+
+
+def test_a_description_without_notify_leaves_the_wrapper_alone(calc):
+    """The other half: absent must stay absent all the way down, or every
+    prepped bundle changes for people who never asked for this."""
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+    text = "\n".join(w.read_text() for w in calc.rglob("*.run.sh"))
+    assert "--notify-" not in text

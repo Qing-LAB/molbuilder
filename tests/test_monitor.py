@@ -145,8 +145,14 @@ def test_run_monitor_stops_when_watch_pid_gone(tmp_path):
 
 def test_run_monitor_logs_each_progress_tick(tmp_path):
     # A PROGRESSING job (the timing log grows by one iter every wake)
-    # logs a [STATUS] line + fires a tick on each advance, with the
-    # per-iter average shown.
+    # logs a [STATUS] line on each advance, with the per-iter average
+    # shown.
+    #
+    # It used to also assert a `tick` NOTIFICATION per advance.  That
+    # coupling WAS the defect: notifying on every advance is notifying on
+    # every wake, so a webhook fired every few seconds for the length of a
+    # run (2026-08-26).  The log stays dense -- it is the record -- while
+    # who gets TOLD is policy, owned by test_monitor_notify_policy.py.
     out = tmp_path / "j.out"
     out.write_text("scf:   1   -100.5\n")          # no done marker
     timing = tmp_path / "j.scf-timing.log"
@@ -159,16 +165,13 @@ def test_run_monitor_logs_each_progress_tick(tmp_path):
         with timing.open("a", encoding="utf-8") as fh:
             fh.write(f"{100.0 + step['n']} {step['n']} scf: {step['n']}\n")
 
-    ticks = []
-    monitor.register_notifier(
-        lambda st, ev: ticks.append(ev) if ev == "tick" else None)
+    monitor.clear_notifiers()
     monitor.run_monitor(
         out, timing, log, interval=1, watch_pid=0,   # 0 => never "gone"
         sleep=_grow, max_ticks=3,
         clock=_fake_clock([0.0, 0.0, 1.0, 2.0, 3.0]),
     )
     text = log.read_text()
-    assert len(ticks) == 3
     assert text.count("[STATUS]") == 3
     assert "avg_per_iter=" in text                  # progressing -> shown
 
@@ -182,9 +185,12 @@ def test_run_monitor_quiet_when_stalled(tmp_path):
     timing = tmp_path / "j.scf-timing.log"
     timing.write_text("100.0 1 scf: 1 -100.5\n")    # frozen forever
     log = tmp_path / "j.monitor.log"
-    ticks = []
-    monitor.register_notifier(
-        lambda st, ev: ticks.append(ev) if ev == "tick" else None)
+    # Notifications are policy now.  With none set, a stalled job inside
+    # its heartbeat window must produce no PROGRESS event -- start and
+    # finish bracket every run and are not what "quiet" is about.
+    seen = []
+    monitor.clear_notifiers()
+    monitor.register_notifier(lambda st, ev: seen.append(ev))
     monitor.run_monitor(
         out, timing, log, interval=1, watch_pid=0,
         sleep=lambda s: None, max_ticks=4,
@@ -194,7 +200,8 @@ def test_run_monitor_quiet_when_stalled(tmp_path):
     text = log.read_text()
     assert "[STATUS]" not in text                   # no spam
     assert "[STALL]" not in text                    # window not reached
-    assert ticks == []                              # no tick notifications
+    assert [e for e in seen if e not in ("start", "finish")] == [], (
+        f"a stalled job inside its window reported progress: {seen}")
 
 
 def test_run_monitor_stall_heartbeat_is_throttled(tmp_path):

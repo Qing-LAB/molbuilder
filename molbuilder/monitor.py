@@ -1,32 +1,49 @@
-"""Background job monitor + notifier hooks (proof-of-concept).
+"""Background job monitor + notifier hooks.
 
 The front end of the job-monitor/watcher + notifier surface
-(docs/execution/job-system.md, item F).  A lightweight,
-periodically-waking process that **parses** a running job's artifacts
-(the SIESTA ``.out`` + per-run ``.scf-timing.log``), appends a structured
-status line to ``<basename>.monitor.log``, and invokes any registered
-**notifier hooks** on each tick -- today a log stub that records what
-*would* be sent; tomorrow a webhook / email / molwatch push.
+(`execution/running-a-job.md` § 4.1, `execution/job-contracts.md` — the
+monitor's section).  A lightweight, periodically-waking process that
+**parses** a running job's artifacts (the SIESTA ``.out`` + per-run
+``.scf-timing.log``), appends a structured status line to
+``<basename>.monitor.log``, samples utilisation into
+``<basename>.util.csv``, and notifies -- rarely, and only when the
+calculation's own policy says to.
 
-Why a Python module (not a bash script): parsing + a clean hook interface
-belong in Python.  Run it inside the job's activated env so ``molbuilder``
-is importable.  The run-wrapper backgrounds it at low OS priority
-(``nice``) so it never competes with the heavy compute ranks on the same
-node -- it sleeps ~99.99% of the time and does a few ms of tail-reads per
-wake (default 5 min), far below any benchmark's measurement noise.
+**It never runs inside molbuilder.**  A verbatim copy of this file ships
+beside the job as ``mb_monitor.py`` and runs with the JOB's own python from
+the working directory: molbuilder is not installed on a compute node, and
+the `molbuilder-siesta` env has no python of its own at all.  That is why
+this module is stdlib-only, and it is a constraint rather than a
+preference.  *(This paragraph said "run it inside the job's activated env
+so molbuilder is importable" until 2026-08-26 -- the exact opposite of the
+arrangement the wrapper has always used.)*
 
-CLI (added to ``molbuilder`` as ``molbuilder monitor``)::
+The run-wrapper backgrounds it at low OS priority (``nice -n 19``) so it
+never competes with the compute ranks on the same node: it sleeps almost
+all of the time and does a few ms of tail-reads per wake (default 10 s),
+far below any benchmark's measurement noise.
 
-    nice -n 19 python -m molbuilder monitor \\
+**Looking and telling are separate.**  It looks often, because
+``util.csv`` is the diagnostic record.  It tells rarely, because a message
+per wake is a message every ten seconds for the length of a run -- which
+is what a notifier registered here received until 2026-08-26.  When to
+tell is the calculation's, carried from `task.json`'s ``notify`` block:
+``--notify-on-scf``, ``--notify-every-hours``, and a run ending, always.
+
+CLI (also available as ``molbuilder monitor``)::
+
+    nice -n 19 python mb_monitor.py \\
         --out job-run0.out --timing job-run0.scf-timing.log \\
-        --log job.monitor.log --interval 60 --watch-pid $$ &
+        --log job.monitor.log --util job.util.csv \\
+        --notify-every-hours 6 --watch-pid $$ &
 
-Connect a real notifier programmatically::
+**Where** to send it is never here and never in the description: it is the
+user's own file, :func:`default_notify_path`, mode 0600 on the machine
+that runs the job.  ``MB_NOTIFY_URL`` overrides it for a one-off.  A notifier can
+also be registered programmatically::
 
     from molbuilder import monitor
     monitor.register_notifier(lambda st, ev: my_push(st.as_text()))
-
-or via env ``MB_NOTIFY_URL`` (auto-registers a stdlib webhook POST).
 
 Design notes:
 - **stdlib-only hot path** -- no heavy imports in the loop.
@@ -51,15 +68,15 @@ Design notes:
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
 import time
-import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 # --------------------------------------------------------------------- #
@@ -409,26 +426,186 @@ def _fire(status: JobStatus, event: str) -> None:
                   f"raised: {exc!r}", flush=True)
 
 
-def make_webhook_notifier(url: str) -> Notifier:
+#: How long a POST may take before the monitor gives up on it.  Short on
+#: purpose: this runs beside compute ranks, the server may be down, and a
+#: notification is never worth costing the run anything.  Each hook is also
+#: individually guarded, so a dead endpoint cannot break the loop either.
+NOTIFY_TIMEOUT_S = 2.0
+
+#: The destination file's name inside molbuilder's config directory.  NOT in
+#: the calculation's description: `task.json` travels -- to a cluster, into a
+#: handoff bundle, to whoever is handed the calculation -- and a token must
+#: not travel with it.  The policy is in the description; the secret is here.
+NOTIFY_FILENAME = "notify"
+
+
+def _config_dir():
+    """molbuilder's config directory, from the one module that defines it.
+
+    Imported two ways because this file runs two ways: inside the package on
+    a login node, and as a standalone `mb_monitor.py` on a compute node with
+    no molbuilder installed.  The wrapper ships `config_dir.py` beside it
+    (`runwrap._config_dir_source`), so the SAME EIGHT LINES answer on both
+    machines.
+
+    Restating the rule here instead would be the fourth copy of it, which
+    `tests/test_config_dir_has_one_home.py` exists to prevent -- three
+    modules once computed it independently, and two of them said so in prose:
+    *"a comment is not a mechanism"*.
+    """
+    try:
+        from .config_dir import config_dir      # inside the package
+    except ImportError:                          # shipped beside the job
+        from config_dir import config_dir
+    return config_dir()
+
+
+def default_notify_path() -> Path:
+    """Where the destination file lives: ``<config dir>/notify``.
+
+    Honouring ``XDG_CONFIG_HOME`` -- which :func:`_config_dir` does, because
+    `config_dir.py` does -- is load-bearing HERE in particular.  On an HPC
+    login node ``$HOME`` is NFS-mounted and often snapshotted, and
+    ``XDG_CONFIG_HOME=/scratch/$USER`` is how a person keeps a token off it.
+    This file is read on a compute node; a path hardcoded to ``$HOME`` would
+    give them no way to.
+    """
+    return _config_dir() / NOTIFY_FILENAME
+
+
+@dataclass(frozen=True)
+class NotifyPolicy:
+    """WHEN to speak -- the two settable occasions, as one value.
+
+    They are one thing everywhere else: born together in `task.Notify`,
+    carried together on `jobset.Resources`, consumed together here.  Passing
+    them as two loose arguments is the shape `architecture.md` § 3.1's rule
+    A8 forbids, and for a measured reason -- a caller re-assembling an
+    object the callee should have been handed is how a third field gets
+    forgotten.  It has cost this codebase two fields already.
+
+    Not imported from `task.Notify`: this module ships to a compute node as
+    a standalone file with no molbuilder importable (see the module
+    docstring).  The wire between them is the CLI flag pair, and
+    `tests/test_wrapper_notify_flags.py` pins that the wrapper only ever
+    emits flags this file accepts.
+    """
+    on_scf: bool = False
+    every_hours: float = 0.0
+
+    def __bool__(self) -> bool:
+        return bool(self.on_scf or self.every_hours > 0)
+
+
+def load_destination(path: Optional[str] = None,
+                     log: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """The webhook destination, or ``None`` when the user has not set one.
+
+    A JSON object: ``url``, and optional ``headers``.  Two shapes of
+    destination, one mechanism -- Slack and Discord put the credential IN
+    the url, while a private endpoint takes a plain url and a token in a
+    header.  Either way the file is the user's own, mode 0600, and nothing
+    here is created on anybody's behalf.
+
+    **Absent is not an error.**  No file means no notifier, and the run
+    proceeds exactly as it does with the feature switched off.  A malformed
+    file is not an error either: this is a monitor, and refusing to watch a
+    job because a notification could not be configured would be the tail
+    wagging the dog.  It says so and carries on.
+
+    **It says so in the LOG**, not on stdout.  The wrapper backgrounds this
+    process as ``... >/dev/null 2>&1 &``, so anything printed goes nowhere:
+    a misconfigured destination would produce no notifications and no
+    explanation, which is the worst of both.  ``log`` is the monitor log the
+    user actually reads.  Printing is the fallback for a caller that has no
+    log yet -- an interactive `molbuilder monitor`, or a test.
+    """
+    def _say(msg: str) -> None:
+        line = f"[{_iso(time.time())}] [NOTIFY] {msg}"
+        if log is not None:
+            _append(Path(log), line)
+        else:
+            print(f"[monitor] {msg}", flush=True)
+
+    p = Path(os.path.expanduser(path)) if path else default_notify_path()
+    try:
+        raw = p.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        obj = json.loads(raw)
+    except ValueError as exc:
+        _say(f"{p}: not valid JSON ({exc}); not notifying")
+        return None
+    if not isinstance(obj, dict) or not isinstance(obj.get("url"), str) \
+            or not obj["url"]:
+        _say(f"{p}: needs an object with a 'url' string; not notifying")
+        return None
+    headers = obj.get("headers") or {}
+    if not isinstance(headers, dict):
+        _say(f"{p}: 'headers' must be an object; ignoring them")
+        headers = {}
+    return {"url": obj["url"],
+            "headers": {str(k): str(v) for k, v in headers.items()}}
+
+
+def make_webhook_notifier(url: str,
+                          headers: Optional[Dict[str, str]] = None) -> Notifier:
     """A stdlib webhook notifier: POSTs ``event`` + the status summary to
-    ``url`` (form-encoded).  Best-effort, short timeout, never raises out."""
+    ``url`` as JSON.  Best-effort, short timeout, never raises out.
+
+    JSON rather than form encoding because both destinations want it: Slack
+    and Discord read a JSON body, and a private endpoint that appends to a
+    record log wants structure rather than one flattened string.
+    """
     def _hook(status: JobStatus, event: str) -> None:
-        data = urllib.parse.urlencode(
-            {"event": event, "text": status.as_text()}).encode()
-        req = urllib.request.Request(url, data=data, method="POST")
+        body = json.dumps({
+            "event":      event,
+            "text":       status.as_text(),
+            # Slack and Discord both render a bare "text" field, so the
+            # same body is readable in a channel and parseable by us.
+            "state":      status.state,
+            "elapsed_s":  round(status.elapsed_s, 1),
+            "n_iters":    status.n_iters,
+            "energy":     status.energy,
+            "geom_step":  status.geom_step,
+            "per_iter_s": status.per_iter_s,
+        }).encode()
+        req = urllib.request.Request(
+            url, data=body, method="POST",
+            headers={"Content-Type": "application/json", **(headers or {})})
         try:
-            urllib.request.urlopen(req, timeout=5).close()
+            urllib.request.urlopen(req, timeout=NOTIFY_TIMEOUT_S).close()
         except Exception:                              # noqa: BLE001
             pass
     _hook.__name__ = "webhook_notifier"
     return _hook
 
 
-def _install_env_notifiers() -> None:
-    """Auto-register notifiers from the environment (``MB_NOTIFY_URL``)."""
+def _install_env_notifiers(log: Optional[Path] = None) -> None:
+    """Register the user's notifier, if they configured one.
+
+    ``MB_NOTIFY_URL`` wins when set -- an explicit environment override is
+    how you test a destination once without editing a file.  Otherwise the
+    standing configuration at :func:`default_notify_path` is used.  Neither present
+    means no notifier at all.
+
+    **Registers at most one.**  :data:`_NOTIFIERS` is module state and
+    ``run_monitor`` calls this every time, so without the guard a second
+    call in one process adds a second copy of the same webhook and every
+    event is POSTed twice.  A shipped `mb_monitor.py` runs one job per
+    process and would never have shown it; anything embedding this would.
+    """
+    if any(getattr(fn, "__name__", "") == "webhook_notifier"
+           for fn in _NOTIFIERS):
+        return
     url = os.environ.get("MB_NOTIFY_URL")
     if url:
         register_notifier(make_webhook_notifier(url))
+        return
+    dest = load_destination(log=log)
+    if dest:
+        register_notifier(make_webhook_notifier(dest["url"], dest["headers"]))
 
 
 # --------------------------------------------------------------------- #
@@ -476,6 +653,7 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
                 util_change_frac: float = 0.10,
                 util_keepalive_s: float = 300.0,
                 sampler: Optional[Callable[[], "UtilSample"]] = None,
+                notify: "NotifyPolicy" = NotifyPolicy(),
                 sleep: Callable[[float], None] = time.sleep,
                 clock: Callable[[], float] = time.time) -> JobStatus:
     """Periodically parse + log + notify until the watched job ends.
@@ -484,9 +662,17 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
     (tests pass a small value); ``sleep``/``clock`` are injectable for
     deterministic testing.
 
+    **How often it LOOKS and how often it TELLS you are different numbers.**
+    It wakes every ``interval`` seconds and writes a ``[STATUS]`` line
+    whenever the job advanced -- that is the record, and it stays dense.
+    Notifying is separate and rare, set by ``notify``
+    (`execution/run-reports.md` § 2).  Until
+    2026-08-26 they were the same thing: a webhook configured against this
+    fired on every changed sample, which for a running job is every wake.
+
     Wakes every ``interval`` seconds (short, so progress is reported
     promptly) but is QUIET when nothing changed (§ 11.0c): a ``[STATUS]``
-    line + ``tick`` notification fire only when the job actually advanced
+    line fires only when the job actually advanced
     (SCF iteration or geometry move) or its energy/state changed.  A
     long stall emits at most one throttled ``[STALL]`` heartbeat every
     ``stall_heartbeat_s`` seconds -- with NO per-iteration estimate,
@@ -498,13 +684,18 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
     """
     out, timing, log = Path(out), Path(timing), Path(log)
     start = clock() if start_epoch is None else start_epoch
-    _install_env_notifiers()
+    _install_env_notifiers(log)
 
     st0 = parse_status(out, timing, start, clock())
     _append(log, f"[{_iso(clock())}] [MONITOR] start "
                  f"(interval={interval:.0f}s watch_pid={watch_pid}) "
                  f"{st0.as_text()}")
     _fire(st0, "start")
+    # Policy state (§ 2.9).  ``last_notify`` starts at the job's start, so
+    # the first periodic message lands one full period in -- not immediately,
+    # which would make "every 6 hours" mean "now, then every 6 hours".
+    last_notify = start
+    notify_period_s = max(0.0, notify.every_hours) * 3600.0
 
     # --- utilization sampling setup (same loop, separate change-gated
     # output file; § 11.0e).  ``sampler`` is injectable for tests. ---
@@ -580,7 +771,6 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
                    or st.state != prev.state)
         if changed:
             _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
-            _fire(st, "tick")
             last_emit = now
         elif stall_heartbeat_s > 0 and now - last_emit >= stall_heartbeat_s:
             # (2) Throttled liveness ping only -- no iteration-time message.
@@ -588,8 +778,34 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
                          f"for {now - last_emit:.0f}s; state={st.state} "
                          f"scf_iters={st.n_iters} "
                          f"(alive={alive})")
-            _fire(st, "tick")
+            # A stall IS worth telling someone about, whatever the policy
+            # says: it is the "something special" case -- a job that has
+            # stopped moving but not stopped running.  Already throttled to
+            # one per `stall_heartbeat_s`, so it cannot become noise.
+            _fire(st, "stall")
+            last_notify = now
             last_emit = now
+
+        # --- the two settable triggers (§ 2.9) ---------------------------
+        #
+        # A GEOMETRY STEP ADVANCING means the previous SCF cycle reached its
+        # criterion -- SIESTA prints `Begin CG move = N` when it starts the
+        # next one.  Read that way rather than by scanning for a convergence
+        # phrase, because this file no longer keeps a marker table: the one
+        # it used to keep decided the run was over and was wrong about it.
+        # A single point has no move lines, so nothing fires and the finish
+        # message is the whole report -- which is what it should be.
+        if (notify.on_scf and st.geom_step is not None
+                and prev.geom_step is not None
+                and st.geom_step > prev.geom_step):
+            _fire(st, "scf_converged")
+            last_notify = now
+        elif notify_period_s > 0 and now - last_notify >= notify_period_s:
+            # `elif`: a step and a period landing on the same wake is one
+            # thing worth saying, not two.  The step is the more informative
+            # of them, so it wins and resets the clock.
+            _fire(st, "periodic")
+            last_notify = now
 
         prev = st
         if max_ticks is not None and ticks >= max_ticks:
@@ -632,10 +848,13 @@ def make_log_notifier(log: Path) -> Notifier:
     """The PoC notifier: records into the monitor log what *would* be
     pushed.  Swap/extend with a real channel via :func:`register_notifier`."""
     def _hook(status: JobStatus, event: str) -> None:
-        if event in ("start", "finish"):
-            _append(Path(log),
-                    f"[{_iso(time.time())}] [NOTIFY] (stub) {event}: "
-                    f"{status.as_text()}")
+        # Every event a notifier can see.  `start` is here because the log
+        # is also the record of what the monitor did; a real destination
+        # gets the same set, and it is the POLICY upstream -- not this
+        # list -- that decides which of them ever occur.
+        _append(Path(log),
+                f"[{_iso(time.time())}] [NOTIFY] (stub) {event}: "
+                f"{status.as_text()}")
     _hook.__name__ = "log_notifier"
     return _hook
 
@@ -694,6 +913,16 @@ def main(argv=None) -> int:
                    help="stop when this PID disappears; 0 = until done")
     p.add_argument("--nice", type=int, default=19, dest="nice_level",
                    help="self-lower OS priority by this much (default 19)")
+    # WHEN to tell someone -- the calculation's own policy, carried here from
+    # `task.json`'s `notify` block by the wrapper.  Neither flag says WHERE:
+    # the destination is the user's file on this machine (NOTIFY_FILE).
+    p.add_argument("--notify-on-scf", action="store_true",
+                   dest="notify_on_scf",
+                   help="notify when a geometry step completes (one SCF "
+                        "cycle reached its criterion)")
+    p.add_argument("--notify-every-hours", type=float, default=0.0,
+                   dest="notify_every_hours",
+                   help="notify every N hours; 0 = never (default)")
     a = p.parse_args(argv)
     try:
         os.nice(max(0, a.nice_level))
@@ -704,7 +933,9 @@ def main(argv=None) -> int:
                 interval=a.interval, watch_pid=a.watch_pid,
                 stall_heartbeat_s=a.stall_heartbeat_s,
                 util_path=a.util_path,
-                util_keepalive_s=a.util_keepalive_s)
+                util_keepalive_s=a.util_keepalive_s,
+                notify=NotifyPolicy(on_scf=a.notify_on_scf,
+                                    every_hours=a.notify_every_hours))
     return 0
 
 
@@ -716,6 +947,11 @@ __all__ = [
     "clear_notifiers",
     "make_webhook_notifier",
     "make_log_notifier",
+    "load_destination",
+    "NotifyPolicy",
+    "NOTIFY_FILENAME",
+    "default_notify_path",
+    "NOTIFY_TIMEOUT_S",
     "Notifier",
     "main",
 ]

@@ -391,6 +391,7 @@ its point count:
 | a parameter's value | `<label>.template.toml` | the template holds every parameter with the value in force |
 | a column, its cells, the shape, the id | `task.json` | what *changes* |
 | a machine-card setting — **any** point count | `task.json`'s `bench` | **an override lane on the template** *(user rule, 2026-08-20)*: several points = values to **try** (a bench axis); **one point = the value in force**, applied at prep as a pin — for the bench's trials and the run alike. Nothing migrates between files; the description stays exactly as edited, and prep is where a declaration is resolved (`generator.md` § 4.3a) |
+| a notify-card tick | `task.json`'s `notify` | **when this run should say something** — on each SCF convergence, every N hours, or neither; a run ending always reports and so is not offered. Portable in the way § 6.1 requires: *"tell me every six hours"* is true wherever the file is opened. **Where to send it is not written here and must not be** — a description travels, so the URL and its credential stay in the user's own config directory on the machine that runs the job |
 
 ```jsonc
 // task.json — molbuilder/task@1

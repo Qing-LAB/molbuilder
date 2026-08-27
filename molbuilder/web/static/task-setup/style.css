@@ -657,3 +657,37 @@
 .ts-prep-say { color: var(--text-secondary); font-size: var(--text-sm); }
 .ts-prep-say[data-state="bad"]  { color: var(--ts-refuse-fg); }
 .ts-prep-say[data-state="warn"] { color: var(--warn-soft); }
+
+/* ---- "Tell me how it is going" ------------------------------------- */
+/* A sibling of the queue card: this calculation's own asks, not the
+   machine's.  Rows are checkboxes because the triggers combine with OR --
+   either, both or neither is a valid policy. */
+.ts-notify-opts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    margin-top: var(--space-xs);
+}
+.ts-notify-opt {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+    cursor: pointer;
+}
+/* The box sits on the first LINE of a two-line label, not centred against
+   the whole block -- otherwise it drifts down beside the sub-line. */
+.ts-notify-opt > input[type="checkbox"] { margin-top: 0.25em; flex: none; }
+.ts-notify-sub {
+    display: block;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+.ts-notify-num {
+    width: 5rem;
+    padding: 0.15em 0.35em;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+}
+/* Where the messages go is machine setup, not a calculation's decision --
+   said quietly, because it is a pointer rather than a control. */
+.ts-notify-where { display: block; margin-top: var(--space-xs); }

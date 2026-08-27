@@ -98,6 +98,17 @@ class Resources:
     mpi_np:        Optional[int]   = None    # SLURM -n (MPI ranks)
     cpus_per_task: Optional[int]   = None    # SLURM -c (OMP cores/rank); == SiestaConfig.omp_threads
     continue_retries: Optional[int] = None   # NOT a SLURM flag -- baked into the wrapper
+    #: WHEN this calculation should say something -- also not a SLURM flag,
+    #: and here for the reason the paragraph above gives: this is the road a
+    #: field takes from a job to its wrapper, and the alternative is a second
+    #: hand-maintained one.  Set from `task.json`'s `notify` block at prep
+    #: (`plans/bench-and-junction-plan.md` § 2.9).
+    #:
+    #: WHERE to send it is deliberately absent: the destination and its
+    #: credential are the user's own file on the machine that runs the job,
+    #: because a description travels and a token must not travel with it.
+    notify_on_scf:      Optional[bool]  = None
+    notify_every_hours: Optional[float] = None
     max_memory_mb:    Optional[int] = None   # NOT a SLURM flag either -- `ulimit -v`
     #  ^ added 2026-08-11.  It is a MACHINE fact (how much memory one rank may
     #  take on this node), so it belongs to the allocation -- and until it lived

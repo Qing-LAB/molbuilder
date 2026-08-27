@@ -166,6 +166,46 @@
            and an element nothing fills is a promise the page does not keep. #}
       </section>
 
+      {# WHEN this run should tell you something.  A sibling of the queue
+         card and for the same reason (task-setup.md 6.1): "notify me every
+         six hours" is a decision about THIS calculation and true wherever
+         the file is opened, exactly as "try 4, 8, 16" is.
+
+         WHERE to send it is not here and must not be.  A description
+         travels -- to a cluster, into a handoff bundle, to whoever you hand
+         the calculation to -- so the destination and its credential stay in
+         the user's own ~/.molbuilder/notify on the machine that runs the
+         job.  This card sets policy; it never sees a token. #}
+      <section class="card" id="ts-notify-card" hidden>
+        <h2>Tell me how it is going</h2>
+        <p class="hint">A long run does not need watching. Tick what is
+          worth a message and it is written into this calculation's
+          description. <strong>A run ending always reports</strong> &mdash;
+          that is the whole point, so it is not a choice.
+          <span class="ts-notify-where">Where the messages go is set up once
+          per machine, in your own <code>~/.molbuilder/notify</code>; with no
+          such file nothing is sent and the run is unchanged.</span></p>
+
+        <div class="ts-notify-opts">
+          <label class="ts-notify-opt" for="ts-notify-scf">
+            <input type="checkbox" id="ts-notify-scf">
+            <span>Each time an SCF converges
+              <span class="ts-notify-sub">one message per geometry step;
+                a single point has just the one, at the end</span></span>
+          </label>
+          <label class="ts-notify-opt" for="ts-notify-hours">
+            <input type="checkbox" id="ts-notify-periodic">
+            <span>Every
+              <input class="ts-notify-num" id="ts-notify-hours" type="number"
+                     min="0.25" step="0.25" value="6" inputmode="decimal"
+                     aria-label="hours between messages"> hours
+              <span class="ts-notify-sub">a reassurance ping while it
+                grinds; nothing to do with the sampling interval</span></span>
+          </label>
+        </div>
+        <span class="ts-ask-note" id="ts-notify-note"></span>
+      </section>
+
       <section class="card" id="ts-stages-card" hidden>
         <h2>Stages</h2>
         <p class="hint">Rows are stages, columns are the parameters that vary.

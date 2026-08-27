@@ -579,6 +579,7 @@ async function loadFolder(projects, dir) {
                  + `needed: ${awaiting}. Saving writes task.json and removes `
                  + `this file.`);
         $("ts-stages-card").hidden = true;
+        { const c = $("ts-notify-card"); if (c) c.hidden = true; }
         // The machine rows are labelled from the SERVER's answer, so it has to
         // be here before they paint.  `loadSweepChoices` is memoised, so this
         // costs one fetch per engine per page-load, and nothing on repeat.
@@ -600,6 +601,7 @@ async function loadFolder(projects, dir) {
                  + "parameters here from the Structure-optimization tab, or "
                  + "run `molbuilder jobset init`.");
         $("ts-stages-card").hidden = true;
+        { const c = $("ts-notify-card"); if (c) c.hidden = true; }
         $("ts-machine-card").hidden = true;
         await setEditorText("");
         return;
@@ -614,6 +616,7 @@ async function loadFolder(projects, dir) {
         setState("refuse", "task.json is here but does not parse",
                  String(e && e.message ? e.message : e));
         $("ts-stages-card").hidden = true;
+        { const c = $("ts-notify-card"); if (c) c.hidden = true; }
         $("ts-machine-card").hidden = true;
         await setEditorText(taskText);
         return;
@@ -652,6 +655,10 @@ async function loadFolder(projects, dir) {
     // The card reflects the DESCRIPTION on open, so reopening a folder
     // shows what it already asks for instead of an empty card.
     readAsksFromTask(task);
+    readNotifyFromTask(task);
+    // Shown once there IS a description: the card writes into it, so with
+    // nothing open there is nothing for a tick to land in.
+    { const c = $("ts-notify-card"); if (c) c.hidden = false; }
     renderQueues();
     await setEditorText(taskText);
 }
@@ -2015,6 +2022,92 @@ function readAsksFromTask(task) {
     if (m) { m.value = a.mem || ""; delete m.dataset.mbAuto; }
 }
 
+/* ---------- when this run should tell you something ---------- */
+
+/** The policy as `task.json`'s `notify` block carries it.
+ *
+ * WHEN only.  Where to send it is the user's own file on the machine that
+ * runs the job, because a description travels and a token must not travel
+ * with it (`plans/bench-and-junction-plan.md` § 2.9).
+ *
+ * The triggers are independent -- checkboxes, not a picker -- so either,
+ * both or neither is a valid answer.  Finish is not among them: a run
+ * ending always reports, which is why it is not offered as a box.
+ */
+function notifyValues() {
+    const scf = $("ts-notify-scf");
+    const per = $("ts-notify-periodic");
+    const hrs = $("ts-notify-hours");
+    const out = {};
+    if (scf && scf.checked) out.on_scf_converged = true;
+    if (per && per.checked) {
+        const n = parseFloat((hrs || {}).value);
+        // A number, in HOURS, on both sides -- `task.py` refuses "6h" and a
+        // string, and it is right to: a value that changes meaning crossing
+        // a boundary is how "4h" reached sbatch as `-t 4h`.
+        if (isFinite(n) && n > 0) out.every_hours = n;
+    }
+    return out;
+}
+
+/** Write the policy INTO the open `task.json`, which is what save sends.
+ *
+ * Same rule as the queue card: the editor's text is the page's one source
+ * of truth, so a control holding its value beside it would be a second
+ * answer -- and the one that never reached disk.
+ *
+ * Absent-is-a-state, matching `task.Notify`: nothing ticked writes NO key,
+ * so a description that reports on nothing round-trips byte-identical.
+ */
+function applyNotifyToDoc() {
+    if (!_cm) return;
+    let task;
+    try {
+        task = JSON.parse(_cm.getValue());
+    } catch (e) {
+        return;              // mid-edit and unparseable; say nothing, lose nothing
+    }
+    if (!task || typeof task !== "object") return;
+    const want = notifyValues();
+    const had = JSON.stringify(task.notify || null);
+    if (Object.keys(want).length) task.notify = want;
+    else delete task.notify;
+    if (JSON.stringify(task.notify || null) === had) return;   // no-op
+    const cur = _cm.getCursor && _cm.getCursor();
+    _cm.setValue(JSON.stringify(task, null, 2) + "\n");
+    if (cur && _cm.setCursor) _cm.setCursor(cur);
+}
+
+/** Fill the card FROM the open description, so reopening a folder shows
+ *  what it already asks for rather than an empty card. */
+function readNotifyFromTask(task) {
+    const n = (task && task.notify) || {};
+    const scf = $("ts-notify-scf");
+    const per = $("ts-notify-periodic");
+    const hrs = $("ts-notify-hours");
+    if (scf) scf.checked = n.on_scf_converged === true;
+    const every = parseFloat(n.every_hours);
+    if (per) per.checked = isFinite(every) && every > 0;
+    // The box keeps its offered default when the description says nothing,
+    // so ticking the row does not first make the user think of a number.
+    if (hrs && isFinite(every) && every > 0) hrs.value = String(every);
+    paintNotifyNote();
+}
+
+/** One line saying what this calculation will actually send. */
+function paintNotifyNote() {
+    const note = $("ts-notify-note");
+    if (!note) return;
+    const v = notifyValues();
+    const parts = [];
+    if (v.on_scf_converged) parts.push("each SCF convergence");
+    if (v.every_hours) parts.push(`every ${v.every_hours} h`);
+    parts.push("and when it ends");
+    note.textContent = parts.length > 1
+        ? "Reports " + parts.slice(0, -1).join(", ") + " " + parts[parts.length - 1]
+        : "Reports only when it ends";
+}
+
 /** What a `prep` would resolve for the open folder, and from which file.
  *
  *  The block `prep` itself prints, served by the same producer -- a
@@ -2200,6 +2293,20 @@ function watchAskControls() {
             refreshSave();
         });
         el.addEventListener("change", () => { paintAskNotes(); applyAsksToDoc(); refreshSave(); });
+    }
+    // The notify card writes on `change` for the same reason the asks do:
+    // rewriting the document under a moving cursor is how an editor fights
+    // its user.  A number box also fires `change` on blur, which is when a
+    // half-typed "1" has become the "12" the person meant.
+    for (const id of ["ts-notify-scf", "ts-notify-periodic", "ts-notify-hours"]) {
+        const el = $(id);
+        if (!el || el.dataset.mbNotifyWired) continue;
+        el.dataset.mbNotifyWired = "1";
+        el.addEventListener("change", () => {
+            paintNotifyNote();
+            applyNotifyToDoc();
+            refreshSave();
+        });
     }
 }
 

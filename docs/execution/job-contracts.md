@@ -191,9 +191,14 @@ thing in that directory, and it has the narrowest job of all.
 the wrapper at low priority, follows the launcher's **PID** — so it knows
 authoritatively when the run ended, rather than guessing from output markers —
 parses the run's artifacts as they grow, and appends what it learns to a log
-beside them. It carries a **notifier hook** (`register_notifier`, or a webhook
-via `MB_NOTIFY_URL`), which is the deliberate customization point: what should
-happen when something notable occurs is the user's to decide, not molbuilder's.
+beside them. It carries a **notifier hook** — a destination the user configures in their own
+`$XDG_CONFIG_HOME/molbuilder/notify` (else `~/.config/molbuilder/notify`)
+(mode 0600; `MB_NOTIFY_URL` overrides it for a one-off),
+fired on the schedule the calculation states in `task.json`'s `notify` block.
+That is the deliberate customization point: what should happen when something
+notable occurs is the user's to decide, not molbuilder's — and so is how often,
+which is why the policy is a field of the description and the destination is a
+file that never travels with it.
 
 **That hook is why nobody has to be at the cluster.** A run that ends at 3am can
 say so.
@@ -1790,8 +1795,8 @@ concept, one name" framing here is the SLURM mapping, not a Python rename.)
 > the object; which of the two names it uses inside is its own business, and no
 > caller can pass a subset. Rule A9 checks the pair it produces.
 
-The `jobset.Resources` dataclass holds exactly **ten** fields — `domain`,
-`time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`, plus the three
+The `jobset.Resources` dataclass holds exactly **twelve** fields — `domain`,
+`time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`, plus the five
 riders that become no scheduler flag: `continue_retries` (the warm-retry
 budget, this table's last row), `max_memory_mb` (the wrapper's
 `ulimit -v` cap — the runtime guard against a runaway allocation, applied
@@ -1802,7 +1807,18 @@ GPU*, carried rather than re-derived. The wrapper depends on that answer
 `Diag.ELPA.GPU`** at four sites: a layer re-deriving what this object already
 held, and matching a SIESTA keyword to do it, so a PySCF GPU run could not
 route at all. It rides the allocation for the reason `continue_retries` does —
-*carried there, it cannot be forgotten by one of them.*).
+*carried there, it cannot be forgotten by one of them.*), and
+`notify_on_scf` / `notify_every_hours` (**added 2026-08-26** — WHEN this
+calculation should say something, read from the description's notify block at
+prep and rendered as flags on the wrapper's `mb_monitor.py` line, never as a
+scheduler directive. They ride here for the same reason again, and the
+reason is now three-for-three: the alternative is a second hand-maintained
+road from a job to its wrapper, and this one has already lost a field to a
+copied argument list twice. **WHERE to send it does not ride here and must
+not**: a wrapper is a file on disk in the run directory, copied into handoff
+bundles and readable by anyone who can see the filesystem, so the URL and its
+credential stay in the user's own config directory, mode 0600, on the
+machine that runs the job).
 *(This sentence said "exactly seven" while its own table already carried
 `continue_retries` — amended U19, 2026-08-12, and pinned by an equality
 test in both directions.)*  `partition` and `qos` are **not** `Resources`

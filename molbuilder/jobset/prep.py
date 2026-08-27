@@ -775,6 +775,12 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # not object by object: `--np 8` alone must not erase the file's
     # memory ask, which a whole-object override would do silently.
     allocation = _under_description(allocation, task.allocation)
+    # AND THE DESCRIPTION'S REPORTING POLICY, at the same seam and for the
+    # same reason: the file says when this calculation should speak up, so a
+    # prepped bundle needs no flag to know it.  A separate line rather than a
+    # third field on the helper above -- that one is about the ALLOCATION's
+    # precedence against a CLI flag, and notify has no flag to lose to.
+    allocation = _with_notify(allocation, task.notify)
     try:
         pset = resolve(template_path.read_text(encoding="utf-8"), task,
                        seam.config_cls, allocation=(allocation or Resources()),
@@ -1209,6 +1215,40 @@ def _under_description(flags, declared) -> "Resources":
                       ("mem", declared.mem)):
         if val and getattr(out, name, None) in (None, ""):
             patch[name] = val
+    return _dc.replace(out, **patch) if patch else out
+
+
+def _with_notify(flags, declared) -> "Resources":
+    """The description's `notify` block, onto the allocation that reaches
+    the wrapper.
+
+    Not an allocation and not a scheduler flag -- it rides ``Resources``
+    because that is the road from a job to its wrapper, the one
+    ``continue_retries`` already rides (`jobset/model.Resources`).  There is
+    no ``--notify-*`` flag today, so in practice the description is the only
+    voice.
+
+    **FIELD BY FIELD ANYWAY**, for the reason the function above it states:
+    a whole-object copy makes a description that sets only the period erase
+    a caller's SCF trigger, which is the same silent loss as `--np 8`
+    erasing a memory ask.  Written whole first, and it did exactly that --
+    `Resources(notify_on_scf=True)` under `Notify(every_hours=6)` came back
+    with the trigger gone.  Nothing sets these from outside yet; the point
+    is that the shape cannot start losing values the day something does.
+
+    An empty block leaves the fields ``None``, which the wrapper renders as
+    no flags at all -- the feature stays off for everyone who has not asked
+    for it.
+    """
+    out = flags or Resources()
+    if not declared:
+        return out
+    import dataclasses as _dc
+    patch = {}
+    if declared.on_scf_converged and out.notify_on_scf is None:
+        patch["notify_on_scf"] = True
+    if declared.every_hours and out.notify_every_hours is None:
+        patch["notify_every_hours"] = declared.every_hours
     return _dc.replace(out, **patch) if patch else out
 
 

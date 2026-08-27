@@ -84,7 +84,15 @@ class ResolveError(Exception):
 #: A rider lands on the VALUES, and `resolve` copies it onto the allocation
 #: afterwards -- which is how one value legitimately reaches both the deck and
 #: the wrapper without being two facts.
-_RIDERS: Tuple[str, ...] = ("continue_retries", "use_gpu")
+#: ``notify_*`` join them for the same reason ``continue_retries`` did: they
+#: ride ``Resources`` to reach the wrapper, and they name no machine.  They
+#: differ from both standing examples in where they come from -- not the
+#: template's values but the DESCRIPTION's own `notify` block, applied at the
+#: same seam as `task.allocation` -- so nothing resolves them and nobody
+#: sweeps them.  Listed here so `ALLOCATION_FIELDS` keeps meaning *the
+#: machine axes*, which is the question that list actually answers.
+_RIDERS: Tuple[str, ...] = ("continue_retries", "use_gpu",
+                            "notify_on_scf", "notify_every_hours")
 
 ALLOCATION_FIELDS: Tuple[str, ...] = tuple(
     f.name for f in dataclasses.fields(Resources) if f.name not in _RIDERS)

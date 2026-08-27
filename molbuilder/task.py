@@ -86,8 +86,9 @@ STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 _TOP_KEYS = ("schema", "engine", "shape", "run",
              "structure", "varies", "stages", "calculation", "bench",
-             "allocation")
+             "allocation", "notify")
 _ALLOCATION_KEYS = ("domain", "time", "mem")
+_NOTIFY_KEYS = ("on_scf_converged", "every_hours")
 _RUN_KEYS = ("name", "id", "created")
 _STRUCTURE_KEYS = ("source", "formula", "atoms")
 
@@ -164,6 +165,39 @@ class Allocation:
 
     def __bool__(self) -> bool:
         return bool(self.domain or self.time or self.mem)
+
+
+@dataclass(frozen=True)
+class Notify:
+    """**WHEN this calculation should say something** — and deliberately
+    nothing about *where*.
+
+    The destination and its credential live on the machine that runs the job
+    (``$XDG_CONFIG_HOME/molbuilder/notify``, else
+    ``~/.config/molbuilder/notify``; mode 0600) and never here.  This file travels:
+    to a cluster, into a handoff bundle, to whoever you hand the calculation
+    to.  **A policy is safe to carry; a token is not**, and the split is what
+    lets the rest of the record stay shareable.
+
+    Finish is not a field.  A run ending — cleanly or not — always notifies if
+    a destination is configured at all, because that is the reason the hook
+    exists: nobody has to be at the cluster at 3am.  What is settable is the
+    noise *before* then.
+
+    **Absent-is-a-state**, like :class:`Allocation`: an empty block writes no
+    key, and every description written before 2026-08-26 says exactly what it
+    always said by omitting it.  Absent also means the feature is off — no
+    default cadence is invented on anyone's behalf.
+    """
+    #: Fire when an SCF cycle reaches its criterion — once in a single point,
+    #: once per geometry step in a relaxation.
+    on_scf_converged: bool = False
+    #: Fire every N hours.  ``0`` is off; HOURS, because the point of this is
+    #: reassurance over a long run, not a live feed.
+    every_hours: float = 0.0
+
+    def __bool__(self) -> bool:
+        return bool(self.on_scf_converged or self.every_hours > 0)
 
 
 @dataclass(frozen=True)
@@ -247,6 +281,12 @@ class Task:
     #: be told every time -- which is what makes a prepped bundle carry
     #: everything its launch needs.
     allocation: "Allocation" = field(default_factory=lambda: Allocation())
+
+    #: WHEN this calculation should say something (:class:`Notify`).  The
+    #: policy only -- the destination and its credential stay on the machine
+    #: that runs the job, because this file travels and a token must not.
+    #: Absent-is-a-state: an empty one writes no key and means "off".
+    notify: "Notify" = field(default_factory=lambda: Notify())
 
     #: § 6.8 -- WHAT TO MEASURE before committing: field name -> the points to
     #: try.  Empty means no benchmark is planned, which is what every
@@ -546,7 +586,8 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     # no-stages case above, which § 6.5 spells by omitting both keys.)
     return Task(engine=engine, shape=shape, run=run, structure=structure,
                 varies=varies, stages=stages, calculation=calc, bench=bench,
-                allocation=_allocation_from_obj(obj))
+                allocation=_allocation_from_obj(obj),
+                notify=_notify_from_obj(obj))
 
 
 def _bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
@@ -633,6 +674,46 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
     return Allocation(domain=str(raw.get("domain") or ""),
                       time=_canon(canonical_time, "time"),
                       mem=_canon(canonical_mem, "mem"))
+
+
+def _notify_from_obj(obj: Mapping[str, Any]) -> "Notify":
+    """``notify`` -> :class:`Notify`; absent is an empty one, which is off.
+
+    Both fields are refused by TYPE rather than coerced.  ``"true"`` is not
+    a boolean and ``"6"`` is not a number, and silently accepting either
+    would make a file that reads one way and behaves another -- the class
+    it belongs to exists precisely so a person can look at the record and
+    know what their job will do.
+
+    A negative or non-finite ``every_hours`` is refused too: there is no
+    reading of "notify me every minus two hours", and letting it through
+    would arm a timer that fires on every pass.
+    """
+    raw = obj.get("notify")
+    if raw is None:
+        return Notify()
+    if not isinstance(raw, Mapping) or not raw:
+        _refuse("'notify' is present but not a non-empty object. Omit the "
+                "key entirely when nothing should be reported -- absent and "
+                "empty would be two spellings of one state")
+    _check_keys(raw, _NOTIFY_KEYS, where="notify")
+
+    scf = raw.get("on_scf_converged", False)
+    if not isinstance(scf, bool):
+        _refuse(f"notify.on_scf_converged must be true or false, not "
+                f"{type(scf).__name__} -- write a JSON boolean, not a string")
+
+    hours = raw.get("every_hours", 0.0)
+    if isinstance(hours, bool) or not isinstance(hours, (int, float)):
+        _refuse(f"notify.every_hours must be a number of HOURS, not "
+                f"{type(hours).__name__} -- write 6, not \"6\" or \"6h\"")
+    hours = float(hours)
+    if hours != hours or hours in (float("inf"), float("-inf")):
+        _refuse("notify.every_hours must be a finite number of hours")
+    if hours < 0:
+        _refuse(f"notify.every_hours cannot be negative (got {hours}) -- "
+                f"use 0, or omit the key, to report on nothing but the end")
+    return Notify(on_scf_converged=scf, every_hours=hours)
 
 
 def _stage_from_obj(obj: Mapping[str, Any], varies: Tuple[str, ...],
@@ -785,6 +866,10 @@ def _task_to_dict(task: Task) -> dict:
             k: v for k, v in (("domain", task.allocation.domain),
                               ("time", task.allocation.time),
                               ("mem", task.allocation.mem)) if v}
+    if task.notify:
+        out["notify"] = {
+            k: v for k, v in (("on_scf_converged", task.notify.on_scf_converged),
+                              ("every_hours", task.notify.every_hours)) if v}
     if task.stages:
         out["varies"] = list(task.varies or ())
         out["stages"] = [{"name": s.name, "enabled": s.enabled,

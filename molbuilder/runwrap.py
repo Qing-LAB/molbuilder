@@ -1826,6 +1826,18 @@ def render_run_wrapper(script_path: Path, *,
     mpi_np, omp_threads = r.mpi_np, r.cpus_per_task
     max_memory_mb, continue_retries = (r.max_memory_mb,
                                        r.continue_retries)
+    # WHEN this calculation should speak up -- carried on the allocation
+    # like `continue_retries`, and rendered as monitor flags rather than
+    # scheduler ones.  Absent means the flags are not emitted at all, so a
+    # wrapper for a description that asked for nothing looks exactly as it
+    # did before this existed.
+    # Read straight off the object, not via getattr-with-a-default: this
+    # function is typed for `Resources` and a defaulting read would turn a
+    # field that went missing into a wrapper that silently stops notifying.
+    # That failure -- a field lost between a job and its wrapper -- is the
+    # one this module has already had twice.
+    notify_on_scf = bool(r.notify_on_scf)
+    notify_every_hours = float(r.notify_every_hours or 0.0)
     script_path = Path(script_path)
     suffix = script_path.suffix.lower()
     category = EXTENSION_TO_CATEGORY.get(suffix)
@@ -3375,7 +3387,10 @@ def render_run_wrapper(script_path: Path, *,
             f'--util "{basename}.util.csv" '
             f'--interval "${{MB_MONITOR_INTERVAL:-10}}" '
             f'--stall-heartbeat "${{MB_MONITOR_STALL_HEARTBEAT:-600}}" '
-            f'--watch-pid $$ >/dev/null 2>&1 &\n'
+            + (f'--notify-on-scf ' if notify_on_scf else "")
+            + (f'--notify-every-hours {notify_every_hours:g} '
+               if notify_every_hours > 0 else "")
+            + f'--watch-pid $$ >/dev/null 2>&1 &\n'
             f'    _monitor_pid=$!\n'
             f'    _log INFO "monitor: pid=$_monitor_pid (nice 19, interval '
             f'${{MB_MONITOR_INTERVAL:-10}}s, quiet-when-stalled, util-sampling, '
@@ -3772,6 +3787,22 @@ def render_run_wrapper(script_path: Path, *,
     )
 
 
+def _config_dir_source() -> str:
+    """`config_dir.py`'s source, to travel beside the monitor.
+
+    Read rather than restated, for the reason its own test gives: three
+    modules once spelled this rule independently and two said so in prose --
+    *"a comment is not a mechanism"*.  The module is eight lines of stdlib
+    with no molbuilder imports, which is what lets it ship.
+    """
+    from . import config_dir as _cd
+    try:
+        return Path(_cd.__file__).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise WrapperError(
+            f"could not read the config-dir source to ship: {exc}") from None
+
+
 def _monitor_source() -> str:
     """The stdlib-only monitor's source, to travel beside a SIESTA job.
 
@@ -3883,6 +3914,13 @@ def render_wrappers(script_path: Path, *,
     # under the job's own python (`running-a-job.md` § 4.1).
     if script_path.suffix.lower() == ".fdf":
         files.append(("mb_monitor.py", _monitor_source()))
+        # AND THE RULE IT NEEDS, RATHER THAN A COPY OF IT.  The monitor
+        # reads its destination from molbuilder's config directory, and
+        # `tests/test_config_dir_has_one_home.py` allows exactly one module
+        # to spell that rule -- `config_dir.py`.  A file that ships alone
+        # cannot import it from an installed package, so the module itself
+        # travels: one definition, in one file, on both machines.
+        files.append(("config_dir.py", _config_dir_source()))
 
     # The submission layer (`job-system.md` § 6): a ``.sbatch`` only when the
     # machine has a queue.  Resolving its header values lives here because only
