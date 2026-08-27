@@ -777,7 +777,8 @@ def sign_report(key: str, timestamp: str, body: bytes) -> str:
 
 def make_webhook_notifier(url: str, *,
                           key: Optional[str] = None,
-                          headers: Optional[Dict[str, str]] = None
+                          headers: Optional[Dict[str, str]] = None,
+                          ident: Optional[Dict[str, str]] = None
                           ) -> Notifier:
     """A stdlib webhook notifier: POSTs ``event`` + the status summary to
     ``url`` as JSON.  Best-effort, short timeout, never raises out.
@@ -798,6 +799,12 @@ def make_webhook_notifier(url: str, *,
     """
     def _hook(status: JobStatus, event: str) -> None:
         body = json.dumps({
+            # WHO AND WHERE, first, so a line is self-contained: run label,
+            # scheduler job id, host.  `sent_at` is the SENDER's clock --
+            # the listener stamps its own arrival separately, and when they
+            # disagree that is itself worth seeing.
+            **(ident or {}),
+            "sent_at":    round(time.time(), 3),
             "event":      event,
             "text":       status.as_text(),
             # Slack and Discord both render a bare "text" field, so the
@@ -826,7 +833,49 @@ def make_webhook_notifier(url: str, *,
     return _hook
 
 
-def _install_env_notifiers(log: Optional[Path] = None) -> None:
+def run_identity(out: Optional[Path] = None) -> Dict[str, str]:
+    """Who this report is ABOUT — gathered once, sent on every line.
+
+    **A report with no identity is a result you cannot use.**  Until
+    2026-08-27 a line read *"scf_converged, energy -1740.2"* and nothing
+    said which calculation, on which machine, or when it was sent.  With
+    two jobs running, the lines were indistinguishable; with two clusters,
+    worse.  These reports are a record of COMPUTATION, not of molbuilder's
+    own health, so every line has to stand on its own -- somebody will
+    parse this file a year from now with no session to ask.
+
+    ``run`` is the **label** in `run-identity.md`'s sense: *"the label = the
+    SystemLabel literal = the stem of every file"*, so the ``.out`` this
+    monitor was pointed at already carries it.  ``-runN`` is a per-attempt
+    suffix the wrapper adds and is stripped, because the label names the
+    calculation and not the attempt.
+
+    Everything is best-effort: an identity that cannot be gathered must
+    never stop a run reporting.  A missing field is simply absent, which a
+    reader can tell from a wrong one.
+    """
+    ident: Dict[str, str] = {}
+    if out is not None:
+        stem = Path(out).name
+        for suffix in (".out", ".log"):
+            if stem.endswith(suffix):
+                stem = stem[: -len(suffix)]
+        stem = re.sub(r"-run\d+$", "", stem)
+        if stem:
+            ident["run"] = stem[:200]
+    for key, var in (("job", "SLURM_JOB_ID"), ("array", "SLURM_ARRAY_TASK_ID")):
+        v = os.environ.get(var)
+        if v:
+            ident[key] = str(v)[:64]
+    try:
+        ident["host"] = os.uname().nodename[:128]
+    except (AttributeError, OSError):
+        pass
+    return ident
+
+
+def _install_env_notifiers(log: Optional[Path] = None,
+                           ident: Optional[Dict[str, str]] = None) -> None:
     """Register the user's notifier, if they configured one.
 
     ``MB_NOTIFY_URL`` wins when set -- an explicit environment override is
@@ -855,12 +904,13 @@ def _install_env_notifiers(log: Optional[Path] = None) -> None:
         # 2026-08-27; the override was written when the listener took a
         # bearer token in a header.)
         register_notifier(make_webhook_notifier(
-            url, key=os.environ.get("MB_NOTIFY_KEY") or None))
+            url, key=os.environ.get("MB_NOTIFY_KEY") or None, ident=ident))
         return
     dest = load_destination(log=log)
     if dest:
         register_notifier(make_webhook_notifier(
-            dest["url"], key=dest.get("key"), headers=dest["headers"]))
+            dest["url"], key=dest.get("key"), headers=dest["headers"],
+            ident=ident))
 
 
 # --------------------------------------------------------------------- #
@@ -939,7 +989,7 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
     """
     out, timing, log = Path(out), Path(timing), Path(log)
     start = clock() if start_epoch is None else start_epoch
-    _install_env_notifiers(log)
+    _install_env_notifiers(log, run_identity(out))
 
     st0 = parse_status(out, timing, start, clock())
     _append(log, f"[{_iso(clock())}] [MONITOR] start "

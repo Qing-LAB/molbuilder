@@ -409,6 +409,11 @@ class Prediction:
     nodes:   Optional[str] = None
     procs:   Optional[int] = None
     refused: Optional[str] = None
+    #: There was no scheduler to ask.  A separate flag rather than a
+    #: sniffable string, because the reply is a different SENTENCE -- not
+    #: "the queue could not say", but "there is no queue".  A workstation
+    #: is not a cluster having a bad day.
+    no_scheduler: bool = False
 
 
 def parse_test_only(text: str) -> Prediction:
@@ -440,6 +445,14 @@ def prediction_table(preds: Sequence[Prediction]) -> str:
     """
     if not preds:
         return "nothing to ask about."
+    # NO SCHEDULER AT ALL -- a different answer, not an empty table.  The
+    # header would say "asked the scheduler" when none was asked, and the
+    # footer would offer to change --domain, which means nothing here.
+    if all(p.no_scheduler for p in preds):
+        return ("there is no scheduler on this machine, so there is nothing "
+                "to wait for.\n"
+                "  it runs the job directly -- `--mode direct` does that, "
+                "and starts immediately.")
     head = f"  {'job':<16} {'would start':<22} {'on':<16} procs"
     lines = ["asked the scheduler (nothing was submitted):", head]
     for p in preds:

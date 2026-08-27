@@ -59,7 +59,8 @@ def store(tmp_path, monkeypatch):
                              "notify_route": ROUTE})
     from molbuilder.web.blueprints import notify as N
     N._loggers.clear()          # rotating handlers are cached per user
-    return app.test_client(), tmp_path / ".molbuilder/logs/notify"
+    N._recent.clear()           # and so is the per-key rate window
+    return app.test_client(), tmp_path / ".molbuilder/reports"
 
 
 def _post(client, key=KEY, body=None, raw=None, path=PATH, ts=None, sig=None):
@@ -123,6 +124,163 @@ def test_no_fixed_notify_path_exists_anywhere_in_the_source():
 # --------------------------------------------------------------------- #
 #  gate 2 + 4: a wrong guess is indistinguishable from nothing           #
 # --------------------------------------------------------------------- #
+
+def test_results_are_stored_apart_from_molbuilders_own_LOGS(store):
+    """User, 2026-08-27: *this is a different kind of log, not of the status
+    of molbuilder but collection of computation results.*
+
+    `~/.molbuilder/logs/` is diagnostics — you read it when something is
+    wrong and delete it when it is fixed. These are measurements from
+    calculations, the kind you keep and grep a year later. Filing them
+    together invited exactly one mistake: treating results as disposable.
+    """
+    client, reports = store
+    _post(client)
+    assert reports.name == "reports"
+    assert "logs" not in reports.parts, \
+        "results were filed under molbuilder's own operational logs"
+    assert (reports / f"{USER}.jsonl").exists()
+
+
+def test_a_stored_line_stands_on_its_own(store):
+    """*Each line should be self-contained with all key information,
+    something that can be parsed easily.*
+
+    A line used to read `{"event": "scf_converged", "energy": "-1740.2"}`
+    and nothing said WHICH calculation, on WHAT machine, or WHEN it was
+    sent. With two jobs running the lines were indistinguishable. Somebody
+    parses this file later with no session to ask.
+    """
+    client, reports = store
+    from molbuilder import monitor as M
+    ident = M.run_identity("BDT_Au_relax-run0.out")
+    body = {**ident, "sent_at": 1756000000.5, "event": "scf_converged",
+            "state": "running", "n_iters": 7, "energy": "-1740.21",
+            "geom_step": 3, "elapsed_s": 1234.5}
+    assert _post(client, body=body).status_code == 200
+    line = _lines(reports)[0]
+    assert line["run"] == "BDT_Au_relax", "the label names the calculation"
+    assert line["host"], "which machine"
+    assert line["user"] == USER, "whose, in the LINE and not only the filename"
+    assert line["v"] == 1, "which shape, for a reader a year from now"
+    assert line["sent_at"] == 1756000000.5, "the sender's clock"
+    assert line["received_at"] >= line["sent_at"], "and ours, beside it"
+    assert line["energy"] == "-1740.21" and line["n_iters"] == 7
+
+
+def test_the_user_is_STAMPED_never_accepted(store):
+    """The key is the claim. A payload that names a user must not become
+    one, or a valid key could write into somebody else's record."""
+    client, reports = store
+    _post(client, body={"event": "tick", "user": "somebody-else"})
+    assert _lines(reports)[0]["user"] == USER
+
+
+def test_a_report_is_readable_line_by_line_with_no_parser_of_ours(store):
+    """JSON Lines, so `jq` and `pandas` both read it directly. A string
+    containing newlines must not become two records."""
+    client, reports = store
+    _post(client, body={"event": "tick", "text": "a\nb\nc"})
+    raw = (reports / f"{USER}.jsonl").read_text()
+    assert len(raw.strip().splitlines()) == 1
+    assert json.loads(raw.strip())["text"] == "a\nb\nc"
+
+
+def test_a_valid_key_cannot_flood_the_record(store):
+    """User, 2026-08-27: *we should have a rate-limit on the notify port
+    too.*
+
+    `rate_limit.py` bounds FAILURES — its 404-storm signal counts 4xx — and
+    its total-request threshold ships disabled. So a valid key could POST
+    without bound. **The harm is not the disk**: the record rotates at
+    1 MB × 5, so a flood would silently push a run's real reports out of
+    the window. A cap is what keeps the results the results.
+    """
+    from molbuilder.web.blueprints.notify import MAX_REPORTS_PER_MIN
+    client, reports = store
+    ok = sum(1 for _ in range(MAX_REPORTS_PER_MIN)
+             if _post(client).status_code == 200)
+    assert ok == MAX_REPORTS_PER_MIN, "a legitimate burst was cut short"
+    assert _post(client).status_code == 404, "the cap did not engage"
+    assert len(_lines(reports)) == MAX_REPORTS_PER_MIN
+
+
+def test_the_cap_is_per_KEY_not_per_address(store, tmp_path):
+    """A cluster NATs every compute node behind one address, so a per-IP cap
+    would punish somebody running several jobs for using the machine they
+    were given."""
+    from molbuilder.web.blueprints import notify as N
+    client, _ = store
+    N._recent.clear()
+    for _ in range(N.MAX_REPORTS_PER_MIN):
+        _post(client)
+    assert _post(client).status_code == 404
+    # a different key, same client address, is unaffected
+    N._recent.pop(USER, None)
+    assert _post(client).status_code == 200
+
+
+def test_a_capped_report_answers_404_like_every_other_refusal(store):
+    """Answering differently would say *this key is valid, you are merely
+    early* — exactly what the other gates exist to withhold."""
+    from molbuilder.web.blueprints import notify as N
+    client, _ = store
+    N._recent.clear()
+    for _ in range(N.MAX_REPORTS_PER_MIN):
+        _post(client)
+    r = _post(client)
+    assert r.status_code == 404
+    assert b"limit" not in r.get_data().lower()
+    assert b"rate" not in r.get_data().lower()
+
+
+def test_the_cap_is_a_WINDOW_not_a_lifetime_quota(store, monkeypatch):
+    """**Found by mutation, 2026-08-27.** Deleting the trim passed all 52
+    tests: the deque stops growing at the cap either way, so the
+    memory-bound test could not tell the difference.
+
+    What the trim actually buys is RECOVERY — without it a monitor that
+    once burst past the cap is refused for the life of the process, and
+    silently, because a notifier swallows failures. A run would simply stop
+    reporting and never start again.
+    """
+    from molbuilder.web.blueprints import notify as N
+    client, reports = store
+    N._recent.clear()
+
+    now = [1_000_000.0]
+    monkeypatch.setattr(N.time, "time", lambda: now[0])
+    for _ in range(N.MAX_REPORTS_PER_MIN):
+        assert _post(client).status_code == 200
+    assert _post(client).status_code == 404, "the cap did not engage"
+
+    now[0] += N._RATE_WINDOW_S + 1        # the minute passes
+    assert _post(client).status_code == 200, \
+        "the window never reopened -- one burst silenced the run for good"
+
+
+def test_the_window_memory_is_bounded_by_the_CAP_not_the_traffic(store):
+    """A flood must not become a way to spend the server's RAM instead of
+    its disk."""
+    from molbuilder.web.blueprints import notify as N
+    client, _ = store
+    N._recent.clear()
+    for _ in range(N.MAX_REPORTS_PER_MIN + 40):
+        _post(client)
+    assert len(N._recent[USER]) <= N.MAX_REPORTS_PER_MIN
+
+
+def test_results_are_not_world_readable(store):
+    """The KEY file was always 0600; the DATA it protects was 0664 in an
+    0775 directory, inheriting the umask — the wrong way round on a shared
+    server."""
+    import stat
+    client, reports = store
+    _post(client)
+    f = reports / f"{USER}.jsonl"
+    assert stat.S_IMODE(f.stat().st_mode) == 0o600
+    assert stat.S_IMODE(reports.stat().st_mode) == 0o700
+
 
 def test_the_wrong_segment_is_a_plain_404(store):
     client, log_root = store
@@ -223,15 +381,22 @@ def test_a_valid_signature_is_accepted_and_the_report_is_kept(store):
 
 
 def test_the_sender_never_states_who_it_is(store):
-    """**The key is the claim.** There is no user field to send, so one
-    person's key cannot write into another's record — which is the point of
-    issuing one each, and what lets one be revoked alone."""
-    client, log_root = store
+    """**The key is the claim.** One person's key cannot write into
+    another's record — the point of issuing one each, and what lets one be
+    revoked alone.
+
+    The line *does* carry a `user` field since 2026-08-27, so that a record
+    pasted somewhere else still says whose it is. It is **stamped from the
+    key that verified**, never read from the payload, so the property is
+    unchanged and the mechanism is now visible in the line.
+    """
+    client, reports = store
     _post(client, body={"event": "tick", "user": "someone-else", "text": "hi"})
-    kept = _lines(log_root)
-    assert len(kept) == 1 and "user" not in kept[0]
-    assert (log_root / f"{USER}.jsonl").exists()
-    assert not (log_root / "someone-else.jsonl").exists()
+    kept = _lines(reports)
+    assert len(kept) == 1
+    assert kept[0]["user"] == USER, "a payload field became an identity"
+    assert (reports / f"{USER}.jsonl").exists()
+    assert not (reports / "someone-else.jsonl").exists()
 
 
 def test_every_key_is_tried_with_no_early_exit(store, tmp_path):

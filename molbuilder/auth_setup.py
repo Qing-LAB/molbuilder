@@ -86,10 +86,15 @@ def write_secret_file(path: Path, contents: str) -> None:
 
     Creates parent dirs with mode 0700 if missing.  Refuses to write
     an empty secret (defense against accidentally truncating a real
-    one with a placeholder).  Uses os.open(O_CREAT | O_TRUNC | O_WRONLY,
-    0o600) so the file's first byte is written with the right perms --
-    a write-then-chmod sequence has a window where the file is
-    world-readable.
+    one with a placeholder).
+
+    **The mode is set on the descriptor before the first byte**, so there
+    is no window where the content exists at looser permissions.  This
+    docstring claimed that property from the start and the code did not
+    have it: the ``0o600`` argument to ``os.open`` applies to a newly
+    created inode only, so overwriting an existing loose file wrote the
+    secret at the OLD mode and tightened it afterwards.  Measured and fixed
+    2026-08-27 -- see the comment below.
     """
     if not contents:
         raise ValueError(
@@ -105,22 +110,25 @@ def write_secret_file(path: Path, contents: str) -> None:
         os.chmod(parent, 0o700)
     except OSError:
         pass
-    # Atomic-ish create: open with 0600 + write + close.  If a file
-    # already exists at the path with looser perms, this overwrites it
-    # AND tightens the perms in one step (O_TRUNC + the mode arg).
-    fd = os.open(
-        str(path),
-        os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-        0o600,
-    )
+    # The mode argument to os.open applies to a NEWLY CREATED inode only.
+    # Overwriting a file that already exists with looser permissions left
+    # it loose -- and the sequence was open, WRITE, close, chmod, so the
+    # secret was on disk at the old mode for the length of the write.
+    # Measured 2026-08-27 on a 0644 file: the bytes landed at 0644 and were
+    # tightened afterwards.  A small window, but a real one, and every
+    # secret this module writes went through it.
+    #
+    # fchmod on the open descriptor closes it: the mode is right before any
+    # content exists.  O_NOFOLLOW refuses a symlink planted at the path --
+    # the parent is 0700 so only the owner could plant one, but "the owner
+    # would not" is not a mechanism.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(str(path), flags, 0o600)
     try:
+        os.fchmod(fd, 0o600)              # BEFORE the first byte
         os.write(fd, contents.encode("utf-8"))
     finally:
         os.close(fd)
-    # Belt-and-braces: an existing file's mode isn't changed by the
-    # mode arg to os.open (the mode arg only applies to newly-created
-    # inodes), so chmod here covers the overwrite case.
-    os.chmod(path, 0o600)
 
 
 # --------------------------------------------------------------------- #

@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -226,6 +227,18 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
             # rest of the line is untouched: the whole point is that the
             # question is about the command that would actually be sent.
             cmd = [cmd[0], "--test-only"] + cmd[1:]
+            # NO SCHEDULER HERE IS AN ANSWER, NOT AN ERROR.  On a
+            # workstation there is nothing to queue behind, so the honest
+            # reply is "nothing to wait for" -- and `subprocess.run` would
+            # otherwise raise FileNotFoundError and traceback, which is a
+            # poor way to learn that your laptop is not a cluster.
+            if shutil.which(cmd[0]) is None:
+                from .ask import Prediction
+                results.append(JobResult(
+                    job.name, cmd, "asked",
+                    prediction=Prediction(no_scheduler=True,
+                                          refused="no scheduler here")))
+                continue
 
         if dry_run:
             results.append(JobResult(job.name, cmd, "planned"))
@@ -237,10 +250,25 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
                 "did, no scheduler is configured -- submit mode needs one "
                 "(add a scheduler block to .molbuilder.json, or use "
                 "--mode direct).")
-        cp = subprocess.run(cmd, cwd=str(job_dir),
-                            capture_output=True, text=True,
-                            env={**os.environ,
-                                 "MB_LAUNCHED_BY": "jobset-launch"})
+        try:
+            cp = subprocess.run(cmd, cwd=str(job_dir),
+                                capture_output=True, text=True,
+                                env={**os.environ,
+                                     "MB_LAUNCHED_BY": "jobset-launch"})
+        except OSError as exc:
+            # `sbatch` vanished between the check above and here, or is not
+            # executable.  A submission must fail loudly; an ASK reports it
+            # as the answer, because "I could not reach the scheduler" is
+            # what the person asked about.
+            if not ask:
+                raise SubmitError(
+                    f"job {job.name!r}: could not run {cmd[0]!r} ({exc})")
+            from .ask import Prediction
+            results.append(JobResult(job.name, cmd, "asked",
+                                     prediction=Prediction(
+                                         refused=f"could not run "
+                                                 f"{cmd[0]!r}: {exc}")))
+            continue
         if ask:
             # NOTHING WAS SUBMITTED, so nothing is recorded: a launch record
             # says a job exists, and after this one does not.  A non-zero

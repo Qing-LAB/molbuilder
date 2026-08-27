@@ -219,6 +219,52 @@ because the log is rendered in a browser and an open-ended blob is an
 open-ended rendering problem — strings length-capped, and a user id
 constrained to what is safe as a **filename**, since that is what it becomes.
 
+### 4.1a Where the results go, and what one line holds
+
+**`~/.molbuilder/reports/<user>.jsonl` — `reports/`, not `logs/`.** The
+distinction is the point: `~/.molbuilder/logs/` is molbuilder's own
+operational output, the kind you read when something is wrong and delete when
+it is fixed. **These are measurements from calculations** — energies,
+iteration counts, when a relaxation step landed. You keep them, grep them a
+year later, and plot them. Filing them under `logs/` invited exactly one
+mistake: treating results as disposable.
+
+One file per user, **JSON Lines**, so `jq` and `pandas` read it directly with
+no parser of ours in the middle. Mode `0600` in a `0700` directory — the key
+file was always `0600` and the data it protects was not, which was the wrong
+way round on a shared server.
+
+**Every line stands on its own.** A line used to read `{"event":
+"scf_converged", "energy": "-1740.2"}` and nothing said *which* calculation,
+on *what* machine, or *when* it was sent — two jobs running produced
+indistinguishable records. Somebody parses this file later with no session to
+ask, so:
+
+```json
+{"v": 1, "user": "qqing@asu.edu", "run": "BDT_Au_relax", "job": "62238108",
+ "host": "sg013", "event": "scf_converged", "sent_at": 1756000000.5,
+ "received_at": 1756000000.8, "state": "running", "elapsed_s": 1234.5,
+ "n_iters": 7, "energy": "-1740.21", "geom_step": 3, "per_iter_s": 12.8}
+```
+
+| field | where it comes from |
+|---|---|
+| `run` | the **label** (`run-identity.md` § 2 — *the stem of every file*), taken off the `.out` the monitor watches, `-runN` stripped |
+| `job`, `host` | `SLURM_JOB_ID` and the node's own name |
+| `sent_at` / `received_at` | the sender's clock and ours. **Both**, because when they disagree that is itself worth seeing |
+| `user` | **stamped from the key that verified**, never read from the payload — there is no user field to send |
+| `v` | the record's shape, so a reader a year from now does not infer it from which keys happen to be present |
+
+Anything the monitor could not determine is simply **absent**, which a reader
+can tell from a wrong value.
+
+**A volume cap, per key.** Sixty reports a minute — generous by orders of
+magnitude against a monitor that speaks on convergence, every N hours, and
+once at the end. It is not about disk: the record rotates at 1 MB × 5, so an
+unbounded flood would **silently push a run's real reports out of the
+window**. The cap is what keeps the results the results. It is a rolling
+window, not a quota: a burst costs a minute, never the rest of the run.
+
 ### 4.2 What someone probing this actually gets
 
 Read downwards: each row assumes everything above it already went the
@@ -232,6 +278,7 @@ attacker's way.
 | captures a report in flight | one signature, useless | TLS is in front; and a signature covers **one body**. They cannot alter a field, cannot mint a new report, and a replay only adds a duplicate line to a capped, rotating log |
 | **steals the cluster's `notify` file** | writes reports as that one user | bounded by append-only: no project is touched, no job starts, stops or changes. Revocation is one line out of the server's key file and disturbs nobody else |
 | **steals the server's key file** | forges reports as **any** user | the one attack this does not stop — see below |
+| **floods the route with a VALID key** | 60 a minute, then `404` | `rate_limit.py` bounds failures only, and its total-request threshold ships disabled — so this is the listener's own per-key cap (§ 4.1a). Without it a flood would rotate a run's real reports out of the record |
 | floods the route | rate-limited, and the disk holds | every failure is `4xx` and counted; the log is capped and rotates, so a flood cannot fill the disk the app runs on |
 
 **The honest gap.** HMAC is symmetric: both machines hold the same key, so
@@ -333,6 +380,8 @@ damage if a destination is ever compromised: the worst it buys is noise.
 | how it reaches the monitor | `--notify-on-scf` / `--notify-every-hours` on the `mb_monitor.py` line |
 | when to fire | `monitor.run_monitor` |
 | where to send | `monitor.load_destination` → `config_dir()/notify` |
+| where results land | `~/.molbuilder/reports/<user>.jsonl`, JSON Lines, 0600 (§ 4.1a) |
+| what identifies a report | `monitor.run_identity` — label, job id, host (§ 4.1a) |
 | overriding that once | `MB_NOTIFY_URL` + `MB_NOTIFY_KEY` (§ 3) |
 | the card that sets it | the Task-setup tab, `task-setup.md` § 7 |
 | how a report is signed | HMAC-SHA256 over the body, both ends, standard library only (§ 4.1) |

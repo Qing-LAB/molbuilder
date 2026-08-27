@@ -72,6 +72,7 @@ import logging.handlers
 import os
 import re
 import time
+from collections import deque
 from pathlib import Path
 from typing import Any, Dict, NoReturn, Optional
 
@@ -84,9 +85,21 @@ bp = Blueprint("notify", __name__)
 #: without being read into memory as JSON first.
 MAX_BODY_BYTES = 8 * 1024
 
-#: What a report may carry.  A fixed set, because the log is rendered in a
-#: browser and an open-ended blob is an open-ended rendering problem.
-_FIELDS = ("event", "text", "state", "elapsed_s", "n_iters", "energy",
+#: The record's shape, stamped on every line.  A file that outlives the
+#: session that made it needs to say which shape it is, or a reader a year
+#: from now has to guess from the keys present.
+SCHEMA = 1
+
+#: What a report may carry.  A fixed set, because the record is rendered in
+#: a browser and an open-ended blob is an open-ended rendering problem.
+#:
+#: **The first four are IDENTITY** and they are why this list grew on
+#: 2026-08-27: a line used to read *"scf_converged, energy -1740.2"* with
+#: nothing saying which calculation, on which machine, or when it was sent.
+#: Two jobs running produced indistinguishable lines.  These are results,
+#: not diagnostics -- somebody parses them later with no session to ask.
+_FIELDS = ("run", "job", "array", "host", "sent_at",
+           "event", "text", "state", "elapsed_s", "n_iters", "energy",
            "geom_step", "per_iter_s")
 
 #: One rotating file per user, 1 MB × 5.  A cap is not optional on a file
@@ -101,18 +114,80 @@ LOG_KEEP = 5
 #: "the operator would not do that" is not a mechanism.
 _SAFE_USER = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
 
+#: A VOLUME CAP, per key, on reports that pass every gate (user,
+#: 2026-08-27: *we should have a rate-limit on the notify port too*).
+#:
+#: `rate_limit.py` bounds FAILURES -- its 404-storm signal counts 4xx -- and
+#: its total-request threshold ships DISABLED (`threshold_total: 0`).  So a
+#: valid key could POST without bound, and the harm is not the disk: the
+#: record rotates at 1 MB x 5, so a flood would silently push a run's real
+#: reports out of the window.  **A cap is what keeps the results the results.**
+#:
+#: Per KEY, not per IP: a cluster NATs every compute node behind one
+#: address, so per-IP would punish somebody running several jobs for the
+#: crime of using the machine they were given.
+#:
+#: Sixty a minute is generous by orders of magnitude.  A monitor speaks on
+#: SCF convergence, every N hours, and once at the end -- a handful an hour
+#: even when chatty (`run-reports.md` § 2, *looking often and speaking
+#: rarely are different numbers*).
+MAX_REPORTS_PER_MIN = 60
+_RATE_WINDOW_S = 60.0
+
 _loggers: Dict[str, logging.Logger] = {}
+#: user -> arrival times inside the window.  Bounded by construction: the
+#: deque is trimmed on every check and never grows past the cap.
+_recent: Dict[str, "deque"] = {}
+
+
+def _too_many(user: str, now: float) -> bool:
+    """Has this key already sent its minute's worth?
+
+    Trimmed in place, so the memory held is the cap and not the traffic --
+    a flood must not become a way to spend the server's RAM instead of its
+    disk.
+    """
+    q = _recent.setdefault(user, deque())
+    cutoff = now - _RATE_WINDOW_S
+    while q and q[0] < cutoff:
+        q.popleft()
+    if len(q) >= MAX_REPORTS_PER_MIN:
+        return True
+    q.append(now)
+    return False
+
+
+#: Results are written 0600 in a 0700 directory.  They were 0664 in an
+#: 0775 directory, inheriting the umask -- so on a shared server anybody in
+#: the group could read what your calculations were doing.  The KEY file
+#: was always 0600; the DATA it protects was not, which is the wrong way
+#: round.  (Found reviewing, 2026-08-27.)
+REPORT_MODE = 0o600
+REPORT_DIR_MODE = 0o700
 
 
 def log_root() -> Path:
-    """Where reports are written.
+    """Where run reports are written.
 
-    Beside the env installer's own logs (`envs/_cli.py`), because these are
-    the same kind of thing: a record of what happened, not configuration.
-    *(Both belong under `$XDG_STATE_HOME` by the letter of the XDG spec;
-    moving them is its own change, not this one's to smuggle in.)*
+    **`reports/`, not `logs/`, and the distinction is the point** (user,
+    2026-08-27: *this is a different kind of log, not of the status of
+    molbuilder but collection of computation results*).
+
+    `~/.molbuilder/logs/` holds molbuilder's own operational output -- what
+    the env installer did, what the server logged. Those are diagnostics:
+    you read them when something is wrong, and you delete them when it is
+    fixed. **These are measurements from calculations** -- energies,
+    iteration counts, when a relaxation step landed. They are the kind of
+    thing you keep, grep a year later, and plot. Filing them under `logs/`
+    invited exactly one mistake: treating them as disposable.
+
+    One file per user, JSON Lines, so `jq` and `pandas` both read it with
+    no parser of ours in the middle.
+
+    *(By the letter of the XDG spec this belongs under `$XDG_STATE_HOME`,
+    as does `logs/`. Moving both is its own change.)*
     """
-    return Path(os.path.expanduser("~/.molbuilder/logs/notify"))
+    return Path(os.path.expanduser("~/.molbuilder/reports"))
 
 
 def read_keys(path: str) -> Dict[str, str]:
@@ -179,6 +254,10 @@ def _logger_for(user: str) -> logging.Logger:
         return lg
     root = log_root()
     root.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(root, REPORT_DIR_MODE)
+    except OSError:                                # pragma: no cover
+        pass
     lg = logging.getLogger(f"molbuilder.notify.{user}")
     lg.propagate = False          # these are records, not app logs
     lg.setLevel(logging.INFO)
@@ -187,6 +266,13 @@ def _logger_for(user: str) -> logging.Logger:
         encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(message)s"))
     lg.addHandler(handler)
+    # The file is created by the handler on first write, so tighten it
+    # here AND after -- whichever exists first wins, and a mode set on a
+    # file that is not there yet is not an error worth failing a report.
+    try:
+        os.chmod(root / f"{user}.jsonl", REPORT_MODE)
+    except OSError:
+        pass
     _loggers[user] = lg
     return lg
 
@@ -288,8 +374,24 @@ def api_notify(route: str):
     if not isinstance(payload, dict):
         _deny()
 
+    # THE VOLUME CAP, after the key is known so it can be per-key, and
+    # answered as a 404 like every other refusal -- a different answer here
+    # would say "this key is valid, you are merely early", which is exactly
+    # what the other gates exist to withhold.
+    if _too_many(user, time.time()):
+        _deny()
+
     record = _clean(payload)
-    record["received_at"] = time.time()
+    # STAMPED BY US, not by the sender: the user this key belongs to, our
+    # own clock, and the shape of the line.  `sent_at` (the sender's clock)
+    # rides in the payload beside it, and when the two disagree that is
+    # itself worth seeing.  The user is stamped rather than accepted --
+    # there is no user field to send, so a key cannot write as somebody
+    # else -- and it is IN the line as well as in the filename, because a
+    # line pasted somewhere else must still say whose it is.
+    record["v"] = SCHEMA
+    record["user"] = user
+    record["received_at"] = round(time.time(), 3)
     try:
         _logger_for(user).info(json.dumps(record))
     except OSError:
