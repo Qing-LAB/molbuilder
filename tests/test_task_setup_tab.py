@@ -2067,3 +2067,34 @@ def test_the_sheet_names_no_token_that_does_not_exist():
         f"task-setup/style.css names token(s) nothing defines: {missing}. "
         f"A var() with no definition resolves to nothing, so the property "
         f"silently does not apply.")
+
+
+def test_every_page_class_in_the_markup_is_styled_somewhere():
+    """**A class that matches no rule fails exactly like a token that names
+    nothing: silently.** Found in the browser 2026-08-27 — renaming a card
+    fixed its ids but left three classes as `ts-dest-*` while the sheet had
+    moved to `.ts-reports-*`, so the layout rules simply did not apply and
+    the inputs rendered at their default width.
+
+    Only this page's own prefixes are checked: `card`, `hint`, `btn` and
+    friends are the app's and live elsewhere.
+    """
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "molbuilder/web"
+    html = (root / "templates/task_setup.html").read_text()
+    used = set()
+    for attr in re.findall(r'class="([^"{}]+)"', html):
+        used |= {c for c in attr.split() if c.startswith(("ts-", "ps-"))}
+    styled = set()
+    for f in (root / "static").rglob("*.css"):
+        styled |= set(re.findall(r"\.((?:ts|ps)-[a-z0-9-]+)", f.read_text()))
+    # classes the JS toggles rather than the sheet naming them directly
+    from_js = set()
+    for f in (root / "static").rglob("*.js"):
+        from_js |= set(re.findall(r"[\"'`]((?:ts|ps)-[a-z0-9-]+)", f.read_text()))
+    orphans = sorted(used - styled - from_js)
+    assert not orphans, (
+        f"class(es) in task_setup.html that no stylesheet and no script "
+        f"ever names: {orphans}. A class matching nothing applies nothing, "
+        f"and says so nowhere.")
