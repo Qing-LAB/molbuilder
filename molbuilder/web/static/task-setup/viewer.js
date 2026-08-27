@@ -2636,6 +2636,17 @@ function paintDestination(d) {
     if (d.configured && $("ts-reports-url") && !$("ts-reports-url").value) {
         $("ts-reports-url").value = d.url;
     }
+    // THE EMPTY KEY FIELD MEANS "UNCHANGED", so it must not read as
+    // "none set".  The field is cleared after every save -- a secret left
+    // in the DOM ends up in a screenshot -- and saving again with it blank
+    // KEEPS the stored key, so the placeholder has to say so or the next
+    // person assumes they have wiped it.
+    const kf = $("ts-reports-key");
+    if (kf) {
+        kf.placeholder = d.has_key
+            ? "unchanged \u2014 type a new one to replace it"
+            : "from `molbuilder notify-token`";
+    }
 }
 
 async function loadDestination() {

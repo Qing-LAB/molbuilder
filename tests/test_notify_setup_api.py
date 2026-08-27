@@ -211,3 +211,106 @@ def test_unreachable_is_distinguished_from_refused(client, monkeypatch):
     got = c.post("/api/notify/destination/test").get_json()
     assert got["reached"] is False
     assert "could not reach it" in got["error"]
+
+
+def test_a_url_only_save_KEEPS_the_key(client):
+    """**Two correct decisions making a trap between them, found by a round
+    trip on 2026-08-27.**
+
+    The card clears the key field after every save — correctly, because a
+    secret left in the DOM is one that ends up in a screenshot. So the
+    ordinary next action, fixing a typo in the address and saving again,
+    arrived with no key and wiped the one on disk. Reports then stop, and
+    **silently**: an unsigned report gets the listener's 404 and the
+    notifier swallows it.
+
+    An empty key means *leave it alone*. Dropping one deliberately —
+    switching to a Slack url that needs none — is Remove and then save.
+    """
+    c, path = client
+    c.post("/api/notify/destination",
+           json={"url": "https://a/api/seg", "key": SECRET})
+    c.post("/api/notify/destination", json={"url": "https://b/api/seg"})
+    doc = json.loads(path.read_text())
+    assert doc["url"] == "https://b/api/seg", "the url did not change"
+    assert doc["key"] == SECRET, "the key was destroyed by a url-only save"
+    assert c.get("/api/notify/destination").get_json()["has_key"] is True
+
+
+def test_a_new_key_still_replaces_the_old_one(client):
+    """*Leave it alone* must not become *cannot be changed*."""
+    c, path = client
+    c.post("/api/notify/destination",
+           json={"url": "https://a/api/seg", "key": SECRET})
+    c.post("/api/notify/destination",
+           json={"url": "https://a/api/seg", "key": "a-different-key"})
+    assert json.loads(path.read_text())["key"] == "a-different-key"
+
+
+def test_remove_then_save_is_how_a_key_is_DROPPED(client):
+    """The deliberate path, since a blank field no longer means delete."""
+    c, path = client
+    c.post("/api/notify/destination",
+           json={"url": "https://a/api/seg", "key": SECRET})
+    c.delete("/api/notify/destination")
+    c.post("/api/notify/destination",
+           json={"url": "https://hooks.slack.com/services/XXX"})
+    doc = json.loads(path.read_text())
+    assert "key" not in doc
+    assert c.get("/api/notify/destination").get_json()["has_key"] is False
+
+
+@pytest.mark.parametrize("verb", ["get", "post", "delete"])
+def test_no_verb_returns_a_private_field(client, verb):
+    """**One door out** (`_public`) strips anything underscored, so a route
+    cannot forget to."""
+    c, _ = client
+    c.post("/api/notify/destination",
+           json={"url": "https://a/api/seg", "key": SECRET})
+    r = getattr(c, verb)("/api/notify/destination",
+                         json={"url": "https://a/api/seg"} if verb == "post"
+                         else None)
+    body = r.get_json()
+    assert not [k for k in body if k.startswith("_")], body
+    assert SECRET not in r.get_data(as_text=True)
+
+
+def test_a_save_UPDATES_it_does_not_replace(client):
+    """**The general form of the key bug, found by widening the review.**
+
+    Writing a fresh `{url, key}` destroyed everything else the file held.
+    A `headers` block — which `monitor.load_destination` reads and this
+    page has no input for — vanished the first time anybody edited the url
+    here, exactly as the key did.
+
+    So a save writes the fields it manages over whatever is there. That
+    also means a field added to this file LATER cannot be dropped by a page
+    that predates it, which is the property worth having rather than a
+    second special case.
+    """
+    c, path = client
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "url": "https://a/x", "key": SECRET,
+        "headers": {"Authorization": "Bearer T"},
+        "a_field_this_page_never_heard_of": 42}))
+    c.post("/api/notify/destination", json={"url": "https://a/CHANGED"})
+    doc = json.loads(path.read_text())
+    assert doc["url"] == "https://a/CHANGED", "the url did not update"
+    assert doc["key"] == SECRET
+    assert doc["headers"] == {"Authorization": "Bearer T"}
+    assert doc["a_field_this_page_never_heard_of"] == 42
+
+
+def test_a_malformed_file_can_still_be_FIXED_from_the_page(client):
+    """Preserving what is there must not mean being stuck with a file that
+    cannot be parsed. Unreadable reads as empty, so a save writes a fresh
+    valid one rather than refusing."""
+    c, path = client
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not json at all")
+    r = c.post("/api/notify/destination",
+               json={"url": "https://a/api/seg", "key": SECRET})
+    assert r.status_code == 200
+    assert json.loads(path.read_text())["key"] == SECRET
+    assert c.get("/api/notify/destination").get_json()["problem"] == ""

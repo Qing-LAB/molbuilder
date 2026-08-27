@@ -144,7 +144,7 @@ and never required.
 `MB_NOTIFY_URL` overrides the file, for testing a destination once without
 editing anything.
 
-### 3.1 Setting the destination up — DESIGNED 2026-08-27, not yet built
+### 3.1 Setting the destination up — BUILT 2026-08-27
 
 **The format is the hard part, and it is the part a person should not have to
 get right from memory.** Today the flow is: run `notify-token`, copy the JSON,
@@ -162,12 +162,28 @@ contract says it lives. The task-setup card's own rule (*it sets policy; it
 never sees a key*) stays exactly as it is, because that card writes
 `task.json`.
 
+**Where it is.** Four signed-in routes under `/api/notify/destination`
+(`web/blueprints/notify_setup.py`, and `web-api.md` § 4 lists them), and the
+card is the second half of *Tell me how it is going* on the Task-setup tab
+(`task-setup.md` § 9b). A **separate blueprint from the listener**, which is
+the public receiving end: that one has no session, appends only, and its whole
+value is being small enough to reason about.
+
 **Two cases, and `execution.mode` already tells them apart:**
 
 | | what the surface can do |
 |---|---|
 | **jobs run here** (`direct`) | **write the file.** Same filesystem, and the key is generated server-side, so it never leaves the machine. Through `auth_setup.write_secret_file`, which sets the mode before the first byte, and to `config_dir()` — the same function the monitor reads from, so the two cannot name different directories |
 | **jobs run on a cluster** (`submit`) | it cannot reach that filesystem. It shows the exact JSON and one install command, both with the route segment already in the URL — which is the format problem solved, even though the writing is not |
+
+**A save updates; it does not replace.** The card writes the fields it
+manages over whatever the file already holds. Writing a fresh object instead
+destroyed everything else in it, two ways: the key (the card clears that field
+after each save, so the ordinary next action — fixing a typo in the address —
+arrived with none) and a `headers` block the page has no input for but
+`load_destination` reads. **Both failed silently**, because an unsigned report
+gets the listener's `404` and the notifier swallows it. Removing something
+deliberately is *Remove*, then save.
 
 **Whose file is it?** `config_dir()` belongs to the OS account the server runs
 as, while a molbuilder login is a person. **molbuilder does not manage that
@@ -282,14 +298,20 @@ ask, so:
 {"v": 1, "user": "qqing@asu.edu", "run": "BDT_Au_relax", "job": "62238108",
  "host": "sg013", "event": "scf_converged", "sent_at": 1756000000.5,
  "received_at": 1756000000.8, "state": "running", "elapsed_s": 1234.5,
- "n_iters": 7, "energy": "-1740.21", "geom_step": 3, "per_iter_s": 12.8}
+ "n_iters": 7, "energy": "-1740.21", "geom_step": 3, "per_iter_s": 12.8,
+ "text": "state=running elapsed=1234s scf_iters=7 geom_move=3 energy=-1740.21"}
 ```
+
+`array` joins them for an array task (`SLURM_ARRAY_TASK_ID`), and is absent
+otherwise — a field the monitor could not determine is left out rather than
+sent empty, so a reader can tell *unknown* from *wrong*.
 
 | field | where it comes from |
 |---|---|
 | `run` | the **label** (`run-identity.md` § 2 — *the stem of every file*), taken off the `.out` the monitor watches, `-runN` stripped |
 | `job`, `host` | `SLURM_JOB_ID` and the node's own name |
 | `sent_at` / `received_at` | the sender's clock and ours. **Both**, because when they disagree that is itself worth seeing |
+| `text` | the same one-line summary a Slack or Discord channel renders, so one body is readable in a chat window and parseable here |
 | `user` | **stamped from the key that verified**, never read from the payload — there is no user field to send |
 | `v` | the record's shape, so a reader a year from now does not infer it from which keys happen to be present |
 

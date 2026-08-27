@@ -101,6 +101,27 @@ def _read() -> Dict[str, Any]:
     return out
 
 
+def _existing() -> Dict[str, Any]:
+    """The destination file as it stands, or ``{}``.
+
+    Unreadable or malformed reads as empty, which is the safe direction: a
+    save then writes a fresh, valid file rather than refusing, and the
+    person is not stuck with a broken one they cannot fix from here.
+    """
+    try:
+        obj = json.loads(_dest_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return dict(obj) if isinstance(obj, dict) else {}
+
+
+def _public(d: Dict[str, Any]) -> Dict[str, Any]:
+    """The record minus anything private.  **One door out**, so a route
+    cannot forget: `_read` carries the key for `save_destination`'s benefit
+    and every response goes through here."""
+    return {k: v for k, v in d.items() if not k.startswith("_")}
+
+
 @bp.route("/api/notify/destination", methods=["GET"])
 def destination():
     """Is a destination set up, and where does it live?
@@ -122,7 +143,7 @@ def destination():
     # it can do is hand you the exact content to put there.
     out["execution_mode"] = mode
     out["can_write_here"] = (mode != "submit")
-    return jsonify({"ok": True, **out})
+    return jsonify({"ok": True, **_public(out)})
 
 
 @bp.route("/api/notify/destination", methods=["POST"])
@@ -137,21 +158,41 @@ def save_destination():
     body = request.get_json(silent=True) or {}
     url = str(body.get("url") or "").strip()
     key = str(body.get("key") or "").strip()
+    # A SAVE UPDATES; IT DOES NOT REPLACE.
+    #
+    # Writing a fresh `{"url": ..., "key": ...}` destroyed every other field
+    # the file held.  Two ways that bit, both found by round-tripping on
+    # 2026-08-27:
+    #
+    #   * the card CLEARS the key field after each save -- correctly, since
+    #     a secret left in the DOM ends up in a screenshot -- so the
+    #     ordinary next action, fixing a typo in the url, arrived with no
+    #     key and wiped the stored one;
+    #   * a `headers` block, which `monitor.load_destination` reads and this
+    #     page has no input for, vanished the first time anybody edited the
+    #     url here.
+    #
+    # And both failed SILENTLY: an unsigned or unauthenticated report gets a
+    # 404 and the notifier swallows it.  So the rule is that this writes the
+    # fields it manages over whatever is already there -- which also means a
+    # field added to this file later cannot be dropped by a page that
+    # predates it.  Removing something deliberately is `Remove`, then save.
+    doc = _existing()
+    doc["url"] = url
+    if key:
+        doc["key"] = key
     if not url:
         return jsonify({"ok": False, "error": "a url is required"}), 400
     if not (url.startswith("https://") or url.startswith("http://")):
         return jsonify({"ok": False,
                         "error": "the url must start with https:// "
                                  "(or http:// for a host you trust)"}), 400
-    doc: Dict[str, Any] = {"url": url}
-    if key:
-        doc["key"] = key
     try:
         write_secret_file(_dest_path(), json.dumps(doc, indent=2) + "\n")
     except OSError as exc:
         return jsonify({"ok": False,
                         "error": f"could not write {_dest_path()}: {exc}"}), 500
-    return jsonify({"ok": True, **_read()})
+    return jsonify({"ok": True, **_public(_read())})
 
 
 @bp.route("/api/notify/destination", methods=["DELETE"])
@@ -164,7 +205,7 @@ def clear_destination():
         pass
     except OSError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
-    return jsonify({"ok": True, **_read()})
+    return jsonify({"ok": True, **_public(_read())})
 
 
 @bp.route("/api/notify/destination/test", methods=["POST"])
