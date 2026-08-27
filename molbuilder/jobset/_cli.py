@@ -2301,17 +2301,33 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         import dataclasses as _dcs
         preds = [_dcs.replace(r.prediction, label=r.name)
                  for r in results if r.prediction is not None]
-        click.echo("")
-        click.echo(prediction_table(preds))
+        ran = [r.name for r in results if r.status == "already run"]
         skipped = [r.name for r in results if r.status == "not asked"]
+        click.echo("")
+        if preds:
+            click.echo(prediction_table(preds))
+        if ran:
+            # Said plainly, not as a refusal: asking about a finished trial
+            # creates nothing, so there is nothing to warn about -- it is
+            # simply a question with no point left in it.
+            click.echo(f"  already run, so not asked: " + ", ".join(ran))
         if skipped:
             from .submit import ASK_MAX_QUERIES
-            click.echo(f"\n  NOT asked (past {ASK_MAX_QUERIES} queries): "
+            click.echo(f"  NOT asked (past {ASK_MAX_QUERIES} queries): "
                        + ", ".join(skipped))
-        click.echo("")
+        if not preds:
+            # NOTHING WAS ASKED, so do not end on "launch it when the answer
+            # suits you" -- there is no answer, and the line would read as
+            # though there were.
+            click.echo("\n  nothing left to ask about in this sweep.")
+            if ran:
+                click.echo("  read what they measured: "
+                           "`molbuilder jobset summarize bench <stage>`")
+            return
         asked_cmd = next((r.command for r in results if r.command), None)
-        click.echo("  asked: " + " ".join(asked_cmd) if asked_cmd
-                   else "  nothing to ask about.")
+        click.echo("")
+        if asked_cmd:
+            click.echo("  asked: " + " ".join(asked_cmd))
         click.echo("  launch it with the same command and `--mode submit` "
                    "when the answer suits you.")
         return

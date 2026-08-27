@@ -186,7 +186,24 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
     """
     results: List[JobResult] = []
     asked = 0                      # bounded by ASK_MAX_QUERIES
+    if ask:
+        from .materialize import job_dir_names, shape_of, was_launched
+        _dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
     for job in jobset.jobs:
+        # ASKING ABOUT A TRIAL THAT ALREADY RAN IS NOT RE-RUNNING IT, and
+        # this has to come BEFORE `_resolve_launch`, which is what raises.
+        # § 1.5's immutability protects RESULTS -- a trial measures its
+        # point once -- and a question creates nothing to protect them
+        # from.  Refusing here killed the whole command over a trial
+        # nobody proposed to run again.
+        #
+        # The useful case IS the part-run sweep: two of four done, when
+        # would the other two start?  Skipped BY NAME, the way a direct
+        # run already reports them.
+        if ask and jobset.kind == "sweep" and was_launched(
+                base_dir / _dirs[job.name]):
+            results.append(JobResult(job.name, [], "already run"))
+            continue
         job_dir, attempt, sbatch_name = _resolve_launch(
             jobset, base_dir, job, ".sbatch")
         gpu = _job_wants_gpu(job_dir, job)
