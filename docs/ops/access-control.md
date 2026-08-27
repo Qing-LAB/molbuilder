@@ -177,7 +177,8 @@ to parse a login page as data.
 ### 3.4 The session key lives outside the repo
 
 Sessions are signed with a key read from a file named by `secret_key_file`
-(conventionally under `~/.molbuilder/`). Not in `molbuilder.json`, not in the
+(conventionally in the config directory — `$XDG_CONFIG_HOME/molbuilder`,
+else `~/.config/molbuilder`). Not in `molbuilder.json`, not in the
 tree, and never committed. Client secrets follow the same rule — one file per
 provider. See [`deployment.md`](?doc=ops/deployment.md) § 5.1.
 

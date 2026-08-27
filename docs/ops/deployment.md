@@ -254,6 +254,7 @@ workflow is [`execution/architecture.md`](?doc=execution/architecture.md) § 7.
 | `auth: {providers:[…]}` | enable SSO login (§3) |
 | `auth.trust_proxy` | install `ProxyFix` for a reverse proxy |
 | `secret_key_file` | path to the session-signing key |
+| `notify_tokens_file` | path to the run-report token file ([`run-reports.md`](?doc=execution/run-reports.md) § 4). **Absent means the `/api/notify` route is not registered at all** — a server that has not set this up does not advertise the capability |
 | `rate_limit: {…}` | tune the limiter (§4 defaults) |
 | `envs: {siesta, pyscf, …}` | the conda-env names for the backends |
 
@@ -271,41 +272,61 @@ Two ready-made files ship beside this doc, in `ops/examples/`:
 cp docs/ops/examples/molbuilder.json.example molbuilder.json
 ```
 
-### 5.1 The `~/.molbuilder/` directory — secrets live outside the repo
+### 5.1 The config directory — secrets live outside the repo
 
 The design rule: **`molbuilder.json` carries *paths only*, never secret
 bytes.** The config file gets copied, backed up, and diffed as you tune a
-deployment — secrets must not travel with it. Everything secret lives in
-`~/.molbuilder/`, and the config references it by path.
+deployment — secrets must not travel with it. Every secret lives in
+molbuilder's config directory, and the config references it by path.
+
+**That directory is `$XDG_CONFIG_HOME/molbuilder`, or `~/.config/molbuilder`
+when the variable is unset** (`molbuilder.config_dir.config_dir`) — the same
+one `molbuilder auth-setup` writes to, so a wizard-generated deployment and a
+hand-made one put their secrets in the same place.
+
+> **Corrected 2026-08-26.** This section was headed *"The `~/.molbuilder/`
+> directory"* and told you to create one, while the code had always used
+> `config_dir()`. Nothing broke — the config carries paths, so either
+> location works — but the wizard and these instructions named different
+> directories, which is two answers to one question. **If you followed the
+> old text, nothing needs moving:** point `secret_key_file` wherever your
+> files already are. What changed is which directory this page recommends.
+
+Honouring `XDG_CONFIG_HOME` is not decoration. On an HPC login node `$HOME`
+is NFS-mounted and often snapshotted; `XDG_CONFIG_HOME=/scratch/$USER` is how
+you keep a credential off it. That matters most for the run-report token
+([`run-reports.md`](?doc=execution/run-reports.md)), which is read on a
+**compute node**.
 
 Initial setup (once per deployment host):
 
 ```bash
-mkdir -p -m 700 ~/.molbuilder
+mkdir -p -m 700 "${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder"
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder"
 
 # The Flask session-signing key (referenced by "secret_key_file"):
-python -c "import secrets; print(secrets.token_hex(32))" \
-    > ~/.molbuilder/secret.key
-chmod 600 ~/.molbuilder/secret.key
+python -c "import secrets; print(secrets.token_hex(32))" > "$cfg/secret_key"
+chmod 600 "$cfg/secret_key"
 
 # One file per OAuth provider (referenced by each provider's
 # "client_secret_file").  Content = exactly the client-secret string
 # from that provider's developer console, nothing else:
-printf '%s' 'GOCSPX-…' > ~/.molbuilder/google_client_secret
-chmod 600 ~/.molbuilder/google_client_secret
+printf '%s' 'GOCSPX-…' > "$cfg/google_client_secret"
+chmod 600 "$cfg/google_client_secret"
 ```
 
 Notes:
 
 - **TLS is the exception** — `tls.cert` / `tls.key` usually point at the
   certificate store that owns them (e.g.
-  `/etc/letsencrypt/live/<host>/`), not at `~/.molbuilder/`; renewal
+  `/etc/letsencrypt/live/<host>/`), not at the config directory; renewal
   tooling rotates them in place.
 - A CAS provider (e.g. ASURITE) has no client secret — nothing to create.
-- `~/.config/molbuilder/molbuilder.json` (the XDG fallback for the
-  *config*) is a different directory with a different job: it holds the
-  same paths-only config when you don't want one per launch directory —
-  it is **not** a secrets store.
+- The same directory holds `molbuilder.json` itself when you do not want
+  one per launch directory (the XDG fallback in the search order above).
+  Config and secrets sharing a directory is fine and is what the code does:
+  the rule that protects you is *paths, never literals* — the config may be
+  copied and diffed; the `0600` files beside it may not.
 
 ## 6. What's on disk at runtime
 

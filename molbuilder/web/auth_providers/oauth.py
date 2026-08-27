@@ -97,7 +97,7 @@ def _read_secret(entry: Mapping) -> str:
     """Read the OAuth client secret -- file path or literal string.
 
     Both shapes get an explicit empty-content check: an operator who
-    accidentally ``echo '' > ~/.molbuilder/<provider>_client_secret``
+    accidentally ``echo '' > ~/.config/molbuilder/<provider>_client_secret``
     or leaves the literal string blank would otherwise see a confusing
     OAuth-error-at-first-login instead of a clear config diagnostic.
     """

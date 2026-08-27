@@ -483,7 +483,7 @@ def _install_secret_key(app, secret_key_file: Optional[str]) -> None:
             "molbuilder auth: no 'secret_key_file' in molbuilder.json; "
             "using an ephemeral per-process key.  Sessions will "
             "invalidate on every restart.  Set "
-            "'secret_key_file': '~/.molbuilder/secret.key' "
+            "'secret_key_file': '~/.config/molbuilder/secret_key' "
             "(or similar) for stable sessions."
         )
         return
