@@ -143,6 +143,25 @@ use (R3, and see R2's note).
 > a *machine*, not of a queue: `htc` offers A100s and it offers 128-core
 > nodes, but never both at once — which no single figure could have said.
 
+**What a person is shown: the maximum core range, and the node count.** Each
+machine has a maximum — its own core count — so a queue holding several has a
+**range** across them; `htc` is `48-128`, and a queue of one machine shows one
+number rather than `128-128`.
+
+> **The low end is not a floor on the ask.** A `-c 4` job gets four cores on a
+> 48-core node; you can always ask for less than a machine has. Naming it a
+> *minimum* would say the opposite, which is why it is not called that.
+
+**The range alone misleads, so the fitting node count rides with it.** Reading
+`48-128` you would take 128 for the rare extreme. On `htc` it is **134 of 188
+nodes** — the common machine, with the 48-core GPU nodes in the minority — so a
+large CPU ask there costs almost nothing in scheduling, the opposite of what
+the range implies. The same 64-core ask lands on 94% of `general` and 72% of
+`htc`, and neither figure is a field: both fall out of the machines.
+
+> Node counts are still only a proxy for **wait**. What a queue costs *today*
+> is `--mode ask` (`running-a-job.md`), which asks the scheduler.
+
 **R2 — Admission is total over the named limits.** Every limit `Domain`
 *declares* — `max_time`, `max_cores`, `max_mem_gb`, `gpu` — is compared
 against the request. A new declared limit arrives with its comparison or it

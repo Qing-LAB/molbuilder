@@ -111,7 +111,7 @@ def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
     if not rows:
         return "this machine states no queues -- the job runs directly."
     head = (f"  {'':2} {'name':<12} {'partition/qos':<22} {'max time':>9} "
-            f"{'cores':>6} {'memory':>9}  gpu")
+            f"{'cores':>8} {'memory':>9}  gpu")
     lines = ["this machine offers:", head]
     for i, d in enumerate(rows, 1):
         secs = domain_ceiling_s(d)
@@ -122,15 +122,67 @@ def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
         mark = "  " if not why else "! "
         lines.append(
             f"{mark}{i:<2} {d.name:<12} {d.partition + '/' + d.qos:<22} "
-            f"{wall:>9} {str(d.max_cores or '-'):>6} {mem:>9}  {dev}")
+            f"{wall:>9} {core_range(d):>8} {mem:>9}  {dev}")
         for shape in _machine_lines(d, cores=cores):
             lines.append(f"       {shape}")
+        fit = fits_how_many(d, cores)
+        if fit:
+            lines.append(f"       {fit}")
         if why:
             lines.append(f"     -> {'; '.join(why)}")
     lines.append("")
     lines.append("  choose one with --domain <name>.  Nothing is submitted "
                  "until you do.")
     return "\n".join(lines)
+
+
+def core_range(row) -> str:
+    """The MAXIMUM CORE RANGE: what the largest ask a machine here can take
+    runs from, to (user's name for it, 2026-08-27).
+
+    Each machine has a maximum -- its own core count -- and a queue holding
+    several has a range across them.  ``48-128`` on Sol's ``htc``.  One
+    number when every machine is the same size, because a range whose ends
+    are equal is a number.
+
+    **It is not a floor on the ask.**  A ``-c 4`` job gets 4 cores on a
+    48-core node; you can always ask for less than a machine has.  Calling
+    the low end a *minimum* would say the opposite, which is why it is not
+    called that.
+    """
+    shapes = [t.get("cores") for t in (getattr(row, "node_types", None) or [])
+              if t.get("cores")]
+    if not shapes:
+        return str(row.max_cores or "-")
+    lo, hi = min(shapes), max(shapes)
+    return str(hi) if lo == hi else f"{lo}-{hi}"
+
+
+def fits_how_many(row, cores: Optional[int]) -> str:
+    """How much of this queue an ask of ``cores`` could actually land on.
+
+    **The range alone misleads, and the count is what makes it a
+    decision.**  Reading ``48-128`` you would take 128 for the rare
+    extreme; on Sol's ``htc`` it is 134 of 188 nodes -- the COMMON machine,
+    with the 48-core GPU nodes in the minority.  So a large CPU ask there
+    costs almost nothing in scheduling, which is the opposite of what the
+    range implies on its own.
+
+    Nothing is printed without an ask to measure, or when every machine
+    fits: a line saying *all of them* on every row is noise.
+    """
+    shapes = [t for t in (getattr(row, "node_types", None) or [])
+              if t.get("cores") and t.get("nodes")]
+    if not cores or not shapes:
+        return ""
+    total = sum(t["nodes"] for t in shapes)
+    fit = sum(t["nodes"] for t in shapes if t["cores"] >= cores)
+    if fit == total:
+        return ""
+    if not fit:
+        return f"-> {cores} cores fits none of this queue's {total} nodes"
+    return (f"-> {cores} cores fits {fit} of {total} nodes here "
+            f"({100 * fit // total}%)")
 
 
 def _machine_lines(row, *, cores: Optional[int] = None) -> List[str]:

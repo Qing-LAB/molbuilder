@@ -185,3 +185,81 @@ def test_the_table_still_refuses_to_choose():
     assert "choose one with --domain" in out
     for word in ("recommended", "best", "fastest", "you should"):
         assert word not in out.lower()
+
+
+# --------------------------------------------------------------------- #
+#  the maximum core range, and why the count rides with it               #
+# --------------------------------------------------------------------- #
+
+def test_the_range_is_what_the_largest_ask_runs_from_to():
+    """User's name for it, 2026-08-27: *maximum core range*. Each machine
+    has a maximum -- its own core count -- and a queue holding several has
+    a range across them."""
+    from molbuilder.jobset.ask import core_range
+    assert core_range(_domains()["htc"]) == "48-128"
+
+
+def test_a_queue_of_one_machine_shows_a_NUMBER_not_a_range():
+    """*They could equal to each other. So it's a tight range.* A range
+    whose ends are equal is a number, and printing `128-128` would invite
+    the reader to look for a difference that is not there."""
+    from molbuilder.jobset.ask import core_range
+    assert core_range(_domains()["highmem"]) == "128"
+    assert core_range(_domains()["lightwork"]) == "64"
+
+
+def test_the_low_end_is_NOT_a_floor_on_what_you_may_ask():
+    """**Why it is not called a minimum** (user caught the name himself).
+    *Minimum cores* reads as *you must ask at least this*, and that is
+    flatly wrong: measured on Sol, a `-c 4` job gets exactly 4 cores on a
+    48-core node. You can always ask for less than a machine has.
+    """
+    htc = _domains()["htc"]
+    assert admits(htc, Request(ranks=4)) == [], \
+        "an ask below the smallest machine must not be refused"
+    assert admits(htc, Request(ranks=1)) == []
+
+
+def test_the_fitting_node_COUNT_rides_with_the_range():
+    """**The range alone misleads.** Reading `48-128` you would take 128
+    for the rare extreme; on `htc` it is 134 of 188 nodes -- the COMMON
+    machine, with the 48-core GPU nodes in the minority. So a large CPU ask
+    there costs almost nothing in scheduling, which is the opposite of what
+    the range implies on its own."""
+    from molbuilder.jobset.ask import fits_how_many
+    htc = _domains()["htc"]
+    assert "137 of 188" in fits_how_many(htc, 64)
+    assert "134 of 188" in fits_how_many(htc, 128)
+
+
+def test_an_ask_nothing_can_hold_says_none_rather_than_a_percentage():
+    from molbuilder.jobset.ask import fits_how_many
+    assert "none" in fits_how_many(_domains()["htc"], 256)
+
+
+def test_nothing_is_printed_when_every_machine_fits():
+    """A line saying *all of them* on every row is noise. It appears only
+    when there is something to disclose."""
+    from molbuilder.jobset.ask import fits_how_many
+    assert fits_how_many(_domains()["htc"], 48) == ""
+    assert fits_how_many(_domains()["htc"], None) == ""
+    assert fits_how_many(_domains()["highmem"], 128) == ""
+
+
+def test_the_queues_differ_and_the_table_shows_by_how_much():
+    """The decision this exists to support: the same 64-core ask lands on
+    94% of `general` and 72% of `htc`. Neither number is on the record as
+    a scalar; both fall out of the machines."""
+    from molbuilder.jobset.ask import fits_how_many
+    d = _domains()
+    assert "94%" in fits_how_many(d["general"], 64)
+    assert "72%" in fits_how_many(d["htc"], 64)
+
+
+def test_an_old_record_shows_its_one_number_and_no_fit_line():
+    """R3 again: a record with no `node_types` states a range of one thing
+    it knows, and claims nothing about node counts it never measured."""
+    from molbuilder.jobset.ask import core_range, fits_how_many
+    old = Domain(name="htc", partition="htc", qos="public", max_cores=48)
+    assert core_range(old) == "48"
+    assert fits_how_many(old, 32) == ""

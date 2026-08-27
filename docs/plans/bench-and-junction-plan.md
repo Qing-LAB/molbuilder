@@ -531,8 +531,20 @@ R2 still governs what `admits` compares: a declared limit arrives with its
 comparison. A derived ceiling over the groups is that comparison, and it can
 finally say *which* group bound the ask, which R10 wants anyway.
 
-**Still to confirm before building**, because the reverted attempt showed a
-plausible answer can pass its own tests and still be wrong.
+**RESOLVED 2026-08-27.** The machines are the record; `max_cores` is the
+widest, which is the only figure a refusal can honestly use; and what a person
+reads is the **maximum core range** with the fitting node count beside it.
+
+The user proposed the range and then caught its own naming trap: *"minimum
+cores sounds like the user has to meet the minimum — maybe it's just the
+maximum core range."* Exactly right, and it is measurable: a `-c 4` job gets
+four cores on a 48-core node, so a low end presented as a floor would say the
+opposite of what is true.
+
+**The count had to ride with it, and the data is why.** Reading `48-128` you
+would take 128 for the rare extreme; on `htc` it is 134 of 188 nodes. The same
+64-core ask lands on 94% of `general` and 72% of `htc`, and neither is a field
+— both fall out of the machines.
 
 **P2 — `topology` is one arbitrary node, and a refusal is gated on it.**
 `record.py:_slurm_pick_node` takes whichever GPU node `sinfo` prints **first**
