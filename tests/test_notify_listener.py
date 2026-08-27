@@ -266,6 +266,41 @@ def test_a_failure_is_counted_by_the_limiter(store):
         "the notify route exempts its own failure from the limiter"
 
 
+@pytest.mark.parametrize("ts,why", [
+    ("nan",  "NaN: every comparison against it is False"),
+    ("inf",  "infinity"),
+    ("-inf", "negative infinity"),
+])
+def test_a_timestamp_that_is_not_a_REAL_number_is_refused(store, ts, why):
+    """**Found reviewing, 2026-08-27.** The gate read
+    `if skew > MAX_SKEW_S: deny`, and `float("nan")` parses fine — so
+    `nan > 900` was False and a timestamp of `nan` walked straight through
+    the freshness window.
+
+    It needed a valid signature over `"nan"` to exploit, so it was never an
+    auth bypass; but a gate with a hole in it is not a gate, and a captured
+    report signed that way would have been replayable forever. Asking for
+    the good case (`not skew <= MAX`) refuses anything that is not a real,
+    small number.
+    """
+    client, log_root = store
+    assert _post(client, ts=ts).status_code == 404, why
+    assert _lines(log_root) == []
+
+
+def test_deny_actually_RAISES(store):
+    """Every gate is a bare `_deny()` statement, not `return _deny()`. If it
+    ever stopped raising, each one would fall through to the next step — a
+    wrong route would go on to be signature-checked, a bad signature would
+    go on to be logged. A `NoReturn` annotation says so; this makes it a
+    mechanism."""
+    from molbuilder.web.blueprints.notify import _deny
+    with store[0].application.test_request_context():
+        with pytest.raises(Exception) as exc:
+            _deny()
+        assert "404" in str(exc.value) or "Not Found" in str(exc.value)
+
+
 def test_the_route_never_REDIRECTS(store):
     """**The trap the Sol egress test surfaced.** A `curl` to the app's root
     answered `302` — the sign-in redirect. If this endpoint ever fell out of

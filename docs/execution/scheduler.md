@@ -121,10 +121,6 @@ four bugs. It is one missing function.
 
 ## 3. The rules
 
-**R1 — A placement is decided once.** The `#SBATCH` header and the `sbatch`
-command line are two *renderings* of one placement, never two decisions. They
-cannot disagree, because there is nothing to disagree about.
-
 **R0 — A partition is a QUEUE, not a machine type.** Added 2026-08-27, and
 it is the premise the rest of the core rules rest on. ASU Sol's `htc` is 51
 nodes of 48 cores with A100s, 3 of 64 with MIG slices, and 134 of 128 with no
@@ -136,7 +132,7 @@ So **the machines are the measurement, and any single figure over them is an
 opinion.** A domain carries `node_types` — every distinct machine, with its
 count, memory and devices — and the person reads it. `max_cores` remains as
 the **widest** of them, which is the only core figure a refusal can honestly
-use (R3, and see R2's note).
+use — see R3's corollary.
 
 > **Two consequences worth stating.** Hardware cannot be chosen by choosing a
 > partition; that is `--gres` or `--constraint`. And a device is a property of
@@ -162,9 +158,15 @@ the range implies. The same 64-core ask lands on 94% of `general` and 72% of
 > Node counts are still only a proxy for **wait**. What a queue costs *today*
 > is `--mode ask` (`running-a-job.md`), which asks the scheduler.
 
+**R1 — A placement is decided once.** The `#SBATCH` header and the `sbatch`
+command line are two *renderings* of one placement, never two decisions. They
+cannot disagree, because there is nothing to disagree about.
+
 **R2 — Admission is total over the named limits.** Every limit `Domain`
-*declares* — `max_time`, `max_cores`, `max_mem_gb`, `gpu` — is compared
-against the request. A new declared limit arrives with its comparison or it
+*declares* — `max_time`, `max_cores`, `max_mem_gb`, `gpu`, `node_types` — is
+compared against the request. `node_types` is read by `_widest_node`, which is
+what keeps it a limit rather than a display: it arrived with its comparison
+(2026-08-27), which is what this rule asks of a new field. A new declared limit arrives with its comparison or it
 does not arrive; that is what stops another `max_mem_gb`.
 
 `extra` is the deliberate exception and the only one: it holds columns a probe

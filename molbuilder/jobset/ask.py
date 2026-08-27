@@ -53,6 +53,7 @@ two ways is how they come to disagree about what was asked.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
@@ -106,8 +107,23 @@ def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
     A queue that cannot take the job is still LISTED, with the reason.
     Hiding it would answer *"why is my queue not an option?"* with silence,
     and that question has a real answer worth reading.
+
+    **Each row is up to four lines**, and the last three appear only when
+    they have something to say::
+
+        2  htc   htc/public   4h   48-128   -   a100 x4, a100.20gb x16
+             - 128 cores  x134 node(s)                    <- the machines,
+             - 64 cores  x3 node(s)  a100.20gb x16           when there is
+             - 48 cores  x51 node(s)  a100 x4  (too small)   more than one
+               64 cores fits 137 of 188 nodes here (72%)  <- given an ask
+           -> needs 240 min but debug allows 00:15:00      <- why not
+
+    ``cores`` is the **maximum core range** (:func:`core_range`) -- one
+    number when every machine is the same size.  The fit line
+    (:func:`fits_how_many`) is there because the range alone misleads: on
+    ``htc``, 128 looks like the rare extreme and is 134 of 188 nodes.
     """
-    from ..scheduler import domain_ceiling_s, domain_serves_gpu
+    from ..scheduler import domain_ceiling_s
     if not rows:
         return "this machine states no queues -- the job runs directly."
     head = (f"  {'':2} {'name':<12} {'partition/qos':<22} {'max time':>9} "
@@ -127,7 +143,7 @@ def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
             lines.append(f"       {shape}")
         fit = fits_how_many(d, cores)
         if fit:
-            lines.append(f"       {fit}")
+            lines.append(f"         {fit}")
         if why:
             lines.append(f"     -> {'; '.join(why)}")
     lines.append("")
@@ -179,9 +195,13 @@ def fits_how_many(row, cores: Optional[int]) -> str:
     fit = sum(t["nodes"] for t in shapes if t["cores"] >= cores)
     if fit == total:
         return ""
+    # NO LEADING ARROW.  `->` already means *this queue is refused* one
+    # indent out, and two arrows at two indents saying different things is
+    # a table you have to decode.  This is a SUMMARY of the machines listed
+    # directly above it, so it sits with them and reads as their total.
     if not fit:
-        return f"-> {cores} cores fits none of this queue's {total} nodes"
-    return (f"-> {cores} cores fits {fit} of {total} nodes here "
+        return f"{cores} cores fits none of this queue's {total} nodes"
+    return (f"{cores} cores fits {fit} of {total} nodes here "
             f"({100 * fit // total}%)")
 
 
@@ -189,13 +209,15 @@ def _machine_lines(row, *, cores: Optional[int] = None) -> List[str]:
     """The machines a domain actually holds, one line each.
 
     **A partition is a queue, not a machine type.**  Sol's ``htc`` is 48-,
-    64- and 128-core nodes under one name, and the ``cores`` column above
-    can only show one number.  Printing the shapes is this table's own
-    stance applied to a field that was hiding them -- *it shows what
-    exists, marks what fits, and the person picks* -- and it is what turns
-    "why is my job queueing?" into something readable: a 128-core ask on
-    ``htc`` fits 134 of its 188 nodes, while on another queue it might fit
-    four.
+    64- and 128-core nodes under one name.  The ``cores`` column above
+    summarises them as a range (:func:`core_range`, ``48-128``); these
+    lines are the machines themselves, with their counts and devices.
+
+    Printing them is this table's own stance applied to a field that was
+    hiding them -- *it shows what exists, marks what fits, and the person
+    picks*.  It is also the only place a device is tied to the machine that
+    carries it: ``htc`` offers A100s and it offers 128-core nodes, and
+    never both at once.
 
     Nothing is printed for a domain that holds ONE kind of machine: the
     ``cores`` column already said it, and a second line repeating it would
@@ -329,7 +351,7 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
 
 
 # --------------------------------------------------------------------- #
-#  When would this actually start?  (`jobset ask`)                       #
+#  When would this actually start?  (`launch --mode ask`)                #
 # --------------------------------------------------------------------- #
 #
 # Everything above answers from the RECORD and works anywhere: what each
@@ -356,17 +378,15 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
 # Only the PARSING lives here: it is pure, so it can be tested with no
 # cluster present -- and this workstation has none.
 
-import re as _re
-
 #: `sbatch: Job 123 to start at 2026-08-27T14:30:00 using 48 processors
 #:  on nodes sg013 in partition htc`
 #: The timestamp is matched GREEDILY.  It was `(\S+?)` for one revision,
 #: and with every group after it optional the non-greedy form matched a
 #: single character -- `2` -- and the tests caught it.  `\S+` stops at
 #: whitespace, which is exactly the field boundary here.
-_WHEN_RE = _re.compile(
+_WHEN_RE = re.compile(
     r"to start at (\S+)(?:\s+using\s+(\d+)\s+processors?)?"
-    r"(?:\s+on nodes?\s+(\S+))?", _re.I)
+    r"(?:\s+on nodes?\s+(\S+))?", re.I)
 
 
 @dataclass(frozen=True)
@@ -411,7 +431,7 @@ def parse_test_only(text: str) -> Prediction:
 
 
 def prediction_table(preds: Sequence[Prediction]) -> str:
-    """What the scheduler said, one line per queue.
+    """What the scheduler said, one line per job asked about.
 
     Ordered as it was asked, not by which looks fastest.  Sorting would be
     a recommendation, and the wait is only one of the things a person is

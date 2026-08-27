@@ -230,6 +230,10 @@ def test_the_fitting_node_COUNT_rides_with_the_range():
     htc = _domains()["htc"]
     assert "137 of 188" in fits_how_many(htc, 64)
     assert "134 of 188" in fits_how_many(htc, 128)
+    # NO leading arrow: `->` already means *this queue is refused* one
+    # indent out, and two arrows at two indents saying different things is
+    # a table you have to decode.  Only visible by reading the rendering.
+    assert not fits_how_many(htc, 64).startswith("->")
 
 
 def test_an_ask_nothing_can_hold_says_none_rather_than_a_percentage():

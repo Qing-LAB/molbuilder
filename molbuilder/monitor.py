@@ -39,7 +39,8 @@ CLI (also available as ``molbuilder monitor``)::
 
 **Where** to send it is never here and never in the description: it is the
 user's own file, :func:`default_notify_path`, mode 0600 on the machine
-that runs the job.  ``MB_NOTIFY_URL`` overrides it for a one-off.  A notifier can
+that runs the job.  ``MB_NOTIFY_URL`` (with ``MB_NOTIFY_KEY`` for our
+own listener) overrides it for a one-off.  A notifier can
 also be registered programmatically::
 
     from molbuilder import monitor
@@ -829,7 +830,9 @@ def _install_env_notifiers(log: Optional[Path] = None) -> None:
     """Register the user's notifier, if they configured one.
 
     ``MB_NOTIFY_URL`` wins when set -- an explicit environment override is
-    how you test a destination once without editing a file.  Otherwise the
+    how you test a destination once without editing a file.  Pair it with
+    ``MB_NOTIFY_KEY`` for a molbuilder listener; a third party that keeps
+    its credential in the URL (Slack, Discord) needs no key.  Otherwise the
     standing configuration at :func:`default_notify_path` is used.  Neither present
     means no notifier at all.
 
@@ -844,7 +847,15 @@ def _install_env_notifiers(log: Optional[Path] = None) -> None:
         return
     url = os.environ.get("MB_NOTIFY_URL")
     if url:
-        register_notifier(make_webhook_notifier(url))
+        # ``MB_NOTIFY_KEY`` rides with it, because without a key the
+        # override could not reach OUR OWN listener at all: an unsigned
+        # report is refused there, and refused with a 404 that this
+        # notifier swallows -- so the one destination you most want to test
+        # once would have failed in total silence.  (Found reviewing,
+        # 2026-08-27; the override was written when the listener took a
+        # bearer token in a header.)
+        register_notifier(make_webhook_notifier(
+            url, key=os.environ.get("MB_NOTIFY_KEY") or None))
         return
     dest = load_destination(log=log)
     if dest:

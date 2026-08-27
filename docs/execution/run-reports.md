@@ -136,8 +136,16 @@ wagging the dog. It says so **in the monitor log**, because the wrapper
 backgrounds the process as `>/dev/null 2>&1 &` and anything printed goes
 nowhere.
 
+A third destination shape exists and is not in the table because nothing we
+ship needs it: **`headers`**, for a generic endpoint that wants a credential in
+a header and has no other way to be told who is calling. It is read if present
+and never required.
+
 `MB_NOTIFY_URL` overrides the file, for testing a destination once without
-editing anything.
+editing anything. **Pair it with `MB_NOTIFY_KEY`** when the destination is a
+molbuilder listener — an unsigned report is refused there, and refused with a
+`404` that the notifier swallows, so the one destination you most want to test
+would fail in silence.
 
 ---
 
@@ -236,8 +244,8 @@ changes the decision can be revisited rather than rediscovered.
 
 ### 4.3 The two files, and issuing them
 
-`molbuilder notify-token <user>` generates the key **and**, on first use, the
-route segment; writes the server half; and prints the cluster half:
+`molbuilder notify-token <user>` generates the key, writes the server half, and
+prints the cluster half:
 
 | | file | mode |
 |---|---|---|
@@ -249,6 +257,27 @@ route segment; writes the server half; and prints the cluster half:
 segment, which is not a secret). Either one missing means no route is
 registered — `access-control.md` § 8 rule 1, *the safe state is the one you get
 by doing nothing*.
+
+> **It also generates a route segment — every single time, unless you say
+> otherwise.** The command cannot read `molbuilder.json`, so it has no way to
+> know a route is already in service. **Issuing a second person's key without
+> `--route` prints a NEW segment**, and pasting that into the config moves the
+> route out from under everyone already set up — their reports would stop, and
+> silently, because a notifier swallows failures by design.
+>
+> So the first key is issued plainly, and **every one after it passes the
+> segment already in `molbuilder.json`**:
+>
+> ```console
+> $ molbuilder notify-token alice --host https://qlabsrv.physics.asu.edu:8888
+>   ...  "notify_route": "Ie8PB3cbJBoGoC"
+>
+> $ molbuilder notify-token bob   --host https://qlabsrv.physics.asu.edu:8888 \
+>       --route Ie8PB3cbJBoGoC
+> ```
+>
+> The command says which of the two it just did, in as many words. Read that
+> line before you paste anything.
 
 **The key is printed once, and that is a deliberate exception.** `auth-setup`
 never prints a secret and is right not to — a session key never leaves the
@@ -268,9 +297,18 @@ key, be refused, and — because a notifier is **silent on failure** by design,
 so an unreachable server never costs a run anything — the reports would simply
 stop, with nothing anywhere saying why.
 
-So rotation is an act, never a side effect: re-run `notify-token --replace`
-and copy the new destination file to the cluster (`access-control.md` § 8
-rule 8).
+So rotation is an act, never a side effect: re-run `notify-token` with
+`--replace`, **and with `--route` naming the segment already in service**, then
+copy the new destination file to the cluster (`access-control.md` § 8 rule 8):
+
+```console
+$ molbuilder notify-token alice --replace --route Ie8PB3cbJBoGoC \
+      --host https://qlabsrv.physics.asu.edu:8888
+```
+
+Without `--route` this rotates one person's key **and moves the route for
+everybody else** — two changes where one was intended, and the second one
+silent.
 
 ---
 
@@ -295,6 +333,7 @@ damage if a destination is ever compromised: the worst it buys is noise.
 | how it reaches the monitor | `--notify-on-scf` / `--notify-every-hours` on the `mb_monitor.py` line |
 | when to fire | `monitor.run_monitor` |
 | where to send | `monitor.load_destination` → `config_dir()/notify` |
+| overriding that once | `MB_NOTIFY_URL` + `MB_NOTIFY_KEY` (§ 3) |
 | the card that sets it | the Task-setup tab, `task-setup.md` § 7 |
 | how a report is signed | HMAC-SHA256 over the body, both ends, standard library only (§ 4.1) |
 | the receiving end | `web/blueprints/notify.py`, registered by `web/app.py` only when **both** `notify_keys_file` and `notify_route` are set |

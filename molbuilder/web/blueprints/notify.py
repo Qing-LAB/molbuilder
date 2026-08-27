@@ -73,7 +73,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, NoReturn, Optional
 
 from flask import Blueprint, abort, jsonify, request
 
@@ -90,13 +90,13 @@ _FIELDS = ("event", "text", "state", "elapsed_s", "n_iters", "energy",
            "geom_step", "per_iter_s")
 
 #: One rotating file per user, 1 MB × 5.  A cap is not optional on a file
-#: fed from the internet: without one a leaked token fills the disk the
+#: fed from the internet: without one a leaked key fills the disk the
 #: app itself runs on.  The limiter bounds the rate; this bounds the total.
 LOG_BYTES = 1 * 1024 * 1024
 LOG_KEEP = 5
 
 #: A user id becomes a FILENAME, so it is constrained to what is safe as
-#: one.  The ids come from the token file, which is the operator's own —
+#: one.  The ids come from the key file, which is the operator's own --
 #: but a path separator in one would write outside the log directory, and
 #: "the operator would not do that" is not a mechanism.
 _SAFE_USER = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
@@ -116,7 +116,7 @@ def log_root() -> Path:
 
 
 def read_keys(path: str) -> Dict[str, str]:
-    """``{user: token}`` from the operator's 0600 file, or ``{}``.
+    """``{user: signing-key}`` from the operator's 0600 file, or ``{}``.
 
     Absent, unreadable or malformed all give ``{}`` — and ``{}`` means the
     route accepts nothing, which is the safe reading.  A misconfiguration
@@ -194,7 +194,7 @@ def _logger_for(user: str) -> logging.Logger:
 def _clean(payload: Dict[str, Any]) -> Dict[str, Any]:
     """The declared fields, as scalars, and nothing else.
 
-    Everything here is attacker-controlled text once a token is known, and
+    Everything here is attacker-controlled text once a key is known, and
     it ends up on a page.  Strings are length-capped and nested structures
     are dropped rather than flattened — a report has no use for them, and
     accepting one means deciding later how to render it.
@@ -217,15 +217,24 @@ def _clean(payload: Dict[str, Any]) -> Dict[str, Any]:
 MAX_SKEW_S = 15 * 60
 
 
-def _deny():
+def _deny() -> "NoReturn":
     """Every refusal, and they are all the same one.
 
     A 404 rendered by Flask's own router, so a wrong signature is
     byte-identical to a path that was never registered
     (`access-control.md` § 8 rule 2).  Still 4xx, so `rate_limit.py`
     counts it exactly as the old 401 was counted.
+
+    **Every gate below depends on this RAISING.**  The call sites are bare
+    ``_deny()`` statements, not ``return _deny()``, so if this ever stopped
+    raising each one would fall through to the next step -- a wrong route
+    would go on to be signature-checked, a bad signature would go on to be
+    logged.  ``NoReturn`` says so to a reader and a type checker, and
+    `test_notify_listener.py` holds it as a guard, because a comment is not
+    a mechanism.
     """
     abort(404)
+    raise AssertionError("unreachable: abort() raises")   # pragma: no cover
 
 
 @bp.route("/api/<route>", methods=["POST"])
@@ -255,7 +264,14 @@ def api_notify(route: str):
         skew = abs(time.time() - float(ts))
     except (TypeError, ValueError):
         _deny()
-    if skew > MAX_SKEW_S:
+    # NOT `if skew > MAX_SKEW_S`.  `float("nan")` parses, and EVERY
+    # comparison against NaN is False -- so `nan > MAX_SKEW_S` is False and
+    # a timestamp of "nan" walked straight through this gate.  Asking for
+    # the good case instead means anything that is not a real, small number
+    # is refused, NaN included.  (Found reviewing, 2026-08-27.  It needed a
+    # valid signature over "nan" to exploit, so it was never an auth
+    # bypass -- but a gate with a hole in it is not a gate.)
+    if not skew <= MAX_SKEW_S:
         _deny()
 
     keys = read_keys(current_app.config["MB_NOTIFY_KEYS_FILE"])
