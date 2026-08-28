@@ -134,12 +134,12 @@ import { molviewFiles } from "../projects/molview-doors.js";
      */
     function _redactSourcePath(p) {
         if (typeof p !== "string" || !p) return p;
-        // POSIX home (Linux + macOS).  ``/home/qqing/foo`` ->
-        // ``~/foo``; ``/Users/qqing/foo`` -> ``~/foo``.  The
+        // POSIX home (Linux + macOS).  ``/home/u/foo`` ->
+        // ``~/foo``; ``/Users/u/foo`` -> ``~/foo``.  The
         // ``[^/]+`` segment is the username.
         p = p.replace(/^\/(home|Users)\/[^/]+\//, "~/");
         // POSIX tmp dirs with embedded username.  pytest writes
-        // ``/tmp/pytest-of-qqing/...``; the username-bearing first
+        // ``/tmp/pytest-of-u/...``; the username-bearing first
         // segment under /tmp is replaced with ``<tmp>``.
         p = p.replace(/^\/tmp\/[^/]*-of-[^/]+\//, "<tmp>/");
         // Windows home.  Case-insensitive on the drive letter +

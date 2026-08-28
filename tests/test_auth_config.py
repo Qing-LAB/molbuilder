@@ -1014,11 +1014,11 @@ class TestCASExtractEmail:
     def test_attribute_string_wins_when_present(self):
         from molbuilder.web.auth_providers.cas import _extract_email
         email, denied = _extract_email(
-            "qqing",
-            {"mail": "qqing@asu.edu"},
+            "jdoe",
+            {"mail": "jdoe@asu.edu"},
             self._entry(email_attribute="mail", email_domain="asu.edu"),
         )
-        assert email == "qqing@asu.edu"
+        assert email == "jdoe@asu.edu"
         assert denied is None
 
     def test_attribute_list_first_element_wins(self):
@@ -1026,55 +1026,55 @@ class TestCASExtractEmail:
         are valid python-cas responses depending on the server."""
         from molbuilder.web.auth_providers.cas import _extract_email
         email, _ = _extract_email(
-            "qqing",
-            {"mail": ["qqing@asu.edu", "alt@asu.edu"]},
+            "jdoe",
+            {"mail": ["jdoe@asu.edu", "alt@asu.edu"]},
             self._entry(email_attribute="mail", email_domain="asu.edu"),
         )
-        assert email == "qqing@asu.edu"
+        assert email == "jdoe@asu.edu"
 
     def test_attribute_empty_list_falls_through_to_domain(self):
         from molbuilder.web.auth_providers.cas import _extract_email
         email, _ = _extract_email(
-            "qqing",
+            "jdoe",
             {"mail": []},
             self._entry(email_attribute="mail", email_domain="asu.edu"),
         )
         # Empty attribute -> synthesised
-        assert email == "qqing@asu.edu"
+        assert email == "jdoe@asu.edu"
 
     def test_attribute_missing_falls_through_to_domain(self):
         from molbuilder.web.auth_providers.cas import _extract_email
         email, _ = _extract_email(
-            "qqing",
+            "jdoe",
             {"otherattr": "x"},
             self._entry(email_attribute="mail", email_domain="asu.edu"),
         )
-        assert email == "qqing@asu.edu"
+        assert email == "jdoe@asu.edu"
 
     def test_no_attribute_configured_just_synthesises(self):
         from molbuilder.web.auth_providers.cas import _extract_email
         email, _ = _extract_email(
-            "qqing",
+            "jdoe",
             {},   # no attributes at all (ASU CAS behaviour)
             self._entry(email_domain="asu.edu"),
         )
-        assert email == "qqing@asu.edu"
+        assert email == "jdoe@asu.edu"
 
     def test_lowercases_the_result(self):
         from molbuilder.web.auth_providers.cas import _extract_email
         email, _ = _extract_email(
-            "QQing",
-            {"mail": "QQing@ASU.EDU"},
+            "JDoe",
+            {"mail": "JDoe@ASU.EDU"},
             self._entry(email_attribute="mail", email_domain="asu.edu"),
         )
-        assert email == "qqing@asu.edu"
+        assert email == "jdoe@asu.edu"
 
     def test_no_attribute_no_domain_yields_no_email(self):
         """Schema validation should make this unreachable, but pin the
         defensive behaviour anyway."""
         from molbuilder.web.auth_providers.cas import _extract_email
         email, denied = _extract_email(
-            "qqing", {}, self._entry()
+            "jdoe", {}, self._entry()
         )
         assert email is None
         assert denied is None

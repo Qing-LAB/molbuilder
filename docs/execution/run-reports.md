@@ -295,7 +295,7 @@ indistinguishable records. Somebody parses this file later with no session to
 ask, so:
 
 ```json
-{"v": 1, "user": "qqing@asu.edu", "run": "BDT_Au_relax", "job": "62238108",
+{"v": 1, "user": "jdoe@asu.edu", "run": "BDT_Au_relax", "job": "62238108",
  "host": "sg013", "event": "scf_converged", "sent_at": 1756000000.5,
  "received_at": 1756000000.8, "state": "running", "elapsed_s": 1234.5,
  "n_iters": 7, "energy": "-1740.21", "geom_step": 3, "per_iter_s": 12.8,
@@ -395,10 +395,10 @@ by doing nothing*.
 > segment already in `molbuilder.json`**:
 >
 > ```console
-> $ molbuilder notify-token alice --host https://qlabsrv.physics.asu.edu:8888
+> $ molbuilder notify-token alice --host https://molbuilder.example.edu:8888
 >   ...  "notify_route": "Ie8PB3cbJBoGoC"
 >
-> $ molbuilder notify-token bob   --host https://qlabsrv.physics.asu.edu:8888 \
+> $ molbuilder notify-token bob   --host https://molbuilder.example.edu:8888 \
 >       --route Ie8PB3cbJBoGoC
 > ```
 >
@@ -429,7 +429,7 @@ copy the new destination file to the cluster (`access-control.md` § 8 rule 8):
 
 ```console
 $ molbuilder notify-token alice --replace --route Ie8PB3cbJBoGoC \
-      --host https://qlabsrv.physics.asu.edu:8888
+      --host https://molbuilder.example.edu:8888
 ```
 
 Without `--route` this rotates one person's key **and moves the route for

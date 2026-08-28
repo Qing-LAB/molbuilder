@@ -211,7 +211,7 @@ The registration produces **three values** you'll need:
     your molbuilder hostname exactly.
 
 You'll also need to **decide upfront** what hostname molbuilder
-will be reachable at (e.g. `molbuilder.qlabsrv.physics.asu.edu`).
+will be reachable at (e.g. `molbuilder.molbuilder.example.edu`).
 Google needs this for the redirect URI; molbuilder needs a TLS
 cert valid for the same hostname.  Don't pick the hostname after
 you've already filled out the Cloud Console form — you'd have to
@@ -224,7 +224,7 @@ re-edit the redirect URI list.
 | 1 | <https://console.cloud.google.com> → Create project (or pick existing). Name it whatever -- "molbuilder" is fine. | A project to scope everything below | (nothing — just the context for the rest) |
 | 2 | APIs & Services → **OAuth consent screen** → User type "External" → fill in App name (`molbuilder`), support email, developer email → Save | Consent screen exists | (nothing — required prerequisite for step 3) |
 | 3 | APIs & Services → **Credentials** → "Create Credentials" → **OAuth client ID** → Application type: **Web application** | OAuth client form | (the form's outputs go into config) |
-| 4 | In the form, set **Authorized redirect URIs** to: `https://<your-molbuilder-hostname>/oauth-callback/google`<br>(e.g., `https://molbuilder.qlabsrv.physics.asu.edu/oauth-callback/google`) | Google now trusts that callback URL | (config-internal — molbuilder generates this URL automatically from the provider's `id`; you just have to declare it to Google) |
+| 4 | In the form, set **Authorized redirect URIs** to: `https://<your-molbuilder-hostname>/oauth-callback/google`<br>(e.g., `https://molbuilder.molbuilder.example.edu/oauth-callback/google`) | Google now trusts that callback URL | (config-internal — molbuilder generates this URL automatically from the provider's `id`; you just have to declare it to Google) |
 | 5 | Click **Create**.  Google shows a modal with two values. | "Client ID" → long `.apps.googleusercontent.com` string<br>"Client secret" → `GOCSPX-xxx...` string | • Client ID → `client_id` field of the Google provider entry in `molbuilder.json`<br>• Client secret → save to a file (next step) |
 | 6 | (On the molbuilder server, NOT in Cloud Console) Save the secret to a 0600 file: `echo 'GOCSPX-xxxx' > ~/.molbuilder/google_client_secret && chmod 600 ~/.molbuilder/google_client_secret` | A protected file with just the secret | Path → `client_secret_file` field of the Google provider entry |
 | 7 | (Optional, recommended) APIs & Services → OAuth consent screen → **Publishing status: In production** (or leave in "Testing" if your `allowed_users` list is short — see Testing-mode caveat below) | Either Google shows your app to anyone the operator allowed, or limits to the test-user list you set in the consent screen | (no config change) |

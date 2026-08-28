@@ -4,14 +4,14 @@
 is baked VERBATIM into the `.run.sh` from the machine that ran `prep`.  The
 workstation's config says
 
-    source /home/qqing/miniconda3/etc/profile.d/conda.sh
+    source /home/u/miniconda3/etc/profile.d/conda.sh
 
 so prepping from the browser — where the server runs on the workstation —
 put that line into every trial's wrapper.  The bundle then travelled to
-Sol, which has no `/home/qqing/miniconda3` and activates with
+Sol, which has no `/home/u/miniconda3` and activates with
 `module load mamba` instead, and every job died with
 
-    siesta-...-run.sh: line 196: /home/qqing/.../conda.sh: No such file or directory
+    siesta-...-run.sh: line 196: /home/u/.../conda.sh: No such file or directory
 
 naming neither the config key that put the path there, nor the machine it
 came from, nor what to do about it.
@@ -44,7 +44,7 @@ def _render(tmp_path: Path, preamble: str, monkeypatch=None) -> Path:
 
     The server scope is read from the cwd's `molbuilder.json`, and this
     repo's own root has one carrying `source
-    /home/qqing/miniconda3/etc/profile.d/conda.sh` -- the very line that
+    /home/u/miniconda3/etc/profile.d/conda.sh` -- the very line that
     caused the Sol failure.  Without chdir'ing away, every case here would
     silently inherit it and the "no absolute path" case could never be
     expressed.
@@ -75,8 +75,8 @@ class TestWhichPathsAreChecked:
     none: it would refuse a run that would have worked."""
 
     @pytest.mark.parametrize("line,expected", [
-        ("source /home/qqing/miniconda3/etc/profile.d/conda.sh",
-         ["/home/qqing/miniconda3/etc/profile.d/conda.sh"]),
+        ("source /home/u/miniconda3/etc/profile.d/conda.sh",
+         ["/home/u/miniconda3/etc/profile.d/conda.sh"]),
         ('source "/opt/conda/etc/profile.d/conda.sh"',
          ["/opt/conda/etc/profile.d/conda.sh"]),
         (". /opt/x/conda.sh", ["/opt/x/conda.sh"]),
@@ -155,7 +155,7 @@ class TestActivationComesFromTheMachineRecord:
 
     Before this, `prep --target sol` took Sol's queues and topology from
     its record and the WORKSTATION's preamble from `molbuilder.json`, so
-    every job died on `source /home/qqing/miniconda3/.../conda.sh`.
+    every job died on `source /home/u/miniconda3/.../conda.sh`.
     """
 
     @staticmethod
@@ -184,7 +184,7 @@ class TestActivationComesFromTheMachineRecord:
         """The regression, stated as the thing that must NOT appear.
 
         This repo's own root `molbuilder.json` carries
-        `source /home/qqing/miniconda3/etc/profile.d/conda.sh`, and it is
+        `source /home/u/miniconda3/etc/profile.d/conda.sh`, and it is
         what got baked.  With a target record present it must not be
         consulted at all -- so this does NOT chdir away: the local config
         is deliberately in scope and must still be ignored.

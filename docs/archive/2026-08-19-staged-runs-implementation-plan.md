@@ -149,7 +149,7 @@ the full suite.
 > them.
 
 - Tests are run through `tools/testrun.py` (`run none2e`, `run lf`,
-  `status --fails`), under `/home/qqing/miniconda3/envs/molbuilder/bin/python`.
+  `status --fails`), under `/home/u/miniconda3/envs/molbuilder/bin/python`.
   Piping `pytest` through `tail` has already hidden 24 failures out of 31 on
   this project; the tool exists because of it.
 - **The backend suite is green today and stays green.** This is not the MolView

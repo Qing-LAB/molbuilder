@@ -2653,7 +2653,7 @@ def render_run_wrapper(script_path: Path, *,
             f"fi\n"
             # THE PROBE CANNOT BLOCK THE JOB (2026-08-25).  Three things
             # are needed and each one alone is insufficient; this is the
-            # order they were found in, live on qlabsrv:
+            # order they were found in, live on the dev workstation:
             #
             #  1. `|| true` catches a probe that FAILS.  It cannot catch
             #     one that never returns -- and this one can.  SIESTA reads

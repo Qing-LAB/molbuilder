@@ -94,11 +94,11 @@ def test_write_secret_file_rejects_empty():
 
 
 def test_asu_cas_entry_shape_round_trips_validator():
-    entry = _as.build_asu_cas_entry("qqing")
+    entry = _as.build_asu_cas_entry("jdoe")
     # Must round-trip through the canonical runtime_config validator.
     _validate_provider(entry, idx=0)
     assert entry["kind"] == "cas"
-    assert entry["allowed_users"] == ["qqing@asu.edu"]
+    assert entry["allowed_users"] == ["jdoe@asu.edu"]
     assert entry["login_url"].startswith("https://")
     assert entry["service_validate_url"].startswith("https://")
     assert entry["email_domain"] == "asu.edu"
@@ -148,7 +148,7 @@ def test_google_entry_rejects_empty_allowlist(tmp_path):
 
 
 def test_emit_molbuilder_json_writes_0600(tmp_path):
-    entry = _as.build_asu_cas_entry("qqing")
+    entry = _as.build_asu_cas_entry("jdoe")
     block = _as.build_auth_block(
         providers=[entry], secret_key_file=tmp_path / "sk",
     )
@@ -160,7 +160,7 @@ def test_emit_molbuilder_json_writes_0600(tmp_path):
 
 
 def test_emit_preserves_other_top_level_keys(tmp_path):
-    entry = _as.build_asu_cas_entry("qqing")
+    entry = _as.build_asu_cas_entry("jdoe")
     block = _as.build_auth_block([entry], tmp_path / "sk")
     out = tmp_path / "molbuilder.json"
     existing = {"envs": {"siesta": "molbuilder-siesta"}, "tls": {"cert": "/x"}}
@@ -173,7 +173,7 @@ def test_emit_preserves_other_top_level_keys(tmp_path):
 
 
 def test_emit_refuses_to_clobber_without_force(tmp_path):
-    entry = _as.build_asu_cas_entry("qqing")
+    entry = _as.build_asu_cas_entry("jdoe")
     block = _as.build_auth_block([entry], tmp_path / "sk")
     out = tmp_path / "molbuilder.json"
     out.write_text('{"keep": "me"}')
@@ -184,7 +184,7 @@ def test_emit_refuses_to_clobber_without_force(tmp_path):
 
 
 def test_emit_force_overrides_clobber_guard(tmp_path):
-    entry = _as.build_asu_cas_entry("qqing")
+    entry = _as.build_asu_cas_entry("jdoe")
     block = _as.build_auth_block([entry], tmp_path / "sk")
     out = tmp_path / "molbuilder.json"
     out.write_text('{"orphan": "x"}')
@@ -217,7 +217,7 @@ def test_cli_asu_only_writes_config_and_secret(isolated_home):
     r = runner.invoke(cli, [
         "auth-setup",
         "--provider", "asu",
-        "--asurite", "qqing",
+        "--asurite", "jdoe",
         "--output", str(out),
     ], catch_exceptions=False)
     assert r.exit_code == 0, r.output
@@ -226,7 +226,7 @@ def test_cli_asu_only_writes_config_and_secret(isolated_home):
     data = json.loads(out.read_text())
     assert data["auth"]["providers"][0]["kind"] == "cas"
     assert data["auth"]["providers"][0]["allowed_users"] == \
-        ["qqing@asu.edu"]
+        ["jdoe@asu.edu"]
     # Secret file exists, 0600, non-empty.
     sk = isolated_home / ".config" / "molbuilder" / "secret_key"
     assert sk.exists()
@@ -262,7 +262,7 @@ def test_cli_refuses_to_clobber_without_force(isolated_home):
     r = runner.invoke(cli, [
         "auth-setup",
         "--provider", "asu",
-        "--asurite", "qqing",
+        "--asurite", "jdoe",
         "--output", str(out),
     ], catch_exceptions=False)
     assert r.exit_code != 0
@@ -278,7 +278,7 @@ def test_cli_force_overwrites_existing(isolated_home):
     r = runner.invoke(cli, [
         "auth-setup",
         "--provider", "asu",
-        "--asurite", "qqing",
+        "--asurite", "jdoe",
         "--output", str(out),
         "--force",
     ], catch_exceptions=False)

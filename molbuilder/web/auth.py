@@ -447,7 +447,7 @@ def _setup_session_security(app, auth_cfg: Mapping) -> None:
     ``true`` in molbuilder.json.  When on, Flask honours one upstream
     proxy hop's ``X-Forwarded-*`` headers so ``url_for(_external=True)``
     builds the public URL the browser saw (e.g.,
-    ``https://qlabsrv.physics.asu.edu/...``) rather than the internal
+    ``https://molbuilder.example.edu/...``) rather than the internal
     address the proxy forwarded to (e.g., ``http://127.0.0.1:8000/...``).
     Without ProxyFix a strict OAuth provider rejects the callback with
     ``redirect_uri_mismatch``.

@@ -52,7 +52,7 @@ def _pyscf_env_python():
     a system install that returns the HOST's binary.  So this file's own
     rule -- *"no host PATH siesta is permitted; the env's binary is the
     one"* -- was broken by its own fallback, silently, for as long as it
-    has existed; on qlabsrv it was measuring a root-owned 2023 build.
+    has existed; on the dev workstation it was measuring a root-owned 2023 build.
     ``_env_prefix`` is the product's four-tier resolver and cannot return
     something outside the env.
     """

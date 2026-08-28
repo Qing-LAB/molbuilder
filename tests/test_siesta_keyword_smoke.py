@@ -66,7 +66,7 @@ def _siesta_binary():
     a system install that returns the HOST's binary.  So this file's own
     rule -- *"no host PATH siesta is permitted; the env's binary is the
     one"* -- was broken by its own fallback, silently, for as long as it
-    has existed; on qlabsrv it was measuring a root-owned 2023 build.
+    has existed; on the dev workstation it was measuring a root-owned 2023 build.
     ``_env_prefix`` is the product's four-tier resolver and cannot return
     something outside the env.
     """
@@ -189,7 +189,7 @@ def _minimal_h2_fdf(tmp_path: Path, relax_type: str,
 
 # Map: cfg.relax_type -> the exact "Dynamics option" string SIESTA 5.4.2
 # echoes when it recognises the algorithm.  Empirically verified against
-# the binary in /home/qqing/.claude/jobs/074e4f77/tmp/siesta-kw-audit/.
+# the binary in /home/u/.claude/jobs/074e4f77/tmp/siesta-kw-audit/.
 _DYNAMICS_BANNER = {
     "CG":      "CG coord. optimization",
     "Broyden": "Broyden coord. optimization",

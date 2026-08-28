@@ -225,7 +225,7 @@ def test_committed_asu_sol_example_parses(sandbox):
 # --------------------------------------------------------------------- #
 #
 # User rule (2026-07-29): the example .json templates are documentation
-# that MUST move with the code in the same commit.  The qlabsrv
+# that MUST move with the code in the same commit.  The dev-workstation
 # missing-.run.sh regression was exactly this class of drift in reverse:
 # a live config predating the (templated) script_generation section.
 

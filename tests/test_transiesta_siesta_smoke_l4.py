@@ -37,8 +37,8 @@ import numpy as np
 import pytest
 
 
-_SIESTA_BIN = Path(
-    "/home/qqing/miniconda3/envs/molbuilder-siesta/bin/siesta"
+_SIESTA_BIN = (
+    Path.home() / "miniconda3" / "envs" / "molbuilder-siesta" / "bin" / "siesta"
 )
 _PSML_DIR = Path(__file__).parent.parent / "projects" / "pseudopotential"
 _AU_BDT_XYZ = Path(__file__).parent / "data" / "au_bdt_au.xyz"

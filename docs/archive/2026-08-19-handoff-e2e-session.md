@@ -20,7 +20,7 @@ analyse, or fold them into a finding.
 | reference decks | **36 cases, digest `149ac0714089ab85`**, harness `<scratch>/refgen.py` |
 | committed | `00d9d8e7` (the 58 files) on `feature/generator-jobset-ui`; nothing pushed |
 | E2E | **done 2026-08-19** — both engines ran real water calculations through the browser workflow; see § 2 |
-| server | the user runs it; do not start one. `https://qlabsrv.physics.asu.edu:8888` |
+| server | the user runs it; do not start one. `https://molbuilder.example.edu:8888` |
 
 ---
 

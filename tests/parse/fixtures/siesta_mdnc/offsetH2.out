@@ -1,4 +1,4 @@
-Executable      : /home/qqing/miniconda3/envs/molbuilder-siesta/bin/siesta
+Executable      : /home/u/miniconda3/envs/molbuilder-siesta/bin/siesta
 Version         : 5.4.2
 Architecture    : x86_64
 Compiler version: GNU-14.3.0
@@ -15,7 +15,7 @@ ELSI support. Solvers:
 DFT-D3 support
 
 Runtime information:
-* Directory : /tmp/claude-1000/-home-qqing-molbuilder/3fe7ef8e-2d79-454f-8a89-da0f2cc67f54/scratchpad/offsetrun
+* Directory : /home/u/offsetrun
 * Running in serial mode (only 1 MPI rank).
 >> Start of run:  15-AUG-2026  16:03:13
 

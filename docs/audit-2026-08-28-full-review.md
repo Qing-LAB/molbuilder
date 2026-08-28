@@ -28,7 +28,7 @@ reading the named code or by driving it.*
 | gate ④ fires at prep, inside the conductor | `workflow.md` § 9 | thin-vacuum + capped-SCF warnings at `prep bench`, per trial |
 | a bench trial is its own attempt | `project-layout.md` § 1.5a | `bench-K2C1/run-0/` on a fresh calculation |
 | the grouped launch runs trials in sequence, records per trial | `job-system.md` § 7 | two trials, one invocation, per-trial `run.json`, rc=0 |
-| the `[MACHINE]` line, first, model-not-count | `scheduler.md` R12 | `node=qlabsrv cores=40 mem_gb=251.8 gpu=NVIDIA GeForce RTX 3060 Ti` — written by production |
+| the `[MACHINE]` line, first, model-not-count | `scheduler.md` R12 | `node=devbox cores=40 mem_gb=251.8 gpu=NVIDIA GeForce RTX 3060 Ti` — written by production |
 | one machine kind → column shown, census silent | `generator.md` § 4.4b, R11 | machine column present, no *"kinds of node"* line — T1 holding in the wild |
 | summarize writes a recommendation, never a decision | `project-layout.md` § 2.3.2 | `run-config.toml`: *"yours to edit … delete a line … delete the file"* |
 | prep run applies the file to unstated fields, says so | `task-setup.md` § 11 | *"rendered for mpi_np 4 — agrees with this launch"* |
@@ -156,7 +156,7 @@ disk:
 | Task setup, gate ③ | shape/machine asked never guessed; the queue card speaks the workstation truth (*"no queues — runs directly … memory still has a real ceiling"*); save gated on a checkpoint note; `task.json` written and `task.1st.json` **removed** |
 | prep from the browser, gate ④ | the two-click confirm states the whole plan (*NO QUEUE STATED · NO MEMORY STATED*…), and then **`generator.md` § 4.1 refused in words with the numbers**: *"declared bench point mpi_np=16, omp_threads=2 needs 32 cores and this machine's probe found 20 … Trim the declaration, or benchmark on the machine it is meant to measure"* — trimmed in the editor (*"edited — not saved"* held until saved), re-prepped clean |
 | launch + summarize | CLI (the page teaches the command and deliberately has no launch button); the browser-born trial carries the `[MACHINE]` line first **and** `.concluded` `rc=0` — the whole day's stack in one directory |
-| bench summary, B1–B5 | one-kind census riding the header (*40c 250G GeForce RTX 3060 Ti*), per-card *"on … (qlabsrv)"*, gold winner outline, single-iteration caution, both clocks |
+| bench summary, B1–B5 | one-kind census riding the header (*40c 250G GeForce RTX 3060 Ti*), per-card *"on … (devbox)"*, gold winner outline, single-iteration caution, both clocks |
 | trajectory, gate ⑤ | the finished 140-step relax: phase chip (*Finished · SIESTA 5.4.2 · MPI*), convergence-targets card, 142-frame player with force overlay, four charts with their target lines |
 | the fence | a programmatic path outside the tree was refused naming the allowed roots |
 | SERVER LOAD | the fenced GPU sampler live through the widget (RTX named, no error) |

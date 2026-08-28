@@ -263,7 +263,7 @@ form) and **reverse** (Generate-time check).
 
 A check that never runs, or runs on the wrong structure, or produces a finding
 nobody sees, is worse than no check: it reads as a clean bill of health. Three
-real failures forced this contract (all three were live on `qlabsrv`):
+real failures forced this contract (all three were live on the dev workstation):
 
 * the min-atom-to-nearest-image check worked correctly and had **never once been
   shown in the browser** — `validate()` skips cell-dependent checks when `cell`

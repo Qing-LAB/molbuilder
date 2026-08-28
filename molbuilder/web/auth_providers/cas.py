@@ -16,8 +16,8 @@ allowlist-matching email from one of two paths:
   2. ``email_domain`` -- synthesises ``{principal}@{email_domain}``
      when no attribute is set or the attribute didn't come through.
      This is what ASU CAS users need: it returns only the ASURITE
-     (e.g., ``"qqing"``), paired with ``email_domain="asu.edu"`` to
-     yield ``qqing@asu.edu`` for the allowlist match.
+     (e.g., ``"jdoe"``), paired with ``email_domain="asu.edu"`` to
+     yield ``jdoe@asu.edu`` for the allowlist match.
 
 At least one of the two must be set (enforced at config-validation
 time in ``runtime_config._validate_cas``).

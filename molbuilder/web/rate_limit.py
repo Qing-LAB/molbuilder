@@ -5,7 +5,7 @@ Threat model
 
 molbuilder runs as a Flask app on a host that may be reachable from
 the public internet (typical deployment: a lab workstation at
-``qlabsrv.physics.asu.edu`` with TLS).  The auth layer protects
+``molbuilder.example.edu`` with TLS).  The auth layer protects
 authenticated surfaces (CAS / OAuth) but the unauthenticated probe
 surface remains:
 

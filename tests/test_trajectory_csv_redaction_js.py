@@ -9,11 +9,11 @@ The CSV download button on the Results tab produced a header like:
 
     # molbuilder — trajectory plot data export
     # generated:    2026-06-14T22:14:33.108Z
-    # source path:  /home/qqing/molbuilder/projects/BDT/run.out
+    # source path:  /home/u/molbuilder/projects/BDT/run.out
     # parser:       siesta
     ...
 
-The ``/home/qqing/`` prefix is sensitive (OS-level username).  The
+The ``/home/u/`` prefix is sensitive (OS-level username).  The
 fix: redact it in the JS-side CSV builder so the CSV reader sees a
 header like:
 
@@ -66,7 +66,7 @@ pytestmark = pytest.mark.skipif(
 _CASES = [
     # POSIX home (Linux): username segment after /home/ is redacted.
     (
-        "/home/qqing/molbuilder/projects/BDT/run.out",   # not-a-fixture
+        "/home/u/molbuilder/projects/BDT/run.out",   # not-a-fixture
         "~/molbuilder/projects/BDT/run.out",             # not-a-fixture
         "Linux home prefix redacted to ~",
     ),
@@ -84,7 +84,7 @@ _CASES = [
     ),
     # pytest tmpdir (/tmp/pytest-of-<u>/...) — common in CI logs.
     (
-        "/tmp/pytest-of-qqing/pytest-272/test_x/foo.out",
+        "/tmp/pytest-of-u/pytest-272/test_x/foo.out",
         "<tmp>/pytest-272/test_x/foo.out",
         "pytest tmpdir username segment redacted to <tmp>",
     ),

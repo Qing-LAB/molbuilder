@@ -1074,7 +1074,7 @@ unreachable server never costs a run anything:
 
 * **The certificate chain — SETTLED 2026-08-26, it validates.** Re-run without
   `-k` from a compute node: `http=302`, `curl_exit=0`. The CA that signed
-  qlabsrv's certificate is trusted there, so `monitor.py:578`'s
+  the dev workstation's certificate is trusted there, so `monitor.py:578`'s
   `urllib.request.urlopen` — which uses Python's default validating context —
   will connect. **§ 2.11 has nothing left gating it.**
 * **A redirect would eat the POST.** The `302` we measured is exactly what a

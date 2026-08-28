@@ -15,7 +15,7 @@ Operators who don't want it set `rate_limit.enabled = false` in
 
 molbuilder typically runs as a Flask app on a single host
 reachable from the public internet (e.g.
-`qlabsrv.physics.asu.edu`).  The auth layer protects the
+`molbuilder.example.edu`).  The auth layer protects the
 authenticated surface (CAS / OAuth) but unauthenticated surfaces
 remain probeable:
 

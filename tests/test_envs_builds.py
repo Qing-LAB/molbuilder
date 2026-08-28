@@ -904,9 +904,9 @@ def test_preserves_innocuous_env_vars():
     so conda + git + etc. work normally."""
     base = {
         "PATH": "/usr/bin",
-        "HOME": "/home/qqing",
-        "USER": "qqing",
-        "LOGNAME": "qqing",
+        "HOME": "/home/u",
+        "USER": "u",
+        "LOGNAME": "u",
         "LANG": "en_US.UTF-8",
         "LC_ALL": "C",
         "TERM": "xterm-256color",

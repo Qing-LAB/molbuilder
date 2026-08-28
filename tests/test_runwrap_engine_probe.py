@@ -13,7 +13,7 @@ FAILS and cannot handle one that never RETURNS.
 recognise ``--version`` therefore does not error: it waits for a deck.
 Forever.  The wrapper stops there, before the engine, having logged
 nothing since its banner — so on a cluster that is a queue slot spent, a
-wall reached, and no output naming a cause.  Found live on qlabsrv
+wall reached, and no output naming a cause.  Found live on the dev workstation
 2026-08-25, where a root-owned 2023 ``/usr/local/bin/siesta`` does exactly
 this; 28 blocked probes had accumulated from test runs alone.
 

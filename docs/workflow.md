@@ -366,10 +366,10 @@ not an obstacle: point the tree somewhere writable and every surface follows
 it at once — the verbs, the sidebar, the workspace store.
 
 ```json
-{ "paths": { "projects": "/scratch/qqing/projects" } }
+{ "paths": { "projects": "/scratch/u/projects" } }
 ```
 
-in `molbuilder.json`, or `MOLBUILDER_PROJECTS=/scratch/qqing/projects` for
+in `molbuilder.json`, or `MOLBUILDER_PROJECTS=/scratch/u/projects` for
 one shell ([`architecture.md § 8.2`](?doc=execution/architecture.md)).
 
 > **One address, one anchor — with one exception you will meet at `prep`.**

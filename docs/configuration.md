@@ -264,7 +264,7 @@ is the clearest statement of the rule.)*
 > preamble "a preference", and concluded the record **must not** carry it.
 > The consequence was the failure that section itself predicts, in the same
 > words it uses to predict it: a bundle prepped on the workstation baked
-> `source /home/qqing/miniconda3/etc/profile.d/conda.sh` and every job on
+> `source /home/u/miniconda3/etc/profile.d/conda.sh` and every job on
 > Sol died on a path that exists on neither the cluster nor anywhere it was
 > sent.
 >

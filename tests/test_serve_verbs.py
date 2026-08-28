@@ -28,6 +28,10 @@ import pytest
 
 from molbuilder import serve_daemon as sd
 
+#: The clone root -- the supervisor subprocesses must import
+#: molbuilder from THIS tree, wherever it is checked out.
+_REPO = str(Path(__file__).resolve().parents[1])
+
 
 # ------------------------------------------------------------- the roll
 
@@ -123,7 +127,7 @@ def _spawn_supervisor(tmp_path, port=9321, child_sleep=60):
         "log_max_bytes=1_000_000, log_keep=2)\n")
     env = dict(os.environ, HOME=str(tmp_path))
     return subprocess.Popen([sys.executable, "-c", code], env=env,
-                            cwd="/home/qqing/molbuilder")
+                            cwd=_REPO)
 
 
 def _child_pids(sup_pid):
@@ -199,7 +203,7 @@ def test_a_flapping_child_is_given_up_on(tmp_path):
         "log_max_bytes=1_000_000, log_keep=1))\n")
     env = dict(os.environ, HOME=str(tmp_path))
     sup = subprocess.Popen([sys.executable, "-c", code], env=env,
-                           cwd="/home/qqing/molbuilder")
+                           cwd=_REPO)
     try:
         assert sup.wait(timeout=30) == 1
         log = (tmp_path / ".molbuilder" / "logs" / "serve-9322.log")

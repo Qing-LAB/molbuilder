@@ -91,7 +91,7 @@ def test_it_writes_where_the_MONITOR_reads(client):
 @pytest.mark.parametrize("body,why", [
     ({}, "no url"),
     ({"url": ""}, "empty url"),
-    ({"url": "qlabsrv:8888/api/x"}, "no scheme -- would not parse as a url"),
+    ({"url": "devbox:8888/api/x"}, "no scheme -- would not parse as a url"),
     ({"url": "ftp://x/api"}, "a scheme nothing here speaks"),
 ])
 def test_a_url_that_could_not_work_is_refused(client, body, why):

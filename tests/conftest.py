@@ -147,7 +147,7 @@ def _product_toolchain_stubs(tmp_path_factory) -> Path:
     for name in _PRODUCT_TOOLCHAIN:
         if name in _DELEGATING:
             # A GUARD MUST NOT INVENT A TOOL THE MACHINE DOES NOT HAVE
-            # (2026-08-25).  `mamba` is absent on qlabsrv, and stubbing it
+            # (2026-08-25).  `mamba` is absent on the dev workstation, and stubbing it
             # anyway put one on PATH -- where `_locate_env_manager` PREFERS
             # it to conda.  The invented mamba shadowed the real conda,
             # answered `env list --json` with silence, and detection
@@ -177,7 +177,7 @@ def product_toolchain_is_the_suites_own(_product_toolchain_stubs, monkeypatch):
     the SYSTEM path.  The suite's result then depended on what the developer
     happened to have installed, which is the opposite of a test.
 
-    Found live on qlabsrv 2026-08-25.  A root-owned 2023
+    Found live on the dev workstation 2026-08-25.  A root-owned 2023
     ``/usr/local/bin/siesta`` was on PATH; it does not know ``--version``,
     and SIESTA reads its deck from stdin, so it did not fail -- it waited
     for a deck.  Eight tests in ``test_runwrap_cold_restart.py`` failed as

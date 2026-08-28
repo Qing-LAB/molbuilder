@@ -3,7 +3,7 @@
 Nothing in the suite measured layout.  Every UI test asserted presence or
 behaviour, so a card could clip its own text and stay green -- which is how
 the Task-setup facts grid came to declare `minmax(9rem, 1fr)` for values like
-``source /home/qqing/miniconda3/etc/profile.d/conda.sh``, and simply lose the
+``source /home/u/miniconda3/etc/profile.d/conda.sh``, and simply lose the
 rest off the edge of the card.
 
 `ui-contract.md` § 3 is the rule: layouts reflow because their CONTENT stops
