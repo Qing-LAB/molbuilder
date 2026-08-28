@@ -366,3 +366,28 @@ def test_the_consent_question_names_the_field_that_moved():
     shown_b2, shown_p2 = _domains_shown(old, new + [Domain.from_row(
         {"name": "htc", "partition": "htc", "qos": "public"})])
     assert shown_b2 == ["lightwork"] and shown_p2 == ["lightwork", "htc"]
+
+
+def test_the_debug_arm_records_its_qos_cap_too():
+    """The missed restatement (2026-08-28): the debug domain is built in
+    its own arm, whose guard PROVES the QoS table answered for ``debug``
+    -- so its row must carry ``max_cpus_per_job`` like every other, null
+    when uncapped, the number when capped."""
+    from molbuilder.scheduler.probe import QosLimit
+    parts = parse_sinfo("htc|4:00:00|10|(null)|128|515000\n")
+
+    rows, _ = derive_domains(
+        parts, {"public": QosLimit(None, None, None),
+                "debug": QosLimit("0-00:15:00", 900, None)},
+        {"public", "debug"})
+    debug = next(r for r in rows if r["name"] == "debug")
+    assert "max_cpus_per_job" in debug and debug["max_cpus_per_job"] is None, (
+        "the debug arm asked the QoS table and must say so -- null, not absent")
+
+    rows2, _ = derive_domains(
+        parts, {"public": QosLimit(None, None, None),
+                "debug": QosLimit("0-00:15:00", 900, 8)},
+        {"public", "debug"})
+    debug2 = next(r for r in rows2 if r["name"] == "debug")
+    assert debug2["max_cpus_per_job"] == 8, (
+        "a capped debug QoS must put its number on the row admit reads")

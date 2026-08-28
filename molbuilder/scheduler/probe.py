@@ -463,6 +463,11 @@ def derive_domains(
         mw_str = qos["debug"].maxwall_str
         row = _row("debug", mw_str or "0-00:15:00", parts[0])
         row["qos"] = "debug"
+        # Same absent-vs-null rule as the loop below -- and unconditional
+        # here, because this arm's own guard just proved the QoS table
+        # answered for ``debug``.  Missed in the R13 sweep until a real
+        # Sol record (2026-08-28) showed every domain null'd but this one.
+        row["max_cpus_per_job"] = qos["debug"].max_cpus_per_job
         domains.append(row)
 
     for p in parts:
