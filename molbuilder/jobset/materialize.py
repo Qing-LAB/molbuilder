@@ -605,10 +605,15 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
 
     for fname in [job.script] + list(jobset.shared):
         _bring(fname)
-    # mb_monitor.py: the load monitor.  makov_payne_correction.py: the
-    # post-run script a CHARGED deck's own header instructs the user to
-    # run "after SIESTA finishes" -- i.e. HERE, beside the .out.
-    for extra in ("mb_monitor.py", "makov_payne_correction.py"):
+    # The monitor and what it imports (`runwrap.MONITOR_COMPANIONS` --
+    # the ONE list; naming the files here a second time is how
+    # `config_dir.py` came to travel with bench trials and not with run
+    # attempts, killing every run's monitor at import, 2026-08-28).
+    # makov_payne_correction.py: the post-run script a CHARGED deck's own
+    # header instructs the user to run "after SIESTA finishes" -- HERE,
+    # beside the .out.
+    from ..runwrap import MONITOR_COMPANIONS
+    for extra in (*MONITOR_COMPANIONS, "makov_payne_correction.py"):
         _bring(extra)
     stem = Path(job.script).stem
     for wrapper in (f"{stem}.run.sh", f"{stem}.sbatch"):

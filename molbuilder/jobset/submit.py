@@ -1378,7 +1378,15 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                 _ns = attempts(_d)
                 if not _ns or not was_launched(_d / f"run-{_ns[-1]}"):
                     continue
-                if dry_run:
+                if dry_run or mode == "ask":
+                    # A QUESTION MUST NOT WRITE.  Until 2026-08-28 only
+                    # dry_run took this arm, so `--mode ask` over a
+                    # launched stage physically opened run-<n+1> and
+                    # copied the warm files -- from an attempt that could
+                    # still be RUNNING (a torn .DM/.XV copy), and the
+                    # fresh empty attempt then hid the running one from
+                    # `status`, which reports the latest.  Asking when a
+                    # job would start had changed what the tree says.
                     continued.append(JobResult(
                         _j.name, [],
                         f"WOULD continue {_names[_j.name]}/run-{_ns[-1]} "

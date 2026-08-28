@@ -2371,11 +2371,20 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             from .submit import ASK_MAX_QUERIES
             click.echo(f"  NOT asked (past {ASK_MAX_QUERIES} queries): "
                        + ", ".join(skipped))
+        would = [r for r in results
+                 if r.status.startswith("WOULD continue")]
+        for r in would:
+            # the stage is launched; a re-submission would continue it.
+            # Said as a WOULD: asking created nothing (the attempt is
+            # opened at launch), and the answer to "when would it start"
+            # is the same envelope either way.
+            click.echo(f"  {r.name}: {r.status}")
         if not preds:
             # NOTHING WAS ASKED, so do not end on "launch it when the answer
             # suits you" -- there is no answer, and the line would read as
             # though there were.
-            click.echo("\n  nothing left to ask about in this sweep.")
+            if not would:
+                click.echo("\n  nothing left to ask about in this sweep.")
             if ran:
                 click.echo("  read what they measured: "
                            "`molbuilder jobset summarize bench <stage>`")

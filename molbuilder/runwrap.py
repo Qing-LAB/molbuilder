@@ -3802,6 +3802,13 @@ def render_run_wrapper(script_path: Path, *,
     )
 
 
+#: Every file that must sit BESIDE a SIESTA job for its monitor to run --
+#: the monitor itself, and the one module it imports when it ships alone.
+#: `write_run_wrapper` writes them next to the wrapper; `materialize`
+#: brings each into every attempt.  ONE list, because there were two.
+MONITOR_COMPANIONS = ("mb_monitor.py", "config_dir.py")
+
+
 def _config_dir_source() -> str:
     """`config_dir.py`'s source, to travel beside the monitor.
 
@@ -3928,14 +3935,19 @@ def render_wrappers(script_path: Path, *,
     # The background monitor travels WITH a SIESTA job because it has to run
     # under the job's own python (`running-a-job.md` § 4.1).
     if script_path.suffix.lower() == ".fdf":
-        files.append(("mb_monitor.py", _monitor_source()))
-        # AND THE RULE IT NEEDS, RATHER THAN A COPY OF IT.  The monitor
-        # reads its destination from molbuilder's config directory, and
-        # `tests/test_config_dir_has_one_home.py` allows exactly one module
-        # to spell that rule -- `config_dir.py`.  A file that ships alone
-        # cannot import it from an installed package, so the module itself
-        # travels: one definition, in one file, on both machines.
-        files.append(("config_dir.py", _config_dir_source()))
+        # THE NAMES COME FROM MONITOR_COMPANIONS, and every stager reads
+        # that constant.  This writer and `materialize._bring`'s extras
+        # were two hand-kept lists of "what travels with the monitor";
+        # `config_dir.py` was added here (2026-08-26, with notify) and
+        # never there -- bench trials render INTO their attempt and got
+        # it, run attempts LINK from the stage dir and did not, so every
+        # production run's monitor died at import, stderr to /dev/null:
+        # no [MACHINE], no status, no util.csv, no reports.  Found
+        # 2026-08-28 by a run whose bench had all four.
+        sources = {"mb_monitor.py": _monitor_source,
+                   "config_dir.py": _config_dir_source}
+        for name in MONITOR_COMPANIONS:
+            files.append((name, sources[name]()))
 
     # The submission layer (`job-system.md` § 6): a ``.sbatch`` only when the
     # machine has a queue.  Resolving its header values lives here because only

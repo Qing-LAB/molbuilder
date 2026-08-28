@@ -1797,13 +1797,22 @@ def test_prepare_links_resolve_from_two_levels_down(tmp_path):
                 shared=["C.psml"], jobs=[Job(name="tight",
                                              script="JOB_03_tight.fdf")])
     for f in ("JOB_03_tight.fdf", "C.psml", "mb_monitor.py",
-              "JOB_03_tight.run.sh"):
+              "config_dir.py", "JOB_03_tight.run.sh"):
         (tmp_path / f).write_text("x")
 
     rep = prepare_attempt(js, tmp_path, "tight")
     attempt = rep.dir
+    # EVERY monitor companion, from runwrap's one list.  `config_dir.py`
+    # was named in the wrapper writer and not here, so it travelled with
+    # bench trials (rendered in place) and not with run attempts (linked)
+    # -- and every production run's monitor died at import, silently
+    # (2026-08-28).  Asserting through the constant keeps a third list
+    # from growing.
+    from molbuilder.runwrap import MONITOR_COMPANIONS
     assert set(rep.linked) == {"JOB_03_tight.fdf", "C.psml",
-                                  "mb_monitor.py", "JOB_03_tight.run.sh"}
+                                  *MONITOR_COMPANIONS,
+                                  "JOB_03_tight.run.sh"}
+    assert "config_dir.py" in rep.linked
     for name in rep.linked:
         link = attempt / name
         assert link.is_file() and not link.is_symlink(), (

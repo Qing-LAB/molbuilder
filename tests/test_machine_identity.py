@@ -130,3 +130,35 @@ def test_the_machine_is_the_logs_first_line(tmp_path):
         "the machine record moved off the first line; a killed run "
         "loses it if it waits for the terminal block")
     assert f"node={os.uname().nodename[:128]}" in first
+
+
+def test_a_monitor_missing_its_companion_still_monitors(tmp_path, monkeypatch):
+    """`config_dir.py` travels beside the shipped monitor; when a staging
+    defect loses it, WHERE reports go cannot be answered -- and the answer
+    is *reports off* (`run-reports.md`: absent is off), never startup
+    death.  Death cost every [STATUS], the util series and the [MACHINE]
+    record of every production run for two days, silently
+    (stderr goes to /dev/null under the wrapper)."""
+    def _no_companion():
+        raise ModuleNotFoundError("config_dir")
+    monkeypatch.setattr(monitor, "_config_dir", _no_companion)
+    monkeypatch.delenv("MOLBUILDER_NOTIFY_FILE", raising=False)
+
+    out = tmp_path / "j.out"
+    out.write_text("scf:   1   -100.5\n")
+    timing = tmp_path / "j.scf-timing.log"
+    timing.write_text("100.0 1 scf: 1 -100.5\n")
+    log = tmp_path / "j.monitor.log"
+    it = iter([0.0, 0.0, 1.0, 2.0, 3.0, 4.0]); last = [0.0]
+
+    def clock():
+        last[0] = next(it, last[0]); return last[0]
+
+    monitor.run_monitor(out, timing, log, interval=1,
+                        watch_pid=999_999_999,
+                        sleep=lambda s: None, clock=clock)
+    text = log.read_text(encoding="utf-8")
+    assert "[MACHINE]" in text and "[MONITOR]" in text, (
+        "the monitor died over its missing notify companion")
+    assert "reports off" in text, (
+        "the absence must be SAID in the log the user reads")

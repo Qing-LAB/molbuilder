@@ -808,7 +808,17 @@ def load_destination(path: Optional[str] = None,
         else:
             print(f"[monitor] {msg}", flush=True)
 
-    p = Path(os.path.expanduser(path)) if path else default_notify_path()
+    try:
+        p = Path(os.path.expanduser(path)) if path else default_notify_path()
+    except ImportError:
+        # The shipped monitor could not find `config_dir.py` beside it, so
+        # WHERE the destination lives cannot be answered.  Absent is off
+        # (`run-reports.md` § 1): a monitor that cannot report must still
+        # MONITOR -- dying here cost every status line, the util series
+        # and the [MACHINE] record, silently, when a staging defect
+        # shipped the monitor without its companion (2026-08-28).
+        _say("no config_dir.py beside the monitor -- reports off")
+        return None
     try:
         raw = p.read_text(encoding="utf-8")
     except OSError:
