@@ -77,19 +77,18 @@ def _open_results(page, base_url):
 def _set_gpu_error(monkeypatch, value):
     """Put the server in the broken-driver state -- the WHOLE state.
 
-    A real NVML init failure leaves ``_GPU_ERROR`` set and the handle
-    list empty; the two never diverge in production.  Faking only the
-    flag was enough while the development host's own driver was dead
-    (the 2026-08-04 mismatch), but on a healthy host the snapshot kept
-    returning real GPUs next to the faked error -- a payload no server
-    ever produces -- and the "cells stay hidden" assertion failed
-    against numbers that had every right to be drawn.
+    Since 2026-08-28 the GPU sampler is one function returning
+    ``(gpus, error)`` -- a subprocess-with-timeout behind a cache
+    (the in-process NVML call froze the whole server once) -- so
+    faking the state is faking that one door: error set means the
+    rows are empty, exactly as a real failed/timed-out query leaves
+    them, and ``None`` means a healthy no-fault answer whose rows the
+    real box supplies.
     """
     from molbuilder.web.blueprints import system_load
-    monkeypatch.setattr(system_load, "_GPU_ERROR", value)
     if value is not None:
-        monkeypatch.setattr(system_load, "_NVML_OK", False)
-        monkeypatch.setattr(system_load, "_GPU_HANDLES", [])
+        monkeypatch.setattr(system_load, "_gpu_snapshot",
+                            lambda: ([], value))
 
 
 class TestABrokenDriverIsVisible:

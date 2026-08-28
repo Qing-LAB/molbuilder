@@ -1,60 +1,53 @@
 """L1 tests for ``web/blueprints/system_load.py`` -- the bottom-strip
 load-monitor backend.
 
-Cheap, no-I/O, no GPU dependency.  Verifies the snapshot helper:
+The GPU half changed shape on 2026-08-28: it was an in-process ``pynvml``
+call from request threads, and a request thread that entered the driver
+during another user's GPU work never came back -- NVML has no timeout
+anywhere in its API, a thread blocked in a driver ioctl cannot be
+cancelled from Python, and the whole web server froze for eight hours
+behind one page widget.  The query is a SUBPROCESS with a hard timeout
+now, behind a small cache, so the guards here are named for the property
+each protects:
 
-  * Returns the documented dict shape (cpu_pct + ram_* + gpus).
-  * Degrades to ``gpus: []`` when NVML wasn't init'd (CPU-only host).
-  * Field types match the JS widget's expectations (floats, not None).
+  * the no-block property -- the subprocess call carries the timeout;
+  * a timeout is a REPORTED, temporary failure of the inquiry, never a
+    failure of the system (user rule, 2026-08-28);
+  * a CPU-only box is a choice, not a fault: quiet;
+  * the cache means N open pages cost one query per TTL, not N.
 """
 from __future__ import annotations
 
-import contextlib
-import importlib
-import logging
-import sys
+import subprocess
 import types
 
 import pytest
 
 from molbuilder.web.blueprints import system_load as sl
 
-_MISSING = object()
+
+@pytest.fixture(autouse=True)
+def _fresh_cache(monkeypatch):
+    """Every test starts with an expired cache and no residue."""
+    monkeypatch.setattr(sl, "_smi_cache",
+                        {"t": 0.0, "gpus": [], "error": None})
 
 
-@contextlib.contextmanager
-def _reimported_with(fake_pynvml):
-    """Re-run the import-time NVML probe against a substitute ``pynvml``.
+def _smi_result(stdout="", rc=0, stderr=""):
+    r = types.SimpleNamespace()
+    r.returncode, r.stdout, r.stderr = rc, stdout, stderr
+    return r
 
-    The probe runs ONCE, at import -- which is exactly why a host that
-    breaks after the server starts stays broken for the life of the
-    process -- so the only honest way to exercise either branch is to
-    make the import happen again.  Pass ``None`` to make ``import
-    pynvml`` raise ImportError (CPython treats a ``None`` entry in
-    ``sys.modules`` as "this import fails").
 
-    Reloading rebinds the module's globals in place and the finally
-    reloads it once more against the real environment, so the module
-    other tests see is the true one again.
-    """
-    saved = sys.modules.get("pynvml", _MISSING)
-    sys.modules["pynvml"] = fake_pynvml
-    try:
-        importlib.reload(sl)
-        yield
-    finally:
-        if saved is _MISSING:
-            sys.modules.pop("pynvml", None)
-        else:
-            sys.modules["pynvml"] = saved
-        importlib.reload(sl)
+_ROW = ("NVIDIA GeForce RTX 3060 Ti, 37, 12, 4867, 8192, 118.4, 61, "
+        "1890, 6801\n")
 
+
+# ------------------------------------------------------------ the snapshot
 
 def test_snapshot_returns_documented_shape():
     """Public ``snapshot()`` returns the dict the widget consumes."""
     snap = sl.snapshot()
-    # CPU/RAM fields always present even on a CPU-only host -- psutil
-    # works everywhere we support.
     for key in ("cpu_pct",
                 "cpu_count_physical", "cpu_count_logical",
                 "loadavg_1m", "loadavg_5m", "loadavg_15m",
@@ -63,64 +56,136 @@ def test_snapshot_returns_documented_shape():
         assert key in snap, f"snapshot missing required key {key!r}"
     assert isinstance(snap["cpu_pct"],      (int, float))
     assert isinstance(snap["ram_pct"],      (int, float))
-    assert isinstance(snap["ram_used_gb"],  (int, float))
-    assert isinstance(snap["ram_total_gb"], (int, float))
     assert isinstance(snap["gpus"], list)
-    # Load avg may be None on non-POSIX hosts but is a float here.
     for key in ("loadavg_1m", "loadavg_5m", "loadavg_15m"):
         v = snap[key]
-        assert v is None or isinstance(v, (int, float)), \
-            f"loadavg field {key!r} has unexpected type: {type(v)}"
-    # Physical < logical when SMT is on; equal otherwise.  Both > 0.
+        assert v is None or isinstance(v, (int, float))
     assert snap["cpu_count_physical"] >= 1
     assert snap["cpu_count_logical"]  >= snap["cpu_count_physical"]
 
 
-def test_snapshot_gpu_entries_have_required_fields():
-    """When NVML is available + a GPU is present, each entry carries
-    the fields the JS sparkline draws + the hover tooltip cites."""
-    snap = sl.snapshot()
-    for gpu in snap["gpus"]:
-        # ``error`` is the failure-marker shape -- one GPU's probe
-        # failed but the snapshot kept going.  Don't assert the
-        # success-shape on it.
-        if "error" in gpu:
-            assert "name" in gpu and "index" in gpu
-            continue
-        for key in ("index", "name", "util_pct",
-                    "mem_used_mb", "mem_total_mb", "mem_pct"):
-            assert key in gpu, f"GPU entry missing {key!r}: {gpu!r}"
-        assert isinstance(gpu["util_pct"], (int, float))
-        assert 0.0 <= gpu["mem_pct"]  <= 100.0
-        assert 0.0 <= gpu["util_pct"] <= 100.0
+def test_a_parsed_row_carries_the_fields_the_widget_draws(monkeypatch):
+    monkeypatch.setattr(sl.subprocess, "run",
+                        lambda *a, **kw: _smi_result(_ROW))
+    gpus, err = sl._gpu_snapshot()
+    assert err is None and len(gpus) == 1
+    g = gpus[0]
+    assert g["name"] == "NVIDIA GeForce RTX 3060 Ti"
+    assert g["util_pct"] == 37.0 and g["util_mem_pct"] == 12.0
+    assert g["mem_used_mb"] == 4867.0 and g["mem_total_mb"] == 8192.0
+    assert g["mem_pct"] == pytest.approx(59.4, abs=0.1)
+    assert g["power_w"] == 118.4 and g["temp_c"] == 61
+    assert g["sm_clock_mhz"] == 1890 and g["mem_clock_mhz"] == 6801
 
+
+def test_a_field_the_card_lacks_reads_None_not_a_crash(monkeypatch):
+    """Consumer cards print ``[N/A]`` for fields they do not expose."""
+    row = "Some GPU, 5, 1, 100, 1000, [N/A], 40, [Not Supported], 800\n"
+    monkeypatch.setattr(sl.subprocess, "run",
+                        lambda *a, **kw: _smi_result(row))
+    gpus, err = sl._gpu_snapshot()
+    assert err is None
+    assert gpus[0]["power_w"] is None
+    assert gpus[0]["sm_clock_mhz"] is None
+    assert gpus[0]["mem_clock_mhz"] == 800
+
+
+# ------------------------------------------- the no-block property itself
+
+def test_the_query_always_carries_the_hard_timeout(monkeypatch):
+    """THE property this module exists to have (2026-08-28): the driver
+    call happens in a child the server can abandon.  A ``run`` without a
+    timeout is the in-process bug wearing a subprocess costume."""
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen.update(kw); seen["cmd"] = cmd
+        return _smi_result(_ROW)
+
+    monkeypatch.setattr(sl.subprocess, "run", fake_run)
+    sl._gpu_snapshot()
+    assert seen.get("timeout") == sl._SMI_TIMEOUT_S, (
+        "the GPU query ran with no hard timeout -- one held driver and "
+        "every request thread is gone again")
+    assert seen["cmd"][0] == "nvidia-smi"
+
+
+def test_a_timeout_is_reported_and_the_server_keeps_serving(monkeypatch):
+    """A temporary failure of the inquiry, never of the system: the
+    snapshot completes, the reason rides ``gpu_error``, and the widget
+    prints it where the cells would have been."""
+    def hang(*a, **kw):
+        raise subprocess.TimeoutExpired(cmd="nvidia-smi",
+                                        timeout=sl._SMI_TIMEOUT_S)
+    monkeypatch.setattr(sl.subprocess, "run", hang)
+    gpus, err = sl._gpu_snapshot()
+    assert gpus == []
+    assert err and "timed out" in err
+    snap = sl.snapshot()                 # the system did not fail
+    assert snap["gpu_error"] == err
+
+
+def test_a_cpu_only_box_is_a_choice_not_a_fault(monkeypatch):
+    """No ``nvidia-smi`` on PATH: nothing is wrong, the widget drops its
+    GPU cells, and nothing cries wolf."""
+    def absent(*a, **kw):
+        raise FileNotFoundError("nvidia-smi")
+    monkeypatch.setattr(sl.subprocess, "run", absent)
+    gpus, err = sl._gpu_snapshot()
+    assert gpus == [] and err is None
+
+
+def test_a_tool_that_fails_is_loud_on_the_wire(monkeypatch):
+    """The case that hid for five weeks in 2026: driver broken, empty
+    list indistinguishable from a CPU-only box.  The reason must reach
+    ``gpu_error``."""
+    monkeypatch.setattr(
+        sl.subprocess, "run",
+        lambda *a, **kw: _smi_result(
+            "", rc=15, stderr="NVML/RM version mismatch"))
+    gpus, err = sl._gpu_snapshot()
+    assert gpus == []
+    assert err and "version mismatch" in err and "15" in err
+
+
+# ------------------------------------------------------------- the cache
+
+def test_open_pages_share_one_query_per_ttl(monkeypatch):
+    """Several widgets polling must not become several subprocesses --
+    the second call inside the TTL serves the cached answer."""
+    calls = {"n": 0}
+
+    def counting(*a, **kw):
+        calls["n"] += 1
+        return _smi_result(_ROW)
+
+    monkeypatch.setattr(sl.subprocess, "run", counting)
+    first, _ = sl._gpu_snapshot()
+    second, _ = sl._gpu_snapshot()
+    assert calls["n"] == 1, "the cache did not serve the second poll"
+    assert second == first
+
+
+# ---------------------------------------------------------- the endpoint
 
 def test_endpoint_returns_envelope(monkeypatch):
-    """/api/system/load wraps the snapshot in the documented
-    ``{ok, data}`` envelope (web-api.md § 1 (the response envelope))."""
     from molbuilder.web.app import create_app
-    app = create_app(config={})
-    client = app.test_client()
+    client = create_app(config={}).test_client()
     r = client.get("/api/system/load")
     assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is True
-    assert "data" in body
-    # Spot-check one field round-trips through the JSON layer cleanly.
     assert isinstance(body["data"]["cpu_pct"], (int, float))
 
 
 def test_snapshot_endpoint_handles_psutil_failure(monkeypatch):
-    """If psutil somehow raises, the endpoint returns ok=false with
-    a useful message rather than 500-ing the JSON parser."""
     from molbuilder.web.app import create_app
 
     def _boom():
         raise RuntimeError("simulated psutil crash")
 
     monkeypatch.setattr(sl, "snapshot", _boom)
-    app = create_app(config={})
-    client = app.test_client()
+    client = create_app(config={}).test_client()
     r = client.get("/api/system/load")
     assert r.status_code == 500
     body = r.get_json()
@@ -128,93 +193,14 @@ def test_snapshot_endpoint_handles_psutil_failure(monkeypatch):
     assert "simulated psutil crash" in body["error"]
 
 
-def test_a_host_with_no_gpu_support_reports_no_fault(caplog):
-    """``pynvml`` absent is a CHOICE, not a breakage.
-
-    Nobody installed ``molbuilder[gpu]``, so nothing is wrong: the wire
-    carries no reason, the widget stays silent, and the log does not cry
-    wolf on every start of every CPU-only server.
-    """
-    with caplog.at_level(logging.INFO, logger=sl.__name__):
-        with _reimported_with(None):     # None => `import pynvml` raises
-            assert sl._NVML_OK is False
-            assert sl._GPU_ERROR is None
-            assert sl.snapshot()["gpu_error"] is None
-            warnings = [r for r in caplog.records
-                        if r.levelno >= logging.WARNING
-                        and r.name == sl.__name__]
-            assert warnings == [], \
-                f"a CPU-only host should not warn: {[r.message for r in warnings]}"
-
-
-def test_a_driver_that_will_not_start_is_a_warning_and_reaches_the_wire(caplog):
-    """``pynvml`` present but NVML refusing to start is a BROKEN HOST.
-
-    This is the case that hid: an empty ``gpus`` list looks identical to
-    a CPU-only box, so the strip silently dropped three cells and the
-    only trace was an INFO line nobody runs the server verbose enough to
-    see.  The reason must now be loud in the log AND present on the wire
-    for the widget to print.
-    """
-    fake = types.ModuleType("pynvml")
-
-    def _mismatch():
-        raise RuntimeError("RM has detected an NVML/RM version mismatch.")
-
-    fake.nvmlInit = _mismatch
-
-    with caplog.at_level(logging.INFO, logger=sl.__name__):
-        with _reimported_with(fake):
-            assert sl._NVML_OK is False
-            # The reason names the exception type AND its message -- the
-            # type alone ("RuntimeError") tells a user nothing.
-            assert sl._GPU_ERROR is not None
-            assert "version mismatch" in sl._GPU_ERROR
-            assert "RuntimeError" in sl._GPU_ERROR
-            # On the wire, beside the empty list it explains.
-            snap = sl.snapshot()
-            assert snap["gpus"] == []
-            assert snap["gpu_error"] == sl._GPU_ERROR
-            # And in the log, at a level the operator actually sees.
-            warnings = [r for r in caplog.records
-                        if r.levelno >= logging.WARNING
-                        and r.name == sl.__name__]
-            assert len(warnings) == 1, \
-                f"expected exactly one warning, got {[r.message for r in warnings]}"
-            assert "version mismatch" in warnings[0].getMessage()
-
-
 def test_the_endpoint_carries_the_reason_through_json(monkeypatch):
     """The widget reads ``gpu_error`` off the response, not off a global
     -- so the field has to survive the jsonify layer."""
     from molbuilder.web.app import create_app
 
-    monkeypatch.setattr(sl, "_GPU_ERROR",
-                        "NVMLError_LibRmVersionMismatch: mismatch")
+    monkeypatch.setattr(sl, "_gpu_snapshot",
+                        lambda: ([], "GPU query timed out after 2s"))
     client = create_app(config={}).test_client()
     body = client.get("/api/system/load").get_json()
     assert body["ok"] is True
-    assert body["data"]["gpu_error"] == \
-        "NVMLError_LibRmVersionMismatch: mismatch"
-
-
-def test_gpu_name_decodes_bytes_and_str():
-    """NVML's ``nvmlDeviceGetName`` returns bytes in some pynvml
-    versions and str in others.  Helper must normalise to str without
-    crashing on either."""
-    # Stub a handle object the wrapper accepts.  The real signature
-    # takes a c_void_p; the helper only calls one library function.
-    sentinel = object()
-
-    if sl.pynvml is None:
-        pytest.skip("pynvml not importable; helper unreachable")
-
-    monkeypatched = {"value": b"NVIDIA Bytes GPU"}
-    real_fn = sl.pynvml.nvmlDeviceGetName
-    sl.pynvml.nvmlDeviceGetName = lambda h: monkeypatched["value"]
-    try:
-        assert sl._gpu_name(sentinel) == "NVIDIA Bytes GPU"
-        monkeypatched["value"] = "NVIDIA Str GPU"
-        assert sl._gpu_name(sentinel) == "NVIDIA Str GPU"
-    finally:
-        sl.pynvml.nvmlDeviceGetName = real_fn
+    assert body["data"]["gpu_error"] == "GPU query timed out after 2s"

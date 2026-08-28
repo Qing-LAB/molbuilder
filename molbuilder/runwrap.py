@@ -764,75 +764,61 @@ def _probe_gpu0_numa() -> Optional[int]:
 
     Two paths, tried in order:
 
-    1. NVML via the ``nvidia-ml-py`` package (importable as
-       ``pynvml`` -- same as ``web/blueprints/system_load.py`` and
-       the project's pinned dependency in ``pyproject.toml``).
-       Returns the GPU's PCI bus ID as bytes
-       (``b"00000000:65:00.0"``) which we feed to step 2.
+    1. ``nvidia-smi --query-gpu=pci.bus_id -i 0`` as a SUBPROCESS with a
+       hard timeout.  This was an in-process ``pynvml`` call until
+       2026-08-28 -- the day an in-process NVML call froze the whole web
+       server (this function runs at wrapper render, and prep runs from
+       the browser, so the request-thread path is real here too).  NVML
+       has no timeout anywhere in its API; a child process is the one
+       fence that lets the caller walk away (system_load.py carries the
+       full story).
     2. Kernel sysfs at ``/sys/bus/pci/devices/<id>/numa_node``.  The
        stable ABI the Linux kernel itself uses for NUMA-aware
        allocation.  A single integer; "-1" for "no NUMA / single
        node system".
 
     Returns the int, or ``None`` when:
-      * pynvml isn't importable (CPU-only host, no NVIDIA stack)
-      * NVML init or device enumeration fails
+      * nvidia-smi is absent, fails, or times out (CPU-only host, or a
+        held driver -- the probe is an optimisation, never worth a hang)
       * the sysfs file isn't readable
       * the sysfs value is "-1" (no NUMA affinity)
 
     Called once per wrapper render, at script-generation time.  The
-    answer is baked into the generated bash as a literal -- no
-    string-parsing of ``nvidia-smi`` output at runtime.
+    answer is baked into the generated bash as a literal.
     """
+    import subprocess
     try:
-        import pynvml  # type: ignore[import-untyped]
-    except ImportError:
+        cp = subprocess.run(
+            ["nvidia-smi", "--query-gpu=pci.bus_id",
+             "--format=csv,noheader", "-i", "0"],
+            capture_output=True, text=True, timeout=2.0)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if cp.returncode != 0:
+        return None
+    bus_id = cp.stdout.strip().lower()
+    if not bus_id:
+        return None
+    # nvidia-smi format: ``00000000:65:00.0`` (8-hex domain).
+    # sysfs path:        ``0000:65:00.0``    (4-hex domain).
+    # Strip the leading 4 hex digits of the domain.
+    import re
+    m = re.match(r"^[0-9a-f]{8}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]$", bus_id)
+    if not m:
+        return None
+    sysfs_id = bus_id[4:]
+    try:
+        with open(f"/sys/bus/pci/devices/{sysfs_id}/numa_node", "r") as fh:
+            txt = fh.read().strip()
+    except OSError:
         return None
     try:
-        pynvml.nvmlInit()
-    except Exception:  # noqa: BLE001 -- many distinct NVML failure types
+        val = int(txt)
+    except ValueError:
         return None
-    try:
-        try:
-            h = pynvml.nvmlDeviceGetHandleByIndex(0)
-        except Exception:  # noqa: BLE001 -- no GPUs / permission denied
-            return None
-        try:
-            pci = pynvml.nvmlDeviceGetPciInfo(h)
-        except Exception:  # noqa: BLE001
-            return None
-        # busId is ``bytes`` in older pynvml, ``str`` in newer; coerce.
-        bus_id = getattr(pci, "busId", None)
-        if isinstance(bus_id, bytes):
-            bus_id = bus_id.decode("ascii", errors="replace")
-        if not isinstance(bus_id, str) or not bus_id:
-            return None
-        bus_id = bus_id.strip().lower()
-        # nvidia-smi / NVML format: ``00000000:65:00.0`` (8-hex domain).
-        # sysfs path:             ``0000:65:00.0``    (4-hex domain).
-        # Strip the leading 4 hex digits of the domain.
-        import re
-        m = re.match(r"^[0-9a-f]{8}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]$", bus_id)
-        if not m:
-            return None
-        sysfs_id = bus_id[4:]
-        try:
-            with open(f"/sys/bus/pci/devices/{sysfs_id}/numa_node", "r") as fh:
-                txt = fh.read().strip()
-        except OSError:
-            return None
-        try:
-            val = int(txt)
-        except ValueError:
-            return None
-        if val < 0:
-            return None  # "-1" = no NUMA affinity / single-node system
-        return val
-    finally:
-        try:
-            pynvml.nvmlShutdown()
-        except Exception:  # noqa: BLE001
-            pass
+    if val < 0:
+        return None  # "-1" = no NUMA affinity / single-node system
+    return val
 
 
 def _baked_numa_literal_line() -> str:

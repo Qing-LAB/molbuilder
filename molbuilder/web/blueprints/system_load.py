@@ -12,18 +12,28 @@ Single dependency rationale:
   internally -- no manual ``/proc/stat`` bookkeeping.  First call
   returns 0.0 (no prior sample); every subsequent call returns the
   percent between the prior call and this one.
-* ``pynvml`` (optional, ~80 KB): official ``nvidia-ml-py`` binding to
-  NVML, the same library ``nvidia-smi`` uses under the hood.  ~1 ms
-  per call vs ~50-100 ms for a subprocess fork.  Import-guarded so a
-  CPU-only host or a missing NVML library degrades gracefully to
-  ``gpus: []`` -- the JS widget then hides its GPU bars.
+* GPU stats come from ``nvidia-smi`` run as a SUBPROCESS with a hard
+  timeout, cached for a few seconds -- **never an in-process NVML
+  call**.  This module used ``pynvml`` until 2026-08-28, when a
+  request thread entered the driver during another user's GPU work
+  and never came back: NVML has no timeout anywhere in its API, a
+  thread blocked in a driver ioctl cannot be cancelled from Python,
+  and the whole web server froze for eight hours behind one page
+  widget.  The process boundary is the only real fence: a stuck
+  child is abandoned at the timeout and the server keeps serving
+  (user rule: *a temporary failure of the inquiry, never a failure
+  of the system*).  The monitor on compute nodes has always sampled
+  this way (`monitor._sample_gpus`), so this is the server catching
+  up to its own convention, not a new one.  NVML itself is built for
+  many concurrent readers -- nvidia-smi, DCGM, several molbuilder
+  instances -- so the subprocess costs nothing in correctness; the
+  cache makes its ~50 ms cost irrelevant at widget cadence.
 
 Degrading gracefully is right; degrading SILENTLY is not.  When the
 GPU is missing because something on the host is broken rather than
 because there is no GPU, the reason travels with the snapshot as
 ``gpu_error`` and the widget prints it where the cells would have
-been.  See ``_GPU_ERROR`` for the two causes and why only one of them
-is a fault.
+been -- a query that TIMES OUT is exactly such a reason.
 
 Concurrency: the only shared state is psutil's internal CPU-tick
 snapshot (held in a process-global by psutil itself).  Concurrent
@@ -35,7 +45,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, jsonify
 
@@ -48,167 +58,121 @@ _log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-#  NVML init -- one-shot at import, guarded so a missing driver doesn't
-#  break the rest of the web app.
+#  GPU stats -- a subprocess with a hard timeout, behind a small cache
 # ---------------------------------------------------------------------------
 #
-# We do NOT call nvmlInit() on every request -- that's the same
-# expensive driver handshake nvidia-smi pays per invocation.  Init
-# once at import; the handle objects we cache below stay valid for
-# the process lifetime.  Driver unload mid-process would invalidate
-# them, but that requires root + isn't a real failure mode.
+# THE PROCESS BOUNDARY IS THE FENCE (module docstring): the query runs in
+# a child that can be abandoned, so a wedged driver costs one stale tick,
+# never a request thread.  The cache keeps widget polling cheap and means
+# several open pages share one query per TTL rather than one each.
 
-_NVML_OK: bool = False
-_GPU_HANDLES: List[Any] = []
+import threading as _threading
+import time as _time
 
-#: Why there are no GPU stats -- set ONLY when the absence is a FAULT.
-#:
-#: The endpoint reports "no GPUs" as an empty ``gpus`` list for two
-#: causes that look identical on the wire and are not remotely alike:
-#:
-#:   * a CPU-only install never put ``pynvml`` on the box.  Nothing is
-#:     wrong; the widget drops its GPU cells and says nothing.
-#:     ``_GPU_ERROR`` stays ``None``.
-#:   * ``pynvml`` IS installed -- someone asked for ``molbuilder[gpu]``,
-#:     so this host is meant to have a GPU -- and NVML would not start.
-#:     That is a broken host, and it stays broken silently: the strip
-#:     just loses three cells, which reads exactly like a CPU-only box.
-#:     ``_GPU_ERROR`` carries the reason so the log and the widget can
-#:     both say it out loud.
-#:
-#: 2026-08-04: the second case ran unnoticed for five weeks on the
-#: development host (driver userspace upgraded to 595.84 on 2026-06-29,
-#: kernel module still 595.71.05, no reboot).  ``nvidia-smi`` was dead
-#: the whole time and the monitor showed a tidy two-cell strip.
-_GPU_ERROR: Optional[str] = None
+#: One row per GPU, comma-separated, no units -- the same invocation
+#: shape the compute-node monitor has always used.
+_SMI_QUERY = ("nvidia-smi",
+              "--query-gpu=name,utilization.gpu,utilization.memory,"
+              "memory.used,memory.total,power.draw,temperature.gpu,"
+              "clocks.sm,clocks.mem",
+              "--format=csv,noheader,nounits")
 
-try:
-    import pynvml  # type: ignore[import-untyped]
-except ImportError:  # pragma: no cover -- CPU-only test environments
-    pynvml = None  # type: ignore[assignment]
-    # INFO, not WARNING, and no ``_GPU_ERROR``: an optional dependency
-    # that was never installed is a choice, not a fault.  Warning here
-    # would cry wolf on every CPU-only server start.
-    _log.info("pynvml not importable; GPU stats disabled "
-              "(install molbuilder[gpu] to enable)")
-else:
+#: The no-block property, as a number: a query that has not answered in
+#: this long is abandoned and REPORTED, and the server keeps serving.
+_SMI_TIMEOUT_S = 2.0
+
+#: How long one answer serves every open page.  Widget cadence is a few
+#: seconds; sampling faster than this buys nothing.
+_SMI_TTL_S = 3.0
+
+_smi_lock = _threading.Lock()
+_smi_cache: Dict[str, Any] = {"t": 0.0, "gpus": [], "error": None}
+
+
+def _num(tok: str) -> Optional[float]:
+    """One csv token -> float, or ``None`` for the fields a card does not
+    expose (nvidia-smi prints ``[N/A]``, ``[Not Supported]``...)."""
     try:
-        pynvml.nvmlInit()
-        n = pynvml.nvmlDeviceGetCount()
-        _GPU_HANDLES = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(n)]
-        _NVML_OK = True
-        _log.info("NVML initialised; %d GPU(s) discovered", n)
-    except Exception as exc:  # noqa: BLE001 -- NVML throws many exception types
-        # Driver not loaded, driver/library version mismatch after an
-        # upgrade without a reboot, MIG partitioning without permission,
-        # kernel mismatch.  Every one of them means this box was built
-        # for GPU work and cannot currently do it -- which is also true
-        # of the jobs the user is about to submit, since CUDA goes
-        # through the same driver NVML just failed to reach.
-        _GPU_ERROR = f"{type(exc).__name__}: {exc}"
-        _log.warning(
-            "NVML init failed (%s). GPU stats are disabled for the life "
-            "of this process. pynvml is installed, so this host is meant "
-            "to have a usable GPU -- run `nvidia-smi`, which goes through "
-            "the same library and will report the same failure. NVML is "
-            "initialised once, at import, so restart the server after "
-            "fixing the host.",
-            _GPU_ERROR)
-
-
-def _gpu_name(handle) -> str:
-    """Return the GPU's product name, falling back to '<unknown>' on
-    error.  NVML's ``nvmlDeviceGetName`` returns bytes in some pynvml
-    versions and str in others -- normalise to str."""
-    try:
-        n = pynvml.nvmlDeviceGetName(handle)
-    except Exception:  # noqa: BLE001
-        return "<unknown>"
-    if isinstance(n, bytes):
-        try:
-            return n.decode("utf-8", errors="replace")
-        except Exception:  # noqa: BLE001
-            return "<unknown>"
-    return str(n)
-
-
-def _try(fn, *args):
-    """NVML field probe wrapper.  Returns ``fn(*args)`` or ``None`` if
-    NVML raises -- some fields aren't supported on every chip
-    (consumer cards lack power-cap, etc.) so the snapshot stays
-    partial-fail rather than all-or-nothing."""
-    try:
-        return fn(*args)
-    except Exception:  # noqa: BLE001 -- NVML throws many distinct types
+        return float(tok.strip())
+    except ValueError:
         return None
 
 
-def _gpu_snapshot() -> List[Dict[str, Any]]:
-    """One entry per GPU; empty list when NVML is unavailable.
-
-    Fields emitted per GPU (all best-effort -- consumer cards may not
-    expose every probe, in which case the value is ``None`` and the
-    widget shows ``—`` for that cell):
-
-      * ``util_pct``       -- SM compute %% (kernels running)
-      * ``util_mem_pct``   -- memory controller %% (VRAM bandwidth
-                              utilisation -- distinguishes compute-bound
-                              from memory-bandwidth-bound kernels;
-                              same struct as util_pct, no extra call)
-      * ``mem_used_mb`` / ``mem_total_mb`` / ``mem_pct``
-                             -- VRAM occupancy (capacity, not bw)
-      * ``power_w``        -- current power draw (W); drops mid-run
-                              signal thermal/power throttle
-      * ``temp_c``         -- GPU package temperature (°C);
-                              >83 °C on consumer cards triggers throttle
-      * ``sm_clock_mhz``   -- graphics clock (boost behaviour visible
-                              here when correlated against util_pct)
-      * ``mem_clock_mhz``  -- memory clock (drops when not under load)
-    """
-    if not _NVML_OK or pynvml is None:
-        return []
+def _parse_smi(text: str) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
-    for i, h in enumerate(_GPU_HANDLES):
-        try:
-            util  = pynvml.nvmlDeviceGetUtilizationRates(h)
-            mem   = pynvml.nvmlDeviceGetMemoryInfo(h)
-            mem_used_mb  = mem.used  / (1 << 20)
-            mem_total_mb = mem.total / (1 << 20)
-            mem_pct = (100.0 * mem.used / mem.total) if mem.total else 0.0
-            # Remaining fields are best-effort: every consumer card
-            # exposes them, but data-center variants or virtualised
-            # environments sometimes don't.
-            power_mw = _try(pynvml.nvmlDeviceGetPowerUsage, h)
-            temp_c   = _try(pynvml.nvmlDeviceGetTemperature, h,
-                            pynvml.NVML_TEMPERATURE_GPU)
-            sm_mhz   = _try(pynvml.nvmlDeviceGetClockInfo, h,
-                            pynvml.NVML_CLOCK_GRAPHICS)
-            mem_mhz  = _try(pynvml.nvmlDeviceGetClockInfo, h,
-                            pynvml.NVML_CLOCK_MEM)
-            out.append({
-                "index":         i,
-                "name":          _gpu_name(h),
-                "util_pct":      float(util.gpu),
-                "util_mem_pct":  float(util.memory),
-                "mem_used_mb":   round(mem_used_mb, 1),
-                "mem_total_mb": round(mem_total_mb, 1),
-                "mem_pct":      round(mem_pct, 1),
-                "power_w":      (None if power_mw is None
-                                  else round(power_mw / 1000.0, 1)),
-                "temp_c":       (None if temp_c   is None else int(temp_c)),
-                "sm_clock_mhz":  (None if sm_mhz   is None else int(sm_mhz)),
-                "mem_clock_mhz": (None if mem_mhz  is None else int(mem_mhz)),
-            })
-        except Exception as exc:  # noqa: BLE001
-            # Don't let one flaky GPU kill the whole snapshot --
-            # include an explicit entry with the failure so the UI
-            # can flag it instead of silently dropping it.
-            out.append({
-                "index": i,
-                "name":  "<probe failed>",
-                "error": f"{type(exc).__name__}: {exc}",
-            })
+    for i, line in enumerate(text.strip().splitlines()):
+        f = [c.strip() for c in line.split(",")]
+        if len(f) < 9:
+            continue
+        used, total = _num(f[3]), _num(f[4])
+        pct = (100.0 * used / total) if used is not None and total else None
+        util, util_m = _num(f[1]), _num(f[2])
+        power, temp = _num(f[5]), _num(f[6])
+        sm, mem = _num(f[7]), _num(f[8])
+        out.append({
+            "index":         i,
+            "name":          f[0] or "<unknown>",
+            "util_pct":      util,
+            "util_mem_pct":  util_m,
+            "mem_used_mb":   None if used  is None else round(used, 1),
+            "mem_total_mb":  None if total is None else round(total, 1),
+            "mem_pct":       None if pct   is None else round(pct, 1),
+            "power_w":       None if power is None else round(power, 1),
+            "temp_c":        None if temp  is None else int(temp),
+            "sm_clock_mhz":  None if sm    is None else int(sm),
+            "mem_clock_mhz": None if mem   is None else int(mem),
+        })
     return out
+
+
+def _gpu_snapshot() -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """``(gpus, gpu_error)`` -- cached, subprocess-backed, never blocking
+    a request longer than ``_SMI_TIMEOUT_S``.
+
+    Three honest answers:
+
+      * a CPU-only box (no ``nvidia-smi`` on PATH) -- ``([], None)``,
+        quietly: nothing is wrong, the widget drops its GPU cells;
+      * the tool answered -- the parsed rows, error ``None``;
+      * the tool failed or TIMED OUT -- ``([], reason)``: the box is
+        meant to have a GPU and cannot currently be asked about it,
+        which is a fact the widget prints where the cells would be.
+        A timeout in particular is the driver being held by someone's
+        compute -- a temporary failure of the inquiry, and the next
+        TTL tick simply asks again.
+    """
+    now = _time.monotonic()
+    with _smi_lock:
+        if now - _smi_cache["t"] < _SMI_TTL_S:
+            return list(_smi_cache["gpus"]), _smi_cache["error"]
+        # Claim the slot BEFORE the query so concurrent requests serve
+        # the previous answer instead of piling onto one stuck child.
+        _smi_cache["t"] = now
+    gpus: List[Dict[str, Any]] = []
+    err: Optional[str] = None
+    try:
+        cp = subprocess.run(_SMI_QUERY, capture_output=True, text=True,
+                            timeout=_SMI_TIMEOUT_S)
+        if cp.returncode == 0:
+            gpus = _parse_smi(cp.stdout)
+        else:
+            err = (f"nvidia-smi exited {cp.returncode}: "
+                   f"{(cp.stderr or '').strip()[:200] or 'no message'}")
+    except FileNotFoundError:
+        err = None                        # CPU-only box: a choice, not a fault
+    except subprocess.TimeoutExpired:
+        err = (f"GPU query timed out after {_SMI_TIMEOUT_S:g}s -- the "
+               f"driver is busy or held (someone's compute job?); "
+               f"will retry")
+    except OSError as exc:
+        err = f"{type(exc).__name__}: {exc}"
+    if err:
+        _log.warning("GPU stats unavailable this tick: %s", err)
+    with _smi_lock:
+        _smi_cache["gpus"] = gpus
+        _smi_cache["error"] = err
+        _smi_cache["t"] = _time.monotonic()
+    return list(gpus), err
 
 
 # --------------------------------------------------------------------- #
@@ -337,6 +301,7 @@ def snapshot() -> Dict[str, Any]:
         la1, la5, la15 = psutil.getloadavg()
     except (OSError, AttributeError):  # pragma: no cover -- non-POSIX hosts
         la1 = la5 = la15 = None
+    _gpus, _gpu_err = _gpu_snapshot()
     return {
         "cpu_pct":             psutil.cpu_percent(interval=None),
         "cpu_count_physical":  psutil.cpu_count(logical=False),
@@ -348,16 +313,13 @@ def snapshot() -> Dict[str, Any]:
         "ram_pct":             vm.percent,
         "ram_used_gb":         round(vm.used  / (1 << 30), 2),
         "ram_total_gb":        round(vm.total / (1 << 30), 2),
-        "gpus":                _gpu_snapshot(),
-        # ``None`` unless NVML was present and refused to start -- see
-        # ``_GPU_ERROR``.  An empty ``gpus`` alone cannot tell the widget
-        # whether to stay quiet or speak up, because both causes produce
-        # the same empty list.
-        "gpu_error":           _GPU_ERROR,
-        # ``None`` unless NVML was present and refused to start -- see
-        # ``_GPU_ERROR``.  An empty ``gpus`` alone cannot tell the widget
-        # whether to stay quiet or speak up, because both causes produce
-        # the same empty list.
+        "gpus":                _gpus,
+        # ``None`` unless a GPU was expected and could not be asked about
+        # this tick (the tool failed, or the query TIMED OUT under a held
+        # driver).  An empty ``gpus`` alone cannot tell the widget whether
+        # to stay quiet or speak up, because a CPU-only box produces the
+        # same empty list.
+        "gpu_error":           _gpu_err,
     }
 
 

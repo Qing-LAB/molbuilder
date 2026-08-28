@@ -630,6 +630,45 @@ prepare again.
 > the rest of the container.
 
 
+#### The other file — has the process CONCLUDED
+
+*Decided by the user, 2026-08-28, closing the review's O1.*
+
+`run.json` says a run was **started**. Nothing said it was **over** — and
+*launched* spans three states that must not be treated alike: still running,
+ran to its own end (converged *or* errored — both are conclusions), and
+force-stopped (walltime kill, node death, `kill -9`).
+
+So **the wrapper writes one more small file as its last act on the main
+path**: `<basename>-run<N>.concluded`, carrying the engine's exit code and
+when. Two properties make it mean what it says:
+
+* **An error is a conclusion.** The engine returning nonzero still reaches
+  the wrapper's tail, so the marker is written with that code. *"The
+  calculation has been done — because of error or whatever — but the process
+  is done."*
+* **A forced stop leaves no marker, by construction.** The marker is written
+  on the wrapper's main line, after the engine invocation returns — never
+  from the cleanup trap, which *does* run on a walltime SIGTERM. A kill at
+  any point stops the script before the write. Absence therefore means
+  exactly *this process never got to say goodbye*: still running, or
+  force-stopped — and the files alone cannot tell those two apart, which is
+  the point of the rule below.
+
+**What `launch run` does with it, re-submitting over a launched attempt:**
+
+| the latest attempt | behaviour |
+|---|---|
+| carries the marker | continue as § 1.6 already does, saying so: *"run-1 concluded (rc=0) — continuing into run-2"* |
+| launched, **no marker** | **warn and ask.** The run may still be running (continuing would copy torn warm files under a live engine) — or it was force-stopped, in which case the saved state is *valid* and continuing is exactly what a person wants after a walltime kill. **The user judges; molbuilder never decides over them.** Interactive: a confirm that states both possibilities. Non-interactive: refused with the same story; `--yes` is the recorded judgement |
+
+> **This answers a PROCESS question, never a chemistry one.** *Did the
+> wrapper get to finish* is what the marker knows; *did the SCF converge*
+> stays with the engine's own output and its one reader (the § 2.5 ending
+> scanner). A marker with `rc=0` beside a non-converged `.out` is a run that
+> concluded without converging — both true, two facts, two files.
+
+
 #### Continuing from an earlier run is a copy, not a link
 
 Because stages are set up one at a time, **the run you continue from has already
