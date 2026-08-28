@@ -374,78 +374,87 @@ is now measured.
 
 ---
 
-### 2.15 A bench trial gets attempts — decided 2026-08-27, NOT built
+### 2.15 A bench trial gets attempts — CONTRACT SETTLED 2026-08-27
 
-**The code contradicts the contract, and the contract is right.** User: *bench
-should allow re-run* — and `project-layout.md` § 1.5 already says so:
+Contract: `project-layout.md` § 1.5a. **Shape decides**, exactly as it does for
+a stage — hierarchical makes `run-1/`, flat writes `-run1.out`. The sweep's
+opt-out is deleted rather than a fourth case added.
 
-> *"Running a stage a second time — a `--continue`, a redo after a change —
-> **makes `run-1`**, carrying what it needs from `run-0` and leaving `run-0`
-> exactly as it was."*
->
-> *"**`--force` is retired.** … With a directory per attempt there is nothing
-> to overwrite: **a redo is `run-2`**."*
+**No migration, no reader for the old layout** (user: *"new dir becomes
+standard. No historical burden. Get this right at this stage is cheaper than
+dragging obsolete code and carry bugs."*). Existing sweeps stop being readable
+by `summarize`; nothing is deleted.
 
-Immutability protects the **old** attempt. It never forbids a new one. But
-`launch` refuses outright and tells the person to *move the trial's directory
-aside yourself* — which is the `--force`-era answer that § 1.5 retired, and it
-invites exactly the mess the user named: `.old`, `.bak`, `.2026-08-24`, one
-convention per person, and `summarize` left guessing which are trials.
+**Scope, measured rather than estimated.** `job_dir_names` is the naming
+authority and has **33 call sites in 5 modules**, all inside `jobset/`:
+`materialize` 8, `submit` 11, `summarize` 8, `prep` 4, `runstatus` 2. Nothing
+in `bench/` or the web layer resolves a trial directory itself. An earlier note
+here said ~85 across 9 — that counted mentions of three different names, not
+seams, and it was wrong enough to have changed the decision.
 
-**Why a sweep behaves differently.** A hierarchical stage runs in `run-<n>`; a
-sweep trial has **no attempt layer** — `bench-G0K48C1ELPA2STAGE/` holds
-`0_NORMAL_EXIT`, `Au.ion`, the `.out`, everything, directly. `submit.py` says
-so: *"an attempt-less dir (a sweep trial) is ITS OWN attempt."* So there is
-nowhere for `run-1` to go, and the refusal is the only thing left.
+**Five pieces, in order** — piece 1 stands alone and fixes a live defect, so
+it goes first whatever happens to the rest:
 
-**Decided: give a trial the same `run-<n>` layer** (user, 2026-08-27: *run
-increase with index would be fine*). Re-running measures the point again beside
-the first, which is what a benchmark wants — today's own finding is that
-G2 and G4 landed on different silicon, and the answer to that is *measure it
-again*, not *delete the first one*.
+**1. The run index must cover every per-run artifact — BUILT 2026-08-27.** The wrapper indexes the
+`.out` and the timing log; `<basename>.monitor.log` is appended and
+`<basename>.util.csv` is **truncated** by `write_text`. `util.csv` is the
+benchmark's measurement, so a flat re-run destroys what it set out to repeat.
+The wrapper already has `_run_n` — the two monitor filenames take it too.
 
-**Scope, honestly: ~85 call sites across 9 modules** — `materialize`,
-`summarize`, `submit`, `_cli`, `bench/result`, `prep`, `runstatus`, `model`,
-`web/blueprints/build`. This is a layout change, not a flag.
+*Paired with the reader, or nothing is found:* `summarize.py` already uses
+`_latest_run_file` for the `.out` and the timing log, and the exact unindexed
+name for the other two. Those two lines change with the writer.
 
-**The one question that needs answering first.** Every bench directory that
-exists today holds its files at the top level. Under the new layout:
+*This is a live defect today*, independent of sweeps: a flat ladder stage
+re-run loses its `util.csv` already.
 
-* *readers accept both shapes* — the Au-BDT-Au sweep stays readable, but that
-  is a compatibility shim, and this project's rule is that a rename deletes the
-  old spelling everywhere;
-* *readers accept only `run-<n>`* — clean, and **today's sweep becomes
-  invisible to `summarize`**, which is the data every measurement conclusion on
-  this page rests on;
-* *the tool migrates on first re-prep* — when `prep` is asked to redo a
-  launched trial it moves the existing content into `run-0/` and opens `run-1/`.
-  No manual moves, nothing deleted, and the shim lives only in `prep` rather
-  than in every reader. **This is the one to prefer**, and it still needs a
-  decision about what a reader does with a directory nobody has re-prepped yet.
+**2. The sweep stops opting out.** `submit._launch_dir` carries the special
+case — *"an attempt-less dir (a sweep trial) is ITS OWN attempt"* — and with it
+the refusal that started this. Deleting it lets `attempts()` and
+`keeps_attempts_as_directories` answer for trials as they already do for
+stages.
 
-**And the sweep tab has to be attempt-aware, which is the half that makes the
-first half useful** (user, 2026-08-27). Some of the plumbing exists already:
-`summarize` puts `"attempts": list(st.attempts)` on every trial record, and it
-comes back empty for a bench only because a trial *is* its attempt today.
+**3. `prep` opens an attempt for a trial** in a hierarchical calculation, the
+way it does for a stage, so there is a `run-<n>` to launch into.
 
-Three things the display must then get right:
+**4. The GROUPED launch resolves the attempt too**, and its two gates read the
+deck where the deck now is. Not a follow-up: leaving it means the cold gate
+goes quiet on the one door that submits several trials at once.
 
-* **A point measured twice is two measurements, never one.** The trial table
-  is keyed by name; with attempts it is keyed by *(trial, attempt)*. Averaging
-  them, or silently showing the newest, would throw away the comparison the
-  re-run was made for.
-* **The verdict must not compare across attempts blindly.** `choice` picks a
-  winner from timed trials. If `G2 run-0` ran on 128 cores and `G2 run-1` on
-  48, those are not two samples of one thing — which is *this very sweep's*
-  finding (§ 4), generalised. Whatever § 2.8 records as a trial's hardware is
-  what makes attempts comparable or not, so these two land together.
-* **A re-run is the answer to a bad measurement**, so the tab should make the
-  older attempt easy to see rather than easy to lose: n=1 timing (§ 2.1) and
-  mixed silicon (§ 4) are both fixed by measuring again, and both are only
-  legible if both measurements survive on the page.
+**5. The readers resolve the attempt.** `summarize`'s two entry points take
+`bundle / dirs[name]` as the artifact directory; in hierarchical that becomes
+the container and the attempt is one level in.
 
-Not started. The direction is settled; the migration is not, and guessing it
-would put the existing sweep at risk.
+**Gaps found while writing this, and NOT closed by it:**
+
+* **Which attempt does the summary report?** `_latest_run_file` takes the
+  highest index, so a re-run silently supersedes — and comparing two
+  measurements of one point is the whole reason to re-run. At minimum the
+  summary must say how many attempts a trial has; § 2.15's second half (the tab)
+  is where that lands.
+* **`check_trial_starts_cold`** runs against the trial directory. With an
+  attempt layer it must check the attempt, or a warm file left beside it in the
+  container reads as cold.
+* **The bench container holds a `launch/` directory** (seen on Sol:
+  `01_coarse/bench/launch`). Whether that is an attempt-bearing thing or a
+  sibling of the trials needs reading before step 3 touches layout.
+* **`identity.py`** lists `"{label}.util.csv", "{label}_*.util.csv"` among a
+  run's files. If the name gains `-runN`, that pattern list is a third place
+  the spelling lives.
+* **THE GROUPED LAUNCH IS A SECOND PATH, and the sharp one.** A bench can be
+  submitted in groups — `bench/launch/bench-group-cpu.sbatch` and friends,
+  seen on Sol — and `submit.py:893` builds its trial directories itself
+  (`base / dirs[j.name]`) rather than through `_launch_dir`. Two consequences,
+  the second worse than the first:
+  - the sequencer must `cd` into each trial's **attempt**, not its container;
+  - `check_trial_starts_cold(base / dirs[j.name], j)` reads the deck from the
+    container, and with the deck one level in it finds none — whereupon
+    *"absence says nothing"* and the gate **silently stops checking**. A warm
+    deck would then launch unverified through the group door while the
+    by-name door still refused it. That is precisely the *"guard-only-a-
+    surface-applies"* failure this module already names elsewhere.
+
+  So the grouped path changes **with** the single path or not at all.
 
 ---
 

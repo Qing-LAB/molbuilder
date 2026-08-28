@@ -139,15 +139,19 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     if timing is not None:
         metrics.update(parse_scf_timing(_read(timing)))
 
+    # THE LATEST ATTEMPT'S, like the .out and the timing log beside them.
+    # These two carried no index until 2026-08-27, so a re-run appended to
+    # one and truncated the other; now every per-run artifact is indexed
+    # and every one is read the same way.
     bound = None
-    mon = d / f"{basename}.monitor.log"
-    if mon.is_file():
+    mon = _latest_run_file(d, basename, "monitor.log")
+    if mon is not None:
         bound = parse_util_bound(_read(mon))
 
     # Utilisation NUMBERS come from the raw samples, the verdict from the
     # monitor (parse_util_bound's docstring owns the why).
-    util = d / f"{basename}.util.csv"
-    if util.is_file():
+    util = _latest_run_file(d, basename, "util.csv")
+    if util is not None:
         metrics.update(parse_util_csv(_read(util)))
 
     # The .out is read TWICE, one window each, because its two answers

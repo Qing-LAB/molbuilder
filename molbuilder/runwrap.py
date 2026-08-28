@@ -3383,8 +3383,22 @@ def render_run_wrapper(script_path: Path, *,
             f'&& [ -f mb_monitor.py ]; then\n'
             f'    nice -n 19 "$_mb_py" mb_monitor.py '
             f'--out "$_out_file" --timing "$_scf_timing_log" '
-            f'--log "{basename}.monitor.log" '
-            f'--util "{basename}.util.csv" '
+            # INDEXED LIKE THE OUTPUT IS.  `_out_file` already carries
+            # `-run${_run_n}` and the resolver auto-advances, so a re-run
+            # never overwrites a result.  These two did NOT: the monitor
+            # log was appended to (two runs interleaved with no marker) and
+            # `util.csv` is written with `write_text`, so a re-run
+            # TRUNCATED it -- and `util.csv` is what a benchmark is
+            # measured from, so re-running destroyed the measurement it
+            # existed to repeat.  Found 2026-08-27 by reading the write
+            # mode rather than the design.
+            #
+            # Not a sweep problem: a flat LADDER stage re-run loses its
+            # util.csv today for the same reason.  In hierarchical each
+            # attempt is its own directory, so the index is 0 and these
+            # names simply match the `.out` beside them.
+            f'--log "{basename}-run${{_run_n}}.monitor.log" '
+            f'--util "{basename}-run${{_run_n}}.util.csv" '
             f'--interval "${{MB_MONITOR_INTERVAL:-10}}" '
             f'--stall-heartbeat "${{MB_MONITOR_STALL_HEARTBEAT:-600}}" '
             + (f'--notify-on-scf ' if notify_on_scf else "")
@@ -3395,7 +3409,8 @@ def render_run_wrapper(script_path: Path, *,
             f'    _log INFO "monitor: pid=$_monitor_pid (nice 19, interval '
             f'${{MB_MONITOR_INTERVAL:-10}}s, quiet-when-stalled, util-sampling, '
             f'self-contained mb_monitor.py) '
-            f'-> {basename}.monitor.log + {basename}.util.csv"\n'
+            f'-> {basename}-run${{_run_n}}.monitor.log + '
+            f'{basename}-run${{_run_n}}.util.csv"\n'
             f'else\n'
             f'    _log INFO "monitor: not started (set MB_MONITOR=1; needs '
             f'nice + a python interpreter + mb_monitor.py beside the '

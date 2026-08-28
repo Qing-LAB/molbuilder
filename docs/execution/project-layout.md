@@ -400,6 +400,48 @@ Immutability is a contract, not a filesystem permission — but it is **checkabl
 and § 7 makes it an invariant: an attempt that has been saved must never differ
 afterwards. Nothing would notice today.
 
+#### 1.5a A trial is a stage, for this purpose — decided 2026-08-27
+
+**A sweep trial keeps attempts exactly as a stage does, and the SHAPE decides
+how.** It was a third case until now — neither of the two below — and that is
+what made `launch` refuse a re-run outright and tell you to move the directory
+aside by hand. That is the `--force`-era answer this section retired.
+
+| shape | how a re-run is kept apart |
+|---|---|
+| **hierarchical** | a **directory**: `bench-<point>/run-1/` beside `run-0/`, nothing shared |
+| **flat** | the **filename index** the wrapper already writes: `-run1.out` beside `-run0.out`, warm files shared |
+
+Neither is new machinery. Both already exist for stages; the sweep simply stops
+opting out. *(User, 2026-08-27: re-running a benchmark must be possible —
+"a new test with new result is trivial".)*
+
+> **Every per-run artifact carries the index, not two of five.** In flat the
+> wrapper indexes the `.out` and the timing log — *"re-running NEVER
+> overwrites"* — but `<basename>.monitor.log` is **appended** (two runs
+> interleaved with no marker) and `<basename>.util.csv` is written with
+> `write_text`, so a re-run **truncates it**. `util.csv` is what a benchmark is
+> measured from, so a flat re-run destroyed the measurement it existed to
+> repeat. Found 2026-08-27 by reading the write mode.
+>
+> This is **not new with sweeps**: a flat ladder stage re-run loses its
+> `util.csv` today, for the same reason. Letting a trial re-run is what makes
+> it bite.
+
+**No conversion, and no reader for the old layout** (user: *"new dir becomes
+standard. No historical burden."*). A benchmark is a **measurement**, and
+measurements are repeatable — which is exactly why the old ones are not worth
+a compatibility path that every reader would carry forever. Sweeps recorded
+before this change stop being readable by `summarize`; their files stay on
+disk, because molbuilder never deletes results.
+
+**What still needs deciding, and is not decided here:** with two attempts of one
+point, `summarize` reports the **latest** (`_latest_run_file` already does), so
+the earlier measurement becomes invisible while remaining on disk. That is
+tolerable only if the summary *says* how many attempts a trial has — otherwise
+re-running silently supersedes, and comparing two measurements of one point was
+the reason to re-run at all.
+
 #### Where a run happens
 
 **Inside the attempt directory**, which was created and filled when you prepared

@@ -256,8 +256,15 @@ OUR_FILE_PATTERNS: Sequence[str] = (
     # DERIVED from these rows since the same fix, E-1) moved a prior
     # flat-staged stage's stdout and timing logs into the aside dir.
     "{label}.runwrap-*.log", "{label}_*.runwrap-*.log",
+    # The monitor's two files gained the wrapper's run index on
+    # 2026-08-27, so they are listed the way the timing log already was --
+    # with and without it.  Both spellings, because a directory can hold
+    # artifacts from before the change and a cold sweep that misses one
+    # leaves it to be appended to or truncated by the next run.
     "{label}.monitor.log", "{label}_*.monitor.log",
+    "{label}-run*.monitor.log", "{label}_*-run*.monitor.log",
     "{label}.util.csv", "{label}_*.util.csv",
+    "{label}-run*.util.csv", "{label}_*-run*.util.csv",
     "{label}-run*.scf-timing.log", "{label}_*-run*.scf-timing.log",
 )
 
