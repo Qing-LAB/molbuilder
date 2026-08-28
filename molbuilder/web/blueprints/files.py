@@ -570,6 +570,110 @@ def api_files_download():
     )
 
 
+@bp.route("/api/files/download_zip", methods=["GET"])
+def api_files_download_zip():
+    """Stream a DIRECTORY from the picker roots as a ``.zip`` -- the
+    *take this calculation to another machine without ssh* door (user,
+    2026-08-28): download the portable folder here, drop it on the
+    target through whatever web portal the cluster offers.
+
+    Same path fence as every file endpoint, plus two refusals of its
+    own:
+
+      * a picker ROOT itself is refused -- zipping the whole projects
+        tree is almost never the intent, and the sidebar button that
+        calls this is disabled there for the same reason;
+      * a symlink whose target resolves OUTSIDE the root is skipped
+        and counted in the ``X-Molbuilder-Skipped`` response header
+        (an attempt dir links warm files INSIDE the tree -- those are
+        followed and included as real bytes, which is what the target
+        machine needs);
+      * the server's own state never enters an archive (user,
+        2026-08-28: *a clean run structure*): any
+        ``.molbuilder_workspace`` subtree -- the checkpoint/workspace
+        store, named by its module's own constant -- is excluded
+        wherever it appears.
+
+    The archive is built in a temp file (never in RAM -- a results dir
+    can be large) and deleted after the response.
+    """
+    import zipfile
+
+    from flask import after_this_request
+    from flask import send_file as _send_file
+
+    raw_path = request.args.get("path", "")
+    try:
+        resolved = _resolve_within_roots(raw_path)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    if not resolved.exists():
+        return jsonify({
+            "ok": False,
+            "error": f"path does not exist: {str(resolved)!r}",
+        }), 404
+    if not resolved.is_dir():
+        return jsonify({
+            "ok": False,
+            "error": f"path is not a directory: {str(resolved)!r} -- "
+                     f"/api/files/download is the single-file door",
+        }), 400
+    if _depth_inside_root(resolved) == 0:
+        return jsonify({
+            "ok": False,
+            "error": "refusing to zip a projects root -- pick the "
+                     "calculation folder itself",
+        }), 400
+
+    from .workspace_storage import SCRATCH_DIR
+
+    root_path, _ = _root_containing(resolved)
+    base = resolved.parent
+    skipped = 0
+    tmp = tempfile.NamedTemporaryFile(
+        prefix="mb-zip-", suffix=".zip", delete=False)
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+            for p in sorted(resolved.rglob("*")):
+                if SCRATCH_DIR in p.parts:
+                    continue        # server state, never user data
+                if p.is_symlink():
+                    try:
+                        contain(p.resolve(), root_path)
+                    except (OSError, OutsideRoot):
+                        skipped += 1
+                        continue
+                if p.is_file():
+                    zf.write(p, arcname=str(p.relative_to(base)))
+    except OSError as exc:
+        tmp.close()
+        os.unlink(tmp.name)
+        return jsonify({
+            "ok": False,
+            "error": f"could not build the archive: {exc}",
+        }), 500
+    tmp.close()
+
+    @after_this_request
+    def _cleanup(resp):
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+        return resp
+
+    resp = _send_file(
+        tmp.name,
+        as_attachment=True,
+        download_name=f"{resolved.name}.zip",
+        etag=False,
+        last_modified=None,
+        max_age=0,
+    )
+    resp.headers["X-Molbuilder-Skipped"] = str(skipped)
+    return resp
+
+
 # Default per-call window for the range-read endpoint -- 256 KB is
 # large enough to feel snappy + render multiple "pages" of text
 # without round-tripping for each scroll, small enough that the

@@ -1,15 +1,20 @@
 /* projects/mutation-bar.js -- header-bar wiring.
  *
- * Three SEPARATE buttons in the sidebar header (New project /
- * New folder / Upload).  No dropdown — each click opens its
- * modal dialog directly (from projects/dialogs.js).  Backend
- * calls go through projects.* (state.js), which dispatches to
- * projects/api.js + fires a directory refresh on success.
+ * Four SEPARATE buttons in the sidebar header (New project /
+ * New folder / Upload / Download).  No dropdown — each click acts
+ * directly (a modal dialog from projects/dialogs.js, or for
+ * Download a plain navigation the server answers as an
+ * attachment).  Backend calls go through projects.* (state.js),
+ * which dispatches to projects/api.js + fires a directory refresh
+ * on success.
  *
  * Depth-aware enable/disable (driven by projects.onChange):
  *   * New project    -- always enabled
  *   * New folder     -- disabled at projects/ root (no useful parent)
  *   * Upload file    -- disabled at projects/ root
+ *   * Download .zip  -- disabled at projects/ root (zipping the whole
+ *                       tree is never the intent; the endpoint refuses
+ *                       it too)
  *
  * Spec: docs/web/projects.md § Mutation UX.
  *
@@ -28,7 +33,7 @@ import {
 } from "./state.js";
 import { openDir } from "./list.js";
 
-let elProjBtn, elFolderBtn, elUploadBtn;
+let elProjBtn, elFolderBtn, elUploadBtn, elZipBtn;
 
 function _updateButtonEnablement() {
   const dir = readSelectionSlot(SS_DIR) || getProjectsRoot() || "";
@@ -47,6 +52,25 @@ function _updateButtonEnablement() {
       ? "Pick a project folder in the sidebar first."
       : "Upload a file into the current directory";
   }
+  if (elZipBtn) {
+    elZipBtn.disabled = root;
+    elZipBtn.title = root
+      ? "Pick a folder in the sidebar first."
+      : "Download the current directory as a .zip";
+  }
+}
+
+function _doDownloadZip() {
+  const dir = readSelectionSlot(SS_DIR) || "";
+  if (!dir || atProjectsRoot(dir)) return;
+  // A plain navigation: the server answers with
+  // Content-Disposition: attachment, so the page stays put and the
+  // browser saves "<folder>.zip".  The use this exists for (user,
+  // 2026-08-28): carry a calculation folder to a cluster without
+  // ssh -- download it here, drop it there through the cluster's
+  // own web portal.
+  window.location.assign(
+    "/api/files/download_zip?path=" + encodeURIComponent(dir));
 }
 
 async function _doNewProject() {
@@ -117,7 +141,8 @@ export function initForms() {
   elProjBtn   = document.getElementById("ps-create-project-btn");
   elFolderBtn = document.getElementById("ps-create-folder-btn");
   elUploadBtn = document.getElementById("ps-create-upload-btn");
-  if (!elProjBtn && !elFolderBtn && !elUploadBtn) return;
+  elZipBtn    = document.getElementById("ps-download-zip-btn");
+  if (!elProjBtn && !elFolderBtn && !elUploadBtn && !elZipBtn) return;
 
   // Each button is a direct entry point — no dropdown, no extra
   // click between intent and dialog.
@@ -129,6 +154,9 @@ export function initForms() {
   }
   if (elUploadBtn) {
     elUploadBtn.addEventListener("click", () => { _doUpload(); });
+  }
+  if (elZipBtn) {
+    elZipBtn.addEventListener("click", () => { _doDownloadZip(); });
   }
 
   // Re-evaluate enablement on selection change (the user navigates

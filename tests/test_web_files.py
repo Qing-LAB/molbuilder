@@ -2339,3 +2339,88 @@ class TestRootsContract:
         # removal so a future revert is caught.
         import molbuilder.runtime_config as rc
         assert not hasattr(rc, "get_file_picker_roots")
+
+
+class TestDownloadZip:
+    """/api/files/download_zip -- the *carry a calculation without ssh*
+    door (user, 2026-08-28).  A directory streams as <name>.zip; the
+    fence holds; a root refuses; symlinks escaping the root are
+    skipped and said, symlinks inside are followed as real bytes."""
+
+    def test_a_directory_streams_as_its_named_zip(self, web, picker_root):
+        import io
+        import zipfile
+        r = web.get("/api/files/download_zip",
+                    query_string={"path": str(picker_root / "spectrum" / "BDT")})
+        assert r.status_code == 200
+        assert r.data[:2] == b"PK", "not a zip"
+        assert 'filename=BDT.zip' in r.headers["Content-Disposition"]
+        with zipfile.ZipFile(io.BytesIO(r.data)) as zf:
+            names = sorted(zf.namelist())
+            assert names == ["BDT/.hidden", "BDT/water_spectra.spectra.json"], (
+                f"member paths must ride under the folder's name: {names}")
+            assert zf.read("BDT/water_spectra.spectra.json") \
+                == b'{"schema_version": 2}\n', "bytes must survive verbatim"
+        assert r.headers["X-Molbuilder-Skipped"] == "0"
+
+    def test_the_projects_root_itself_is_refused(self, web, picker_root):
+        r = web.get("/api/files/download_zip",
+                    query_string={"path": str(picker_root)})
+        assert r.status_code == 400
+        assert "refusing to zip a projects root" in r.get_json()["error"]
+
+    def test_a_file_names_the_single_file_door(self, web, picker_root):
+        r = web.get("/api/files/download_zip",
+                    query_string={"path": str(picker_root / "water.xyz")})
+        assert r.status_code == 400
+        assert "/api/files/download" in r.get_json()["error"]
+
+    def test_outside_the_fence_is_refused(self, web, picker_root):
+        r = web.get("/api/files/download_zip",
+                    query_string={"path": "/etc"})
+        assert r.status_code in (400, 403)
+        assert r.get_json()["ok"] is False
+
+    def test_missing_is_a_404(self, web, picker_root):
+        r = web.get("/api/files/download_zip",
+                    query_string={"path": str(picker_root / "spectrum" / "nope")})
+        assert r.status_code == 404
+
+    def test_symlinks_escape_skipped_inside_followed(self, web, picker_root):
+        import io
+        import zipfile
+        d = picker_root / "spectrum" / "linked"
+        d.mkdir()
+        (d / "real.txt").write_text("kept\n")
+        (d / "escape").symlink_to("/etc/hostname")          # outside -> skip
+        (d / "warm").symlink_to(picker_root / "water.xyz")  # inside -> follow
+        r = web.get("/api/files/download_zip",
+                    query_string={"path": str(d)})
+        assert r.status_code == 200
+        with zipfile.ZipFile(io.BytesIO(r.data)) as zf:
+            names = sorted(zf.namelist())
+            assert "linked/real.txt" in names
+            assert "linked/warm" in names, (
+                "an inside-the-tree symlink is a warm file -- the target "
+                "machine needs its BYTES, so it must be followed")
+            assert "linked/escape" not in names, (
+                "a symlink escaping the root must never enter the archive")
+            assert zf.read("linked/warm").startswith(b"3\n"), (
+                "the followed link must carry the target's real content")
+        assert r.headers["X-Molbuilder-Skipped"] == "1"
+
+    def test_the_checkpoint_store_never_enters_an_archive(self, web, picker_root):
+        """User 2026-08-28: the zip is a CLEAN run structure -- the
+        server's workspace/checkpoint store (.molbuilder_workspace) is
+        excluded wherever it appears, by the store module's own name."""
+        import io
+        import zipfile
+        d = picker_root / "spectrum" / "BDT"
+        st = d / ".molbuilder_workspace" / "states"
+        st.mkdir(parents=True)
+        (st / "tab.json").write_text('{"draft": true}\n')
+        r = web.get("/api/files/download_zip", query_string={"path": str(d)})
+        assert r.status_code == 200
+        with zipfile.ZipFile(io.BytesIO(r.data)) as zf:
+            assert not any(".molbuilder_workspace" in n for n in zf.namelist()), (
+                "server state leaked into the archive: " + str(zf.namelist()))
