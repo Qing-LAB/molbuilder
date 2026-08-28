@@ -467,6 +467,49 @@ def latest_attempt(stage_dir: Path) -> Optional[Path]:
     return (Path(stage_dir) / f"run-{ns[-1]}") if ns else None
 
 
+def attempt_concluded(attempt_dir: Path, basename: str) -> Optional[str]:
+    """The conclusion marker's content when this attempt's LAST process got
+    to say goodbye, else ``None`` (`project-layout.md` § 1.6, *the other
+    file*).
+
+    *Launched* spans three states; ``run.json`` separates none of them.
+    The wrapper writes ``<basename>-run<N>.concluded`` as its last act on
+    the MAIN path -- an engine error still reaches it, a kill never does
+    -- so the marker separates *ran to its own end* from *still running
+    or force-stopped*, and those last two are indistinguishable from
+    files alone, which is why the caller asks the user rather than
+    deciding.
+
+    A warm-retry chain execs fresh wrappers; only the final process
+    concludes, at the final run index.  So the question is asked of the
+    HIGHEST index any per-run artifact reached: an earlier index's marker
+    beside a newer unconcluded ``.out`` is a previous re-run's goodbye,
+    not this one's.  The index ranges over ``.out`` AND ``.concluded``
+    together, because an engine that dies before printing a single line
+    leaves a marker and NO ``.out`` -- a real conclusion (rc rides the
+    marker) that an out-only rule read as silence (caught by this file's
+    own error-path test, first run).  Nothing per-run at all reads as
+    unconcluded: a launch killed before the engine is exactly a process
+    that never said goodbye.
+    """
+    d = Path(attempt_dir)
+    _idx = re.compile(r"-run(\d+)\.")
+
+    ns = []
+    for suffix in ("out", "concluded"):
+        for f in d.glob(f"{basename}-run*.{suffix}"):
+            m = _idx.search(f.name)
+            if m:
+                ns.append(int(m.group(1)))
+    if not ns:
+        return None
+    mark = d / f"{basename}-run{max(ns)}.concluded"
+    try:
+        return mark.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+
+
 def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
     """The attempt directory to prepare into, and whether it is a fresh one.
 

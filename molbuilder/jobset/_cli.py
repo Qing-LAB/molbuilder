@@ -2334,10 +2334,16 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             # dropped before it could even reach submit_jobset -- the
             # grouped-sweep branch's `_ask` was the only one, and only a
             # trial-less grouped submit ever ran through it.
+            # --yes is the recorded judgement over an attempt that was
+            # launched and never CONCLUDED (project-layout.md 1.6, the
+            # other file): still running and force-stopped look the same
+            # on disk, so the refusal below names both and the person
+            # decides -- molbuilder never decides over them.
             results = submit_jobset(js, base, mode=mode, domain=domain,
                                     dry_run=dry_run, only=only,
                                     mem_gb=_memory(mem_text),
-                                    time_s=_duration(time_text))
+                                    time_s=_duration(time_text),
+                                    continue_unconcluded=auto_yes)
     except SubmitError as e:
         _ledger(base, "launch", "refused", kind=kind, stage=stage,
                 trial=trial, mode=mode, mode_source=mode_source,

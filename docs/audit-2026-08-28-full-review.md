@@ -79,13 +79,15 @@ the environment is a question, asked when asked*), the env tests isolate
 
 ## 3. Findings — open, needing a decision (not fixed, by the align rule)
 
-**O1 — re-submitting over a still-RUNNING attempt.** The ladder
-auto-continue reads *launched* (`run.json` present) and continues the
-latest attempt — but *launched* is not *finished*: a `launch run` while the
-attempt is mid-flight would copy torn warm state and set two engines on one
-directory. `prep` has `_ask_if_underway`; the launch lane has no liveness
-look. Needs a rule: refuse (or ask) when the latest attempt shows no ending
-and its monitor/pid still moves.
+**O1 — CLOSED 2026-08-28, by the user's conclusion-marker design**
+(`project-layout.md` § 1.6, *the other file*): the wrapper's last act on
+its main path writes `<basename>-run<N>.concluded` (an error is a
+conclusion; a kill never reaches the write), and the launch lane treats a
+launched-but-unconcluded attempt as a QUESTION — still running and
+force-stopped look identical on disk, so the refusal names both and
+`--yes` records the user's judgement. Guards: the real wrapper run
+concludes with rc, a SIGTERM'd one leaves no marker, the gate asks, the
+judgement is honoured — each mutation-tested.
 
 **O2 — the supervisor cannot recover a HUNG child** (§ 4). It respawns
 only on the sentinel exit code; a wedge is not an exit, and killing the

@@ -1840,13 +1840,16 @@ def test_the_grammar_is_unambiguous_even_for_a_stage_named_3(tmp_path):
 
 
 def test_resubmitting_a_launched_stage_continues_by_default(tmp_path):
-    """The natural workflow (user, 2026-08-21): a run killed at the wall is
-    re-submitted and BY DEFAULT continues -- the door opens the next
-    attempt warm from the stage's own latest (the one source that is never
-    a guess), says so out loud, and launches it.  Under --dry-run nothing
+    """The natural workflow (user, 2026-08-21), NARROWED by the conclusion
+    marker (user, 2026-08-28; project-layout 1.6, "the other file"): a
+    launched-but-UNCONCLUDED attempt could as easily still be RUNNING as
+    wall-killed, so continuing it is the user's recorded judgement
+    (--yes -> continue_unconcluded), not a default.  With the judgement
+    given, the door opens the next attempt warm from the stage's own
+    latest, says so out loud, and launches it.  Under --dry-run nothing
     is created; the WOULD-continue line stands in.  A fresh start stays
-    the explicit lane (`prep run <stage>` first), and bench trials keep
-    § 1.5's immutability refusal."""
+    the explicit lane, and bench trials keep § 1.5's immutability
+    refusal."""
     from molbuilder.jobset.materialize import (attempts, prepare_attempt,
                                                write_run_launch)
     from molbuilder.jobset.submit import SubmitError, submit_jobset
@@ -1864,12 +1867,19 @@ def test_resubmitting_a_launched_stage_continues_by_default(tmp_path):
                for r in res)
     assert attempts(tmp_path / "03_tight") == [0]
 
-    # real: the attempt IS opened, warm-marked, before the launch itself
-    # fails on this fixture's missing wrapper -- which is the honest probe
-    # that the continuation happens at the door, not after a launch
-    with pytest.raises(SubmitError, match="run.sh"):
+    # unconcluded and no judgement: the question, not a decision
+    with pytest.raises(SubmitError, match="never CONCLUDED"):
         submit_jobset(js, tmp_path, mode="direct", dry_run=False,
                       only="tight")
+    assert attempts(tmp_path / "03_tight") == [0]
+
+    # real, with the judgement recorded: the attempt IS opened,
+    # warm-marked, before the launch itself fails on this fixture's
+    # missing wrapper -- the honest probe that the continuation happens
+    # at the door, not after a launch
+    with pytest.raises(SubmitError, match="run.sh"):
+        submit_jobset(js, tmp_path, mode="direct", dry_run=False,
+                      only="tight", continue_unconcluded=True)
     assert attempts(tmp_path / "03_tight") == [0, 1]
     marker = tmp_path / "03_tight" / "run-1" / ".continued-from"
     assert marker.read_text().strip() == "03_tight/run-0"
@@ -1933,6 +1943,12 @@ def test_a_launched_attempt_is_never_touched_and_the_door_continues(tmp_path):
     submit_jobset(js, tmp_path, mode="direct", only="tight")
     (attempt / "JOB_03_tight.out").write_text("results of the first run\n")
 
+    # the run above CONCLUDED (the stub wrapper exited 0) as far as this
+    # fixture is concerned; write its goodbye so the door's question is
+    # the continuing-is-impossible one, not the unconcluded one
+    (attempt / "JOB_03_tight-run0.out").write_text("out\n")
+    (attempt / "JOB_03_tight-run0.concluded").write_text("rc=0 at then\n")
+
     # no warm state in run-0 -> continuing is impossible; the refusal says
     # so and teaches the fresh lane
     with pytest.raises(SubmitError) as e:
@@ -1941,7 +1957,8 @@ def test_a_launched_attempt_is_never_touched_and_the_door_continues(tmp_path):
     assert "prep run tight" in str(e.value)
     assert (attempt / "JOB_03_tight.out").read_text().startswith("results")
 
-    # with state, the door continues -- run-0 still untouched
+    # with state, a CONCLUDED attempt continues by default -- run-0 still
+    # untouched
     (attempt / "JOB.XV").write_text("state\n")
     with pytest.raises(SubmitError, match="run.sh"):
         submit_jobset(js, tmp_path, mode="direct", only="tight")

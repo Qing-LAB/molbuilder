@@ -662,6 +662,13 @@ when. Two properties make it mean what it says:
 | carries the marker | continue as § 1.6 already does, saying so: *"run-1 concluded (rc=0) — continuing into run-2"* |
 | launched, **no marker** | **warn and ask.** The run may still be running (continuing would copy torn warm files under a live engine) — or it was force-stopped, in which case the saved state is *valid* and continuing is exactly what a person wants after a walltime kill. **The user judges; molbuilder never decides over them.** Interactive: a confirm that states both possibilities. Non-interactive: refused with the same story; `--yes` is the recorded judgement |
 
+> **One recorded limit: the PySCF wrapper writes no marker today.** It
+> ends in ``exec`` -- the engine *replaces* the wrapper, so there is no
+> tail left to say goodbye from. A PySCF attempt therefore always reads
+> *unconcluded* and re-submission always asks, which errs on the side the
+> rule already chose: the user judges. Giving PySCF a marker means giving
+> its wrapper a tail, a change to weigh separately.
+
 > **This answers a PROCESS question, never a chemistry one.** *Did the
 > wrapper get to finish* is what the marker knows; *did the SCF converge*
 > stays with the engine's own output and its one reader (the § 2.5 ending

@@ -3534,6 +3534,13 @@ def render_run_wrapper(script_path: Path, *,
                f'to extend, or revisit mixing/smearing." >&2\n'
                f'    fi\n'
                if continue_retries and continue_retries > 0 else "")
+            + f'    # CONCLUDED -- an error is a conclusion (project-\n'
+            f'    # layout.md 1.6, "the other file"): the engine returned\n'
+            f'    # and this process gets to say goodbye.  MAIN LINE ONLY,\n'
+            f'    # never the cleanup trap: a walltime SIGTERM runs the\n'
+            f'    # trap, and a forced stop must leave NO marker.\n'
+            f'    printf "rc=%s at %s\\n" "$_siesta_exit" "$(date)" '
+            f'> "{basename}-run${{_run_n}}.concluded"\n'
             + f'    exit "$_siesta_exit"\n'
             f"fi\n"
             + (f"\n"
@@ -3565,6 +3572,8 @@ def render_run_wrapper(script_path: Path, *,
                if continue_retries and continue_retries > 0 else "")
             + f'echo "SIESTA completed: $_launch_cmd {script_name} -> '
             + f'$_out_file"\n'
+            f'printf "rc=0 at %s\\n" "$(date)" '
+            f'> "{basename}-run${{_run_n}}.concluded"\n'
         )
     else:
         launch_block = (

@@ -1286,6 +1286,7 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                   only: Optional[str] = None,
                   mem_gb: Optional[float] = None,
                   time_s: Optional[int] = None,
+                  continue_unconcluded: bool = False,
                   ) -> List[JobResult]:
     """Launch a prepped ``jobset`` rooted at ``base_dir``.
 
@@ -1362,7 +1363,8 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
     # in for that job's whole plan.
     continued: List[JobResult] = []
     if jobset.kind == "ladder":
-        from .materialize import (attempts, job_dir_names, prepare_attempt,
+        from .materialize import (attempt_concluded, attempts,
+                                  job_dir_names, prepare_attempt,
                                   shape_of, was_launched)
         # Gated on the ATTEMPT LAYER itself, not on the shape flag: the
         # launched-attempt refusal downstream (`_launch_dir`) fires
@@ -1378,6 +1380,30 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                 _ns = attempts(_d)
                 if not _ns or not was_launched(_d / f"run-{_ns[-1]}"):
                     continue
+                _mark = attempt_concluded(
+                    _d / f"run-{_ns[-1]}", Path(_j.script).stem)
+                if _mark is None and not (dry_run or mode == "ask"
+                                          or continue_unconcluded):
+                    # LAUNCHED BUT NEVER CONCLUDED -- still running, or
+                    # force-stopped (walltime, kill, node death); the
+                    # files alone cannot tell those apart, and the two
+                    # deserve opposite acts: continuing a RUNNING attempt
+                    # copies torn warm files under a live engine, while
+                    # continuing a WALLTIME-KILLED one is exactly what a
+                    # person wants -- the saved state is valid.  So the
+                    # user judges (project-layout.md 1.6, the other
+                    # file); molbuilder never decides over them.
+                    raise SubmitError(
+                        f"{_j.name}: {_names[_j.name]}/run-{_ns[-1]} was "
+                        f"launched and never CONCLUDED -- it may still be "
+                        f"RUNNING, or it was force-stopped (walltime, "
+                        f"kill).\n"
+                        f"  Continuing copies its warm files AS THEY ARE: "
+                        f"valid after a forced stop, torn if it is still "
+                        f"running.  Check `molbuilder jobset status` and "
+                        f"the queue first.\n"
+                        f"  Then: re-run this launch with --yes to record "
+                        f"your judgement and continue.")
                 if dry_run or mode == "ask":
                     # A QUESTION MUST NOT WRITE.  Until 2026-08-28 only
                     # dry_run took this arm, so `--mode ask` over a
@@ -1410,8 +1436,12 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                         f"  Look at that run's logs; a FRESH attempt "
                         f"is:  molbuilder jobset prep run {_j.name}  "
                         f"(then submit).") from _e
+                _how = (f"concluded ({_mark.splitlines()[0]})"
+                        if _mark is not None else
+                        "NOT concluded -- continued on your judgement")
                 continued.append(JobResult(
                     _j.name, [],
+                    f"{_how}: "
                     f"continuing {_names[_j.name]}/run-{_ns[-1]} -> "
                     f"{_rep.dir.name} (copied: "
                     f"{', '.join(_rep.copied) or 'nothing to carry'}).  "

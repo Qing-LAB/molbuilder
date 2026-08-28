@@ -266,6 +266,11 @@ OUR_FILE_PATTERNS: Sequence[str] = (
     "{label}.util.csv", "{label}_*.util.csv",
     "{label}-run*.util.csv", "{label}_*-run*.util.csv",
     "{label}-run*.scf-timing.log", "{label}_*-run*.scf-timing.log",
+    # The conclusion marker -- the wrapper's last act on its main path
+    # (`project-layout.md` 1.6, "the other file", 2026-08-28).  Indexed
+    # like the .out because a warm-retry chain execs fresh wrappers and
+    # only the FINAL process concludes.
+    "{label}-run*.concluded", "{label}_*-run*.concluded",
 )
 
 
