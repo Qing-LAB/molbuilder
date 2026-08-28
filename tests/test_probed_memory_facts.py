@@ -38,10 +38,13 @@ PartitionName=highmem
 
 def _rows():
     parts = parse_sinfo(_SINFO)
-    defmem = parse_scontrol_partitions(_SCONTROL)
+    policy = parse_scontrol_partitions(_SCONTROL)
     for p in parts:
-        p.def_mem_per_cpu_mb = defmem.get(p.name)
-    rows, _notes = derive_domains(parts, {"public": (None, None)}, {"public"})
+        pol = policy.get(p.name)
+        if pol is not None:
+            p.def_mem_per_cpu_mb = pol.def_mem_per_cpu_mb
+            p.max_cpus_per_node = pol.max_cpus_per_node
+    rows, _notes = derive_domains(parts, {}, {"public"})
     return {r["name"]: r for r in rows}
 
 
@@ -73,7 +76,7 @@ def test_an_older_record_says_nothing_rather_than_zero():
         assert p.mem_mb is None
     rows = {r["name"]: r for r in derive_domains(
         parse_sinfo("p|1:00:00|4|(null)|128"),
-        {"public": (None, None)}, {"public"})[0]}
+        {}, {"public"})[0]}
     assert "max_mem_gb" not in rows["p"], (
         "an unmeasured ceiling was written onto the row, so admission would "
         "compare an ask against a number nobody measured")
@@ -90,7 +93,7 @@ def test_a_zero_from_sinfo_is_unknown_and_not_a_ceiling_of_zero():
     """
     parts = parse_sinfo("p|1:00:00|4|(null)|128|0\n")
     rows = {r["name"]: r for r in derive_domains(
-        parts, {"public": (None, None)}, {"public"})[0]}
+        parts, {}, {"public"})[0]}
     assert "max_mem_gb" not in rows["p"], (
         "a queue reporting 0 MB was given a ceiling of 0 GB, so every job "
         "would be refused there for needing more memory than nothing")
@@ -103,7 +106,7 @@ def test_a_zero_per_core_default_is_unknown_too():
     for pt in parts:
         pt.def_mem_per_cpu_mb = 0
     rows = {r["name"]: r for r in derive_domains(
-        parts, {"public": (None, None)}, {"public"})[0]}
+        parts, {}, {"public"})[0]}
     assert "default_mem_per_core_gb" not in rows["htc"]
 
 
@@ -114,7 +117,8 @@ def test_a_zero_per_core_default_is_unknown_too():
 def test_the_per_core_default_is_read_from_scontrol():
     """`sinfo` has no format code for it, which is why this is a second
     command rather than a wider one."""
-    assert parse_scontrol_partitions(_SCONTROL) == {
+    got = parse_scontrol_partitions(_SCONTROL)
+    assert {n: pol.def_mem_per_cpu_mb for n, pol in got.items()} == {
         "htc": 2048, "general": 2048, "highmem": 16384}
 
 
@@ -138,13 +142,14 @@ def test_the_number_that_made_a_64_core_job_ask_for_128G():
 ])
 def test_a_partition_that_states_no_per_core_default_maps_to_none(body, why):
     """R3 again: ``None`` is *this partition does not say*, never zero."""
-    assert parse_scontrol_partitions(body) == {"p": None}, why
+    assert parse_scontrol_partitions(body)["p"].def_mem_per_cpu_mb \
+        is None, why
 
 
 def test_a_row_carries_no_per_core_default_when_scontrol_is_silent():
     parts = parse_sinfo(_SINFO)          # def_mem_per_cpu_mb left unset
     rows = {r["name"]: r for r in derive_domains(
-        parts, {"public": (None, None)}, {"public"})[0]}
+        parts, {}, {"public"})[0]}
     assert "default_mem_per_core_gb" not in rows["htc"]
 
 
@@ -184,10 +189,13 @@ def test_every_row_the_probe_builds_constructs_a_Domain():
     """
     from molbuilder.scheduler import Domain
     parts = parse_sinfo(_SINFO)
-    defmem = parse_scontrol_partitions(_SCONTROL)
+    policy = parse_scontrol_partitions(_SCONTROL)
     for p in parts:
-        p.def_mem_per_cpu_mb = defmem.get(p.name)
-    rows, _notes = derive_domains(parts, {"public": (None, None)}, {"public"})
+        pol = policy.get(p.name)
+        if pol is not None:
+            p.def_mem_per_cpu_mb = pol.def_mem_per_cpu_mb
+            p.max_cpus_per_node = pol.max_cpus_per_node
+    rows, _notes = derive_domains(parts, {}, {"public"})
     assert rows, "the fixture produced no rows, so this proves nothing"
     for row in rows:
         d = Domain(**row)                      # exactly what `probe --write` does
@@ -203,9 +211,59 @@ def test_the_columns_the_probe_writes_are_all_KNOWN_to_the_record():
     parts = parse_sinfo(_SINFO)
     for p in parts:
         p.def_mem_per_cpu_mb = 2048
-    rows, _ = derive_domains(parts, {"public": (None, None)}, {"public"})
+    rows, _ = derive_domains(parts, {}, {"public"})
     emitted = {k for row in rows for k in row}
     unknown = sorted(emitted - set(Domain._KNOWN))
     assert not unknown, (
         f"the probe writes {unknown}, which `Domain` does not declare -- add "
         f"the field (and say what it is for), or stop writing the column")
+
+
+# --------------------------------------------------------------------- #
+#  the policy ceilings — what you may ASK, beside what the node HAS      #
+# --------------------------------------------------------------------- #
+
+def test_the_policy_cap_rides_the_row_and_admission_reads_it():
+    """R13, end to end: `lightwork`'s suspected 8-core cap could be neither
+    confirmed nor denied because the probe never asked.  Now `scontrol`'s
+    ``MaxCPUsPerNode`` lands on the row and `admits` compares BOTH ceilings
+    -- the smaller governs, so 128-core nodes do not launder a 9-core ask
+    past an 8-core policy."""
+    from molbuilder.scheduler import Domain
+    from molbuilder.scheduler.admit import Request, admits
+    body = ("PartitionName=lightwork\n"
+            "   DefMemPerCPU=2048 MaxCPUsPerNode=8\n")
+    parts = parse_sinfo("lightwork|1-00:00:00|3|(null)|128|515000\n")
+    pol = parse_scontrol_partitions(body)["lightwork"]
+    assert pol.max_cpus_per_node == 8
+    parts[0].def_mem_per_cpu_mb = pol.def_mem_per_cpu_mb
+    parts[0].max_cpus_per_node = pol.max_cpus_per_node
+    rows, _ = derive_domains(parts, {}, {"public"})
+    row = rows[0]
+    assert row["max_cpus_per_node"] == 8
+    assert row["max_cores"] == 128, "the hardware ceiling must survive"
+    d = Domain(**row)
+    assert admits(d, Request(ranks=8)) == []
+    why = admits(d, Request(ranks=9))
+    assert why and "8" in why[0] and "policy" in why[0], (
+        f"a 9-core ask slid past an 8-core policy on 128-core nodes: {why}")
+
+
+def test_a_partition_with_no_stated_cap_bars_nothing_new():
+    """R3: UNLIMITED and absence both say *no policy stated*, and the
+    hardware ceiling alone governs -- the probe asking a new question must
+    not make old records or permissive partitions stricter."""
+    for body in ("PartitionName=p\n   MaxCPUsPerNode=UNLIMITED\n",
+                 "PartitionName=p\n   DefMemPerCPU=2048\n"):
+        assert parse_scontrol_partitions(body)["p"].max_cpus_per_node \
+            is None, body
+
+
+def test_the_qos_cap_lands_on_the_row_too():
+    """R13's other half: a QoS ``MaxTRESPerJob=cpu=N`` caps the job
+    wherever it lands, so it rides the (partition, qos) row."""
+    from molbuilder.scheduler.probe import QosLimit
+    parts = parse_sinfo("htc|4:00:00|10|(null)|128|515000\n")
+    rows, _ = derive_domains(
+        parts, {"public": QosLimit(None, None, 96)}, {"public"})
+    assert rows[0]["max_cpus_per_job"] == 96

@@ -37,14 +37,20 @@ public|7-00:00:00|5|gpu:a30:3|64
 public|7-00:00:00|107|(null)|128
 """
 
-# Real Sol `sacctmgr -nP show qos format=Name,MaxWall,Flags` (subset).
+# Real Sol `sacctmgr -nP show qos format=Name,MaxWall,MaxTRES,Flags`
+# (subset).  MaxTRES was added to the format on 2026-08-27 (R13); most QoS
+# rows leave it empty, `lightwork_qos` shows the shape a cpu cap arrives
+# in, and `gres_only` shows a MaxTRES that caps OTHER resources and must
+# not read as a core cap.
 _QOS = """\
-public||DenyOnLimit
-private||DenyOnLimit
-debug|00:15:00|DenyOnLimit,OverPartQOS
-long|14-00:00:00||PartitionTimeLimit
-class|1-00:00:00|DenyOnLimit
-htc|04:00:00|
+public|||DenyOnLimit
+private|||DenyOnLimit
+debug|00:15:00||DenyOnLimit,OverPartQOS
+long|14-00:00:00|||PartitionTimeLimit
+class|1-00:00:00||DenyOnLimit
+htc|04:00:00||
+lightwork_qos||cpu=8|DenyOnLimit
+gres_only||gres/gpu=8,mem=512G|DenyOnLimit
 """
 
 # Real Sol `sacctmgr -nP show assoc user=$USER format=QOS`.
@@ -129,9 +135,20 @@ def test_max_cores_is_the_WIDEST_machine():
 
 def test_parse_qos_maxwall():
     q = parse_qos(_QOS)
-    assert q["debug"][0] == "00:15:00" and q["debug"][1] == 900
-    assert q["public"] == (None, None)                 # no QoS wall ceiling
-    assert q["htc"][1] == 4 * 3600
+    assert q["debug"].maxwall_str == "00:15:00"
+    assert q["debug"].maxwall_secs == 900
+    assert q["public"].maxwall_str is None             # no QoS wall ceiling
+    assert q["htc"].maxwall_secs == 4 * 3600
+
+
+def test_parse_qos_reads_the_cpu_cap_and_only_the_cpu_cap():
+    """R13's QoS half.  ``cpu=8`` is a per-job core cap; a MaxTRES that
+    caps gres or memory says NOTHING about cores and must map to None --
+    reading `gres/gpu=8` as eight cores would invent a policy."""
+    q = parse_qos(_QOS)
+    assert q["lightwork_qos"].max_cpus_per_job == 8
+    assert q["gres_only"].max_cpus_per_job is None
+    assert q["public"].max_cpus_per_job is None
 
 
 def test_parse_allowed_qos():

@@ -187,8 +187,10 @@ has the monitor record it on the node rather than inferring it from the queue.
 > | QOS `MaxTRESPerJob` (`cpu=N`) | `sacctmgr -nP show qos format=Name,MaxWall,Flags` | Name, MaxWall — **`MaxTRES` is not even in the format list** |
 > | partition `MaxCPUsPerNode` | `scontrol show partition` | `DefMemPerCPU` only |
 >
-> So the answer is one field in each, not a trip to the login node. Tracked as
-> **P7** in the bench plan.
+> So the answer is one field in each, not a trip to the login node. **Built
+> 2026-08-27** (`machine-identity-plan.md` P7): the probe asks for both and
+> `admits` compares against them. The next `jobset probe` on Sol settles the
+> 8 — either answer is a result.
 >
 > Kept rather than deleted because the second is the recurring one: this page's
 > job is to hold **measured** site facts, and a figure that arrives by memory

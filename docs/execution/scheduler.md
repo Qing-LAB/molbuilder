@@ -229,8 +229,10 @@ partially-probed cluster unusable.
 > *"`htc` offers A100s and it offers 128-core nodes, but never both at once"* —
 > while admission went on asking the queue for one figure. **A benchmark's GPU
 > side is where this bites first**, because a sweep's rank axis is normally
-> sized against the CPU side. Contract fixed 2026-08-27; `_widest_node` still
-> reads the unfiltered widest.
+> sized against the CPU side. Built the same day: `admits`
+> narrows the ceiling to device-bearing machines when the request names a
+> device, and stands aside — never bars — when the machine list does not say
+> which nodes hold them.
 
 **R4 — A refusal names the numbers.** *"needs 38 min but debug allows
 00:15:00"*, not *"does not fit"*. We hold the record; sending a user to read
@@ -293,12 +295,19 @@ R3 then reads the missing policy limit as permission.
 > **The record measured the first and never asked for the second**, which is
 > how `lightwork` came to carry `max_cores: 128` beside a long-standing note
 > that it *"caps at 8 cores"*, with nothing able to say whether both were true.
-> Both numbers sit in output the probe already runs: the QOS cap in
+> Both numbers sat in output the probe already ran: the QOS cap in
 > `sacctmgr show qos` (fetched with `format=Name,MaxWall,Flags` — `MaxTRES` was
 > never asked for) and `MaxCPUsPerNode` in `scontrol show partition` (parsed
 > for `DefMemPerCPU` alone). **A field you did not request is not an absence
 > the record may report as silence** — R3's *unstated limit never bars* is
 > about what the scheduler does not say, never about what we did not ask.
+>
+> **Built 2026-08-27**: the probe asks for both (`MaxTRES` in the format
+> list; `MaxCPUsPerNode` kept from the block already fetched), they ride the
+> row as `max_cpus_per_job` / `max_cpus_per_node`, and `admits` compares the
+> ask against every ceiling it holds — the smaller governs. What remains for
+> `lightwork` specifically is one re-run of `jobset probe` on Sol, which now
+> asks the question; either answer it returns is a result.
 
 **R11 — Comparability is a property of the MACHINE, never of the domain.**
 Added 2026-08-27, and it is R0 applied to measurement. A domain is a queue

@@ -1,6 +1,6 @@
 # Machine identity — migrating the code to R11/R12/R13
 
-**Status: P1–P5 BUILT 2026-08-27; P6–P7 open.** The rules are in
+**Status: ALL SEVEN PIECES BUILT 2026-08-27.** What remains needs a machine, not code: a Sol run to see a real `[MACHINE]` line, and a Sol re-probe to settle `lightwork`'s cap (§ 6). The rules are in
 [`scheduler.md`](?doc=execution/scheduler.md) **R11**, **R12**, **R13** and R3's
 second half, with the bench half in
 [`generator.md`](?doc=execution/generator.md) § 4.4b and
@@ -82,8 +82,8 @@ holds it. P6 and P7 are independent and may be taken at any point.
 ```
 P1 record ──► P2 read ──► P3 show          ← BUILT 2026-08-27
       └─────► P4 refuse ──► P5 retire the scalar   ← BUILT 2026-08-27
-P6 admission by device        (independent)
-P7 probe the policy caps      (independent)
+P6 admission by device        ← BUILT 2026-08-27
+P7 probe the policy caps      ← BUILT 2026-08-27
 ```
 
 > **Built with the guards § 5 asked for**: `test_machine_identity.py`
@@ -210,7 +210,7 @@ genuinely is uniform declares one entry in `node_types`.
 | `jobset/materialize.py` | 731 | docstring says `placed_on` is *"WHERE IT RAN"*; **R12 says it is where it was SENT** |
 | `runtime_config.py` | 1685 | comment lists it as an operator column |
 
-### P6 — admission's ceiling filters by device (R3 second half)
+### P6 — admission's ceiling filters by device (R3 second half) — BUILT 2026-08-27
 
 **Where:** `scheduler/admit.py` `_widest_node`.
 
@@ -223,7 +223,7 @@ naming 48, and 64 ranks with no device must still pass at 128. **The second
 half is the mutation** — a filter that always applies would re-break the
 64-rank CPU trial R3's corollary was written for.
 
-### P7 — the probe reads the policy caps (R13)
+### P7 — the probe reads the policy caps (R13) — BUILT 2026-08-27
 
 **Where:** `jobset/_cli.py:2690`, `scheduler/probe.py` `parse_qos`,
 `parse_scontrol_partitions`.

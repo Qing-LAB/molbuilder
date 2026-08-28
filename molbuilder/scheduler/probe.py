@@ -24,8 +24,9 @@ other machine-probe.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
 # `parse_walltime` moved to `quantities.py` (2026-08-24), where every dialect
 # of a walltime and a memory size now lives together.  The RECORD reader had
@@ -107,6 +108,12 @@ class Partition:
     #: without anyone choosing it, and `default_mem_per_core_gb` has been on
     #: the record, unread, since the row was designed.
     def_mem_per_cpu_mb: Optional[int] = None
+    #: THE PARTITION'S OWN CPU CAP, per node per job -- ``MaxCPUsPerNode``
+    #: from ``scontrol show partition``.  A POLICY ceiling, not a hardware
+    #: one (`scheduler.md` R13): the nodes may be wide and the partition
+    #: still refuses to give one job more than this many of their cores.
+    #: ``None`` means the partition does not say (R3).
+    max_cpus_per_node: Optional[int] = None
 
     @property
     def has_gpu(self) -> bool:
@@ -199,8 +206,15 @@ def parse_sinfo(text: str) -> List[Partition]:
     return list(parts.values())
 
 
-def parse_scontrol_partitions(text: str) -> Dict[str, Optional[int]]:
-    """``scontrol show partition`` -> ``{partition: DefMemPerCPU in MB}``.
+class PartitionPolicy(NamedTuple):
+    """What one partition's policy block states -- both facts ``None`` when
+    the partition does not say (R3)."""
+    def_mem_per_cpu_mb: Optional[int] = None
+    max_cpus_per_node:  Optional[int] = None
+
+
+def parse_scontrol_partitions(text: str) -> Dict[str, "PartitionPolicy"]:
+    """``scontrol show partition`` -> ``{partition: PartitionPolicy}``.
 
     **The number nobody chose.**  SLURM grants this much memory per core when
     a job states no ``--mem``, so a 64-core job silently asks for 64 x it.  On
@@ -215,44 +229,81 @@ def parse_scontrol_partitions(text: str) -> Dict[str, Optional[int]]:
     per-NODE default and not per-core, so deriving a per-core figure from it
     would invent one.  ``None`` means *this partition does not say*, which a
     reader must not read as zero (R3).
+
+    ``MaxCPUsPerNode`` rides in the same block since 2026-08-27
+    (`scheduler.md` R13): the partition's POLICY cap on one job's cores
+    per node, distinct from how many cores the nodes have -- and it was in
+    this very output all along, parsed for ``DefMemPerCPU`` alone.
     """
-    out: Dict[str, Optional[int]] = {}
+    out: Dict[str, PartitionPolicy] = {}
     name: Optional[str] = None
     for chunk in (text or "").split("PartitionName="):
         if not chunk.strip():
             continue
         name = chunk.split()[0].strip()
         mb: Optional[int] = None
+        cap: Optional[int] = None
         for tok in chunk.split():
             if tok.startswith("DefMemPerCPU="):
-                v = tok.split("=", 1)[1]
                 try:
-                    mb = int(v)
+                    mb = int(tok.split("=", 1)[1])
                 except ValueError:
                     mb = None      # "UNLIMITED" and friends say no number
-                break
-        out[name] = mb
+            elif tok.startswith("MaxCPUsPerNode="):
+                try:
+                    cap = int(tok.split("=", 1)[1])
+                except ValueError:
+                    cap = None     # UNLIMITED: no policy cap stated
+        out[name] = PartitionPolicy(mb, cap)
     return out
 
 
-def parse_qos(text: str) -> Dict[str, Tuple[Optional[str], Optional[int]]]:
-    """Parse ``sacctmgr -nP show qos format=Name,MaxWall,...`` ->
-    ``{name: (maxwall_str|None, maxwall_secs|None)}``.  Empty MaxWall -> None
-    (no QoS-level wall ceiling; the partition limit governs)."""
-    out: Dict[str, Tuple[Optional[str], Optional[int]]] = {}
+class QosLimit(NamedTuple):
+    """One QoS's per-job limits, as ``sacctmgr show qos`` states them.
+
+    A named triple rather than a bare one because the third field arrived
+    2026-08-27 (`scheduler.md` R13) and positional readers of a widening
+    tuple are how a field gets read as its neighbour.  ``None`` everywhere
+    means *this QoS does not say* (R3).
+    """
+    maxwall_str:  Optional[str] = None
+    maxwall_secs: Optional[int] = None
+    #: ``MaxTRESPerJob``'s ``cpu=N`` -- the POLICY cap on one job's cores,
+    #: which no amount of hardware overrides.  The probe fetched this
+    #: table for years with ``format=Name,MaxWall,Flags`` -- MaxTRES was
+    #: never asked for, which is why `lightwork` could carry
+    #: ``max_cores: 128`` beside a note saying it caps at 8 with nothing
+    #: able to say whether both were true (R13: a field you did not
+    #: request is not an absence the record may report as silence).
+    max_cpus_per_job: Optional[int] = None
+
+
+_TRES_CPU = re.compile(r"(?:^|,)cpu=(\d+)")
+
+
+def parse_qos(text: str) -> Dict[str, "QosLimit"]:
+    """Parse ``sacctmgr -nP show qos format=Name,MaxWall,MaxTRES,...`` ->
+    ``{name: QosLimit}``.  Empty MaxWall -> None (no QoS-level wall
+    ceiling; the partition limit governs); a MaxTRES with no ``cpu=`` term
+    caps other resources and says nothing about cores."""
+    out: Dict[str, QosLimit] = {}
     for line in (text or "").splitlines():
         cols = [c.strip() for c in line.split("|")]
         if not cols or not cols[0]:
             continue
         name = cols[0]
         mw = cols[1] if len(cols) > 1 else ""
+        secs: Optional[int] = None
         if mw:
             try:
-                out[name] = (mw, parse_walltime(mw))
+                secs = parse_walltime(mw)
             except (ValueError, AttributeError):
-                out[name] = (mw, None)
-        else:
-            out[name] = (None, None)
+                secs = None
+        cpus: Optional[int] = None
+        m = _TRES_CPU.search(cols[2]) if len(cols) > 2 else None
+        if m:
+            cpus = int(m.group(1))
+        out[name] = QosLimit(mw or None, secs, cpus)
     return out
 
 
@@ -387,10 +438,18 @@ def derive_domains(
         if part.def_mem_per_cpu_mb:
             row["default_mem_per_core_gb"] = round(
                 part.def_mem_per_cpu_mb / 1024.0, 2)
+        # THE POLICY CEILING, beside the hardware one (R13).  ``max_cores``
+        # says what the widest machine HAS; this says what the partition
+        # LETS one job take of it, and the smaller governs -- `lightwork`
+        # is the queue whose two figures were suspected of disagreeing
+        # with nothing able to say (user, 2026-08-27: "your jobset probe
+        # did not do its job?").
+        if part.max_cpus_per_node:
+            row["max_cpus_per_node"] = part.max_cpus_per_node
         return row
 
     if "debug" in allowed and "debug" in qos:
-        mw_str, _ = qos["debug"]
+        mw_str = qos["debug"].maxwall_str
         row = _row("debug", mw_str or "0-00:15:00", parts[0])
         row["qos"] = "debug"
         domains.append(row)
@@ -399,10 +458,10 @@ def derive_domains(
         q = _pick_qos(allowed, p.name)
         if not q:
             continue
-        q_secs = qos.get(q, (None, None))[1]
+        q_secs = qos.get(q, QosLimit()).maxwall_secs
         # the wall is the SMALLER of the partition limit and the QoS ceiling
         if q_secs is not None and q_secs < p.timelimit_secs:
-            max_time = qos[q][0]
+            max_time = qos[q].maxwall_str
         else:
             max_time = (p.timelimit_str
                         if p.timelimit_secs < _INFINITE_SECS else _INFINITE_STR)
@@ -412,6 +471,9 @@ def derive_domains(
                              f"{_INFINITE_STR} -- adjust if needed.")
         row = _row(p.name, max_time, p)
         row["qos"] = q
+        cpus_cap = qos.get(q, QosLimit()).max_cpus_per_job
+        if cpus_cap:
+            row["max_cpus_per_job"] = cpus_cap
         domains.append(row)
 
     seen: Set[Tuple[str, str]] = set()
@@ -434,6 +496,6 @@ def derive_domains(
 
 
 __all__ = [
-    "Partition", "parse_sinfo", "parse_qos", "parse_allowed_qos",
+    "Partition", "PartitionPolicy", "QosLimit", "parse_sinfo", "parse_qos", "parse_allowed_qos",
     "derive_domains",
 ]

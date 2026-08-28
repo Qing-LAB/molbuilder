@@ -96,11 +96,37 @@ def _compare(row, *, cores: Optional[int] = None,
         #
         # R10 -- name what WOULD fit -- so the reason says which machine
         # is the biggest, not just that the ask is too large.
-        cap, widest = _widest_node(row)
+        #
+        # AND THE CEILING IS AMONG THE MACHINES THAT OFFER WHAT WAS ASKED
+        # (R3's second half, 2026-08-27).  "SLURM will not place a job on
+        # a node too small" is exactly as true of devices: a job asking
+        # for a GPU can only land on a node that has one.  On Sol's
+        # `public` the two ceilings differ sharply -- 128 cores across
+        # 107 standard nodes, 48 across the 52 with A100s -- so a 64-rank
+        # GPU trial admitted against the 128 is unplaceable, and a
+        # benchmark's GPU side hits it first because the rank axis is
+        # sized against the CPU side.
+        cap, widest = _widest_node(row, needs_device=bool(gpus))
         if cap is not None and cap < cores:
             where = f" ({widest})" if widest else ""
-            why.append(f"needs {cores} cores but {row.name}'s largest "
-                       f"machine has {cap}{where}")
+            with_dev = " with a device" if gpus else ""
+            why.append(f"needs {cores} cores{with_dev} but {row.name}'s "
+                       f"largest machine{with_dev} has {cap}{where}")
+        # THE POLICY CEILINGS, beside the hardware one (R13).  What the
+        # widest machine HAS and what policy LETS one job take are two
+        # facts; both are read and the smaller governs.  `lightwork` is
+        # why: `max_cores: 128` (the nodes) beside a suspected 8-core cap
+        # (the policy) with nothing able to compare either.
+        for cap_field, phrase in (("max_cpus_per_job", "per job"),
+                                  ("max_cpus_per_node", "per node")):
+            pol = getattr(row, cap_field, None)
+            try:
+                pol = int(pol) if pol is not None else None
+            except (TypeError, ValueError):
+                pol = None                 # unreadable is not small (R3)
+            if pol is not None and pol < cores:
+                why.append(f"needs {cores} cores but {row.name}'s policy "
+                           f"allows {pol} {phrase}")
 
     if mem_gb is not None and row.max_mem_gb:
         try:
@@ -129,15 +155,27 @@ def _compare(row, *, cores: Optional[int] = None,
     return why
 
 
-def _widest_node(row) -> Tuple[Optional[int], str]:
+def _widest_node(row, *, needs_device: bool = False) -> Tuple[Optional[int], str]:
     """``(cores of the largest machine, how it is described)``.
 
     From ``node_types`` when the record lists them -- the measurement --
     and from ``max_cores`` otherwise, which is what every record written
     before 2026-08-27 carries.  ``None`` means the record does not say, and
     R3 then applies: an unstated limit never bars.
+
+    ``needs_device`` narrows the search to machines that carry one (R3's
+    second half): a ``--gres`` job can only land on such a node, so the
+    widest device-less machine is not a ceiling it could ever enjoy.  When
+    the list names NO device-bearing machine the filter yields nothing and
+    the unfiltered answer stands -- the record not saying which nodes hold
+    the devices is silence, and silence never bars.
     """
     rows = getattr(row, "node_types", None) or []
+    if needs_device:
+        with_dev = [r for r in rows
+                    if isinstance(r, dict) and r.get("gpu")]
+        if with_dev:
+            rows = with_dev
     best, how = None, ""
     for r in rows:
         try:

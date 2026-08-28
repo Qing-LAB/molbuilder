@@ -83,6 +83,52 @@ def test_a_64_rank_cpu_ask_is_ADMITTED_where_a_floor_refused_it():
     assert admits(_domains()["htc"], Request(ranks=64)) == []
 
 
+def test_a_gpu_ask_is_bounded_by_the_machines_that_HAVE_one():
+    """**R3's second half** (machine-identity-plan.md P6). "SLURM will not
+    place a job on a node too small" is exactly as true of devices: a
+    ``--gres`` job can only land on a node that has one.  On `htc` the
+    device-bearing machines top out at 64 cores while the queue's widest
+    is 128 — so 64 ranks + a GPU fits (the MIG nodes), 65 does not, and
+    the refusal names the device-side ceiling rather than the queue's."""
+    htc = _domains()["htc"]
+    assert admits(htc, Request(ranks=64, gpus=1)) == []
+    why = admits(htc, Request(ranks=65, gpus=1))
+    assert why, "65 ranks + a device fits no device-bearing machine"
+    assert "64" in why[0] and "128" not in why[0], (
+        f"the ceiling must be the widest machine WITH a device: {why[0]}")
+
+
+def test_the_same_ranks_without_a_device_still_enjoy_the_wide_nodes():
+    """**The mutation guard for P6.** A device filter that always applies
+    would re-break the 64-rank CPU trial R3's corollary was written for —
+    the two asks must keep different ceilings."""
+    htc = _domains()["htc"]
+    assert admits(htc, Request(ranks=65)) == [], (
+        "a CPU ask was bounded by the GPU nodes' size — the device filter "
+        "is applying to requests that name no device")
+    assert admits(htc, Request(ranks=128)) == []
+
+
+def test_a_machine_list_that_names_no_devices_does_not_bar_a_gpu_ask():
+    """Silence never bars (R3): a hand-written list that does not say
+    which nodes hold the devices is not claiming none do — the unfiltered
+    widest stands, and the device count question stays with the `gpu`
+    column."""
+    hand = Domain(name="site", partition="p", qos="public",
+                  gpu={"type": "a100", "per_node": 4},
+                  node_types=[{"cores": 96, "nodes": 2}])
+    assert admits(hand, Request(ranks=96, gpus=1)) == []
+    # ...and the unfiltered machines still BOUND the device ask: an empty
+    # filter must fall back to them, not to nothing.  (First caught as a
+    # mutation survivor: dropping the fallback slid through because
+    # max_cores caught probed rows, and this hand row has none.)
+    why = admits(hand, Request(ranks=97, gpus=1))
+    assert why and "96" in why[0], (
+        "a device ask slipped past the stated machines when none of them "
+        "named a device -- the filter emptied the list instead of "
+        "standing aside")
+
+
 def test_an_ask_no_machine_can_hold_is_refused_by_name():
     """R10 — name what WOULD fit. A refusal that stops at "no" leaves the
     person guessing at a number the record is already holding."""

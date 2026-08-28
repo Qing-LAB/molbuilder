@@ -2719,8 +2719,12 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
                          "workstation record (topology only).")
     else:
         parts = parse_sinfo(sinfo_txt)
+        # MaxTRES added 2026-08-27 (R13): the QoS's per-job cpu cap was
+        # in this very table all along, and the format list never asked
+        # for it -- a field you did not request is not an absence the
+        # record may report as silence.
         qos = parse_qos(_run(["sacctmgr", "-nP", "show", "qos",
-                              "format=Name,MaxWall,Flags"]) or "")
+                              "format=Name,MaxWall,MaxTRES,Flags"]) or "")
         allowed = parse_allowed_qos(
             _run(["sacctmgr", "-nP", "show", "assoc", f"user={user}",
                   "format=QOS"]) or "")
@@ -2731,15 +2735,18 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
         # per-core default, which reads as "this machine does not say"
         # rather than as zero (R3).
         from ..scheduler.probe import parse_scontrol_partitions
-        defmem = parse_scontrol_partitions(
+        policy = parse_scontrol_partitions(
             _run(["scontrol", "show", "partition"]) or "")
         for _p in parts:
-            _p.def_mem_per_cpu_mb = defmem.get(_p.name)
+            _pol = policy.get(_p.name)
+            if _pol is not None:
+                _p.def_mem_per_cpu_mb = _pol.def_mem_per_cpu_mb
+                _p.max_cpus_per_node = _pol.max_cpus_per_node
         rows, notes = derive_domains(parts, qos, allowed)
         # AFTER `derive_domains`, which REASSIGNS `notes` -- appending before
         # it silently dropped this line, which is the class of bug the note
         # itself is about: a measurement that quietly did not happen.
-        if not defmem:
+        if not policy:
             notes.append("scontrol was not reachable, so no per-core memory "
                          "default was measured -- a job that states no --mem "
                          "will get whatever SLURM decides and molbuilder "

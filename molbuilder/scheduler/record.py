@@ -146,6 +146,15 @@ class Domain:
     #: ``extra`` until the probe could fill it.  ``None`` means the partition
     #: does not say, never zero (R3).
     default_mem_per_core_gb: Optional[float] = None
+    #: POLICY ceilings on one job's cores (`scheduler.md` R13), beside the
+    #: hardware one (``max_cores`` = the widest machine).  Both read, the
+    #: smaller governs; a hardware ceiling cannot stand in for a policy
+    #: one.  ``max_cpus_per_job`` is the QoS's ``MaxTRESPerJob`` ``cpu``
+    #: term; ``max_cpus_per_node`` is the partition's ``MaxCPUsPerNode``.
+    #: ``None`` means the record does not say, never *unlimited by
+    #: measurement* (R3).
+    max_cpus_per_job:  Optional[int] = None
+    max_cpus_per_node: Optional[int] = None
     gpu:       Optional[Dict[str, Any]] = None
     #: Every distinct machine this domain holds: ``[{cores, nodes, mem_gb,
     #: gpu}, ...]``.  DECLARED since 2026-08-27, because a partition is a
@@ -176,6 +185,7 @@ class Domain:
     #: ``extra``, uninterpreted; ``node_types`` is the machine list.
     _KNOWN = ("name", "partition", "qos", "max_time",
               "max_cores", "max_mem_gb", "default_mem_per_core_gb",
+              "max_cpus_per_job", "max_cpus_per_node",
               "gpu", "gpu_partition", "node_types")
 
     @classmethod
