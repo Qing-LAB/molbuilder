@@ -101,12 +101,15 @@ signal deaths as respawnable.
 `faulthandler.register(SIGUSR1, file=<log>)` at serve startup — one line,
 and the next wedge is diagnosable.
 
-**O4 — in-request heavy work can freeze every user.** The dev server is
-one threaded process; a request that enters a long C call holding the GIL
-(RDKit embed of a pathological SMILES, a giant parse) stalls all users.
-The 2026-08-28 wedge (39 threads on one futex, 11 s CPU after 7 h) fits
-this shape; without stacks (O3) the trigger is unproven. Worth a contract
-sentence about what may run in-request.
+**O4 — in-request heavy work can freeze every user.** *Narrowed
+2026-08-28:* the GPU half is closed — the frozen child held
+`/dev/nvidia*` open, the page widget's per-request `pynvml` reads were
+the only in-process driver path, and every one is now an
+nvidia-smi-subprocess with a hard timeout behind a cache (`bb946172`;
+user rule: *a temporary failure of the inquiry, never a failure of the
+system*). What stays open is the general case — RDKit embeds, giant
+parses — still run in request threads; worth a contract sentence about
+what may run in-request.
 
 **O5 — three wording papercuts**, recorded for their next visit: the
 prepped-trials list prints `run-0, run-0` without naming whose attempt each
