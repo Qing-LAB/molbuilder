@@ -172,6 +172,24 @@ def machine_brief(machine: Dict) -> str:
     return f"{cores}c {mem}G {dev}"
 
 
+def machine_census(points) -> List[Tuple[str, int]]:
+    """``[(brief, how many trials)]``, one entry per KIND, sorted stably.
+
+    THE one grouping of a sweep's machines -- the terminal statement and
+    the web payload both read this, because the census was briefly grouped
+    twice (once per surface) and two spellings of "which machines are in
+    play" is the exact drift `machine_brief` exists to prevent one level
+    down.  Points whose record predates the ``[MACHINE]`` line are not
+    counted: absent is absent, never a kind called "?".
+    """
+    kinds: Dict[Tuple, List] = {}
+    for p in points:
+        k = machine_kind(getattr(p, "machine", None) or {})
+        if k is not None:
+            kinds.setdefault(k, [0, machine_brief(p.machine)])[0] += 1
+    return [(brief, n) for _, (n, brief) in sorted(kinds.items())]
+
+
 #: util.csv columns -> metric keys.  ``gpu<N>_sm`` / ``gpu<N>_vram_gb``
 #: are matched per GPU index; the metric takes the max across GPUs
 #: (mean per GPU first for sm%, peak anywhere for VRAM).

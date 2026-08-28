@@ -448,11 +448,21 @@
          * that answered.  A key in `mismatch` is skipped too: that row
          * shows asked-vs-ran itself, in more detail. */
         const ALREADY_IN_KNOBS = ["mpi_np", "omp_threads", "cpus_per_task"];
+        /* The wrapper's own node facts predate the [MACHINE] line and
+         * answer the same question.  When this card carries a machine
+         * line, that line owns the node -- printing node_phys_cores again
+         * two rows down is the same fact twice in two spellings.  On a
+         * record with no machine line they still show: they are the only
+         * node facts a legacy sweep has. */
+        const NODE_FACTS = ["node_phys_cores", "node_sockets",
+                            "node_cores_per_socket"];
+        const skip = t.machine_brief
+            ? ALREADY_IN_KNOBS.concat(NODE_FACTS) : ALREADY_IN_KNOBS;
         const eff = t.effective || {};
         const effBits = Object.keys(eff)
             .filter((k) => eff[k] !== null && eff[k] !== undefined
                         && !(k in (t.mismatch || {}))
-                        && ALREADY_IN_KNOBS.indexOf(k) === -1)
+                        && skip.indexOf(k) === -1)
             .map((k) => `${k} ${eff[k]}`);
         if (effBits.length) card.appendChild(
             el("div", "bench-effective", "ran with: " + effBits.join(" \u00b7 ")));

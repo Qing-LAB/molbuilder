@@ -1,5 +1,8 @@
 # Machine identity — migrating the code to R11/R12/R13
 
+**Role:** plan (built 2026-08-27; two facts still need a Sol run)
+**Domain:** execution
+
 **Status: ALL SEVEN PIECES BUILT 2026-08-27.** What remains needs a machine, not code: a Sol run to see a real `[MACHINE]` line, and a Sol re-probe to settle `lightwork`'s cap (§ 6). The rules are in
 [`scheduler.md`](?doc=execution/scheduler.md) **R11**, **R12**, **R13** and R3's
 second half, with the bench half in
