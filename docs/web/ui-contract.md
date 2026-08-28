@@ -337,9 +337,12 @@ sidebar directory mid-save retargets the operation's later steps; switching
 tabs abandons the result.  Guarding each control separately is
 micromanagement that never ends.
 
-**The rule.**  One shell primitive, `lib/page-busy.js` (its stylesheet
-beside it, self-attached — the cover outranks every layer, so cascade
-position is moot):
+**The rule.**  One shell primitive: behavior and DOM in
+`lib/page-busy.js`; styles in `lib/page-shell.css` § 2.1 beside the
+spinner, because a widget used on every page lives in a shared sheet
+(§ 1) — and that sheet loads in every page's `<head>`, so the cover's
+geometry exists before the first claim can raise it.  Visibility is the
+`hidden` attribute with its § 6 guard, nothing else:
 
 ```js
 import { pageBusy } from "../lib/page-busy.js";

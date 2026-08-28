@@ -30,46 +30,26 @@
 let _claim = null;          // { reason: string, cancelers: Function[] } | null
 let _els = null;            // { cover, msg } once built
 
-const CSS_HREF = new URL("./page-busy.css", import.meta.url).href;
-
 function _canPaint() {
-    // The FULL surface the cover needs -- partial DOM stubs (the node
-    // test harnesses) fall back to the state-only path.
+    // Partial DOM stubs (the node test harnesses) fall back to the
+    // state-only path.
     return (typeof document === "object" && document
             && typeof document.createElement === "function"
-            && typeof document.querySelector === "function"
-            && document.head && typeof document.head.appendChild === "function"
             && document.body && typeof document.body.appendChild === "function");
 }
 
 function _ensureDom() {
     if (_els || !_canPaint()) return;
-    // The module attaches its own stylesheet: the cover outranks every
-    // layer, so cascade position is moot and no template carries a link.
-    if (!document.querySelector(`link[href="${CSS_HREF}"]`)) {
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = CSS_HREF;
-        document.head.appendChild(link);
-    }
+    // Styles live in lib/page-shell.css (§ 2.1, beside the spinner):
+    // a widget used on every page belongs to the SHARED sheet, and that
+    // sheet loads in every page's <head> -- so the cover's geometry
+    // exists before this first claim.  This module owns behavior + DOM
+    // only; visibility is the ``hidden`` attribute (ui-contract § 6).
     const cover = document.createElement("div");
     cover.className = "page-busy-cover";
     cover.hidden = true;
     cover.setAttribute("role", "alert");
     cover.setAttribute("aria-live", "assertive");
-    // The LOAD-BEARING geometry rides inline (CSSOM), never the sheet:
-    // the sheet is injected async on first claim, and a cover whose
-    // position waits for it is an unstyled <div> that blocks nothing
-    // (caught live, 2026-08-28).  Visibility is toggled via
-    // style.display in claim()/release(); the sheet styles the panel.
-    if (cover.style) {
-        Object.assign(cover.style, {
-            position: "fixed", top: "0", right: "0", bottom: "0",
-            left: "0", zIndex: "9000", display: "none",
-            alignItems: "center", justifyContent: "center",
-            background: "rgba(128, 128, 128, 0.35)",
-        });
-    }
 
     const panel = document.createElement("div");
     panel.className = "page-busy-panel";
@@ -124,7 +104,6 @@ export const pageBusy = {
         if (_els) {
             _els.msg.textContent = _claim.reason;
             _els.cover.hidden = false;
-            if (_els.cover.style) _els.cover.style.display = "flex";
             if (typeof _els.cover.setAttribute === "function") {
                 _els.cover.setAttribute("aria-busy", "true");
             }
@@ -137,10 +116,7 @@ export const pageBusy = {
     release() {
         if (_claim === null) return;
         _claim = null;
-        if (_els) {
-            _els.cover.hidden = true;
-            if (_els.cover.style) _els.cover.style.display = "none";
-        }
+        if (_els) _els.cover.hidden = true;
     },
 
     /** Is the fence held?  Programmatic movers of shared state

@@ -504,3 +504,59 @@ button:disabled {
 .spinner[hidden] { display: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
+
+/* ---- Page busy fence — the ONE full-window operation cover (§2.1 shared
+ * primitive; behavior + DOM in lib/page-busy.js, ui-contract.md § 10).
+ * A widget used on every page lives in a SHARED sheet (§ 1) — and this
+ * sheet loads in every page's <head>, so the cover's geometry exists
+ * before the module's first claim can raise it. */
+.page-busy-cover {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Above the sidebar drawer overlay (z 100), the page's topmost
+     * in-flow layer.  A <dialog> raised BY the busy operation still
+     * wins via the browser top layer — by design: a question the
+     * operation asks must stay answerable. */
+    z-index: 200;
+    background: color-mix(in srgb, var(--bg-page) 55%, transparent);
+    backdrop-filter: blur(2px);
+}
+/* the [hidden] guard (§ 6): the display:flex above would otherwise win */
+.page-busy-cover[hidden] { display: none; }
+
+.page-busy-panel {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-md) var(--space-lg);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    max-width: min(80vw, 32rem);
+}
+
+/* Cancel — the human override, always clickable (§ 10 recovery).  It
+ * runs the operation's aborts; release comes from the operation's
+ * finally. */
+.page-busy-cancel {
+    margin-left: var(--space-sm);
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+}
+.page-busy-cancel:hover {
+    border-color: var(--warn-soft);
+    color: var(--warn-soft);
+}
+.page-busy-cancel:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
