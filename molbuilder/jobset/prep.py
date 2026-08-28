@@ -711,7 +711,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # two can never disagree (A-1/A-2).  Imported once for the whole function
     # -- the log's own home is the same container, and a second import site
     # would be a second chance to spell it differently.
-    from .materialize import bench_container
+    from .materialize import bench_container, trial_dir
     from .shape import Shape
 
     base = Path(base_dir).resolve()
@@ -818,7 +818,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             seam.provide_data(struct, pset[0].render_config(), base)
     token = token_for(task, pset.stage)
     jobs: List[Job] = []
-    from .materialize import bench_container
+    from .materialize import bench_container, trial_dir
     from .shape import Shape as _Shape
     _shape = _Shape.named(task.shape)
     for element in pset:
@@ -835,6 +835,11 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         # the same two facts (token + trial-ness), so the deck is born
         # where the launch will look for it.
         if element.is_trial:
+            # ONE RULE, asked -- not composed again from the same two
+            # facts.  `materialize.trial_dir` is what `job_dir_names`
+            # itself uses, so the deck is born where the launch looks by
+            # CONSTRUCTION rather than by a comment promising it.
+            #
             # The dir is named by the JOB's name -- the sweep coordinate,
             # `_job_for`'s own first rule -- never by the element's
             # RELABELLED SystemLabel (`<calc-label>-<coord>`): the two
@@ -842,8 +847,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             # wrote decks into `bench-JOB-G1K1C1/` while every reader
             # asked `job_dir_names` and looked in `bench-G1K1C1/`.
             from ..resolve import point_token as _pt
-            _jdir = base / bench_container(_shape, token) \
-                / f"bench-{_pt(element.point)}"
+            _jdir = base / trial_dir(_shape, token, _pt(element.point))
         else:
             _sd = _shape.stage_dir(token) if token else "."
             _jdir = base if _sd == "." else base / _sd

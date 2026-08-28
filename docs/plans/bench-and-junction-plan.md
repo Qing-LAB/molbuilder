@@ -442,9 +442,14 @@ way it does for a stage, so there is a `run-<n>` to launch into.
 > reverted rather than half-landed. The diff is kept at
 > `scratchpad/p2-attempt.diff`.
 >
-> *Do this one first.* Deleting the restatement is worth doing on its own
-> merits, before any attempt layer exists: it is the defect that makes every
-> later step fragile.
+> **DONE 2026-08-27.** `materialize.trial_dir` is the rule, and it had **three**
+> spellings, not two: `job_dir_names` composed it for a tokened trial and again
+> for a tokenless sweep, and `prep_calculation` a third time. All three ask now.
+>
+> `prep` could not simply call `job_dir_names` — it is *building* the JobSet in
+> the loop that needs the directory — which is what made a shared **rule** the
+> fix rather than a shared lookup. A test asserts the two agree on a real
+> bundle, which is the property the old comment asserted and nothing checked.
 
 **4. The GROUPED launch resolves the attempt too**, and its two gates read the
 deck where the deck now is. Not a follow-up: leaving it means the cold gate

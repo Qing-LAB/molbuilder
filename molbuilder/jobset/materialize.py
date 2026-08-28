@@ -59,6 +59,35 @@ def job_dir_name(job_name: str) -> str:
     return f"bench-{job_name}"
 
 
+def trial_dir(shape, stage_token: Optional[str], job_name: str) -> str:
+    """The path from the bundle to ONE trial's directory — **the rule**.
+
+    ``<container>/bench-<point>``, where the container is the stage's bench
+    folder in hierarchical and the flat one otherwise
+    (:func:`bench_container`).
+
+    **This exists because the rule was written twice.**
+    :func:`job_dir_names` composed it for a whole JobSet, and
+    `prep.prep_calculation` composed it again from the same two facts —
+    with a comment saying so and calling it safe: *"the same one
+    `job_dir_names` will answer for this job, computed from the same two
+    facts (token + trial-ness), so the deck is born where the launch will
+    look for it."*
+
+    They agreed, and a second computation that must be kept in step by hand
+    only ever agrees until something moves.  What moved was the attempt
+    layer (`project-layout.md` § 1.5a): one side learned about `run-<n>`
+    and the other did not, so the deck landed in the container while the
+    shared package landed in the attempt.
+
+    `prep` cannot call :func:`job_dir_names` instead — it is *building* the
+    JobSet in the loop that needs the directory, so there is nothing to ask
+    yet.  That is what makes a shared RULE the fix rather than a shared
+    lookup.
+    """
+    return f"{bench_container(shape, stage_token)}/{job_dir_name(job_name)}"
+
+
 def shape_of(jobset: JobSet, base_dir) -> Optional["Shape"]:
     """The layout this bundle uses, read from its description.
 
@@ -218,8 +247,7 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
             # exactly the two-flat-stages collision 2026-08-12 plan A5
             # closed on the record side (final review A-1):
             # bench_container is now the one spelling for both sides.
-            container = bench_container(sh, trial_token)
-            out[j.name] = f"{container}/{job_dir_name(j.name)}"
+            out[j.name] = trial_dir(sh, trial_token, j.name)
             continue
         # Tokenless: the deck says nothing, so the SET is the only data
         # left (see the docstring's R1 paragraph -- no DESCRIPTION
@@ -232,7 +260,10 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
             out[j.name] = ("." if j.name == jobset.name
                            else job_dir_name(j.name))
         else:
-            out[j.name] = f"{bench_container(sh, '')}/{job_dir_name(j.name)}"
+            # THE SAME RULE with no stage token, so it asks for it too --
+            # a third spelling of `<container>/bench-<point>` is a third
+            # thing to keep in step.
+            out[j.name] = trial_dir(sh, "", j.name)
     return out
 
 
@@ -694,7 +725,7 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
     return p
 
 
-__all__ = ["Attempt",
+__all__ = ["Attempt", "trial_dir",
            "materialize", "job_dir_name", "job_dir_names", "stage_refs",
            "attempts", "was_launched", "latest_attempt", "resolve_attempt",
            "prepare_attempt",
