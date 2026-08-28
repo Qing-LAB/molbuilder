@@ -185,6 +185,16 @@ def test_the_daemon_lifecycle_end_to_end(tmp_path):
         assert "restart requested" in text
         assert "died by signal" in text
         assert "stopped on request" in text
+        # the log is the RECORD (deployment.md 1.0c, user ruling
+        # 2026-08-28): every daemon event line carries a timestamp --
+        # an event without a time is half a record.
+        import re as _re
+        stamped = _re.findall(r"\[serve-daemon\] \d{4}-\d{2}-\d{2}T"
+                              r"\d{2}:\d{2}:\d{2}", text)
+        events = [l for l in text.splitlines() if "[serve-daemon]" in l]
+        assert events and len(stamped) == len(events), (
+            "every [serve-daemon] event line must be stamped: "
+            f"{len(stamped)}/{len(events)}")
     finally:
         if sup.poll() is None:
             sup.kill()
@@ -234,3 +244,22 @@ def test_start_refuses_when_already_running(monkeypatch):
     r = CliRunner().invoke(cli, ["serve", "start", "--port", "8123"])
     assert r.exit_code != 0
     assert "already running" in r.output
+
+
+def test_status_writes_its_detection_into_the_log(tmp_path, monkeypatch):
+    """The log is the record (deployment.md 1.0c): a `serve status` that
+    finds the server up-but-not-answering must append that detection to
+    the daemon's log, not only print it to whoever asked."""
+    from click.testing import CliRunner
+    from molbuilder.cli import cli
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(sd, "read_pid", lambda port: os.getpid())
+    monkeypatch.setattr(sd, "pid_state", lambda pid: "ours")
+    # port 9329: nothing listens -- the health probe fails fast
+    r = CliRunner().invoke(cli, ["serve", "status", "--port", "9329"])
+    assert r.exit_code == 4
+    log = tmp_path / ".molbuilder" / "logs" / "serve-9329.log"
+    assert log.exists(), "the detection never reached the log"
+    text = log.read_text()
+    assert "[serve-status]" in text and "DETECTED" in text
+    assert "not" in text or "gave nothing" in text

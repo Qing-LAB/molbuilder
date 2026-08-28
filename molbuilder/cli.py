@@ -2140,6 +2140,21 @@ def cmd_serve_status(port):
     click.echo("answering: NO -- the process is up but /api/health gave "
                "nothing within 5s.  `kill -USR1` the child pid and read "
                "the stacks log, or `molbuilder serve restart`.")
+    # The log is the record of concerns and detections (deployment.md
+    # § 1.0c, user ruling 2026-08-28) -- this detection lands there too,
+    # not only in whichever terminal happened to ask.  A one-line append
+    # beside the daemon's own writes; the rare rotation race can cost
+    # this line at worst, never a daemon byte.
+    import time as _time
+    try:
+        log_path(port).parent.mkdir(parents=True, exist_ok=True)
+        with open(log_path(port), "ab") as fh:
+            fh.write((f"[serve-status] "
+                      f"{_time.strftime('%Y-%m-%dT%H:%M:%S%z')} "
+                      f"DETECTED: process up (pid {pid}) but /api/health "
+                      f"gave nothing within 5s\n").encode())
+    except OSError:
+        pass                     # the terminal report above still stands
     raise SystemExit(4)
 
 

@@ -92,6 +92,12 @@ question, not a verdict: without a diagnosis, an automatic kill could
 interrupt real user work on a guess. The order is diagnosis first
 (the stack dump above), then a **human** decides (`serve restart`).
 
+**The log is the record — and nothing more is built.** Every daemon
+event line (child start, respawn, flap give-up, stop) is timestamped,
+and a `serve status` probe that finds the server up-but-not-answering
+appends that detection to the same log — so the history of concerns,
+detections and respawns reads in one place, whoever asked and whenever.
+
 ### 1.0d `serve foreground` — the terminal-bound run
 
 Exactly the old behaviour under its honest name: supervisor + child in

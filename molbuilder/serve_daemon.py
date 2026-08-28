@@ -197,6 +197,15 @@ def daemonize() -> None:
     os.close(devnull)
 
 
+def _note(roll: "LogRoll", msg: str) -> None:
+    """A daemon EVENT line, stamped: the log is the record of concerns,
+    detections and respawns (user ruling 2026-08-28) -- and an event
+    without a time is half a record.  Child output is pumped verbatim
+    elsewhere; only the daemon's own lines come through here."""
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    roll.write(f"[serve-daemon] {stamp} {msg}\n".encode())
+
+
 def supervise(port: int, child_argv: List[str], *,
               log_max_bytes: int, log_keep: int,
               max_restarts: Optional[int] = None) -> int:
@@ -233,8 +242,7 @@ def supervise(port: int, child_argv: List[str], *,
     code = 0
     try:
         while True:
-            roll.write(f"[serve-daemon] starting child: "
-                       f"{' '.join(child_argv)}\n".encode())
+            _note(roll, f"starting child: {' '.join(child_argv)}")
             child = subprocess.Popen(child_argv, env=env,
                                      stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT)
@@ -249,32 +257,27 @@ def supervise(port: int, child_argv: List[str], *,
             state["child"] = None
 
             if state["term"]:
-                roll.write(b"[serve-daemon] stopped on request\n")
+                _note(roll, "stopped on request")
                 return 0
             if state["hup"]:
                 state["hup"] = False
-                roll.write(b"[serve-daemon] restart requested -- "
-                           b"starting a fresh server\n")
+                _note(roll, "restart requested -- starting a fresh server")
             else:
                 action = child_exit_action(code)
                 if action == "exit":
-                    roll.write(f"[serve-daemon] child exited {code}; "
-                               f"not a case to respawn\n".encode())
+                    _note(roll, f"child exited {code}; not a case to respawn")
                     return code
                 if code < 0:
                     now = time.monotonic()
                     crashes.append(now)
                     if flapping(crashes, now):
-                        roll.write(b"[serve-daemon] two crashes within "
-                                   b"30s -- giving up rather than "
-                                   b"flapping\n")
+                        _note(roll, "two crashes within 30s -- giving up "
+                                    "rather than flapping")
                         return 1
-                    roll.write(f"[serve-daemon] child died by signal "
-                               f"{-code}; respawning (the hung-child "
-                               f"repair)\n".encode())
+                    _note(roll, f"child died by signal {-code}; "
+                                f"respawning (the hung-child repair)")
                 else:
-                    roll.write(b"[serve-daemon] reload requested -- "
-                               b"starting a fresh server\n")
+                    _note(roll, "reload requested -- starting a fresh server")
             restarts += 1
             if max_restarts is not None and restarts > max_restarts:
                 return code
