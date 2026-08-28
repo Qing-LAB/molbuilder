@@ -1731,7 +1731,18 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                 raise click.ClickException(
                     "prep bench measures ONE stage's configuration; "
                     "name it:\n    molbuilder jobset prep bench <stage>")
-            sweep, pins, translation = _bench_inputs(base, target)
+            # The SAME which-machine refusal the run arm gives (below):
+            # both are answers only the user has, and this arm reached
+            # `_environment_for` before the run arm's catch -- so an
+            # unnamed target on a two-record machine leaked a TRACEBACK
+            # here while `prep run` spoke plainly (workflow.md § 9: a
+            # gate refuses with the reason, never a stack trace; found
+            # live 2026-08-28).
+            from ..scheduler import AmbiguousTarget, UnknownTarget
+            try:
+                sweep, pins, translation = _bench_inputs(base, target)
+            except (UnknownTarget, AmbiguousTarget) as exc:
+                raise click.ClickException(str(exc))
         elif kind == "run":
             # § 2.3.2's other half: the stage's run-config.toml (the
             # editable proposal summarize wrote) fills the allocation

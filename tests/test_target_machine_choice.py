@@ -101,6 +101,35 @@ class TestTheUserChoosesTheMachine:
         assert "omit --target" not in res.output, (
             "the refusal is telling the user to do the thing that caused it")
 
+    def test_c1_the_BENCH_arm_refuses_in_words_not_a_traceback(self, machines):
+        """The same which-machine question, asked by `prep bench` -- which
+        reached the environment BEFORE the run arm's catch and leaked the
+        refusal as a raw traceback (workflow.md § 9: a gate refuses with
+        the reason, never a stack trace; found live 2026-08-28)."""
+        machines.write("sol")
+        machines.this_machine()
+        from click.testing import CliRunner
+        from molbuilder.jobset._cli import jobset_group
+        r = CliRunner()
+        init = r.invoke(jobset_group, [
+            "init", "--structure", "P/structure/h2.xyz",
+            "--bundle", "P/optimization/wb",
+            "--shape", "flat", "--engine", "pyscf"])
+        assert init.exit_code == 0, init.output
+        # a bench needs an axis to measure; declare one the way the tab does
+        import json as _json
+        tj = machines.tree / "P" / "optimization" / "wb" / "task.json"
+        d = _json.loads(tj.read_text()); d["bench"] = {"threads": [1, 2]}
+        tj.write_text(_json.dumps(d))
+        res = r.invoke(jobset_group,
+                       ["prep", "bench", "coarse",
+                        "--bundle", "P/optimization/wb"])
+        assert res.exit_code != 0, res.output
+        assert "several machines could be meant" in res.output
+        assert "--target sol" in res.output
+        assert "Traceback" not in res.output, (
+            "the bench arm answered a user question with a stack trace")
+
     def test_c1_one_machine_and_no_target_still_proceeds(self, machines):
         """No ambiguity, so no question.  A refusal here would tax every
         single-machine user for a problem they do not have."""

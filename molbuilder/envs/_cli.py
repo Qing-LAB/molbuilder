@@ -42,14 +42,25 @@ from .recipes import BUILTIN_RECIPES, recipe_by_name
 # the install and again at the end.
 
 
-_LOG_ROOT = Path(os.path.expanduser("~/.molbuilder/logs"))
+def _log_root() -> Path:
+    """``~/.molbuilder/logs``, resolved WHEN ASKED, not at import.
+
+    This was a module constant, which froze the real home into the
+    module the moment anything imported it -- so a test that isolated
+    ``HOME`` afterwards still wrote install logs into the developer's
+    actual ``~/.molbuilder/logs`` (five zero-byte files per full-suite
+    run, found 2026-08-28 by noticing them appear at the same second a
+    suite started).  A path that depends on the environment is a
+    QUESTION, and a question is asked when it is asked.
+    """
+    return Path(os.path.expanduser("~/.molbuilder/logs"))
 
 
 def _resolve_install_log_path(recipe_name: str) -> Path:
     """Compose the log filename for one install run."""
     ts = time.strftime("%Y%m%d-%H%M%S", time.localtime())
     safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in recipe_name)
-    return _LOG_ROOT / f"install-{safe}-{ts}.log"
+    return _log_root() / f"install-{safe}-{ts}.log"
 
 
 class _TeeStream:

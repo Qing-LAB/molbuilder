@@ -365,6 +365,16 @@ def _make_runner():
     return CliRunner()
 
 
+@pytest.fixture(autouse=True)
+def _home_is_not_the_developers(monkeypatch, tmp_path):
+    """The install CLI tees a per-recipe log under ``~/.molbuilder/logs``
+    even when ``run_install`` is stubbed -- the tee is the CLI's, opened
+    around the stub.  Untouched, every bootstrap test dropped real-named
+    zero-byte logs into the developer's actual home (found 2026-08-28).
+    ``_log_root`` resolves lazily now, so isolating HOME here is enough."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+
 def test_bootstrap_dry_run_lists_recipes_without_installing(monkeypatch):
     """Dry-run path: shows the plan, runs zero installs, returns OK."""
     _bind()
@@ -911,3 +921,16 @@ def test_bypass_wrapper_survives_a_command_containing_shell_metacharacters():
     # The reported command carries the inner script verbatim, so the log
     # line is copy-pasteable rather than merely suggestive.
     assert 'f() { echo "a(b)"; }' in wrapper
+
+
+def test_the_install_log_lands_in_the_home_of_the_moment(monkeypatch, tmp_path):
+    """The log root is a QUESTION, asked when asked.  As a module constant
+    it froze the developer's real home at import time, and no amount of
+    later HOME isolation could redirect it -- which is how every full-suite
+    run left five zero-byte install logs in the real ``~/.molbuilder/logs``
+    (2026-08-28).  Mutation: restore the constant and this fails."""
+    from molbuilder.envs import _cli
+    monkeypatch.setenv("HOME", str(tmp_path))
+    p = _cli._resolve_install_log_path("molbuilder-siesta")
+    assert str(p).startswith(str(tmp_path)), (
+        f"the install log escaped the current HOME: {p}")
