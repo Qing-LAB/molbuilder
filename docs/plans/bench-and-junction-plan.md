@@ -417,6 +417,35 @@ stages.
 **3. `prep` opens an attempt for a trial** in a hierarchical calculation, the
 way it does for a stage, so there is a `run-<n>` to launch into.
 
+> **THE BLOCKER, found by attempting it 2026-08-27 and then reverting.**
+> `materialize` opening the attempt is four lines and reuses `resolve_attempt`,
+> the same rule stages already use — it cost **2 failures in 427**. But the
+> deck did not follow, because **`prep` computes the trial directory a second
+> time**, in a different function, from the same two facts rather than from
+> the naming authority:
+>
+> ```python
+> # prep_calculation, ~line 852 -- NOT job_dir_names
+> _jdir = base / bench_container(_shape, token) / f"bench-{_pt(element.point)}"
+> ```
+>
+> Its own comment states the coupling and calls it safe — *"the same one
+> `job_dir_names` will answer for this job, computed from the same two facts …
+> so the deck is born where the launch will look for it."* Two doors on one
+> fact, kept in step by hand. They agreed until an attempt layer existed, and
+> then the deck landed in the container while the shared package landed in
+> `run-0`.
+>
+> `prep_jobset` (line 188) uses the authority; `prep_calculation` (line 852)
+> restates it. **Reconciling them is the work**, and it is a refactor of the
+> naming seam rather than an addition to it — which is why the attempt was
+> reverted rather than half-landed. The diff is kept at
+> `scratchpad/p2-attempt.diff`.
+>
+> *Do this one first.* Deleting the restatement is worth doing on its own
+> merits, before any attempt layer exists: it is the defect that makes every
+> later step fragile.
+
 **4. The GROUPED launch resolves the attempt too**, and its two gates read the
 deck where the deck now is. Not a follow-up: leaving it means the cold gate
 goes quiet on the one door that submits several trials at once.
@@ -455,6 +484,51 @@ the container and the attempt is one level in.
     surface-applies"* failure this module already names elsewhere.
 
   So the grouped path changes **with** the single path or not at all.
+
+---
+
+### 2.16 The label budget reserves for the wrong inventory — found 2026-08-27
+
+`identity.MAX_LABEL_BYTES` bounds a label so that *label + stage + extension*
+fits a filename. It is derived, not picked:
+
+```python
+MAX_LABEL_BYTES = 255 - _STAGE_BUDGET(32) - len(".STRUCT_NEXT_ITER")(17)  # = 206
+```
+
+**The 17 is SIESTA's longest extension, and molbuilder writes longer ones.**
+The constant's own docstring says where it came from — *"from
+`job-contracts.md` § 4.2's SIESTA inventory"* — and molbuilder's own files
+were never counted. Its longest tail after the stage is **28**
+(`.runwrap-<timestamp>.log`). So a label at the documented cap yields:
+
+```
+206 + 32 + 28 = 266   >   255      -- over by 11 bytes
+```
+
+**Latent, not live.** Real labels are ~32 characters and the longest name in a
+real bench trial is 70, so nothing is failing today. It bites only a label near
+the cap, and then as `ENAMETOOLONG` at whatever moment the wrapper opens its
+log — after the run has started.
+
+**The fix is to derive the reserve from `OUR_FILE_PATTERNS`**, the list that
+already enumerates molbuilder's own files, so adding a file adjusts the budget
+instead of silently eating into it. One inventory, one derivation — the same
+shape as every other *one door per fact* correction on this page.
+
+*(User raised it as "the longer and longer file name problem". The run index
+did not cause it: today's two new suffixes are 17 and 14, both under the 28
+already there. What the index does cost is path depth — `run-N/` adds 7
+characters against a 4096 limit, where the deepest real path is 232.)*
+
+**Does SIESTA care?** Not about the run index — that is the wrapper's stdout
+redirect, and SIESTA's own filenames come from `SystemLabel`, which never
+carries it. Whether SIESTA bounds `SystemLabel` itself is **unmeasured**: it
+reads into a fixed-length Fortran string, and a 206-character label could in
+principle be truncated or refused there long before the filesystem objects.
+One `.fdf` with a very long `SystemLabel`, run through the site's own build,
+would settle it — and it matters, because the cap above assumes only the
+filesystem constrains the label.
 
 ---
 
