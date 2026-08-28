@@ -35,6 +35,9 @@
         }
       ]
     },
+        {
+          "path": "audit-2026-08-28-full-review.md"
+        },
     {
       "label": "Model",
       "meta": "The data model (L1): Structure, periodicity, annotations, chemistry, parse stack",
