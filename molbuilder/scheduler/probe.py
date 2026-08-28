@@ -114,6 +114,10 @@ class Partition:
     #: still refuses to give one job more than this many of their cores.
     #: ``None`` means the partition does not say (R3).
     max_cpus_per_node: Optional[int] = None
+    #: Whether ``scontrol show partition`` ANSWERED for this partition --
+    #: what lets the record write ``max_cpus_per_node: null`` (asked, no
+    #: cap stated) instead of omitting the key (never asked).
+    policy_queried: bool = False
 
     @property
     def has_gpu(self) -> bool:
@@ -444,7 +448,14 @@ def derive_domains(
         # is the queue whose two figures were suspected of disagreeing
         # with nothing able to say (user, 2026-08-27: "your jobset probe
         # did not do its job?").
-        if part.max_cpus_per_node:
+        #
+        # WRITTEN AS NULL WHEN ASKED AND UNSTATED, absent only when never
+        # asked (checkpointing.md S3's absent-vs-null, recurring here on
+        # 2026-08-28: a fresh Sol record arrived with the key missing and
+        # nothing could say whether the probe had asked the new question
+        # or simply predated it).  Only a record that shows the question
+        # was asked can settle `lightwork`.
+        if part.policy_queried:
             row["max_cpus_per_node"] = part.max_cpus_per_node
         return row
 
@@ -471,9 +482,11 @@ def derive_domains(
                              f"{_INFINITE_STR} -- adjust if needed.")
         row = _row(p.name, max_time, p)
         row["qos"] = q
-        cpus_cap = qos.get(q, QosLimit()).max_cpus_per_job
-        if cpus_cap:
-            row["max_cpus_per_job"] = cpus_cap
+        # Same absent-vs-null rule as ``max_cpus_per_node`` above: the key
+        # rides whenever the QoS table answered for this QoS, null meaning
+        # *asked; it states no cpu cap*.
+        if q in qos:
+            row["max_cpus_per_job"] = qos[q].max_cpus_per_job
         domains.append(row)
 
     seen: Set[Tuple[str, str]] = set()

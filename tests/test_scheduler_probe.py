@@ -221,8 +221,14 @@ def test_a_domain_is_never_a_preference():
         # the node group's own %c column (the GPU nodes' cores on a
         # gpu-capable row -- the cap the grid checks -- else the widest
         # node's).
+        # ``max_cpus_per_job`` / ``max_cpus_per_node`` joined 2026-08-28
+        # (R13) and they ARE measurements: the QoS table's MaxTRES cpu
+        # term and the partition's MaxCPUsPerNode, written null when the
+        # question was asked and the scheduler states no cap (absent-vs-
+        # null; a preference would be a NUMBER nobody measured).
         assert set(d) <= {"name", "partition", "qos", "max_time", "gpu",
-                          "max_cores", "node_types"}, \
+                          "max_cores", "node_types",
+                          "max_cpus_per_job", "max_cpus_per_node"}, \
             f"a domain gained a field that is not a measurement: {sorted(d)}"
     by = {d["name"]: d for d in domains}
     assert by["htc"]["gpu"] == {"a100": 4, "a100.20gb": 16}

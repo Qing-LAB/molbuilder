@@ -2774,6 +2774,9 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
             if _pol is not None:
                 _p.def_mem_per_cpu_mb = _pol.def_mem_per_cpu_mb
                 _p.max_cpus_per_node = _pol.max_cpus_per_node
+                # the record writes null-when-asked vs absent-when-not
+                # (probe.py's absent-vs-null note, 2026-08-28)
+                _p.policy_queried = True
         rows, notes = derive_domains(parts, qos, allowed)
         # AFTER `derive_domains`, which REASSIGNS `notes` -- appending before
         # it silently dropped this line, which is the class of bug the note

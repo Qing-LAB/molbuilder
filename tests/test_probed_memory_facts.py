@@ -238,6 +238,7 @@ def test_the_policy_cap_rides_the_row_and_admission_reads_it():
     assert pol.max_cpus_per_node == 8
     parts[0].def_mem_per_cpu_mb = pol.def_mem_per_cpu_mb
     parts[0].max_cpus_per_node = pol.max_cpus_per_node
+    parts[0].policy_queried = True
     rows, _ = derive_domains(parts, {}, {"public"})
     row = rows[0]
     assert row["max_cpus_per_node"] == 8
@@ -257,6 +258,32 @@ def test_a_partition_with_no_stated_cap_bars_nothing_new():
                  "PartitionName=p\n   DefMemPerCPU=2048\n"):
         assert parse_scontrol_partitions(body)["p"].max_cpus_per_node \
             is None, body
+
+
+def test_asked_and_unstated_writes_NULL_never_absence():
+    """Absent-vs-null (checkpointing.md S3), found the day a fresh Sol
+    record arrived with the key missing and nothing could say whether the
+    probe had asked the new question or predated it.  A record that was
+    ASKED writes the key -- null when no cap is stated -- so `lightwork`'s
+    suspected cap can actually be settled by reading the record."""
+    parts = parse_sinfo("lightwork|1-00:00:00|3|(null)|128|515000\n")
+    pol = parse_scontrol_partitions(
+        "PartitionName=lightwork\n   MaxCPUsPerNode=UNLIMITED\n")["lightwork"]
+    parts[0].max_cpus_per_node = pol.max_cpus_per_node
+    parts[0].policy_queried = True
+    from molbuilder.scheduler.probe import QosLimit
+    rows, _ = derive_domains(parts, {"public": QosLimit(None, None, None)},
+                             {"public"})
+    row = rows[0]
+    assert "max_cpus_per_node" in row and row["max_cpus_per_node"] is None, (
+        "asked-and-unstated must be a null in the record, not a missing key")
+    assert "max_cpus_per_job" in row and row["max_cpus_per_job"] is None
+
+    # and NEVER asked stays absent -- the old records' honest shape
+    parts2 = parse_sinfo("lightwork|1-00:00:00|3|(null)|128|515000\n")
+    rows2, _ = derive_domains(parts2, {}, {"public"})
+    assert "max_cpus_per_node" not in rows2[0]
+    assert "max_cpus_per_job" not in rows2[0]
 
 
 def test_the_qos_cap_lands_on_the_row_too():
