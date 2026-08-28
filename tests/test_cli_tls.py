@@ -276,7 +276,7 @@ def test_serve_no_tls_passes_none_ssl_context(
         monkeypatch, tmp_path, capture_flask_run):
     monkeypatch.chdir(tmp_path)
     res = CliRunner().invoke(
-        cli.cli, ["serve", "--port", "0", "--no-supervise"])
+        cli.cli, ["serve", "foreground", "--port", "0", "--no-supervise"])
     assert res.exit_code == 0, res.output
     assert capture_flask_run, "Flask.run was not called"
     assert capture_flask_run[-1]["kwargs"]["ssl_context"] is None
@@ -292,7 +292,7 @@ def test_serve_json_only_engages_https(
     (tmp_path / "molbuilder.json").write_text(json.dumps(
         {"cert": cert, "key": key}))
     res = CliRunner().invoke(
-        cli.cli, ["serve", "--port", "0", "--no-supervise"])
+        cli.cli, ["serve", "foreground", "--port", "0", "--no-supervise"])
     assert res.exit_code == 0, res.output
     assert capture_flask_run[-1]["kwargs"]["ssl_context"] == (cert, key)
     assert "https://" in res.stderr
@@ -304,7 +304,7 @@ def test_serve_cli_flags_engage_https(
     cert = _touch(tmp_path / "c.pem")
     key  = _touch(tmp_path / "k.pem")
     res = CliRunner().invoke(cli.cli, [
-        "serve", "--port", "0", "--cert", cert, "--key", key,
+        "serve", "foreground", "--port", "0", "--cert", cert, "--key", key,
         "--no-supervise"])
     assert res.exit_code == 0, res.output
     assert capture_flask_run[-1]["kwargs"]["ssl_context"] == (cert, key)
@@ -316,7 +316,7 @@ def test_serve_cli_cert_only_warns_and_falls_back(
     monkeypatch.chdir(tmp_path)
     cert = _touch(tmp_path / "c.pem")
     res = CliRunner().invoke(cli.cli, [
-        "serve", "--port", "0", "--cert", cert, "--no-supervise"])
+        "serve", "foreground", "--port", "0", "--cert", cert, "--no-supervise"])
     assert res.exit_code == 0, res.output
     assert capture_flask_run[-1]["kwargs"]["ssl_context"] is None
     assert "incomplete" in res.stderr
@@ -324,7 +324,7 @@ def test_serve_cli_cert_only_warns_and_falls_back(
 
 
 def test_serve_help_advertises_cert_and_key():
-    res = CliRunner().invoke(cli.cli, ["serve", "--help"])
+    res = CliRunner().invoke(cli.cli, ["serve", "foreground", "--help"])
     assert res.exit_code == 0
     assert "--cert" in res.output
     assert "--key" in res.output

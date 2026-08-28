@@ -11,7 +11,7 @@ API (its security section defers the full rate-limiter threat model to §4 here)
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — `molbuilder.json`
 also carries the job-execution config.
 
-molbuilder serves its web UI with **`molbuilder serve`**. On a laptop that's the
+molbuilder serves its web UI with the **`molbuilder serve` verbs** (§ 1). On a laptop that's the
 whole story — it binds loopback, no auth, and you're done. Exposing it to other
 people is where the care goes: molbuilder runs its own **single-process
 development server**, so anything production-grade (TLS, real auth, per-IP
@@ -20,21 +20,88 @@ front of it**.
 
 ## 1. Running it
 
+**`serve` is a group of verbs** *(2026-08-28; the bare `molbuilder serve`
+form was retired with it — a verb is named, never implied)*:
+
 ```bash
-python -m molbuilder serve            # → http://127.0.0.1:8000
+python -m molbuilder serve start        # background: detach, log, pidfile
+python -m molbuilder serve status       # is it up, is it ANSWERING, where
+python -m molbuilder serve restart      # recycle the server in place
+python -m molbuilder serve stop         # bring it down
+python -m molbuilder serve foreground   # today's terminal-bound run (dev)
 ```
 
-Flags (`molbuilder/cli.py`):
+### 1.0a `serve start` — the background server
+
+`start` detaches, then runs the same supervisor+child pair `foreground`
+runs — nothing about the server itself changes, only who holds the
+terminal. Three files, all under **your own** home (which is what makes
+every bit of this per-user):
+
+| file | what |
+|---|---|
+| `~/.molbuilder/run/serve-<port>.pid` | the supervisor's pid — the address `stop`/`restart`/`status` act on |
+| `~/.molbuilder/logs/serve-<port>.log` | everything the server prints |
+| `~/.molbuilder/logs/serve-<port>.stacks.log` | thread stacks, appended on `SIGUSR1` and before any forced child kill (§ 1.0c) |
+
+**The log is capped and rotated** *(user requirement, 2026-08-28)*:
+when it exceeds `--log-max-mb` (default 20) it is closed, gzipped to
+`serve-<port>.log.1.gz` (older ones shift up), and at most `--log-keep`
+(default 5) archives are kept — the oldest is deleted. A long-lived
+server cannot fill the disk.
+
+**One user cannot touch another's instance, twice over.** The kernel
+already refuses cross-user signals outright; on top of that, every verb
+verifies before acting — the pid in the file must be alive, be **yours**,
+and its command line must actually be a molbuilder serve — so a stale
+pidfile whose pid was recycled by some other program is reported as
+stale, never signalled.
+
+### 1.0b `stop` · `restart` · `status`
+
+* **`status`** answers two different questions separately: *is the
+  process up* (the pidfile checks above) and *is it answering*
+  (`/api/health`) — yesterday's wedge was precisely a server that was up
+  and not answering, and a status that conflated the two would have
+  called it healthy.
+* **`restart`** signals the supervisor (`SIGHUP`), which recycles the
+  child — the Reload button's effect, workable from a script, and
+  workable when the child is HUNG and the button's route cannot answer.
+* **`stop`** is a polite `SIGTERM` to the supervisor, which takes the
+  child down with it and removes the pidfile.
+
+### 1.0c What the supervisor does now (the 2026-08-28 hang's repairs)
+
+The 2026-08-28 wedge found two gaps, both closed:
+
+* **A child that dies by signal is respawned** (with a flap guard: two
+  crashes within 30 s and the supervisor gives up and says so). Before,
+  killing a hung child made the supervisor conclude *"that was not a
+  reload"* and quit — the site went down exactly when recovery was
+  needed. A clean nonzero exit (a config error) still stops: respawning
+  a server that cannot start is a tight loop, not a recovery.
+* **The child registers a stack-dump hook**: `kill -USR1 <child pid>`
+  appends every thread's current stack to `serve-<port>.stacks.log`.
+  The next hang is diagnosed by reading a file, not by theorizing from
+  thread counts.
+
+### 1.0d `serve foreground` — the terminal-bound run
+
+Exactly the old behaviour under its honest name: supervisor + child in
+your terminal, `Ctrl-C` to stop. The development mode.
+
+Flags (shared by `foreground` and `start`; `molbuilder/cli.py`):
 
 | Flag | Default | Effect |
 |---|---|---|
 | `--host` | `127.0.0.1` | bind interface |
 | `--port` | `8000` | bind port |
-| `--debug` | off | Werkzeug reloader + interactive debugger (never in production) |
+| `--debug` | off | Werkzeug reloader + interactive debugger (`foreground` only; never in production) |
 | `--cert` / `--key` | none | serve HTTPS directly from PEM files |
 | `--allow-insecure-binding` | off | override the bind guard (below) |
-| `--supervise` / `--no-supervise` | **on** | run under a parent that can restart the server on request (§4); turn off when systemd/Docker/gunicorn owns restarts. `--debug` turns it off on its own |
+| `--supervise` / `--no-supervise` | **on** | (`foreground` only) run under the restarting parent; turn off when systemd/Docker/gunicorn owns restarts. `--debug` turns it off on its own |
 | `--no-auth` | off | skip auth entirely — **loopback host only** |
+| `--log-max-mb` / `--log-keep` | 20 / 5 | (`start` only) the log cap and how many gzipped archives survive |
 
 ### 1.1 Is the running server actually running your code?
 
@@ -81,7 +148,7 @@ TLS-terminating proxy (and binding loopback), or knowingly passing
 > **⚠ TLS is not authentication.** The bind guard checks only *host + TLS* — it
 > **never checks whether auth is on**. And auth is **opt-in** (§3): with no `auth`
 > section in `molbuilder.json`, the server runs with **no authentication at all**.
-> So `molbuilder serve --host 0.0.0.0 --cert … --key …` passes the guard yet
+> So `molbuilder serve start --host 0.0.0.0 --cert … --key …` passes the guard yet
 > exposes a **public, unauthenticated, fully read/write/delete `projects/` tree** —
 > TLS only encrypts the wire. (The guard's own message says so: *"still no
 > auth!"*.) A real public deployment must **turn auth on** (§3) **or** sit behind a

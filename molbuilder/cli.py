@@ -1728,6 +1728,7 @@ def _supervise_forever() -> int:
     env = dict(os.environ)
     env[SUPERVISED_ENV] = "1"
     args = [sys.executable, "-m", "molbuilder", *sys.argv[1:]]
+    _crashes: list = []
     while True:
         try:
             code = subprocess.call(args, env=env)
@@ -1738,10 +1739,28 @@ def _supervise_forever() -> int:
             # Mattered little while --supervise was opt-in; it is the default
             # path now, so every Ctrl-C goes through here.
             return 130
-        if code != RELOAD_EXIT_CODE:
-            return code
-        click.echo("molbuilder: reload requested -- starting a fresh server",
-                   err=True)
+        if code == RELOAD_EXIT_CODE:
+            click.echo("molbuilder: reload requested -- starting a fresh "
+                       "server", err=True)
+            continue
+        if code < 0:
+            # KILLED BY A SIGNAL -- the 2026-08-28 repair.  A hung child
+            # that somebody killed by hand must come back; before this,
+            # the supervisor read the kill as "not a reload" and quit,
+            # taking the site down exactly when recovery was needed.
+            # Flap-guarded through the same pure policy the daemon uses.
+            from .serve_daemon import flapping
+            import time as _time
+            _crashes.append(_time.monotonic())
+            if flapping(_crashes, _time.monotonic()):
+                click.echo("molbuilder: two crashes within 30s -- giving "
+                           "up rather than flapping", err=True)
+                return 1
+            click.echo(f"molbuilder: server died by signal {-code}; "
+                       f"starting a fresh one (the hung-child repair)",
+                       err=True)
+            continue
+        return code
 
 
 #: A user id becomes a log FILENAME on the server, so it is
@@ -1894,18 +1913,46 @@ def cmd_notify_token(user, host, keys_file, route, replace):
     return 0
 
 
-@cli.command("serve", short_help="run the browser UI (Flask + 3Dmol.js)")
-@click.option("--host",  default="127.0.0.1", show_default=True)
-@click.option("--port",  type=int, default=8000, show_default=True)
+@cli.group("serve", short_help="run the browser UI (Flask + 3Dmol.js)")
+def serve_group():
+    """The web server, as verbs: ``start`` (background, logged, rotated),
+    ``status`` / ``restart`` / ``stop`` (acting on your own instance,
+    verified before signalled), and ``foreground`` (the terminal-bound
+    development run).  `docs/ops/deployment.md` § 1.
+
+    *(The bare ``molbuilder serve`` form was retired 2026-08-28 with the
+    group -- a verb is named, never implied.)*
+    """
+
+
+def _serve_flags(f):
+    """The flags ``foreground`` and ``start`` share -- one decorator, so
+    the two verbs cannot drift apart about what a server accepts."""
+    for opt in reversed([
+        click.option("--host",  default="127.0.0.1", show_default=True),
+        click.option("--port",  type=int, default=8000, show_default=True),
+        click.option("--cert", type=click.Path(exists=True, dir_okay=False),
+                     help="TLS cert (PEM).  Overrides molbuilder.json."),
+        click.option("--key",  type=click.Path(exists=True, dir_okay=False),
+                     help="TLS key (PEM).  Overrides molbuilder.json."),
+        click.option("--allow-insecure-binding", is_flag=True,
+                     help="Bypass the loopback-or-TLS guard.  Only sensible "
+                          "when something outside molbuilder (proxy / VPN) "
+                          "gates access -- see docs/ops/deployment.md."),
+        click.option("--no-auth", is_flag=True,
+                     help="Run with NO authentication (ignores "
+                          "molbuilder.json's auth/TLS).  Loopback hosts "
+                          "only."),
+    ]):
+        f = opt(f)
+    return f
+
+
+@serve_group.command("foreground",
+                     short_help="the terminal-bound run (dev): supervisor "
+                                "+ child in this shell, Ctrl-C to stop")
+@_serve_flags
 @click.option("--debug", is_flag=True)
-@click.option("--cert", type=click.Path(exists=True, dir_okay=False),
-              help="TLS cert (PEM).  Overrides molbuilder.json.")
-@click.option("--key",  type=click.Path(exists=True, dir_okay=False),
-              help="TLS key (PEM).  Overrides molbuilder.json.")
-@click.option("--allow-insecure-binding", is_flag=True,
-              help="Bypass the loopback-or-TLS guard.  Only sensible "
-                   "when something outside molbuilder (proxy / VPN) "
-                   "gates access -- see docs/ops/deployment.md.")
 @click.option("--supervise/--no-supervise", default=True, show_default=True,
               help="Run under a parent that can restart the server in place.  "
                    "This is what makes the admin Reload button exist; without "
@@ -1915,15 +1962,9 @@ def cmd_notify_token(user, host, keys_file, route, replace):
                    "one of those is a second answer to a question already "
                    "answered.  --debug turns it off on its own.  "
                    "See docs/archive/2026-08-19-server-reload-plan.md.")
-@click.option("--no-auth", is_flag=True,
-              help="Run with NO authentication (ignores molbuilder.json's "
-                   "auth/TLS).  Allowed ONLY on a loopback --host "
-                   "(127.0.0.1 / localhost / ::1) so an unauthenticated "
-                   "server can never be exposed; refuses otherwise.  For "
-                   "local dev, screenshots, and tests.")
 def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
               supervise):
-    """Start a Flask server with the browser UI."""
+    """Run the server in THIS terminal -- the development mode."""
     # NO APPLICATION IMPORT ABOVE THE PARENT BRANCH.  ``from .web.app import
     # create_app`` used to sit here, one line into the function and well before
     # the fork below -- so the supervisor imported the entire web app, Flask
@@ -1953,6 +1994,24 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
 
     # From here down we ARE the server -- either the supervised child or an
     # unsupervised run -- so importing the app is what we are for.
+
+    # THE STACK-DUMP HOOK (deployment.md 1.0c; the 2026-08-28 wedge left
+    # nothing to read).  `kill -USR1 <this pid>` appends every thread's
+    # stack to the stacks log, so the next hang is diagnosed from a file
+    # instead of theorized from thread counts.  Registered before the app
+    # import; the handle is kept for the life of the process.
+    try:
+        import faulthandler
+        import signal as _signal
+        from .serve_daemon import stacks_path
+        _sp = stacks_path(port)
+        _sp.parent.mkdir(parents=True, exist_ok=True)
+        globals()["_STACKS_FH"] = open(_sp, "a")
+        faulthandler.register(_signal.SIGUSR1, file=globals()["_STACKS_FH"],
+                              all_threads=True)
+    except (OSError, ValueError, AttributeError):
+        pass          # a box without SIGUSR1 or a read-only home still serves
+
     from .web.app import create_app
 
     if no_auth:
@@ -1983,6 +2042,128 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
     click.echo(f"molbuilder web UI starting at {scheme}://{host}:{port}", err=True)
     _print_oauth_redirect_hint_if_auth_on(scheme, host, port)
     app.run(host=host, port=port, debug=debug, ssl_context=ssl_ctx)
+
+
+@serve_group.command("start",
+                     short_help="run the server in the BACKGROUND: "
+                                "detached, logged with rotation, "
+                                "addressable by stop/restart/status")
+@_serve_flags
+@click.option("--log-max-mb", type=int, default=20, show_default=True,
+              help="rotate the log past this size; the full file is "
+                   "gzipped and archives shift up")
+@click.option("--log-keep", type=int, default=5, show_default=True,
+              help="how many gzipped archives survive; the oldest is "
+                   "deleted")
+def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
+                    log_max_mb, log_keep):
+    """Detach, then run the same supervisor+child pair ``foreground``
+    runs.  `deployment.md` 1.0a: pidfile and logs under YOUR OWN home,
+    which is what makes every bit of this per-user."""
+    from .serve_daemon import (daemonize, log_path, pid_path, pid_state,
+                               read_pid, supervise)
+    state = pid_state(read_pid(port))
+    if state == "ours":
+        raise click.ClickException(
+            f"already running (pid {read_pid(port)}, port {port}).  "
+            f"`molbuilder serve status` to look, `serve restart` to "
+            f"recycle it.")
+    child = [sys.executable, "-m", "molbuilder", "serve", "foreground",
+             "--host", host, "--port", str(port), "--no-supervise"]
+    if cert:
+        child += ["--cert", cert]
+    if key:
+        child += ["--key", key]
+    if allow_insecure_binding:
+        child += ["--allow-insecure-binding"]
+    if no_auth:
+        child += ["--no-auth"]
+    click.echo(f"molbuilder serve: starting in the background on port "
+               f"{port}")
+    click.echo(f"  log:     {log_path(port)}  (cap {log_max_mb} MB, "
+               f"keep {log_keep} archives)")
+    click.echo(f"  pidfile: {pid_path(port)}")
+    click.echo(f"  then:    molbuilder serve status")
+    daemonize()
+    # from here we are the detached supervisor; nothing prints to the
+    # terminal again -- the roll owns every later byte
+    raise SystemExit(supervise(
+        port, child,
+        log_max_bytes=log_max_mb * 1024 * 1024, log_keep=log_keep))
+
+
+@serve_group.command("status", short_help="is it up, is it ANSWERING, where")
+@click.option("--port", type=int, default=8000, show_default=True)
+def cmd_serve_status(port):
+    """Two questions, answered separately (`deployment.md` 1.0b): the
+    2026-08-28 wedge was a server that was UP and not ANSWERING, and a
+    status that conflates the two calls that healthy."""
+    from .serve_daemon import log_path, pid_path, pid_state, read_pid
+    pid = read_pid(port)
+    state = pid_state(pid)
+    if state == "dead":
+        if pid is not None:
+            click.echo(f"not running -- stale pidfile at {pid_path(port)} "
+                       f"(pid {pid} is gone)")
+        else:
+            click.echo(f"not running (no pidfile at {pid_path(port)})")
+        raise SystemExit(3)
+    if state == "foreign":
+        click.echo(f"pidfile names pid {pid}, which is NOT your molbuilder "
+                   f"serve -- stale file, recycled pid.  Nothing to act on.")
+        raise SystemExit(3)
+    click.echo(f"process:   up (supervisor pid {pid})")
+    click.echo(f"log:       {log_path(port)}")
+    # the second question: does it ANSWER.  Loopback, either scheme; a
+    # cert made for the public name fails verification on 127.0.0.1, and
+    # this asks about liveness, not identity -- so verification is off
+    # for exactly this request.
+    import ssl
+    import urllib.error
+    import urllib.request
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    for scheme in ("https", "http"):
+        try:
+            with urllib.request.urlopen(
+                    f"{scheme}://127.0.0.1:{port}/api/health",
+                    timeout=5, context=ctx if scheme == "https" else None):
+                click.echo(f"answering: yes ({scheme}, /api/health)")
+                return
+        except urllib.error.HTTPError:
+            click.echo(f"answering: yes ({scheme}; /api/health refused, "
+                       f"which is still an answer)")
+            return
+        except (urllib.error.URLError, OSError, TimeoutError):
+            continue
+    click.echo("answering: NO -- the process is up but /api/health gave "
+               "nothing within 5s.  `kill -USR1` the child pid and read "
+               "the stacks log, or `molbuilder serve restart`.")
+    raise SystemExit(4)
+
+
+@serve_group.command("restart", short_help="recycle the server in place")
+@click.option("--port", type=int, default=8000, show_default=True)
+def cmd_serve_restart(port):
+    """Signal the supervisor to recycle the child -- the Reload button's
+    effect, workable from a script, and workable when the child is HUNG
+    and the button's route cannot answer (`deployment.md` 1.0b)."""
+    import signal as _signal
+    from .serve_daemon import signal_supervisor
+    ok, msg = signal_supervisor(port, _signal.SIGHUP)
+    click.echo(("restarting: " if ok else "") + msg)
+    raise SystemExit(0 if ok else 1)
+
+
+@serve_group.command("stop", short_help="bring the background server down")
+@click.option("--port", type=int, default=8000, show_default=True)
+def cmd_serve_stop(port):
+    import signal as _signal
+    from .serve_daemon import signal_supervisor
+    ok, msg = signal_supervisor(port, _signal.SIGTERM)
+    click.echo(("stopping: " if ok else "") + msg)
+    raise SystemExit(0 if ok else 1)
 
 
 # --------------------------------------------------------------------- #

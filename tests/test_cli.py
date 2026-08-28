@@ -1150,7 +1150,7 @@ def test_serve_no_auth_refuses_non_loopback_host():
     server is never exposed off the machine."""
     from click.testing import CliRunner
     res = CliRunner().invoke(
-        cli.cli, ["serve", "--no-auth", "--host", "0.0.0.0", "--port", "8099",
+        cli.cli, ["serve", "foreground", "--no-auth", "--host", "0.0.0.0", "--port", "8099",
                   "--no-supervise"])
     assert res.exit_code != 0
     assert "loopback" in res.output.lower()
@@ -1174,7 +1174,7 @@ def test_serve_no_auth_loopback_uses_config_empty(monkeypatch):
 
     monkeypatch.setattr(_appmod, "create_app", _fake_create_app)
     res = CliRunner().invoke(
-        cli.cli, ["serve", "--no-auth", "--host", "127.0.0.1", "--port", "8099",
+        cli.cli, ["serve", "foreground", "--no-auth", "--host", "127.0.0.1", "--port", "8099",
                   "--no-supervise"])
     assert res.exit_code == 0, res.output
     assert calls["config"] == {}                 # no-auth seam

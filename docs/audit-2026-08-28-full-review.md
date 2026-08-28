@@ -89,17 +89,16 @@ force-stopped look identical on disk, so the refusal names both and
 concludes with rc, a SIGTERM'd one leaves no marker, the gate asks, the
 judgement is honoured — each mutation-tested.
 
-**O2 — the supervisor cannot recover a HUNG child** (§ 4). It respawns
-only on the sentinel exit code; a wedge is not an exit, and killing the
-child by signal makes the supervisor quit — so the designed recovery
-(`Reload server`) is unreachable exactly when it is needed. Proposal:
-respawn on failed `/api/health` after a grace period, or at minimum treat
-signal deaths as respawnable.
+**O2 — CLOSED 2026-08-28** with the `serve` verbs
+(`deployment.md` § 1.0c): both supervisors now respawn a child that died
+by signal — killing a hung child brings a fresh one, flap-guarded — and
+`serve restart` recycles from outside when the Reload route cannot
+answer.
 
-**O3 — no way to see a hung server's stacks.** No `faulthandler` hook;
-`ptrace` is blocked on this box. Proposal: register
-`faulthandler.register(SIGUSR1, file=<log>)` at serve startup — one line,
-and the next wedge is diagnosable.
+**O3 — CLOSED 2026-08-28**: the server registers a stack-dump hook —
+`kill -USR1 <child pid>` appends every thread's stack to
+`~/.molbuilder/logs/serve-<port>.stacks.log`. The next wedge is read,
+not theorized.
 
 **O4 — in-request heavy work can freeze every user.** *Narrowed
 2026-08-28:* the GPU half is closed — the frozen child held

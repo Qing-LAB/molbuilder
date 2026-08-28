@@ -53,7 +53,7 @@ a stranger your files.
 
 Four situations, and what each one meets:
 
-**One person, one laptop.** `molbuilder serve`, no config. No sign-in: there is
+**One person, one laptop.** `molbuilder serve foreground`, no config. No sign-in: there is
 nobody to distinguish from. The bind guard keeps it on loopback, so "no auth" is
 true and safe at once. The limiter is running, and loopback is allowlisted, so
 it never fires. Nothing to set up, nothing to get wrong.
