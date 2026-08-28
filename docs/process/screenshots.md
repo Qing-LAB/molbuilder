@@ -32,7 +32,7 @@ of these images changes.
 
 ## Pre-capture setup (do once)
 
-1. `molbuilder serve --port 8888` from the repo root.
+1. `molbuilder serve foreground --port 8888` from the repo root.
 2. Open `http://localhost:8888/` in Chrome / Firefox.
 3. Resize the browser to **1440 × 900** (or 1600 × 1000) — gives a
    consistent pixel grid across all screenshots so they look like a

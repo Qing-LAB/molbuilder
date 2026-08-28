@@ -453,7 +453,7 @@ def _setup_session_security(app, auth_cfg: Mapping) -> None:
     ``redirect_uri_mismatch``.
 
     SECURITY: do NOT enable ``trust_proxy`` for a direct-TLS deploy
-    (``molbuilder serve --cert --key`` with no reverse proxy in front).
+    (``molbuilder serve start --cert --key`` with no reverse proxy in front).
     A malicious request can then carry an attacker-chosen
     ``X-Forwarded-Host`` header, which url_for would honour -- crafting
     a CAS ``service_url`` that lands the user's ticket at attacker.com.

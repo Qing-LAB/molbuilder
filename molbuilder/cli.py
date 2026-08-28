@@ -9,7 +9,7 @@ Subcommands:
     molbuilder jobset init --structure P/structure/in.xyz \
         --bundle P/optimization/calc --shape flat --stage-strategy publishable
     molbuilder pyscf in.xyz out.py --functional B3LYP
-    molbuilder serve --port 8000
+    molbuilder serve start --port 8000
     molbuilder watch parse run.molwatch.log
     molbuilder watch tail run.molwatch.log
 
@@ -1607,7 +1607,7 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
         f"  cd {output_path.parent}", err=True,
     )
     click.echo(
-        f"  python -m molbuilder serve --port 8888 --host 127.0.0.1",
+        f"  python -m molbuilder serve start --port 8888 --host 127.0.0.1",
         err=True,
     )
     if want_google:

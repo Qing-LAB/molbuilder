@@ -85,6 +85,13 @@ The 2026-08-28 wedge found two gaps, both closed:
   The next hang is diagnosed by reading a file, not by theorizing from
   thread counts.
 
+**And one thing the supervisor deliberately does NOT do** (user ruling,
+2026-08-28): it never kills a child that is still *running* — there is
+no health-check auto-restart. A child that is up but not answering is a
+question, not a verdict: without a diagnosis, an automatic kill could
+interrupt real user work on a guess. The order is diagnosis first
+(the stack dump above), then a **human** decides (`serve restart`).
+
 ### 1.0d `serve foreground` — the terminal-bound run
 
 Exactly the old behaviour under its honest name: supervisor + child in
@@ -191,6 +198,57 @@ With auth on:
   `Secure` + `HttpOnly` + `SameSite=Lax`.
 
 `--no-auth` bypasses all of this and is refused on any non-loopback host.
+
+### 3.1 Getting the provider credentials — the wizard, and the Google console
+
+*(Restored 2026-08-28 — the old deployment page carried this and the
+rewrite lost it.)*
+
+**The fastest path is the wizard.** It asks the questions, writes the
+`auth` block into `molbuilder.json`, and puts every secret in its own
+`0600` file (§ 5.1) — nothing is printed, nothing lands in the config
+as a literal:
+
+```bash
+python -m molbuilder auth-setup                      # interactive
+python -m molbuilder auth-setup --provider asu       # ASURITE CAS = current user
+python -m molbuilder auth-setup --provider google    # prompts for client id + secret
+```
+
+**What Google needs from you first** (once per deployment, at
+<https://console.cloud.google.com/apis/credentials>):
+
+1. Pick or create a project → **OAuth consent screen** (External;
+   only the accounts on your `allowed_users` list will ever get past
+   molbuilder anyway).
+2. **Credentials → Create credentials → OAuth client ID → Web
+   application.**
+3. Under **Authorized redirect URIs**, add your server's callback:
+
+   ```
+   https://<host>:<port>/oauth-callback/<provider id>
+   ```
+
+   e.g. `https://yourhost.example.edu:8888/oauth-callback/google`. The
+   `/oauth-callback/<id>` path is the fixed part; host and port must
+   match how browsers actually reach you (through a tunnel:
+   `http://localhost:8888/...`). `serve start` prints this exact URI
+   whenever auth is on, so you can copy it rather than derive it.
+4. Copy the **client id** and **client secret** into the wizard's
+   prompts (the secret is read with echo off).
+
+**Updating or rotating later:**
+
+- **New client secret** (rotation, or a leaked one): generate it in the
+  same console page, overwrite the one-line
+  `~/.config/molbuilder/google_client_secret` file (§ 5.1), then
+  `molbuilder serve restart`. The config itself carries only the path,
+  so nothing else changes.
+- **New host or port**: add the new redirect URI in the console (old
+  ones can stay during a migration), and the printed hint at `serve
+  start` tells you the URI to register.
+- **CAS (ASURITE)** has no client secret and no console — nothing to
+  create or rotate; only `allowed_users` is yours to edit.
 
 ## 4. Security posture
 

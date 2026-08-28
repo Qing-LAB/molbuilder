@@ -139,7 +139,10 @@ own instance only — [`deployment.md` § 1](?doc=ops/deployment.md).)
 2. **Sign-in** — the `auth` section (§ 3 there): an OAuth provider and its
    `allowed_users` list. **Auth is opt-in**: without that section a
    non-loopback server is a public read-write projects tree, which is the
-   one mistake that page exists to prevent.
+   one mistake that page exists to prevent. The fastest path is
+   `molbuilder auth-setup` — and § 3.1 there walks the Google-console
+   half (creating the OAuth client, the redirect URI, rotating the
+   secret).
 
 Who may then do what — one person, a lab, admin rights, the reload button —
 is [`access-control.md`](?doc=ops/access-control.md).

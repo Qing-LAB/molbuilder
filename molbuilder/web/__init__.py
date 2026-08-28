@@ -1,7 +1,7 @@
 """Browser UI for molbuilder.
 
 Run:
-    molbuilder serve --port 8000
+    molbuilder serve start --port 8000
 
 then open http://127.0.0.1:8000.
 """
