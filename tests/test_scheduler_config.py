@@ -270,7 +270,8 @@ def test_example_templates_cite_only_existing_docs():
 # 2026-08-17 (N4).  It pinned R10 (review-4 G5): `get_routing` rebuilt each row
 # from a known-key list and silently STRIPPED everything else, so an operator
 # drafting a `node_type` / `max_cores` / `gpu{}` column in `molbuilder.json`
-# could not tell it apart from not writing one.
+# could not tell it apart from not writing one.  (The `node_type` named
+# there was the scalar retired 2026-08-27 -- scheduler.md R11.)
 #
 # Retired because its subject moved, not because the lesson did.  A routing row
 # is no longer an operator's hand-written description of their cluster -- the

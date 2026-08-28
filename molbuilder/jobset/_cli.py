@@ -23,6 +23,7 @@ one stage**, so every verb that acts on a stage is given the stage's name.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Dict, Tuple
 
 import click
 
@@ -672,44 +673,58 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
 
 
 
-def _measured_on(root: Path) -> Optional[str]:
-    """The ``node_type`` this benchmark's trials actually ran on, or ``None``.
+def _measured_on(root: Path) -> Dict[Tuple, str]:
+    """The machine KINDS this benchmark's verdict was measured on.
 
-    Read from the trials' own launch records, which name where they went
-    (`materialize.write_run_launch`'s ``placed_on``, 2026-08-23).  ``None``
-    means *no trial says* -- an older bundle, or a direct run that had no
-    placement -- and a reader must not turn that into a match.
+    ``{kind: brief}`` from ``bench-result.json``'s own points -- the record
+    `prep run` is about to apply, which carries each trial's ``machine``
+    since the monitor's ``[MACHINE]`` line landed (`scheduler.md` R12).
+    Reading the record rather than re-walking launch files is the one-door
+    rule; the previous reader globbed ``run.json`` for a ``node_type`` the
+    probe never wrote, so the S3 check it fed had never once fired.
 
-    Several trials could in principle disagree; if they do, this returns
-    ``None`` rather than picking one, because a benchmark whose trials ran on
-    different hardware has no single node type to carry anywhere.
+    ``{}`` means *no trial says* -- a record from before the line -- and a
+    reader must not turn that into a match.  Kinds, not hostnames: six
+    trials on six identical boxes are one entry (R11).
     """
     import json as _json
-    from .materialize import RUN_LAUNCH_FILE
-    seen = set()
-    for rj in sorted(Path(root).glob(f"*/{RUN_LAUNCH_FILE}")):
-        try:
-            body = _json.loads(rj.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        nt = (body.get("placed_on") or {}).get("node_type")
-        if nt:
-            seen.add(str(nt))
-    return next(iter(seen)) if len(seen) == 1 else None
+    from ..bench.result import BenchResult, machine_brief, machine_kind
+    try:
+        res = BenchResult.from_dict(_json.loads(
+            (Path(root) / "bench-result.json").read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return {}
+    kinds: Dict[Tuple, str] = {}
+    for p in res.points:
+        k = machine_kind(p.machine)
+        if k is not None:
+            kinds.setdefault(k, machine_brief(p.machine))
+    return kinds
 
 
 def _refuse_if_measured_elsewhere(base, root, stage) -> None:
-    """Refuse to apply a verdict measured on a different kind of node.
+    """Refuse to apply a verdict its own measurement cannot support.
 
     **A refusal, not a warning** (S3).  A warning about a number that is
     already wrong asks the person to do the comparison the framework was
-    holding both halves of.
+    holding both halves of.  Two grounds, from the P4 table
+    (`plans/machine-identity-plan.md`):
 
-    Silent in the two honest unknowns: when the trials do not say where they
-    ran, and when the target's own row states no ``node_type``.  Neither is a
-    match -- they are *cannot tell* -- and the check says nothing rather than
-    inventing a verdict either way.  What makes those cases visible is the
-    submission display (§ 7), where an unknown provenance is shown as one.
+    * **the trials ran on several kinds of node** -- the verdict ranked
+      measurements of different machines against each other, so there is
+      no single basis to carry anywhere (and this is a different fact
+      from *unknown*, which stays silent);
+    * **the target positively rules the measured kind out** -- its menu
+      lists machines and none has the measured core count.  CORES, and
+      only cores, because it is the one fact both sides state in one
+      vocabulary: the menu names devices in gres tokens, the measurement
+      in model names, and a bridge between those would be a guess.
+
+    Silent on the honest unknowns -- no machine recorded, or a target row
+    with no ``node_types`` -- because *cannot tell* is not a match (R3).
+    A no-``gres`` job may land on ANY node of a queue, GPU nodes
+    included, so a menu that contains the measured core count anywhere
+    rules nothing out.
     """
     from ..runtime_config import get_routing
     from ..scheduler.place import candidates
@@ -717,21 +732,36 @@ def _refuse_if_measured_elsewhere(base, root, stage) -> None:
     measured = _measured_on(root)
     if not measured:
         return
+    ways_out = (f"  Either re-run the benchmark where the run will go, or "
+                f"state the allocation yourself with flags -- an explicit "
+                f"ask is always honoured, and deleting {RUN_CONFIG_NAME} "
+                f"declines the verdict outright.")
+    if len(measured) > 1:
+        raise click.ClickException(
+            f"this benchmark's trials ran on {len(measured)} kinds of node "
+            f"({', '.join(sorted(measured.values()))}) -- a verdict that "
+            f"ranked different machines against each other has no single "
+            f"measurement to carry (execution/submission.md S3).\n"
+            + ways_out)
+    (kind, brief), = measured.items()
     rows = candidates(get_routing(project_dir=Path(base)), prefer_gpu=False)
-    target = rows[0].node_type if rows else None
-    if not target or target == measured:
+    row = rows[0] if rows else None
+    groups = list(getattr(row, "node_types", None) or [])
+    offered = {str(g.get("cores")) for g in groups
+               if isinstance(g, dict) and g.get("cores") is not None}
+    cores = kind[0]
+    if not offered or cores in offered:
         return
     raise click.ClickException(
-        f"this benchmark was measured on {measured!r} and this prep targets "
-        f"{target!r} -- the numbers do not carry.\n"
-        f"  Seconds-per-cycle, peak memory and the walltime derived from them "
-        f"describe the hardware they were taken on; applying them to a "
-        f"different node type is not conservative, it is meaningless "
+        f"this benchmark was measured on {brief} and every machine in "
+        f"{getattr(row, 'name', '?')!r}'s menu has "
+        f"{' or '.join(sorted(offered))} cores -- the numbers do not "
+        f"carry.\n"
+        f"  Seconds-per-cycle, peak memory and the walltime derived from "
+        f"them describe the hardware they were taken on; applying them to "
+        f"a different kind of node is not conservative, it is meaningless "
         f"(execution/submission.md S3).\n"
-        f"  Either re-run the benchmark on {target!r}, or state the "
-        f"allocation yourself with flags -- an explicit ask is always "
-        f"honoured, and deleting {RUN_CONFIG_NAME} declines the verdict "
-        f"outright.")
+        + ways_out)
 
 
 
@@ -874,9 +904,11 @@ def _apply_run_config(base, allocation, stage=None, engine=None):
     # (`execution/submission.md` § 5).  Numbers measured on one kind of node
     # do not describe another: a seconds-per-cycle taken on a 48-core GPU node
     # says nothing about a 128-core CPU node, and a walltime derived from it
-    # is not conservative or optimistic, it is meaningless.  `node_type` has
-    # been on the record since the row was designed for exactly this and was
-    # read by NOTHING until now -- the fourth such field.
+    # is not conservative or optimistic, it is meaningless.  The measured
+    # kind comes from the verdict's own record -- the monitor's [MACHINE]
+    # line, carried through BenchPoint.machine -- since 2026-08-27; the
+    # declared `node_type` this read before was never written by the probe,
+    # so the check had never fired (machine-identity-plan.md P4).
     _refuse_if_measured_elsewhere(base, root, stage)
     stated = {}
     for field_name in ("mpi_np", "cpus_per_task", "gres", "mem", "time"):

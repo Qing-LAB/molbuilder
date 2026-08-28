@@ -137,7 +137,6 @@ class Domain:
     partition: str
     qos:       str
     max_time:  Optional[str] = None
-    node_type: Optional[str] = None
     max_cores: Optional[int] = None
     max_mem_gb: Optional[float] = None
     #: What SLURM grants PER CORE when a job states no ``--mem`` -- the number
@@ -170,7 +169,12 @@ class Domain:
     extra:     Dict[str, Any] = field(default_factory=dict)
 
     #: The keys :meth:`from_row` recognises; everything else goes to ``extra``.
-    _KNOWN = ("name", "partition", "qos", "max_time", "node_type",
+    #: The scalar ``node_type`` was RETIRED 2026-08-27 (`scheduler.md`
+    #: R11): it said a queue has one machine type, which R0 measured to be
+    #: false, and the S3 check reading it had never fired because the
+    #: probe could not honestly write it.  A declared one now lands in
+    #: ``extra``, uninterpreted; ``node_types`` is the machine list.
+    _KNOWN = ("name", "partition", "qos", "max_time",
               "max_cores", "max_mem_gb", "default_mem_per_core_gb",
               "gpu", "gpu_partition", "node_types")
 
@@ -826,7 +830,6 @@ def known_machines() -> List[Dict[str, object]]:
                              "max_mem_gb": d.max_mem_gb,
                              "default_mem_per_core_gb":
                                  d.default_mem_per_core_gb,
-                             "node_type": d.node_type,
                              "gpu": bool(d.gpu)}
                             for d in (env.domains or [])]}
 

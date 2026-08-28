@@ -1177,21 +1177,23 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
 
 
 def _placed_on(placement) -> Optional[dict]:
-    """A `Placement` -> the four facts a later reader needs about where a run
-    ran, or ``None`` when there was no placement (a direct run).
+    """A `Placement` -> where this run was SENT, or ``None`` when there was
+    no placement (a direct run).
 
-    ``node_type`` is the one that earns this: it is what decides whether a
-    measurement taken here may be carried to a run somewhere else
-    (`execution/submission.md` § 5), and it was reachable only by parsing the
-    ``sbatch`` argv this file also records.
+    The QUEUE half of `scheduler.md` R12: domain, partition, qos -- known
+    the moment ``sbatch`` accepts, and reachable before this field only by
+    parsing the argv the same file records.  What the job LANDED ON is the
+    monitor's to record, on the node, because a queued job has no node yet
+    -- this dict carried a ``node_type`` until 2026-08-27, which was the
+    domain's opinion of itself, not a fact about the run, and the probe
+    never wrote it (R11).
     """
     if placement is None:
         return None
     d = getattr(placement, "domain", None)
     return {"domain": getattr(d, "name", None),
             "partition": placement.partition,
-            "qos": placement.qos,
-            "node_type": getattr(d, "node_type", None)}
+            "qos": placement.qos}
 
 
 def _record_launch(attempt: Path, *, mode: str, command: List[str],

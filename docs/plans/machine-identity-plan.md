@@ -1,6 +1,6 @@
 # Machine identity — migrating the code to R11/R12/R13
 
-**Status: P1–P3 BUILT 2026-08-27; P4–P7 open.** The rules are in
+**Status: P1–P5 BUILT 2026-08-27; P6–P7 open.** The rules are in
 [`scheduler.md`](?doc=execution/scheduler.md) **R11**, **R12**, **R13** and R3's
 second half, with the bench half in
 [`generator.md`](?doc=execution/generator.md) § 4.4b and
@@ -81,7 +81,7 @@ holds it. P6 and P7 are independent and may be taken at any point.
 
 ```
 P1 record ──► P2 read ──► P3 show          ← BUILT 2026-08-27
-      └─────► P4 refuse ──► P5 retire the scalar
+      └─────► P4 refuse ──► P5 retire the scalar   ← BUILT 2026-08-27
 P6 admission by device        (independent)
 P7 probe the policy caps      (independent)
 ```
@@ -158,19 +158,34 @@ are not the analyzer, you present the data")*.
 
 **Verified by:** a mixed CPU/GPU sweep renders both machines and no verdict.
 
-### P4 — the transfer refusal reads the machine
+### P4 — the transfer refusal reads the machine — BUILT 2026-08-27
 
 **Where:** `_cli.py` `_measured_on`, `_refuse_if_measured_elsewhere`.
 
-Source moves from `run.json`'s `placed_on.node_type` to the trials' recorded
-machines (P1). **And D3 is fixed here:** *trials disagree* stops being spelled
-the same as *nothing says*.
+**The source is the verdict's own record.** What `prep run` applies is
+`bench-result.json`, and since P2 its points carry `machine` — so the check
+reads the thing being applied, not a second walk over `run.json` files.
+One door; the old glob was a reader of a field `submit` wrote from the
+*queue* (D2).
 
-| trials say | today | after |
+**What is compared, and why only that** *(decided 2026-08-27, building
+this)*. The measured kind and the target's menu state exactly one fact in
+one shared vocabulary: **the per-node core count**. Devices do not — the
+menu speaks gres tokens (`a100`), the measurement speaks model names
+(`NVIDIA A100-SXM4-80GB`) — and a substring bridge between them would be a
+guess wearing a check's clothes. So cores decide, devices and memory stay
+out until the vocabularies unify, and that limit is stated here rather
+than papered over. The Sol hazard every document cites — a 48-core GPU
+measurement carried to a 128-core CPU run — is a cores mismatch, so the
+honest comparison is also the load-bearing one.
+
+| the verdict's trials say | the target row says | outcome |
 |---|---|---|
-| one kind, target differs | refuse | refuse (unchanged) |
-| **several kinds** | silent | **refuse, naming them** — there is no single measurement to carry |
-| nothing | silent | silent (R3 — cannot tell is not a match) |
+| **several kinds** | — | **refuse, naming them** — a verdict measured on two machines has no single basis to carry (D3: *disagree* stops being spelled like *unknown*) |
+| one kind | a `node_types` row with those cores exists | silent — nothing is ruled out: the scheduler may land a job on any node of the queue, including that kind |
+| one kind | `node_types` listed, **none** with those cores | **refuse** — positively ruled out, which is R3's standard for refusing |
+| one kind | no `node_types` on the row | silent — cannot tell |
+| nothing | — | silent — cannot tell (a pre-`[MACHINE]` record) |
 
 **S3 keeps its refusal and this does not contradict § 4.4b's report-only
 stance.** Carrying a verdict into `prep run` applies a number with nobody
@@ -181,7 +196,7 @@ record whose machine field is **absent** must leave the check silent, and one
 with two kinds must refuse. Neither may be satisfied by a fixture that
 supplies what the probe does not.
 
-### P5 — retire the scalar `node_type`
+### P5 — retire the scalar `node_type` — BUILT 2026-08-27
 
 Only after P4 stops reading it. **No shim, no fallback** — a cluster that
 genuinely is uniform declares one entry in `node_types`.

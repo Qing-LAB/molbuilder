@@ -728,13 +728,15 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
     from ``01_coarse/run-0``* — which is worth recording whether or not
     anything reads it back.
 
-    ``placed_on`` is WHERE IT RAN: the domain name, its partition and qos, and
-    its ``node_type`` (2026-08-23, `execution/submission.md` § 5). The
-    placement was already in this file, buried inside the ``sbatch`` argv as
-    ``-p``/``-q`` — so reading it back meant parsing a command line, which is
-    the re-derivation A4 exists to remove. Naming it is what lets a later
-    reader ask *was this measured on the kind of node the run will use?*
-    without inventing an answer.
+    ``placed_on`` is WHERE IT WAS SENT: the domain name, its partition and
+    qos (`scheduler.md` R12 -- the queue half; what it LANDED ON is the
+    monitor's ``[MACHINE]`` line, written on the node).  The placement was
+    already in this file, buried inside the ``sbatch`` argv as ``-p``/``-q``
+    — so reading it back meant parsing a command line, which is the
+    re-derivation A4 exists to remove.  *(It said "WHERE IT RAN" and
+    carried a ``node_type`` until 2026-08-27 -- a queue's opinion of
+    itself, which the probe never wrote, and the reason S3's check never
+    fired.)*
 
     Absent when there was no placement to record — a direct run, or a machine
     with no queue at all. **Absent means the question cannot be answered**,

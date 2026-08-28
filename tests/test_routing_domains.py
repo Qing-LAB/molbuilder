@@ -149,18 +149,29 @@ def test_declared_rows_keep_the_operators_own_columns(tmp_path):
     """R10 (2026-08-12), which the N4 draft retired on a false premise.
 
     I justified dropping that guard with *"nobody hand-writes a column
-    there"*.  The developer's own config hand-writes five per row --
-    ``node_type``, ``max_cores``, ``max_mem_gb``, ``default_mem_per_core_gb``,
+    there"*.  The developer's own config hand-writes several per row --
+    ``node_types``, ``max_cores``, ``max_mem_gb``, ``default_mem_per_core_gb``,
     ``gpu{}`` -- and the memory ones are values NO probe may invent, by the
-    prober's own note.
+    prober's own note.  *(The scalar ``node_type`` was retired 2026-08-27
+    — scheduler.md R11; a declared one lands in ``extra`` uninterpreted,
+    which this now pins so the retirement cannot silently half-happen.)*
     """
     _write_config(tmp_path, dict(_SCHED, routing=[
         {"name": "gpu", "partition": "general", "qos": "public",
-         "max_time": "7-00:00:00", "node_type": "gpu-a100",
+         "max_time": "7-00:00:00",
+         "node_types": [{"cores": 48, "nodes": 52, "mem_gb": 503.5,
+                         "gpu": {"a100": 4}}],
+         "node_type": "gpu-a100",
          "max_cores": 48, "max_mem_gb": 512,
          "gpu": {"type": "a100", "per_node": 4, "mem_gb": 80}}]))
     row = get_routing(project_dir=tmp_path)[0]
-    assert row.node_type == "gpu-a100"
+    assert row.node_types == [{"cores": 48, "nodes": 52, "mem_gb": 503.5,
+                               "gpu": {"a100": 4}}]
+    assert not hasattr(row, "node_type"), (
+        "the retired scalar grew back on the Domain type")
+    assert row.extra.get("node_type") == "gpu-a100", (
+        "an operator's declared node_type must survive in extra, "
+        "uninterpreted (R2) -- silently dropping a column is the R10 bug")
     assert row.max_cores == 48
     assert row.gpu == {"type": "a100", "per_node": 4, "mem_gb": 80}
 
@@ -175,7 +186,7 @@ def test_one_shape_whichever_source_answered(tmp_path):
     `to_row` exist to remove: both branches now build the same object.
     """
     row = {"name": "gpu", "partition": "general", "qos": "public",
-           "max_time": "7-00:00:00", "node_type": "gpu-a100",
+           "max_time": "7-00:00:00",
            "max_cores": 48, "gpu": {"type": "a100", "mem_gb": 80}}
 
     write_environment(

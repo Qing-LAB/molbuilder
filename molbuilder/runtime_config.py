@@ -1682,7 +1682,7 @@ def _declared_routing(project_dir: Optional[Path] = None) -> List[Dict[str, Any]
         rows = raw.get("routing")
         if isinstance(rows, list):
             # Rows ride through WHOLE.  An operator's own columns
-            # (`node_type`, `max_cores`, `max_mem_gb`, `gpu{}`) are the point
+            # (`node_types`, `max_cores`, `max_mem_gb`, `gpu{}`) are the point
             # of declaring -- R10, 2026-08-12: rebuilding a row from a
             # known-key list made drafting a column indistinguishable from
             # not writing one.  A reader owns only the keys it checks.
