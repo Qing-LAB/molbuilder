@@ -28,6 +28,7 @@ import {
   apiUpload,
   apiWrite,
 } from "./api.js";
+import { pageBusy } from "../page-busy.js";
 
 export const SS_DIR  = "molbuilder.current_dir";
 export const SS_FILE = "molbuilder.current_file";
@@ -118,29 +119,13 @@ const folderSubscribers = new Set();
 // because there's exactly one list view per page.
 let refreshHandler = null;
 
-// Sidebar lock state.  Set by long-running operations (Save .fdf,
-// Save spectra .py, multi-step pseudo install + wrapper write) that
-// must not race against the user re-navigating the sidebar mid-flight
-// -- e.g. clicking another directory between "write .fdf" and
-// "install pseudos", which would silently retarget the pseudo copy
-// to the new directory.
-//
-// Recovery design (per the 2026-05-27 review):
-//   Layer A -- try/finally:  every callsite wraps lock() in try {}
-//              finally { unlock() } so a thrown promise still releases.
-//   Layer B -- signal threading:  a caller may pass an AbortSignal
-//              (opts.signal) that aborts the in-flight fetch; the lock
-//              releases via Layer A's finally.  NOTE: an automatic
-//              per-fetch setTimeout(abort, T) is NOT built today
-//              (projects-sidebar.md § 13 M15 "no explicit timeouts") --
-//              a hung server without a signal relies on Layer C.
-//   Layer C -- Cancel button:  if A and B both fail (genuine JS bug
-//              or backend deadlock), the lock banner renders a
-//              user-visible Cancel that runs the registered abort
-//              callbacks + forces unlock.  No silent stuck state.
-const lockSubscribers = new Set();
-let lockState = null;        // { reason: string, cancelers: Function[] }
-                              // or null when unlocked.
+// The sidebar-scoped lock that lived here (2026-05-27) is GONE --
+// replaced by the page-wide busy fence, ``lib/page-busy.js``
+// (ui-contract.md § 10, user design 2026-08-28: covering the window
+// blocks switching everywhere at once, so nothing is guarded
+// per-control).  Its three-layer recovery contract carried over
+// verbatim; ``navigateTo`` below still refuses while the fence is
+// claimed (§ 8.5 defense-in-depth for programmatic callers).
 
 // ----- shared subscriber helpers --------------------------------- //
 //
@@ -185,13 +170,6 @@ function _publishToSet(set, payload) {
 }
 
 // ----- internal: publish loops ----------------------------------- //
-
-function _publishLockChange() {
-  _publishToSet(lockSubscribers, {
-    locked: lockState !== null,
-    reason: lockState ? lockState.reason : "",
-  });
-}
 
 function publishSelectionChange(payload) {
   // Caller may supply the payload explicitly when sessionStorage
@@ -286,20 +264,20 @@ export function publishCommit(dir, path) {
 // ----- exposed to other modules ---------------------------------- //
 
 export function setShared(dir, file) {
-  // Defense-in-depth lock guard (2026-05-30, #177).  The UI side
-  // already blocks sidebar clicks via CSS pointer-events:none while
-  // the lock is held; this rejects programmatic mutations too so
-  // a tab-level navigator (e.g. the /results file-picker dropdown
-  // in ``lib/results/file-picker.js``) can't slip a directory
-  // change past an active Save pipeline.
+  // Defense-in-depth busy guard (2026-05-30, #177; page-wide since
+  // 2026-08-28).  The cover already blocks clicks while the fence is
+  // claimed; this rejects programmatic mutations too so a tab-level
+  // navigator (e.g. the /results file-picker dropdown in
+  // ``lib/results/file-picker.js``) can't slip a directory change
+  // past an active operation.
   // Returns {ok, error?} so callers can branch -- the previous
   // void-return contract is preserved for the success path
   // (most callers don't check the return value).  See
   // docs/web/projects.md
-  if (lockState !== null) {
+  if (pageBusy.isClaimed()) {
     return {
       ok:    false,
-      error: "sidebar is locked: " + (lockState.reason || "operation in progress"),
+      error: "page is busy: " + (pageBusy.reason() || "operation in progress"),
     };
   }
   // sessionStorage may throw on quota / private-mode SecurityError /
@@ -775,28 +753,27 @@ async function upload(targetDir, file, opts) {
  *  doesn't load the sidebar), navigateTo returns the documented
  *  error envelope rather than throwing.
  *
- *  Lock guard (§ 8.5 defense-in-depth): navigateTo early-returns
- *  ``{ok: false, error: "sidebar is locked: <reason>"}`` when a
- *  lock is held -- the impl (openDir) is NEVER called in that case.
- *  openDir itself is intentionally NOT lock-guarded because it
- *  doubles as the refresh handler called mid-Save-pipeline by
- *  writeFile; the lock guard lives at the public-surface layer
- *  here so external callers respect the contract without
- *  deadlocking the internal refresh path.
+ *  Busy guard (§ 8.5 defense-in-depth): navigateTo early-returns
+ *  ``{ok: false, error: "page is busy: <reason>"}`` while the page
+ *  busy fence is claimed -- the impl (openDir) is NEVER called in
+ *  that case.  openDir itself is intentionally NOT guarded because
+ *  it doubles as the refresh handler called mid-Save-pipeline by
+ *  writeFile; the guard lives at the public-surface layer here so
+ *  external callers respect the contract without deadlocking the
+ *  internal refresh path.
  */
 let _navigateToImpl = null;
 async function navigateTo(absPath, opts) {
-  // Defense-in-depth lock guard per § 8.5.  openDir (the underlying
-  // impl) is intentionally NOT lock-guarded because it doubles as
-  // the refresh handler called mid-Save-pipeline by writeFile.  The
-  // public-surface wrapper enforces the design contract here:
-  // external callers go through navigateTo and get the locked
-  // rejection; internal callers go through openDir directly and
-  // bypass the guard intentionally.
-  if (lockState !== null) {
+  // Defense-in-depth busy guard per § 8.5.  openDir (the underlying
+  // impl) is intentionally NOT guarded because it doubles as the
+  // refresh handler called mid-Save-pipeline by writeFile.  The
+  // public-surface wrapper enforces the contract here: external
+  // callers go through navigateTo and get the refusal; internal
+  // callers go through openDir directly and bypass it intentionally.
+  if (pageBusy.isClaimed()) {
     return {
       ok:    false,
-      error: "sidebar is locked: " + (lockState.reason || "operation in progress"),
+      error: "page is busy: " + (pageBusy.reason() || "operation in progress"),
     };
   }
   if (typeof _navigateToImpl !== "function") {
@@ -810,60 +787,6 @@ async function navigateTo(absPath, opts) {
 /** Wire navigateTo's impl from list.js (the openDir export).
  *  Called once at sidebar init.  Idempotent. */
 export function setNavigateToImpl(fn) { _navigateToImpl = fn; }
-
-/**
- * Acquire the sidebar lock for a multi-step operation.
- *
- * While locked the sidebar's list / breadcrumb / create-form clicks
- * are visually + functionally disabled.  Subscribers (see ``onLockChange``)
- * receive the lock transition synchronously so they can render UI
- * state immediately.
- *
- * ``cancelers`` is an array of zero-arg callables to invoke if the
- * user clicks the lock banner's Cancel button.  Typically these abort
- * an in-flight AbortController -- pass ``[() => controller.abort()]``
- * so a hung backend can be aborted from the UI.
- *
- * Returns the *original lock token* — callers don't need to pass it
- * back; ``unlock()`` is global.  Re-entry is rejected (throws) on
- * purpose: nested locks would tangle the cancel-button semantics.
- * If you need to layer two operations, compose them in one lock or
- * unlock between them.
- */
-function lock(reason, cancelers) {
-  if (lockState !== null) {
-    throw new Error(
-      "molbuilder.projects.lock(): already locked -- "
-      + "previous reason: " + lockState.reason + ", new: " + reason
-    );
-  }
-  lockState = {
-    reason:    String(reason || "Working…"),
-    cancelers: Array.isArray(cancelers) ? cancelers.slice() : [],
-  };
-  _publishLockChange();
-  return lockState;
-}
-
-/** Release the sidebar lock.  Idempotent (no-op when already unlocked).
- *  Always call from a ``finally`` so an exception in the locked
- *  operation can't leave the sidebar stuck. */
-function unlock() {
-  if (lockState === null) return;
-  lockState = null;
-  _publishLockChange();
-}
-
-/** Run the registered cancelers (does NOT itself unlock -- the operation
- *  promise's own finally is responsible for that, AFTER its abort path
- *  has unwound).  Called by the lock banner's Cancel button. */
-function cancelLockedOperation() {
-  if (lockState === null) return;
-  const fns = lockState.cancelers.slice();
-  for (const fn of fns) {
-    try { fn(); } catch (_) { /* one bad canceler can't break the rest */ }
-  }
-}
 
 export const projects = {
   getCurrentDir:       () => readSelectionSlot(SS_DIR),
@@ -951,27 +874,11 @@ export const projects = {
   upload,
   setShared,
   navigateTo,
-  // ---- Sidebar lock API (2026-05-27) ---------------------------- //
-  // Long-running pipelines (Save .fdf, Save .py, install pseudos +
-  // wrapper) call lock() before step 1 and unlock() in finally so
-  // the user can't re-navigate the sidebar to a different directory
-  // mid-pipeline and have step 2 land in the wrong place.
-  //
-  // See state.js's lock-state docstring for the 3-layer recovery
-  // design (try/finally + per-fetch timeout + Cancel button).
-  lock,
-  unlock,
-  isLocked: () => lockState !== null,
-  getLockReason: () => lockState ? lockState.reason : "",
-  onLockChange: (cb) => {
-    _registerSubscriber(lockSubscribers, cb, "onLockChange");
-    // Fire once so the subscriber can render its current state.
-    try {
-      cb({ locked: lockState !== null,
-           reason: lockState ? lockState.reason : "" });
-    } catch (_) { /* swallow */ }
-    return () => lockSubscribers.delete(cb);
-  },
+  // The sidebar-scoped lock API that lived here (lock / unlock /
+  // isLocked / getLockReason / onLockChange, 2026-05-27) is GONE --
+  // heavy operations claim the page-wide busy fence instead
+  // (``lib/page-busy.js``, ui-contract.md § 10).  navigateTo and
+  // setShared above still refuse while the fence is claimed.
   // Projects-root resolution subscriber (design § C2, 2026-05-31).
   // Fires AT MOST ONCE per page lifetime when the sidebar's init
   // resolves the root from apiRoots().  Subscribers that register
@@ -986,5 +893,4 @@ export const projects = {
     }
     return () => rootSubscribers.delete(cb);
   },
-  cancelLockedOperation,
 };

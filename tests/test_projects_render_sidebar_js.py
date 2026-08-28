@@ -200,6 +200,8 @@ def _run_node(snippet: str) -> object:
             global.psSelection = psSelection;
             global.entryA = entryA;
             global.entryB = entryB;
+            const pageBusy = (await import("{(ROOT / 'molbuilder/web/static/lib/page-busy.js').resolve().as_uri()}")).pageBusy;
+            global.pageBusy = pageBusy;
             {snippet}
         }}).catch(err => {{
             console.log(JSON.stringify({{
@@ -308,13 +310,13 @@ class TestRenderSidebarSubscriber:
         assert out["a_selected"] is False
         assert out["b_selected"] is False
 
-    def test_locked_setShared_does_not_update_dom(self):
-        """The lock guard (#177) rejects programmatic setShared while
-        the lock is held; subscriber must NOT fire so the DOM stays
-        synced to the pre-locked state."""
+    def test_busy_setShared_does_not_update_dom(self):
+        """The busy guard (#177, page-wide since 2026-08-28) rejects
+        programmatic setShared while the fence is claimed; subscriber
+        must NOT fire so the DOM stays synced to the prior state."""
         out = _run_node('''
             state.setShared("/p", "/p/file-a.out");
-            state.projects.lock("Saving FDF...", []);
+            pageBusy.claim("Saving FDF...", []);
             const r = state.setShared("/p", "/p/file-b.out");
             console.log(JSON.stringify({
                 envelope:   r,

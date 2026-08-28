@@ -68,10 +68,22 @@
                 "smiles: structurePage not configured"));
         }
         var trimmed = smiles.trim();
+        // Page busy fence (ui-contract.md § 10): the embed is real
+        // server work, and while it runs, a tab switch or sidebar
+        // click would abandon or retarget the result.  Cover the
+        // window; Cancel aborts the request; the finally releases.
+        var busy = (root.molbuilder && root.molbuilder.pageBusy) || null;
+        var ctl  = (typeof AbortController === "function")
+                       ? new AbortController() : null;
+        if (busy) {
+            busy.claim("Generating 3-D structure from SMILES…",
+                       ctl ? [function () { ctl.abort(); }] : []);
+        }
         return _deps.fetch(BUILD_URL, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ kind: "smiles", input: trimmed }),
+            signal:  ctl ? ctl.signal : undefined,
         })
         .then(function (r) {
             return r.json().then(function (body) {
@@ -115,6 +127,11 @@
                      + (err && err.message ? err.message
                                             : String(err)),
             };
+        })
+        .finally(function () {
+            // Layer A of the recovery contract: the fence releases on
+            // every path -- success, refusal, cancel, network drop.
+            if (busy) busy.release();
         });
     }
 

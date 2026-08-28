@@ -72,23 +72,6 @@
     <h2 class="ps-title">Projects</h2>
   </header>
 
-  <!-- Lock banner.  Hidden by default; shown by lib/projects/list.js when
-       a long-running operation (Save .fdf, Save .py, install pseudos)
-       holds the sidebar lock.  ``Cancel`` invokes the registered abort
-       callbacks (Layer C of the 3-layer recovery design -- see state.js
-       lock docstring) so the user always has an escape hatch.  The
-       .is-locked class on the sidebar greys out all interactive
-       children via CSS in projects-sidebar.css. -->
-  <div id="ps-lock-banner" class="ps-lock-banner" hidden role="status"
-       aria-live="polite">
-    <span class="ps-lock-icon" aria-hidden="true">⏳</span>
-    <span id="ps-lock-message" class="ps-lock-message">Working…</span>
-    <button type="button" id="ps-lock-cancel" class="ps-lock-cancel"
-            title="Abort the current operation and unlock the sidebar">
-      Cancel
-    </button>
-  </div>
-
   {#- 2026-06-12 Mutation bar: three SEPARATE buttons (replaces the
       earlier "+" dropdown menu).  Each button opens a modal dialog
       directly — no dropdown, no extra click.  Depth-aware: New

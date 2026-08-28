@@ -27,7 +27,7 @@ import {
   projects, setProjectsRoot, SS_DIR, setNavigateToImpl, readSelectionSlot,
 } from "./state.js";
 import {
-  initList, initLockUI, openDir, restoreSelection,
+  initList, openDir, restoreSelection,
 } from "./list.js";
 import { initForms } from "./mutation-bar.js";
 import { initPreview } from "./preview.js";
@@ -314,14 +314,6 @@ async function init() {
   initMobileDrawer();
   initDesktopCollapse();
   initWidthResize();
-
-  // Wire the lock UI FIRST -- before any await that could throw or
-  // bail.  The lock UI needs to work regardless of project-root
-  // resolution; see initLockUI() docstring in list.js for the
-  // 2026-05-28 background.  If we put this after the apiRoots()
-  // await, a slow / failed roots call leaves the lock UI unwired
-  // and lock() becomes a silent no-op visually.
-  initLockUI();
 
   // NOTE: `data-sidebars="projects"` is set on <body> in each template
   // (server-side) -- NOT here.  The app-shell layout (lib/page-shell.css) is

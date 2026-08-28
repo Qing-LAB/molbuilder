@@ -62,6 +62,7 @@ def _run_node(snippet: str) -> object:
         global.FormData = function () {{ this.append = () => {{}}; }};
         const statePromise = import("{module_url}");
         statePromise.then(async (state) => {{
+            const pageBusy = (await import("{(ROOT / 'molbuilder/web/static/lib/page-busy.js').resolve().as_uri()}")).pageBusy;
             {snippet}
         }}).catch(err => {{
             console.log(JSON.stringify({{
@@ -699,19 +700,19 @@ class TestNavigateTo:
         ''')
         assert out == {"ok": False, "error": "Failed to list directory."}
 
-    def test_locked_navigateTo_rejects_without_calling_impl(self):
-        """Per § 8.5, navigateTo MUST check isLocked() and refuse
-        when the lock is held -- without calling the underlying
-        impl.  The impl (openDir) is intentionally NOT lock-guarded
-        because it doubles as the refreshHandler that runs mid-Save-
-        pipeline; the public-surface wrapper enforces § 8.5 instead."""
+    def test_busy_navigateTo_rejects_without_calling_impl(self):
+        """Per § 8.5, navigateTo MUST check pageBusy.isClaimed() and
+        refuse while the fence is held -- without calling the
+        underlying impl.  The impl (openDir) is intentionally NOT
+        guarded because it doubles as the refreshHandler that runs
+        mid-Save-pipeline; the public-surface wrapper enforces § 8.5."""
         out = _run_node('''
             let implCalled = false;
             state.setNavigateToImpl(async () => {
                 implCalled = true;
                 return { ok: true, path: "/", entries: [] };
             });
-            state.projects.lock("Saving FDF...", []);
+            pageBusy.claim("Saving FDF...", []);
             const r = await state.projects.navigateTo("/somewhere");
             console.log(JSON.stringify({
                 envelope:    r,
@@ -719,7 +720,7 @@ class TestNavigateTo:
             }));
         ''')
         assert out["envelope"]["ok"] is False
-        assert "sidebar is locked" in out["envelope"]["error"]
+        assert "page is busy" in out["envelope"]["error"]
         assert "Saving FDF" in out["envelope"]["error"]
         assert out["implCalled"] is False
 
@@ -1209,17 +1210,6 @@ class TestSubscribeDedupThrows:
         assert out["threw"] is True
         assert "onChange" in out["msg"]
         assert "already registered" in out["msg"]
-
-    def test_onLockChange_throws_on_duplicate(self):
-        out = _run_node('''
-            const cb = (p) => {};
-            state.projects.onLockChange(cb);
-            let threw = false;
-            try { state.projects.onLockChange(cb); }
-            catch (e) { threw = true; }
-            console.log(JSON.stringify(threw));
-        ''')
-        assert out is True
 
     def test_onProjectsRootResolved_throws_on_duplicate(self):
         out = _run_node('''

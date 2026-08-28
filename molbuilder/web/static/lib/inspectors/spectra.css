@@ -567,7 +567,7 @@ instead of "-6.1234 eV" being one blob whose
  * }`` rule and wins (author cascade),
 so #phase-indicator was
  * VISIBLE at page load despite ``hidden=`` being set in the
- * template.  Same pattern as .ps-lock-banner.  Explicit guard wins. */
+ * template.  Same pattern as .page-busy-cover.  Explicit guard wins. */
 .phase-indicator[hidden] { display: none; }
 .phase {
     display: inline-flex;

@@ -1,16 +1,18 @@
-"""Unit tests for the setShared lock-guard contract (sidebar gap
+"""Unit tests for the setShared busy-guard contract (sidebar gap
 #177, defense-in-depth).
 
 Per docs/web/projects.md, programmatic state
 mutators (setShared, future navigateTo) MUST early-return
-``{ok:false, error:"sidebar is locked"}`` while the lock is held.
-The CSS ``pointer-events:none`` rule blocks user clicks but
+``{ok:false, error:"page is busy"}`` while the page busy fence
+(``lib/page-busy.js``, ui-contract.md § 10 -- page-wide since
+2026-08-28, replacing the sidebar-scoped lock) is claimed.  The
+full-window cover blocks user clicks but
 tab-level navigators (the /results file-picker dropdown at
 ``lib/results/file-picker.js``) could otherwise sneak a directory
 change past an active Save pipeline.
 
-These tests stub sessionStorage + the module's lock entry points
-under Node, exercise setShared in both locked and unlocked states,
+These tests stub sessionStorage under Node and exercise setShared
+with the fence claimed and released,
 and verify both the return value AND the side-effect (sessionStorage
 + subscriber fire) shape.
 """
@@ -60,6 +62,7 @@ def _run_node(snippet: str) -> object:
         }});
         const statePromise = import("{module_url}");
         statePromise.then(async (state) => {{
+            const pageBusy = (await import("{(ROOT / 'molbuilder/web/static/lib/page-busy.js').resolve().as_uri()}")).pageBusy;
             {snippet}
         }}).catch(err => {{
             console.log(JSON.stringify({{
@@ -89,7 +92,7 @@ def _run_node(snippet: str) -> object:
     return out
 
 
-class TestSetSharedWhenUnlocked:
+class TestSetSharedWhenIdle:
 
     def test_returns_ok_envelope(self):
         out = _run_node('''
@@ -125,23 +128,23 @@ class TestSetSharedWhenUnlocked:
         assert out[1] == {"dir": "/a", "file": "/a/b.out"}
 
 
-class TestSetSharedWhenLocked:
+class TestSetSharedWhenBusy:
 
     def test_returns_not_ok_envelope(self):
         out = _run_node('''
-            state.projects.lock("Saving FDF…", []);
+            pageBusy.claim("Saving FDF…", []);
             const r = state.setShared("/dir", "/dir/file.out");
             console.log(JSON.stringify(r));
         ''')
         assert out["ok"] is False
-        assert "sidebar is locked" in out["error"]
+        assert "page is busy" in out["error"]
         # Includes the lock reason so the caller can show a useful
         # message to the user (or log it).
         assert "Saving FDF" in out["error"]
 
     def test_does_not_update_session_storage(self):
         out = _run_node('''
-            state.projects.lock("Save in flight", []);
+            pageBusy.claim("Save in flight", []);
             state.setShared("/locked-target", "/locked-target/x.out");
             console.log(JSON.stringify({
                 dir:  sessionStorage.getItem("molbuilder.current_dir"),
@@ -160,7 +163,7 @@ class TestSetSharedWhenLocked:
         out = _run_node('''
             const calls = [];
             state.projects.onChange(p => calls.push(p));
-            state.projects.lock("Save in flight", []);
+            pageBusy.claim("Save in flight", []);
             state.setShared("/locked-target", "/locked-target/x.out");
             // Only the initial-fire from onChange subscribe; the
             // setShared attempt must not have published.
@@ -169,12 +172,12 @@ class TestSetSharedWhenLocked:
         # Just the initial fire (empty), no post-setShared event.
         assert out == [{"dir": "", "file": ""}]
 
-    def test_unlock_restores_set_shared(self):
-        """After unlock, setShared works normally again."""
+    def test_release_restores_set_shared(self):
+        """After release, setShared works normally again."""
         out = _run_node('''
-            state.projects.lock("step 1", []);
+            pageBusy.claim("step 1", []);
             const blocked = state.setShared("/a", "/a/b");
-            state.projects.unlock();
+            pageBusy.release();
             const allowed = state.setShared("/c", "/c/d");
             console.log(JSON.stringify({
                 blocked: blocked,

@@ -322,3 +322,56 @@ before concluding anything.
   composed class, one page state cannot see a dialog or an error, and
   `querySelectorAll` cannot see `::backdrop`. § 8 also carries the verdicts
   already reached, so they are not worked out a fourth time.
+
+## 10. The page busy fence — one cover for every heavy click
+
+*(2026-08-28, user design: "blocking the window is going to block switching —
+make it simple".  Replaces the sidebar-scoped lock of 2026-05-27, which
+shipped a banner, a Cancel and three recovery layers and then never gained a
+production caller.)*
+
+**The problem it solves.**  A user clicks something that makes the server
+work for seconds — generate 3-D coordinates from a SMILES, a multi-step
+save.  While that runs, every other control is still live: switching the
+sidebar directory mid-save retargets the operation's later steps; switching
+tabs abandons the result.  Guarding each control separately is
+micromanagement that never ends.
+
+**The rule.**  One shell primitive, `lib/page-busy.js` (its stylesheet
+beside it, self-attached — the cover outranks every layer, so cascade
+position is moot):
+
+```js
+import { pageBusy } from "../lib/page-busy.js";
+
+pageBusy.claim("Generating 3-D structure…", [() => controller.abort()]);
+try   { ... the operation ... }
+finally { pageBusy.release(); }
+```
+
+While claimed, a full-window cover shows the reason, a spinner, and a
+**Cancel** button.  The whole window is covered, so *everything* — tabs,
+sidebar, forms — is blocked by construction; nothing is wired per-control.
+
+**The recovery contract** (carried over from the sidebar lock, verbatim):
+`release()` sits in a `finally`, so a thrown operation still releases;
+the cancelers abort the in-flight request; and Cancel is the human
+override, always clickable — it runs the cancelers but does **not**
+release (the operation's own `finally` does, after its abort unwinds).
+There is no silent stuck state.  `claim()` while claimed **throws** —
+one heavy operation at a time is the design, not a limitation.
+
+**Who claims it.**  User-*triggered* heavy or risky operations only.
+Periodic or automatic work (the GPU sampler, status polling) never
+claims: there is no click to block, and freezing the page on a timer
+would be the bug.  That class is protected server-side instead
+(subprocess + timeout — the 2026-08-28 GPU fence).
+
+**Programmatic races.**  The cover blocks clicks, not code.  The one
+programmatic mover of shared state, `projects.navigateTo`, refuses while
+the fence is claimed (§ 8.5 defense-in-depth) — a future module that
+moves shared state from code should do the same.
+
+**The honest limit.**  The fence protects this window against its own
+user.  A second browser tab, or another user of a shared server, still
+reaches the backend — that class stays server-side, case by case.

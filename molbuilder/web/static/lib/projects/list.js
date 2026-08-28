@@ -25,7 +25,7 @@ import {
   chooseName, chooseDestinationDir, confirmDestructive,
 } from "./dialogs.js";
 
-let elCrumb, elList, elSidebar, elLockBanner, elLockMsg, elLockCancel;
+let elCrumb, elList;
 
 // Names that may NOT be deleted via the sidebar -- ever -- because
 // doing so would orphan the projects layout.  Mirrors
@@ -830,56 +830,9 @@ function _cssEscape(s) {
   return s.replace(/["\\]/g, "\\$&");
 }
 
-/** Apply / clear the sidebar lock visual.  Called on every lock change. */
-function _applyLockVisual(payload) {
-  // Re-resolve elSidebar each call so this works even if initLockUI
-  // ran before the partial was rendered (it shouldn't, but defence
-  // in depth -- the 2026-05-28 sighting was a "lock fires but UI
-  // doesn't paint" desync caused by the wiring being gated on an
-  // unrelated init success).
-  const sb  = elSidebar    || document.getElementById("projects-sidebar");
-  const ban = elLockBanner || document.getElementById("ps-lock-banner");
-  const msg = elLockMsg    || document.getElementById("ps-lock-message");
-  if (!sb) return;
-  sb.classList.toggle("is-locked", !!payload.locked);
-  if (ban) {
-    ban.hidden = !payload.locked;
-    if (msg) msg.textContent = payload.reason || "Working…";
-  }
-}
-
-/**
- * Wire the sidebar LOCK UI (banner subscription + Cancel-click).
- *
- * Split from ``initList`` (2026-05-28) so lock-UI wiring no longer
- * depends on ``apiRoots()`` succeeding -- the original design gated
- * it on initList running, which only ran if project-root resolution
- * succeeded.  When ``apiRoots`` returned empty (no projects/ dir,
- * slow network, misconfigured roots), ``lock()`` would set state
- * but no subscriber existed to paint it, AND the Cancel button was
- * unwired.  Decoupling the lock-UI from the file-listing wiring
- * means the lock works on every page that includes the sidebar
- * partial, regardless of file-listing state.
- *
- * Cancel uses delegated dispatch on document (not addEventListener
- * on the button) so the wiring is robust even if the partial
- * hasn't rendered yet at the time this function runs.
- */
-export function initLockUI() {
-  elSidebar    = document.getElementById("projects-sidebar");
-  elLockBanner = document.getElementById("ps-lock-banner");
-  elLockMsg    = document.getElementById("ps-lock-message");
-  // Delegated click: any future click on #ps-lock-cancel hits this
-  // handler, regardless of whether the button existed at wire time
-  // or was re-created later.
-  document.addEventListener("click", (ev) => {
-    const t = ev.target;
-    if (t && t.id === "ps-lock-cancel") {
-      _projectsApi.cancelLockedOperation();
-    }
-  });
-  _projectsApi.onLockChange(_applyLockVisual);
-}
+// The sidebar lock visual (banner + is-locked fade, 2026-05-27) is
+// GONE -- the page-wide busy fence (lib/page-busy.js, ui-contract.md
+// § 10) covers the whole window instead, sidebar included.
 
 // Filter state (B.5.5).  Free-text filter that hides non-matching
 // FILES from the rendered entry list — folders always stay visible
@@ -965,9 +918,6 @@ function _initFilter() {
 export function initList() {
   elCrumb = document.getElementById("ps-breadcrumb");
   elList  = document.getElementById("ps-list");
-  // Lock-UI wiring lives in initLockUI() and runs unconditionally in
-  // projects-sidebar.js's init() -- KEEP IT THAT WAY.  Pulling those
-  // calls back into initList would re-couple lock to file-listing.
   setRefreshHandler(openDir);
   _initFilter();
   // renderSidebar subscriber.  Single point of selection-state-to-DOM
