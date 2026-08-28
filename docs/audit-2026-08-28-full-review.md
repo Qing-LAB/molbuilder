@@ -7,8 +7,8 @@ guard that keeps it fixed.
 **Domain:** the full workflow minus transport (its redesign is scheduled
 last, user ruling 2026-08-28): CLI verbs end-to-end, the monitor, the
 scheduler layer, docs-vs-code in full text, UI/JS/CSS via the guard suites —
-the **browser integration half is blocked** on a wedged dev server (§ 4) and
-is recorded as the one unfinished lane.
+and, after the server restart, the **browser integration lane in full**
+(§ 6).
 **Method:** contracts read in full text (`workflow.md`, `task-setup.md`,
 plus the § 2 cross-checks), then the road walked for real: a fresh
 `review-bdt/optimization/BDTRelax` (14-atom BDT, SIESTA, this workstation)
@@ -135,10 +135,39 @@ Results live-watch, gates ① ② ⑤ under the eye — resumes at that moment;
 
 ## 5. What was NOT covered, honestly
 
-- **The browser integration half** (§ 4) — the one open lane of this audit.
 - **Transport** — excluded by ruling; last to migrate.
 - **Sol** — the machine-identity plan's two remaining facts (a real
   `[MACHINE]` line from a Sol job; the `lightwork` policy cap) need the
   user's Sol session; F1's fix is what makes tomorrow's run monitored.
 - **PySCF/spectra decks** were exercised only through the existing guard
   suites this round, not a fresh live walk.
+
+## 6. The browser lane — walked after the restart, all five gates seen
+
+A second BDT, born and driven **entirely in the browser**
+(`review-bdt-ui/optimization/BDTUIRelax`), every artifact then verified on
+disk:
+
+| step | observed |
+|---|---|
+| SMILES → 3-D | *"Generated 14 atoms from SC1=CC=C(S)C=C1 · RDKit ETKDGv3"*; cell box updated live when vacuum 3→8 Å |
+| save the pair | the dialog says it plainly — *"Saving writes TWO files… coordinates and a sidecar"*; on disk: `bdt-ui.xyz` (SMILES provenance in the comment) + sidecar `vacuum:[8,8,8]`, `cell:null` (derived at generation, by design) |
+| load + gate ① | the sidecar found by the pairing rule (box drawn, never named); the amber preflight banner appeared on the first form edit |
+| handover, gate ② | four files written; *"Handed over — not a description yet … Still needed: shape and stages"* |
+| Task setup, gate ③ | shape/machine asked never guessed; the queue card speaks the workstation truth (*"no queues — runs directly … memory still has a real ceiling"*); save gated on a checkpoint note; `task.json` written and `task.1st.json` **removed** |
+| prep from the browser, gate ④ | the two-click confirm states the whole plan (*NO QUEUE STATED · NO MEMORY STATED*…), and then **`generator.md` § 4.1 refused in words with the numbers**: *"declared bench point mpi_np=16, omp_threads=2 needs 32 cores and this machine's probe found 20 … Trim the declaration, or benchmark on the machine it is meant to measure"* — trimmed in the editor (*"edited — not saved"* held until saved), re-prepped clean |
+| launch + summarize | CLI (the page teaches the command and deliberately has no launch button); the browser-born trial carries the `[MACHINE]` line first **and** `.concluded` `rc=0` — the whole day's stack in one directory |
+| bench summary, B1–B5 | one-kind census riding the header (*40c 250G GeForce RTX 3060 Ti*), per-card *"on … (qlabsrv)"*, gold winner outline, single-iteration caution, both clocks |
+| trajectory, gate ⑤ | the finished 140-step relax: phase chip (*Finished · SIESTA 5.4.2 · MPI*), convergence-targets card, 142-frame player with force overlay, four charts with their target lines |
+| the fence | a programmatic path outside the tree was refused naming the allowed roots |
+| SERVER LOAD | the fenced GPU sampler live through the widget (RTX named, no error) |
+| Spectrum tab | full PySCF form renders; a picked `.out` refused politely (*"not a structure file — .xyz/.pdb only"*) |
+| console | zero errors across the whole session |
+
+**One suggestion, not a defect:** the bench card's default proposal
+(`4/8/16 × 1/2`) exceeded the very machine chosen two cards above, and only
+`prep` said so. The refusal is correct and teaches well — but the tab holds
+the machine's probe on the same page, so a quiet early note there would save
+the round-trip. Left as a suggestion because the current behaviour follows
+the contract exactly (the declaration is portable; prep is where it meets a
+machine).
