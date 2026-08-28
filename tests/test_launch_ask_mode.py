@@ -320,3 +320,18 @@ def test_asking_writes_NOTHING_to_the_tree(tmp_path, monkeypatch):
     assert attempts(d) == before, (
         "asking opened a new attempt -- a question verb wrote to the tree")
     assert not (d / "run-1").exists()
+
+
+def test_no_scheduler_previews_no_sbatch_either():
+    """The same contradiction one line earlier (user, 2026-08-28): *"nothing
+    to wait for"* followed by ``would send: sbatch ...`` reads as two
+    answers.  On a machine with no scheduler nothing WOULD be sent, so
+    nothing is previewed.  Guarded at the source like its sibling above,
+    because the preview line lives in the CLI."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1]
+           / "molbuilder/jobset/_cli.py").read_text()
+    i = src.index('click.echo("  would send: "')
+    guard = src[max(0, i - 400):i]
+    assert "not all(p.no_scheduler for p in preds)" in guard, (
+        "the sbatch preview must be gated off when no scheduler exists")

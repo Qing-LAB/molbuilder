@@ -831,106 +831,144 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                               trial_work_dir)
     from .shape import Shape as _Shape
     _shape = _Shape.named(task.shape)
-    for element in pset:
-        stem = f"{element.label}_{token}" if token else element.label
-        script = f"{stem}{seam.suffix}"
-        # WHERE THIS ELEMENT'S FILES GO -- its own directory, never the
-        # bundle root (user, 2026-08-24; `project-layout.md` § 1.0 always
-        # said it: "only rendered files and copies go down to where the
-        # engine runs").  What stood here rendered every deck, wrapper,
-        # validation report and molwatch log AT THE ROOT and symlinked
-        # them down -- 50 files at the root of a ten-trial sweep, the
-        # hierarchy inverted into a veneer of links.  The directory is the
-        # same one `job_dir_names` will answer for this job, computed from
-        # the same two facts (token + trial-ness), so the deck is born
-        # where the launch will look for it.
-        if element.is_trial:
-            # ONE RULE, asked -- not composed again from the same two
-            # facts.  `materialize.trial_dir` is what `job_dir_names`
-            # itself uses, so the deck is born where the launch looks by
-            # CONSTRUCTION rather than by a comment promising it.
-            #
-            # The dir is named by the JOB's name -- the sweep coordinate,
-            # `_job_for`'s own first rule -- never by the element's
-            # RELABELLED SystemLabel (`<calc-label>-<coord>`): the two
-            # differ by the calculation prefix, and using the label here
-            # wrote decks into `bench-JOB-G1K1C1/` while every reader
-            # asked `job_dir_names` and looked in `bench-G1K1C1/`.
-            from ..resolve import point_token as _pt
-            _jdir = trial_work_dir(
-                base / trial_dir(_shape, token, _pt(element.point)), _shape)
-        else:
-            _sd = _shape.stage_dir(token) if token else "."
-            _jdir = base if _sd == "." else base / _sd
-        _jdir.mkdir(parents=True, exist_ok=True)
-        # The deck is rendered from values ⊕ THIS element's allocation, so it
-        # records the rank count it actually assumed.  Rendering from the
-        # values alone emits `mpi_np auto` and the launch check then refuses a
-        # deck that `prep` itself just made -- which is how this was found.
-        # The stage's artifact TOKEN reaches the emitter here, as a RENDER
-        # ARGUMENT (C7).  It feeds three names -- the deck, the engine's own
-        # log, and the molwatch log -- and leaving it unset made two rungs of
-        # one calculation write to a single `<label>.molwatch.log`.  `prep`
-        # holds the StageRef, so `prep` says the word; no config field carries
-        # it, for either engine (`stages.md` § 1.1).
-        cfg = element.render_config()
-        if element.is_trial:
-            # The deck's OWN identity line carries the trial label -- this,
-            # not the filename, is what keys SIESTA's warm files away from
-            # the real run's (project-layout.md § 2.3.2).
-            with _calling("relabel", engine=task.engine,
-                          where=element.label, log=log):
-                cfg = seam.relabel(cfg, element.label)
-            # The forced cold has ONE setter -- the measurement pin
-            # (`_MEASUREMENT_PINS`, resolved with provenance "pin") --
-            # and ONE verifier, the submission door
-            # (`agreement.check_trial_starts_cold`; user-settled
-            # 2026-08-21: prep bakes the intent, submission determines
-            # the actual state).  A hard replace stood here as a second,
-            # provenance-invisible setter until then (Q6a).
-        # The stage's artifact token is a RENDER ARGUMENT (C7, 2026-08-12):
-        # `prep` holds the StageRef, so `prep` says it, per call -- the
-        # config field that used to carry it is gone, and the emitter never
-        # learns the word (engines/stages.md § 1.1).
-        # The render's refusals (missing pseudos above all) are user-fixable
-        # and translate to PrepError -- see _user_error_as_prep
-        # (2026-08-12 plan A8).
-        # STEP 3, WHOLE, IN ONE CALL: validate the settings, render the deck,
-        # write it through the one writer (which keeps the reader's USER-CUSTOM
-        # block), then read the file back and refuse one that does not say what
-        # it was meant to say.  The conductor says WHEN; the framework owns the
-        # order (`script-preparation.md` § 4.3).
-        if log is not None:
-            log.phase(f"STEP 3 · DECK — {script}")
-            log.received("config", f"{type(cfg).__name__}"
-                                   + (f", stage_token={token}" if token else "")
-                                   + (f", trial {element.label}"
-                                      if element.is_trial else ""))
-        with _user_error_as_prep():
-            with _calling("spec_for", engine=task.engine,
-                          where=script, log=log):
-                spec = seam.spec_for(struct, cfg,
-                                     stage_token=(token or None),
-                                     calculation=task.calculation)
-            _sc.prepare_deck(spec, struct, cfg, _jdir / script, log=log)
-        if seam.sibling_artifacts is not None:
-            with _calling("sibling_artifacts", engine=task.engine,
-                          where=script, log=log):
-                seam.sibling_artifacts(struct, cfg, _jdir / script)
-        with _calling("label_of", engine=task.engine, log=log):
-            _label = seam.label_of(cfg)
-        _seed_trajectory_log(struct, cfg, _jdir, engine=task.engine,
-                             label=_label, token=(token or None))
-        if log is not None:
-            log.step("what this deck's text PROMISES, kept")
-            log.produced("sibling_artifacts",
-                         "written" if seam.sibling_artifacts is not None
-                         else "nothing (W5)")
-            log.produced("trajectory log",
-                         "seeded" if getattr(cfg, "write_molwatch_log", False)
-                         else "not asked for")
-        jobs.append(_job_for(element, script, task, pset.stage, seam,
-                             base, log=log))
+    # ONE line per unique finding, however many trials repeat it (user,
+    # 2026-08-28, O5).  The gate still FIRES per deck -- every trial is
+    # validated and its own <deck>.validation.txt carries its findings --
+    # but sixteen identical thin-vacuum warnings on one terminal is
+    # noise wearing a safety vest.  Scoped to THIS loop (not a module
+    # global) so a long-lived server process cannot quietly swallow a
+    # later prep's warnings.
+    import io as _io
+    import sys as _sys
+
+    class _OncePerLine(_io.TextIOBase):
+        def __init__(self, wrapped):
+            self._w, self._seen, self.dropped = wrapped, set(), 0
+
+        def write(self, text):
+            for line in text.splitlines(keepends=True):
+                key = line.strip()
+                if key and (key.startswith("warn") or key.startswith("info")):
+                    if key in self._seen:
+                        self.dropped += 1
+                        continue
+                    self._seen.add(key)
+                self._w.write(line)
+            return len(text)
+
+        def flush(self):
+            self._w.flush()
+
+    _once = _OncePerLine(_sys.stderr)
+    _real_stderr, _sys.stderr = _sys.stderr, _once
+    try:
+        for element in pset:
+            stem = f"{element.label}_{token}" if token else element.label
+            script = f"{stem}{seam.suffix}"
+            # WHERE THIS ELEMENT'S FILES GO -- its own directory, never the
+            # bundle root (user, 2026-08-24; `project-layout.md` § 1.0 always
+            # said it: "only rendered files and copies go down to where the
+            # engine runs").  What stood here rendered every deck, wrapper,
+            # validation report and molwatch log AT THE ROOT and symlinked
+            # them down -- 50 files at the root of a ten-trial sweep, the
+            # hierarchy inverted into a veneer of links.  The directory is the
+            # same one `job_dir_names` will answer for this job, computed from
+            # the same two facts (token + trial-ness), so the deck is born
+            # where the launch will look for it.
+            if element.is_trial:
+                # ONE RULE, asked -- not composed again from the same two
+                # facts.  `materialize.trial_dir` is what `job_dir_names`
+                # itself uses, so the deck is born where the launch looks by
+                # CONSTRUCTION rather than by a comment promising it.
+                #
+                # The dir is named by the JOB's name -- the sweep coordinate,
+                # `_job_for`'s own first rule -- never by the element's
+                # RELABELLED SystemLabel (`<calc-label>-<coord>`): the two
+                # differ by the calculation prefix, and using the label here
+                # wrote decks into `bench-JOB-G1K1C1/` while every reader
+                # asked `job_dir_names` and looked in `bench-G1K1C1/`.
+                from ..resolve import point_token as _pt
+                _jdir = trial_work_dir(
+                    base / trial_dir(_shape, token, _pt(element.point)), _shape)
+            else:
+                _sd = _shape.stage_dir(token) if token else "."
+                _jdir = base if _sd == "." else base / _sd
+            _jdir.mkdir(parents=True, exist_ok=True)
+            # The deck is rendered from values ⊕ THIS element's allocation, so it
+            # records the rank count it actually assumed.  Rendering from the
+            # values alone emits `mpi_np auto` and the launch check then refuses a
+            # deck that `prep` itself just made -- which is how this was found.
+            # The stage's artifact TOKEN reaches the emitter here, as a RENDER
+            # ARGUMENT (C7).  It feeds three names -- the deck, the engine's own
+            # log, and the molwatch log -- and leaving it unset made two rungs of
+            # one calculation write to a single `<label>.molwatch.log`.  `prep`
+            # holds the StageRef, so `prep` says the word; no config field carries
+            # it, for either engine (`stages.md` § 1.1).
+            cfg = element.render_config()
+            if element.is_trial:
+                # The deck's OWN identity line carries the trial label -- this,
+                # not the filename, is what keys SIESTA's warm files away from
+                # the real run's (project-layout.md § 2.3.2).
+                with _calling("relabel", engine=task.engine,
+                              where=element.label, log=log):
+                    cfg = seam.relabel(cfg, element.label)
+                # The forced cold has ONE setter -- the measurement pin
+                # (`_MEASUREMENT_PINS`, resolved with provenance "pin") --
+                # and ONE verifier, the submission door
+                # (`agreement.check_trial_starts_cold`; user-settled
+                # 2026-08-21: prep bakes the intent, submission determines
+                # the actual state).  A hard replace stood here as a second,
+                # provenance-invisible setter until then (Q6a).
+            # The stage's artifact token is a RENDER ARGUMENT (C7, 2026-08-12):
+            # `prep` holds the StageRef, so `prep` says it, per call -- the
+            # config field that used to carry it is gone, and the emitter never
+            # learns the word (engines/stages.md § 1.1).
+            # The render's refusals (missing pseudos above all) are user-fixable
+            # and translate to PrepError -- see _user_error_as_prep
+            # (2026-08-12 plan A8).
+            # STEP 3, WHOLE, IN ONE CALL: validate the settings, render the deck,
+            # write it through the one writer (which keeps the reader's USER-CUSTOM
+            # block), then read the file back and refuse one that does not say what
+            # it was meant to say.  The conductor says WHEN; the framework owns the
+            # order (`script-preparation.md` § 4.3).
+            if log is not None:
+                log.phase(f"STEP 3 · DECK — {script}")
+                log.received("config", f"{type(cfg).__name__}"
+                                       + (f", stage_token={token}" if token else "")
+                                       + (f", trial {element.label}"
+                                          if element.is_trial else ""))
+            with _user_error_as_prep():
+                with _calling("spec_for", engine=task.engine,
+                              where=script, log=log):
+                    spec = seam.spec_for(struct, cfg,
+                                         stage_token=(token or None),
+                                         calculation=task.calculation)
+                _sc.prepare_deck(spec, struct, cfg, _jdir / script, log=log)
+            if seam.sibling_artifacts is not None:
+                with _calling("sibling_artifacts", engine=task.engine,
+                              where=script, log=log):
+                    seam.sibling_artifacts(struct, cfg, _jdir / script)
+            with _calling("label_of", engine=task.engine, log=log):
+                _label = seam.label_of(cfg)
+            _seed_trajectory_log(struct, cfg, _jdir, engine=task.engine,
+                                 label=_label, token=(token or None))
+            if log is not None:
+                log.step("what this deck's text PROMISES, kept")
+                log.produced("sibling_artifacts",
+                             "written" if seam.sibling_artifacts is not None
+                             else "nothing (W5)")
+                log.produced("trajectory log",
+                             "seeded" if getattr(cfg, "write_molwatch_log", False)
+                             else "not asked for")
+            jobs.append(_job_for(element, script, task, pset.stage, seam,
+                                 base, log=log))
+    finally:
+        _sys.stderr = _real_stderr
+    if _once.dropped:
+        print(f"  (each warning shown once; {_once.dropped} repeat(s) "
+              f"across the other trials suppressed -- every trial's own "
+              f".validation.txt carries its full findings)",
+              file=_sys.stderr)
 
     # ---- 4 + 5, and the record floor 3 leaves behind -------------------- #
     # ``kind`` is INTENT, not length (review 2026-08-12: a one-point grid is

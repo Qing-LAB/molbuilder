@@ -1831,7 +1831,10 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         where = f" for stage {stage!r}" if stage else ""
         click.echo(f"prepped {len(dirs)} trial dir(s){where} under {base}:")
         for d in dirs:
-            click.echo(f"  {d.name}")
+            # the path from the bundle, not the bare attempt name -- with
+            # the attempt layer every trial's dir ENDS in run-<n>, and a
+            # list reading "run-0, run-0" names nobody (user, 2026-08-28)
+            click.echo(f"  {_rel(d)}")
         # The REAL grammar (E-J2, 2026-08-21 review): `launch bench
         # <stage>` -- typed with a trial name, the trial binds as the
         # STAGE and is refused; and the shipped submission is the
@@ -2397,7 +2400,10 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             return
         asked_cmd = next((r.command for r in results if r.command), None)
         click.echo("")
-        if asked_cmd:
+        # "nothing to wait for" followed by an sbatch preview reads as a
+        # contradiction (user, 2026-08-28): on a scheduler-less machine
+        # nothing WOULD be sent, so nothing is previewed.
+        if asked_cmd and not all(p.no_scheduler for p in preds):
             click.echo("  would send: " + " ".join(asked_cmd))
         # DO NOT SAY "--mode submit" WHEN THERE IS NOTHING TO SUBMIT TO.
         # The table has just said there is no scheduler here; following it

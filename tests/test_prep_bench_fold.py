@@ -2287,3 +2287,36 @@ def test_both_doors_onto_a_sweep_report_the_SAME_verdict(calc):
         f"written-only={set(written['choice']) - set(viewed)}, "
         f"view-only={set(viewed) - set(written['choice'])}")
     assert viewed["mechanism"] == written["choice"]["mechanism"]
+
+
+def test_the_terminal_says_each_warning_once_across_a_sweep(calc, capsys):
+    """O5 (user yes, 2026-08-28): the science gate FIRES per trial — every
+    trial's own `.validation.txt` carries its findings — but the terminal
+    said the same three lines once per trial, sixteen times at 16 trials.
+    One line per unique finding now, with the suppression said out loud."""
+    _prep_bench(calc)
+    err = capsys.readouterr().err
+    warn_lines = [l.strip() for l in err.splitlines()
+                  if l.strip().startswith(("warn", "info"))]
+    assert warn_lines, ("the bench pins (SCF capped, steps zeroed) must "
+                        "produce warnings, or this test tests nothing")
+    assert len(warn_lines) == len(set(warn_lines)), (
+        f"the same finding printed more than once:\n" +
+        "\n".join(l for l in warn_lines if warn_lines.count(l) > 1))
+    assert "each warning shown once" in err, (
+        "suppression must be SAID, not silent")
+
+
+def test_the_prepped_trial_list_names_whose_attempt_each_is():
+    """O5 (user yes, 2026-08-28): with the attempt layer every trial dir
+    ends in run-<n>, so a listing of bare names read `run-0, run-0` and
+    named nobody.  Guarded at the source like the ask-preview guard,
+    because the echo lives in the CLI."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1]
+           / "molbuilder/jobset/_cli.py").read_text()
+    i = src.index("prepped {len(dirs)} trial dir(s)")
+    tail = src[i:i + 400]
+    assert "_rel(d)" in tail and "{d.name}" not in tail, (
+        "the trial listing must print the path from the bundle, not the "
+        "bare attempt name")
