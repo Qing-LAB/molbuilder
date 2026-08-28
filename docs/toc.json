@@ -269,6 +269,9 @@
       "meta": "Installing and serving: env model, deployment, auth, rate-limit",
       "children": [
         {
+          "path": "ops/getting-started.md"
+        },
+        {
           "path": "ops/installation.md"
         },
         {
