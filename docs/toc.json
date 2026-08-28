@@ -248,6 +248,9 @@
           "path": "plans/bench-and-junction-plan.md"
         },
         {
+          "path": "plans/machine-identity-plan.md"
+        },
+        {
           "path": "web/modify-persistency-investigation.md"
         },
         {

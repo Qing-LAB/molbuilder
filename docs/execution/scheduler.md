@@ -282,6 +282,24 @@ better knowledge without being re-checked.
 stops at "no" leaves the user guessing at the number we are already holding.
 R4 says name the numbers; this says name the way out.
 
+**R13 — What the hardware can do and what policy lets you ask for are two
+ceilings. Both are read; the smaller governs.** Added 2026-08-27. `max_cores`
+is derived from `node_types` — the **widest machine** (R3's corollary) — and
+that is a fact about silicon. A scheduler also *declares* per-job caps that no
+amount of hardware overrides: a QOS `MaxTRESPerJob=cpu=N`, a partition's
+`MaxCPUsPerNode`. **A hardware ceiling cannot stand in for a policy one**, and
+R3 then reads the missing policy limit as permission.
+
+> **The record measured the first and never asked for the second**, which is
+> how `lightwork` came to carry `max_cores: 128` beside a long-standing note
+> that it *"caps at 8 cores"*, with nothing able to say whether both were true.
+> Both numbers sit in output the probe already runs: the QOS cap in
+> `sacctmgr show qos` (fetched with `format=Name,MaxWall,Flags` — `MaxTRES` was
+> never asked for) and `MaxCPUsPerNode` in `scontrol show partition` (parsed
+> for `DefMemPerCPU` alone). **A field you did not request is not an absence
+> the record may report as silence** — R3's *unstated limit never bars* is
+> about what the scheduler does not say, never about what we did not ask.
+
 **R11 — Comparability is a property of the MACHINE, never of the domain.**
 Added 2026-08-27, and it is R0 applied to measurement. A domain is a queue
 holding many machines, so *"were these two runs on comparable hardware?"* has
@@ -289,7 +307,30 @@ no answer at the domain level: on Sol, `public` alone spans 48–128 cores and
 three device types, and `htc` spans fourteen node groups. **A domain-level node
 type is an opinion about a mixture** — which is why the scalar `node_type` is
 retired here rather than repaired. What a measurement may be compared with, or
-carried to, is decided by the node it actually ran on.
+carried to, is decided by the **kind of node** it actually ran on.
+
+> **The kind, not the box, and not the allocation.** Both confusions are easy
+> to make and each one silently ruins the rule:
+>
+> | | comparability | provenance |
+> |---|---|---|
+> | **the node's KIND** — its physical core count, memory, device model | **this decides it** | |
+> | **the node's NAME** — `sol-g042` | never | which box, for tracing a bad one |
+>
+> * **Not the name.** SLURM spreads an array over whatever is free, so two
+>   trials of one sweep almost always run on different boxes. Comparing names
+>   would report *"different machines"* for every sweep ever run, which is a
+>   warning that means nothing.
+> * **Not the allocation.** The node's size is `os.cpu_count()`; what this job
+>   was given is the affinity mask, and `monitor._alloc_cores` deliberately
+>   answers the second (§ 2.12 — a run reports how well it used *what it was
+>   given*). Reading the allocation as the machine would make a **rank-scaling
+>   sweep** — 48 against 64 against 128 — report a different machine per trial,
+>   breaking precisely the sweep this rule exists to serve.
+>
+> **Two nodes of the same kind are the same machine here.** That is what makes
+> the comparison useful: it fires when a GPU node is compared against a
+> standard one, and stays quiet when six trials land on six identical boxes.
 
 > **This retired a check that had never fired.** `submission.md` S3 refuses to
 > carry a benchmark across a node-type boundary, and it read the domain's

@@ -234,6 +234,13 @@ its premise in `scheduler.md` **R11** (comparability is a machine property) and
 **R12** (sent-to vs landed-on, two writers). What follows is the reasoning that
 produced it, kept because the plan is where the argument lives.
 
+> **The code work is
+> [`machine-identity-plan.md`](?doc=plans/machine-identity-plan.md)** — seven
+> pieces, spanning the monitor, `summarize`, the transfer refusal, admission
+> and the probe. It is a separate page because the fact serves more than
+> benchmarking: admission (R3's second half) and policy ceilings (R13) read it
+> too.
+
 **Its position in § 5's order was wrong, and the review that consolidated the
 contract is what showed it.** This sat twelfth as a refinement. It is R11's
 *premise*: `submission.md` S3 refuses to carry a benchmark across a machine
@@ -1029,9 +1036,19 @@ today's findings turned out to be one metric measuring the wrong thing.
     the choice informed. One feature.
 11. **§ 2.6** — the declared memory limit, then OOM detection off the wrapper
     log. Mostly delivered by § 2.12's `memory.max`.
-12. **§ 2.8** — record each trial's hardware; let a benchmark state what it
-    needs. § 3 B and the shrunken D fold in here; A is retired by § 2.6, C by
-    § 2.13.
+12. ~~**§ 2.8** — record each trial's hardware.~~ **Re-ordered 2026-08-27 and
+    moved out.** It sat last as a refinement; consolidating the contract showed
+    it is the *premise* of a refusal that had never fired, so it now leads its
+    own page — [`machine-identity-plan.md`](?doc=plans/machine-identity-plan.md).
+    § 3 B and the shrunken D fold in there; A is retired by § 2.6, C by § 2.13.
+
+> **Why the order was wrong, stated once so the shape is recognisable.** § 2.8
+> read as *"nice to have: say which node each trial used"* — an addition to a
+> working system. It was the missing half of `submission.md` S3, which refuses
+> to carry a measurement across a machine boundary and had been reading a field
+> nothing writes. **A piece of work that looks like a refinement, and is
+> actually a premise, is invisible in a list ordered by apparent size** — which
+> is what a contract review catches and a work list cannot.
 
 ---
 

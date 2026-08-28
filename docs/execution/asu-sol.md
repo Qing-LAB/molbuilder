@@ -177,9 +177,18 @@ has the monitor record it on the node rather than inferring it from the queue.
 >   such a cap exists our `max_cores: 128` is wrong for admission** — R2 would
 >   admit a 128-core job that the scheduler then refuses.
 >
-> **This needs a person on Sol** (`scontrol show partition lightwork`, or the
-> QOS table) rather than another reading of the record. Recorded here rather
-> than quietly resolved in whichever direction was convenient.
+> **And this is a PROBE gap, not a question for a person** *(user, 2026-08-27:
+> "why do I need to separately get info on lightwork? your jobset probe did not
+> do its job?" — correct)*. Both numbers are in output the probe **already
+> fetches and discards**:
+>
+> | where the cap lives | what the probe runs today | what it keeps |
+> |---|---|---|
+> | QOS `MaxTRESPerJob` (`cpu=N`) | `sacctmgr -nP show qos format=Name,MaxWall,Flags` | Name, MaxWall — **`MaxTRES` is not even in the format list** |
+> | partition `MaxCPUsPerNode` | `scontrol show partition` | `DefMemPerCPU` only |
+>
+> So the answer is one field in each, not a trip to the login node. Tracked as
+> **P7** in the bench plan.
 >
 > Kept rather than deleted because the second is the recurring one: this page's
 > job is to hold **measured** site facts, and a figure that arrives by memory
