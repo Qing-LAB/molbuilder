@@ -48,8 +48,22 @@ decides, and the plan says so before anything submits. Hitting a limit is a
 result; inventing one is not.
 
 **S3 — A measurement is not portable.** Numbers taken on one kind of node do
-not describe another. Applying a benchmark across a `node_type` boundary is
+not describe another. Applying a benchmark across a **machine** boundary is
 refused, not warned about.
+
+> **The boundary is the machine, not the queue** (`scheduler.md` **R11**,
+> 2026-08-27). This rule read `node_type` — a scalar on the domain — until the
+> probe showed a domain holds 1–14 machine types and never wrote the field at
+> all, so the refusal had never once fired. The comparison it makes is now
+> against what a trial *landed on* (R12), which is a fact rather than a
+> description of a mixture.
+>
+> **And this is a refusal only because nobody is looking.** Carrying a verdict
+> into `prep run` applies a number automatically. **Presenting two measurements
+> side by side is not the same act** — there the person is reading the table and
+> can weigh it, so the bench summary *states* the machines and never withholds
+> the comparison (`generator.md` § 4.4b). Same fact, two stances, and the
+> difference is whether a human is in the loop at that moment.
 
 **S4 — Nothing is submitted unseen.** The full request, before the
 irreversible step. `--yes` is how a person says *I have decided to trust
@@ -165,8 +179,12 @@ the hardware:
 * **memory per node and per core** — measured, so *"you asked 900 GB, the
   largest queue here holds 503"* arrives while changing the number is free,
   rather than as a scheduler rejection after a day in the queue;
-* **`node_type`** — so a measurement taken elsewhere is refused rather than
-  silently applied (S3);
+* **`node_types`** — so a measurement taken elsewhere is refused rather than
+  silently applied (S3). *Corrected 2026-08-27: this said `node_type`, the
+  scalar, and claimed below that the check was wired. It was wired to a field
+  the probe never wrote, so it read `None` and returned in silence — see
+  `scheduler.md` R11. The machine now comes from where the trial ran (R12),
+  not from the domain's description of itself;*
 * **queue ceilings** — so the listing can mark what fits and say why the rest
   does not. *They no longer pick a queue for you* (S5); the ordering machinery
   that once did survives only where a queue is named for a machine rather than
@@ -176,3 +194,12 @@ All four of those fields were declared on the record and read by nothing. That
 is now fixed, and it is worth stating as a pattern rather than as four
 incidents: **a field the record carries and no code reads is a check somebody
 designed and nobody wired.**
+
+> **The pattern has a mirror image, and `node_type` was it** *(2026-08-27)*.
+> Wiring the reader is only half: this document claimed the check was fixed
+> because code now read the field, and nothing checked that anything *wrote* it.
+> The probe never did — nine domains, `node_type: null` — so S3 read `None` and
+> returned in silence for four days. **A check is wired when both ends are, and
+> the honest test is to look at a real record and see a value there.** The
+> re-derivation that would have caught it is R0's: nothing could write a scalar
+> machine type for a queue that holds fourteen.

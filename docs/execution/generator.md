@@ -515,23 +515,72 @@ this work**, and the existing split is already the right one:
 | **`choice`** | the **mechanism** — which engine build, ranks per GPU, block size | **yes, unchanged** — provided the node type is comparable |
 | **`recommend`** | **sizing measured on that machine** — memory from peak + 15%, walltime from seconds-per-iteration × assumed iterations | **no.** It is a measurement of a specific node, and it is labelled as a starting point for exactly this reason |
 
-> **⭐ And on ASU Sol the condition is checkable, which is the proof this design
-> is not abstract.** `public`, `general` and `htc` draw from **uniformly AMD EPYC**
-> nodes, so a benchmark on `htc` (4 h, fast queue) and a run on `public` (7 days)
-> are the same silicon and `choice` carries. Where it breaks is visible in the
-> same table: a **GPU node has 48 cores against a standard node's 128**, so a
-> GPU-measured choice does not carry to a CPU run. **The comparison is by node
-> type, not partition name** — [`asu-sol.md`](?doc=execution/asu-sol.md) § 5.2.
+> **⭐ The condition is checkable — but only against the MACHINE, and a queue
+> cannot answer for it** *(rewritten 2026-08-27)*. `choice` carries *"provided
+> the node type is comparable"*, and `scheduler.md` **R0** says a partition is a
+> queue drawing from many machines: Sol's `htc` holds fourteen, `public` four.
+> So *"measured on `htc`, run on `public`"* does not decide anything — either
+> side could be a 48-core A100 node or a 128-core node with no device.
 >
-> **This is what makes decision 38 load-bearing, and for a second reason.** Knowing
-> each cluster's hardware is not only *"does my allocation fit?"* — it is
-> **"are these two domains comparable enough for `choice` to carry, and by what
-> factor does `recommend` scale?"** Without per-domain hardware in config, a
-> result measured on the short queue is applied to the long queue on trust.
+> **What decides it is where the trial actually ran** — `scheduler.md` **R11**,
+> with **R12** naming the two writers: `run.json` records the queue it was
+> *sent* to when `sbatch` accepts, and the monitor records the machine it
+> *landed on* once the job starts, because that is the first moment a node
+> exists to name.
 >
-> **Until that lands, the honest behaviour is to say where a result came from**,
-> not to silently transfer it. `BenchResult` already carries `environment` and
-> `system`, so the provenance exists; what is missing is the comparison.
+> **This paragraph claimed the opposite until 2026-08-27**, starring
+> `asu-sol.md` § 5.2's *"uniformly AMD EPYC … the same silicon"* as proof the
+> design was not abstract. The vendor is uniform; the hardware is not — core
+> counts run 48–128 inside one queue. The correction is recorded there rather
+> than repeated here.
+>
+> **And the sentence that ended this box was half true in a way worth naming.**
+> It said *"the provenance exists; what is missing is the comparison"*. The
+> comparison had in fact been built (`submission.md` S3, refusing a verdict
+> measured elsewhere) — and it read a field the probe never wrote, so it never
+> fired. **Two documents each describing the half they knew is how a check
+> stayed dead for four days**, which is the argument for this fact having one
+> owner in `scheduler.md` and every other page pointing at it.
+
+#### 4.4b A sweep records what each trial ran on, and shows it
+
+*Moved out of the bench plan's § 2.8 and into the contract, 2026-08-27, because
+it turned out to be R11's premise rather than a later refinement.*
+
+**A benchmark compares trials. So what each trial ran on is part of the
+measurement, not metadata about it** — and on a queue holding many machines
+(R0) two trials of one sweep can land on different hardware without anyone
+choosing that.
+
+**The rule is record-and-present, and it stops there:**
+
+| | |
+|---|---|
+| **record** | every trial carries the machine it ran on (R12) |
+| **present** | the summary shows it per trial, and says plainly when trials in one sweep differ |
+| **never** | rank, discount, annotate or refuse on that basis |
+
+> **The system does not judge the comparison** *(user, 2026-08-27: "speed
+> comparison is speed comparison, don't overstep — you are not the analyzer, you
+> present the data")*. A sweep spanning two machines may be exactly the intended
+> experiment; whether a ratio across them answers the question being asked is
+> the reader's call, and the framework's whole contribution is making sure the
+> reader is not guessing at which machines they were. This is § 4.1's principle
+> — *`summarize` writes a recommendation, not a decision* — applied one level
+> down, to the facts the recommendation rests on.
+
+**One consequence, stated so nobody re-derives it.** R0 records that a queue
+*"offers A100s and it offers 128-core nodes, but never both at once"*. So a
+sweep with a GPU axis — `gpu=0` against `gpu=1` — lands its two sides on
+**different machines by construction**, and no domain choice avoids it. That is
+a fact about the hardware. It is not a defect in the sweep, and it changes
+nothing about the rule above: the trials record what they ran on, the summary
+shows it, and the comparison is read by the person who asked for it.
+
+**Where a `choice` is carried into another prep, `submission.md` S3 still
+refuses** rather than reports — not a different principle, a different moment.
+Carrying applies a number with nobody looking; a summary is read by someone who
+can weigh it.
 
 
 ## 5. `ParameterSet` — the object that makes `kind` a value

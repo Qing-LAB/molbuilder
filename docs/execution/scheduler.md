@@ -216,6 +216,21 @@ partially-probed cluster unusable.
 > compared both as one number. The floor reading refused a declared 64-rank
 > CPU trial on a partition whose CPU nodes have 128 cores. Fixed 2026-08-27 by
 > R0: keep the machines, and derive the ceiling from them.
+>
+> **And the corollary has a second half, found the same day by taking its own
+> argument one step further.** *"SLURM will not place a job on a node too
+> small"* is exactly as true of **devices**: a job asking for an A100 can only
+> land on a node that has one. So the honest ceiling is the widest machine
+> **among those offering what was asked for**, not the widest overall.
+>
+> On Sol's `public` those differ sharply — 128 cores across its 107 standard
+> nodes, **48** across the 52 carrying A100s. A 64-rank GPU trial is admitted
+> against the 128 and is then unplaceable, which R0 predicted in words —
+> *"`htc` offers A100s and it offers 128-core nodes, but never both at once"* —
+> while admission went on asking the queue for one figure. **A benchmark's GPU
+> side is where this bites first**, because a sweep's rank axis is normally
+> sized against the CPU side. Contract fixed 2026-08-27; `_widest_node` still
+> reads the unfiltered widest.
 
 **R4 — A refusal names the numbers.** *"needs 38 min but debug allows
 00:15:00"*, not *"does not fit"*. We hold the record; sending a user to read
@@ -267,6 +282,38 @@ better knowledge without being re-checked.
 stops at "no" leaves the user guessing at the number we are already holding.
 R4 says name the numbers; this says name the way out.
 
+**R11 — Comparability is a property of the MACHINE, never of the domain.**
+Added 2026-08-27, and it is R0 applied to measurement. A domain is a queue
+holding many machines, so *"were these two runs on comparable hardware?"* has
+no answer at the domain level: on Sol, `public` alone spans 48–128 cores and
+three device types, and `htc` spans fourteen node groups. **A domain-level node
+type is an opinion about a mixture** — which is why the scalar `node_type` is
+retired here rather than repaired. What a measurement may be compared with, or
+carried to, is decided by the node it actually ran on.
+
+> **This retired a check that had never fired.** `submission.md` S3 refuses to
+> carry a benchmark across a node-type boundary, and it read the domain's
+> declared `node_type`. The probe never wrote that field: all nine Sol domains
+> record `node_type: null` and 1–14 `node_types`. So the refusal returned early,
+> in silence, on the only cluster we use. `submission.md` § 4 names the pattern
+> *"a field the record carries and no code reads"*; this was its mirror — code
+> reading a field nothing writes — and a scalar over a mixture is why nothing
+> could honestly write it.
+
+**R12 — Where it was SENT and what it LANDED ON are two facts, recorded by two
+writers.** They are known at different moments, which is what forces the split
+rather than any preference:
+
+| fact | known when | written by | into |
+|---|---|---|---|
+| **sent to** — domain, partition, qos | `sbatch` is accepted | `submit` | the attempt's `run.json` |
+| **landed on** — node name, cores, devices | the job starts running | the **monitor**, on the compute node | the run's `[UTIL-BASIS]` line |
+
+A queued job has no node yet, so `run.json` cannot carry one; the monitor is
+already running where the answer is, and `[UTIL-BASIS]` already exists to say
+what a measurement is a fraction *of* (§ 2.12 of the bench plan) — the machine
+is the rest of that same sentence.
+
 ---
 
 ## 4. The vocabulary
@@ -277,8 +324,16 @@ R4 says name the numbers; this says name the way out.
 - **Domain** — one reachable `(partition, qos)` pair and what it allows:
   `max_time`, `max_cores`, `max_mem_gb`, `gpu`. *A fact, never a preference —
   it says "you may submit here, for this long", never "submit here".*
-  `node_type` describes the hardware and constrains nothing. `extra` holds
+  `node_types` describes the machines it draws from — every distinct one, with
+  its count, cores, memory and devices (R0). It constrains no *admission*;
+  `max_cores` is the widest of them and does that job (R3's corollary). What it
+  is for is R11: it is the only place a machine can be named. `extra` holds
   columns this reader does not interpret (R2).
+
+  > **The scalar `node_type` was retired 2026-08-27** and is not read anywhere.
+  > It said a queue had one machine type, which R0 measured to be false; a
+  > cluster that genuinely is uniform declares one entry in `node_types` and
+  > needs no second spelling of it.
 - **Device** — one kind of accelerator the nodes of a domain offer: a type, a
   per-node count, and a memory size when the record states one. The
   **interpreted** form of the `gpu` column, and the only form any caller sees.

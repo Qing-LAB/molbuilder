@@ -227,7 +227,29 @@ not a running calculation, the refresh control already exists, and the user
 knows when there is more to see. Removing the timer also retires the cost of
 re-reading every trial's `.out` in full on each tick.
 
-### 2.8 A sweep must hold hardware constant — decided 2026-08-26
+### 2.8 A sweep records what it ran on — CONTRACT SETTLED 2026-08-27
+
+**The rule moved to [`generator.md`](?doc=execution/generator.md) § 4.4b**, with
+its premise in `scheduler.md` **R11** (comparability is a machine property) and
+**R12** (sent-to vs landed-on, two writers). What follows is the reasoning that
+produced it, kept because the plan is where the argument lives.
+
+**Its position in § 5's order was wrong, and the review that consolidated the
+contract is what showed it.** This sat twelfth as a refinement. It is R11's
+*premise*: `submission.md` S3 refuses to carry a benchmark across a machine
+boundary, and it read a scalar `node_type` that the probe never wrote — nine
+Sol domains, all `null` — so the refusal returned in silence and had never once
+fired. Nothing downstream of "which machine" can be right until a trial records
+one.
+
+**And the title changed.** *"A sweep must hold hardware constant"* asks for
+something R0 makes impossible: a queue never offers a device and its widest CPU
+node at once, so a `gpu=0`/`gpu=1` sweep spans two machines by construction. The
+contract records and presents; it does not judge the comparison *(user,
+2026-08-27: "speed comparison is speed comparison, don't overstep — you are not
+the analyzer, you present the data")*.
+
+#### The reasoning, as it stood 2026-08-26
 
 **Not partition pinning.** Running the benchmark on a shorter-queue partition is
 deliberate and correct: you want it scheduled in minutes, not after a day, and

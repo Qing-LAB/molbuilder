@@ -82,6 +82,28 @@ it is only visible if both are printed.
 > satisfied by naming the *reader*, and was never satisfied by naming an
 > endpoint that could only hold one answer at a time.
 
+**B5 — when trials ran on different machines, the page says so and stops
+there.** *(2026-08-27, with `generator.md` § 4.4b.)* A partition is a queue
+holding many machines (`scheduler.md` R0), so a sweep can span hardware without
+anyone choosing that — and a GPU axis spans it *by construction*, since no
+queue offers a device and its widest CPU node at once.
+
+**What the page does about it is: show it.** Each card names its machine, and
+where they differ the header says which machines are in play instead of
+implying one. That is the whole of the rule.
+
+> **It does not rank, discount, annotate or refuse** — *"speed comparison is
+> speed comparison; you are not the analyzer, you present the data"* (user,
+> 2026-08-27). Two machines may be exactly the comparison that was wanted. The
+> page's contribution is that the reader knows which two; what the ratio means
+> is theirs to decide — B1's *composes, never recomputes*, applied to a
+> judgement instead of an arithmetic.
+>
+> **The header's one-line summary is the concrete case.** It reads *"444 atoms ·
+> siesta · 128 cores · slurm"* — one core figure for the whole sweep, which is
+> the sweep's **allocation**, not any trial's machine. Where trials disagree,
+> one number there would be picking a winner silently.
+
 ---
 
 ## 3. What you see
@@ -152,6 +174,7 @@ Underneath, in the order a person reads them:
 | line | from | why it is there |
 |---|---|---|
 | the knobs | `knobs`, `bound` | what it was asked to run |
+| **where it ran** | the machine, via `[UTIL-BASIS]` (`scheduler.md` R12) | *what the other numbers on this card are a measurement of.* A queue holds many machines (R0), so two cards of one sweep can name two — see **B5** |
 | **what it used** | `metrics` — `peak_rss_gb`, `cpu_mean_pct`, `gpu_sm_mean_pct`, `gpu_vram_peak_gb`, `wall_s` | the numbers a RUN script is written from: how much memory to ask for (the peak, not the request), and whether the accelerator paid for itself. **All of these are the JOB's own since 2026-08-26** — read from its cgroup, with `cpu_mean_pct` a fraction of the cores it held. Before that they were the node's, so `peak_rss_gb` included every other job on the machine and a trial using all 48 of its cores on a 128-core node read 32%. Trials recorded earlier are **not comparable** with ones recorded since; the monitor log's `[UTIL-BASIS]` line says which basis a run used |
 | **ran with** | `effective` | the settled truth — the block size SIESTA chose, the ELPA build that answered |
 | asked vs ran | `mismatch` | only the DISAGREEMENTS |

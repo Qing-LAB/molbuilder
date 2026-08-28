@@ -127,23 +127,63 @@ that is not an abstraction:**
 | **the benchmark** | `htc` + `public` (4 h, uninterrupted), or `debug` (15 min) for a quick look | trials are minutes; the 4 h cap is no constraint and the queue is fast |
 | **the real run** | `public` or `general` (7 days), `highmem` for big cells, `long` if granted | the calculation needs the time, and asking for more waits longer |
 
-### 5.2 ⭐ On Sol, a benchmark's `choice` *does* transfer — and here is why
+### 5.2 On Sol, transfer is decided per MACHINE — the partition cannot answer
+
+*Rewritten 2026-08-27 against the probe's own record. What stood here is kept
+below, because how it was wrong is the useful part.*
 
 `generator.md` § 4.4a says `choice` (the mechanism) carries to another cluster
-**"provided the node type is comparable"**, and left that as a condition nobody
-could check. **Sol answers it:**
+**"provided the node type is comparable"**. **A Sol partition cannot tell you
+whether that holds**, because a partition is a queue and draws from many
+machines (`scheduler.md` **R0**). The probe, run 2026-08-27:
 
-> **All nodes in the `public` and `general` partitions are uniformly AMD EPYC**,
-> and `htc` draws from the same pool. So a benchmark measured on `htc` and a run
-> submitted to `public` are **the same silicon** — the ranks-per-GPU and block
-> size you measured are the ones that apply.
+| domain | machine types | cores across them | devices |
+|---|---|---|---|
+| `htc` · `debug` | **14** | 48 · 64 · 96 · 128 | a100 · a100.20gb · a100.40gb · a30 · h100 · h200 · l40 |
+| `general` | **13** | 48 · 64 · 96 · 128 | a100 · a100.40gb · a30 · h100 · h200 · l40 |
+| `public` | **4** | 48 · 128 | a100 · a100.20gb · a30 |
+| `lightwork` | 2 | 48 · 128 | a100.20gb |
+| `highmem` · `gaudi` · `arm` · `fpga` | 1 each | 128 · 152 · 72 · 48 | — · hl225 · gh200 · — |
 
-**The comparison that matters is node type, not partition name**, and the two
-cases where it breaks are visible in § 2:
+**So "measured on `htc`, running on `public`" says nothing about comparability**
+— either side could be a 48-core A100 node or a 128-core node with no device,
+and the two differ by 2.7× in cores. What decides it is the machine each run
+actually landed on, which is `scheduler.md` **R11**, and which is why **R12**
+has the monitor record it on the node rather than inferring it from the queue.
 
-- **GPU (48 cores) vs Standard (128 cores)** — benchmark a GPU node, run on CPU,
-  and the core budget more than doubles. `choice` does not carry.
-- **`lightwork` caps at 8 cores** — nothing measured there describes a real run.
+> **⛔ What this section claimed until 2026-08-27, and why it was wrong.** It
+> said *"all nodes in `public` and `general` are uniformly AMD EPYC … the same
+> silicon"*, and `generator.md` § 4.4a starred it as the proof that
+> transferability is checkable. Two failures, and they are different:
+>
+> * **Uniform vendor is not uniform hardware.** AMD EPYC is true and does not
+>   support the conclusion: core counts inside one queue run 48–128, and the
+>   section's own counter-example — *"a GPU node has 48 cores against a standard
+>   node's 128"* — was already describing two machines **in the same partition**
+>   without noticing.
+> * **A stated figure nobody re-measured** — *"`lightwork` caps at 8 cores"*.
+>   The probe finds **48- and 128-core nodes** there and `max_cores: 128`. It
+>   was used to justify a transferability exception, so the number was doing
+>   real work.
+>
+> **⚠ And that second one is not fully settled, which is worth being exact
+> about.** Two different facts can both be called a cap: the **size of a node**
+> and the **most cores a QOS lets one job ask for**. The probe measures the
+> first and **does not measure the second at all** — `max_cores` is derived as
+> the widest node (R3's corollary), never read from a QOS limit. So:
+>
+> * read as *node size*, the 8 is contradicted — the nodes are 48 and 128;
+> * read as a *request cap*, the probe can neither confirm nor deny it, **and if
+>   such a cap exists our `max_cores: 128` is wrong for admission** — R2 would
+>   admit a 128-core job that the scheduler then refuses.
+>
+> **This needs a person on Sol** (`scontrol show partition lightwork`, or the
+> QOS table) rather than another reading of the record. Recorded here rather
+> than quietly resolved in whichever direction was convenient.
+>
+> Kept rather than deleted because the second is the recurring one: this page's
+> job is to hold **measured** site facts, and a figure that arrives by memory
+> reads exactly like one that arrives by probe.
 
 ### 5.3 Decision 38's shape, now concrete
 
@@ -154,24 +194,28 @@ this page has:
 { "name": "bench",                  // what you type: --domain bench
   "partition": "htc", "qos": "public",
   "max_time": "0-04:00:00",
-  "node_type": "standard",          // ← the transferability key (§ 5.2)
-  "max_cores": 128,
+  "max_cores": 128,                 // ← the WIDEST machine, for admission (R3)
   "max_mem_gb": 512,
   "default_mem_per_core_gb": 2,
-  "gpu": null },
-
-{ "name": "gpu",
-  "partition": "general", "qos": "public",
-  "max_time": "7-00:00:00",
-  "node_type": "gpu-a100",
-  "max_cores": 48,                  // ← NOT 128; a GPU node is smaller
-  "max_mem_gb": 512,
-  "gpu": { "type": "a100", "per_node": 4, "mem_gb": 80 } }
+  "node_types": [                   // ← every machine the queue draws from (R0)
+    { "cores": 128, "nodes": 134, "mem_gb": 503 },
+    { "cores":  48, "nodes":  51, "mem_gb": 503, "gpu": { "a100": 4 } } ] }
 ```
 
-**`node_type` is the field that does the new work.** Everything else bounds an
-allocation; `node_type` is what lets a `bench-result` say whether it may be
-carried from the domain it was measured on to the domain a run will use.
+**`node_types` is the field that does the new work**, and it is a **list**
+because a queue holds a mixture. Everything else bounds an allocation; this is
+the only place a machine can be named, which is what `scheduler.md` R11 needs.
+
+> **This block declared a scalar `node_type: "standard"` until 2026-08-27**, and
+> called it *"the transferability key"*. R0 retired it: a queue that holds 134
+> standard nodes **and** 51 A100 nodes has no one node type, so no honest value
+> existed to write — and the probe, correctly, never wrote one. A cluster that
+> genuinely is uniform declares a single entry above.
+>
+> **The key was never the declaration anyway.** A domain says what a queue could
+> give you; transfer is decided by what a run actually got (R12). Declaring a
+> machine here would only have described the queue more precisely — it could not
+> have said which of its machines your trial landed on.
 
 ---
 

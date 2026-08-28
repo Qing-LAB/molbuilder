@@ -1466,16 +1466,24 @@ can make; *"it will take 38 minutes"* is a prediction the framework is not
 entitled to. **A bound cannot be wrong — it can only be reached, and reaching
 it is a result.**
 
-**The fourth unread field.** `node_type` is declared, serialised and read by
-**nothing** — its only non-record mention in the package is a comment. It is
-what decides whether a benchmark's numbers may be carried to the machine a run
-will use, and it is the only one of the four that guards **scientific
-validity** rather than a resource (S3).
+**The fourth field, and the one that went wrong twice.** What decides whether a
+benchmark's numbers may be carried to the machine a run will use is the only
+one of the four that guards **scientific validity** rather than a resource
+(S3). It was `node_type`, a scalar on the domain — *declared, serialised and
+read by nothing*.
+
+**Wiring the reader did not fix it, and that is the lesson** *(2026-08-27)*. A
+reader was built and the field stayed empty, because the probe could not
+honestly write it: a partition is a queue drawing from many machines
+(`scheduler.md` **R0**), and Sol's `htc` holds fourteen. All nine domains
+recorded `null`, so the refusal returned in silence and never once fired. The
+scalar is retired; the fact now comes from the machine a trial actually ran on
+(**R11**, **R12**), which is knowable only on the compute node.
 
 Phases (contract § 8), smallest first: probe memory-per-core · memory becomes
-derived and shown · `node_type` enforced · the benchmark bound becomes a
-choice · queue order accounts for what is cheap to get · the three-statement
-comparison · the gate.
+derived and shown · **the machine recorded and shown** (R12, `generator.md`
+§ 4.4b) · the benchmark bound becomes a choice · queue order accounts for what
+is cheap to get · the three-statement comparison · the gate.
 
 **6 and 7 make the rest verifiable by the person**, so a mistake in 1–5 costs
 a re-render rather than a queue slot.
