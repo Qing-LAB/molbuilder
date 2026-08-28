@@ -1,6 +1,6 @@
 # Machine identity — migrating the code to R11/R12/R13
 
-**Status: contract settled 2026-08-27, no code moved yet.** The rules are in
+**Status: P1–P3 BUILT 2026-08-27; P4–P7 open.** The rules are in
 [`scheduler.md`](?doc=execution/scheduler.md) **R11**, **R12**, **R13** and R3's
 second half, with the bench half in
 [`generator.md`](?doc=execution/generator.md) § 4.4b and
@@ -80,17 +80,26 @@ P5 comes after P4 because the field cannot be deleted while a reader still
 holds it. P6 and P7 are independent and may be taken at any point.
 
 ```
-P1 record ──► P2 read ──► P3 show
+P1 record ──► P2 read ──► P3 show          ← BUILT 2026-08-27
       └─────► P4 refuse ──► P5 retire the scalar
 P6 admission by device        (independent)
 P7 probe the policy caps      (independent)
 ```
 
+> **Built with the guards § 5 asked for**: `test_machine_identity.py`
+> (T2 by restricting this process's own affinity; model-never-count;
+> first-line placement), `test_machine_in_summary.py` (T1 with Sol's real
+> jittered MemTotal figures; the no-judgement wording; legacy absence),
+> and the census in `test_prep_bench_fold.py`'s sweep-view section.  Every
+> fixture writes a real monitor log and reads it through the real parsers
+> — § 7's acceptance rule — and each guard was mutation-tested (swap the
+> cores source, drop the statement, force the column) before it counted.
+
 ---
 
 ## 4. The pieces
 
-### P1 — the monitor records the machine
+### P1 — the monitor records the machine — BUILT 2026-08-27
 
 **Where:** `molbuilder/monitor.py`.
 
@@ -102,21 +111,27 @@ machinery.
 | fact | source | why this one |
 |---|---|---|
 | node name | `os.uname().nodename` | provenance (T1) |
-| physical cores | `os.cpu_count()` | the node's size, **never** `_alloc_cores()` (T2) |
-| memory | `/proc/meminfo` `MemTotal` | the node's, not the cgroup limit |
-| devices | the existing `nvidia-smi -L` result | model, not count of what we were given |
+| physical cores | `os.cpu_count()` | the node's size — counts *online processors*, which a cgroup does not shrink; **never** `_alloc_cores()`, which reads the affinity mask a scheduler *does* shrink (T2) |
+| memory | `/proc/meminfo` `MemTotal` | the node's own total; the cgroup limit is the allocation's |
+| device **model** | `nvidia-smi -L` | the model survives the job's device filter; the **count does not** — inside a scheduled job `nvidia-smi` lists only the devices the job was granted, so a count would be the allocation's (T2 again, for devices) |
 
-Written beside `[UTIL-BASIS]`, which already answers *what is this a fraction
-of* — the machine is the rest of that same sentence (**R12**).
+**Resolved 2026-08-27 (was open): a separate `[MACHINE]` line, written once at
+monitor start.** Not fields on `[UTIL-BASIS]` — that line is written when the
+job *ends*, so a monitor killed with its allocation would take the machine
+record down with it; the machine is known at start. And one line keeps one
+meaning: `[UTIL-BASIS]` answers *what was this job given*, `[MACHINE]` answers
+*what kind of node was under it* — the two numbers T2 exists to keep apart.
+Recorded in **R12**'s own text.
+
+```
+[2026-08-27T14:02:11] [MACHINE] node=sol-g042 cores=48 mem_gb=503.5 gpu=NVIDIA A100-SXM4-80GB
+[2026-08-27T14:02:11] [MONITOR] start (interval=30s watch_pid=12345) ...
+```
 
 **Verified by:** a run on Sol whose line names an actual node; and a mutation —
 swap `os.cpu_count()` for `_alloc_cores()` and a T2 guard must fail.
 
-**Open:** whether the line is a second `[MACHINE]` tag or extra fields on
-`[UTIL-BASIS]`. Either satisfies R12; the reader in P2 decides which is
-cheaper to parse. *Not decided here.*
-
-### P2 — `summarize` reads it
+### P2 — `summarize` reads it — BUILT 2026-08-27
 
 **Where:** `molbuilder/jobset/summarize.py` — `parse_point`, `BenchPoint`.
 
@@ -128,7 +143,7 @@ comes through the reader that already owns it.
 kinds → the point objects differ; same kind on different hosts → they do
 **not** (T1).
 
-### P3 — the summary shows it
+### P3 — the summary shows it — BUILT 2026-08-27
 
 **Where:** `summarize`'s table, and the bench summary page (**B5**).
 

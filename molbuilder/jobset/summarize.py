@@ -30,8 +30,9 @@ from typing import Dict, List, Optional
 
 from ..bench.result import (
     BenchPoint, BenchResult, build_bench_result, compare_asked_to_ran,
-    mismatch_phrase, parse_effective_run, parse_mpi_ranks, parse_scf_timing,
-    parse_util_bound, parse_util_csv,
+    machine_brief, machine_kind, mismatch_phrase, parse_effective_run,
+    parse_machine, parse_mpi_ranks, parse_scf_timing, parse_util_bound,
+    parse_util_csv,
 )
 
 _RUN_IDX = re.compile(r"-run(\d+)\.")
@@ -144,9 +145,14 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     # one and truncated the other; now every per-run artifact is indexed
     # and every one is read the same way.
     bound = None
+    machine: Dict = {}
     mon = _latest_run_file(d, basename, "monitor.log")
     if mon is not None:
-        bound = parse_util_bound(_read(mon))
+        _mon_text = _read(mon)
+        bound = parse_util_bound(_mon_text)
+        # The same file, read once: the [MACHINE] line is the monitor's
+        # first, the [UTIL-SUMMARY] verdict its last.
+        machine = parse_machine(_mon_text)
 
     # Utilisation NUMBERS come from the raw samples, the verdict from the
     # monitor (parse_util_bound's docstring owns the why).
@@ -218,7 +224,7 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     return BenchPoint(label=label, engine=engine, knobs=knobs,
                       metrics=metrics, bound=bound, state=state,
                       effective=effective, mismatch=mismatch,
-                      point=dict(point or {}))
+                      point=dict(point or {}), machine=machine)
 
 
 
@@ -630,12 +636,18 @@ def _point_table(points: List[BenchPoint]):
     # GPU-less run, and three columns of 0 on a CPU sweep are noise --
     # while a genuine GPU trial showing sm% 0 is exactly worth seeing.
     gpu = any(p.engine == "gpu" or p.knobs.get("gres") for p in points)
+    # The machine column keys off signal the same way: present when any
+    # trial recorded one (`generator.md` § 4.4b -- shown per trial), absent
+    # for records predating the [MACHINE] line rather than a column of --.
+    machined = any(p.machine for p in points)
 
     def _num(v, fmt="{:g}"):
         return fmt.format(v) if isinstance(v, (int, float)) else "--"
 
     cols = [
         ("point", "l", lambda p: p.label or "--"),
+        *([("machine", "l", lambda p: machine_brief(p.machine) or "--")]
+          if machined else []),
         ("np", "r", lambda p: _num(p.knobs.get("mpi_np"))),
         ("thr", "r", lambda p: _num(p.knobs.get("cpus_per_task"))),
         *([("gpu", "l", lambda p: str(p.knobs.get("gres") or "--"))]
@@ -696,6 +708,24 @@ def summary_text(res: BenchResult, out_path: Path, *,
             lines.append(f"    !! ran something other than asked: "
                          f"{mismatch_phrase(p.mismatch)} "
                          f"-- excluded from the choice")
+    # WHICH MACHINES, said plainly when there is more than one kind
+    # (`generator.md` § 4.4b).  A statement, not a warning: a mixed
+    # CPU/GPU sweep spans machines by construction and may be exactly the
+    # intended experiment -- the reader judges the comparison, this line
+    # makes sure they know it is one.  Kinds, not hostnames: six trials
+    # on six identical boxes are ONE machine here (scheduler.md R11).
+    kinds: Dict = {}
+    for p in res.points:
+        k = machine_kind(p.machine)
+        if k is not None:
+            kinds.setdefault(k, []).append(p)
+    if len(kinds) > 1:
+        parts = ", ".join(
+            f"{machine_brief(ps[0].machine)} ({len(ps)} trial"
+            f"{'s' if len(ps) != 1 else ''})"
+            for _, ps in sorted(kinds.items()))
+        lines.append(f"  trials ran on {len(kinds)} kinds of node: {parts}")
+
     # "Every timed trial" must be a claim about the TIMED set (R2-2):
     # `any(p.mismatch)` over ALL points fired this sentence when nothing
     # had been timed at all -- one unfinished point with mismatch data
@@ -868,12 +898,30 @@ def sweep_view(jobset, bundle) -> Dict:
             "metrics":    dict(p.metrics),
             "s_per_iter": p.s_per_iter(),
             "bound":      p.bound,
+            # What kind of node was under the run, and its one short
+            # spelling -- SPELLED HERE, because the page composes nothing
+            # (B1): a second brief-rule in JS would be two spellings of
+            # one node.  "" when the record predates the [MACHINE] line.
+            "machine":       dict(p.machine),
+            "machine_brief": machine_brief(p.machine),
             "artifacts":  p.state,      # what the files say
             "state":      st.state,     # where the RUN is (§ 2's door)
             "detail":     st.detail,
             "dir":        st.dir,
             "attempts":   list(st.attempts),
         })
+
+    # WHICH MACHINES are in play -- the composer's census, one entry per
+    # KIND (scheduler.md R11: six identical boxes are one machine).  The
+    # page states it when there is more than one and never judges it
+    # (`generator.md` § 4.4b, bench-summary.md B5).
+    _kinds: Dict = {}
+    for p in points:
+        k = machine_kind(p.machine)
+        if k is not None:
+            _kinds.setdefault(k, [0, machine_brief(p.machine)])[0] += 1
+    machines = [{"brief": brief, "trials": n}
+                for _, (n, brief) in sorted(_kinds.items())]
 
     return {
         "name":         status.name,
@@ -887,6 +935,7 @@ def sweep_view(jobset, bundle) -> Dict:
         # timed, or every timed trial ran something other than its label".
         "choice":       res.choice,
         "varied":       swept_coordinates(points),
+        "machines":     machines,
         "trials":       trials,
         "n_trials":     len(trials),
         "n_done":       sum(1 for s in status.stages if s.state == "finished"),

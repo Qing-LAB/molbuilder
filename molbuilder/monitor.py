@@ -466,13 +466,90 @@ _GPU_QUERY = ["nvidia-smi",
               "--format=csv,noheader,nounits"]
 
 
-def _gpu_present() -> bool:
+def _gpu_models() -> List[str]:
+    """The distinct device models this job can see, via ``nvidia-smi -L``.
+
+    ``nvidia-smi -L`` prints one line per visible device::
+
+        GPU 0: NVIDIA A100-SXM4-80GB (UUID: GPU-8f...)
+
+    and the model is the text between the index and the UUID.  Distinct
+    models only, first-seen order: the **count** is deliberately not
+    reported anywhere, because inside a scheduled job the device cgroup
+    shows only what the job was granted -- a count would be the
+    allocation's, not the node's (`scheduler.md` R12).  Empty list when no
+    device is visible or the tool is absent, which are the same honest
+    answer: this run could not touch one.
+    """
     try:
         r = subprocess.run(["nvidia-smi", "-L"], capture_output=True,
-                           timeout=5)
-        return r.returncode == 0 and b"GPU " in r.stdout
+                           text=True, timeout=5)
+        if r.returncode != 0:
+            return []
     except (OSError, subprocess.SubprocessError):
-        return False
+        return []
+    models: List[str] = []
+    for line in r.stdout.splitlines():
+        m = re.match(r"GPU \d+:\s*(.+?)\s*\(UUID", line)
+        if m and m.group(1) not in models:
+            models.append(m.group(1))
+    return models
+
+
+def _gpu_present() -> bool:
+    return bool(_gpu_models())
+
+
+def machine_identity() -> Dict[str, str]:
+    """What kind of node is under this run -- `scheduler.md` **R12**.
+
+    NOT the allocation.  Every source here reads the NODE and ignores what
+    this job was given, and each choice is load-bearing:
+
+    * ``cores`` is ``os.cpu_count()`` -- the online processors, which a
+      cgroup does not shrink.  ``_alloc_cores()`` reads the affinity mask,
+      which the scheduler DOES shrink; use it here and a rank-scaling sweep
+      (48 vs 64 vs 128 ranks on identical nodes) would report a different
+      machine per trial, breaking the comparison this record exists for.
+    * ``mem_gb`` is ``/proc/meminfo`` MemTotal -- the node's, where the
+      cgroup limit is the allocation's.
+    * ``gpu`` is the device **model** (:func:`_gpu_models`), never a count.
+
+    ``node`` is the one exception: the host NAME is provenance (which box,
+    for tracing a bad one), not identity -- SLURM spreads a sweep over
+    whatever boxes are free, so readers compare the other fields and only
+    report the name (`scheduler.md` R11).
+    """
+    ident: Dict[str, str] = {}
+    try:
+        ident["node"] = os.uname().nodename[:128]
+    except (AttributeError, OSError):
+        ident["node"] = "?"
+    ident["cores"] = str(os.cpu_count() or 0)
+    mem = ""
+    try:
+        with open("/proc/meminfo", encoding="ascii") as fh:
+            for line in fh:
+                if line.startswith("MemTotal:"):
+                    mem = f"{int(line.split()[1]) / 1048576.0:.1f}"
+                    break
+    except (OSError, ValueError, IndexError):
+        pass
+    ident["mem_gb"] = mem or "?"
+    ident["gpu"] = ", ".join(_gpu_models()) or "none"
+    return ident
+
+
+def machine_line() -> str:
+    """:func:`machine_identity` as the ``[MACHINE]`` line's payload.
+
+    ``gpu`` comes LAST because device models contain spaces: a reader
+    splits the three fixed ``key=value`` fields and takes the rest of the
+    line as the model list.
+    """
+    m = machine_identity()
+    return (f"node={m['node']} cores={m['cores']} "
+            f"mem_gb={m['mem_gb']} gpu={m['gpu']}")
 
 
 def _sample_gpus() -> List[Tuple[int, float, float, float]]:
@@ -992,7 +1069,15 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
     _install_env_notifiers(log, run_identity(out))
 
     st0 = parse_status(out, timing, start, clock())
-    _append(log, f"[{_iso(clock())}] [MONITOR] start "
+    # FIRST line, before [MONITOR] start: the machine is known now, and a
+    # run killed with its allocation still says where it died -- writing it
+    # in the terminal block (as [UTIL-BASIS] is) would lose exactly the
+    # runs whose machine most needs explaining (`scheduler.md` R12).  One
+    # clock() for both lines: they describe the same moment, and the fake
+    # clocks tests inject are counted.
+    t0 = _iso(clock())
+    _append(log, f"[{t0}] [MACHINE] {machine_line()}")
+    _append(log, f"[{t0}] [MONITOR] start "
                  f"(interval={interval:.0f}s watch_pid={watch_pid}) "
                  f"{st0.as_text()}")
     _fire(st0, "start")

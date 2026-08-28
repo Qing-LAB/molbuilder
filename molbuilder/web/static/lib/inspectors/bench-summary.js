@@ -394,6 +394,18 @@
 
         card.appendChild(el("div", "bench-knobs", _knobLine(t)));
 
+        /* WHERE IT RAN -- what the other numbers on this card are a
+         * measurement of (B5, scheduler.md R12).  The brief is the
+         * SERVER's spelling (one door; a second one here would drift) and
+         * the hostname rides along as provenance: which box, for tracing
+         * a bad one -- never what the kinds census compares (R11).
+         * Absent on records that predate the [MACHINE] line: absent is
+         * absent, not "?". */
+        if (t.machine_brief) card.appendChild(el(
+            "div", "bench-machine",
+            "on " + t.machine_brief
+            + ((t.machine || {}).node ? ` (${t.machine.node})` : "")));
+
         /* WHAT IT ACTUALLY USED.  `summarize` already measures all of this
          * from the monitor's `<label>.util.csv` -- and until 2026-08-25
          * this card threw every field away, showing s/iter and nothing
@@ -496,27 +508,45 @@
         const sys = data.system || {};
         if (sys.n_atoms) ctx.push(`${sys.n_atoms} atoms`);
         if (data.engine) ctx.push(String(data.engine));
-        /* THE NODE THE TRIALS RAN ON, from the trials themselves.
+        /* THE MACHINE UNDER THE TRIALS -- the composer's census
+         * (`machines`: one entry per KIND, scheduler.md R11), which the
+         * monitor recorded on the node at run time.  One kind: it joins
+         * the context line.  Several: it gets its own line below, because
+         * one core figure here would be picking a winner silently (B5).
          *
-         * This read `environment.topology` until 2026-08-25 -- the PROBED
-         * record, which describes one node of the partition
-         * (`scontrol show node <picked>`), faithfully, and which is not
-         * necessarily the node you land on.  Au-BDT-Au ran on a 2x24 (48
-         * core) node while the record said 2x32, so the header announced
-         * "64 cores" for a sweep that never saw one.
-         *
-         * The trials measured it themselves, on the node, at run time
-         * (`effective.node_phys_cores`).  If they disagree -- a sweep
-         * spread across node types -- say so rather than pick one. */
-        const nodeCores = [...new Set((data.trials || [])
-            .map((t) => (t.effective || {}).node_phys_cores)
-            .filter((n) => typeof n === "number"))].sort((a, b) => a - b);
-        if (nodeCores.length === 1) ctx.push(`${nodeCores[0]}-core node`);
-        else if (nodeCores.length > 1) ctx.push(nodeCores.join("/") + "-core nodes");
+         * The `effective.node_phys_cores` path is the FALLBACK for sweeps
+         * recorded before the [MACHINE] line existed -- it measured cores
+         * only.  (It replaced `environment.topology` on 2026-08-25, which
+         * described a node the sweep never necessarily saw.) */
+        const machines = data.machines || [];
+        if (machines.length === 1) {
+            ctx.push(machines[0].brief);
+        } else if (!machines.length) {
+            const nodeCores = [...new Set((data.trials || [])
+                .map((t) => (t.effective || {}).node_phys_cores)
+                .filter((n) => typeof n === "number"))].sort((a, b) => a - b);
+            if (nodeCores.length === 1) ctx.push(`${nodeCores[0]}-core node`);
+            else if (nodeCores.length > 1) ctx.push(nodeCores.join("/") + "-core nodes");
+        }
         const env = data.environment || {};
         if (env.scheduler) ctx.push(String(env.scheduler));
         if (ctx.length) wrap.appendChild(
             el("div", "bench-context", ctx.join(" \u00b7 ")));
+
+        /* WHICH MACHINES, said plainly when there is more than one kind
+         * (`generator.md` 4.4b).  A statement, not a warning: a mixed
+         * CPU/GPU sweep spans machines by construction and may be exactly
+         * the intended experiment -- the reader judges the comparison,
+         * this line makes sure they know it is one.  B1 holds: the census
+         * is the server's; nothing is grouped or counted here. */
+        if (machines.length > 1) {
+            wrap.appendChild(el(
+                "div", "bench-machines",
+                `trials ran on ${machines.length} kinds of node: `
+                + machines.map((m) => `${m.brief} (${m.trials} trial`
+                                      + (m.trials !== 1 ? "s" : "") + ")")
+                          .join(" \u00b7 ")));
+        }
 
         /* The verdict, whole -- including its absence, which is a real
          * answer: choose_winner returns {} when nothing was timed, OR

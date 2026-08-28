@@ -331,6 +331,15 @@ carried to, is decided by the **kind of node** it actually ran on.
 > **Two nodes of the same kind are the same machine here.** That is what makes
 > the comparison useful: it fires when a GPU node is compared against a
 > standard one, and stays quiet when six trials land on six identical boxes.
+>
+> **And "the same kind" tolerates the jitter identical boxes really have.**
+> Kind is *(cores, device models, memory to the nearest 10 GB)*. The rounding
+> is not a nicety: Sol's identical 128-core standard nodes report MemTotal as
+> 503.2, 503.4 and 503.5 GB — BIOS and firmware reserve slightly different
+> slices — so exact matching would call three of the same box three different
+> machines, and every sweep would carry a hardware warning that means nothing.
+> The tiers that actually differ (≈500 vs ≈1000 vs ≈1500 vs ≈2000 GB on Sol)
+> are hundreds of GB apart and survive any reasonable rounding.
 
 > **This retired a check that had never fired.** `submission.md` S3 refuses to
 > carry a benchmark across a node-type boundary, and it read the domain's
@@ -348,12 +357,31 @@ rather than any preference:
 | fact | known when | written by | into |
 |---|---|---|---|
 | **sent to** — domain, partition, qos | `sbatch` is accepted | `submit` | the attempt's `run.json` |
-| **landed on** — node name, cores, devices | the job starts running | the **monitor**, on the compute node | the run's `[UTIL-BASIS]` line |
+| **landed on** — node name, cores, memory, device model | the job starts running | the **monitor**, on the compute node | the monitor log's **`[MACHINE]` line**, first thing |
 
 A queued job has no node yet, so `run.json` cannot carry one; the monitor is
-already running where the answer is, and `[UTIL-BASIS]` already exists to say
-what a measurement is a fraction *of* (§ 2.12 of the bench plan) — the machine
-is the rest of that same sentence.
+already running where the answer is.
+
+> **Why its own line, and why at the start** *(decided 2026-08-27, building
+> P1)*. The alternative was riding on `[UTIL-BASIS]`, which already says what
+> every percentage is a fraction of. Three reasons against:
+>
+> * `[UTIL-BASIS]` is written when the job **ends**. A monitor killed with its
+>   allocation — wall clock reached, node reclaimed — never gets there. The
+>   machine is known the moment the monitor starts, so it is written then, and
+>   a run that dies still says where it died.
+> * One line, one meaning. `[UTIL-BASIS]` answers *what was this job given*;
+>   `[MACHINE]` answers *what kind of node was under it*. Those differ by
+>   design (a `-c 48` job on a 128-core node), and a reader who finds them on
+>   one line will eventually read one as the other.
+> * A fixed first line is the cheapest thing a reader can find.
+>
+> **And the device COUNT is deliberately absent.** Inside a scheduled job,
+> `nvidia-smi` shows only the devices the job was granted — the count is the
+> *allocation's*, not the node's. The **model** survives that filter, and the
+> model is what comparability needs (an A100 is not an H100). A trial granted
+> no device on a GPU node honestly reports none visible: it ran as a CPU
+> trial, whatever the node had idle.
 
 ---
 

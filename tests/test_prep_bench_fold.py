@@ -2149,6 +2149,57 @@ def test_sweep_view_carries_the_verdict(calc):
     assert won["s_per_iter"] == pytest.approx(4.0)
 
 
+def _machine_log(calc, jobset, bundle, job, line):
+    """Write a monitor log carrying ``line`` where the summarizer's own
+    walk will find it: the trial's latest attempt (or container), under
+    the basename ``parse_point`` derives from the job's script."""
+    from pathlib import Path as _P
+    from molbuilder.jobset.materialize import (job_dir_names, latest_attempt,
+                                               shape_of)
+    dirs = job_dir_names(jobset, shape_of(jobset, bundle))
+    d = _P(bundle) / dirs[job.name]
+    d = latest_attempt(d) or d
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{_P(job.script).stem}-run0.monitor.log").write_text(
+        line, encoding="utf-8")
+
+
+def test_sweep_view_census_is_by_kind_and_absent_reads_absent(calc):
+    """`machines` is the composer's census (B5): one entry per KIND —
+    hostnames and BIOS-jittered MemTotal do not split it (R11) — and a
+    sweep whose logs predate the [MACHINE] line gets [] and empty briefs,
+    never a census of '?'."""
+    from molbuilder.jobset.summarize import sweep_view
+    _prep_bench(calc)
+    jobset, bundle = _load_sweep(calc)
+
+    view = sweep_view(jobset, bundle)          # nothing has run yet
+    assert view["machines"] == []
+    assert all(t["machine"] == {} and t["machine_brief"] == ""
+               for t in view["trials"])
+
+    # Two trials, two hosts, jittered memory -- ONE kind.  A third on
+    # different silicon -- a second kind, counted apart.
+    a100 = ("[t] [MACHINE] node={h} cores=48 mem_gb={m} "
+            "gpu=NVIDIA A100-SXM4-80GB\n")
+    std = "[t] [MACHINE] node=c1 cores=128 mem_gb=503.2 gpu=none\n"
+    jobs = list(jobset.jobs)
+    _machine_log(calc, jobset, bundle, jobs[0],
+                 a100.format(h="g042", m="503.4"))
+    _machine_log(calc, jobset, bundle, jobs[1],
+                 a100.format(h="g117", m="503.5"))
+    _machine_log(calc, jobset, bundle, jobs[2], std)
+
+    view = sweep_view(jobset, bundle)
+    kinds = {m["brief"]: m["trials"] for m in view["machines"]}
+    assert kinds == {"48c 500G A100": 2, "128c 500G no gpu": 1}, (
+        "two hosts of one kind must count as one machine (T1), and the "
+        "different silicon as another")
+    briefs = {t["label"]: t["machine_brief"] for t in view["trials"]}
+    assert briefs[jobs[0].name] == "48c 500G A100"
+    assert briefs[jobs[2].name] == "128c 500G no gpu"
+
+
 def test_sweep_view_names_the_coordinate_the_sweep_varied(calc):
     from molbuilder.jobset.summarize import sweep_view
     _prep_bench(calc)

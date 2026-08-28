@@ -123,13 +123,18 @@ implying one. That is the whole of the rule.
 │          └──────────────────────────  G →               │
 └─────────────────────────────────────────────────────────┘
 
+│ trials ran on 2 kinds of node:                          │  ← B5: stated,
+│   48c 500G A100 (4 trials) · 128c 500G no gpu (2 trials)│     never judged
+│                                                         │
 ┌ G4K12C1ELPA1STAGE   ● finished        62.6 s/iter ──────┐
 │   np 48 · thr 1 · gpu:a100:4                            │
-│   peak 71.1 GB · cpu 88% · gpu 28% · vram 7.0 GB · 202 s│
+│   on 48c 500G A100 (sol-g042)                           │  ← what the numbers
+│   peak 71.1 GB · cpu 88% · gpu 28% · vram 7.0 GB · 202 s│     below measure
 │   ran with: blocksize 64 · elpa_gpu nvidia-gpu          │
 └─────────────────────────────────────────────────────────┘
 ┌ G0K48C1ELPA2STAGE   ● finished        91.1 s/iter ──────┐
 │   np 48 · thr 1 · no gpu                                │
+│   on 128c 500G no gpu (sol-c221)                        │
 │   peak 51.3 GB · cpu 27% · 15 s                         │  ← no GPU row:
 └─────────────────────────────────────────────────────────┘     not measured,
                         last looked 21:14:02 · measured 21:13:58   not zero
@@ -174,7 +179,7 @@ Underneath, in the order a person reads them:
 | line | from | why it is there |
 |---|---|---|
 | the knobs | `knobs`, `bound` | what it was asked to run |
-| **where it ran** | the machine, via `[UTIL-BASIS]` (`scheduler.md` R12) | *what the other numbers on this card are a measurement of.* A queue holds many machines (R0), so two cards of one sweep can name two — see **B5** |
+| **where it ran** | `machine_brief` — the monitor's `[MACHINE]` line, spelled once by the composer (`scheduler.md` R12) | *what the other numbers on this card are a measurement of.* A queue holds many machines (R0), so two cards of one sweep can name two — see **B5**. The header's own machine fact comes from the composer's `machines` census; `effective.node_phys_cores` remains only as the fallback for records that predate the `[MACHINE]` line |
 | **what it used** | `metrics` — `peak_rss_gb`, `cpu_mean_pct`, `gpu_sm_mean_pct`, `gpu_vram_peak_gb`, `wall_s` | the numbers a RUN script is written from: how much memory to ask for (the peak, not the request), and whether the accelerator paid for itself. **All of these are the JOB's own since 2026-08-26** — read from its cgroup, with `cpu_mean_pct` a fraction of the cores it held. Before that they were the node's, so `peak_rss_gb` included every other job on the machine and a trial using all 48 of its cores on a 128-core node read 32%. Trials recorded earlier are **not comparable** with ones recorded since; the monitor log's `[UTIL-BASIS]` line says which basis a run used |
 | **ran with** | `effective` | the settled truth — the block size SIESTA chose, the ELPA build that answered |
 | asked vs ran | `mismatch` | only the DISAGREEMENTS |

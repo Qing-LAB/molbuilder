@@ -98,6 +98,80 @@ def parse_util_bound(monitor_log: str) -> Optional[str]:
     return _BOUND_MAP.get(v.group(1)) if v else None
 
 
+_MACHINE = re.compile(
+    r"\[MACHINE\]\s+node=(\S+)\s+cores=(\S+)\s+mem_gb=(\S+)\s+gpu=(.+)$")
+
+
+def parse_machine(monitor_log: str) -> Dict[str, str]:
+    """The ``[MACHINE]`` line of a ``.monitor.log`` — what kind of node was
+    under this run (`scheduler.md` R12) — or ``{}`` when the log predates it.
+
+    The monitor writes it once, first line, at start; the FIRST match wins
+    so a corrupted or concatenated log still reads the start record.  The
+    ``gpu`` field is everything after ``gpu=`` because device models
+    contain spaces (the monitor's ``machine_line`` puts it last for
+    exactly this reason).
+    """
+    for ln in monitor_log.splitlines():
+        m = _MACHINE.search(ln)
+        if m:
+            return {"node": m.group(1), "cores": m.group(2),
+                    "mem_gb": m.group(3), "gpu": m.group(4).strip()}
+    return {}
+
+
+def machine_kind(machine: Dict) -> Optional[Tuple[str, str, str]]:
+    """What makes two nodes THE SAME MACHINE for comparison — R11's kind.
+
+    ``(cores, memory to the nearest 10 GB, device models)``, and **never
+    the node name**: SLURM spreads a sweep over whatever boxes are free,
+    so comparing names would report "different machines" for every sweep
+    ever run (trap T1).
+
+    Memory is rounded because identical boxes genuinely jitter: Sol's
+    128-core standard nodes report MemTotal as 503.2, 503.4 and 503.5 GB
+    (BIOS reservations differ), while the tiers that really differ are
+    hundreds of GB apart.  ``None`` when the record predates the
+    ``[MACHINE]`` line — *cannot tell* is not a kind, and a reader must
+    not compare it against one (`scheduler.md` R3).
+    """
+    if not machine:
+        return None
+    try:
+        mem = f"{round(float(machine.get('mem_gb', '?')) / 10) * 10:g}"
+    except ValueError:
+        mem = "?"
+    return (str(machine.get("cores", "?")), mem,
+            str(machine.get("gpu", "?")))
+
+
+def machine_brief(machine: Dict) -> str:
+    """One short human spelling of a machine's KIND -- ``48c 500G A100`` --
+    used by every surface that names one, so the table and the web page
+    cannot drift into two spellings of one node.
+
+    Built from :func:`machine_kind` (same rounding, same fields) with the
+    vendor prefix and the form-factor tail trimmed from the device --
+    ``NVIDIA A100-SXM4-80GB`` and ``NVIDIA A100-PCIE-40GB`` are different
+    THINGS but the same reading effort, and the full model stays in the
+    record for anyone who needs the distinction.  ``""`` when the record
+    predates the ``[MACHINE]`` line: absent is absent, never ``"?c ?G"``.
+    """
+    kind = machine_kind(machine)
+    if kind is None:
+        return ""
+    cores, mem, gpu = kind
+    if gpu in ("none", "?"):
+        dev = "no gpu"
+    else:
+        names = []
+        for g in gpu.split(", "):
+            g = re.sub(r"^(NVIDIA|AMD|Intel)\s+", "", g)
+            names.append(g.split("-", 1)[0] or g)
+        dev = "+".join(names)
+    return f"{cores}c {mem}G {dev}"
+
+
 #: util.csv columns -> metric keys.  ``gpu<N>_sm`` / ``gpu<N>_vram_gb``
 #: are matched per GPU index; the metric takes the max across GPUs
 #: (mean per GPU first for sm%, peak anywhere for VRAM).
@@ -428,6 +502,13 @@ class BenchPoint:
     #: § 6.3).  Carries the VALUE coordinates a 2β sweep declared
     #: (`generator.md` § 4.3a); ``{}`` for pre-2β records.
     point:   Dict = field(default_factory=dict)
+    #: What kind of node was under the run -- the monitor's ``[MACHINE]``
+    #: line (:func:`parse_machine`, `scheduler.md` R12).  Part of the
+    #: measurement, not metadata about it: on a queue holding many machine
+    #: types, two trials of one sweep can land on different hardware, and
+    #: a summary that hides which is comparing silently
+    #: (`generator.md` § 4.4b).  ``{}`` when the log predates the line.
+    machine: Dict = field(default_factory=dict)
 
     def s_per_iter(self) -> Optional[float]:
         v = self.metrics.get("s_per_iter")
