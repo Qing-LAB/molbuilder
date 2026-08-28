@@ -112,6 +112,29 @@ class Device:
     mem_gb:   Optional[float] = None
 
 
+class _Unset:
+    """The one instance below (``UNSET``) marks a policy column NO PROBE
+    EVER ASKED -- distinct from ``None``, which means *asked; no cap
+    stated*.  That distinction is the record's tri-state (`scheduler.md`
+    R13, `checkpointing.md` S3's absent-vs-null): :meth:`Domain.to_row`
+    drops ``UNSET`` but writes ``None`` as ``null``, so *asked, uncapped*
+    survives the trip to disk.  Built 2026-08-28, the day a fresh Sol
+    probe asked both policy questions and the written record could not
+    show it -- ``to_row`` dropped every ``None`` field indiscriminately.
+    """
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "UNSET"
+
+    def __bool__(self) -> bool:
+        # never truthy: a leaked UNSET must not pass an "is there a cap?"
+        return False
+
+
+UNSET: Any = _Unset()
+
+
 @dataclass
 class Domain:
     """One **reachable** (partition, qos) pair, and what it allows.
@@ -151,10 +174,13 @@ class Domain:
     #: smaller governs; a hardware ceiling cannot stand in for a policy
     #: one.  ``max_cpus_per_job`` is the QoS's ``MaxTRESPerJob`` ``cpu``
     #: term; ``max_cpus_per_node`` is the partition's ``MaxCPUsPerNode``.
-    #: ``None`` means the record does not say, never *unlimited by
-    #: measurement* (R3).
-    max_cpus_per_job:  Optional[int] = None
-    max_cpus_per_node: Optional[int] = None
+    #:
+    #: TRI-STATE, unlike every other column: a number caps, ``None`` means
+    #: *asked; no cap stated* (written as ``null``), ``UNSET`` means the
+    #: question was never asked (stays off the disk).  ``None`` here is a
+    #: measurement, never *unlimited by assumption* (R3).
+    max_cpus_per_job:  Any = UNSET
+    max_cpus_per_node: Any = UNSET
     gpu:       Optional[Dict[str, Any]] = None
     #: Every distinct machine this domain holds: ``[{cores, nodes, mem_gb,
     #: gpu}, ...]``.  DECLARED since 2026-08-27, because a partition is a
@@ -188,6 +214,12 @@ class Domain:
               "max_cpus_per_job", "max_cpus_per_node",
               "gpu", "gpu_partition", "node_types")
 
+    #: The tri-state policy columns (see their field note): ``None`` is a
+    #: real answer here and lands as ``null``; only ``UNSET`` stays off
+    #: the disk.  Every other ``_KNOWN`` column keeps the record style --
+    #: ``None`` says nothing and is not written.
+    _NULLABLE = ("max_cpus_per_job", "max_cpus_per_node")
+
     @classmethod
     def from_row(cls, row: Mapping[str, Any]) -> Optional["Domain"]:
         """A mapping -> a Domain, or ``None`` when it is not one.
@@ -205,9 +237,20 @@ class Domain:
         return cls(**known, extra=d)
 
     def to_row(self) -> Dict[str, Any]:
-        """A Domain -> the mapping it came from, unknown columns included."""
-        row = {k: getattr(self, k) for k in self._KNOWN
-               if getattr(self, k) is not None}
+        """A Domain -> the mapping it came from, unknown columns included.
+
+        ``None`` is dropped -- the record says nothing by silence -- except
+        in the ``_NULLABLE`` policy columns, where ``None`` means *asked;
+        no cap stated* and must land as ``null``.  Dropping those too is
+        the 2026-08-28 leak: a Sol probe asked both policy questions and
+        the written record could not show it.
+        """
+        row: Dict[str, Any] = {}
+        for k in self._KNOWN:
+            v = getattr(self, k)
+            if v is UNSET or (v is None and k not in self._NULLABLE):
+                continue
+            row[k] = v
         row.update(self.extra)
         return row
 

@@ -2445,6 +2445,47 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
 #  verb now lives under `jobset` (user, 2026-08-17).                     #
 # --------------------------------------------------------------------- #
 
+#: Marks a key a row does not carry, so the field diff below can tell
+#: *absent* from ``null`` -- the very distinction the record keeps.
+_ABSENT = object()
+
+
+def _domains_shown(before, probed):
+    """What the domains consent question SHOWS -- judgeable, never two
+    identical name lists (2026-08-28: the real change was field-level,
+    the prompt printed only names, and the user was asked to judge the
+    invisible).
+
+    Name lists when the domain SET changed; otherwise the changed FIELDS
+    per domain, with identical changes grouped ("all 9 domains: ...").
+    ``null``/``absent`` are printed as the record means them.
+    """
+    b_names = [d.name for d in before]
+    p_names = [d.name for d in probed]
+    if b_names != p_names:
+        return b_names, p_names
+
+    def _say(v):
+        return ("null" if v is None else
+                "absent" if v is _ABSENT else repr(v))
+
+    by_change = {}                        # change text -> [domain names]
+    for b, p in zip(before, probed):
+        br, pr = b.to_row(), p.to_row()
+        moved = sorted(k for k in set(br) | set(pr)
+                       if br.get(k, _ABSENT) != pr.get(k, _ABSENT))
+        if moved:
+            desc = ", ".join(f"{k} {_say(br.get(k, _ABSENT))} -> "
+                             f"{_say(pr.get(k, _ABSENT))}" for k in moved)
+            by_change.setdefault(desc, []).append(b.name)
+    bits = []
+    for desc, names in by_change.items():
+        who = (f"all {len(names)} domains" if len(names) == len(before)
+               else ", ".join(names))
+        bits.append(f"{who}: {desc}")
+    return "(same domains)", "; ".join(bits) or "(no visible change)"
+
+
 def _probe_consent_merge(before, probed, *, yes: bool):
     """N3+ (roadmap § 0.2): a probe over an EXISTING record asks per
     difference which value survives -- consent, never a clobber.
@@ -2484,10 +2525,9 @@ def _probe_consent_merge(before, probed, *, yes: bool):
     # about a menu nobody composed row by row.
     if [d.to_row() for d in before.domains] != \
             [d.to_row() for d in probed.domains]:
+        shown_b, shown_p = _domains_shown(before.domains, probed.domains)
         diffs.append((
-            "domains",
-            [d.name for d in before.domains],
-            [d.name for d in probed.domains],
+            "domains", shown_b, shown_p,
             lambda: setattr(probed, "domains", list(before.domains))))
 
     if not diffs:

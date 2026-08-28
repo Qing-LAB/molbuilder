@@ -294,3 +294,75 @@ def test_the_qos_cap_lands_on_the_row_too():
     rows, _ = derive_domains(
         parts, {"public": QosLimit(None, None, 96)}, {"public"})
     assert rows[0]["max_cpus_per_job"] == 96
+
+
+def test_the_null_survives_the_trip_to_disk_and_back():
+    """The 2026-08-28 leak, at the door it leaked through: `derive` wrote
+    the null, `Domain.to_row` dropped every ``None``, and the record a
+    REAL Sol probe wrote could not show the question was asked.  The
+    tri-state must survive derive -> Domain -> json -> Domain -> row."""
+    import json as _json
+
+    from molbuilder.scheduler.probe import QosLimit
+    from molbuilder.scheduler.record import Domain
+
+    def _asked_rows():
+        parts = parse_sinfo("lightwork|1-00:00:00|3|(null)|128|515000\n")
+        pol = parse_scontrol_partitions(
+            "PartitionName=lightwork\n   MaxCPUsPerNode=UNLIMITED\n")
+        parts[0].max_cpus_per_node = pol["lightwork"].max_cpus_per_node
+        parts[0].policy_queried = True
+        rows, _ = derive_domains(
+            parts, {"public": QosLimit(None, None, None)}, {"public"})
+        return rows
+
+    on_disk = _json.loads(_json.dumps(Domain(**_asked_rows()[0]).to_row()))
+    for k in ("max_cpus_per_node", "max_cpus_per_job"):
+        assert k in on_disk and on_disk[k] is None, (
+            f"asked-and-uncapped must land as null, lost at {k}")
+    # and a RELOADED record still says asked -- the second write too
+    again = Domain.from_row(on_disk).to_row()
+    assert again["max_cpus_per_node"] is None
+    assert again["max_cpus_per_job"] is None
+
+    # never-asked stays OFF the disk through the same trip
+    parts2 = parse_sinfo("lightwork|1-00:00:00|3|(null)|128|515000\n")
+    rows2, _ = derive_domains(parts2, {}, {"public"})
+    disk2 = Domain(**rows2[0]).to_row()
+    assert "max_cpus_per_node" not in disk2, (
+        "a question never asked must not be reported as answered")
+    assert "max_cpus_per_job" not in disk2
+
+
+def test_a_numeric_cap_still_rides_the_row_to_disk():
+    """The tri-state's third value: a real cap is a number on disk."""
+    from molbuilder.scheduler.probe import QosLimit
+    from molbuilder.scheduler.record import Domain
+    parts = parse_sinfo("htc|4:00:00|10|(null)|128|515000\n")
+    rows, _ = derive_domains(
+        parts, {"public": QosLimit(None, None, 96)}, {"public"})
+    assert Domain(**rows[0]).to_row()["max_cpus_per_job"] == 96
+
+
+def test_the_consent_question_names_the_field_that_moved():
+    """2026-08-28: the probe said *disagrees in 1 place* and showed two
+    IDENTICAL name lists -- the change was field-level, the display was
+    name-level, and the user was asked to judge the invisible.  When the
+    domain SET is unchanged, the question must name the moved fields."""
+    from molbuilder.jobset._cli import _domains_shown
+    from molbuilder.scheduler.record import Domain
+
+    old = [Domain.from_row({"name": "lightwork", "partition": "lightwork",
+                            "qos": "public"})]
+    new = [Domain.from_row({"name": "lightwork", "partition": "lightwork",
+                            "qos": "public", "max_cpus_per_job": None,
+                            "max_cpus_per_node": None})]
+    shown_b, shown_p = _domains_shown(old, new)
+    assert shown_b == "(same domains)"
+    assert "max_cpus_per_job absent -> null" in shown_p
+    assert "max_cpus_per_node absent -> null" in shown_p
+
+    # a changed SET still shows the two name lists, as before
+    shown_b2, shown_p2 = _domains_shown(old, new + [Domain.from_row(
+        {"name": "htc", "partition": "htc", "qos": "public"})])
+    assert shown_b2 == ["lightwork"] and shown_p2 == ["lightwork", "htc"]

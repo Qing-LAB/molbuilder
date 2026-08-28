@@ -27,6 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, List, Mapping, Optional, Tuple
 
+from .record import UNSET
+
 
 def domain_serves_gpu(row: Mapping[str, Any]) -> bool:
     """Whether a routing row (a :class:`Domain` as `to_row` speaks it) can
@@ -120,6 +122,8 @@ def _compare(row, *, cores: Optional[int] = None,
         for cap_field, phrase in (("max_cpus_per_job", "per job"),
                                   ("max_cpus_per_node", "per node")):
             pol = getattr(row, cap_field, None)
+            if pol is UNSET:
+                pol = None       # never asked -- no cap to enforce (R3)
             try:
                 pol = int(pol) if pol is not None else None
             except (TypeError, ValueError):
