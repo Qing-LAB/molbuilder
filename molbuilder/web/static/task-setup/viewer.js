@@ -2604,16 +2604,16 @@ function paintDestination(d) {
         // reason this card is worth having.
         state.textContent = "There is a file, but it cannot be read: "
             + d.problem + " \u2014 nothing is being sent.";
-        state.className = "ts-reports-state is-bad";
+        state.setAttribute("data-state", "bad");
     } else if (d.configured) {
         state.textContent = "Reports go to " + d.url
             + (d.has_key ? " (signed)" : " (no key \u2014 the address is the credential)")
             + (d.mode && d.mode !== "0o600"
                ? "  \u2014 warning: the file is " + d.mode + ", not 0600" : "");
-        state.className = "ts-reports-state is-set";
+        state.setAttribute("data-state", "set");
     } else {
         state.textContent = "Nothing is set up, so no reports are sent.";
-        state.className = "ts-reports-state";
+        state.setAttribute("data-state", "none");
     }
 
     // WHICH MACHINE RUNS THE JOBS decides what this card can do.  On a
@@ -2659,11 +2659,20 @@ async function loadDestination() {
     }
 }
 
+/** Say something under the destination controls.
+ *
+ * `data-state`, because that is what every other `.ts-ask-note` on this
+ * page already uses and the sheet already styles (`[data-state="bad"]`).
+ * A first version set an `is-bad` CLASS instead -- a second convention for
+ * one idea on one page, and shaped exactly like `modify/viewer.js`'s own
+ * status setter, which `test_no_duplicated_ui_components` caught: *one
+ * function written twice is two places for a fix to miss.*
+ */
 function destNote(text, bad) {
     const n = $("ts-reports-note");
     if (!n) return;
     n.textContent = text;
-    n.className = "ts-ask-note" + (bad ? " is-bad" : "");
+    n.setAttribute("data-state", bad ? "bad" : "ok");
 }
 
 async function saveDestination() {

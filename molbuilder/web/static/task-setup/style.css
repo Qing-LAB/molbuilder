@@ -705,12 +705,12 @@
 }
 /* State reads as text FIRST and colour second: a person who cannot
    distinguish these hues still gets the whole answer from the sentence. */
-.ts-reports-state.is-set { color: var(--text-primary); }
+.ts-reports-state[data-state="set"] { color: var(--text-primary); }
 /* `--error`, which the palette defines.  It was `--danger` for one
    revision -- a token that does not exist anywhere, so the colour was
    simply unset.  The sheet is tested for raw hex, NOT for whether a token
    is real, so nothing would have said. */
-.ts-reports-state.is-bad { color: var(--error); }
+.ts-reports-state[data-state="bad"] { color: var(--error); }
 
 .ts-reports-form { display: flex; flex-direction: column; gap: var(--space-sm); }
 /* `display: flex` on a class OUTRANKS the `hidden` attribute's own

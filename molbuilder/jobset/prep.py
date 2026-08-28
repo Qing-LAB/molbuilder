@@ -185,10 +185,19 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     # the deck it launches.
     if log is not None:
         log.phase("STEP 4 · WRAPPERS — how each deck is launched")
-    _dir_of = job_dir_names(jobset, shape_of(jobset, base_dir))
+    _sh = shape_of(jobset, base_dir)
+    _dir_of = job_dir_names(jobset, _sh)
     rendered: dict = {}
     for job in jobset.jobs:
+        # THE SAME QUESTION `prep_calculation` AND `materialize` ASK.  A
+        # trial's files live in its attempt when the shape keeps them
+        # (`project-layout.md` § 1.5a); this loop looked in the container
+        # and reported the deck missing, because it was the one writer
+        # that had not been told.
         _jd = base / _dir_of[job.name]
+        if jobset.kind == "sweep":
+            from .materialize import trial_work_dir
+            _jd = trial_work_dir(_jd, _sh)
         _jd.mkdir(parents=True, exist_ok=True)
         if job.script in rendered:
             # A SHARED script (several trials, one deck): each directory
@@ -818,7 +827,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             seam.provide_data(struct, pset[0].render_config(), base)
     token = token_for(task, pset.stage)
     jobs: List[Job] = []
-    from .materialize import bench_container, trial_dir
+    from .materialize import (bench_container, trial_dir,
+                              trial_work_dir)
     from .shape import Shape as _Shape
     _shape = _Shape.named(task.shape)
     for element in pset:
@@ -847,7 +857,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             # wrote decks into `bench-JOB-G1K1C1/` while every reader
             # asked `job_dir_names` and looked in `bench-G1K1C1/`.
             from ..resolve import point_token as _pt
-            _jdir = base / trial_dir(_shape, token, _pt(element.point))
+            _jdir = trial_work_dir(
+                base / trial_dir(_shape, token, _pt(element.point)), _shape)
         else:
             _sd = _shape.stage_dir(token) if token else "."
             _jdir = base if _sd == "." else base / _sd

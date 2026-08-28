@@ -201,7 +201,7 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
         # would the other two start?  Skipped BY NAME, the way a direct
         # run already reports them.
         if ask and jobset.kind == "sweep" and was_launched(
-                base_dir / _dirs[job.name]):
+                _trial_record_dir(base_dir / _dirs[job.name])):
             results.append(JobResult(job.name, [], "already run"))
             continue
         job_dir, attempt, sbatch_name = _resolve_launch(
@@ -370,6 +370,22 @@ def _resolve_launch(jobset: JobSet, base_dir: Path, job, suffix: str):
     return job_dir, attempt, _wrapper_name(job.script, suffix)
 
 
+def _trial_record_dir(container):
+    """Where a trial's ``run.json`` is — the attempt, or the trial itself.
+
+    `submit` writes the launch record where the job RAN, and since
+    2026-08-27 a trial runs in its attempt when the shape keeps one
+    (`project-layout.md` § 1.5a).  Asking the container instead reads
+    *never launched* for a trial that has run, which is how a direct sweep
+    came to re-run everything it had already measured.
+
+    The same *latest attempt where there is one* rule `runstatus` and
+    `summarize` use, in the one place `submit` needs it.
+    """
+    from .materialize import latest_attempt
+    return latest_attempt(container) or container
+
+
 def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Path]]:
     """Where this job runs, and the attempt to record the launch into.
 
@@ -420,6 +436,25 @@ def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Pat
         return d, None
     last = d / f"run-{ns[-1]}"
     if was_launched(last):
+        # A TRIAL IS REFUSED FOR THE SAME REASON AND ADVISED DIFFERENTLY.
+        # `--from <attempt>` is a STAGE's remedy: it continues from what
+        # the last attempt produced.  A trial does not continue -- it
+        # measures its point again, from cold, and since 2026-08-27 it can
+        # (`project-layout.md` § 1.5a): preparing opens `run-<n+1>` beside
+        # this one and leaves it exactly as it is.
+        #
+        # Before that, this branch never saw a trial and the advice was
+        # right for everything that reached it.
+        if jobset.kind == "sweep":
+            raise SubmitError(
+                f"trial {job.name!r}: {last.name} has already been launched "
+                f"({last / 'run.json'}).  A measurement is immutable once it "
+                f"has run.\n"
+                f"  read what it measured:  molbuilder jobset summarize "
+                f"bench <stage>\n"
+                f"  measure the point AGAIN: molbuilder jobset prep bench "
+                f"<stage>  (opens {d.name}/run-{ns[-1] + 1}, leaving "
+                f"{last.name} untouched)")
         raise SubmitError(
             f"job {job.name!r}: {last.name} has already been launched "
             f"({last / 'run.json'}).  An attempt is immutable once it has run; "
@@ -484,7 +519,8 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
         # launched trial and an interrupted sweep could never finish.
         # The skip is said out loud in the results.  Ladder stages keep
         # the refusal below: their re-run is a NEW attempt the user opens.
-        if jobset.kind == "sweep" and was_launched(base_dir / dirs[job.name]):
+        if jobset.kind == "sweep" and was_launched(
+                _trial_record_dir(base_dir / dirs[job.name])):
             results.append(JobResult(job.name, [],
                                      "skipped -- already launched"))
             continue
@@ -626,7 +662,8 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
       ``run.json`` stamped with the ONE job id, so `status`, the picker and
       a later single-trial re-run all see the truth.
     """
-    from .materialize import job_dir_names, shape_of, was_launched
+    from .materialize import (job_dir_names, latest_attempt,
+                              shape_of, was_launched)
     dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
     base = Path(base_dir)
     if only not in (None, "cpu", "gpu"):
@@ -661,7 +698,8 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
         multi = len(shelves) > 1
         for key in sorted(shelves, key=_shelf_width, reverse=True):
             pending = [j for j in shelves[key]
-                       if not was_launched(base / dirs[j.name])]
+                       if not was_launched(
+                           _trial_record_dir(base / dirs[j.name]))]
             if not pending:
                 continue            # this shelf already rode a group
             name = ("bench-group"
@@ -887,15 +925,36 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     # "it is the submission that determines the actual state of the
     # run"): the pin baked the intent at prep; here the artifact itself
     # is verified before it is launched.
+    # WHERE THE DECK ACTUALLY IS.  A trial keeps attempts since 2026-08-27
+    # (`project-layout.md` § 1.5a), so the deck sits in `run-<n>` and these
+    # two gates read the container -- where they found NO deck, and
+    # `check_trial_starts_cold`'s own doctrine is that *absence says
+    # nothing*.  So the cold gate passed a WARM deck, silently, on the one
+    # door that submits several trials at once, while the by-name door
+    # still refused it.  Precisely the "guard-only-a-surface-applies"
+    # failure this module names elsewhere; caught by
+    # `test_submission_gates_the_cold_start_against_the_deck`.
+    from .materialize import latest_attempt
+    def _artifacts(j):
+        d = base / dirs[j.name]
+        return latest_attempt(d) or d
+
     for j in pending:
         try:
-            check_launch_matches_deck(base / dirs[j.name], j)
-            check_trial_starts_cold(base / dirs[j.name], j)
+            check_launch_matches_deck(_artifacts(j), j)
+            check_trial_starts_cold(_artifacts(j), j)
         except DeckLaunchMismatch as e:
             raise SubmitError(str(e)) from e
 
-    trial_dirs = [base / dirs[j.name] for j in pending]
-    containers = {d.parent for d in trial_dirs}
+    # The sequencer `cd`s into these, so they are the attempt too.
+    trial_dirs = [_artifacts(j) for j in pending]
+    # THE CONTAINER IS THE TRIAL'S PARENT, NOT THE ATTEMPT'S.  With an
+    # attempt layer `_artifacts(j).parent` is `bench-<point>` -- one per
+    # trial -- so the "they must share one container" check found N and
+    # refused every grouped submission.  The container question belongs to
+    # the naming authority (`dirs`), the artifacts question to the attempt;
+    # they are two questions and this asks each of the right thing.
+    containers = {(base / dirs[j.name]).parent for j in pending}
     if len(containers) != 1:
         raise SubmitError(
             "the sweep's trials do not share one container -- a grouped "

@@ -88,6 +88,37 @@ def trial_dir(shape, stage_token: Optional[str], job_name: str) -> str:
     return f"{bench_container(shape, stage_token)}/{job_dir_name(job_name)}"
 
 
+def trial_work_dir(container, shape) -> Path:
+    """Where a trial's files GO, given the directory it lives in.
+
+    :func:`trial_dir` (via :func:`job_dir_names`) answers *where does this
+    trial live*; this answers *where does prep put its deck and package*,
+    and the two differ the moment a trial keeps attempts
+    (`project-layout.md` § 1.5a):
+
+    * **hierarchical** — the attempt, ``bench-<point>/run-<n>``;
+    * **flat** — the container itself, because flat separates attempts by
+      the wrapper's filename index and has no directory layer to open.
+
+    **It takes the container rather than recomputing it.**  A first version
+    took ``(base, shape, stage_token, job_name)`` and rebuilt the path — and
+    derived the token by a different route than `job_dir_names` does, so a
+    flat grouped sweep put its record somewhere the reader did not look.
+    That is the very divergence `trial_dir` was extracted to end, so this
+    asks its caller for the answer instead of computing a second one.
+
+    `resolve_attempt` is the rule, not restated: reuse the last attempt
+    until it has been launched, then open the next.  Preparing twice before
+    launching refreshes ``run-0`` rather than leaking ``run-1``.
+    """
+    d = Path(container)
+    if shape is None or not shape.keeps_attempts_as_directories:
+        return d
+    d.mkdir(parents=True, exist_ok=True)
+    attempt, _fresh = resolve_attempt(d)
+    return attempt
+
+
 def shape_of(jobset: JobSet, base_dir) -> Optional["Shape"]:
     """The layout this bundle uses, read from its description.
 
@@ -336,9 +367,17 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
             + "\n  - ".join(errors))
     base = Path(base_dir)
     created: List[Path] = []
-    dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
+    sh = shape_of(jobset, base_dir)
+    dirs = job_dir_names(jobset, sh)
     for job in jobset.jobs:
+        # A TRIAL KEEPS ATTEMPTS EXACTLY AS A STAGE DOES, and the shape
+        # decides (`project-layout.md` § 1.5a).  `trial_work_dir` is the
+        # one answer to *where do this trial's files go*, and `prep` asks
+        # the same one -- when only this side knew, the package moved into
+        # `run-0` and the deck stayed in the container.
         d = base / dirs[job.name]
+        if jobset.kind == "sweep":
+            d = trial_work_dir(d, sh)
         d.mkdir(parents=True, exist_ok=True)
         created.append(d)
         if d.resolve() == base.resolve():
@@ -725,7 +764,7 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
     return p
 
 
-__all__ = ["Attempt", "trial_dir",
+__all__ = ["Attempt", "trial_dir", "trial_work_dir",
            "materialize", "job_dir_name", "job_dir_names", "stage_refs",
            "attempts", "was_launched", "latest_attempt", "resolve_attempt",
            "prepare_attempt",

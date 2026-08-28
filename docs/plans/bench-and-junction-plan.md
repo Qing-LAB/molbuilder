@@ -392,8 +392,8 @@ in `bench/` or the web layer resolves a trial directory itself. An earlier note
 here said ~85 across 9 — that counted mentions of three different names, not
 seams, and it was wrong enough to have changed the decision.
 
-**Five pieces, in order** — piece 1 stands alone and fixes a live defect, so
-it goes first whatever happens to the rest:
+**Five pieces — 1, 2, 3, 4 and 5 BUILT 2026-08-27**, after the naming
+authority was unified first (which is what made the rest small):
 
 **1. The run index must cover every per-run artifact — BUILT 2026-08-27.** The wrapper indexes the
 `.out` and the timing log; `<basename>.monitor.log` is appended and
@@ -458,6 +458,24 @@ goes quiet on the one door that submits several trials at once.
 **5. The readers resolve the attempt.** `summarize`'s two entry points take
 `bundle / dirs[name]` as the artifact directory; in hierarchical that becomes
 the container and the attempt is one level in.
+
+**What the build actually cost, against the estimate.** The layout change
+touched **six modules and four test files**, and every one of the gaps
+predicted below turned up — including the sharp one. The two that were *not*
+predicted are the interesting ones:
+
+* **The grouped launch's container check.** `containers = {d.parent for d in
+  trial_dirs}` was one shared `bench/` and became one per trial the moment
+  `d` was an attempt, so every grouped submission was refused with *"the
+  sweep's trials do not share one container"*. The container question belongs
+  to the naming authority, the artifact question to the attempt; they are two
+  questions and each now asks the right thing.
+* **The refusal gave stage advice to a trial.** With attempts, a launched
+  trial reaches the branch that says *"prepare a fresh one `--from
+  <attempt>`"* — which is a stage's remedy: it continues from what the last
+  attempt produced. A trial does not continue; it re-measures from cold. The
+  refusal now says how to do the thing that is newly possible: prep again,
+  which opens `run-<n+1>` and leaves the earlier measurement untouched.
 
 **Gaps found while writing this, and NOT closed by it:**
 

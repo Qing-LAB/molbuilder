@@ -8,6 +8,7 @@ grouped per resource shelf, a named trial alone) · `generator.md` §§ 2, 5 · 
 from __future__ import annotations
 
 import json
+import pathlib
 import os
 
 import numpy as np
@@ -22,6 +23,27 @@ from molbuilder.jobset.prep import prep_calculation
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 from molbuilder.task import Stage
+
+
+def _artifacts(calc, point, stage="01_coarse"):
+    """Where a trial's files ARE — the attempt when one exists.
+
+    A trial keeps attempts since 2026-08-27 (`project-layout.md` § 1.5a),
+    so its deck and wrapper sit in ``run-<n>`` rather than in the trial
+    directory. This is the reader rule `runstatus` and `summarize` both
+    use: *the latest attempt where there is one, the container otherwise* —
+    which also keeps these tests correct for a flat calculation, where
+    there is no attempt layer at all.
+
+    One helper because the tests had the same duplication the code did:
+    eleven hand-built copies of one path, each of which would need finding
+    the next time the layout moves.
+    """
+    from molbuilder.jobset.materialize import latest_attempt
+    c = pathlib.Path(calc) / stage / "bench" / f"bench-{point}"
+    return latest_attempt(c) or c
+
+
 
 
 @pytest.fixture(autouse=True)
@@ -131,7 +153,7 @@ def test_the_grid_becomes_a_sweep_jobset_of_relabelled_trials(calc):
     for n in names:
         # L1 (roadmap 7.10): the deck is born in the TRIAL's directory;
         # nothing rendered sits at the bundle root any more.
-        deck = calc / "01_coarse" / "bench" / f"bench-{n}" \
+        deck = _artifacts(calc, n) \
             / f"JOB-{n}_01_coarse.fdf"
         assert deck.is_file() and not deck.is_symlink()
         assert not (calc / f"JOB-{n}_01_coarse.fdf").exists()
@@ -145,7 +167,7 @@ def test_the_pins_land_as_rendered_schema_values_not_splices(calc):
     import re
     js = _prep_bench(calc)
     _n0 = js['jobs'][0]['name']
-    deck = (calc / "01_coarse" / "bench" / f"bench-{_n0}"
+    deck = (_artifacts(calc, _n0)
             / f"JOB-{_n0}_01_coarse.fdf").read_text()
     assert re.search(r"^MaxSCFIterations\s+3\s*$", deck, re.M)
     assert re.search(r"^Diag\.Algorithm\s+ELPA-1STAGE\s*$", deck, re.M)
@@ -173,7 +195,7 @@ def test_trials_nest_inside_the_stage_they_measure(calc):
     bundle root through a COMPUTED depth, not a hardcoded hop."""
     js = _prep_bench(calc)
     name = js["jobs"][0]["name"]
-    d = calc / "01_coarse" / "bench" / f"bench-{name}"
+    d = _artifacts(calc, name)
     assert d.is_dir()
     script = d / f"JOB-{name}_01_coarse.fdf"
     assert script.is_file() and not script.is_symlink()   # L2: real files
@@ -234,7 +256,7 @@ def test_cli_summarize_bench_reads_trials_by_data(calc):
     from molbuilder.jobset._cli import jobset_group
     js = _prep_bench(calc)
     name = js["jobs"][0]["name"]
-    d = calc / "01_coarse" / "bench" / f"bench-{name}"
+    d = _artifacts(calc, name)
     (d / f"JOB-{name}_01_coarse-run0.out").write_text(
         "banner\nsiesta: Final energy (eV) = -1.0\n")
     r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
@@ -257,7 +279,7 @@ def _finished_trial_and_verdict(calc):
     from molbuilder.jobset._cli import jobset_group
     js = _prep_bench(calc)
     name = js["jobs"][0]["name"]
-    d = calc / "01_coarse" / "bench" / f"bench-{name}"
+    d = _artifacts(calc, name)
     (d / f"JOB-{name}_01_coarse-run0.out").write_text(
         "x\n>> End of run:\n")
     # epoch-per-line format: consecutive deltas are the per-iter durations
@@ -766,7 +788,7 @@ def test_a_trial_is_cold_by_construction(calc):
     (calc / "01_coarse" / "JOB.XV").write_text("warm coords")
     js = _prep_bench(calc)
     for j in js["jobs"]:
-        d = calc / "01_coarse" / "bench" / f"bench-{j['name']}"
+        d = _artifacts(calc, j['name'])
         # no file or link under the BASE label reaches the trial
         assert not list(d.glob("JOB.*")), list(d.iterdir())
         # and the deck's own label is the trial's, so SIESTA's UseSave*
@@ -789,7 +811,7 @@ def test_each_trials_wrapper_carries_its_own_translated_launch(calc):
         name = j["name"]
         g = int(name[1])
         k = int(name[name.index("K") + 1:name.index("C")])
-        w = (calc / "01_coarse" / "bench" / f"bench-{name}"
+        w = (_artifacts(calc, name)
              / f"JOB-{name}_01_coarse.run.sh").resolve().read_text()
         # ANCHORED to the assignment lines: the GPU policy block's
         # ``_gpu_mpi_np_default=4`` contains this name as a substring,
@@ -857,8 +879,13 @@ def test_the_verb_renders_the_trial_decks_it_promises(calc):
     from molbuilder.jobset.materialize import (job_dir_names, shape_of)
     from molbuilder.jobset.model import JobSet
     _dirs = job_dir_names(JobSet.from_dict(js), shape_of(None, calc))
+    from molbuilder.jobset.materialize import latest_attempt
     for j in js["jobs"]:
-        deck = (calc / _dirs[j["name"]] / j["script"]).read_text()
+        # The reader rule: the latest attempt where there is one
+        # (`project-layout.md` § 1.5a). `job_dir_names` answers where a
+        # trial LIVES; its deck is in the attempt.
+        _c = calc / _dirs[j["name"]]
+        deck = ((latest_attempt(_c) or _c) / j["script"]).read_text()
         m = re.search(r"^SystemLabel\s+(\S+)", deck, re.M)
         assert m and m.group(1) == f"JOB-{j['name']}", (
             f"{j['script']}: identity line {m.group(1) if m else None!r} "
@@ -1180,7 +1207,11 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
                                                     shape_of as _sof)
         from molbuilder.jobset.model import JobSet as _JS
         _dmap = _jdn(_JS.from_dict(js), _sof(None, dest))
-        assert (dest / _dmap[j["name"]] / j["script"]).is_file()
+        from molbuilder.jobset.materialize import latest_attempt
+        # the reader rule (`project-layout.md` 1.5a): a trial's
+        # deck is in its attempt where the shape keeps one.
+        _c = dest / _dmap[j["name"]]
+        assert ((latest_attempt(_c) or _c) / j["script"]).is_file()
         assert "01_coarse" in j["script"], j["script"]
     # A-2 (2026-08-13): the trials live IN their stage's bench container,
     # beside the record just read -- not at the root, where the
@@ -1380,7 +1411,7 @@ def test_prep_bench_asks_when_a_trial_is_already_launched(calc):
     from molbuilder.jobset.materialize import write_run_launch
     js = _prep_bench(calc)
     first = js["jobs"][0]["name"]
-    write_run_launch(calc / "01_coarse" / "bench" / f"bench-{first}",
+    write_run_launch(_artifacts(calc, first),
                      mode="submit", command=["sbatch", "x"], job_id="7")
     res = CliRunner().invoke(jobset_group,
                              ["prep", "bench", "coarse",
@@ -1423,7 +1454,7 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
     from molbuilder.jobset.materialize import write_run_launch
     js = _prep_bench(calc)
     first = js["jobs"][0]["name"]
-    write_run_launch(calc / "01_coarse" / "bench" / f"bench-{first}",
+    write_run_launch(_artifacts(calc, first),
                      mode="direct", command=["bash", "x"])
     res = CliRunner().invoke(jobset_group,
                              ["launch", "bench", "coarse",
@@ -1443,14 +1474,21 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
     js = _prep_bench(calc)
     first = js["jobs"][0]["name"]
     second = js["jobs"][1]["name"]
-    write_run_launch(calc / "01_coarse" / "bench" / f"bench-{first}",
+    write_run_launch(_artifacts(calc, first),
                      mode="submit", command=["sbatch", "x"], job_id="42")
     r = CliRunner()
     res = r.invoke(jobset_group, ["launch", "bench", "coarse", first,
                                   "--bundle", str(calc),
                                   "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert res.exit_code != 0
-    assert "already launched" in res.output
+    # THE PROPERTY, not one branch's wording.  A launched trial is refused
+    # and the refusal names it.  Which sentence comes back depends on the
+    # SHAPE: hierarchical answers from the attempt branch ("run-0 has
+    # already been launched"), flat from the trial-is-its-own-attempt one
+    # ("already launched") -- two accurate phrasings of one fact
+    # (`project-layout.md` § 1.5a).
+    assert "already" in res.output and "launched" in res.output, res.output
+    assert res.exit_code != 0
     assert "summarize" in res.output
     res = r.invoke(jobset_group, ["launch", "bench", "coarse",
                                   "--bundle", str(calc),
@@ -1571,7 +1609,7 @@ def test_prep_bench_asks_only_about_launched_trials(calc):
 
     # a launched TRIAL is the one evidence that still asks
     first = js["jobs"][0]["name"]
-    write_run_launch(calc / "01_coarse" / "bench" / f"bench-{first}",
+    write_run_launch(_artifacts(calc, first),
                      mode="direct", command=["bash", "x"])
     r = CliRunner().invoke(jobset_group,
                            ["prep", "bench", "coarse", "--bundle", str(calc),
@@ -1657,7 +1695,7 @@ def test_a_declared_pin_reaches_the_trial_deck(calc):
     _declare_bench(calc, {"diag_algorithm": ["ELPA-2STAGE"],
                           "mpi_np": [4], "omp_threads": [1]})
     _prep_bench(calc)
-    decks = list((calc / "01_coarse" / "bench").glob("bench-*/*.fdf"))
+    decks = list((calc / "01_coarse" / "bench").glob("bench-*/**/*.fdf"))
     assert decks, "no trial decks rendered"
     text = decks[0].read_text()
     # The VALUE line, not the catalogue help comments -- those name

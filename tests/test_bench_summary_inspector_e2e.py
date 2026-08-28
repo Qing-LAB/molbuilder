@@ -88,7 +88,14 @@ def sweep(tmp_path, monkeypatch):
     winner = js["jobs"][0]["name"]
 
     # One trial finishes, with a timing its steady state can be read from.
-    d = bench / f"bench-{winner}"
+    # THE TRIAL'S ARTIFACT DIRECTORY -- its attempt where the shape keeps
+    # one (`project-layout.md` § 1.5a, 2026-08-27).  Writing the .out into
+    # the container left `summarize` reading an empty attempt and the tab
+    # saying "no trial has finished", which is exactly what it should say
+    # about a directory with nothing in it.
+    from molbuilder.jobset.materialize import latest_attempt
+    _c = bench / f"bench-{winner}"
+    d = latest_attempt(_c) or _c
     (d / f"JOB-{winner}_01_coarse-run0.out").write_text("x\n>> End of run:\n")
     (d / f"JOB-{winner}_01_coarse-run0.scf-timing.log").write_text(
         "100.0 scf 1\n104.0 scf 2\n108.0 scf 3\n112.0 scf 4\n")
@@ -203,7 +210,12 @@ def test_dispose_stops_the_polling_and_clears_the_host(page, server, sweep):
 def _finish(bench, label, dt):
     """Give one trial a finished .out and a timing whose steady state is
     ``dt`` s/iter."""
-    d = bench / f"bench-{label}"
+    # The trial's ARTIFACT directory -- its attempt where the shape keeps
+    # one (`project-layout.md` § 1.5a).  The same rule the fixture above
+    # uses, and the same one `summarize` reads by.
+    from molbuilder.jobset.materialize import latest_attempt
+    _c = bench / f"bench-{label}"
+    d = latest_attempt(_c) or _c
     (d / f"JOB-{label}_01_coarse-run0.out").write_text("x\n>> End of run:\n")
     (d / f"JOB-{label}_01_coarse-run0.scf-timing.log").write_text(
         "".join(f"{100.0 + i * dt} scf {i + 1}\n" for i in range(4)))

@@ -620,9 +620,22 @@ def _ask_if_underway(base, stage, *, bench_container=None) -> None:
     # see them.  § 6.5 retired that shape on 2026-08-16: every attempt now
     # lives under its stage, so the gate above sees all of them.)
     if bench_container is not None:
-        launched = [p.parent.name for p in
+        # DEPTH-AGNOSTIC, and the NAME comes from the `bench-` component.
+        # A trial keeps attempts since 2026-08-27 (`project-layout.md`
+        # § 1.5a), so its record is at `bench-<point>/run-<n>/run.json` in
+        # hierarchical and `bench-<point>/run.json` in flat.  `**` matches
+        # zero or more directories, so one glob answers for both; taking
+        # `p.parent.name` would have named the ATTEMPT (`run-0`) rather
+        # than the trial in the layout that has one.
+        def _trial_name(rec: Path) -> str:
+            for part in reversed(rec.parts):
+                if part.startswith("bench-"):
+                    return part
+            return rec.parent.name
+
+        launched = [_trial_name(p) for p in
                     sorted(Path(bench_container)
-                           .glob(f"bench-*/{RUN_LAUNCH_FILE}"))]
+                           .glob(f"bench-*/**/{RUN_LAUNCH_FILE}"))]
         if launched:
             evidence.append(
                 f"launched trial(s) in "

@@ -22,6 +22,7 @@ from molbuilder import describe as D
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.scheduler import Domain, Environment, Topology
 from molbuilder.jobset._cli import _bench_inputs
+from molbuilder.jobset.materialize import latest_attempt
 from molbuilder.jobset.prep import prep_calculation
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
@@ -222,7 +223,12 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
     assert len(dirs) == 2 + 3 * 2       # cpu: 1 cell x2 blocks; gpu: G in 1,2,4
 
     def deck(sub):
-        d = next(p for p in dirs if sub in p.name)
+        # MATCHED ON THE PATH, not the leaf.  A trial keeps attempts since
+        # 2026-08-27 (`project-layout.md` § 1.5a), so the leaf is `run-0`
+        # and the coordinate names the directory above it.  The property
+        # under test -- that each trial's own coordinate reaches its deck
+        # -- is unchanged; only where the deck sits moved.
+        d = next(p for p in dirs if sub in str(p))
         return next(d.glob("*.fdf")).read_text()
 
     # ``diag_algorithm`` has ONE declared point, so it is a PIN, not an
@@ -354,8 +360,12 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
     _declare(sol_calc, {"mpi_np": [4], "omp_threads": [1],
                         "use_gpu": [False], "block_size": [64, 128]})
     _prep(sol_calc)
-    deck = next((sol_calc / "01_coarse" / "bench"
-                 / "bench-K4C1block_size64").glob("*.fdf"))
+    # The trial's ARTIFACT directory, not a hardcoded container: since
+    # 2026-08-27 the deck lives in the attempt (`project-layout.md`
+    # § 1.5a).  The gate this exercises -- submission verifies the deck it
+    # is about to launch starts cold -- is unchanged.
+    _c = sol_calc / "01_coarse" / "bench" / "bench-K4C1block_size64"
+    deck = next((latest_attempt(_c) or _c).glob("*.fdf"))
     text = deck.read_text()
     assert "DM.UseSaveDM" in text and ".false." in text
 
@@ -396,7 +406,11 @@ def test_the_winners_coordinates_ride_run_config(sol_calc):
     js, base = _load_bench_set(str(sol_calc), "coarse")
     dirs = job_dir_names(js, shape_of(js, sol_calc))
     winner = "G0K4C1block_size128"
-    d = sol_calc / dirs[winner]
+    # THE LATEST ATTEMPT WHERE THERE IS ONE (project-layout.md 1.5a):
+    # a trial keeps attempts since 2026-08-27, so its artifacts are one
+    # level down.  Same rule `runstatus` and `summarize` use.
+    _c = sol_calc / dirs[winner]
+    d = latest_attempt(_c) or _c
     stem = next(d.glob("*.fdf")).name[:-4]
     (d / f"{stem}-run0.out").write_text(
         "* Running on 4 nodes in parallel\nx\n"
@@ -535,7 +549,8 @@ def test_summarize_mid_flight_lists_unfinished_and_refreshes(sol_calc):
     dirs = job_dir_names(js, shape_of(js, sol_calc))
 
     def finish(name, spi):
-        d = sol_calc / dirs[name]
+        _c = sol_calc / dirs[name]
+        d = latest_attempt(_c) or _c
         stem = next(d.glob("*.fdf")).name[:-4]
         (d / f"{stem}-run0.out").write_text(
             "* Running on 4 nodes in parallel\nx\n"
@@ -687,7 +702,8 @@ def test_a_gpu_winner_rides_run_config_on_a_mixed_sweep(sol_calc):
     dirs = job_dir_names(js, shape_of(js, sol_calc))
 
     def finish(name, spi):
-        d = sol_calc / dirs[name]
+        _c = sol_calc / dirs[name]
+        d = latest_attempt(_c) or _c
         stem = next(d.glob("*.fdf")).name[:-4]
         (d / f"{stem}-run0.out").write_text(
             "* Running on 4 nodes in parallel\nx\n"

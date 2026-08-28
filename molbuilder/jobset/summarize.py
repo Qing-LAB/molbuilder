@@ -305,7 +305,7 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
     Its regex-keyed predecessor ``discover_points`` died with the OLD
     bundle format (u5).
     """
-    from .materialize import job_dir_names, shape_of
+    from .materialize import job_dir_names, latest_attempt, shape_of
     bundle = Path(bundle)
     dirs = job_dir_names(jobset, shape_of(jobset, bundle))
     pts: List[BenchPoint] = []
@@ -323,8 +323,15 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
             knobs["cpus_per_task"] = j.resources.cpus_per_task
         if j.resources.gres:
             knobs["gres"] = j.resources.gres
+        # THE LATEST ATTEMPT WHERE THERE IS ONE, the container otherwise --
+        # `runstatus`'s own rule, and shape-agnostic, so it answered for a
+        # hierarchical stage long before a trial had attempts to find
+        # (`project-layout.md` § 1.5a).  Reading `dirs[j.name]` regardless
+        # is blind to the attempt layer: a re-measured trial's artifacts
+        # sit one level down.
+        _d = bundle / dirs[j.name]
         pts.append(parse_point(
-            j.name, bundle / dirs[j.name], Path(j.script).stem,
+            j.name, latest_attempt(_d) or _d, Path(j.script).stem,
             "gpu" if j.resources.gres else "cpu", knobs,
             point=dict(j.point)))
     return pts
@@ -341,9 +348,10 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     job = next((j for j in jobset.jobs if j.name == label), None)
     if job is None:
         return {}
-    from .materialize import job_dir_names, shape_of
+    from .materialize import job_dir_names, latest_attempt, shape_of
     import os as _os
-    d = Path(bundle) / job_dir_names(jobset, shape_of(jobset, bundle))[label]
+    _c = Path(bundle) / job_dir_names(jobset, shape_of(jobset, bundle))[label]
+    d = latest_attempt(_c) or _c        # the same rule as above
     deck = d / _os.path.basename(job.script)
     text = _read(deck)
     if not text:
