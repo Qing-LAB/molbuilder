@@ -466,7 +466,7 @@ def test_audit_actually_found_some_hidden_ids(dynamically_hidden_ids):
     # is to catch a regex regression in the scanner; any handful
     # of real ids satisfies that.
     expected_some_of = {
-        "fdf-output",        # /structure-optimization
+        "auto-detect-panel",  # /structure-optimization (was fdf-output; that lane retired 2026-08-15)
         "auto-detect-panel", # /structure-optimization
     }
     found = dynamically_hidden_ids & expected_some_of

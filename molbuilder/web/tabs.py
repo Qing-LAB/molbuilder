@@ -1,6 +1,6 @@
 """Canonical tab order — single source of truth.
 
-The 5-tab nav rendered by ``_app_header.html`` and the bare-``/``
+The tab nav rendered by ``_app_header.html`` and the bare-``/``
 landing redirect both derive from this list, so reordering the
 tabs (or adding / removing one) is a single-place change.
 

@@ -49,7 +49,7 @@ def _extract_provenance_dict(text: str) -> Optional[Dict[str, str]]:
     """Find the PROVENANCE block and return its k/v payload as a flat
     dict.  Returns ``None`` when no well-formed PROVENANCE block is
     present.  Empty-but-present block returns ``{}`` (distinct from
-    None per bundle-contract.md § 5.1)."""
+    None — `model/parse.md`'s absent-vs-empty rule)."""
     lines = text.splitlines()
     begin_idx: Optional[int] = None
     end_idx: Optional[int] = None
@@ -85,8 +85,8 @@ def _extract_provenance_dict(text: str) -> Optional[Dict[str, str]]:
         if m:
             out[m.group("key")] = m.group("val")
     # Block present, no parseable k/v -> {} (NOT None).  Distinguished
-    # from "block absent" per bundle-contract.md § 5.1's None vs
-    # empty-dict semantics.
+    # from "block absent" -- `model/parse.md`'s None-vs-empty-dict
+    # semantics.
     return out
 
 

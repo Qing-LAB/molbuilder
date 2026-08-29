@@ -5,16 +5,16 @@ Implements :class:`JobDirParser` + :func:`decode_run_dir` per
 § 7 composer pattern.  Pure composer over the existing
 infrastructure:
 
-* ``molbuilder.parsers`` — file-level TrajectoryParser registry; the
-  decoder calls ``detect_parser`` + ``.parse`` on each result file:
+* ``molbuilder.parse`` (this package's registry) — the decoder
+  dispatches each result file through it:
   every ``.out``, and each ``*.molwatch.log`` whose footer concludes
   the run (``running-a-job.md`` § 4 — the engine-neutral end-of-run
   marker, and the only one a PySCF attempt has).  It NEVER opens an
   engine output file directly.
-* ``molbuilder.script_contract`` — reads HEADER / PROVENANCE /
-  BENCH-MARKS / ATOM-METADATA / USER-CUSTOM via the existing
-  ``extract_*`` helpers.  The decoder does NOT re-grep for these
-  blocks.
+* ``molbuilder.parse.scripts`` — reads HEADER / PROVENANCE /
+  BENCH-MARKS / ATOM-METADATA / USER-CUSTOM via the shared
+  extractors (``scripts/source_dict.py`` and friends).  The decoder
+  does NOT re-grep for these blocks.
 
 The only NEW parsing this module does is ``_parse_engine_body_summary``
 which extracts a CURATED list of ~21 SIESTA engine-body directives.
@@ -73,7 +73,6 @@ ENGINE_BODY_KEYS: Tuple[str, ...] = (
 # test_no_direct_out_grep_in_decoder).
 
 # Default CG-step threshold for cg_step_milestone events.
-CG_STEP_MILESTONE_DEFAULT = 50
 
 
 # Exceptions ----------------------------------------------------------- #

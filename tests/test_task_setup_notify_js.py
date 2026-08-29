@@ -163,7 +163,7 @@ def test_the_number_is_a_number_not_a_human_spelling():
 def test_no_destination_or_credential_can_reach_the_description():
     """The card has no field for one and must never grow a key for one.
 
-    A `task.json` travels -- to a cluster, into a handoff bundle, to
+    A `task.json` travels -- to a cluster, into a composed copy, to
     whoever is handed the calculation.  `task.py`'s key allowlist refuses
     a `url` outright; this is the same rule one layer up, where the value
     would have to originate.

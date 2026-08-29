@@ -1151,8 +1151,8 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     was ``"bundle"`` here and ``"project"`` in the registry until
     2026-08-23, three names for one thing counting the refusals' prose
     (`configuration.md` § 8).  ``bundle`` was the one that had to go: it
-    already names a different artifact, the portable prepped directory of
-    `handoff-bundle.md`.
+    already names a different artifact -- the portable prepped directory
+    the JobSet framework's ``--bundle`` points at.
     """
     machine_path, machine_via = machine_config_path()
     sources = [{"scope": "machine", "path": str(machine_path.resolve()),

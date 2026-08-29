@@ -211,7 +211,25 @@ class TransportSidecarFileParser(FileParser):
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        return path.name.endswith(".transport.json") and path.is_file()
+        """Claim only THIS sidecar's shape, never the suffix alone.
+
+        Two payloads share ``*.transport.json``: this pre-composite
+        sidecar (top-level ``schema_version``) and the composite's
+        result record (``schema: molbuilder/transport-result@1``,
+        ``transport/record.py`` — the registry's owner of the name,
+        job-contracts § 6.1).  Claiming by suffix alone made the
+        registered parser refuse the record with a misleading
+        ``schema_version None`` error; a record now falls through to
+        ``UnknownFormatError`` until its own inspector-round parser
+        claims it."""
+        if not (path.name.endswith(".transport.json") and path.is_file()):
+            return False
+        try:
+            head = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return True     # unreadable/malformed: claim it so parse()
+                            # raises THIS format's actionable error
+        return isinstance(head, dict) and "schema_version" in head
 
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:

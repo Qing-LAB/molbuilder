@@ -188,7 +188,7 @@ class Notify:
     The destination and its credential live on the machine that runs the job
     (``$XDG_CONFIG_HOME/molbuilder/notify``, else
     ``~/.config/molbuilder/notify``; mode 0600) and never here.  This file travels:
-    to a cluster, into a handoff bundle, to whoever you hand the calculation
+    to a cluster, into a citation's composed copy, to whoever you hand the calculation
     to.  **A policy is safe to carry; a token is not**, and the split is what
     lets the rest of the record stay shareable.
 

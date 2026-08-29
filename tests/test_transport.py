@@ -1,8 +1,10 @@
-"""Phase B.2 transport engine abstraction.
+"""The transport engine registry + the TransportResults round-trip.
 
-Tests the registry pattern + TransportResults round-trip without any
-real engine backend (those land in B.3).  Mirrors
-``tests/test_spectra_engine.py`` -- if you change one, change both.
+The registry pattern with its ONE shipped backend (transiesta
+registers at import), and the pre-composite wire shape's round-trip.
+(The header once claimed no real backend existed and named a mirror
+file, ``tests/test_spectra_engine.py``, that does not exist -- both
+claims retired 2026-08-29.)
 """
 
 from __future__ import annotations

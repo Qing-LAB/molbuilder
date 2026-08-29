@@ -578,8 +578,10 @@ def test_extract_script_source_no_atom_metadata():
     assert src["provenance"] is not None
 
 
-def test_extract_script_source_returns_dataclass_with_notes_list():
-    """``notes`` is never None (frozen dataclass invariant)."""
+def test_extract_script_source_returns_a_dict_with_a_notes_list():
+    """``notes`` is never None (the extractor's dict contract --
+    parse/scripts/source_dict.py; the dataclass era ended with the
+    2026-06 parse migration)."""
     src = sc.extract_script_source("SystemLabel only\n")
     assert isinstance(src["notes"], list)
     assert src["regions"] is None

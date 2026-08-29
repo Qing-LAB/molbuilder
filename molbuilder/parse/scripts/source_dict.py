@@ -45,8 +45,8 @@ from molbuilder.sidecars.molstruct import SCHEMA_VERSION as _CURRENT_SCHEMA
 
 
 def _extract_script_source(text: str) -> Dict[str, Any]:
-    """Single-pass extract over a generated-script body for the bundle
-    layer.  Returns a dict with:
+    """Single-pass extract over a generated-script body for the run
+    decoder.  Returns a dict with:
 
       * ``regions``           dict[str, list[int]] | None
       * ``frozen_atoms``      list[int] | None
@@ -56,7 +56,7 @@ def _extract_script_source(text: str) -> Dict[str, Any]:
       * ``notes``             list[str]
 
     ``None`` distinguishes "block absent" from "block present but
-    empty" (``{}`` / ``[]``) per bundle-contract.md § 5.1.  A block whose
+    empty" (``{}`` / ``[]``) — `model/parse.md`'s absent-vs-empty rule.  A block whose
     version is not the one this build writes is READ (a finished run must stay
     readable) and surfaced as a diagnostic note naming what may be missing --
     see the comment at the check itself.

@@ -614,10 +614,10 @@ def _emit_transiesta_block(struct: Structure,
 
 @register_engine
 class TransiestaEngine:
-    """TranSIESTA NEGF engine (Phase B.3 zero-bias scope).
+    """The TranSIESTA NEGF engine (the composite's deck emitter).
 
-    See the module docstring for what's in vs deferred, the
-    electrode-generation workflow, and the bias-scan plan.  The
+    See the module docstring for the deck contract; the composite's
+    stage renders drive this through ``transport/stages.py``.  The
     engine self-registers via the ``@register_engine`` decorator
     on import; the production import path is
     ``molbuilder.web.blueprints.__init__`` (mirrors the chemistry
@@ -855,18 +855,19 @@ class TransiestaEngine:
                     where="config.bias_voltages_v",
                 ))
 
-        # Multi-bias warning (today's scope is zero-bias only).
+        # Multi-bias note: THIS single-deck render emits point 0 only.
+        # The composite renders one deck per point at prep and launches
+        # the .TSDE-chained walker (jobset/submit.py) -- this surface
+        # (/api/transport/render) validates a single deck.
         if len(cfg.bias_voltages_v) > 1:
             issues.append(Issue(
                 severity="warn",
                 message=(
-                    f"Bias-scan generation is deferred to a follow-up "
-                    f"release.  Today's engine emits a single .fdf at "
-                    f"V = {cfg.bias_voltages_v[0]:.4f} V; subsequent "
-                    f"values {cfg.bias_voltages_v[1:]} are ignored.  "
-                    f"For now, regenerate the .fdf with each bias "
-                    f"value separately (see module docstring under "
-                    f"'Bias-scan workflow')."
+                    f"This validation render emits ONE deck, at "
+                    f"V = {cfg.bias_voltages_v[0]:.4f} V.  A scan over "
+                    f"{list(cfg.bias_voltages_v)} is the COMPOSITE's "
+                    f"job: describe it (--bias) and prep renders one "
+                    f"deck per point, launched as one chain."
                 ),
                 where="config.bias_voltages_v",
             ))
@@ -889,9 +890,8 @@ class TransiestaEngine:
     def parse_output(cls, path: str) -> TransportResults:
         """Read a ``<job>.transport.json`` produced by this engine.
 
-        Deferred to a follow-up release alongside the schema design
-        for ``.transport.json``.  Tracked in memory
-        ``project_transport_results_tab_framework.md``.
+        Deferred to the /results transmission-inspector round
+        (roadmap section 2, item 3).
         """
         raise NotImplementedError(
             "TranSIESTA parse_output waits on the /results transmission "

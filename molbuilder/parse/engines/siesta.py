@@ -432,7 +432,6 @@ def _parse_scf_floats(
 # the same canonical key.  This is the "names should be immune to
 # capitalisation, small spelling differences" rule applied to the
 # SCF column header.
-_SCF_HEADER_RE = re.compile(r"^\s*iscf\s+\S", re.IGNORECASE)
 
 
 def _normalise_column_token(tok: str) -> str:

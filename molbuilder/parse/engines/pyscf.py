@@ -209,7 +209,6 @@ def _sibling_molwatch_log(traj_path: str) -> Optional[str]:
 # all start with ``#`` and appear before the first ``==== molwatch
 # step N begin ====`` block; footer markers (``# concluded:`` /
 # ``# error:``) appear after the last ``==== ... end ====`` block.
-_MW_HEADER_LINE_RE = re.compile(r"^#")
 _MW_STEP_BEGIN_RE  = re.compile(r"====\s*molwatch\s+step\s+\d+\s+begin\s*====")
 _MW_CONCLUDED_RE   = re.compile(r"^#\s*concluded:\s*(.+)$", re.IGNORECASE)
 _MW_ERROR_RE       = re.compile(r"^#\s*error:\s*(.+)$",     re.IGNORECASE)

@@ -91,7 +91,8 @@ def test_provenance_names_each_values_source(tmp_path):
     assert scopes["machine"]["found"] and scopes["machine"]["via"] == "cwd"
     # `project`, ONE name for this scope (2026-08-23).  It answered to
     # "bundle" here and "project" in the registry -- and `bundle` already
-    # names the portable prepped directory of handoff-bundle.md.
+    # names the portable prepped directory the JobSet framework's
+    # --bundle points at.
     assert scopes["project"]["found"]
 
 

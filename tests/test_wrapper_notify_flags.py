@@ -14,7 +14,7 @@ pair), which is the whole argument for not opening a third one.
 
 **And what must never ride it: the destination.**  The URL and its
 credential are the user's own file on the machine that runs the job.  A
-wrapper is written to disk, copied into handoff bundles and read by anyone
+wrapper is written to disk, copied into composed copies and read by anyone
 who can see the run directory; a token in one would be a token published.
 """
 from __future__ import annotations
@@ -162,7 +162,7 @@ def test_every_flag_emitted_is_one_the_monitor_accepts(tmp_path):
 
 def test_no_destination_or_credential_is_written_into_the_wrapper(tmp_path):
     """A wrapper is a file on disk in the run directory: copied into
-    handoff bundles, readable by anyone with the filesystem.  The URL and
+    composed copies, readable by anyone with the filesystem.  The URL and
     its token belong to the machine, in the user's own 0600 file, and must
     never be baked in here.
     """

@@ -1,4 +1,4 @@
-"""Tests for POST /api/transport/render (Transport B.3 step 2).
+"""Tests for POST /api/transport/render (the engine registry's validation surface).
 
 Pins the contract:
 

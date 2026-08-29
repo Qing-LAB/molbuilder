@@ -1,13 +1,15 @@
-"""Tests for ``molbuilder.parsers.transport_json``.
+"""Tests for the ``.transport.json`` SIDECAR door.
 
-Pin the schema_version gate, malformed-input handling, field-error
-wrapping, and missing-file case so the future live-watch poller +
-the ``/api/transport/load`` endpoint have stable exception
-semantics.
+The read side is ``molbuilder.parse.sidecars.transport`` and the
+write side ``molbuilder.sidecars.transport`` (the pre-composite
+``transport/v2`` sidecar around :class:`TransportResults`).  Pin the
+schema_version gate, malformed-input handling, field-error wrapping,
+and the missing-file case so any future reader keeps stable
+exception semantics.  The COMPOSITE's result record shares the
+suffix and is NOT this shape — the suffix-claim test below keeps the
+two apart (job-contracts § 6.1 names the record the suffix's owner).
 
-Pure JSON I/O + dataclass round trip — no engine work.  Mirrors
-``tests/spectra/test_parsers_json.py`` so the two parsers stay in
-lockstep.
+Pure JSON I/O + dataclass round trip — no engine work.
 """
 
 from __future__ import annotations
@@ -282,3 +284,29 @@ class TestWritePath:
         # No sibling temp files should remain.
         tmp_siblings = list(tmp_path.glob("atomic.transport.json.*.tmp"))
         assert tmp_siblings == []
+
+
+class TestTheSuffixHasTwoShapes:
+    """``*.transport.json`` is claimed by SHAPE, never by suffix alone."""
+
+    def test_the_composite_record_is_not_claimed_by_the_sidecar_parser(
+            self, tmp_path: Path):
+        """The registered sidecar parser must DECLINE the composite's
+        result record (``schema: molbuilder/transport-result@1``, no
+        ``schema_version``) — claiming it by suffix made ``parse()``
+        refuse the registry's own artifact with a misleading error."""
+        from molbuilder.parse.sidecars.transport import (
+            TransportSidecarFileParser)
+        record = tmp_path / "CT.transport.json"
+        record.write_text(json.dumps({
+            "schema": "molbuilder/transport-result@1",
+            "label": "CT", "points": [], "iv": {},
+        }))
+        assert TransportSidecarFileParser.can_parse(record) is False
+
+    def test_the_v2_sidecar_is_still_claimed(self, tmp_path: Path):
+        from molbuilder.parse.sidecars.transport import (
+            TransportSidecarFileParser)
+        sidecar = tmp_path / "dev.transport.json"
+        sidecar.write_text(json.dumps({"schema_version": SCHEMA_VERSION}))
+        assert TransportSidecarFileParser.can_parse(sidecar) is True

@@ -72,8 +72,9 @@ SCHEMA_VERSION = "2"
 
 @dataclass
 class TransportResults:
-    """Engine-agnostic result of a transport calculation.  Phase B.2
-    defines the shape; B.3 backends populate it."""
+    """Engine-agnostic result of a transport calculation — the
+    pre-composite wire/sidecar shape (``transport/v2``); the
+    composite's own record is ``transport/record.py``."""
 
     metadata: Dict[str, Any] = field(default_factory=dict)
     energy_grid_eV: np.ndarray = field(

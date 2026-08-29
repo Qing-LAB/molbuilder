@@ -1,7 +1,7 @@
 """Engine Protocol + registry for the Transport tab.
 
 L2 plug-in surface, mirrored from :mod:`molbuilder.spectra.engine_base`.
-Each engine (transiesta, pyscf-negf in B.3) provides four methods:
+Each engine (transiesta is the one shipped) provides four methods:
 
 * :meth:`TransportEngine.render_script` — emit a self-contained
   script the user runs externally.
@@ -14,8 +14,8 @@ Each engine (transiesta, pyscf-negf in B.3) provides four methods:
   errors share the rest of molbuilder's issues pipeline.
 * :meth:`TransportEngine.methods_fragment` — engine-specific
   paragraph for the Methods section (NEGF code version, self-energy
-  scheme, basis, citation keys).  Composed with the generic
-  Methods template that lands when B.3 wires in backends.
+  scheme, basis, citation keys).  A generic Methods composer is
+  future work (roadmap section 2, item 4).
 
 Engines self-register via the ``@register_engine`` decorator at
 import time; :func:`get_engine` dispatches by ``name``.
@@ -132,8 +132,8 @@ class TransportEngine(Protocol):
                          results: TransportResults) -> str:
         """Engine-specific paragraph for the Methods section.
 
-        Composed with the generic Methods template (in
-        :mod:`molbuilder.transport.methods` when B.3 ships).
+        Composed by the future Methods generator (roadmap
+        section 2, item 4 — no composer module exists yet).
         An engine's fragment typically names:
 
           * the program + version ("TranSIESTA 4.1.5");
@@ -191,7 +191,7 @@ def get_engine(name: str) -> Type[TransportEngine]:
     """Look up a registered engine by name; raise
     :class:`UnknownEngineError` if not registered.
 
-    Typical caller (the web blueprint, once B.3 ships):
+    Typical caller (the web blueprint's validation surface):
 
       .. code:: python
 

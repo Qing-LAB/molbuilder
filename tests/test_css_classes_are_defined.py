@@ -33,7 +33,7 @@ _STATIC = _ROOT / "molbuilder/web/static"
 #: Written as ``"<prefix>" + something`` -- a fragment, never a whole name.
 _PREFIX_FRAGMENTS = {
     "app-notification--",   # + severity, app-notifications.js
-    "phase-",               # + phase name, transport/core.js
+    "phase-",               # + phase name, lib/spectra/core.js
 }
 
 #: MARKERS -- classes that carry meaning to code, not appearance to a reader.

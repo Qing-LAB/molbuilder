@@ -203,9 +203,6 @@ _L2_MODULES = {
                          # imported only by runtime_config (L2) + cli (L3),
                          # imports no molbuilder domain modules
     "data",              # bundled JSON tables
-    "bundle_writer",     # write-side bundle materializer: composes BundleResult
-                         # + Structure + dirs/parse.  L2 because it knows
-                         # engine-specific final-coords sources (.XV, .opt.xyz).
     "script_emit",       # write-side emit_* helpers rehomed from script_contract
                          # in H2.emit.  L2 because emitter helpers consume
                          # parse.types (TrajectoryResult / ParseResult).

@@ -714,7 +714,7 @@ NOTIFY_TIMEOUT_S = 2.0
 
 #: The destination file's name inside molbuilder's config directory.  NOT in
 #: the calculation's description: `task.json` travels -- to a cluster, into a
-#: handoff bundle, to whoever is handed the calculation -- and a token must
+#: citation's composed copy, to whoever is handed the calculation -- and a token must
 #: not travel with it.  The policy is in the description; the secret is here.
 NOTIFY_FILENAME = "notify"
 

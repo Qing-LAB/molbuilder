@@ -277,6 +277,12 @@ async function start() {
         say("the box was moved off the molecule — see the Cell page");
     });
 
+    /* The console surface the page header advertises (__molview.…) —
+     * the handle itself, published for hands-in-the-guts poking on THIS
+     * page only.  It was advertised without being published for a
+     * while, so every console instruction on the page failed. */
+    window.__molview = viewer.data;
+
     say("ready — pick a sample");
 }
 

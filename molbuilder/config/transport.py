@@ -8,8 +8,8 @@ as the other engine configs.  The metadata drives:
   * the click-based CLI;
   * the Methods-text generator.
 
-Engines (registry surface in :mod:`molbuilder.transport`; concrete
-implementations land in Phase B.3):
+Engines (registry surface in :mod:`molbuilder.transport`; transiesta is
+the shipped backend):
 
   * **transiesta** -- TranSIESTA from the SIESTA suite, NEGF + LDA/GGA
     pseudopotentials.  Handles realistic electrode + bridge sizes
@@ -21,7 +21,7 @@ implementations land in Phase B.3):
 
 Both consume the SAME relaxed geometry + the SAME ``.molstruct.json``
 sidecar (region labels assigned in /modify -- see
-:mod:`molbuilder.parsers.molstruct_json`).  The two engines'
+:mod:`molbuilder.sidecars.molstruct`).  The two engines'
 ``render_script`` methods emit different inputs from the same
 TransportConfig + Structure pair.
 

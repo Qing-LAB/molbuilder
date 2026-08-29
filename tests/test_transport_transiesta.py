@@ -1,4 +1,4 @@
-"""Tests for the TranSIESTA engine (Transport Phase B.3 zero-bias).
+"""Tests for the TranSIESTA engine (the TranSIESTA deck emitter).
 
 Pins the contract documented in
 ``molbuilder/transport/transiesta.py`` module docstring:
@@ -14,10 +14,9 @@ Pins the contract documented in
 * ``methods_fragment`` returns prose (placeholder today; the
   full version lands with parse_output).
 
-Sequencing of deferred items + the electrode-generation workflow
-are documented in memories
-``project_transport_electrode_bias_workflow.md`` and
-``project_transport_results_tab_framework.md``.
+The electrode derivation lives in ``transport/wizard.py`` driven by
+``transport/compose.py``; the composite's design of record is
+``docs/plans/transport-design.md``.
 """
 from __future__ import annotations
 
@@ -308,10 +307,11 @@ def test_preflight_empty_bridge_blocks_generation(default_cfg):
     assert any("bridge" in e.message for e in errs)
 
 
-def test_preflight_multi_bias_warns_deferred_scope(labeled_device):
-    """Today's engine emits only bias_voltages_v[0]; multi-bias is
-    a follow-up release.  Pin the WARN so the deferred scope
-    surfaces to the user instead of silently dropping bias points.
+def test_preflight_multi_bias_names_the_composite(labeled_device):
+    """A single-deck render (the validation surface) emits only
+    bias_voltages_v[0]; a SCAN is the composite's job.  Pin the WARN
+    so a multi-point config surfaces the road instead of silently
+    dropping bias points.
     """
     cfg = TransportConfig(
         job_name="biased",
@@ -320,7 +320,7 @@ def test_preflight_multi_bias_warns_deferred_scope(labeled_device):
     issues = get_engine("transiesta").preflight(labeled_device, cfg)
     warns = [i for i in issues if i.severity == "warn"]
     assert any(
-        "deferred" in w.message.lower() or "bias-scan" in w.message.lower()
+        "composite" in w.message.lower() and "one deck" in w.message.lower()
         for w in warns
     ), (
         "multi-bias call did not surface the deferred-scope WARN; "
@@ -471,16 +471,16 @@ def test_preflight_open_shell_metal_routes_through_shared_check(
 # --------------------------------------------------------------------- #
 
 
-def test_parse_output_raises_clear_deferred_message():
-    """parse_output is deferred to a follow-up release; raising
-    NotImplementedError with a clear message is BETTER than
-    returning empty results or crashing on a missing key.
+def test_parse_output_raises_and_points_at_the_record():
+    """parse_output waits on the /results transmission inspector;
+    raising NotImplementedError that NAMES the shipped record is
+    BETTER than returning empty results or crashing on a missing key.
     """
     with pytest.raises(NotImplementedError) as ei:
         get_engine("transiesta").parse_output("nonexistent.json")
     msg = str(ei.value).lower()
-    assert "defer" in msg or "follow-up" in msg, (
-        f"NotImplementedError message should explain why; got: {ei.value}"
+    assert "transport.json" in msg and "record" in msg.replace("transport/record.py", "record"), (
+        f"NotImplementedError message should name the shipped record; got: {ei.value}"
     )
 
 

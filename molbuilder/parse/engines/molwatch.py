@@ -68,7 +68,6 @@ from ._sidecar import read_frozen_atoms
 # Compiled regexes kept around for on_start callbacks to extract
 # captured groups (rule matchers only decide whether to dispatch).
 _BEGIN_RE       = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+begin\s*====")
-_END_RE         = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+end\s*====")
 _HEADER_RE      = re.compile(r"^#\s*molwatch\s+trajectory\s+log", re.IGNORECASE)
 _ENGINE_RE      = re.compile(r"^#\s*engine:\s*(\S+)", re.IGNORECASE)
 _RUNTIME_RE     = re.compile(r"^#\s*runtime\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
@@ -90,7 +89,6 @@ _CONVERGENCE_RE = re.compile(
     # of the key grammar -- the section rule's start pattern below uses the
     # same fragment, because the drift lived exactly in its inline copy.
     r"^#\s*convergence\.(" + _CONV_KEY + r"):\s*(.*)$")
-_CONCLUDED_RE   = re.compile(r"^#\s*concluded:\s*(.+)$", re.IGNORECASE)
 _ERROR_RE       = re.compile(r"^#\s*error:\s*(.+)$",     re.IGNORECASE)
 
 
