@@ -566,7 +566,7 @@ def _build_geometry(run_dir: Path, files: Dict[str, List[Path]]
     regions: Dict[str, List[int]] = {}
     frozen: List[int] = []
     if anchor_fdf is not None:
-        from .bundle import _extract_script_source
+        from ..scripts.source_dict import _extract_script_source
         src = _extract_script_source(
             anchor_fdf.read_text(encoding="utf-8-sig", errors="replace"))
         regions = src["regions"] or {}

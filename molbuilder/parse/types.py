@@ -164,28 +164,6 @@ class JobResult(ParseResult):
     result_kind:           str = "job"
 
 
-@dataclass(frozen=True)
-class BundleResult(ParseResult):
-    """Run-dir → next-stage handoff bundle.
-
-    Mirrors the legacy ``RunBundle`` shape from ``script_bundle.py``
-    so Phase G is a thin wrapper.  Phase G also surfaces ``cell``
-    explicitly (the legacy returned cell embedded in Structure).
-
-    ``source_engine`` + ``final_coords_from`` were added in H2 so
-    :func:`molbuilder.bundle_writer.write_bundle_as_handoff` can
-    write the same "bundled from <source> (<engine>/<coords-source>)"
-    XYZ comment the legacy materializer wrote.  Optional so older
-    BundleResult constructions (and the audit-gap public-surface
-    coverage test) stay valid.
-    """
-    structure:    Optional[Structure] = None
-    cell:         Optional[np.ndarray] = None
-    regions:      Dict[str, List[int]] = field(default_factory=dict)
-    frozen_atoms: List[int] = field(default_factory=list)
-    notes:        List[str] = field(default_factory=list)
-    block_schema_versions: Dict[str, int] = field(default_factory=dict)
-    source_engine:     Optional[str] = None   # "siesta" | "pyscf"
-    final_coords_from: Optional[str] = None   # "xv"/"fdf-initial"/"py-opt"/"py-initial"
-    source_script:     Optional[str] = None   # absolute path to the .fdf / .py that fed the run
-    result_kind:  str = "bundle"
+# (BundleResult stood here until 2026-08-29 -- the run-dir -> next-stage
+#  handoff shape retired with the bundle parser; the composite CITES a
+#  finished attempt and `transport/compose.py` fuses at prep.)

@@ -15,7 +15,7 @@ Pins:
       - P6 (engine-specific code only in engines/coords) — lint
         test that parse/types.py + parse/base.py + parse/registry.py
         contain NO engine name strings (siesta / pyscf / molwatch)
-  * Top-level re-exports: BundleDirParser + ScriptSourceTextParser
+  * Top-level re-exports: ScriptSourceTextParser
     are importable from molbuilder.parse for the canonical "I want
     the umbrella" / "I want the bundle assembler" usage pattern.
 """
@@ -28,7 +28,6 @@ import pytest
 
 import molbuilder.parse as parse_module
 from molbuilder.parse import (
-    BundleDirParser,
     ParseWarning,
     ScriptResult,
     ScriptSourceTextParser,
@@ -56,15 +55,13 @@ def test_every_public_export_is_importable():
 
 
 def test_top_level_re_exports_match_subpackage_classes():
-    """BundleDirParser + ScriptSourceTextParser at parse.* are the
-    same classes as their sub-package canonical homes."""
-    from molbuilder.parse.dirs.bundle import (
-        BundleDirParser as _SubBundle,
-    )
+    """ScriptSourceTextParser at parse.* is the same class as its
+    sub-package canonical home.  (BundleDirParser's row retired
+    2026-08-29 with the bundle parser -- calculation-to-calculation
+    passing is gone; the composite CITES.)"""
     from molbuilder.parse.scripts.source import (
         ScriptSourceTextParser as _SubScript,
     )
-    assert BundleDirParser is _SubBundle
     assert ScriptSourceTextParser is _SubScript
 
 

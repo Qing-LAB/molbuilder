@@ -759,9 +759,11 @@ def generated_at_now() -> str:
 # --------------------------------------------------------------------- #
 #
 # The block extractors live next to their TextParser definitions in
-# ``molbuilder/parse/scripts/`` (Phase F per parse-module.md § 8) +
-# the umbrella ``extract_script_source`` in ``parse/dirs/bundle.py``
-# (Phase G).  Surface them here under their legacy unprefixed names
+# ``molbuilder/parse/scripts/`` (Phase F per parse-module.md § 8) --
+# the umbrella ``extract_script_source`` included, since the bundle
+# parser it once rode with retired (2026-08-29: calculation-to-
+# calculation passing is gone; the composite CITES).  Surface them
+# here under their legacy unprefixed names
 # so the emit/extract pair is reachable from a single module —
 # write- and read-side of the same on-disk format.
 #
@@ -791,7 +793,7 @@ _LAZY_EXTRACTORS = {
         "_extract_user_custom_inner",
     ),
     "extract_script_source": (
-        "molbuilder.parse.dirs.bundle",
+        "molbuilder.parse.scripts.source_dict",
         "_extract_script_source",
     ),
 }

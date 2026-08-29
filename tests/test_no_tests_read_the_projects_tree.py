@@ -135,15 +135,20 @@ def test_the_shared_junction_fixture_builds():
 
 def test_a_built_run_directory_round_trips_its_labels(tmp_path):
     """End to end on constructed data: the application's own writer produces a
-    run directory its own parser reads, labels intact.  This is what the
-    projects/ fixtures were standing in for."""
+    deck whose labels the LIVE reader recovers intact.  (This went through
+    BundleDirParser until 2026-08-29; the bundle parser retired with
+    calculation-to-calculation passing, and the reader that survives it --
+    the run decoder's own extractor -- is what a finished run's labels are
+    actually read by.)"""
     import sys
     sys.path.insert(0, str(TESTS))
     from support.junction import frozen, run_dir
-    from molbuilder.parse.dirs.bundle import BundleDirParser
+    from molbuilder.script_emit import extract_script_source
 
-    result = BundleDirParser.parse(run_dir(tmp_path))
-    assert list(result.frozen_atoms) == frozen()
+    d = run_dir(tmp_path)
+    deck = sorted(d.glob("*.fdf"))[0]
+    out = extract_script_source(deck.read_text())
+    assert sorted(out["frozen_atoms"]) == frozen()
 
 
 def test_the_built_xv_round_trips_through_the_real_parser(tmp_path):

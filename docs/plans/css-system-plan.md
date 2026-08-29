@@ -24,7 +24,6 @@ So the work is split by owner, and only one side is in scope:
 | ESM | `lib/projects/projects-sidebar.css` | projects | **no** |
 | ESM | `lib/trajectory/trajectory-inspector.css` | trajectory | **no** |
 | ESM | `lib/inspectors/spectra.css` · `markdown.css` | inspectors | **no** |
-| ESM | `lib/results/bundle-handoff.css` | results bundle | **no** |
 | ESM | `lib/system-load-monitor.css` · `lib/app-notifications.css` | their widgets | **no** |
 | page | `lib/tokens.css` · `page-shell.css` · `tabs.css` | the app shell | yes |
 | page | `lib/form-components.css` · `form-schema.css` | the form family | yes |

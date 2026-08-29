@@ -353,8 +353,9 @@ class TestOkStructureResponse:
 
 
 # --------------------------------------------------------------------- #
-#  apply_companion_labels_if_present + companion-wins-over-sidecar      #
-#  (execution/handoff-bundle.md § 4 + § 5.3)                                   #
+#  helpers that outlived the companion/sidecar-file family              #
+#  (the family retired 2026-08-21; its doc, handoff-bundle.md, retired  #
+#   2026-08-29 with the bundle machinery)                               #
 # --------------------------------------------------------------------- #
 
 

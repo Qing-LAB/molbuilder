@@ -532,7 +532,7 @@ sed, which leaves stubbed unit tests green while the UI breaks):
   (`molbuilder-runtime`, `markdown-render`, `path-utils`, `workspace/dispatcher`,
   `projects/preview`, `results/viewer`, `spectra/viewer`, the two cores) + 3
   templates (`results.html`, `spectra.html`, `modify.html`) + ~10 tests.
-- **The results module** (`lib/results/` — `bundle-handoff`, `file-picker`).
+- **The results module** (`lib/results/` — `file-picker`; `bundle-handoff` retired 2026-08-29 with calculation-to-calculation passing).
 - **The runtime registry** (`lib/molbuilder-runtime.js`).
 - **The shared primitives** (`lib/*.js` — `form-schema`, `app-notifications`,
   `warning-modal`, `detection-chip`, `markdown-render`, `path-utils`,

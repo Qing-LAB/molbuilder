@@ -35,9 +35,9 @@
         }
       ]
     },
-        {
-          "path": "audit-2026-08-28-full-review.md"
-        },
+    {
+      "path": "audit-2026-08-28-full-review.md"
+    },
     {
       "label": "Model",
       "meta": "The data model (L1): Structure, periodicity, annotations, chemistry, parse stack",
@@ -173,9 +173,6 @@
         {
           "path": "execution/script-preparation.md",
           "label": "Script preparation \u2014 the fixed steps"
-        },
-        {
-          "path": "execution/handoff-bundle.md"
         },
         {
           "path": "execution/asu-sol.md"

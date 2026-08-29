@@ -1,3 +1,24 @@
+# RETIRED (2026-08-29) — the composite replaced the handoff bundle
+
+**This whole contract retired with the calculation-to-calculation
+passing it described** (user ruling 2026-08-29): one kind of job never
+bundles itself up for another.  A calculation that builds on a
+finished result CITES it — the transport composite names its junction
+attempt explicitly (`plans/transport-design.md` § 4.1) and **prep does
+the fuse** (`transport/compose.py`: parse the `.XV`, overlay the
+labels, sort, gate) — richer than this bundle ever was, and inside the
+job system.  The Results tab's "Bundle for next stage" card, the
+`/api/results/bundle` endpoint, `BundleDirParser` and
+`bundle_writer.py` are deleted; the one shared primitive
+(`_extract_script_source`) lives on in
+`parse/scripts/source_dict.py`.  Structure → execution hand-overs
+(builder/modify → parameter tab → Task setup) are a different thing
+and remain.
+
+The original text follows, as history.
+
+---
+
 # The handoff bundle — carrying a finished run into the next calculation
 
 **Role:** contract

@@ -286,7 +286,7 @@ def read_fdf_initial_coords(text_or_path: Union[str, Path]) -> Structure:
 
 def _left_handed_warning(source_label: str, det_value: float) -> str:
     """Loud multi-line warning string for ``RunBundle.notes`` /
-    ``BundleResult.notes``.  Phrased loudly because a silent chirality
+    the caller's ``notes``.  Phrased loudly because a silent chirality
     flip on a chiral molecule is genuinely wrong physics."""
     return (
         f"WARNING: LEFT-HANDED CELL DETECTED in {source_label} "

@@ -152,7 +152,13 @@
      any single inspector.  The card is always visible; clicking
      submit with no useful inputs surfaces an actionable 400 from
      the endpoint. #}
-  {% include "_bundle_handoff_panel.html" %}
+  {#- The "Bundle for next stage" card stood here until 2026-08-29.
+      Calculation-to-calculation passing is RETIRED (user ruling): a
+      calculation that builds on a finished result CITES it -- the
+      transport composite picks its junction attempt actively
+      (plans/transport-design.md 4.1) -- rather than receiving a
+      bundled copy.  Structure->execution hand-overs (builder/modify ->
+      parameter tab -> Task setup) are a different thing and stay. -#}
 
   {# System-load monitor lives INSIDE the results-main flow so it
      stays within the Results-tab panel and never overlaps plots /

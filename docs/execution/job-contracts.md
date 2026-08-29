@@ -69,7 +69,7 @@ warm-file vocabulary (what carries a run into the next) is § 4.
 | The `project / topic / structure` folder tree and its fixed topic names | **§ 2.5** |
 | The comment blocks molbuilder reserves inside a `.fdf` / `.py` / `.run.sh` | **§ 3 — The generated-script contract** |
 | What "warm restart", `--continue`, and `--cold` actually do | **§ 4 — Warm & cold restart** |
-| How a finished run flows into Transport / a continuation / a spectrum | **[`handoff-bundle.md`](?doc=execution/handoff-bundle.md)** — its own contract |
+| How a finished run flows into the next calculation | **it is CITED** (`plans/transport-design.md` § 4.1) — the handoff-bundle contract retired 2026-08-29 |
 | What a persisted file is called system-wide, and how a config value becomes a SLURM flag | **§ 6 — The shared data vocabulary** |
 
 Two conventions bind everything below and are stated once here:
@@ -1586,19 +1586,21 @@ starts, and produces something wrong.
 
 ---
 
-## 5. The handoff bundle — moved
+## 5. The handoff bundle — RETIRED (2026-08-29)
 
-**Its own document:**
-[`handoff-bundle.md`](?doc=execution/handoff-bundle.md).
-
-It carries a **finished run into the next calculation** — the engine's final
-coordinates fused with the labels from the script that started it, written as an
-ordinary `.xyz` + `.molstruct.json` pair.
-
-It moved out on 2026-08-10 because plain "bundle" belongs to the JobSet
-framework (a batch of jobs), and holding both senses in one document meant this
-section had to open with a warning about its own container. `README.md` R5
-already named `execution/handoff-bundle.md` as the home; now it exists.
+It carried a **finished run into the next calculation** — final coordinates
+fused with the script's labels, written as a `.xyz` + `.molstruct.json` pair
+for the next tab to load.  That whole model retired with the user's ruling:
+**one kind of job never bundles itself up for another.**  A calculation that
+builds on a finished result CITES it — the transport composite names its
+junction attempt explicitly and prep does the fuse, richer than the bundle
+ever was and inside the job system
+([`plans/transport-design.md`](?doc=plans/transport-design.md) § 4.1).
+Structure → execution hand-overs (builder/modify → parameter tab → Task
+setup) are a different thing and remain.  History:
+`docs/archive/2026-08-29-handoff-bundle.md` (it had moved out of this
+section on 2026-08-10 because plain "bundle" belongs to the JobSet
+framework).
 
 ---
 
@@ -1625,7 +1627,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Task hand-over | `task.1st.json` — beside where `task.json` will go; **removed** when the description is saved | `molbuilder/task-handover@1` | `web/blueprints/build.py` (`api_task_setup_handover`) | `_what` (a line saying what the file is, since JSON has no comments), `engine`, `run`, `structure`, `awaiting` — the keys it is missing and who supplies them. **Deliberately not `molbuilder/task@1`**: it has no `shape`, so it would fail that schema's own reader, and `check_schema` refuses a wrong artifact by name. The extension is last (`task.1st.json`, not `task.json.1st`) so the editor highlights it as JSON and so nothing looking for `task.json` finds it — `checkpoint.py::_BUNDLE_DESCRIPTORS` treats that name as the marker that a folder is a calculation root |
 | Task description | `task.json` | `molbuilder/task@1` | `task.py` | `engine`, `shape`, `run`, `structure`, `varies`, `stages[]`, `calculation` (the KIND — absent means `optimization`), `bench` (the declared benchmark lane: pins, machine axes and value axes — `generator.md` § 4.3a), `allocation` (what this calculation ASKS THE SCHEDULER FOR — `domain` / `time` / `mem`, each optional, absent meaning unstated; `engines/stages.md` § 6.8a) — **what changes**; what does not is in `<label>.template.toml` |
 | Template | `<label>.template.toml` | `molbuilder/template@2` | `template.template_with_values`, from the catalogue `molbuilder/data/catalogue.template.toml` ([`template.md`](?doc=engines/template.md) § 4.3) | `schema`, `engines`, `item.<name>` — *(`fingerprint` was a third top-level key until 2026-08-14; retired, `template.md` § 10)* — **every parameter of the calculation, each on a `category` and declaring which `engines` it applies to.** A value is *not* required: an item may state the question and leave the answer to a later floor (the `execution` category does exactly that — `prep` resolves it from `environment.json`). TOML because a person reads and edits it ([`engines/template.md`](?doc=engines/template.md)); the warm-file vocabulary two rows up shares the format for the same reason (§ 4.2a's UI-edit door) |
-| Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` | *(sidecar pair, bare-int `schema_version` from `sidecars/molstruct.SCHEMA_VERSION` — never typed in a doc)* | `bundle_writer.py`, `sidecars/molstruct.py` | geometry; `regions` (frozen atoms are a label inside it) / `structure_hash` |
+| Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` — the structure→execution pair (a built/modified structure travelling into a description); the run→calculation use of this pair retired 2026-08-29 with `bundle_writer.py` (§ 5 — citations replaced it) | *(sidecar pair, bare-int `schema_version` from `sidecars/molstruct.SCHEMA_VERSION` — never typed in a doc)* | `workingcopy_structure.StructureCodec`, `sidecars/molstruct.py` | geometry; `regions` (frozen atoms are a label inside it) / `structure_hash` |
 | Checkpoint archive | `.binsnapshots/<digest>/MANIFEST.do_not_edit` | *(3-col tab-separated `<sha256>\t<bytes>\t<key>`)* | `checkpoint.py` | the directory is the sha256 of this file (§ 6.1) |
 | Run launch record | `<attempt>/run.json` — a trial dir is its own attempt, so a launched trial carries one too; written at process **start** (a running job must read as launched) | `molbuilder/run-launch@1` | `jobset/materialize.py` (`write_run_launch`) | `mode`, `command`, `job_id`, `launched_at`, `continued_from` |
 | Decision ledger | `jobset-decisions.log` — append-only JSONL at the bundle root; every verb records each decision it makes (config provenance, mode + its source, trial pick, run-config applied or absent), so a machine's behaviour is explained by reading the file, hours later, without the terminal | *(one JSON object per line, `at`/`verb`/`decision` + facts)* | `jobset/ledger.py` | `at`, `verb`, `decision` |

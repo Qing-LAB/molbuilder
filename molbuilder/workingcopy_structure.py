@@ -24,7 +24,7 @@ the question gets asked rather than answered by counting callers.
 
 USED BY: ``/api/structure/save`` -> ``write`` · ``/api/structure/export`` ->
 ``files`` · ``/api/build/load`` -> ``read`` (web/blueprints/build.py) · and
-``bundle_writer.write_bundle_as_handoff`` -> ``write``.  NOT yet by the CLI,
+the task hand-over doors -> ``files``/``write``.  NOT yet by the CLI,
 which still writes geometry alone -- the last surface not obeying the rule
 (task #73).
 

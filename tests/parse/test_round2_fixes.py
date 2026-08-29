@@ -259,10 +259,10 @@ def test_frozen_dataclass_invariant_on_each_result_kind():
     registered output type to catch a future override drift."""
     from dataclasses import FrozenInstanceError
     from molbuilder.parse.types import (
-        BundleResult, JobResult as JR, ScriptResult, SidecarResult as SR,
+        JobResult as JR, ScriptResult, SidecarResult as SR,
         StructureResult, TrajectoryResult as TR,
     )
-    for cls in (TR, StructureResult, SR, ScriptResult, JR, BundleResult):
+    for cls in (TR, StructureResult, SR, ScriptResult, JR):
         instance = cls(schema_version=1, parsed_at="", parser_name="x", source="x")
         with pytest.raises(FrozenInstanceError):
             instance.parser_name = "tampered"   # noqa

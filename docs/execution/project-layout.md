@@ -155,7 +155,7 @@ directory there is one set of warm files, so the geometry is simply *the latest*
 > directory owns its subdirectories (`checkpointing.md` **L1**).
 >
 > **And *bundle* was already overloaded twice over**: a **handoff bundle** is one
-> finished run carried forward ([`handoff-bundle.md`](?doc=execution/handoff-bundle.md)),
+> finished run carried forward (by CITATION since 2026-08-29 — `plans/transport-design.md` § 4.1),
 > a **benchmark bundle** is a self-contained measurement (§ 2.6). A third sense
 > for *the calculation folder itself* is the one that had to go — `README.md` R5
 > forbids exactly this collision. What keeps the name legitimately is the

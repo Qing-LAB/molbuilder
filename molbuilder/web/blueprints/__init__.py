@@ -18,7 +18,6 @@ package hold the page + API routes for the other tabs:
   * ``transport.py`` -- /transport-calculation page +
                         /api/transport/* endpoints
   * ``results.py``   -- /results page + /partials/* partials +
-                        /api/results/bundle (Step-3 PR-E)
   * ``selection.py`` -- /api/selection/eval + /api/selection/atoms
                         (atom-selection rule
                         eval + atom list; Pattern C:

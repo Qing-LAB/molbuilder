@@ -489,7 +489,7 @@ button:disabled {
 
 /* ---- Spinner — the ONE global loading indicator (§2.1 shared primitive) ------
  * A small border-spinner used by any busy affordance (results loading lock-down,
- * bundle-handoff action row, …).  Size tunes via --spinner-size so a caller
+ * inspector action rows, …).  Size tunes via --spinner-size so a caller
  * doesn't re-declare the rule.  Consolidates the former per-component copies. */
 .spinner {
     display: inline-block;

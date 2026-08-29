@@ -6,7 +6,7 @@
 picks the viewer (this tab drives it); `trajectory.md` and `spectra.md` — the two
 heavy viewers this tab hosts (their own docs); [`projects.md`](?doc=web/projects.md)
 — the file layer the picker lists through; [`web-api.md`](?doc=web/web-api.md) —
-the `/api/watch/*`, `/api/results/bundle` and `/api/system/load` routes.
+the `/api/watch/*` and `/api/system/load` routes.
 
 You ran a calculation; you open it on the **Results** tab. The tab is a
 **dispatch shell**: a file picker across the top, and one panel below that
@@ -206,21 +206,22 @@ half-refreshed-state bugs. Two guards back it up: a **late response from a
 previous file can't write into the current view**, and **partial frames** the
 parser flags as in-progress are shown in the list but kept out of the plots.
 
-## 5. Sending a finished run to the next stage — the bundle
+## 5. Sending a finished run to the next stage — RETIRED (2026-08-29)
 
-Below the viewer sits an always-visible **Bundle** card. When a run has
-converged, it hands the finished geometry to your *next* calculation: it posts to
-`/api/results/bundle`, and the server reads the run directory, fuses the **final
-geometry + the region labels + the frozen-atom set**, and writes a
-**`<stem>.xyz` + `<stem>.molstruct.json` pair** into a target folder. The next
-tab's ordinary `.xyz` load path picks that pair up unchanged — so your converged,
-*labeled* geometry flows straight into the next stage (a transport run, say)
-without re-entering anything. If the geometry it found is an *initial* rather than
-a converged one, the card says so.
+The always-visible **Bundle** card that stood below the viewer is gone,
+with the whole calculation-to-calculation passing model it served (user
+ruling): **one kind of job never bundles itself up for another.**  A
+calculation that builds on a finished result CITES it — the transport
+tab picks the junction attempt actively and prep fuses the final
+geometry with the labels itself, with the sort and the gates the bundle
+never had (`plans/transport-design.md` § 4.1,
+`transport/compose.py`).  Structure → execution hand-overs
+(builder/modify → parameter tab → Task setup) are a different thing and
+remain.  History: `docs/archive/2026-08-29-handoff-bundle.md`.
 
 ## 6. Watching the machine — the server-load strip
 
-Below the Bundle card sits the second always-visible card: **Server load** — what
+Below the viewer sits the always-visible **Server load** card — what
 the machine itself is doing, as opposed to what your calculation produced. It
 mounts on this tab and no other, because this is the tab you sit on while a run
 proceeds; putting it on every page meant every page paid for a 1 Hz hardware
@@ -348,7 +349,7 @@ shows a placeholder and stays put — Refresh remains one click away.
 ## 9. Where the module stands (current → target ESM)
 
 The Results shell is still **classic**: `results/viewer.js` plus
-`lib/results/file-picker.js` and `bundle-handoff.js` are global-registered scripts
+`lib/results/file-picker.js` are global-registered scripts
 (`window.molbuilder.*`), not ES modules — they lean on the runtime registry to
 load in order. Converting them is task #103 (the "remaining classic modules" pass,
 alongside the runtime registry and the shared primitives —

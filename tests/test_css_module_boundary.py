@@ -63,7 +63,6 @@ MODULE_SHEETS = {
     "lib/inspectors/spectra.css",
     "lib/vibrationview/_style.css",
     "lib/inspectors/markdown.css",
-    "lib/results/bundle-handoff.css",
     "lib/system-load-monitor.css",
     "lib/app-notifications.css",
 }

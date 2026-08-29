@@ -961,3 +961,33 @@ class TestSpectraIssuesPanelSeverityCoverage:
             "the /spectra page sheet has re-grown its own issue vocabulary; "
             "one owner only (ui-contract.md § 1)."
         )
+
+
+def test_calculation_to_calculation_passing_is_dead(web_client=None):
+    """User ruling 2026-08-29: one kind of job never bundles itself up
+    for another -- a calculation that builds on a finished result CITES
+    it (the transport composite picks its junction attempt actively),
+    and prep does the fuse (transport/compose.py).  This guard keeps
+    the machinery from coming back:
+
+    * the endpoint, the panel, its JS/CSS -- gone;
+    * the run-dir fuse parser and the handoff materializer -- gone
+      (the shared script-source extractor survives, moved to
+      parse/scripts/source_dict.py);
+    * structure -> execution hand-overs (builder/modify -> parameter
+      tab -> Task setup) are a DIFFERENT thing and stay.
+    """
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    for gone in ("molbuilder/bundle_writer.py",
+                 "molbuilder/parse/dirs/bundle.py",
+                 "molbuilder/web/templates/_bundle_handoff_panel.html",
+                 "molbuilder/web/static/lib/results/bundle-handoff.js",
+                 "molbuilder/web/static/lib/results/bundle-handoff.css"):
+        assert not (root / gone).exists(), f"{gone} is back"
+    results_py = (root / "molbuilder/web/blueprints/results.py").read_text()
+    assert '@bp.route("/api/results/bundle"' not in results_py
+    from molbuilder.web.app import create_app
+    client = create_app(config={}).test_client()
+    r = client.post("/api/results/bundle", json={})
+    assert r.status_code == 404, "the route must not exist"

@@ -19,7 +19,6 @@ from .base import DirParser, FileParser, TextParser
 from .errors import AmbiguousFormatError, UnknownFormatError
 from .registry import detect, parse, parse_dir, parse_text, register
 from .types import (
-    BundleResult,
     JobResult,
     ParseResult,
     ParseWarning,
@@ -37,10 +36,8 @@ from . import dirs as _dirs   # noqa: F401  -- side-effect import
 
 # Convenience re-exports of the canonical entry-point classes
 # from each sub-package.  Callers who know exactly which parser
-# they want (the umbrella TextParser, or the explicit-dispatch
-# BundleDirParser) get them off the top-level namespace without
+# they want get them off the top-level namespace without
 # having to know the sub-package layout.
-from .dirs.bundle import BundleDirParser   # noqa: F401
 from .scripts.source import ScriptSourceTextParser   # noqa: F401
 
 __all__ = [
@@ -48,13 +45,12 @@ __all__ = [
     "FileParser", "TextParser", "DirParser",
     # Results
     "ParseResult", "TrajectoryResult", "StructureResult",
-    "SidecarResult", "ScriptResult", "JobResult", "BundleResult",
+    "SidecarResult", "ScriptResult", "JobResult",
     "ParseWarning",
     # Registry / dispatch
     "detect", "parse", "parse_dir", "parse_text", "register",
     # Exceptions
     "UnknownFormatError", "AmbiguousFormatError",
     # Canonical entry-point classes (convenience re-exports)
-    "BundleDirParser",            # explicit-dispatch DirParser (Phase G)
     "ScriptSourceTextParser",     # umbrella TextParser (Phase F)
 ]
