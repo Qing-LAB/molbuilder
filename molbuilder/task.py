@@ -90,11 +90,16 @@ _TOP_KEYS = ("schema", "engine", "shape", "run",
 _BIAS_KEYS = ("voltages_v",)
 
 #: A slot citation names a calculation AND the attempt, explicitly --
-#: `<project>/<topic>/<calc>@run-N` (transport-design.md, ruling Q1:
-#: nothing is ever picked for the user).  FORM only here; the tree
-#: fence and the concluded check live where the filesystem is
-#: (`init` resolves the path, `prep` composes).
-_CITATION_RE = re.compile(r"^[^@\s]+@run-(\d+)$")
+#: `<project>/<topic>/<calc>@<attempt-path>` where the attempt path is
+#: the attempt's ON-DISK path inside the calculation: `01_coarse/run-2`
+#: in the hierarchical shape, `run-2` where attempts sit at the root
+#: (transport-design.md, ruling Q1: nothing is ever picked for the
+#: user -- stage included, because run-N alone is ambiguous across a
+#: ladder's stages).  FORM only here; the tree fence and the concluded
+#: check live where the filesystem is (`init` resolves, `prep`
+#: composes).
+_CITATION_RE = re.compile(
+    r"^[^@\s]+@(?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)*run-(\d+)$")
 _ALLOCATION_KEYS = ("domain", "time", "mem")
 _NOTIFY_KEYS = ("on_scf_converged", "every_hours")
 _RUN_KEYS = ("name", "id", "created")
@@ -386,9 +391,11 @@ class Task:
         for name, cite in self.slots.items():
             if not isinstance(cite, str) or not _CITATION_RE.match(cite):
                 raise ValueError(
-                    f"task: slot {name!r} must cite an explicit attempt, "
-                    f"`<project>/<topic>/<calc>@run-N` (got {cite!r}) -- "
-                    "nothing is ever picked for the user "
+                    f"task: slot {name!r} must cite an explicit attempt "
+                    f"by its on-disk path, `<calc>@<stage>/run-N` (or "
+                    f"`<calc>@run-N` where attempts sit at the root); "
+                    f"got {cite!r} -- nothing is ever picked for the "
+                    "user, the stage included "
                     "(plans/transport-design.md, ruling Q1)")
         if self.bias:
             if any(not isinstance(v, (int, float)) or isinstance(v, bool)

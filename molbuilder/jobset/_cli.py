@@ -321,10 +321,13 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     # promise checked at prep (strict composition, Q2 -- concluded-ness
     # is the target machine's question).
     calc_path, at, attempt = slots["junction"].partition("@")
-    if not at or not re.match(r"^run-\d+$", attempt):
+    if not at or not re.match(
+            r"^(?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)*run-\d+$", attempt):
         raise click.ClickException(
             f"--slot junction={slots['junction']!r}: the attempt is named "
-            f"explicitly, `...@run-N` -- nothing is ever picked for you "
+            f"explicitly by its on-disk path -- `...@<stage>/run-N` "
+            f"(hierarchical) or `...@run-N` (attempts at the root).  "
+            f"Nothing is ever picked for you, the stage included "
             f"(plans/transport-design.md, ruling Q1).")
     resolved = _resolve_bundle(None, None, calc_path, must_exist=True)
     from ..projects import projects_root

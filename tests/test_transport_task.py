@@ -27,7 +27,9 @@ from click.testing import CliRunner
 from molbuilder.identity import run_id
 from molbuilder.task import Run, Stage, Task
 
-_CITE = "BDT-Au/optimization/JunctionRelax@run-2"
+_CITE = "BDT-Au/optimization/JunctionRelax@01_coarse/run-2"
+#: the root-attempt spelling stays legal (flat shapes)
+_CITE_ROOT = "BDT-Au/optimization/JunctionRelax@run-2"
 _STAGES = ("seed", "electrode_L", "electrode_R", "device", "transmission")
 
 
@@ -76,7 +78,18 @@ class TestCodec:
         """Ruling Q1: the attempt is named explicitly, never picked."""
         with pytest.raises(ValueError) as e:
             _task(slots={"junction": "BDT-Au/optimization/JunctionRelax"})
-        assert "@run-N" in str(e.value)
+        assert "run-N" in str(e.value)
+
+    def test_both_attempt_spellings_are_legal(self):
+        """The attempt half is the ON-DISK path: `<stage>/run-N` in the
+        hierarchical shape, bare `run-N` where attempts sit at the
+        root -- the stage is explicit because run-N alone is ambiguous
+        across a ladder's stages."""
+        from molbuilder.identity import run_id
+        for cite in (_CITE, _CITE_ROOT):
+            _task(slots={"junction": cite},
+                  run=Run(name="T", id=run_id("T", cite,
+                                              stage_names=_STAGES)))
 
     def test_bias_must_start_from_equilibrium(self):
         with pytest.raises(ValueError) as e:

@@ -235,7 +235,7 @@ The transport task's `task.json` carries a single slot — the user's
   "engine": { "name": "siesta" },
   "calculation": "transport",
   "slots": {
-    "junction": "BDT-Au/optimization/JunctionRelax@run-2"
+    "junction": "BDT-Au/optimization/JunctionRelax@01_coarse/run-2"
   },
   "stages": [
     { "name": "seed",         "enabled": true,  "overrides": {} },
@@ -249,7 +249,12 @@ The transport task's `task.json` carries a single slot — the user's
 ```
 
 * The citation is tree-relative, the same path language everything
-  speaks; `@run-N` is mandatory — nothing is ever picked for the user.
+  speaks, and the attempt half is the attempt's **on-disk path inside
+  the calculation** — `@01_coarse/run-2` in the hierarchical shape,
+  `@run-N` where attempts sit at the root. *(Refined during the P3
+  build, 2026-08-28: `run-N` alone is ambiguous across a ladder's
+  stages, and ruling Q1 — nothing is ever picked — extends to the
+  stage.)* Mandatory always.
 * **Strict composition** (user ruling Q2): a missing or unconcluded
   citation is a refusal naming exactly what to run first — the
   transport task never runs its upstream pieces.
@@ -463,7 +468,7 @@ the whole task framework — verbs, attempts, warm files, sweeps.)*
 | **P1** | **The label vocabulary** — `REGION_BUFFER` constant; the Modify tab's reserved labels explained (chip + chooser tooltips state what each is FOR); `engines/transport.md` § 4 carries `buffer`. | *(Done 2026-08-28, with this design.)* Label suites green. |
 | **P2** | **The categorical sort** — a pure function: `(structure, regions) → (sorted structure, permutation)`; refusals for unlabeled atoms; the bijection check; the permutation sidecar schema (`molbuilder/atom-permutation@1`). No I/O, no engine knowledge. | Unit + property tests: sort is stable within bridge, layer-major within electrodes, bijective always; every refusal named; mutation-tested. |
 | **P3** | **The `transport` calculation kind** — `task.json` grows `slots` (one entry, `@run-N` mandatory) and `bias`; `init` accepts and validates them; strict-composition refusal (missing / unconcluded / unpinned citation each named). | init round-trip tests; the three refusals, each mutation-tested. |
-| **P4** | **prep composes** — copy the citation with provenance (calculation · attempt · content hash); run the sort (P2); the § 3 gates (frozen-unmoved · tiling · principal-layer thickness · label completeness); extract the electrode cells from the sorted ends (wizard logic, relocated); render all five stages' inputs (seed deck = ordinary SIESTA; electrode decks; device deck via the existing emitter; transmission = TBtrans options on the device geometry). | A fixture junction preps end-to-end; each gate refuses its mutation (moved frozen atom, unlabeled atom, too-thin block); the emitter's own order-preflight never fires (prep sorted first). |
+| **P4** | **prep composes** — copy the citation with provenance (calculation · attempt · content hash); run the sort (P2); the § 3 gates (frozen-unmoved · tiling · principal-layer thickness · label completeness); extract the electrode cells from the sorted ends (wizard logic, relocated); render all five stages' inputs (seed deck = ordinary SIESTA; electrode decks; device deck via the existing emitter; transmission = TBtrans options on the device geometry). *Build note (2026-08-28): the relaxed geometry must be PARSED from the attempt (the `.XV`, Bohr → Å), never file-copied — the old driver's `.XV`-copy + `MD.UseSaveXV` trick hands SIESTA an OLD-ORDER density-adjacent file, exactly what the § 4.1a fence forbids crossing the sort.* | A fixture junction preps end-to-end; each gate refuses its mutation (moved frozen atom, unlabeled atom, too-thin block); the emitter's own order-preflight never fires (prep sorted first). |
 | **P5** | **launch + the warm chains** — stage dependencies (seed → device → transmission; electrodes → device); the `.TSDE` bias chain as warm-file vocabulary; the bias sweep through the grouped launch. | The dependency refusals (device before electrodes conclude → named refusal); a two-point bias fixture warm-chains; conclusion markers per stage. |
 | **P6** | **summarize + the record** — parse TBtrans output → `<label>.transport.json` (schema first: `T(E)` per bias, `I(V)` table, provenance incl. the permutation reference); `summarize` prints the I–V table; the Results-tab transmission inspector follows as its own step (roadmap § 2 already names it). | Parse fixtures from a real TBtrans run; schema round-trip; summarize output pinned. |
 | **P7** | **Retire the old path** — `transport bundle` / `orchestrate.py` deleted with its tests (rename = delete); the Transport tab rewires to describe the composite (slots + bias + transport fields) and hand over like every other tab. | The bundle spelling is dead (guard); the tab drives the composite end-to-end in the browser lane. |
