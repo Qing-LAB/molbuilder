@@ -224,6 +224,10 @@ def _resolve_structure(ctx, param, value):
     `<project>/structure/` -- which is where the sidebar picks it from, so
     the CLI and the browser cite the same thing the same way.
     """
+    if value is None:
+        # transport's legitimate absence -- required-per-calculation is
+        # decided in the command body, where the refusal can name why.
+        return None
     from ..projects import OutsideRoot, contain, projects_root
     root = Path(projects_root()).expanduser()
     raw = str(value)
@@ -254,15 +258,126 @@ def _resolve_bundle_may_be_new(ctx, param, value):
     return _resolve_bundle(ctx, param, value, must_exist=False)
 
 
+#: The composite's fixed ladder (plans/transport-design.md 4.2) -- the
+#: five stages in dependency order.  Fixed by design, not configurable:
+#: enabling/disabling (the seed's Q4 skip) is the per-stage `enabled`
+#: flag, edited in task.json like any other stage.
+TRANSPORT_STAGES = ("seed", "electrode_L", "electrode_R",
+                    "device", "transmission")
+
+
+def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
+                    bias_opt, structure, psml_lib, vacuum,
+                    stage_strategy) -> None:
+    """`init --calculation transport` -- floor 2 is task.json ALONE.
+
+    The structure, the pseudos and the electronic template all arrive at
+    prep from the junction citation (plans/transport-design.md 4.1, Q5:
+    one template governs everything, physically enforced by deriving) --
+    so every option that would supply them here is refused naming that
+    rule rather than silently ignored.
+    """
+    import re
+    from pathlib import Path as _P
+
+    from ..task import Stage, Task, derive_run, write_task
+    from ..task import FILENAME as TASK_FILENAME
+
+    for given, flag, why in (
+            (structure, "--structure", "its structure IS the junction "
+             "citation, copied in at prep"),
+            (psml_lib, "--psml-lib", "the pseudopotentials travel with "
+             "the cited junction"),
+            (vacuum, "--vacuum", "the cell comes with the cited junction"),
+            (stage_strategy, "--stage-strategy", "the composite's five "
+             "stages are fixed by design (seed, electrode_L, electrode_R, "
+             "device, transmission)")):
+        if given is not None and given != ():
+            raise click.ClickException(
+                f"{flag} does not apply to a transport calculation -- "
+                f"{why} (plans/transport-design.md 4.1).")
+    if engine != "siesta":
+        raise click.ClickException(
+            f"transport is SIESTA-first (TranSIESTA); engine {engine!r} "
+            f"has no transport ladder yet.")
+
+    slots = {}
+    for entry in slots_opt:
+        name_, sep, cite = entry.partition("=")
+        if not sep or not name_ or not cite:
+            raise click.ClickException(
+                f"--slot {entry!r}: spell it NAME=CITATION, e.g. "
+                f"--slot junction=<project>/<topic>/<calc>@run-N.")
+        slots[name_] = cite
+    if set(slots) != {"junction"}:
+        raise click.ClickException(
+            "a transport calculation takes exactly one slot, `junction` "
+            "-- the relaxed junction it composes from: "
+            "--slot junction=<project>/<topic>/<calc>@run-N "
+            "(plans/transport-design.md 4.1).")
+
+    # The citation's calculation half goes through the SAME tree fence
+    # every calculation path uses (2.5b); the attempt half stays a
+    # promise checked at prep (strict composition, Q2 -- concluded-ness
+    # is the target machine's question).
+    calc_path, at, attempt = slots["junction"].partition("@")
+    if not at or not re.match(r"^run-\d+$", attempt):
+        raise click.ClickException(
+            f"--slot junction={slots['junction']!r}: the attempt is named "
+            f"explicitly, `...@run-N` -- nothing is ever picked for you "
+            f"(plans/transport-design.md, ruling Q1).")
+    resolved = _resolve_bundle(None, None, calc_path, must_exist=True)
+    from ..projects import projects_root
+    rel = str(_P(resolved).relative_to(projects_root()))
+    citation = f"{rel}@{attempt}"
+
+    bias = ()
+    if bias_opt:
+        try:
+            bias = tuple(float(v) for v in bias_opt.split(","))
+        except ValueError:
+            raise click.ClickException(
+                f"--bias {bias_opt!r}: a comma-separated list of volts, "
+                f"e.g. --bias 0.0,0.2,0.4.")
+
+    stages = tuple(Stage(name=n, enabled=True, overrides={})
+                   for n in TRANSPORT_STAGES)
+    try:
+        task = Task(
+            engine=engine, shape=shape,
+            run=derive_run(run_name, citation,
+                           stage_names=TRANSPORT_STAGES),
+            structure=None, calculation="transport",
+            slots={"junction": citation}, bias=bias,
+            varies=(), stages=stages)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+
+    dest = out_dir if out_dir.is_absolute() else         _P(_resolve_bundle(None, None, str(out_dir), must_exist=False))
+    dest.mkdir(parents=True, exist_ok=True)
+    write_task(dest / TASK_FILENAME, task)
+    click.echo(f"Described transport '{task.run.name}' in {dest} -- "
+               f"composes {citation}.")
+    click.echo(f"  {TASK_FILENAME}")
+    click.echo("")
+    click.echo("Floor 2 for transport is task.json alone: the structure, "
+               "pseudos and electronic template arrive at prep from the "
+               "citation (one template governs everything).  On the "
+               "machine that will run it:")
+    click.echo(f"  cd {dest} && molbuilder jobset prep run seed")
+
+
 @jobset_group.command("init",
                       short_help="create the calculation (floor 2 only)")
 @_bundle_option(must_exist=False)
-@click.option("--structure", "structure", required=True, metavar="PATH",
+@click.option("--structure", "structure", default=None, metavar="PATH",
               callback=_resolve_structure,
               help="the structure to describe, as a path from the PROJECTS "
                    "ROOT -- e.g. `--structure <project>/structure/water.xyz`. "
                    "It lives in the tree like everything else a calculation "
-                   "cites (job-contracts.md 2.5b).")
+                   "cites (job-contracts.md 2.5b).  Required for every "
+                   "calculation EXCEPT transport, whose structure IS its "
+                   "junction citation (--slot).")
 @click.option("--shape", required=True,
               type=click.Choice(("flat", "hierarchical")),
               help="how the stages sit on disk. REQUIRED and never inferred -- "
@@ -302,9 +417,18 @@ def _resolve_bundle_may_be_new(ctx, param, value):
                    "into the engine's warm-file vocabulary (job-contracts "
                    "4.2a).  The engine's sections define what is legal, "
                    "checked where the vocabulary is read.")
-def init_cmd(structure: str, bundle: str, shape: str,
+@click.option("--slot", "slots_opt", multiple=True, metavar="NAME=CITATION",
+              help="a composite input (transport only): "
+                   "--slot junction=<project>/<topic>/<calc>@run-N.  The "
+                   "attempt is named explicitly, never picked "
+                   "(plans/transport-design.md, ruling Q1).")
+@click.option("--bias", "bias_opt", default=None, metavar="V0,V1,...",
+              help="transport only: the bias sweep in volts, starting at "
+                   "0.0 -- each point warm-starts from the previous one's "
+                   ".TSDE (plans/transport-design.md 4.3).")
+def init_cmd(structure, bundle: str, shape: str,
                  stage_strategy, name, engine: str, psml_lib, vacuum,
-                 calculation: str) -> None:
+                 calculation: str, slots_opt, bias_opt) -> None:
     """Write the portable description: the template, ``task.json``, and the
     data files.
 
@@ -332,6 +456,23 @@ def init_cmd(structure: str, bundle: str, shape: str,
 
     out_dir = _P(bundle)
     run_name = name or out_dir.name
+
+    if calculation == "transport":
+        _init_transport(out_dir=out_dir, shape=shape, run_name=run_name,
+                        engine=engine, slots_opt=slots_opt,
+                        bias_opt=bias_opt, structure=structure,
+                        psml_lib=psml_lib, vacuum=vacuum,
+                        stage_strategy=stage_strategy)
+        return
+    if slots_opt or bias_opt:
+        raise click.ClickException(
+            "--slot / --bias belong to --calculation transport alone "
+            "(plans/transport-design.md 4.1).")
+    if structure is None:
+        raise click.ClickException(
+            "--structure is required -- it is what this calculation "
+            "describes (transport is the one kind without it: its "
+            "structure IS the junction citation).")
 
     try:
         struct = _load_structure(structure)

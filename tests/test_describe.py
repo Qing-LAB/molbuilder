@@ -212,15 +212,18 @@ def test_the_calculation_key_is_absent_is_a_state(struct, cfg, tmp_path):
     assert "calculation" not in raw
     assert read_task(tmp_path / "calc" / "task.json").calculation == \
         "optimization"
+    # ("vibration" stands in for any non-default kind; "transport" no
+    # longer can -- since 2026-08-28 it is the COMPOSITE with required
+    # slots and no structure block, guarded in test_transport_task.py.)
     desc = D.build_description(struct, cfg, _ONE_STAGE, engine="siesta",
                                shape="hierarchical", name="relax",
                                source="structures/bdt.xyz",
-                               calculation="transport")
+                               calculation="vibration")
     D.write_description(desc, tmp_path / "calc2")
     raw = json.loads((tmp_path / "calc2" / "task.json").read_text())
-    assert raw["calculation"] == "transport"
+    assert raw["calculation"] == "vibration"
     assert read_task(tmp_path / "calc2" / "task.json").calculation == \
-        "transport"
+        "vibration"
     with pytest.raises(Exception, match=r"calculation.*A-Za-z0-9_"):
         D.build_description(struct, cfg, _ONE_STAGE, engine="siesta",
                             shape="hierarchical", name="relax",

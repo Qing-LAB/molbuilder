@@ -86,7 +86,15 @@ STAGE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 _TOP_KEYS = ("schema", "engine", "shape", "run",
              "structure", "varies", "stages", "calculation", "bench",
-             "allocation", "notify")
+             "allocation", "notify", "slots", "bias")
+_BIAS_KEYS = ("voltages_v",)
+
+#: A slot citation names a calculation AND the attempt, explicitly --
+#: `<project>/<topic>/<calc>@run-N` (transport-design.md, ruling Q1:
+#: nothing is ever picked for the user).  FORM only here; the tree
+#: fence and the concluded check live where the filesystem is
+#: (`init` resolves the path, `prep` composes).
+_CITATION_RE = re.compile(r"^[^@\s]+@run-(\d+)$")
 _ALLOCATION_KEYS = ("domain", "time", "mem")
 _NOTIFY_KEYS = ("on_scf_converged", "every_hours")
 _RUN_KEYS = ("name", "id", "created")
@@ -259,7 +267,9 @@ class Task:
     engine: str
     shape: str
     run: Run
-    structure: StructureRef
+    #: ``None`` for exactly one calculation kind: transport, whose
+    #: structure IS its junction citation (enforced in __post_init__).
+    structure: Optional[StructureRef]
     varies: Optional[Tuple[str, ...]] = None
     stages: Optional[Tuple[Stage, ...]] = None
     #: WHICH KIND of calculation this describes -- the key into the
@@ -307,6 +317,23 @@ class Task:
     #: this description has not met.
     bench: Dict[str, Tuple[Any, ...]] = field(default_factory=dict)
 
+    #: THE COMPOSITE'S INPUTS (transport-design.md § 4.1) -- slot name ->
+    #: an EXPLICIT attempt citation, `<calc-path>@run-N` (ruling Q1).
+    #: Only ``calculation="transport"`` may carry slots, and it must
+    #: carry exactly ``{"junction": ...}``; a transport description
+    #: carries NO ``structure`` block, because its structure IS the
+    #: citation, copied in at prep (strict composition, ruling Q2).
+    #: Absent-is-a-state: empty writes no key.
+    slots: Dict[str, str] = field(default_factory=dict)
+
+    #: THE BIAS SWEEP AXIS, volts (transport-design.md § 4.3) -- like
+    #: ``bench``, a list of points the description asks for, not a
+    #: machine's answer.  Empty means zero-bias only (the default every
+    #: transport description says by omitting the key).  When present
+    #: the first entry must be 0.0: each point warm-starts from the
+    #: previous `.TSDE`, and the chain starts from equilibrium.
+    bias: Tuple[float, ...] = ()
+
     def __post_init__(self) -> None:
         """§ 6.5 holds for the object too, not only for the file.
 
@@ -328,6 +355,52 @@ class Task:
                 f"(varies={self.varies!r}, stages={self.stages!r}) -- "
                 "'varies' is what differs ACROSS the stages, so neither is "
                 "meaningful without the other (engines/stages.md 6.5)")
+        # The composite's own pairing (transport-design.md § 4.1): slots
+        # belong to transport alone; transport requires the junction slot,
+        # carries no structure block, and each citation names its attempt.
+        if self.calculation == "transport":
+            if set(self.slots) != {"junction"}:
+                raise ValueError(
+                    "task: a transport calculation carries exactly one "
+                    f"slot, 'junction' (got {sorted(self.slots) or 'none'})"
+                    " -- the relaxed junction it composes from "
+                    "(plans/transport-design.md 4.1)")
+            if self.structure is not None:
+                raise ValueError(
+                    "task: a transport calculation carries no 'structure' "
+                    "block -- its structure IS the junction citation, "
+                    "copied in at prep (plans/transport-design.md 4.1)")
+        else:
+            if self.slots:
+                raise ValueError(
+                    f"task: 'slots' belongs to calculation='transport' "
+                    f"alone (this is {self.calculation!r})")
+            if self.bias:
+                raise ValueError(
+                    f"task: 'bias' belongs to calculation='transport' "
+                    f"alone (this is {self.calculation!r})")
+            if self.structure is None:
+                raise ValueError(
+                    "task: 'structure' is required for every calculation "
+                    "except transport")
+        for name, cite in self.slots.items():
+            if not isinstance(cite, str) or not _CITATION_RE.match(cite):
+                raise ValueError(
+                    f"task: slot {name!r} must cite an explicit attempt, "
+                    f"`<project>/<topic>/<calc>@run-N` (got {cite!r}) -- "
+                    "nothing is ever picked for the user "
+                    "(plans/transport-design.md, ruling Q1)")
+        if self.bias:
+            if any(not isinstance(v, (int, float)) or isinstance(v, bool)
+                   for v in self.bias):
+                raise ValueError(
+                    f"task: bias voltages must be numbers (got {self.bias!r})")
+            if float(self.bias[0]) != 0.0:
+                raise ValueError(
+                    f"task: the bias list must start at 0.0 (got "
+                    f"{self.bias[0]!r}) -- each point warm-starts from the "
+                    "previous one's .TSDE, and the chain starts from "
+                    "equilibrium (plans/transport-design.md 4.3)")
         if self.stages is not None and not self.stages:
             raise ValueError(
                 "task: 'stages' is present but empty. A job has at least one "
@@ -405,13 +478,20 @@ class Task:
         calculation look identical from inside the file -- and quietly
         rewriting the id would be the *"append a digit and carry on"* that
         § 3 rule 3 rules out, one layer up."""
-        expected = run_id(self.run.name, self.structure.formula,
+        # transport: the coordinates ARE the cited attempt, so the
+        # citation is the identity's second half (run-identity.md § 2's
+        # rule, extended by plans/transport-design.md 4.1 -- an id that
+        # named no input would collide across every junction).
+        identity = (self.slots.get("junction", "")
+                    if self.calculation == "transport"
+                    else self.structure.formula)
+        expected = run_id(self.run.name, identity,
                           stage_names=self._stage_names())
         if self.run.id != expected:
             raise ValueError(
                 f"task: run.id {self.run.id!r} is not what this description "
-                f"derives. run.name {self.run.name!r} + structure.formula "
-                f"{self.structure.formula!r} give {expected!r}. The id is "
+                f"derives. run.name {self.run.name!r} + identity "
+                f"{identity!r} give {expected!r}. The id is "
                 f"normalised once and then quoted everywhere, so a mismatch "
                 f"means one of the three was edited without the others -- and "
                 f"which one is right is not something this reader may guess "
@@ -517,23 +597,47 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
               id=str(_require(run_obj, "id", where="run")),
               created=str(run_obj.get("created", "")))
 
-    struct_obj = _as_object(_require(obj, "structure", where=""),
-                            where="structure")
-    _check_keys(struct_obj, _STRUCTURE_KEYS, where="structure")
-    structure = StructureRef(
-        source=str(_require(struct_obj, "source", where="structure")),
-        formula=str(struct_obj.get("formula", "")),
-        atoms=int(struct_obj.get("atoms", 0)))
-
-    # the calculation TYPE: optional, absent = "optimization" (§ 4.2a's
-    # absent-is-a-state).  Shape-checked here; MEMBERSHIP (does the
-    # engine's vocabulary have this section?) is answered where the
-    # warm-files rules are read.
+    # the calculation TYPE first this once: whether `structure` is
+    # required depends on it (transport's structure IS its citation).
     calc = obj.get("calculation", "optimization")
     if not isinstance(calc, str) or not STAGE_NAME_RE.match(calc):
         _refuse(f"calculation {calc!r} must match [A-Za-z0-9_]+ -- it "
                 "names a section of the engine's warm-file vocabulary "
                 "(job-contracts.md 4.2a)")
+
+    if calc == "transport":
+        if "structure" in obj:
+            _refuse("a transport calculation carries no 'structure' "
+                    "block -- its structure IS the junction citation, "
+                    "copied in at prep (plans/transport-design.md 4.1)",
+                    where="structure")
+        structure = None
+    else:
+        struct_obj = _as_object(_require(obj, "structure", where=""),
+                                where="structure")
+        _check_keys(struct_obj, _STRUCTURE_KEYS, where="structure")
+        structure = StructureRef(
+            source=str(_require(struct_obj, "source", where="structure")),
+            formula=str(struct_obj.get("formula", "")),
+            atoms=int(struct_obj.get("atoms", 0)))
+
+    # THE COMPOSITE'S KEYS (transport-design.md 4.1/4.3).  Shape here;
+    # the pairing rules (transport-only, junction required, bias starts
+    # at 0.0) live on the dataclass so object builders meet them too.
+    slots_obj = _as_object(obj.get("slots", {}), where="slots")
+    slots = {}
+    for name, cite in slots_obj.items():
+        if not isinstance(cite, str):
+            _refuse(f"slot {name!r} must be a citation string, got "
+                    f"{type(cite).__name__}", where="slots")
+        slots[str(name)] = cite
+    bias_obj = _as_object(obj.get("bias", {}), where="bias")
+    _check_keys(bias_obj, _BIAS_KEYS, where="bias")
+    bias_raw = bias_obj.get("voltages_v", [])
+    if not isinstance(bias_raw, list):
+        _refuse(f"voltages_v must be a list, got "
+                f"{type(bias_raw).__name__}", where="bias")
+    bias = tuple(bias_raw)
 
     has_stages = "stages" in obj
 
@@ -587,7 +691,8 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     return Task(engine=engine, shape=shape, run=run, structure=structure,
                 varies=varies, stages=stages, calculation=calc, bench=bench,
                 allocation=_allocation_from_obj(obj),
-                notify=_notify_from_obj(obj))
+                notify=_notify_from_obj(obj),
+                slots=slots, bias=bias)
 
 
 def _bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
@@ -848,9 +953,16 @@ def _task_to_dict(task: Task) -> dict:
     # absent-is-a-state: an optimization writes no key (§ 4.2a)
     if task.calculation != "optimization":
         out["calculation"] = task.calculation
-    out["structure"] = {"source": task.structure.source,
-                        "formula": task.structure.formula,
-                        "atoms": task.structure.atoms}
+    # the composite's inputs ride where the design's example puts them
+    # (transport-design.md 4.1): slots, then bias, then the stages.
+    if task.slots:
+        out["slots"] = dict(sorted(task.slots.items()))
+    if task.bias:
+        out["bias"] = {"voltages_v": [float(v) for v in task.bias]}
+    if task.structure is not None:
+        out["structure"] = {"source": task.structure.source,
+                            "formula": task.structure.formula,
+                            "atoms": task.structure.atoms}
     # Absent together, never empty -- an empty list would be a second way to
     # spell "one stage" (§ 6.5).
     # § 6.8: omitted when empty, so "no benchmark planned" has ONE spelling
