@@ -504,14 +504,17 @@ class TestTheGather:
             prep_calculation(calc, st)
         _conclude(calc, "electrode_L", ["T_L-electrode.TSHS"])
         _conclude(calc, "electrode_R", ["T_R-electrode.TSHS"])
-        _conclude(calc, "device", ["T.TSHS", "T.TSDE"])
+        _conclude(calc, "device", ["T.TS.HSX"])
         dest = tmp_path / "t"
         dest.mkdir()
         got = gather_transport_inputs(calc, self._task(calc),
                                       "transmission", dest)
         assert sorted(fn for _s, fn in got) == [
-            "T.TSDE", "T.TSHS", "T_L-electrode.TSHS",
-            "T_R-electrode.TSHS"]
+            "T.TS.HSX", "T_L-electrode.TSHS",
+            "T_R-electrode.TSHS"], (
+            "SIESTA 5.x writes the device H as TS.HSX; tbtrans consumes "
+            "it plus the electrode .TSHS -- never the .TSDE (measured "
+            "live 2026-08-29)")
 
 
 class TestTheLaunchSide:
@@ -752,14 +755,14 @@ class TestTheBiasScan:
         from click.testing import CliRunner
         from molbuilder.jobset._cli import jobset_group
         self._ready(calc, tmp_path, monkeypatch)
-        _conclude(calc, "device", ["T.TSHS", "T.TSDE"], point="v0")
-        _conclude(calc, "device", ["T.TSHS", "T.TSDE"], point="v0.2")
+        _conclude(calc, "device", ["T.TS.HSX"], point="v0")
+        _conclude(calc, "device", ["T.TS.HSX"], point="v0.2")
         r = CliRunner().invoke(jobset_group,
                                ["prep", "run", "transmission",
                                 "--bundle", "J/transport/T"])
         assert r.exit_code == 0, r.output
         rec = (calc / "05_transmission" / "v0.2" / "run-0"
                / ".gathered-from").read_text()
-        assert "T.TSHS <- 04_device/v0.2/run-0" in rec
-        assert (calc / "05_transmission" / "v0.2" / "run-0" / "T.TSDE"
+        assert "T.TS.HSX <- 04_device/v0.2/run-0" in rec
+        assert (calc / "05_transmission" / "v0.2" / "run-0" / "T.TS.HSX"
                 ).is_file()

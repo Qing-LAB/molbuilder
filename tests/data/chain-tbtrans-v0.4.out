@@ -1,0 +1,36 @@
+Executable      : tbtrans
+Version         : 5.4.2
+Architecture    : x86_64
+Compiler version: GNU-14.3.0
+Compiler flags  : -march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem <prefix>/include -I<prefix>/_build_env/include -fdebug-prefix-map=<prefix>/work=/usr/local/src/conda/siesta-5.4.2 -fdebug-prefix-map=<prefix>=/usr/local/src/conda-prefix -I<prefix>/lib -fallow-argument-mismatch -O3
+Parallelisations: MPI
+NetCDF support
+NetCDF-4 support
+NetCDF-4 MPI-IO support
+
+Runtime information:
+* Directory : /tmp/claude-1000/-home-qqing-molbuilder/3fe7ef8e-2d79-454f-8a89-da0f2cc67f54/scratchpad/livewalk/projects/chain/transport/CT/05_transmission/v0.4/run-0
+* Running on 4 nodes in parallel.
+>> Start of run:  29-AUG-2026   2:26:53
+
+                           ************************ 
+                           *  WELCOME TO TBtrans  * 
+                           ************************ 
+
+reinit: Reading from file CT_05_transmission.fdf
+
+reinit: -----------------------------------------------------------------------
+reinit: System Name: Transport device for CT
+reinit: -----------------------------------------------------------------------
+reinit: System Label: CT
+reinit: -----------------------------------------------------------------------
+
+ Kpoints in:            1 . Kpoints trimmed:            1
+tbt: Number of transport k-points = 1
+tbt: Method = Monkhorst-Pack grid.
+tbt: Completed in               13.992 s
+
+Currents (ensure entire Fermi function window):
+L -> R, V [V] / I [A]: 0.400000     V / 0.309835E-04 A
+L -> R, V [V] / P [W]: 0.400000     V / -.619664E-05 W
+

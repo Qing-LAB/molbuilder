@@ -45,8 +45,8 @@ PARTITION_LABELS = (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE,
 #: ``semi-inf-direction ±A3``).
 TRANSPORT_AXIS = 2
 
-#: The permutation sidecar's schema name (job-contracts registry row
-#: lands with P6's record work).
+#: The permutation sidecar's schema name (registered: job-contracts.md
+#: § 6.1's Atom-permutation row, with P6's record work).
 PERMUTATION_SCHEMA = "molbuilder/atom-permutation@1"
 
 

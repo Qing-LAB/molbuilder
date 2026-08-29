@@ -2201,10 +2201,40 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
     directory names back (`job-contracts.md` § 6.3).
     """
     if kind != "bench":
+        # THE TRANSPORT COMPOSITE'S DELIVERABLE (transport-design.md
+        # § 7 P6): `summarize run` on a transport calculation reads the
+        # transmission attempts back into <label>.transport.json and
+        # prints the I-V table.  Asynchronous like the bench reader: a
+        # point that has not run yet reads as pending, never a failure.
+        from pathlib import Path as _P
+
+        from ..task import FILENAME as _TASKF
+        from ..task import read_task as _rt_sum
+        _tt = None
+        try:
+            _tt = _rt_sum(_P(bundle) / _TASKF)
+        except Exception:
+            _tt = None
+        if _tt is not None and _tt.calculation == "transport":
+            from ..transport.record import (RecordError, collect_record,
+                                            iv_table_text, write_record)
+            try:
+                rec = collect_record(_P(bundle), _tt)
+            except RecordError as e:
+                raise click.ClickException(str(e))
+            out = write_record(_P(bundle), rec)
+            click.echo(iv_table_text(rec))
+            click.echo(f"-> {out}")
+            _ledger(_P(bundle), "summarize", "transport-record",
+                    out=str(out), points=len(rec["points"]),
+                    pending=len(rec.get("pending", ())))
+            return
         raise click.ClickException(
             "summarize reads a BENCH sweep's measurements.  A run's own "
             "outputs are the calculation's results -- `jobset status` and "
-            "the Watch tab are their readers (job-system.md § 5.3).")
+            "the Watch tab are their readers (job-system.md § 5.3).  "
+            "(The one exception is the transport composite, whose "
+            "`summarize run` writes <label>.transport.json.)")
     js, base = _load_bench_set(bundle, stage)
     _check_kind(kind, js)
     from .summarize import (run_summarize_jobset,
@@ -2567,15 +2597,11 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                     and only in ("device", "transmission")):
                 from ..transport.stages import bias_points as _bp
                 _chain_scan = _bp(_chain_task)
-                if _chain_scan and only == "transmission":
-                    raise click.ClickException(
-                        "per-point transmission launch lands with P6 "
-                        "(it maps over the device's converged points); "
-                        "launch the device chain first.")
             if _chain_scan:
                 from .submit import submit_transport_chain
                 _plan = submit_transport_chain(
-                    js, base, _chain_task, mode=mode, domain=domain,
+                    js, base, _chain_task, mode=mode, stage=only,
+                    domain=domain,
                     dry_run=True, mem_gb=_memory(mem_text),
                     time_s=_duration(time_text))
                 if not dry_run:
@@ -2594,7 +2620,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 results = (_plan if dry_run else
                            submit_transport_chain(
                                js, base, _chain_task, mode=mode,
-                               domain=domain, dry_run=False,
+                               stage=only, domain=domain, dry_run=False,
                                mem_gb=_memory(mem_text),
                                time_s=_duration(time_text)))
             else:

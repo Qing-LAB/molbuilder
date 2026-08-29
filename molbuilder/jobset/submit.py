@@ -1177,7 +1177,8 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
 
 
 def submit_transport_chain(jobset: JobSet, base_dir, task, *,
-                           mode: str, domain: Optional[str] = None,
+                           mode: str, stage: str = "device",
+                           domain: Optional[str] = None,
                            dry_run: bool = False,
                            mem_gb: Optional[float] = None,
                            time_s: Optional[int] = None
@@ -1216,11 +1217,17 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     if len(points) < 2:
         raise SubmitError("not a bias scan -- the plain launch owns "
                           "a single-point device.")
-    job = next((j for j in jobset.jobs if j.name == "device"), None)
+    # The device chain warm-hands the .TSDE and STOPS on failure
+    # (later points inherit the failed state); the transmission walk is
+    # the same one-submission sequence over INDEPENDENT points -- no
+    # hand-forward, and a bad point says nothing about the next, so the
+    # walk continues and the exit code reports any failure (P6).
+    warm = stage == "device"
+    job = next((j for j in jobset.jobs if j.name == stage), None)
     if job is None:
         raise SubmitError(
-            "the device stage is not in the plan -- run "
-            "`molbuilder jobset prep run device` first.")
+            f"the {stage} stage is not in the plan -- run "
+            f"`molbuilder jobset prep run {stage}` first.")
     base = Path(base_dir).resolve()
     # The stage's <NN>_<name> token, read from the ordinal rule's own
     # home (identity.StageRef.ladder -- the same door token_for reads;
@@ -1228,7 +1235,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     # architecture guard refuses).
     token = next(r.token for r in
                  StageRef.ladder([s.name for s in task.stages])
-                 if r.name == "device")
+                 if r.name == stage)
     stage_dir = base / token
     launch_dir = stage_dir / "launch"
     run_name = _wrapper_name(job.script, ".run.sh")
@@ -1244,12 +1251,12 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
                 f"bias point {bias_token(v)}: no attempt is open under "
                 f"{token}/{bias_token(v)}/ -- the scan launches whole, "
                 f"so every point must be prepared:\n"
-                f"    molbuilder jobset prep run device")
+                f"    molbuilder jobset prep run {stage}")
         if was_launched(att):
             raise SubmitError(
                 f"bias point {bias_token(v)}: {att.relative_to(base)} "
                 f"has already been launched.  An attempt is immutable "
-                f"once it has run; `molbuilder jobset prep run device` "
+                f"once it has run; `molbuilder jobset prep run {stage}` "
                 f"opens a fresh run-<n> for every point.")
         try:
             check_launch_matches_deck(att, job)
@@ -1273,8 +1280,10 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
         f'points={len(attempts)} job=${{SLURM_JOB_ID:-none}} '
         'node=$(hostname)" >> "$LOG"',
         "prev=''",
+        "fails=0",
         "run_point() {",
         '    _name="$1"; _dir="$2"; shift 2',
+    ] + ([
         '    if [ -n "$prev" ]; then',
         f'        if [ -f "$prev/{label}.TSDE" ]; then',
         f'            cp "$prev/{label}.TSDE" "$_dir/"',
@@ -1284,14 +1293,21 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
         '$prev -- converging from scratch" >> "$LOG"',
         "        fi",
         "    fi",
+    ] if warm else []) + [
         '    echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') -> '
         '${_name} starts" >> "$LOG"',
         '    ( cd "${_dir}" && bash "$@" ) >> "$LOG" 2>&1',
         "    _rc=$?",
         '    if [ "${_rc}" -ne 0 ]; then',
+    ] + ([
         '        echo "[chain] ${_name} FAILED rc=${_rc} -- the chain '
         'stops here; later points would inherit its state" >> "$LOG"',
         '        exit "${_rc}"',
+    ] if warm else [
+        '        echo "[chain] ${_name} FAILED rc=${_rc} -- independent '
+        'points; the walk continues" >> "$LOG"',
+        "        fails=$((fails+1))",
+    ]) + [
         "    fi",
         '    echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') <- ${_name} '
         'done" >> "$LOG"',
@@ -1302,14 +1318,15 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
         rel = f"{bias_token(v)}/{att.name}"
         lines.append(f'run_point "{bias_token(v)}" "{rel}" "{run_name}"'
                      + (f" {args}" if args else ""))
-    lines += ['echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') done" '
-              '>> "$LOG"', "exit 0", ""]
+    lines += ['echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') done '
+              'fails=${fails}" >> "$LOG"',
+              'exit $(( fails > 0 ))', ""]
 
     if mode == "direct":
         cmd = ["bash", f"launch/{name}.run.sh"]
         if dry_run:
             return [JobResult(name, cmd, "planned")] + [
-                JobResult(f"device@{bias_token(v)}", [], "rides the chain")
+                JobResult(f"{stage}@{bias_token(v)}", [], "rides the chain")
                 for v, _a in attempts]
         launch_dir.mkdir(parents=True, exist_ok=True)
         (launch_dir / f"{name}.run.sh").write_text("\n".join(lines),
@@ -1357,7 +1374,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     cmd.append(f"launch/{name}.sbatch")
     if dry_run:
         return [JobResult(name, cmd, "planned")] + [
-            JobResult(f"device@{bias_token(v)}", [], "rides the chain")
+            JobResult(f"{stage}@{bias_token(v)}", [], "rides the chain")
             for v, _a in attempts]
     launch_dir.mkdir(parents=True, exist_ok=True)
     (launch_dir / f"{name}.run.sh").write_text("\n".join(lines),
@@ -1391,7 +1408,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     for v, att in attempts:
         _record_launch(att, mode="submit", command=cmd, job_id=jid,
                        placement=placement)
-        results.append(JobResult(f"device@{bias_token(v)}", [],
+        results.append(JobResult(f"{stage}@{bias_token(v)}", [],
                                  "rides the chain", job_id=jid))
     return results
 

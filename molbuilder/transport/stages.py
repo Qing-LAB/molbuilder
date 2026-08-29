@@ -96,11 +96,13 @@ def stage_inputs(stage: str, task_label: str, *,
         seed = [("seed", f"{task_label}.DM")] if seed_enabled else []
         return seed + elec
     if stage == "transmission":
-        # TBtrans reads the device's converged H (.TSHS) and its NEGF
-        # density (.TSDE), plus the electrode .TSHS the TS.Elec blocks
-        # in the (shared) deck text reference.
-        return ([("device", f"{task_label}.TSHS"),
-                 ("device", f"{task_label}.TSDE")] + elec)
+        # TBtrans reads the device's converged H -- which SIESTA 5.x
+        # writes as <label>.TS.HSX (the sparse container that replaced
+        # the 4.x device .TSHS; measured live 2026-08-29 on 5.4.2) --
+        # plus the electrode .TSHS the TS.Elec blocks in the (shared)
+        # deck text reference.  The .TSDE is NOT consumed: the TS.HSX
+        # already carries the bias point's converged potential.
+        return [("device", f"{task_label}.TS.HSX")] + elec
     return []
 
 
