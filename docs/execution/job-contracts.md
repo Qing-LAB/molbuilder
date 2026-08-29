@@ -39,6 +39,28 @@ inventing its own.
 
 ---
 
+## The short version
+
+**Every stable on-disk shape, one section each.** The files you will
+actually open, and who writes them:
+
+| file | what it is | writer | section |
+|---|---|---|---|
+| `task.json` (`molbuilder/task@1`) | the description: engine, shape, stages, bench axes | `init` / Task-setup save | § 2 |
+| `<label>.template.toml` | the answers, narrowed to one engine | `init` | § 2 |
+| `environment.json` (`environment@2`) | what a machine IS: topology, domains, ceilings | `jobset probe` | § 6.1 |
+| `job-set.json` | floor 3 — the derived work list | `prep`, on the target | § 2 |
+| `<label>.run.sh` / `.sbatch` | the wrapper + submission script, with reserved `=== molbuilder ... ===` blocks | `prep` | § 3 |
+| `run.json` (`run-launch@1`) | where an attempt was SENT (domain/partition/qos, job id) | `launch` | § 6.1 registry |
+| `<basename>-runN.concluded` | the wrapper's last act: "this attempt is over", rc inside | the wrapper's main path | `project-layout.md` § 1.6 |
+| monitor log (`[MACHINE]` first) | what the job LANDED on + how it ran | the monitor | § 2 |
+| `bench-result.json` / `run-config.toml` | the measured sweep, and the recommendation you may edit | `summarize` | § 2 |
+
+Reserved script blocks (provenance, bench-marks, resume) are § 3; the
+warm-file vocabulary (what carries a run into the next) is § 4.
+
+---
+
 ## 1. What this document owns — a reader's map
 
 | If you need to know… | Read § |

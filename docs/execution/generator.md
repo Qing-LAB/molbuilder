@@ -28,6 +28,23 @@ formats it writes;
 
 ---
 
+## The short version
+
+**One pipeline: catalogue → template → description → `ParameterSet` →
+jobs → decks. A run is a sweep of length one** — benchmarking and
+running are the same code path, which is why a bench point and a run
+render identically.
+
+| key rule | one line | where |
+|---|---|---|
+| **the spine** | one picture of every arrow, template to deck | § 3 |
+| **machine-fit** | a declared bench point that exceeds the target machine is refused BY NAME with the numbers ("needs 32 cores, probe found 20") | § 4.1 |
+| **nothing invented** | a sweep varies only what the description declares; defaults come from the catalogue, answers from the template | § 4 |
+| **speed data is presented, never judged** | results record the machine each trial LANDED on; comparisons are grouped by machine kind and shown — the user is the analyzer | § 4.4a-b |
+| **the engine seam** | an engine is a plugin behind one interface, not a branch in the pipeline | § 7 |
+
+---
+
 ## 1. What this owns, and what it does not
 
 > **The normal case is one parameter set, and this contract is built for it**

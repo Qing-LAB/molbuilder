@@ -50,6 +50,18 @@ true.**
 person reads first, so a term is either an ordinary word or is defined in § 2
 before it is used.
 
+> **R-W3 — a contract document leads with "The short version"** *(user,
+> 2026-08-28: key information has to come out — keywords, a diagram, an
+> example; reading a record to find a rule is tiring)*. Every contract
+> page opens with what the design IS and HOW it is used: the key rules as
+> a keyword-first table pointing into the sections, plus the one diagram
+> or worked example that carries the page. Below that line, **a rule
+> states itself first and its history in one line, never as a story** —
+> the *why chosen* survives; the narration of how it was found moves to
+> the audit/archive if it is longer than a sentence. Scientific
+> validation is the exception: its reasoning IS the content and keeps
+> full depth.
+
 ---
 
 ## 1. The one idea

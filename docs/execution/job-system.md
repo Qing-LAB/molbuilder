@@ -15,6 +15,29 @@ the staged ladders (this page covers only how they are *scheduled*).
 
 ---
 
+## The short version
+
+**Everything is a job set** — one calculation is a job set of one; a
+ladder or a benchmark sweep is a bigger one. Same verbs, no shortcuts:
+
+```
+jobset init        write the portable description        (your laptop)
+jobset prep        derive decks + scripts FOR this machine   (the target)
+jobset plan        show what would run, warm files, resources
+jobset launch      ONE job per invocation -- run or submit
+jobset summarize   read a sweep -> bench-result.json + run-config.toml
+jobset status      per-stage status + the resume point
+```
+
+| key rule | one line | where |
+|---|---|---|
+| **floor 3 is derived** | `job-set.json` is computed at prep ON the target — never produced on one host and shipped to another | § 4 |
+| **one grouped job** | a bench sweep is ONE submission that runs trials in sequence, each recording its own `run.json` | § 7 |
+| **refuse before the scheduler** | a header the record says will bounce is not emitted (design decision #4 — the mechanism is `scheduler.md`) | § 6 |
+| **ladder = stages** | coarse feeds tight through declared warm files; the resume point is read, not guessed | § 3, § 5 |
+
+---
+
 ## 1. What the job system is, and why it exists
 
 > **Everything is a job set** *(decided 2026-08-11, user)*. One calculation is

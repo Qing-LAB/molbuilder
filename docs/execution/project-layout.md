@@ -25,6 +25,37 @@ restate the rules inside a single run directory — those are `job-contracts.md`
 
 ---
 
+## The short version
+
+**A calculation is a portable folder; everything the machine derives
+stays one level down.** The folder `init` writes travels to any machine
+unchanged; `prep` adds stage dirs; `launch` adds attempts.
+
+```
+<project>/optimization/<Calc>/          <- PORTABLE: travels as-is, names no machine
+  task.json  <label>.template.toml      the description + the answers
+  <name>.source.xyz  (+.molstruct.json) the structure pair
+  pseudos/  (H.psml, ...)               travel with the calculation
+  01_coarse/                            <- prep writes the stage (hierarchical shape)
+    <label>_01_coarse.fdf  *.run.sh     the deck + wrapper, rendered FOR this machine
+    run-0/  run-1/                      <- attempts: one try each, warm files linked
+      *-run0.out  *.concluded           the output + the conclusion marker (rc inside)
+  bench-K2C1/run-0/                     <- a benchmark trial is its own attempt
+  run-config.toml                       summarize's RECOMMENDATION -- yours to edit
+```
+
+| key rule | one line | where |
+|---|---|---|
+| **portable floor** | the calculation folder never names a machine — copy it anywhere | § 1 |
+| **two shapes** | `flat` (everything beside task.json) or `hierarchical` (one dir per stage) — declared at init, never inferred | § 1 |
+| **attempt = run-N** | every try is its own numbered dir; warm files LINK from the previous attempt | § 1.5 |
+| **the conclusion marker** | the wrapper's last act writes `<basename>-runN.concluded` with the rc; absent means killed — the launch gate ASKS, never decides | § 1.6 |
+| **recommendation, not decision** | `run-config.toml` is summarize's suggestion; edit a line, delete a line, or delete the file | § 2.3.2 |
+| **who writes where** | init → the portable floor; prep → stage dirs; launch/monitor → attempts; a person → anything, said aloud | § 2 |
+| **invariants** | the cross-level rules, each with its reason | § 7 |
+
+---
+
 ## 1. Two shapes, and how to choose
 
 ### 1.0 What the run directory is, and what may be in it

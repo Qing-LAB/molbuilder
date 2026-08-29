@@ -14,6 +14,41 @@ split this subsystem must not blur;
 [`execution/preparing-for-another-machine.md`](?doc=execution/preparing-for-another-machine.md)
 — which machine a `prep` is *for*, and how a record gets here.
 
+## The short version
+
+**A machine is measured into a record (`probe` → `environment.json`);
+a job states a request; admission compares them; placement picks the
+cheapest queue that fits; one placement renders both the `#SBATCH`
+header and the command-line flags.** Package: `molbuilder.scheduler`
+(`record` · `probe` · `admit` · `place` · `emit`, § 6). All built; live
+since 2026-08-23.
+
+The rules, one line each — full statement in § 3:
+
+| rule | keyword | one line |
+|---|---|---|
+| **R0** | queue ≠ machine | a partition is a QUEUE holding many machine kinds; `node_types` lists them, any single figure over them is an opinion |
+| **R1** | one placement | header and flags are two renderings of ONE decision |
+| **R2** | total admission | every limit the record declares is compared — a declared field nobody checks is the defect |
+| **R3** | silence permits | an unstated limit never bars; the core/device ceiling is the WIDEST machine that offers what was asked |
+| **R4** | numbers, not "no" | a refusal names the numbers ("38 min > debug's 00:15:00") |
+| **R5** | header stands alone | a header naming a queue states a wall that queue accepts |
+| **R6** | refuse early | when the record already says no, refuse before the scheduler does |
+| **R7** | ask what you know | unasked constraints are `None`, and `None` never refuses |
+| **R8** | fact vs preference | what a queue ALLOWS is the record's; which queue you WANT is yours |
+| **R9** | re-admit on send | what was admitted at `prep` is re-checked at `launch` — the record can change under a traveling bundle |
+| **R10** | name the way out | a refusal says what WOULD fit, not only what doesn't |
+| **R11** | compare KINDS | comparability = the node's kind (cores, device model, mem ≈10 GB) — never its hostname, never the allocation |
+| **R12** | sent ≠ landed | `run.json` records where it was SENT; the monitor's first `[MACHINE]` line records what it LANDED on |
+| **R13** | two ceilings | hardware (widest machine) and policy (`MaxTRESPerJob`, `MaxCPUsPerNode`) are both read; the smaller governs |
+
+**How you use it:** the decision graph is § 5, the five-file shape § 6,
+and § 7 shows the caller's view (`Request` → `place` → `Directives`) in
+ten lines. §§ 1–2 are the evidence record — the two Sol failures this
+subsystem exists to prevent — read them for *why*, never for *how*.
+
+---
+
 Scheduling work was spread across five modules — `environment.py`,
 `scheduler_probe.py`, `jobset/submit.py`, `runwrap.py`, `runtime_config.py` —
 carrying roughly 450 mentions of partitions, queues, ceilings and directives
@@ -21,23 +56,10 @@ between them. This document says what that subsystem *is*, so the pieces have
 one home and one set of rules instead of one treatment per place someone
 noticed a problem.
 
-> **Status**, 2026-08-23. **All five phases of § 8 have landed:** `record`, `probe`,
-> `admit` and `place` are the subsystem, `molbuilder.scheduler` is the
-> package, placement is one walk that both the group and single-job paths
-> take, and the header and the flags are two renderings of one `Directives`.
->
-> Two things this document specifies that the record does not yet support,
-> both found while implementing it and both recorded rather than quietly
-> patched: **`Domain.gpu` has two shapes** — probed rows map type→count,
-> hand-declared rows describe one device with named keys — and admission
-> reads both because both are in live records; and **R9 needs two records**,
-> the bundle's snapshot for routing and the machine's own for the re-check,
-> because routing resolves the calculation scope first and re-admitting
-> against the snapshot compares a request with the record that built it.
->
-> § 1's table is written in the **past tense on purpose**: it records where
-> each responsibility lived when the two Sol failures happened, which is the
-> evidence for why the subsystem exists. It is history, not a map.
+> **`Domain.gpu` has two shapes, deliberately** — probed rows map
+> type→count, hand-declared rows describe one device with named keys —
+> and admission reads both through one door (§ 4, *Device*), because
+> both are in live records.
 
 ---
 
@@ -302,12 +324,14 @@ R3 then reads the missing policy limit as permission.
 > the record may report as silence** — R3's *unstated limit never bars* is
 > about what the scheduler does not say, never about what we did not ask.
 >
-> **Built 2026-08-27**: the probe asks for both (`MaxTRES` in the format
-> list; `MaxCPUsPerNode` kept from the block already fetched), they ride the
-> row as `max_cpus_per_job` / `max_cpus_per_node`, and `admits` compares the
-> ask against every ceiling it holds — the smaller governs. What remains for
-> `lightwork` specifically is one re-run of `jobset probe` on Sol, which now
-> asks the question; either answer it returns is a result.
+> **Built 2026-08-27, answered 2026-08-28**: the probe asks for both
+> (`MaxTRES` in the format list; `MaxCPUsPerNode` from the block already
+> fetched), they ride the row as `max_cpus_per_job` / `max_cpus_per_node`
+> — written as `null` when asked-and-uncapped, absent only when never
+> asked — and `admits` compares the ask against every ceiling it holds;
+> the smaller governs. **Sol's answer: no policy cap anywhere** —
+> `lightwork` included; its only policy split from `public` is the
+> 1-day wall.
 
 **R11 — Comparability is a property of the MACHINE, never of the domain.**
 Added 2026-08-27, and it is R0 applied to measurement. A domain is a queue
@@ -502,14 +526,13 @@ flowchart LR
   B -.->|"the bundle travels,<br/>and the record can change under it"| S
 ```
 
-This is **R9**, and it is the half that does not exist yet. `prep` already
-walks the graph — it did so for the Au-BDT-Au sweep and found no limit to
-apply, because the record it held said `max_cores: None`. The machine has
-since learned its GPU nodes hold 48 cores. The bundle still carries 64-rank
-trials. `launch` compares only the wall, so nothing notices on arrival.
-
-The two records that must agree are both already on disk: the snapshot beside
-the bundle, and the machine's own. Re-walking costs a read.
+This is **R9** — built with § 8 step 4, when the walk became callable
+from both moments. The case that demanded it: `prep` walked the graph
+for the Au-BDT-Au sweep under a record that said `max_cores: None`; the
+machine later learned its GPU nodes hold 48 cores, and the bundle still
+carried 64-rank trials. The two records that must agree are both on
+disk — the snapshot beside the bundle, and the machine's own — so the
+re-walk costs a read.
 
 ---
 
