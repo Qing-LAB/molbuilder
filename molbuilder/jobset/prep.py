@@ -437,6 +437,29 @@ def _siesta_sibling_artifacts(struct, cfg, deck_path: Path) -> None:
                                system_label=cfg.system_label, q=q)
 
 
+def _pseudo_dir(base: Path) -> Path:
+    """THE PARENT'S DATA IS GROUPED (roadmap 7.10 M6): the calculation's
+    pseudopotential copies live in ``pseudos/``, one folder, instead of
+    N ``<El>.psml`` entries loose at the root.  Root strays -- put there
+    by `init`, an earlier prep, or a travelled bundle -- are ADOPTED,
+    the same move-in the deck adoption uses.  The run directories are
+    untouched by this: each still receives ``<El>.psml`` beside the
+    deck (that is SIESTA's own contract; it has no search path).
+
+    ONE rule, two providers: the SIESTA arm below and the transport
+    composite's (which fetches from the citation instead of a library).
+    """
+    pdir = base / "pseudos"
+    pdir.mkdir(exist_ok=True)
+    for stray in base.glob("*.psml"):
+        target = pdir / stray.name
+        if not target.exists():
+            stray.replace(target)
+        else:
+            stray.unlink()
+    return pdir
+
+
 def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
     """Put the pseudopotentials this deck needs into the calculation.
 
@@ -481,21 +504,7 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
     species = _detect_species(struct.elements)
     if not species:
         return
-    # THE PARENT'S DATA IS GROUPED (roadmap 7.10 M6): the calculation's
-    # pseudopotential copies live in ``pseudos/``, one folder, instead of
-    # N ``<El>.psml`` entries loose at the root.  Root strays -- put there
-    # by `init`, an earlier prep, or a travelled bundle -- are ADOPTED,
-    # the same move-in the deck adoption uses.  The run directories are
-    # untouched by this: each still receives ``<El>.psml`` beside the
-    # deck (that is SIESTA's own contract; it has no search path).
-    pdir = base / "pseudos"
-    pdir.mkdir(exist_ok=True)
-    for stray in base.glob("*.psml"):
-        target = pdir / stray.name
-        if not target.exists():
-            stray.replace(target)
-        else:
-            stray.unlink()
+    pdir = _pseudo_dir(base)
     have = {p.stem for p in pdir.glob("*.psml")}
     want = [s for s in species if s not in have]
     if not want:
@@ -714,21 +723,22 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 
     Returns the per-job directories. Raises :class:`PrepError`.
     """
-    # TRANSPORT IS THE COMPOSITE (plans/transport-design.md) and its
-    # prep arm lands with build step P4b.  The compose half is built
-    # (`transport/compose.py`); refusing here beats crashing on the
-    # structure this calculation deliberately does not carry.
+    # TRANSPORT IS THE COMPOSITE (plans/transport-design.md § 4.2): no
+    # template, no structure reference -- its stages render from the
+    # composed junction, so it takes its own arm rather than crashing
+    # on the structure this calculation deliberately does not carry.
+    from ..task import FILENAME as _TASK_FILENAME
     from ..task import read_task as _read_task_early
     try:
-        _t_calc = _read_task_early(Path(base_dir) / "task.json").calculation
+        _t_calc = _read_task_early(Path(base_dir) / _TASK_FILENAME).calculation
     except Exception:
         _t_calc = None   # no/invalid description: the named refusal below owns it
     if _t_calc == "transport":
-        raise PrepError(
-            "transport prep is under construction (transport-design.md "
-            "§ 7, step P4b): the composition engine is built, the stage "
-            "rendering lands next.  The description is valid and will "
-            "prep unchanged once P4b ships.")
+        return _prep_transport(base_dir, stage, allocation=allocation,
+                               env=env, emit_sbatch=emit_sbatch,
+                               sweep=sweep, pins=pins,
+                               translation=translation, target=target,
+                               pipeline_log=pipeline_log)
     from ..pipeline_log import PipelineLog, config_rows
     from ..resolve import ResolveError, resolve
     from ..task import FILENAME as TASK_FILENAME
@@ -1046,6 +1056,22 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # machine's is the 2026-08-24 failure exactly: it succeeds at generate
     # time and dies on the cluster hours later on a path that exists only
     # here.
+    _require_remote_activation(target, environment)
+    dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
+                       record_dir=record_dir, log=log,
+                       machine_record=environment)
+    if log is not None:
+        log.close()
+    return dirs
+
+
+def _require_remote_activation(target: Optional[str], environment) -> None:
+    """A record that does not state its own activation is refused HERE
+    rather than substituted downstream.  This is the layer that knows a
+    remote target was named, and substituting this machine's activation
+    for another machine's is the 2026-08-24 failure exactly: it succeeds
+    at generate time and dies on the cluster hours later on a path that
+    exists only here."""
     if target and not (getattr(environment, "script_generation", None) or {}
                        ).get("activation"):
         raise PrepError(
@@ -1058,12 +1084,190 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             f"~/.config/molbuilder/environments/ here, and prep again.\n"
             f"  (The probe records the machine's own script_generation "
             f"since 2026-08-24; a record written before that carries none.)")
-    dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
-                       record_dir=record_dir, log=log,
-                       machine_record=environment)
-    if log is not None:
-        log.close()
-    return dirs
+
+
+# --------------------------------------------------------------------- #
+#  The transport arm — the composite's prep (transport-design.md § 4.2)  #
+# --------------------------------------------------------------------- #
+
+def _transport_provide_pseudos(struct, cfg, base: Path,
+                               citation: str) -> None:
+    """The pseudopotentials arrive FROM THE CITATION
+    (transport-design.md § 4.1: structure, pseudos and electronic
+    template all come with the cited junction — one template governs).
+
+    Idempotent, and the folder wins, exactly like the SIESTA arm: what
+    ``pseudos/`` already holds (an earlier prep, or the travelled
+    folder) is left alone; only missing species are fetched, from the
+    cited calculation's own ``pseudos/`` — the files the junction
+    actually relaxed with.  Then the science screening runs on what is
+    actually here, same protocol, same blocking statuses.
+    """
+    from ..projects import find_projects_root
+    from ..siesta.input import _detect_species, copy_pseudopotentials
+
+    species = _detect_species(struct.elements)
+    if not species:
+        return
+    pdir = _pseudo_dir(base)
+    have = {p.stem for p in pdir.glob("*.psml")}
+    want = [s for s in species if s not in have]
+    if want:
+        calc_rel = citation.partition("@")[0]
+        root = find_projects_root(base)
+        lib = None
+        if root is not None:
+            cited = Path(root) / calc_rel
+            if (cited / "pseudos").is_dir():
+                lib = cited / "pseudos"
+            elif any(cited.glob("*.psml")):
+                lib = cited
+        missing = (copy_pseudopotentials(want, lib, pdir)
+                   if lib is not None else list(want))
+        if missing:
+            raise PrepError(
+                f"this transport calculation needs "
+                f"{', '.join(f'{m}.psml' for m in missing)} and there is "
+                f"none in {base.name}/pseudos/ or beside the cited "
+                f"junction ({calc_rel}).  The pseudopotentials travel "
+                f"with the citation (transport-design.md 4.1) -- the "
+                f"junction ran with them, so its calculation folder "
+                f"should hold them; prep the junction there, or put the "
+                f"files in {base.name}/pseudos/ yourself.")
+    _screen_pseudos(species, cfg, pdir)
+
+
+def _prep_transport(base_dir, stage: Optional[str] = None, *,
+                    allocation=None, env: str = None,
+                    emit_sbatch: bool = True,
+                    sweep=None, pins=None, translation=None,
+                    target: Optional[str] = None,
+                    pipeline_log: bool = False) -> List[Path]:
+    """`prep` for the transport COMPOSITE — the same five steps, with
+    step 2/3's template-resolve replaced by § 4.2's compose sequence:
+    **copy the citation → sort + checks → gates → extract → render this
+    stage's deck.**
+
+    Everything after the deck is the shared machinery, un-forked: the
+    stage directory comes from the same :func:`token_for` +
+    ``Shape.stage_dir`` every ladder uses, the allocation folds through
+    the same precedence doors, and steps 4–5 are :func:`prep_jobset`
+    verbatim — wrappers, run directories, ``STAGE-PLAN.md``, the merged
+    root ``job-set.json``.
+
+    What P5 adds, deliberately absent here: the warm-file vocabulary
+    (seed ``.DM`` → device, electrode ``.TSHS`` → device, the ``.TSDE``
+    bias chain) and the per-bias-point device decks — this arm renders
+    the equilibrium point.
+    """
+    from ..task import FILENAME as TASK_FILENAME
+    from ..task import read_task
+    from ..transport.compose import (ComposeError, compose_junction,
+                                     load_compose_record,
+                                     write_compose_record)
+    from ..transport.sort import SortError
+    from ..transport.stages import (TRANSPORT_STAGES, StageError,
+                                    config_for, render_stage_deck)
+    from .shape import Shape
+
+    base = Path(base_dir).resolve()
+    if not base.is_dir():
+        raise PrepError(f"calculation folder not found: {base}")
+    desc = base / TASK_FILENAME
+    if not desc.is_file():
+        raise PrepError(
+            f"no {TASK_FILENAME} in {base}. `prep` turns a DESCRIPTION into a "
+            f"runnable directory; write one first with `jobset init`.")
+    if sweep is not None or pins or translation is not None:
+        raise PrepError(
+            "a transport calculation takes no parameter sweep, pins or "
+            "translation: its parameters arrive whole from the citation, "
+            "and its one sweep axis is the bias list in task.json "
+            "(transport-design.md 4.3; the per-point device decks land "
+            "with the P5 warm chain).")
+
+    if pipeline_log:
+        # An observer, never a step (`script-preparation.md` § 4.5):
+        # saying so beats silently eating the flag.
+        import sys as _sys
+        print("  note: --log is not wired for the transport arm yet; "
+              "prep proceeds without it.", file=_sys.stderr)
+
+    # ---- 1. resolve the machine ---------------------------------------- #
+    environment = _environment_for(base, target)
+
+    # ---- 2. the description, and WHICH rung ---------------------------- #
+    task = read_task(desc)
+    if not stage:
+        raise PrepError(
+            f"a transport prep names its rung: the composite's stages "
+            f"render separately, in dependency order -- "
+            f"{', '.join(TRANSPORT_STAGES)} (transport-design.md 4.2).  "
+            f"Start with `molbuilder jobset prep run seed`.")
+    token = token_for(task, stage)          # refuses an unknown stage by name
+    stage_ref = next(s for s in task.stages if s.name == stage)
+    if not stage_ref.enabled:
+        raise PrepError(
+            f"stage {stage!r} is disabled in this description "
+            f"(enabled: false in task.json).  The seed is skippable by "
+            f"design (transport-design.md, ruling Q4) -- re-enable it "
+            f"there, or prep the next stage.")
+
+    # ---- 3a. compose the junction (or load the travelled copy) --------- #
+    # The record beside task.json answers first (the folder travels;
+    # `project-layout.md` § 2.1) -- but only for THIS citation.  A
+    # missing or re-pointed record composes fresh from the tree.
+    citation = task.slots["junction"]
+    try:
+        composed = load_compose_record(base, citation=citation)
+        if composed is None:
+            from ..projects import find_projects_root
+            root = find_projects_root(base)
+            if root is None:
+                raise PrepError(
+                    f"the composed junction record is not beside "
+                    f"{TASK_FILENAME} and {base} is not inside a projects "
+                    f"tree, so the citation {citation!r} cannot be "
+                    f"resolved.  Prep once inside the tree that holds the "
+                    f"cited junction -- the record then travels with the "
+                    f"folder (transport-design.md 4.1).")
+            composed = compose_junction(citation, tree_root=root)
+            write_compose_record(base, composed)
+    except (ComposeError, SortError) as exc:
+        raise PrepError(str(exc)) from exc
+
+    # ---- 3b. the one config, and the data files ------------------------ #
+    cfg = config_for(task, composed)
+    _transport_provide_pseudos(composed.sorted.structure, cfg, base,
+                               citation)
+
+    # ---- 3c. render THIS stage's deck, in its own directory ------------ #
+    _shape = Shape.named(task.shape)
+    _sd = _shape.stage_dir(token) if token else "."
+    _jdir = base if _sd == "." else base / _sd
+    _jdir.mkdir(parents=True, exist_ok=True)
+    stem = f"{task.label}_{token}" if token else task.label
+    script = f"{stem}.fdf"
+    try:
+        deck_text = render_stage_deck(stage, composed, cfg)
+    except StageError as exc:
+        raise PrepError(str(exc)) from exc
+    (_jdir / script).write_text(deck_text, encoding="utf-8")
+
+    # ---- 4 + 5, the shared tail ---------------------------------------- #
+    allocation = _with_notify(_under_description(allocation,
+                                                 task.allocation),
+                              task.notify)
+    job = Job(name=stage, script=script,
+              resources=allocation or Resources())
+    js = JobSet(name=task.label, engine=task.engine, kind="ladder",
+                shared=_siesta_shared_package(base), jobs=[job])
+    js = _merge_run_jobset(base / JOBSET_FILENAME, js,
+                           ladder=frozenset(s.name for s in task.stages))
+    js.write(base / JOBSET_FILENAME)
+    _require_remote_activation(target, environment)
+    return prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
+                       record_dir=base, machine_record=environment)
 
 
 def _merge_run_jobset(path: Path, new: JobSet,

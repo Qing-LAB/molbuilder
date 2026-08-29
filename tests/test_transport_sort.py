@@ -179,6 +179,17 @@ class TestRefusalsNameAtoms:
         assert "atom 0 (Au)" in msg
         assert REGION_LEFT_ELECTRODE in msg and REGION_BRIDGE in msg
 
+    def test_a_buffer_atom_inside_the_blocks_is_refused(self):
+        """§ 3 buffer sanity: buffer means padding OUTSIDE the
+        electrodes.  One at z = 5 sits mid-bridge -- the sort would
+        park it at an outer end its geometry contradicts."""
+        struct, _ = _junction(shuffle=False,
+                              extra=[("He", 5.0, REGION_BUFFER)])
+        with pytest.raises(SortError) as e:
+            categorical_sort(struct)
+        msg = str(e.value)
+        assert "atom 8 (He)" in msg and "OUTSIDE" in msg
+
     def test_interface_rides_on_top_without_tripping_the_partition(self):
         struct, _ = _junction(shuffle=False)
         struct.regions["interface"] = [2, 5]        # the two S anchors

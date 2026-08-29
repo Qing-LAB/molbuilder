@@ -258,14 +258,6 @@ def _resolve_bundle_may_be_new(ctx, param, value):
     return _resolve_bundle(ctx, param, value, must_exist=False)
 
 
-#: The composite's fixed ladder (plans/transport-design.md 4.2) -- the
-#: five stages in dependency order.  Fixed by design, not configurable:
-#: enabling/disabling (the seed's Q4 skip) is the per-stage `enabled`
-#: flag, edited in task.json like any other stage.
-TRANSPORT_STAGES = ("seed", "electrode_L", "electrode_R",
-                    "device", "transmission")
-
-
 def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                     bias_opt, structure, psml_lib, vacuum,
                     stage_strategy) -> None:
@@ -282,6 +274,9 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
 
     from ..task import Stage, Task, derive_run, write_task
     from ..task import FILENAME as TASK_FILENAME
+    # The ladder is the transport module's fact (one door): five stages
+    # in dependency order, per-stage `enabled` for the seed's Q4 skip.
+    from ..transport.stages import TRANSPORT_STAGES
 
     for given, flag, why in (
             (structure, "--structure", "its structure IS the junction "

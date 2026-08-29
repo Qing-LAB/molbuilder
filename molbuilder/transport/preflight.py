@@ -91,6 +91,13 @@ class FdfParams:
     solution_method: Optional[str] = None
     saves_ts_hs: bool = False
     n_atoms: Optional[int] = None
+    #: Fermi smearing in K (None when the deck leaves SIESTA's default).
+    electronic_temperature_k: Optional[float] = None
+    #: XC as the deck SPELLS it (``xc`` above is the normalised
+    #: comparison key; these carry the verbatim words for a consumer
+    #: that re-emits them -- the transport composite's `config_for`).
+    xc_functional: Optional[str] = None
+    xc_authors: Optional[str] = None
 
 
 def parse_fdf_params(text: str) -> FdfParams:
@@ -111,9 +118,26 @@ def parse_fdf_params(text: str) -> FdfParams:
     if "paobasissize" in sc:
         p.basis_size = sc["paobasissize"][0] if sc["paobasissize"] else None
 
+    # ElectronicTemperature: an energy-or-temperature scalar.  K and
+    # meV cover what molbuilder's own emitters write; anything else is
+    # left None (deck default) rather than converted wrongly.
+    if "electronictemperature" in sc and sc["electronictemperature"]:
+        toks = sc["electronictemperature"]
+        v = _to_float(toks[0])
+        unit = toks[1].lower() if len(toks) > 1 else "k"
+        if v is not None:
+            if unit == "k":
+                p.electronic_temperature_k = v
+            elif unit == "mev":
+                p.electronic_temperature_k = v * 11.604518            # k_B
+
     func = (sc.get("xcfunctional") or ["LDA"])[0]
     auth = (sc.get("xcauthors") or ["CA"])[0]
     p.xc = f"{func.upper()}/{auth.upper()}"
+    if sc.get("xcfunctional"):
+        p.xc_functional = sc["xcfunctional"][0]
+    if sc.get("xcauthors"):
+        p.xc_authors = sc["xcauthors"][0]
 
     if "solutionmethod" in sc and sc["solutionmethod"]:
         p.solution_method = sc["solutionmethod"][0].lower()

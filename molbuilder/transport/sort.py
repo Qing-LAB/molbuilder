@@ -156,6 +156,27 @@ def categorical_sort(struct: Structure) -> SortResult:
     buf_lo = _layer_major([i for i in by[REGION_BUFFER] if z[i] <= mid])
     buf_hi = _layer_major([i for i in by[REGION_BUFFER] if z[i] > mid])
 
+    # Buffer means OUTSIDE (§ 3, buffer sanity): padding beyond the
+    # electrode blocks, excluded from the NEGF region.  A buffer atom
+    # sitting at or inside its electrode block would be sorted to an
+    # outer end its geometry contradicts -- the same labels-vs-geometry
+    # class as the L-above-R refusal above.
+    misplaced = ([i for i in buf_lo
+                  if z[i] >= min(float(z[j]) for j in left) - 1e-6]
+                 + [i for i in buf_hi
+                    if z[i] <= max(float(z[j]) for j in right) + 1e-6])
+    if misplaced:
+        shown = "; ".join(
+            f"{_atom_word(struct, i)} at z={z[i]:.3f} A"
+            for i in misplaced[:6])
+        more = f" and {len(misplaced) - 6} more" if len(misplaced) > 6 else ""
+        raise SortError(
+            f"{len(misplaced)} buffer atom(s) sit AT or INSIDE the "
+            f"electrode blocks along the transport axis: {shown}{more}.  "
+            f"Buffer means padding OUTSIDE the electrodes (excluded from "
+            f"the NEGF region; transport-design.md 3) -- relabel the "
+            f"atoms, or move them beyond the electrode blocks.")
+
     order = (buf_lo + _layer_major(left) + by[REGION_BRIDGE]
              + _layer_major(right) + buf_hi)
 

@@ -182,7 +182,11 @@ z-centroid** (lowest first), and the modern SIESTA 4.1+/5.x syntax is emitted �
 `-electrode` suffix: `L-electrode` → `L`), a `%block TS.ChemPots` + per-name
 `%block TS.ChemPot.<name>`, and `SolutionMethod transiesta`. The leftmost electrode
 gets the conventional chempot `Left` + `semi-inf-direction -A3`, the rightmost
-`Right` + `+A3` (SIESTA names, independent of the user's region labels). Verified
+`Right` + `+A3` (SIESTA names, independent of the user's region labels). Atoms
+labelled `buffer` emit `%block TS.Atoms.Buffer`, and each lead then also states
+its position explicitly (`elec-pos`) — with padding outermost, TranSIESTA's
+default first-N/last-N electrode placement no longer holds (2026-08-28, with
+the composite's P4). Verified
 against SIESTA 5.4.2 (`tests/test_transiesta_siesta_smoke_l4.py`) — the legacy flat
 `TS.HSFileLeft/Right` keys still parse but lock a closed 2-terminal topology; the
 `TS.Elec` syntax unlocks multi-terminal, Bloch expansion, per-chempot contours.

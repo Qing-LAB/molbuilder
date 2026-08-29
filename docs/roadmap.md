@@ -389,11 +389,13 @@ vibrational halves of the app would meet. Already named as the intended third
 engine in `transport/engine_base.py`, `config/transport.py`, and the transport
 blueprint.
 
-**Region consumption from the handoff bundle** (#487) — **half shipped.** The
-`%block TS.Elecs` emitter already reads `struct.regions` for **electrode**
-assignment (`transport/transiesta.py`), so a labelled structure no longer has to
-be retyped. The **buffer** half is what remains: `TS.Atoms.Buffer` is emitted
-nowhere in `molbuilder/transport/`. Independent of the rest of B.3.
+**Region consumption from the handoff bundle** (#487) — **shipped whole**
+(2026-08-28, with transport-design.md P4). The `%block TS.Elecs` emitter reads
+`struct.regions` for **electrode** assignment (`transport/transiesta.py`), and
+the **buffer** half landed with the composite: atoms labelled `buffer` emit
+`%block TS.Atoms.Buffer` plus explicit `elec-pos` per lead (the default
+first-N/last-N placement stops holding once padding sits outermost), and the
+categorical sort refuses a buffer atom inside the electrode blocks.
 
 **Test-pin shape.** A-form vs B-form / bias-0 vs bias-N inputs differ in
 the expected keywords; an unavailable engine raises the documented error,

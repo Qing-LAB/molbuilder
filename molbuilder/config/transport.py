@@ -394,6 +394,62 @@ class TransportConfig:
     # TranSIESTA-specific method knobs.  Default values follow the
     # SIESTA Method-tab defaults in the Build workflow.
 
+    # The ELECTRONIC CONTRACT the electrode and device decks share
+    # (transport-design.md § 3: basis · XC · energy shift identical by
+    # construction, because they read ONE object).  Until 2026-08-28
+    # these were hard-coded inside the emitter (DZP / PBE / 0.01 Ry);
+    # the transport composite fills them at prep from the cited
+    # attempt's own .fdf — the deck that actually ran is the truth
+    # about a result — so the fields had to exist to be filled.
+    basis_size: str = field(default="DZP", metadata={
+        "section": "NEGF",
+        "workflow_group": "stage",
+        "label":   "Basis size",
+        "tier":    "advanced",
+        "choices": ("SZ", "SZP", "DZ", "DZP", "TZP"),
+        "engine_key": 'PAO.BasisSize  (transiesta)',
+        "help":    "(engine=transiesta only) PAO basis for every stage "
+                   "of the transport ladder — electrode, seed and device "
+                   "share it by construction.  In the transport composite "
+                   "this is filled from the cited junction's own .fdf.",
+    })
+    energy_shift_ry: float = field(default=0.01, metadata={
+        "section": "NEGF",
+        "workflow_group": "stage",
+        "label":   "PAO energy shift",
+        "unit":    "Ry",
+        "range":   (0.0001, 0.1),
+        "tier":    "advanced",
+        "engine_key": 'PAO.EnergyShift  (transiesta)',
+        "help":    "(engine=transiesta only) orbital confinement energy "
+                   "shift; shared by every stage of the transport ladder.  "
+                   "In the transport composite this is filled from the "
+                   "cited junction's own .fdf.",
+    })
+    xc_functional: str = field(default="GGA", metadata={
+        "section": "NEGF",
+        "workflow_group": "stage",
+        "label":   "XC family",
+        "tier":    "advanced",
+        "choices": ("LDA", "GGA", "VDW"),
+        "engine_key": 'XC.functional  (transiesta)',
+        "help":    "(engine=transiesta only) exchange-correlation family; "
+                   "shared by every stage of the transport ladder.  In "
+                   "the transport composite this is filled from the cited "
+                   "junction's own .fdf.",
+    })
+    xc_authors: str = field(default="PBE", metadata={
+        "section": "NEGF",
+        "workflow_group": "stage",
+        "label":   "XC authors",
+        "tier":    "advanced",
+        "engine_key": 'XC.authors  (transiesta)',
+        "help":    "(engine=transiesta only) the flavour within the XC "
+                   "family (PBE, revPBE, CA, ...); shared by every stage "
+                   "of the transport ladder.  In the transport composite "
+                   "this is filled from the cited junction's own .fdf.",
+    })
+
     siesta_mesh_cutoff_ry: int = field(default=300, metadata={
         "section": "NEGF",
         "workflow_group": "stage",

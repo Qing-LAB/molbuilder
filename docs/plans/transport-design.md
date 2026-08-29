@@ -376,6 +376,31 @@ the electrode cells from the sorted ends.** Then the stages:
    window / grid / k-sampling are transport-template fields, and a
    finer grid is a new attempt of THIS stage only.
 
+**What the calculation folder holds after prep** *(recorded with the
+P4 build, 2026-08-28 — the portable-folder rule, unchanged: one folder,
+travels whole)*:
+
+```
+<project>/transport/<name>/
+  task.json                 ← the description: citation + bias + 5 stages
+  junction.xyz (+ .molstruct.json)  ← the composed, SORTED junction
+  junction.cited.fdf        ← the attempt's own deck, verbatim (fdf-is-truth)
+  slot-provenance.json      ← which attempt, content hashes
+  atom-permutation.json     ← the sort, recorded (atom-permutation@1)
+  pseudos/                  ← copied from the citation
+  job-set.json · STAGE-PLAN.md · environment.json
+  01_seed/          T_01_seed.fdf + wrapper → run-N/ at launch
+  02_electrode_L/   SystemLabel T_L-electrode → writes the .TSHS
+  03_electrode_R/   likewise
+  04_device/        TranSIESTA; cites both .TSHS by that exact stem
+  05_transmission/  TBtrans over the converged device (P6 parses it)
+```
+
+The four record files answer for the folder anywhere: a later stage's
+prep — including on a machine that has never seen the cited tree —
+loads them instead of recomposing, and a `task.json` re-pointed at a
+different attempt reads as *no record* and composes fresh.
+
 ### 4.3 A bias scan is a sweep — the fifth axis, again
 
 `bias.voltages_v` with more than one entry is *exactly* the shape the
@@ -468,7 +493,7 @@ the whole task framework — verbs, attempts, warm files, sweeps.)*
 | **P1** | **The label vocabulary** — `REGION_BUFFER` constant; the Modify tab's reserved labels explained (chip + chooser tooltips state what each is FOR); `engines/transport.md` § 4 carries `buffer`. | *(Done 2026-08-28, with this design.)* Label suites green. |
 | **P2** | **The categorical sort** — a pure function: `(structure, regions) → (sorted structure, permutation)`; refusals for unlabeled atoms; the bijection check; the permutation sidecar schema (`molbuilder/atom-permutation@1`). No I/O, no engine knowledge. | Unit + property tests: sort is stable within bridge, layer-major within electrodes, bijective always; every refusal named; mutation-tested. |
 | **P3** | **The `transport` calculation kind** — `task.json` grows `slots` (one entry, `@run-N` mandatory) and `bias`; `init` accepts and validates them; strict-composition refusal (missing / unconcluded / unpinned citation each named). | init round-trip tests; the three refusals, each mutation-tested. |
-| **P4** | **prep composes** — copy the citation with provenance (calculation · attempt · content hash); run the sort (P2); the § 3 gates (frozen-unmoved · tiling · principal-layer thickness · label completeness); extract the electrode cells from the sorted ends (wizard logic, relocated); render all five stages' inputs (seed deck = ordinary SIESTA; electrode decks; device deck via the existing emitter; transmission = TBtrans options on the device geometry). *Build note (2026-08-28): the relaxed geometry must be PARSED from the attempt (the `.XV`, Bohr → Å), never file-copied — the old driver's `.XV`-copy + `MD.UseSaveXV` trick hands SIESTA an OLD-ORDER density-adjacent file, exactly what the § 4.1a fence forbids crossing the sort.* | A fixture junction preps end-to-end; each gate refuses its mutation (moved frozen atom, unlabeled atom, too-thin block); the emitter's own order-preflight never fires (prep sorted first). |
+| **P4** | **prep composes** — copy the citation with provenance (calculation · attempt · content hash); run the sort (P2); the § 3 gates (frozen-unmoved · tiling · principal-layer thickness · label completeness); extract the electrode cells from the sorted ends (wizard logic, relocated); render all five stages' inputs (seed deck = ordinary SIESTA; electrode decks; device deck via the existing emitter; transmission = TBtrans options on the device geometry). *Build note (2026-08-28): the relaxed geometry must be PARSED from the attempt (the `.XV`, Bohr → Å), never file-copied — the old driver's `.XV`-copy + `MD.UseSaveXV` trick hands SIESTA an OLD-ORDER density-adjacent file, exactly what the § 4.1a fence forbids crossing the sort.* | *(Done 2026-08-28: P4a the compose engine (`transport/compose.py`), P4b the stage renders (`transport/stages.py`) + prep's transport arm.  The electronic contract flows citation-fdf → `TransportConfig` → every deck — the emitter's hard-coded DZP/PBE became config fields for it; `TS.Atoms.Buffer` + explicit `elec-pos` land with the buffered case; the composed record travels as `junction.xyz` + `junction.cited.fdf` + the two sidecars.)* A fixture junction preps end-to-end; each gate refuses its mutation (moved frozen atom, unlabeled atom, too-thin block, broken tiling, buffer inside the blocks); the emitter's own order-preflight never fires (prep sorted first). |
 | **P5** | **launch + the warm chains** — stage dependencies (seed → device → transmission; electrodes → device); the `.TSDE` bias chain as warm-file vocabulary; the bias sweep through the grouped launch. | The dependency refusals (device before electrodes conclude → named refusal); a two-point bias fixture warm-chains; conclusion markers per stage. |
 | **P6** | **summarize + the record** — parse TBtrans output → `<label>.transport.json` (schema first: `T(E)` per bias, `I(V)` table, provenance incl. the permutation reference); `summarize` prints the I–V table; the Results-tab transmission inspector follows as its own step (roadmap § 2 already names it). | Parse fixtures from a real TBtrans run; schema round-trip; summarize output pinned. |
 | **P7** | **Retire the old path** — `transport bundle` / `orchestrate.py` deleted with its tests (rename = delete); the Transport tab rewires to describe the composite (slots + bias + transport fields) and hand over like every other tab. **The slot picker is `lib/tree-picker.js`** — the ONE pop-out path picker (promoted 2026-08-28 from the sidebar's destination dialog; user: reuse the wheel), with its `describe` seam fed from **the attempt's own `.fdf`** — the deck that actually ran is the truth about a result; the attempt dir's other files (`run.json`, `.concluded`, the monitor log) supply only runtime status. | The bundle spelling is dead (guard); the tab drives the composite end-to-end in the browser lane, slot selection through the shared picker. |

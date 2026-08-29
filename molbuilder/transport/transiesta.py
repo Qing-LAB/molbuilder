@@ -146,6 +146,7 @@ from ..config.transport import (
     ELECTRODE_LABEL_SUFFIX,
     EXPECTED_REGIONS_2T,
     REGION_BRIDGE,
+    REGION_BUFFER,
     REGION_LEFT_ELECTRODE,
     REGION_RIGHT_ELECTRODE,
     TransportConfig,
@@ -190,6 +191,19 @@ def _sanitize_electrode_block_name(label: str) -> str:
             return stem[: -len(candidate)] or label
     # ends with "electrode" directly (no separator) — keep verbatim
     return label
+
+
+def electrode_hs_stem(job_name: str, label: str) -> str:
+    """The ONE spelling of an electrode run's identity — its SystemLabel,
+    and therefore the stem of the ``.TSHS`` the device deck references.
+
+    Two writers need it to agree byte-for-byte: the device deck's
+    ``TS.Elec.<name> HS`` line (below) and the transport ladder's
+    electrode-stage renderer (`transport/stages.py`), which sets the
+    electrode deck's ``SystemLabel`` so SIESTA writes exactly the file
+    the device will ask for.
+    """
+    return f"{job_name}_{label}"
 
 
 def _find_electrode_regions(
@@ -265,7 +279,7 @@ def _emit_header(cfg: TransportConfig, struct: Structure) -> List[str]:
     """
     electrodes = _find_electrode_regions(struct)
     file_lines = [
-        f"#    {cfg.job_name}_{label}.TSHS"
+        f"#    {electrode_hs_stem(cfg.job_name, label)}.TSHS"
         for label, _block_name, _idxs in electrodes
     ] or [f"#    {cfg.job_name}_<electrode-label>.TSHS"]
     lines = [
@@ -453,18 +467,20 @@ def _emit_geometry(struct: Structure,
 def _emit_basis_and_xc(cfg: TransportConfig) -> List[str]:
     """Basis set + XC + mesh cutoff + electronic temperature.
 
-    Production-defensible defaults matching the SIESTA emitter's
-    Method tab.  Mesh cutoff comes from the form; everything else
-    is hard-coded for the zero-bias scope (B.3 follow-up: surface
-    these as form fields).
+    Every value comes from ``cfg`` — the ONE object the electrode,
+    seed and device decks all render from, which is what makes the
+    transport ladder's electronic contract identical by construction
+    (transport-design.md § 3).  Basis / XC / energy shift were
+    hard-coded here (DZP / PBE / 0.01 Ry) until 2026-08-28; the
+    composite fills the fields from the cited junction's own .fdf.
     """
     return [
         "# --- Basis + XC ---",
         "",
-        "PAO.BasisSize          DZP",
-        "PAO.EnergyShift        0.01 Ry",
-        "XC.functional          GGA",
-        "XC.authors             PBE",
+        f"PAO.BasisSize          {cfg.basis_size}",
+        f"PAO.EnergyShift        {cfg.energy_shift_ry:g} Ry",
+        f"XC.functional          {cfg.xc_functional}",
+        f"XC.authors             {cfg.xc_authors}",
         f"MeshCutoff             {cfg.siesta_mesh_cutoff_ry} Ry",
         f"ElectronicTemperature  {cfg.electronic_temperature_k:.1f} K",
         "",
@@ -575,20 +591,38 @@ def _emit_transiesta_block(struct: Structure,
     lines.append("%endblock TS.Elecs")
     lines.append("")
 
+    # Buffer atoms (transport-design.md § 3, last bullet): padding at
+    # the OUTER ends, excluded from the NEGF region via TS.Atoms.Buffer.
+    # With buffers present TranSIESTA's DEFAULT electrode placement
+    # (first electrode = first atoms, last = last atoms) no longer
+    # holds, so each electrode's position is then stated EXPLICITLY
+    # (``elec-pos``) from its region's own indices.
+    buffer_idx = sorted((struct.regions or {}).get(REGION_BUFFER, []))
+    n_total = struct.n_atoms
+
     # Per-electrode blocks.
     for i, (label, block_name, idxs) in enumerate(electrodes):
         cp = chempot_for[block_name]
         sid = semi_inf.get(i, "+A3")
-        lines.extend([
-            f"%block TS.Elec.{block_name}",
-            f"  HS                 {cfg.job_name}_{label}.TSHS",
-            f"  chem-pot           {cp}",
-            f"  used-atoms         {len(idxs)}",
-            "  bloch              1 1 1",
-            f"  semi-inf-direction {sid}",
-            f"%endblock TS.Elec.{block_name}",
-            "",
-        ])
+        lines.append(f"%block TS.Elec.{block_name}")
+        lines.append(f"  HS                 "
+                     f"{electrode_hs_stem(cfg.job_name, label)}.TSHS")
+        lines.append(f"  chem-pot           {cp}")
+        lines.append(f"  used-atoms         {len(idxs)}")
+        if buffer_idx:
+            if i == 0:
+                # 1-based index of the electrode's first atom.
+                lines.append(f"  elec-pos begin     {min(idxs) + 1}")
+            else:
+                # Counted from the end: -1 is the last atom, so the
+                # electrode's last atom (0-based ``max``) sits at
+                # -(n_total - max).
+                lines.append(f"  elec-pos end       "
+                             f"{-(n_total - max(idxs))}")
+        lines.append("  bloch              1 1 1")
+        lines.append(f"  semi-inf-direction {sid}")
+        lines.append(f"%endblock TS.Elec.{block_name}")
+        lines.append("")
 
     # Chemical potentials.
     lines.append(
@@ -632,6 +666,24 @@ def _emit_transiesta_block(struct: Structure,
                 f"%endblock TS.ChemPot.{block_name}",
                 "",
             ])
+
+    if buffer_idx:
+        # The sorted layout puts buffers OUTERMOST ([buf][L][bridge]
+        # [R][buf]), so the indices compress to at most two ranges;
+        # emitted generically all the same.
+        lines.append("# Buffer atoms: padding outside the electrode "
+                     "blocks, excluded from")
+        lines.append("# the NEGF region entirely "
+                     "(transport-design.md § 3).")
+        lines.append("%block TS.Atoms.Buffer")
+        run_start = prev = buffer_idx[0]
+        for j in buffer_idx[1:] + [None]:
+            if j is None or j != prev + 1:
+                lines.append(f"  atom [ {run_start + 1} -- {prev + 1} ]")
+                run_start = j
+            prev = j if j is not None else prev
+        lines.append("%endblock TS.Atoms.Buffer")
+        lines.append("")
 
     lines.extend([
         "# Bias voltage (used by the ``V`` substitution in the chempot "
@@ -755,8 +807,11 @@ class TransiestaEngine:
         # user knows that label plays no part in this calculation.
         # Emitted before the missing-region early return so it surfaces
         # even on an otherwise-incomplete region set.
-        unknown_regions = [r for r in regions
-                           if r not in EXPECTED_REGIONS_2T]
+        # ``buffer`` joined the consumed set 2026-08-28: the emitter
+        # writes it as TS.Atoms.Buffer (transport-design.md § 3), so
+        # warning that it is ignored would be false.
+        consumed = set(EXPECTED_REGIONS_2T) | {REGION_BUFFER}
+        unknown_regions = [r for r in regions if r not in consumed]
         if unknown_regions:
             issues.append(Issue(
                 severity="warn",
@@ -764,7 +819,7 @@ class TransiestaEngine:
                     f"TranSIESTA preflight: structure carries region "
                     f"label(s) {sorted(unknown_regions)} that TranSIESTA "
                     f"does not consume (it uses only "
-                    f"{list(EXPECTED_REGIONS_2T)}).  They are ignored "
+                    f"{sorted(consumed)}).  They are ignored "
                     f"for this calculation."
                 ),
                 where="struct.regions",

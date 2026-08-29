@@ -254,6 +254,25 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "mechanism 2's.  It produces the design's own stage rather than "
         "being a way of expressing one, which is why it is 11 and not a "
         "twelfth"),
+    "TRANSPORT_STAGES": (
+        11, "molbuilder/transport/stages.py",
+        "the transport composite's FIXED five-rung ladder "
+        "(transport-design.md 4.2): seed, electrode_L, electrode_R, "
+        "device, transmission -- a DAG of different programs, not a "
+        "parameter ladder, so the tuple is a design constant rather than "
+        "a strategy output.  Skipping is the per-stage enabled flag "
+        "(ruling Q4), never a different ladder"),
+    "render_stage_deck": (
+        None, "molbuilder/transport/stages.py",
+        "renders ONE transport rung's deck from the composed junction + "
+        "the one TransportConfig (P4b).  Not a mechanism for expressing "
+        "stages -- it consumes the ladder above the way prep's SIESTA arm "
+        "consumes spec_for"),
+    "StageError": (
+        None, "molbuilder/transport/stages.py",
+        "the refusal class for a transport rung that cannot render -- "
+        "carries the stage's name in its message, same role PrepError "
+        "plays one floor up (prep translates it)"),
     # Mechanism 3 -- ``--stages-json``, ``stages_from_dicts`` and
     # ``stages_from_configs`` -- and mechanism 8 -- ``StageSpec``,
     # ``_default_stages``, ``validate_stages`` -- are RETIRED (2026-08-18).

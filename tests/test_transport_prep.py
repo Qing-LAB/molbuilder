@@ -1,0 +1,354 @@
+"""P4b — prep renders the transport composite's five stages
+(`plans/transport-design.md` § 4.2, the arm in `jobset/prep.py` +
+`transport/stages.py`).
+
+The design's own gate row, verbatim: *"A fixture junction preps
+end-to-end; each gate refuses its mutation; the emitter's own
+order-preflight never fires (prep sorted first)."*
+
+Properties under guard, each named for its failure:
+
+* each stage's deck is born in its own stage directory, wrapper beside
+  it, through the SHARED prep tail (job-set merge, STAGE-PLAN, run
+  dirs) — no forked machinery;
+* the electronic contract (basis · XC · energy shift · mesh · k ·
+  electronic T) is read from the CITED attempt's own deck and lands in
+  every stage's deck — one template governs (ruling Q5, fdf-is-truth);
+* the electrode deck's SystemLabel IS the ``.TSHS`` stem the device
+  deck references — one spelling, both writers;
+* the emitter's order-preflight never fires: a source whose atom order
+  would trip it preps clean, because prep sorted first (§ 4.1a);
+* buffer atoms emit ``TS.Atoms.Buffer`` + explicit electrode positions
+  (§ 3, buffer sanity);
+* the composed record is written once, reused by later stages, travels
+  with the folder, and a re-pointed citation recomposes;
+* refusals: unnamed/unknown/disabled stage, a sweep, a moved frozen
+  atom, a pseudopotential the citation cannot supply.
+"""
+from __future__ import annotations
+
+import json
+import shutil
+
+import numpy as np
+import pytest
+
+from conftest import write_pseudos
+from molbuilder.config.transport import (REGION_BRIDGE, REGION_BUFFER,
+                                         REGION_LEFT_ELECTRODE,
+                                         REGION_RIGHT_ELECTRODE)
+from molbuilder.jobset.prep import PrepError, prep_calculation
+from molbuilder.structure import Structure
+from test_transport_compose import _BRIDGE, _LAYERS_L, _LAYERS_R, _write_xv
+
+_CITE = "J/optimization/Relax@01_coarse/run-0"
+_STAGES = ("seed", "electrode_L", "electrode_R", "device", "transmission")
+
+#: The cited deck carries DISTINCTIVE values, so every assertion below
+#: that finds one in a rendered stage deck proves the contract flowed
+#: from the citation rather than from a default that happens to agree.
+_CITED_DECK = """SystemLabel Relax
+MeshCutoff 250.0 Ry
+PAO.BasisSize TZP
+PAO.EnergyShift 0.02 Ry
+XC.functional GGA
+XC.authors revPBE
+ElectronicTemperature 200.0 K
+%block kgrid_Monkhorst_Pack
+  4 0 0 0.0
+  0 4 0 0.0
+  0 0 2 0.0
+%endblock kgrid_Monkhorst_Pack
+"""
+
+
+def _junction_struct(*, order="canonical", buffers=False):
+    """The BDT-ish fixture sandwich; ``order="scrambled"`` writes the
+    same geometry with the bridge FIRST and the leads swapped after it
+    — exactly the order the emitter's preflight refuses."""
+    rows = []       # (element, z, label)
+    for z in _LAYERS_L:
+        rows.append(("Au", z, REGION_LEFT_ELECTRODE))
+    for el, z in _BRIDGE:
+        rows.append((el, z, REGION_BRIDGE))
+    for z in _LAYERS_R:
+        rows.append(("Au", z, REGION_RIGHT_ELECTRODE))
+    if buffers:
+        for z in (-5.0, -2.5, 37.0, 39.5):
+            rows.append(("Au", z, REGION_BUFFER))
+    if order == "scrambled":
+        rows = ([r for r in rows if r[2] == REGION_BRIDGE]
+                + [r for r in rows if r[2] == REGION_RIGHT_ELECTRODE]
+                + [r for r in rows if r[2] == REGION_LEFT_ELECTRODE]
+                + [r for r in rows if r[2] == REGION_BUFFER])
+    elements = [r[0] for r in rows]
+    positions = np.array([[1.0, 1.0, r[1]] for r in rows])
+    regions: dict = {}
+    for i, r in enumerate(rows):
+        regions.setdefault(r[2], []).append(i)
+    frozen = [i for i, r in enumerate(rows)
+              if r[2] in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE)]
+    return Structure(elements=elements, positions=positions,
+                     regions=regions, frozen_atoms=frozen,
+                     cell=np.diag([8.0, 8.0, 40.0]))
+
+
+def _write_junction(root, struct):
+    """One concluded junction relaxation with the distinctive deck."""
+    from molbuilder.task import (Stage, StructureRef, Task, derive_run,
+                                 write_task)
+    from molbuilder.workingcopy_structure import StructureCodec
+    calc = root / "J" / "optimization" / "Relax"
+    attempt = calc / "01_coarse" / "run-0"
+    attempt.mkdir(parents=True)
+    StructureCodec().write(struct, calc / "j.source.xyz")
+    write_task(calc / "task.json", Task(
+        engine="siesta", shape="hierarchical",
+        run=derive_run("Relax", struct.formula, stage_names=("coarse",)),
+        structure=StructureRef(source="j.source.xyz",
+                               formula=struct.formula,
+                               atoms=len(struct.elements)),
+        varies=(), stages=(Stage(name="coarse", enabled=True,
+                                 overrides={}),)))
+    (attempt / "Relax_01_coarse.fdf").write_text(_CITED_DECK)
+    (attempt / "Relax_01_coarse-run0.concluded").write_text("rc=0\n")
+    _write_xv(attempt / "Relax.XV", struct)
+    write_pseudos(calc, ["Au", "S", "C"])
+    return calc
+
+
+def _describe_transport(root, *, cite=_CITE, bias=(0.0, 0.2)):
+    from molbuilder.task import Stage, Task, derive_run, write_task
+    dest = root / "J" / "transport" / "T"
+    dest.mkdir(parents=True, exist_ok=True)
+    write_task(dest / "task.json", Task(
+        engine="siesta", shape="hierarchical",
+        run=derive_run("T", cite, stage_names=_STAGES),
+        structure=None, calculation="transport",
+        slots={"junction": cite}, bias=bias, varies=(),
+        stages=tuple(Stage(name=n, enabled=True, overrides={})
+                     for n in _STAGES)))
+    (dest / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate"}}))
+    return dest
+
+
+@pytest.fixture(autouse=True)
+def _isolated(monkeypatch, tmp_path_factory):
+    """Same sandbox as test_prep_calculation: the wrapper writer must
+    read the fixture's bundle-scoped config, never this repo's."""
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))
+
+
+@pytest.fixture
+def calc(tmp_path):
+    """A projects tree with a concluded junction + a described
+    transport composite, exactly as `jobset init` leaves them."""
+    root = tmp_path / "projects"
+    _write_junction(root, _junction_struct())
+    return _describe_transport(root)
+
+
+class TestTheLadderPreps:
+
+    def test_seed_preps_end_to_end(self, calc):
+        dirs = prep_calculation(calc, "seed")
+        assert dirs
+        deck = calc / "01_seed" / "T_01_seed.fdf"
+        assert deck.is_file(), "the deck is born in its stage directory"
+        text = deck.read_text()
+        assert "SolutionMethod         diagon" in text
+        assert "SystemLabel            T" in text, (
+            "the seed shares the task label so its .DM is what the "
+            "device stage will read")
+        assert (calc / "01_seed" / "T_01_seed.run.sh").is_file(), (
+            "the wrapper renders beside the deck -- the shared tail")
+        # the composed record landed beside task.json
+        for name in ("junction.xyz", "junction.cited.fdf",
+                     "slot-provenance.json", "atom-permutation.json"):
+            assert (calc / name).is_file(), name
+        # pseudos arrived from the citation, grouped
+        assert (calc / "pseudos" / "Au.psml").is_file()
+        # the run plan carries the rung
+        js = json.loads((calc / "job-set.json").read_text())
+        assert [j["name"] for j in js["jobs"]] == ["seed"]
+        assert (calc / "STAGE-PLAN.md").is_file()
+
+    def test_the_electrode_deck_is_the_tshs_the_device_asks_for(self, calc):
+        prep_calculation(calc, "electrode_L")
+        prep_calculation(calc, "device")
+        elec = (calc / "02_electrode_L" / "T_02_electrode_L.fdf"
+                ).read_text()
+        dev = (calc / "04_device" / "T_04_device.fdf").read_text()
+        assert "SystemLabel            T_L-electrode" in elec, (
+            "the electrode's SystemLabel IS the .TSHS stem")
+        assert "T_L-electrode.TSHS" in dev, (
+            "the device references exactly the file the electrode "
+            "stage will write -- one spelling, both writers")
+        assert "TS.HS.Save             true" in elec
+
+    def test_the_device_deck_is_transiesta_on_the_sorted_junction(self, calc):
+        prep_calculation(calc, "device")
+        text = (calc / "04_device" / "T_04_device.fdf").read_text()
+        assert "SolutionMethod         transiesta" in text
+        assert "%block TS.Elecs" in text
+        # sorted: the first six coordinate rows are Au (species 1 --
+        # alphabetical Au/C/S), the next four the bridge (S C C S)
+        block = text.split("%block AtomicCoordinatesAndAtomicSpecies")[1]
+        rows = [ln.split() for ln in block.splitlines()
+                if ln.strip() and not ln.startswith("%")]
+        assert [r[3] for r in rows[:6]] == ["1"] * 6
+        assert [r[3] for r in rows[6:10]] == ["3", "2", "2", "3"]
+
+    def test_the_transmission_deck_carries_the_tbt_window(self, calc):
+        prep_calculation(calc, "transmission")
+        text = (calc / "05_transmission" / "T_05_transmission.fdf"
+                ).read_text()
+        assert "TS.TBT.NumE" in text and "TS.TBT.Emin" in text
+
+    def test_the_electronic_contract_is_the_citations(self, calc):
+        """fdf-is-truth: the distinctive values in the cited deck land
+        in every stage's deck -- none of them is a default."""
+        prep_calculation(calc, "seed")
+        prep_calculation(calc, "electrode_R")
+        prep_calculation(calc, "device")
+        seed = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+        elec = (calc / "03_electrode_R" / "T_03_electrode_R.fdf"
+                ).read_text()
+        dev = (calc / "04_device" / "T_04_device.fdf").read_text()
+        for text, who in ((seed, "seed"), (elec, "electrode"),
+                          (dev, "device")):
+            assert "PAO.BasisSize          TZP" in text, who
+            assert "XC.authors             revPBE" in text, who
+            assert "MeshCutoff             250 Ry" in text, who
+            assert "PAO.EnergyShift        0.02 Ry" in text, who
+            assert "ElectronicTemperature  200.0 K" in text, who
+        # transverse k = the relaxation's (4, 4), transport axis 1
+        assert "    0    0    1      0.0" in dev, (
+            "the device kz is forced to 1 (open boundary)")
+        assert "  4    0    0" in dev and "  4    0    0" in seed
+
+    def test_the_emitters_order_preflight_never_fires(self, tmp_path):
+        """THE P4 gate: a source whose atom order would trip the
+        emitter's ordering error preps clean, because prep sorted."""
+        from molbuilder.transport.stages import config_for  # noqa: F401
+        from molbuilder.transport.transiesta import TransiestaEngine
+        root = tmp_path / "projects"
+        scrambled = _junction_struct(order="scrambled")
+        _write_junction(root, scrambled)
+        dest = _describe_transport(root)
+        # the fixture genuinely trips the preflight when unsorted --
+        # without this half, the test would pass on a tame fixture
+        from molbuilder.config.transport import TransportConfig
+        raw = TransiestaEngine.preflight(scrambled, TransportConfig())
+        assert any("ordered" in i.message for i in raw
+                   if i.severity == "error"), (
+            "the scrambled fixture must be one the emitter refuses raw")
+        prep_calculation(dest, "device")     # must not raise
+        text = (dest / "04_device" / "T_04_device.fdf").read_text()
+        assert "SolutionMethod         transiesta" in text
+
+    def test_buffer_atoms_emit_ts_atoms_buffer(self, tmp_path):
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct(buffers=True))
+        dest = _describe_transport(root)
+        prep_calculation(dest, "device")
+        text = (dest / "04_device" / "T_04_device.fdf").read_text()
+        assert "%block TS.Atoms.Buffer" in text
+        # sorted layout: 2 buffers, 6 Au, 4 bridge, 6 Au, 2 buffers
+        assert "atom [ 1 -- 2 ]" in text
+        assert "atom [ 19 -- 20 ]" in text
+        assert "elec-pos begin     3" in text
+        assert "elec-pos end       -3" in text
+
+
+class TestTheRecord:
+
+    def test_written_once_and_reused_by_later_stages(self, calc):
+        prep_calculation(calc, "seed")
+        stamp = (calc / "junction.xyz").stat().st_mtime_ns
+        prep_calculation(calc, "electrode_L")
+        assert (calc / "junction.xyz").stat().st_mtime_ns == stamp, (
+            "a later stage loads the record instead of recomposing")
+
+    def test_a_repointed_citation_recomposes(self, calc, tmp_path):
+        prep_calculation(calc, "seed")
+        # a second concluded attempt with a different relaxed geometry
+        root = tmp_path / "projects"
+        attempt = root / "J" / "optimization" / "Relax" / "01_coarse" \
+            / "run-1"
+        attempt.mkdir()
+        (attempt / "Relax_01_coarse.fdf").write_text(_CITED_DECK)
+        (attempt / "Relax_01_coarse-run1.concluded").write_text("rc=0\n")
+        _write_xv(attempt / "Relax.XV", _junction_struct(),
+                  perturb_bridge=0.4)
+        cite2 = "J/optimization/Relax@01_coarse/run-1"
+        _describe_transport(root, cite=cite2)
+        prep_calculation(calc, "seed")
+        prov = json.loads((calc / "slot-provenance.json").read_text())
+        assert prov["citation"] == cite2, (
+            "task.json re-cited -> the old copy must not keep serving")
+
+    def test_the_folder_travels(self, calc, tmp_path):
+        """Prep once in the tree, move the folder to a tree WITHOUT the
+        cited junction: the next stage preps from the record."""
+        prep_calculation(calc, "seed")
+        new_home = tmp_path / "elsewhere" / "projects" / "J" \
+            / "transport" / "T"
+        new_home.parent.mkdir(parents=True)
+        shutil.move(str(calc), str(new_home))
+        prep_calculation(new_home, "electrode_L")
+        assert (new_home / "02_electrode_L" / "T_02_electrode_L.fdf"
+                ).is_file()
+
+
+class TestRefusals:
+
+    def test_an_unnamed_stage_is_refused_naming_the_ladder(self, calc):
+        with pytest.raises(PrepError) as e:
+            prep_calculation(calc)
+        msg = str(e.value)
+        assert "seed" in msg and "transmission" in msg
+
+    def test_an_unknown_stage_is_refused_by_name(self, calc):
+        with pytest.raises(PrepError) as e:
+            prep_calculation(calc, "coarse")
+        assert "'coarse'" in str(e.value).replace('"', "'")
+
+    def test_a_disabled_seed_refuses_with_the_skip_rule(self, calc):
+        from molbuilder.task import (Stage, Task, derive_run, read_task,
+                                     write_task)
+        t = read_task(calc / "task.json")
+        stages = tuple(Stage(name=s.name, enabled=(s.name != "seed"),
+                             overrides={}) for s in t.stages)
+        write_task(calc / "task.json", Task(
+            engine=t.engine, shape=t.shape, run=t.run, structure=None,
+            calculation="transport", slots=dict(t.slots), bias=t.bias,
+            varies=(), stages=stages))
+        with pytest.raises(PrepError) as e:
+            prep_calculation(calc, "seed")
+        assert "disabled" in str(e.value) and "Q4" in str(e.value)
+
+    def test_a_sweep_is_refused_naming_the_bias_axis(self, calc):
+        with pytest.raises(PrepError) as e:
+            prep_calculation(calc, "seed", sweep={"x": [1, 2]})
+        assert "bias" in str(e.value)
+
+    def test_a_moved_frozen_atom_stops_prep(self, calc, tmp_path):
+        root = tmp_path / "projects"
+        _write_xv(root / "J/optimization/Relax/01_coarse/run-0/Relax.XV",
+                  _junction_struct(), perturb_electrode=(0, 0.05))
+        with pytest.raises(PrepError) as e:
+            prep_calculation(calc, "seed")
+        assert "MOVED" in str(e.value)
+
+    def test_a_pseudo_the_citation_cannot_supply_is_named(self, calc,
+                                                          tmp_path):
+        (tmp_path / "projects" / "J" / "optimization" / "Relax"
+         / "Au.psml").unlink()
+        with pytest.raises(PrepError) as e:
+            prep_calculation(calc, "seed")
+        assert "Au.psml" in str(e.value)

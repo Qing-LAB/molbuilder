@@ -65,6 +65,14 @@ from .transiesta import (
 # the convergence sweep (§ 6.5), not trusted blindly.
 DEFAULT_ELECTRODE_KZ = 40
 
+#: The principal-layer floor (Å): an electrode block thinner than this
+#: is likely shorter than the electronic principal layer for a metal
+#: lead (§ 4.1), so the self-energy would couple beyond adjacent cells.
+#: ONE number, two consumers: the wizard's advisory note below, and the
+#: transport composite's prep gate (`transport/compose.py`), which
+#: REFUSES on it (transport-design.md § 3 -- refusals name atoms).
+MIN_ELECTRODE_THICKNESS_ANG = 12.0
+
 
 @dataclass
 class ElectrodeModel:
@@ -102,7 +110,7 @@ def extract_electrode_model(
     *,
     z_period: Optional[float] = None,
     layer_tol_ang: float = LAYER_TOL_ANG,
-    min_thickness_ang: float = 12.0,
+    min_thickness_ang: float = MIN_ELECTRODE_THICKNESS_ANG,
 ) -> ElectrodeModel:
     """Build an :class:`ElectrodeModel` for one ``*-electrode`` region.
 
