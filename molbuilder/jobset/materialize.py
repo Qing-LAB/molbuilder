@@ -562,7 +562,8 @@ class Attempt:
 def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                     continue_from: Optional[str] = None,
                     cold: bool = False,
-                    carry: Optional[List[str]] = None) -> "Attempt":
+                    carry: Optional[List[str]] = None,
+                    container: Optional[Path] = None) -> "Attempt":
     """Set ONE stage up to run, and report what was done.
 
     The five steps § 1.6 names: **resolve** the next ``run-<n>``, **create**
@@ -612,7 +613,14 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                                    stage_name).name
     job = next(j for j in jobset.jobs if j.name == stage_name)
 
-    stage_dir = base / dir_of[stage_name]
+    # ``container`` overrides WHERE the run-<n> opens -- the transport
+    # composite's bias scan keeps one attempt ladder PER POINT
+    # (``04_device/v0.2/run-<n>``; transport-design.md § 4.3, layout
+    # ruled 2026-08-29), and the point's directory already holds its own
+    # deck + wrapper, so everything below reads it exactly like the
+    # stage's own directory.  Default: the job's own, as ever.
+    stage_dir = (Path(container) if container is not None
+                 else base / dir_of[stage_name])
     stage_dir.mkdir(parents=True, exist_ok=True)
     attempt, is_new = resolve_attempt(stage_dir)
     attempt.mkdir(parents=True, exist_ok=True)

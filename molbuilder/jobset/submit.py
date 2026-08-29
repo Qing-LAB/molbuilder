@@ -1176,6 +1176,226 @@ def _submit_side_group(jobset: JobSet, base: Path, dirs, pending,
     return results
 
 
+def submit_transport_chain(jobset: JobSet, base_dir, task, *,
+                           mode: str, domain: Optional[str] = None,
+                           dry_run: bool = False,
+                           mem_gb: Optional[float] = None,
+                           time_s: Optional[int] = None
+                           ) -> List[JobResult]:
+    """ONE submission that walks a transport bias scan's points in
+    order (`transport-design.md` § 4.3; layout ruled 2026-08-29: plain
+    v-dirs, one attempt ladder per point).
+
+    The walker is the launcher layer only, exactly like the bench
+    group's sequencer: it ``cd``s into each point's prepared attempt and
+    runs the point's own ``.run.sh`` — env activation and the engine
+    launch stay where they always live.  What it adds is the WARM CHAIN:
+    before each point after the first, the previous point's ``.TSDE``
+    (the NEGF density) is copied forward, so ``V_{i+1}`` converges from
+    ``V_i``'s state instead of from scratch.  And unlike the bench
+    group it STOPS on a failed point: later points chain their density
+    from this one, so walking on would converge from a state the
+    failure poisoned — a benchmark's points are independent, a chain's
+    are not.
+
+    Every point's attempt must be OPEN and unlaunched (``prep run
+    device`` opens them all); the deck/launch agreement gate guards this
+    door like every other.  ``run.json`` lands in every point's attempt
+    at start — they are all launched by this one command.
+    """
+    from ..identity import StageRef
+    from ..transport.stages import bias_points, bias_token
+    from .materialize import latest_attempt, was_launched
+
+    if mode == "ask":
+        raise SubmitError(
+            "--mode ask is not wired for a bias chain yet -- ask about "
+            "a single stage, or dry-run the chain (--dry-run shows the "
+            "exact command).")
+    points = bias_points(task)
+    if len(points) < 2:
+        raise SubmitError("not a bias scan -- the plain launch owns "
+                          "a single-point device.")
+    job = next((j for j in jobset.jobs if j.name == "device"), None)
+    if job is None:
+        raise SubmitError(
+            "the device stage is not in the plan -- run "
+            "`molbuilder jobset prep run device` first.")
+    base = Path(base_dir).resolve()
+    # The stage's <NN>_<name> token, read from the ordinal rule's own
+    # home (identity.StageRef.ladder -- the same door token_for reads;
+    # importing the conductor from floor 5 is the layering the
+    # architecture guard refuses).
+    token = next(r.token for r in
+                 StageRef.ladder([s.name for s in task.stages])
+                 if r.name == "device")
+    stage_dir = base / token
+    launch_dir = stage_dir / "launch"
+    run_name = _wrapper_name(job.script, ".run.sh")
+    name = f"{Path(job.script).stem}-chain"
+    label = task.label
+
+    attempts: List[Tuple[float, Path]] = []
+    for v in points:
+        vdir = stage_dir / bias_token(v)
+        att = latest_attempt(vdir)
+        if att is None:
+            raise SubmitError(
+                f"bias point {bias_token(v)}: no attempt is open under "
+                f"{token}/{bias_token(v)}/ -- the scan launches whole, "
+                f"so every point must be prepared:\n"
+                f"    molbuilder jobset prep run device")
+        if was_launched(att):
+            raise SubmitError(
+                f"bias point {bias_token(v)}: {att.relative_to(base)} "
+                f"has already been launched.  An attempt is immutable "
+                f"once it has run; `molbuilder jobset prep run device` "
+                f"opens a fresh run-<n> for every point.")
+        try:
+            check_launch_matches_deck(att, job)
+        except DeckLaunchMismatch as e:
+            raise SubmitError(str(e)) from e
+        attempts.append((v, att))
+
+    args = " ".join(_run_sh_args(job.resources))
+    lines = [
+        "#!/usr/bin/env bash",
+        f"# {name}.run.sh -- the bias chain: this scan's points in",
+        "# sequence, each warm-started from the previous point's .TSDE",
+        "# (transport-design.md 4.3).  Regenerated at each launch.",
+        "# STOPS on a failed point: later points chain their density",
+        "# from this one, so walking on would converge from a state the",
+        "# failure poisoned (a benchmark's points are independent; a",
+        "# chain's are not).",
+        "set -u",
+        f'LOG="launch/{name}.log"',
+        f'echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') start '
+        f'points={len(attempts)} job=${{SLURM_JOB_ID:-none}} '
+        'node=$(hostname)" >> "$LOG"',
+        "prev=''",
+        "run_point() {",
+        '    _name="$1"; _dir="$2"; shift 2',
+        '    if [ -n "$prev" ]; then',
+        f'        if [ -f "$prev/{label}.TSDE" ]; then',
+        f'            cp "$prev/{label}.TSDE" "$_dir/"',
+        '            echo "[chain] ${_name}: warm from $prev" >> "$LOG"',
+        "        else",
+        f'            echo "[chain] ${{_name}}: no {label}.TSDE in '
+        '$prev -- converging from scratch" >> "$LOG"',
+        "        fi",
+        "    fi",
+        '    echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') -> '
+        '${_name} starts" >> "$LOG"',
+        '    ( cd "${_dir}" && bash "$@" ) >> "$LOG" 2>&1',
+        "    _rc=$?",
+        '    if [ "${_rc}" -ne 0 ]; then',
+        '        echo "[chain] ${_name} FAILED rc=${_rc} -- the chain '
+        'stops here; later points would inherit its state" >> "$LOG"',
+        '        exit "${_rc}"',
+        "    fi",
+        '    echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') <- ${_name} '
+        'done" >> "$LOG"',
+        '    prev="${_dir}"',
+        "}",
+    ]
+    for v, att in attempts:
+        rel = f"{bias_token(v)}/{att.name}"
+        lines.append(f'run_point "{bias_token(v)}" "{rel}" "{run_name}"'
+                     + (f" {args}" if args else ""))
+    lines += ['echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') done" '
+              '>> "$LOG"', "exit 0", ""]
+
+    if mode == "direct":
+        cmd = ["bash", f"launch/{name}.run.sh"]
+        if dry_run:
+            return [JobResult(name, cmd, "planned")] + [
+                JobResult(f"device@{bias_token(v)}", [], "rides the chain")
+                for v, _a in attempts]
+        launch_dir.mkdir(parents=True, exist_ok=True)
+        (launch_dir / f"{name}.run.sh").write_text("\n".join(lines),
+                                                   encoding="utf-8")
+        for _v, att in attempts:
+            _record_launch(att, mode="direct", command=cmd)
+        proc = subprocess.Popen(cmd, cwd=str(stage_dir),
+                                env={**os.environ,
+                                     "MB_LAUNCHED_BY": "jobset-launch"})
+        rc = proc.wait()
+        return [JobResult(name, cmd, "ran" if rc == 0 else "failed",
+                          returncode=rc)]
+
+    # ---- submit: one scheduler job, the group pattern in miniature --- #
+    envelope = job.resources
+    if mem_gb:
+        import dataclasses as _dc
+        envelope = _dc.replace(envelope, mem=f"{mem_gb:g}G")
+    from ..scheduler.quantities import parse_walltime
+    needed_s = time_s
+    if needed_s is None and envelope.time:
+        try:
+            needed_s = parse_walltime(str(envelope.time))
+        except ValueError:
+            raise SubmitError(
+                f"prep baked time={envelope.time!r}, which does not "
+                f"parse as a SLURM walltime.")
+    placement = _place(base, gpu_side=_job_wants_gpu(attempts[0][1], job),
+                       needed_s=needed_s,
+                       cores=(envelope.mpi_np or 0)
+                             * max(envelope.cpus_per_task or 1, 1) or None,
+                       mem_gb=envelope.mem,
+                       gpus=_gres_count(envelope.gres or ""),
+                       named=domain, label=name)
+    if time_s is not None:
+        envelope = _dc_replace_time(envelope, _slurm_time(time_s))
+    elif not envelope.time and placement is not None:
+        from ..scheduler import domain_ceiling_s
+        _ceil = domain_ceiling_s(placement.domain)
+        if _ceil:
+            envelope = _dc_replace_time(envelope, _slurm_time(_ceil))
+    cmd = ["sbatch", "-J", f"{jobset.name}_{name}"]
+    cmd += _sbatch_resource_flags(envelope, placement)
+    cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch"]
+    cmd.append(f"launch/{name}.sbatch")
+    if dry_run:
+        return [JobResult(name, cmd, "planned")] + [
+            JobResult(f"device@{bias_token(v)}", [], "rides the chain")
+            for v, _a in attempts]
+    launch_dir.mkdir(parents=True, exist_ok=True)
+    (launch_dir / f"{name}.run.sh").write_text("\n".join(lines),
+                                               encoding="utf-8")
+    from ..runwrap import _render_sbatch_for
+    header = _render_sbatch_for(base / f"{name}.sh", project_dir=base,
+                                resources=envelope, env=None,
+                                domain_pq=((placement.partition,
+                                            placement.qos)
+                                           if placement else None))
+    if header is None:
+        raise SubmitError(
+            "no scheduler is configured here, so there is no .sbatch to "
+            "hand the chain to -- run it with --mode direct, or launch "
+            "on the machine with the queue.")
+    for _old, _new in ((f"bash {name}.run.sh", f"bash launch/{name}.run.sh"),
+                       ("#SBATCH -o slurm.%j.out",
+                        "#SBATCH -o launch/slurm.%j.out"),
+                       ("#SBATCH -e slurm.%j.err",
+                        "#SBATCH -e launch/slurm.%j.err")):
+        header = header.replace(_old, _new)
+    (launch_dir / f"{name}.sbatch").write_text(header, encoding="utf-8")
+    cp = subprocess.run(cmd, cwd=str(stage_dir), capture_output=True,
+                        text=True)
+    if cp.returncode != 0:
+        raise SubmitError(
+            f"sbatch failed for {name} (rc={cp.returncode}):\n"
+            f"{cp.stderr.strip()}")
+    jid = _parse_sbatch_id(cp.stdout)
+    results = [JobResult(name, cmd, "submitted", job_id=jid)]
+    for v, att in attempts:
+        _record_launch(att, mode="submit", command=cmd, job_id=jid,
+                       placement=placement)
+        results.append(JobResult(f"device@{bias_token(v)}", [],
+                                 "rides the chain", job_id=jid))
+    return results
+
+
 def _placed_on(placement) -> Optional[dict]:
     """A `Placement` -> where this run was SENT, or ``None`` when there was
     no placement (a direct run).

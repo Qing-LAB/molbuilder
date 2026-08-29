@@ -2051,6 +2051,42 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                    + (f"{stage} " if stage is not None else "")
                    + f"--mode submit|direct{_bundle_hint(base)}")
         return
+    # A TRANSPORT BIAS SCAN opens one attempt ladder PER POINT
+    # (04_device/v0.2/run-<n>; layout ruled 2026-08-29) and gathers into
+    # each -- the chain walker at launch only cd's and bashes.
+    from ..transport.stages import bias_points as _bias_points
+    _scan = (_bias_points(_pf_task)
+             if _is_transport and stage in ("device", "transmission")
+             else ())
+    if _scan:
+        if from_attempt or cold:
+            raise click.ClickException(
+                "--from / --cold name ONE attempt, and a bias scan keeps "
+                "one per point -- per-point continuation is not named "
+                "yet (transport-design.md 4.3; re-prep opens fresh "
+                "attempts for every point).")
+        from ..transport.stages import bias_token as _bias_token
+        from .prep import gather_transport_inputs
+        from .prep import token_for as _token_for
+        _stage_dir = base / _token_for(_pf_task, stage)
+        for _v in _scan:
+            try:
+                rep = prepare_attempt(
+                    js, base, attempt_target,
+                    container=_stage_dir / _bias_token(_v))
+                gathered = gather_transport_inputs(
+                    base, _pf_task, rep.stage, rep.dir, bias=_v)
+            except (ValueError, PrepError) as e:
+                raise click.ClickException(str(e))
+            click.echo(f"prepared {rep.stage} @ {_bias_token(_v)}: "
+                       f"{rep.dir.relative_to(base)}")
+            for _src, _fn in gathered:
+                click.echo(f"  gathered: {_fn} <- {_src}")
+        click.echo("next: molbuilder jobset launch run "
+                   + (f"{stage} " if stage is not None else "")
+                   + f"--mode submit|direct{_bundle_hint(base)}   "
+                   f"(one job: the chain walks the points in order)")
+        return
     try:
         rep = prepare_attempt(js, base, attempt_target,
                               continue_from=from_attempt,
@@ -2514,21 +2550,65 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 only = _pick_trial(js, base, trial)
             else:
                 only = _resolve_stage(js, stage, "launch")
-            # Same ask, the single-job door (2026-08-23): this branch never
-            # built an Ask at all, so --mem typed here was silently
-            # dropped before it could even reach submit_jobset -- the
-            # grouped-sweep branch's `_ask` was the only one, and only a
-            # trial-less grouped submit ever ran through it.
-            # --yes is the recorded judgement over an attempt that was
-            # launched and never CONCLUDED (project-layout.md 1.6, the
-            # other file): still running and force-stopped look the same
-            # on disk, so the refusal below names both and the person
-            # decides -- molbuilder never decides over them.
-            results = submit_jobset(js, base, mode=mode, domain=domain,
-                                    dry_run=dry_run, only=only,
-                                    mem_gb=_memory(mem_text),
-                                    time_s=_duration(time_text),
-                                    continue_unconcluded=auto_yes)
+            # A TRANSPORT BIAS SCAN launches as ONE job walking the
+            # points (transport-design.md 4.3) -- the chain's own door,
+            # with the same nothing-submitted-unseen confirm the grouped
+            # bench gives (S4).
+            _chain_task = None
+            from ..task import FILENAME as _TASKF
+            from ..task import read_task as _rt_chain
+            try:
+                _chain_task = _rt_chain(Path(base) / _TASKF)
+            except Exception:
+                _chain_task = None
+            _chain_scan = ()
+            if (_chain_task is not None
+                    and _chain_task.calculation == "transport"
+                    and only in ("device", "transmission")):
+                from ..transport.stages import bias_points as _bp
+                _chain_scan = _bp(_chain_task)
+                if _chain_scan and only == "transmission":
+                    raise click.ClickException(
+                        "per-point transmission launch lands with P6 "
+                        "(it maps over the device's converged points); "
+                        "launch the device chain first.")
+            if _chain_scan:
+                from .submit import submit_transport_chain
+                _plan = submit_transport_chain(
+                    js, base, _chain_task, mode=mode, domain=domain,
+                    dry_run=True, mem_gb=_memory(mem_text),
+                    time_s=_duration(time_text))
+                if not dry_run:
+                    from .ask import confirm
+                    _planned = next(r for r in _plan
+                                    if r.status == "planned")
+                    if not confirm(
+                            "about to launch the bias chain "
+                            f"({len(_plan) - 1} point(s), one job):\n"
+                            f"  {' '.join(_planned.command)}",
+                            auto_yes=auto_yes):
+                        click.echo("nothing submitted.")
+                        return
+                _ledger(base, "launch", "bias-chain",
+                        points=len(_plan) - 1, mode=mode)
+                results = (_plan if dry_run else
+                           submit_transport_chain(
+                               js, base, _chain_task, mode=mode,
+                               domain=domain, dry_run=False,
+                               mem_gb=_memory(mem_text),
+                               time_s=_duration(time_text)))
+            else:
+                results = submit_jobset(js, base, mode=mode, domain=domain,
+                                        dry_run=dry_run, only=only,
+                                        mem_gb=_memory(mem_text),
+                                        time_s=_duration(time_text),
+                                        continue_unconcluded=auto_yes)
+            # (The single-job door's Ask + --yes doctrine ride the else
+            # arm above since the bias chain landed, 2026-08-29: same
+            # call, one indent deeper.  --mem typed here reaches
+            # submit_jobset -- the 2026-08-23 fix -- and --yes remains
+            # the recorded judgement over a launched-never-CONCLUDED
+            # attempt, which molbuilder never decides over.)
     except SubmitError as e:
         _ledger(base, "launch", "refused", kind=kind, stage=stage,
                 trial=trial, mode=mode, mode_source=mode_source,

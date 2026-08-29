@@ -22,10 +22,12 @@ engine's, and the seed deck is assembled from the same emitter pieces
 (geometry / basis+XC / k-mesh) with ``SolutionMethod diagon`` — an
 ordinary periodic pass whose ``.DM`` starts the device SCF.
 
-What P5 adds, deliberately absent here: warm-file vocabulary (the
-seed's ``.DM``, the electrodes' ``.TSHS``, the ``.TSDE`` bias chain)
-and the per-bias-point device decks — this module renders the
-equilibrium point (``bias[0] == 0.0``, enforced by the task codec).
+P5 added the launch half, whose facts also live here: the § 4.2 DAG
+(:func:`stage_inputs`, read by prep's gather), the continuation rows
+(:func:`warm_declaration` — the seed's ``.DM``, the device's
+``.TSDE``), and the bias scan's spellings (:func:`bias_token`,
+:func:`bias_points` — plain v-dirs, ruled 2026-08-29).  The chain
+walker itself is `jobset/submit.submit_transport_chain`.
 """
 from __future__ import annotations
 
@@ -45,6 +47,25 @@ TRANSPORT_STAGES = ("seed", "electrode_L", "electrode_R",
 class StageError(Exception):
     """A stage whose deck cannot be rendered — the message names the
     stage and what blocks it, ready to surface verbatim."""
+
+
+def bias_token(v: float) -> str:
+    """The ONE spelling of a bias point's directory name — ``v0``,
+    ``v0.2``, ``v-0.5`` (user ruling 2026-08-29: plain v-dirs, production
+    names — never the bench spelling).  Deck naming, the per-point
+    attempt layout, the gather and the chain walker all read this."""
+    return f"v{v:g}"
+
+
+def bias_points(task) -> Tuple[float, ...]:
+    """The scan's points, in the order the description states them —
+    the codec already enforced that the list starts at 0.0 (the chain
+    starts from equilibrium).  ``()`` and a single entry mean NO scan:
+    the stage keeps its plain single-deck layout, because the v-dir
+    layer exists for the axis, not for every calculation
+    (architecture § 0: a list with more than one element)."""
+    bias = tuple(getattr(task, "bias", ()) or ())
+    return bias if len(bias) > 1 else ()
 
 
 def stage_inputs(stage: str, task_label: str, *,

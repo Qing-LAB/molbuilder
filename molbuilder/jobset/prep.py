@@ -1167,8 +1167,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                                      write_compose_record)
     from ..transport.sort import SortError
     from ..transport.stages import (TRANSPORT_STAGES, StageError,
-                                    config_for, render_stage_deck,
-                                    warm_declaration)
+                                    bias_points, bias_token, config_for,
+                                    render_stage_deck, warm_declaration)
     from .shape import Shape
 
     base = Path(base_dir).resolve()
@@ -1249,11 +1249,32 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     _jdir.mkdir(parents=True, exist_ok=True)
     stem = f"{task.label}_{token}" if token else task.label
     script = f"{stem}.fdf"
+    # A BIAS SCAN maps the device and transmission stages over the
+    # points (§ 4.3; layout ruled 2026-08-29: plain v-dirs).  The
+    # stage-dir deck is then the EQUILIBRIUM point's -- the same deck
+    # v0/ holds -- so the job row's script exists where every generic
+    # reader looks, and each point's own deck differs only in
+    # TS.Voltage.
+    points = (bias_points(task)
+              if stage in ("device", "transmission") else ())
     try:
-        deck_text = render_stage_deck(stage, composed, cfg)
+        if points:
+            cfg0 = dataclasses.replace(cfg, bias_voltages_v=[points[0]])
+            deck_text = render_stage_deck(stage, composed, cfg0)
+        else:
+            deck_text = render_stage_deck(stage, composed, cfg)
     except StageError as exc:
         raise PrepError(str(exc)) from exc
     (_jdir / script).write_text(deck_text, encoding="utf-8")
+    for v in points:
+        vdir = _jdir / bias_token(v)
+        vdir.mkdir(parents=True, exist_ok=True)
+        cfg_v = dataclasses.replace(cfg, bias_voltages_v=[float(v)])
+        try:
+            point_text = render_stage_deck(stage, composed, cfg_v)
+        except StageError as exc:
+            raise PrepError(str(exc)) from exc
+        (vdir / script).write_text(point_text, encoding="utf-8")
 
     # ---- 4 + 5, the shared tail ---------------------------------------- #
     allocation = _with_notify(_under_description(allocation,
@@ -1267,6 +1288,16 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         res = dataclasses.replace(res, program="tbtrans")
     job = Job(name=stage, script=script, resources=res,
               warm=warm_declaration(stage, task.label, base))
+    # Each bias point's directory gets its own wrapper, beside its own
+    # deck -- the same render the stage-dir deck gets from prep_jobset,
+    # through the same one writer, so a point runs exactly as the stage
+    # would alone (the chain walker only cd's and bashes).
+    for v in points:
+        with _user_error_as_prep():
+            from ..runwrap import write_run_wrapper as _wrw
+            _wrw(_jdir / bias_token(v) / script, resources=res, env=env,
+                 emit_sbatch=emit_sbatch, project_dir=base,
+                 machine_record=environment)
     js = JobSet(name=task.label, engine=task.engine, kind="ladder",
                 shared=_siesta_shared_package(base), jobs=[job])
     js = _merge_run_jobset(base / JOBSET_FILENAME, js,
@@ -1278,7 +1309,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
 
 
 def gather_transport_inputs(base_dir, task, stage: str,
-                            attempt_dir) -> List[tuple]:
+                            attempt_dir, *,
+                            bias: Optional[float] = None) -> List[tuple]:
     """Copy the § 4.2 DAG's inputs into ``attempt_dir`` — the composite's
     other half of *"warm files are COPIED in at prep"*.
 
@@ -1302,7 +1334,7 @@ def gather_transport_inputs(base_dir, task, stage: str,
     ``.gathered-from`` beside the copies, so a result can always say
     which electrode run fed it.  Returns ``[(source_rel, filename)]``.
     """
-    from ..transport.stages import stage_inputs
+    from ..transport.stages import bias_token, stage_inputs
     from .materialize import ATTEMPT_RE, attempt_concluded
     from .shape import Shape
 
@@ -1316,6 +1348,11 @@ def gather_transport_inputs(base_dir, task, stage: str,
     for upstream, filename in inputs:
         token = token_for(task, upstream)
         up_dir = base / shape.stage_dir(token)
+        if upstream == "device" and bias is not None:
+            # A bias scan keeps the device's products PER POINT -- the
+            # transmission at v reads the device at v, never another
+            # point's converged state (transport-design.md 4.3).
+            up_dir = up_dir / bias_token(bias)
         stem = f"{task.label}_{token}"
         current_deck = up_dir / f"{stem}.fdf"
         run_first = (f"run it first --\n"

@@ -363,13 +363,14 @@ _TOKEN = {"seed": "01_seed", "electrode_L": "02_electrode_L",
           "transmission": "05_transmission"}
 
 
-def _conclude(calc, stage, files, *, deck_text=None):
+def _conclude(calc, stage, files, *, deck_text=None, point=None):
     """Simulate a concluded run-0 of *stage*: the attempt holds the
     stage's own rendered deck (or ``deck_text`` to fake a STALE one),
-    the conclusion marker, and the named product files."""
+    the conclusion marker, and the named product files.  ``point``
+    targets one bias point's v-dir (the scan layout)."""
     token = _TOKEN[stage]
     stem = f"T_{token}"
-    stage_dir = calc / token
+    stage_dir = calc / token if point is None else calc / token / point
     attempt = stage_dir / "run-0"
     attempt.mkdir(parents=True, exist_ok=True)
     (attempt / f"{stem}.fdf").write_text(
@@ -579,9 +580,15 @@ class TestTheCliRoute:
                          monkeypatch)
         assert r.exit_code == 0, r.output
         assert "gathered: T_L-electrode.TSHS" in r.output
-        run0 = calc / "04_device" / "run-0"
-        for n in ("T.DM", "T_L-electrode.TSHS", "T_R-electrode.TSHS"):
-            assert (run0 / n).is_file()
+        # bias=(0.0, 0.2) is a SCAN, so the CLI opens one attempt ladder
+        # PER POINT (layout ruled 2026-08-29) and gathers into each.
+        for point in ("v0", "v0.2"):
+            run0 = calc / "04_device" / point / "run-0"
+            for n in ("T.DM", "T_L-electrode.TSHS",
+                      "T_R-electrode.TSHS", "T_04_device.fdf",
+                      "T_04_device.run.sh"):
+                assert (run0 / n).is_file(), f"{point}/{n}"
+        assert "prepared device @ v0.2" in r.output
 
     def test_prep_device_refuses_through_the_cli_too(self, calc,
                                                      tmp_path,
@@ -612,3 +619,147 @@ class TestTheCliRoute:
                          tmp_path / "projects", monkeypatch)
         assert r.exit_code != 0
         assert "hierarchical" in r.output
+
+
+class TestTheBiasScan:
+    """P5b — the bias chain (transport-design.md § 4.3; layout ruled
+    2026-08-29: plain v-dirs, one attempt ladder per point, one
+    submission walking them with the .TSDE handed forward)."""
+
+    def _ready(self, calc, tmp_path, monkeypatch, *, bias=None):
+        """Upstreams concluded, device prepped through the CLI (per-point
+        attempts open + gathered).  Returns (task, jobset)."""
+        from click.testing import CliRunner
+        from molbuilder.jobset._cli import jobset_group
+        from molbuilder.jobset.model import JobSet
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        from molbuilder.task import read_task
+        if bias is not None:
+            root = tmp_path / "projects"
+            _describe_transport(root, bias=bias)
+        for st in ("seed", "electrode_L", "electrode_R"):
+            prep_calculation(calc, st)
+        _conclude(calc, "seed", ["T.DM"])
+        _conclude(calc, "electrode_L", ["T_L-electrode.TSHS"])
+        _conclude(calc, "electrode_R", ["T_R-electrode.TSHS"])
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
+        r = CliRunner().invoke(jobset_group,
+                               ["prep", "run", "device", "--bundle",
+                                "J/transport/T"])
+        assert r.exit_code == 0, r.output
+        return read_task(calc / "task.json"), JobSet.load(
+            calc / "job-set.json")
+
+    def _stub(self, calc, point):
+        """Replace one point's wrapper with a stub that records the run
+        order and the density it STARTED with, then writes its own."""
+        att = calc / "04_device" / point / "run-0"
+        (att / "T_04_device.run.sh").write_text(
+            "#!/bin/bash\n"
+            'echo "$(basename $(dirname $(dirname $PWD)))'
+            f'/{point}" >> ../../chain-order.log\n'
+            "if [ -f T.TSDE ]; then cp T.TSDE TSDE-at-start; fi\n"
+            f'echo "density-from-{point}" > T.TSDE\n')
+
+    def test_the_points_render_their_own_decks(self, calc):
+        prep_calculation(calc, "device")
+        v0 = (calc / "04_device" / "v0" / "T_04_device.fdf").read_text()
+        v2 = (calc / "04_device" / "v0.2" / "T_04_device.fdf").read_text()
+        top = (calc / "04_device" / "T_04_device.fdf").read_text()
+        assert "TS.Voltage             0.0000 eV" in v0
+        assert "TS.Voltage             0.2000 eV" in v2
+        assert "TS.Voltage             0.0000 eV" in top, (
+            "the stage-dir deck is the equilibrium point's")
+        assert (calc / "04_device" / "v0.2" / "T_04_device.run.sh"
+                ).is_file(), "each point carries its own wrapper"
+
+    def test_a_single_point_keeps_the_plain_layout(self, tmp_path):
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct())
+        dest = _describe_transport(root, bias=(0.0,))
+        prep_calculation(dest, "device")
+        assert (dest / "04_device" / "T_04_device.fdf").is_file()
+        assert not (dest / "04_device" / "v0").exists(), (
+            "the v-dir layer exists for the axis, not for every run")
+
+    def test_the_chain_warm_chains(self, calc, tmp_path, monkeypatch):
+        """THE P5 gate: a two-point bias fixture warm-chains -- the
+        second point STARTS with the first point's .TSDE."""
+        from molbuilder.jobset.submit import submit_transport_chain
+        task, js = self._ready(calc, tmp_path, monkeypatch)
+        self._stub(calc, "v0")
+        self._stub(calc, "v0.2")
+        results = submit_transport_chain(js, calc, task, mode="direct")
+        assert results[0].status == "ran", results
+        order = (calc / "04_device" / "chain-order.log"
+                 ).read_text().splitlines()
+        assert [o.split("/")[-1] for o in order] == ["v0", "v0.2"], (
+            "the chain walks the points in the description's order")
+        seen = (calc / "04_device" / "v0.2" / "run-0" / "TSDE-at-start")
+        assert seen.is_file(), "point 2 must START with a .TSDE"
+        assert seen.read_text().strip() == "density-from-v0"
+        for point in ("v0", "v0.2"):
+            assert (calc / "04_device" / point / "run-0" / "run.json"
+                    ).is_file(), "every point is launched by this command"
+
+    def test_the_chain_stops_on_a_failed_point(self, calc, tmp_path,
+                                               monkeypatch):
+        from molbuilder.jobset.submit import submit_transport_chain
+        from molbuilder.task import read_task
+        # a three-point scan: rewrite the description (the id derives
+        # from the citation, so the bias edit keeps it)
+        _describe_transport(tmp_path / "projects", bias=(0.0, 0.2, 0.4))
+        task, js = self._ready(calc, tmp_path, monkeypatch)
+        self._stub(calc, "v0")
+        att = calc / "04_device" / "v0.2" / "run-0"
+        (att / "T_04_device.run.sh").write_text(
+            "#!/bin/bash\nexit 7\n")
+        self._stub(calc, "v0.4")
+        results = submit_transport_chain(js, calc, task, mode="direct")
+        assert results[0].status == "failed"
+        assert results[0].returncode == 7
+        order = (calc / "04_device" / "chain-order.log"
+                 ).read_text().splitlines()
+        assert len(order) == 1, (
+            "later points chain their density from the failed one -- "
+            "the walk must stop, not continue")
+
+    def test_an_unprepped_point_refuses_the_chain(self, calc, tmp_path,
+                                                  monkeypatch):
+        from molbuilder.jobset.submit import (SubmitError,
+                                              submit_transport_chain)
+        task, js = self._ready(calc, tmp_path, monkeypatch)
+        shutil.rmtree(calc / "04_device" / "v0.2" / "run-0")
+        with pytest.raises(SubmitError) as e:
+            submit_transport_chain(js, calc, task, mode="direct")
+        assert "v0.2" in str(e.value) and "prep run device" in str(e.value)
+
+    def test_a_launched_point_refuses_relaunch(self, calc, tmp_path,
+                                               monkeypatch):
+        from molbuilder.jobset.submit import (SubmitError,
+                                              submit_transport_chain)
+        task, js = self._ready(calc, tmp_path, monkeypatch)
+        (calc / "04_device" / "v0" / "run-0" / "run.json").write_text("{}")
+        with pytest.raises(SubmitError) as e:
+            submit_transport_chain(js, calc, task, mode="direct")
+        assert "immutable" in str(e.value)
+
+    def test_transmission_gathers_the_matching_point(self, calc,
+                                                     tmp_path,
+                                                     monkeypatch):
+        """The transmission at v reads the DEVICE at v -- never another
+        point's converged state."""
+        from click.testing import CliRunner
+        from molbuilder.jobset._cli import jobset_group
+        self._ready(calc, tmp_path, monkeypatch)
+        _conclude(calc, "device", ["T.TSHS", "T.TSDE"], point="v0")
+        _conclude(calc, "device", ["T.TSHS", "T.TSDE"], point="v0.2")
+        r = CliRunner().invoke(jobset_group,
+                               ["prep", "run", "transmission",
+                                "--bundle", "J/transport/T"])
+        assert r.exit_code == 0, r.output
+        rec = (calc / "05_transmission" / "v0.2" / "run-0"
+               / ".gathered-from").read_text()
+        assert "T.TSHS <- 04_device/v0.2/run-0" in rec
+        assert (calc / "05_transmission" / "v0.2" / "run-0" / "T.TSDE"
+                ).is_file()

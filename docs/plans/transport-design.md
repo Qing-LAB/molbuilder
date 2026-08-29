@@ -411,6 +411,22 @@ travels whole)*:
   05_transmission/  TBtrans over the converged device (P6 parses it)
 ```
 
+**A bias SCAN** (more than one voltage — § 4.3; layout ruled
+2026-08-29: *plain v-dirs, production names*) maps the device and
+transmission stages over the points, one attempt ladder per point; a
+single-voltage run keeps the plain layout above (the v-dir layer
+exists for the axis, not for every run):
+
+```
+  04_device/
+    T_04_device.fdf        ← the equilibrium point's deck (the job row's)
+    v0/    T_04_device.fdf + wrapper → run-N/   TS.Voltage 0.0
+    v0.2/  likewise                             TS.Voltage 0.2
+    launch/T_04_device-chain.run.sh  ← the walker, regenerated at launch
+  05_transmission/
+    v0/ … v0.2/ …          ← each gathers the DEVICE'S MATCHING POINT
+```
+
 The four record files answer for the folder anywhere: a later stage's
 prep — including on a machine that has never seen the cited tree —
 loads them instead of recomposing, and a `task.json` re-pointed at a
@@ -428,6 +444,15 @@ non-equilibrium density far faster than from scratch — and the grouped
 launch runs them in sequence like any sweep. `transmission` then maps
 over the converged points. No new machinery; one new warm-file
 vocabulary entry (`.TSDE` chains along the bias axis).
+
+*Build note (P5b, 2026-08-29): "like any sweep" survived as the
+pattern, not the code path — the bench machinery's points are
+independent and forced cold, a chain's are neither, so the walker is
+transport's own (`submit_transport_chain`, the bench group's sequencer
+in miniature): one submission, the `.TSDE` copied forward between
+points, and a failed point STOPS the walk, because everything after it
+would converge from the state the failure poisoned.  The layout is the
+user's plain-v-dirs ruling (§ 4.2), never the bench spelling.*
 
 ### 4.4 What retires
 
@@ -509,7 +534,7 @@ the whole task framework — verbs, attempts, warm files, sweeps.)*
 | **P2** | **The categorical sort** — a pure function: `(structure, regions) → (sorted structure, permutation)`; refusals for unlabeled atoms; the bijection check; the permutation sidecar schema (`molbuilder/atom-permutation@1`). No I/O, no engine knowledge. | Unit + property tests: sort is stable within bridge, layer-major within electrodes, bijective always; every refusal named; mutation-tested. |
 | **P3** | **The `transport` calculation kind** — `task.json` grows `slots` (one entry, `@run-N` mandatory) and `bias`; `init` accepts and validates them; strict-composition refusal (missing / unconcluded / unpinned citation each named). | init round-trip tests; the three refusals, each mutation-tested. |
 | **P4** | **prep composes** — copy the citation with provenance (calculation · attempt · content hash); run the sort (P2); the § 3 gates (frozen-unmoved · tiling · principal-layer thickness · label completeness); extract the electrode cells from the sorted ends (wizard logic, relocated); render all five stages' inputs (seed deck = ordinary SIESTA; electrode decks; device deck via the existing emitter; transmission = TBtrans options on the device geometry). *Build note (2026-08-28): the relaxed geometry must be PARSED from the attempt (the `.XV`, Bohr → Å), never file-copied — the old driver's `.XV`-copy + `MD.UseSaveXV` trick hands SIESTA an OLD-ORDER density-adjacent file, exactly what the § 4.1a fence forbids crossing the sort.* | *(Done 2026-08-28: P4a the compose engine (`transport/compose.py`), P4b the stage renders (`transport/stages.py`) + prep's transport arm.  The electronic contract flows citation-fdf → `TransportConfig` → every deck — the emitter's hard-coded DZP/PBE became config fields for it; `TS.Atoms.Buffer` + explicit `elec-pos` land with the buffered case; the composed record travels as `junction.xyz` + `junction.cited.fdf` + the two sidecars.)* A fixture junction preps end-to-end; each gate refuses its mutation (moved frozen atom, unlabeled atom, too-thin block, broken tiling, buffer inside the blocks); the emitter's own order-preflight never fires (prep sorted first). |
-| **P5** | **launch + the warm chains** — stage dependencies (seed → device → transmission; electrodes → device); the `.TSDE` bias chain as warm-file vocabulary; the bias sweep through the grouped launch. | *(P5a done 2026-08-28: the CLI route (floor 2 = task.json alone at the prep door too), the § 4.2 gather with its three per-input gates, `.TSDE` as the transport carry row, `Resources.program` routing tbtrans, conclusion markers via the shared wrapper.  P5b — the multi-point bias chain — awaits the user's shape ruling: the per-point directory naming is a clarity question the sweep machinery's `bench-` spelling does not answer well.)* The dependency refusals (device before electrodes conclude → named refusal); a two-point bias fixture warm-chains; conclusion markers per stage. |
+| **P5** | **launch + the warm chains** — stage dependencies (seed → device → transmission; electrodes → device); the `.TSDE` bias chain as warm-file vocabulary; the bias sweep through the grouped launch. | *(Done 2026-08-28/29.  P5a: the CLI route (floor 2 = task.json alone at the prep door too), the § 4.2 gather with its three per-input gates, `.TSDE` as the transport carry row, `Resources.program` routing tbtrans, conclusion markers via the shared wrapper.  P5b, on the user's plain-v-dirs ruling: per-point decks/wrappers/attempts, the bias-aware gather (transmission at v reads the device at v), and `submit_transport_chain` — ONE submission walking the points in order, the previous point's `.TSDE` copied forward, STOPPING on a failed point because later points chain their density from it (a benchmark's points are independent; a chain's are not).  Per-point transmission LAUNCH deliberately waits for P6, which owns the map over converged points; `--from`/`--cold` on a scan stage refuse until per-point continuation is named.)* The dependency refusals (device before electrodes conclude → named refusal); a two-point bias fixture warm-chains; conclusion markers per stage. |
 | **P6** | **summarize + the record** — parse TBtrans output → `<label>.transport.json` (schema first: `T(E)` per bias, `I(V)` table, provenance incl. the permutation reference); `summarize` prints the I–V table; the Results-tab transmission inspector follows as its own step (roadmap § 2 already names it). | Parse fixtures from a real TBtrans run; schema round-trip; summarize output pinned. |
 | **P7** | **Retire the old path** — `transport bundle` / `orchestrate.py` deleted with its tests (rename = delete); the Transport tab rewires to describe the composite (slots + bias + transport fields) and hand over like every other tab. **The slot picker is `lib/tree-picker.js`** — the ONE pop-out path picker (promoted 2026-08-28 from the sidebar's destination dialog; user: reuse the wheel), with its `describe` seam fed from **the attempt's own `.fdf`** — the deck that actually ran is the truth about a result; the attempt dir's other files (`run.json`, `.concluded`, the monitor log) supply only runtime status. | The bundle spelling is dead (guard); the tab drives the composite end-to-end in the browser lane, slot selection through the shared picker. |
 
