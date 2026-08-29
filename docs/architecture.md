@@ -102,7 +102,7 @@ flowchart TB
     RES["results — frame · trajectory_log · runtime_info · issues"]
     JOB["the job as described — task · config · identity<br/>warmfiles · annotations_fdf"]
     MACH["the machine — scheduler (records · queues · admission<br/>· the quantities a job asks for)"]
-    INF["infrastructure — persist · config_dir · pipeline_log<br/>references · reload_protocol"]
+    INF["infrastructure — persist · config_dir · pipeline_log<br/>references · reload_protocol · serve_daemon"]
   end
   L3 -->|calls the same verbs| L2
   L2 -->|reads/writes| L1
@@ -121,7 +121,7 @@ how "which layer does this go in?" becomes a guess.)*
 | **results** | `frame` · `trajectory_log` · `runtime_info` · `issues` | a per-step physics record, the `.molwatch.log` format, the runtime facts a run reports, a validation finding |
 | **the job as described** | `task` · `config` · `identity` · `warmfiles` · `annotations_fdf` | `task.json`, the engine-knob dataclasses, how a run id is written, the warm-file rules, the fdf annotation strategies |
 | **the machine** | `scheduler` | what a machine offers and what a job may ask of it — records, queues, admission, placement, emission, and **the quantities a job asks for and every dialect each is written in** (`quantities.py`) |
-| **infrastructure** | `persist` · `config_dir` · `pipeline_log` · `references` · `reload_protocol` | versioned documents, the one per-user config directory, the prep pipeline's record, the bibliography, the two constants the supervisor and its child agree on |
+| **infrastructure** | `persist` · `config_dir` · `pipeline_log` · `references` · `reload_protocol` · `serve_daemon` | versioned documents, the one per-user config directory, the prep pipeline's record, the bibliography, the two constants the supervisor and its child agree on — and the supervisor itself (daemon, pidfile, log roll), L1 because it must never import the application it restarts |
 
 Reading the table is how you answer *"where does this new function go?"* —
 find the object it acts on, and that is the module. A function that acts on a
