@@ -134,16 +134,20 @@
     background: var(--bg-page);
     padding: var(--space-xs);
 }
-.tp-tree ul {
+/* One selector level for both lists, so the reset cannot outgun the
+ * indent below (`.tp-tree ul` did exactly that -- (0,1,1) vs (0,1,0),
+ * and every nesting level rendered flush with its parent). */
+.tp-root,
+.tp-children {
     list-style: none;
     margin: 0;
     padding: 0;
 }
 .tp-children {
     /* the indent guide: hierarchy you can SEE, not count */
-    margin-left: calc(var(--space-md) + var(--space-xs));
-    border-left: 1px solid var(--border-soft);
-    padding-left: var(--space-xs);
+    margin-left: var(--space-lg);
+    border-left: 1px solid var(--border-strong);
+    padding-left: var(--space-sm);
 }
 .tp-row {
     display: flex;
