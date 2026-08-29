@@ -316,146 +316,17 @@ export function chooseUploadFile(opts) {
  *                                as the destination)
  */
 export async function chooseDestinationDir(opts) {
+  // Delegates to the ONE pop-out picker (lib/tree-picker.js, promoted
+  // from the implementation that lived here 2026-06-12..2026-08-28) --
+  // this wrapper keeps the sidebar's question named for what it asks.
   opts = opts || {};
-  const root = getProjectsRoot();
-  if (!root) return Promise.resolve(null);
-
-  const dialog = _mkDialog("molbuilder-projects-dest-dialog");
-  dialog.appendChild(_mkHeader(opts.title || "Choose destination"));
-  dialog.appendChild(_mkParagraph(
-    "Click a folder to select.  Double-click to open it.",
-    "molbuilder-projects-dialog-hint",
-  ));
-
-  const tree = document.createElement("div");
-  tree.className = "molbuilder-projects-dest-tree";
-  tree.setAttribute("role", "tree");
-  dialog.appendChild(tree);
-
-  const err = _mkErrorSlot();
-  dialog.appendChild(err);
-
-  let chosenPath = null;
-  let confirmBtn;
-  function _setChosen(path) {
-    chosenPath = path;
-    if (confirmBtn) confirmBtn.disabled = !path;
-    // Mark the .is-selected node + clear others.
-    tree.querySelectorAll(".is-selected").forEach(
-      (n) => n.classList.remove("is-selected"));
-    if (path) {
-      const el = tree.querySelector(
-        `[data-path="${path.replace(/"/g, '\\"')}"]`);
-      if (el) el.classList.add("is-selected");
-    }
-  }
-
-  // Lazy tree: each folder lists its children on first expand.
-  async function _expand(node) {
-    if (node.dataset.loaded === "1") return;
-    node.dataset.loaded = "1";
-    const path = node.dataset.path;
-    const r = await apiList(path);
-    if (!r || !r.ok) {
-      const errLi = document.createElement("li");
-      errLi.className = "molbuilder-projects-dest-error";
-      errLi.textContent = r && r.error
-        ? `Listing failed: ${r.error}`
-        : "Listing failed.";
-      const sub = node.querySelector("ul");
-      if (sub) sub.appendChild(errLi);
-      return;
-    }
-    const sub = node.querySelector("ul");
-    // Filter to directories only — moving to a file doesn't make sense.
-    const dirs = (r.entries || []).filter((e) => e.kind === "directory");
-    if (dirs.length === 0) {
-      const empty = document.createElement("li");
-      empty.className = "molbuilder-projects-dest-empty";
-      empty.textContent = "(no subdirectories)";
-      sub.appendChild(empty);
-      return;
-    }
-    dirs.forEach((d) => sub.appendChild(_buildNode(d.name,
-      path.replace(/\/$/, "") + "/" + d.name)));
-  }
-
-  function _buildNode(name, path) {
-    const li = document.createElement("li");
-    li.className = "molbuilder-projects-dest-node";
-    li.dataset.path = path;
-    li.setAttribute("role", "treeitem");
-
-    const row = document.createElement("div");
-    row.className = "molbuilder-projects-dest-row";
-
-    const tw = document.createElement("button");
-    tw.type = "button";
-    tw.className = "molbuilder-projects-dest-twisty";
-    tw.textContent = "▸";
-    tw.setAttribute("aria-label", "Expand");
-    row.appendChild(tw);
-
-    const label = document.createElement("span");
-    label.className = "molbuilder-projects-dest-label";
-    label.textContent = name;
-    row.appendChild(label);
-
-    li.appendChild(row);
-
-    const sub = document.createElement("ul");
-    sub.className = "molbuilder-projects-dest-children";
-    sub.hidden = true;
-    li.appendChild(sub);
-
-    let expanded = false;
-    async function toggle() {
-      expanded = !expanded;
-      sub.hidden = !expanded;
-      tw.textContent = expanded ? "▾" : "▸";
-      if (expanded) await _expand(li);
-    }
-    tw.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      toggle();
-    });
-    row.addEventListener("click", () => _setChosen(path));
-    row.addEventListener("dblclick", () => {
-      if (!expanded) toggle();
-    });
-    return li;
-  }
-
-  // Root node: projects/ itself.  Always open + expanded on mount
-  // so the user sees the project list immediately.
-  const rootUl = document.createElement("ul");
-  rootUl.className = "molbuilder-projects-dest-root";
-  tree.appendChild(rootUl);
-  const rootNode = _buildNode("projects", root);
-  rootUl.appendChild(rootNode);
-  // Auto-expand the root.
-  await _expand(rootNode);
-  rootNode.querySelector(".molbuilder-projects-dest-children").hidden = false;
-  rootNode.querySelector(".molbuilder-projects-dest-twisty").textContent = "▾";
-
-  const actions = _mkActions([
-    {
-      label:   "Cancel",
-      action:  "cancel",
-      onClick: () => _settle(null),
-    },
-    {
-      label:   opts.confirmLabel || "Choose",
-      action:  "confirm",
-      cls:     "is-primary",
-      onClick: () => { if (chosenPath) _settle(chosenPath); },
-    },
-  ]);
-  confirmBtn = actions.querySelector('[data-action="confirm"]');
-  confirmBtn.disabled = true;
-  dialog.appendChild(actions);
-
-  return _open(dialog);
+  const { pickPath } = await import("../tree-picker.js");
+  return pickPath({
+    title: opts.title || "Choose destination",
+    hint: "Click a folder to select.  Double-click to open it.",
+    mode: "dir",
+    confirmLabel: opts.confirmLabel || "Choose",
+  });
 }
 
 // ─── Confirm overwrite (for move + copy when destination matches) ── //

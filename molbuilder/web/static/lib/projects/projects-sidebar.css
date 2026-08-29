@@ -411,60 +411,9 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   cursor: not-allowed;
 }
 
-/* Destination-dir tree (move/copy) */
-.molbuilder-projects-dest-tree {
-  max-height: 30vh;
-  overflow-y: auto;
-  background: var(--ps-bg-deep);
-  border: 1px solid var(--ps-border, #2a2a2a);
-  border-radius: var(--radius-sm);
-  padding: var(--space-xs) 0;
-}
-.molbuilder-projects-dest-tree ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.molbuilder-projects-dest-children {
-  padding-left: var(--space-lg);
-}
-.molbuilder-projects-dest-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-xs) var(--space-sm);
-  cursor: pointer;
-  border-radius: 2px;
-  transition: background 0.1s;
-}
-.molbuilder-projects-dest-row:hover {
-  background: var(--ps-hover, #2a2a2a);
-}
-.molbuilder-projects-dest-node.is-selected > .molbuilder-projects-dest-row {
-  background: var(--ps-selected, #2d4a6e);
-  color: var(--ps-selected-fg, #fff);
-}
-.molbuilder-projects-dest-twisty {
-  appearance: none;
-  background: transparent;
-  border: none;
-  color: var(--ps-fg-muted, #999999);
-  cursor: pointer;
-  font-size: var(--text-xs);
-  padding: 0;
-  width: 1em;
-}
-.molbuilder-projects-dest-label {
-  flex: 1 1 auto;
-  font-size: var(--text-sm);
-}
-.molbuilder-projects-dest-empty,
-.molbuilder-projects-dest-error {
-  padding: var(--space-xs) var(--space-sm) var(--space-xs) var(--space-lg2);
-  font-size: var(--text-xs);
-  color: var(--ps-fg-muted, #999999);
-  font-style: italic;
-}
+/* The dest-tree block (2026-06-12) moved to lib/dialog.css as the
+ * shared tree-picker (tp-*) -- one pop-out picker for every surface
+ * (lib/tree-picker.js, 2026-08-28). */
 
 /* ---- Per-entry kebab menu (2026-06-12) -------------------------
  *

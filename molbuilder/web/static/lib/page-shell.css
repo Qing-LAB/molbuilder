@@ -527,6 +527,10 @@ button:disabled {
 /* the [hidden] guard (§ 6): the display:flex above would otherwise win */
 .page-busy-cover[hidden] { display: none; }
 
+.page-busy-msg {
+    font-size: var(--text-sm);
+}
+
 .page-busy-panel {
     display: flex;
     align-items: center;
