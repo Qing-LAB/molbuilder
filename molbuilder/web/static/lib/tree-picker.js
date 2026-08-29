@@ -58,6 +58,11 @@ function _el(tag, cls, text) {
  *                 "any": both listed, both selectable
  *   filter        optional (entry, path) => bool over listed entries —
  *                 e.g. only `run-*` directories, only `.fdf` files
+ *   pickable      optional (entry, path) => bool over SELECTABLE
+ *                 entries: rows failing it still list (and expand),
+ *                 but cannot be chosen — the Transport tab's slot
+ *                 picker walks the whole tree yet lets only `run-N`
+ *                 attempt directories be the answer
  *   describe      optional async (path, entry) => string; shown in the
  *                 meta line when a selection lands (the fdf seam)
  *   confirmLabel  the primary button's label (default "Choose")
@@ -123,9 +128,16 @@ export async function pickPath(opts) {
     }
   }
 
-  const selectable = (kind) =>
-    mode === "any" || (mode === "dir" ? kind === "directory"
-                                      : kind === "file");
+  const selectable = (kind, path, name) => {
+    const byMode = (mode === "any"
+                    || (mode === "dir" ? kind === "directory"
+                                       : kind === "file"));
+    if (!byMode) return false;
+    if (typeof opts.pickable === "function") {
+      return !!opts.pickable({ name, kind }, path);
+    }
+    return true;
+  };
 
   function _buildNode(name, path, kind) {
     const li = _el("li", "tp-node");
@@ -134,7 +146,8 @@ export async function pickPath(opts) {
     li.setAttribute("role", "treeitem");
 
     const row = _el("div", "tp-row");
-    if (!selectable(kind)) row.classList.add("tp-row--inert");
+    const canPick = selectable(kind, path, name);
+    if (!canPick) row.classList.add("tp-row--inert");
 
     const isDir = kind === "directory";
     const tw = _el("button", "tp-twisty", isDir ? "▸" : "");
@@ -161,7 +174,7 @@ export async function pickPath(opts) {
     }
     tw.addEventListener("click", (ev) => { ev.stopPropagation(); toggle(); });
     row.addEventListener("click", () => {
-      if (selectable(kind)) _setChosen(path, { name, kind });
+      if (canPick) _setChosen(path, { name, kind });
     });
     row.addEventListener("dblclick", () => { if (!expanded) toggle(); });
     return li;

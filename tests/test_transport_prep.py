@@ -766,3 +766,42 @@ class TestTheBiasScan:
         assert "T.TS.HSX <- 04_device/v0.2/run-0" in rec
         assert (calc / "05_transmission" / "v0.2" / "run-0" / "T.TS.HSX"
                 ).is_file()
+
+
+class TestTheOverrideLane:
+    """Transport-only knobs travel as stage overrides (P7b): the
+    composite has no template, so the stages' own bags are the
+    description's one place for the transmission window, the contour --
+    everything that is NOT the citation's to say."""
+
+    def _with_override(self, calc, stage_name, overrides):
+        from molbuilder.task import (Stage, Task, derive_run, read_task,
+                                     write_task)
+        t = read_task(calc / "task.json")
+        stages = tuple(Stage(name=s.name, enabled=s.enabled,
+                             overrides=(overrides if s.name == stage_name
+                                        else {}))
+                       for s in t.stages)
+        write_task(calc / "task.json", Task(
+            engine=t.engine, shape=t.shape, run=t.run, structure=None,
+            calculation="transport", slots=dict(t.slots), bias=t.bias,
+            varies=tuple(sorted(overrides)), stages=stages))
+
+    def test_a_knob_override_lands_in_the_deck(self, calc):
+        self._with_override(calc, "device",
+                            {"transmission_n_points": 101})
+        prep_calculation(calc, "device")
+        text = (calc / "04_device" / "T_04_device.fdf").read_text()
+        assert "TS.TBT.NumE            101" in text
+
+    def test_a_contract_field_is_sealed(self, calc):
+        self._with_override(calc, "device", {"basis_size": "DZP"})
+        with pytest.raises(PrepError) as e:
+            prep_calculation(calc, "device")
+        assert "citation's to say" in str(e.value)
+
+    def test_an_unknown_knob_is_refused_by_name(self, calc):
+        self._with_override(calc, "transmission", {"n_pionts": 7})
+        with pytest.raises(PrepError) as e:
+            prep_calculation(calc, "transmission")
+        assert "'n_pionts'" in str(e.value).replace('"', "'")

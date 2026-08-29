@@ -469,11 +469,15 @@ single-point, or a relaxation if those layers are not frozen.
   `<label>.transport.json`), the electrode wizard, the `electrode`/`preflight`
   helper CLI, and the region-label-driven derivation.  The finite-bias scan
   ships with it (the `.TSDE`-chained walker).
-- **Web tab:** the `TransportConfig` form + a **live Generate** button
-  (`lib/transport/core.js` → `POST /api/transport/render` →
-  `web/blueprints/transport.py::api_transport_render:95`) that validates (the transiesta
-  preflight runs here) and returns the **single device `.fdf`** + issues. It does *not*
-  yet emit the full relax + electrode + driver bundle — that's CLI-only.
+- **Web tab (rewired 2026-08-29, P7b):** the tab DESCRIBES the composite —
+  cite the junction through the shared tree-picker (only `run-N` attempts
+  choosable; the meta line reads the attempt's own `.fdf` via
+  `/api/transport/describe_attempt`), state the bias, and Send hands ONE
+  file (`task.1st.json`) to Task setup, which proposes the five fixed
+  stages and saves the real `task.json`.  Transport-only knobs changed in
+  the form ride as device-stage overrides; the electronic-contract fields
+  are sealed at both doors (the citation's to say).  The render endpoint
+  (`/api/transport/render`) remains as the engine's validation surface.
 - **Follow-up** (see `roadmap.md`): a **convergence sweep** mode (auto-vary
   transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops
   moving); the **bias scan** (`bias_voltages_v` is a `List[float]`; today only the

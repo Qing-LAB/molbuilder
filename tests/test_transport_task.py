@@ -193,3 +193,14 @@ class TestInitCLI:
             "--slot", f"junction={_CITE}"])
         assert r.exit_code != 0
         assert "transport" in r.output
+
+
+def test_a_flat_transport_description_is_refused_by_the_codec():
+    """The pairing is the CODEC's (one door, P7b): the five stages
+    exchange files through their own attempts, which flat has no
+    directories to hold -- so a flat transport task cannot even be
+    constructed, and every surface (CLI init, the web save) inherits
+    the refusal."""
+    with pytest.raises(ValueError) as e:
+        _task(shape="flat")
+    assert "hierarchical" in str(e.value)

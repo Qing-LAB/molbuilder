@@ -172,7 +172,11 @@ class TestTransportPageRendering:
     def test_page_includes_form_container(self, web):
         body = web.get("/transport-calculation").data.decode()
         assert 'id="transport-form-container"' in body
-        assert 'id="transport-generate-btn"' in body
+        # the composite card (P7b): cite + bias + send -- the Generate
+        # button retired with the bundle road
+        assert 'id="transport-junction-btn"' in body
+        assert 'id="transport-send-btn"' in body
+        assert 'transport-generate-btn' not in body
 
     def test_page_loads_form_schema_helper_then_core(self, web):
         """form-schema.js MUST load BEFORE lib/transport/core.js so
@@ -184,18 +188,16 @@ class TestTransportPageRendering:
         assert body.index("lib/form-schema.js") \
                < body.index("lib/transport/core.js")
 
-    def test_generate_button_is_disabled_with_hint(self, web):
-        """Engines aren't wired; the button MUST stay disabled so
-        users don't click expecting output.  The hint span tells
-        them why."""
+    def test_send_button_is_disabled_until_a_junction_is_cited(self, web):
+        """The composite's one hard requirement is the citation
+        (transport-design.md 4.1); the button says so and starts
+        disabled -- core.js enables it when a junction is picked."""
         body = web.get("/transport-calculation").data.decode()
-        # Button starts disabled (HTML attribute).
         assert (
-            'id="transport-generate-btn"' in body
-            and 'disabled' in body.split('id="transport-generate-btn"')[1][:200]
-        ), "Generate button must start disabled"
-        # Hint text mentions the planned engines so users know what's coming.
-        assert "TranSIESTA" in body or "PySCF-NEGF" in body
+            'id="transport-send-btn"' in body
+            and 'disabled' in body.split('id="transport-send-btn"')[1][:200]
+        ), "Send must start disabled"
+        assert "Task setup" in body
 
     def test_active_tab_marker_set(self, web):
         """``active_tab`` must equal ``transport-calculation`` so

@@ -113,7 +113,11 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _resolve_citation(citation: str, tree_root: Path) -> Tuple[Path, Path]:
+def resolve_citation(citation: str, tree_root: Path) -> Tuple[Path, Path]:
+    """The citation's two on-disk halves — ``(calc_dir, attempt_dir)`` —
+    with the tree fence and the strict-composition refusals applied.
+    Public since P7b: the web hand-over validates a citation through the
+    SAME door prep composes through."""
     from ..projects import OutsideRoot, contain
     from ..task import FILENAME as TASK_FILENAME
     calc_rel, _, attempt_rel = citation.partition("@")
@@ -225,7 +229,7 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
     from ..workingcopy_structure import StructureCodec
 
     tree_root = Path(tree_root)
-    calc_dir, attempt_dir = _resolve_citation(citation, tree_root)
+    calc_dir, attempt_dir = resolve_citation(citation, tree_root)
     deck, xv_path, concluded = _attempt_artifacts(calc_dir, attempt_dir,
                                                   citation)
 

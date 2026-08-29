@@ -1069,6 +1069,126 @@ def api_task_setup_handover():
         return jsonify({"ok": False,
                         "error": "the vibration kind is PySCF-first "
                                  "(spectra-migration plan § 2)"}), 400
+    if calculation == "transport":
+        # THE COMPOSITE'S hand-over (transport-design.md § 4.1, P7b):
+        # no structure, no template, no params -- its structure IS the
+        # junction citation, its electronic contract arrives at prep
+        # from the citation's own deck, and its transport-only knobs
+        # ride the stages' override bags.  Floor 2 is task.json alone,
+        # so the hand-over is ONE file.
+        if engine != "siesta":
+            return jsonify({"ok": False,
+                            "error": "transport is SIESTA-first "
+                                     "(TranSIESTA)"}), 400
+        citation = str(body.get("junction") or "")
+        if not citation:
+            return jsonify({"ok": False,
+                            "error": "no junction citation -- pick the "
+                                     "relaxed junction's attempt "
+                                     "first"}), 400
+        bias_raw = body.get("bias") or [0.0]
+        try:
+            bias = tuple(float(v) for v in bias_raw)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False,
+                            "error": f"bias must be a list of volts, "
+                                     f"got {bias_raw!r}"}), 400
+        overrides = body.get("overrides") or {}
+        if not isinstance(overrides, dict):
+            return jsonify({"ok": False,
+                            "error": "overrides must be an object"}), 400
+        # Refused HERE, not at prep on the cluster: an unknown knob or a
+        # sealed one (the citation's to say) names itself while changing
+        # it is still free.  Same sets, same reason as config_for.
+        import dataclasses as _dc
+
+        from molbuilder.config.transport import TransportConfig
+        from molbuilder.transport.stages import SEALED_TRANSPORT_FIELDS
+        _known = {f.name for f in _dc.fields(TransportConfig)}
+        for _name in overrides:
+            if _name not in _known:
+                return jsonify({"ok": False,
+                                "error": f"{_name!r} is not a transport "
+                                         f"parameter"}), 400
+            if _name in SEALED_TRANSPORT_FIELDS:
+                return jsonify({"ok": False,
+                                "error": f"{_name!r} is the citation's "
+                                         f"to say (the electronic "
+                                         f"contract arrives from the "
+                                         f"cited junction's own deck) "
+                                         f"or the description's own "
+                                         f"field -- reset it in the "
+                                         f"form; cite a junction that "
+                                         f"ran with the values you "
+                                         f"want"}), 400
+        typed = str(body.get("name") or "") or "transport"
+
+        from molbuilder.projects import projects_root
+        from molbuilder.task import Stage, Task, derive_run
+        from molbuilder.transport.compose import (ComposeError,
+                                                  resolve_citation)
+        from molbuilder.transport.stages import TRANSPORT_STAGES
+
+        # The SAME two validators the CLI's init uses: the codec refuses
+        # a malformed citation / bias, and the compose door refuses one
+        # the tree does not hold -- one vocabulary, both surfaces.
+        try:
+            resolve_citation(citation, projects_root())
+        except ComposeError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        try:
+            task = Task(
+                engine="siesta", shape="hierarchical",
+                run=derive_run(typed, citation,
+                               stage_names=TRANSPORT_STAGES),
+                structure=None, calculation="transport",
+                slots={"junction": citation}, bias=bias,
+                # the stages.md 6.2 rule holds here too: an override
+                # names a PROMOTED field, and `varies` is the promotion
+                varies=tuple(sorted(overrides)),
+                stages=tuple(Stage(name=n, enabled=True,
+                                   overrides=(dict(overrides)
+                                              if n == "device" else {}))
+                             for n in TRANSPORT_STAGES))
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+        handover = {
+            "schema": TASK_HANDOVER_SCHEMA,
+            "_what": "A hand-over from the Transport tab, not a "
+                     "description.  It carries the COMPOSITE: the "
+                     "junction citation (the relaxed attempt everything "
+                     "else derives from), the bias list, and the "
+                     "transport-only knobs as stage overrides.  It is "
+                     "deliberately missing nothing structural -- the "
+                     "five stages are fixed by design and the shape is "
+                     "hierarchical -- so Task setup shows it for review "
+                     "(allocation, notify, the seed's enabled flag) and "
+                     "on save writes the real task.json and deletes "
+                     "this file.  There is no template and no structure "
+                     "file: the electronic contract arrives at prep "
+                     "from the cited attempt's own .fdf.",
+            "engine": {"name": "siesta"},
+            "run": {"name": typed, "id": task.run.id,
+                    "created": datetime.now().astimezone()
+                    .isoformat(timespec="seconds")},
+            "calculation": "transport",
+            "slots": {"junction": citation},
+            "bias": {"voltages_v": list(bias)},
+            "overrides": dict(overrides),
+            "awaiting": [],
+        }
+        return jsonify({
+            "ok": True,
+            "label": task.label,
+            "template_name": None,
+            "template_text": None,
+            "handover_name": TASK_HANDOVER_NAME,
+            "handover_text": json.dumps(handover, indent=2) + "\n",
+            "structure_files": [],
+            "notices": [],
+        })
+
 
     try:
         struct = _struct_from_body(body)

@@ -176,10 +176,13 @@ const WORKSPACE_TAG = "transport";
     // rebuilds the Structure from that one object (`_shared.struct_from_body`)
     // and the model validates the indices itself (`Structure._validate_regions`).
 
-    function _refreshGenerateButton() {
-        var btn = _$("transport-generate-btn");
+    /* The composite's send gate: a citation is the ONE thing the
+     * describe cannot go without (transport-design.md 4.1) -- the
+     * structure viewer above is an inspection aid, not an input. */
+    function _refreshSendButton() {
+        var btn = _$("transport-send-btn");
         if (!btn) return;
-        btn.disabled = !_currentStructureFile;
+        btn.disabled = !_junction;
     }
 
     function _refreshAutoDetectButton() {
@@ -281,10 +284,9 @@ const WORKSPACE_TAG = "transport";
                     if (!f) return;
                     _currentStructureFile = f;
                     _setCurrentStructureReadout(f);
-                    _refreshGenerateButton();
                     _refreshAutoDetectButton();
                     _setStatus("Restored your last session: "
-                        + f.split("/").pop() + " -- Generate enabled.");
+                        + f.split("/").pop() + ".");
                 });
         }).catch(function (e) {
             if (root.console) {
@@ -386,11 +388,10 @@ const WORKSPACE_TAG = "transport";
                 // sidecarLabels.fetch, no path-pointer indirection.
                 _showInMolview(f);
                 _setCurrentStructureReadout(f);
-                _refreshGenerateButton();
                 _refreshAutoDetectButton();
                 var name = f.split("/").pop();
-                _setStatus("Structure: " + name
-                    + " — Generate enabled.");
+                _setStatus("Structure: " + name + " — inspect it here; "
+                    + "the composite cites a finished attempt below.");
                 // Phase 3-style auto-analyze: surface chemistry
                 // conclusions on commit so users see the open-
                 // shell-metal warn BEFORE clicking Generate.
@@ -551,159 +552,161 @@ const WORKSPACE_TAG = "transport";
 
     // ---------- Generate handler (Phase B.3 step 2) ---------- //
 
-    /**
-     * Render the issues list returned by /api/transport/render.
-     * Severity-colored bullets matching the SIESTA + spectra
-     * panels.  textContent on every node so unsanitised server
-     * strings don't leak as HTML (XSS guard).
-     */
-    function _renderIssues(issues) {
-        var f = (window.molbuilder || {}).validationFindings;
-        if (!f) return;
-        // ONE renderer for the whole app (contract R2).  The copy that lived
-        // here returned early when the residual markup was missing -- which
-        // also skipped clearing the per-card panels, so stale findings
-        // survived a re-Generate -- and bucketed by a bare object, so a group
-        // named "constructor" threw.  Both are gone with the copy.
-        f.render(issues, {
-            panel:     _$("transport-issues"),
-            formScope: _$("transport-form-container"),
-        });
+    /* =================================================================
+     *  The COMPOSITE (P7b, transport-design.md § 4.1): cite the
+     *  junction, state the bias, hand over -- the tab describes and
+     *  Task setup saves; nothing renders here.
+     * ================================================================= */
+
+    var _junction = "";        // the citation string, "" until chosen
+
+    /** tree-relative path -> the citation spelling
+     *  (project/topic/calc @ stage/run-N -- the calculation is depth 3,
+     *  the same rule the send door's own depth guard measures). */
+    function _citationFromRel(rel) {
+        var seg = String(rel || "").split("/").filter(Boolean);
+        if (seg.length < 4) return "";
+        return seg.slice(0, 3).join("/") + "@" + seg.slice(3).join("/");
     }
 
-    /**
-     * Show the generated script in a <pre> with copy + download
-     * affordances.  Single-file preview today (transiesta is
-     * one .fdf per click); multi-file output (electrode wizard,
-     * bias-scan driver) will need a different layout.
-     */
-    function _showScriptPreview(filename, scriptText) {
-        var details = _$("transport-script-preview");
-        var name    = _$("transport-script-filename");
-        var body    = _$("transport-script-body");
-        var dl      = _$("transport-download-link");
-        if (!details || !name || !body || !dl) return;
-        name.textContent = filename;
-        body.textContent = scriptText;
-        var blob = new Blob([scriptText], { type: "text/plain" });
-        var url  = URL.createObjectURL(blob);
-        // Revoke any previous URL we created for the download link.
-        if (dl.dataset.objectUrl) {
-            try { URL.revokeObjectURL(dl.dataset.objectUrl); }
-            catch (_) {}
-        }
-        dl.href = url;
-        dl.download = filename;
-        dl.dataset.objectUrl = url;
-        details.hidden = false;
-        details.open = true;
-    }
-
-    function _wireCopyButton() {
-        var btn = _$("transport-copy-btn");
+    function _wireJunctionPicker() {
+        var btn = _$("transport-junction-btn");
         if (!btn) return;
         btn.addEventListener("click", function () {
-            var body = _$("transport-script-body");
-            if (!body) return;
-            var text = body.textContent;
-            if (!text) return;
-            if (root.navigator && root.navigator.clipboard
-                && root.navigator.clipboard.writeText) {
-                root.navigator.clipboard.writeText(text)
-                    .then(function () { _setStatus("Copied to clipboard."); })
-                    .catch(function () {
-                        _setStatus("Copy failed — select the text manually.");
-                    });
-            } else {
-                _setStatus("Clipboard API unavailable; "
-                           + "select the text manually.");
-            }
-        });
-    }
-
-    function _wireGenerateButton(formContainer) {
-        var btn = _$("transport-generate-btn");
-        if (!btn) return;
-        btn.addEventListener("click", function () {
-            if (!_currentStructureFile) return;
-            var fs = root.molbuilder && root.molbuilder.formSchema;
-            if (!fs || typeof fs.collectForm !== "function") return;
-            var schema = root.__transport_schema_for_test
-                || _cachedSchema;
-            if (!schema) return;
-            var params;
-            try { params = fs.collectForm(formContainer, schema); }
-            catch (e) {
-                _setStatus("Form has invalid values — fix them and retry.");
-                return;
-            }
-            btn.disabled = true;
-            _setStatus("Generating…");
-            /* ASKED FOR, NOT ASSEMBLED — the move /structure-optimization and
-             * /spectrum-calculation already made.  `exportFile()` returns the
-             * atoms, their positions at the displayed frame, the labels and the
-             * cell, read TOGETHER in one go (molview.md § 9.3a: "this is what a
-             * request body carries; a tab never assembles one").
-             *
-             * A second place labels can arrive from is a place they can be
-             * dropped from without a word (#41), so there is one read here and
-             * the tab assembles nothing.
-             *
-             * `structure_path` still ships, but ONLY as provenance — which file
-             * this came from, so a message about it can say which.  Nothing is
-             * read from it, so there is no second copy to reconcile.
-             *
-             * "Is there a structure?" is a null answer from the read — with
-             * nothing loaded a read answers nothing, which is a different answer
-             * from a structure with no atoms (molview.md § 9.3). */
-            var _mvData = (_mvHandle && _mvHandle.ok) ? _mvHandle.data : null;
-            var _out    = _mvData ? _mvData.exportFile() : null;
-            if (!_out || !_out.structure) {
-                _setStatus("Load a structure before generating.");
-                btn.disabled = false;
-                return;
-            }
-            var _genBody = {
-                params:         params,
-                structure:      _out.structure,
-                structure_path: _currentStructureFile,
-            };
-            root.fetch("/api/transport/render", {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify(_genBody),
-            })
-                .then(function (r) {
-                    return r.json().then(function (body) {
-                        return { status: r.status, body: body };
-                    });
-                })
-                .then(function (resp) {
-                    var b = resp.body;
-                    _renderIssues(b && b.issues);
-                    if (!b || !b.ok) {
-                        _setStatus(b && b.error
-                            ? b.error
-                            : "Generate failed (HTTP " + resp.status + ").");
-                        // Re-enable if the structure is still loaded;
-                        // the user can fix params + retry.
-                        _refreshGenerateButton();
-                        return;
-                    }
-                    _showScriptPreview(b.filename, b.script);
-                    _setStatus("Generated " + b.filename + ".");
-                    _refreshGenerateButton();
-                    // Form-dirty cleared: the parameter edits made
-                    // it into the rendered .fdf, so a subsequent
-                    // sidebar swap no longer needs to gate on the
-                    // unsaved-modifications modal.
-                    _formDirty = false;
-                })
-                .catch(function (e) {
-                    _setStatus("Network error: "
-                        + (e && e.message ? e.message : String(e)));
-                    _refreshGenerateButton();
+            var proj = root.molbuilder && root.molbuilder.projects;
+            /* THE one pop-out picker (lib/tree-picker.js): only run-N
+             * attempt directories can be the answer, and the meta line
+             * is the attempt's own .fdf -- the deck that actually ran
+             * is the truth about a result (user, 2026-08-28). */
+            import("../tree-picker.js").then(function (mod) {
+                return mod.pickPath({
+                    title: "Cite the relaxed junction",
+                    hint: "Walk to the junction relaxation's finished "
+                        + "attempt (a run-N folder).  \u25b8 expands.",
+                    mode: "dir",
+                    pickable: function (entry) {
+                        return /^run-\d+$/.test(entry.name || "");
+                    },
+                    describe: function (path) {
+                        var rel = (proj && proj.relativeToProjects)
+                            ? proj.relativeToProjects(path) : path;
+                        return root.fetch(
+                            "/api/transport/describe_attempt?path="
+                            + encodeURIComponent(rel))
+                            .then(function (r) { return r.json(); })
+                            .then(function (b) {
+                                if (!b || b.ok === false) {
+                                    throw new Error(
+                                        (b && b.error) || "unreadable");
+                                }
+                                return b.summary || "";
+                            });
+                    },
+                    confirmLabel: "Cite this attempt",
                 });
+            }).then(function (picked) {
+                if (!picked) return;
+                var proj = root.molbuilder && root.molbuilder.projects;
+                var rel = (proj && proj.relativeToProjects)
+                    ? proj.relativeToProjects(picked) : picked;
+                var cite = _citationFromRel(rel);
+                if (!cite) {
+                    _setSendStatus("That folder is not an attempt inside "
+                        + "a calculation (project/topic/calc/.../run-N).");
+                    return;
+                }
+                _junction = cite;
+                var out = _$("transport-junction-readout");
+                if (out) out.textContent = cite;
+                var meta = _$("transport-junction-meta");
+                if (meta) {
+                    meta.hidden = false;
+                    meta.textContent = "Reading the attempt\u2019s own "
+                        + ".fdf\u2026";
+                    root.fetch("/api/transport/describe_attempt?path="
+                               + encodeURIComponent(rel.replace(/^\/+/, "")))
+                        .then(function (r) { return r.json(); })
+                        .then(function (b) {
+                            meta.textContent = (b && b.summary)
+                                ? b.summary
+                                : ((b && b.error) || "");
+                        })
+                        .catch(function () { meta.textContent = ""; });
+                }
+                _refreshSendButton();
+            }).catch(function (e) {
+                _setSendStatus("Picker failed: "
+                    + (e && e.message ? e.message : String(e)));
+            });
+        });
+    }
+
+    function _setSendStatus(msg) {
+        var el = _$("transport-send-status");
+        if (el) el.textContent = msg || "";
+    }
+
+    /** The transport-only knobs: fields whose value differs from the
+     *  schema default.  The server refuses a sealed one BY NAME (the
+     *  electronic contract is the citation's to say), so an untouched
+     *  form sends nothing and a touched contract field gets a clear
+     *  answer instead of a silent drop. */
+    function _changedFields(formContainer) {
+        var fs = root.molbuilder && root.molbuilder.formSchema;
+        var schema = _cachedSchema;
+        if (!fs || !schema || typeof fs.collectForm !== "function") {
+            return {};
+        }
+        var values;
+        try { values = fs.collectForm(formContainer, schema); }
+        catch (e) { return null; }        // invalid form: the caller says so
+        var defaults = {};
+        (schema.sections || []).forEach(function (s) {
+            (s.fields || []).forEach(function (f) {
+                defaults[f.name] = f.default;
+            });
+        });
+        var out = {};
+        Object.keys(values || {}).forEach(function (k) {
+            var v = values[k];
+            var d = defaults[k];
+            if (JSON.stringify(v) !== JSON.stringify(d)) out[k] = v;
+        });
+        return out;
+    }
+
+    function _wireSendButton(formContainer) {
+        var btn = _$("transport-send-btn");
+        if (!btn) return;
+        btn.addEventListener("click", function () {
+            var mb = root.molbuilder || {};
+            if (!mb.taskHandover) {
+                _setSendStatus("lib/task-handover.js is not loaded.");
+                return;
+            }
+            var bias = String((_$("transport-bias") || {}).value || "0.0")
+                .split(",").map(function (s) { return s.trim(); })
+                .filter(Boolean).map(Number);
+            if (bias.some(isNaN)) {
+                _setSendStatus("Bias must be comma-separated volts, "
+                    + "e.g. 0.0,0.2");
+                return;
+            }
+            var overrides = _changedFields(formContainer);
+            if (overrides === null) {
+                _setSendStatus("Form has invalid values — fix them "
+                    + "and retry.");
+                return;
+            }
+            mb.taskHandover.send({
+                projects: mb.projects,
+                say: function (kind, msg) { _setSendStatus(msg); },
+                engine: "siesta",
+                calculation: "transport",
+                junction: _junction,
+                bias: bias,
+                overrides: overrides,
+            });
         });
     }
 
@@ -729,10 +732,10 @@ const WORKSPACE_TAG = "transport";
         _fetchAndRender(formContainer, formSchema);
         _wireCommitChannel();
         _restoreSession();
-        _wireGenerateButton(formContainer);
-        _wireCopyButton();
+        _wireJunctionPicker();
+        _wireSendButton(formContainer);
         _wireAutoDetectButton();
-        _refreshGenerateButton();
+        _refreshSendButton();
         _refreshAutoDetectButton();
         _setCurrentStructureReadout("");
     }

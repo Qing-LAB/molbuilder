@@ -295,12 +295,8 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
         raise click.ClickException(
             f"transport is SIESTA-first (TranSIESTA); engine {engine!r} "
             f"has no transport ladder yet.")
-    if shape != "hierarchical":
-        raise click.ClickException(
-            f"a transport calculation is hierarchical: its five stages "
-            f"exchange files through their own attempts (the § 4.2 "
-            f"gather), which the {shape!r} shape has no directories to "
-            f"hold.  Drop --shape or pass hierarchical.")
+    # shape: the codec owns the transport==hierarchical pairing (task.py
+    # __post_init__); the Task construction below surfaces it by name.
 
     slots = {}
     for entry in slots_opt:

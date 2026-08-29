@@ -49,6 +49,19 @@ class StageError(Exception):
     stage and what blocks it, ready to surface verbatim."""
 
 
+#: The TransportConfig fields a stage override may NOT set — the
+#: electronic contract is the citation's to say (ruling Q5: electrode
+#: and device must stay unable to disagree), the bias axis is
+#: ``task.bias``'s, the identity the task's.  ONE spelling: `config_for`
+#: refuses on it at prep, and the web hand-over refuses on it at send —
+#: same set, same reason, both name the field.
+SEALED_TRANSPORT_FIELDS = frozenset({
+    "engine", "job_name", "bias_voltages_v",
+    "basis_size", "energy_shift_ry", "xc_functional", "xc_authors",
+    "siesta_mesh_cutoff_ry", "k_mesh_transverse",
+    "electronic_temperature_k"})
+
+
 def bias_token(v: float) -> str:
     """The ONE spelling of a bias point's directory name — ``v0``,
     ``v0.2``, ``v-0.5`` (user ruling 2026-08-29: plain v-dirs, production
@@ -158,6 +171,35 @@ def config_for(task, composed: ComposedJunction) -> TransportConfig:
         kw["xc_authors"] = str(fdf.xc_authors)
     if getattr(fdf, "electronic_temperature_k", None):
         kw["electronic_temperature_k"] = float(fdf.electronic_temperature_k)
+    # THE TRANSPORT-ONLY KNOBS (transmission window/grid, contour,
+    # electrode kz-adjacent fields) travel as STAGE OVERRIDES in
+    # task.json -- the composite has no template, so the stages' own
+    # override bags are the description's one place for them (P7b,
+    # 2026-08-29; the Transport tab writes them there).  All five bags
+    # merge in ladder order into the ONE config every deck renders
+    # from; an unknown name refuses here, before anything renders.
+    import dataclasses as _dc
+    known = {f.name for f in _dc.fields(TransportConfig)}
+    # What remains after SEALED_TRANSPORT_FIELDS IS the transport-only
+    # vocabulary (window, grid, contour, runtime).
+    for stage in (task.stages or ()):
+        for name, value in (stage.overrides or {}).items():
+            if name not in known:
+                raise StageError(
+                    f"stage {stage.name!r} overrides {name!r}, which is "
+                    f"not a transport parameter (TransportConfig field "
+                    f"names are the vocabulary; transport-design.md "
+                    f"4.2).")
+            if name in SEALED_TRANSPORT_FIELDS:
+                raise StageError(
+                    f"stage {stage.name!r} overrides {name!r}, which is "
+                    f"the citation's to say (ruling Q5: the electronic "
+                    f"contract arrives from the cited junction's own "
+                    f"deck, so electrode and device cannot disagree) or "
+                    f"the description's own field (bias, identity).  "
+                    f"Cite a junction that ran with the values you "
+                    f"want.")
+            kw[name] = value
     return TransportConfig(
         engine="transiesta",
         job_name=task.label,

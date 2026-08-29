@@ -1238,7 +1238,10 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         raise PrepError(str(exc)) from exc
 
     # ---- 3b. the one config, and the data files ------------------------ #
-    cfg = config_for(task, composed)
+    try:
+        cfg = config_for(task, composed)
+    except StageError as exc:
+        raise PrepError(str(exc)) from exc
     _transport_provide_pseudos(composed.sorted.structure, cfg, base,
                                citation)
 

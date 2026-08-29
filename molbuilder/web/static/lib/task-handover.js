@@ -9,6 +9,11 @@
  * Consumers:
  *   * structure-optimization/viewer.js  -- engine siesta|pyscf, optimization
  *   * lib/spectra/core.js               -- engine pyscf, calculation vibration
+ *   * lib/transport/core.js             -- engine siesta, calculation
+ *     transport (P7b): NO structure/params -- `junction` (the citation),
+ *     `bias` (volts, 0.0 first) and `overrides` (transport-only knobs)
+ *     ride instead, and the answer is ONE file (floor 2 = task.json
+ *     alone; transport-design.md 4.1)
  *
  * Classic script on the `window.molbuilder` namespace (same loading
  * pattern as lib/form-schema.js) so both a classic-script consumer
@@ -25,6 +30,9 @@
  *     engine,       // "siesta" | "pyscf"
  *     params,       // collectForm() output, keyed by catalogue names
  *     calculation,  // optional; omitted or "optimization" sends none
+ *     junction,     // transport only: the citation string
+ *     bias,         // transport only: [volts...], 0.0 first
+ *     overrides,    // transport only: {TransportConfig field: value}
  *   })
  */
 (function () {
@@ -46,9 +54,19 @@
             return;
         }
         const structure = o.structure;
-        if (!structure) {
+        const isTransport = o.calculation === "transport";
+        /* The transport composite carries NO structure -- its structure
+         * IS the junction citation, copied in at prep
+         * (transport-design.md 4.1).  Every other kind is OF a
+         * structure and must bring one. */
+        if (!structure && !isTransport) {
             say("warn", "Load a structure first — a description is "
                 + "of something.");
+            return;
+        }
+        if (isTransport && !o.junction) {
+            say("warn", "Pick the relaxed junction's attempt first — "
+                + "the composite derives everything from that citation.");
             return;
         }
         /* A CALCULATION LIVES UNDER A TOPIC (`job-contracts.md` § 2.5): the
@@ -107,9 +125,7 @@
 
         say("muted", "Rendering…");
         const req = {
-            structure: structure,
             engine:    o.engine,
-            params:    o.params || {},
             name:      (dest.split("/").filter(Boolean).pop() || ""),
             // No `structure_path`.  It used to send the projects
             // sidebar's selected file, which is a SECOND fact read at a
@@ -124,6 +140,14 @@
          * § 6: absent = optimization). */
         if (o.calculation && o.calculation !== "optimization") {
             req.calculation = o.calculation;
+        }
+        if (isTransport) {
+            req.junction  = o.junction;
+            req.bias      = o.bias || [0.0];
+            req.overrides = o.overrides || {};
+        } else {
+            req.structure = structure;
+            req.params    = o.params || {};
         }
         let out;
         try {
@@ -155,7 +179,11 @@
         const parts = (out.structure_files || []).map((f) => [f.name, f.text]);
         parts.push([out.template_name, out.template_text],
                    [out.handover_name, out.handover_text]);
-        for (const [name, text] of parts) {
+        /* A transport hand-over is ONE file (floor 2 = task.json alone):
+         * the server answers null for the template it does not have, and
+         * a null is nothing to write, not a file named "null". */
+        const toWrite = parts.filter(([n, x]) => n && typeof x === "string");
+        for (const [name, text] of toWrite) {
             // safeSave(TEXT, FILENAME, opts) -- text first.
             const wrote = await projects.safeSave(text, name, { overwrite: true })
                 .catch((e) => ({ ok: false, error: String(e && e.message || e) }));
@@ -169,7 +197,7 @@
                 return;
             }
         }
-        const written = parts.map(([n]) => n);
+        const written = toWrite.map(([n]) => n);
 
         /* WHAT THE CELL GATE SAID.  The same gate every structure door runs
          * answers with notices as well as refusals: a refusal is the 400 above,

@@ -1385,7 +1385,9 @@ def test_the_cell_gate_s_notices_reach_the_person():
     parameters.  It holds back the NAVIGATION, because a page that jumps to the
     next tab is a page whose warning was never read."""
     src = (ROOT / "molbuilder/web/static/lib/task-handover.js").read_text()
-    body = src.split("const written = parts.map", 1)[1]
+    # anchored after the write loop; `toWrite` is the null-filtered list
+    # (a transport hand-over is ONE file, P7b)
+    body = src.split("const written = toWrite.map", 1)[1]
     assert "out.notices" in body, "the gate's notices are still dropped"
     i_notice = body.index("out.notices")
     i_nav = body.index('window.location.href = "/task-setup"')
@@ -2098,3 +2100,169 @@ def test_every_page_class_in_the_markup_is_styled_somewhere():
         f"class(es) in task_setup.html that no stylesheet and no script "
         f"ever names: {orphans}. A class matching nothing applies nothing, "
         f"and says so nowhere.")
+
+
+# --------------------------------------------------------------------- #
+#  The TRANSPORT hand-over (transport-design.md § 4.1, P7b) +           #
+#  the slot picker's describe seam                                      #
+# --------------------------------------------------------------------- #
+
+_T_CITE = "_t_transport/optimization/Relax@01_only/run-0"
+
+
+def _cited_junction(*, concluded=True):
+    """A minimal cited calculation inside the configured root: the
+    citation resolver checks task.json + the attempt dir; the describe
+    seam reads the attempt's own deck + the conclusion marker."""
+    calc = ROOT / "projects/_t_transport/optimization/Relax"
+    attempt = calc / "01_only" / "run-0"
+    attempt.mkdir(parents=True, exist_ok=True)
+    (calc / "task.json").write_text("{}")
+    (attempt / "Relax_01_only.fdf").write_text(
+        "SystemLabel Relax\nMeshCutoff 250.0 Ry\nPAO.BasisSize SZ\n"
+        "XC.functional GGA\nXC.authors PBE\n")
+    if concluded:
+        (attempt / "Relax_01_only-run0.concluded").write_text("rc=0\n")
+    return calc
+
+
+def test_transport_handover_is_one_file(web_client):
+    """Floor 2 is task.json alone, and the hand-over says so: no
+    template, no structure pair -- one file carrying the citation, the
+    bias, and the knobs as the device stage's overrides."""
+    _cited_junction()
+    try:
+        r = web_client.post("/api/task-setup/handover", json=dict(
+            engine="siesta", calculation="transport", name="T",
+            junction=_T_CITE, bias=[0.0, 0.2],
+            overrides={"transmission_n_points": 101}))
+        assert r.status_code == 200, r.get_json()
+        out = r.get_json()
+        assert out["ok"] is True
+        assert out["template_text"] is None
+        assert out["structure_files"] == []
+        h = _json.loads(out["handover_text"])
+        assert h["calculation"] == "transport"
+        assert h["slots"] == {"junction": _T_CITE}
+        assert h["bias"] == {"voltages_v": [0.0, 0.2]}
+        assert h["overrides"] == {"transmission_n_points": 101}
+        assert h["awaiting"] == [], (
+            "nothing structural is missing -- the stages are fixed")
+        # the id is FINAL (the stages are fixed, so it never re-derives)
+        from molbuilder.identity import run_id
+        from molbuilder.transport.stages import TRANSPORT_STAGES
+        assert h["run"]["id"] == run_id("T", _T_CITE,
+                                        stage_names=TRANSPORT_STAGES)
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_transport",
+                       ignore_errors=True)
+
+
+def test_transport_handover_refuses_a_citation_the_tree_lacks(web_client):
+    r = web_client.post("/api/task-setup/handover", json=dict(
+        engine="siesta", calculation="transport", name="T",
+        junction="_t_nope/optimization/Gone@run-0", bias=[0.0]))
+    assert r.status_code == 400
+    assert "task.json" in r.get_json()["error"]
+
+
+def test_transport_handover_refuses_a_bias_off_equilibrium(web_client):
+    _cited_junction()
+    try:
+        r = web_client.post("/api/task-setup/handover", json=dict(
+            engine="siesta", calculation="transport", name="T",
+            junction=_T_CITE, bias=[0.2, 0.4]))
+        assert r.status_code == 400
+        assert "0.0" in r.get_json()["error"]
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_transport",
+                       ignore_errors=True)
+
+
+def test_describe_attempt_reads_the_attempts_own_deck(web_client):
+    """The describe seam: fdf-is-truth, plus the honest concluded
+    line."""
+    _cited_junction()
+    try:
+        r = web_client.get("/api/transport/describe_attempt?path="
+                           "_t_transport/optimization/Relax/01_only/run-0")
+        assert r.status_code == 200, r.get_json()
+        out = r.get_json()
+        assert out["ok"] and out["concluded"] is True
+        assert "SZ" in out["summary"] and "250" in out["summary"]
+        assert "CONCLUDED (rc=0)" in out["summary"]
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_transport",
+                       ignore_errors=True)
+
+
+def test_describe_attempt_names_both_unconcluded_states(web_client):
+    _cited_junction(concluded=False)
+    try:
+        r = web_client.get("/api/transport/describe_attempt?path="
+                           "_t_transport/optimization/Relax/01_only/run-0")
+        out = r.get_json()
+        assert out["concluded"] is False
+        assert "still running" in out["summary"]
+        assert "force-stopped" in out["summary"]
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_transport",
+                       ignore_errors=True)
+
+
+def test_describe_attempt_stays_inside_the_tree(web_client):
+    r = web_client.get("/api/transport/describe_attempt?path=../../etc")
+    assert r.status_code == 400
+
+
+import re as _re
+
+
+def test_the_viewer_proposes_the_transport_composite():
+    """`proposedFromHandover`'s transport arm (P7b): five fixed stages,
+    no structure key, the citation + bias carried through, the knobs on
+    the device stage's override bag promoted via `varies` -- and the
+    shape answered rather than asked (the codec's pairing rule)."""
+    src = (ROOT / "molbuilder/web/static/task-setup/viewer.js").read_text()
+    arm = src.split('if (kind === "transport")', 1)
+    assert len(arm) == 2, "the transport arm is gone from the proposal"
+    body = arm[1].split("const stages = kind ===", 1)[0]
+    for stage in ("seed", "electrode_L", "electrode_R",
+                  "device", "transmission"):
+        assert f'"{stage}"' in body
+    assert '"hierarchical"' in body
+    # CODE, not prose -- the comment names the retired key to say why.
+    code = _re.sub(r"/\*.*?\*/", "", body, flags=_re.S)
+    code = _re.sub(r"^\s*//.*$", "", code, flags=_re.M)
+    assert "structure" not in code, (
+        "a transport proposal must not carry a structure key")
+    assert "Object.keys(overrides).sort()" in body, (
+        "the override names are promoted through varies (stages.md 6.2)")
+    assert '_shape = "hierarchical"' in src, (
+        "one shape is not a question -- the load path answers it")
+
+
+def test_the_transport_page_loads_the_handover_door():
+    """Found live 2026-08-29: the composite card's Send said
+    'lib/task-handover.js is not loaded' because the template never
+    included the door the other two sender tabs load."""
+    tpl = (ROOT / "molbuilder/web/templates/transport_calculation.html"
+           ).read_text()
+    assert "lib/task-handover.js" in tpl
+
+
+def test_transport_handover_refuses_a_sealed_override_by_name(web_client):
+    """The electronic contract is the citation's to say (ruling Q5) --
+    refused at the SEND door, from the same constant prep refuses from,
+    while changing it is still free."""
+    _cited_junction()
+    try:
+        r = web_client.post("/api/task-setup/handover", json=dict(
+            engine="siesta", calculation="transport", name="T",
+            junction=_T_CITE, bias=[0.0],
+            overrides={"basis_size": "DZP"}))
+        assert r.status_code == 400
+        assert "citation's to say" in r.get_json()["error"]
+    finally:
+        _shutil.rmtree(ROOT / "projects/_t_transport",
+                       ignore_errors=True)

@@ -44,6 +44,79 @@ bp = Blueprint("transport", __name__)
 
 
 # ===================================================================== #
+# /api/transport/describe_attempt  --  the slot picker's describe seam  #
+# ===================================================================== #
+
+
+@bp.route("/api/transport/describe_attempt", methods=["GET"])
+def api_transport_describe_attempt() -> Any:
+    """One line about a cited attempt, FROM ITS OWN ``.fdf`` — the deck
+    that actually ran is the truth about a result (user ruling
+    2026-08-28), and this is the `describe` seam the shared tree-picker
+    feeds on when the Transport tab picks the junction slot (P7).
+
+    ``?path=`` is tree-relative (the same path language every citation
+    speaks).  The answer is honest about the two states that matter:
+    CONCLUDED or not (still running and force-stopped look identical on
+    disk, and this endpoint never decides), and the electronic contract
+    the composite would inherit.
+    """
+    from pathlib import Path
+
+    from molbuilder.jobset.materialize import attempt_concluded
+    from molbuilder.projects import OutsideRoot, contain, projects_root
+    from molbuilder.transport.preflight import parse_fdf_params
+
+    raw = str(request.args.get("path") or "")
+    if not raw:
+        return jsonify({"ok": False, "error": "no path given"}), 400
+    root = Path(projects_root()).resolve()
+    try:
+        attempt = contain(root / raw, root)
+    except OutsideRoot as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if not attempt.is_dir():
+        return jsonify({"ok": False,
+                        "error": f"{raw} is not a directory"}), 404
+    decks = sorted(attempt.glob("*.fdf"))
+    if not decks:
+        return jsonify({"ok": False,
+                        "error": "no .fdf in this attempt -- it was "
+                                 "never prepped, so it cannot be "
+                                 "cited"}), 404
+    deck = decks[0]
+    concluded = attempt_concluded(attempt, deck.stem)
+    p = parse_fdf_params(deck.read_text())
+    bits = []
+    if p.basis_size:
+        bits.append(str(p.basis_size))
+    if p.mesh_cutoff_ry:
+        bits.append(f"{p.mesh_cutoff_ry:g} Ry")
+    if p.xc:
+        bits.append(str(p.xc))
+    if p.kgrid:
+        bits.append("k " + "x".join(str(k) for k in p.kgrid))
+    if p.n_atoms:
+        bits.append(f"{p.n_atoms} atoms")
+    status = (f"CONCLUDED ({concluded.strip()})" if concluded
+              else "NOT CONCLUDED -- still running, or force-stopped "
+                   "(the two look identical on disk)")
+    return jsonify({
+        "ok": True,
+        "concluded": bool(concluded),
+        "summary": status + (" · " + " · ".join(bits) if bits else ""),
+        "deck": deck.name,
+        "params": {
+            "basis_size": p.basis_size,
+            "mesh_cutoff_ry": p.mesh_cutoff_ry,
+            "xc": p.xc,
+            "kgrid": list(p.kgrid) if p.kgrid else None,
+            "n_atoms": p.n_atoms,
+        },
+    })
+
+
+# ===================================================================== #
 # /api/transport/schema  --  form schema endpoint                       #
 # ===================================================================== #
 

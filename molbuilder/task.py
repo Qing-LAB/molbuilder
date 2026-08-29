@@ -375,6 +375,13 @@ class Task:
                     "task: a transport calculation carries no 'structure' "
                     "block -- its structure IS the junction citation, "
                     "copied in at prep (plans/transport-design.md 4.1)")
+            if self.shape != "hierarchical":
+                raise ValueError(
+                    f"task: a transport calculation is hierarchical "
+                    f"(got {self.shape!r}) -- its five stages exchange "
+                    f"files through their own attempts, which the flat "
+                    f"shape has no directories to hold "
+                    f"(plans/transport-design.md 4.2)")
         else:
             if self.slots:
                 raise ValueError(

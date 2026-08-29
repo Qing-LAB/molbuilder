@@ -48,16 +48,16 @@ open work against rule R3 — it carries its own progress table.)
 > Sol) is what remains of it.
 >
 > **Transport MIGRATED (2026-08-28/29)** — the composite
-> ([`plans/transport-design.md`](?doc=plans/transport-design.md), P1–P6
-> built and proven end-to-end on real binaries; the `transport bundle`
-> driver deleted with P7's retirement half).  It migrated exactly as the
+> ([`plans/transport-design.md`](?doc=plans/transport-design.md), P1–P7
+> built and proven end-to-end on real binaries and in the browser lane;
+> the `transport bundle` driver deleted).  It migrated exactly as the
 > 2026-08-11 decision demanded: a different KIND of job — one answer
 > assembled from pieces — given a first-class representation
 > (`--calculation transport`, one citation, five derived stages through
 > the ordinary verbs), not bent into a ladder.  (Spectra migrated
 > 2026-08: the vibration deck is a calculation kind of the PySCF
-> engine — § "Spectra: migrated" below.)  What remains of transport is
-> the TAB rewire (P7's UI half) and the first real junction on Sol.
+> engine — § "Spectra: migrated" below.)  The § 7 board is COMPLETE;
+> what remains is the first real junction (BDT–Au, then Sol).
 
 ## 0. The immediate two  *(user, 2026-08-19 — **both delivered the same
 day**)*
@@ -174,7 +174,7 @@ each with its recorded home)*:
 | deferred | until |
 |---|---|
 | **the remote-HPC proof** (D7's cluster half: the described route through SLURM on Sol) | **after the immediate two** |
-| **the transport TAB rewire** (P7's UI half: describe the composite — slot picking through the shared tree-picker, bias + transport fields — and hand over like every other tab; the backend half of the migration landed 2026-08-28/29) | **in flight — the last transport step** |
+| ~~the transport TAB rewire~~ **landed 2026-08-29** (P7b: the tab describes the composite — tree-picker slot selection with the fdf `describe` seam, bias + knob overrides through the one hand-over door — and Task setup saves the transport description; verified end-to-end in the browser lane) | **done — the transport board (transport-design.md § 7) is complete** |
 
 ---
 
