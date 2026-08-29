@@ -9,17 +9,15 @@ emitter transport extends); [`model/structure-annotations.md`](?doc=model/struct
 the leads need); [`engines/overview.md`](?doc=engines/overview.md) (the shared
 engine contract).
 
-> **⚠ Migration status (2026-08-19, user).** This workflow is
-> **pre-framework**: it has NOT migrated onto the described route
-> (describe → `prep` → `launch`) that structure optimization now runs end to
-> end. It is deliberately untouched until that loop is fully verified — the
-> statement of record is the migration box at the top of
-> [`roadmap.md`](?doc=roadmap.md). Two facts, kept distinct: transport is
-> *unmigrated* (this banner), **and** it is a **different KIND of job** —
-> three coupled runs, one answer assembled from pieces
-> ([`execution/architecture.md § 0`](?doc=execution/architecture.md), decided
-> 2026-08-11) — so migrating it means giving that kind a representation,
-> not bending it into a ladder. § 8 states exactly what it costs today.
+> **Migration status — LANDED (2026-08-28/29).** Transport is a
+> **different KIND of job** — one answer assembled from pieces
+> ([`execution/architecture.md § 0`](?doc=execution/architecture.md),
+> decided 2026-08-11) — and the composite is that kind given its own
+> representation rather than bent into a ladder:
+> [`plans/transport-design.md`](?doc=plans/transport-design.md), built
+> P1–P6 and proven end-to-end on real binaries (the carbon-chain live
+> walk). The pre-framework `transport bundle` driver this banner once
+> guarded is deleted; § 8 records the closure.
 
 This is how molbuilder computes **electron transport** (conductance) through a
 molecular junction — e.g. a single benzene-1,4-dithiol molecule bridging two gold
@@ -42,31 +40,35 @@ function).
 
 ---
 
-## 1. The mental model — one device → three coupled runs
+## 1. The mental model — one citation → five derived stages
 
-Conductance is **not one run**. It's **three coupled SIESTA runs that must agree
-numerically**: a **relaxation** of the device, a **bulk-electrode** run per lead
-that emits a `.TSHS`, and the **NEGF device** run that consumes both `.TSHS` files.
-Correctness hinges entirely on those runs sharing **one numerical contract** (the
-**XC** exchange-correlation functional, basis, mesh, pseudopotentials) **and a
-geometric clone** of the electrode.
+Conductance is **not one run**. It is several coupled SIESTA runs that must
+agree numerically — a relaxed junction, a bulk-electrode run per lead that
+emits a `.TSHS`, the NEGF device SCF, and the TBtrans transmission.
+Correctness hinges on those runs sharing **one numerical contract** (XC,
+basis, mesh, pseudopotentials) **and a geometric clone** of the electrode.
 
-So molbuilder derives **all three from ONE region-labeled device** (regions
-`L-electrode` / `bridge` / `R-electrode`) and gives you a **preflight** that
-verifies the contract *before* you spend cluster time — because the couplings
-between the runs are exactly what humans break.
+Since 2026-08-29 that agreement is not checked after the fact — it is
+**impossible to break by construction**: transport is the COMPOSITE
+calculation (`plans/transport-design.md`). You relax the junction as an
+ordinary task (outer metal layers labeled `L-electrode`/`R-electrode` and
+frozen), then the transport calculation **cites that finished attempt** and
+derives everything else — the sorted copy, both electrode cells (extracted
+from the labeled blocks), and the five stage decks, all rendered from the
+cited attempt's own `.fdf`.
 
 ```mermaid
 flowchart TD
-    DEV["region-labeled device<br/>(L-electrode / bridge / R-electrode)"] -->|"transport bundle"| B["relax.fdf + L/R electrode.fdf<br/>+ device.fdf + run-transport.sh"]
-    B -->|"bash run-transport.sh (on the cluster)"| RUN["relax → bulk electrodes (.TSHS)<br/>→ NEGF device → tbtrans"]
-    RUN --> RES["transmission T(E) → G₀ = T(E_F)"]
-    B -.->|"transport preflight"| PF["verify the device ↔ electrode<br/>consistency contract (§ 5)"]
+    RX["junction relaxation<br/>(ordinary task; labeled + frozen electrodes)"]
+    RX -->|"--slot junction=&lt;calc&gt;@&lt;stage&gt;/run-N"| CT["the transport calculation<br/>seed · electrode_L · electrode_R · device · transmission"]
+    CT -->|"prep + launch, stage by stage"| RUN["seed .DM → electrode .TSHS →<br/>NEGF device (bias chain) → tbtrans"]
+    RUN -->|"summarize run"| RES["&lt;label&gt;.transport.json:<br/>T(E) per bias · G(E_F) · I(V)"]
 ```
 
-**The consistency contract is the whole game.** molbuilder's value here is *not*
-emitting `.fdf` text (the engine does that) — it's deriving the runs from one
-descriptor and **enforcing the cross-run contract** (§ 5).
+**The consistency contract is the whole game**, and the derivation is what
+enforces it: electrode and device render from ONE config filled from the
+citation's deck, so a mismatch is unrepresentable (§ 5 records what that
+guarantees; the § 5 preflight remains for hand-edited decks).
 
 ---
 
@@ -122,33 +124,44 @@ Three consequences drive **every** parameter choice:
 
 ## 3. How to run it (the CLI)
 
-The CLI (`transport/_cli.py`) is the path for the full 3-run **bundle**; the web tab
-Generates only the single device `.fdf` (§ 8).
+The road is the composite, through the ordinary `jobset` verbs:
 
 ```bash
-# 1. derive relax + both electrodes + device + driver from ONE labeled device.
-#    --cell-fdf preserves the real hexagonal Au(111) lattice (see § 7).
-molbuilder transport bundle --device dev.xyz --job-name junc \
-    --mesh-cutoff 400 --kx 4 --ky 4 --cell-fdf relaxed.fdf --out-dir run/
+# 0. relax the junction as an ordinary task (electrode layers labeled
+#    L-electrode / R-electrode and frozen), and let it CONCLUDE.
 
-# 2. on the cluster, under molbuilder-siesta, run the driver
-cd run/ && conda activate molbuilder-siesta && bash run-transport.sh
+# 1. describe the transport calculation: one slot, the finished attempt
+molbuilder jobset init --calculation transport --shape hierarchical \
+    --bundle BDT-Au/transport/BDTTrans \
+    --slot junction=BDT-Au/optimization/JunctionRelax@01_coarse/run-2 \
+    --bias 0.0,0.2
 
-# 3. verify the device ↔ electrode contract (after any hand-edit)
-molbuilder transport preflight --device run/junc.fdf \
-    --electrode run/junc_L-electrode.fdf
+# 2. prep + launch the ladder, stage by stage (each prep gathers what
+#    the stage consumes from the concluded stages before it)
+molbuilder jobset prep run seed        && molbuilder jobset launch run seed --mode submit
+molbuilder jobset prep run electrode_L && molbuilder jobset launch run electrode_L --mode submit
+#    ... electrode_R, then device (a bias scan launches as ONE chain
+#    job walking the points), then transmission
+
+# 3. read the deliverable back
+molbuilder jobset summarize run        # -> <label>.transport.json + the I-V table
 ```
 
 | Command | Does | Code |
 |---|---|---|
-| `transport bundle` | one labeled device → the full relax + L/R electrode + device + `run-transport.sh` bundle | `orchestrate.build_transport_bundle:281` |
-| `transport electrode --which L-electrode\|R-electrode` | derive a single bulk-lead `.fdf` (the electrode wizard) | `wizard.electrode_wizard:289` |
-| `transport preflight` | check the device ↔ electrode consistency contract | `preflight.py` + `_cli.cmd_preflight:117` |
+| `jobset init --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
+| `jobset prep run <stage>` | compose (sort · gates · extract) on first contact, then render THIS rung's deck + gather its inputs | `jobset/prep.py::_prep_transport` |
+| `jobset launch run <stage>` | the ordinary launch; a bias scan's device/transmission go as one walker job | `jobset/submit.py::submit_transport_chain` |
+| `jobset summarize run` | parse TBtrans output → `<label>.transport.json`, print the I–V table | `transport/record.py` |
+| `transport electrode --which L-electrode\|R-electrode` | standalone helper: derive a single bulk-lead `.fdf` (the electrode wizard) | `wizard.electrode_wizard` |
+| `transport preflight` | standalone helper: check the device ↔ electrode contract on decks you hand-edited | `preflight.py` |
 
-**Gotchas:** don't hand-assemble electrodes (use `electrode`/`bundle` so the
-geometric clone + contract hold); always `preflight` before submitting and after
-any manual `.fdf` edit; the web tab Generates only the device `.fdf` — use the CLI
-for the full relax + electrode + driver bundle.
+**Gotchas:** the citation names the attempt explicitly (`@<stage>/run-N`) —
+nothing is ever picked for you; a re-pointed citation recomposes and makes
+every stale upstream attempt refuse by deck-mismatch; `--bias` must start at
+`0.0` (the chain starts from equilibrium).  *(The old `transport bundle`
+three-run driver and its `run-transport.sh` were deleted 2026-08-29 —
+deriving and running the pieces is the composite's job.)*
 
 ---
 
@@ -287,7 +300,9 @@ and the Au semicore `MeshCutoff` to van Setten 2018 (§ 9).
 | Layer | Module | Role |
 |---|---|---|
 | Electrode wizard | `transport/wizard.py` (`electrode_wizard:289`) | derive a bulk-lead `.fdf` + geometric clone from the labeled device; its z-period comes from `cell.bulk_z_period` (§ 7.1), the same derivation the Junction builder uses |
-| Orchestration | `transport/orchestrate.py` (`build_transport_bundle:281`) | the 3-run bundle + file hand-offs (`run-transport.sh`, `render_driver:173`) |
+| Composition | `transport/compose.py` | citation → parsed `.XV` → frozen gate → categorical sort → electrode extraction; the travelling record (`junction.xyz` + `junction.cited.fdf` + sidecars) |
+| Stages | `transport/stages.py` | the five-rung ladder, the § 4.2 DAG (`stage_inputs`), the one config from the citation's deck (`config_for`), the per-stage renders |
+| Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize run`) |
 | Consistency preflight | `transport/preflight.py` | the cross-run contract gates (§ 5) |
 | Engine | `transport/transiesta.py` (`TransiestaEngine:649`) | the NEGF `.fdf` emitter (`render_script:664`), `preflight:698`, `parse_output:920` |
 | Registry | `transport/engine_base.py` | the `TransportEngine` Protocol + `register_engine` (so a PySCF-NEGF backend can join) |
@@ -430,49 +445,30 @@ single-point, or a relaxation if those layers are not frozen.
 
 ## 8. Shipped vs coming
 
-> ### ⚠ This bundle runs outside the job system, and that is the one thing to
-> ### know before extending it *(named 2026-08-11)*
+> ### The one thing this section used to warn about is CLOSED
+> ### *(named 2026-08-11; closed 2026-08-28/29 by the composite)*
 >
-> `transport bundle` emits **`run-transport.sh`**, and you run the three
-> calculations with `bash run-transport.sh`. So a transport bundle is the **third
-> orchestration lifecycle** in molbuilder, beside `molbuilder jobset`
-> ([`process/conventions.md § 3`](?doc=process/conventions.md) — the `bench`
-> lifecycle it was once a third of is gone; every verb is a `jobset` verb since
-> 2026-08-17), and it is the only one that **chains** — a shell script starting one engine
-> after another.
+> The warning that stood here: `transport bundle` emitted
+> `run-transport.sh`, a **third orchestration lifecycle** that chained
+> three engines outside the job system — no `prep`, no attempts, no
+> `run.json`, no `--mode`, no status roll-up, no scheduler header.
 >
-> **Two rules it does not satisfy, stated plainly rather than left for somebody
-> to trip over:**
+> The composite closed it the way the analysis here always said it
+> should be closed: **not by adding edges to `JobSet`** (it still has
+> none), but by giving the multi-component kind its own representation.
+> The five stages are ordinary rungs — each prepped, launched and
+> concluded through the same verbs and wrappers as everything else; the
+> electrode `.TSHS` and seed `.DM` hand-offs are prep's GATHER (three
+> refusals per input); and the one genuinely sequenced thing — a bias
+> scan's points — rides ONE submission, the chain walker, because the
+> `.TSDE` hand-forward is an efficiency inside one launch, not a
+> scheduling judgement between results a person should read.
 >
-> | rule | where | what transport does |
-> |---|---|---|
-> | *the wrapper activates and execs; everything that computes, decides or arranges belongs to Python on the host* | [`running-a-job.md § 2.2a`](?doc=execution/running-a-job.md) | `run-transport.sh` is a **program** — it sequences three engines and moves a `.TSHS` between them |
-> | *nothing schedules a run after another; a person starts each one* | [`project-layout.md § 1.6`](?doc=execution/project-layout.md) · [`job-system.md § 2`](?doc=execution/job-system.md) decision 6 | the driver runs all three, unattended |
->
-> **But it is not simply a violation, and the difference is scientific.** Those
-> rules exist because *should stage 2 start?* is a judgement about stage 1's
-> **result** — a geometry you might reject. Transport's three runs are not a
-> ladder: the electrode run produces a `.TSHS` that is an **input**, not a result
-> anybody evaluates, so there is no judgement between them to protect. **A ladder
-> is a sequence of attempts at one answer; this is one answer assembled from
-> three pieces.** The vocabulary for that does not exist yet — a `JobSet` carries
-> no edges at all, which is why `job-system.md § 2` records that *"a branching
-> graph (a diamond, for a two-electrode device) has no representation"*.
->
-> **So what transport is: the live instance of the case the unified design
-> deliberately does not cover, solved locally with a shell script.** What it
-> costs today is everything the job system gives the other two paths — no
-> `prep`, no per-attempt directory, no `run.json`, no `--mode`, no status
-> roll-up, and no scheduler header. Folding it in is
-> [`job-system.md § 8`](?doc=execution/job-system.md) phase 3–4, *"where the
-> single-parent limit is lifted to a branching graph"*, and it is gated on the
-> ladder proving out first — **half proven 2026-08-19**: the whole loop ran
-> end to end on a workstation, both engines; the cluster half of that gate
-> remains.
-
-- **Shipped (zero-bias scope):** the `transport bundle`/`electrode`/`preflight`
-  CLI, the electrode wizard, the 3-run orchestration + driver, the zero-bias
-  TranSIESTA engine, and the region-label-driven derivation.
+- **Shipped:** the transport COMPOSITE (`--calculation transport`: citation →
+  sort → gates → five derived stages → bias chain → `summarize run` →
+  `<label>.transport.json`), the electrode wizard, the `electrode`/`preflight`
+  helper CLI, and the region-label-driven derivation.  The finite-bias scan
+  ships with it (the `.TSDE`-chained walker).
 - **Web tab:** the `TransportConfig` form + a **live Generate** button
   (`lib/transport/core.js` → `POST /api/transport/render` →
   `web/blueprints/transport.py::api_transport_render:95`) that validates (the transiesta

@@ -457,10 +457,12 @@ user's plain-v-dirs ruling (§ 4.2), never the bench spelling.*
 ### 4.4 What retires
 
 The pre-framework `transport bundle` three-run driver
-(`transport/orchestrate.py`) retires when this ships — its job (run the
-pieces in order) is exactly what the user's model replaces with *cite
-finished pieces*. No shims (the standing rule): the composite is the
-one way.
+(`transport/orchestrate.py`) **retired 2026-08-29 with P7's first half**
+— deleted with its tests, the dead-spelling guard standing
+(`test_transport_preflight.py::test_the_bundle_spelling_is_dead`).  Its
+job (run the pieces in order) is exactly what the user's model replaced
+with *cite finished pieces*.  No shims (the standing rule): the
+composite is the one way.
 
 ---
 

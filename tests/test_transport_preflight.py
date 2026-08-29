@@ -184,12 +184,28 @@ def test_transport_help_carries_worked_examples():
     from molbuilder.transport._cli import transport_group
     r = CliRunner().invoke(transport_group, ["-h"])
     assert r.exit_code == 0
-    assert "QUICKSTART" in r.output
-    assert "molbuilder transport bundle --device" in r.output
-    assert "run-transport.sh" in r.output
-    for sub in ("preflight", "electrode", "bundle"):
+    assert "--calculation transport" in r.output, (
+        "the help's quickstart is the COMPOSITE now")
+    assert "--slot junction=" in r.output
+    for sub in ("preflight", "electrode"):
         rs = CliRunner().invoke(transport_group, [sub, "-h"])
         assert "EXAMPLE" in rs.output and "molbuilder transport" in rs.output
+
+
+def test_the_bundle_spelling_is_dead():
+    """P7 (transport-design.md 4.4): the pre-framework three-run driver
+    retired with the composite -- no shims, and this guard is what keeps
+    the name from coming back.  Deriving and running the pieces IS the
+    composite's job (`jobset init --calculation transport`)."""
+    from pathlib import Path
+
+    from click.testing import CliRunner
+    from molbuilder.transport._cli import transport_group
+    r = CliRunner().invoke(transport_group, ["bundle", "-h"])
+    assert r.exit_code != 0, "`transport bundle` must not exist"
+    assert not (Path(__file__).parent.parent / "molbuilder" / "transport"
+                / "orchestrate.py").exists(), (
+        "orchestrate.py is deleted, not parked")
 
 
 def test_parser_matches_transiesta_emitter_keys():

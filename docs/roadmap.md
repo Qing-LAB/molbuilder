@@ -47,16 +47,17 @@ open work against rule R3 — it carries its own progress table.)
 > workstation; the **cluster** half of D7 (the same loop through SLURM on
 > Sol) is what remains of it.
 >
-> **Transport has not migrated onto this framework** — `transport
-> bundle`'s three-run driver still runs the path built before it,
-> deliberately, and its workflow is being designed separately.  (Spectra
-> DID migrate, 2026-08: the vibration deck is a calculation kind of the
-> PySCF engine — § "Spectra: migrated" below.)  Transport is additionally
-> **a different KIND of job** — three coupled runs, one answer assembled
-> from pieces — per the 2026-08-11 decision
-> ([`execution/architecture.md`](?doc=execution/architecture.md) § 0);
-> migrating it means giving that kind a first-class representation, not
-> bending it into a ladder.
+> **Transport MIGRATED (2026-08-28/29)** — the composite
+> ([`plans/transport-design.md`](?doc=plans/transport-design.md), P1–P6
+> built and proven end-to-end on real binaries; the `transport bundle`
+> driver deleted with P7's retirement half).  It migrated exactly as the
+> 2026-08-11 decision demanded: a different KIND of job — one answer
+> assembled from pieces — given a first-class representation
+> (`--calculation transport`, one citation, five derived stages through
+> the ordinary verbs), not bent into a ladder.  (Spectra migrated
+> 2026-08: the vibration deck is a calculation kind of the PySCF
+> engine — § "Spectra: migrated" below.)  What remains of transport is
+> the TAB rewire (P7's UI half) and the first real junction on Sol.
 
 ## 0. The immediate two  *(user, 2026-08-19 — **both delivered the same
 day**)*
@@ -173,7 +174,7 @@ each with its recorded home)*:
 | deferred | until |
 |---|---|
 | **the remote-HPC proof** (D7's cluster half: the described route through SLURM on Sol) | **after the immediate two** |
-| **migration of the transport tab** (its producer and the branching kind onto the framework; spectra migrated 2026-08 — the vibration deck is a calculation kind of the PySCF engine) | **the follow-up period, not this one** |
+| **the transport TAB rewire** (P7's UI half: describe the composite — slot picking through the shared tree-picker, bias + transport fields — and hand over like every other tab; the backend half of the migration landed 2026-08-28/29) | **in flight — the last transport step** |
 
 ---
 
@@ -186,7 +187,7 @@ flowchart TD
     W5["5 · Science-validation tail"]
     W6["6 · Architecture seams"]
 
-    W1 -. "Phase 3 builds the<br/>transport bundle mode" .-> W2
+    W1 -. "Phase 3 built transport<br/>(the composite; bundle retired)" .-> W2
 
     classDef active fill:#e8f0fe,stroke:#3b6fb0,stroke-width:2px;
 ```
@@ -315,8 +316,8 @@ item: PySCF's big-binary globs for the checkpoint system.
 **Spectra: migrated (2026-08).** The vibration deck is a calculation KIND of
 the PySCF engine — `render_deck` runs it through the same gates as an
 optimization deck, and the Spectrum tab hands over through the same
-Task-setup door.  Transport remains on the pre-framework path (see the
-migration box at the top of this file).
+Task-setup door.  Transport followed 2026-08-28/29 — the composite (see
+the migration box at the top of this file).
 
 **Two decisions this workstream contributed, carried into the plan.** **D10 —
 the activation warning**: on a workstation, detect the conda activation and
@@ -488,11 +489,11 @@ Rebuilding the form from the catalogue deletes the second home. Pin: the
   wired** (`molbuilder/annotations_fdf.py`, hooked at `siesta/input.py:651-658`)
   — but only tests register strategies. What's actually missing: a first
   *production* strategy (e.g. `initspin` → `%block DM.InitSpin`), a
-  value-channel *producer*, and folding the **second, hand-rolled
-  frozen-constraints emitter** (`transport/orchestrate.py:130` builds
-  `Geometry.Constraints` with a bare `i + 1`, bypassing both
-  `siesta/input.py`'s emitter and the `engine_atom_index` API) into the one
-  shared path.
+  value-channel *producer*.  *(The second, hand-rolled frozen-constraints
+  emitter this item also named — `transport/orchestrate.py`'s bare `i + 1`
+  `Geometry.Constraints` — retired WITH orchestrate.py when the transport
+  composite's P7 deleted the bundle driver, 2026-08-29: the composite's
+  decks come from the shared emitters, so the fold happened by deletion.)*
 
 **Finish the ES-module conversion.** The public API is exported from one
 import door and every consumer imports from it; the remaining transitional

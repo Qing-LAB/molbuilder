@@ -6,11 +6,6 @@ from pathlib import Path
 
 import click
 
-from .orchestrate import (
-    DEFAULT_RELAX_STEPS,
-    build_transport_bundle,
-    format_bundle,
-)
 from .preflight import format_report, parse_fdf_params, preflight_files
 from .wizard import DEFAULT_ELECTRODE_KZ, electrode_wizard, format_models
 
@@ -52,25 +47,28 @@ def _load_device(device_xyz, sidecar_path, cell_fdf):
 
 _TRANSPORT_EPILOG = """\
 \b
-QUICKSTART -- a conductance run is 3 coupled SIESTA runs; derive them all
-from ONE region-labeled device, then verify consistency:
+A conductance run is the transport COMPOSITE (plans/transport-design.md):
+cite a finished junction relaxation, and prep derives everything else --
+the sorted copy, both electrode cells, the seed, the device SCF and the
+TBtrans transmission -- as one five-stage calculation in the tree:
 \b
-  # 1. derive relax + both electrodes + device + driver from the device
-  #    (--cell-fdf preserves the real hexagonal Au(111) lattice)
-  molbuilder transport bundle --device dev.xyz --job-name junc \\
-      --mesh-cutoff 400 --kx 4 --ky 4 --cell-fdf relaxed.fdf --out-dir run/
+  molbuilder jobset init --calculation transport --shape hierarchical \\
+      --bundle <project>/transport/<name> \\
+      --slot junction=<project>/optimization/<calc>@<stage>/run-N \\
+      --bias 0.0,0.2
+  molbuilder jobset prep run seed          # then launch, stage by stage
+  molbuilder jobset summarize run          # -> <label>.transport.json
 \b
-  # 2. on the target, under the molbuilder-siesta env, run the driver
-  #    (it runs electrodes+relax, hands off coords + .TSHS, then tbtrans)
-  cd run/ && conda activate molbuilder-siesta && bash run-transport.sh
+(The old `transport bundle` three-run driver retired with the composite,
+2026-08-29 -- deriving and running the pieces IS the composite's job.)
 \b
-  # 3. verify the device<->electrode contract (do this after any hand-edit)
-  molbuilder transport preflight --device run/junc.fdf \\
-      --electrode run/junc_L-electrode.fdf
+The helpers below stand alone -- an electrode cell from a labeled device,
+and the device<->electrode consistency preflight:
 \b
-Just need an electrode from an existing device?
   molbuilder transport electrode --device dev.xyz --which L-electrode \\
       --cell-fdf relaxed.fdf --out-dir run/
+  molbuilder transport preflight --device run/junc.fdf \\
+      --electrode run/junc_L-electrode.fdf
 """
 
 
@@ -214,93 +212,6 @@ def cmd_electrode(device_xyz, sidecar_path, which, job_name, mesh_cutoff,
     click.echo(f"\nwrote {len(models)} electrode .fdf(s) to {out}/")
     click.echo("Next: run 'molbuilder transport preflight --device <device.fdf> "
                "--electrode <this.fdf>' to confirm the contract.")
-
-
-@transport_group.command("bundle",
-                         short_help="derive the full relax+electrode+device "
-                                    "run bundle from a labeled device",
-                         epilog="\b\nEXAMPLE:\n"
-                                "  molbuilder transport bundle \\\n"
-                                "      --device dev.xyz --job-name junc \\\n"
-                                "      --mesh-cutoff 400 --kx 4 --ky 4 "
-                                "--electrode-kz 40 \\\n"
-                                "      --cell-fdf relaxed.fdf --out-dir run/\n"
-                                "\nThen on the target:  cd run/ && "
-                                "conda activate molbuilder-siesta && \\\n"
-                                "                      bash run-transport.sh\n"
-                                "\nENVIRONMENT: run-transport.sh is a "
-                                "STANDALONE driver -- unlike\n"
-                                "  `bench generate`, it does NOT read "
-                                ".molbuilder.json. You activate the\n"
-                                "  env yourself (above) and override the "
-                                "binaries/launcher if needed:\n"
-                                "      SIESTA=siesta TBTRANS=tbtrans "
-                                "MPI=\"mpirun -np 8\" bash run-transport.sh\n"
-                                "\nTip: relax converges at --kx 2 --ky 2; use "
-                                "the denser k for the device.")
-@click.option("--device", "device_xyz", required=True,
-              type=click.Path(exists=True, dir_okay=False, resolve_path=True),
-              help="device structure (.xyz); its .molstruct.json sidecar "
-                   "(region labels) is auto-discovered alongside it.")
-@click.option("--sidecar", "sidecar_path", default=None,
-              type=click.Path(exists=True, dir_okay=False, resolve_path=True),
-              help="explicit .molstruct.json (overrides auto-discovery).")
-@click.option("--job-name", default="transport", show_default=True,
-              help="device job name; the bundle files are named from it.")
-@click.option("--mesh-cutoff", type=int, default=None,
-              help="MeshCutoff (Ry) for all runs (default: config default).")
-@click.option("--kx", type=int, default=None, help="transverse kx.")
-@click.option("--ky", type=int, default=None, help="transverse ky.")
-@click.option("--electrode-kz", type=int, default=DEFAULT_ELECTRODE_KZ,
-              show_default=True, help="dense kz for the bulk leads (§ 4.2).")
-@click.option("--relax-steps", type=int, default=DEFAULT_RELAX_STEPS,
-              show_default=True, help="CG steps for the device relaxation.")
-@click.option("--z-period", type=float, default=None,
-              help="bulk repeat along transport (Å); override the estimate.")
-@click.option("--cell-fdf", "cell_fdf", default=None,
-              type=click.Path(exists=True, dir_okay=False, resolve_path=True),
-              help="reference .fdf to read the device lattice from "
-                   "(preserves a hexagonal Au(111) cell).")
-@click.option("--out-dir", type=click.Path(file_okay=False), default=".",
-              show_default=True, help="where to write the bundle.")
-def cmd_bundle(device_xyz, sidecar_path, job_name, mesh_cutoff, kx, ky,
-               electrode_kz, relax_steps, z_period, cell_fdf, out_dir):
-    """Derive the full 3-run bundle (relax + electrodes + device + driver)
-    from one region-labeled device (transiesta-workflow.md § 6.4).
-
-    All four `.fdf`s share one numerical contract by construction; the
-    `run-transport.sh` driver runs them in order and performs the
-    relax→device and electrode→device file hand-offs automatically.
-    Run it under `molbuilder-siesta`.
-    """
-    from ..config.transport import TransportConfig
-
-    struct = _load_device(device_xyz, sidecar_path, cell_fdf)
-
-    cfg_kw = {"job_name": job_name}
-    if mesh_cutoff is not None:
-        cfg_kw["siesta_mesh_cutoff_ry"] = mesh_cutoff
-    if kx is not None and ky is not None:
-        cfg_kw["k_mesh_transverse"] = (kx, ky, 1)
-    cfg = TransportConfig(**cfg_kw)
-
-    try:
-        bundle = build_transport_bundle(
-            struct, cfg, electrode_kz=electrode_kz, relax_steps=relax_steps,
-            z_period=z_period)
-    except ValueError as exc:
-        raise click.ClickException(str(exc))
-
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    for name, content in bundle.files.items():
-        path = out / name
-        path.write_text(content)
-        if name.endswith(".sh"):
-            path.chmod(0o755)
-    click.echo(format_bundle(bundle))
-    click.echo(f"\nwrote {len(bundle.files)} files to {out}/")
-    click.echo(f"Run under molbuilder-siesta:  bash {out}/run-transport.sh")
 
 
 __all__ = ["transport_group"]

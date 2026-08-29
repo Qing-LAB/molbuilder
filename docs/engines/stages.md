@@ -1648,9 +1648,10 @@ rule and the reasoning.
 
 > **The rule is about a LADDER, and this document once stated it as though it
 > covered everything** *(corrected 2026-08-11)*. It read *"nothing schedules a
-> stage after another, **here or anywhere**"* — and `transport bundle` ships a
-> `run-transport.sh` that runs three coupled SIESTA calculations in sequence
-> ([`transport.md § 8`](?doc=engines/transport.md)).
+> stage after another, **here or anywhere**"* — and the transport composite's
+> bias chain runs a scan's points in sequence under one submission
+> (`plans/transport-design.md` § 4.3; it was `transport bundle`'s
+> `run-transport.sh` until the composite retired it, 2026-08-29).
 >
 > **The two are different relationships, and the difference is what the rule is
 > protecting.** A ladder's stages are *attempts at one answer*: whether stage 2

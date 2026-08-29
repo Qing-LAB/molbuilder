@@ -17,7 +17,8 @@ start there for the whole execution domain);
 
 An **engine** turns a validated [`Structure`](?doc=model/structure.md) plus a user
 config into something a quantum-chemistry code will run: a SIESTA `.fdf`, a PySCF
-`.py`, or a derived multi-file transport bundle. The **builders** sit just upstream —
+`.py`, or the transport composite's five derived decks
+(`plans/transport-design.md` § 4.2). The **builders** sit just upstream —
 they *produce* the `Structure` from a sequence / SMILES / name. This doc is the
 **map** of that layer and the **contracts every engine shares**, so the peer docs
 can each stay focused on their own emitter.

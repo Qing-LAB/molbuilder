@@ -50,7 +50,7 @@ tells you *what job it does*. Keep both straight.
 | Layer | Data management | Construction | Validation (science) | Execution (workflow) |
 |---|---|---|---|---|
 | **L3** surfaces | `web/blueprints/*` · `cli.py` — every surface is *deserialize → verb → serialize* | | | |
-| **L2** domain verbs | `parse/` · `sidecars/` · `workingcopy_structure` · `script_emit` · `bundle_writer` · `projects` | `peptide` · `nucleic` · `smiles` · `pubchem` · `modify` · `builders/backends` | `validation/` (the pass + engine adapters) | `jobset/` · `bench/` · `runwrap` · `envs/` · `diagnostics` · `runtime_config` · `transport/orchestrate` |
+| **L2** domain verbs | `parse/` · `sidecars/` · `workingcopy_structure` · `script_emit` · `bundle_writer` · `projects` | `peptide` · `nucleic` · `smiles` · `pubchem` · `modify` · `builders/backends` | `validation/` (the pass + engine adapters) | `jobset/` · `bench/` · `runwrap` · `envs/` · `diagnostics` · `runtime_config` · `transport/` (compose · stages · record) |
 | **L1** core types | `structure` · `frame` · `selection` · `config/` · `trajectory_log` · `persist` · `issues` | *(none — construction is all L2 verbs)* | `chemistry` · `pseudos` · `residues` | `checkpoint` *(git-backed, parameterized glob tables)* |
 
 The four core types — `Structure`, `Frame`, `Config`, `Issue` — are the wire
@@ -204,7 +204,7 @@ The design intent ([`execution/job-system.md`](?doc=execution/job-system.md)):
 | `envs/` | L2 | conda-env dispatch + doctor / validate / install toolkit | — (clean) |
 | `checkpoint.py` | L1 | git-backed run-dir snapshot/restore + binary archiving | engine glob tables, *parameterized* (fine) |
 | `monitor.py` | L2 | shipped standalone job-status tailer | siesta `.out` markers (by design — bare-env) |
-| `transport/orchestrate.py` | L2 | 3-run TranSIESTA driver | fused (see W4) |
+| ~~`transport/orchestrate.py`~~ | L2 | ~~3-run TranSIESTA driver~~ *deleted 2026-08-29 with the composite's P7 — `transport/compose.py` + `stages.py` + `record.py` are the replacement, inside the job system* | (W4 closed) |
 
 **Assessment: the core is exemplary; the edges couple to a specific engine.**
 The `jobset/` core is a model of the separation — pure engine-agnostic verbs, no
@@ -219,7 +219,7 @@ uniformly"), catalogued here so a future refactor knows where the seams are:
 | W1 | **`runwrap.py` is the coupling hotspot.** Engine-aware by necessity (restart semantics), but it also reaches into the `.fdf` *input schema* (`_fdf_requests_gpu` / `_fdf_requests_elpa` / `_parse_fdf_n_atoms`). Execution is fused to one engine's input schema rather than sitting behind an interface. *(The memory-model half of this row was deleted 2026-08-24 with the estimator itself.)* | `runwrap.py` (the three `_fdf_*` helpers) |
 | W2 | ~~**The one leak inside the "agnostic" core.**~~ **CLOSED (U3, 2026-08-13):** `jobset/runstatus.py`'s hardcoded warm-file table now derives from the engines' `warm-files.toml` rules files through the one loader (`job-contracts.md` § 4.2a) — the row stays so the seam's history is findable | `jobset/runstatus.py` |
 | W3 | **`runtime_config` leaks scheduler schema as untyped dicts** into `jobset/submit.py` and `runwrap.py` (`d["partition"]`, `d["qos"]`, …), and the module also bundles web-auth/TLS config with scheduler config — two concerns in one reader. | `runtime_config.py`; consumers `jobset/submit.py`, `runwrap.py` |
-| W4 | **Transport stays its own kind — decided, not deferred** (2026-08-11, user; `execution/architecture.md` § 2.2). `transport/orchestrate.py` hand-rolls its bash driver and fuses orchestration with `.fdf` science + structure construction in one file.  The sentence that stood here called folding it into a `JobSet` "the documented future migration, blocked on `depends_on` becoming multi-parent" — that fold is NOT scheduled: the decision is that transport is a separate kind and the edge machinery is not coming back for it | `transport/orchestrate.py` |
+| W4 | **CLOSED (2026-08-29)** — transport stayed its own kind exactly as decided (2026-08-11, user), and the composite is that kind built properly: `--calculation transport` cites a finished junction, derives its five stages, and runs them through the ordinary jobset verbs — no edges, no chained ladder, the hand-rolled bash driver deleted (`plans/transport-design.md`) | *(orchestrate.py deleted)* |
 | W5 | **Two modules misfiled under "workflow."** `bundle_writer.py` and `script_emit.py` are really **data** serializers (they reach into `parse.types`, `sidecars`, `structure`), not execution verbs — this doc files them under § 2 for that reason. | `bundle_writer.py`, `script_emit.py` |
 
 The scheduler vocabulary in `jobset/model.py::Resources` (`mpi_np`, `time`,
