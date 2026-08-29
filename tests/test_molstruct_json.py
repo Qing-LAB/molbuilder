@@ -421,9 +421,10 @@ class TestApplyToStructure:
 
 class TestSchemaVersioning:
     """``READABLE_VERSIONS`` is the single source of truth for which on-disk
-    schemas this build accepts: {7, 8} since 2026-08-20.  v8 only ADDED the
-    optional identity columns, so a v7 file reads whole (absent identity is
-    the synthesized defaults, which is exactly what v7 meant); everything
+    schemas this build accepts: {7, 8, 9} since 2026-08-29.  v8 only ADDED
+    the optional identity columns and v9 only added the optional `info`
+    block, so a v7 or v8 file reads whole (an absent addition IS its
+    default, which is exactly what the older version meant); everything
     older stores the same facts in DIFFERENT places (v3's top-level frozen
     atoms) and is refused rather than silently coerced."""
 
@@ -455,7 +456,7 @@ class TestSchemaVersioning:
         p = tmp_path / "old.molstruct.json"
         p.write_text(_json.dumps(payload))
         with pytest.raises(msj.MolstructJsonError,
-                           match=r"reads versions \[7, 8\] only"):
+                           match=r"reads versions \[7, 8, 9\] only"):
             msj.load(p)
 
     def test_a_v7_file_reads_whole_under_v8(self, tmp_path):
@@ -596,3 +597,65 @@ class TestPbcFollowsAxisKind:
         msj.apply_to_structure(s, d)
         assert tuple(s.axis_kind) == ("periodic", "periodic", "periodic")
         assert tuple(bool(x) for x in s.pbc) == (True, True, True)
+
+
+class TestInfoBlock:
+    """Schema 9's `info` block (plans/structure-info-plan.md): free-form,
+    NON-structural, additive, never hashed."""
+
+    def _struct(self):
+        import numpy as np
+        from molbuilder.structure import Structure
+        return Structure(elements=["C", "C"],
+                         positions=np.array([[0.0, 0, 0], [0, 0, 1.3]]),
+                         regions={"L-electrode": [0]},
+                         cell=np.eye(3) * 10)
+
+    def test_info_rides_the_pair_whole(self, tmp_path):
+        from molbuilder.workingcopy_structure import StructureCodec
+        s = self._struct()
+        s.info = {"calculation": {"engine": "siesta",
+                                  "contract": {"basis_size": "DZP"}}}
+        StructureCodec().write(s, tmp_path / "j.xyz")
+        back = StructureCodec().load(tmp_path / "j.xyz")
+        assert back.info == s.info
+
+    def test_an_empty_store_writes_no_key(self, tmp_path):
+        from molbuilder.workingcopy_structure import StructureCodec
+        StructureCodec().write(self._struct(), tmp_path / "k.xyz")
+        raw = _json.loads((tmp_path / "k.molstruct.json").read_text())
+        assert "info" not in raw, (
+            "absent means 'nothing recorded' -- an empty store must "
+            "leave the file shaped like a schema-8 one")
+
+    def test_info_never_enters_the_hash(self, tmp_path):
+        from molbuilder.workingcopy_structure import StructureCodec
+        a, b = self._struct(), self._struct()
+        b.info = {"note": "recording MORE about the same atoms"}
+        StructureCodec().write(a, tmp_path / "a.xyz")
+        StructureCodec().write(b, tmp_path / "b.xyz")
+        ha = _json.loads((tmp_path / "a.molstruct.json").read_text())
+        hb = _json.loads((tmp_path / "b.molstruct.json").read_text())
+        assert ha["structure_hash"] == hb["structure_hash"], (
+            "info DESCRIBES the structure; it must not read as a "
+            "different one")
+
+    def test_a_v8_file_loads_with_an_empty_store(self, tmp_path):
+        from molbuilder.workingcopy_structure import StructureCodec
+        s = self._struct()
+        s.info = {"stale": True}
+        StructureCodec().write(s, tmp_path / "v8.xyz")
+        raw = _json.loads((tmp_path / "v8.molstruct.json").read_text())
+        del raw["info"]
+        raw["schema_version"] = 8
+        (tmp_path / "v8.molstruct.json").write_text(_json.dumps(raw))
+        back = StructureCodec().load(tmp_path / "v8.xyz")
+        assert back.info == {}, (
+            "FULL-REPLACE: a pair that no longer carries a store must "
+            "not keep serving a stale one")
+
+    def test_an_unserialisable_value_refuses_at_write(self):
+        with pytest.raises(msj.MolstructJsonError, match="JSON"):
+            msj.to_dict({"regions": {}}, n_atoms_total=1,
+                        structure_hash="b" * 32,
+                        info={"bad": object()})

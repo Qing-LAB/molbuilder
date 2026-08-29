@@ -2118,3 +2118,41 @@
     gap:            var(--molviewer-space-xs);
     margin-top:     var(--molviewer-space-xs);
 }
+
+/* ── The Metadata page (§ 8.4a, structure-info-plan.md) ─────────────────
+ * Read-only key/value listing of the structure's `info` store.  All
+ * values through the module's own tokens (the § here never says a px a
+ * named metric already owns). */
+.molviewer-info-empty {
+    color: var(--molviewer-color-text-dim);
+    font: var(--molviewer-text-sm)/var(--molviewer-line-normal)
+          var(--molviewer-control-family);
+    padding: var(--molviewer-space-sm);
+}
+.molviewer-info-list {
+    margin: 0;
+    padding: var(--molviewer-space-sm);
+    overflow: auto;
+}
+.molviewer-info-key {
+    color: var(--molviewer-color-text);
+    font: 600 var(--molviewer-text-sm)/var(--molviewer-line-snug)
+          var(--molviewer-control-family);
+    margin-top: var(--molviewer-space-sm);
+}
+.molviewer-info-key:first-child { margin-top: 0; }
+.molviewer-info-value {
+    margin: 0;
+}
+.molviewer-info-value pre {
+    margin: var(--molviewer-space-xs) 0 0;
+    padding: var(--molviewer-space-xs);
+    background: var(--molviewer-color-panel-well);
+    border: 1px solid var(--molviewer-color-edge-soft);
+    border-radius: var(--molviewer-radius-sm);
+    color: var(--molviewer-color-text-dim);
+    font: var(--molviewer-text-2xs)/var(--molviewer-line-normal)
+          var(--molviewer-font-mono, monospace);
+    white-space: pre-wrap;
+    word-break: break-word;
+}

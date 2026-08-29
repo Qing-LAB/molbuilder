@@ -1209,7 +1209,8 @@ function mountPanel(doc, card, model) {
     const tabs = el("div", "molviewer-panel-tab-switch molviewer-selection-header-tabs");
     const pages = {};
     const tabInputs = {};
-    for (const [key, label] of [["selection", "Selection"], ["cell", "Cell"]]) {
+    for (const [key, label] of [["selection", "Selection"], ["cell", "Cell"],
+                                ["info", "Metadata"]]) {
         /* A TAB IS A RADIO INSIDE A LABEL, not a button — the carried stylesheet
          * draws the chosen tab from `:has(input:checked)` (accent text, accent
          * underline) and its type from `.molviewer-panel-tab-option > span`. Built as a
@@ -1255,6 +1256,7 @@ function mountPanel(doc, card, model) {
     root.appendChild(panelNotices);
     root.appendChild(pages.selection);
     root.appendChild(pages.cell);
+    root.appendChild(pages.info);
 
     function showPage(which) {
         for (const key of Object.keys(pages)) {
@@ -1722,6 +1724,40 @@ function mountPanel(doc, card, model) {
     const cellNotices = el("div", "molviewer-notices");
     cellNotices.hidden = true;
     pages.cell.appendChild(cellNotices);
+
+    /* ── The Metadata page (§ 8.4a) ──────────────────────────────────────
+     *
+     * DISPLAY, never a mutator: it renders the structure's `info` store
+     * -- free-form, NON-structural metadata the host tabs write through
+     * `data.info` -- as a read-only key/value listing.  What shows here
+     * is exactly what the .xyz+.molstruct.json pair will carry. */
+    const infoEmpty = el("p", "molviewer-info-empty");
+    infoEmpty.textContent = "Nothing recorded.  Metadata is written by "
+        + "the page that loaded this structure (a recorded calculation "
+        + "contract, a note) and travels with the exported pair.";
+    pages.info.appendChild(infoEmpty);
+    const infoList = el("dl", "molviewer-info-list");
+    pages.info.appendChild(infoList);
+
+    function drawInfo() {
+        const store = (model.info && typeof model.info.get === "function")
+            ? model.info.get() : {};
+        const keys = Object.keys(store).sort();
+        infoEmpty.hidden = keys.length > 0;
+        infoList.textContent = "";
+        for (const key of keys) {
+            const dt = el("dt", "molviewer-info-key");
+            dt.textContent = key;
+            infoList.appendChild(dt);
+            const dd = el("dd", "molviewer-info-value");
+            const pre = el("pre");
+            const v = store[key];
+            pre.textContent = (v !== null && typeof v === "object")
+                ? JSON.stringify(v, null, 2) : String(v);
+            dd.appendChild(pre);
+            infoList.appendChild(dd);
+        }
+    }
 
     function atomCount() {
         const atoms = model.getAtoms();
@@ -2220,8 +2256,10 @@ function mountPanel(doc, card, model) {
     const offData = model.subscribe(() => {
         draw(model.selection.getState());
         drawCell();
+        drawInfo();
     });
     drawCell();
+    drawInfo();
 
     card.panel.appendChild(root);
 

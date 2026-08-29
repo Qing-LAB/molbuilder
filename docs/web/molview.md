@@ -1389,6 +1389,30 @@ The panel names its rows in the same vocabulary the server evaluates, so there i
 no translation table in between to drift — with the single exception of atom
 numbering, which crosses at exactly one point (§ 11.5).
 
+### 8.4a The Metadata pane — display, never a mutator *(user, 2026-08-29)*
+
+The panel's third page, beside Selection and Cell.  It renders the
+structure's **`info` store** — free-form, NON-structural metadata, a
+JSON dict of key → value — as a read-only key/value listing, with an
+honest empty state when nothing is recorded.
+
+**The pane displays; the API mutates.**  Which keys exist is the HOST
+tabs' business, through the one door set (`viewer.data.info` — § 9.3):
+the Results tab records the finished run's electronic contract
+(`info.calculation`), a future tab records whatever describes its
+structure.  A person reads the metadata here; nothing on this page
+writes it.
+
+**`info` is not core data.**  § 9.4's one question — *does this change
+the structure the calculation ran on?* — answers no: `info` describes
+the structure, it is not the structure.  So the `info` doors are
+**ungated on a read-only viewer** (that is precisely what lets the
+read-only Results viewer attach the contract before an export), they
+never raise the unsaved badge, and the store never enters
+`structure_hash` (`model/structure-molstruct.md` § 3).  It rides
+`installMolecule` in and `exportFile` out, so what the pane shows is
+exactly what the `.xyz + .molstruct.json` pair will carry.
+
 ### 8.5 The controls, and what each one reads
 
 Every control MolView draws is a **caller of the model** — the same doors a tab
@@ -1672,6 +1696,13 @@ and export writes the frame from it. Naming the promise means no call site has t
 restate it, and there is no rival: reading coordinates back out of the drawing
 would give the isolated subset under its own renumbering, which is a different
 thing and one MolView does not offer.
+
+**The `info` doors** (§ 8.4a): ``data.info.set(key, value)`` /
+``data.info.remove(key)`` / ``data.info.get()`` (a read-copy).  Values
+are JSON only; the store rides the structure through every install and
+export.  Ungated in read-only mode and badge-silent in editable mode —
+`info` describes the structure rather than being it, which is § 9.4's
+one question answered.
 
 ### 9.3a Handing the structure to the server
 

@@ -615,6 +615,45 @@ export function createModel(opts) {
         getRegions() {
             return structure ? groupByLabel(structure.annotations) : null;
         },
+
+        /* The `info` doors (molview.md § 8.4a, structure-info-plan.md):
+         * the free-form NON-structural store.  UNGATED on a read-only
+         * viewer -- § 9.4's one question ("does this change the
+         * structure the calculation ran on?") answers no: `info`
+         * DESCRIBES the structure, which is exactly what lets the
+         * read-only Results viewer attach the recorded contract before
+         * an export.  Mutations never raise the unsaved badge (host
+         * work, not user edits) and announce so the Metadata pane
+         * repaints.  Values are JSON only, checked at the door. */
+        info: {
+            set(key, value) {
+                if (!structure || typeof key !== "string" || !key) {
+                    return false;
+                }
+                try { JSON.parse(JSON.stringify({ v: value })); }
+                catch (_) { return false; }
+                structure.info = structure.info || {};
+                structure.info[key] =
+                    JSON.parse(JSON.stringify(value === undefined
+                                              ? null : value));
+                announceStructure();
+                return true;
+            },
+            remove(key) {
+                if (!structure || !structure.info
+                        || !(key in structure.info)) {
+                    return false;
+                }
+                delete structure.info[key];
+                announceStructure();
+                return true;
+            },
+            get() {
+                // A copy, like every read here (§ 9.3).
+                return structure && structure.info
+                    ? JSON.parse(JSON.stringify(structure.info)) : {};
+            },
+        },
         // The atoms carrying the reserved frozen label. A cut of the same one
         // mechanism (§ 6.6), not a field of its own.
         getFrozen() {

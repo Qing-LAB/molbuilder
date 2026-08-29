@@ -185,6 +185,8 @@ def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
     # with its labels and its cell silently gone, at HTTP 200.
     known = {"title", "elements", "positions", "atom_names", "residue_ids",
              "residue_names", "chain_ids", "metadata",
+             "info",              # the free-form NON-structural store
+                                  # (structure-info-plan.md; from_dict reads it)
              "source_index",      # the CALLER's map back onto a larger structure
              "document"}          # outbound only; a request's is ignored
     stray = sorted(k for k in env if k not in known)

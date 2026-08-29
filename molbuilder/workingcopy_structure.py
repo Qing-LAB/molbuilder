@@ -221,10 +221,12 @@ class StructureCodec:
             identity       = identity,
             n_atoms_total  = struct.n_atoms,
             structure_hash = _sha256_bytes(document.encode("utf-8")),
+            info           = dict(struct.info) if struct.info else None,
         )
         return StructurePair(document=document, sidecar=payload,
                              keep_sidecar=(not _metadata_is_default(meta)
-                                           or bool(identity)),
+                                           or bool(identity)
+                                           or bool(struct.info)),
                              suffix=self.GEOMETRY_SUFFIX)
 
     # ---- the pair as NAMED bytes: <stem>.xyz + <stem>.molstruct.json -- #

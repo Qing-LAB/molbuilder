@@ -30,7 +30,7 @@ plus the structure's **metadata fields** spread in alongside them.
 
 ```json
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "n_atoms_total": 2,
   "structure_hash": "9f2c…(sha256 hex)",
   "created_by": "molbuilder",
@@ -102,18 +102,20 @@ is `structure.md § 2.2`.
 
 ## 2. Schema versioning — a readable SET, strict about shape
 
-**Current schema: v8. The reader accepts {7, 8} and nothing else.**
+**Current schema: v9. The reader accepts {7, 8, 9} and nothing else.**
 
 ```python
-SCHEMA_VERSION    = 8                  # sidecars/molstruct.py
-READABLE_VERSIONS = frozenset({7, 8})
+SCHEMA_VERSION    = 9                  # sidecars/molstruct.py
+READABLE_VERSIONS = frozenset({7, 8, 9})
 ```
 
-*(Amended 2026-08-20, user ruling.)*  The strictness rule is about **where
-facts live**, not about the number: v8 only **added** the optional identity
-columns, so a v7 file reads whole under v8 rules — its absent identity IS
-the synthesized defaults, which is what v7 always meant.  Refusing v7 would
-have invalidated every pair on disk for a change that loses nothing.  A
+*(Amended 2026-08-20 and again 2026-08-29, user rulings.)*  The
+strictness rule is about **where facts live**, not about the number:
+v8 only **added** the optional identity columns, and v9 only **added**
+the optional `info` block (free-form, NON-structural metadata —
+`plans/structure-info-plan.md`; absent means "nothing recorded"), so a
+v7 or v8 file reads whole under v9 rules.  Refusing them would have
+invalidated every pair on disk for changes that lose nothing.  A
 version whose facts moved homes (v3's top-level frozen atoms) stays
 refused, with an error naming what changed and what to do — never
 partially read.
@@ -186,6 +188,12 @@ decision the reader enforces:
 ---
 
 ## 3. `structure_hash` — the integrity pin
+
+> **`info` never enters the hash** (2026-08-29): the store describes
+> the structure — a recorded contract, a note — and recording MORE
+> about the same atoms must not read as a different structure.  The
+> hash stays what it always was: geometry + the structural metadata.
+
 
 `structure_hash` is the sha256 of the paired geometry file's bytes
 (`sha256_of_file`, stable across platforms). It ties a sidecar to *the exact

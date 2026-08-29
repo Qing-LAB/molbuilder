@@ -88,7 +88,12 @@ except ImportError:                  # pragma: no cover - Windows branch
 #: were free to relax; the run converged and was wrong.  A version gate that admits
 #: a version the code cannot honour is worse than no gate: it turns a loud failure
 #: into a quiet one.
-SCHEMA_VERSION = 8   # 8 (2026-08-20): + the OPTIONAL identity columns
+SCHEMA_VERSION = 9   # 9 (2026-08-29): + the OPTIONAL `info` block (the
+#                      free-form NON-structural store,
+#                      plans/structure-info-plan.md -- additive; absent
+#                      means "nothing recorded", and it never enters
+#                      structure_hash).
+#                    8 (2026-08-20): + the OPTIONAL identity columns
 #                      (structure.IDENTITY_FIELDS, canonical-dict spellings,
 #                      written only when real -- user ruling: additive
 #                      "extra", never conflicting).  A 7 file simply lacks
@@ -103,7 +108,7 @@ SCHEMA_VERSION = 8   # 8 (2026-08-20): + the OPTIONAL identity columns
 #: ``frozen_atoms``), and partial reads of those are the silent-loss case the
 #: strict gate exists for -- so the set widens only when an addition is
 #: provably additive.
-READABLE_VERSIONS = frozenset({7, 8})
+READABLE_VERSIONS = frozenset({7, 8, 9})
 
 #: The sidecar LAYER's own keys -- everything in a payload that is not a
 #: Structure metadata field.  Named so :func:`apply_to_structure` can hand the
@@ -258,6 +263,7 @@ def to_dict(
     n_atoms_total: int,
     structure_hash: str,
     selection_rules: Optional[Dict[str, Any]] = None,
+    info: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -331,7 +337,7 @@ def to_dict(
     normed_rules = normalise_selection_rules(
         selection_rules, set(fields["regions"]))
 
-    return {
+    out = {
         # Envelope -- the sidecar LAYER's own keys (not Structure fields).
         "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
@@ -352,6 +358,23 @@ def to_dict(
         "created_by":      str(created_by),
         "created_at":      created_at or _now_iso_z(),
     }
+    # The `info` block (schema 9): the free-form NON-structural store,
+    # written only when something is recorded -- an empty store leaves
+    # the file byte-identical to a schema-8 one apart from the stamp.
+    # JSON-checked here so an unserialisable value fails at WRITE time
+    # with a clear owner, never at a later save of unrelated work.
+    if info:
+        if not isinstance(info, dict):
+            raise MolstructJsonError(
+                f"info must be a dict of key -> JSON value, got "
+                f"{type(info).__name__}")
+        try:
+            _json.dumps(info)
+        except (TypeError, ValueError) as exc:
+            raise MolstructJsonError(
+                f"info holds a value JSON cannot carry: {exc}")
+        out["info"] = info
+    return out
 
 
 # --------------------------------------------------------------------- #
@@ -507,7 +530,7 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     from molbuilder.structure import IDENTITY_FIELDS, METADATA_FIELDS
     stray = [k for k in sidecar_data
              if k not in METADATA_FIELDS and k not in ENVELOPE_KEYS
-             and k not in IDENTITY_FIELDS]
+             and k not in IDENTITY_FIELDS and k != "info"]
     if stray:
         raise MolstructJsonError(
             f"sidecar carries {sorted(stray)!r}, which is neither a structure "
@@ -528,6 +551,11 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             setattr(struct, k, sidecar_data[k])
         else:
             setattr(struct, k, "" if k == "title" else None)
+    # The info block (schema 9), FULL-REPLACE like everything else here:
+    # absent means "nothing recorded", and a stale store must not survive
+    # a pair that no longer carries one.
+    raw_info = sidecar_data.get("info")
+    struct.info = dict(raw_info) if isinstance(raw_info, dict) else {}
     try:
         struct.apply_metadata_dict(
             {k: v for k, v in sidecar_data.items() if k in METADATA_FIELDS})

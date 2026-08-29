@@ -69,6 +69,7 @@ def _normalised_dict(
     vacuum: Optional[Any] = None,
     annotations: Optional[Dict[str, Any]] = None,
     identity: Optional[Dict[str, Any]] = None,
+    info: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -143,6 +144,10 @@ def _normalised_dict(
         # label stopped being one.
         **fields,
         **identity,
+        # The `info` block (schema 9): carried whole when the file holds
+        # one -- the store is open by design, so nothing here enumerates
+        # its keys (plans/structure-info-plan.md).
+        **({"info": dict(info)} if isinstance(info, dict) and info else {}),
         "selection_rules": normed_rules,
         "created_by":      str(created_by),
         "created_at":      created_at,
@@ -231,7 +236,11 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
     # and downstream of the leak.  It is checked HERE now, where the payload is
     # still whole.
     from molbuilder.structure import IDENTITY_FIELDS, METADATA_FIELDS
-    known = set(METADATA_FIELDS) | set(IDENTITY_FIELDS) | set(ENVELOPE_KEYS)
+    # `info` (schema 9): the free-form NON-structural store -- known by
+    # NAME here (the block is open by design, so its keys are not
+    # enumerated; plans/structure-info-plan.md).
+    known = (set(METADATA_FIELDS) | set(IDENTITY_FIELDS)
+             | set(ENVELOPE_KEYS) | {"info"})
     stray = sorted(k for k in data if k not in known)
     if stray:
         raise MolstructJsonError(
@@ -260,6 +269,7 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
             annotations     = data.get("annotations"),
             identity        = {k: data[k] for k in IDENTITY_FIELDS
                                if k in data},
+            info            = data.get("info"),
             created_by      = data.get("created_by", "unknown"),
             created_at      = data.get("created_at"),
         )

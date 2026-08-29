@@ -414,6 +414,15 @@ class Structure:
     # which present regions + frozen + these together.  Empty default so
     # every existing call site is unchanged.
     annotations:   Dict[str, AtomChannel] = field(default_factory=dict)
+    #: Free-form, NON-structural metadata (user, 2026-08-29 --
+    #: `plans/structure-info-plan.md`): a JSON dict of key -> value that
+    #: DESCRIBES the structure (a recorded electronic contract, a note)
+    #: without being part of it.  Deliberately outside METADATA_FIELDS:
+    #: that set is the strictly-enumerated STRUCTURAL block (unknown keys
+    #: refuse), while `info` is the open store.  Never enters
+    #: `structure_hash`; travels top-level in to_dict/from_dict beside
+    #: `metadata`, and in the sidecar since schema 9.
+    info:          Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.positions = np.asarray(self.positions, dtype=float).reshape(-1, 3)
@@ -860,6 +869,7 @@ class Structure:
             "residue_names": list(self.residue_names) if self.residue_names else [],
             "chain_ids":     list(self.chain_ids)     if self.chain_ids     else [],
             "metadata":      self.metadata_to_dict(),
+            "info":          dict(self.info),
         }
 
     @classmethod
@@ -883,6 +893,13 @@ class Structure:
         )
         # Full-replace + revalidate the metadata block through the ONE codec.
         s.apply_metadata_dict(data.get("metadata"))
+        raw_info = data.get("info")
+        if raw_info is not None:
+            if not isinstance(raw_info, dict):
+                raise ValueError(
+                    f"Structure.from_dict: 'info' must be a dict of "
+                    f"key -> JSON value, got {type(raw_info).__name__}")
+            s.info = dict(raw_info)
         return s
 
     def to_wire(self) -> dict:
@@ -941,6 +958,10 @@ class Structure:
                 # structure-periodicity.md.)
             },
             "annotations":   annotations_to_json(self.annotations),
+            # The `info` store (plans/structure-info-plan.md): sent whole
+            # so the viewer's Metadata pane shows exactly what the pair
+            # will carry.
+            "info":          dict(self.info),
         }
 
     def _validate_regions(self, n: int) -> None:

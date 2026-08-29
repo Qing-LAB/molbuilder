@@ -296,6 +296,15 @@ Rules that keep the condition decidable:
   Form B had no relaxation *here*, so there is no motion to check —
   the labels are taken as drawn, and the § 3 lead gates (thickness,
   tiling) still run.
+* **A recorded contract seals the pair** *(2026-08-29, the
+  structure-info chain — `plans/structure-info-plan.md`)*: a form-B
+  pair whose sidecar carries `info.calculation` (the electronic
+  contract the Results tab recorded from the finished run's own deck
+  at export) fills the config from the RECORD and the contract fields
+  **seal exactly as form A's do** — fdf-is-truth transfers to the
+  recorded copy.  A pair without the block stays the open lane.  So
+  the condition has three shades: deck (sealed) ·
+  pair-with-recorded-contract (sealed) · plain pair (open).
 * **The sealed set splits** (`transport/stages.py`):
   `SEALED_ALWAYS` = {`engine`, `job_name`, `bias_voltages_v`} — the
   description's own facts, refused as overrides for every citation;
