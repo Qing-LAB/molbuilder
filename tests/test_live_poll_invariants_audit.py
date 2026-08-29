@@ -683,11 +683,17 @@ class TestWorkflowGroupSchemaConsistency:
                 f"whole point of the module is that there is one.")
 
         # Transport tab must also delegate — this is the Au-junction
-        # chip drift the 2026-06-13 audit caught.
-        assert "molbuilder.detectionChip" in transport, (
-            "transport/core.js does not call the shared chip helper "
+        # chip drift the 2026-06-13 audit caught.  Since 2026-08-29 the
+        # tab rides lib/auto-detect.js whole (the recorded hold-out
+        # joined), and renderPanel owns the chip pass — so the pin is
+        # the shared call, not a direct chip call.
+        assert "autoDetect" in transport and "renderPanel" in transport, (
+            "transport/core.js does not render through lib/auto-detect.js "
             "— Au junctions silently skip the chip again "
             "(see web/ui-contract.md Rule 1).")
+        assert "function _renderAutoDetectPanel" not in transport, (
+            "transport/core.js grew its own panel renderer again; the "
+            "whole point of the module is that there is one.")
 
 
 class TestTrajectoryInspectorClaimsOptimXyz:

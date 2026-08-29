@@ -47,9 +47,18 @@ def test_transport_reads_back_what_it_writes():
     # anonymous functions are part of the body under test
     restore = src.split("function _restoreSession()", 1)[1].split(
         "\n    function ", 1)[0]
-    assert ".load(0)" in restore, "the restore must adopt via load(0)"
+    # No draft adoption: the viewer is READ-ONLY (molview.md § 9.4 --
+    # load(0) is a documented no-op there), so the restore re-opens the
+    # CITED file instead (§ 12.3, the inspector pattern; 2026-08-29).
+    assert ".load(0)" not in restore, (
+        "the restore adopts a draft again -- on the read-only mount "
+        "that is a silent no-op (the inspector's 2026-08-03 bug)")
     assert "note.junction" in restore, (
         "the restore must re-adopt the cited junction")
+    assert "_showInMolview" in restore, (
+        "the restore must re-open the cited structure through the one "
+        "load door -- a read-only tab keeps its structure by RELOADING "
+        "it (molview.md § 12.3)")
     adopt = src.split("function _adoptCitation(", 1)[1].split(
         "\n    function ", 1)[0]
     assert "_writePanelNote()" in adopt, (

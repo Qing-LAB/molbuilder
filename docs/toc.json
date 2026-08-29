@@ -3,7 +3,7 @@
   "tree": [
     {
       "label": "Spine",
-      "meta": "The top-level design docs \u2014 start here",
+      "meta": "The top-level design docs — start here",
       "children": [
         {
           "path": "README.md",
@@ -136,15 +136,15 @@
         },
         {
           "path": "execution/scheduler.md",
-          "label": "The scheduler subsystem \u2014 machines, queues, placement"
+          "label": "The scheduler subsystem — machines, queues, placement"
         },
         {
           "path": "execution/gpu.md",
-          "label": "How a GPU decision travels \u2014 one question, ten names"
+          "label": "How a GPU decision travels — one question, ten names"
         },
         {
           "path": "execution/submission.md",
-          "label": "What a job asks for \u2014 provenance, and the gate before it costs"
+          "label": "What a job asks for — provenance, and the gate before it costs"
         },
         {
           "path": "execution/running-a-job.md"
@@ -172,7 +172,7 @@
         },
         {
           "path": "execution/script-preparation.md",
-          "label": "Script preparation \u2014 the fixed steps"
+          "label": "Script preparation — the fixed steps"
         },
         {
           "path": "execution/asu-sol.md"
@@ -310,53 +310,53 @@
       "children": [
         {
           "path": "archive/2026-06-02-REVIEW_FINDINGS.md",
-          "label": "Codebase review findings \u2014 2026-05-16",
-          "subtitle": "Codebase review findings \u2014 2026-05-16"
+          "label": "Codebase review findings — 2026-05-16",
+          "subtitle": "Codebase review findings — 2026-05-16"
         },
         {
           "path": "archive/2026-06-02-tabs-watch.md",
-          "label": "Spec \u2014 Watch front-end behaviour",
-          "subtitle": "Spec \u2014 Watch front-end behaviour"
+          "label": "Spec — Watch front-end behaviour",
+          "subtitle": "Spec — Watch front-end behaviour"
         },
         {
           "path": "archive/2026-06-02-watch-api.md",
-          "label": "Spec \u2014 Watch HTTP endpoints",
-          "subtitle": "Spec \u2014 Watch HTTP endpoints"
+          "label": "Spec — Watch HTTP endpoints",
+          "subtitle": "Spec — Watch HTTP endpoints"
         },
         {
           "path": "archive/2026-07-03-atom-selection.md",
-          "label": "Spec \u2014 Atom-selection module",
-          "subtitle": "Spec \u2014 Atom-selection module"
+          "label": "Spec — Atom-selection module",
+          "subtitle": "Spec — Atom-selection module"
         },
         {
           "path": "archive/2026-07-03-embedded-viewer.md",
-          "label": "Embedded MolViewer \u2014 the standard structure viewer component",
-          "subtitle": "Embedded MolViewer \u2014 the standard structure viewer component"
+          "label": "Embedded MolViewer — the standard structure viewer component",
+          "subtitle": "Embedded MolViewer — the standard structure viewer component"
         },
         {
           "path": "archive/2026-07-05-browser-data-contract.md",
-          "label": "Browser-owned transient data \u2014 the structure app (working-copy)",
-          "subtitle": "Browser-owned transient data \u2014 the structure app (working-copy)"
+          "label": "Browser-owned transient data — the structure app (working-copy)",
+          "subtitle": "Browser-owned transient data — the structure app (working-copy)"
         },
         {
           "path": "archive/2026-07-05-working-copy-persistence.md",
-          "label": "Working-copy persistence \u2014 load, edit, save",
-          "subtitle": "Working-copy persistence \u2014 load, edit, save"
+          "label": "Working-copy persistence — load, edit, save",
+          "subtitle": "Working-copy persistence — load, edit, save"
         },
         {
           "path": "archive/2026-07-06-molview-module.md",
-          "label": "MolView module \u2014 design & contract",
-          "subtitle": "MolView module \u2014 design & contract"
+          "label": "MolView module — design & contract",
+          "subtitle": "MolView module — design & contract"
         },
         {
           "path": "archive/2026-07-06-workspace-state.md",
-          "label": "Workspace state \u2014 unified design (2026-06-07 audit + 2026-06-09 implementation + 2026-06-13 Phase 9 close)",
-          "subtitle": "Workspace state \u2014 unified design (2026-06-07 audit + 2026-06-09 implementation + 2026-06-13 Phase 9 close)"
+          "label": "Workspace state — unified design (2026-06-07 audit + 2026-06-09 implementation + 2026-06-13 Phase 9 close)",
+          "subtitle": "Workspace state — unified design (2026-06-07 audit + 2026-06-09 implementation + 2026-06-13 Phase 9 close)"
         },
         {
           "path": "archive/2026-07-28-decisions-log.md",
-          "label": "Decisions log \u2014 archived 2026-07-28 (historical record)",
-          "subtitle": "Decisions log \u2014 archived 2026-07-28 (historical record)"
+          "label": "Decisions log — archived 2026-07-28 (historical record)",
+          "subtitle": "Decisions log — archived 2026-07-28 (historical record)"
         },
         {
           "path": "archive/2026-07-28-document-migration.md",
@@ -365,133 +365,138 @@
         },
         {
           "path": "archive/2026-08-04-closed-tasks.md",
-          "label": "Closed tasks \u2014 snapshot 2026-08-04",
-          "subtitle": "Closed tasks \u2014 snapshot 2026-08-04"
+          "label": "Closed tasks — snapshot 2026-08-04",
+          "subtitle": "Closed tasks — snapshot 2026-08-04"
         },
         {
           "path": "archive/2026-08-10-stage-chaining.md",
-          "label": "Stage chaining \u2014 the retired design",
-          "subtitle": "Stage chaining \u2014 the retired design"
+          "label": "Stage chaining — the retired design",
+          "subtitle": "Stage chaining — the retired design"
         },
         {
           "path": "archive/2026-08-11-staged-runs-architecture.md",
-          "label": "Staged runs \u2014 one system, several parameter sets, one folder",
-          "subtitle": "Staged runs \u2014 one system, several parameter sets, one folder"
+          "label": "Staged runs — one system, several parameter sets, one folder",
+          "subtitle": "Staged runs — one system, several parameter sets, one folder"
         },
         {
           "path": "archive/2026-08-11-template-item-blocks.md",
-          "label": "The template as an `.fdf` with item blocks \u2014 the retired design",
-          "subtitle": "The template as an `.fdf` with item blocks \u2014 the retired design"
+          "label": "The template as an `.fdf` with item blocks — the retired design",
+          "subtitle": "The template as an `.fdf` with item blocks — the retired design"
         },
         {
           "path": "archive/2026-08-14-template-execution-review.md",
-          "label": "Full-text review \u2014 template, execution, and their backend",
-          "subtitle": "Full-text review \u2014 template, execution, and their backend"
+          "label": "Full-text review — template, execution, and their backend",
+          "subtitle": "Full-text review — template, execution, and their backend"
         },
         {
           "path": "archive/2026-08-16-molview-corrections-plan.md",
-          "label": "MolView \u2014 the corrections plan",
-          "subtitle": "MolView \u2014 the corrections plan"
+          "label": "MolView — the corrections plan",
+          "subtitle": "MolView — the corrections plan"
         },
         {
           "path": "archive/2026-08-16-molview-integration-plan.md",
-          "label": "MolView \u2014 wiring the tabs to the finished module",
-          "subtitle": "MolView \u2014 wiring the tabs to the finished module"
+          "label": "MolView — wiring the tabs to the finished module",
+          "subtitle": "MolView — wiring the tabs to the finished module"
         },
         {
           "path": "archive/2026-08-16-molview-rework-plan.md",
-          "label": "MolView \u2014 building the code from the document",
-          "subtitle": "MolView \u2014 building the code from the document"
+          "label": "MolView — building the code from the document",
+          "subtitle": "MolView — building the code from the document"
         },
         {
           "path": "archive/2026-08-16-siesta-catalogue.md",
-          "label": "The SIESTA catalogue \u2014 all 44 fields in six categories (T1)",
-          "subtitle": "The SIESTA catalogue \u2014 all 44 fields in six categories (T1)"
+          "label": "The SIESTA catalogue — all 44 fields in six categories (T1)",
+          "subtitle": "The SIESTA catalogue — all 44 fields in six categories (T1)"
         },
         {
           "path": "archive/2026-08-16-structure-optimization-ui-plan.md",
-          "label": "The Structure-optimization tab \u2014 writing the description",
-          "subtitle": "The Structure-optimization tab \u2014 writing the description"
+          "label": "The Structure-optimization tab — writing the description",
+          "subtitle": "The Structure-optimization tab — writing the description"
         },
         {
           "path": "archive/2026-08-16-task-setup-plan.md",
-          "label": "Task Setup \u2014 the shared tab that finishes a description",
-          "subtitle": "Task Setup \u2014 the shared tab that finishes a description"
+          "label": "Task Setup — the shared tab that finishes a description",
+          "subtitle": "Task Setup — the shared tab that finishes a description"
         },
         {
           "path": "archive/2026-08-17-generator-api-plan.md",
-          "label": "Making the doors take the object \u2014 the work behind A8 and A9",
-          "subtitle": "Making the doors take the object \u2014 the work behind A8 and A9"
+          "label": "Making the doors take the object — the work behind A8 and A9",
+          "subtitle": "Making the doors take the object — the work behind A8 and A9"
         },
         {
           "path": "archive/2026-08-18-preparation-backend-plan.md",
-          "label": "The preparation backend \u2014 building step 3 new, and migrating onto it",
-          "subtitle": "The preparation backend \u2014 building step 3 new, and migrating onto it"
+          "label": "The preparation backend — building step 3 new, and migrating onto it",
+          "subtitle": "The preparation backend — building step 3 new, and migrating onto it"
         },
         {
           "path": "archive/2026-08-19-handoff-e2e-session.md",
-          "label": "Handoff \u2014 committed, and the workflow has now actually been run",
-          "subtitle": "Handoff \u2014 committed, and the workflow has now actually been run"
+          "label": "Handoff — committed, and the workflow has now actually been run",
+          "subtitle": "Handoff — committed, and the workflow has now actually been run"
         },
         {
           "path": "archive/2026-08-19-server-reload-plan.md",
-          "label": "Reloading a running server \u2014 a plan",
-          "subtitle": "Reloading a running server \u2014 a plan"
+          "label": "Reloading a running server — a plan",
+          "subtitle": "Reloading a running server — a plan"
         },
         {
           "path": "archive/2026-08-19-staged-runs-implementation-plan.md",
-          "label": "Staged runs \u2014 the order the code follows the contracts",
-          "subtitle": "Staged runs \u2014 the order the code follows the contracts"
+          "label": "Staged runs — the order the code follows the contracts",
+          "subtitle": "Staged runs — the order the code follows the contracts"
         },
         {
           "path": "archive/2026-08-19-task-setup-tab-plan.md",
-          "label": "The Task setup tab \u2014 what is built, and what is left",
-          "subtitle": "The Task setup tab \u2014 what is built, and what is left"
+          "label": "The Task setup tab — what is built, and what is left",
+          "subtitle": "The Task setup tab — what is built, and what is left"
         },
         {
           "path": "archive/2026-08-19-template-unification-plan.md",
-          "label": "The template unification \u2014 plan of record",
-          "subtitle": "The template unification \u2014 plan of record"
+          "label": "The template unification — plan of record",
+          "subtitle": "The template unification — plan of record"
         },
         {
           "path": "archive/2026-08-20-cell-plan.md",
-          "label": "The unit cell, and how a user says what they want \u2014 a plan",
-          "subtitle": "The unit cell, and how a user says what they want \u2014 a plan"
+          "label": "The unit cell, and how a user says what they want — a plan",
+          "subtitle": "The unit cell, and how a user says what they want — a plan"
         },
         {
           "path": "archive/2026-08-20-milestone-review.md",
-          "label": "Milestone review, 2026-08-20 \u2014 three passes over `b76d9883..ec34c2e6`",
-          "subtitle": "Milestone review, 2026-08-20 \u2014 three passes over `b76d9883..ec34c2e6`"
+          "label": "Milestone review, 2026-08-20 — three passes over `b76d9883..ec34c2e6`",
+          "subtitle": "Milestone review, 2026-08-20 — three passes over `b76d9883..ec34c2e6`"
         },
         {
           "path": "archive/2026-08-20-molview-and-checkpoint-ui-plan.md",
-          "label": "The checkpoint view, the view context, and a working Export \u2014 plan",
-          "subtitle": "The checkpoint view, the view context, and a working Export \u2014 plan"
+          "label": "The checkpoint view, the view context, and a working Export — plan",
+          "subtitle": "The checkpoint view, the view context, and a working Export — plan"
         },
         {
           "path": "archive/2026-08-20-molview-css-namespace-plan.md",
-          "label": "MolView \u2014 the stylesheet namespace plan",
-          "subtitle": "MolView \u2014 the stylesheet namespace plan"
+          "label": "MolView — the stylesheet namespace plan",
+          "subtitle": "MolView — the stylesheet namespace plan"
         },
         {
           "path": "archive/2026-08-20-spectra-migration-plan.md",
-          "label": "The spectra migration \u2014 the vibrational calculation becomes a described job",
-          "subtitle": "The spectra migration \u2014 the vibrational calculation becomes a described job"
+          "label": "The spectra migration — the vibrational calculation becomes a described job",
+          "subtitle": "The spectra migration — the vibrational calculation becomes a described job"
         },
         {
           "path": "archive/2026-08-21-review-delivered.md",
-          "label": "2026-08-21 review \u2014 the delivered record (archived)",
-          "subtitle": "2026-08-21 review \u2014 the delivered record (archived)"
+          "label": "2026-08-21 review — the delivered record (archived)",
+          "subtitle": "2026-08-21 review — the delivered record (archived)"
         },
         {
           "path": "archive/2026-08-21-vibration-parameter-integration-plan.md",
-          "label": "The 22 shown-but-unread parameters \u2014 categories, integration paths, and the hint mechanism",
-          "subtitle": "The 22 shown-but-unread parameters \u2014 categories, integration paths, and the hint mechanism"
+          "label": "The 22 shown-but-unread parameters — categories, integration paths, and the hint mechanism",
+          "subtitle": "The 22 shown-but-unread parameters — categories, integration paths, and the hint mechanism"
+        },
+        {
+          "path": "archive/2026-08-29-handoff-bundle.md",
+          "label": "RETIRED (2026-08-29) — the composite replaced the handoff bundle",
+          "subtitle": "RETIRED (2026-08-29) — the composite replaced the handoff bundle"
         },
         {
           "path": "archive/MIGRATION.md",
-          "label": "Migration ledger \u2014 old_docs/ \u2192 docs/",
-          "subtitle": "Migration ledger \u2014 old_docs/ \u2192 docs/"
+          "label": "Migration ledger — old_docs/ → docs/",
+          "subtitle": "Migration ledger — old_docs/ → docs/"
         },
         {
           "path": "archive/README.md",
@@ -506,28 +511,28 @@
               "children": [
                 {
                   "path": "archive/audits/audit-2026-06-26/README.md",
-                  "label": "Codebase audit \u2014 2026-06-26",
-                  "subtitle": "Codebase audit \u2014 2026-06-26"
+                  "label": "Codebase audit — 2026-06-26",
+                  "subtitle": "Codebase audit — 2026-06-26"
                 },
                 {
                   "path": "archive/audits/audit-2026-06-26/SYNTHESIS.md",
-                  "label": "Audit synthesis \u2014 cross-cutting top 10",
-                  "subtitle": "Audit synthesis \u2014 cross-cutting top 10"
+                  "label": "Audit synthesis — cross-cutting top 10",
+                  "subtitle": "Audit synthesis — cross-cutting top 10"
                 },
                 {
                   "path": "archive/audits/audit-2026-06-26/T1_top_findings.md",
-                  "label": "T1 \u2014 Top-30 findings sweep",
-                  "subtitle": "T1 \u2014 Top-30 findings sweep"
+                  "label": "T1 — Top-30 findings sweep",
+                  "subtitle": "T1 — Top-30 findings sweep"
                 },
                 {
                   "path": "archive/audits/audit-2026-06-26/T3_css_ui.md",
-                  "label": "T3 \u2014 CSS/UI holistic audit",
-                  "subtitle": "T3 \u2014 CSS/UI holistic audit"
+                  "label": "T3 — CSS/UI holistic audit",
+                  "subtitle": "T3 — CSS/UI holistic audit"
                 },
                 {
                   "path": "archive/audits/audit-2026-06-26/T4_test_depth.md",
-                  "label": "T4 \u2014 Test-depth audit",
-                  "subtitle": "T4 \u2014 Test-depth audit"
+                  "label": "T4 — Test-depth audit",
+                  "subtitle": "T4 — Test-depth audit"
                 }
               ]
             },
@@ -536,8 +541,8 @@
               "children": [
                 {
                   "path": "archive/audits/audit-2026-06-27/README.md",
-                  "label": "Audit 2026-06-27 \u2014 SLURM/Sol session self-review + benchmark ground-truth",
-                  "subtitle": "Audit 2026-06-27 \u2014 SLURM/Sol session self-review + benchmark ground-truth"
+                  "label": "Audit 2026-06-27 — SLURM/Sol session self-review + benchmark ground-truth",
+                  "subtitle": "Audit 2026-06-27 — SLURM/Sol session self-review + benchmark ground-truth"
                 }
               ]
             },
@@ -546,8 +551,8 @@
               "children": [
                 {
                   "path": "archive/audits/job-case-analysis/ANALYSIS-G1K1C4.md",
-                  "label": "Benchmark analysis \u2014 `point-G1K1C4` (single rank on one A100)",
-                  "subtitle": "Benchmark analysis \u2014 `point-G1K1C4` (single rank on one A100)"
+                  "label": "Benchmark analysis — `point-G1K1C4` (single rank on one A100)",
+                  "subtitle": "Benchmark analysis — `point-G1K1C4` (single rank on one A100)"
                 }
               ]
             }
@@ -558,58 +563,58 @@
           "children": [
             {
               "path": "archive/old_docs/architecture.md",
-              "label": "molbuilder \u2014 architecture index (the design-foundation reference)",
+              "label": "molbuilder — architecture index (the design-foundation reference)",
               "subtitle": "architecture index (the design-foundation reference)"
             },
             {
               "path": "archive/old_docs/atom-selection-guide.md",
-              "label": "Atom selection \u2014 a developer's guide",
-              "subtitle": "Atom selection \u2014 a developer's guide"
+              "label": "Atom selection — a developer's guide",
+              "subtitle": "Atom selection — a developer's guide"
             },
             {
               "path": "archive/old_docs/batch-workflow-overview.md",
-              "label": "Running a batch of jobs \u2014 the big picture",
-              "subtitle": "Running a batch of jobs \u2014 the big picture"
+              "label": "Running a batch of jobs — the big picture",
+              "subtitle": "Running a batch of jobs — the big picture"
             },
             {
               "path": "archive/old_docs/checkpoints-guide.md",
-              "label": "Run checkpoints \u2014 a developer's & user's guide",
-              "subtitle": "Run checkpoints \u2014 a developer's & user's guide"
+              "label": "Run checkpoints — a developer's & user's guide",
+              "subtitle": "Run checkpoints — a developer's & user's guide"
             },
             {
               "path": "archive/old_docs/config.md",
-              "label": "Configuration \u2014 wrapper contract + generator inputs",
-              "subtitle": "Configuration \u2014 wrapper contract + generator inputs"
+              "label": "Configuration — wrapper contract + generator inputs",
+              "subtitle": "Configuration — wrapper contract + generator inputs"
             },
             {
               "path": "archive/old_docs/deployment.md",
-              "label": "Deploying molbuilder over a network (LAN \u00b7 internet \u00b7 auth \u00b7 TLS)",
-              "subtitle": "Deploying molbuilder over a network (LAN \u00b7 internet \u00b7 auth \u00b7 TLS)"
+              "label": "Deploying molbuilder over a network (LAN · internet · auth · TLS)",
+              "subtitle": "Deploying molbuilder over a network (LAN · internet · auth · TLS)"
             },
             {
               "path": "archive/old_docs/design.md",
-              "label": "molbuilder \u2014 design and roadmap",
+              "label": "molbuilder — design and roadmap",
               "subtitle": "design and roadmap"
             },
             {
               "path": "archive/old_docs/form-schema-guide.md",
-              "label": "Schema-driven forms \u2014 a developer's guide",
-              "subtitle": "Schema-driven forms \u2014 a developer's guide"
+              "label": "Schema-driven forms — a developer's guide",
+              "subtitle": "Schema-driven forms — a developer's guide"
             },
             {
               "path": "archive/old_docs/job-execution.md",
-              "label": "Job execution \u2014 the system, the workflow, the contract",
-              "subtitle": "Job execution \u2014 the system, the workflow, the contract"
+              "label": "Job execution — the system, the workflow, the contract",
+              "subtitle": "Job execution — the system, the workflow, the contract"
             },
             {
               "path": "archive/old_docs/jobset-infrastructure.md",
-              "label": "The JobSet infrastructure \u2014 one engine for \"a set of related jobs\"",
-              "subtitle": "The JobSet infrastructure \u2014 one engine for \"a set of related jobs\""
+              "label": "The JobSet infrastructure — one engine for \"a set of related jobs\"",
+              "subtitle": "The JobSet infrastructure — one engine for \"a set of related jobs\""
             },
             {
               "path": "archive/old_docs/molviewer-guide.md",
-              "label": "The embedded MolViewer \u2014 a developer's guide",
-              "subtitle": "The embedded MolViewer \u2014 a developer's guide"
+              "label": "The embedded MolViewer — a developer's guide",
+              "subtitle": "The embedded MolViewer — a developer's guide"
             },
             {
               "path": "archive/old_docs/package-layout.md",
@@ -618,18 +623,18 @@
             },
             {
               "path": "archive/old_docs/README.md",
-              "label": "molbuilder \u2014 documentation index (FROZEN LEGACY TREE)",
+              "label": "molbuilder — documentation index (FROZEN LEGACY TREE)",
               "subtitle": "documentation index (FROZEN LEGACY TREE)"
             },
             {
               "path": "archive/old_docs/README_install.md",
-              "label": "molbuilder \u2014 installation and environment preparation",
+              "label": "molbuilder — installation and environment preparation",
               "subtitle": "installation and environment preparation"
             },
             {
               "path": "archive/old_docs/results-tab-guide.md",
-              "label": "The Results tab & inspectors \u2014 a developer's guide",
-              "subtitle": "The Results tab & inspectors \u2014 a developer's guide"
+              "label": "The Results tab & inspectors — a developer's guide",
+              "subtitle": "The Results tab & inspectors — a developer's guide"
             },
             {
               "path": "archive/old_docs/roadmap.md",
@@ -638,8 +643,8 @@
             },
             {
               "path": "archive/old_docs/runtime-registry-guide.md",
-              "label": "The runtime registry \u2014 a developer's guide",
-              "subtitle": "The runtime registry \u2014 a developer's guide"
+              "label": "The runtime registry — a developer's guide",
+              "subtitle": "The runtime registry — a developer's guide"
             },
             {
               "path": "archive/old_docs/science.md",
@@ -648,56 +653,56 @@
             },
             {
               "path": "archive/old_docs/staged-relaxation-guide.md",
-              "label": "Staged relaxation \u2014 a user's guide",
-              "subtitle": "Staged relaxation \u2014 a user's guide"
+              "label": "Staged relaxation — a user's guide",
+              "subtitle": "Staged relaxation — a user's guide"
             },
             {
               "path": "archive/old_docs/structure-guide.md",
-              "label": "Structure build & save \u2014 a developer's guide",
-              "subtitle": "Structure build & save \u2014 a developer's guide"
+              "label": "Structure build & save — a developer's guide",
+              "subtitle": "Structure build & save — a developer's guide"
             },
             {
               "path": "archive/old_docs/transport-guide.md",
-              "label": "Transport (conductance) calculations \u2014 a developer's & user's guide",
-              "subtitle": "Transport (conductance) calculations \u2014 a developer's & user's guide"
+              "label": "Transport (conductance) calculations — a developer's & user's guide",
+              "subtitle": "Transport (conductance) calculations — a developer's & user's guide"
             },
             {
               "path": "archive/old_docs/workspace-guide.md",
-              "label": "The workspace state layer \u2014 a developer's guide",
-              "subtitle": "The workspace state layer \u2014 a developer's guide"
+              "label": "The workspace state layer — a developer's guide",
+              "subtitle": "The workspace state layer — a developer's guide"
             },
             {
               "label": "engines",
               "children": [
                 {
                   "path": "archive/old_docs/engines/builders.md",
-                  "label": "Spec \u2014 builders",
-                  "subtitle": "Spec \u2014 builders"
+                  "label": "Spec — builders",
+                  "subtitle": "Spec — builders"
                 },
                 {
                   "path": "archive/old_docs/engines/optimization-tuning.md",
-                  "label": "Optimization parameter tuning \u2014 cross-engine guide",
-                  "subtitle": "Optimization parameter tuning \u2014 cross-engine guide"
+                  "label": "Optimization parameter tuning — cross-engine guide",
+                  "subtitle": "Optimization parameter tuning — cross-engine guide"
                 },
                 {
                   "path": "archive/old_docs/engines/pyscf-publication-guide.md",
-                  "label": "PySCF \u2014 publication-quality parameter guide + staged-opt design",
-                  "subtitle": "PySCF \u2014 publication-quality parameter guide + staged-opt design"
+                  "label": "PySCF — publication-quality parameter guide + staged-opt design",
+                  "subtitle": "PySCF — publication-quality parameter guide + staged-opt design"
                 },
                 {
                   "path": "archive/old_docs/engines/pyscf.md",
-                  "label": "Spec \u2014 generated PySCF script",
-                  "subtitle": "Spec \u2014 generated PySCF script"
+                  "label": "Spec — generated PySCF script",
+                  "subtitle": "Spec — generated PySCF script"
                 },
                 {
                   "path": "archive/old_docs/engines/siesta-gpu.md",
-                  "label": "`molbuilder-siesta-gpu` \u2014 SIESTA built from source with CUDA-accelerated ELPA",
-                  "subtitle": "`molbuilder-siesta-gpu` \u2014 SIESTA built from source with CUDA-accelerated ELPA"
+                  "label": "`molbuilder-siesta-gpu` — SIESTA built from source with CUDA-accelerated ELPA",
+                  "subtitle": "`molbuilder-siesta-gpu` — SIESTA built from source with CUDA-accelerated ELPA"
                 },
                 {
                   "path": "archive/old_docs/engines/siesta.md",
-                  "label": "Spec \u2014 SIESTA `.fdf` emitter",
-                  "subtitle": "Spec \u2014 SIESTA `.fdf` emitter"
+                  "label": "Spec — SIESTA `.fdf` emitter",
+                  "subtitle": "Spec — SIESTA `.fdf` emitter"
                 },
                 {
                   "path": "archive/old_docs/engines/transport.md",
@@ -711,18 +716,18 @@
               "children": [
                 {
                   "path": "archive/old_docs/protocols/atom-annotations.md",
-                  "label": "Unified atom annotations \u2014 the per-atom annotation channels model",
-                  "subtitle": "Unified atom annotations \u2014 the per-atom annotation channels model"
+                  "label": "Unified atom annotations — the per-atom annotation channels model",
+                  "subtitle": "Unified atom annotations — the per-atom annotation channels model"
                 },
                 {
                   "path": "archive/old_docs/protocols/backend-architecture.md",
-                  "label": "Backend architecture \u2014 the four concerns (data \u00b7 construction \u00b7 validation \u00b7 execution)",
-                  "subtitle": "Backend architecture \u2014 the four concerns (data \u00b7 construction \u00b7 validation \u00b7 execution)"
+                  "label": "Backend architecture — the four concerns (data · construction · validation · execution)",
+                  "subtitle": "Backend architecture — the four concerns (data · construction · validation · execution)"
                 },
                 {
                   "path": "archive/old_docs/protocols/benchmark-workflow.md",
-                  "label": "Benchmark workflow \u2014 target-isolated, self-configuring",
-                  "subtitle": "Benchmark workflow \u2014 target-isolated, self-configuring"
+                  "label": "Benchmark workflow — target-isolated, self-configuring",
+                  "subtitle": "Benchmark workflow — target-isolated, self-configuring"
                 },
                 {
                   "path": "archive/old_docs/protocols/bundle-contract.md",
@@ -731,13 +736,13 @@
                 },
                 {
                   "path": "archive/old_docs/protocols/chemistry-correctness.md",
-                  "label": "Chemistry correctness \u2014 the control surface, end to end",
-                  "subtitle": "Chemistry correctness \u2014 the control surface, end to end"
+                  "label": "Chemistry correctness — the control surface, end to end",
+                  "subtitle": "Chemistry correctness — the control surface, end to end"
                 },
                 {
                   "path": "archive/old_docs/protocols/cli.md",
-                  "label": "Spec \u2014 command-line interface",
-                  "subtitle": "Spec \u2014 command-line interface"
+                  "label": "Spec — command-line interface",
+                  "subtitle": "Spec — command-line interface"
                 },
                 {
                   "path": "archive/old_docs/protocols/code-audit.md",
@@ -751,18 +756,18 @@
                 },
                 {
                   "path": "archive/old_docs/protocols/data-vocabulary.md",
-                  "label": "Data vocabulary & persisted formats \u2014 the system's shared language",
-                  "subtitle": "Data vocabulary & persisted formats \u2014 the system's shared language"
+                  "label": "Data vocabulary & persisted formats — the system's shared language",
+                  "subtitle": "Data vocabulary & persisted formats — the system's shared language"
                 },
                 {
                   "path": "archive/old_docs/protocols/frontend-module-architecture.md",
-                  "label": "Frontend module architecture \u2014 the target the tabs migrate onto",
-                  "subtitle": "Frontend module architecture \u2014 the target the tabs migrate onto"
+                  "label": "Frontend module architecture — the target the tabs migrate onto",
+                  "subtitle": "Frontend module architecture — the target the tabs migrate onto"
                 },
                 {
                   "path": "archive/old_docs/protocols/inspector-registry.md",
-                  "label": "Inspector registry \u2014 `mount` / `dispose` / `isResult` / `resultCategory`",
-                  "subtitle": "Inspector registry \u2014 `mount` / `dispose` / `isResult` / `resultCategory`"
+                  "label": "Inspector registry — `mount` / `dispose` / `isResult` / `resultCategory`",
+                  "subtitle": "Inspector registry — `mount` / `dispose` / `isResult` / `resultCategory`"
                 },
                 {
                   "path": "archive/old_docs/protocols/job-decoder.md",
@@ -771,38 +776,38 @@
                 },
                 {
                   "path": "archive/old_docs/protocols/job-layout.md",
-                  "label": "Job layout \u2014 directory + filename protocol",
-                  "subtitle": "Job layout \u2014 directory + filename protocol"
+                  "label": "Job layout — directory + filename protocol",
+                  "subtitle": "Job layout — directory + filename protocol"
                 },
                 {
                   "path": "archive/old_docs/protocols/mobile-layout.md",
-                  "label": "Mobile layout \u2014 responsive-grid pattern",
-                  "subtitle": "Mobile layout \u2014 responsive-grid pattern"
+                  "label": "Mobile layout — responsive-grid pattern",
+                  "subtitle": "Mobile layout — responsive-grid pattern"
                 },
                 {
                   "path": "archive/old_docs/protocols/molview-esm-finalization.md",
-                  "label": "MolView ESM finalization \u2014 principles + plan (LIVING guidance)",
-                  "subtitle": "MolView ESM finalization \u2014 principles + plan (LIVING guidance)"
+                  "label": "MolView ESM finalization — principles + plan (LIVING guidance)",
+                  "subtitle": "MolView ESM finalization — principles + plan (LIVING guidance)"
                 },
                 {
                   "path": "archive/old_docs/protocols/molview-migration-plan.md",
-                  "label": "MolView consumer migration \u2014 OPEN-WORK tracker",
-                  "subtitle": "MolView consumer migration \u2014 OPEN-WORK tracker"
+                  "label": "MolView consumer migration — OPEN-WORK tracker",
+                  "subtitle": "MolView consumer migration — OPEN-WORK tracker"
                 },
                 {
                   "path": "archive/old_docs/protocols/molview-module.md",
-                  "label": "MolView module \u2014 contract",
-                  "subtitle": "MolView module \u2014 contract"
+                  "label": "MolView module — contract",
+                  "subtitle": "MolView module — contract"
                 },
                 {
                   "path": "archive/old_docs/protocols/molview-render-streamline.md",
-                  "label": "MolView render streamline \u2014 the ONE render path",
-                  "subtitle": "MolView render streamline \u2014 the ONE render path"
+                  "label": "MolView render streamline — the ONE render path",
+                  "subtitle": "MolView render streamline — the ONE render path"
                 },
                 {
                   "path": "archive/old_docs/protocols/notifications.md",
-                  "label": "System notifications \u2014 the app-wide notification bar (contract)",
-                  "subtitle": "System notifications \u2014 the app-wide notification bar (contract)"
+                  "label": "System notifications — the app-wide notification bar (contract)",
+                  "subtitle": "System notifications — the app-wide notification bar (contract)"
                 },
                 {
                   "path": "archive/old_docs/protocols/parse-module.md",
@@ -811,23 +816,23 @@
                 },
                 {
                   "path": "archive/old_docs/protocols/playwright-tests.md",
-                  "label": "Playwright test design \u2014 patterns and anti-patterns",
-                  "subtitle": "Playwright test design \u2014 patterns and anti-patterns"
+                  "label": "Playwright test design — patterns and anti-patterns",
+                  "subtitle": "Playwright test design — patterns and anti-patterns"
                 },
                 {
                   "path": "archive/old_docs/protocols/projects-sidebar-ui.md",
-                  "label": "Projects sidebar \u2014 UI + file-content preview contract (aspect E)",
-                  "subtitle": "Projects sidebar \u2014 UI + file-content preview contract (aspect E)"
+                  "label": "Projects sidebar — UI + file-content preview contract (aspect E)",
+                  "subtitle": "Projects sidebar — UI + file-content preview contract (aspect E)"
                 },
                 {
                   "path": "archive/old_docs/protocols/projects-sidebar.md",
-                  "label": "Projects sidebar \u2014 module MASTER + architectural design",
-                  "subtitle": "Projects sidebar \u2014 module MASTER + architectural design"
+                  "label": "Projects sidebar — module MASTER + architectural design",
+                  "subtitle": "Projects sidebar — module MASTER + architectural design"
                 },
                 {
                   "path": "archive/old_docs/protocols/pseudopotential-validation.md",
-                  "label": "Pseudopotential validation \u2014 standard & process",
-                  "subtitle": "Pseudopotential validation \u2014 standard & process"
+                  "label": "Pseudopotential validation — standard & process",
+                  "subtitle": "Pseudopotential validation — standard & process"
                 },
                 {
                   "path": "archive/old_docs/protocols/rate-limit.md",
@@ -846,28 +851,28 @@
                 },
                 {
                   "path": "archive/old_docs/protocols/results-tab.md",
-                  "label": "Spec \u2014 `/results` tab (post-merge unified inspector)",
-                  "subtitle": "Spec \u2014 `/results` tab (post-merge unified inspector)"
+                  "label": "Spec — `/results` tab (post-merge unified inspector)",
+                  "subtitle": "Spec — `/results` tab (post-merge unified inspector)"
                 },
                 {
                   "path": "archive/old_docs/protocols/run-checkpoints.md",
-                  "label": "Run-checkpoints \u2014 git-based working-dir state management",
-                  "subtitle": "Run-checkpoints \u2014 git-based working-dir state management"
+                  "label": "Run-checkpoints — git-based working-dir state management",
+                  "subtitle": "Run-checkpoints — git-based working-dir state management"
                 },
                 {
                   "path": "archive/old_docs/protocols/runtime-registry.md",
-                  "label": "`molbuilder-runtime.js` \u2014 module registry + ready Promises",
-                  "subtitle": "`molbuilder-runtime.js` \u2014 module registry + ready Promises"
+                  "label": "`molbuilder-runtime.js` — module registry + ready Promises",
+                  "subtitle": "`molbuilder-runtime.js` — module registry + ready Promises"
                 },
                 {
                   "path": "archive/old_docs/protocols/save-flow.md",
-                  "label": "Save-flow contract \u2014 the Save-panel UI",
-                  "subtitle": "Save-flow contract \u2014 the Save-panel UI"
+                  "label": "Save-flow contract — the Save-panel UI",
+                  "subtitle": "Save-flow contract — the Save-panel UI"
                 },
                 {
                   "path": "archive/old_docs/protocols/scientific-validation.md",
-                  "label": "Scientific validation \u2014 runtime machinery",
-                  "subtitle": "Scientific validation \u2014 runtime machinery"
+                  "label": "Scientific validation — runtime machinery",
+                  "subtitle": "Scientific validation — runtime machinery"
                 },
                 {
                   "path": "archive/old_docs/protocols/script-contract.md",
@@ -876,23 +881,23 @@
                 },
                 {
                   "path": "archive/old_docs/protocols/script-execution.md",
-                  "label": "Script-execution contract \u2014 warm-restart, cold-restart, project-id consistency",
-                  "subtitle": "Script-execution contract \u2014 warm-restart, cold-restart, project-id consistency"
+                  "label": "Script-execution contract — warm-restart, cold-restart, project-id consistency",
+                  "subtitle": "Script-execution contract — warm-restart, cold-restart, project-id consistency"
                 },
                 {
                   "path": "archive/old_docs/protocols/selection.md",
-                  "label": "Spec \u2014 Selection model (Projects sidebar + tab contract)",
-                  "subtitle": "Spec \u2014 Selection model (Projects sidebar + tab contract)"
+                  "label": "Spec — Selection model (Projects sidebar + tab contract)",
+                  "subtitle": "Spec — Selection model (Projects sidebar + tab contract)"
                 },
                 {
                   "path": "archive/old_docs/protocols/sidecar-contract.md",
-                  "label": "Sidecar-driven boundary conditions \u2014 the three-stage contract",
-                  "subtitle": "Sidecar-driven boundary conditions \u2014 the three-stage contract"
+                  "label": "Sidecar-driven boundary conditions — the three-stage contract",
+                  "subtitle": "Sidecar-driven boundary conditions — the three-stage contract"
                 },
                 {
                   "path": "archive/old_docs/protocols/slurm-integration.md",
-                  "label": "SLURM integration \u2014 sbatch submission as a use case of the script generator",
-                  "subtitle": "SLURM integration \u2014 sbatch submission as a use case of the script generator"
+                  "label": "SLURM integration — sbatch submission as a use case of the script generator",
+                  "subtitle": "SLURM integration — sbatch submission as a use case of the script generator"
                 },
                 {
                   "path": "archive/old_docs/protocols/staged-execution.md",
@@ -901,18 +906,18 @@
                 },
                 {
                   "path": "archive/old_docs/protocols/structure-authority.md",
-                  "label": "Structure authority \u2014 the ONE codec + the ONE file door",
-                  "subtitle": "Structure authority \u2014 the ONE codec + the ONE file door"
+                  "label": "Structure authority — the ONE codec + the ONE file door",
+                  "subtitle": "Structure authority — the ONE codec + the ONE file door"
                 },
                 {
                   "path": "archive/old_docs/protocols/structure-load-save-contract.md",
-                  "label": "Structure load / save contract \u2014 the parser doors + the model primitives",
-                  "subtitle": "Structure load / save contract \u2014 the parser doors + the model primitives"
+                  "label": "Structure load / save contract — the parser doors + the model primitives",
+                  "subtitle": "Structure load / save contract — the parser doors + the model primitives"
                 },
                 {
                   "path": "archive/old_docs/protocols/structure-periodicity.md",
-                  "label": "Structure periodicity \u2014 cell / axis_kind / vacuum / kgrid (the periodicity contract)",
-                  "subtitle": "Structure periodicity \u2014 cell / axis_kind / vacuum / kgrid (the periodicity contract)"
+                  "label": "Structure periodicity — cell / axis_kind / vacuum / kgrid (the periodicity contract)",
+                  "subtitle": "Structure periodicity — cell / axis_kind / vacuum / kgrid (the periodicity contract)"
                 },
                 {
                   "path": "archive/old_docs/protocols/test-strategy.md",
@@ -921,28 +926,28 @@
                 },
                 {
                   "path": "archive/old_docs/protocols/transiesta-workflow.md",
-                  "label": "TranSIESTA workflow \u2014 scientific basis & a consistency-first strategy",
-                  "subtitle": "TranSIESTA workflow \u2014 scientific basis & a consistency-first strategy"
+                  "label": "TranSIESTA workflow — scientific basis & a consistency-first strategy",
+                  "subtitle": "TranSIESTA workflow — scientific basis & a consistency-first strategy"
                 },
                 {
                   "path": "archive/old_docs/protocols/ui-design-contract.md",
-                  "label": "UI design contract \u2014 layout, CSS & module boundaries",
-                  "subtitle": "UI design contract \u2014 layout, CSS & module boundaries"
+                  "label": "UI design contract — layout, CSS & module boundaries",
+                  "subtitle": "UI design contract — layout, CSS & module boundaries"
                 },
                 {
                   "path": "archive/old_docs/protocols/vibrationview.md",
-                  "label": "VibrationView module \u2014 contract",
-                  "subtitle": "VibrationView module \u2014 contract"
+                  "label": "VibrationView module — contract",
+                  "subtitle": "VibrationView module — contract"
                 },
                 {
                   "path": "archive/old_docs/protocols/web-api.md",
-                  "label": "Web API \u2014 HTTP endpoint reference (`/api/*`)",
-                  "subtitle": "Web API \u2014 HTTP endpoint reference (`/api/*`)"
+                  "label": "Web API — HTTP endpoint reference (`/api/*`)",
+                  "subtitle": "Web API — HTTP endpoint reference (`/api/*`)"
                 },
                 {
                   "path": "archive/old_docs/protocols/web-module-map.md",
-                  "label": "Web module map \u2014 the front-end + web-API modules, in layers",
-                  "subtitle": "Web module map \u2014 the front-end + web-API modules, in layers"
+                  "label": "Web module map — the front-end + web-API modules, in layers",
+                  "subtitle": "Web module map — the front-end + web-API modules, in layers"
                 },
                 {
                   "path": "archive/old_docs/protocols/web-ui-coherence.md",
@@ -951,8 +956,8 @@
                 },
                 {
                   "path": "archive/old_docs/protocols/workspace-contract.md",
-                  "label": "Workspace \u2014 session state & file-access contract (the persistence layer)",
-                  "subtitle": "Workspace \u2014 session state & file-access contract (the persistence layer)"
+                  "label": "Workspace — session state & file-access contract (the persistence layer)",
+                  "subtitle": "Workspace — session state & file-access contract (the persistence layer)"
                 }
               ]
             },
@@ -966,26 +971,26 @@
                 },
                 {
                   "path": "archive/old_docs/tabs/molbuilder.md",
-                  "label": "Molbuilder workspace \u2014 Modify subset",
+                  "label": "Molbuilder workspace — Modify subset",
                   "subtitle": "Modify subset"
                 },
                 {
                   "path": "archive/old_docs/tabs/results.md",
-                  "label": "`/results` tab \u2014 registry dispatch + file picker",
-                  "subtitle": "`/results` tab \u2014 registry dispatch + file picker"
+                  "label": "`/results` tab — registry dispatch + file picker",
+                  "subtitle": "`/results` tab — registry dispatch + file picker"
                 },
                 {
                   "path": "archive/old_docs/tabs/structure-optimization.md",
-                  "label": "`/structure-optimization` tab \u2014 SIESTA/PySCF form",
-                  "subtitle": "`/structure-optimization` tab \u2014 SIESTA/PySCF form"
+                  "label": "`/structure-optimization` tab — SIESTA/PySCF form",
+                  "subtitle": "`/structure-optimization` tab — SIESTA/PySCF form"
                 },
                 {
                   "label": "spectra",
                   "children": [
                     {
                       "path": "archive/old_docs/tabs/spectra/spec.md",
-                      "label": "Spectrum-calculation tab \u2014 design spec",
-                      "subtitle": "Spectrum-calculation tab \u2014 design spec"
+                      "label": "Spectrum-calculation tab — design spec",
+                      "subtitle": "Spectrum-calculation tab — design spec"
                     }
                   ]
                 }
@@ -996,18 +1001,18 @@
               "children": [
                 {
                   "path": "archive/old_docs/types/chemistry.md",
-                  "label": "Spec \u2014 chemistry: charge + protonation",
-                  "subtitle": "Spec \u2014 chemistry: charge + protonation"
+                  "label": "Spec — chemistry: charge + protonation",
+                  "subtitle": "Spec — chemistry: charge + protonation"
                 },
                 {
                   "path": "archive/old_docs/types/parsers.md",
-                  "label": "Spec \u2014 parser plug-in interface (RETIRED)",
-                  "subtitle": "Spec \u2014 parser plug-in interface (RETIRED)"
+                  "label": "Spec — parser plug-in interface (RETIRED)",
+                  "subtitle": "Spec — parser plug-in interface (RETIRED)"
                 },
                 {
                   "path": "archive/old_docs/types/structure.md",
-                  "label": "Spec \u2014 Structure dataclass + I/O",
-                  "subtitle": "Spec \u2014 Structure dataclass + I/O"
+                  "label": "Spec — Structure dataclass + I/O",
+                  "subtitle": "Spec — Structure dataclass + I/O"
                 }
               ]
             }
