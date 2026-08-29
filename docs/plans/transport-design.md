@@ -36,6 +36,7 @@ structure or a parameter mismatch is impossible by construction.*
 | **one slot, by citation** | the transport task cites ONE finished attempt — the relaxed junction, named explicitly (`...@run-N`); prep COPIES the structure in, so the folder stays portable | § 4 |
 | **electrodes are derived** | the two electrode single-points are INTERNAL sub-stages, built from the junction's own `L-electrode`/`R-electrode` labeled blocks — parameter and geometry mismatch impossible by construction (user design, Q5) | § 3, § 4.2 |
 | **the internal gate** | the labeled blocks must TILE as bulk (frozen atoms unmoved, bulk spacing) and be thick enough for the principal-layer condition — refused naming the atoms | § 3 |
+| **the categorical sort** | TranSIESTA reads electrodes by POSITION, so prep sorts the copied structure into `[L][bridge][R]` (buffers outermost), checks every atom is labeled and none is lost, and records the permutation — relaxation order stays free | § 4.1a |
 | **update semantics** | move the molecule → a new transport attempt (device SCF re-runs — it IS H(geometry)); the derived electrodes rebuild identically from the unmoved labels; re-relax only if relaxing was the intent | § 5 |
 | **a bias scan is a sweep** | the fifth axis again: N bias points = a ParameterSet of length N, warm-started along the list — no new machinery | § 4.3 |
 
@@ -257,7 +258,82 @@ The transport task's `task.json` carries a single slot — the user's
   transport folder then travels like any other. The § 3 gate runs on
   the copy before anything renders.
 
+### 4.1a The atom-order contract — the categorical sort *(user, 2026-08-28)*
+
+**The requirement, validated.** TranSIESTA identifies electrode atoms
+by POSITION in the device's atom list, not by any label:
+
+* In the classic form (Brandbyge et al., *Phys. Rev. B* **65**, 165401
+  (2002) § III; manual keywords `TS.NumUsedAtomsLeft/Right`), *"the
+  first N atoms ARE the left electrode, the last M the right"* — the
+  layout `[L-electrode][bridge][R-electrode]` is mandatory.
+* In the 4.1+ N-electrode form (Papior et al., *Comput. Phys. Commun.*
+  **212**, 8 (2017); `%block TS.Elec` with `elec-pos`), an electrode is
+  declared by the index of its first atom — and its atoms must sit
+  **consecutively** from there, **in the same order as the electrode
+  calculation's atoms**, because the self-energy is attached
+  positionally; TranSIESTA cross-checks the coordinates and a mismatch
+  is fatal (or, worse in the old form, silent).
+* The repo already knew: `engines/transport.md` ("atom-ordering is
+  load-bearing") and the emitter's preflight refuse an out-of-order
+  structure today, with "a reorder affordance" noted as planned. This
+  section is that plan.
+
+**Relaxation order stays free.** The 0-based source-file order IS the
+atom identity everywhere else (`data-vocabulary.md` § 3.1,
+`engine_atom_index.py`), and no optimization cares about it. The sort
+is transport's business alone, and it happens at **transport prep, on
+the copied-in citation** — the cited attempt is never mutated.
+
+**The sort.** A categorical sort by region label into the canonical
+layout, buffers outermost:
+
+```
+[ buffer_L ][ L-electrode ][ bridge ][ R-electrode ][ buffer_R ]
+  index 1 →                                          → index N
+```
+
+* **Within each electrode block**: sorted by transport coordinate
+  (layer-major), then transverse coordinates — deterministic, and
+  tiling-friendly. Because the electrode CELL is then extracted from
+  this very block (§ 4.2), the device block and the electrode
+  calculation share one ordering **by construction** — the positional
+  correspondence TranSIESTA verifies is automatic. (Q5's payoff,
+  again.)
+* **Within the bridge**: the original relative order is preserved
+  (stable sort) — no physics depends on it, and stability keeps the
+  user's mental map of their molecule intact.
+
+**The two checks, refusals naming atoms** (the user's "make sure
+nothing is missed"):
+
+1. **Every atom carries exactly one label** — `L-electrode`,
+   `R-electrode`, `bridge`, or buffer. An unlabeled atom is refused by
+   index and element ("atom 37 (C) carries no region label"), because
+   an unlabeled atom has no place in the canonical order and TranSIESTA
+   would misassign it silently.
+2. **The sort is a bijection** — same count, same element-and-position
+   multiset, every original atom exactly once in the sorted list.
+   Checked mechanically after the sort; any discrepancy is a bug
+   refused loudly, never a warning.
+
+**The permutation is recorded.** A sidecar map (original index ↔
+sorted index) is written beside the sorted structure. Everything
+downstream — forces, per-atom output, the 1-based indices the UI and
+the engine files display — maps back to the relaxation's identities
+through it; `engine_atom_index.py` stays the one 0↔1-based door on
+top.
+
+**What this replaces:** the emitter's current refusal ("re-export a
+contiguous-ordered structure by hand") becomes unreachable in the
+composite — prep sorts, so the order is always canonical. The refusal
+stays in the emitter as defense in depth.
+
 ### 4.2 The internal ladder — five stages, all the task's own
+
+At prep, before any stage renders: **copy the citation → categorical
+sort + the two checks (§ 4.1a) → frozen/tiling gate (§ 3) → extract
+the electrode cells from the sorted ends.** Then the stages:
 
 1. **`seed`** — an ordinary periodic SIESTA pass on the sandwich;
    its `.DM` starts the device SCF. **Default on, skippable** (user
@@ -347,3 +423,4 @@ relax first. Both are just "which structure the `junction` slot cites."
 | 4 | the seed stage | **default on, skippable** |
 | 5 | electrode task type | **neither offered option — the user's own design, adopted**: electrodes are not tasks at all; they are internal sub-stages EXTRACTED from the junction's labeled blocks, making structure and parameter mismatch impossible by construction. Trade-off accepted: no cross-task electrode reuse (single-points are cheap) |
 | 6 | vibration/IETS scope | **name the seam, stop** — a displaced structure is a new `junction` citation; the study machinery waits for the proven composite |
+| 7 | *(user-added, same day)* atom order | **the categorical sort at transport prep** (§ 4.1a): TranSIESTA's positional electrode identification demands `[L][bridge][R]`; relaxation order stays free; the sort is checked (all labeled, bijection) and its permutation recorded |
