@@ -324,6 +324,25 @@ the engine files display — maps back to the relaxation's identities
 through it; `engine_atom_index.py` stays the one 0↔1-based door on
 top.
 
+**Does the sort change the physics? No — with one fence.** The
+Hamiltonian is defined by the SET of atoms, not their order: a reorder
+permutes rows and columns of H, S and the density matrix (a similarity
+transformation), leaving eigenvalues, total energy, density and
+per-atom forces exactly invariant; numerically the SCF lands within
+summation-order noise (~1e-9 eV, below every tolerance). What IS
+order-dependent is bookkeeping, and both halves are handled:
+per-atom inputs (frozen lists, labels) are remapped through the
+recorded permutation — and **no order-dependent binary file ever
+crosses the sort boundary**: a `.DM`/`.TSDE` is stored in orbital
+order, which follows atom order, so a density file from the
+relaxation's ordering would silently corrupt a sorted-geometry SCF.
+The design makes that impossible by construction — the sort happens at
+prep before any transport SCF exists, the seed stage starts FRESH on
+the sorted geometry, and every warm file (seed `.DM` → device,
+`.TSDE` along the bias chain) lives entirely on the sorted side.
+Outputs (Mulliken, PDOS, forces) come back in sorted order; the
+permutation sidecar maps them to the indices the user knows.
+
 **What this replaces:** the emitter's current refusal ("re-export a
 contiguous-ordered structure by hand") becomes unreachable in the
 composite — prep sorts, so the order is always canonical. The refusal
