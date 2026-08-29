@@ -714,6 +714,21 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 
     Returns the per-job directories. Raises :class:`PrepError`.
     """
+    # TRANSPORT IS THE COMPOSITE (plans/transport-design.md) and its
+    # prep arm lands with build step P4b.  The compose half is built
+    # (`transport/compose.py`); refusing here beats crashing on the
+    # structure this calculation deliberately does not carry.
+    from ..task import read_task as _read_task_early
+    try:
+        _t_calc = _read_task_early(Path(base_dir) / "task.json").calculation
+    except Exception:
+        _t_calc = None   # no/invalid description: the named refusal below owns it
+    if _t_calc == "transport":
+        raise PrepError(
+            "transport prep is under construction (transport-design.md "
+            "§ 7, step P4b): the composition engine is built, the stage "
+            "rendering lands next.  The description is valid and will "
+            "prep unchanged once P4b ships.")
     from ..pipeline_log import PipelineLog, config_rows
     from ..resolve import ResolveError, resolve
     from ..task import FILENAME as TASK_FILENAME
